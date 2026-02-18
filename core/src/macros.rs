@@ -12,12 +12,14 @@ macro_rules! define_account {
 
         $(impl $check for $name {})*
 
-        impl $name {
+        impl AsAccountView for $name {
             #[inline(always)]
-            pub fn to_account_view(&self) -> &AccountView {
+            fn to_account_view(&self) -> &AccountView {
                 &self.view
             }
+        }
 
+        impl $name {
             #[inline(always)]
             pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
                 $(<$name as $check>::check(view)?;)*

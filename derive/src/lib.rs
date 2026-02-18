@@ -1,8 +1,8 @@
 use proc_macro::TokenStream;
-use quote::quote;
+use quote::{quote, format_ident};
 use syn::{
     parse::{Parse, ParseStream},
-    parse_macro_input, Data, DeriveInput, Expr, FnArg, Fields, Ident, ItemFn, LitInt, Pat, Token, Type,
+    parse_macro_input, Data, DeriveInput, Expr, ExprArray, FnArg, Fields, Ident, ItemFn, LitInt, Pat, Token, Type,
 };
 
 // --- Account field attribute parsing ---
@@ -10,15 +10,35 @@ use syn::{
 enum AccountDirective {
     HasOne(Ident),
     Constraint(Expr),
+    Seeds(Vec<Expr>),
+    Bump(Option<Expr>),
 }
 
 impl Parse for AccountDirective {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let key: Ident = input.parse()?;
-        let _: Token![=] = input.parse()?;
         match key.to_string().as_str() {
-            "has_one" => Ok(Self::HasOne(input.parse()?)),
-            "constraint" => Ok(Self::Constraint(input.parse()?)),
+            "has_one" => {
+                let _: Token![=] = input.parse()?;
+                Ok(Self::HasOne(input.parse()?))
+            }
+            "constraint" => {
+                let _: Token![=] = input.parse()?;
+                Ok(Self::Constraint(input.parse()?))
+            }
+            "seeds" => {
+                let _: Token![=] = input.parse()?;
+                let arr: ExprArray = input.parse()?;
+                Ok(Self::Seeds(arr.elems.into_iter().collect()))
+            }
+            "bump" => {
+                if input.peek(Token![=]) {
+                    let _: Token![=] = input.parse()?;
+                    Ok(Self::Bump(Some(input.parse()?)))
+                } else {
+                    Ok(Self::Bump(None))
+                }
+            }
             _ => Err(syn::Error::new(
                 key.span(),
                 format!("unknown account attribute: `{}`", key),
@@ -30,6 +50,8 @@ impl Parse for AccountDirective {
 struct AccountFieldAttrs {
     has_ones: Vec<Ident>,
     constraints: Vec<Expr>,
+    seeds: Option<Vec<Expr>>,
+    bump: Option<Option<Expr>>,
 }
 
 impl Parse for AccountFieldAttrs {
@@ -38,13 +60,17 @@ impl Parse for AccountFieldAttrs {
             input.parse_terminated(AccountDirective::parse, Token![,])?;
         let mut has_ones = Vec::new();
         let mut constraints = Vec::new();
+        let mut seeds = None;
+        let mut bump = None;
         for d in directives {
             match d {
                 AccountDirective::HasOne(ident) => has_ones.push(ident),
                 AccountDirective::Constraint(expr) => constraints.push(expr),
+                AccountDirective::Seeds(s) => seeds = Some(s),
+                AccountDirective::Bump(b) => bump = Some(b),
             }
         }
-        Ok(Self { has_ones, constraints })
+        Ok(Self { has_ones, constraints, seeds, bump })
     }
 }
 
@@ -59,6 +85,8 @@ fn parse_field_attrs(field: &syn::Field) -> AccountFieldAttrs {
     AccountFieldAttrs {
         has_ones: vec![],
         constraints: vec![],
+        seeds: None,
+        bump: None,
     }
 }
 
@@ -68,6 +96,7 @@ fn parse_field_attrs(field: &syn::Field) -> AccountFieldAttrs {
 pub fn derive_accounts(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
+    let bumps_name = format_ident!("{}Bumps", name);
 
     let fields = match &input.data {
         Data::Struct(data) => match &data.fields {
@@ -97,9 +126,18 @@ pub fn derive_accounts(input: TokenStream) -> TokenStream {
         }
     }).collect();
 
-    // Collect has_one and constraint directives from field attributes
+    let field_name_strings: Vec<String> = fields.iter()
+        .filter_map(|f| f.ident.as_ref().map(|i| i.to_string()))
+        .collect();
+
     let mut has_one_checks: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut constraint_checks: Vec<proc_macro2::TokenStream> = Vec::new();
+    let mut pda_checks: Vec<proc_macro2::TokenStream> = Vec::new();
+    let mut bump_init_vars: Vec<proc_macro2::TokenStream> = Vec::new();
+    let mut bump_struct_fields: Vec<proc_macro2::TokenStream> = Vec::new();
+    let mut bump_struct_inits: Vec<proc_macro2::TokenStream> = Vec::new();
+    let mut seeds_methods: Vec<proc_macro2::TokenStream> = Vec::new();
+    let mut seed_addr_captures: Vec<proc_macro2::TokenStream> = Vec::new();
 
     for field in fields.iter() {
         let attrs = parse_field_attrs(field);
@@ -120,52 +158,186 @@ pub fn derive_accounts(input: TokenStream) -> TokenStream {
                 }
             });
         }
-    }
 
-    let has_any_checks = !has_one_checks.is_empty() || !constraint_checks.is_empty();
+        if let Some(ref seed_exprs) = attrs.seeds {
+            let bump_var = format_ident!("__bumps_{}", field_name);
 
-    let expanded = if has_any_checks {
-        quote! {
-            impl<'info> TryFrom<&'info [AccountView]> for #name<'info> {
-                type Error = ProgramError;
+            bump_init_vars.push(quote! { let mut #bump_var: u8 = 0; });
+            bump_struct_fields.push(quote! { pub #field_name: u8 });
+            bump_struct_inits.push(quote! { #field_name: #bump_var });
 
-                #[inline(always)]
-                fn try_from(accounts: &'info [AccountView]) -> Result<Self, Self::Error> {
-                    let [#(#field_names),*] = accounts else {
-                        return Err(ProgramError::NotEnoughAccountKeys);
-                    };
+            let bump_arr_field = format_ident!("__{}_bump", field_name);
+            bump_struct_fields.push(quote! { #bump_arr_field: [u8; 1] });
+            bump_struct_inits.push(quote! { #bump_arr_field: [#bump_var] });
 
-                    let result = Self {
-                        #(#field_constructs,)*
-                    };
+            let seed_slices: Vec<proc_macro2::TokenStream> = seed_exprs.iter().map(|expr| {
+                seed_slice_expr_for_parse(expr, &field_name_strings)
+            }).collect();
 
-                    {
-                        let Self { #(ref #field_names,)* } = result;
-                        #(#has_one_checks)*
-                        #(#constraint_checks)*
+            let seed_idents: Vec<Ident> = seed_slices.iter().enumerate().map(|(idx, _)| {
+                format_ident!("__seed_{}_{}", field_name, idx)
+            }).collect();
+
+            let seed_len_checks: Vec<proc_macro2::TokenStream> = seed_idents
+                .iter()
+                .zip(seed_slices.iter())
+                .map(|(ident, seed)| {
+                    quote! {
+                        let #ident: &[u8] = #seed;
+                        if #ident.len() > 32 {
+                            return Err(QuasarError::InvalidSeeds.into());
+                        }
                     }
+                })
+                .collect();
 
-                    Ok(result)
+            match &attrs.bump {
+                Some(Some(bump_expr)) => {
+                    pda_checks.push(quote! {
+                        {
+                            #(#seed_len_checks)*
+                            let __bump_val: u8 = #bump_expr;
+                            let __bump_ref: &[u8] = &[__bump_val];
+                            let __pda_seeds = [#(quasar_core::cpi::Seed::from(#seed_idents),)* quasar_core::cpi::Seed::from(__bump_ref)];
+                            let __expected = quasar_core::pda::create_program_address(&__pda_seeds, &crate::ID)?;
+                            if *#field_name.to_account_view().address() != __expected {
+                                return Err(QuasarError::InvalidPda.into());
+                            }
+                            #bump_var = __bump_val;
+                        }
+                    });
+                }
+                Some(None) => {
+                    pda_checks.push(quote! {
+                        {
+                            #(#seed_len_checks)*
+                            let __pda_seeds = [#(quasar_core::cpi::Seed::from(#seed_idents)),*];
+                            let (__expected, __bump) = quasar_core::pda::find_program_address(&__pda_seeds, &crate::ID);
+                            if *#field_name.to_account_view().address() != __expected {
+                                return Err(QuasarError::InvalidPda.into());
+                            }
+                            #bump_var = __bump;
+                        }
+                    });
+                }
+                None => {
+                    panic!("#[account(seeds = [...])] requires a `bump` or `bump = expr` directive");
                 }
             }
+
+            let method_name = format_ident!("{}_seeds", field_name);
+            let seed_count = seed_exprs.len() + 1;
+            let mut seed_elements: Vec<proc_macro2::TokenStream> = Vec::new();
+
+            for expr in seed_exprs {
+                if let Expr::Path(ep) = expr {
+                    if ep.qself.is_none() && ep.path.segments.len() == 1 {
+                        let ident = &ep.path.segments[0].ident;
+                        if field_name_strings.contains(&ident.to_string()) {
+                            let addr_field = format_ident!("__seed_{}_{}", field_name, ident);
+                            let capture_var = format_ident!("__seed_addr_{}_{}", field_name, ident);
+
+                            seed_addr_captures.push(quote! {
+                                let #capture_var = *#ident.address();
+                            });
+                            bump_struct_fields.push(quote! { #addr_field: Address });
+                            bump_struct_inits.push(quote! { #addr_field: #capture_var });
+
+                            seed_elements.push(quote! { quasar_core::cpi::Seed::from(self.#addr_field.as_ref()) });
+                            continue;
+                        }
+                    }
+                }
+                seed_elements.push(quote! { quasar_core::cpi::Seed::from((#expr) as &[u8]) });
+            }
+
+            seed_elements.push(quote! { quasar_core::cpi::Seed::from(&self.#bump_arr_field as &[u8]) });
+
+            seeds_methods.push(quote! {
+                #[inline(always)]
+                pub fn #method_name(&self) -> [quasar_core::cpi::Seed<'_>; #seed_count] {
+                    [#(#seed_elements),*]
+                }
+            });
+        }
+    }
+
+    let has_pda_fields = !bump_struct_fields.is_empty();
+
+    let bumps_struct = if has_pda_fields {
+        quote! { #[derive(Copy, Clone)] pub struct #bumps_name { #(#bump_struct_fields,)* } }
+    } else {
+        quote! { #[derive(Copy, Clone)] pub struct #bumps_name; }
+    };
+
+    let bumps_init = if has_pda_fields {
+        quote! { #bumps_name { #(#bump_struct_inits,)* } }
+    } else {
+        quote! { #bumps_name }
+    };
+
+    let has_any_checks = !has_one_checks.is_empty()
+        || !constraint_checks.is_empty()
+        || !pda_checks.is_empty();
+
+    let parse_body = if has_any_checks {
+        quote! {
+            let [#(#field_names),*] = accounts else {
+                return Err(ProgramError::NotEnoughAccountKeys);
+            };
+
+            #(#seed_addr_captures)*
+
+            let result = Self {
+                #(#field_constructs,)*
+            };
+
+            #(#bump_init_vars)*
+
+            {
+                let Self { #(ref #field_names,)* } = result;
+                #(#has_one_checks)*
+                #(#constraint_checks)*
+                #(#pda_checks)*
+            }
+
+            Ok((result, #bumps_init))
         }
     } else {
         quote! {
-            impl<'info> TryFrom<&'info [AccountView]> for #name<'info> {
-                type Error = ProgramError;
+            let [#(#field_names),*] = accounts else {
+                return Err(ProgramError::NotEnoughAccountKeys);
+            };
 
-                #[inline(always)]
-                fn try_from(accounts: &'info [AccountView]) -> Result<Self, Self::Error> {
-                    let [#(#field_names),*] = accounts else {
-                        return Err(ProgramError::NotEnoughAccountKeys);
-                    };
+            Ok((Self {
+                #(#field_constructs,)*
+            }, #bumps_init))
+        }
+    };
 
-                    Ok(Self {
-                        #(#field_constructs,)*
-                    })
-                }
+    let seeds_impl = if seeds_methods.is_empty() {
+        quote! {}
+    } else {
+        quote! {
+            impl #bumps_name {
+                #(#seeds_methods)*
             }
         }
+    };
+
+    let expanded = quote! {
+        #bumps_struct
+
+        impl<'info> ParseAccounts<'info> for #name<'info> {
+            type Bumps = #bumps_name;
+
+            #[inline(always)]
+            fn parse(accounts: &'info [AccountView]) -> Result<(Self, Self::Bumps), ProgramError> {
+                #parse_body
+            }
+        }
+
+        #seeds_impl
     };
 
     TokenStream::from(expanded)
@@ -201,6 +373,10 @@ pub fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     let param_name = &first_arg.pat;
+    let param_ident = match &*first_arg.pat {
+        Pat::Ident(pat_ident) => pat_ident.ident.clone(),
+        _ => panic!("#[instruction] ctx parameter must be an identifier"),
+    };
     let param_type = &first_arg.ty;
 
     let remaining: Vec<_> = func.sig.inputs.iter().skip(1).filter_map(|arg| {
@@ -246,13 +422,13 @@ pub fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
         ));
 
         new_stmts.push(syn::parse_quote!(
-            if #param_name.data.len() < core::mem::size_of::<InstructionData>() {
+            if #param_ident.data.len() < core::mem::size_of::<InstructionData>() {
                 return Err(ProgramError::InvalidInstructionData);
             }
         ));
 
         new_stmts.push(syn::parse_quote!(
-            let __instruction_data = unsafe { &*(#param_name.data.as_ptr() as *const InstructionData) };
+            let __instruction_data = unsafe { &*(#param_ident.data.as_ptr() as *const InstructionData) };
         ));
 
         for name in &field_names {
@@ -330,36 +506,26 @@ pub fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
 
             #[inline(always)]
-            pub fn init_signed(self, account: &mut Initialize<Self>, payer: &AccountView, rent: Option<&Rent>, signers: &[quasar::cpi::Signer]) -> Result<(), ProgramError> {
+            pub fn init_signed(self, account: &mut Initialize<Self>, payer: &AccountView, rent: Option<&Rent>, signers: &[quasar_core::cpi::Signer]) -> Result<(), ProgramError> {
                 let view = account.to_account_view();
 
-                use quasar::sysvars::Sysvar;
+                use quasar_core::sysvars::Sysvar;
                 let lamports = match rent {
                     Some(rent_account) => rent_account.get()?.try_minimum_balance(Self::SPACE)?,
-                    None => quasar::sysvars::rent::Rent::get()?.try_minimum_balance(Self::SPACE)?,
+                    None => quasar_core::sysvars::rent::Rent::get()?.try_minimum_balance(Self::SPACE)?,
                 };
 
                 if view.lamports() == 0 {
-                    quasar::cpi::system::CreateAccount {
-                        from: payer,
-                        to: view,
-                        lamports,
-                        space: Self::SPACE as u64,
-                        owner: &Self::OWNER,
-                    }.invoke_signed(signers)?;
+                    quasar_core::cpi::system::create_account(payer, view, lamports, Self::SPACE as u64, &Self::OWNER)
+                        .invoke_with_signers(signers)?;
                 } else {
                     let required = lamports.saturating_sub(view.lamports());
                     if required > 0 {
-                        quasar::cpi::system::Transfer {
-                            from: payer,
-                            to: view,
-                            lamports: required,
-                        }.invoke_signed(signers)?;
+                        quasar_core::cpi::system::transfer(payer, view, required)
+                            .invoke_with_signers(signers)?;
                     }
-                    quasar::cpi::system::Assign {
-                        account: view,
-                        owner: &Self::OWNER,
-                    }.invoke_signed(signers)?;
+                    quasar_core::cpi::system::assign(view, &Self::OWNER)
+                        .invoke_with_signers(signers)?;
                     unsafe { view.resize_unchecked(Self::SPACE) }?;
                 }
 
@@ -373,6 +539,19 @@ pub fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 // --- Helpers ---
+
+/// Expand a seed expression into a byte slice for use inside parse (fields are local variables).
+fn seed_slice_expr_for_parse(expr: &Expr, field_names: &[String]) -> proc_macro2::TokenStream {
+    if let Expr::Path(ep) = expr {
+        if ep.path.segments.len() == 1 && ep.qself.is_none() {
+            let ident = &ep.path.segments[0].ident;
+            if field_names.contains(&ident.to_string()) {
+                return quote! { #ident.to_account_view().address().as_ref() };
+            }
+        }
+    }
+    quote! { #expr as &[u8] }
+}
 
 fn strip_generics(ty: &Type) -> proc_macro2::TokenStream {
     match ty {

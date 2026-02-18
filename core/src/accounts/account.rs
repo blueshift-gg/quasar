@@ -8,12 +8,14 @@ pub struct Account<T: Owner> {
     _marker: PhantomData<T>,
 }
 
-impl<T: Owner> Account<T> {
+impl<T: Owner> AsAccountView for Account<T> {
     #[inline(always)]
-    pub fn to_account_view(&self) -> &AccountView {
+    fn to_account_view(&self) -> &AccountView {
         &self.view
     }
+}
 
+impl<T: Owner> Account<T> {
     #[inline(always)]
     pub fn owner(&self) -> &'static Address {
         &T::OWNER
@@ -87,11 +89,8 @@ impl<T: QuasarAccount + Owner> Account<T> {
         let current_lamports = view.lamports();
 
         if rent_exempt_lamports > current_lamports {
-            crate::cpi::system::Transfer {
-                from: payer,
-                to: view,
-                lamports: rent_exempt_lamports - current_lamports,
-            }.invoke()?;
+            crate::cpi::system::transfer(payer, view, rent_exempt_lamports - current_lamports)
+                .invoke()?;
         } else if current_lamports > rent_exempt_lamports {
             let excess = current_lamports - rent_exempt_lamports;
             view.set_lamports(rent_exempt_lamports);
@@ -103,12 +102,12 @@ impl<T: QuasarAccount + Owner> Account<T> {
     }
 }
 
-impl<T: QuasarAccount + Owner> core::ops::Deref for Account<T> {
-    type Target = T;
+impl<T: ZeroCopyDeref> core::ops::Deref for Account<T> {
+    type Target = T::Target;
 
     #[inline(always)]
     fn deref(&self) -> &Self::Target {
-        unsafe { &*(self.to_account_view().borrow_unchecked().as_ptr().add(1) as *const T) }
+        unsafe { &*T::deref_data(self.to_account_view().borrow_unchecked().as_ptr()) }
     }
 }
 

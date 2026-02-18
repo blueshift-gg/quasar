@@ -8,7 +8,5 @@ pub mod initialize;
 pub use initialize::*;
 pub mod rent;
 pub use rent::*;
-pub mod token_account;
-pub use token_account::*;
 pub mod account;
 pub use account::*;

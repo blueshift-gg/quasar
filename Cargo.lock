@@ -98,7 +98,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "quasar"
+name = "quasar-core"
 version = "0.1.0"
 dependencies = [
  "quasar-derive",
@@ -118,6 +118,25 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "quasar-example"
+version = "0.1.0"
+dependencies = [
+ "quasar-core",
+ "quasar-spl",
+ "wincode",
+]
+
+[[package]]
+name = "quasar-spl"
+version = "0.1.0"
+dependencies = [
+ "quasar-core",
+ "solana-account-view",
+ "solana-address",
+ "solana-program-error",
 ]
 
 [[package]]

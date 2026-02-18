@@ -1,1 +1,10 @@
 /target
+
+# AI
+.apex
+.claude
+.codex
+.factory
+
+AGENTS.md
+CLAUDE.md

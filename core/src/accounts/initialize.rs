@@ -7,11 +7,14 @@ pub struct Initialize<T: QuasarAccount> {
     _marker: PhantomData<T>,
 }
 
-impl<T: QuasarAccount> Initialize<T> {
+impl<T: QuasarAccount> AsAccountView for Initialize<T> {
     #[inline(always)]
-    pub fn to_account_view(&self) -> &AccountView {
+    fn to_account_view(&self) -> &AccountView {
         &self.view
     }
+}
+
+impl<T: QuasarAccount> Initialize<T> {
 
     #[inline(always)]
     pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
