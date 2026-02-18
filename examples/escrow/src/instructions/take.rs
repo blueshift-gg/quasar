@@ -29,7 +29,7 @@ impl<'info> Take<'info> {
             self.taker_ta_b, 
             self.maker_ta_b, 
             self.taker,
-            self.escrow.receive.get()
+            self.escrow.receive
         ).invoke()
     }
 

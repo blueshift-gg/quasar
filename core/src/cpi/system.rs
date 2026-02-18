@@ -13,10 +13,11 @@ static SYSTEM_PROGRAM_ID: Address = Address::new_from_array([0u8; 32]);
 pub fn create_account<'a>(
     from: &'a AccountView,
     to: &'a AccountView,
-    lamports: u64,
+    lamports: impl Into<u64>,
     space: u64,
     owner: &'a Address,
 ) -> CpiCall<'a, 2, 52> {
+    let lamports: u64 = lamports.into();
     let mut data = [0u8; 52];
     data[4..12].copy_from_slice(&lamports.to_le_bytes());
     data[12..20].copy_from_slice(&space.to_le_bytes());
@@ -37,8 +38,9 @@ pub fn create_account<'a>(
 pub fn transfer<'a>(
     from: &'a AccountView,
     to: &'a AccountView,
-    lamports: u64,
+    lamports: impl Into<u64>,
 ) -> CpiCall<'a, 2, 12> {
+    let lamports: u64 = lamports.into();
     let mut data = [0u8; 12];
     data[0] = 2;
     data[4..12].copy_from_slice(&lamports.to_le_bytes());
@@ -85,12 +87,13 @@ impl SystemProgram {
         &'a self,
         from: &'a impl AsAccountView,
         to: &'a impl AsAccountView,
-        lamports: u64,
+        lamports: impl Into<u64>,
         space: u64,
         owner: &'a Address,
     ) -> CpiCall<'a, 2, 52> {
         let from = from.to_account_view();
         let to = to.to_account_view();
+        let lamports: u64 = lamports.into();
 
         let mut data = [0u8; 52];
         data[4..12].copy_from_slice(&lamports.to_le_bytes());
@@ -113,10 +116,11 @@ impl SystemProgram {
         &'a self,
         from: &'a impl AsAccountView,
         to: &'a impl AsAccountView,
-        lamports: u64,
+        lamports: impl Into<u64>,
     ) -> CpiCall<'a, 2, 12> {
         let from = from.to_account_view();
         let to = to.to_account_view();
+        let lamports: u64 = lamports.into();
 
         let mut data = [0u8; 12];
         data[0] = 2;

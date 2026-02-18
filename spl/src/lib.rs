@@ -52,11 +52,12 @@ impl TokenProgram {
         from: &'a impl AsAccountView,
         to: &'a impl AsAccountView,
         authority: &'a impl AsAccountView,
-        amount: u64,
+        amount: impl Into<u64>,
     ) -> CpiCall<'a, 3, 9> {
         let from = from.to_account_view();
         let to = to.to_account_view();
         let authority = authority.to_account_view();
+        let amount: u64 = amount.into();
 
         let mut data = [0u8; 9];
         data[0] = 3;
@@ -81,13 +82,14 @@ impl TokenProgram {
         mint: &'a impl AsAccountView,
         to: &'a impl AsAccountView,
         authority: &'a impl AsAccountView,
-        amount: u64,
+        amount: impl Into<u64>,
         decimals: u8,
     ) -> CpiCall<'a, 4, 10> {
         let from = from.to_account_view();
         let mint = mint.to_account_view();
         let to = to.to_account_view();
         let authority = authority.to_account_view();
+        let amount: u64 = amount.into();
 
         let mut data = [0u8; 10];
         data[0] = 12;
@@ -113,11 +115,12 @@ impl TokenProgram {
         mint: &'a impl AsAccountView,
         to: &'a impl AsAccountView,
         authority: &'a impl AsAccountView,
-        amount: u64,
+        amount: impl Into<u64>,
     ) -> CpiCall<'a, 3, 9> {
         let mint = mint.to_account_view();
         let to = to.to_account_view();
         let authority = authority.to_account_view();
+        let amount: u64 = amount.into();
 
         let mut data = [0u8; 9];
         data[0] = 7;
@@ -141,11 +144,12 @@ impl TokenProgram {
         from: &'a impl AsAccountView,
         mint: &'a impl AsAccountView,
         authority: &'a impl AsAccountView,
-        amount: u64,
+        amount: impl Into<u64>,
     ) -> CpiCall<'a, 3, 9> {
         let from = from.to_account_view();
         let mint = mint.to_account_view();
         let authority = authority.to_account_view();
+        let amount: u64 = amount.into();
 
         let mut data = [0u8; 9];
         data[0] = 8;
@@ -169,11 +173,12 @@ impl TokenProgram {
         source: &'a impl AsAccountView,
         delegate: &'a impl AsAccountView,
         authority: &'a impl AsAccountView,
-        amount: u64,
+        amount: impl Into<u64>,
     ) -> CpiCall<'a, 3, 9> {
         let source = source.to_account_view();
         let delegate = delegate.to_account_view();
         let authority = authority.to_account_view();
+        let amount: u64 = amount.into();
 
         let mut data = [0u8; 9];
         data[0] = 4;
