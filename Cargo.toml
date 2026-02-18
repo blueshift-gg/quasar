@@ -15,6 +15,7 @@ solana-program-error = "3.0.0"
 solana-account-view = "1.0.0"
 solana-rent = { version = "4.0.0", features = ["sysvar"] }
 solana-address = { version = "2.2.0", features = ["wincode", "decode"] }
+solana-program-log = "1.1.0"
 solana-instruction-view = { version = "1.0.0", features = ["cpi"] }
 
 [target.'cfg(any(target_os = "solana", target_arch = "bpf"))'.dependencies]

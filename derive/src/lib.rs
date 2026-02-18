@@ -2,7 +2,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
     parse::{Parse, ParseStream},
-    parse_macro_input, Data, DeriveInput, Expr, FnArg, Fields, Ident, ItemFn, LitInt, Pat, Token, Type,
+    parse_macro_input, Data, DeriveInput, Expr, FnArg, Fields, Ident, Item, ItemFn, ItemMod, LitInt, Pat, Token, Type,
 };
 
 // --- Account field attribute parsing ---
@@ -123,8 +123,32 @@ pub fn derive_accounts(input: TokenStream) -> TokenStream {
     }
 
     let has_any_checks = !has_one_checks.is_empty() || !constraint_checks.is_empty();
+    let field_count = field_names.len();
+    let field_indices: Vec<usize> = (0..field_count).collect();
 
-    let expanded = if has_any_checks {
+    let parse_steps: Vec<proc_macro2::TokenStream> = field_indices.iter().map(|&i| {
+        quote! {
+            {
+                let raw = input as *mut solana_account_view::RuntimeAccount;
+                if unsafe { (*raw).borrow_state } == solana_account_view::NOT_BORROWED {
+                    unsafe {
+                        core::ptr::write(base.add(#i), solana_account_view::AccountView::new_unchecked(raw));
+                        input = input.add(__ACCOUNT_HEADER + (*raw).data_len as usize);
+                        let addr = input as usize;
+                        input = ((addr + 7) & !7) as *mut u8;
+                    }
+                } else {
+                    unsafe {
+                        let idx = (*raw).borrow_state as usize;
+                        core::ptr::write(base.add(#i), core::ptr::read(base.add(idx)));
+                        input = input.add(core::mem::size_of::<u64>());
+                    }
+                }
+            }
+        }
+    }).collect();
+
+    let try_from_impl = if has_any_checks {
         quote! {
             impl<'info> TryFrom<&'info [AccountView]> for #name<'info> {
                 type Error = ProgramError;
@@ -168,13 +192,40 @@ pub fn derive_accounts(input: TokenStream) -> TokenStream {
         }
     };
 
+    let expanded = quote! {
+        #try_from_impl
+
+        impl<'info> AccountCount for #name<'info> {
+            const COUNT: usize = #field_count;
+        }
+
+        impl<'info> #name<'info> {
+            #[inline(always)]
+            pub unsafe fn parse_accounts(
+                mut input: *mut u8,
+                buf: &mut core::mem::MaybeUninit<[solana_account_view::AccountView; #field_count]>,
+            ) -> *mut u8 {
+                const __ACCOUNT_HEADER: usize =
+                    core::mem::size_of::<solana_account_view::RuntimeAccount>()
+                    + solana_account_view::MAX_PERMITTED_DATA_INCREASE
+                    + core::mem::size_of::<u64>();
+
+                let base = buf.as_mut_ptr() as *mut solana_account_view::AccountView;
+
+                #(#parse_steps)*
+
+                input
+            }
+        }
+    };
+
     TokenStream::from(expanded)
 }
 
 // --- Instruction macro ---
 
 struct InstructionArgs {
-    discriminator: LitInt,
+    discriminator: Vec<LitInt>,
 }
 
 impl Parse for InstructionArgs {
@@ -184,8 +235,19 @@ impl Parse for InstructionArgs {
             return Err(syn::Error::new(ident.span(), "expected `discriminator`"));
         }
         let _: Token![=] = input.parse()?;
-        let discriminator: LitInt = input.parse()?;
-        Ok(Self { discriminator })
+        if input.peek(syn::token::Bracket) {
+            let content;
+            syn::bracketed!(content in input);
+            let lits = content.parse_terminated(LitInt::parse, Token![,])?;
+            let discriminator: Vec<LitInt> = lits.into_iter().collect();
+            if discriminator.is_empty() {
+                return Err(syn::Error::new(input.span(), "discriminator must have at least one byte"));
+            }
+            Ok(Self { discriminator })
+        } else {
+            let lit: LitInt = input.parse()?;
+            Ok(Self { discriminator: vec![lit] })
+        }
     }
 }
 
@@ -193,7 +255,8 @@ impl Parse for InstructionArgs {
 pub fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as InstructionArgs);
     let mut func = parse_macro_input!(item as ItemFn);
-    let discriminator = &args.discriminator;
+    let disc_bytes = &args.discriminator;
+    let disc_len = disc_bytes.len();
 
     let first_arg = match func.sig.inputs.first() {
         Some(FnArg::Typed(pt)) => pt.clone(),
@@ -216,12 +279,12 @@ pub fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
     let stmts = std::mem::take(&mut func.block.stmts);
     let mut new_stmts: Vec<syn::Stmt> = vec![
         syn::parse_quote!(
-            if context.data.first() != Some(&#discriminator) {
+            if !context.data.starts_with(&[#(#disc_bytes),*]) {
                 return Err(ProgramError::InvalidInstructionData);
             }
         ),
         syn::parse_quote!(
-            context.data = &context.data[1..];
+            context.data = &context.data[#disc_len..];
         ),
         syn::parse_quote!(
             let #param_name: #param_type = Ctx::new(context)?;
@@ -274,7 +337,10 @@ pub fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as InstructionArgs);
     let input = parse_macro_input!(item as DeriveInput);
     let name = &input.ident;
-    let discriminator = &args.discriminator;
+    let disc_bytes = &args.discriminator;
+    let disc_len = disc_bytes.len();
+
+    let disc_indices: Vec<usize> = (0..disc_len).collect();
 
     let field_types: Vec<_> = match &input.data {
         Data::Struct(data) => match &data.fields {
@@ -290,11 +356,11 @@ pub fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
         #input
 
         impl Discriminator for #name {
-            const DISCRIMINATOR: u8 = #discriminator;
+            const DISCRIMINATOR: &'static [u8] = &[#(#disc_bytes),*];
         }
 
         impl Space for #name {
-            const SPACE: usize = 1 #(+ core::mem::size_of::<#field_types>())*;
+            const SPACE: usize = #disc_len #(+ core::mem::size_of::<#field_types>())*;
         }
 
         impl Owner for #name {
@@ -304,9 +370,12 @@ pub fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
         impl AccountCheck for #name {
             #[inline(always)]
             fn check(view: &AccountView) -> Result<(), ProgramError> {
-                if unsafe { *view.borrow_unchecked().get_unchecked(0) } != #discriminator {
-                    return Err(ProgramError::InvalidAccountData);
-                }
+                let __data = unsafe { view.borrow_unchecked() };
+                #(
+                    if unsafe { *__data.get_unchecked(#disc_indices) } != #disc_bytes {
+                        return Err(ProgramError::InvalidAccountData);
+                    }
+                )*
                 Ok(())
             }
         }
@@ -364,12 +433,135 @@ pub fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
 
                 let mut data = view.try_borrow_mut()?;
-                data[0] = Self::DISCRIMINATOR;
-                self.serialize(&mut data[1..])?;
+                data[..Self::DISCRIMINATOR.len()].copy_from_slice(Self::DISCRIMINATOR);
+                self.serialize(&mut data[Self::DISCRIMINATOR.len()..])?;
                 Ok(())
             }
         }
     }.into()
+}
+
+// --- Program macro ---
+
+/// Extracts the inner type `T` from a `Ctx<T>` first parameter.
+fn extract_ctx_inner_type(sig: &syn::Signature) -> proc_macro2::TokenStream {
+    let first_arg = match sig.inputs.first() {
+        Some(FnArg::Typed(pt)) => pt,
+        _ => panic!("#[program]: instruction function must have ctx: Ctx<T> as first parameter"),
+    };
+
+    match &*first_arg.ty {
+        Type::Path(type_path) => {
+            let last_seg = type_path.path.segments.last()
+                .expect("Ctx type must have segments");
+            match &last_seg.arguments {
+                syn::PathArguments::AngleBracketed(args) => {
+                    match args.args.first() {
+                        Some(syn::GenericArgument::Type(ty)) => quote!(#ty),
+                        _ => panic!("Ctx must have a type argument"),
+                    }
+                }
+                _ => panic!("Ctx must have angle-bracketed arguments"),
+            }
+        }
+        _ => panic!("First parameter must be Ctx<T>"),
+    }
+}
+
+#[proc_macro_attribute]
+pub fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let mut module = parse_macro_input!(item as ItemMod);
+
+    let (_, items) = module.content
+        .as_ref()
+        .expect("#[program] must be used on a module with a body");
+
+    // Scan for #[instruction(discriminator = ...)] functions
+    let mut dispatch_arms: Vec<proc_macro2::TokenStream> = Vec::new();
+    let mut seen_discriminators: Vec<(Vec<u8>, String)> = Vec::new();
+    let mut disc_len: Option<usize> = None;
+
+    for item in items {
+        if let Item::Fn(func) = item {
+            for attr in &func.attrs {
+                if attr.path().is_ident("instruction") {
+                    let args: InstructionArgs = attr.parse_args()
+                        .expect("failed to parse #[instruction] attribute");
+                    let disc_bytes = &args.discriminator;
+                    let fn_name = &func.sig.ident;
+                    let accounts_type = extract_ctx_inner_type(&func.sig);
+
+                    // Validate same length across all instructions
+                    match disc_len {
+                        Some(len) => {
+                            if disc_bytes.len() != len {
+                                return syn::Error::new_spanned(
+                                    attr,
+                                    format!(
+                                        "all instruction discriminators must have the same length: expected {} byte(s), found {}",
+                                        len, disc_bytes.len()
+                                    ),
+                                ).to_compile_error().into();
+                            }
+                        }
+                        None => disc_len = Some(disc_bytes.len()),
+                    }
+
+                    // Check for duplicates
+                    let disc_values: Vec<u8> = disc_bytes.iter()
+                        .map(|lit| lit.base10_parse::<u8>().expect("discriminator byte must be 0-255"))
+                        .collect();
+                    if let Some((_, prev_fn)) = seen_discriminators.iter().find(|(v, _)| *v == disc_values) {
+                        return syn::Error::new_spanned(
+                            attr,
+                            format!(
+                                "duplicate discriminator {:?}: already used by `{}`",
+                                disc_values, prev_fn
+                            ),
+                        ).to_compile_error().into();
+                    }
+                    seen_discriminators.push((disc_values, fn_name.to_string()));
+
+                    dispatch_arms.push(quote! {
+                        [#(#disc_bytes),*] => #fn_name(#accounts_type)
+                    });
+                    break;
+                }
+            }
+        }
+    }
+
+    let disc_len_lit = disc_len.unwrap_or(1);
+
+    // Append dispatch + entrypoint to the module
+    if let Some((_, ref mut items)) = module.content {
+        items.push(syn::parse_quote! {
+            #[inline(always)]
+            fn __dispatch(ptr: *mut u8, instruction_data: &[u8]) -> Result<(), ProgramError> {
+                dispatch!(ptr, instruction_data, #disc_len_lit, {
+                    #(#dispatch_arms),*
+                })
+            }
+        });
+
+        items.push(syn::parse_quote! {
+            #[unsafe(no_mangle)]
+            pub unsafe extern "C" fn entrypoint(ptr: *mut u8, instruction_data: *const u8) -> u64 {
+                let instruction_data = unsafe {
+                    core::slice::from_raw_parts(
+                        instruction_data,
+                        *(instruction_data.sub(8) as *const u64) as usize,
+                    )
+                };
+                match __dispatch(ptr, instruction_data) {
+                    Ok(_) => 0,
+                    Err(e) => e.into(),
+                }
+            }
+        });
+    }
+
+    quote!(#module).into()
 }
 
 // --- Helpers ---

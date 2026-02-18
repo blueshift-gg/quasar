@@ -1,5 +1,8 @@
 use crate::prelude::*;
 
+no_alloc!();
+panic_handler!();
+
 #[derive(Accounts)]
 pub struct Make<'info> {
     pub maker: &'info mut Signer,
@@ -10,21 +13,6 @@ pub struct Make<'info> {
     pub rent: &'info Rent,
     pub token_program: &'info TokenProgram,
     pub system_program: &'info SystemProgram,
-}
-
-#[instruction(discriminator = 0)]
-pub fn make(ctx: Ctx<Make>, receive: u64) -> Result<(), ProgramError> {
-    EscrowAccount {
-        maker: ctx.accounts.maker.to_account_view().address().clone(),
-        mint_a: ctx.accounts.maker_ta_a.mint().clone(),
-        mint_b: ctx.accounts.maker_ta_b.mint().clone(),
-        maker_ta_b: ctx.accounts.maker_ta_b.to_account_view().address().clone(),
-        receive
-    }.init(
-        ctx.accounts.escrow,
-        ctx.accounts.maker.to_account_view(),
-        Some(ctx.accounts.rent),
-    )
 }
 
 #[account(discriminator = 1)]
@@ -46,8 +34,34 @@ pub struct Take<'info> {
     pub system_program: &'info SystemProgram,
 }
 
-#[instruction(discriminator = 1)]
-pub fn take(ctx: Ctx<Take>) -> Result<(), ProgramError> {
-    let _escrow_data = ctx.accounts.escrow.get()?;
-    Ok(())
+#[program]
+mod instruction {
+    use super::*;
+
+    #[instruction(discriminator = 0)]
+    pub fn make(ctx: Ctx<Make>, receive: u64) -> Result<(), ProgramError> {
+        EscrowAccount {
+            maker: ctx.accounts.maker.to_account_view().address().clone(),
+            mint_a: ctx.accounts.maker_ta_a.mint().clone(),
+            mint_b: ctx.accounts.maker_ta_b.mint().clone(),
+            maker_ta_b: ctx.accounts.maker_ta_b.to_account_view().address().clone(),
+            receive
+        }.init(
+            ctx.accounts.escrow,
+            ctx.accounts.maker.to_account_view(),
+            Some(ctx.accounts.rent),
+        )
+    }
+
+    #[instruction(discriminator = 1)]
+    pub fn take(ctx: Ctx<Take>) -> Result<(), ProgramError> {
+        let _escrow_data = ctx.accounts.escrow.get()?;
+        Ok(())
+    }
+
+    #[instruction(discriminator = 2)]
+    pub fn refund(ctx: Ctx<Take>) -> Result<(), ProgramError> {
+        let _escrow_data = ctx.accounts.escrow.get()?;
+        Ok(())
+    }
 }

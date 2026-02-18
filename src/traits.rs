@@ -15,7 +15,7 @@ pub trait Program {
 }
 
 pub trait Discriminator {
-    const DISCRIMINATOR: u8;
+    const DISCRIMINATOR: &'static [u8];
 }
 
 pub trait Space {
@@ -25,6 +25,10 @@ pub trait Space {
 pub trait AccountCheck {
     #[inline(always)]
     fn check(_view: &AccountView) -> Result<(), ProgramError> { Ok(()) }
+}
+
+pub trait AccountCount {
+    const COUNT: usize;
 }
 
 pub trait QuasarAccount: Sized + Discriminator + Space {

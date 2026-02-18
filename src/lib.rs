@@ -13,6 +13,7 @@ pub mod programs;
 pub mod context;
 pub mod error;
 pub mod prelude;
+pub mod entrypoint;
 
 // Example program ID for the example module
 prelude::declare_id!("22222222222222222222222222222222222222222222");

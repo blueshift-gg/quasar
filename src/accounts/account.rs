@@ -48,16 +48,18 @@ impl<T: QuasarAccount + Owner> Account<T> {
     #[inline(always)]
     pub fn get(&self) -> Result<T, ProgramError> {
         let data = self.view.try_borrow()?;
-        if data.first() != Some(&T::DISCRIMINATOR) {
+        let disc = T::DISCRIMINATOR;
+        if data.len() < disc.len() || &data[..disc.len()] != disc {
             return Err(ProgramError::InvalidAccountData);
         }
-        T::deserialize(&data[1..])
+        T::deserialize(&data[disc.len()..])
     }
 
     #[inline(always)]
     pub fn set(&mut self, value: &T) -> Result<(), ProgramError> {
         let mut data = self.view.try_borrow_mut()?;
-        value.serialize(&mut data[1..])
+        let disc = T::DISCRIMINATOR;
+        value.serialize(&mut data[disc.len()..])
     }
 
     #[inline(always)]
