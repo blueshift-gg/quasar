@@ -6,6 +6,7 @@ pub struct Idl {
     pub metadata: IdlMetadata,
     pub instructions: Vec<IdlInstruction>,
     pub accounts: Vec<IdlAccountDef>,
+    pub events: Vec<IdlEventDef>,
     pub types: Vec<IdlTypeDef>,
     pub errors: Vec<IdlError>,
 }
@@ -70,6 +71,12 @@ pub enum IdlType {
 
 #[derive(Serialize)]
 pub struct IdlAccountDef {
+    pub name: String,
+    pub discriminator: Vec<u8>,
+}
+
+#[derive(Serialize)]
+pub struct IdlEventDef {
     pub name: String,
     pub discriminator: Vec<u8>,
 }

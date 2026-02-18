@@ -1,7 +1,8 @@
 use quasar_core::prelude::*;
 use quasar_spl::{TokenAccount, TokenProgram};
 
-use crate::state::EscrowAccount;
+use crate::state::{EscrowAccount, EscrowTaken};
+use crate::QuasarEscrow;
 
 #[derive(Accounts)]
 pub struct Take<'info> {
@@ -19,15 +20,18 @@ pub struct Take<'info> {
     pub taker_ta_b: &'info mut Account<TokenAccount>,
     pub maker_ta_b: &'info mut Account<TokenAccount>,
     pub vault_ta_a: &'info mut Account<TokenAccount>,
-    pub token_program: &'info TokenProgram
+    pub token_program: &'info TokenProgram,
+    #[account(seeds = [b"__event_authority"], bump)]
+    pub event_authority: &'info UncheckedAccount,
+    pub program: &'info QuasarEscrow,
 }
 
 impl<'info> Take<'info> {
     #[inline(always)]
     pub fn transfer_tokens(&mut self) -> Result<(), ProgramError> {
         self.token_program.transfer(
-            self.taker_ta_b, 
-            self.maker_ta_b, 
+            self.taker_ta_b,
+            self.maker_ta_b,
             self.taker,
             self.escrow.receive
         ).invoke()
@@ -50,7 +54,22 @@ impl<'info> Take<'info> {
             self.escrow,
         ).invoke_signed(&seeds)
     }
-    
+
+    #[inline(always)]
+    pub fn emit_event(&self, bumps: &TakeBumps) -> Result<(), ProgramError> {
+        let event = EscrowTaken {
+            maker: *self.maker.address(),
+            taker: *self.taker.address(),
+            amount: self.escrow.receive.into(),
+        };
+
+        self.program.emit_event(
+            &event,
+            self.event_authority,
+            bumps.event_authority,
+        )
+    }
+
     #[inline(always)]
     pub fn close_escrow(&mut self) -> Result<(), ProgramError> {
         self.escrow.close(self.maker.to_account_view())

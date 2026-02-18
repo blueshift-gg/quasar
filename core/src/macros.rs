@@ -56,3 +56,11 @@ macro_rules! require_eq {
         }
     };
 }
+
+#[macro_export]
+macro_rules! emit {
+    ($event:expr) => {
+        $event.emit_log()
+    };
+}
+

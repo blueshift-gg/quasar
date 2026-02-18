@@ -24,6 +24,7 @@ mod quasar_escrow {
     pub fn take(ctx: Ctx<Take>) -> Result<(), ProgramError> {
         ctx.accounts.transfer_tokens()?;
         ctx.accounts.withdraw_tokens_and_close(&ctx.bumps)?;
+        ctx.accounts.emit_event(&ctx.bumps)?;
         ctx.accounts.close_escrow()
     }
 

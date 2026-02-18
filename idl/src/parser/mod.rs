@@ -1,5 +1,6 @@
 pub mod accounts;
 pub mod errors;
+pub mod events;
 pub mod helpers;
 pub mod module_resolver;
 pub mod program;
@@ -17,6 +18,7 @@ pub struct ParsedProgram {
     pub instructions: Vec<program::RawInstruction>,
     pub accounts_structs: Vec<accounts::RawAccountsStruct>,
     pub state_accounts: Vec<state::RawStateAccount>,
+    pub events: Vec<events::RawEvent>,
     pub errors: Vec<IdlError>,
 }
 
@@ -51,13 +53,19 @@ pub fn parse_program(crate_root: &Path) -> ParsedProgram {
         state_accounts.extend(state::extract_state_accounts(&file.file));
     }
 
-    // 7. Collect all #[error_code] enums
+    // 7. Collect all #[event(discriminator = N)] structs
+    let mut all_events = Vec::new();
+    for file in &files {
+        all_events.extend(events::extract_events(&file.file));
+    }
+
+    // 8. Collect all #[error_code] enums
     let mut all_errors = Vec::new();
     for file in &files {
         all_errors.extend(errors::extract_errors(&file.file));
     }
 
-    // 8. Read version from Cargo.toml
+    // 9. Read version from Cargo.toml
     let version = read_cargo_version(crate_root).unwrap_or_else(|| "0.1.0".to_string());
 
     ParsedProgram {
@@ -67,12 +75,16 @@ pub fn parse_program(crate_root: &Path) -> ParsedProgram {
         instructions,
         accounts_structs,
         state_accounts,
+        events: all_events,
         errors: all_errors,
     }
 }
 
 /// Build the final `Idl` from parsed program data.
 pub fn build_idl(parsed: ParsedProgram) -> Idl {
+    // Check for discriminator collisions across instructions, accounts, and events
+    check_discriminator_collisions(&parsed);
+
     let instructions: Vec<IdlInstruction> = parsed
         .instructions
         .iter()
@@ -112,11 +124,19 @@ pub fn build_idl(parsed: ParsedProgram) -> Idl {
         .map(state::to_idl_account_def)
         .collect();
 
-    let type_defs: Vec<IdlTypeDef> = parsed
+    let event_defs: Vec<IdlEventDef> = parsed
+        .events
+        .iter()
+        .map(events::to_idl_event_def)
+        .collect();
+
+    let mut type_defs: Vec<IdlTypeDef> = parsed
         .state_accounts
         .iter()
         .map(state::to_idl_type_def)
         .collect();
+
+    type_defs.extend(parsed.events.iter().map(events::to_idl_type_def));
 
     Idl {
         address: parsed.program_id,
@@ -127,8 +147,71 @@ pub fn build_idl(parsed: ParsedProgram) -> Idl {
         },
         instructions,
         accounts: account_defs,
+        events: event_defs,
         types: type_defs,
         errors: parsed.errors,
+    }
+}
+
+/// Check for discriminator collisions across all instruction, account, and event discriminators.
+fn check_discriminator_collisions(parsed: &ParsedProgram) {
+    struct DiscEntry {
+        kind: &'static str,
+        name: String,
+        discriminator: Vec<u8>,
+    }
+
+    let mut entries: Vec<DiscEntry> = Vec::new();
+
+    for ix in &parsed.instructions {
+        entries.push(DiscEntry {
+            kind: "instruction",
+            name: ix.name.clone(),
+            discriminator: ix.discriminator.clone(),
+        });
+    }
+
+    for acc in &parsed.state_accounts {
+        entries.push(DiscEntry {
+            kind: "account",
+            name: acc.name.clone(),
+            discriminator: acc.discriminator.clone(),
+        });
+    }
+
+    for ev in &parsed.events {
+        entries.push(DiscEntry {
+            kind: "event",
+            name: ev.name.clone(),
+            discriminator: ev.discriminator.clone(),
+        });
+    }
+
+    let mut collisions = Vec::new();
+
+    for i in 0..entries.len() {
+        for j in (i + 1)..entries.len() {
+            // Only check within same kind
+            if entries[i].kind != entries[j].kind {
+                continue;
+            }
+            if entries[i].discriminator == entries[j].discriminator {
+                collisions.push(format!(
+                    "  {} '{}' and {} '{}' share discriminator {:?}",
+                    entries[i].kind, entries[i].name,
+                    entries[j].kind, entries[j].name,
+                    entries[i].discriminator,
+                ));
+            }
+        }
+    }
+
+    if !collisions.is_empty() {
+        eprintln!("Error: discriminator collisions detected:");
+        for c in &collisions {
+            eprintln!("{}", c);
+        }
+        std::process::exit(1);
     }
 }
 

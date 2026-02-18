@@ -19,6 +19,8 @@ pub mod pod;
 pub mod accounts;
 pub mod context;
 pub mod error;
+pub mod log;
+pub mod event;
 pub mod prelude;
 #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
 pub mod client;

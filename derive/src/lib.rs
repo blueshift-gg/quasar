@@ -767,6 +767,7 @@ fn extract_ctx_inner_type(sig: &syn::Signature) -> proc_macro2::TokenStream {
 pub fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut module = parse_macro_input!(item as ItemMod);
     let mod_name = module.ident.clone();
+    let program_type_name = format_ident!("{}", snake_to_pascal(&mod_name.to_string()));
 
     let (_, items) = module.content
         .as_ref()
@@ -862,11 +863,79 @@ pub fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let disc_len_lit = disc_len.unwrap_or(1);
 
+    // Check reserved __event discriminator (0xFF) doesn't collide with user instructions
+    let event_disc: Vec<u8> = vec![0xFF; disc_len_lit];
+    if let Some((_, fn_name)) = seen_discriminators.iter().find(|(v, _)| *v == event_disc) {
+        return syn::Error::new_spanned(
+            &module.ident,
+            format!(
+                "instruction `{}` uses discriminator {:?} which is reserved for __event",
+                fn_name, event_disc
+            ),
+        ).to_compile_error().into();
+    }
+
+    // Generate event discriminator check bytes for __dispatch
+    let event_check_bytes: Vec<proc_macro2::TokenStream> = (0..disc_len_lit)
+        .map(|i| quote! { instruction_data[#i] == 0xFF })
+        .collect();
+
     // Append dispatch + entrypoint to the module
     if let Some((_, ref mut items)) = module.content {
         items.push(syn::parse_quote! {
+            fn __handle_event(ptr: *mut u8, instruction_data: &[u8]) -> Result<(), ProgramError> {
+                let num_accounts = unsafe { *(ptr as *const u64) };
+                if num_accounts < 1 {
+                    return Err(ProgramError::NotEnoughAccountKeys);
+                }
+
+                let __accounts_start = unsafe { (ptr as *mut u8).add(core::mem::size_of::<u64>()) };
+
+                let mut __buf = core::mem::MaybeUninit::<[AccountView; 1]>::uninit();
+                unsafe {
+                    let raw = __accounts_start as *mut quasar_core::__private::RuntimeAccount;
+                    let base = __buf.as_mut_ptr() as *mut AccountView;
+                    if (*raw).borrow_state == quasar_core::__private::NOT_BORROWED {
+                        core::ptr::write(base, AccountView::new_unchecked(raw));
+                    } else {
+                        return Err(ProgramError::AccountBorrowFailed);
+                    }
+                }
+                let __accounts = unsafe { __buf.assume_init() };
+                let event_authority = &__accounts[0];
+
+                if !event_authority.is_signer() {
+                    return Err(ProgramError::MissingRequiredSignature);
+                }
+
+                if instruction_data.len() <= #disc_len_lit {
+                    return Err(ProgramError::InvalidInstructionData);
+                }
+                let bump = instruction_data[instruction_data.len() - 1];
+
+                let bump_ref: &[u8] = &[bump];
+                let seeds = [
+                    quasar_core::cpi::Seed::from(b"__event_authority" as &[u8]),
+                    quasar_core::cpi::Seed::from(bump_ref),
+                ];
+                let expected = quasar_core::pda::create_program_address(&seeds, &crate::ID)?;
+                if *event_authority.address() != expected {
+                    return Err(ProgramError::InvalidSeeds);
+                }
+
+                let event_data = &instruction_data[#disc_len_lit..instruction_data.len() - 1];
+                quasar_core::log::log_data(&[event_data]);
+
+                Ok(())
+            }
+        });
+
+        items.push(syn::parse_quote! {
             #[inline(always)]
             fn __dispatch(ptr: *mut u8, instruction_data: &[u8]) -> Result<(), ProgramError> {
+                if instruction_data.len() >= #disc_len_lit && #(#event_check_bytes)&&* {
+                    return __handle_event(ptr, instruction_data);
+                }
                 dispatch!(ptr, instruction_data, #disc_len_lit, {
                     #(#dispatch_arms),*
                 })
@@ -902,7 +971,48 @@ pub fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
         items.push(client_mod);
     }
 
+    // Generate the named program type outside the module
+    let program_type = quote! {
+        quasar_core::define_account!(pub struct #program_type_name => [quasar_core::checks::Executable, quasar_core::checks::Address]);
+
+        impl Program for #program_type_name {
+            const ID: Address = crate::ID;
+        }
+
+        impl #program_type_name {
+            #[inline(always)]
+            pub fn emit_event<E: quasar_core::traits::Event>(
+                &self,
+                event: &E,
+                event_authority: &impl AsAccountView,
+                bump: u8,
+            ) -> Result<(), ProgramError> {
+                const __DISC_LEN: usize = #disc_len_lit;
+                let event_disc_len = E::DISCRIMINATOR.len();
+                let total = __DISC_LEN + event_disc_len + E::DATA_SIZE + 1;
+                if total > 1232 {
+                    return Err(ProgramError::InvalidArgument);
+                }
+
+                let mut buf = [0u8; 1232];
+                let mut i = 0;
+                while i < __DISC_LEN { buf[i] = 0xFF; i += 1; }
+                buf[__DISC_LEN..__DISC_LEN + event_disc_len].copy_from_slice(E::DISCRIMINATOR);
+                event.write_data(&mut buf[__DISC_LEN + event_disc_len..__DISC_LEN + event_disc_len + E::DATA_SIZE]);
+                buf[__DISC_LEN + event_disc_len + E::DATA_SIZE] = bump;
+
+                quasar_core::event::emit_event_cpi(
+                    self.to_account_view(),
+                    event_authority.to_account_view(),
+                    &buf[..total],
+                )
+            }
+        }
+    };
+
     quote! {
+        #program_type
+
         #module
 
         #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
@@ -910,6 +1020,115 @@ pub fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
         #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
         pub use #mod_name::client;
+    }.into()
+}
+
+// --- Event attribute macro ---
+
+fn event_field_size(ty: &Type) -> usize {
+    if let Type::Path(type_path) = ty {
+        if let Some(seg) = type_path.path.segments.last() {
+            return match seg.ident.to_string().as_str() {
+                "u8" | "i8" | "bool" => 1,
+                "u16" | "i16" => 2,
+                "u32" | "i32" => 4,
+                "u64" | "i64" => 8,
+                "u128" | "i128" => 16,
+                "Address" => 32,
+                _ => panic!("unsupported event field type `{}`; only primitive integers, bool, and Address are supported", seg.ident),
+            };
+        }
+    }
+    panic!("unsupported event field type");
+}
+
+fn event_field_write(name: &Ident, ty: &Type, offset: usize) -> proc_macro2::TokenStream {
+    let size = event_field_size(ty);
+    let end = offset + size;
+    if let Type::Path(type_path) = ty {
+        if let Some(seg) = type_path.path.segments.last() {
+            return match seg.ident.to_string().as_str() {
+                "u8" => quote! { buf[#offset] = self.#name; },
+                "i8" => quote! { buf[#offset] = self.#name as u8; },
+                "bool" => quote! { buf[#offset] = self.#name as u8; },
+                "Address" => quote! { buf[#offset..#end].copy_from_slice(self.#name.as_ref()); },
+                _ => quote! { buf[#offset..#end].copy_from_slice(&self.#name.to_le_bytes()); },
+            };
+        }
+    }
+    unreachable!()
+}
+
+#[proc_macro_attribute]
+pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(attr as InstructionArgs);
+    let input = parse_macro_input!(item as DeriveInput);
+    let name = &input.ident;
+    let disc_bytes = &args.discriminator;
+    let disc_len = disc_bytes.len();
+
+    let disc_values: Vec<u8> = disc_bytes.iter()
+        .map(|lit| lit.base10_parse::<u8>().expect("discriminator byte must be 0-255"))
+        .collect();
+    if disc_values.iter().all(|&b| b == 0) {
+        return syn::Error::new_spanned(
+            &args.discriminator[0],
+            "event discriminator must contain at least one non-zero byte",
+        ).to_compile_error().into();
+    }
+
+    let fields_data = match &input.data {
+        Data::Struct(data) => match &data.fields {
+            Fields::Named(fields) => &fields.named,
+            _ => panic!("#[event] requires named fields"),
+        },
+        _ => panic!("#[event] can only be used on structs"),
+    };
+
+    let mut data_size: usize = 0;
+    let mut write_stmts: Vec<proc_macro2::TokenStream> = Vec::new();
+
+    for field in fields_data.iter() {
+        let field_name = field.ident.as_ref().unwrap();
+        let size = event_field_size(&field.ty);
+        write_stmts.push(event_field_write(field_name, &field.ty, data_size));
+        data_size += size;
+    }
+
+    if data_size > 1232 {
+        return syn::Error::new_spanned(
+            name,
+            format!("event DATA_SIZE ({} bytes) exceeds 1232-byte limit", data_size),
+        ).to_compile_error().into();
+    }
+
+    let total_buf_size = disc_len + data_size;
+    let emit_log_method = quote! {
+        impl #name {
+            #[inline(always)]
+            pub fn emit_log(&self) {
+                let mut buf = [0u8; #total_buf_size];
+                buf[..#disc_len].copy_from_slice(<Self as quasar_core::traits::Event>::DISCRIMINATOR);
+                <Self as quasar_core::traits::Event>::write_data(self, &mut buf[#disc_len..]);
+                quasar_core::log::log_data(&[&buf]);
+            }
+        }
+    };
+
+    quote! {
+        #input
+
+        impl quasar_core::traits::Event for #name {
+            const DISCRIMINATOR: &'static [u8] = &[#(#disc_bytes),*];
+            const DATA_SIZE: usize = #data_size;
+
+            #[inline(always)]
+            fn write_data(&self, buf: &mut [u8]) {
+                #(#write_stmts)*
+            }
+        }
+
+        #emit_log_method
     }.into()
 }
 

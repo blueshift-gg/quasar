@@ -54,3 +54,9 @@ pub trait ZeroCopyDeref: Owner {
     type Target;
     const DATA_OFFSET: usize;
 }
+
+pub trait Event {
+    const DISCRIMINATOR: &'static [u8];
+    const DATA_SIZE: usize;
+    fn write_data(&self, buf: &mut [u8]);
+}
