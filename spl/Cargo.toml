@@ -1,7 +1,11 @@
 [package]
 name = "quasar-spl"
-version = "0.1.0"
-edition = "2021"
+description = "SPL Token program CPI and zero-copy account types for the Quasar Solana framework"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

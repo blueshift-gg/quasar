@@ -1,5 +1,5 @@
-use solana_program_error::ProgramError;
 use quasar_derive::error_code;
+use solana_program_error::ProgramError;
 
 #[error_code]
 pub enum QuasarError {

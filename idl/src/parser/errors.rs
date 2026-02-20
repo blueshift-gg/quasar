@@ -13,15 +13,16 @@ pub fn extract_errors(file: &syn::File) -> Vec<IdlError> {
 
             let mut next_code: u32 = 0;
             for variant in &item_enum.variants {
-                if let Some((_, expr)) = &variant.discriminant {
-                    if let syn::Expr::Lit(syn::ExprLit {
+                if let Some((
+                    _,
+                    syn::Expr::Lit(syn::ExprLit {
                         lit: syn::Lit::Int(lit_int),
                         ..
-                    }) = expr
-                    {
-                        if let Ok(v) = lit_int.base10_parse::<u32>() {
-                            next_code = v;
-                        }
+                    }),
+                )) = &variant.discriminant
+                {
+                    if let Ok(v) = lit_int.base10_parse::<u32>() {
+                        next_code = v;
                     }
                 }
 

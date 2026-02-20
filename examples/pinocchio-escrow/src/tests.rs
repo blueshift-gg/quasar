@@ -3,12 +3,9 @@ extern crate std;
 use std::vec;
 use std::vec::Vec;
 
-use mollusk_svm::{
-    Mollusk,
-    program::keyed_account_for_system_program,
-};
-use solana_address::Address;
+use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
 use solana_account::Account;
+use solana_address::Address;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_pack::Pack;
 use spl_token_interface::state::Account as TokenAccount;
@@ -67,8 +64,7 @@ fn test_make_cu() {
 
     let maker = Address::new_unique();
     let maker_account = Account::new(1_000_000_000, 0, &system_program);
-    let (escrow, _) =
-        Address::find_program_address(&[b"escrow", maker.as_ref()], &program_id());
+    let (escrow, _) = Address::find_program_address(&[b"escrow", maker.as_ref()], &program_id());
     let escrow_account = Account::default();
 
     let mint_a = Address::new_unique();

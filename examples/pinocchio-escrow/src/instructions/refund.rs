@@ -9,17 +9,13 @@
 /// | 2 | maker_ta_a    | no     | yes      | Maker's token-A account        |
 /// | 3 | vault_ta_a    | no     | yes      | Vault token-A account          |
 /// | 4 | token_program | no     | no       | SPL Token program              |
-use pinocchio::{
-    AccountView, Address,
-    cpi::Signer,
-    ProgramResult,
-};
-use pinocchio_token::instructions::{Transfer, CloseAccount};
+use pinocchio::{cpi::Signer, AccountView, Address, ProgramResult};
+use pinocchio_token::instructions::{CloseAccount, Transfer};
 
 use crate::errors::EscrowError;
 use crate::state::EscrowAccount;
-use crate::utils::Context;
 use crate::utils::pda::escrow_seeds;
+use crate::utils::Context;
 
 #[cfg(target_os = "solana")]
 use pinocchio::syscalls::sol_log_data;
@@ -61,15 +57,18 @@ impl<'info> TryFrom<Context<'info>> for Refund<'info> {
             return Err(EscrowError::InvalidAccountOwner);
         }
 
-        let state = EscrowAccount::load(escrow)
-            .map_err(|_| EscrowError::InvalidEscrowState)?;
+        let state = EscrowAccount::load(escrow).map_err(|_| EscrowError::InvalidEscrowState)?;
 
         if state.maker().as_ref() != maker.address().as_ref() {
             return Err(EscrowError::InvalidMaker);
         }
 
         let expected = Address::create_program_address(
-            &[EscrowAccount::SEEDS_PREFIX, maker.address().as_ref(), &[state.bump()]],
+            &[
+                EscrowAccount::SEEDS_PREFIX,
+                maker.address().as_ref(),
+                &[state.bump()],
+            ],
             &crate::ID,
         )
         .map_err(|_| EscrowError::InvalidPDA)?;
@@ -118,9 +117,8 @@ impl<'info> Refund<'info> {
         // SAFETY: No mutable borrows active, offset 64 is the amount field in SPL token layout.
         // The u64 cast is technically misaligned (align 1 data), but SBF handles unaligned
         // access natively.
-        let vault_amount = unsafe {
-            *(a.vault_ta_a.borrow_unchecked().as_ptr().add(64) as *const u64)
-        };
+        let vault_amount =
+            unsafe { *(a.vault_ta_a.borrow_unchecked().as_ptr().add(64) as *const u64) };
 
         Transfer {
             from: a.vault_ta_a,

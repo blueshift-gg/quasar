@@ -1,12 +1,12 @@
 use proc_macro::TokenStream;
 
-mod helpers;
-mod accounts;
-mod instruction;
 mod account;
-mod program;
-mod event;
+mod accounts;
 mod error_code;
+mod event;
+mod helpers;
+mod instruction;
+mod program;
 
 #[proc_macro_derive(Accounts, attributes(account))]
 pub fn derive_accounts(input: TokenStream) -> TokenStream {
@@ -43,5 +43,6 @@ pub fn emit_cpi(input: TokenStream) -> TokenStream {
     let input = proc_macro2::TokenStream::from(input);
     quote::quote! {
         self.program.emit_event(&#input, self.event_authority)
-    }.into()
+    }
+    .into()
 }

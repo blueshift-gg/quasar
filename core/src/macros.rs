@@ -34,7 +34,7 @@ macro_rules! define_account {
             /// to backing memory — all writes go through `AccountView`'s raw
             /// pointer methods. Standard pattern in Solana frameworks (Pinocchio).
             #[inline(always)]
-            #[allow(invalid_reference_casting)]
+            #[allow(invalid_reference_casting, clippy::mut_from_ref)]
             pub fn from_account_view_mut(view: &AccountView) -> Result<&mut Self, ProgramError> {
                 $(<$name as $check>::check(view)?;)*
                 if !view.is_writable() {
@@ -70,5 +70,3 @@ macro_rules! emit {
         $event.emit_log()
     };
 }
-
-

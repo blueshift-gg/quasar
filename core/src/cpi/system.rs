@@ -1,9 +1,9 @@
+use super::{CpiCall, InstructionAccount};
+use crate::checks;
+use crate::traits::{AsAccountView, Program};
 use solana_account_view::AccountView;
 use solana_address::Address;
 use solana_program_error::ProgramError;
-use crate::traits::{AsAccountView, Program};
-use crate::checks;
-use super::{CpiCall, InstructionAccount};
 
 pub const SYSTEM_PROGRAM_ID: Address = Address::new_from_array([0u8; 32]);
 
@@ -64,10 +64,7 @@ pub fn transfer<'a>(
 }
 
 #[inline(always)]
-pub fn assign<'a>(
-    account: &'a AccountView,
-    owner: &'a Address,
-) -> CpiCall<'a, 1, 36> {
+pub fn assign<'a>(account: &'a AccountView, owner: &'a Address) -> CpiCall<'a, 1, 36> {
     let mut data = [0u8; 36];
     data[0] = 1;
     data[4..36].copy_from_slice(owner.as_ref());

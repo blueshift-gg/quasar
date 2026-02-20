@@ -1,10 +1,8 @@
 use proc_macro::TokenStream;
-use quote::{quote, format_ident};
-use syn::{
-    parse_macro_input, FnArg, Ident, Item, ItemMod, Pat, Type,
-};
+use quote::{format_ident, quote};
+use syn::{parse_macro_input, FnArg, Ident, Item, ItemMod, Pat, Type};
 
-use crate::helpers::{InstructionArgs, pascal_to_snake, snake_to_pascal};
+use crate::helpers::{pascal_to_snake, snake_to_pascal, InstructionArgs};
 
 /// Extracts the inner type `T` from a `Ctx<T>` first parameter.
 fn extract_ctx_inner_type(sig: &syn::Signature) -> proc_macro2::TokenStream {
@@ -15,15 +13,16 @@ fn extract_ctx_inner_type(sig: &syn::Signature) -> proc_macro2::TokenStream {
 
     match &*first_arg.ty {
         Type::Path(type_path) => {
-            let last_seg = type_path.path.segments.last()
+            let last_seg = type_path
+                .path
+                .segments
+                .last()
                 .expect("Ctx type must have segments");
             match &last_seg.arguments {
-                syn::PathArguments::AngleBracketed(args) => {
-                    match args.args.first() {
-                        Some(syn::GenericArgument::Type(ty)) => quote!(#ty),
-                        _ => panic!("Ctx must have a type argument"),
-                    }
-                }
+                syn::PathArguments::AngleBracketed(args) => match args.args.first() {
+                    Some(syn::GenericArgument::Type(ty)) => quote!(#ty),
+                    _ => panic!("Ctx must have a type argument"),
+                },
                 _ => panic!("Ctx must have angle-bracketed arguments"),
             }
         }
@@ -36,7 +35,8 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let mod_name = module.ident.clone();
     let program_type_name = format_ident!("{}Program", snake_to_pascal(&mod_name.to_string()));
 
-    let (_, items) = module.content
+    let (_, items) = module
+        .content
         .as_ref()
         .expect("#[program] must be used on a module with a body");
 
@@ -50,7 +50,8 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
         if let Item::Fn(func) = item {
             for attr in &func.attrs {
                 if attr.path().is_ident("instruction") {
-                    let args: InstructionArgs = attr.parse_args()
+                    let args: InstructionArgs = attr
+                        .parse_args()
                         .expect("failed to parse #[instruction] attribute");
                     let disc_bytes = &args.discriminator;
                     let fn_name = &func.sig.ident;
@@ -73,17 +74,25 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
 
                     // Check for duplicates
-                    let disc_values: Vec<u8> = disc_bytes.iter()
-                        .map(|lit| lit.base10_parse::<u8>().expect("discriminator byte must be 0-255"))
+                    let disc_values: Vec<u8> = disc_bytes
+                        .iter()
+                        .map(|lit| {
+                            lit.base10_parse::<u8>()
+                                .expect("discriminator byte must be 0-255")
+                        })
                         .collect();
-                    if let Some((_, prev_fn)) = seen_discriminators.iter().find(|(v, _)| *v == disc_values) {
+                    if let Some((_, prev_fn)) =
+                        seen_discriminators.iter().find(|(v, _)| *v == disc_values)
+                    {
                         return syn::Error::new_spanned(
                             attr,
                             format!(
                                 "duplicate discriminator {:?}: already used by `{}`",
                                 disc_values, prev_fn
                             ),
-                        ).to_compile_error().into();
+                        )
+                        .to_compile_error()
+                        .into();
                     }
                     seen_discriminators.push((disc_values.clone(), fn_name.to_string()));
 
@@ -93,12 +102,18 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
                     // Collect data for client module generation — invoke the macro_rules
                     // bridge emitted by derive(Accounts)
-                    let struct_name = format_ident!("{}Instruction", snake_to_pascal(&fn_name.to_string()));
+                    let struct_name =
+                        format_ident!("{}Instruction", snake_to_pascal(&fn_name.to_string()));
                     let accounts_type_str = accounts_type.to_string().replace(' ', "");
-                    let macro_ident = format_ident!("__{}_instruction", pascal_to_snake(&accounts_type_str));
+                    let macro_ident =
+                        format_ident!("__{}_instruction", pascal_to_snake(&accounts_type_str));
 
-                    let remaining_args: Vec<(Ident, Type)> = func.sig.inputs.iter().skip(1).filter_map(|arg| {
-                        match arg {
+                    let remaining_args: Vec<(Ident, Type)> = func
+                        .sig
+                        .inputs
+                        .iter()
+                        .skip(1)
+                        .filter_map(|arg| match arg {
                             FnArg::Typed(pt) => {
                                 let name = match &*pt.pat {
                                     Pat::Ident(pi) => pi.ident.clone(),
@@ -107,16 +122,19 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
                                 Some((name, (*pt.ty).clone()))
                             }
                             _ => None,
-                        }
-                    }).collect();
+                        })
+                        .collect();
 
                     let arg_names: Vec<&Ident> = remaining_args.iter().map(|(n, _)| n).collect();
                     let arg_types: Vec<&Type> = remaining_args.iter().map(|(_, t)| t).collect();
 
-                    let disc_byte_lits: Vec<proc_macro2::TokenStream> = disc_values.iter().map(|b| {
-                        let lit = proc_macro2::Literal::u8_unsuffixed(*b);
-                        quote! { #lit }
-                    }).collect();
+                    let disc_byte_lits: Vec<proc_macro2::TokenStream> = disc_values
+                        .iter()
+                        .map(|b| {
+                            let lit = proc_macro2::Literal::u8_unsuffixed(*b);
+                            quote! { #lit }
+                        })
+                        .collect();
 
                     client_items.push(quote! {
                         #macro_ident!(#struct_name, [#(#disc_byte_lits),*], {#(#arg_names : #arg_types),*});
@@ -131,7 +149,10 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let disc_len_lit = disc_len.unwrap_or(1);
 
     // Check no instruction discriminator starts with 0xFF (reserved for events)
-    if let Some((_, fn_name)) = seen_discriminators.iter().find(|(v, _)| v.first() == Some(&0xFF)) {
+    if let Some((_, fn_name)) = seen_discriminators
+        .iter()
+        .find(|(v, _)| v.first() == Some(&0xFF))
+    {
         return syn::Error::new_spanned(
             &module.ident,
             format!(
@@ -215,7 +236,8 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
                 #(#client_items)*
             }
-        }).expect("failed to parse client module");
+        })
+        .expect("failed to parse client module");
         items.push(client_mod);
     }
 
@@ -282,5 +304,6 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
         #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
         pub use #mod_name::client;
-    }.into()
+    }
+    .into()
 }

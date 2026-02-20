@@ -2,15 +2,15 @@ extern crate std;
 
 use alloc::vec;
 use alloc::vec::Vec;
-use mollusk_svm::{Mollusk, program::keyed_account_for_system_program};
+use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
 
-use solana_address::Address;
 use solana_account::Account;
+use solana_address::Address;
 use solana_instruction::Instruction;
 use solana_program_pack::Pack;
 use spl_token_interface::state::Account as TokenAccount;
 
-use crate::client::{MakeInstruction, TakeInstruction, RefundInstruction};
+use crate::client::{MakeInstruction, RefundInstruction, TakeInstruction};
 
 fn setup() -> Mollusk {
     let mut mollusk = Mollusk::new(&crate::ID, "../../target/deploy/quasar_escrow");
@@ -62,7 +62,8 @@ fn test_make_cu() {
 
     let maker = Address::new_unique();
     let maker_account = Account::new(1_000_000_000, 0, &system_program);
-    let (escrow, escrow_bump) = Address::find_program_address(&[b"escrow", maker.as_ref()], &crate::ID);
+    let (escrow, escrow_bump) =
+        Address::find_program_address(&[b"escrow", maker.as_ref()], &crate::ID);
     let escrow_account = Account::default();
 
     let mint_a = Address::new_unique();
@@ -98,10 +99,18 @@ fn test_make_cu() {
     let (rent, rent_account) = mollusk.sysvars.keyed_account_for_rent_sysvar();
 
     let instruction: Instruction = MakeInstruction {
-        maker, escrow, maker_ta_a, maker_ta_b, vault_ta_a, rent,
-        token_program, system_program,
-        deposit: 1337, receive: 1337,
-    }.into();
+        maker,
+        escrow,
+        maker_ta_a,
+        maker_ta_b,
+        vault_ta_a,
+        rent,
+        token_program,
+        system_program,
+        deposit: 1337,
+        receive: 1337,
+    }
+    .into();
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -117,7 +126,11 @@ fn test_make_cu() {
         ],
     );
 
-    assert!(result.program_result.is_ok(), "make failed: {:?}", result.program_result);
+    assert!(
+        result.program_result.is_ok(),
+        "make failed: {:?}",
+        result.program_result
+    );
 
     // Validate escrow state was written correctly
     let escrow_data = &result.resulting_accounts[1].1.data;
@@ -147,9 +160,8 @@ fn test_take_cu() {
     let mint_a = Address::new_unique();
     let mint_b = Address::new_unique();
 
-    let (escrow, escrow_bump) = Address::find_program_address(
-        &[b"escrow", maker.as_ref()], &crate::ID,
-    );
+    let (escrow, escrow_bump) =
+        Address::find_program_address(&[b"escrow", maker.as_ref()], &crate::ID);
     let maker_ta_b = Address::new_unique();
     let escrow_account = Account {
         lamports: 2_000_000,
@@ -198,10 +210,16 @@ fn test_take_cu() {
     };
 
     let instruction: Instruction = TakeInstruction {
-        taker, escrow, maker,
-        taker_ta_a, taker_ta_b, maker_ta_b, vault_ta_a,
+        taker,
+        escrow,
+        maker,
+        taker_ta_a,
+        taker_ta_b,
+        maker_ta_b,
+        vault_ta_a,
         token_program,
-    }.into();
+    }
+    .into();
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -217,7 +235,11 @@ fn test_take_cu() {
         ],
     );
 
-    assert!(result.program_result.is_ok(), "take failed: {:?}", result.program_result);
+    assert!(
+        result.program_result.is_ok(),
+        "take failed: {:?}",
+        result.program_result
+    );
     std::println!("\n========================================");
     std::println!("  TAKE CU: {}", result.compute_units_consumed);
     std::println!("========================================\n");
@@ -234,9 +256,8 @@ fn test_refund_cu() {
     let mint_a = Address::new_unique();
     let mint_b = Address::new_unique();
 
-    let (escrow, escrow_bump) = Address::find_program_address(
-        &[b"escrow", maker.as_ref()], &crate::ID,
-    );
+    let (escrow, escrow_bump) =
+        Address::find_program_address(&[b"escrow", maker.as_ref()], &crate::ID);
     let maker_ta_b = Address::new_unique();
     let escrow_account = Account {
         lamports: 2_000_000,
@@ -267,8 +288,13 @@ fn test_refund_cu() {
     };
 
     let instruction: Instruction = RefundInstruction {
-        maker, escrow, maker_ta_a, vault_ta_a, token_program,
-    }.into();
+        maker,
+        escrow,
+        maker_ta_a,
+        vault_ta_a,
+        token_program,
+    }
+    .into();
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -281,7 +307,11 @@ fn test_refund_cu() {
         ],
     );
 
-    assert!(result.program_result.is_ok(), "refund failed: {:?}", result.program_result);
+    assert!(
+        result.program_result.is_ok(),
+        "refund failed: {:?}",
+        result.program_result
+    );
     std::println!("\n========================================");
     std::println!("  REFUND CU: {}", result.compute_units_consumed);
     std::println!("========================================\n");

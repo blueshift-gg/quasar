@@ -4,7 +4,7 @@ use syn::{
     parse_macro_input, FnArg, GenericArgument, Ident, ItemFn, Pat, PathArguments, ReturnType, Type,
 };
 
-use crate::helpers::{InstructionArgs, map_to_pod_type, zc_deserialize_expr};
+use crate::helpers::{map_to_pod_type, zc_deserialize_expr, InstructionArgs};
 
 fn extract_result_ok_type(output: &ReturnType) -> Option<&Type> {
     if let ReturnType::Type(_, ty) = output {
@@ -45,23 +45,29 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
     let param_type = &first_arg.ty;
 
-    let has_return_data = extract_result_ok_type(&func.sig.output)
-        .is_some_and(|ok_ty| !is_unit_type(ok_ty));
+    let has_return_data =
+        extract_result_ok_type(&func.sig.output).is_some_and(|ok_ty| !is_unit_type(ok_ty));
     let return_ok_type = extract_result_ok_type(&func.sig.output).cloned();
 
     if has_return_data {
         func.sig.output = syn::parse_quote!(-> Result<(), ProgramError>);
     }
 
-    let remaining: Vec<_> = func.sig.inputs.iter().skip(1).filter_map(|arg| {
-        match arg {
+    let remaining: Vec<_> = func
+        .sig
+        .inputs
+        .iter()
+        .skip(1)
+        .filter_map(|arg| match arg {
             FnArg::Typed(pt) => Some(pt.clone()),
             _ => None,
-        }
-    }).collect();
+        })
+        .collect();
 
     func.sig.inputs = syn::punctuated::Punctuated::new();
-    func.sig.inputs.push(syn::parse_quote!(mut context: Context));
+    func.sig
+        .inputs
+        .push(syn::parse_quote!(mut context: Context));
 
     let stmts = std::mem::take(&mut func.block.stmts);
     let mut new_stmts: Vec<syn::Stmt> = vec![
@@ -79,16 +85,16 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
     ];
 
     if !remaining.is_empty() {
-        let field_names: Vec<Ident> = remaining.iter().map(|pt| {
-            match &*pt.pat {
+        let field_names: Vec<Ident> = remaining
+            .iter()
+            .map(|pt| match &*pt.pat {
                 Pat::Ident(pat_ident) => pat_ident.ident.clone(),
                 _ => panic!("#[instruction] parameters must be simple identifiers"),
-            }
-        }).collect();
+            })
+            .collect();
 
-        let zc_field_types: Vec<proc_macro2::TokenStream> = remaining.iter().map(|pt| {
-            map_to_pod_type(&pt.ty)
-        }).collect();
+        let zc_field_types: Vec<proc_macro2::TokenStream> =
+            remaining.iter().map(|pt| map_to_pod_type(&pt.ty)).collect();
 
         new_stmts.push(syn::parse_quote!(
             #[repr(C)]

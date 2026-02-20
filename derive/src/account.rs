@@ -1,10 +1,8 @@
 use proc_macro::TokenStream;
-use quote::{quote, format_ident};
-use syn::{
-    parse_macro_input, Data, DeriveInput, Fields,
-};
+use quote::{format_ident, quote};
+use syn::{parse_macro_input, Data, DeriveInput, Fields};
 
-use crate::helpers::{InstructionArgs, map_to_pod_type, zc_serialize_field, zc_deserialize_field};
+use crate::helpers::{map_to_pod_type, zc_deserialize_field, zc_serialize_field, InstructionArgs};
 
 pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as InstructionArgs);
@@ -13,8 +11,12 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     let disc_bytes = &args.discriminator;
     let disc_len = disc_bytes.len();
 
-    let disc_values: Vec<u8> = disc_bytes.iter()
-        .map(|lit| lit.base10_parse::<u8>().expect("discriminator byte must be 0-255"))
+    let disc_values: Vec<u8> = disc_bytes
+        .iter()
+        .map(|lit| {
+            lit.base10_parse::<u8>()
+                .expect("discriminator byte must be 0-255")
+        })
         .collect();
     if disc_values.iter().all(|&b| b == 0) {
         return syn::Error::new_spanned(
@@ -36,20 +38,25 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     let field_types: Vec<_> = fields_data.iter().map(|f| &f.ty).collect();
 
     let zc_name = format_ident!("{}Zc", name);
-    let zc_fields: Vec<proc_macro2::TokenStream> = fields_data.iter().map(|f| {
-        let fname = &f.ident;
-        let vis = &f.vis;
-        let zc_ty = map_to_pod_type(&f.ty);
-        quote! { #vis #fname: #zc_ty }
-    }).collect();
+    let zc_fields: Vec<proc_macro2::TokenStream> = fields_data
+        .iter()
+        .map(|f| {
+            let fname = &f.ident;
+            let vis = &f.vis;
+            let zc_ty = map_to_pod_type(&f.ty);
+            quote! { #vis #fname: #zc_ty }
+        })
+        .collect();
 
-    let serialize_stmts: Vec<proc_macro2::TokenStream> = fields_data.iter().map(|f| {
-        zc_serialize_field(f.ident.as_ref().unwrap(), &f.ty)
-    }).collect();
+    let serialize_stmts: Vec<proc_macro2::TokenStream> = fields_data
+        .iter()
+        .map(|f| zc_serialize_field(f.ident.as_ref().unwrap(), &f.ty))
+        .collect();
 
-    let deserialize_fields: Vec<proc_macro2::TokenStream> = fields_data.iter().map(|f| {
-        zc_deserialize_field(f.ident.as_ref().unwrap(), &f.ty)
-    }).collect();
+    let deserialize_fields: Vec<proc_macro2::TokenStream> = fields_data
+        .iter()
+        .map(|f| zc_deserialize_field(f.ident.as_ref().unwrap(), &f.ty))
+        .collect();
 
     quote! {
         #[repr(C)]

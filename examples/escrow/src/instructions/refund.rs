@@ -22,18 +22,18 @@ impl<'info> Refund<'info> {
     pub fn withdraw_tokens_and_close(&mut self, bumps: &RefundBumps) -> Result<(), ProgramError> {
         let seeds = bumps.escrow_seeds();
 
-        self.token_program.transfer(
-            self.vault_ta_a,
-            self.maker_ta_a,
-            self.escrow,
-            self.vault_ta_a.amount(),
-        ).invoke_signed(&seeds)?;
+        self.token_program
+            .transfer(
+                self.vault_ta_a,
+                self.maker_ta_a,
+                self.escrow,
+                self.vault_ta_a.amount(),
+            )
+            .invoke_signed(&seeds)?;
 
-        self.token_program.close_account(
-            self.vault_ta_a,
-            self.maker,
-            self.escrow,
-        ).invoke_signed(&seeds)
+        self.token_program
+            .close_account(self.vault_ta_a, self.maker, self.escrow)
+            .invoke_signed(&seeds)
     }
 
     #[inline(always)]
@@ -43,7 +43,7 @@ impl<'info> Refund<'info> {
         });
         Ok(())
     }
-    
+
     #[inline(always)]
     pub fn close_escrow(&mut self) -> Result<(), ProgramError> {
         self.escrow.close(self.maker.to_account_view())

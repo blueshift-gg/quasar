@@ -1,12 +1,9 @@
-use pinocchio::{Address, cpi::Seed};
 use crate::state::EscrowAccount;
+use pinocchio::{cpi::Seed, Address};
 
 #[inline(always)]
 pub fn escrow_pda(maker: &[u8]) -> (Address, u8) {
-    Address::find_program_address(
-        &[EscrowAccount::SEEDS_PREFIX, maker],
-        &crate::ID,
-    )
+    Address::find_program_address(&[EscrowAccount::SEEDS_PREFIX, maker], &crate::ID)
 }
 
 #[inline(always)]

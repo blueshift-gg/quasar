@@ -1,8 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{
-    parse_macro_input, Data, DeriveInput, Fields, Ident, Type,
-};
+use syn::{parse_macro_input, Data, DeriveInput, Fields, Ident, Type};
 
 use crate::helpers::InstructionArgs;
 

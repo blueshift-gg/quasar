@@ -1,15 +1,15 @@
 use crate::impl_sysvar_get;
 use {
     crate::sysvars::Sysvar,
+    core::mem::{align_of, size_of},
     solana_account_view::{AccountView, Ref},
     solana_address::Address,
     solana_program_error::ProgramError,
-    core::mem::{align_of, size_of},
 };
 
 pub const RENT_ID: Address = Address::new_from_array([
-    6, 167, 213, 23, 25, 44, 92, 81, 33, 140, 201, 76, 61, 74, 241, 127, 88, 218, 238, 8, 155,
-    161, 253, 68, 227, 219, 217, 138, 0, 0, 0, 0,
+    6, 167, 213, 23, 25, 44, 92, 81, 33, 140, 201, 76, 61, 74, 241, 127, 88, 218, 238, 8, 155, 161,
+    253, 68, 227, 219, 217, 138, 0, 0, 0, 0,
 ]);
 
 const MAX_PERMITTED_DATA_LENGTH: u64 = 10 * 1024 * 1024;

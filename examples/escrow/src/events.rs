@@ -1,4 +1,3 @@
-
 use quasar_core::prelude::*;
 
 #[event(discriminator = 0)]

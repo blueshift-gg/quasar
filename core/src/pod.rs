@@ -23,9 +23,17 @@ macro_rules! define_pod_signed {
             #[inline(always)]
             fn neg(self) -> Self {
                 #[cfg(debug_assertions)]
-                { Self::from(self.get().checked_neg().expect("attempt to negate with overflow")) }
+                {
+                    Self::from(
+                        self.get()
+                            .checked_neg()
+                            .expect("attempt to negate with overflow"),
+                    )
+                }
                 #[cfg(not(debug_assertions))]
-                { Self::from(self.get().wrapping_neg()) }
+                {
+                    Self::from(self.get().wrapping_neg())
+                }
             }
         }
     };
@@ -161,9 +169,17 @@ macro_rules! define_pod_arithmetic {
             #[inline(always)]
             fn add(self, rhs: $native) -> Self {
                 #[cfg(debug_assertions)]
-                { Self::from(self.get().checked_add(rhs).expect("attempt to add with overflow")) }
+                {
+                    Self::from(
+                        self.get()
+                            .checked_add(rhs)
+                            .expect("attempt to add with overflow"),
+                    )
+                }
                 #[cfg(not(debug_assertions))]
-                { Self::from(self.get().wrapping_add(rhs)) }
+                {
+                    Self::from(self.get().wrapping_add(rhs))
+                }
             }
         }
 
@@ -172,9 +188,17 @@ macro_rules! define_pod_arithmetic {
             #[inline(always)]
             fn sub(self, rhs: $native) -> Self {
                 #[cfg(debug_assertions)]
-                { Self::from(self.get().checked_sub(rhs).expect("attempt to subtract with overflow")) }
+                {
+                    Self::from(
+                        self.get()
+                            .checked_sub(rhs)
+                            .expect("attempt to subtract with overflow"),
+                    )
+                }
                 #[cfg(not(debug_assertions))]
-                { Self::from(self.get().wrapping_sub(rhs)) }
+                {
+                    Self::from(self.get().wrapping_sub(rhs))
+                }
             }
         }
 
@@ -183,9 +207,17 @@ macro_rules! define_pod_arithmetic {
             #[inline(always)]
             fn mul(self, rhs: $native) -> Self {
                 #[cfg(debug_assertions)]
-                { Self::from(self.get().checked_mul(rhs).expect("attempt to multiply with overflow")) }
+                {
+                    Self::from(
+                        self.get()
+                            .checked_mul(rhs)
+                            .expect("attempt to multiply with overflow"),
+                    )
+                }
                 #[cfg(not(debug_assertions))]
-                { Self::from(self.get().wrapping_mul(rhs)) }
+                {
+                    Self::from(self.get().wrapping_mul(rhs))
+                }
             }
         }
 

@@ -1,9 +1,9 @@
 #[cfg(any(target_os = "solana", target_arch = "bpf"))]
-use solana_define_syscall::definitions::{sol_create_program_address, sol_try_find_program_address};
+use solana_define_syscall::definitions::{
+    sol_create_program_address, sol_try_find_program_address,
+};
 use {
-    solana_address::Address,
-    solana_instruction_view::cpi::Seed,
-    solana_program_error::ProgramError,
+    solana_address::Address, solana_instruction_view::cpi::Seed, solana_program_error::ProgramError,
 };
 
 /// Create a program derived address from seeds.
@@ -44,10 +44,7 @@ pub fn create_program_address(
 ///
 /// Uses `const_crypto` for const-compatible SHA-256 hashing and Ed25519
 /// off-curve evaluation, making this suitable for `const` contexts.
-pub const fn find_program_address_const(
-    seeds: &[&[u8]],
-    program_id: &Address,
-) -> (Address, u8) {
+pub const fn find_program_address_const(seeds: &[&[u8]], program_id: &Address) -> (Address, u8) {
     let (bytes, bump) = const_crypto::ed25519::derive_program_address(seeds, program_id.as_array());
     (Address::new_from_array(bytes), bump)
 }
@@ -57,10 +54,7 @@ pub const fn find_program_address_const(
 /// Same `Seed`-native approach as `create_program_address`. On SBF, the
 /// seed slice passes directly to the `sol_try_find_program_address` syscall.
 #[inline(always)]
-pub fn find_program_address(
-    seeds: &[Seed],
-    program_id: &Address,
-) -> (Address, u8) {
+pub fn find_program_address(seeds: &[Seed], program_id: &Address) -> (Address, u8) {
     #[cfg(any(target_os = "solana", target_arch = "bpf"))]
     {
         let mut bytes = core::mem::MaybeUninit::<Address>::uninit();

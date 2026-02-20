@@ -70,10 +70,7 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
             ));
             for (name, ty) in &ix.args {
                 let type_name = helpers::simple_type_name(ty);
-                out.push_str(&format!(
-                    "        {};\n",
-                    extend_expr(name, &type_name)
-                ));
+                out.push_str(&format!("        {};\n", extend_expr(name, &type_name)));
             }
         }
 
@@ -92,15 +89,9 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
 fn account_meta_expr(field: &RawAccountField) -> String {
     let signer = field.signer;
     if field.writable {
-        format!(
-            "AccountMeta::new(ix.{}, {})",
-            field.name, signer
-        )
+        format!("AccountMeta::new(ix.{}, {})", field.name, signer)
     } else {
-        format!(
-            "AccountMeta::new_readonly(ix.{}, {})",
-            field.name, signer
-        )
+        format!("AccountMeta::new_readonly(ix.{}, {})", field.name, signer)
     }
 }
 

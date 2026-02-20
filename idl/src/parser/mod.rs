@@ -34,8 +34,8 @@ pub fn parse_program(crate_root: &Path) -> ParsedProgram {
         .expect("could not find lib.rs");
 
     // 3. Extract program ID
-    let program_id = program::extract_program_id(&lib_file.file)
-        .expect("could not find declare_id! in lib.rs");
+    let program_id =
+        program::extract_program_id(&lib_file.file).expect("could not find declare_id! in lib.rs");
 
     // 4. Extract program module and instructions
     let (program_name, instructions) = program::extract_program_module(&lib_file.file)
@@ -94,7 +94,7 @@ pub fn build_idl(parsed: ParsedProgram) -> Idl {
                 .accounts_structs
                 .iter()
                 .find(|s| s.name == ix.accounts_type_name)
-                .map(|s| accounts::to_idl_accounts(s))
+                .map(accounts::to_idl_accounts)
                 .unwrap_or_default();
 
             let args: Vec<IdlField> = ix
@@ -124,11 +124,7 @@ pub fn build_idl(parsed: ParsedProgram) -> Idl {
         .map(state::to_idl_account_def)
         .collect();
 
-    let event_defs: Vec<IdlEventDef> = parsed
-        .events
-        .iter()
-        .map(events::to_idl_event_def)
-        .collect();
+    let event_defs: Vec<IdlEventDef> = parsed.events.iter().map(events::to_idl_event_def).collect();
 
     let mut type_defs: Vec<IdlTypeDef> = parsed
         .state_accounts
@@ -198,8 +194,10 @@ fn check_discriminator_collisions(parsed: &ParsedProgram) {
             if entries[i].discriminator == entries[j].discriminator {
                 collisions.push(format!(
                     "  {} '{}' and {} '{}' share discriminator {:?}",
-                    entries[i].kind, entries[i].name,
-                    entries[j].kind, entries[j].name,
+                    entries[i].kind,
+                    entries[i].name,
+                    entries[j].kind,
+                    entries[j].name,
                     entries[i].discriminator,
                 ));
             }
@@ -220,8 +218,5 @@ fn read_cargo_version(crate_root: &Path) -> Option<String> {
     let content = std::fs::read_to_string(cargo_path).ok()?;
     let table: toml::Table = content.parse().ok()?;
     let package = table.get("package")?.as_table()?;
-    package
-        .get("version")?
-        .as_str()
-        .map(|s| s.to_string())
+    package.get("version")?.as_str().map(|s| s.to_string())
 }

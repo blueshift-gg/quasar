@@ -1,5 +1,5 @@
-use core::marker::PhantomData;
 use crate::prelude::*;
+use core::marker::PhantomData;
 
 #[repr(transparent)]
 pub struct Initialize<T: QuasarAccount> {
@@ -15,7 +15,6 @@ impl<T: QuasarAccount> AsAccountView for Initialize<T> {
 }
 
 impl<T: QuasarAccount> Initialize<T> {
-
     #[inline(always)]
     pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
         Ok(unsafe { &*(view as *const AccountView as *const Self) })
@@ -29,7 +28,7 @@ impl<T: QuasarAccount> Initialize<T> {
     /// writes go through `AccountView`'s raw pointer methods. This pattern is
     /// standard in Solana frameworks (Pinocchio uses the same approach).
     #[inline(always)]
-    #[allow(invalid_reference_casting)]
+    #[allow(invalid_reference_casting, clippy::mut_from_ref)]
     pub fn from_account_view_mut(view: &AccountView) -> Result<&mut Self, ProgramError> {
         if !view.is_writable() {
             return Err(ProgramError::Immutable);

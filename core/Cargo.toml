@@ -1,7 +1,11 @@
 [package]
 name = "quasar-core"
-version = "0.1.0"
-edition = "2021"
+description = "Zero-copy Solana program framework — core primitives, account types, CPI builder, and events"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

@@ -1,8 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{
-    parse_macro_input, Data, DeriveInput,
-};
+use syn::{parse_macro_input, Data, DeriveInput};
 
 pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as DeriveInput);
@@ -14,20 +12,28 @@ pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     let mut next_discriminant: u32 = 0;
-    let match_arms: Vec<_> = variants.iter().map(|v| {
-        let ident = &v.ident;
-        if let Some((_, expr)) = &v.discriminant {
-            if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Int(lit_int), .. }) = expr {
-                next_discriminant = lit_int.base10_parse::<u32>()
-                    .expect("#[error_code] discriminant must be a valid u32");
-            } else {
-                panic!("#[error_code] discriminant must be an integer literal");
+    let match_arms: Vec<_> = variants
+        .iter()
+        .map(|v| {
+            let ident = &v.ident;
+            if let Some((_, expr)) = &v.discriminant {
+                if let syn::Expr::Lit(syn::ExprLit {
+                    lit: syn::Lit::Int(lit_int),
+                    ..
+                }) = expr
+                {
+                    next_discriminant = lit_int
+                        .base10_parse::<u32>()
+                        .expect("#[error_code] discriminant must be a valid u32");
+                } else {
+                    panic!("#[error_code] discriminant must be an integer literal");
+                }
             }
-        }
-        let value = next_discriminant;
-        next_discriminant += 1;
-        quote! { #value => Ok(#name::#ident) }
-    }).collect();
+            let value = next_discriminant;
+            next_discriminant += 1;
+            quote! { #value => Ok(#name::#ident) }
+        })
+        .collect();
 
     quote! {
         #[repr(u32)]
@@ -51,5 +57,6 @@ pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
             }
         }
-    }.into()
+    }
+    .into()
 }

@@ -3,11 +3,10 @@ use quasar_core::prelude::*;
 
 mod instructions;
 use instructions::*;
-mod state;
 mod events;
+mod state;
 #[cfg(test)]
 mod tests;
-
 
 declare_id!("22222222222222222222222222222222222222222222");
 

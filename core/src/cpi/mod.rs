@@ -1,6 +1,6 @@
 pub mod system;
 
-pub use solana_instruction_view::cpi::{Signer, Seed};
+pub use solana_instruction_view::cpi::{Seed, Signer};
 pub use solana_instruction_view::InstructionAccount;
 
 use core::marker::PhantomData;
@@ -69,6 +69,7 @@ struct CInstruction<'a> {
 }
 
 #[inline(always)]
+#[allow(clippy::too_many_arguments)]
 pub(crate) unsafe fn invoke_raw(
     _program_id: *const Address,
     _instruction_accounts: *const InstructionAccount,
@@ -128,7 +129,12 @@ impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
             }
             unsafe { arr.assume_init() }
         };
-        Self { program_id, accounts, cpi_accounts, data }
+        Self {
+            program_id,
+            accounts,
+            cpi_accounts,
+            data,
+        }
     }
 
     #[inline(always)]

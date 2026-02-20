@@ -39,7 +39,7 @@ pub fn extract_accounts_structs(file: &syn::File) -> Vec<RawAccountsStruct> {
                 Fields::Named(named) => named
                     .named
                     .iter()
-                    .map(|f| parse_account_field(f, &item_struct))
+                    .map(|f| parse_account_field(f, item_struct))
                     .collect(),
                 _ => continue,
             };
@@ -53,11 +53,7 @@ pub fn extract_accounts_structs(file: &syn::File) -> Vec<RawAccountsStruct> {
 fn has_derive_accounts(attrs: &[syn::Attribute]) -> bool {
     for attr in attrs {
         if attr.path().is_ident("derive") {
-            let tokens = attr
-                .meta
-                .require_list()
-                .ok()
-                .map(|l| l.tokens.to_string());
+            let tokens = attr.meta.require_list().ok().map(|l| l.tokens.to_string());
             if let Some(t) = tokens {
                 if t.contains("Accounts") {
                     return true;

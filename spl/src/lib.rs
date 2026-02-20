@@ -2,24 +2,20 @@
 
 mod token;
 
-use quasar_core::prelude::*;
 use quasar_core::checks;
 use quasar_core::cpi::{CpiCall, InstructionAccount};
+use quasar_core::prelude::*;
 
 pub use token::TokenAccountState;
 
 pub const SPL_TOKEN_ID: Address = Address::new_from_array([
-    6, 221, 246, 225, 215, 101, 161, 147,
-    217, 203, 225, 70, 206, 235, 121, 172,
-    28, 180, 133, 237, 95, 91, 55, 145,
-    58, 140, 245, 133, 126, 255, 0, 169,
+    6, 221, 246, 225, 215, 101, 161, 147, 217, 203, 225, 70, 206, 235, 121, 172, 28, 180, 133, 237,
+    95, 91, 55, 145, 58, 140, 245, 133, 126, 255, 0, 169,
 ]);
 
 pub const TOKEN_2022_ID: Address = Address::new_from_array([
-    6, 221, 246, 225, 238, 130, 236, 193,
-    200, 168, 65, 2, 106, 93, 64, 59,
-    117, 155, 197, 130, 200, 159, 250, 31,
-    239, 205, 35, 168, 238, 94, 220, 87,
+    6, 221, 246, 225, 238, 130, 236, 193, 200, 168, 65, 2, 106, 93, 64, 59, 117, 155, 197, 130,
+    200, 159, 250, 31, 239, 205, 35, 168, 238, 94, 220, 87,
 ]);
 
 // TODO: Support Token-2022 — needs multi-address check in define_account! or custom from_account_view
@@ -240,10 +236,7 @@ impl TokenProgram {
     }
 
     #[inline(always)]
-    pub fn sync_native<'a>(
-        &'a self,
-        token_account: &'a impl AsAccountView,
-    ) -> CpiCall<'a, 1, 1> {
+    pub fn sync_native<'a>(&'a self, token_account: &'a impl AsAccountView) -> CpiCall<'a, 1, 1> {
         let token_account = token_account.to_account_view();
 
         CpiCall::new(

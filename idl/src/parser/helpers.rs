@@ -37,9 +37,7 @@ pub fn map_type(rust_type: &str) -> IdlType {
 /// e.g. `Account<TokenAccount>` → "Account", `Signer` → "Signer"
 pub fn type_base_name(ty: &syn::Type) -> Option<String> {
     match ty {
-        syn::Type::Path(type_path) => {
-            type_path.path.segments.last().map(|s| s.ident.to_string())
-        }
+        syn::Type::Path(type_path) => type_path.path.segments.last().map(|s| s.ident.to_string()),
         syn::Type::Reference(type_ref) => type_base_name(&type_ref.elem),
         _ => None,
     }
@@ -82,14 +80,12 @@ pub fn is_signer_type(ty: &syn::Type) -> bool {
 /// Strips references and returns just the final identifier.
 pub fn simple_type_name(ty: &syn::Type) -> String {
     match ty {
-        syn::Type::Path(type_path) => {
-            type_path
-                .path
-                .segments
-                .last()
-                .map(|s| s.ident.to_string())
-                .unwrap_or_else(|| "unknown".to_string())
-        }
+        syn::Type::Path(type_path) => type_path
+            .path
+            .segments
+            .last()
+            .map(|s| s.ident.to_string())
+            .unwrap_or_else(|| "unknown".to_string()),
         syn::Type::Reference(type_ref) => simple_type_name(&type_ref.elem),
         syn::Type::Array(arr) => {
             let inner = simple_type_name(&arr.elem);

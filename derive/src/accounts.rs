@@ -1,11 +1,11 @@
 use proc_macro::TokenStream;
-use quote::{quote, format_ident};
+use quote::{format_ident, quote};
 use syn::{
     parse::{Parse, ParseStream},
     parse_macro_input, Data, DeriveInput, Expr, ExprArray, Fields, Ident, Token, Type,
 };
 
-use crate::helpers::{seed_slice_expr_for_parse, is_signer_type, strip_generics, pascal_to_snake};
+use crate::helpers::{is_signer_type, pascal_to_snake, seed_slice_expr_for_parse, strip_generics};
 
 // --- Account field attribute parsing ---
 
@@ -91,8 +91,7 @@ struct AccountFieldAttrs {
 
 impl Parse for AccountFieldAttrs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let directives =
-            input.parse_terminated(AccountDirective::parse, Token![,])?;
+        let directives = input.parse_terminated(AccountDirective::parse, Token![,])?;
         let mut is_mut = false;
         let mut has_ones = Vec::new();
         let mut constraints = Vec::new();
@@ -109,7 +108,14 @@ impl Parse for AccountFieldAttrs {
                 AccountDirective::Address(expr, err) => address = Some((expr, err)),
             }
         }
-        Ok(Self { is_mut, has_ones, constraints, seeds, bump, address })
+        Ok(Self {
+            is_mut,
+            has_ones,
+            constraints,
+            seeds,
+            bump,
+            address,
+        })
     }
 }
 
@@ -141,7 +147,10 @@ fn is_composite_type(ty: &Type) -> bool {
     if let Type::Path(type_path) = ty {
         if let Some(last) = type_path.path.segments.last() {
             if let syn::PathArguments::AngleBracketed(args) = &last.arguments {
-                return args.args.iter().any(|arg| matches!(arg, syn::GenericArgument::Lifetime(_)));
+                return args
+                    .args
+                    .iter()
+                    .any(|arg| matches!(arg, syn::GenericArgument::Lifetime(_)));
             }
         }
     }
@@ -180,7 +189,8 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
 
     let field_names: Vec<_> = fields.iter().map(|f| &f.ident).collect();
 
-    let field_name_strings: Vec<String> = fields.iter()
+    let field_name_strings: Vec<String> = fields
+        .iter()
         .filter_map(|f| f.ident.as_ref().map(|i| i.to_string()))
         .collect();
 
@@ -222,7 +232,8 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                 if is_optional {
                     field_constructs.push(quote! { #field_name: if *#field_name.address() == crate::ID { None } else { Some(#base_type::from_account_view(#field_name)?) } });
                 } else {
-                    field_constructs.push(quote! { #field_name: #base_type::from_account_view(#field_name)? });
+                    field_constructs
+                        .push(quote! { #field_name: #base_type::from_account_view(#field_name)? });
                 }
             }
         }
@@ -251,7 +262,8 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                 }
             };
             if is_optional {
-                has_one_checks.push(quote! { if let Some(ref #field_name) = #field_name { #check } });
+                has_one_checks
+                    .push(quote! { if let Some(ref #field_name) = #field_name { #check } });
             } else {
                 has_one_checks.push(check);
             }
@@ -268,7 +280,8 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                 }
             };
             if is_optional {
-                constraint_checks.push(quote! { if let Some(ref #field_name) = #field_name { #check } });
+                constraint_checks
+                    .push(quote! { if let Some(ref #field_name) = #field_name { #check } });
             } else {
                 constraint_checks.push(check);
             }
@@ -285,7 +298,8 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                 }
             };
             if is_optional {
-                constraint_checks.push(quote! { if let Some(ref #field_name) = #field_name { #check } });
+                constraint_checks
+                    .push(quote! { if let Some(ref #field_name) = #field_name { #check } });
             } else {
                 constraint_checks.push(check);
             }
@@ -302,13 +316,16 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
             bump_struct_fields.push(quote! { #bump_arr_field: [u8; 1] });
             bump_struct_inits.push(quote! { #bump_arr_field: [#bump_var] });
 
-            let seed_slices: Vec<proc_macro2::TokenStream> = seed_exprs.iter().map(|expr| {
-                seed_slice_expr_for_parse(expr, &field_name_strings)
-            }).collect();
+            let seed_slices: Vec<proc_macro2::TokenStream> = seed_exprs
+                .iter()
+                .map(|expr| seed_slice_expr_for_parse(expr, &field_name_strings))
+                .collect();
 
-            let seed_idents: Vec<Ident> = seed_slices.iter().enumerate().map(|(idx, _)| {
-                format_ident!("__seed_{}_{}", field_name, idx)
-            }).collect();
+            let seed_idents: Vec<Ident> = seed_slices
+                .iter()
+                .enumerate()
+                .map(|(idx, _)| format_ident!("__seed_{}_{}", field_name, idx))
+                .collect();
 
             let seed_len_checks: Vec<proc_macro2::TokenStream> = seed_idents
                 .iter()
@@ -353,7 +370,9 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                     });
                 }
                 None => {
-                    panic!("#[account(seeds = [...])] requires a `bump` or `bump = expr` directive");
+                    panic!(
+                        "#[account(seeds = [...])] requires a `bump` or `bump = expr` directive"
+                    );
                 }
             }
 
@@ -375,7 +394,9 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                             bump_struct_fields.push(quote! { #addr_field: Address });
                             bump_struct_inits.push(quote! { #addr_field: #capture_var });
 
-                            seed_elements.push(quote! { quasar_core::cpi::Seed::from(self.#addr_field.as_ref()) });
+                            seed_elements.push(
+                                quote! { quasar_core::cpi::Seed::from(self.#addr_field.as_ref()) },
+                            );
                             continue;
                         }
                     }
@@ -383,7 +404,8 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                 seed_elements.push(quote! { quasar_core::cpi::Seed::from((#expr) as &[u8]) });
             }
 
-            seed_elements.push(quote! { quasar_core::cpi::Seed::from(&self.#bump_arr_field as &[u8]) });
+            seed_elements
+                .push(quote! { quasar_core::cpi::Seed::from(&self.#bump_arr_field as &[u8]) });
 
             seeds_methods.push(quote! {
                 #[inline(always)]
@@ -394,7 +416,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         }
     }
 
-    let field_attrs: Vec<AccountFieldAttrs> = fields.iter().map(|f| parse_field_attrs(f)).collect();
+    let field_attrs: Vec<AccountFieldAttrs> = fields.iter().map(parse_field_attrs).collect();
 
     let mut has_composites = false;
     let mut composite_types: Vec<Option<proc_macro2::TokenStream>> = Vec::new();
@@ -408,12 +430,13 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
     }
 
     let count_expr: proc_macro2::TokenStream = if has_composites {
-        let addends: Vec<proc_macro2::TokenStream> = composite_types.iter().map(|ct| {
-            match ct {
+        let addends: Vec<proc_macro2::TokenStream> = composite_types
+            .iter()
+            .map(|ct| match ct {
                 Some(ty) => quote! { <#ty as AccountCount>::COUNT },
                 None => quote! { 1usize },
-            }
-        }).collect();
+            })
+            .collect();
         quote! { #(#addends)+* }
     } else {
         let field_count = field_names.len();
@@ -422,9 +445,8 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
 
     let mut parse_steps: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut buf_offset = quote! { 0usize };
-    for fi in 0..fields.len() {
-        if composite_types[fi].is_some() {
-            let inner_ty = composite_types[fi].as_ref().unwrap();
+    for ct in &composite_types {
+        if let Some(inner_ty) = ct {
             let cur_offset = buf_offset.clone();
             parse_steps.push(quote! {
                 {
@@ -499,7 +521,8 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                         &accounts[#cur_offset..#cur_offset + <#inner_ty as AccountCount>::COUNT]
                     )?;
                 });
-                bump_struct_fields.push(quote! { pub #field_name: <#inner_ty as ParseAccounts>::Bumps });
+                bump_struct_fields
+                    .push(quote! { pub #field_name: <#inner_ty as ParseAccounts>::Bumps });
                 bump_struct_inits.push(quote! { #field_name: #bumps_var });
                 idx_offset = quote! { #idx_offset + <#inner_ty as AccountCount>::COUNT };
             } else {
@@ -511,7 +534,9 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
             }
         }
 
-        let non_composite_constructs: Vec<proc_macro2::TokenStream> = fields.iter().enumerate()
+        let non_composite_constructs: Vec<proc_macro2::TokenStream> = fields
+            .iter()
+            .enumerate()
             .map(|(fi, field)| {
                 let field_name = field.ident.as_ref().unwrap();
                 if composite_types[fi].is_some() {
@@ -519,7 +544,8 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                 } else {
                     field_constructs[fi].clone()
                 }
-            }).collect();
+            })
+            .collect();
 
         if has_any_checks {
             quote! {
@@ -609,21 +635,37 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
     let snake_name = pascal_to_snake(&name.to_string());
     let macro_name_str = format!("__{}_instruction", snake_name);
 
-    let account_fields_str: String = fields.iter().map(|f| {
-        let field_name = f.ident.as_ref().unwrap().to_string();
-        format!("pub {}: solana_address::Address,", field_name)
-    }).collect::<Vec<_>>().join("\n                ");
+    let account_fields_str: String = fields
+        .iter()
+        .map(|f| {
+            let field_name = f.ident.as_ref().unwrap().to_string();
+            format!("pub {}: solana_address::Address,", field_name)
+        })
+        .collect::<Vec<_>>()
+        .join("\n                ");
 
-    let account_metas_str: String = fields.iter().enumerate().map(|(fi, f)| {
-        let field_name = f.ident.as_ref().unwrap().to_string();
-        let writable = field_attrs[fi].is_mut || matches!(&f.ty, Type::Reference(r) if r.mutability.is_some());
-        let signer = is_signer_type(&f.ty);
-        if writable {
-            format!("quasar_core::client::AccountMeta::new(ix.{}, {}),", field_name, signer)
-        } else {
-            format!("quasar_core::client::AccountMeta::new_readonly(ix.{}, {}),", field_name, signer)
-        }
-    }).collect::<Vec<_>>().join("\n                        ");
+    let account_metas_str: String = fields
+        .iter()
+        .enumerate()
+        .map(|(fi, f)| {
+            let field_name = f.ident.as_ref().unwrap().to_string();
+            let writable = field_attrs[fi].is_mut
+                || matches!(&f.ty, Type::Reference(r) if r.mutability.is_some());
+            let signer = is_signer_type(&f.ty);
+            if writable {
+                format!(
+                    "quasar_core::client::AccountMeta::new(ix.{}, {}),",
+                    field_name, signer
+                )
+            } else {
+                format!(
+                    "quasar_core::client::AccountMeta::new_readonly(ix.{}, {}),",
+                    field_name, signer
+                )
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n                        ");
 
     let macro_def_str = format!(
         r#"
@@ -647,7 +689,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                             |_data| {{ $(quasar_core::client::WriteBytes::write_bytes(&ix.$arg_name, _data);)* }}
                         );
                         quasar_core::client::Instruction {{
-                            program_id: crate::ID,
+                            program_id: $crate::ID,
                             accounts,
                             data,
                         }}
@@ -661,7 +703,8 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         account_metas = account_metas_str,
     );
 
-    let client_macro: proc_macro2::TokenStream = macro_def_str.parse()
+    let client_macro: proc_macro2::TokenStream = macro_def_str
+        .parse()
         .expect("failed to parse client instruction macro");
 
     let expanded = quote! {

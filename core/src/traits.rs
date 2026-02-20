@@ -24,7 +24,9 @@ pub trait Space {
 
 pub trait AccountCheck {
     #[inline(always)]
-    fn check(_view: &AccountView) -> Result<(), ProgramError> { Ok(()) }
+    fn check(_view: &AccountView) -> Result<(), ProgramError> {
+        Ok(())
+    }
 }
 
 pub trait AccountCount {

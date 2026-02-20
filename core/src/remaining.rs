@@ -1,7 +1,6 @@
-use solana_account_view::{AccountView, RuntimeAccount, NOT_BORROWED, MAX_PERMITTED_DATA_INCREASE};
+use solana_account_view::{AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED};
 
-const ACCOUNT_HEADER: usize =
-    core::mem::size_of::<RuntimeAccount>()
+const ACCOUNT_HEADER: usize = core::mem::size_of::<RuntimeAccount>()
     + MAX_PERMITTED_DATA_INCREASE
     + core::mem::size_of::<u64>();
 
@@ -21,14 +20,17 @@ pub struct RemainingAccounts<'a> {
 impl<'a> RemainingAccounts<'a> {
     #[inline(always)]
     pub fn new(ptr: *mut u8, boundary: *const u8, declared: &'a [AccountView]) -> Self {
-        Self { ptr, boundary, declared }
+        Self {
+            ptr,
+            boundary,
+            declared,
+        }
     }
 
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.ptr as *const u8 >= self.boundary
     }
-
 
     /// Access a single remaining account by index. O(n) — walks from the
     /// start of the buffer. Use `iter()` for sequential access.
@@ -151,7 +153,10 @@ impl RemainingIter<'_> {
             let remaining_idx = orig_idx - self.declared.len();
             // SAFETY: SVM duplicates always reference earlier accounts,
             // so remaining_idx < self.index (already cached).
-            debug_assert!(remaining_idx < self.index, "forward-reference in remaining accounts");
+            debug_assert!(
+                remaining_idx < self.index,
+                "forward-reference in remaining accounts"
+            );
             unsafe { core::ptr::read(self.cache_ptr().add(remaining_idx)) }
         }
     }

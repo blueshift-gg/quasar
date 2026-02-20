@@ -2,7 +2,7 @@ use quasar_core::prelude::*;
 use quasar_spl::{TokenAccount, TokenProgram};
 
 use crate::events::TakeEvent;
-use crate::state::{EscrowAccount};
+use crate::state::EscrowAccount;
 
 #[derive(Accounts)]
 pub struct Take<'info> {
@@ -26,30 +26,32 @@ pub struct Take<'info> {
 impl<'info> Take<'info> {
     #[inline(always)]
     pub fn transfer_tokens(&mut self) -> Result<(), ProgramError> {
-        self.token_program.transfer(
-            self.taker_ta_b,
-            self.maker_ta_b,
-            self.taker,
-            self.escrow.receive
-        ).invoke()
+        self.token_program
+            .transfer(
+                self.taker_ta_b,
+                self.maker_ta_b,
+                self.taker,
+                self.escrow.receive,
+            )
+            .invoke()
     }
 
     #[inline(always)]
     pub fn withdraw_tokens_and_close(&mut self, bumps: &TakeBumps) -> Result<(), ProgramError> {
         let seeds = bumps.escrow_seeds();
 
-        self.token_program.transfer(
-            self.vault_ta_a,
-            self.taker_ta_a,
-            self.escrow,
-            self.vault_ta_a.amount(),
-        ).invoke_signed(&seeds)?;
+        self.token_program
+            .transfer(
+                self.vault_ta_a,
+                self.taker_ta_a,
+                self.escrow,
+                self.vault_ta_a.amount(),
+            )
+            .invoke_signed(&seeds)?;
 
-        self.token_program.close_account(
-            self.vault_ta_a,
-            self.taker,
-            self.escrow,
-        ).invoke_signed(&seeds)
+        self.token_program
+            .close_account(self.vault_ta_a, self.taker, self.escrow)
+            .invoke_signed(&seeds)
     }
 
     #[inline(always)]

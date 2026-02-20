@@ -1,9 +1,9 @@
+#[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
+use core::hint::black_box;
+use solana_address::Address;
 #[cfg(any(target_os = "solana", target_arch = "bpf"))]
 use solana_define_syscall::definitions::sol_get_sysvar;
 use solana_program_error::ProgramError;
-use solana_address::Address;
-#[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
-use core::hint::black_box;
 
 pub mod rent;
 
@@ -45,18 +45,19 @@ macro_rules! impl_sysvar_get {
 
             match result {
                 0 => Ok(unsafe { var.assume_init() }),
-                $crate::sysvars::OFFSET_LENGTH_EXCEEDS_SYSVAR => {
-                    Err(ProgramError::InvalidArgument)
-                }
-                $crate::sysvars::SYSVAR_NOT_FOUND => {
-                    Err(ProgramError::UnsupportedSysvar)
-                }
+                $crate::sysvars::OFFSET_LENGTH_EXCEEDS_SYSVAR => Err(ProgramError::InvalidArgument),
+                $crate::sysvars::SYSVAR_NOT_FOUND => Err(ProgramError::UnsupportedSysvar),
                 _ => Err(ProgramError::UnsupportedSysvar),
             }
         }
     };
 }
 
+/// # Safety
+///
+/// `dst` must point to a buffer of at least `len` bytes. `sysvar_id` must be
+/// a valid sysvar address. The caller is responsible for ensuring the buffer
+/// is large enough to hold the requested sysvar data.
 #[inline]
 pub unsafe fn get_sysvar_unchecked(
     dst: *mut u8,

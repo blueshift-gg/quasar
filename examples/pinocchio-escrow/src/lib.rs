@@ -1,15 +1,11 @@
 #![no_std]
 
-use pinocchio::{
-    AccountView, Address,
-    program_entrypoint, no_allocator,
-    ProgramResult,
-};
+use pinocchio::{no_allocator, program_entrypoint, AccountView, Address, ProgramResult};
 
 mod constants;
 mod errors;
-mod state;
 mod instructions;
+mod state;
 mod utils;
 
 #[cfg(test)]

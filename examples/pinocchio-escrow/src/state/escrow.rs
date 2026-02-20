@@ -1,9 +1,9 @@
+use crate::errors::EscrowError;
 use pinocchio::{
-    AccountView,
     account::{Ref, RefMut},
     error::ProgramError,
+    AccountView,
 };
-use crate::errors::EscrowError;
 
 #[repr(C)]
 pub struct EscrowAccount {
