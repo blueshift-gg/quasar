@@ -24,7 +24,12 @@ fn main() {
     }
 
     let elf_path = PathBuf::from(&args[1]);
-    let mut output_path = PathBuf::from("profile.svg");
+    let default_output = elf_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(|name| format!("{}.profile.svg", name))
+        .unwrap_or_else(|| "profile.svg".to_string());
+    let mut output_path = PathBuf::from(default_output);
     let mut mode = OutputMode::Svg;
 
     let mut i = 2;
