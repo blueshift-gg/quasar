@@ -6,7 +6,7 @@ pub use solana_instruction_view::InstructionAccount;
 use core::marker::PhantomData;
 use solana_account_view::{AccountView, RuntimeAccount};
 use solana_address::Address;
-use solana_program_error::ProgramResult;
+use solana_program_error::{ProgramError, ProgramResult};
 
 // --- Raw CPI account (layout-compatible with CpiAccount, uses u8 flags) ---
 
@@ -79,7 +79,7 @@ pub(crate) unsafe fn invoke_raw(
     _cpi_accounts: *const RawCpiAccount,
     _cpi_accounts_len: usize,
     _signers: &[Signer],
-) {
+) -> u64 {
     #[cfg(any(target_os = "solana", target_arch = "bpf"))]
     {
         use solana_define_syscall::definitions::sol_invoke_signed_c;
@@ -98,8 +98,11 @@ pub(crate) unsafe fn invoke_raw(
             _cpi_accounts_len as u64,
             _signers as *const _ as *const u8,
             _signers.len() as u64,
-        );
+        )
     }
+
+    #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
+    0
 }
 
 // --- CpiCall ---
@@ -154,7 +157,7 @@ impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
 
     #[inline(always)]
     fn invoke_inner(&self, signers: &[Signer]) -> ProgramResult {
-        unsafe {
+        let result = unsafe {
             invoke_raw(
                 self.program_id,
                 self.accounts.as_ptr(),
@@ -164,8 +167,12 @@ impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
                 self.cpi_accounts.as_ptr(),
                 ACCTS,
                 signers,
-            );
+            )
+        };
+        if result == 0 {
+            Ok(())
+        } else {
+            Err(ProgramError::from(result))
         }
-        Ok(())
     }
 }

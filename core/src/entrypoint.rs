@@ -33,6 +33,7 @@ macro_rules! dispatch {
                         accounts: &__accounts,
                         remaining_ptr: __remaining_ptr,
                         data: $ix_data,
+                        accounts_boundary: unsafe { $ix_data.as_ptr().sub(core::mem::size_of::<u64>()) },
                     })
                 }
             ),+

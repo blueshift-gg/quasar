@@ -1,4 +1,4 @@
-use crate::types::IdlType;
+use crate::types::{IdlDynString, IdlDynVec, IdlType};
 
 /// Convert `snake_case` to `camelCase`.
 pub fn to_camel_case(s: &str) -> String {
@@ -31,6 +31,71 @@ pub fn map_type(rust_type: &str) -> IdlType {
             defined: other.to_string(),
         },
     }
+}
+
+/// Map a `syn::Type` to an `IdlType`, detecting dynamic fields:
+///
+/// - `String<'a, N>` / `String<N>` → `IdlType::DynString { maxLength: N }`
+/// - `Vec<'a, T, N>` / `Vec<T, N>` → `IdlType::DynVec { items: T, maxLength: N }`
+///
+/// Falls back to `simple_type_name + map_type` for everything else.
+pub fn map_type_from_syn(ty: &syn::Type) -> IdlType {
+    let inner = match ty {
+        syn::Type::Reference(r) => &*r.elem,
+        other => other,
+    };
+
+    if let syn::Type::Path(type_path) = inner {
+        if let Some(seg) = type_path.path.segments.last() {
+            if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+                let ident = seg.ident.to_string();
+                let mut iter = args.args.iter();
+
+                // Skip leading lifetime if present
+                let first = iter.next();
+                let has_lifetime = matches!(first, Some(syn::GenericArgument::Lifetime(_)));
+
+                if ident == "String" {
+                    // String<'a, N> or String<N>
+                    let const_arg = if has_lifetime { iter.next() } else { first };
+                    if let Some(syn::GenericArgument::Const(syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Int(lit_int),
+                        ..
+                    }))) = const_arg
+                    {
+                        if let Ok(max_length) = lit_int.base10_parse::<usize>() {
+                            return IdlType::DynString {
+                                string: IdlDynString { max_length },
+                            };
+                        }
+                    }
+                } else if ident == "Vec" {
+                    // Vec<'a, T, N> or Vec<T, N>
+                    let type_arg = if has_lifetime { iter.next() } else { first };
+                    if let Some(syn::GenericArgument::Type(elem_ty)) = type_arg {
+                        if let Some(syn::GenericArgument::Const(syn::Expr::Lit(syn::ExprLit {
+                            lit: syn::Lit::Int(lit_int),
+                            ..
+                        }))) = iter.next()
+                        {
+                            if let Ok(max_length) = lit_int.base10_parse::<usize>() {
+                                let items = map_type_from_syn(elem_ty);
+                                return IdlType::DynVec {
+                                    vec: IdlDynVec {
+                                        items: Box::new(items),
+                                        max_length,
+                                    },
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let type_name = simple_type_name(ty);
+    map_type(&type_name)
 }
 
 /// Extract the last segment identifier from a syn::Type.

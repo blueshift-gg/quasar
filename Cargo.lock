@@ -1916,6 +1916,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "quasar-multisig"
+version = "0.1.0"
+dependencies = [
+ "mollusk-svm",
+ "quasar-core",
+ "solana-account",
+ "solana-address 2.2.0",
+ "solana-instruction",
+]
+
+[[package]]
 name = "quasar-pod"
 version = "0.1.0"
 
@@ -1939,6 +1950,17 @@ dependencies = [
  "solana-account-view",
  "solana-address 2.2.0",
  "solana-program-error",
+]
+
+[[package]]
+name = "quasar-vault"
+version = "0.1.0"
+dependencies = [
+ "mollusk-svm",
+ "quasar-core",
+ "solana-account",
+ "solana-address 2.2.0",
+ "solana-instruction",
 ]
 
 [[package]]

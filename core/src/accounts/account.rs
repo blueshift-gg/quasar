@@ -3,6 +3,35 @@ use crate::prelude::*;
 use crate::sysvars::Sysvar;
 use core::marker::PhantomData;
 
+/// Realloc an account to `new_space` bytes, transferring lamports to/from `payer`
+/// to maintain rent-exemption. Used by `Account::realloc` and generated View types.
+#[inline(always)]
+pub fn realloc_account(
+    view: &AccountView,
+    new_space: usize,
+    payer: &AccountView,
+    rent: Option<&crate::accounts::Rent>,
+) -> Result<(), ProgramError> {
+    let rent_exempt_lamports = match rent {
+        Some(rent_account) => rent_account.get()?.try_minimum_balance(new_space)?,
+        None => crate::sysvars::rent::Rent::get()?.try_minimum_balance(new_space)?,
+    };
+
+    let current_lamports = view.lamports();
+
+    if rent_exempt_lamports > current_lamports {
+        crate::cpi::system::transfer(payer, view, rent_exempt_lamports - current_lamports)
+            .invoke()?;
+    } else if current_lamports > rent_exempt_lamports {
+        let excess = current_lamports - rent_exempt_lamports;
+        view.set_lamports(rent_exempt_lamports);
+        payer.set_lamports(payer.lamports() + excess);
+    }
+
+    view.resize(new_space)?;
+    Ok(())
+}
+
 #[repr(transparent)]
 pub struct Account<T: Owner> {
     view: AccountView,
@@ -39,26 +68,7 @@ impl<T: Owner> Account<T> {
         payer: &AccountView,
         rent: Option<&crate::accounts::Rent>,
     ) -> Result<(), ProgramError> {
-        let view = self.to_account_view();
-
-        let rent_exempt_lamports = match rent {
-            Some(rent_account) => rent_account.get()?.try_minimum_balance(new_space)?,
-            None => crate::sysvars::rent::Rent::get()?.try_minimum_balance(new_space)?,
-        };
-
-        let current_lamports = view.lamports();
-
-        if rent_exempt_lamports > current_lamports {
-            crate::cpi::system::transfer(payer, view, rent_exempt_lamports - current_lamports)
-                .invoke()?;
-        } else if current_lamports > rent_exempt_lamports {
-            let excess = current_lamports - rent_exempt_lamports;
-            view.set_lamports(rent_exempt_lamports);
-            payer.set_lamports(payer.lamports() + excess);
-        }
-
-        view.resize(new_space)?;
-        Ok(())
+        realloc_account(self.to_account_view(), new_space, payer, rent)
     }
 }
 
@@ -116,18 +126,18 @@ impl<T: ZeroCopyDeref> core::ops::Deref for Account<T> {
     type Target = T::Target;
 
     /// SAFETY: Bounds validated by `AccountCheck::check` during `from_account_view`.
-    /// ZC companion structs have compile-time `assert!(align_of::<Zc>() == 1)`,
-    /// so the cast from account data pointer (align 1) is always well-aligned.
+    /// For fixed accounts, the target is a ZC companion struct with alignment 1.
+    /// For dynamic accounts, the target is a `#[repr(transparent)]` View over AccountView.
     #[inline(always)]
     fn deref(&self) -> &Self::Target {
-        unsafe { &*(self.to_account_view().data_ptr().add(T::DATA_OFFSET) as *const T::Target) }
+        T::deref_from(&self.view)
     }
 }
 
 impl<T: ZeroCopyDeref> core::ops::DerefMut for Account<T> {
-    /// SAFETY: Same as Deref — bounds checked upstream, alignment 1 guaranteed.
+    /// SAFETY: Same as Deref — bounds checked upstream.
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *(self.to_account_view().data_ptr().add(T::DATA_OFFSET) as *mut T::Target) }
+        T::deref_from_mut(&self.view)
     }
 }

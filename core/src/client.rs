@@ -36,6 +36,13 @@ impl WriteBytes for solana_address::Address {
     }
 }
 
+impl<const N: usize> WriteBytes for [u8; N] {
+    #[inline(always)]
+    fn write_bytes(&self, buf: &mut Vec<u8>) {
+        buf.extend_from_slice(self);
+    }
+}
+
 #[inline(always)]
 pub fn build_instruction_data(disc: &[u8], write_args: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> {
     let mut data = Vec::from(disc);

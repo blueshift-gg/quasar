@@ -520,9 +520,9 @@ Both programs implement the same escrow logic and run against the same test harn
 
 | Instruction | Quasar | Pinocchio (hand-written) | Delta |
 |-------------|--------|--------------------------|-------|
-| Make        | 9,409  | 9,853                    | -444   |
-| Take        | 17,800 | 17,862                   | -62    |
-| Refund      | 11,945 | 12,033                   | -88    |
+| Make        | 9,415  | 9,853                    | -438   |
+| Take        | 17,804 | 17,862                   | -58    |
+| Refund      | 11,952 | 12,033                   | -81    |
 
 The codegen advantages come from decisions that are tedious to make by hand: byte-level discriminator checks instead of slice comparisons, eliding borrow tracking when the access pattern is statically known, and folding account header arithmetic at compile time.
 

@@ -100,12 +100,9 @@ pub fn build_idl(parsed: ParsedProgram) -> Idl {
             let args: Vec<IdlField> = ix
                 .args
                 .iter()
-                .map(|(name, ty)| {
-                    let type_name = helpers::simple_type_name(ty);
-                    IdlField {
-                        name: helpers::to_camel_case(name),
-                        ty: helpers::map_type(&type_name),
-                    }
+                .map(|(name, ty)| IdlField {
+                    name: helpers::to_camel_case(name),
+                    ty: helpers::map_type_from_syn(ty),
                 })
                 .collect();
 

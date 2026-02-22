@@ -1,4 +1,9 @@
 #![no_std]
+
+#[cfg(feature = "client")]
+extern crate alloc;
+#[cfg(feature = "client")]
+pub mod client;
 use quasar_core::prelude::*;
 
 mod instructions;

@@ -2,19 +2,19 @@ use crate::prelude::*;
 use core::marker::PhantomData;
 
 #[repr(transparent)]
-pub struct Initialize<T: QuasarAccount> {
+pub struct Initialize<T: Discriminator> {
     view: AccountView,
     _marker: PhantomData<T>,
 }
 
-impl<T: QuasarAccount> AsAccountView for Initialize<T> {
+impl<T: Discriminator> AsAccountView for Initialize<T> {
     #[inline(always)]
     fn to_account_view(&self) -> &AccountView {
         &self.view
     }
 }
 
-impl<T: QuasarAccount> Initialize<T> {
+impl<T: Discriminator> Initialize<T> {
     #[inline(always)]
     pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
         Ok(unsafe { &*(view as *const AccountView as *const Self) })

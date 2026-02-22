@@ -66,7 +66,16 @@ impl Owner for TokenAccount {
 
 impl ZeroCopyDeref for TokenAccount {
     type Target = TokenAccountState;
-    const DATA_OFFSET: usize = 0;
+
+    #[inline(always)]
+    fn deref_from(view: &AccountView) -> &Self::Target {
+        unsafe { &*(view.data_ptr() as *const TokenAccountState) }
+    }
+
+    #[inline(always)]
+    fn deref_from_mut(view: &AccountView) -> &mut Self::Target {
+        unsafe { &mut *(view.data_ptr() as *mut TokenAccountState) }
+    }
 }
 
 // --- CPI Methods ---

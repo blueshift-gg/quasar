@@ -7,6 +7,10 @@ pub struct Context<'info> {
     pub accounts: &'info [AccountView],
     pub remaining_ptr: *mut u8,
     pub data: &'info [u8],
+    /// Boundary pointer marking end of accounts region in the SVM buffer.
+    /// Computed from the original instruction data pointer (before discriminator
+    /// stripping) as `ix_data_ptr - sizeof(u64)`.
+    pub accounts_boundary: *const u8,
 }
 
 /// Parsed instruction context with typed accounts and PDA bumps.
@@ -17,6 +21,7 @@ pub struct Ctx<'info, T: ParseAccounts<'info> + AccountCount> {
     pub data: &'info [u8],
     remaining_ptr: *mut u8,
     declared: &'info [AccountView],
+    accounts_boundary: *const u8,
 }
 
 impl<'info, T: ParseAccounts<'info> + AccountCount> Ctx<'info, T> {
@@ -30,13 +35,13 @@ impl<'info, T: ParseAccounts<'info> + AccountCount> Ctx<'info, T> {
             data: ctx.data,
             remaining_ptr: ctx.remaining_ptr,
             declared: ctx.accounts,
+            accounts_boundary: ctx.accounts_boundary,
         })
     }
 
     /// Access remaining accounts. Zero cost until called.
     #[inline(always)]
     pub fn remaining_accounts(&self) -> RemainingAccounts<'info> {
-        let boundary = unsafe { self.data.as_ptr().sub(core::mem::size_of::<u64>()) };
-        RemainingAccounts::new(self.remaining_ptr, boundary, self.declared)
+        RemainingAccounts::new(self.remaining_ptr, self.accounts_boundary, self.declared)
     }
 }

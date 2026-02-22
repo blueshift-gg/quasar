@@ -199,7 +199,16 @@ fn generate_fixed_account(
 
         impl ZeroCopyDeref for #name {
             type Target = #zc_name;
-            const DATA_OFFSET: usize = Self::DISCRIMINATOR.len();
+
+            #[inline(always)]
+            fn deref_from(view: &AccountView) -> &Self::Target {
+                unsafe { &*(view.data_ptr().add(Self::DISCRIMINATOR.len()) as *const #zc_name) }
+            }
+
+            #[inline(always)]
+            fn deref_from_mut(view: &AccountView) -> &mut Self::Target {
+                unsafe { &mut *(view.data_ptr().add(Self::DISCRIMINATOR.len()) as *mut #zc_name) }
+            }
         }
 
         impl QuasarAccount for #name {
@@ -287,6 +296,7 @@ fn generate_dynamic_account(
     let generics = &input.generics;
     let lt = &input.generics.lifetimes().next().unwrap().lifetime;
     let zc_name = format_ident!("{}Zc", name);
+    let view_name = format_ident!("{}View", name);
 
     // --- 1. Transformed struct fields ---
     let transformed_fields: Vec<proc_macro2::TokenStream> = fields_data
@@ -909,18 +919,38 @@ fn generate_dynamic_account(
             }
         }
 
-        impl ZeroCopyDeref for #name<'_> {
-            type Target = #zc_name;
-            const DATA_OFFSET: usize = #disc_len;
+        /// View type for dynamic account — sits in the deref chain between
+        /// `Account<#name<'_>>` and `#zc_name`. Provides zero-copy accessors
+        /// for dynamic fields and derefs to the ZC struct for fixed fields.
+        #[repr(transparent)]
+        #vis struct #view_name {
+            __view: AccountView,
         }
 
-        impl Account<#name<'_>> {
+        impl AsAccountView for #view_name {
+            #[inline(always)]
+            fn to_account_view(&self) -> &AccountView {
+                &self.__view
+            }
+        }
+
+        impl #view_name {
+            #[inline(always)]
+            pub fn realloc(
+                &self,
+                new_space: usize,
+                payer: &AccountView,
+                rent: Option<&Rent>,
+            ) -> Result<(), ProgramError> {
+                quasar_core::accounts::account::realloc_account(&self.__view, new_space, payer, rent)
+            }
+
             #(#accessor_methods)*
             #(#write_methods)*
 
             #[inline(always)]
             pub fn dynamic_fields(&self) -> #fields_name<'_> {
-                let __data = unsafe { self.to_account_view().borrow_unchecked() };
+                let __data = unsafe { self.__view.borrow_unchecked() };
                 let __zc = unsafe { &*(__data[#disc_len..].as_ptr() as *const #zc_name) };
                 let mut __offset = #disc_len + core::mem::size_of::<#zc_name>();
                 #(#fields_extract_stmts)*
@@ -930,7 +960,7 @@ fn generate_dynamic_account(
 
             #[inline(always)]
             pub fn set_dynamic_fields(&self, __payer: &impl AsAccountView, #(#set_dyn_params),*) -> Result<(), ProgramError> {
-                let __view = self.to_account_view();
+                let __view = &self.__view;
                 let __data = unsafe { __view.borrow_unchecked() };
                 let __zc = unsafe { &*(__data[#disc_len..].as_ptr() as *const #zc_name) };
 
@@ -964,6 +994,38 @@ fn generate_dynamic_account(
             }
         }
 
+        impl core::ops::Deref for #view_name {
+            type Target = #zc_name;
+
+            /// SAFETY: Bounds validated by AccountCheck::check. ZC struct has alignment 1.
+            #[inline(always)]
+            fn deref(&self) -> &Self::Target {
+                unsafe { &*(self.__view.data_ptr().add(#disc_len) as *const #zc_name) }
+            }
+        }
+
+        impl core::ops::DerefMut for #view_name {
+            #[inline(always)]
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                unsafe { &mut *(self.__view.data_ptr().add(#disc_len) as *mut #zc_name) }
+            }
+        }
+
+        impl ZeroCopyDeref for #name<'_> {
+            type Target = #view_name;
+
+            /// SAFETY: #view_name is #[repr(transparent)] over AccountView.
+            #[inline(always)]
+            fn deref_from(view: &AccountView) -> &Self::Target {
+                unsafe { &*(view as *const AccountView as *const #view_name) }
+            }
+
+            #[inline(always)]
+            fn deref_from_mut(view: &AccountView) -> &mut Self::Target {
+                unsafe { &mut *(view as *const AccountView as *mut #view_name) }
+            }
+        }
+
         impl #name<'_> {
             pub const MIN_SPACE: usize = #disc_len + core::mem::size_of::<#zc_name>();
             pub const MAX_SPACE: usize = Self::MIN_SPACE #(#max_space_terms)*;
@@ -983,12 +1045,12 @@ fn generate_dynamic_account(
             }
 
             #[inline(always)]
-            pub fn init(self, account: &mut Initialize<Self>, payer: &AccountView, rent: Option<&Rent>) -> Result<(), ProgramError> {
+            pub fn init<'__init>(self, account: &mut Initialize<#name<'__init>>, payer: &AccountView, rent: Option<&Rent>) -> Result<(), ProgramError> {
                 self.init_signed(account, payer, rent, &[])
             }
 
             #[inline(always)]
-            pub fn init_signed(self, account: &mut Initialize<Self>, payer: &AccountView, rent: Option<&Rent>, signers: &[quasar_core::cpi::Signer]) -> Result<(), ProgramError> {
+            pub fn init_signed<'__init>(self, account: &mut Initialize<#name<'__init>>, payer: &AccountView, rent: Option<&Rent>, signers: &[quasar_core::cpi::Signer]) -> Result<(), ProgramError> {
                 #(#max_checks)*
 
                 let view = account.to_account_view();

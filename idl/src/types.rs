@@ -63,10 +63,25 @@ pub struct IdlField {
 }
 
 #[derive(Serialize)]
+pub struct IdlDynString {
+    #[serde(rename = "maxLength")]
+    pub max_length: usize,
+}
+
+#[derive(Serialize)]
+pub struct IdlDynVec {
+    pub items: Box<IdlType>,
+    #[serde(rename = "maxLength")]
+    pub max_length: usize,
+}
+
+#[derive(Serialize)]
 #[serde(untagged)]
 pub enum IdlType {
     Primitive(String),
     Defined { defined: String },
+    DynString { string: IdlDynString },
+    DynVec { vec: IdlDynVec },
 }
 
 #[derive(Serialize)]

@@ -103,15 +103,22 @@ pub trait QuasarAccount: Sized + Discriminator + Space {
 /// Zero-copy deref target for `#[repr(C)]` account types.
 ///
 /// When an account type implements `ZeroCopyDeref`, `Account<T>` provides
-/// `Deref`/`DerefMut` to `T::Target` — a `#[repr(C)]` companion struct
-/// with alignment-1 Pod fields. No deserialization occurs; the account
-/// data pointer is cast directly.
+/// `Deref`/`DerefMut` to `T::Target` via `deref_from` / `deref_from_mut`.
 ///
-/// Implemented by: `#[account]` macro for `#[repr(C)]` types.
-/// `DATA_OFFSET` is typically the discriminator length.
+/// For fixed-size accounts, `Target` is the ZC companion struct and the
+/// methods perform a pointer cast past the discriminator.
+///
+/// For dynamic accounts, `Target` is a generated View type (`{Name}View`)
+/// that is `#[repr(transparent)]` over `AccountView`. The View type
+/// provides accessors for dynamic fields and derefs further to the ZC
+/// struct for fixed field access.
+///
+/// Implemented by: `#[account]` macro.
 pub trait ZeroCopyDeref: Owner {
     type Target;
-    const DATA_OFFSET: usize;
+    fn deref_from(view: &AccountView) -> &Self::Target;
+    #[allow(clippy::mut_from_ref)]
+    fn deref_from_mut(view: &AccountView) -> &mut Self::Target;
 }
 
 /// On-chain event with a discriminator, fixed-size data, and emission logic.

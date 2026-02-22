@@ -291,7 +291,16 @@ impl AccountCheck for TestAccountType {
 
 impl ZeroCopyDeref for TestAccountType {
     type Target = TestZcData;
-    const DATA_OFFSET: usize = 4; // discriminator length
+
+    #[inline(always)]
+    fn deref_from(view: &AccountView) -> &Self::Target {
+        unsafe { &*(view.data_ptr().add(4) as *const TestZcData) }
+    }
+
+    #[inline(always)]
+    fn deref_from_mut(view: &AccountView) -> &mut Self::Target {
+        unsafe { &mut *(view.data_ptr().add(4) as *mut TestZcData) }
+    }
 }
 
 // ===========================================================================
