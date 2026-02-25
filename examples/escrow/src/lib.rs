@@ -6,6 +6,9 @@ extern crate alloc;
 pub mod client;
 use quasar_core::prelude::*;
 
+panic_handler!();
+no_alloc!();
+
 mod instructions;
 use instructions::*;
 mod events;

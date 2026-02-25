@@ -22,9 +22,12 @@ pub use crate::dynamic::{String, Vec};
 // Error handling
 pub use crate::error::QuasarError;
 
+// Sysvar data types
+pub use crate::sysvars::clock::Clock;
+pub use crate::sysvars::rent::Rent;
+
 // Utilities
 pub use crate::return_data::set_return_data;
-pub use crate::sysvars::Sysvar;
 pub use core::ops::{Deref, DerefMut};
 
 // Macros

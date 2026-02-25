@@ -1,6 +1,5 @@
 use crate::cpi::system::SYSTEM_PROGRAM_ID;
 use crate::prelude::*;
-use crate::sysvars::Sysvar;
 use core::marker::PhantomData;
 
 /// Realloc an account to `new_space` bytes, transferring lamports to/from `payer`
@@ -10,11 +9,14 @@ pub fn realloc_account(
     view: &AccountView,
     new_space: usize,
     payer: &AccountView,
-    rent: Option<&crate::accounts::Rent>,
+    rent: Option<&crate::sysvars::rent::Rent>,
 ) -> Result<(), ProgramError> {
     let rent_exempt_lamports = match rent {
-        Some(rent_account) => rent_account.get()?.try_minimum_balance(new_space)?,
-        None => crate::sysvars::rent::Rent::get()?.try_minimum_balance(new_space)?,
+        Some(rent) => rent.try_minimum_balance(new_space)?,
+        None => {
+            use crate::sysvars::Sysvar;
+            crate::sysvars::rent::Rent::get()?.try_minimum_balance(new_space)?
+        }
     };
 
     let current_lamports = view.lamports();
@@ -66,7 +68,7 @@ impl<T: Owner> Account<T> {
         &self,
         new_space: usize,
         payer: &AccountView,
-        rent: Option<&crate::accounts::Rent>,
+        rent: Option<&crate::sysvars::rent::Rent>,
     ) -> Result<(), ProgramError> {
         realloc_account(self.to_account_view(), new_space, payer, rent)
     }

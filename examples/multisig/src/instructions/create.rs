@@ -8,7 +8,7 @@ pub struct Create<'info> {
     pub creator: &'info mut Signer,
     #[account(seeds = [b"multisig", creator], bump)]
     pub config: &'info mut Initialize<MultisigConfig<'info>>,
-    pub rent: &'info Rent,
+    pub rent: &'info Sysvar<Rent>,
     pub system_program: &'info SystemProgram,
 }
 
@@ -50,7 +50,7 @@ impl<'info> Create<'info> {
         .init_signed(
             self.config,
             self.creator.to_account_view(),
-            Some(self.rent),
+            Some(&**self.rent),
             &[quasar_core::cpi::Signer::from(&seeds)],
         )
     }

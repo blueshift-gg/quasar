@@ -250,7 +250,7 @@ fn generate_fixed_account(
                 }
 
                 let lamports = match rent {
-                    Some(rent_account) => unsafe { rent_account.get_unchecked() }.minimum_balance_unchecked(Self::SPACE),
+                    Some(rent_data) => rent_data.minimum_balance_unchecked(Self::SPACE),
                     None => {
                         use quasar_core::sysvars::Sysvar;
                         quasar_core::sysvars::rent::Rent::get()?.minimum_balance_unchecked(Self::SPACE)
@@ -1083,7 +1083,7 @@ fn generate_dynamic_account(
                 }
 
                 let lamports = match rent {
-                    Some(rent_account) => unsafe { rent_account.get_unchecked() }.minimum_balance_unchecked(__space),
+                    Some(rent_data) => rent_data.minimum_balance_unchecked(__space),
                     None => {
                         use quasar_core::sysvars::Sysvar;
                         quasar_core::sysvars::rent::Rent::get()?.minimum_balance_unchecked(__space)

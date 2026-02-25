@@ -14,6 +14,7 @@ pub struct RawAccountField {
     pub writable: bool,
     pub signer: bool,
     pub pda: Option<RawPda>,
+    pub address: Option<String>,
 }
 
 pub struct RawPda {
@@ -80,12 +81,33 @@ fn parse_account_field(field: &syn::Field, parent: &syn::ItemStruct) -> RawAccou
     };
 
     let pda = parse_pda_from_attrs(&field.attrs, &sibling_names);
+    let address = detect_known_address(&field.ty);
 
     RawAccountField {
         name,
         writable,
         signer,
         pda,
+        address,
+    }
+}
+
+/// Detect known addresses for sysvars and programs.
+/// Returns a base58 address string for known types.
+fn detect_known_address(ty: &syn::Type) -> Option<String> {
+    let base = helpers::type_base_name(ty)?;
+
+    match base.as_str() {
+        "SystemProgram" => Some("11111111111111111111111111111111".to_string()),
+        "Sysvar" => {
+            let inner = helpers::type_inner_name(ty)?;
+            match inner.as_str() {
+                "Rent" => Some("SysvarRent111111111111111111111111111111111".to_string()),
+                "Clock" => Some("SysvarC1ock11111111111111111111111111111111".to_string()),
+                _ => None,
+            }
+        }
+        _ => None,
     }
 }
 
@@ -267,5 +289,6 @@ fn to_idl_account_item(field: &RawAccountField) -> IdlAccountItem {
         writable: field.writable,
         signer: field.signer,
         pda,
+        address: field.address.clone(),
     }
 }

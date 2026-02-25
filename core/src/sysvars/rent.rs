@@ -2,12 +2,11 @@ use crate::impl_sysvar_get;
 use {
     crate::sysvars::Sysvar,
     core::mem::{align_of, size_of},
-    solana_account_view::{AccountView, Ref},
     solana_address::Address,
     solana_program_error::ProgramError,
 };
 
-pub const RENT_ID: Address = Address::new_from_array([
+const RENT_ID: Address = Address::new_from_array([
     6, 167, 213, 23, 25, 44, 92, 81, 33, 140, 201, 76, 61, 74, 241, 127, 88, 218, 238, 8, 155, 161,
     253, 68, 227, 219, 217, 138, 0, 0, 0, 0,
 ]);
@@ -33,27 +32,6 @@ const _ASSERT_STRUCT_LEN: () = assert!(size_of::<Rent>() == 16);
 const _ASSERT_STRUCT_ALIGN: () = assert!(align_of::<Rent>() == 8);
 
 impl Rent {
-    #[inline]
-    pub fn from_account_view(account_view: &AccountView) -> Result<Ref<'_, Rent>, ProgramError> {
-        if account_view.address() != &RENT_ID {
-            return Err(ProgramError::InvalidArgument);
-        }
-        Ok(Ref::map(account_view.try_borrow()?, |data| unsafe {
-            Self::from_bytes_unchecked(data)
-        }))
-    }
-
-    /// # Safety
-    ///
-    /// Caller must ensure `bytes.len() >= size_of::<Rent>()` and that the data is
-    /// a valid Rent sysvar. The cast from `&[u8]` to `&Rent` is technically misaligned
-    /// (Rent has align 8, slice pointer has align 1), but SBF handles unaligned access
-    /// natively — this is the standard pattern across all Solana frameworks.
-    #[inline(always)]
-    pub unsafe fn from_bytes_unchecked(bytes: &[u8]) -> &Self {
-        unsafe { &*(bytes.as_ptr() as *const Rent) }
-    }
-
     #[inline(always)]
     pub fn minimum_balance_unchecked(&self, data_len: usize) -> u64 {
         let bytes = data_len as u64;

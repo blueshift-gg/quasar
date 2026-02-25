@@ -35,6 +35,8 @@ pub struct IdlAccountItem {
     pub signer: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pda: Option<IdlPda>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
 }
 
 fn is_false(b: &bool) -> bool {

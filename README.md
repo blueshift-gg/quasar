@@ -75,12 +75,20 @@ pub system_program: &'info SystemProgram,
 pub token_program: &'info TokenProgram,
 ```
 
-### `Rent`
+### `Sysvar<T>`
 
-Sysvar account access. Validates the account address matches the Rent sysvar.
+Sysvar account access. Validates the account address matches `T::ID`. Dereferences directly to the sysvar data type via `borrow_unchecked` — no RefCell overhead.
 
 ```rust
-pub rent: &'info Rent,
+pub rent: &'info Sysvar<Rent>,
+pub clock: &'info Sysvar<Clock>,
+```
+
+Access sysvar fields through `Deref`:
+
+```rust
+let lamports = self.rent.minimum_balance_unchecked(data_len);
+let slot = self.clock.slot;
 ```
 
 ### Mutability
@@ -151,7 +159,7 @@ EscrowAccount {
 .init_signed(
     self.escrow,
     self.maker.to_account_view(),
-    Some(self.rent),
+    Some(&**self.rent),
     &[quasar_core::cpi::Signer::from(&seeds)],
 )?;
 ```
@@ -520,9 +528,9 @@ Both programs implement the same escrow logic and run against the same test harn
 
 | Instruction | Quasar | Pinocchio (hand-written) | Delta |
 |-------------|--------|--------------------------|-------|
-| Make        | 9,415  | 9,853                    | -438   |
-| Take        | 17,804 | 17,862                   | -58    |
-| Refund      | 11,952 | 12,033                   | -81    |
+| Make        | 9,395  | 9,853                    | -458   |
+| Take        | 17,789 | 17,862                   | -73    |
+| Refund      | 11,930 | 12,033                   | -103   |
 
 The codegen advantages come from decisions that are tedious to make by hand: byte-level discriminator checks instead of slice comparisons, eliding borrow tracking when the access pattern is statically known, and folding account header arithmetic at compile time.
 

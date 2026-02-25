@@ -11,7 +11,7 @@ pub struct Make<'info> {
     pub maker_ta_a: &'info mut Account<TokenAccount>,
     pub maker_ta_b: &'info Account<TokenAccount>,
     pub vault_ta_a: &'info mut Account<TokenAccount>,
-    pub rent: &'info Rent,
+    pub rent: &'info Sysvar<Rent>,
     pub token_program: &'info TokenProgram,
     pub system_program: &'info SystemProgram,
 }
@@ -32,7 +32,7 @@ impl<'info> Make<'info> {
         .init_signed(
             self.escrow,
             self.maker.to_account_view(),
-            Some(self.rent),
+            Some(&**self.rent),
             &[quasar_core::cpi::Signer::from(&seeds)],
         )
     }
