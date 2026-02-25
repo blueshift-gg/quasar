@@ -1,6 +1,6 @@
-use solana_account_view::AccountView;
-use solana_address::Address;
-use solana_program_error::ProgramError;
+use {
+    solana_account_view::AccountView, solana_address::Address, solana_program_error::ProgramError,
+};
 
 /// Construct a typed account wrapper from a raw [`AccountView`].
 ///

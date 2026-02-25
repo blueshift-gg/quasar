@@ -1,8 +1,9 @@
-use proc_macro::TokenStream;
-use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Fields, Ident, Type};
-
-use crate::helpers::InstructionArgs;
+use {
+    crate::helpers::InstructionArgs,
+    proc_macro::TokenStream,
+    quote::quote,
+    syn::{parse_macro_input, Data, DeriveInput, Fields, Ident, Type},
+};
 
 fn event_field_size(ty: &Type) -> usize {
     if let Type::Path(type_path) = ty {

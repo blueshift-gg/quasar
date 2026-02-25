@@ -1,9 +1,13 @@
-use super::{CpiCall, InstructionAccount};
-use crate::checks;
-use crate::traits::{AsAccountView, Program};
-use solana_account_view::AccountView;
-use solana_address::Address;
-use solana_program_error::ProgramError;
+use {
+    super::{CpiCall, InstructionAccount},
+    crate::{
+        checks,
+        traits::{AsAccountView, Program},
+    },
+    solana_account_view::AccountView,
+    solana_address::Address,
+    solana_program_error::ProgramError,
+};
 
 pub const SYSTEM_PROGRAM_ID: Address = Address::new_from_array([0u8; 32]);
 

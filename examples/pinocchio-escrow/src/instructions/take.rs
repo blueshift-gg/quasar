@@ -1,3 +1,5 @@
+#[cfg(target_os = "solana")]
+use pinocchio::syscalls::sol_log_data;
 /// # Take Instruction
 ///
 /// Completes the escrow: taker sends token-B to maker, receives token-A from vault.
@@ -13,15 +15,14 @@
 /// | 6 | vault_ta_a    | no     | yes      | Vault token-A account          |
 /// | 7 | token_program | no     | no       | SPL Token program              |
 use pinocchio::{cpi::Signer, AccountView, Address, ProgramResult};
-use pinocchio_token::instructions::{CloseAccount, Transfer};
-
-use crate::errors::EscrowError;
-use crate::state::EscrowAccount;
-use crate::utils::pda::escrow_seeds;
-use crate::utils::Context;
-
-#[cfg(target_os = "solana")]
-use pinocchio::syscalls::sol_log_data;
+use {
+    crate::{
+        errors::EscrowError,
+        state::EscrowAccount,
+        utils::{pda::escrow_seeds, Context},
+    },
+    pinocchio_token::instructions::{CloseAccount, Transfer},
+};
 
 #[allow(dead_code)]
 pub struct TakeAccounts<'info> {

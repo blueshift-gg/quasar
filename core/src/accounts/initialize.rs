@@ -1,5 +1,4 @@
-use crate::prelude::*;
-use core::marker::PhantomData;
+use {crate::prelude::*, core::marker::PhantomData};
 
 #[repr(transparent)]
 pub struct Initialize<T: Discriminator> {

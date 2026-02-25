@@ -1,11 +1,14 @@
-use proc_macro::TokenStream;
-use quote::quote;
-use syn::{
-    parse_macro_input, FnArg, GenericArgument, Ident, ItemFn, Pat, PathArguments, ReturnType, Type,
-};
-
-use crate::helpers::{
-    is_ix_dynamic_string, is_ix_dynamic_vec, map_to_pod_type, zc_deserialize_expr, InstructionArgs,
+use {
+    crate::helpers::{
+        is_ix_dynamic_string, is_ix_dynamic_vec, map_to_pod_type, zc_deserialize_expr,
+        InstructionArgs,
+    },
+    proc_macro::TokenStream,
+    quote::quote,
+    syn::{
+        parse_macro_input, FnArg, GenericArgument, Ident, ItemFn, Pat, PathArguments, ReturnType,
+        Type,
+    },
 };
 
 fn extract_result_ok_type(output: &ReturnType) -> Option<&Type> {
@@ -107,7 +110,10 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                 if let Some(max) = is_ix_dynamic_string(&pt.ty) {
                     IxDynKind::Str { max }
                 } else if let Some((elem, max)) = is_ix_dynamic_vec(&pt.ty) {
-                    IxDynKind::Vec { elem: Box::new(elem), max }
+                    IxDynKind::Vec {
+                        elem: Box::new(elem),
+                        max,
+                    }
                 } else {
                     IxDynKind::Fixed
                 }
@@ -209,11 +215,9 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                                 return Err(ProgramError::InvalidInstructionData);
                             }
                         ));
-                        new_stmts.push(syn::parse_quote!(
-                            if __tail.len() < __offset + __dyn_len {
-                                return Err(ProgramError::InvalidInstructionData);
-                            }
-                        ));
+                        new_stmts.push(syn::parse_quote!(if __tail.len() < __offset + __dyn_len {
+                            return Err(ProgramError::InvalidInstructionData);
+                        }));
                         new_stmts.push(syn::parse_quote!(
                             let #name: &str = unsafe {
                                 core::str::from_utf8_unchecked(

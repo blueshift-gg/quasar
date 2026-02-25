@@ -1,6 +1,8 @@
-use crate::cpi::{invoke_raw, InstructionAccount, RawCpiAccount, Seed, Signer};
-use solana_account_view::AccountView;
-use solana_program_error::ProgramError;
+use {
+    crate::cpi::{invoke_raw, InstructionAccount, RawCpiAccount, Seed, Signer},
+    solana_account_view::AccountView,
+    solana_program_error::ProgramError,
+};
 
 #[inline(always)]
 pub fn emit_event_cpi(

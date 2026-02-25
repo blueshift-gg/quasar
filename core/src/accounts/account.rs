@@ -1,7 +1,7 @@
-use crate::cpi::system::SYSTEM_PROGRAM_ID;
-use crate::prelude::*;
-use crate::sysvars::Sysvar;
-use core::marker::PhantomData;
+use {
+    crate::{cpi::system::SYSTEM_PROGRAM_ID, prelude::*, sysvars::Sysvar},
+    core::marker::PhantomData,
+};
 
 /// Realloc an account to `new_space` bytes, transferring lamports to/from `payer`
 /// to maintain rent-exemption. Used by `Account::realloc` and generated View types.

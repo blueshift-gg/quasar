@@ -1,8 +1,10 @@
-use crate::errors::EscrowError;
-use pinocchio::{
-    account::{Ref, RefMut},
-    error::ProgramError,
-    AccountView,
+use {
+    crate::errors::EscrowError,
+    pinocchio::{
+        account::{Ref, RefMut},
+        error::ProgramError,
+        AccountView,
+    },
 };
 
 #[repr(C)]

@@ -1,7 +1,6 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-
 pub use solana_instruction::{AccountMeta, Instruction};
 
 /// Trait for serializing instruction data fields to little-endian bytes.

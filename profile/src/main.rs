@@ -4,10 +4,7 @@ mod elf;
 mod output;
 mod walk;
 
-use std::path::PathBuf;
-
-use elf::DebugLevel;
-use memmap2::Mmap;
+use {elf::DebugLevel, memmap2::Mmap, std::path::PathBuf};
 
 enum OutputMode {
     Svg,
@@ -37,9 +34,8 @@ fn main() {
         match args[i].as_str() {
             "-o" | "--output" => {
                 i += 1;
-                output_path = PathBuf::from(
-                    args.get(i).expect("-o requires an output path argument"),
-                );
+                output_path =
+                    PathBuf::from(args.get(i).expect("-o requires an output path argument"));
             }
             "--folded" => mode = OutputMode::Folded,
             "--text" => mode = OutputMode::Text,

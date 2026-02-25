@@ -6,9 +6,7 @@ pub mod module_resolver;
 pub mod program;
 pub mod state;
 
-use std::path::Path;
-
-use crate::types::*;
+use {crate::types::*, std::path::Path};
 
 /// All data extracted from parsing a quasar program crate.
 pub struct ParsedProgram {

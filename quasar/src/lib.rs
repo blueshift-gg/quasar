@@ -7,6 +7,5 @@
 #![no_std]
 
 pub use quasar_core::*;
-
 #[cfg(feature = "spl")]
 pub use quasar_spl;

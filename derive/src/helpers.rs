@@ -1,7 +1,9 @@
-use quote::quote;
-use syn::{
-    parse::{Parse, ParseStream},
-    Expr, ExprLit, GenericArgument, Ident, Lit, LitInt, PathArguments, Token, Type,
+use {
+    quote::quote,
+    syn::{
+        parse::{Parse, ParseStream},
+        Expr, ExprLit, GenericArgument, Ident, Lit, LitInt, PathArguments, Token, Type,
+    },
 };
 
 // --- Discriminator argument parsing (shared by instruction, account, event, program) ---

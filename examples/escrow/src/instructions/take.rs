@@ -1,8 +1,8 @@
-use quasar_core::prelude::*;
-use quasar_spl::{TokenAccount, TokenProgram};
-
-use crate::events::TakeEvent;
-use crate::state::EscrowAccount;
+use {
+    crate::{events::TakeEvent, state::EscrowAccount},
+    quasar_core::prelude::*,
+    quasar_spl::{TokenAccount, TokenProgram},
+};
 
 #[derive(Accounts)]
 pub struct Take<'info> {

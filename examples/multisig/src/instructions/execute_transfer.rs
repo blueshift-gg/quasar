@@ -1,7 +1,7 @@
-use quasar_core::prelude::*;
-use quasar_core::remaining::RemainingAccounts;
-
-use crate::state::MultisigConfig;
+use {
+    crate::state::MultisigConfig,
+    quasar_core::{prelude::*, remaining::RemainingAccounts},
+};
 
 #[derive(Accounts)]
 pub struct ExecuteTransfer<'info> {

@@ -1,7 +1,10 @@
-use syn::{Fields, Item};
-
-use crate::parser::helpers;
-use crate::types::{IdlAccountDef, IdlField, IdlTypeDef, IdlTypeDefType};
+use {
+    crate::{
+        parser::helpers,
+        types::{IdlAccountDef, IdlField, IdlTypeDef, IdlTypeDefType},
+    },
+    syn::{Fields, Item},
+};
 
 /// Raw parsed data for a `#[account(discriminator = N)]` struct.
 pub struct RawStateAccount {

@@ -1,6 +1,4 @@
-use syn::Item;
-
-use crate::types::IdlError;
+use {crate::types::IdlError, syn::Item};
 
 /// Extract all `#[error_code]` enums from a parsed file.
 pub fn extract_errors(file: &syn::File) -> Vec<IdlError> {

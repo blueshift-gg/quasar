@@ -1,7 +1,8 @@
-use quasar_core::prelude::*;
-use quasar_spl::{TokenAccount, TokenProgram};
-
-use crate::{events::RefundEvent, state::EscrowAccount};
+use {
+    crate::{events::RefundEvent, state::EscrowAccount},
+    quasar_core::prelude::*,
+    quasar_spl::{TokenAccount, TokenProgram},
+};
 
 #[derive(Accounts)]
 pub struct Refund<'info> {

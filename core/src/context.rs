@@ -1,5 +1,4 @@
-use crate::prelude::*;
-use crate::remaining::RemainingAccounts;
+use crate::{prelude::*, remaining::RemainingAccounts};
 
 /// Raw entrypoint context before parsing.
 pub struct Context<'info> {

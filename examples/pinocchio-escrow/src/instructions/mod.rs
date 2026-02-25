@@ -2,6 +2,4 @@ mod make;
 mod refund;
 mod take;
 
-pub use make::Make;
-pub use refund::Refund;
-pub use take::Take;
+pub use {make::Make, refund::Refund, take::Take};

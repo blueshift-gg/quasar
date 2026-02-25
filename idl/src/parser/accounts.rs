@@ -1,7 +1,10 @@
-use syn::{Fields, Item};
-
-use crate::parser::helpers;
-use crate::types::{IdlAccountItem, IdlPda, IdlSeed};
+use {
+    crate::{
+        parser::helpers,
+        types::{IdlAccountItem, IdlPda, IdlSeed},
+    },
+    syn::{Fields, Item},
+};
 
 /// Raw parsed data for a `#[derive(Accounts)]` struct.
 pub struct RawAccountsStruct {

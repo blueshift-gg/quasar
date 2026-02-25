@@ -1,6 +1,5 @@
-use crate::impl_sysvar_get;
 use {
-    crate::sysvars::Sysvar,
+    crate::{impl_sysvar_get, sysvars::Sysvar},
     core::mem::{align_of, size_of},
     solana_account_view::{AccountView, Ref},
     solana_address::Address,

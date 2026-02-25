@@ -1,8 +1,9 @@
-use proc_macro::TokenStream;
-use quote::{format_ident, quote};
-use syn::{parse_macro_input, FnArg, Ident, Item, ItemMod, Pat, Type};
-
-use crate::helpers::{is_ix_dynamic_string, pascal_to_snake, snake_to_pascal, InstructionArgs};
+use {
+    crate::helpers::{is_ix_dynamic_string, pascal_to_snake, snake_to_pascal, InstructionArgs},
+    proc_macro::TokenStream,
+    quote::{format_ident, quote},
+    syn::{parse_macro_input, FnArg, Ident, Item, ItemMod, Pat, Type},
+};
 
 /// Extracts the inner type `T` from a `Ctx<T>` first parameter.
 fn extract_ctx_inner_type(sig: &syn::Signature) -> proc_macro2::TokenStream {

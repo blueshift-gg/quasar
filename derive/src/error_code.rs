@@ -1,6 +1,8 @@
-use proc_macro::TokenStream;
-use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput};
+use {
+    proc_macro::TokenStream,
+    quote::quote,
+    syn::{parse_macro_input, Data, DeriveInput},
+};
 
 pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as DeriveInput);

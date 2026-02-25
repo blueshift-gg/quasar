@@ -1,3 +1,5 @@
+#[cfg(target_os = "solana")]
+use pinocchio::syscalls::sol_log_data;
 /// # Make Instruction
 ///
 /// Creates a new escrow and deposits tokens into the vault.
@@ -13,16 +15,18 @@
 /// | 6 | token_program | no     | no       | SPL Token program              |
 /// | 7 | system_program| no     | no       | System program                 |
 use pinocchio::{cpi::Signer, AccountView, ProgramResult};
-use pinocchio_system::create_account_with_minimum_balance_signed;
-use pinocchio_token::instructions::Transfer;
-
-use crate::errors::EscrowError;
-use crate::state::EscrowAccount;
-use crate::utils::pda::{escrow_pda, escrow_seeds};
-use crate::utils::Context;
-
-#[cfg(target_os = "solana")]
-use pinocchio::syscalls::sol_log_data;
+use {
+    crate::{
+        errors::EscrowError,
+        state::EscrowAccount,
+        utils::{
+            pda::{escrow_pda, escrow_seeds},
+            Context,
+        },
+    },
+    pinocchio_system::create_account_with_minimum_balance_signed,
+    pinocchio_token::instructions::Transfer,
+};
 
 #[allow(dead_code)]
 pub struct MakeAccounts<'info> {

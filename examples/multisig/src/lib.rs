@@ -20,7 +20,8 @@ mod quasar_multisig {
 
     #[instruction(discriminator = 0)]
     pub fn create(ctx: CtxWithRemaining<Create>, threshold: u8) -> Result<(), ProgramError> {
-        ctx.accounts.create_multisig(threshold, &ctx.bumps, ctx.remaining_accounts())
+        ctx.accounts
+            .create_multisig(threshold, &ctx.bumps, ctx.remaining_accounts())
     }
 
     #[instruction(discriminator = 1)]
@@ -34,7 +35,11 @@ mod quasar_multisig {
     }
 
     #[instruction(discriminator = 3)]
-    pub fn execute_transfer(ctx: CtxWithRemaining<ExecuteTransfer>, amount: u64) -> Result<(), ProgramError> {
-        ctx.accounts.verify_and_transfer(amount, &ctx.bumps, ctx.remaining_accounts())
+    pub fn execute_transfer(
+        ctx: CtxWithRemaining<ExecuteTransfer>,
+        amount: u64,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts
+            .verify_and_transfer(amount, &ctx.bumps, ctx.remaining_accounts())
     }
 }

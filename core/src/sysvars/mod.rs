@@ -1,9 +1,8 @@
 #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
 use core::hint::black_box;
-use solana_address::Address;
 #[cfg(any(target_os = "solana", target_arch = "bpf"))]
 use solana_define_syscall::definitions::sol_get_sysvar;
-use solana_program_error::ProgramError;
+use {solana_address::Address, solana_program_error::ProgramError};
 
 pub mod rent;
 

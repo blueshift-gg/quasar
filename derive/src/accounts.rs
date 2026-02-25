@@ -1,11 +1,12 @@
-use proc_macro::TokenStream;
-use quote::{format_ident, quote};
-use syn::{
-    parse::{Parse, ParseStream},
-    parse_macro_input, Data, DeriveInput, Expr, ExprArray, Fields, Ident, Token, Type,
+use {
+    crate::helpers::{is_signer_type, pascal_to_snake, seed_slice_expr_for_parse, strip_generics},
+    proc_macro::TokenStream,
+    quote::{format_ident, quote},
+    syn::{
+        parse::{Parse, ParseStream},
+        parse_macro_input, Data, DeriveInput, Expr, ExprArray, Fields, Ident, Token, Type,
+    },
 };
-
-use crate::helpers::{is_signer_type, pascal_to_snake, seed_slice_expr_for_parse, strip_generics};
 
 // --- Account field attribute parsing ---
 

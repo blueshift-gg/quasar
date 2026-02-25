@@ -11,10 +11,11 @@ mod utils;
 #[cfg(test)]
 mod tests;
 
-pub use constants::{ID, ID_BYTES};
-pub use errors::EscrowError;
-
 use utils::Context;
+pub use {
+    constants::{ID, ID_BYTES},
+    errors::EscrowError,
+};
 
 program_entrypoint!(process_instruction);
 no_allocator!();

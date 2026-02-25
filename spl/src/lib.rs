@@ -29,10 +29,11 @@
 
 mod token;
 
-use quasar_core::checks;
-use quasar_core::cpi::{CpiCall, InstructionAccount};
-use quasar_core::prelude::*;
-
+use quasar_core::{
+    checks,
+    cpi::{CpiCall, InstructionAccount},
+    prelude::*,
+};
 pub use token::TokenAccountState;
 
 /// SPL Token program address.

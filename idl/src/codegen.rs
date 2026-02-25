@@ -1,6 +1,4 @@
-use crate::parser::accounts::RawAccountField;
-use crate::parser::helpers;
-use crate::parser::ParsedProgram;
+use crate::parser::{accounts::RawAccountField, helpers, ParsedProgram};
 
 /// Generate Rust client source code from parsed program data.
 pub fn generate_client(parsed: &ParsedProgram) -> String {

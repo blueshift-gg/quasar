@@ -1,7 +1,4 @@
-use std::path::Path;
-
-use goblin::elf::Elf;
-use memmap2::Mmap;
+use {goblin::elf::Elf, memmap2::Mmap, std::path::Path};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DebugLevel {

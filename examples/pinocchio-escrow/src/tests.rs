@@ -1,14 +1,14 @@
 extern crate std;
 
-use std::vec;
-use std::vec::Vec;
-
-use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
-use solana_account::Account;
-use solana_address::Address;
-use solana_instruction::{AccountMeta, Instruction};
-use solana_program_pack::Pack;
-use spl_token_interface::state::Account as TokenAccount;
+use {
+    mollusk_svm::{program::keyed_account_for_system_program, Mollusk},
+    solana_account::Account,
+    solana_address::Address,
+    solana_instruction::{AccountMeta, Instruction},
+    solana_program_pack::Pack,
+    spl_token_interface::state::Account as TokenAccount,
+    std::{vec, vec::Vec},
+};
 
 fn program_id() -> Address {
     Address::new_from_array(crate::ID_BYTES)

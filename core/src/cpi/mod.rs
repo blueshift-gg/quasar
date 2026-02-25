@@ -1,12 +1,15 @@
 pub mod system;
 
-pub use solana_instruction_view::cpi::{Seed, Signer};
-pub use solana_instruction_view::InstructionAccount;
-
-use core::marker::PhantomData;
-use solana_account_view::{AccountView, RuntimeAccount};
-use solana_address::Address;
-use solana_program_error::{ProgramError, ProgramResult};
+pub use solana_instruction_view::{
+    cpi::{Seed, Signer},
+    InstructionAccount,
+};
+use {
+    core::marker::PhantomData,
+    solana_account_view::{AccountView, RuntimeAccount},
+    solana_address::Address,
+    solana_program_error::{ProgramError, ProgramResult},
+};
 
 // --- Raw CPI account (layout-compatible with CpiAccount, uses u8 flags) ---
 
