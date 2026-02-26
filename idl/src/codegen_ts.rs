@@ -18,22 +18,21 @@ pub fn generate_ts_client(idl: &Idl) -> String {
 
     // Build codec imports list
     let mut codec_imports: Vec<&str> = vec!["getStructCodec"];
-    let numeric_codecs = [
-        "getU8Codec",
-        "getU16Codec",
-        "getU32Codec",
-        "getU64Codec",
-        "getU128Codec",
-        "getI8Codec",
-        "getI16Codec",
-        "getI32Codec",
-        "getI64Codec",
-        "getI128Codec",
+    let integer_codec_map = [
+        ("u8", "getU8Codec"),
+        ("u16", "getU16Codec"),
+        ("u32", "getU32Codec"),
+        ("u64", "getU64Codec"),
+        ("u128", "getU128Codec"),
+        ("i8", "getI8Codec"),
+        ("i16", "getI16Codec"),
+        ("i32", "getI32Codec"),
+        ("i64", "getI64Codec"),
+        ("i128", "getI128Codec"),
     ];
-    for c in &numeric_codecs {
-        let key = c.trim_start_matches("get").trim_end_matches("Codec");
-        if used.contains(key) {
-            codec_imports.push(c);
+    for (used_type, codec) in integer_codec_map {
+        if used.contains(used_type) {
+            codec_imports.push(codec);
         }
     }
     if used.contains("bool") {
@@ -59,7 +58,6 @@ pub fn generate_ts_client(idl: &Idl) -> String {
 
     if has_dyn_vec {
         codec_imports.extend_from_slice(&[
-            "type FixedSizeCodec",
             "fixCodecSize",
             "getArrayCodec",
             "getU16Codec",
@@ -73,6 +71,9 @@ pub fn generate_ts_client(idl: &Idl) -> String {
         "import {{ {} }} from \"@solana/codecs\";\n",
         codec_imports.join(", ")
     ));
+    if has_dyn_vec {
+        out.push_str("import type { FixedSizeCodec } from \"@solana/codecs\";\n");
+    }
 
     out.push('\n');
 
@@ -506,23 +507,9 @@ fn collect_used_codecs(idl: &Idl) -> HashSet<String> {
     let mut used = HashSet::new();
 
     let mut visit = |ty: &IdlType| match ty {
-        IdlType::Primitive(p) => match p.as_str() {
-            "bool" => {
-                used.insert("bool".to_string());
-            }
-            "publicKey" => {
-                used.insert("publicKey".to_string());
-            }
-            other => {
-                // e.g. "u8" -> "U8", "u64" -> "U64"
-                let key = format!(
-                    "{}{}",
-                    other.chars().next().unwrap().to_uppercase(),
-                    &other[1..]
-                );
-                used.insert(key);
-            }
-        },
+        IdlType::Primitive(p) => {
+            used.insert(p.clone());
+        }
         IdlType::Defined { .. } => {}
         IdlType::DynString { .. } => {
             used.insert("dynString".to_string());
