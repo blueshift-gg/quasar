@@ -112,14 +112,14 @@ macro_rules! impl_single_owner {
     };
 }
 
+mod close;
 mod constants;
 mod cpi;
+mod init;
+mod interface;
 mod state;
 mod token;
 mod token_2022;
-mod interface;
-mod init;
-mod close;
 
 pub use close::TokenClose;
 pub use constants::{SPL_TOKEN_ID, TOKEN_2022_ID};
@@ -129,4 +129,3 @@ pub use interface::{InterfaceMintAccount, InterfaceTokenAccount, TokenInterface}
 pub use state::{MintAccountState, TokenAccountState};
 pub use token::{MintAccount, TokenAccount, TokenProgram};
 pub use token_2022::{Mint2022Account, Token2022Account, Token2022Program};
-

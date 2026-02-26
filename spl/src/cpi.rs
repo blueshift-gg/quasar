@@ -209,10 +209,7 @@ pub trait TokenCpi: AsAccountView {
 
     /// Sync the lamport balance of a native SOL token account.
     #[inline(always)]
-    fn sync_native<'a>(
-        &'a self,
-        token_account: &'a impl AsAccountView,
-    ) -> CpiCall<'a, 1, 1> {
+    fn sync_native<'a>(&'a self, token_account: &'a impl AsAccountView) -> CpiCall<'a, 1, 1> {
         let token_account = token_account.to_account_view();
 
         CpiCall::new(

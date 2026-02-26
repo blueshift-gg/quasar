@@ -3,6 +3,13 @@
 //! These tests are designed to FIND undefined behavior, not confirm correct
 //! output. Each test exercises a specific unsafe pattern under conditions
 //! that would trigger Miri if the pattern is unsound.
+#![allow(
+    clippy::manual_div_ceil,
+    clippy::useless_vec,
+    clippy::deref_addrof,
+    clippy::needless_range_loop,
+    clippy::borrow_deref_ref
+)]
 //!
 //! ## Run
 //!
@@ -155,9 +162,7 @@ impl MultiAccountBuffer {
         let total_bytes: usize = accounts
             .iter()
             .map(|entry| match entry {
-                MultiAccountEntry::Full {
-                    data_len, data, ..
-                } => {
+                MultiAccountEntry::Full { data_len, data, .. } => {
                     let raw_len = ACCOUNT_HEADER + data.as_ref().map_or(*data_len, |d| d.len());
                     (raw_len + 7) & !7
                 }
@@ -662,7 +667,14 @@ fn cpi_maybeuninit_multi_account() {
     let mut bufs: Vec<AccountBuffer> = (0..4)
         .map(|i| {
             let mut b = AccountBuffer::new(0);
-            b.init([i as u8; 32], [0u8; 32], i as u64, 0, i % 2 == 0, i % 2 == 1);
+            b.init(
+                [i as u8; 32],
+                [0u8; 32],
+                i as u64,
+                0,
+                i % 2 == 0,
+                i % 2 == 1,
+            );
             b
         })
         .collect();
@@ -958,9 +970,18 @@ fn event_copy_wider_struct_no_padding() {
 
     // If any of the 47 bytes were padding (uninitialized), Miri flags it.
     assert!(buf[..32].iter().all(|&b| b == 0xAA));
-    assert_eq!(u64::from_le_bytes(buf[32..40].try_into().unwrap()), u64::MAX);
-    assert_eq!(u32::from_le_bytes(buf[40..44].try_into().unwrap()), u32::MAX);
-    assert_eq!(u16::from_le_bytes(buf[44..46].try_into().unwrap()), u16::MAX);
+    assert_eq!(
+        u64::from_le_bytes(buf[32..40].try_into().unwrap()),
+        u64::MAX
+    );
+    assert_eq!(
+        u32::from_le_bytes(buf[40..44].try_into().unwrap()),
+        u32::MAX
+    );
+    assert_eq!(
+        u16::from_le_bytes(buf[44..46].try_into().unwrap()),
+        u16::MAX
+    );
     assert_eq!(buf[46], 1);
 }
 
@@ -1390,9 +1411,7 @@ fn boundary_pointer_subtraction_within_allocation() {
 
     // Write instruction data
     let ix_data_offset = ix_len_offset + size_of::<u64>();
-    let ix_data = unsafe {
-        std::slice::from_raw_parts(base.add(ix_data_offset), ix_data_len)
-    };
+    let ix_data = unsafe { std::slice::from_raw_parts(base.add(ix_data_offset), ix_data_len) };
 
     // Compute boundary the way Ctx::remaining_accounts() does:
     // boundary = data.as_ptr().sub(size_of::<u64>())
@@ -1528,14 +1547,7 @@ fn parse_simulation_dup_from_partially_initialized_buf() {
 fn duplicate_account_views_two_mut_refs_write() {
     // Create ONE RuntimeAccount buffer
     let mut buf = AccountBuffer::new(64);
-    buf.init(
-        [1u8; 32],
-        TEST_OWNER.to_bytes(),
-        1_000_000,
-        64,
-        true,
-        true,
-    );
+    buf.init([1u8; 32], TEST_OWNER.to_bytes(), 1_000_000, 64, true, true);
 
     // Create TWO AccountViews from the same buffer (simulating duplicates)
     let view_a = unsafe { buf.view() };
@@ -1703,8 +1715,7 @@ fn make_dyn_buffer_exact(name: &[u8], tags: &[[u8; 32]]) -> AccountBuffer {
     data[0] = 0x05;
     data[DYN_DISC_LEN..DYN_DISC_LEN + 32].copy_from_slice(&[0xAA; 32]);
     let name_len_offset = DYN_DISC_LEN + 32;
-    data[name_len_offset..name_len_offset + 2]
-        .copy_from_slice(&(name.len() as u16).to_le_bytes());
+    data[name_len_offset..name_len_offset + 2].copy_from_slice(&(name.len() as u16).to_le_bytes());
     let tags_count_offset = name_len_offset + 2;
     data[tags_count_offset..tags_count_offset + 2]
         .copy_from_slice(&(tags.len() as u16).to_le_bytes());
@@ -1871,7 +1882,8 @@ fn dynamic_setter_interleaved_shared_mut_shared() {
     // Shared read 2: see mut write 1
     {
         let data = unsafe { view.borrow_unchecked() };
-        let s = unsafe { core::str::from_utf8_unchecked(&data[DYN_HEADER_SIZE..DYN_HEADER_SIZE + 2]) };
+        let s =
+            unsafe { core::str::from_utf8_unchecked(&data[DYN_HEADER_SIZE..DYN_HEADER_SIZE + 2]) };
         assert_eq!(s, "XY");
     }
 
@@ -1911,7 +1923,14 @@ fn dynamic_memmove_1byte_grow_1byte_tail() {
     // provenance across the entire region.
     let data_len = DYN_HEADER_SIZE + 2; // 1 byte name + 1 byte "tail"
     let mut buf = AccountBuffer::new(data_len);
-    buf.init([1u8; 32], TEST_OWNER.to_bytes(), 1_000_000, data_len as u64, false, true);
+    buf.init(
+        [1u8; 32],
+        TEST_OWNER.to_bytes(),
+        1_000_000,
+        data_len as u64,
+        false,
+        true,
+    );
     let mut data = vec![0u8; data_len];
     data[0] = 0x05;
     data[DYN_DISC_LEN..DYN_DISC_LEN + 32].copy_from_slice(&[0xAA; 32]);
@@ -1952,7 +1971,14 @@ fn dynamic_memmove_1byte_shrink_overlapping() {
     // use a 2-byte tail so src [H+2..H+4] and dst [H+1..H+3] overlap by 1.
     let data_len = DYN_HEADER_SIZE + 4; // 2 byte name + 2 byte tail
     let mut buf = AccountBuffer::new(data_len);
-    buf.init([1u8; 32], TEST_OWNER.to_bytes(), 1_000_000, data_len as u64, false, true);
+    buf.init(
+        [1u8; 32],
+        TEST_OWNER.to_bytes(),
+        1_000_000,
+        data_len as u64,
+        false,
+        true,
+    );
     let mut data = vec![0u8; data_len];
     data[0] = 0x05;
     data[DYN_DISC_LEN..DYN_DISC_LEN + 32].copy_from_slice(&[0xAA; 32]);
@@ -2100,9 +2126,8 @@ fn dynamic_vec_mut_write_then_shared_read_aliasing() {
     {
         let data = unsafe { view.borrow_unchecked() };
         let offset = DYN_HEADER_SIZE;
-        let slice: &[Address] = unsafe {
-            core::slice::from_raw_parts(data[offset..].as_ptr() as *const Address, 1)
-        };
+        let slice: &[Address] =
+            unsafe { core::slice::from_raw_parts(data[offset..].as_ptr() as *const Address, 1) };
         assert_eq!(slice[0].as_array(), &[0xFF; 32]);
     }
 }

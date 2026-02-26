@@ -134,10 +134,7 @@ pub fn generate_ts_client(idl: &Idl) -> String {
     for type_def in &idl.types {
         let name = &type_def.name;
         let fields = &type_def.ty.fields;
-        out.push_str(&format!(
-            "export const {}Codec = getStructCodec([\n",
-            name
-        ));
+        out.push_str(&format!("export const {}Codec = getStructCodec([\n", name));
         for field in fields {
             out.push_str(&format!(
                 "  [\"{}\", {}],\n",
@@ -167,10 +164,7 @@ pub fn generate_ts_client(idl: &Idl) -> String {
                     event.name, event.name
                 ));
             } else {
-                out.push_str(&format!(
-                    "  | {{ type: ProgramEvent.{} }}",
-                    event.name
-                ));
+                out.push_str(&format!("  | {{ type: ProgramEvent.{} }}", event.name));
             }
             if i < idl.events.len() - 1 {
                 out.push('\n');
@@ -191,10 +185,7 @@ pub fn generate_ts_client(idl: &Idl) -> String {
         for (i, ix) in idl.instructions.iter().enumerate() {
             let pascal = snake_to_pascal(&ix.name);
             if ix.args.is_empty() {
-                out.push_str(&format!(
-                    "  | {{ type: ProgramInstruction.{} }}",
-                    pascal
-                ));
+                out.push_str(&format!("  | {{ type: ProgramInstruction.{} }}", pascal));
             } else {
                 out.push_str(&format!(
                     "  | {{ type: ProgramInstruction.{}; args: {}InstructionArgs }}",
@@ -223,10 +214,7 @@ pub fn generate_ts_client(idl: &Idl) -> String {
             "  decode{}(data: Uint8Array): {} {{\n",
             name, name
         ));
-        out.push_str(&format!(
-            "    const disc = {}_DISCRIMINATOR;\n",
-            const_name
-        ));
+        out.push_str(&format!("    const disc = {}_DISCRIMINATOR;\n", const_name));
         out.push_str("    for (let i = 0; i < disc.length; i++) {\n");
         out.push_str(&format!(
             "      if (data[i] !== disc[i]) throw new Error(\"Invalid {} discriminator\");\n",
@@ -246,10 +234,7 @@ pub fn generate_ts_client(idl: &Idl) -> String {
         out.push_str("  decodeEvent(data: Uint8Array): DecodedEvent | null {\n");
         for event in &idl.events {
             let has_type = idl.types.iter().any(|t| t.name == event.name);
-            let const_name = format!(
-                "{}_DISCRIMINATOR",
-                pascal_to_screaming_snake(&event.name)
-            );
+            let const_name = format!("{}_DISCRIMINATOR", pascal_to_screaming_snake(&event.name));
             out.push_str(&format!(
                 "    if (data.length >= {0}.length && {0}.every((b, i) => data[i] === b))\n",
                 const_name
@@ -325,8 +310,6 @@ pub fn generate_ts_client(idl: &Idl) -> String {
             .iter()
             .filter(|a| a.pda.is_none() && a.address.is_none())
             .collect();
-        let user_names: HashSet<&str> = user_accs.iter().map(|a| a.name.as_str()).collect();
-
         // Method signature — raw arguments
         out.push_str(&format!("  create{}Instruction(\n", pascal));
         for acc in &user_accs {
@@ -357,22 +340,14 @@ pub fn generate_ts_client(idl: &Idl) -> String {
                 for seed in &pda.seeds {
                     match seed {
                         IdlSeed::Const { value } => {
-                            let bytes: Vec<String> =
-                                value.iter().map(|b| b.to_string()).collect();
+                            let bytes: Vec<String> = value.iter().map(|b| b.to_string()).collect();
                             out.push_str(&format!(
                                 "        new Uint8Array([{}]),\n",
                                 bytes.join(", ")
                             ));
                         }
                         IdlSeed::Account { path } => {
-                            if user_names.contains(path.as_str()) {
-                                out.push_str(&format!(
-                                    "        {}.toBytes(),\n",
-                                    path
-                                ));
-                            } else {
-                                out.push_str(&format!("        {}.toBytes(),\n", path));
-                            }
+                            out.push_str(&format!("        {}.toBytes(),\n", path));
                         }
                     }
                 }
@@ -441,10 +416,7 @@ pub fn generate_ts_client(idl: &Idl) -> String {
                     ));
                 }
                 None => {
-                    out.push_str(&format!(
-                        "  {}: {{ name: \"{}\" }},\n",
-                        err.code, err.name
-                    ));
+                    out.push_str(&format!("  {}: {{ name: \"{}\" }},\n", err.code, err.name));
                 }
             }
         }
@@ -578,7 +550,6 @@ fn format_disc_array(disc: &[u8]) -> String {
     let bytes: Vec<String> = disc.iter().map(|b| b.to_string()).collect();
     format!("[{}]", bytes.join(", "))
 }
-
 
 const PUBLIC_KEY_CODEC_HELPER: &str = r#"function getPublicKeyCodec() {
   return {

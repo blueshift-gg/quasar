@@ -64,8 +64,7 @@ impl<'info> Withdraw<'info> {
             return Err(pinocchio::error::ProgramError::InsufficientFunds);
         }
         self.vault.set_lamports(vault_lamports - self.amount);
-        self.user
-            .set_lamports(self.user.lamports() + self.amount);
+        self.user.set_lamports(self.user.lamports() + self.amount);
         Ok(())
     }
 }

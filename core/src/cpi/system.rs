@@ -95,7 +95,13 @@ impl SystemProgram {
         space: u64,
         owner: &'a Address,
     ) -> CpiCall<'a, 2, 52> {
-        create_account(from.to_account_view(), to.to_account_view(), lamports, space, owner)
+        create_account(
+            from.to_account_view(),
+            to.to_account_view(),
+            lamports,
+            space,
+            owner,
+        )
     }
 
     #[inline(always)]
@@ -124,7 +130,13 @@ impl SystemProgram {
                 Rent::get()?.try_minimum_balance(space as usize)?
             }
         };
-        Ok(create_account(from.to_account_view(), to.to_account_view(), lamports, space, owner))
+        Ok(create_account(
+            from.to_account_view(),
+            to.to_account_view(),
+            lamports,
+            space,
+            owner,
+        ))
     }
 
     #[inline(always)]

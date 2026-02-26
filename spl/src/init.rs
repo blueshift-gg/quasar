@@ -2,8 +2,8 @@ use quasar_core::cpi::system::SYSTEM_PROGRAM_ID;
 use quasar_core::prelude::*;
 
 use crate::cpi::TokenCpi;
-use crate::interface::InterfaceTokenAccount;
 use crate::interface::InterfaceMintAccount;
+use crate::interface::InterfaceTokenAccount;
 use crate::state::{MintAccountState, TokenAccountState};
 use crate::token::{MintAccount, TokenAccount};
 use crate::token_2022::{Mint2022Account, Token2022Account};
@@ -51,7 +51,9 @@ pub trait InitToken: AsAccountView + Sized {
             )?
             .invoke()?;
 
-        token_program.initialize_account3(self, mint, owner).invoke()
+        token_program
+            .initialize_account3(self, mint, owner)
+            .invoke()
     }
 
     /// Create and initialize a token account if it doesn't already exist.

@@ -33,6 +33,10 @@ macro_rules! impl_token_close {
 }
 
 impl_token_close!(
-    TokenAccount, Token2022Account, InterfaceTokenAccount,
-    MintAccount, Mint2022Account, InterfaceMintAccount
+    TokenAccount,
+    Token2022Account,
+    InterfaceTokenAccount,
+    MintAccount,
+    Mint2022Account,
+    InterfaceMintAccount
 );

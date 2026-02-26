@@ -2,8 +2,8 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::DeriveInput;
 
-use crate::helpers::{map_to_pod_type, zc_serialize_field, DynKind};
 use super::accessors;
+use crate::helpers::{map_to_pod_type, zc_serialize_field, DynKind};
 
 pub(super) fn generate_dynamic_account(
     name: &syn::Ident,

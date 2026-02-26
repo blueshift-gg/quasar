@@ -222,8 +222,7 @@ pub(super) fn process_fields(
                         let ident = &ep.path.segments[0].ident;
                         if field_name_strings.contains(&ident.to_string()) {
                             let addr_field = format_ident!("__seed_{}_{}", field_name, ident);
-                            let capture_var =
-                                format_ident!("__seed_addr_{}_{}", field_name, ident);
+                            let capture_var = format_ident!("__seed_addr_{}_{}", field_name, ident);
 
                             seed_addr_captures.push(quote! {
                                 let #capture_var = *#ident.address();

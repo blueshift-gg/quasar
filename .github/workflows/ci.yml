@@ -1,0 +1,213 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+env:
+  SOLANA_VERSION: stable
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust_fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Get nightly toolchain version
+        id: nightly
+        run: echo "version=$(make nightly-version)" >> $GITHUB_OUTPUT
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.nightly.outputs.version }}
+          components: rustfmt
+      - name: Run format
+        run: make format
+
+  rust_clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-clippy-
+      - name: Get nightly toolchain version
+        id: nightly
+        run: echo "version=$(make nightly-version)" >> $GITHUB_OUTPUT
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.nightly.outputs.version }}
+          components: clippy
+      - name: Run clippy
+        run: make clippy
+
+  check_features:
+    name: Check Features
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-hack-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-hack-
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-hack
+      - name: Check all feature combinations
+        run: make check-features
+
+  cargo_test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Cache Solana tools
+        uses: actions/cache@v5
+        with:
+          path: ~/.local/share/solana
+          key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}
+      - name: Install Solana tools (cargo-build-sbf)
+        run: |
+          if [ ! -f "$HOME/.local/share/solana/install/active_release/bin/cargo-build-sbf" ]; then
+            sh -c "$(curl -sSfL https://release.anza.xyz/${{ env.SOLANA_VERSION }}/install)"
+          fi
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-test-
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build SBF programs
+        run: make build-sbf
+      - name: Test
+        run: make test
+
+  cu_benchmark:
+    name: CU Benchmark
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Cache Solana tools
+        uses: actions/cache@v5
+        with:
+          path: ~/.local/share/solana
+          key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}
+      - name: Install Solana tools
+        run: |
+          if [ ! -f "$HOME/.local/share/solana/install/active_release/bin/cargo-build-sbf" ]; then
+            sh -c "$(curl -sSfL https://release.anza.xyz/${{ env.SOLANA_VERSION }}/install)"
+          fi
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-bench-
+      - uses: dtolnay/rust-toolchain@stable
+
+      # --- Base branch CU ---
+      - name: Build & bench base
+        run: |
+          git checkout ${{ github.event.pull_request.base.sha }}
+          cargo build-sbf --manifest-path examples/vault/Cargo.toml
+          cargo test -p quasar-vault -- --nocapture 2>&1 | tee /tmp/base_output.txt
+          echo "DEPOSIT_BASE=$(grep 'DEPOSIT CU:' /tmp/base_output.txt | head -1 | grep -oE '[0-9]+')" >> $GITHUB_ENV
+          echo "WITHDRAW_BASE=$(grep 'WITHDRAW CU:' /tmp/base_output.txt | head -1 | grep -oE '[0-9]+')" >> $GITHUB_ENV
+          BASE_BIN=$(find target -name "quasar_vault.so" -path "*/deploy/*" | head -1)
+          echo "SIZE_BASE=$(wc -c < "$BASE_BIN" | tr -d ' ')" >> $GITHUB_ENV
+
+      # --- PR head CU ---
+      - name: Build & bench PR
+        run: |
+          git checkout ${{ github.event.pull_request.head.sha }}
+          cargo build-sbf --manifest-path examples/vault/Cargo.toml
+          cargo test -p quasar-vault -- --nocapture 2>&1 | tee /tmp/pr_output.txt
+          echo "DEPOSIT_PR=$(grep 'DEPOSIT CU:' /tmp/pr_output.txt | head -1 | grep -oE '[0-9]+')" >> $GITHUB_ENV
+          echo "WITHDRAW_PR=$(grep 'WITHDRAW CU:' /tmp/pr_output.txt | head -1 | grep -oE '[0-9]+')" >> $GITHUB_ENV
+          PR_BIN=$(find target -name "quasar_vault.so" -path "*/deploy/*" | head -1)
+          echo "SIZE_PR=$(wc -c < "$PR_BIN" | tr -d ' ')" >> $GITHUB_ENV
+
+      # --- Post comment ---
+      - name: Post CU benchmark comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const deposit_base = parseInt(process.env.DEPOSIT_BASE) || 0;
+            const deposit_pr = parseInt(process.env.DEPOSIT_PR) || 0;
+            const withdraw_base = parseInt(process.env.WITHDRAW_BASE) || 0;
+            const withdraw_pr = parseInt(process.env.WITHDRAW_PR) || 0;
+            const size_base = parseInt(process.env.SIZE_BASE) || 0;
+            const size_pr = parseInt(process.env.SIZE_PR) || 0;
+
+            function delta(base, pr) {
+              const d = pr - base;
+              if (d === 0) return '0 ⚪';
+              return d > 0 ? `+${d} 🔴` : `${d} 🟢`;
+            }
+
+            function fmtNum(n) {
+              return n.toLocaleString('en-US');
+            }
+
+            const body = `## ⚡ CU Benchmark (Vault)
+
+            | Instruction | Base | PR | Delta |
+            |-------------|------|-----|-------|
+            | Deposit | ${fmtNum(deposit_base)} | ${fmtNum(deposit_pr)} | ${delta(deposit_base, deposit_pr)} |
+            | Withdraw | ${fmtNum(withdraw_base)} | ${fmtNum(withdraw_pr)} | ${delta(withdraw_base, withdraw_pr)} |
+
+            **Binary size**: ${fmtNum(size_pr)} bytes (${delta(size_base, size_pr)} bytes)`.replace(/^            /gm, '');
+
+            // Find and replace existing CU comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes('CU Benchmark (Vault)'));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

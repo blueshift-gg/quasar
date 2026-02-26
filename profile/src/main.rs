@@ -37,9 +37,8 @@ fn main() {
         match args[i].as_str() {
             "-o" | "--output" => {
                 i += 1;
-                output_path = PathBuf::from(
-                    args.get(i).expect("-o requires an output path argument"),
-                );
+                output_path =
+                    PathBuf::from(args.get(i).expect("-o requires an output path argument"));
             }
             "--folded" => mode = OutputMode::Folded,
             "--text" => mode = OutputMode::Text,

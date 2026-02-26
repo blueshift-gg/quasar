@@ -402,8 +402,7 @@ fn test_make_existing_token_accounts() {
 
     let maker = Address::new_unique();
     let maker_account = Account::new(1_000_000_000, 0, &system_program);
-    let (escrow, _) =
-        Address::find_program_address(&[b"escrow", maker.as_ref()], &crate::ID);
+    let (escrow, _) = Address::find_program_address(&[b"escrow", maker.as_ref()], &crate::ID);
     let escrow_account = Account::default();
 
     let mint_a = Address::new_unique();
@@ -492,7 +491,10 @@ fn test_make_existing_token_accounts() {
         "make with existing token accounts failed: {:?}",
         result.program_result
     );
-    std::println!("  make with existing token accounts: OK (CU: {})", result.compute_units_consumed);
+    std::println!(
+        "  make with existing token accounts: OK (CU: {})",
+        result.compute_units_consumed
+    );
 }
 
 #[test]
@@ -504,8 +506,7 @@ fn test_make_existing_maker_ta_b_wrong_mint() {
 
     let maker = Address::new_unique();
     let maker_account = Account::new(1_000_000_000, 0, &system_program);
-    let (escrow, _) =
-        Address::find_program_address(&[b"escrow", maker.as_ref()], &crate::ID);
+    let (escrow, _) = Address::find_program_address(&[b"escrow", maker.as_ref()], &crate::ID);
     let escrow_account = Account::default();
 
     let mint_a = Address::new_unique();
@@ -606,8 +607,7 @@ fn test_make_existing_maker_ta_b_wrong_owner() {
 
     let maker = Address::new_unique();
     let maker_account = Account::new(1_000_000_000, 0, &system_program);
-    let (escrow, _) =
-        Address::find_program_address(&[b"escrow", maker.as_ref()], &crate::ID);
+    let (escrow, _) = Address::find_program_address(&[b"escrow", maker.as_ref()], &crate::ID);
     let escrow_account = Account::default();
 
     let mint_a = Address::new_unique();
@@ -819,7 +819,10 @@ fn test_take_existing_token_accounts() {
         "take with existing token accounts failed: {:?}",
         result.program_result
     );
-    std::println!("  take with existing token accounts: OK (CU: {})", result.compute_units_consumed);
+    std::println!(
+        "  take with existing token accounts: OK (CU: {})",
+        result.compute_units_consumed
+    );
 }
 
 #[test]
@@ -906,5 +909,8 @@ fn test_refund_existing_maker_ta_a() {
         "refund with existing maker_ta_a failed: {:?}",
         result.program_result
     );
-    std::println!("  refund with existing maker_ta_a: OK (CU: {})", result.compute_units_consumed);
+    std::println!(
+        "  refund with existing maker_ta_a: OK (CU: {})",
+        result.compute_units_consumed
+    );
 }

@@ -52,8 +52,8 @@ impl<'a> DwarfResolver<'a> {
         })
         .expect("failed to load DWARF sections");
 
-        let ctx = addr2line::Context::from_dwarf(dwarf)
-            .expect("failed to create addr2line context");
+        let ctx =
+            addr2line::Context::from_dwarf(dwarf).expect("failed to create addr2line context");
 
         Self { ctx }
     }
@@ -76,7 +76,10 @@ impl<'a> DwarfResolver<'a> {
                     let name = match &frame.function {
                         Some(f) => match f.demangle() {
                             Ok(cow) => cow.into_owned(),
-                            Err(_) => f.raw_name().map(|n| n.to_string()).unwrap_or_else(|_| "[unknown]".into()),
+                            Err(_) => f
+                                .raw_name()
+                                .map(|n| n.to_string())
+                                .unwrap_or_else(|_| "[unknown]".into()),
                         },
                         None => "[unknown]".into(),
                     };
@@ -112,9 +115,7 @@ impl SymbolResolver {
     }
 
     pub fn resolve(&self, addr: u64) -> Vec<String> {
-        let idx = self
-            .symbols
-            .partition_point(|&(start, _, _)| start <= addr);
+        let idx = self.symbols.partition_point(|&(start, _, _)| start <= addr);
 
         if idx > 0 {
             let (start, size, ref name) = self.symbols[idx - 1];

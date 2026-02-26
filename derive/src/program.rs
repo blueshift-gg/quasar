@@ -3,8 +3,8 @@ use quote::{format_ident, quote};
 use syn::{parse_macro_input, FnArg, Ident, Item, ItemMod, Pat, Type};
 
 use crate::helpers::{
-    extract_generic_inner_type, is_dynamic_string, pascal_to_snake, snake_to_pascal,
-    parse_discriminator_bytes, InstructionArgs,
+    extract_generic_inner_type, is_dynamic_string, parse_discriminator_bytes, pascal_to_snake,
+    snake_to_pascal, InstructionArgs,
 };
 
 /// Extracts the inner type `T` from a `Ctx<T>` or `CtxWithRemaining<T>` first parameter.

@@ -14,7 +14,12 @@ fn setup() -> Mollusk {
     Mollusk::new(&program_id(), "../../target/deploy/pinocchio_vault")
 }
 
-fn deposit_instruction(user: Address, vault: Address, system_program: Address, amount: u64) -> Instruction {
+fn deposit_instruction(
+    user: Address,
+    vault: Address,
+    system_program: Address,
+    amount: u64,
+) -> Instruction {
     let accounts = std::vec![
         AccountMeta::new(user, true),
         AccountMeta::new(vault, false),
@@ -30,10 +35,7 @@ fn deposit_instruction(user: Address, vault: Address, system_program: Address, a
 }
 
 fn withdraw_instruction(user: Address, vault: Address, amount: u64) -> Instruction {
-    let accounts = std::vec![
-        AccountMeta::new(user, true),
-        AccountMeta::new(vault, false),
-    ];
+    let accounts = std::vec![AccountMeta::new(user, true), AccountMeta::new(vault, false),];
     let mut data = std::vec![1u8];
     data.extend_from_slice(&amount.to_le_bytes());
     Instruction {

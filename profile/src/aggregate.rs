@@ -48,7 +48,7 @@ pub fn profile(mmap: &[u8], info: &ElfInfo, resolver: &Resolver) -> ProfileResul
 
     // Build sorted function CU table
     let mut function_cus: Vec<_> = leaf_counts.into_iter().collect();
-    function_cus.sort_by(|a, b| b.1.cmp(&a.1));
+    function_cus.sort_by_key(|b| std::cmp::Reverse(b.1));
 
     ProfileResult {
         folded_stacks: folded,

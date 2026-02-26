@@ -11,12 +11,7 @@ pub fn write_svg(folded: &str, path: &Path, program_name: &str) {
     opts.min_width = 2.1;
 
     let mut buf = Vec::new();
-    inferno::flamegraph::from_reader(
-        &mut opts,
-        folded.as_bytes(),
-        &mut buf,
-    )
-    .unwrap_or_else(|e| {
+    inferno::flamegraph::from_reader(&mut opts, folded.as_bytes(), &mut buf).unwrap_or_else(|e| {
         eprintln!("Error: failed to generate flame graph: {}", e);
         std::process::exit(1);
     });
@@ -42,7 +37,10 @@ pub fn print_summary(result: &ProfileResult) {
     }
 
     if result.function_cus.len() > top_n {
-        eprintln!("  ... and {} more functions", result.function_cus.len() - top_n);
+        eprintln!(
+            "  ... and {} more functions",
+            result.function_cus.len() - top_n
+        );
     }
 
     eprintln!();

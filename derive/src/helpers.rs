@@ -197,8 +197,7 @@ pub(crate) fn is_dynamic_string(ty: &Type, expect_lifetime: bool) -> Option<usiz
             if seg.ident == "String" {
                 if let PathArguments::AngleBracketed(args) = &seg.arguments {
                     let mut iter = args.args.iter();
-                    if expect_lifetime
-                        && !matches!(iter.next(), Some(GenericArgument::Lifetime(_)))
+                    if expect_lifetime && !matches!(iter.next(), Some(GenericArgument::Lifetime(_)))
                     {
                         return None;
                     }
@@ -224,8 +223,7 @@ pub(crate) fn is_dynamic_vec(ty: &Type, expect_lifetime: bool) -> Option<(Type, 
             if seg.ident == "Vec" {
                 if let PathArguments::AngleBracketed(args) = &seg.arguments {
                     let mut iter = args.args.iter();
-                    if expect_lifetime
-                        && !matches!(iter.next(), Some(GenericArgument::Lifetime(_)))
+                    if expect_lifetime && !matches!(iter.next(), Some(GenericArgument::Lifetime(_)))
                     {
                         return None;
                     }

@@ -51,8 +51,7 @@ fn build_config_data(
     data[tail_start..tail_start + label.len()].copy_from_slice(label.as_bytes());
     let signers_start = tail_start + label.len();
     for (i, signer) in signers.iter().enumerate() {
-        data[signers_start + i * 32..signers_start + (i + 1) * 32]
-            .copy_from_slice(signer.as_ref());
+        data[signers_start + i * 32..signers_start + (i + 1) * 32].copy_from_slice(signer.as_ref());
     }
 
     data
@@ -130,7 +129,11 @@ fn test_create() {
 
     // Verify signers_end (offset: disc(1) + creator(32) + threshold(1) + bump(1) + label_end(2) = 37)
     let signers_end = u16::from_le_bytes([config_data[37], config_data[38]]);
-    assert_eq!(signers_end, 3 * 32, "signers_end should be 96 bytes (3 addresses)");
+    assert_eq!(
+        signers_end,
+        3 * 32,
+        "signers_end should be 96 bytes (3 addresses)"
+    );
 
     std::println!("\n========================================");
     std::println!("  CREATE CU: {}", result.compute_units_consumed);
@@ -277,8 +280,7 @@ fn test_execute_transfer() {
 
     let (config, config_bump) =
         Address::find_program_address(&[b"multisig", creator.as_ref()], &crate::ID);
-    let config_data =
-        build_config_data(creator, 2, config_bump, "", &[signer1, signer2, signer3]);
+    let config_data = build_config_data(creator, 2, config_bump, "", &[signer1, signer2, signer3]);
     let config_account = Account {
         lamports: 1_000_000,
         data: config_data,
@@ -366,8 +368,7 @@ fn test_execute_transfer_insufficient_signers() {
 
     let (config, config_bump) =
         Address::find_program_address(&[b"multisig", creator.as_ref()], &crate::ID);
-    let config_data =
-        build_config_data(creator, 2, config_bump, "", &[signer1, signer2, signer3]);
+    let config_data = build_config_data(creator, 2, config_bump, "", &[signer1, signer2, signer3]);
     let config_account = Account {
         lamports: 1_000_000,
         data: config_data,

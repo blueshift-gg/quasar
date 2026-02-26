@@ -5,8 +5,8 @@ use solana_address::Address;
 use solana_define_syscall::definitions::sol_get_sysvar;
 use solana_program_error::ProgramError;
 
-pub mod rent;
 pub mod clock;
+pub mod rent;
 
 const OFFSET_LENGTH_EXCEEDS_SYSVAR: u64 = 1;
 const SYSVAR_NOT_FOUND: u64 = 2;

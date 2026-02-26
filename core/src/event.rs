@@ -25,9 +25,5 @@ pub fn emit_event_cpi(
         data: instruction_data,
     };
 
-    solana_instruction_view::cpi::invoke_signed::<1>(
-        &instruction,
-        &[event_authority],
-        &[signer],
-    )
+    solana_instruction_view::cpi::invoke_signed::<1>(&instruction, &[event_authority], &[signer])
 }

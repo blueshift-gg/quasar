@@ -136,10 +136,7 @@ macro_rules! heap_alloc {
             #[cfg(any(target_os = "solana", target_arch = "bpf"))]
             #[global_allocator]
             static A: BumpAllocator = unsafe {
-                BumpAllocator::new_unchecked(
-                    HEAP_START_ADDRESS as usize,
-                    MAX_HEAP_LENGTH as usize,
-                )
+                BumpAllocator::new_unchecked(HEAP_START_ADDRESS as usize, MAX_HEAP_LENGTH as usize)
             };
 
             #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
