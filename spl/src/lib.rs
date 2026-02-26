@@ -35,23 +35,33 @@ use quasar_core::prelude::*;
 
 pub use token::TokenAccountState;
 
-/// SPL Token program address.
-pub const SPL_TOKEN_ID: Address = Address::new_from_array([
+const SPL_TOKEN_BYTES: [u8; 32] = [
     6, 221, 246, 225, 215, 101, 161, 147, 217, 203, 225, 70, 206, 235, 121, 172, 28, 180, 133, 237,
     95, 91, 55, 145, 58, 140, 245, 133, 126, 255, 0, 169,
-]);
+];
 
-/// Token-2022 program address (reserved for future use).
-pub const TOKEN_2022_ID: Address = Address::new_from_array([
+const TOKEN_2022_BYTES: [u8; 32] = [
     6, 221, 246, 225, 238, 130, 236, 193, 200, 168, 65, 2, 106, 93, 64, 59, 117, 155, 197, 130,
     200, 159, 250, 31, 239, 205, 35, 168, 238, 94, 220, 87,
-]);
+];
+
+/// SPL Token program address.
+#[cfg(target_arch = "bpf")]
+pub static SPL_TOKEN_ID: Address = Address::new_from_array(SPL_TOKEN_BYTES);
+#[cfg(not(target_arch = "bpf"))]
+pub const SPL_TOKEN_ID: Address = Address::new_from_array(SPL_TOKEN_BYTES);
+
+/// Token-2022 program address (reserved for future use).
+#[cfg(target_arch = "bpf")]
+pub static TOKEN_2022_ID: Address = Address::new_from_array(TOKEN_2022_BYTES);
+#[cfg(not(target_arch = "bpf"))]
+pub const TOKEN_2022_ID: Address = Address::new_from_array(TOKEN_2022_BYTES);
 
 // TODO: Support Token-2022 — needs multi-address check in define_account! or custom from_account_view
 quasar_core::define_account!(pub struct TokenProgram => [checks::Executable, checks::Address]);
 
 impl Program for TokenProgram {
-    const ID: Address = SPL_TOKEN_ID;
+    const ID: Address = Address::new_from_array(SPL_TOKEN_BYTES);
 }
 
 /// SPL Token account type with zero-copy access to [`TokenAccountState`].
@@ -61,7 +71,7 @@ impl AccountCheck for TokenAccount {}
 
 impl Owner for TokenAccount {
     // TODO: Only validates SPL Token owner. Token-2022 accounts will fail owner check.
-    const OWNER: Address = SPL_TOKEN_ID;
+    const OWNER: Address = Address::new_from_array(SPL_TOKEN_BYTES);
 }
 
 impl ZeroCopyDeref for TokenAccount {
