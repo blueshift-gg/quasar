@@ -1,5 +1,7 @@
+pub mod buf;
 pub mod system;
 
+pub use buf::BufCpiCall;
 pub use solana_instruction_view::cpi::{Seed, Signer};
 pub use solana_instruction_view::InstructionAccount;
 
@@ -161,5 +163,11 @@ impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
         } else {
             Err(ProgramError::from(result))
         }
+    }
+
+    /// Returns the serialized instruction data.
+    #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
+    pub fn instruction_data(&self) -> &[u8] {
+        &self.data
     }
 }

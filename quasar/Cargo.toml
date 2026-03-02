@@ -10,6 +10,7 @@ authors.workspace = true
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(target_os, values("solana"))',
+    'cfg(feature, values("metadata"))',
 ] }
 
 [dependencies]
@@ -23,4 +24,5 @@ optional = true
 [features]
 default = ["spl"]
 spl = ["dep:quasar-spl"]
+metadata = ["spl", "quasar-spl/metadata"]
 alloc = ["quasar-core/alloc"]

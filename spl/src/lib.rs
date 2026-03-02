@@ -118,6 +118,8 @@ mod constants;
 mod cpi;
 mod init;
 mod interface;
+#[cfg(feature = "metadata")]
+pub mod metadata;
 mod state;
 mod token;
 mod token_2022;

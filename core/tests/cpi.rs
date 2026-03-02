@@ -3,7 +3,7 @@ use std::mem::size_of;
 use quasar_core::__internal::{
     AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED,
 };
-use quasar_core::cpi::system;
+use quasar_core::cpi::{system, BufCpiCall, InstructionAccount};
 use solana_address::Address;
 
 // ---------------------------------------------------------------------------
@@ -220,4 +220,150 @@ fn assign_type_is_cpi_call_1_36() {
 
     let owner = Address::new_from_array([5u8; 32]);
     let _: quasar_core::cpi::CpiCall<'_, 1, 36> = system::assign(&acct, &owner);
+}
+
+// ---------------------------------------------------------------------------
+// BufCpiCall — construction, assertion, invoke
+// ---------------------------------------------------------------------------
+
+#[test]
+fn buf_cpi_call_constructs_with_valid_data_len() {
+    let mut buf = AccountBuffer::new(0);
+    buf.init([1u8; 32], [0u8; 32], 0, 0, false, false);
+    let view = unsafe { buf.view() };
+
+    let program_id = Address::new_from_array([99u8; 32]);
+    let _: BufCpiCall<'_, 1, 16> = BufCpiCall::new(
+        &program_id,
+        [InstructionAccount::readonly(view.address())],
+        [&view],
+        [0u8; 16],
+        10,
+    );
+}
+
+#[test]
+fn buf_cpi_call_data_len_zero() {
+    let mut buf = AccountBuffer::new(0);
+    buf.init([1u8; 32], [0u8; 32], 0, 0, false, false);
+    let view = unsafe { buf.view() };
+
+    let program_id = Address::new_from_array([99u8; 32]);
+    let cpi = BufCpiCall::<1, 8>::new(
+        &program_id,
+        [InstructionAccount::readonly(view.address())],
+        [&view],
+        [0u8; 8],
+        0,
+    );
+    assert!(cpi.invoke().is_ok());
+}
+
+#[test]
+fn buf_cpi_call_data_len_at_max() {
+    let mut buf = AccountBuffer::new(0);
+    buf.init([1u8; 32], [0u8; 32], 0, 0, false, false);
+    let view = unsafe { buf.view() };
+
+    let program_id = Address::new_from_array([99u8; 32]);
+    let cpi = BufCpiCall::<1, 32>::new(
+        &program_id,
+        [InstructionAccount::readonly(view.address())],
+        [&view],
+        [0xAA; 32],
+        32,
+    );
+    assert!(cpi.invoke().is_ok());
+}
+
+#[test]
+#[should_panic(expected = "BufCpiCall: data_len exceeds buffer capacity")]
+fn buf_cpi_call_panics_when_data_len_exceeds_max() {
+    let mut buf = AccountBuffer::new(0);
+    buf.init([1u8; 32], [0u8; 32], 0, 0, false, false);
+    let view = unsafe { buf.view() };
+
+    let program_id = Address::new_from_array([99u8; 32]);
+    let _ = BufCpiCall::<1, 8>::new(
+        &program_id,
+        [InstructionAccount::readonly(view.address())],
+        [&view],
+        [0u8; 8],
+        9,
+    );
+}
+
+#[test]
+fn buf_cpi_call_invoke_returns_ok() {
+    let mut buf = AccountBuffer::new(0);
+    buf.init([1u8; 32], [0u8; 32], 0, 0, true, true);
+    let view = unsafe { buf.view() };
+
+    let program_id = Address::new_from_array([99u8; 32]);
+    let cpi = BufCpiCall::<1, 16>::new(
+        &program_id,
+        [InstructionAccount::writable_signer(view.address())],
+        [&view],
+        [0u8; 16],
+        4,
+    );
+    assert!(cpi.invoke().is_ok());
+}
+
+#[test]
+fn buf_cpi_call_invoke_signed_empty_seeds() {
+    let mut buf = AccountBuffer::new(0);
+    buf.init([1u8; 32], [0u8; 32], 0, 0, true, true);
+    let view = unsafe { buf.view() };
+
+    let program_id = Address::new_from_array([99u8; 32]);
+    let cpi = BufCpiCall::<1, 16>::new(
+        &program_id,
+        [InstructionAccount::writable_signer(view.address())],
+        [&view],
+        [0u8; 16],
+        4,
+    );
+    assert!(cpi.invoke_signed(&[]).is_ok());
+}
+
+#[test]
+fn buf_cpi_call_invoke_with_signers_empty() {
+    let mut buf = AccountBuffer::new(0);
+    buf.init([1u8; 32], [0u8; 32], 0, 0, true, true);
+    let view = unsafe { buf.view() };
+
+    let program_id = Address::new_from_array([99u8; 32]);
+    let cpi = BufCpiCall::<1, 16>::new(
+        &program_id,
+        [InstructionAccount::writable_signer(view.address())],
+        [&view],
+        [0u8; 16],
+        4,
+    );
+    assert!(cpi.invoke_with_signers(&[]).is_ok());
+}
+
+#[test]
+fn buf_cpi_call_multiple_accounts() {
+    let mut buf1 = AccountBuffer::new(0);
+    buf1.init([1u8; 32], [0u8; 32], 1000, 0, true, true);
+    let view1 = unsafe { buf1.view() };
+
+    let mut buf2 = AccountBuffer::new(0);
+    buf2.init([2u8; 32], [0u8; 32], 0, 0, false, true);
+    let view2 = unsafe { buf2.view() };
+
+    let program_id = Address::new_from_array([99u8; 32]);
+    let cpi = BufCpiCall::<2, 64>::new(
+        &program_id,
+        [
+            InstructionAccount::writable_signer(view1.address()),
+            InstructionAccount::writable(view2.address()),
+        ],
+        [&view1, &view2],
+        [0u8; 64],
+        20,
+    );
+    assert!(cpi.invoke().is_ok());
 }

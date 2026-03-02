@@ -22,6 +22,12 @@ pub(super) enum AccountDirective {
     AssociatedTokenTokenProgram(Ident),
     Realloc(Expr),
     ReallocPayer(Ident),
+    MetadataName(Expr),
+    MetadataSymbol(Expr),
+    MetadataUri(Expr),
+    MetadataSellerFeeBasisPoints(Expr),
+    MetadataIsMutable(Expr),
+    MasterEditionMaxSupply(Expr),
 }
 
 impl Parse for AccountDirective {
@@ -164,6 +170,39 @@ impl Parse for AccountDirective {
                     )),
                 }
             }
+            "metadata" => {
+                input.parse::<Token![::]>()?;
+                let sub_key: Ident = input.parse()?;
+                let _: Token![=] = input.parse()?;
+                match sub_key.to_string().as_str() {
+                    "name" => Ok(Self::MetadataName(input.parse()?)),
+                    "symbol" => Ok(Self::MetadataSymbol(input.parse()?)),
+                    "uri" => Ok(Self::MetadataUri(input.parse()?)),
+                    "seller_fee_basis_points" => {
+                        Ok(Self::MetadataSellerFeeBasisPoints(input.parse()?))
+                    }
+                    "is_mutable" => Ok(Self::MetadataIsMutable(input.parse()?)),
+                    _ => Err(syn::Error::new(
+                        sub_key.span(),
+                        format!("unknown metadata attribute: `metadata::{}`", sub_key),
+                    )),
+                }
+            }
+            "master_edition" => {
+                input.parse::<Token![::]>()?;
+                let sub_key: Ident = input.parse()?;
+                let _: Token![=] = input.parse()?;
+                match sub_key.to_string().as_str() {
+                    "max_supply" => Ok(Self::MasterEditionMaxSupply(input.parse()?)),
+                    _ => Err(syn::Error::new(
+                        sub_key.span(),
+                        format!(
+                            "unknown master_edition attribute: `master_edition::{}`",
+                            sub_key
+                        ),
+                    )),
+                }
+            }
             _ => Err(syn::Error::new(
                 key.span(),
                 format!("unknown account attribute: `{}`", key),
@@ -191,6 +230,12 @@ pub(super) struct AccountFieldAttrs {
     pub associated_token_token_program: Option<Ident>,
     pub realloc: Option<Expr>,
     pub realloc_payer: Option<Ident>,
+    pub metadata_name: Option<Expr>,
+    pub metadata_symbol: Option<Expr>,
+    pub metadata_uri: Option<Expr>,
+    pub metadata_seller_fee_basis_points: Option<Expr>,
+    pub metadata_is_mutable: Option<Expr>,
+    pub master_edition_max_supply: Option<Expr>,
 }
 
 impl Parse for AccountFieldAttrs {
@@ -214,6 +259,12 @@ impl Parse for AccountFieldAttrs {
         let mut associated_token_token_program = None;
         let mut realloc = None;
         let mut realloc_payer = None;
+        let mut metadata_name = None;
+        let mut metadata_symbol = None;
+        let mut metadata_uri = None;
+        let mut metadata_seller_fee_basis_points = None;
+        let mut metadata_is_mutable = None;
+        let mut master_edition_max_supply = None;
         for d in directives {
             match d {
                 AccountDirective::Mut => is_mut = true,
@@ -238,6 +289,16 @@ impl Parse for AccountFieldAttrs {
                 }
                 AccountDirective::Realloc(expr) => realloc = Some(expr),
                 AccountDirective::ReallocPayer(ident) => realloc_payer = Some(ident),
+                AccountDirective::MetadataName(expr) => metadata_name = Some(expr),
+                AccountDirective::MetadataSymbol(expr) => metadata_symbol = Some(expr),
+                AccountDirective::MetadataUri(expr) => metadata_uri = Some(expr),
+                AccountDirective::MetadataSellerFeeBasisPoints(expr) => {
+                    metadata_seller_fee_basis_points = Some(expr)
+                }
+                AccountDirective::MetadataIsMutable(expr) => metadata_is_mutable = Some(expr),
+                AccountDirective::MasterEditionMaxSupply(expr) => {
+                    master_edition_max_supply = Some(expr)
+                }
             }
         }
         Ok(Self {
@@ -259,6 +320,12 @@ impl Parse for AccountFieldAttrs {
             associated_token_token_program,
             realloc,
             realloc_payer,
+            metadata_name,
+            metadata_symbol,
+            metadata_uri,
+            metadata_seller_fee_basis_points,
+            metadata_is_mutable,
+            master_edition_max_supply,
         })
     }
 }
@@ -288,5 +355,11 @@ pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<AccountFieldA
         associated_token_token_program: None,
         realloc: None,
         realloc_payer: None,
+        metadata_name: None,
+        metadata_symbol: None,
+        metadata_uri: None,
+        metadata_seller_fee_basis_points: None,
+        metadata_is_mutable: None,
+        master_edition_max_supply: None,
     })
 }

@@ -1831,6 +1831,7 @@ version = "0.1.0"
 dependencies = [
  "quasar-core",
  "solana-address 2.2.0",
+ "solana-program-error",
 ]
 
 [[package]]
