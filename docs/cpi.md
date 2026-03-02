@@ -72,6 +72,53 @@ fn invoke_inner(&self, signers: &[Signer]) -> ProgramResult {
 }
 ```
 
+## `BufCpiCall<const ACCTS, const MAX>`
+
+A variant of `CpiCall` for instructions with variable-length serialized data. Where `CpiCall<ACCTS, DATA>` uses a compile-time-exact `DATA` size, `BufCpiCall<ACCTS, MAX>` allocates a stack buffer of `MAX` bytes but tracks the actual data length at runtime:
+
+```rust
+pub struct BufCpiCall<'a, const ACCTS: usize, const MAX: usize> {
+    program_id: &'a Address,
+    accounts: [InstructionAccount<'a>; ACCTS],
+    cpi_accounts: [RawCpiAccount<'a>; ACCTS],
+    data: [u8; MAX],
+    data_len: usize,  // runtime-tracked, passed to syscall
+}
+```
+
+### When to Use
+
+Use `BufCpiCall` when the instruction data contains variable-length fields -- Borsh strings, optional vectors, or any data whose byte count depends on runtime arguments. The Metaplex Token Metadata CPI uses `BufCpiCall` because name, symbol, and URI are variable-length strings.
+
+Use `CpiCall` when the instruction data is fixed-size (all fields have known byte counts at compile time). Most SPL Token instructions fall into this category.
+
+### Construction and Invocation
+
+```rust
+BufCpiCall::new(program_id, accounts, views, data, data_len)
+```
+
+`data_len` must be `<= MAX` -- the constructor panics otherwise.
+
+Invocation is identical to `CpiCall`:
+
+```rust
+buf_cpi_call.invoke()?;
+buf_cpi_call.invoke_signed(&seeds)?;
+buf_cpi_call.invoke_with_signers(&[signer1, signer2])?;
+```
+
+The only difference from `CpiCall` is that `invoke_inner` passes `data_len` (not `MAX`) to `sol_invoke_signed_c`, so only the active bytes are sent to the target program.
+
+### Test Helpers
+
+On non-SBF targets (tests, native builds), two inspection methods are available:
+
+```rust
+let data: &[u8] = buf_cpi_call.instruction_data();      // active bytes only
+let len: usize = buf_cpi_call.instruction_data_len();
+```
+
 ## `RawCpiAccount` Layout
 
 Each CPI account is represented as a 56-byte `#[repr(C)]` struct. The layout is verified at compile time:
