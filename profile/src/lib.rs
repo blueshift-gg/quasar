@@ -4,15 +4,19 @@ mod elf;
 mod output;
 mod walk;
 
-use std::{collections::HashSet, fs::{self, File} , io::{self, copy}};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::{
+    collections::HashSet,
+    fs::{self, File},
+    io::{self, copy},
+};
 
 use elf::DebugLevel;
 use memmap2::Mmap;
 use toml::Value;
 
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 
 const PROFILER_BASE_URL: &str = "https://quasar-profiler.blueshift.gg";
 
@@ -88,15 +92,14 @@ pub fn run(command: ProfileCommand) {
         PathBuf::from(name)
     });
 
-
     let result = aggregate::profile(&mmap, &info, &resolver);
 
     output::print_summary(&result);
-    
+
     let binary_hash = sha256_file(&elf_path).unwrap_or_else(|e| {
         eprintln!("Error: failed to hash {}: {}", elf_path.display(), e);
         std::process::exit(1);
-    }); 
+    });
 
     output::write_json(
         &result,
@@ -104,7 +107,7 @@ pub fn run(command: ProfileCommand) {
         program_name,
         &version,
         binary_size,
-        &binary_hash
+        &binary_hash,
     );
     eprintln!("Profile JSON written to: {}", output_path.display());
 
@@ -120,7 +123,6 @@ pub fn run(command: ProfileCommand) {
     } else {
         eprintln!("--no-gist enabled; no profiler URL generated");
     }
-    
 }
 
 fn resolve_program_version(elf_path: &std::path::Path, program_name: &str) -> String {
