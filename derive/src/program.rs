@@ -320,9 +320,7 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
-    module
-        .attrs
-        .push(syn::parse_quote!(#[allow(dead_code)]));
+    module.attrs.push(syn::parse_quote!(#[allow(dead_code)]));
 
     quote! {
         #program_type
