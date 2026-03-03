@@ -552,35 +552,48 @@ self.metadata_program.create_master_edition_v3(
 
 ### Derive Attributes
 
-The `#[derive(Accounts)]` macro supports `metadata::*` and `master_edition::*` attributes for declarative metadata/edition initialization:
+The `#[derive(Accounts)]` macro supports `mint::*`, `metadata::*`, and `master_edition::*` attributes for declarative mint + metadata initialization. All attributes go on the **mint** field:
 
 ```rust
 #[derive(Accounts)]
 pub struct CreateNft<'info> {
     pub payer: &'info mut Signer,
     pub mint_authority: &'info Signer,
-    pub mint: &'info Account<Mint>,
     #[account(
         init,
-        payer = payer,
+        mint::decimals = 0,
+        mint::authority = mint_authority,
         metadata::name = b"My NFT",
         metadata::symbol = b"MNFT",
         metadata::uri = b"https://example.com/nft.json",
         metadata::seller_fee_basis_points = 500,
         metadata::is_mutable = true,
-    )]
-    pub metadata: &'info mut Initialize<MetadataAccount>,
-    #[account(
-        init,
-        payer = payer,
         master_edition::max_supply = 0,
     )]
-    pub master_edition: &'info mut Initialize<MasterEditionAccount>,
+    pub mint: &'info mut Account<Mint>,
+    pub metadata: &'info mut UncheckedAccount,
+    pub master_edition: &'info mut UncheckedAccount,
     pub metadata_program: &'info MetadataProgram,
     pub token_program: &'info TokenProgram,
     pub system_program: &'info SystemProgram,
+    pub rent: &'info UncheckedAccount,
 }
 ```
+
+The generated code:
+1. Creates the mint account (SystemProgram `create_account` + TokenProgram `InitializeMint2`)
+2. CPIs into Metaplex `create_metadata_accounts_v3` to create the metadata PDA
+3. CPIs into Metaplex `create_master_edition_v3` to create the edition PDA (if `master_edition::max_supply` is present)
+
+Metadata and master edition accounts are `UncheckedAccount` because they are created by the Metaplex CPI — they don't exist at parse time.
+
+**`mint::*` attributes** (required for mint initialization):
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `mint::decimals` | `Expr` | Token decimals (0 for NFTs) |
+| `mint::authority` | `Ident` | Field name of the mint authority signer |
+| `mint::freeze_authority` | `Ident` | (Optional) Field name of the freeze authority |
 
 **`metadata::*` attributes** (all required if any is present):
 
@@ -599,10 +612,13 @@ pub struct CreateNft<'info> {
 | `master_edition::max_supply` | `Expr` | Maximum editions (0 = unique 1/1) |
 
 Requirements:
-- `metadata::*` requires `init` or `init_if_needed`
+- `mint::decimals` requires `mint::authority`
+- `metadata::*` requires `init` or `init_if_needed` and `mint::decimals`
 - `metadata::name`, `metadata::symbol`, and `metadata::uri` must all be present if any is
 - `master_edition::max_supply` requires both `init` and all `metadata::*` attributes
-- The struct must include `MetadataProgram`, `mint_authority` (or `authority`), `payer`, and `SystemProgram` fields
+- The struct must include `MetadataProgram`, `mint_authority` (or `authority`), `payer`, `TokenProgram`, `SystemProgram`, and `rent` fields
+- The struct must include a `metadata` field (`UncheckedAccount`) for metadata CPI
+- The struct must include a `master_edition` or `edition` field (`UncheckedAccount`) for master edition CPI
 
 ### Init Traits
 

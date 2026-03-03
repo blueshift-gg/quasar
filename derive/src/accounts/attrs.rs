@@ -28,6 +28,9 @@ pub(super) enum AccountDirective {
     MetadataSellerFeeBasisPoints(Expr),
     MetadataIsMutable(Expr),
     MasterEditionMaxSupply(Expr),
+    MintDecimals(Expr),
+    MintInitAuthority(Ident),
+    MintFreezeAuthority(Ident),
 }
 
 impl Parse for AccountDirective {
@@ -142,6 +145,26 @@ impl Parse for AccountDirective {
                     )),
                 }
             }
+            "mint" => {
+                input.parse::<Token![::]>()?;
+                let sub_key: Ident = input.parse()?;
+                let _: Token![=] = input.parse()?;
+                match sub_key.to_string().as_str() {
+                    "decimals" => Ok(Self::MintDecimals(input.parse()?)),
+                    "authority" => {
+                        let ident: Ident = input.parse()?;
+                        Ok(Self::MintInitAuthority(ident))
+                    }
+                    "freeze_authority" => {
+                        let ident: Ident = input.parse()?;
+                        Ok(Self::MintFreezeAuthority(ident))
+                    }
+                    _ => Err(syn::Error::new(
+                        sub_key.span(),
+                        format!("unknown mint attribute: `mint::{}`", sub_key),
+                    )),
+                }
+            }
             "associated_token" => {
                 input.parse::<Token![::]>()?;
                 let sub_key: Ident = input.parse()?;
@@ -236,6 +259,9 @@ pub(super) struct AccountFieldAttrs {
     pub metadata_seller_fee_basis_points: Option<Expr>,
     pub metadata_is_mutable: Option<Expr>,
     pub master_edition_max_supply: Option<Expr>,
+    pub mint_decimals: Option<Expr>,
+    pub mint_init_authority: Option<Ident>,
+    pub mint_freeze_authority: Option<Ident>,
 }
 
 impl Parse for AccountFieldAttrs {
@@ -265,6 +291,9 @@ impl Parse for AccountFieldAttrs {
         let mut metadata_seller_fee_basis_points = None;
         let mut metadata_is_mutable = None;
         let mut master_edition_max_supply = None;
+        let mut mint_decimals = None;
+        let mut mint_init_authority = None;
+        let mut mint_freeze_authority = None;
         for d in directives {
             match d {
                 AccountDirective::Mut => is_mut = true,
@@ -299,6 +328,9 @@ impl Parse for AccountFieldAttrs {
                 AccountDirective::MasterEditionMaxSupply(expr) => {
                     master_edition_max_supply = Some(expr)
                 }
+                AccountDirective::MintDecimals(expr) => mint_decimals = Some(expr),
+                AccountDirective::MintInitAuthority(ident) => mint_init_authority = Some(ident),
+                AccountDirective::MintFreezeAuthority(ident) => mint_freeze_authority = Some(ident),
             }
         }
         Ok(Self {
@@ -326,6 +358,9 @@ impl Parse for AccountFieldAttrs {
             metadata_seller_fee_basis_points,
             metadata_is_mutable,
             master_edition_max_supply,
+            mint_decimals,
+            mint_init_authority,
+            mint_freeze_authority,
         })
     }
 }
@@ -361,5 +396,8 @@ pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<AccountFieldA
         metadata_seller_fee_basis_points: None,
         metadata_is_mutable: None,
         master_edition_max_supply: None,
+        mint_decimals: None,
+        mint_init_authority: None,
+        mint_freeze_authority: None,
     })
 }

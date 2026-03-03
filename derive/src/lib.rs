@@ -43,7 +43,7 @@ mod program;
 /// - A `parse()` method that validates all constraints and returns the parsed struct
 /// - A `Bumps` companion struct containing PDA bump seeds
 /// - `AccountCount` implementation for dispatch buffer sizing
-#[proc_macro_derive(Accounts, attributes(account))]
+#[proc_macro_derive(Accounts, attributes(account, instruction))]
 pub fn derive_accounts(input: TokenStream) -> TokenStream {
     accounts::derive_accounts(input)
 }

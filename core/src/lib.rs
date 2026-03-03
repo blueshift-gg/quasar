@@ -82,6 +82,8 @@ pub mod remaining;
 pub mod return_data;
 /// Core framework traits.
 pub mod traits;
+/// Borsh-compatible serialization primitives for CPI instruction data.
+pub mod borsh;
 /// Utility functions
 pub mod utils;
 

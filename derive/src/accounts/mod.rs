@@ -7,8 +7,8 @@ use quote::{format_ident, quote};
 use syn::{parse::ParseStream, parse_macro_input, Data, DeriveInput, Fields, Ident, Token, Type};
 
 use crate::helpers::{
-    is_composite_type, is_dynamic_string, is_dynamic_vec, map_to_pod_type, strip_generics,
-    zc_deserialize_expr, DynKind,
+    is_composite_type, is_dynamic_string, is_dynamic_vec, is_str_ref, map_to_pod_type,
+    strip_generics, zc_deserialize_expr, DynKind,
 };
 
 struct InstructionArg {
@@ -443,9 +443,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
 /// Fixed types are read via a zero-copy `#[repr(C)]` struct pointer cast.
 /// Dynamic strings are read from a variable-length tail region using
 /// PodU16 length descriptors in the ZC header.
-fn generate_instruction_arg_extraction(
-    ix_args: &[InstructionArg],
-) -> proc_macro2::TokenStream {
+fn generate_instruction_arg_extraction(ix_args: &[InstructionArg]) -> proc_macro2::TokenStream {
     if ix_args.is_empty() {
         return quote! {};
     }
@@ -455,6 +453,8 @@ fn generate_instruction_arg_extraction(
         .map(|arg| {
             if let Some(max) = is_dynamic_string(&arg.ty, false) {
                 DynKind::Str { max }
+            } else if is_str_ref(&arg.ty) {
+                DynKind::StrRef
             } else if let Some((elem, max)) = is_dynamic_vec(&arg.ty, false) {
                 DynKind::Vec {
                     elem: Box::new(elem),
@@ -481,6 +481,11 @@ fn generate_instruction_arg_extraction(
                 let len_name = format_ident!("{}_len", ix_args[i].name);
                 zc_field_names.push(len_name);
                 zc_field_types.push(quote! { quasar_core::pod::PodU16 });
+            }
+            DynKind::StrRef => {
+                let len_name = format_ident!("{}_len", ix_args[i].name);
+                zc_field_names.push(len_name);
+                zc_field_types.push(quote! { u8 });
             }
             DynKind::Vec { .. } => {
                 let count_name = format_ident!("{}_count", ix_args[i].name);
@@ -563,6 +568,26 @@ fn generate_instruction_arg_extraction(
                         if __ix_dyn_len > #max_lit {
                             return Err(ProgramError::InvalidInstructionData);
                         }
+                    });
+                    stmts.push(quote! {
+                        if __ix_tail.len() < __ix_offset + __ix_dyn_len {
+                            return Err(ProgramError::InvalidInstructionData);
+                        }
+                    });
+                    stmts.push(quote! {
+                        let #name: &[u8] = &__ix_tail[__ix_offset..__ix_offset + __ix_dyn_len];
+                    });
+                    if dyn_idx < dyn_count {
+                        stmts.push(quote! {
+                            __ix_offset += __ix_dyn_len;
+                        });
+                    }
+                }
+                DynKind::StrRef => {
+                    dyn_idx += 1;
+                    let len_name = format_ident!("{}_len", name);
+                    stmts.push(quote! {
+                        let __ix_dyn_len = __ix_zc.#len_name as usize;
                     });
                     stmts.push(quote! {
                         if __ix_tail.len() < __ix_offset + __ix_dyn_len {

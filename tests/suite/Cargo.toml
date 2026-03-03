@@ -1,0 +1,22 @@
+[package]
+name = "quasar-test-suite"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dev-dependencies]
+quasar-core = { path = "../../core" }
+quasar-test-misc = { path = "../programs/test-misc", features = ["client"] }
+quasar-test-pda = { path = "../programs/test-pda" }
+quasar-test-sysvar = { path = "../programs/test-sysvar" }
+quasar-test-events = { path = "../programs/test-events" }
+quasar-test-errors = { path = "../programs/test-errors" }
+quasar-test-token-cpi = { path = "../programs/test-token-cpi" }
+quasar-spl = { path = "../../spl", features = ["metadata"] }
+mollusk-svm = "0.10.3"
+mollusk-svm-programs-token = { version = "0.10.3", features = ["associated-token"] }
+spl-token-interface = "2.0.0"
+solana-program-pack = "3.1.0"
+solana-account = "3.4"
+solana-address = { version = "2.2", features = ["decode"] }
+solana-instruction = { version = "3.2", features = ["bincode"] }

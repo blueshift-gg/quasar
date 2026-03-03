@@ -110,6 +110,9 @@ struct DetectedFields<'a> {
     // Authorities (by name, since these are just Signers)
     mint_authority: Option<&'a Ident>,
     update_authority: Option<&'a Ident>,
+
+    // Rent sysvar (needed by metadata/master_edition CPI)
+    rent: Option<&'a Ident>,
 }
 
 impl<'a> DetectedFields<'a> {
@@ -154,6 +157,8 @@ impl<'a> DetectedFields<'a> {
             .or_else(|| find_field_by_name(fields, "authority"));
         let update_authority = find_field_by_name(fields, "update_authority").or(mint_authority);
 
+        let rent = find_field_by_name(fields, "rent");
+
         DetectedFields {
             system_program,
             token_program,
@@ -165,13 +170,11 @@ impl<'a> DetectedFields<'a> {
             realloc_payer,
             mint_authority,
             update_authority,
+            rent,
         }
     }
 
-    fn require(
-        field: Option<&'a Ident>,
-        msg: &str,
-    ) -> Result<&'a Ident, proc_macro::TokenStream> {
+    fn require(field: Option<&'a Ident>, msg: &str) -> Result<&'a Ident, proc_macro::TokenStream> {
         field.ok_or_else(|| {
             syn::Error::new(proc_macro2::Span::call_site(), msg)
                 .to_compile_error()
@@ -199,6 +202,9 @@ pub(super) fn process_fields(
     let has_any_ata_init = field_attrs
         .iter()
         .any(|a| (a.is_init || a.init_if_needed) && a.associated_token_mint.is_some());
+    let has_any_mint_init = field_attrs
+        .iter()
+        .any(|a| (a.is_init || a.init_if_needed) && a.mint_decimals.is_some());
     let has_any_realloc = field_attrs.iter().any(|a| a.realloc.is_some());
     let has_any_metadata_init = field_attrs
         .iter()
@@ -240,15 +246,18 @@ pub(super) fn process_fields(
         None
     };
 
-    let token_program_field =
-        if has_any_token_init || has_any_ata_init || has_any_master_edition_init {
-            Some(DetectedFields::require(
+    let token_program_field = if has_any_token_init
+        || has_any_ata_init
+        || has_any_mint_init
+        || has_any_master_edition_init
+    {
+        Some(DetectedFields::require(
                 detected.token_program,
-                "token/ATA/master_edition init requires a token program field (TokenProgram, Token2022Program, or TokenInterface)",
+                "token/ATA/mint/master_edition init requires a token program field (TokenProgram, Token2022Program, or TokenInterface)",
             )?)
-        } else {
-            None
-        };
+    } else {
+        None
+    };
 
     let ata_program_field = if has_any_ata_init {
         Some(DetectedFields::require(
@@ -260,18 +269,25 @@ pub(super) fn process_fields(
     };
 
     let metadata_account_field = if has_any_metadata_init {
+        let field = detected
+            .metadata_account
+            .or_else(|| find_field_by_name(fields, "metadata"));
         Some(DetectedFields::require(
-            detected.metadata_account,
-            "`metadata::*` requires a field of type `Account<MetadataAccount>`",
+            field,
+            "`metadata::*` requires a field of type `Account<MetadataAccount>` or a field named `metadata`",
         )?)
     } else {
         None
     };
 
     let master_edition_account_field = if has_any_master_edition_init {
+        let field = detected
+            .master_edition_account
+            .or_else(|| find_field_by_name(fields, "master_edition"))
+            .or_else(|| find_field_by_name(fields, "edition"));
         Some(DetectedFields::require(
-            detected.master_edition_account,
-            "`master_edition::*` requires a field of type `Account<MasterEditionAccount>`",
+            field,
+            "`master_edition::*` requires a field of type `Account<MasterEditionAccount>` or a field named `master_edition`/`edition`",
         )?)
     } else {
         None
@@ -297,6 +313,15 @@ pub(super) fn process_fields(
 
     let update_authority_field = if has_any_metadata_init || has_any_master_edition_init {
         Some(detected.update_authority.unwrap())
+    } else {
+        None
+    };
+
+    let rent_field = if has_any_metadata_init || has_any_master_edition_init {
+        Some(DetectedFields::require(
+            detected.rent,
+            "`metadata::*` / `master_edition::*` requires a `rent` field (UncheckedAccount for the Rent sysvar)",
+        )?)
     } else {
         None
     };
@@ -911,13 +936,84 @@ pub(super) fn process_fields(
                         }
                     });
                 }
+            } else if attrs.mint_decimals.is_some() {
+                // Mint init: create_account (token program owner) + initialize_mint2
+                let tok_field = token_program_field.unwrap();
+                let decimals_expr = attrs.mint_decimals.as_ref().unwrap();
+                let auth_field = match attrs.mint_init_authority.as_ref() {
+                    Some(f) => f,
+                    None => {
+                        return Err(syn::Error::new_spanned(
+                            field_name,
+                            "`mint::decimals` requires `mint::authority = <field>`",
+                        )
+                        .to_compile_error()
+                        .into());
+                    }
+                };
+                let freeze_expr = if let Some(freeze_field) = &attrs.mint_freeze_authority {
+                    quote! { Some(#freeze_field.address()) }
+                } else {
+                    quote! { None }
+                };
+
+                if attrs.init_if_needed {
+                    init_blocks.push(quote! {
+                        {
+                            if quasar_core::is_system_program(unsafe { #field_name.owner() }) {
+                                let __init_lamports = __shared_rent.try_minimum_balance(
+                                    quasar_spl::MintAccountState::LEN
+                                )?;
+                                let __init_cpi = quasar_core::cpi::system::create_account(
+                                    #pay_field, #field_name, __init_lamports,
+                                    quasar_spl::MintAccountState::LEN as u64,
+                                    #tok_field.address(),
+                                );
+                                #invoke_expr
+                                quasar_spl::initialize_mint2(
+                                    #tok_field, #field_name,
+                                    (#decimals_expr) as u8,
+                                    #auth_field.address(),
+                                    #freeze_expr,
+                                ).invoke()?;
+                            } else {
+                                quasar_spl::validate_mint(
+                                    #field_name, #auth_field.address(),
+                                )?;
+                            }
+                        }
+                    });
+                } else {
+                    init_blocks.push(quote! {
+                        {
+                            if !quasar_core::is_system_program(unsafe { #field_name.owner() }) {
+                                return Err(ProgramError::AccountAlreadyInitialized);
+                            }
+                            let __init_lamports = __shared_rent.try_minimum_balance(
+                                quasar_spl::MintAccountState::LEN
+                            )?;
+                            let __init_cpi = quasar_core::cpi::system::create_account(
+                                #pay_field, #field_name, __init_lamports,
+                                quasar_spl::MintAccountState::LEN as u64,
+                                #tok_field.address(),
+                            );
+                            #invoke_expr
+                            quasar_spl::initialize_mint2(
+                                #tok_field, #field_name,
+                                (#decimals_expr) as u8,
+                                #auth_field.address(),
+                                #freeze_expr,
+                            ).invoke()?;
+                        }
+                    });
+                }
             } else {
                 // Program account init — extract inner type for Space + Discriminator
                 let inner_type = extract_account_inner_type(effective_ty);
                 if inner_type.is_none() {
                     return Err(syn::Error::new_spanned(
                         field_name,
-                        "#[account(init)] on non-Account<T> type requires `token::mint` and `token::authority` or `associated_token::mint` and `associated_token::authority`",
+                        "#[account(init)] on non-Account<T> type requires `token::mint` and `token::authority`, `associated_token::mint` and `associated_token::authority`, or `mint::decimals` and `mint::authority`",
                     )
                     .to_compile_error()
                     .into());
@@ -1019,62 +1115,66 @@ pub(super) fn process_fields(
 
         // --- Metadata init CPI generation ---
 
-        if is_init_field && attrs.metadata_name.is_some() {
-            let meta_name = attrs.metadata_name.as_ref().unwrap();
-            let meta_symbol = attrs.metadata_symbol.as_ref().unwrap();
-            let meta_uri = attrs.metadata_uri.as_ref().unwrap();
-            let seller_fee = attrs
-                .metadata_seller_fee_basis_points
-                .as_ref()
-                .map(|e| quote! { (#e) as u16 })
-                .unwrap_or(quote! { 0u16 });
-            let is_mutable = attrs
-                .metadata_is_mutable
-                .as_ref()
-                .map(|e| quote! { #e })
-                .unwrap_or(quote! { false });
+        if is_init_field {
+            if let Some(meta_name) = attrs.metadata_name.as_ref() {
+                let meta_symbol = attrs.metadata_symbol.as_ref().unwrap();
+                let meta_uri = attrs.metadata_uri.as_ref().unwrap();
+                let seller_fee = attrs
+                    .metadata_seller_fee_basis_points
+                    .as_ref()
+                    .map(|e| quote! { (#e) as u16 })
+                    .unwrap_or(quote! { 0u16 });
+                let is_mutable = attrs
+                    .metadata_is_mutable
+                    .as_ref()
+                    .map(|e| quote! { #e })
+                    .unwrap_or(quote! { false });
 
-            let meta_field = metadata_account_field.unwrap();
-            let meta_prog = metadata_program_field.unwrap();
-            let mint_auth = mint_authority_field.unwrap();
-            let update_auth = update_authority_field.unwrap();
-            let pay = payer_field.unwrap();
-            let sys = _system_program_field.unwrap();
+                let meta_field = metadata_account_field.unwrap();
+                let meta_prog = metadata_program_field.unwrap();
+                let mint_auth = mint_authority_field.unwrap();
+                let update_auth = update_authority_field.unwrap();
+                let pay = payer_field.unwrap();
+                let sys = _system_program_field.unwrap();
+                let rent = rent_field.unwrap();
 
-            init_blocks.push(quote! {
-                {
-                    quasar_spl::metadata::MetadataCpi::create_metadata_accounts_v3(
-                        #meta_prog, #meta_field, #field_name, #mint_auth,
-                        #pay, #update_auth, #sys,
-                        #meta_name, #meta_symbol, #meta_uri,
-                        #seller_fee, #is_mutable, true,
-                    ).invoke()?;
-                }
-            });
-        }
+                init_blocks.push(quote! {
+                    {
+                        quasar_spl::metadata::MetadataCpi::create_metadata_accounts_v3(
+                            #meta_prog, #meta_field, #field_name, #mint_auth,
+                            #pay, #update_auth, #sys, #rent,
+                            quasar_core::borsh::BorshString::new(#meta_name),
+                            quasar_core::borsh::BorshString::new(#meta_symbol),
+                            quasar_core::borsh::BorshString::new(#meta_uri),
+                            #seller_fee, #is_mutable, true,
+                        ).invoke()?;
+                    }
+                });
+            }
 
-        // --- Master Edition init CPI generation ---
+            // --- Master Edition init CPI generation ---
 
-        if is_init_field && attrs.master_edition_max_supply.is_some() {
-            let max_supply = attrs.master_edition_max_supply.as_ref().unwrap();
-            let me_field = master_edition_account_field.unwrap();
-            let meta_field = metadata_account_field.unwrap();
-            let meta_prog = metadata_program_field.unwrap();
-            let mint_auth = mint_authority_field.unwrap();
-            let update_auth = update_authority_field.unwrap();
-            let pay = payer_field.unwrap();
-            let tok = token_program_field.unwrap();
-            let sys = _system_program_field.unwrap();
+            if let Some(max_supply) = attrs.master_edition_max_supply.as_ref() {
+                let me_field = master_edition_account_field.unwrap();
+                let meta_field = metadata_account_field.unwrap();
+                let meta_prog = metadata_program_field.unwrap();
+                let mint_auth = mint_authority_field.unwrap();
+                let update_auth = update_authority_field.unwrap();
+                let pay = payer_field.unwrap();
+                let tok = token_program_field.unwrap();
+                let sys = _system_program_field.unwrap();
+                let rent = rent_field.unwrap();
 
-            init_blocks.push(quote! {
-                {
-                    quasar_spl::metadata::MetadataCpi::create_master_edition_v3(
-                        #meta_prog, #me_field, #field_name, #update_auth,
-                        #mint_auth, #pay, #meta_field, #tok, #sys,
-                        Some(#max_supply as u64),
-                    ).invoke()?;
-                }
-            });
+                init_blocks.push(quote! {
+                    {
+                        quasar_spl::metadata::MetadataCpi::create_master_edition_v3(
+                            #meta_prog, #me_field, #field_name, #update_auth,
+                            #mint_auth, #pay, #meta_field, #tok, #sys, #rent,
+                            Some(#max_supply as u64),
+                        ).invoke()?;
+                    }
+                });
+            }
         }
     }
 

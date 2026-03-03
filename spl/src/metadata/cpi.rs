@@ -1,3 +1,4 @@
+use quasar_core::borsh::BorshString;
 use quasar_core::cpi::{BufCpiCall, CpiCall, InstructionAccount};
 use quasar_core::prelude::*;
 
@@ -7,8 +8,8 @@ const MAX_SYMBOL_LEN: usize = 10;
 const MAX_URI_LEN: usize = 200;
 
 const RENT_SYSVAR: Address = Address::new_from_array([
-    6, 167, 213, 23, 24, 199, 116, 201, 40, 86, 99, 152, 105, 29, 94, 182, 139, 94, 184, 163,
-    155, 75, 109, 92, 115, 85, 91, 33, 0, 0, 0, 0,
+    6, 167, 213, 23, 25, 44, 92, 81, 33, 140, 201, 76, 61, 74, 241, 127, 88, 218, 238, 8, 155,
+    161, 253, 68, 227, 219, 217, 138, 0, 0, 0, 0,
 ]);
 
 // Metaplex Token Metadata instruction discriminators (Borsh enum variant index).
@@ -58,9 +59,10 @@ pub trait MetadataCpi: AsAccountView {
         payer: &'a impl AsAccountView,
         update_authority: &'a impl AsAccountView,
         system_program: &'a impl AsAccountView,
-        name: &[u8],
-        symbol: &[u8],
-        uri: &[u8],
+        rent: &'a impl AsAccountView,
+        name: BorshString<'_>,
+        symbol: BorshString<'_>,
+        uri: BorshString<'_>,
         seller_fee_basis_points: u16,
         is_mutable: bool,
         update_authority_is_signer: bool,
@@ -71,25 +73,26 @@ pub trait MetadataCpi: AsAccountView {
         let payer = payer.to_account_view();
         let update_authority = update_authority.to_account_view();
         let system_program = system_program.to_account_view();
+        let rent = rent.to_account_view();
 
         assert!(
-            name.len() <= MAX_NAME_LEN
-                && symbol.len() <= MAX_SYMBOL_LEN
-                && uri.len() <= MAX_URI_LEN,
+            name.0.len() <= MAX_NAME_LEN
+                && symbol.0.len() <= MAX_SYMBOL_LEN
+                && uri.0.len() <= MAX_URI_LEN,
             "metadata field lengths exceed Metaplex limits (name={}, symbol={}, uri={})",
-            name.len(),
-            symbol.len(),
-            uri.len(),
+            name.0.len(),
+            symbol.0.len(),
+            uri.0.len(),
         );
 
-        // Borsh-serialize: discriminator + DataV2 + is_mutable + update_authority_is_signer + collection_details
+        // Borsh-serialize: discriminator + DataV2 + is_mutable + collection_details
         // DataV2 = name(String) + symbol(String) + uri(String) + seller_fee(u16) + creators(Option<Vec>) + collection(Option) + uses(Option)
         let mut data = [0u8; 512];
         let mut offset = 0;
 
         // SAFETY: All writes are within the 512-byte buffer. The assert above
         // enforces name<=32, symbol<=10, uri<=200, so max variable data =
-        // 12 (len prefixes) + 242 (bytes) + 9 (fixed fields) + 1 (disc) = 264.
+        // 12 (len prefixes) + 242 (bytes) + 8 (fixed fields) + 1 (disc) = 263.
         unsafe {
             let ptr = data.as_mut_ptr();
 
@@ -97,26 +100,10 @@ pub trait MetadataCpi: AsAccountView {
             core::ptr::write(ptr, CREATE_METADATA_ACCOUNTS_V3);
             offset += 1;
 
-            // DataV2.name (Borsh string: u32 LE length + bytes)
-            let name_len = name.len() as u32;
-            core::ptr::copy_nonoverlapping(name_len.to_le_bytes().as_ptr(), ptr.add(offset), 4);
-            offset += 4;
-            core::ptr::copy_nonoverlapping(name.as_ptr(), ptr.add(offset), name.len());
-            offset += name.len();
-
-            // DataV2.symbol
-            let symbol_len = symbol.len() as u32;
-            core::ptr::copy_nonoverlapping(symbol_len.to_le_bytes().as_ptr(), ptr.add(offset), 4);
-            offset += 4;
-            core::ptr::copy_nonoverlapping(symbol.as_ptr(), ptr.add(offset), symbol.len());
-            offset += symbol.len();
-
-            // DataV2.uri
-            let uri_len = uri.len() as u32;
-            core::ptr::copy_nonoverlapping(uri_len.to_le_bytes().as_ptr(), ptr.add(offset), 4);
-            offset += 4;
-            core::ptr::copy_nonoverlapping(uri.as_ptr(), ptr.add(offset), uri.len());
-            offset += uri.len();
+            // DataV2.name, symbol, uri (Borsh strings: u32 LE length + bytes)
+            offset = name.write_to(ptr, offset);
+            offset = symbol.write_to(ptr, offset);
+            offset = uri.write_to(ptr, offset);
 
             // DataV2.seller_fee_basis_points
             core::ptr::copy_nonoverlapping(
@@ -142,10 +129,6 @@ pub trait MetadataCpi: AsAccountView {
             core::ptr::write(ptr.add(offset), is_mutable as u8);
             offset += 1;
 
-            // update_authority_is_signer
-            core::ptr::write(ptr.add(offset), update_authority_is_signer as u8);
-            offset += 1;
-
             // collection_details: Option<CollectionDetails> = None
             core::ptr::write(ptr.add(offset), 0u8);
             offset += 1;
@@ -158,7 +141,11 @@ pub trait MetadataCpi: AsAccountView {
                 InstructionAccount::readonly(mint.address()),
                 InstructionAccount::readonly_signer(mint_authority.address()),
                 InstructionAccount::writable_signer(payer.address()),
-                InstructionAccount::readonly(update_authority.address()),
+                if update_authority_is_signer {
+                    InstructionAccount::readonly_signer(update_authority.address())
+                } else {
+                    InstructionAccount::readonly(update_authority.address())
+                },
                 InstructionAccount::readonly(system_program.address()),
                 InstructionAccount::readonly(&RENT_SYSVAR),
             ],
@@ -169,10 +156,7 @@ pub trait MetadataCpi: AsAccountView {
                 payer,
                 update_authority,
                 system_program,
-                // Rent sysvar placeholder — the SVM resolves CPI accounts by
-                // matching InstructionAccount addresses against the transaction's
-                // account list, so the AccountView here is unused.
-                system_program,
+                rent,
             ],
             data,
             offset,
@@ -189,9 +173,9 @@ pub trait MetadataCpi: AsAccountView {
         metadata: &'a impl AsAccountView,
         update_authority: &'a impl AsAccountView,
         new_update_authority: Option<&Address>,
-        name: Option<&[u8]>,
-        symbol: Option<&[u8]>,
-        uri: Option<&[u8]>,
+        name: Option<BorshString<'_>>,
+        symbol: Option<BorshString<'_>>,
+        uri: Option<BorshString<'_>>,
         seller_fee_basis_points: Option<u16>,
         primary_sale_happened: Option<bool>,
         is_mutable: Option<bool>,
@@ -199,14 +183,29 @@ pub trait MetadataCpi: AsAccountView {
         let metadata = metadata.to_account_view();
         let update_authority = update_authority.to_account_view();
 
-        if let Some(n) = name {
-            assert!(n.len() <= MAX_NAME_LEN, "name length {} exceeds max {}", n.len(), MAX_NAME_LEN);
+        if let Some(ref n) = name {
+            assert!(
+                n.0.len() <= MAX_NAME_LEN,
+                "name length {} exceeds max {}",
+                n.0.len(),
+                MAX_NAME_LEN
+            );
         }
-        if let Some(s) = symbol {
-            assert!(s.len() <= MAX_SYMBOL_LEN, "symbol length {} exceeds max {}", s.len(), MAX_SYMBOL_LEN);
+        if let Some(ref s) = symbol {
+            assert!(
+                s.0.len() <= MAX_SYMBOL_LEN,
+                "symbol length {} exceeds max {}",
+                s.0.len(),
+                MAX_SYMBOL_LEN
+            );
         }
-        if let Some(u) = uri {
-            assert!(u.len() <= MAX_URI_LEN, "uri length {} exceeds max {}", u.len(), MAX_URI_LEN);
+        if let Some(ref u) = uri {
+            assert!(
+                u.0.len() <= MAX_URI_LEN,
+                "uri length {} exceeds max {}",
+                u.0.len(),
+                MAX_URI_LEN
+            );
         }
 
         let mut data = [0u8; 512];
@@ -224,46 +223,13 @@ pub trait MetadataCpi: AsAccountView {
                     core::ptr::write(ptr.add(offset), 1u8); // Some
                     offset += 1;
 
-                    // name
-                    let n_len = n.len() as u32;
-                    core::ptr::copy_nonoverlapping(
-                        n_len.to_le_bytes().as_ptr(),
-                        ptr.add(offset),
-                        4,
-                    );
-                    offset += 4;
-                    core::ptr::copy_nonoverlapping(n.as_ptr(), ptr.add(offset), n.len());
-                    offset += n.len();
-
-                    // symbol
-                    let s_len = s.len() as u32;
-                    core::ptr::copy_nonoverlapping(
-                        s_len.to_le_bytes().as_ptr(),
-                        ptr.add(offset),
-                        4,
-                    );
-                    offset += 4;
-                    core::ptr::copy_nonoverlapping(s.as_ptr(), ptr.add(offset), s.len());
-                    offset += s.len();
-
-                    // uri
-                    let u_len = u.len() as u32;
-                    core::ptr::copy_nonoverlapping(
-                        u_len.to_le_bytes().as_ptr(),
-                        ptr.add(offset),
-                        4,
-                    );
-                    offset += 4;
-                    core::ptr::copy_nonoverlapping(u.as_ptr(), ptr.add(offset), u.len());
-                    offset += u.len();
+                    offset = n.write_to(ptr, offset);
+                    offset = s.write_to(ptr, offset);
+                    offset = u.write_to(ptr, offset);
 
                     // seller_fee_basis_points
                     let fee = seller_fee_basis_points.unwrap_or(0);
-                    core::ptr::copy_nonoverlapping(
-                        fee.to_le_bytes().as_ptr(),
-                        ptr.add(offset),
-                        2,
-                    );
+                    core::ptr::copy_nonoverlapping(fee.to_le_bytes().as_ptr(), ptr.add(offset), 2);
                     offset += 2;
 
                     // creators: None, collection: None, uses: None
@@ -355,6 +321,7 @@ pub trait MetadataCpi: AsAccountView {
         metadata: &'a impl AsAccountView,
         token_program: &'a impl AsAccountView,
         system_program: &'a impl AsAccountView,
+        rent: &'a impl AsAccountView,
         max_supply: Option<u64>,
     ) -> CpiCall<'a, 9, 10> {
         let edition = edition.to_account_view();
@@ -365,6 +332,7 @@ pub trait MetadataCpi: AsAccountView {
         let metadata = metadata.to_account_view();
         let token_program = token_program.to_account_view();
         let system_program = system_program.to_account_view();
+        let rent = rent.to_account_view();
 
         // SAFETY: All 10 bytes are written before assume_init.
         // Layout: discriminator(1) + Option<u64>(1 tag + 8 value) = 10 bytes
@@ -407,8 +375,7 @@ pub trait MetadataCpi: AsAccountView {
                 metadata,
                 token_program,
                 system_program,
-                // Rent sysvar placeholder — see module-level RENT_SYSVAR comment.
-                system_program,
+                rent,
             ],
             data,
         )
@@ -437,6 +404,7 @@ pub trait MetadataCpi: AsAccountView {
         metadata: &'a impl AsAccountView,
         token_program: &'a impl AsAccountView,
         system_program: &'a impl AsAccountView,
+        rent: &'a impl AsAccountView,
         edition: u64,
     ) -> CpiCall<'a, 14, 9> {
         let new_metadata = new_metadata.to_account_view();
@@ -452,6 +420,7 @@ pub trait MetadataCpi: AsAccountView {
         let metadata = metadata.to_account_view();
         let token_program = token_program.to_account_view();
         let system_program = system_program.to_account_view();
+        let rent = rent.to_account_view();
 
         let data = unsafe {
             let mut buf = core::mem::MaybeUninit::<[u8; 9]>::uninit();
@@ -493,8 +462,7 @@ pub trait MetadataCpi: AsAccountView {
                 metadata,
                 token_program,
                 system_program,
-                // Rent sysvar placeholder — see module-level RENT_SYSVAR comment.
-                system_program,
+                rent,
             ],
             data,
         )
@@ -1184,11 +1152,7 @@ pub trait MetadataCpi: AsAccountView {
             let mut buf = core::mem::MaybeUninit::<[u8; 9]>::uninit();
             let ptr = buf.as_mut_ptr() as *mut u8;
             core::ptr::write(ptr, UTILIZE);
-            core::ptr::copy_nonoverlapping(
-                number_of_uses.to_le_bytes().as_ptr(),
-                ptr.add(1),
-                8,
-            );
+            core::ptr::copy_nonoverlapping(number_of_uses.to_le_bytes().as_ptr(), ptr.add(1), 8);
             buf.assume_init()
         };
 

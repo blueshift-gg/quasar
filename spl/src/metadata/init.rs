@@ -1,3 +1,4 @@
+use quasar_core::borsh::BorshString;
 use quasar_core::prelude::*;
 
 use super::cpi::MetadataCpi;
@@ -16,9 +17,9 @@ use super::cpi::MetadataCpi;
 ///     &self.payer,
 ///     &self.update_authority,
 ///     &self.system_program,
-///     b"My Token",
-///     b"TKN",
-///     b"https://example.com/meta.json",
+///     BorshString::new(b"My Token"),
+///     BorshString::new(b"TKN"),
+///     BorshString::new(b"https://example.com/meta.json"),
 ///     0,    // seller_fee_basis_points
 ///     true, // is_mutable
 /// )?;
@@ -34,9 +35,10 @@ pub trait InitMetadata: AsAccountView + Sized {
         payer: &impl AsAccountView,
         update_authority: &impl AsAccountView,
         system_program: &SystemProgram,
-        name: &[u8],
-        symbol: &[u8],
-        uri: &[u8],
+        rent: &impl AsAccountView,
+        name: BorshString<'_>,
+        symbol: BorshString<'_>,
+        uri: BorshString<'_>,
         seller_fee_basis_points: u16,
         is_mutable: bool,
     ) -> Result<(), ProgramError> {
@@ -48,6 +50,7 @@ pub trait InitMetadata: AsAccountView + Sized {
                 payer,
                 update_authority,
                 system_program,
+                rent,
                 name,
                 symbol,
                 uri,
@@ -68,9 +71,10 @@ pub trait InitMetadata: AsAccountView + Sized {
         payer: &impl AsAccountView,
         update_authority: &impl AsAccountView,
         system_program: &SystemProgram,
-        name: &[u8],
-        symbol: &[u8],
-        uri: &[u8],
+        rent: &impl AsAccountView,
+        name: BorshString<'_>,
+        symbol: BorshString<'_>,
+        uri: BorshString<'_>,
         seller_fee_basis_points: u16,
         is_mutable: bool,
         seeds: &[Seed],
@@ -83,6 +87,7 @@ pub trait InitMetadata: AsAccountView + Sized {
                 payer,
                 update_authority,
                 system_program,
+                rent,
                 name,
                 symbol,
                 uri,
@@ -127,6 +132,7 @@ pub trait InitMasterEdition: AsAccountView + Sized {
         metadata: &impl AsAccountView,
         token_program: &impl AsAccountView,
         system_program: &SystemProgram,
+        rent: &impl AsAccountView,
         max_supply: Option<u64>,
     ) -> Result<(), ProgramError> {
         metadata_program
@@ -139,6 +145,7 @@ pub trait InitMasterEdition: AsAccountView + Sized {
                 metadata,
                 token_program,
                 system_program,
+                rent,
                 max_supply,
             )
             .invoke()
@@ -156,6 +163,7 @@ pub trait InitMasterEdition: AsAccountView + Sized {
         metadata: &impl AsAccountView,
         token_program: &impl AsAccountView,
         system_program: &SystemProgram,
+        rent: &impl AsAccountView,
         max_supply: Option<u64>,
         seeds: &[Seed],
     ) -> Result<(), ProgramError> {
@@ -169,6 +177,7 @@ pub trait InitMasterEdition: AsAccountView + Sized {
                 metadata,
                 token_program,
                 system_program,
+                rent,
                 max_supply,
             )
             .invoke_signed(seeds)
