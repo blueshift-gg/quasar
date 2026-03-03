@@ -1713,7 +1713,7 @@ fn setup_with_metadata() -> Mollusk {
     mollusk_svm_programs_token::token::add_program(&mut mollusk);
     mollusk.add_program(
         &quasar_spl::metadata::METADATA_PROGRAM_ID,
-        "../../target/deploy/mpl_token_metadata",
+        "../fixtures/mpl_token_metadata",
     );
     mollusk
 }
