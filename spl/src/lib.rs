@@ -7,10 +7,10 @@
 //!
 //! | Type | Owner check | Deref target | Use when |
 //! |------|-------------|--------------|----------|
-//! | `Account<TokenAccount>` | SPL Token only | [`TokenAccountState`] | Program only supports Token |
-//! | `Account<InterfaceTokenAccount>` | SPL Token **or** Token-2022 | [`TokenAccountState`] | Program supports both |
-//! | `Account<MintAccount>` | SPL Token only | [`MintAccountState`] | Mint owned by Token |
-//! | `Account<InterfaceMintAccount>` | SPL Token **or** Token-2022 | [`MintAccountState`] | Mint from either program |
+//! | `Account<Token>` | SPL Token only | [`TokenAccountState`] | Program only supports Token |
+//! | `Account<Mint>` | SPL Token only | [`MintAccountState`] | Mint owned by Token |
+//! | `InterfaceAccount<Token>` | SPL Token **or** Token-2022 | [`TokenAccountState`] | Program supports both |
+//! | `InterfaceAccount<Mint>` | SPL Token **or** Token-2022 | [`MintAccountState`] | Mint from either program |
 //!
 //! # Program types
 //!
@@ -62,7 +62,7 @@
 //!
 //! ```ignore
 //! self.vault.close(&self.token_program, &self.maker, &self.escrow)
-//!     .invoke_signed(&[seeds])?;
+//!     .invoke_signed(&seeds)?;
 //! ```
 
 #![no_std]
@@ -112,6 +112,7 @@ macro_rules! impl_single_owner {
     };
 }
 
+mod associated_token;
 mod close;
 mod constants;
 mod cpi;
@@ -121,11 +122,17 @@ mod state;
 mod token;
 mod token_2022;
 
+pub use associated_token::{
+    create as ata_create, create_idempotent as ata_create_idempotent, get_associated_token_address,
+    get_associated_token_address_const, get_associated_token_address_with_program,
+    get_associated_token_address_with_program_const, validate_ata, AssociatedToken,
+    AssociatedTokenProgram, InitAssociatedToken,
+};
 pub use close::TokenClose;
-pub use constants::{SPL_TOKEN_ID, TOKEN_2022_ID};
+pub use constants::{ATA_PROGRAM_ID, SPL_TOKEN_ID, TOKEN_2022_ID};
 pub use cpi::{initialize_account3, TokenCpi};
 pub use init::{validate_token_account, InitMint, InitToken};
-pub use interface::{InterfaceMintAccount, InterfaceTokenAccount, TokenInterface};
+pub use interface::{InterfaceAccount, TokenInterface};
 pub use state::{MintAccountState, TokenAccountState};
-pub use token::{MintAccount, TokenAccount, TokenProgram};
-pub use token_2022::{Mint2022Account, Token2022Account, Token2022Program};
+pub use token::{Mint, Token, TokenProgram};
+pub use token_2022::{Mint2022, Token2022, Token2022Program};

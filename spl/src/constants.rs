@@ -21,3 +21,14 @@ pub const SPL_TOKEN_ID: Address = Address::new_from_array(SPL_TOKEN_BYTES);
 pub static TOKEN_2022_ID: Address = Address::new_from_array(TOKEN_2022_BYTES);
 #[cfg(not(target_arch = "bpf"))]
 pub const TOKEN_2022_ID: Address = Address::new_from_array(TOKEN_2022_BYTES);
+
+pub(crate) const ATA_PROGRAM_BYTES: [u8; 32] = [
+    140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218,
+    255, 16, 132, 4, 142, 123, 216, 219, 233, 248, 89,
+];
+
+/// Associated Token Account program address.
+#[cfg(target_arch = "bpf")]
+pub static ATA_PROGRAM_ID: Address = Address::new_from_array(ATA_PROGRAM_BYTES);
+#[cfg(not(target_arch = "bpf"))]
+pub const ATA_PROGRAM_ID: Address = Address::new_from_array(ATA_PROGRAM_BYTES);

@@ -99,7 +99,7 @@ pub fn map_type_from_syn(ty: &syn::Type) -> IdlType {
 }
 
 /// Extract the last segment identifier from a syn::Type.
-/// e.g. `Account<TokenAccount>` → "Account", `Signer` → "Signer"
+/// e.g. `Account<Token>` → "Account", `Signer` → "Signer"
 pub fn type_base_name(ty: &syn::Type) -> Option<String> {
     match ty {
         syn::Type::Path(type_path) => type_path.path.segments.last().map(|s| s.ident.to_string()),
@@ -109,7 +109,7 @@ pub fn type_base_name(ty: &syn::Type) -> Option<String> {
 }
 
 /// Extract the first generic argument's base name from a type path.
-/// e.g. `Account<TokenAccount>` → Some("TokenAccount"), `Signer` → None
+/// e.g. `Account<Token>` → Some("Token"), `Signer` → None
 #[allow(dead_code)]
 pub fn type_inner_name(ty: &syn::Type) -> Option<String> {
     let inner = match ty {

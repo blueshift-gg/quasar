@@ -56,7 +56,7 @@ pub fn realloc_account(
 ///
 /// ```ignore
 /// // Validates owner == SPL Token program
-/// pub token: &'info Account<TokenAccount>,
+/// pub token: &'info Account<Token>,
 /// ```
 ///
 /// Types implementing [`Owner`] get a blanket [`CheckOwner`] impl that
@@ -66,7 +66,7 @@ pub fn realloc_account(
 ///
 /// ```ignore
 /// // Validates owner == SPL Token OR Token-2022
-/// pub token: &'info Account<InterfaceTokenAccount>,
+/// pub token: &'info InterfaceAccount<Token>,
 /// ```
 ///
 /// Types implementing [`CheckOwner`] directly use explicit comparison
@@ -86,15 +86,20 @@ pub fn realloc_account(
 /// When `T` implements [`QuasarAccount`], `Account<T>` provides
 /// `.get()` / `.set()` for Borsh-style (de)serialization.
 ///
-/// ## Polymorphic dispatch (T: InterfaceResolve)
+/// ## Polymorphic dispatch (via InterfaceAccount<T>)
 ///
-/// When `T` implements [`InterfaceResolve`], `Account<T>` provides
-/// `.resolve()` to dispatch to a program-specific resolved type:
+/// For accounts that can be owned by multiple programs with different layouts,
+/// use `InterfaceAccount<T>` (from `quasar_spl`) which provides `.resolve()`
+/// for runtime dispatch:
 ///
 /// ```ignore
-/// match ctx.accounts.token.resolve()? {
-///     TokenVariant::Spl(state) => { /* SPL Token specific */ }
-///     TokenVariant::Token2022(state) => { /* Token-2022 specific */ }
+/// // In your accounts struct:
+/// pub oracle: &'info InterfaceAccount<OracleInterface>,
+///
+/// // In your instruction handler:
+/// match ctx.accounts.oracle.resolve()? {
+///     OraclePrice::Pyth(price) => { /* read Pyth fields */ }
+///     OraclePrice::Switchboard(price) => { /* read Switchboard fields */ }
 /// }
 /// ```
 #[repr(transparent)]
@@ -222,12 +227,5 @@ impl<T: ZeroCopyDeref> core::ops::DerefMut for Account<T> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         T::deref_from_mut(&self.view)
-    }
-}
-
-impl<T: InterfaceResolve> Account<T> {
-    #[inline(always)]
-    pub fn resolve(&self) -> Result<T::Resolved<'_>, ProgramError> {
-        T::resolve(&self.view)
     }
 }

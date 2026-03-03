@@ -1,10 +1,11 @@
 use quasar_core::cpi::CpiCall;
 use quasar_core::prelude::*;
 
+use crate::associated_token::AssociatedToken;
 use crate::cpi::TokenCpi;
-use crate::interface::{InterfaceMintAccount, InterfaceTokenAccount};
-use crate::token::{MintAccount, TokenAccount};
-use crate::token_2022::{Mint2022Account, Token2022Account};
+use crate::interface::InterfaceAccount;
+use crate::token::{Mint, Token};
+use crate::token_2022::{Mint2022, Token2022};
 
 /// Extension trait providing `.close()` on `Account<T>` for token/mint account types.
 ///
@@ -28,15 +29,11 @@ pub trait TokenClose: AsAccountView + Sized {
 
 macro_rules! impl_token_close {
     ($($ty:ty),*) => {
-        $(impl TokenClose for Account<$ty> {})*
+        $(
+            impl TokenClose for Account<$ty> {}
+            impl TokenClose for InterfaceAccount<$ty> {}
+        )*
     };
 }
 
-impl_token_close!(
-    TokenAccount,
-    Token2022Account,
-    InterfaceTokenAccount,
-    MintAccount,
-    Mint2022Account,
-    InterfaceMintAccount
-);
+impl_token_close!(Token, Token2022, AssociatedToken, Mint, Mint2022);

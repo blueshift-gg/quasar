@@ -82,6 +82,9 @@ pub(super) fn process_fields(
     let has_any_token_init = field_attrs
         .iter()
         .any(|a| (a.is_init || a.init_if_needed) && a.token_mint.is_some());
+    let has_any_ata_init = field_attrs
+        .iter()
+        .any(|a| (a.is_init || a.init_if_needed) && a.associated_token_mint.is_some());
 
     // Auto-detect system_program field (needed when any init is present)
     let _system_program_field = if has_any_init {
@@ -147,16 +150,34 @@ pub(super) fn process_fields(
         None
     };
 
-    // Auto-detect token_program field (needed when any token init is present)
-    let token_program_field = if has_any_token_init {
+    // Auto-detect token_program field (needed when any token or ATA init is present)
+    let token_program_field = if has_any_token_init || has_any_ata_init {
         let found = find_field_by_type(
             fields,
             &["TokenProgram", "Token2022Program", "TokenInterface"],
         );
         if found.is_none() {
+            let msg = if has_any_ata_init {
+                "#[account(init, associated_token::...)] requires a token program field (TokenProgram, Token2022Program, or TokenInterface)"
+            } else {
+                "#[account(init, token::...)] requires a token program field (TokenProgram, Token2022Program, or TokenInterface)"
+            };
+            return Err(syn::Error::new(proc_macro2::Span::call_site(), msg)
+                .to_compile_error()
+                .into());
+        }
+        found
+    } else {
+        None
+    };
+
+    // Auto-detect ata_program field (needed when any ATA init is present)
+    let ata_program_field = if has_any_ata_init {
+        let found = find_field_by_type(fields, &["AssociatedTokenProgram"]);
+        if found.is_none() {
             return Err(syn::Error::new(
                 proc_macro2::Span::call_site(),
-                "#[account(init, token::...)] requires a token program field (TokenProgram, Token2022Program, or TokenInterface)",
+                "#[account(init, associated_token::...)] requires an `AssociatedTokenProgram` field",
             )
             .to_compile_error()
             .into());
@@ -266,6 +287,46 @@ pub(super) fn process_fields(
             return Err(syn::Error::new_spanned(
                 field_name,
                 "`token::mint` and `token::authority` must both be specified",
+            )
+            .to_compile_error()
+            .into());
+        }
+
+        // associated_token::mint and associated_token::authority must both be present
+        if attrs.associated_token_mint.is_some() != attrs.associated_token_authority.is_some() {
+            return Err(syn::Error::new_spanned(
+                field_name,
+                "`associated_token::mint` and `associated_token::authority` must both be specified",
+            )
+            .to_compile_error()
+            .into());
+        }
+
+        // token::* and associated_token::* are mutually exclusive
+        if attrs.token_mint.is_some() && attrs.associated_token_mint.is_some() {
+            return Err(syn::Error::new_spanned(
+                field_name,
+                "`token::*` and `associated_token::*` cannot be used on the same field",
+            )
+            .to_compile_error()
+            .into());
+        }
+
+        // associated_token::token_program requires associated_token::mint
+        if attrs.associated_token_token_program.is_some() && attrs.associated_token_mint.is_none() {
+            return Err(syn::Error::new_spanned(
+                field_name,
+                "`associated_token::token_program` requires `associated_token::mint` and `associated_token::authority`",
+            )
+            .to_compile_error()
+            .into());
+        }
+
+        // seeds and associated_token::* are mutually exclusive (ATA address is deterministic)
+        if attrs.seeds.is_some() && attrs.associated_token_mint.is_some() {
+            return Err(syn::Error::new_spanned(
+                field_name,
+                "`seeds` and `associated_token::*` cannot be used on the same field",
             )
             .to_compile_error()
             .into());
@@ -533,6 +594,7 @@ pub(super) fn process_fields(
 
         if is_init_field {
             let is_token_init = attrs.token_mint.is_some();
+            let is_ata_init = attrs.associated_token_mint.is_some();
             let has_pda = attrs.seeds.is_some();
             let pay_field = payer_field.unwrap();
 
@@ -553,13 +615,77 @@ pub(super) fn process_fields(
                 quote! { __init_cpi.invoke()?; }
             };
 
-            if is_token_init {
+            if is_ata_init {
+                let ata_prog = ata_program_field.unwrap();
+                let mint_field = attrs.associated_token_mint.as_ref().unwrap();
+                let auth_field = attrs.associated_token_authority.as_ref().unwrap();
+                let sys_field = _system_program_field.unwrap();
+
+                // Token program for CPI: explicit or auto-detected
+                let tok_field = attrs
+                    .associated_token_token_program
+                    .as_ref()
+                    .unwrap_or_else(|| token_program_field.unwrap());
+
+                // Token program address for ATA derivation
+                let token_program_addr = if let Some(tp) = &attrs.associated_token_token_program {
+                    quote! { #tp.address() }
+                } else {
+                    quote! { &quasar_spl::SPL_TOKEN_ID }
+                };
+
+                if attrs.init_if_needed {
+                    init_blocks.push(quote! {
+                        {
+                            if quasar_core::is_system_program(unsafe { #field_name.owner() }) {
+                                quasar_core::cpi::CpiCall::new(
+                                    #ata_prog.address(),
+                                    [
+                                        quasar_core::cpi::InstructionAccount::writable_signer(#pay_field.address()),
+                                        quasar_core::cpi::InstructionAccount::writable(#field_name.address()),
+                                        quasar_core::cpi::InstructionAccount::readonly(#auth_field.address()),
+                                        quasar_core::cpi::InstructionAccount::readonly(#mint_field.address()),
+                                        quasar_core::cpi::InstructionAccount::readonly(#sys_field.address()),
+                                        quasar_core::cpi::InstructionAccount::readonly(#tok_field.address()),
+                                    ],
+                                    [#pay_field, #field_name, #auth_field, #mint_field, #sys_field, #tok_field],
+                                    [1u8],
+                                ).invoke()?;
+                            } else {
+                                quasar_spl::validate_ata(
+                                    #field_name, #auth_field.address(), #mint_field.address(), #token_program_addr,
+                                )?;
+                            }
+                        }
+                    });
+                } else {
+                    init_blocks.push(quote! {
+                        {
+                            if !quasar_core::is_system_program(unsafe { #field_name.owner() }) {
+                                return Err(ProgramError::AccountAlreadyInitialized);
+                            }
+                            quasar_core::cpi::CpiCall::new(
+                                #ata_prog.address(),
+                                [
+                                    quasar_core::cpi::InstructionAccount::writable_signer(#pay_field.address()),
+                                    quasar_core::cpi::InstructionAccount::writable(#field_name.address()),
+                                    quasar_core::cpi::InstructionAccount::readonly(#auth_field.address()),
+                                    quasar_core::cpi::InstructionAccount::readonly(#mint_field.address()),
+                                    quasar_core::cpi::InstructionAccount::readonly(#sys_field.address()),
+                                    quasar_core::cpi::InstructionAccount::readonly(#tok_field.address()),
+                                ],
+                                [#pay_field, #field_name, #auth_field, #mint_field, #sys_field, #tok_field],
+                                [0u8],
+                            ).invoke()?;
+                        }
+                    });
+                }
+            } else if is_token_init {
                 let tok_field = token_program_field.unwrap();
                 let mint_field = attrs.token_mint.as_ref().unwrap();
                 let auth_field = attrs.token_authority.as_ref().unwrap();
 
                 if attrs.init_if_needed {
-                    // init_if_needed for token accounts
                     init_blocks.push(quote! {
                         {
                             if quasar_core::is_system_program(unsafe { #field_name.owner() }) {
@@ -583,7 +709,6 @@ pub(super) fn process_fields(
                         }
                     });
                 } else {
-                    // init for token accounts
                     init_blocks.push(quote! {
                         {
                             if !quasar_core::is_system_program(unsafe { #field_name.owner() }) {
@@ -610,7 +735,7 @@ pub(super) fn process_fields(
                 if inner_type.is_none() {
                     return Err(syn::Error::new_spanned(
                         field_name,
-                        "#[account(init)] on non-Account<T> type requires `token::mint` and `token::authority`",
+                        "#[account(init)] on non-Account<T> type requires `token::mint` and `token::authority` or `associated_token::mint` and `associated_token::authority`",
                     )
                     .to_compile_error()
                     .into());
@@ -626,7 +751,6 @@ pub(super) fn process_fields(
                 };
 
                 if attrs.init_if_needed {
-                    // init_if_needed for program accounts
                     init_blocks.push(quote! {
                         {
                             if quasar_core::is_system_program(unsafe { #field_name.owner() }) {
@@ -636,7 +760,6 @@ pub(super) fn process_fields(
                                     #pay_field, #field_name, __init_lamports, __init_space, &crate::ID,
                                 );
                                 #invoke_expr
-                                // Write discriminator
                                 let __disc = <#inner_type as quasar_core::traits::Discriminator>::DISCRIMINATOR;
                                 unsafe {
                                     core::ptr::copy_nonoverlapping(
@@ -646,11 +769,9 @@ pub(super) fn process_fields(
                                     );
                                 }
                             }
-                            // If already initialized, Account::from_account_view_mut validates discriminator
                         }
                     });
                 } else {
-                    // init for program accounts
                     init_blocks.push(quote! {
                         {
                             if !quasar_core::is_system_program(unsafe { #field_name.owner() }) {
@@ -662,7 +783,6 @@ pub(super) fn process_fields(
                                 #pay_field, #field_name, __init_lamports, __init_space, &crate::ID,
                             );
                             #invoke_expr
-                            // Write discriminator
                             let __disc = <#inner_type as quasar_core::traits::Discriminator>::DISCRIMINATOR;
                             unsafe {
                                 core::ptr::copy_nonoverlapping(
@@ -675,6 +795,29 @@ pub(super) fn process_fields(
                     });
                 }
             }
+        }
+
+        // --- Non-init ATA address validation ---
+
+        if let (false, Some(mint_field), Some(auth_field)) = (
+            is_init_field,
+            attrs.associated_token_mint.as_ref(),
+            attrs.associated_token_authority.as_ref(),
+        ) {
+            let token_program_addr = if let Some(tp) = &attrs.associated_token_token_program {
+                quote! { #tp.to_account_view().address() }
+            } else {
+                quote! { &quasar_spl::SPL_TOKEN_ID }
+            };
+
+            pda_checks.push(quote! {
+                quasar_spl::validate_ata(
+                    #field_name.to_account_view(),
+                    #auth_field.to_account_view().address(),
+                    #mint_field.to_account_view().address(),
+                    #token_program_addr,
+                )?;
+            });
         }
 
         // --- Realloc code generation ---

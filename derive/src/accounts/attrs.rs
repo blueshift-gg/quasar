@@ -17,6 +17,9 @@ pub(super) enum AccountDirective {
     Address(Expr, Option<Expr>),
     TokenMint(Ident),
     TokenAuthority(Ident),
+    AssociatedTokenMint(Ident),
+    AssociatedTokenAuthority(Ident),
+    AssociatedTokenTokenProgram(Ident),
     Realloc(Expr),
     ReallocPayer(Ident),
 }
@@ -133,6 +136,34 @@ impl Parse for AccountDirective {
                     )),
                 }
             }
+            "associated_token" => {
+                input.parse::<Token![::]>()?;
+                let sub_key: Ident = input.parse()?;
+                match sub_key.to_string().as_str() {
+                    "mint" => {
+                        let _: Token![=] = input.parse()?;
+                        let ident: Ident = input.parse()?;
+                        Ok(Self::AssociatedTokenMint(ident))
+                    }
+                    "authority" => {
+                        let _: Token![=] = input.parse()?;
+                        let ident: Ident = input.parse()?;
+                        Ok(Self::AssociatedTokenAuthority(ident))
+                    }
+                    "token_program" => {
+                        let _: Token![=] = input.parse()?;
+                        let ident: Ident = input.parse()?;
+                        Ok(Self::AssociatedTokenTokenProgram(ident))
+                    }
+                    _ => Err(syn::Error::new(
+                        sub_key.span(),
+                        format!(
+                            "unknown associated_token attribute: `associated_token::{}`",
+                            sub_key
+                        ),
+                    )),
+                }
+            }
             _ => Err(syn::Error::new(
                 key.span(),
                 format!("unknown account attribute: `{}`", key),
@@ -155,6 +186,9 @@ pub(super) struct AccountFieldAttrs {
     pub address: Option<(Expr, Option<Expr>)>,
     pub token_mint: Option<Ident>,
     pub token_authority: Option<Ident>,
+    pub associated_token_mint: Option<Ident>,
+    pub associated_token_authority: Option<Ident>,
+    pub associated_token_token_program: Option<Ident>,
     pub realloc: Option<Expr>,
     pub realloc_payer: Option<Ident>,
 }
@@ -175,6 +209,9 @@ impl Parse for AccountFieldAttrs {
         let mut address = None;
         let mut token_mint = None;
         let mut token_authority = None;
+        let mut associated_token_mint = None;
+        let mut associated_token_authority = None;
+        let mut associated_token_token_program = None;
         let mut realloc = None;
         let mut realloc_payer = None;
         for d in directives {
@@ -192,6 +229,13 @@ impl Parse for AccountFieldAttrs {
                 AccountDirective::Address(expr, err) => address = Some((expr, err)),
                 AccountDirective::TokenMint(ident) => token_mint = Some(ident),
                 AccountDirective::TokenAuthority(ident) => token_authority = Some(ident),
+                AccountDirective::AssociatedTokenMint(ident) => associated_token_mint = Some(ident),
+                AccountDirective::AssociatedTokenAuthority(ident) => {
+                    associated_token_authority = Some(ident)
+                }
+                AccountDirective::AssociatedTokenTokenProgram(ident) => {
+                    associated_token_token_program = Some(ident)
+                }
                 AccountDirective::Realloc(expr) => realloc = Some(expr),
                 AccountDirective::ReallocPayer(ident) => realloc_payer = Some(ident),
             }
@@ -210,6 +254,9 @@ impl Parse for AccountFieldAttrs {
             address,
             token_mint,
             token_authority,
+            associated_token_mint,
+            associated_token_authority,
+            associated_token_token_program,
             realloc,
             realloc_payer,
         })
@@ -236,6 +283,9 @@ pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<AccountFieldA
         address: None,
         token_mint: None,
         token_authority: None,
+        associated_token_mint: None,
+        associated_token_authority: None,
+        associated_token_token_program: None,
         realloc: None,
         realloc_payer: None,
     })

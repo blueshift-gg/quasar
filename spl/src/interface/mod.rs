@@ -1,102 +1,102 @@
+use core::marker::PhantomData;
+
 use quasar_core::prelude::*;
 
 use crate::constants::{SPL_TOKEN_ID, TOKEN_2022_ID};
 use crate::cpi::TokenCpi;
-use crate::state::{MintAccountState, TokenAccountState};
 
-/// Token account type for the token interface — accepts accounts owned by
-/// either SPL Token or Token-2022.
+/// Generic interface account wrapper — accepts accounts owned by either
+/// SPL Token or Token-2022.
 ///
-/// The base account layout (first 165 bytes) is identical for both programs.
-/// Use with [`Account<InterfaceTokenAccount>`] in instruction structs:
+/// `InterfaceAccount<T>` is a peer to `Account<T>`. Where `Account<Token>`
+/// only accepts SPL Token-owned accounts, `InterfaceAccount<Token>` accepts
+/// both SPL Token and Token-2022. The inner marker `T` provides the data
+/// layout check and zero-copy deref target.
 ///
 /// ```ignore
-/// pub from: &'info Account<InterfaceTokenAccount>,
+/// pub vault: &'info InterfaceAccount<Token>,
+/// pub mint: &'info InterfaceAccount<Mint>,
 /// ```
-pub struct InterfaceTokenAccount;
+#[repr(transparent)]
+pub struct InterfaceAccount<T> {
+    view: AccountView,
+    _marker: PhantomData<T>,
+}
 
-impl AccountCheck for InterfaceTokenAccount {
+impl<T> AsAccountView for InterfaceAccount<T> {
     #[inline(always)]
-    fn check(view: &AccountView) -> Result<(), ProgramError> {
-        if view.data_len() < TokenAccountState::LEN {
-            return Err(ProgramError::AccountDataTooSmall);
-        }
-        Ok(())
+    fn to_account_view(&self) -> &AccountView {
+        &self.view
     }
 }
 
-impl CheckOwner for InterfaceTokenAccount {
+impl<T: AccountCheck> InterfaceAccount<T> {
     #[inline(always)]
-    fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
+    pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
         let owner = unsafe { view.owner() };
         if !quasar_core::keys_eq(owner, &SPL_TOKEN_ID)
             && !quasar_core::keys_eq(owner, &TOKEN_2022_ID)
         {
             return Err(ProgramError::IllegalOwner);
         }
-        Ok(())
-    }
-}
-
-impl ZeroCopyDeref for InterfaceTokenAccount {
-    type Target = TokenAccountState;
-
-    #[inline(always)]
-    fn deref_from(view: &AccountView) -> &Self::Target {
-        unsafe { &*(view.data_ptr() as *const TokenAccountState) }
+        T::check(view)?;
+        Ok(unsafe { &*(view as *const AccountView as *const Self) })
     }
 
+    /// # Safety (invalid_reference_casting)
+    ///
+    /// `Self` is `#[repr(transparent)]` over `AccountView`, which uses
+    /// interior mutability through raw pointers to SVM account memory.
+    /// The `&` → `&mut` cast does not create aliased mutable references;
+    /// all writes go through `AccountView`'s raw pointer methods.
     #[inline(always)]
-    fn deref_from_mut(view: &AccountView) -> &mut Self::Target {
-        unsafe { &mut *(view.data_ptr() as *mut TokenAccountState) }
-    }
-}
-
-/// Mint account type for the token interface — accepts accounts owned by
-/// either SPL Token or Token-2022.
-///
-/// The base mint layout (first 82 bytes) is identical for both programs.
-/// Use with [`Account<InterfaceMintAccount>`] in instruction structs:
-///
-/// ```ignore
-/// pub mint: &'info Account<InterfaceMintAccount>,
-/// ```
-pub struct InterfaceMintAccount;
-
-impl AccountCheck for InterfaceMintAccount {
-    #[inline(always)]
-    fn check(view: &AccountView) -> Result<(), ProgramError> {
-        if view.data_len() < MintAccountState::LEN {
-            return Err(ProgramError::AccountDataTooSmall);
+    #[allow(invalid_reference_casting, clippy::mut_from_ref)]
+    pub fn from_account_view_mut(view: &AccountView) -> Result<&mut Self, ProgramError> {
+        if !view.is_writable() {
+            return Err(ProgramError::Immutable);
         }
-        Ok(())
-    }
-}
-
-impl CheckOwner for InterfaceMintAccount {
-    #[inline(always)]
-    fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
         let owner = unsafe { view.owner() };
         if !quasar_core::keys_eq(owner, &SPL_TOKEN_ID)
             && !quasar_core::keys_eq(owner, &TOKEN_2022_ID)
         {
             return Err(ProgramError::IllegalOwner);
         }
-        Ok(())
+        T::check(view)?;
+        Ok(unsafe { &mut *(view as *const AccountView as *mut Self) })
     }
 }
 
-impl ZeroCopyDeref for InterfaceMintAccount {
-    type Target = MintAccountState;
+impl<T: ZeroCopyDeref> core::ops::Deref for InterfaceAccount<T> {
+    type Target = T::Target;
 
     #[inline(always)]
-    fn deref_from(view: &AccountView) -> &Self::Target {
-        unsafe { &*(view.data_ptr() as *const MintAccountState) }
+    fn deref(&self) -> &Self::Target {
+        T::deref_from(&self.view)
     }
+}
 
+impl<T: ZeroCopyDeref> core::ops::DerefMut for InterfaceAccount<T> {
     #[inline(always)]
-    fn deref_from_mut(view: &AccountView) -> &mut Self::Target {
-        unsafe { &mut *(view.data_ptr() as *mut MintAccountState) }
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        T::deref_from_mut(&self.view)
+    }
+}
+
+impl<T: InterfaceResolve> InterfaceAccount<T> {
+    /// Dispatch to a program-specific resolved type based on the runtime owner.
+    ///
+    /// The owner check ran once during account parsing. `resolve()` is a second
+    /// pointer cast — no re-validation, no allocation.
+    ///
+    /// ```ignore
+    /// match ctx.accounts.oracle.resolve()? {
+    ///     OraclePrice::Pyth(price) => { /* read Pyth fields */ }
+    ///     OraclePrice::Switchboard(price) => { /* read Switchboard fields */ }
+    /// }
+    /// ```
+    #[inline(always)]
+    pub fn resolve(&self) -> Result<T::Resolved<'_>, ProgramError> {
+        T::resolve(&self.view)
     }
 }
 

@@ -139,7 +139,7 @@ jobs:
       # --- Base branch CU ---
       - name: Build & bench base
         run: |
-          git checkout ${{ github.event.pull_request.base.sha }}
+          git checkout -f ${{ github.event.pull_request.base.sha }}
           cargo build-sbf --manifest-path examples/vault/Cargo.toml
           cargo test -p quasar-vault -- --nocapture 2>&1 | tee /tmp/base_output.txt
           echo "DEPOSIT_BASE=$(grep 'DEPOSIT CU:' /tmp/base_output.txt | head -1 | grep -oE '[0-9]+')" >> $GITHUB_ENV
@@ -150,7 +150,7 @@ jobs:
       # --- PR head CU ---
       - name: Build & bench PR
         run: |
-          git checkout ${{ github.event.pull_request.head.sha }}
+          git checkout -f ${{ github.event.pull_request.head.sha }}
           cargo build-sbf --manifest-path examples/vault/Cargo.toml
           cargo test -p quasar-vault -- --nocapture 2>&1 | tee /tmp/pr_output.txt
           echo "DEPOSIT_PR=$(grep 'DEPOSIT CU:' /tmp/pr_output.txt | head -1 | grep -oE '[0-9]+')" >> $GITHUB_ENV

@@ -1,5 +1,5 @@
 use quasar_core::prelude::*;
-use quasar_spl::{MintAccount, TokenAccount, TokenCpi, TokenProgram};
+use quasar_spl::{Mint, Token, TokenCpi, TokenProgram};
 
 use crate::{events::MakeEvent, state::EscrowAccount};
 
@@ -8,13 +8,13 @@ pub struct Make<'info> {
     pub maker: &'info mut Signer,
     #[account(init, payer = maker, seeds = [b"escrow", maker], bump)]
     pub escrow: &'info mut Account<EscrowAccount>,
-    pub mint_a: &'info Account<MintAccount>,
-    pub mint_b: &'info Account<MintAccount>,
-    pub maker_ta_a: &'info mut Account<TokenAccount>,
+    pub mint_a: &'info Account<Mint>,
+    pub mint_b: &'info Account<Mint>,
+    pub maker_ta_a: &'info mut Account<Token>,
     #[account(init_if_needed, payer = maker, token::mint = mint_b, token::authority = maker)]
-    pub maker_ta_b: &'info mut Account<TokenAccount>,
+    pub maker_ta_b: &'info mut Account<Token>,
     #[account(init_if_needed, payer = maker, token::mint = mint_a, token::authority = escrow)]
-    pub vault_ta_a: &'info mut Account<TokenAccount>,
+    pub vault_ta_a: &'info mut Account<Token>,
     pub rent: &'info Sysvar<Rent>,
     pub token_program: &'info TokenProgram,
     pub system_program: &'info SystemProgram,

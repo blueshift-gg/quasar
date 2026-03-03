@@ -2,10 +2,10 @@ use quasar_core::prelude::*;
 
 use crate::constants::{SPL_TOKEN_ID, TOKEN_2022_ID};
 use crate::cpi::TokenCpi;
-use crate::interface::{InterfaceMintAccount, InterfaceTokenAccount};
+use crate::interface::InterfaceAccount;
 use crate::state::{MintAccountState, TokenAccountState};
-use crate::token::{MintAccount, TokenAccount};
-use crate::token_2022::{Mint2022Account, Token2022Account};
+use crate::token::{Mint, Token};
+use crate::token_2022::{Mint2022, Token2022};
 
 #[inline(always)]
 fn is_token_program_owner(view: &AccountView) -> bool {
@@ -106,9 +106,12 @@ pub trait InitToken: AsAccountView + Sized {
     }
 }
 
-impl InitToken for Initialize<TokenAccount> {}
-impl InitToken for Initialize<Token2022Account> {}
-impl InitToken for Initialize<InterfaceTokenAccount> {}
+impl InitToken for Initialize<Token> {}
+impl InitToken for Initialize<Token2022> {}
+impl<T: AccountCheck + ZeroCopyDeref<Target = TokenAccountState>> InitToken
+    for Initialize<InterfaceAccount<T>>
+{
+}
 
 /// Extension trait providing `.init()` on `Initialize<T>` for mint account types.
 ///
@@ -207,16 +210,18 @@ pub trait InitMint: AsAccountView + Sized {
     }
 }
 
-impl InitMint for Initialize<MintAccount> {}
-impl InitMint for Initialize<Mint2022Account> {}
-impl InitMint for Initialize<InterfaceMintAccount> {}
+impl InitMint for Initialize<Mint> {}
+impl InitMint for Initialize<Mint2022> {}
+impl<T: AccountCheck + ZeroCopyDeref<Target = MintAccountState>> InitMint
+    for Initialize<InterfaceAccount<T>>
+{
+}
 
 /// Validate that an existing token account has the expected mint and authority.
 ///
 /// Used by generated `#[account(init_if_needed, token::...)]` code when the
 /// account is already initialized.
 #[inline(always)]
-#[allow(dead_code)]
 pub fn validate_token_account(
     view: &AccountView,
     mint: &Address,
