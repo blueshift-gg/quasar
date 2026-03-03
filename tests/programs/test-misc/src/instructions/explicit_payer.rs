@@ -12,11 +12,7 @@ pub struct ExplicitPayer<'info> {
 
 impl<'info> ExplicitPayer<'info> {
     #[inline(always)]
-    pub fn handler(
-        &mut self,
-        value: u64,
-        bumps: &ExplicitPayerBumps,
-    ) -> Result<(), ProgramError> {
+    pub fn handler(&mut self, value: u64, bumps: &ExplicitPayerBumps) -> Result<(), ProgramError> {
         self.account.set(&SimpleAccount {
             authority: *self.funder.address(),
             value,

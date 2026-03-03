@@ -27,7 +27,10 @@ fn build_multi_disc_account_data(value: u64) -> Vec<u8> {
 }
 
 fn setup() -> Mollusk {
-    Mollusk::new(&quasar_test_misc::ID, "../../target/deploy/quasar_test_misc")
+    Mollusk::new(
+        &quasar_test_misc::ID,
+        "../../target/deploy/quasar_test_misc",
+    )
 }
 
 // ============================================================================
@@ -42,7 +45,8 @@ fn test_init_success() {
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
-    let (account, _bump) = Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
+    let (account, _bump) =
+        Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
     let account_obj = Account::default();
 
     let instruction: Instruction = InitializeInstruction {
@@ -73,7 +77,11 @@ fn test_init_success() {
     assert_eq!(data[0], 1, "discriminator");
     assert_eq!(&data[1..33], payer.as_ref(), "authority = payer");
     assert_eq!(&data[33..41], &42u64.to_le_bytes(), "value = 42");
-    assert_eq!(result.resulting_accounts[1].1.owner, quasar_test_misc::ID, "owner");
+    assert_eq!(
+        result.resulting_accounts[1].1.owner,
+        quasar_test_misc::ID,
+        "owner"
+    );
 
     println!("  init_success CU: {}", result.compute_units_consumed);
 }
@@ -86,7 +94,8 @@ fn test_init_wrong_payer_not_signer() {
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
-    let (account, _) = Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
+    let (account, _) =
+        Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
     let account_obj = Account::default();
 
     let mut instruction: Instruction = InitializeInstruction {
@@ -123,7 +132,8 @@ fn test_init_insufficient_lamports() {
     let payer = Address::new_unique();
     let payer_account = Account::new(1, 0, &system_program); // Almost no lamports
 
-    let (account, _) = Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
+    let (account, _) =
+        Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
     let account_obj = Account::default();
 
     let instruction: Instruction = InitializeInstruction {
@@ -157,7 +167,8 @@ fn test_init_reinit_attack() {
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
-    let (account, bump) = Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
+    let (account, bump) =
+        Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
     // Account already initialized with correct data
     let account_obj = Account {
@@ -199,7 +210,8 @@ fn test_init_all_zero_data() {
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
-    let (account, _) = Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
+    let (account, _) =
+        Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
     // Account with all-zero data but owned by our program (simulates attack)
     let account_obj = Account {
@@ -241,7 +253,8 @@ fn test_init_wrong_space() {
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
-    let (account, _) = Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
+    let (account, _) =
+        Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
     // Account with data too small (already allocated but wrong size)
     let account_obj = Account {
@@ -318,7 +331,8 @@ fn test_init_if_needed_new() {
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
-    let (account, _) = Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
+    let (account, _) =
+        Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
     let account_obj = Account::new(0, 0, &system_program); // Uninitialized
 
     let instruction: Instruction = InitIfNeededInstruction {
@@ -357,7 +371,8 @@ fn test_init_if_needed_existing() {
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
-    let (account, bump) = Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
+    let (account, bump) =
+        Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
     // Already initialized with correct owner and discriminator
     let account_obj = Account {
@@ -1212,7 +1227,8 @@ fn test_init_if_needed_wrong_owner() {
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
-    let (account, bump) = Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
+    let (account, bump) =
+        Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
     // Existing account with wrong owner
     let wrong_owner = Address::new_unique();
@@ -1255,7 +1271,8 @@ fn test_init_if_needed_wrong_discriminator() {
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
-    let (account, _bump) = Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
+    let (account, _bump) =
+        Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
     // Existing account with wrong discriminator
     let mut data = vec![0u8; SIMPLE_ACCOUNT_SIZE];
@@ -1299,7 +1316,8 @@ fn test_init_if_needed_data_too_small() {
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
-    let (account, _bump) = Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
+    let (account, _bump) =
+        Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
     // Existing account with data too small
     let account_obj = Account {
@@ -1341,7 +1359,8 @@ fn test_init_if_needed_not_writable() {
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
-    let (account, bump) = Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
+    let (account, bump) =
+        Address::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
     let account_obj = Account {
         lamports: 1_000_000,
@@ -1554,7 +1573,11 @@ fn test_realloc_grow() {
     );
 
     let resulting = &result.resulting_accounts[0].1;
-    assert_eq!(resulting.data.len(), new_space as usize, "data should be resized");
+    assert_eq!(
+        resulting.data.len(),
+        new_space as usize,
+        "data should be resized"
+    );
 }
 
 #[test]
@@ -1636,11 +1659,7 @@ fn test_optional_account_with_some() {
         rent_epoch: 0,
     };
 
-    let instruction: Instruction = OptionalAccountInstruction {
-        required,
-        optional,
-    }
-    .into();
+    let instruction: Instruction = OptionalAccountInstruction { required, optional }.into();
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -1675,10 +1694,7 @@ fn test_optional_account_with_none() {
     }
     .into();
 
-    let result = mollusk.process_instruction(
-        &instruction,
-        &[(required, required_account)],
-    );
+    let result = mollusk.process_instruction(&instruction, &[(required, required_account)]);
 
     assert!(
         result.program_result.is_ok(),
@@ -1734,10 +1750,7 @@ fn test_remaining_accounts_empty() {
 
     let instruction: Instruction = RemainingAccountsCheckInstruction { authority }.into();
 
-    let result = mollusk.process_instruction(
-        &instruction,
-        &[(authority, authority_account)],
-    );
+    let result = mollusk.process_instruction(&instruction, &[(authority, authority_account)]);
 
     assert!(
         result.program_result.is_ok(),
@@ -1786,7 +1799,11 @@ fn test_space_override_allocates_custom_size() {
     );
 
     let data = &result.resulting_accounts[1].1.data;
-    assert_eq!(data.len(), 100, "account should be allocated with space = 100");
+    assert_eq!(
+        data.len(),
+        100,
+        "account should be allocated with space = 100"
+    );
     assert_eq!(data[0], 1, "discriminator should be set");
     assert_eq!(
         result.resulting_accounts[1].1.owner,
@@ -1838,7 +1855,11 @@ fn test_explicit_payer_success() {
     assert_eq!(data[0], 1, "discriminator");
     assert_eq!(&data[1..33], funder.as_ref(), "authority = funder");
     assert_eq!(&data[33..41], &55u64.to_le_bytes(), "value = 55");
-    assert_eq!(result.resulting_accounts[1].1.owner, quasar_test_misc::ID, "owner");
+    assert_eq!(
+        result.resulting_accounts[1].1.owner,
+        quasar_test_misc::ID,
+        "owner"
+    );
 }
 
 // ============================================================================
@@ -1862,13 +1883,16 @@ fn test_optional_has_one_some_valid() {
         &instruction,
         &[
             (authority, Account::new(1_000_000, 0, &Address::default())),
-            (account_addr, Account {
-                lamports: 1_000_000,
-                data: account_data,
-                owner: quasar_test_misc::ID,
-                executable: false,
-                rent_epoch: 0,
-            }),
+            (
+                account_addr,
+                Account {
+                    lamports: 1_000_000,
+                    data: account_data,
+                    owner: quasar_test_misc::ID,
+                    executable: false,
+                    rent_epoch: 0,
+                },
+            ),
         ],
     );
 
@@ -1897,13 +1921,16 @@ fn test_optional_has_one_some_wrong() {
         &instruction,
         &[
             (authority, Account::new(1_000_000, 0, &Address::default())),
-            (account_addr, Account {
-                lamports: 1_000_000,
-                data: account_data,
-                owner: quasar_test_misc::ID,
-                executable: false,
-                rent_epoch: 0,
-            }),
+            (
+                account_addr,
+                Account {
+                    lamports: 1_000_000,
+                    data: account_data,
+                    owner: quasar_test_misc::ID,
+                    executable: false,
+                    rent_epoch: 0,
+                },
+            ),
         ],
     );
 

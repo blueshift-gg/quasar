@@ -51,6 +51,8 @@ pub mod macros;
 pub mod sysvars;
 /// Zero-copy account wrapper types for instruction handlers.
 pub mod accounts;
+/// Borsh-compatible serialization primitives for CPI instruction data.
+pub mod borsh;
 /// Compile-time account validation traits (`Address`, `Owner`, `Executable`, `Mutable`, `Signer`).
 pub mod checks;
 /// Off-chain instruction building utilities. Only compiled for non-SBF targets.
@@ -82,8 +84,6 @@ pub mod remaining;
 pub mod return_data;
 /// Core framework traits.
 pub mod traits;
-/// Borsh-compatible serialization primitives for CPI instruction data.
-pub mod borsh;
 /// Utility functions
 pub mod utils;
 

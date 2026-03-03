@@ -936,10 +936,9 @@ pub(super) fn process_fields(
                         }
                     });
                 }
-            } else if attrs.mint_decimals.is_some() {
+            } else if let Some(decimals_expr) = attrs.mint_decimals.as_ref() {
                 // Mint init: create_account (token program owner) + initialize_mint2
                 let tok_field = token_program_field.unwrap();
-                let decimals_expr = attrs.mint_decimals.as_ref().unwrap();
                 let auth_field = match attrs.mint_init_authority.as_ref() {
                     Some(f) => f,
                     None => {

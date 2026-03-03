@@ -91,10 +91,7 @@ mod quasar_test_misc {
     }
 
     #[instruction(discriminator = 14)]
-    pub fn realloc_check(
-        ctx: Ctx<ReallocCheck>,
-        _new_space: u64,
-    ) -> Result<(), ProgramError> {
+    pub fn realloc_check(ctx: Ctx<ReallocCheck>, _new_space: u64) -> Result<(), ProgramError> {
         ctx.accounts.handler()
     }
 

@@ -12,11 +12,7 @@ pub struct SpaceOverride<'info> {
 
 impl<'info> SpaceOverride<'info> {
     #[inline(always)]
-    pub fn handler(
-        &mut self,
-        value: u64,
-        bumps: &SpaceOverrideBumps,
-    ) -> Result<(), ProgramError> {
+    pub fn handler(&mut self, value: u64, bumps: &SpaceOverrideBumps) -> Result<(), ProgramError> {
         self.account.set(&SimpleAccount {
             authority: *self.payer.address(),
             value,

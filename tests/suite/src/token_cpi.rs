@@ -1,4 +1,6 @@
 use mollusk_svm::Mollusk;
+use quasar_spl::get_associated_token_address_const;
+use quasar_test_token_cpi::client::*;
 use solana_account::Account;
 use solana_address::Address;
 use solana_instruction::Instruction;
@@ -6,11 +8,12 @@ use solana_program_pack::Pack;
 use spl_token_interface::state::Account as TokenAccount;
 use spl_token_interface::state::AccountState;
 use spl_token_interface::state::Mint;
-use quasar_spl::get_associated_token_address_const;
-use quasar_test_token_cpi::client::*;
 
 fn setup() -> Mollusk {
-    let mut mollusk = Mollusk::new(&quasar_test_token_cpi::ID, "../../target/deploy/quasar_test_token_cpi");
+    let mut mollusk = Mollusk::new(
+        &quasar_test_token_cpi::ID,
+        "../../target/deploy/quasar_test_token_cpi",
+    );
     mollusk_svm_programs_token::token::add_program(&mut mollusk);
     mollusk
 }
@@ -78,20 +81,61 @@ fn test_transfer_checked_success() {
     let mint = Address::new_unique();
     let from = Address::new_unique();
     let to = Address::new_unique();
-    let mint_account = Account { lamports: 1_000_000, data: pack_mint(authority, 9), owner: token_program, executable: false, rent_epoch: 0 };
-    let from_account = Account { lamports: 1_000_000, data: pack_token(mint, authority, 500), owner: token_program, executable: false, rent_epoch: 0 };
-    let to_account = Account { lamports: 1_000_000, data: pack_token(mint, authority, 0), owner: token_program, executable: false, rent_epoch: 0 };
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let from_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 500),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let to_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 0),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
     let authority_account = Account::new(1_000_000, 0, &Address::default());
-    let instruction: Instruction = TransferCheckedInstruction { authority, from, mint, to, token_program, amount: 200, decimals: 9 }.into();
-    let result = mollusk.process_instruction(&instruction, &[
-        (authority, authority_account), (from, from_account), (mint, mint_account), (to, to_account), (token_program, token_program_account),
-    ]);
-    assert!(result.program_result.is_ok(), "transfer_checked failed: {:?}", result.program_result);
+    let instruction: Instruction = TransferCheckedInstruction {
+        authority,
+        from,
+        mint,
+        to,
+        token_program,
+        amount: 200,
+        decimals: 9,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, authority_account),
+            (from, from_account),
+            (mint, mint_account),
+            (to, to_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "transfer_checked failed: {:?}",
+        result.program_result
+    );
     let from_data: TokenAccount = Pack::unpack(&result.resulting_accounts[1].1.data).unwrap();
     let to_data: TokenAccount = Pack::unpack(&result.resulting_accounts[3].1.data).unwrap();
     assert_eq!(from_data.amount, 300, "from balance should be 300");
     assert_eq!(to_data.amount, 200, "to balance should be 200");
-    println!("  transfer_checked: OK (CU: {})", result.compute_units_consumed);
+    println!(
+        "  transfer_checked: OK (CU: {})",
+        result.compute_units_consumed
+    );
 }
 
 #[test]
@@ -102,15 +146,52 @@ fn test_transfer_checked_wrong_decimals() {
     let mint = Address::new_unique();
     let from = Address::new_unique();
     let to = Address::new_unique();
-    let mint_account = Account { lamports: 1_000_000, data: pack_mint(authority, 9), owner: token_program, executable: false, rent_epoch: 0 };
-    let from_account = Account { lamports: 1_000_000, data: pack_token(mint, authority, 500), owner: token_program, executable: false, rent_epoch: 0 };
-    let to_account = Account { lamports: 1_000_000, data: pack_token(mint, authority, 0), owner: token_program, executable: false, rent_epoch: 0 };
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let from_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 500),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let to_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 0),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
     let authority_account = Account::new(1_000_000, 0, &Address::default());
-    let instruction: Instruction = TransferCheckedInstruction { authority, from, mint, to, token_program, amount: 200, decimals: 6 }.into();
-    let result = mollusk.process_instruction(&instruction, &[
-        (authority, authority_account), (from, from_account), (mint, mint_account), (to, to_account), (token_program, token_program_account),
-    ]);
-    assert!(result.program_result.is_err(), "transfer_checked should fail with wrong decimals");
+    let instruction: Instruction = TransferCheckedInstruction {
+        authority,
+        from,
+        mint,
+        to,
+        token_program,
+        amount: 200,
+        decimals: 6,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, authority_account),
+            (from, from_account),
+            (mint, mint_account),
+            (to, to_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "transfer_checked should fail with wrong decimals"
+    );
 }
 
 #[test]
@@ -121,17 +202,47 @@ fn test_approve_success() {
     let mint = Address::new_unique();
     let source = Address::new_unique();
     let delegate = Address::new_unique();
-    let source_account = Account { lamports: 1_000_000, data: pack_token(mint, authority, 1000), owner: token_program, executable: false, rent_epoch: 0 };
+    let source_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 1000),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
     let delegate_account = Account::new(1_000_000, 0, &Address::default());
     let authority_account = Account::new(1_000_000, 0, &Address::default());
-    let instruction: Instruction = ApproveInstruction { authority, source, delegate, token_program, amount: 500 }.into();
-    let result = mollusk.process_instruction(&instruction, &[
-        (authority, authority_account), (source, source_account), (delegate, delegate_account), (token_program, token_program_account),
-    ]);
-    assert!(result.program_result.is_ok(), "approve failed: {:?}", result.program_result);
+    let instruction: Instruction = ApproveInstruction {
+        authority,
+        source,
+        delegate,
+        token_program,
+        amount: 500,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, authority_account),
+            (source, source_account),
+            (delegate, delegate_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "approve failed: {:?}",
+        result.program_result
+    );
     let source_data: TokenAccount = Pack::unpack(&result.resulting_accounts[1].1.data).unwrap();
-    assert_eq!(Option::<Address>::from(source_data.delegate), Some(delegate), "delegate should be set");
-    assert_eq!(source_data.delegated_amount, 500, "delegated_amount should be 500");
+    assert_eq!(
+        Option::<Address>::from(source_data.delegate),
+        Some(delegate),
+        "delegate should be set"
+    );
+    assert_eq!(
+        source_data.delegated_amount, 500,
+        "delegated_amount should be 500"
+    );
     println!("  approve: OK (CU: {})", result.compute_units_consumed);
 }
 
@@ -143,15 +254,39 @@ fn test_revoke_success() {
     let mint = Address::new_unique();
     let source = Address::new_unique();
     let delegate = Address::new_unique();
-    let source_account = Account { lamports: 1_000_000, data: pack_token_with_delegate(mint, authority, 1000, delegate, 500), owner: token_program, executable: false, rent_epoch: 0 };
+    let source_account = Account {
+        lamports: 1_000_000,
+        data: pack_token_with_delegate(mint, authority, 1000, delegate, 500),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
     let authority_account = Account::new(1_000_000, 0, &Address::default());
-    let instruction: Instruction = RevokeInstruction { authority, source, token_program }.into();
-    let result = mollusk.process_instruction(&instruction, &[
-        (authority, authority_account), (source, source_account), (token_program, token_program_account),
-    ]);
-    assert!(result.program_result.is_ok(), "revoke failed: {:?}", result.program_result);
+    let instruction: Instruction = RevokeInstruction {
+        authority,
+        source,
+        token_program,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, authority_account),
+            (source, source_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "revoke failed: {:?}",
+        result.program_result
+    );
     let source_data: TokenAccount = Pack::unpack(&result.resulting_accounts[1].1.data).unwrap();
-    assert_eq!(Option::<Address>::from(source_data.delegate), None, "delegate should be cleared");
+    assert_eq!(
+        Option::<Address>::from(source_data.delegate),
+        None,
+        "delegate should be cleared"
+    );
     println!("  revoke: OK (CU: {})", result.compute_units_consumed);
 }
 
@@ -162,18 +297,51 @@ fn test_mint_to_success() {
     let authority = Address::new_unique();
     let mint = Address::new_unique();
     let to = Address::new_unique();
-    let mint_account = Account { lamports: 1_000_000, data: pack_mint(authority, 9), owner: token_program, executable: false, rent_epoch: 0 };
-    let to_account = Account { lamports: 1_000_000, data: pack_token(mint, authority, 0), owner: token_program, executable: false, rent_epoch: 0 };
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let to_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 0),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
     let authority_account = Account::new(1_000_000, 0, &Address::default());
-    let instruction: Instruction = MintToInstruction { authority, mint, to, token_program, amount: 5000 }.into();
-    let result = mollusk.process_instruction(&instruction, &[
-        (authority, authority_account), (mint, mint_account), (to, to_account), (token_program, token_program_account),
-    ]);
-    assert!(result.program_result.is_ok(), "mint_to failed: {:?}", result.program_result);
+    let instruction: Instruction = MintToInstruction {
+        authority,
+        mint,
+        to,
+        token_program,
+        amount: 5000,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, authority_account),
+            (mint, mint_account),
+            (to, to_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "mint_to failed: {:?}",
+        result.program_result
+    );
     let to_data: TokenAccount = Pack::unpack(&result.resulting_accounts[2].1.data).unwrap();
     let mint_data: Mint = Pack::unpack(&result.resulting_accounts[1].1.data).unwrap();
     assert_eq!(to_data.amount, 5000, "to balance should be 5000");
-    assert_eq!(mint_data.supply, 1_000_000_000 + 5000, "supply should increase by 5000");
+    assert_eq!(
+        mint_data.supply,
+        1_000_000_000 + 5000,
+        "supply should increase by 5000"
+    );
     println!("  mint_to: OK (CU: {})", result.compute_units_consumed);
 }
 
@@ -185,14 +353,42 @@ fn test_mint_to_wrong_authority() {
     let fake_authority = Address::new_unique();
     let mint = Address::new_unique();
     let to = Address::new_unique();
-    let mint_account = Account { lamports: 1_000_000, data: pack_mint(real_authority, 9), owner: token_program, executable: false, rent_epoch: 0 };
-    let to_account = Account { lamports: 1_000_000, data: pack_token(mint, real_authority, 0), owner: token_program, executable: false, rent_epoch: 0 };
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(real_authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let to_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, real_authority, 0),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
     let fake_authority_account = Account::new(1_000_000, 0, &Address::default());
-    let instruction: Instruction = MintToInstruction { authority: fake_authority, mint, to, token_program, amount: 5000 }.into();
-    let result = mollusk.process_instruction(&instruction, &[
-        (fake_authority, fake_authority_account), (mint, mint_account), (to, to_account), (token_program, token_program_account),
-    ]);
-    assert!(result.program_result.is_err(), "mint_to should fail with wrong authority");
+    let instruction: Instruction = MintToInstruction {
+        authority: fake_authority,
+        mint,
+        to,
+        token_program,
+        amount: 5000,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (fake_authority, fake_authority_account),
+            (mint, mint_account),
+            (to, to_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "mint_to should fail with wrong authority"
+    );
 }
 
 #[test]
@@ -202,18 +398,51 @@ fn test_burn_success() {
     let authority = Address::new_unique();
     let mint = Address::new_unique();
     let from = Address::new_unique();
-    let mint_account = Account { lamports: 1_000_000, data: pack_mint(authority, 9), owner: token_program, executable: false, rent_epoch: 0 };
-    let from_account = Account { lamports: 1_000_000, data: pack_token(mint, authority, 1000), owner: token_program, executable: false, rent_epoch: 0 };
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let from_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 1000),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
     let authority_account = Account::new(1_000_000, 0, &Address::default());
-    let instruction: Instruction = BurnInstruction { authority, from, mint, token_program, amount: 300 }.into();
-    let result = mollusk.process_instruction(&instruction, &[
-        (authority, authority_account), (from, from_account), (mint, mint_account), (token_program, token_program_account),
-    ]);
-    assert!(result.program_result.is_ok(), "burn failed: {:?}", result.program_result);
+    let instruction: Instruction = BurnInstruction {
+        authority,
+        from,
+        mint,
+        token_program,
+        amount: 300,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, authority_account),
+            (from, from_account),
+            (mint, mint_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "burn failed: {:?}",
+        result.program_result
+    );
     let from_data: TokenAccount = Pack::unpack(&result.resulting_accounts[1].1.data).unwrap();
     let mint_data: Mint = Pack::unpack(&result.resulting_accounts[2].1.data).unwrap();
     assert_eq!(from_data.amount, 700, "from balance should be 700");
-    assert_eq!(mint_data.supply, 1_000_000_000 - 300, "supply should decrease by 300");
+    assert_eq!(
+        mint_data.supply,
+        1_000_000_000 - 300,
+        "supply should decrease by 300"
+    );
     println!("  burn: OK (CU: {})", result.compute_units_consumed);
 }
 
@@ -224,14 +453,42 @@ fn test_burn_insufficient_balance() {
     let authority = Address::new_unique();
     let mint = Address::new_unique();
     let from = Address::new_unique();
-    let mint_account = Account { lamports: 1_000_000, data: pack_mint(authority, 9), owner: token_program, executable: false, rent_epoch: 0 };
-    let from_account = Account { lamports: 1_000_000, data: pack_token(mint, authority, 100), owner: token_program, executable: false, rent_epoch: 0 };
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let from_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 100),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
     let authority_account = Account::new(1_000_000, 0, &Address::default());
-    let instruction: Instruction = BurnInstruction { authority, from, mint, token_program, amount: 500 }.into();
-    let result = mollusk.process_instruction(&instruction, &[
-        (authority, authority_account), (from, from_account), (mint, mint_account), (token_program, token_program_account),
-    ]);
-    assert!(result.program_result.is_err(), "burn should fail with insufficient balance");
+    let instruction: Instruction = BurnInstruction {
+        authority,
+        from,
+        mint,
+        token_program,
+        amount: 500,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, authority_account),
+            (from, from_account),
+            (mint, mint_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "burn should fail with insufficient balance"
+    );
 }
 
 #[test]
@@ -243,21 +500,49 @@ fn test_close_account_success() {
     let account = Address::new_unique();
     let token_data = pack_token(mint, authority, 0);
     let account_lamports = 2_000_000u64;
-    let account_acct = Account { lamports: account_lamports, data: token_data, owner: token_program, executable: false, rent_epoch: 0 };
+    let account_acct = Account {
+        lamports: account_lamports,
+        data: token_data,
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
     let authority_lamports = 1_000_000u64;
     let authority_account = Account::new(authority_lamports, 0, &Address::default());
-    let instruction: Instruction = CloseTokenAccountInstruction { authority, account, destination: authority, token_program }.into();
-    let result = mollusk.process_instruction(&instruction, &[
-        (authority, authority_account),
-        (account, account_acct),
-        (authority, Account::new(authority_lamports, 0, &Address::default())),
-        (token_program, token_program_account),
-    ]);
-    assert!(result.program_result.is_ok(), "close_account failed: {:?}", result.program_result);
+    let instruction: Instruction = CloseTokenAccountInstruction {
+        authority,
+        account,
+        destination: authority,
+        token_program,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, authority_account),
+            (account, account_acct),
+            (
+                authority,
+                Account::new(authority_lamports, 0, &Address::default()),
+            ),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "close_account failed: {:?}",
+        result.program_result
+    );
     let closed = &result.resulting_accounts[1].1;
     assert_eq!(closed.lamports, 0, "closed account should have 0 lamports");
-    assert!(closed.data.iter().all(|&b| b == 0), "closed account data should be zeroed");
-    println!("  close_account: OK (CU: {})", result.compute_units_consumed);
+    assert!(
+        closed.data.iter().all(|&b| b == 0),
+        "closed account data should be zeroed"
+    );
+    println!(
+        "  close_account: OK (CU: {})",
+        result.compute_units_consumed
+    );
 }
 
 #[test]
@@ -267,16 +552,34 @@ fn test_close_account_nonzero_balance_fails() {
     let authority = Address::new_unique();
     let mint = Address::new_unique();
     let account = Address::new_unique();
-    let account_acct = Account { lamports: 2_000_000, data: pack_token(mint, authority, 100), owner: token_program, executable: false, rent_epoch: 0 };
+    let account_acct = Account {
+        lamports: 2_000_000,
+        data: pack_token(mint, authority, 100),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
     let authority_account = Account::new(1_000_000, 0, &Address::default());
-    let instruction: Instruction = CloseTokenAccountInstruction { authority, account, destination: authority, token_program }.into();
-    let result = mollusk.process_instruction(&instruction, &[
-        (authority, authority_account),
-        (account, account_acct),
-        (authority, Account::new(1_000_000, 0, &Address::default())),
-        (token_program, token_program_account),
-    ]);
-    assert!(result.program_result.is_err(), "close_account should fail with nonzero token balance");
+    let instruction: Instruction = CloseTokenAccountInstruction {
+        authority,
+        account,
+        destination: authority,
+        token_program,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, authority_account),
+            (account, account_acct),
+            (authority, Account::new(1_000_000, 0, &Address::default())),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "close_account should fail with nonzero token balance"
+    );
 }
 
 #[test]
@@ -287,19 +590,51 @@ fn test_interface_transfer_spl_token() {
     let mint = Address::new_unique();
     let from = Address::new_unique();
     let to = Address::new_unique();
-    let from_account = Account { lamports: 1_000_000, data: pack_token(mint, authority, 1000), owner: token_program, executable: false, rent_epoch: 0 };
-    let to_account = Account { lamports: 1_000_000, data: pack_token(mint, authority, 0), owner: token_program, executable: false, rent_epoch: 0 };
+    let from_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 1000),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let to_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 0),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
     let authority_account = Account::new(1_000_000, 0, &Address::default());
-    let instruction: Instruction = InterfaceTransferInstruction { authority, from, to, token_program, amount: 400 }.into();
-    let result = mollusk.process_instruction(&instruction, &[
-        (authority, authority_account), (from, from_account), (to, to_account), (token_program, token_program_account),
-    ]);
-    assert!(result.program_result.is_ok(), "interface_transfer (SPL Token) failed: {:?}", result.program_result);
+    let instruction: Instruction = InterfaceTransferInstruction {
+        authority,
+        from,
+        to,
+        token_program,
+        amount: 400,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, authority_account),
+            (from, from_account),
+            (to, to_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "interface_transfer (SPL Token) failed: {:?}",
+        result.program_result
+    );
     let from_data: TokenAccount = Pack::unpack(&result.resulting_accounts[1].1.data).unwrap();
     let to_data: TokenAccount = Pack::unpack(&result.resulting_accounts[2].1.data).unwrap();
     assert_eq!(from_data.amount, 600, "from balance should be 600");
     assert_eq!(to_data.amount, 400, "to balance should be 400");
-    println!("  interface_transfer (SPL Token): OK (CU: {})", result.compute_units_consumed);
+    println!(
+        "  interface_transfer (SPL Token): OK (CU: {})",
+        result.compute_units_consumed
+    );
 }
 
 #[test]
@@ -311,14 +646,42 @@ fn test_interface_account_wrong_owner() {
     let from = Address::new_unique();
     let to = Address::new_unique();
     let wrong_program = Address::new_unique();
-    let from_account = Account { lamports: 1_000_000, data: pack_token(mint, authority, 1000), owner: wrong_program, executable: false, rent_epoch: 0 };
-    let to_account = Account { lamports: 1_000_000, data: pack_token(mint, authority, 0), owner: token_program, executable: false, rent_epoch: 0 };
+    let from_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 1000),
+        owner: wrong_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let to_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 0),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
     let authority_account = Account::new(1_000_000, 0, &Address::default());
-    let instruction: Instruction = InterfaceTransferInstruction { authority, from, to, token_program, amount: 400 }.into();
-    let result = mollusk.process_instruction(&instruction, &[
-        (authority, authority_account), (from, from_account), (to, to_account), (token_program, token_program_account),
-    ]);
-    assert!(result.program_result.is_err(), "interface_transfer should fail with wrong owner on from account");
+    let instruction: Instruction = InterfaceTransferInstruction {
+        authority,
+        from,
+        to,
+        token_program,
+        amount: 400,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, authority_account),
+            (from, from_account),
+            (to, to_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "interface_transfer should fail with wrong owner on from account"
+    );
 }
 
 #[test]
@@ -330,15 +693,49 @@ fn test_interface_wrong_program() {
     let from = Address::new_unique();
     let to = Address::new_unique();
     let fake_program = Address::new_unique();
-    let from_account = Account { lamports: 1_000_000, data: pack_token(mint, authority, 1000), owner: token_program, executable: false, rent_epoch: 0 };
-    let to_account = Account { lamports: 1_000_000, data: pack_token(mint, authority, 0), owner: token_program, executable: false, rent_epoch: 0 };
+    let from_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 1000),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let to_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 0),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
     let authority_account = Account::new(1_000_000, 0, &Address::default());
-    let fake_program_account = Account { lamports: 1_000_000, data: vec![], owner: Address::default(), executable: true, rent_epoch: 0 };
-    let instruction: Instruction = InterfaceTransferInstruction { authority, from, to, token_program: fake_program, amount: 400 }.into();
-    let result = mollusk.process_instruction(&instruction, &[
-        (authority, authority_account), (from, from_account), (to, to_account), (fake_program, fake_program_account),
-    ]);
-    assert!(result.program_result.is_err(), "interface_transfer should fail with non-token program");
+    let fake_program_account = Account {
+        lamports: 1_000_000,
+        data: vec![],
+        owner: Address::default(),
+        executable: true,
+        rent_epoch: 0,
+    };
+    let instruction: Instruction = InterfaceTransferInstruction {
+        authority,
+        from,
+        to,
+        token_program: fake_program,
+        amount: 400,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, authority_account),
+            (from, from_account),
+            (to, to_account),
+            (fake_program, fake_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "interface_transfer should fail with non-token program"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -353,18 +750,44 @@ fn test_validate_ata_success() {
     let mint = Address::new_unique();
     let (ata_addr, _) = get_associated_token_address_const(&wallet, &mint);
 
-    let mint_account = Account { lamports: 1_000_000, data: pack_mint(wallet, 9), owner: token_program, executable: false, rent_epoch: 0 };
-    let ata_account = Account { lamports: 1_000_000, data: pack_token(mint, wallet, 100), owner: token_program, executable: false, rent_epoch: 0 };
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(wallet, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let ata_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, wallet, 100),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
     let wallet_account = Account::new(1_000_000, 0, &Address::default());
 
     let instruction: Instruction = ValidateAtaCheckInstruction {
-        ata: ata_addr, mint, wallet, token_program,
-    }.into();
+        ata: ata_addr,
+        mint,
+        wallet,
+        token_program,
+    }
+    .into();
 
-    let result = mollusk.process_instruction(&instruction, &[
-        (ata_addr, ata_account), (mint, mint_account), (wallet, wallet_account), (token_program, token_program_account),
-    ]);
-    assert!(result.program_result.is_ok(), "validate_ata should pass with correct ATA: {:?}", result.program_result);
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (ata_addr, ata_account),
+            (mint, mint_account),
+            (wallet, wallet_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "validate_ata should pass with correct ATA: {:?}",
+        result.program_result
+    );
 }
 
 #[test]
@@ -375,18 +798,43 @@ fn test_validate_ata_wrong_address() {
     let mint = Address::new_unique();
     let wrong_ata = Address::new_unique();
 
-    let mint_account = Account { lamports: 1_000_000, data: pack_mint(wallet, 9), owner: token_program, executable: false, rent_epoch: 0 };
-    let ata_account = Account { lamports: 1_000_000, data: pack_token(mint, wallet, 100), owner: token_program, executable: false, rent_epoch: 0 };
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(wallet, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let ata_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, wallet, 100),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
     let wallet_account = Account::new(1_000_000, 0, &Address::default());
 
     let instruction: Instruction = ValidateAtaCheckInstruction {
-        ata: wrong_ata, mint, wallet, token_program,
-    }.into();
+        ata: wrong_ata,
+        mint,
+        wallet,
+        token_program,
+    }
+    .into();
 
-    let result = mollusk.process_instruction(&instruction, &[
-        (wrong_ata, ata_account), (mint, mint_account), (wallet, wallet_account), (token_program, token_program_account),
-    ]);
-    assert!(result.program_result.is_err(), "validate_ata should fail with wrong ATA address");
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (wrong_ata, ata_account),
+            (mint, mint_account),
+            (wallet, wallet_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "validate_ata should fail with wrong ATA address"
+    );
 }
 
 #[test]
@@ -398,18 +846,43 @@ fn test_validate_ata_wrong_mint() {
     let wrong_mint = Address::new_unique();
     let (ata_addr, _) = get_associated_token_address_const(&wallet, &mint);
 
-    let mint_account = Account { lamports: 1_000_000, data: pack_mint(wallet, 9), owner: token_program, executable: false, rent_epoch: 0 };
-    let ata_account = Account { lamports: 1_000_000, data: pack_token(wrong_mint, wallet, 100), owner: token_program, executable: false, rent_epoch: 0 };
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(wallet, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let ata_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(wrong_mint, wallet, 100),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
     let wallet_account = Account::new(1_000_000, 0, &Address::default());
 
     let instruction: Instruction = ValidateAtaCheckInstruction {
-        ata: ata_addr, mint, wallet, token_program,
-    }.into();
+        ata: ata_addr,
+        mint,
+        wallet,
+        token_program,
+    }
+    .into();
 
-    let result = mollusk.process_instruction(&instruction, &[
-        (ata_addr, ata_account), (mint, mint_account), (wallet, wallet_account), (token_program, token_program_account),
-    ]);
-    assert!(result.program_result.is_err(), "validate_ata should fail when token account has wrong mint");
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (ata_addr, ata_account),
+            (mint, mint_account),
+            (wallet, wallet_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "validate_ata should fail when token account has wrong mint"
+    );
 }
 
 #[test]
@@ -421,18 +894,43 @@ fn test_validate_ata_wrong_authority() {
     let mint = Address::new_unique();
     let (ata_addr, _) = get_associated_token_address_const(&wallet, &mint);
 
-    let mint_account = Account { lamports: 1_000_000, data: pack_mint(wallet, 9), owner: token_program, executable: false, rent_epoch: 0 };
-    let ata_account = Account { lamports: 1_000_000, data: pack_token(mint, wrong_wallet, 100), owner: token_program, executable: false, rent_epoch: 0 };
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(wallet, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let ata_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, wrong_wallet, 100),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
     let wallet_account = Account::new(1_000_000, 0, &Address::default());
 
     let instruction: Instruction = ValidateAtaCheckInstruction {
-        ata: ata_addr, mint, wallet, token_program,
-    }.into();
+        ata: ata_addr,
+        mint,
+        wallet,
+        token_program,
+    }
+    .into();
 
-    let result = mollusk.process_instruction(&instruction, &[
-        (ata_addr, ata_account), (mint, mint_account), (wallet, wallet_account), (token_program, token_program_account),
-    ]);
-    assert!(result.program_result.is_err(), "validate_ata should fail when token account has wrong authority");
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (ata_addr, ata_account),
+            (mint, mint_account),
+            (wallet, wallet_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "validate_ata should fail when token account has wrong authority"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -443,7 +941,8 @@ fn test_validate_ata_wrong_authority() {
 fn test_init_token_account_success() {
     let mollusk = setup();
     let (token_program, token_program_account) = token_program_account();
-    let (system_program, system_program_account) = mollusk_svm::program::keyed_account_for_system_program();
+    let (system_program, system_program_account) =
+        mollusk_svm::program::keyed_account_for_system_program();
 
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
@@ -497,14 +996,18 @@ fn test_init_token_account_success() {
         result.resulting_accounts[1].1.owner, token_program,
         "token account owner should be token program"
     );
-    println!("  init_token_account: OK (CU: {})", result.compute_units_consumed);
+    println!(
+        "  init_token_account: OK (CU: {})",
+        result.compute_units_consumed
+    );
 }
 
 #[test]
 fn test_init_token_account_already_initialized() {
     let mollusk = setup();
     let (token_program, token_program_account) = token_program_account();
-    let (system_program, system_program_account) = mollusk_svm::program::keyed_account_for_system_program();
+    let (system_program, system_program_account) =
+        mollusk_svm::program::keyed_account_for_system_program();
 
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
@@ -635,7 +1138,10 @@ fn test_executable_check_non_executable_program() {
 // ---------------------------------------------------------------------------
 
 fn setup_with_ata() -> Mollusk {
-    let mut mollusk = Mollusk::new(&quasar_test_token_cpi::ID, "../../target/deploy/quasar_test_token_cpi");
+    let mut mollusk = Mollusk::new(
+        &quasar_test_token_cpi::ID,
+        "../../target/deploy/quasar_test_token_cpi",
+    );
     mollusk_svm_programs_token::token::add_program(&mut mollusk);
     mollusk_svm_programs_token::associated_token::add_program(&mut mollusk);
     mollusk
@@ -645,7 +1151,8 @@ fn setup_with_ata() -> Mollusk {
 fn test_init_if_needed_token_new_account() {
     let mollusk = setup();
     let (token_program, token_program_account) = token_program_account();
-    let (system_program, system_program_account) = mollusk_svm::program::keyed_account_for_system_program();
+    let (system_program, system_program_account) =
+        mollusk_svm::program::keyed_account_for_system_program();
 
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
@@ -694,14 +1201,18 @@ fn test_init_if_needed_token_new_account() {
     assert_eq!(data.mint, mint);
     assert_eq!(data.owner, payer);
     assert_eq!(data.amount, 0);
-    println!("  init_if_needed_token (new): OK (CU: {})", result.compute_units_consumed);
+    println!(
+        "  init_if_needed_token (new): OK (CU: {})",
+        result.compute_units_consumed
+    );
 }
 
 #[test]
 fn test_init_if_needed_token_existing_valid() {
     let mollusk = setup();
     let (token_program, token_program_account) = token_program_account();
-    let (system_program, system_program_account) = mollusk_svm::program::keyed_account_for_system_program();
+    let (system_program, system_program_account) =
+        mollusk_svm::program::keyed_account_for_system_program();
 
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
@@ -758,7 +1269,8 @@ fn test_init_if_needed_token_existing_valid() {
 fn test_init_if_needed_token_wrong_mint() {
     let mollusk = setup();
     let (token_program, token_program_account) = token_program_account();
-    let (system_program, system_program_account) = mollusk_svm::program::keyed_account_for_system_program();
+    let (system_program, system_program_account) =
+        mollusk_svm::program::keyed_account_for_system_program();
 
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
@@ -822,7 +1334,8 @@ fn ata_program_account() -> (Address, Account) {
 fn test_init_ata_success() {
     let mollusk = setup_with_ata();
     let (token_program, token_program_account) = token_program_account();
-    let (system_program, system_program_account) = mollusk_svm::program::keyed_account_for_system_program();
+    let (system_program, system_program_account) =
+        mollusk_svm::program::keyed_account_for_system_program();
     let (ata_program, ata_program_account) = ata_program_account();
 
     let payer = Address::new_unique();
@@ -884,7 +1397,8 @@ fn test_init_ata_success() {
 fn test_init_ata_already_initialized() {
     let mollusk = setup_with_ata();
     let (token_program, token_program_account) = token_program_account();
-    let (system_program, system_program_account) = mollusk_svm::program::keyed_account_for_system_program();
+    let (system_program, system_program_account) =
+        mollusk_svm::program::keyed_account_for_system_program();
     let (ata_program, ata_program_account) = ata_program_account();
 
     let payer = Address::new_unique();
@@ -949,7 +1463,8 @@ fn test_init_ata_already_initialized() {
 fn test_init_if_needed_ata_new() {
     let mollusk = setup_with_ata();
     let (token_program, token_program_account) = token_program_account();
-    let (system_program, system_program_account) = mollusk_svm::program::keyed_account_for_system_program();
+    let (system_program, system_program_account) =
+        mollusk_svm::program::keyed_account_for_system_program();
     let (ata_program, ata_program_account) = ata_program_account();
 
     let payer = Address::new_unique();
@@ -1003,14 +1518,18 @@ fn test_init_if_needed_ata_new() {
     let data: TokenAccount = Pack::unpack(&result.resulting_accounts[1].1.data).unwrap();
     assert_eq!(data.mint, mint);
     assert_eq!(data.owner, wallet);
-    println!("  init_if_needed_ata (new): OK (CU: {})", result.compute_units_consumed);
+    println!(
+        "  init_if_needed_ata (new): OK (CU: {})",
+        result.compute_units_consumed
+    );
 }
 
 #[test]
 fn test_init_if_needed_ata_existing_valid() {
     let mollusk = setup_with_ata();
     let (token_program, token_program_account) = token_program_account();
-    let (system_program, system_program_account) = mollusk_svm::program::keyed_account_for_system_program();
+    let (system_program, system_program_account) =
+        mollusk_svm::program::keyed_account_for_system_program();
     let (ata_program, ata_program_account) = ata_program_account();
 
     let payer = Address::new_unique();
@@ -1077,7 +1596,8 @@ fn test_init_if_needed_ata_existing_valid() {
 fn test_init_mint_success() {
     let mollusk = setup();
     let (token_program, token_program_account) = token_program_account();
-    let (system_program, system_program_account) = mollusk_svm::program::keyed_account_for_system_program();
+    let (system_program, system_program_account) =
+        mollusk_svm::program::keyed_account_for_system_program();
 
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
@@ -1135,7 +1655,8 @@ fn test_init_mint_success() {
 fn test_init_mint_already_initialized() {
     let mollusk = setup();
     let (token_program, token_program_account) = token_program_account();
-    let (system_program, system_program_account) = mollusk_svm::program::keyed_account_for_system_program();
+    let (system_program, system_program_account) =
+        mollusk_svm::program::keyed_account_for_system_program();
 
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
@@ -1185,7 +1706,10 @@ fn test_init_mint_already_initialized() {
 // ---------------------------------------------------------------------------
 
 fn setup_with_metadata() -> Mollusk {
-    let mut mollusk = Mollusk::new(&quasar_test_token_cpi::ID, "../../target/deploy/quasar_test_token_cpi");
+    let mut mollusk = Mollusk::new(
+        &quasar_test_token_cpi::ID,
+        "../../target/deploy/quasar_test_token_cpi",
+    );
     mollusk_svm_programs_token::token::add_program(&mut mollusk);
     mollusk.add_program(
         &quasar_spl::metadata::METADATA_PROGRAM_ID,
@@ -1196,7 +1720,11 @@ fn setup_with_metadata() -> Mollusk {
 
 fn metadata_pda(mint: &Address) -> (Address, u8) {
     Address::find_program_address(
-        &[b"metadata", quasar_spl::metadata::METADATA_PROGRAM_ID.as_ref(), mint.as_ref()],
+        &[
+            b"metadata",
+            quasar_spl::metadata::METADATA_PROGRAM_ID.as_ref(),
+            mint.as_ref(),
+        ],
         &quasar_spl::metadata::METADATA_PROGRAM_ID,
     )
 }
@@ -1205,7 +1733,8 @@ fn metadata_pda(mint: &Address) -> (Address, u8) {
 fn test_init_mint_with_metadata_success() {
     let mollusk = setup_with_metadata();
     let (token_program, token_program_account) = token_program_account();
-    let (system_program, system_program_account) = mollusk_svm::program::keyed_account_for_system_program();
+    let (system_program, system_program_account) =
+        mollusk_svm::program::keyed_account_for_system_program();
 
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
@@ -1247,7 +1776,10 @@ fn test_init_mint_with_metadata_success() {
             (mint_authority, mint_authority_account),
             (mint, mint_account),
             (metadata_addr, metadata_account),
-            (quasar_spl::metadata::METADATA_PROGRAM_ID, metadata_program_account),
+            (
+                quasar_spl::metadata::METADATA_PROGRAM_ID,
+                metadata_program_account,
+            ),
             (token_program, token_program_account),
             (system_program, system_program_account),
             (rent_sysvar, rent_sysvar_account),

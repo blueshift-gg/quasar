@@ -1,10 +1,13 @@
 use mollusk_svm::Mollusk;
+use quasar_test_events::client::*;
 use solana_account::Account;
 use solana_address::Address;
-use quasar_test_events::client::*;
 
 fn setup() -> Mollusk {
-    Mollusk::new(&quasar_test_events::ID, "../../target/deploy/quasar_test_events")
+    Mollusk::new(
+        &quasar_test_events::ID,
+        "../../target/deploy/quasar_test_events",
+    )
 }
 
 const EMIT_MIN_CU: u64 = 200;
@@ -31,7 +34,12 @@ fn test_emit_address() {
     let mollusk = setup();
     let signer = Address::new_unique();
     let addr = Address::new_unique();
-    let instruction = EmitAddressEventInstruction { signer, addr, value: 100 }.into();
+    let instruction = EmitAddressEventInstruction {
+        signer,
+        addr,
+        value: 100,
+    }
+    .into();
     let result = mollusk.process_instruction(
         &instruction,
         &[(signer, Account::new(1_000_000, 0, &Address::default()))],
@@ -65,7 +73,11 @@ fn test_emit_bool_true() {
 fn test_emit_bool_false() {
     let mollusk = setup();
     let signer = Address::new_unique();
-    let instruction = EmitBoolEventInstruction { signer, flag: false }.into();
+    let instruction = EmitBoolEventInstruction {
+        signer,
+        flag: false,
+    }
+    .into();
     let result = mollusk.process_instruction(
         &instruction,
         &[(signer, Account::new(1_000_000, 0, &Address::default()))],
@@ -83,7 +95,13 @@ fn test_emit_multi_field() {
     let mollusk = setup();
     let signer = Address::new_unique();
     let c = Address::new_unique();
-    let instruction = EmitMultiFieldInstruction { signer, a: 1, b: 2, c }.into();
+    let instruction = EmitMultiFieldInstruction {
+        signer,
+        a: 1,
+        b: 2,
+        c,
+    }
+    .into();
     let result = mollusk.process_instruction(
         &instruction,
         &[(signer, Account::new(1_000_000, 0, &Address::default()))],
@@ -121,7 +139,10 @@ fn make_cpi_accounts(
 ) -> Vec<(Address, Account)> {
     vec![
         (signer, Account::new(1_000_000, 0, &Address::default())),
-        (event_authority, Account::new(1_000_000, 0, &Address::default())),
+        (
+            event_authority,
+            Account::new(1_000_000, 0, &Address::default()),
+        ),
         (
             program_id,
             Account {
@@ -139,7 +160,8 @@ fn make_cpi_accounts(
 fn test_emit_cpi_success() {
     let mollusk = setup();
     let signer = Address::new_unique();
-    let (event_authority, _) = Address::find_program_address(&[b"__event_authority"], &quasar_test_events::ID);
+    let (event_authority, _) =
+        Address::find_program_address(&[b"__event_authority"], &quasar_test_events::ID);
     let instruction = EmitViaCpiInstruction {
         signer,
         event_authority,
@@ -151,7 +173,11 @@ fn test_emit_cpi_success() {
         &instruction,
         &make_cpi_accounts(signer, event_authority, quasar_test_events::ID),
     );
-    assert!(result.program_result.is_ok(), "CPI emit failed: {:?}", result.program_result);
+    assert!(
+        result.program_result.is_ok(),
+        "CPI emit failed: {:?}",
+        result.program_result
+    );
     assert!(
         result.compute_units_consumed > 1_000,
         "CPI emit should consume >1000 CU for self-CPI, got {}",
@@ -163,7 +189,8 @@ fn test_emit_cpi_success() {
 fn test_emit_cpi_different_value() {
     let mollusk = setup();
     let signer = Address::new_unique();
-    let (event_authority, _) = Address::find_program_address(&[b"__event_authority"], &quasar_test_events::ID);
+    let (event_authority, _) =
+        Address::find_program_address(&[b"__event_authority"], &quasar_test_events::ID);
     let instruction = EmitViaCpiInstruction {
         signer,
         event_authority,
@@ -175,7 +202,11 @@ fn test_emit_cpi_different_value() {
         &instruction,
         &make_cpi_accounts(signer, event_authority, quasar_test_events::ID),
     );
-    assert!(result.program_result.is_ok(), "CPI emit with different value failed: {:?}", result.program_result);
+    assert!(
+        result.program_result.is_ok(),
+        "CPI emit with different value failed: {:?}",
+        result.program_result
+    );
     assert!(
         result.compute_units_consumed > 1_000,
         "CPI emit should consume >1000 CU for self-CPI, got {}",
@@ -187,7 +218,8 @@ fn test_emit_cpi_different_value() {
 fn test_emit_cpi_cu() {
     let mollusk = setup();
     let signer = Address::new_unique();
-    let (event_authority, _) = Address::find_program_address(&[b"__event_authority"], &quasar_test_events::ID);
+    let (event_authority, _) =
+        Address::find_program_address(&[b"__event_authority"], &quasar_test_events::ID);
     let instruction = EmitViaCpiInstruction {
         signer,
         event_authority,
@@ -224,5 +256,8 @@ fn test_emit_cpi_wrong_authority() {
         &instruction,
         &make_cpi_accounts(signer, wrong_authority, quasar_test_events::ID),
     );
-    assert!(result.program_result.is_err(), "Expected failure with wrong event authority");
+    assert!(
+        result.program_result.is_err(),
+        "Expected failure with wrong event authority"
+    );
 }

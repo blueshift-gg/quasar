@@ -8,8 +8,8 @@ const MAX_SYMBOL_LEN: usize = 10;
 const MAX_URI_LEN: usize = 200;
 
 const RENT_SYSVAR: Address = Address::new_from_array([
-    6, 167, 213, 23, 25, 44, 92, 81, 33, 140, 201, 76, 61, 74, 241, 127, 88, 218, 238, 8, 155,
-    161, 253, 68, 227, 219, 217, 138, 0, 0, 0, 0,
+    6, 167, 213, 23, 25, 44, 92, 81, 33, 140, 201, 76, 61, 74, 241, 127, 88, 218, 238, 8, 155, 161,
+    253, 68, 227, 219, 217, 138, 0, 0, 0, 0,
 ]);
 
 // Metaplex Token Metadata instruction discriminators (Borsh enum variant index).

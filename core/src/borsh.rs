@@ -111,11 +111,7 @@ impl<'a> BorshVec<'a> {
     /// is valid for writes.
     #[inline(always)]
     pub unsafe fn write_to(self, ptr: *mut u8, offset: usize) -> usize {
-        core::ptr::copy_nonoverlapping(
-            self.count.to_le_bytes().as_ptr(),
-            ptr.add(offset),
-            4,
-        );
+        core::ptr::copy_nonoverlapping(self.count.to_le_bytes().as_ptr(), ptr.add(offset), 4);
         core::ptr::copy_nonoverlapping(self.bytes.as_ptr(), ptr.add(offset + 4), self.bytes.len());
         offset + 4 + self.bytes.len()
     }

@@ -253,10 +253,7 @@ pub fn validate_token_account(
 /// Used by generated `#[account(init_if_needed, mint::...)]` code when the
 /// account is already initialized.
 #[inline(always)]
-pub fn validate_mint(
-    view: &AccountView,
-    mint_authority: &Address,
-) -> Result<(), ProgramError> {
+pub fn validate_mint(view: &AccountView, mint_authority: &Address) -> Result<(), ProgramError> {
     if !is_token_program_owner(view) {
         return Err(ProgramError::IllegalOwner);
     }
