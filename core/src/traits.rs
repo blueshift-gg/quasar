@@ -77,6 +77,21 @@ pub trait ParseAccounts<'info>: Sized {
     type Bumps: Copy;
     fn parse(accounts: &'info [AccountView]) -> Result<(Self, Self::Bumps), ProgramError>;
 
+    /// Parse accounts with access to instruction data.
+    ///
+    /// When `#[instruction(args)]` is present on the Accounts struct, the
+    /// derived impl deserializes declared args from `data` and makes them
+    /// available during account initialization (e.g. for `metadata::name`).
+    ///
+    /// The default implementation ignores `data` and delegates to [`parse`].
+    #[inline(always)]
+    fn parse_with_instruction_data(
+        accounts: &'info [AccountView],
+        _data: &'info [u8],
+    ) -> Result<(Self, Self::Bumps), ProgramError> {
+        Self::parse(accounts)
+    }
+
     #[inline(always)]
     fn epilogue(&self) -> Result<(), ProgramError> {
         Ok(())

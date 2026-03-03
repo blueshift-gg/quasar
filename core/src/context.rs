@@ -25,7 +25,7 @@ pub struct Ctx<'info, T: ParseAccounts<'info> + AccountCount> {
 impl<'info, T: ParseAccounts<'info> + AccountCount> Ctx<'info, T> {
     #[inline(always)]
     pub fn new(ctx: Context<'info>) -> Result<Self, ProgramError> {
-        let (accounts, bumps) = T::parse(ctx.accounts)?;
+        let (accounts, bumps) = T::parse_with_instruction_data(ctx.accounts, ctx.data)?;
         Ok(Self {
             accounts,
             bumps,
@@ -50,7 +50,7 @@ pub struct CtxWithRemaining<'info, T: ParseAccounts<'info> + AccountCount> {
 impl<'info, T: ParseAccounts<'info> + AccountCount> CtxWithRemaining<'info, T> {
     #[inline(always)]
     pub fn new(ctx: Context<'info>) -> Result<Self, ProgramError> {
-        let (accounts, bumps) = T::parse(ctx.accounts)?;
+        let (accounts, bumps) = T::parse_with_instruction_data(ctx.accounts, ctx.data)?;
         Ok(Self {
             accounts,
             bumps,

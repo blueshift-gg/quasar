@@ -3,8 +3,8 @@ use quote::quote;
 use syn::{parse_macro_input, FnArg, Ident, ItemFn, Pat, ReturnType};
 
 use crate::helpers::{
-    extract_generic_inner_type, is_dynamic_string, is_dynamic_vec, is_unit_type, map_to_pod_type,
-    zc_deserialize_expr, DynKind, InstructionArgs,
+    extract_generic_inner_type, is_dynamic_string, is_dynamic_vec, is_str_ref, is_unit_type,
+    map_to_pod_type, zc_deserialize_expr, DynKind, InstructionArgs,
 };
 
 pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -103,6 +103,8 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
             .map(|pt| {
                 if let Some(max) = is_dynamic_string(&pt.ty, false) {
                     DynKind::Str { max }
+                } else if is_str_ref(&pt.ty) {
+                    DynKind::StrRef
                 } else if let Some((elem, max)) = is_dynamic_vec(&pt.ty, false) {
                     DynKind::Vec {
                         elem: Box::new(elem),
@@ -131,6 +133,12 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                         Ident::new(&format!("{}_len", field_names[i]), field_names[i].span());
                     zc_field_names.push(len_name);
                     zc_field_types.push(quote! { quasar_core::pod::PodU16 });
+                }
+                DynKind::StrRef => {
+                    let len_name =
+                        Ident::new(&format!("{}_len", field_names[i]), field_names[i].span());
+                    zc_field_names.push(len_name);
+                    zc_field_types.push(quote! { u8 });
                 }
                 DynKind::Vec { .. } => {
                     let count_name =
@@ -208,6 +216,30 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                             if __dyn_len > #max_lit {
                                 return Err(ProgramError::InvalidInstructionData);
                             }
+                        ));
+                        new_stmts.push(syn::parse_quote!(if __tail.len() < __offset + __dyn_len {
+                            return Err(ProgramError::InvalidInstructionData);
+                        }));
+                        new_stmts.push(syn::parse_quote!(
+                            let #name: &str = {
+                                let __bytes = &__tail[__offset..__offset + __dyn_len];
+                                #[cfg(target_os = "solana")]
+                                { unsafe { core::str::from_utf8_unchecked(__bytes) } }
+                                #[cfg(not(target_os = "solana"))]
+                                { core::str::from_utf8(__bytes).expect("instruction string arg contains invalid UTF-8") }
+                            };
+                        ));
+                        if dyn_idx < dyn_count {
+                            new_stmts.push(syn::parse_quote!(
+                                __offset += __dyn_len;
+                            ));
+                        }
+                    }
+                    DynKind::StrRef => {
+                        dyn_idx += 1;
+                        let len_name = Ident::new(&format!("{}_len", name), name.span());
+                        new_stmts.push(syn::parse_quote!(
+                            let __dyn_len = __zc.#len_name as usize;
                         ));
                         new_stmts.push(syn::parse_quote!(if __tail.len() < __offset + __dyn_len {
                             return Err(ProgramError::InvalidInstructionData);

@@ -33,7 +33,7 @@ pub(super) fn generate_dynamic_account(
                     let fty = &f.ty;
                     quote! { #fvis #fname: #fty }
                 }
-                DynKind::Str { .. } => {
+                DynKind::Str { .. } | DynKind::StrRef => {
                     quote! { #fvis #fname: &#lt str }
                 }
                 DynKind::Vec { elem, .. } => {
@@ -55,7 +55,7 @@ pub(super) fn generate_dynamic_account(
                     let zc_ty = map_to_pod_type(&f.ty);
                     quote! { #fvis #fname: #zc_ty }
                 }
-                DynKind::Str { .. } | DynKind::Vec { .. } => {
+                DynKind::Str { .. } | DynKind::StrRef | DynKind::Vec { .. } => {
                     let end_name = format_ident!("{}_end", fname);
                     quote! { #fvis #end_name: quasar_core::pod::PodU16 }
                 }
@@ -72,7 +72,7 @@ pub(super) fn generate_dynamic_account(
             let fname = f.ident.as_ref().unwrap();
             match kind {
                 DynKind::Fixed => zc_serialize_field(fname, &f.ty),
-                DynKind::Str { .. } => {
+                DynKind::Str { .. } | DynKind::StrRef => {
                     let end_name = format_ident!("{}_end", fname);
                     let init = if !first_dyn_seen {
                         first_dyn_seen = true;
@@ -112,7 +112,7 @@ pub(super) fn generate_dynamic_account(
         .map(|(f, kind)| {
             let fname = f.ident.as_ref().unwrap();
             match kind {
-                DynKind::Str { .. } => quote! {
+                DynKind::Str { .. } | DynKind::StrRef => quote! {
                     {
                         let __len = self.#fname.len();
                         __data[__var_offset..__var_offset + __len].copy_from_slice(self.#fname.as_bytes());
@@ -148,13 +148,13 @@ pub(super) fn generate_dynamic_account(
         .map(|(f, kind)| {
             let fname = f.ident.as_ref().unwrap();
             match kind {
-                DynKind::Str { max } => quote! {
+                DynKind::Str { max } | DynKind::Vec { max, .. } => quote! {
                     if self.#fname.len() > #max {
                         return Err(QuasarError::DynamicFieldTooLong.into());
                     }
                 },
-                DynKind::Vec { max, .. } => quote! {
-                    if self.#fname.len() > #max {
+                DynKind::StrRef => quote! {
+                    if self.#fname.len() > 255 {
                         return Err(QuasarError::DynamicFieldTooLong.into());
                     }
                 },
@@ -171,7 +171,7 @@ pub(super) fn generate_dynamic_account(
         .map(|(f, kind)| {
             let fname = f.ident.as_ref().unwrap();
             match kind {
-                DynKind::Str { .. } => quote! { + self.#fname.len() },
+                DynKind::Str { .. } | DynKind::StrRef => quote! { + self.#fname.len() },
                 DynKind::Vec { elem, .. } => {
                     quote! { + self.#fname.len() * core::mem::size_of::<#elem>() }
                 }
@@ -187,6 +187,7 @@ pub(super) fn generate_dynamic_account(
         .filter(|(_, k)| !matches!(k, DynKind::Fixed))
         .map(|(_, kind)| match kind {
             DynKind::Str { max } => quote! { + #max },
+            DynKind::StrRef => quote! { + 255usize },
             DynKind::Vec { elem, max } => {
                 quote! { + #max * core::mem::size_of::<#elem>() }
             }

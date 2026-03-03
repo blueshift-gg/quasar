@@ -282,6 +282,21 @@ export type DecodedInstruction =
   | { type: ProgramInstruction.Take; args: TakeInstructionArgs };
 ```
 
+### Instruction Input Interfaces
+
+For each instruction with user-provided accounts or arguments, the generator creates an `InstructionInput` interface that combines both:
+
+```typescript
+export interface MakeInstructionInput {
+  maker: Address;       // user-provided account
+  mintA: Address;       // user-provided account
+  deposit: bigint;      // instruction argument
+  receive: bigint;      // instruction argument
+}
+```
+
+Accounts with fixed addresses (`SystemProgram`, sysvars) and PDA-derived accounts are excluded from the input -- they are resolved internally by the instruction builder.
+
 ### Client Class
 
 The client class provides account decoders, event/instruction decoders, and instruction builders:
@@ -299,21 +314,32 @@ export class EscrowClient {
   // Instruction decoder -- match discriminator, decode args
   decodeInstruction(data: Uint8Array): DecodedInstruction | null { ... }
 
-  // Instruction builders -- construct TransactionInstruction
-  createMakeInstruction(
-    maker: Address,
-    // ... user-provided accounts (excluding PDAs and known addresses)
-    deposit: bigint,
-    receive: bigint,
-  ): TransactionInstruction { ... }
+  // Instruction builders -- single input object
+  createMakeInstruction(input: MakeInstructionInput): TransactionInstruction { ... }
 }
 ```
 
-Instruction builders handle three categories of accounts automatically:
+Instruction builders take a single `input` parameter (the `XxxInstructionInput` interface) instead of positional arguments. If an instruction has no user-provided accounts and no arguments, the builder takes no parameters.
 
-- **User-provided**: Passed as function parameters
-- **Fixed-address**: Instantiated inline (`new Address("11111...")`)
+Builders handle three categories of accounts internally:
+
+- **User-provided**: Read from `input.<accountName>`
+- **Fixed-address**: Resolved once from known addresses (`new Address("11111...")`)
 - **PDAs**: Derived via `Address.findProgramAddressSync` using the seed definitions from the IDL
+
+Example usage:
+
+```typescript
+const client = new EscrowClient();
+const ix = client.createMakeInstruction({
+  maker: walletAddress,
+  mintA: mintAAddress,
+  mintB: mintBAddress,
+  makerTaA: makerTokenAAddress,
+  deposit: 1_000_000n,
+  receive: 2_000_000n,
+});
+```
 
 ### Dynamic Field Codecs
 

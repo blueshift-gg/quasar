@@ -1,7 +1,7 @@
 use quote::{format_ident, quote};
 use syn::{Expr, Ident, Type};
 
-use super::attrs::parse_field_attrs;
+use super::attrs::{parse_field_attrs, AccountFieldAttrs};
 use crate::helpers::{extract_generic_inner_type, seed_slice_expr_for_parse, strip_generics};
 
 pub(super) struct ProcessedFields {
@@ -15,7 +15,7 @@ pub(super) struct ProcessedFields {
     pub bump_struct_inits: Vec<proc_macro2::TokenStream>,
     pub seeds_methods: Vec<proc_macro2::TokenStream>,
     pub seed_addr_captures: Vec<proc_macro2::TokenStream>,
-    pub field_attrs: Vec<super::attrs::AccountFieldAttrs>,
+    pub field_attrs: Vec<AccountFieldAttrs>,
     pub init_pda_checks: Vec<proc_macro2::TokenStream>,
     pub init_blocks: Vec<proc_macro2::TokenStream>,
     pub close_fields: Vec<(Ident, Ident)>,
@@ -57,6 +57,28 @@ fn find_field_by_name<'a>(
         .and_then(|f| f.ident.as_ref())
 }
 
+/// Find a field whose type is `Account<T>` (or `&Account<T>` / `&mut Account<T>`)
+/// where `T` matches one of the given inner type names.
+fn find_field_by_account_inner_type<'a>(
+    fields: &'a syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
+    inner_type_names: &[&str],
+) -> Option<&'a Ident> {
+    for field in fields.iter() {
+        let ty = match &field.ty {
+            Type::Reference(r) => &*r.elem,
+            other => other,
+        };
+        if let Some(inner) = extract_generic_inner_type(ty, "Account") {
+            if let Some(base) = type_base_name(inner) {
+                if inner_type_names.contains(&base.as_str()) {
+                    return field.ident.as_ref();
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Extract the inner type T from Account<T> or similar wrapper, handling references.
 fn extract_account_inner_type(ty: &Type) -> Option<proc_macro2::TokenStream> {
     let deref_ty = match ty {
@@ -66,17 +88,112 @@ fn extract_account_inner_type(ty: &Type) -> Option<proc_macro2::TokenStream> {
     extract_generic_inner_type(deref_ty, "Account").map(|inner| quote!(#inner))
 }
 
+// ---------------------------------------------------------------------------
+// Auto-detected fields — populated once, consumed by init/CPI codegen
+// ---------------------------------------------------------------------------
+
+struct DetectedFields<'a> {
+    // Programs
+    system_program: Option<&'a Ident>,
+    token_program: Option<&'a Ident>,
+    associated_token_program: Option<&'a Ident>,
+    metadata_program: Option<&'a Ident>,
+
+    // Accounts (by inner type of Account<T>)
+    metadata_account: Option<&'a Ident>,
+    master_edition_account: Option<&'a Ident>,
+
+    // Payer (explicit attr > field named "payer")
+    payer: Option<&'a Ident>,
+    realloc_payer: Option<&'a Ident>,
+
+    // Authorities (by name, since these are just Signers)
+    mint_authority: Option<&'a Ident>,
+    update_authority: Option<&'a Ident>,
+
+    // Rent sysvar (needed by metadata/master_edition CPI)
+    rent: Option<&'a Ident>,
+}
+
+impl<'a> DetectedFields<'a> {
+    fn detect(
+        fields: &'a syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
+        field_attrs: &[AccountFieldAttrs],
+    ) -> Self {
+        // --- Type-based detection (single pass) ---
+        let system_program = find_field_by_type(fields, &["SystemProgram"]);
+        let token_program = find_field_by_type(
+            fields,
+            &["TokenProgram", "Token2022Program", "TokenInterface"],
+        );
+        let associated_token_program = find_field_by_type(fields, &["AssociatedTokenProgram"]);
+        let metadata_program = find_field_by_type(fields, &["MetadataProgram"]);
+
+        // --- Inner-type detection for Account<T> wrappers ---
+        let metadata_account = find_field_by_account_inner_type(fields, &["MetadataAccount"]);
+        let master_edition_account =
+            find_field_by_account_inner_type(fields, &["MasterEditionAccount"]);
+
+        // --- Payer detection: explicit attr > field named "payer" ---
+        let explicit_payer = field_attrs.iter().find_map(|a| a.payer.as_ref());
+        let payer = explicit_payer
+            .and_then(|name| find_field_by_name(fields, &name.to_string()))
+            .or_else(|| find_field_by_name(fields, "payer"));
+
+        // --- Realloc payer: explicit attr > init payer attr > field named "payer" ---
+        let explicit_realloc_payer = field_attrs.iter().find_map(|a| a.realloc_payer.as_ref());
+        let realloc_payer = explicit_realloc_payer
+            .and_then(|name| find_field_by_name(fields, &name.to_string()))
+            .or_else(|| {
+                field_attrs
+                    .iter()
+                    .find_map(|a| a.payer.as_ref())
+                    .and_then(|name| find_field_by_name(fields, &name.to_string()))
+            })
+            .or_else(|| find_field_by_name(fields, "payer"));
+
+        // --- Authority detection by name ---
+        let mint_authority = find_field_by_name(fields, "mint_authority")
+            .or_else(|| find_field_by_name(fields, "authority"));
+        let update_authority = find_field_by_name(fields, "update_authority").or(mint_authority);
+
+        let rent = find_field_by_name(fields, "rent");
+
+        DetectedFields {
+            system_program,
+            token_program,
+            associated_token_program,
+            metadata_program,
+            metadata_account,
+            master_edition_account,
+            payer,
+            realloc_payer,
+            mint_authority,
+            update_authority,
+            rent,
+        }
+    }
+
+    fn require(field: Option<&'a Ident>, msg: &str) -> Result<&'a Ident, proc_macro::TokenStream> {
+        field.ok_or_else(|| {
+            syn::Error::new(proc_macro2::Span::call_site(), msg)
+                .to_compile_error()
+                .into()
+        })
+    }
+}
+
 pub(super) fn process_fields(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
     field_name_strings: &[String],
 ) -> Result<ProcessedFields, proc_macro::TokenStream> {
-    let field_attrs: Vec<super::attrs::AccountFieldAttrs> = fields
+    let field_attrs: Vec<AccountFieldAttrs> = fields
         .iter()
         .map(parse_field_attrs)
         .collect::<syn::Result<Vec<_>>>()
         .map_err(|e| -> proc_macro::TokenStream { e.to_compile_error().into() })?;
 
-    // --- Compile-time validation ---
+    // --- Feature flags ---
 
     let has_any_init = field_attrs.iter().any(|a| a.is_init || a.init_if_needed);
     let has_any_token_init = field_attrs
@@ -85,104 +202,126 @@ pub(super) fn process_fields(
     let has_any_ata_init = field_attrs
         .iter()
         .any(|a| (a.is_init || a.init_if_needed) && a.associated_token_mint.is_some());
-
-    // Auto-detect system_program field (needed when any init is present)
-    let _system_program_field = if has_any_init {
-        let found = find_field_by_type(fields, &["SystemProgram"]);
-        if found.is_none() {
-            return Err(syn::Error::new(
-                proc_macro2::Span::call_site(),
-                "#[account(init)] requires a `SystemProgram` field in the accounts struct",
-            )
-            .to_compile_error()
-            .into());
-        }
-        found
-    } else {
-        None
-    };
-
-    // Auto-detect payer field (needed when any init is present)
-    let payer_field = if has_any_init {
-        // Check for any explicit payer = field attribute first
-        let explicit_payer = field_attrs.iter().find_map(|a| a.payer.as_ref());
-        let payer = explicit_payer
-            .and_then(|name| find_field_by_name(fields, &name.to_string()))
-            .or_else(|| find_field_by_name(fields, "payer"));
-        if payer.is_none() {
-            return Err(syn::Error::new(
-                proc_macro2::Span::call_site(),
-                "#[account(init)] requires a `payer` field or explicit `payer = field` attribute",
-            )
-            .to_compile_error()
-            .into());
-        }
-        payer
-    } else {
-        None
-    };
-
+    let has_any_mint_init = field_attrs
+        .iter()
+        .any(|a| (a.is_init || a.init_if_needed) && a.mint_decimals.is_some());
     let has_any_realloc = field_attrs.iter().any(|a| a.realloc.is_some());
+    let has_any_metadata_init = field_attrs
+        .iter()
+        .any(|a| (a.is_init || a.init_if_needed) && a.metadata_name.is_some());
+    let has_any_master_edition_init = field_attrs
+        .iter()
+        .any(|a| (a.is_init || a.init_if_needed) && a.master_edition_max_supply.is_some());
 
-    // Auto-detect realloc payer field
+    // --- Auto-detect fields (single pass over all fields) ---
+
+    let detected = DetectedFields::detect(fields, &field_attrs);
+
+    // --- Validate required fields per feature ---
+
+    let _system_program_field = if has_any_init {
+        Some(DetectedFields::require(
+            detected.system_program,
+            "#[account(init)] requires a `SystemProgram` field in the accounts struct",
+        )?)
+    } else {
+        None
+    };
+
+    let payer_field = if has_any_init {
+        Some(DetectedFields::require(
+            detected.payer,
+            "#[account(init)] requires a `payer` field or explicit `payer = field` attribute",
+        )?)
+    } else {
+        None
+    };
+
     let realloc_payer_field = if has_any_realloc {
-        let explicit_payer = field_attrs.iter().find_map(|a| a.realloc_payer.as_ref());
-        let payer = explicit_payer
-            .and_then(|name| find_field_by_name(fields, &name.to_string()))
-            .or_else(|| {
-                // Fall back to init payer attribute if present
-                field_attrs
-                    .iter()
-                    .find_map(|a| a.payer.as_ref())
-                    .and_then(|name| find_field_by_name(fields, &name.to_string()))
-            })
-            .or_else(|| find_field_by_name(fields, "payer"));
-        if payer.is_none() {
-            return Err(syn::Error::new(
-                proc_macro2::Span::call_site(),
-                "#[account(realloc)] requires a `payer` field, `realloc::payer = field`, or `payer = field` attribute",
-            )
-            .to_compile_error()
-            .into());
-        }
-        payer
+        Some(DetectedFields::require(
+            detected.realloc_payer,
+            "#[account(realloc)] requires a `payer` field, `realloc::payer = field`, or `payer = field` attribute",
+        )?)
     } else {
         None
     };
 
-    // Auto-detect token_program field (needed when any token or ATA init is present)
-    let token_program_field = if has_any_token_init || has_any_ata_init {
-        let found = find_field_by_type(
-            fields,
-            &["TokenProgram", "Token2022Program", "TokenInterface"],
-        );
-        if found.is_none() {
-            let msg = if has_any_ata_init {
-                "#[account(init, associated_token::...)] requires a token program field (TokenProgram, Token2022Program, or TokenInterface)"
-            } else {
-                "#[account(init, token::...)] requires a token program field (TokenProgram, Token2022Program, or TokenInterface)"
-            };
-            return Err(syn::Error::new(proc_macro2::Span::call_site(), msg)
-                .to_compile_error()
-                .into());
-        }
-        found
+    let token_program_field = if has_any_token_init
+        || has_any_ata_init
+        || has_any_mint_init
+        || has_any_master_edition_init
+    {
+        Some(DetectedFields::require(
+                detected.token_program,
+                "token/ATA/mint/master_edition init requires a token program field (TokenProgram, Token2022Program, or TokenInterface)",
+            )?)
     } else {
         None
     };
 
-    // Auto-detect ata_program field (needed when any ATA init is present)
     let ata_program_field = if has_any_ata_init {
-        let found = find_field_by_type(fields, &["AssociatedTokenProgram"]);
-        if found.is_none() {
-            return Err(syn::Error::new(
-                proc_macro2::Span::call_site(),
-                "#[account(init, associated_token::...)] requires an `AssociatedTokenProgram` field",
-            )
-            .to_compile_error()
-            .into());
-        }
-        found
+        Some(DetectedFields::require(
+            detected.associated_token_program,
+            "#[account(init, associated_token::...)] requires an `AssociatedTokenProgram` field",
+        )?)
+    } else {
+        None
+    };
+
+    let metadata_account_field = if has_any_metadata_init {
+        let field = detected
+            .metadata_account
+            .or_else(|| find_field_by_name(fields, "metadata"));
+        Some(DetectedFields::require(
+            field,
+            "`metadata::*` requires a field of type `Account<MetadataAccount>` or a field named `metadata`",
+        )?)
+    } else {
+        None
+    };
+
+    let master_edition_account_field = if has_any_master_edition_init {
+        let field = detected
+            .master_edition_account
+            .or_else(|| find_field_by_name(fields, "master_edition"))
+            .or_else(|| find_field_by_name(fields, "edition"));
+        Some(DetectedFields::require(
+            field,
+            "`master_edition::*` requires a field of type `Account<MasterEditionAccount>` or a field named `master_edition`/`edition`",
+        )?)
+    } else {
+        None
+    };
+
+    let metadata_program_field = if has_any_metadata_init || has_any_master_edition_init {
+        Some(DetectedFields::require(
+            detected.metadata_program,
+            "`metadata::*` / `master_edition::*` requires a `MetadataProgram` field",
+        )?)
+    } else {
+        None
+    };
+
+    let mint_authority_field = if has_any_metadata_init || has_any_master_edition_init {
+        Some(DetectedFields::require(
+            detected.mint_authority,
+            "`metadata::*` / `master_edition::*` requires a `mint_authority` or `authority` field",
+        )?)
+    } else {
+        None
+    };
+
+    let update_authority_field = if has_any_metadata_init || has_any_master_edition_init {
+        Some(detected.update_authority.unwrap())
+    } else {
+        None
+    };
+
+    let rent_field = if has_any_metadata_init || has_any_master_edition_init {
+        Some(DetectedFields::require(
+            detected.rent,
+            "`metadata::*` / `master_edition::*` requires a `rent` field (UncheckedAccount for the Rent sysvar)",
+        )?)
     } else {
         None
     };
@@ -217,6 +356,25 @@ pub(super) fn process_fields(
             )
             .to_compile_error()
             .into());
+        }
+
+        // Reject Initialize<T> when the derive macro handles init — the macro
+        // creates the account, so the user should receive Account<T> (validated,
+        // no .init() exposed). Allowing Initialize<T> here risks double-init.
+        if attrs.is_init || attrs.init_if_needed {
+            let deref_ty = match effective_ty {
+                Type::Reference(r) => &*r.elem,
+                other => other,
+            };
+            if extract_generic_inner_type(deref_ty, "Initialize").is_some() {
+                return Err(syn::Error::new_spanned(
+                    field_name,
+                    "#[account(init)] handles account creation — use `Account<T>` instead of `Initialize<T>`. \
+                     `Initialize<T>` exposes `.init()` which would double-initialize the account.",
+                )
+                .to_compile_error()
+                .into());
+            }
         }
 
         if attrs.close.is_some() && !is_ref_mut && !attrs.is_mut {
@@ -356,6 +514,55 @@ pub(super) fn process_fields(
                     .to_compile_error()
                     .into(),
             );
+        }
+
+        // metadata::* requires init
+        let has_any_metadata_attr = attrs.metadata_name.is_some()
+            || attrs.metadata_symbol.is_some()
+            || attrs.metadata_uri.is_some()
+            || attrs.metadata_seller_fee_basis_points.is_some()
+            || attrs.metadata_is_mutable.is_some();
+        if has_any_metadata_attr && !attrs.is_init && !attrs.init_if_needed {
+            return Err(syn::Error::new_spanned(
+                field_name,
+                "`metadata::*` attributes require `init` or `init_if_needed`",
+            )
+            .to_compile_error()
+            .into());
+        }
+
+        // metadata::name, symbol, uri must all be present if any is
+        if has_any_metadata_attr
+            && (attrs.metadata_name.is_none()
+                || attrs.metadata_symbol.is_none()
+                || attrs.metadata_uri.is_none())
+        {
+            return Err(syn::Error::new_spanned(
+                field_name,
+                "`metadata::name`, `metadata::symbol`, and `metadata::uri` must all be specified",
+            )
+            .to_compile_error()
+            .into());
+        }
+
+        // master_edition::max_supply requires init
+        if attrs.master_edition_max_supply.is_some() && !attrs.is_init && !attrs.init_if_needed {
+            return Err(syn::Error::new_spanned(
+                field_name,
+                "`master_edition::max_supply` requires `init` or `init_if_needed`",
+            )
+            .to_compile_error()
+            .into());
+        }
+
+        // master_edition requires metadata (metadata must be created first)
+        if attrs.master_edition_max_supply.is_some() && attrs.metadata_name.is_none() {
+            return Err(syn::Error::new_spanned(
+                field_name,
+                "`master_edition::max_supply` requires `metadata::name`, `metadata::symbol`, and `metadata::uri`",
+            )
+            .to_compile_error()
+            .into());
         }
 
         // --- Field construction ---
@@ -729,13 +936,83 @@ pub(super) fn process_fields(
                         }
                     });
                 }
+            } else if let Some(decimals_expr) = attrs.mint_decimals.as_ref() {
+                // Mint init: create_account (token program owner) + initialize_mint2
+                let tok_field = token_program_field.unwrap();
+                let auth_field = match attrs.mint_init_authority.as_ref() {
+                    Some(f) => f,
+                    None => {
+                        return Err(syn::Error::new_spanned(
+                            field_name,
+                            "`mint::decimals` requires `mint::authority = <field>`",
+                        )
+                        .to_compile_error()
+                        .into());
+                    }
+                };
+                let freeze_expr = if let Some(freeze_field) = &attrs.mint_freeze_authority {
+                    quote! { Some(#freeze_field.address()) }
+                } else {
+                    quote! { None }
+                };
+
+                if attrs.init_if_needed {
+                    init_blocks.push(quote! {
+                        {
+                            if quasar_core::is_system_program(unsafe { #field_name.owner() }) {
+                                let __init_lamports = __shared_rent.try_minimum_balance(
+                                    quasar_spl::MintAccountState::LEN
+                                )?;
+                                let __init_cpi = quasar_core::cpi::system::create_account(
+                                    #pay_field, #field_name, __init_lamports,
+                                    quasar_spl::MintAccountState::LEN as u64,
+                                    #tok_field.address(),
+                                );
+                                #invoke_expr
+                                quasar_spl::initialize_mint2(
+                                    #tok_field, #field_name,
+                                    (#decimals_expr) as u8,
+                                    #auth_field.address(),
+                                    #freeze_expr,
+                                ).invoke()?;
+                            } else {
+                                quasar_spl::validate_mint(
+                                    #field_name, #auth_field.address(),
+                                )?;
+                            }
+                        }
+                    });
+                } else {
+                    init_blocks.push(quote! {
+                        {
+                            if !quasar_core::is_system_program(unsafe { #field_name.owner() }) {
+                                return Err(ProgramError::AccountAlreadyInitialized);
+                            }
+                            let __init_lamports = __shared_rent.try_minimum_balance(
+                                quasar_spl::MintAccountState::LEN
+                            )?;
+                            let __init_cpi = quasar_core::cpi::system::create_account(
+                                #pay_field, #field_name, __init_lamports,
+                                quasar_spl::MintAccountState::LEN as u64,
+                                #tok_field.address(),
+                            );
+                            #invoke_expr
+                            quasar_spl::initialize_mint2(
+                                #tok_field, #field_name,
+                                (#decimals_expr) as u8,
+                                #auth_field.address(),
+                                #freeze_expr,
+                            ).invoke()?;
+                        }
+                    });
+                }
             } else {
                 // Program account init — extract inner type for Space + Discriminator
                 let inner_type = extract_account_inner_type(effective_ty);
                 if inner_type.is_none() {
                     return Err(syn::Error::new_spanned(
                         field_name,
-                        "#[account(init)] on non-Account<T> type requires `token::mint` and `token::authority` or `associated_token::mint` and `associated_token::authority`",
+                        "#[account(init)] on non-Account<T> type requires `token::mint` and `token::authority`, `associated_token::mint` and `associated_token::authority`, or `mint::decimals` and `mint::authority`",
                     )
                     .to_compile_error()
                     .into());
@@ -833,6 +1110,70 @@ pub(super) fn process_fields(
                     )?;
                 }
             });
+        }
+
+        // --- Metadata init CPI generation ---
+
+        if is_init_field {
+            if let Some(meta_name) = attrs.metadata_name.as_ref() {
+                let meta_symbol = attrs.metadata_symbol.as_ref().unwrap();
+                let meta_uri = attrs.metadata_uri.as_ref().unwrap();
+                let seller_fee = attrs
+                    .metadata_seller_fee_basis_points
+                    .as_ref()
+                    .map(|e| quote! { (#e) as u16 })
+                    .unwrap_or(quote! { 0u16 });
+                let is_mutable = attrs
+                    .metadata_is_mutable
+                    .as_ref()
+                    .map(|e| quote! { #e })
+                    .unwrap_or(quote! { false });
+
+                let meta_field = metadata_account_field.unwrap();
+                let meta_prog = metadata_program_field.unwrap();
+                let mint_auth = mint_authority_field.unwrap();
+                let update_auth = update_authority_field.unwrap();
+                let pay = payer_field.unwrap();
+                let sys = _system_program_field.unwrap();
+                let rent = rent_field.unwrap();
+
+                init_blocks.push(quote! {
+                    {
+                        quasar_spl::metadata::MetadataCpi::create_metadata_accounts_v3(
+                            #meta_prog, #meta_field, #field_name, #mint_auth,
+                            #pay, #update_auth, #sys, #rent,
+                            quasar_core::borsh::BorshString::new(#meta_name),
+                            quasar_core::borsh::BorshString::new(#meta_symbol),
+                            quasar_core::borsh::BorshString::new(#meta_uri),
+                            #seller_fee, #is_mutable, true,
+                        ).invoke()?;
+                    }
+                });
+            }
+
+            // --- Master Edition init CPI generation ---
+
+            if let Some(max_supply) = attrs.master_edition_max_supply.as_ref() {
+                let me_field = master_edition_account_field.unwrap();
+                let meta_field = metadata_account_field.unwrap();
+                let meta_prog = metadata_program_field.unwrap();
+                let mint_auth = mint_authority_field.unwrap();
+                let update_auth = update_authority_field.unwrap();
+                let pay = payer_field.unwrap();
+                let tok = token_program_field.unwrap();
+                let sys = _system_program_field.unwrap();
+                let rent = rent_field.unwrap();
+
+                init_blocks.push(quote! {
+                    {
+                        quasar_spl::metadata::MetadataCpi::create_master_edition_v3(
+                            #meta_prog, #me_field, #field_name, #update_auth,
+                            #mint_auth, #pay, #meta_field, #tok, #sys, #rent,
+                            Some(#max_supply as u64),
+                        ).invoke()?;
+                    }
+                });
+            }
         }
     }
 

@@ -10,14 +10,14 @@ These types validate that the account is owned by exactly one token program:
 
 | Type | Owner check | Deref target | Size |
 |------|-------------|-------------|------|
-| `Account<TokenAccount>` | SPL Token only | `TokenAccountState` | 165 bytes |
-| `Account<MintAccount>` | SPL Token only | `MintAccountState` | 82 bytes |
-| `Account<Token2022Account>` | Token-2022 only | `TokenAccountState` | 165 bytes |
-| `Account<Mint2022Account>` | Token-2022 only | `MintAccountState` | 82 bytes |
+| `Account<Token>` | SPL Token only | `TokenAccountState` | 165 bytes |
+| `Account<Mint>` | SPL Token only | `MintAccountState` | 82 bytes |
+| `Account<Token2022>` | Token-2022 only | `TokenAccountState` | 165 bytes |
+| `Account<Mint2022>` | Token-2022 only | `MintAccountState` | 82 bytes |
 
 ```rust
-pub vault: &'info Account<TokenAccount>,
-pub mint: &'info Account<MintAccount>,
+pub vault: &'info Account<Token>,
+pub mint: &'info Account<Mint>,
 ```
 
 Single-owner types intentionally do **not** implement the `Owner` trait. This prevents access to `Account<T>::close()` (direct lamport drain), which would always fail at runtime because the calling program does not own token/mint accounts -- the SPL Token program does. Use the CPI-based `TokenClose` trait instead.
@@ -25,26 +25,26 @@ Single-owner types intentionally do **not** implement the `Owner` trait. This pr
 The `impl_single_owner!` macro implements `CheckOwner`, `AccountCheck`, and `ZeroCopyDeref` for each type:
 
 ```rust
-pub struct TokenAccount;
-impl_single_owner!(TokenAccount, SPL_TOKEN_ID, TokenAccountState);
+pub struct Token;
+impl_single_owner!(Token, SPL_TOKEN_ID, TokenAccountState);
 
-pub struct MintAccount;
-impl_single_owner!(MintAccount, SPL_TOKEN_ID, MintAccountState);
+pub struct Mint;
+impl_single_owner!(Mint, SPL_TOKEN_ID, MintAccountState);
 ```
 
 ### Interface Types (Multi-Owner)
 
-These types accept accounts owned by either SPL Token or Token-2022:
+`InterfaceAccount<T>` accepts accounts owned by either SPL Token or Token-2022. The same marker types used with `Account<T>` work here:
 
 | Type | Owner check | Deref target |
 |------|-------------|-------------|
-| `Account<InterfaceTokenAccount>` | SPL Token **or** Token-2022 | `TokenAccountState` |
-| `Account<InterfaceMintAccount>` | SPL Token **or** Token-2022 | `MintAccountState` |
+| `InterfaceAccount<Token>` | SPL Token **or** Token-2022 | `TokenAccountState` |
+| `InterfaceAccount<Mint>` | SPL Token **or** Token-2022 | `MintAccountState` |
 
 ```rust
 // Accepts either SPL Token or Token-2022
-pub vault: &'info Account<InterfaceTokenAccount>,
-pub mint: &'info Account<InterfaceMintAccount>,
+pub vault: &'info InterfaceAccount<Token>,
+pub mint: &'info InterfaceAccount<Mint>,
 ```
 
 The base account layout (first 165 bytes for token accounts, first 82 bytes for mints) is identical for both programs. Both interface types deref to the same state structs as their single-owner counterparts:
@@ -55,16 +55,12 @@ let mint = ctx.accounts.vault.mint();
 let amount = ctx.accounts.vault.amount();
 ```
 
-Interface types implement `CheckOwner` directly with explicit comparison chains instead of going through the `Owner` blanket impl:
+`InterfaceAccount<T>` validates ownership by checking against both SPL Token and Token-2022 program IDs in `from_account_view`:
 
 ```rust
-impl CheckOwner for InterfaceTokenAccount {
-    fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
-        if !view.owned_by(&SPL_TOKEN_ID) && !view.owned_by(&TOKEN_2022_ID) {
-            return Err(ProgramError::IllegalOwner);
-        }
-        Ok(())
-    }
+let owner = unsafe { view.owner() };
+if !keys_eq(owner, &SPL_TOKEN_ID) && !keys_eq(owner, &TOKEN_2022_ID) {
+    return Err(ProgramError::IllegalOwner);
 }
 ```
 
@@ -318,9 +314,9 @@ self.vault_ta_a.init(
 ```
 
 Implemented for:
-- `Initialize<TokenAccount>`
-- `Initialize<Token2022Account>`
-- `Initialize<InterfaceTokenAccount>`
+- `Initialize<Token>`
+- `Initialize<Token2022>`
+- `Initialize<InterfaceAccount<Token>>`
 
 #### `init_if_needed`
 
@@ -360,9 +356,9 @@ self.new_mint.init(
 ```
 
 Implemented for:
-- `Initialize<MintAccount>`
-- `Initialize<Mint2022Account>`
-- `Initialize<InterfaceMintAccount>`
+- `Initialize<Mint>`
+- `Initialize<Mint2022>`
+- `Initialize<InterfaceAccount<Mint>>`
 
 #### `init_if_needed` (Mint)
 
@@ -372,6 +368,297 @@ Same pattern as token accounts. When the account already exists, validates:
 2. Data length is at least 82 bytes
 3. The mint is initialized
 4. The mint authority matches the expected value
+
+## Associated Token Accounts (ATA)
+
+The `quasar-spl` crate provides types, CPI builders, and address derivation functions for the SPL Associated Token Account program.
+
+### Types
+
+| Type | Purpose |
+|------|---------|
+| `AssociatedTokenProgram` | Program account; validates executable + address matches ATA program ID |
+| `AssociatedToken` | Account marker; validates owner is SPL Token; derefs to `TokenAccountState` |
+
+`AssociatedToken` works with `Account<AssociatedToken>` (SPL Token only) or `InterfaceAccount<AssociatedToken>` (SPL Token or Token-2022).
+
+### Address Derivation
+
+ATA addresses are derived from `seeds = [wallet, token_program, mint]` against the ATA program ID:
+
+```rust
+// SPL Token (default)
+let (address, bump) = get_associated_token_address(wallet, mint);
+
+// Explicit token program (for Token-2022)
+let (address, bump) = get_associated_token_address_with_program(wallet, mint, token_program);
+
+// Const-compatible (off-chain / const contexts)
+let (address, bump) = get_associated_token_address_const(wallet, mint);
+let (address, bump) = get_associated_token_address_with_program_const(wallet, mint, token_program);
+```
+
+### CPI Builders
+
+Two free functions build ATA creation CPIs, both returning `CpiCall<6, 1>`:
+
+```rust
+// Fails if the ATA already exists
+ata_create(ata_program, payer, ata, wallet, mint, system_program, token_program)
+    .invoke()?;
+
+// No-ops if the ATA already exists
+ata_create_idempotent(ata_program, payer, ata, wallet, mint, system_program, token_program)
+    .invoke()?;
+```
+
+### `InitAssociatedToken` Trait
+
+Extension trait on `Initialize<AssociatedToken>` providing `.init()` and `.init_if_needed()`:
+
+```rust
+// Create ATA -- fails if it already exists
+self.new_ata.init(
+    self.payer,
+    self.wallet,
+    self.mint,
+    self.system_program,
+    self.token_program,
+    self.ata_program,
+)?;
+
+// Create ATA if needed -- validates existing account
+self.new_ata.init_if_needed(
+    self.payer,
+    self.wallet,
+    self.mint,
+    self.system_program,
+    self.token_program,
+    self.ata_program,
+)?;
+```
+
+`init_if_needed` checks the account owner: if owned by the system program, calls `create_idempotent`; otherwise validates the token account data (mint and authority match).
+
+### Standalone Validation
+
+```rust
+validate_ata(view, wallet, mint, token_program)?;
+```
+
+Derives the expected ATA address, checks it matches the account, and validates the token account data.
+
+## Metaplex Token Metadata
+
+The `quasar-spl` crate provides zero-copy types and CPI functions for the Metaplex Token Metadata program. Variable-length fields (name, symbol, URI) use `BufCpiCall` for heap-free serialization.
+
+### Types
+
+| Type | Purpose | Deref target |
+|------|---------|-------------|
+| `MetadataProgram` | Program account; validates executable + address | -- |
+| `MetadataAccount` | Metadata account marker; validates key byte = 4 | `MetadataPrefix` |
+| `MasterEditionAccount` | Master edition marker; validates key byte = 6 | `MasterEditionPrefix` |
+
+### State Accessors
+
+`MetadataPrefix` (`#[repr(C)]`, 65 bytes):
+
+```rust
+let key: u8 = metadata.key();                    // must be 4 (KEY_METADATA_V1)
+let update_authority: &Address = metadata.update_authority();
+let mint: &Address = metadata.mint();
+```
+
+`MasterEditionPrefix` (`#[repr(C)]`, 18 bytes):
+
+```rust
+let key: u8 = edition.key();                     // must be 6 (KEY_MASTER_EDITION_V2)
+let supply: u64 = edition.supply();
+let max_supply: Option<u64> = edition.max_supply();
+```
+
+These are prefix structs -- they provide zero-copy access to the fixed-layout header fields. The remaining metadata fields (name, symbol, URI, creators, etc.) are Borsh-encoded and not exposed via zero-copy accessors.
+
+### CPI Functions
+
+The `MetadataCpi` trait (implemented by `MetadataProgram`) provides CPI builders for all Metaplex Token Metadata instructions:
+
+**Variable-length (return `BufCpiCall`)**:
+
+| Method | Accounts | Buffer | Notes |
+|--------|----------|--------|-------|
+| `create_metadata_accounts_v3` | 7 | 512 | name, symbol, URI, seller_fee, is_mutable |
+| `update_metadata_accounts_v2` | 2 | 512 | All fields optional |
+
+**Fixed-length (return `CpiCall`)**:
+
+| Method | Accounts | Data | Notes |
+|--------|----------|------|-------|
+| `create_master_edition_v3` | 9 | 10 | max_supply: `Option<u64>` |
+| `mint_new_edition_from_master_edition_via_token` | 14 | 9 | edition number |
+| `sign_metadata` | 2 | 1 | Creator verification |
+| `remove_creator_verification` | 2 | 1 | Undo `sign_metadata` |
+| `update_primary_sale_happened_via_token` | 3 | 1 | |
+| `verify_collection` | 6 | 1 | |
+| `verify_sized_collection_item` | 6 | 1 | |
+| `unverify_collection` | 5 | 1 | |
+| `unverify_sized_collection_item` | 6 | 1 | |
+| `approve_collection_authority` | 6 | 1 | |
+| `revoke_collection_authority` | 5 | 1 | |
+| `set_and_verify_collection` | 7 | 1 | |
+| `set_and_verify_sized_collection_item` | 7 | 1 | |
+| `freeze_delegated_account` | 4 | 1 | |
+| `thaw_delegated_account` | 4 | 1 | |
+| `burn_nft` | 6 | 1 | |
+| `burn_edition_nft` | 10 | 1 | |
+| `set_collection_size` | 4 | 9 | |
+| `set_token_standard` | 4 | 1 | |
+| `bubblegum_set_collection_size` | 4 | 9 | |
+| `utilize` | 6 | 1 | |
+
+Example -- creating metadata and master edition:
+
+```rust
+// Create metadata via BufCpiCall (variable-length name/symbol/uri)
+self.metadata_program.create_metadata_accounts_v3(
+    self.metadata,
+    self.mint,
+    self.mint_authority,
+    self.payer,
+    self.update_authority,
+    self.system_program,
+    b"My NFT",         // name (max 32 bytes)
+    b"MNFT",           // symbol (max 10 bytes)
+    b"https://...",    // URI (max 200 bytes)
+    500,               // seller_fee_basis_points
+    true,              // is_mutable
+    true,              // update_authority_is_signer
+).invoke()?;
+
+// Create master edition via CpiCall (fixed-length)
+self.metadata_program.create_master_edition_v3(
+    self.master_edition,
+    self.mint,
+    self.update_authority,
+    self.mint_authority,
+    self.payer,
+    self.metadata,
+    self.token_program,
+    self.system_program,
+    Some(100),         // max_supply (None = unlimited)
+).invoke()?;
+```
+
+### Derive Attributes
+
+The `#[derive(Accounts)]` macro supports `mint::*`, `metadata::*`, and `master_edition::*` attributes for declarative mint + metadata initialization. All attributes go on the **mint** field:
+
+```rust
+#[derive(Accounts)]
+pub struct CreateNft<'info> {
+    pub payer: &'info mut Signer,
+    pub mint_authority: &'info Signer,
+    #[account(
+        init,
+        mint::decimals = 0,
+        mint::authority = mint_authority,
+        metadata::name = b"My NFT",
+        metadata::symbol = b"MNFT",
+        metadata::uri = b"https://example.com/nft.json",
+        metadata::seller_fee_basis_points = 500,
+        metadata::is_mutable = true,
+        master_edition::max_supply = 0,
+    )]
+    pub mint: &'info mut Account<Mint>,
+    pub metadata: &'info mut UncheckedAccount,
+    pub master_edition: &'info mut UncheckedAccount,
+    pub metadata_program: &'info MetadataProgram,
+    pub token_program: &'info TokenProgram,
+    pub system_program: &'info SystemProgram,
+    pub rent: &'info UncheckedAccount,
+}
+```
+
+The generated code:
+1. Creates the mint account (SystemProgram `create_account` + TokenProgram `InitializeMint2`)
+2. CPIs into Metaplex `create_metadata_accounts_v3` to create the metadata PDA
+3. CPIs into Metaplex `create_master_edition_v3` to create the edition PDA (if `master_edition::max_supply` is present)
+
+Metadata and master edition accounts are `UncheckedAccount` because they are created by the Metaplex CPI — they don't exist at parse time.
+
+**`mint::*` attributes** (required for mint initialization):
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `mint::decimals` | `Expr` | Token decimals (0 for NFTs) |
+| `mint::authority` | `Ident` | Field name of the mint authority signer |
+| `mint::freeze_authority` | `Ident` | (Optional) Field name of the freeze authority |
+
+**`metadata::*` attributes** (all required if any is present):
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `metadata::name` | `Expr` | NFT name (max 32 bytes) |
+| `metadata::symbol` | `Expr` | Token symbol (max 10 bytes) |
+| `metadata::uri` | `Expr` | Metadata JSON URI (max 200 bytes) |
+| `metadata::seller_fee_basis_points` | `Expr` | Royalty in basis points (e.g. 500 = 5%) |
+| `metadata::is_mutable` | `Expr` | Whether metadata can be updated |
+
+**`master_edition::*` attributes**:
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `master_edition::max_supply` | `Expr` | Maximum editions (0 = unique 1/1) |
+
+Requirements:
+- `mint::decimals` requires `mint::authority`
+- `metadata::*` requires `init` or `init_if_needed` and `mint::decimals`
+- `metadata::name`, `metadata::symbol`, and `metadata::uri` must all be present if any is
+- `master_edition::max_supply` requires both `init` and all `metadata::*` attributes
+- The struct must include `MetadataProgram`, `mint_authority` (or `authority`), `payer`, `TokenProgram`, `SystemProgram`, and `rent` fields
+- The struct must include a `metadata` field (`UncheckedAccount`) for metadata CPI
+- The struct must include a `master_edition` or `edition` field (`UncheckedAccount`) for master edition CPI
+
+### Init Traits
+
+For manual (non-derive) initialization:
+
+**`InitMetadata`** (on `Initialize<MetadataAccount>`):
+
+```rust
+self.metadata.init(
+    self.metadata_program,
+    self.mint,
+    self.mint_authority,
+    self.payer,
+    self.update_authority,
+    self.system_program,
+    b"My NFT",      // name
+    b"MNFT",        // symbol
+    b"https://...", // uri
+    500,            // seller_fee_basis_points
+    true,           // is_mutable
+)?;
+```
+
+**`InitMasterEdition`** (on `Initialize<MasterEditionAccount>`):
+
+```rust
+self.master_edition.init(
+    self.metadata_program,
+    self.mint,
+    self.update_authority,
+    self.mint_authority,
+    self.payer,
+    self.metadata,
+    self.token_program,
+    self.system_program,
+    Some(100),      // max_supply (None = unlimited)
+)?;
+```
+
+Both traits also provide `init_signed()` variants for PDA authorities.
 
 ## Closing Token Accounts
 
@@ -401,12 +688,10 @@ pub trait TokenClose: AsAccountView + Sized {
 ```
 
 Implemented for all token/mint account types:
-- `Account<TokenAccount>`
-- `Account<Token2022Account>`
-- `Account<InterfaceTokenAccount>`
-- `Account<MintAccount>`
-- `Account<Mint2022Account>`
-- `Account<InterfaceMintAccount>`
+- `Account<Token>`
+- `Account<Token2022>`
+- `Account<Mint>`
+- `Account<Mint2022>`
 
 This is distinct from `Account<T>::close()` (the direct lamport drain), which is only available for program-owned accounts (`T: Owner`). Token/mint accounts are owned by the token program, so they must be closed via CPI.
 
@@ -438,11 +723,11 @@ pub struct Make<'info> {
     pub maker: &'info mut Signer,
     #[account(seeds = [b"escrow", maker], bump)]
     pub escrow: &'info mut Initialize<EscrowAccount>,
-    pub mint_a: &'info Account<MintAccount>,
-    pub mint_b: &'info Account<MintAccount>,
-    pub maker_ta_a: &'info mut Account<TokenAccount>,
-    pub maker_ta_b: &'info mut Initialize<TokenAccount>,
-    pub vault_ta_a: &'info mut Initialize<TokenAccount>,
+    pub mint_a: &'info Account<Mint>,
+    pub mint_b: &'info Account<Mint>,
+    pub maker_ta_a: &'info mut Account<Token>,
+    pub maker_ta_b: &'info mut Initialize<Token>,
+    pub vault_ta_a: &'info mut Initialize<Token>,
     pub rent: &'info Sysvar<Rent>,
     pub token_program: &'info TokenProgram,
     pub system_program: &'info SystemProgram,

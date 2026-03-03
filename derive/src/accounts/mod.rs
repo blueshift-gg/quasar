@@ -4,9 +4,40 @@ mod fields;
 
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, Data, DeriveInput, Fields};
+use syn::{parse::ParseStream, parse_macro_input, Data, DeriveInput, Fields, Ident, Token, Type};
 
-use crate::helpers::{is_composite_type, strip_generics};
+use crate::helpers::{
+    is_composite_type, is_dynamic_string, is_dynamic_vec, is_str_ref, map_to_pod_type,
+    strip_generics, zc_deserialize_expr, DynKind,
+};
+
+struct InstructionArg {
+    name: Ident,
+    ty: Type,
+}
+
+fn parse_struct_instruction_args(input: &DeriveInput) -> Option<Vec<InstructionArg>> {
+    for attr in &input.attrs {
+        if attr.path().is_ident("instruction") {
+            let result: syn::Result<Vec<InstructionArg>> =
+                attr.parse_args_with(|stream: ParseStream| {
+                    let mut args = Vec::new();
+                    while !stream.is_empty() {
+                        let name: Ident = stream.parse()?;
+                        let _: Token![:] = stream.parse()?;
+                        let ty: Type = stream.parse()?;
+                        args.push(InstructionArg { name, ty });
+                        if !stream.is_empty() {
+                            let _: Token![,] = stream.parse()?;
+                        }
+                    }
+                    Ok(args)
+                });
+            return result.ok();
+        }
+    }
+    None
+}
 
 pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -320,21 +351,60 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         quote! {}
     };
 
+    // --- Instruction arg extraction (struct-level #[instruction(...)]) ---
+
+    let instruction_args = parse_struct_instruction_args(&input);
+    let has_instruction_args = instruction_args.is_some();
+
+    let ix_arg_extraction = if let Some(ref ix_args) = instruction_args {
+        generate_instruction_arg_extraction(ix_args)
+    } else {
+        quote! {}
+    };
+
     // --- Final output ---
+
+    let parse_accounts_impl = if has_instruction_args {
+        quote! {
+            impl<'info> ParseAccounts<'info> for #name<'info> {
+                type Bumps = #bumps_name;
+
+                #[inline(always)]
+                fn parse(accounts: &'info [AccountView]) -> Result<(Self, Self::Bumps), ProgramError> {
+                    Self::parse_with_instruction_data(accounts, &[])
+                }
+
+                #[inline(always)]
+                fn parse_with_instruction_data(
+                    accounts: &'info [AccountView],
+                    __ix_data: &'info [u8],
+                ) -> Result<(Self, Self::Bumps), ProgramError> {
+                    #ix_arg_extraction
+                    #parse_body
+                }
+
+                #epilogue_method
+            }
+        }
+    } else {
+        quote! {
+            impl<'info> ParseAccounts<'info> for #name<'info> {
+                type Bumps = #bumps_name;
+
+                #[inline(always)]
+                fn parse(accounts: &'info [AccountView]) -> Result<(Self, Self::Bumps), ProgramError> {
+                    #parse_body
+                }
+
+                #epilogue_method
+            }
+        }
+    };
 
     let expanded = quote! {
         #bumps_struct
 
-        impl<'info> ParseAccounts<'info> for #name<'info> {
-            type Bumps = #bumps_name;
-
-            #[inline(always)]
-            fn parse(accounts: &'info [AccountView]) -> Result<(Self, Self::Bumps), ProgramError> {
-                #parse_body
-            }
-
-            #epilogue_method
-        }
+        #parse_accounts_impl
 
         #seeds_impl
 
@@ -365,4 +435,215 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
+}
+
+/// Generate code that extracts `#[instruction(..)]` args from `__ix_data`.
+///
+/// Follows the same ZC header + dynamic tail pattern as instruction.rs.
+/// Fixed types are read via a zero-copy `#[repr(C)]` struct pointer cast.
+/// Dynamic strings are read from a variable-length tail region using
+/// PodU16 length descriptors in the ZC header.
+fn generate_instruction_arg_extraction(ix_args: &[InstructionArg]) -> proc_macro2::TokenStream {
+    if ix_args.is_empty() {
+        return quote! {};
+    }
+
+    let kinds: Vec<DynKind> = ix_args
+        .iter()
+        .map(|arg| {
+            if let Some(max) = is_dynamic_string(&arg.ty, false) {
+                DynKind::Str { max }
+            } else if is_str_ref(&arg.ty) {
+                DynKind::StrRef
+            } else if let Some((elem, max)) = is_dynamic_vec(&arg.ty, false) {
+                DynKind::Vec {
+                    elem: Box::new(elem),
+                    max,
+                }
+            } else {
+                DynKind::Fixed
+            }
+        })
+        .collect();
+
+    let has_dynamic = kinds.iter().any(|k| !matches!(k, DynKind::Fixed));
+
+    let mut zc_field_names: Vec<Ident> = Vec::new();
+    let mut zc_field_types: Vec<proc_macro2::TokenStream> = Vec::new();
+
+    for (i, kind) in kinds.iter().enumerate() {
+        match kind {
+            DynKind::Fixed => {
+                zc_field_names.push(ix_args[i].name.clone());
+                zc_field_types.push(map_to_pod_type(&ix_args[i].ty));
+            }
+            DynKind::Str { .. } => {
+                let len_name = format_ident!("{}_len", ix_args[i].name);
+                zc_field_names.push(len_name);
+                zc_field_types.push(quote! { quasar_core::pod::PodU16 });
+            }
+            DynKind::StrRef => {
+                let len_name = format_ident!("{}_len", ix_args[i].name);
+                zc_field_names.push(len_name);
+                zc_field_types.push(quote! { u8 });
+            }
+            DynKind::Vec { .. } => {
+                let count_name = format_ident!("{}_count", ix_args[i].name);
+                zc_field_names.push(count_name);
+                zc_field_types.push(quote! { quasar_core::pod::PodU16 });
+            }
+        }
+    }
+
+    let mut stmts: Vec<proc_macro2::TokenStream> = Vec::new();
+
+    stmts.push(quote! {
+        #[repr(C)]
+        #[derive(Copy, Clone)]
+        struct __IxArgsZc {
+            #(#zc_field_names: #zc_field_types,)*
+        }
+    });
+
+    stmts.push(quote! {
+        const _: () = assert!(
+            core::mem::align_of::<__IxArgsZc>() == 1,
+            "instruction args ZC struct must have alignment 1"
+        );
+    });
+
+    stmts.push(quote! {
+        if __ix_data.len() < core::mem::size_of::<__IxArgsZc>() {
+            return Err(ProgramError::InvalidInstructionData);
+        }
+    });
+
+    stmts.push(quote! {
+        let __ix_zc = unsafe { &*(__ix_data.as_ptr() as *const __IxArgsZc) };
+    });
+
+    // Extract fixed fields
+    for (i, kind) in kinds.iter().enumerate() {
+        if matches!(kind, DynKind::Fixed) {
+            let name = &ix_args[i].name;
+            let expr = zc_deserialize_expr(name, &ix_args[i].ty);
+            // Prefix with __ix_zc instead of __zc
+            let prefixed_expr = quote! { {
+                let __zc = __ix_zc;
+                #expr
+            } };
+            stmts.push(quote! {
+                let #name = #prefixed_expr;
+            });
+        }
+    }
+
+    // Extract dynamic fields from tail
+    if has_dynamic {
+        stmts.push(quote! {
+            let __ix_tail = &__ix_data[core::mem::size_of::<__IxArgsZc>()..];
+        });
+        stmts.push(quote! {
+            let mut __ix_offset: usize = 0;
+        });
+
+        let dyn_count = kinds
+            .iter()
+            .filter(|k| !matches!(k, DynKind::Fixed))
+            .count();
+        let mut dyn_idx = 0usize;
+
+        for (i, kind) in kinds.iter().enumerate() {
+            let name = &ix_args[i].name;
+            match kind {
+                DynKind::Fixed => {}
+                DynKind::Str { max } => {
+                    dyn_idx += 1;
+                    let len_name = format_ident!("{}_len", name);
+                    let max_lit = *max;
+                    stmts.push(quote! {
+                        let __ix_dyn_len = __ix_zc.#len_name.get() as usize;
+                    });
+                    stmts.push(quote! {
+                        if __ix_dyn_len > #max_lit {
+                            return Err(ProgramError::InvalidInstructionData);
+                        }
+                    });
+                    stmts.push(quote! {
+                        if __ix_tail.len() < __ix_offset + __ix_dyn_len {
+                            return Err(ProgramError::InvalidInstructionData);
+                        }
+                    });
+                    stmts.push(quote! {
+                        let #name: &[u8] = &__ix_tail[__ix_offset..__ix_offset + __ix_dyn_len];
+                    });
+                    if dyn_idx < dyn_count {
+                        stmts.push(quote! {
+                            __ix_offset += __ix_dyn_len;
+                        });
+                    }
+                }
+                DynKind::StrRef => {
+                    dyn_idx += 1;
+                    let len_name = format_ident!("{}_len", name);
+                    stmts.push(quote! {
+                        let __ix_dyn_len = __ix_zc.#len_name as usize;
+                    });
+                    stmts.push(quote! {
+                        if __ix_tail.len() < __ix_offset + __ix_dyn_len {
+                            return Err(ProgramError::InvalidInstructionData);
+                        }
+                    });
+                    stmts.push(quote! {
+                        let #name: &[u8] = &__ix_tail[__ix_offset..__ix_offset + __ix_dyn_len];
+                    });
+                    if dyn_idx < dyn_count {
+                        stmts.push(quote! {
+                            __ix_offset += __ix_dyn_len;
+                        });
+                    }
+                }
+                DynKind::Vec { elem, max } => {
+                    dyn_idx += 1;
+                    let count_name = format_ident!("{}_count", name);
+                    let max_lit = *max;
+                    stmts.push(quote! {
+                        let __ix_dyn_count = __ix_zc.#count_name.get() as usize;
+                    });
+                    stmts.push(quote! {
+                        if __ix_dyn_count > #max_lit {
+                            return Err(ProgramError::InvalidInstructionData);
+                        }
+                    });
+                    stmts.push(quote! {
+                        let __ix_dyn_byte_len = __ix_dyn_count * core::mem::size_of::<#elem>();
+                    });
+                    stmts.push(quote! {
+                        if __ix_tail.len() < __ix_offset + __ix_dyn_byte_len {
+                            return Err(ProgramError::InvalidInstructionData);
+                        }
+                    });
+                    stmts.push(quote! {
+                        let #name: &[#elem] = unsafe {
+                            core::slice::from_raw_parts(
+                                __ix_tail.as_ptr().add(__ix_offset) as *const #elem,
+                                __ix_dyn_count,
+                            )
+                        };
+                    });
+                    if dyn_idx < dyn_count {
+                        stmts.push(quote! {
+                            __ix_offset += __ix_dyn_byte_len;
+                        });
+                    }
+                }
+            }
+        }
+
+        stmts.push(quote! {
+            let _ = __ix_offset;
+        });
+    }
+
+    quote! { #(#stmts)* }
 }

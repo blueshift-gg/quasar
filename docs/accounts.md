@@ -10,7 +10,7 @@ The primary wrapper for validated on-chain accounts. Checks owner and discrimina
 
 ```rust
 pub escrow: &'info mut Account<EscrowAccount>,
-pub vault: &'info Account<TokenAccount>,
+pub vault: &'info Account<Token>,
 ```
 
 The trait bounds on `T` determine what validations and capabilities are available:
@@ -21,7 +21,6 @@ The trait bounds on `T` determine what validations and capabilities are availabl
 | `T: AccountCheck` | Discriminator + data length | -- |
 | `T: ZeroCopyDeref` | -- | `Deref`/`DerefMut` to ZC companion struct |
 | `T: Owner` | -- | `close()` (direct lamport drain) |
-| `T: InterfaceResolve` | -- | `resolve()` for polymorphic dispatch |
 | `T: QuasarAccount` | -- | `get()`/`set()` for Borsh-style access |
 
 The internal representation is `#[repr(transparent)]` over `AccountView`:
@@ -235,6 +234,14 @@ EscrowAccount {
 
 Re-initialization protection: `init()` checks that the discriminator region is all-zero before writing. Since all-zero discriminators are banned at compile time, uninitialized data (all zeros) can never match a valid account. An attacker cannot reinitialize an existing account because its discriminator bytes will be non-zero.
 
+**`Initialize<T>` rejection on `#[account(init)]`**: Fields annotated with `#[account(init)]` or `#[account(init_if_needed)]` must use `Account<T>`, not `Initialize<T>`. The derive macro's `init` directive handles account creation via CPI -- the resulting field is a validated account. Using `Initialize<T>` would expose a second `.init()` path, risking double-initialization. The macro emits a compile error:
+
+```
+#[account(init)] handles account creation — use `Account<T>` instead of
+`Initialize<T>`. `Initialize<T>` exposes `.init()` which would double-initialize
+the account.
+```
+
 ### Closing Accounts
 
 ```rust
@@ -293,6 +300,34 @@ pub escrow: &'info mut Account<EscrowAccount>,
 
 When `bump` has no value (`bump` alone), the macro generates a `find_program_address` call and stores the discovered bump in the bumps struct. When `bump = expr`, it uses the cheaper `create_program_address` with the provided bump value.
 
+### `#[instruction]` on Accounts
+
+Seed expressions sometimes depend on instruction arguments (e.g., an ID passed by the caller). The `#[instruction(...)]` attribute on a `#[derive(Accounts)]` struct binds instruction arguments as locals available in seed expressions:
+
+```rust
+#[instruction(id: u64)]
+#[derive(Accounts)]
+pub struct FindItem<'info> {
+    #[account(seeds = [b"item", &id.to_le_bytes()], bump)]
+    pub item: &'info Account<ItemAccount>,
+}
+```
+
+The macro generates a `parse_with_instruction_data` method that extracts named arguments from the raw instruction data using zero-copy parsing (same `__IxArgsZc` pattern as `#[instruction]` on functions). These extracted values are then available as locals during seed derivation, `has_one`, and `constraint` evaluation.
+
+Multiple arguments are supported:
+
+```rust
+#[instruction(collection: Address, index: u32)]
+#[derive(Accounts)]
+pub struct FindEntry<'info> {
+    #[account(seeds = [b"entry", collection, &index.to_le_bytes()], bump)]
+    pub entry: &'info Account<EntryAccount>,
+}
+```
+
+Dynamic argument types (`String<N>`, `Vec<T, N>`) use `PodU16` length descriptors, matching the instruction data layout.
+
 The bumps struct (e.g., `MakeBumps`, `TakeBumps`) captures account addresses at parse time and exposes `*_seeds()` methods that return fixed-size `[Seed; N]` arrays:
 
 ```rust
@@ -310,7 +345,7 @@ Cross-account validation. Checks that a field in the validated account matches t
 #[account(has_one = maker, has_one = maker_ta_b)]
 pub escrow: &'info mut Account<EscrowAccount>,
 pub maker: &'info mut Signer,
-pub maker_ta_b: &'info mut Account<TokenAccount>,
+pub maker_ta_b: &'info mut Account<Token>,
 ```
 
 Generates:
@@ -521,23 +556,27 @@ Random access via `get(index)` is O(n) because it walks from the start of the bu
 
 ## Interface Accounts (Multi-Owner)
 
-When an account can be owned by multiple programs, use interface types instead of single-owner types.
+When an account can be owned by multiple programs, use `InterfaceAccount<T>` instead of `Account<T>`.
 
-### Built-In Interface Types
+### `InterfaceAccount<T>`
 
-| Type | Accepts | Deref target |
-|------|---------|-------------|
-| `Account<TokenAccount>` | SPL Token only | `TokenAccountState` |
-| `Account<InterfaceTokenAccount>` | SPL Token **or** Token-2022 | `TokenAccountState` |
-| `Account<MintAccount>` | SPL Token only | `MintAccountState` |
-| `Account<InterfaceMintAccount>` | SPL Token **or** Token-2022 | `MintAccountState` |
+`InterfaceAccount<T>` is a `#[repr(transparent)]` wrapper over `AccountView`, just like `Account<T>`. The difference: `Account<T>` validates the account is owned by a single program (via the `Owner` trait), while `InterfaceAccount<T>` validates ownership by either SPL Token or Token-2022 using an explicit dual-owner check.
+
+The inner marker `T` provides the data layout check (`AccountCheck`) and zero-copy deref target (`ZeroCopyDeref`). The same marker types used with `Account<T>` work with `InterfaceAccount<T>`:
+
+| Expression | Accepts | Deref target |
+|------------|---------|-------------|
+| `Account<Token>` | SPL Token only | `TokenAccountState` |
+| `InterfaceAccount<Token>` | SPL Token **or** Token-2022 | `TokenAccountState` |
+| `Account<Mint>` | SPL Token only | `MintAccountState` |
+| `InterfaceAccount<Mint>` | SPL Token **or** Token-2022 | `MintAccountState` |
 
 ```rust
 // Single-owner -- only accepts SPL Token accounts
-pub vault: &'info Account<TokenAccount>,
+pub vault: &'info Account<Token>,
 
 // Interface -- accepts either SPL Token or Token-2022
-pub vault: &'info Account<InterfaceTokenAccount>,
+pub vault: &'info InterfaceAccount<Token>,
 ```
 
 Both types deref to the same `TokenAccountState` -- field access is identical:
@@ -545,64 +584,6 @@ Both types deref to the same `TokenAccountState` -- field access is identical:
 ```rust
 let mint = ctx.accounts.vault.mint();
 let amount = ctx.accounts.vault.amount();
-```
-
-### Building Custom Interface Types
-
-Interface accounts use two traits instead of `Owner`:
-
-- **`CheckOwner`** -- validates the account is owned by one of the accepted programs
-- **`ZeroCopyDeref`** -- pointer-casts account data to a `#[repr(C)]` struct
-
-For single-owner types, `CheckOwner` is implemented automatically via a blanket impl on `Owner`. Interface types implement `CheckOwner` directly with explicit comparison chains:
-
-```rust
-pub struct InterfaceTokenAccount;
-
-impl CheckOwner for InterfaceTokenAccount {
-    fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
-        if !view.owned_by(&SPL_TOKEN_ID) && !view.owned_by(&TOKEN_2022_ID) {
-            return Err(ProgramError::IllegalOwner);
-        }
-        Ok(())
-    }
-}
-
-impl AccountCheck for InterfaceTokenAccount {
-    fn check(view: &AccountView) -> Result<(), ProgramError> {
-        if view.data_len() < TokenAccountState::LEN {
-            return Err(ProgramError::AccountDataTooSmall);
-        }
-        Ok(())
-    }
-}
-
-impl ZeroCopyDeref for InterfaceTokenAccount {
-    type Target = TokenAccountState;
-
-    fn deref_from(view: &AccountView) -> &Self::Target {
-        unsafe { &*(view.data_ptr() as *const TokenAccountState) }
-    }
-
-    fn deref_from_mut(view: &AccountView) -> &mut Self::Target {
-        unsafe { &mut *(view.data_ptr() as *mut TokenAccountState) }
-    }
-}
-```
-
-This pattern works for any multi-owner account. For example, a custom oracle interface:
-
-```rust
-pub struct OracleInterface;
-
-impl CheckOwner for OracleInterface {
-    fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
-        if !view.owned_by(&PYTH_PROGRAM_ID) && !view.owned_by(&SWITCHBOARD_PROGRAM_ID) {
-            return Err(ProgramError::IllegalOwner);
-        }
-        Ok(())
-    }
-}
 ```
 
 ### Polymorphic Dispatch with `resolve()`
@@ -635,7 +616,7 @@ impl InterfaceResolve for OracleInterface {
 Then in your instruction:
 
 ```rust
-pub oracle: &'info Account<OracleInterface>,
+pub oracle: &'info InterfaceAccount<OracleInterface>,
 ```
 
 ```rust
@@ -646,6 +627,79 @@ match ctx.accounts.oracle.resolve()? {
 ```
 
 The owner check runs once during account parsing. `resolve()` is a second pointer cast -- no re-validation, no allocation.
+
+## Associated Token Accounts (ATA)
+
+The `associated_token::*` attributes derive and validate associated token account addresses within `#[derive(Accounts)]` structs. The ATA address is deterministic: `seeds = [wallet, token_program, mint]` against the ATA program.
+
+### Derive Attributes
+
+Three attributes control ATA fields:
+
+| Attribute | Required | Purpose |
+|-----------|----------|---------|
+| `associated_token::mint` | Yes | The mint field for address derivation |
+| `associated_token::authority` | Yes | The wallet/authority field for address derivation |
+| `associated_token::token_program` | No | The token program (defaults to SPL Token) |
+
+`associated_token::mint` and `associated_token::authority` must both be present. `associated_token::token_program` requires `associated_token::mint` and `associated_token::authority`.
+
+### Non-Init: Address Validation
+
+Without `init`, the macro derives the expected ATA address and validates the account matches:
+
+```rust
+#[derive(Accounts)]
+pub struct Transfer<'info> {
+    pub authority: &'info Signer,
+    pub mint: &'info Account<Mint>,
+    #[account(
+        associated_token::mint = mint,
+        associated_token::authority = authority,
+    )]
+    pub token_account: &'info Account<Token>,
+    pub token_program: &'info TokenProgram,
+}
+```
+
+### Init: Account Creation via CPI
+
+With `init`, the macro creates the ATA via CPI to the ATA program:
+
+```rust
+#[derive(Accounts)]
+pub struct CreateAta<'info> {
+    pub payer: &'info mut Signer,
+    pub authority: &'info UncheckedAccount,
+    pub mint: &'info Account<Mint>,
+    #[account(
+        init,
+        payer = payer,
+        associated_token::mint = mint,
+        associated_token::authority = authority,
+    )]
+    pub token_account: &'info mut Initialize<Token>,
+    pub token_program: &'info TokenProgram,
+    pub system_program: &'info SystemProgram,
+    pub ata_program: &'info AssociatedTokenProgram,
+}
+```
+
+`init` requires an `AssociatedTokenProgram` field in the struct. `init_if_needed` uses `CreateIdempotent` (no-ops if the account exists).
+
+### Mutual Exclusivity
+
+- `token::*` and `associated_token::*` cannot be used on the same field
+- `seeds` and `associated_token::*` cannot be used on the same field (ATA address derivation is its own PDA scheme)
+
+### Account Types
+
+| Type | Purpose |
+|------|---------|
+| `AssociatedTokenProgram` | ATA program account; validates executable + address |
+| `AssociatedToken` | Account marker; validates owner is SPL Token; derefs to `TokenAccountState` |
+
+`AssociatedToken` works with both `Account<AssociatedToken>` (SPL Token only) and `InterfaceAccount<AssociatedToken>` (SPL Token or Token-2022).
 
 ## Core Traits Reference
 

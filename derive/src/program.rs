@@ -223,6 +223,7 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
         items.push(syn::parse_quote! {
             #[unsafe(no_mangle)]
+            #[cfg(target_os = "solana")]
             #[allow(unexpected_cfgs)]
             pub unsafe extern "C" fn entrypoint(ptr: *mut u8, instruction_data: *const u8) -> u64 {
                 // SAFETY: Initialize bump allocator cursor. The SVM maps and zero-inits the heap
@@ -318,6 +319,8 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         }
     };
+
+    module.attrs.push(syn::parse_quote!(#[allow(dead_code)]));
 
     quote! {
         #program_type

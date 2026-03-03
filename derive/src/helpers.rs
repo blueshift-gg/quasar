@@ -9,6 +9,7 @@ use syn::{
 pub(crate) enum DynKind {
     Fixed,
     Str { max: usize },
+    StrRef,
     Vec { elem: Box<Type>, max: usize },
 }
 
@@ -244,6 +245,18 @@ pub(crate) fn is_dynamic_vec(ty: &Type, expect_lifetime: bool) -> Option<(Type, 
         }
     }
     None
+}
+
+/// Detects `&str` or `&'a str` as a bare string reference type.
+pub(crate) fn is_str_ref(ty: &Type) -> bool {
+    if let Type::Reference(ref_ty) = ty {
+        if let Type::Path(type_path) = &*ref_ty.elem {
+            if let Some(seg) = type_path.path.segments.last() {
+                return seg.ident == "str" && type_path.path.segments.len() == 1;
+            }
+        }
+    }
+    false
 }
 
 // --- Zc (zero-copy) companion struct helpers ---

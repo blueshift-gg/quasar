@@ -47,7 +47,7 @@ pub(super) fn generate_accessors(
                 quote! { #disc_len + core::mem::size_of::<#zc_name>() + __zc.#end_name.get() as usize };
 
             match kind {
-                DynKind::Str { .. } => {
+                DynKind::Str { .. } | DynKind::StrRef => {
                     quote! {
                         #[inline(always)]
                         pub fn #fname(&self) -> &str {
@@ -112,12 +112,17 @@ pub(super) fn generate_accessors(
                 .map(|(bf, _)| format_ident!("{}_end", bf.ident.as_ref().unwrap()))
                 .collect();
 
+            let str_max = match kind {
+                DynKind::Str { max } => *max,
+                DynKind::StrRef => 255,
+                _ => 0,
+            };
             match kind {
-                DynKind::Str { max } => {
+                DynKind::Str { .. } | DynKind::StrRef => {
                     quote! {
                         #[inline(always)]
                         pub fn #setter_name(&mut self, __payer: &impl AsAccountView, __value: &str) -> Result<(), ProgramError> {
-                            if __value.len() > #max {
+                            if __value.len() > #str_max {
                                 return Err(QuasarError::DynamicFieldTooLong.into());
                             }
                             let __view = self.to_account_view();
@@ -268,7 +273,7 @@ pub(super) fn generate_accessors(
             let fname = &f.ident;
             let fvis = &f.vis;
             match kind {
-                DynKind::Str { .. } => quote! { #fvis #fname: &#lt str },
+                DynKind::Str { .. } | DynKind::StrRef => quote! { #fvis #fname: &#lt str },
                 DynKind::Vec { elem, .. } => quote! { #fvis #fname: &#lt [#elem] },
                 _ => unreachable!(),
             }
@@ -281,7 +286,7 @@ pub(super) fn generate_accessors(
             let fname = f.ident.as_ref().unwrap();
             let end_name = format_ident!("{}_end", fname);
             match kind {
-                DynKind::Str { .. } => {
+                DynKind::Str { .. } | DynKind::StrRef => {
                     quote! {
                         let #fname = {
                             let __end = __tail_start + __zc.#end_name.get() as usize;
@@ -329,7 +334,7 @@ pub(super) fn generate_accessors(
         .map(|(f, kind)| {
             let fname = f.ident.as_ref().unwrap();
             match kind {
-                DynKind::Str { .. } => quote! { #fname: Option<&str> },
+                DynKind::Str { .. } | DynKind::StrRef => quote! { #fname: Option<&str> },
                 DynKind::Vec { elem, .. } => quote! { #fname: Option<&[#elem]> },
                 _ => unreachable!(),
             }
@@ -352,15 +357,20 @@ pub(super) fn generate_accessors(
                 quote! { __zc.#end_name.get() as usize }
             };
 
+            let buf_max = match kind {
+                DynKind::Str { max } => *max,
+                DynKind::StrRef => 255,
+                _ => 0,
+            };
             match kind {
-                DynKind::Str { max } => {
+                DynKind::Str { .. } | DynKind::StrRef => {
                     quote! {
                         let #cum_end_var: usize;
                         {
                             let __old_bytes = #old_bytes_expr;
                             match #fname {
                                 Some(__val) => {
-                                    if __val.len() > #max {
+                                    if __val.len() > #buf_max {
                                         return Err(QuasarError::DynamicFieldTooLong.into());
                                     }
                                     let __new_bytes = __val.len();

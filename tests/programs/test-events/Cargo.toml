@@ -1,0 +1,28 @@
+[package]
+name = "quasar-test-events"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(target_os, values("solana"))',
+    'cfg(feature, values("alloc"))',
+] }
+
+[dependencies]
+quasar-core = { path = "../../../core" }
+solana-address = "2.2"
+solana-instruction = "3.2"
+
+[dev-dependencies]
+mollusk-svm = "0.10.3"
+solana-account = "3.4"
+solana-address = { version = "2.2", features = ["decode"] }
+solana-instruction = { version = "3.2", features = ["bincode"] }
+
+[features]
+default = ["alloc"]
+alloc = ["quasar-core/alloc"]

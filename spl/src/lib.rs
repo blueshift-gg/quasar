@@ -118,6 +118,8 @@ mod constants;
 mod cpi;
 mod init;
 mod interface;
+#[cfg(feature = "metadata")]
+pub mod metadata;
 mod state;
 mod token;
 mod token_2022;
@@ -130,8 +132,8 @@ pub use associated_token::{
 };
 pub use close::TokenClose;
 pub use constants::{ATA_PROGRAM_ID, SPL_TOKEN_ID, TOKEN_2022_ID};
-pub use cpi::{initialize_account3, TokenCpi};
-pub use init::{validate_token_account, InitMint, InitToken};
+pub use cpi::{initialize_account3, initialize_mint2, TokenCpi};
+pub use init::{validate_mint, validate_token_account, InitMint, InitToken};
 pub use interface::{InterfaceAccount, TokenInterface};
 pub use state::{MintAccountState, TokenAccountState};
 pub use token::{Mint, Token, TokenProgram};

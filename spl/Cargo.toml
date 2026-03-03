@@ -10,8 +10,22 @@ authors.workspace = true
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(target_os, values("solana"))',
+    'cfg(feature, values("metadata"))',
 ] }
+
+[features]
+metadata = []
 
 [dependencies]
 quasar-core = { path = "../core" }
 solana-address = { version = "2.2.0", features = ["copy"] }
+
+[dev-dependencies]
+mollusk-svm = "0.10.3"
+mollusk-svm-programs-token = "0.10.3"
+solana-account = "3.4"
+solana-instruction = { version = "3.2", features = ["bincode"] }
+solana-program-error = "3.0.0"
+solana-program-pack = "3.1"
+solana-rent = "2.2"
+spl-token-interface = "2.0.0"

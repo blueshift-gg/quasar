@@ -247,3 +247,27 @@ pub fn validate_token_account(
     }
     Ok(())
 }
+
+/// Validate that an existing mint account has the expected authority.
+///
+/// Used by generated `#[account(init_if_needed, mint::...)]` code when the
+/// account is already initialized.
+#[inline(always)]
+pub fn validate_mint(view: &AccountView, mint_authority: &Address) -> Result<(), ProgramError> {
+    if !is_token_program_owner(view) {
+        return Err(ProgramError::IllegalOwner);
+    }
+    if view.data_len() < MintAccountState::LEN {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    // SAFETY: data_len >= 82 checked above, MintAccountState is
+    // #[repr(C)] with alignment 1, pointer is to account data start.
+    let state = unsafe { &*(view.data_ptr() as *const MintAccountState) };
+    if !state.is_initialized() {
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if !state.has_mint_authority() || state.mint_authority_unchecked() != mint_authority {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    Ok(())
+}
