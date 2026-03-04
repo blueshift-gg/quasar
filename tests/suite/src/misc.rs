@@ -1,13 +1,17 @@
 use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
+use mollusk_svm::result::ProgramResult;
 
 use solana_account::Account;
 use solana_address::Address;
 use solana_instruction::Instruction;
-
 use quasar_test_misc::client::*;
+use quasar_core::error::QuasarError;
+use quasar_core::prelude::ProgramError;
 
 const SIMPLE_ACCOUNT_SIZE: usize = 42; // 1 disc + 32 addr + 8 u64 + 1 u8
 const MULTI_DISC_SIZE: usize = 10; // 2 disc + 8 u64
+const DYNAMIC_ACCOUNT_DISC: u8 = 5;
+const DYNAMIC_HEADER_SIZE: usize = 1 + 2 + 2; // disc + name_end + tags_end
 
 fn build_simple_account_data(authority: Address, value: u64, bump: u8) -> Vec<u8> {
     let mut data = vec![0u8; 42];
@@ -23,6 +27,28 @@ fn build_multi_disc_account_data(value: u64) -> Vec<u8> {
     data[0] = 1; // MultiDiscAccount discriminator byte 0
     data[1] = 2; // MultiDiscAccount discriminator byte 1
     data[2..10].copy_from_slice(&value.to_le_bytes());
+    data
+}
+
+fn build_dynamic_account_data(name: &[u8], tags: &[Address]) -> Vec<u8> {
+    let name_len = name.len();
+    let tags_len = tags.len() * 32;
+    let total = DYNAMIC_HEADER_SIZE + name_len + tags_len;
+    let mut data = vec![0u8; total];
+
+    data[0] = DYNAMIC_ACCOUNT_DISC;
+    let name_end = name_len as u16;
+    let tags_end = name_end + (tags_len as u16);
+    data[1..3].copy_from_slice(&name_end.to_le_bytes());
+    data[3..5].copy_from_slice(&tags_end.to_le_bytes());
+
+    let tail_start = DYNAMIC_HEADER_SIZE;
+    data[tail_start..tail_start + name_len].copy_from_slice(name);
+    let tags_start = tail_start + name_len;
+    for (i, tag) in tags.iter().enumerate() {
+        data[tags_start + i * 32..tags_start + (i + 1) * 32].copy_from_slice(tag.as_ref());
+    }
+
     data
 }
 
@@ -1755,6 +1781,169 @@ fn test_remaining_accounts_empty() {
     assert!(
         result.program_result.is_ok(),
         "remaining accounts with no extras should succeed: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_remaining_accounts_overflow_errors() {
+    let mollusk = setup();
+    let authority = Address::new_unique();
+    let authority_account = Account::new(1_000_000, 0, &Address::default());
+
+    let mut instruction: Instruction = RemainingAccountsCheckInstruction { authority }.into();
+    let mut accounts = vec![(authority, authority_account)];
+
+    for _ in 0..=64 {
+        let addr = Address::new_unique();
+        instruction
+            .accounts
+            .push(solana_instruction::AccountMeta::new_readonly(addr, false));
+        accounts.push((addr, Account::new(1_000_000, 0, &Address::default())));
+    }
+
+    let result = mollusk.process_instruction(&instruction, &accounts);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::Custom(QuasarError::RemainingAccountsOverflow as u32))
+    );
+}
+
+#[test]
+fn test_dynamic_account_invalid_utf8_rejected() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let data = build_dynamic_account_data(&[0xFF], &[]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData)
+    );
+}
+
+#[test]
+fn test_dynamic_instruction_invalid_utf8_rejected() {
+    let mollusk = setup();
+    let authority = Address::new_unique();
+    let authority_account = Account::new(1_000_000, 0, &Address::default());
+
+    let instruction: Instruction = DynamicInstructionCheckInstruction {
+        authority,
+        name: vec![0xFF],
+    }
+    .into();
+
+    let result = mollusk.process_instruction(&instruction, &[(authority, authority_account)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidInstructionData)
+    );
+}
+
+#[test]
+fn test_dynamic_account_non_monotonic_offsets_rejected() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let tag = Address::new_unique();
+    let mut data = build_dynamic_account_data(b"hi", &[tag]);
+
+    // Corrupt: set name_end > tags_end (non-monotonic)
+    // name_end is at offset 1..3, tags_end at 3..5
+    // Set name_end to 100, tags_end to 50
+    data[1..3].copy_from_slice(&100u16.to_le_bytes());
+    data[3..5].copy_from_slice(&50u16.to_le_bytes());
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_err(),
+        "non-monotonic end offsets must be rejected"
+    );
+}
+
+#[test]
+fn test_dynamic_account_misaligned_vec_rejected() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // Build account with name="a" and 1 tag (32 bytes)
+    let tag = Address::new_unique();
+    let mut data = build_dynamic_account_data(b"a", &[tag]);
+
+    // Corrupt: set tags_end so that the Vec region is not divisible by 32
+    // name region: [0..1], tags region should be [1..33]
+    // tags_end should be 33 for correct, set it to 34 (not divisible by 32)
+    let name_end = 1u16;
+    let tags_end = name_end + 33; // 33 bytes is not divisible by 32
+    data[1..3].copy_from_slice(&name_end.to_le_bytes());
+    data[3..5].copy_from_slice(&tags_end.to_le_bytes());
+
+    // Extend data to fit the declared size
+    let total_needed = DYNAMIC_HEADER_SIZE + tags_end as usize;
+    data.resize(total_needed, 0);
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
+        "Vec region not divisible by element size must be rejected"
+    );
+}
+
+#[test]
+fn test_dynamic_account_valid_data_accepted() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let tag = Address::new_unique();
+    let data = build_dynamic_account_data(b"hello", &[tag]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "valid dynamic account data should be accepted: {:?}",
         result.program_result
     );
 }

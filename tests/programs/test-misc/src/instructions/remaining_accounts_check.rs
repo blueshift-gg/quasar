@@ -8,7 +8,10 @@ pub struct RemainingAccountsCheck<'info> {
 
 impl<'info> RemainingAccountsCheck<'info> {
     #[inline(always)]
-    pub fn handler(&self, _remaining: RemainingAccounts) -> Result<(), ProgramError> {
+    pub fn handler(&self, remaining: RemainingAccounts) -> Result<(), ProgramError> {
+        for account in remaining.iter() {
+            let _ = account?;
+        }
         Ok(())
     }
 }

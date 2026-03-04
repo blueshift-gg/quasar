@@ -24,6 +24,7 @@ impl<'info> Create<'info> {
         let mut count = 0usize;
 
         for account in remaining.iter() {
+            let account = account?;
             if count >= 10 {
                 return Err(ProgramError::InvalidArgument);
             }

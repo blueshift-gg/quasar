@@ -69,6 +69,7 @@ use quasar_core::__internal::{
 };
 use quasar_core::accounts::{Account, Initialize, Signer as SignerAccount, UncheckedAccount};
 use quasar_core::cpi::{CpiCall, InstructionAccount};
+use quasar_core::error::QuasarError;
 use quasar_core::pod::*;
 use quasar_core::remaining::RemainingAccounts;
 use quasar_core::traits::*;
@@ -793,7 +794,7 @@ fn remaining_iterator_varied_data_lengths() {
     ]);
     let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
 
-    let views: Vec<_> = remaining.iter().collect();
+    let views: Vec<_> = remaining.iter().collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(views.len(), 3);
     assert_eq!(views[0].data_len(), 3);
     assert_eq!(views[1].data_len(), 0);
@@ -829,9 +830,30 @@ fn remaining_iterator_dup_cache_resolution() {
     ]);
     let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
 
-    let views: Vec<_> = remaining.iter().collect();
+    let views: Vec<_> = remaining.iter().collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(views.len(), 2);
     assert_eq!(views[0].address(), views[1].address());
+}
+
+#[test]
+fn remaining_iterator_overflow_returns_error() {
+    const LIMIT: usize = 64;
+    let mut entries = Vec::new();
+    for i in 0..=LIMIT {
+        entries.push(MultiAccountEntry::account(i as u8, 0));
+    }
+    let mut buf = MultiAccountBuffer::new(&entries);
+    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
+
+    let mut iter = remaining.iter();
+    for _ in 0..LIMIT {
+        let view = iter.next().unwrap().unwrap();
+        assert_eq!(view.data_len(), 0);
+    }
+
+    let err = iter.next().unwrap().unwrap_err();
+    assert_eq!(err, QuasarError::RemainingAccountsOverflow.into());
+    assert!(iter.next().is_none());
 }
 
 #[test]
@@ -1660,6 +1682,30 @@ fn sysvar_get_maybeuninit_write_bytes_assume_init() {
     assert_eq!(rent.minimum_balance_unchecked(100), 0);
 }
 
+#[test]
+fn rent_current_threshold_computes_2x() {
+    use quasar_core::sysvars::rent::{Rent, ACCOUNT_STORAGE_OVERHEAD};
+
+    // Build a Rent with the current exemption threshold (2.0 as f64 le bytes)
+    let rent: Rent = {
+        let mut var = MaybeUninit::<Rent>::uninit();
+        let ptr = var.as_mut_ptr() as *mut u8;
+        unsafe {
+            // lamports_per_byte = 3480 (the standard rate)
+            let lpb: u64 = 3480;
+            core::ptr::copy_nonoverlapping(lpb.to_le_bytes().as_ptr(), ptr, 8);
+            // exemption_threshold = 2.0 as f64 le bytes = [0,0,0,0,0,0,0,64]
+            let threshold: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 64];
+            core::ptr::copy_nonoverlapping(threshold.as_ptr(), ptr.add(8), 8);
+            var.assume_init()
+        }
+    };
+
+    let data_len = 100usize;
+    let expected = 2 * (ACCOUNT_STORAGE_OVERHEAD + data_len as u64) * 3480;
+    assert_eq!(rent.minimum_balance_unchecked(data_len), expected);
+}
+
 // ===========================================================================
 // 19. Dynamic account fields — tight-buffer boundary probes
 //
@@ -2286,4 +2332,60 @@ fn close_rejected_by_from_account_view() {
         result.is_err(),
         "from_account_view must reject a closed account (wrong owner)"
     );
+}
+
+#[test]
+fn close_rejects_non_writable_destination() {
+    let data_len = 16usize;
+    let mut src_buf = AccountBuffer::new(data_len);
+    src_buf.init(
+        [1u8; 32],
+        TEST_OWNER.to_bytes(),
+        1_000_000,
+        data_len as u64,
+        false,
+        true,
+    );
+    let mut data = vec![0u8; data_len];
+    data[0] = 0x01;
+    src_buf.write_data(&data);
+
+    let mut dst_buf = AccountBuffer::new(0);
+    dst_buf.init([2u8; 32], [0u8; 32], 500_000, 0, false, false);
+
+    let src_view = unsafe { src_buf.view() };
+    let dst_view = unsafe { dst_buf.view() };
+
+    let account = Account::<TestCloseableType>::from_account_view(&src_view).unwrap();
+    let result = account.close(&dst_view);
+    assert!(result.is_err(), "close must reject non-writable destination");
+    assert_eq!(src_view.lamports(), 1_000_000, "source lamports unchanged");
+}
+
+#[test]
+fn close_rejects_lamport_overflow() {
+    let data_len = 16usize;
+    let mut src_buf = AccountBuffer::new(data_len);
+    src_buf.init(
+        [1u8; 32],
+        TEST_OWNER.to_bytes(),
+        1_000_000,
+        data_len as u64,
+        false,
+        true,
+    );
+    let mut data = vec![0u8; data_len];
+    data[0] = 0x01;
+    src_buf.write_data(&data);
+
+    let mut dst_buf = AccountBuffer::new(0);
+    dst_buf.init([2u8; 32], [0u8; 32], u64::MAX, 0, false, true);
+
+    let src_view = unsafe { src_buf.view() };
+    let dst_view = unsafe { dst_buf.view() };
+
+    let account = Account::<TestCloseableType>::from_account_view(&src_view).unwrap();
+    let result = account.close(&dst_view);
+    assert!(result.is_err(), "close must reject lamport overflow");
+    assert_eq!(src_view.lamports(), 1_000_000, "source lamports unchanged");
 }

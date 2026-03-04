@@ -31,6 +31,7 @@ impl<'info> ExecuteTransfer<'info> {
 
         let mut approvals = 0u8;
         for account in remaining.iter() {
+            let account = account?;
             if !account.is_signer() {
                 continue;
             }

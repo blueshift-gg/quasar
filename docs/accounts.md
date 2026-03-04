@@ -489,7 +489,7 @@ account.set_name(&payer, "alice")?;
 account.set_tags(&payer, &[addr1, addr2])?;
 ```
 
-Batch setter -- stack buffer, one realloc, zero memmove:
+Batch setter -- one realloc, zero memmove:
 
 ```rust
 // Update name, keep existing tags
@@ -499,7 +499,7 @@ account.set_dynamic_fields(&payer, Some("alice"), None)?;
 account.set_dynamic_fields(&payer, Some("bob"), Some(&[addr1]))?;
 ```
 
-The batch setter copies all field data (old for `None`, new for `Some`) into a `[0u8; MAX_TAIL]` stack buffer, does one realloc, and one `copy_from_slice` back. No memmove overlap issues.
+The batch setter copies all field data (old for `None`, new for `Some`) into a buffer, does one realloc, and one `copy_from_slice` back. When the `alloc` feature is disabled, the buffer uses the stack and is capped by `quasar_core::dynamic::MAX_DYNAMIC_TAIL`. When `alloc` is enabled, the buffer is heap-allocated.
 
 ### In-Place Mutation (Vec Only)
 
@@ -535,6 +535,7 @@ pub fn process(ctx: CtxWithRemaining<Process>) -> Result<(), ProgramError> {
 
     // Iterate sequentially (builds index for O(1) dup resolution)
     for account in remaining.iter() {
+        let account = account?;
         // account: AccountView
     }
 
@@ -550,7 +551,7 @@ pub fn process(ctx: CtxWithRemaining<Process>) -> Result<(), ProgramError> {
 
 `RemainingAccounts` uses a boundary pointer (end of accounts region in the SVM buffer) instead of a count. This is computed from the instruction data pointer: `ix_data_ptr - sizeof(u64)`.
 
-The iterator (`RemainingIter`) maintains a `MaybeUninit<[AccountView; 64]>` cache for O(1) duplicate account resolution -- the same pattern used by the entrypoint's declared accounts parser. When a duplicate account is encountered (indicated by its `borrow_state` field), the iterator resolves it by looking up either the declared accounts slice (for declared account duplicates) or its own cache (for previously-yielded remaining accounts).
+The iterator (`RemainingIter`) maintains a `MaybeUninit<[AccountView; 64]>` cache for O(1) duplicate account resolution -- the same pattern used by the entrypoint's declared accounts parser. When a duplicate account is encountered (indicated by its `borrow_state` field), the iterator resolves it by looking up either the declared accounts slice (for declared account duplicates) or its own cache (for previously-yielded remaining accounts). If more than 64 remaining accounts are accessed through the iterator, it returns `Err(QuasarError::RemainingAccountsOverflow)`.
 
 Random access via `get(index)` is O(n) because it walks from the start of the buffer each time. For sequential access, `iter()` is preferred.
 

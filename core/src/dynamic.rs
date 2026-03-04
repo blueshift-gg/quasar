@@ -37,3 +37,6 @@ pub struct String<'a, const MAX: usize>(core::marker::PhantomData<&'a str>);
 /// }
 /// ```
 pub struct Vec<'a, T, const MAX: usize>(core::marker::PhantomData<&'a [T]>);
+
+/// Maximum stack buffer size used for dynamic field updates when `alloc` is disabled.
+pub const MAX_DYNAMIC_TAIL: usize = 2048;

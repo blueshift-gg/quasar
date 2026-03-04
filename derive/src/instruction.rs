@@ -149,6 +149,19 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         }
 
+        let vec_align_asserts: Vec<proc_macro2::TokenStream> = kinds
+            .iter()
+            .filter_map(|kind| match kind {
+                DynKind::Vec { elem, .. } => Some(quote! {
+                    const _: () = assert!(
+                        core::mem::align_of::<#elem>() == 1,
+                        "instruction Vec element type must have alignment 1"
+                    );
+                }),
+                _ => None,
+            })
+            .collect();
+
         new_stmts.push(syn::parse_quote!(
             #[repr(C)]
             #[derive(Copy, Clone)]
@@ -163,6 +176,10 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                 "instruction data ZC struct must have alignment 1"
             );
         ));
+
+        for assert_stmt in vec_align_asserts {
+            new_stmts.push(syn::parse2(assert_stmt).unwrap());
+        }
 
         new_stmts.push(syn::parse_quote!(
             if #param_ident.data.len() < core::mem::size_of::<InstructionDataZc>() {
@@ -223,10 +240,10 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                         new_stmts.push(syn::parse_quote!(
                             let #name: &str = {
                                 let __bytes = &__tail[__offset..__offset + __dyn_len];
-                                #[cfg(target_os = "solana")]
-                                { unsafe { core::str::from_utf8_unchecked(__bytes) } }
-                                #[cfg(not(target_os = "solana"))]
-                                { core::str::from_utf8(__bytes).expect("instruction string arg contains invalid UTF-8") }
+                                match core::str::from_utf8(__bytes) {
+                                    Ok(__s) => __s,
+                                    Err(_) => return Err(ProgramError::InvalidInstructionData),
+                                }
                             };
                         ));
                         if dyn_idx < dyn_count {
@@ -247,10 +264,10 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                         new_stmts.push(syn::parse_quote!(
                             let #name: &str = {
                                 let __bytes = &__tail[__offset..__offset + __dyn_len];
-                                #[cfg(target_os = "solana")]
-                                { unsafe { core::str::from_utf8_unchecked(__bytes) } }
-                                #[cfg(not(target_os = "solana"))]
-                                { core::str::from_utf8(__bytes).expect("instruction string arg contains invalid UTF-8") }
+                                match core::str::from_utf8(__bytes) {
+                                    Ok(__s) => __s,
+                                    Err(_) => return Err(ProgramError::InvalidInstructionData),
+                                }
                             };
                         ));
                         if dyn_idx < dyn_count {

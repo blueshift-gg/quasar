@@ -31,18 +31,18 @@ pub fn realloc_account(
     }
 
     let old_len = view.data_len();
-    view.resize(new_space)?;
 
     // Zero trailing bytes on shrink to prevent data leakage if the account
     // is later re-grown — the runtime does not zero the realloc region.
     if new_space < old_len {
-        // SAFETY: After resize, data_ptr() is valid for new_space bytes, but the
-        // underlying buffer retains old_len capacity. The bytes in [new_space..old_len]
-        // are within the account's allocated buffer and safe to zero.
+        // SAFETY: data_ptr() is valid for old_len bytes. The bytes in
+        // [new_space..old_len] are within the current allocation.
         unsafe {
             core::ptr::write_bytes(view.data_ptr().add(new_space), 0, old_len - new_space);
         }
     }
+
+    view.resize(new_space)?;
 
     Ok(())
 }
@@ -145,6 +145,9 @@ impl<T: Owner> Account<T> {
     #[inline(always)]
     pub fn close(&self, destination: &AccountView) -> Result<(), ProgramError> {
         let view = self.to_account_view();
+        if !destination.is_writable() {
+            return Err(ProgramError::Immutable);
+        }
 
         // Zero discriminator bytes to prevent revival within the same transaction.
         // SAFETY: data_ptr() is valid for data_len() bytes. We only write up to
@@ -156,7 +159,11 @@ impl<T: Owner> Account<T> {
             }
         }
 
-        destination.set_lamports(destination.lamports() + view.lamports());
+        let new_lamports = destination
+            .lamports()
+            .checked_add(view.lamports())
+            .ok_or(ProgramError::InvalidArgument)?;
+        destination.set_lamports(new_lamports);
         view.set_lamports(0);
         unsafe { view.assign(&SYSTEM_PROGRAM_ID) };
         view.resize(0)?;

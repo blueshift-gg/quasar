@@ -195,6 +195,60 @@ pub(super) fn generate_dynamic_account(
         })
         .collect();
 
+    let vec_align_asserts: Vec<proc_macro2::TokenStream> = fields_data
+        .iter()
+        .zip(field_kinds.iter())
+        .filter_map(|(_, kind)| match kind {
+            DynKind::Vec { elem, .. } => Some(quote! {
+                const _: () = assert!(
+                    core::mem::align_of::<#elem>() == 1,
+                    "dynamic Vec element type must have alignment 1"
+                );
+            }),
+            _ => None,
+        })
+        .collect();
+
+    let dyn_validation_stmts: Vec<proc_macro2::TokenStream> = fields_data
+        .iter()
+        .zip(field_kinds.iter())
+        .filter(|(_, k)| !matches!(k, DynKind::Fixed))
+        .map(|(f, kind)| {
+            let fname = f.ident.as_ref().unwrap();
+            let end_name = format_ident!("{}_end", fname);
+            match kind {
+                DynKind::Str { .. } | DynKind::StrRef => quote! {
+                    let __end = __zc.#end_name.get() as usize;
+                    if __end < __prev_end {
+                        return Err(ProgramError::InvalidAccountData);
+                    }
+                    let __start = __prev_end;
+                    __prev_end = __end;
+                    if core::str::from_utf8(
+                        &__data[__tail_start + __start..__tail_start + __end]
+                    )
+                    .is_err()
+                    {
+                        return Err(ProgramError::InvalidAccountData);
+                    }
+                },
+                DynKind::Vec { elem, .. } => quote! {
+                    let __end = __zc.#end_name.get() as usize;
+                    if __end < __prev_end {
+                        return Err(ProgramError::InvalidAccountData);
+                    }
+                    let __start = __prev_end;
+                    __prev_end = __end;
+                    let __byte_len = __end - __start;
+                    if __byte_len % core::mem::size_of::<#elem>() != 0 {
+                        return Err(ProgramError::InvalidAccountData);
+                    }
+                },
+                _ => unreachable!(),
+            }
+        })
+        .collect();
+
     // --- 8. AccountCheck: last cumulative _end covers all dynamic bytes ---
     let last_dyn_fname = fields_data
         .iter()
@@ -240,6 +294,8 @@ pub(super) fn generate_dynamic_account(
             "ZC companion struct must have alignment 1; all fields must use Pod types or alignment-1 types"
         );
 
+        #(#vec_align_asserts)*
+
         #vis struct #fields_name<#lt> {
             #(#fields_struct_fields,)*
         }
@@ -274,6 +330,9 @@ pub(super) fn generate_dynamic_account(
                 if __total > __data.len() {
                     return Err(ProgramError::AccountDataTooSmall);
                 }
+                let __tail_start = #disc_len + core::mem::size_of::<#zc_name>();
+                let mut __prev_end: usize = 0;
+                #(#dyn_validation_stmts)*
                 Ok(())
             }
         }
@@ -321,7 +380,22 @@ pub(super) fn generate_dynamic_account(
                 let __data = unsafe { __view.borrow_unchecked() };
                 let __zc = unsafe { &*(__data[#disc_len..].as_ptr() as *const #zc_name) };
 
-                let mut __buf = [0u8; 0 #(#max_space_terms)*];
+                const __MAX_TAIL: usize = 0 #(#max_space_terms)*;
+                #[cfg(not(feature = "alloc"))]
+                const _: () = assert!(
+                    __MAX_TAIL <= quasar_core::dynamic::MAX_DYNAMIC_TAIL,
+                    "dynamic fields max size exceeds stack buffer; enable alloc feature or reduce limits"
+                );
+
+                #[cfg(feature = "alloc")]
+                let mut __buf_vec = alloc::vec![0u8; __MAX_TAIL];
+                #[cfg(feature = "alloc")]
+                let mut __buf: &mut [u8] = __buf_vec.as_mut_slice();
+
+                #[cfg(not(feature = "alloc"))]
+                let mut __buf = [0u8; __MAX_TAIL];
+                #[cfg(not(feature = "alloc"))]
+                let mut __buf: &mut [u8] = __buf.as_mut_slice();
                 let mut __buf_offset = 0usize;
                 let mut __old_offset = #disc_len + core::mem::size_of::<#zc_name>();
 

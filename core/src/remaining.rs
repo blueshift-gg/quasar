@@ -1,4 +1,7 @@
 use solana_account_view::{AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED};
+use solana_program_error::ProgramError;
+
+use crate::error::QuasarError;
 
 const ACCOUNT_HEADER: usize = core::mem::size_of::<RuntimeAccount>()
     + MAX_PERMITTED_DATA_INCREASE
@@ -54,7 +57,8 @@ impl<'a> RemainingAccounts<'a> {
             if borrow == NOT_BORROWED {
                 unsafe {
                     ptr = ptr.add(ACCOUNT_HEADER + (*raw).data_len as usize);
-                    ptr = ((ptr as usize + 7) & !7) as *mut u8;
+                    let align = (ptr as *const u8).align_offset(8);
+                    ptr = ptr.add(align);
                 }
             } else {
                 unsafe {
@@ -68,6 +72,9 @@ impl<'a> RemainingAccounts<'a> {
     /// Returns an iterator that yields each remaining account in order.
     /// Builds an index as it walks — duplicate resolution is O(1),
     /// same pattern as the declared accounts parser in the entrypoint.
+    ///
+    /// Returns `Err(QuasarError::RemainingAccountsOverflow)` if more than
+    /// `MAX_REMAINING_ACCOUNTS` are accessed via the iterator.
     #[inline(always)]
     pub fn iter(&self) -> RemainingIter<'a> {
         RemainingIter {
@@ -119,7 +126,8 @@ fn resolve_dup_walk(
             if borrow == NOT_BORROWED {
                 unsafe {
                     ptr = ptr.add(ACCOUNT_HEADER + (*raw).data_len as usize);
-                    ptr = ((ptr as usize + 7) & !7) as *mut u8;
+                    let align = (ptr as *const u8).align_offset(8);
+                    ptr = ptr.add(align);
                 }
             } else {
                 unsafe {
@@ -171,11 +179,15 @@ impl RemainingIter<'_> {
 }
 
 impl Iterator for RemainingIter<'_> {
-    type Item = AccountView;
+    type Item = Result<AccountView, ProgramError>;
 
-    fn next(&mut self) -> Option<AccountView> {
-        if self.ptr as *const u8 >= self.boundary || self.index >= MAX_REMAINING_ACCOUNTS {
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.ptr as *const u8 >= self.boundary {
             return None;
+        }
+        if self.index >= MAX_REMAINING_ACCOUNTS {
+            self.ptr = self.boundary as *mut u8;
+            return Some(Err(QuasarError::RemainingAccountsOverflow.into()));
         }
 
         let raw = self.ptr as *mut RuntimeAccount;
@@ -185,7 +197,8 @@ impl Iterator for RemainingIter<'_> {
             let view = unsafe { AccountView::new_unchecked(raw) };
             unsafe {
                 self.ptr = self.ptr.add(ACCOUNT_HEADER + (*raw).data_len as usize);
-                self.ptr = ((self.ptr as usize + 7) & !7) as *mut u8;
+                let align = (self.ptr as *const u8).align_offset(8);
+                self.ptr = self.ptr.add(align);
             }
             view
         } else {
@@ -202,6 +215,6 @@ impl Iterator for RemainingIter<'_> {
             core::ptr::write(self.cache_mut_ptr().add(self.index), copy);
         }
         self.index += 1;
-        Some(view)
+        Some(Ok(view))
     }
 }

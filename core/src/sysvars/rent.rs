@@ -52,7 +52,10 @@ impl Rent {
                     * f64::from_le_bytes(self.exemption_threshold)) as u64
             }
             #[cfg(target_arch = "bpf")]
-            panic!("Floating-point operations are not supported on BPF targets");
+            {
+                // Fallback to the current 2x exemption threshold to avoid underfunding.
+                2 * (ACCOUNT_STORAGE_OVERHEAD + bytes) * lamports_per_byte
+            }
         }
     }
 
