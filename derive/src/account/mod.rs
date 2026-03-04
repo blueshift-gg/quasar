@@ -6,7 +6,8 @@ use proc_macro::TokenStream;
 use syn::{parse_macro_input, Data, DeriveInput, Fields};
 
 use crate::helpers::{
-    is_dynamic_string, is_dynamic_vec, validate_discriminator_not_zero, DynKind, InstructionArgs,
+    classify_dynamic_string, classify_dynamic_vec, validate_discriminator_not_zero, DynKind,
+    InstructionArgs,
 };
 
 pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -44,11 +45,12 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     let field_kinds: Vec<DynKind> = fields_data
         .iter()
         .map(|f| {
-            if let Some(max) = is_dynamic_string(&f.ty, true) {
-                DynKind::Str { max }
-            } else if let Some((elem, max)) = is_dynamic_vec(&f.ty, true) {
+            if let Some((prefix, max)) = classify_dynamic_string(&f.ty) {
+                DynKind::Str { prefix, max }
+            } else if let Some((elem, prefix, max)) = classify_dynamic_vec(&f.ty) {
                 DynKind::Vec {
                     elem: Box::new(elem),
+                    prefix,
                     max,
                 }
             } else {
@@ -91,7 +93,7 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Validate: Vec element types must not be dynamic (no nested String/Vec).
     for (f, kind) in fields_data.iter().zip(field_kinds.iter()) {
         if let DynKind::Vec { elem, .. } = kind {
-            if is_dynamic_string(elem, true).is_some() || is_dynamic_vec(elem, true).is_some() {
+            if classify_dynamic_string(elem).is_some() || classify_dynamic_vec(elem).is_some() {
                 return syn::Error::new_spanned(
                     f,
                     "Vec element type must be a fixed-size type; nested dynamic types (String/Vec) are not supported",

@@ -14,6 +14,19 @@ pub struct MultiDiscAccount {
 
 #[account(discriminator = 5)]
 pub struct DynamicAccount<'a> {
-    pub name: String<'a, 8>,
-    pub tags: Vec<'a, Address, 2>,
+    pub name: String<u32, 8>,
+    pub tags: Vec<Address, u32, 2>,
+}
+
+#[account(discriminator = 6)]
+pub struct MixedAccount<'a> {
+    pub authority: Address,
+    pub value: u64,
+    pub label: String<u32, 32>,
+}
+
+#[account(discriminator = 7)]
+pub struct SmallPrefixAccount<'a> {
+    pub tag: String<u8, 100>,
+    pub scores: Vec<u8, u8, 10>,
 }

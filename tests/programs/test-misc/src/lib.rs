@@ -120,6 +120,33 @@ mod quasar_test_misc {
         ctx.accounts.handler(name)
     }
 
+    #[instruction(discriminator = 22)]
+    pub fn mixed_account_check(ctx: Ctx<MixedAccountCheck>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 23)]
+    pub fn small_prefix_check(ctx: Ctx<SmallPrefixCheck>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 24)]
+    pub fn dynamic_readback(
+        ctx: Ctx<DynamicReadback>,
+        expected_name_len: u8,
+        expected_tags_count: u8,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler(expected_name_len, expected_tags_count)
+    }
+
+    #[instruction(discriminator = 26)]
+    pub fn dynamic_mutate(
+        ctx: Ctx<DynamicMutate>,
+        new_name: String<8>,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler(new_name)
+    }
+
     #[instruction(discriminator = 17)]
     pub fn space_override(ctx: Ctx<SpaceOverride>, value: u64) -> Result<(), ProgramError> {
         ctx.accounts.handler(value, &ctx.bumps)
@@ -133,5 +160,14 @@ mod quasar_test_misc {
     #[instruction(discriminator = 19)]
     pub fn optional_has_one(ctx: Ctx<OptionalHasOne>) -> Result<(), ProgramError> {
         ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 27)]
+    pub fn mutate_then_readback(
+        ctx: Ctx<MutateThenReadback>,
+        new_name: String<8>,
+        expected_tags_count: u8,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler(new_name, expected_tags_count)
     }
 }

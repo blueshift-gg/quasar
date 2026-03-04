@@ -17,7 +17,7 @@ pub use crate::cpi::Seed;
 pub use crate::pod::{PodBool, PodI128, PodI16, PodI32, PodI64, PodU128, PodU16, PodU32, PodU64};
 
 // Dynamic field marker types
-pub use crate::dynamic::{String, Vec};
+pub use crate::dynamic::{RawEncoded, String, Vec};
 
 // Error handling
 pub use crate::error::QuasarError;

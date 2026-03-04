@@ -3,8 +3,8 @@ use quote::quote;
 use syn::{parse_macro_input, FnArg, Ident, ItemFn, Pat, ReturnType};
 
 use crate::helpers::{
-    extract_generic_inner_type, is_dynamic_string, is_dynamic_vec, is_str_ref, is_unit_type,
-    map_to_pod_type, zc_deserialize_expr, DynKind, InstructionArgs,
+    classify_dynamic_string, classify_dynamic_vec, extract_generic_inner_type, is_str_ref,
+    is_unit_type, map_to_pod_type, zc_deserialize_expr, DynKind, InstructionArgs,
 };
 
 pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -101,13 +101,14 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
         let kinds: Vec<DynKind> = remaining
             .iter()
             .map(|pt| {
-                if let Some(max) = is_dynamic_string(&pt.ty, false) {
-                    DynKind::Str { max }
+                if let Some((prefix, max)) = classify_dynamic_string(&pt.ty) {
+                    DynKind::Str { prefix, max }
                 } else if is_str_ref(&pt.ty) {
                     DynKind::StrRef
-                } else if let Some((elem, max)) = is_dynamic_vec(&pt.ty, false) {
+                } else if let Some((elem, prefix, max)) = classify_dynamic_vec(&pt.ty) {
                     DynKind::Vec {
                         elem: Box::new(elem),
+                        prefix,
                         max,
                     }
                 } else {
@@ -117,35 +118,16 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
             .collect();
 
         let has_dynamic = kinds.iter().any(|k| !matches!(k, DynKind::Fixed));
+        let has_fixed = kinds.iter().any(|k| matches!(k, DynKind::Fixed));
 
-        // Build ZC struct: fixed fields as Pod types + PodU16 descriptors for dynamic fields
+        // Build ZC struct with ONLY fixed fields
         let mut zc_field_names: Vec<Ident> = Vec::new();
         let mut zc_field_types: Vec<proc_macro2::TokenStream> = Vec::new();
 
         for (i, kind) in kinds.iter().enumerate() {
-            match kind {
-                DynKind::Fixed => {
-                    zc_field_names.push(field_names[i].clone());
-                    zc_field_types.push(map_to_pod_type(&remaining[i].ty));
-                }
-                DynKind::Str { .. } => {
-                    let len_name =
-                        Ident::new(&format!("{}_len", field_names[i]), field_names[i].span());
-                    zc_field_names.push(len_name);
-                    zc_field_types.push(quote! { quasar_core::pod::PodU16 });
-                }
-                DynKind::StrRef => {
-                    let len_name =
-                        Ident::new(&format!("{}_len", field_names[i]), field_names[i].span());
-                    zc_field_names.push(len_name);
-                    zc_field_types.push(quote! { u8 });
-                }
-                DynKind::Vec { .. } => {
-                    let count_name =
-                        Ident::new(&format!("{}_count", field_names[i]), field_names[i].span());
-                    zc_field_names.push(count_name);
-                    zc_field_types.push(quote! { quasar_core::pod::PodU16 });
-                }
+            if matches!(kind, DynKind::Fixed) {
+                zc_field_names.push(field_names[i].clone());
+                zc_field_types.push(map_to_pod_type(&remaining[i].ty));
             }
         }
 
@@ -162,56 +144,66 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
             })
             .collect();
 
-        new_stmts.push(syn::parse_quote!(
-            #[repr(C)]
-            #[derive(Copy, Clone)]
-            struct InstructionDataZc {
-                #(#zc_field_names: #zc_field_types,)*
-            }
-        ));
-
-        new_stmts.push(syn::parse_quote!(
-            const _: () = assert!(
-                core::mem::align_of::<InstructionDataZc>() == 1,
-                "instruction data ZC struct must have alignment 1"
-            );
-        ));
-
         for assert_stmt in vec_align_asserts {
             new_stmts.push(syn::parse2(assert_stmt).unwrap());
         }
 
-        new_stmts.push(syn::parse_quote!(
-            if #param_ident.data.len() < core::mem::size_of::<InstructionDataZc>() {
-                return Err(ProgramError::InvalidInstructionData);
-            }
-        ));
+        if has_fixed {
+            new_stmts.push(syn::parse_quote!(
+                #[repr(C)]
+                #[derive(Copy, Clone)]
+                struct InstructionDataZc {
+                    #(#zc_field_names: #zc_field_types,)*
+                }
+            ));
 
-        new_stmts.push(syn::parse_quote!(
-            let __zc = unsafe { &*(#param_ident.data.as_ptr() as *const InstructionDataZc) };
-        ));
+            new_stmts.push(syn::parse_quote!(
+                const _: () = assert!(
+                    core::mem::align_of::<InstructionDataZc>() == 1,
+                    "instruction data ZC struct must have alignment 1"
+                );
+            ));
 
-        // Extract fixed fields from ZC header
-        for (i, kind) in kinds.iter().enumerate() {
-            if matches!(kind, DynKind::Fixed) {
-                let name = &field_names[i];
-                let expr = zc_deserialize_expr(name, &remaining[i].ty);
-                new_stmts.push(syn::parse_quote!(
-                    let #name = #expr;
-                ));
+            new_stmts.push(syn::parse_quote!(
+                if #param_ident.data.len() < core::mem::size_of::<InstructionDataZc>() {
+                    return Err(ProgramError::InvalidInstructionData);
+                }
+            ));
+
+            new_stmts.push(syn::parse_quote!(
+                let __zc = unsafe { &*(#param_ident.data.as_ptr() as *const InstructionDataZc) };
+            ));
+
+            // Extract fixed fields from ZC header
+            for (i, kind) in kinds.iter().enumerate() {
+                if matches!(kind, DynKind::Fixed) {
+                    let name = &field_names[i];
+                    let expr = zc_deserialize_expr(name, &remaining[i].ty);
+                    new_stmts.push(syn::parse_quote!(
+                        let #name = #expr;
+                    ));
+                }
             }
         }
 
-        // Extract dynamic fields from variable tail
+        // Extract dynamic fields with inline prefix reads
         if has_dynamic {
-            new_stmts.push(syn::parse_quote!(
-                let __tail = &#param_ident.data[core::mem::size_of::<InstructionDataZc>()..];
-            ));
-            new_stmts.push(syn::parse_quote!(
-                let mut __offset: usize = 0;
-            ));
+            if has_fixed {
+                new_stmts.push(syn::parse_quote!(
+                    let __data = #param_ident.data;
+                ));
+                new_stmts.push(syn::parse_quote!(
+                    let mut __offset = core::mem::size_of::<InstructionDataZc>();
+                ));
+            } else {
+                new_stmts.push(syn::parse_quote!(
+                    let __data = #param_ident.data;
+                ));
+                new_stmts.push(syn::parse_quote!(
+                    let mut __offset: usize = 0;
+                ));
+            }
 
-            // Count dynamic fields to avoid unused offset update on last one
             let dyn_count = kinds
                 .iter()
                 .filter(|k| !matches!(k, DynKind::Fixed))
@@ -222,24 +214,35 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                 let name = &field_names[i];
                 match kind {
                     DynKind::Fixed => {}
-                    DynKind::Str { max } => {
+                    DynKind::Str { prefix, max } => {
                         dyn_idx += 1;
-                        let len_name = Ident::new(&format!("{}_len", name), name.span());
+                        let pb = prefix.bytes();
                         let max_lit = *max;
+                        let read_len = prefix.gen_read_len();
                         new_stmts.push(syn::parse_quote!(
-                            let __dyn_len = __zc.#len_name.get() as usize;
+                            if __data.len() < __offset + #pb {
+                                return Err(ProgramError::InvalidInstructionData);
+                            }
+                        ));
+                        new_stmts.push(syn::parse_quote!(
+                            let __dyn_len = #read_len;
+                        ));
+                        new_stmts.push(syn::parse_quote!(
+                            __offset += #pb;
                         ));
                         new_stmts.push(syn::parse_quote!(
                             if __dyn_len > #max_lit {
                                 return Err(ProgramError::InvalidInstructionData);
                             }
                         ));
-                        new_stmts.push(syn::parse_quote!(if __tail.len() < __offset + __dyn_len {
-                            return Err(ProgramError::InvalidInstructionData);
-                        }));
+                        new_stmts.push(syn::parse_quote!(
+                            if __data.len() < __offset + __dyn_len {
+                                return Err(ProgramError::InvalidInstructionData);
+                            }
+                        ));
                         new_stmts.push(syn::parse_quote!(
                             let #name: &str = {
-                                let __bytes = &__tail[__offset..__offset + __dyn_len];
+                                let __bytes = &__data[__offset..__offset + __dyn_len];
                                 match core::str::from_utf8(__bytes) {
                                     Ok(__s) => __s,
                                     Err(_) => return Err(ProgramError::InvalidInstructionData),
@@ -254,16 +257,32 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
                     DynKind::StrRef => {
                         dyn_idx += 1;
-                        let len_name = Ident::new(&format!("{}_len", name), name.span());
+                        // StrRef defaults to u32 prefix
+                        let pb = 4usize;
                         new_stmts.push(syn::parse_quote!(
-                            let __dyn_len = __zc.#len_name as usize;
+                            if __data.len() < __offset + #pb {
+                                return Err(ProgramError::InvalidInstructionData);
+                            }
                         ));
-                        new_stmts.push(syn::parse_quote!(if __tail.len() < __offset + __dyn_len {
-                            return Err(ProgramError::InvalidInstructionData);
-                        }));
+                        new_stmts.push(syn::parse_quote!(
+                            let __dyn_len = u32::from_le_bytes([
+                                __data[__offset],
+                                __data[__offset + 1],
+                                __data[__offset + 2],
+                                __data[__offset + 3],
+                            ]) as usize;
+                        ));
+                        new_stmts.push(syn::parse_quote!(
+                            __offset += #pb;
+                        ));
+                        new_stmts.push(syn::parse_quote!(
+                            if __data.len() < __offset + __dyn_len {
+                                return Err(ProgramError::InvalidInstructionData);
+                            }
+                        ));
                         new_stmts.push(syn::parse_quote!(
                             let #name: &str = {
-                                let __bytes = &__tail[__offset..__offset + __dyn_len];
+                                let __bytes = &__data[__offset..__offset + __dyn_len];
                                 match core::str::from_utf8(__bytes) {
                                     Ok(__s) => __s,
                                     Err(_) => return Err(ProgramError::InvalidInstructionData),
@@ -276,12 +295,21 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                             ));
                         }
                     }
-                    DynKind::Vec { elem, max } => {
+                    DynKind::Vec { elem, prefix, max } => {
                         dyn_idx += 1;
-                        let count_name = Ident::new(&format!("{}_count", name), name.span());
+                        let pb = prefix.bytes();
                         let max_lit = *max;
+                        let read_len = prefix.gen_read_len();
                         new_stmts.push(syn::parse_quote!(
-                            let __dyn_count = __zc.#count_name.get() as usize;
+                            if __data.len() < __offset + #pb {
+                                return Err(ProgramError::InvalidInstructionData);
+                            }
+                        ));
+                        new_stmts.push(syn::parse_quote!(
+                            let __dyn_count = #read_len;
+                        ));
+                        new_stmts.push(syn::parse_quote!(
+                            __offset += #pb;
                         ));
                         new_stmts.push(syn::parse_quote!(
                             if __dyn_count > #max_lit {
@@ -292,14 +320,14 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                             let __dyn_byte_len = __dyn_count * core::mem::size_of::<#elem>();
                         ));
                         new_stmts.push(syn::parse_quote!(
-                            if __tail.len() < __offset + __dyn_byte_len {
+                            if __data.len() < __offset + __dyn_byte_len {
                                 return Err(ProgramError::InvalidInstructionData);
                             }
                         ));
                         new_stmts.push(syn::parse_quote!(
                             let #name: &[#elem] = unsafe {
                                 core::slice::from_raw_parts(
-                                    __tail.as_ptr().add(__offset) as *const #elem,
+                                    __data.as_ptr().add(__offset) as *const #elem,
                                     __dyn_count,
                                 )
                             };
@@ -313,13 +341,12 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
             }
 
-            // Suppress unused warning on __offset after last dynamic field
             new_stmts.push(syn::parse_quote!(
                 let _ = __offset;
             ));
         }
 
-        // Clear ctx.data after extraction — prevents accidental access to raw bytes
+        // Clear ctx.data after extraction
         new_stmts.push(syn::parse_quote!(
             #param_ident.data = &[];
         ));
