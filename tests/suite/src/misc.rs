@@ -1,12 +1,12 @@
-use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
 use mollusk_svm::result::ProgramResult;
+use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
 
+use quasar_core::error::QuasarError;
+use quasar_core::prelude::ProgramError;
+use quasar_test_misc::client::*;
 use solana_account::Account;
 use solana_address::Address;
 use solana_instruction::Instruction;
-use quasar_test_misc::client::*;
-use quasar_core::error::QuasarError;
-use quasar_core::prelude::ProgramError;
 
 const SIMPLE_ACCOUNT_SIZE: usize = 42; // 1 disc + 32 addr + 8 u64 + 1 u8
 const MULTI_DISC_SIZE: usize = 10; // 2 disc + 8 u64
@@ -1806,7 +1806,9 @@ fn test_remaining_accounts_overflow_errors() {
 
     assert_eq!(
         result.program_result,
-        ProgramResult::Failure(ProgramError::Custom(QuasarError::RemainingAccountsOverflow as u32))
+        ProgramResult::Failure(ProgramError::Custom(
+            QuasarError::RemainingAccountsOverflow as u32
+        ))
     );
 }
 

@@ -2358,7 +2358,10 @@ fn close_rejects_non_writable_destination() {
 
     let account = Account::<TestCloseableType>::from_account_view(&src_view).unwrap();
     let result = account.close(&dst_view);
-    assert!(result.is_err(), "close must reject non-writable destination");
+    assert!(
+        result.is_err(),
+        "close must reject non-writable destination"
+    );
     assert_eq!(src_view.lamports(), 1_000_000, "source lamports unchanged");
 }
 
