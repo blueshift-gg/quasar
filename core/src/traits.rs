@@ -17,12 +17,27 @@ pub trait Owner {
     const OWNER: Address;
 }
 
-/// Declares the on-chain program ID for a program account type.
+/// Declares the on-chain address (ID) for a program type.
 ///
-/// Implemented by: `#[program]` macro, manual `impl` for CPI targets (e.g. `TokenProgram`).
-/// Used by: `checks::Address` to validate the account address matches the program ID.
-pub trait Program {
+/// This trait simply provides the program's address constant. The `Program<T>`
+/// wrapper type requires `T: Id` to validate that accounts match the expected address.
+///
+/// Implemented by: Program marker types (e.g., `System`, `Token`).
+/// Used by: `Program<T>` wrapper for address validation.
+pub trait Id {
     const ID: Address;
+}
+
+/// Declares that a type represents a program interface accepting multiple program IDs.
+///
+/// Unlike [`Program`] which represents a single program, this trait allows
+/// checking against multiple valid program addresses (e.g., Token vs Token-2022).
+///
+/// Implemented by: Manual `impl` for interface types.
+/// Used by: `Interface<T>` to validate the address during parsing.
+pub trait ProgramInterface {
+    /// Check if the given address matches any valid program ID for this interface.
+    fn matches(address: &Address) -> bool;
 }
 
 /// Declares the byte-level discriminator prefix for an account or instruction.

@@ -20,27 +20,30 @@ macro_rules! define_account {
         }
 
         impl $name {
+            /// Unchecked construction for optimized parsing where
+            /// signer/writable/executable/no-dup flags have been pre-validated via
+            /// u32 header comparison during entrypoint deserialization.
+            ///
+            /// # Safety
+            ///
+            /// Caller must guarantee that all check trait requirements (`$check`)
+            /// have been validated before calling this function.
             #[inline(always)]
-            pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
-                $(<$name as $check>::check(view)?;)*
-                Ok(unsafe { &*(view as *const AccountView as *const Self) })
+            pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
+                &*(view as *const AccountView as *const Self)
             }
 
-            /// # Safety (invalid_reference_casting)
+            /// Unchecked mutable construction for optimized parsing.
             ///
-            /// `Self` is `#[repr(transparent)]` over `AccountView`, which uses
-            /// interior mutability through raw pointers to SVM account memory.
-            /// The `&` → `&mut` cast does not create aliased mutable references
-            /// to backing memory — all writes go through `AccountView`'s raw
-            /// pointer methods. Standard pattern in Solana frameworks (Pinocchio).
+            /// # Safety (invalid_reference_casting + check validation)
+            ///
+            /// Caller must guarantee:
+            /// 1. All check trait requirements have been validated
+            /// 2. `view.is_writable()` is true (validated via header check)
             #[inline(always)]
             #[allow(invalid_reference_casting, clippy::mut_from_ref)]
-            pub fn from_account_view_mut(view: &AccountView) -> Result<&mut Self, ProgramError> {
-                $(<$name as $check>::check(view)?;)*
-                if !view.is_writable() {
-                    return Err(ProgramError::Immutable);
-                }
-                Ok(unsafe { &mut *(view as *const AccountView as *mut Self) })
+            pub unsafe fn from_account_view_unchecked_mut(view: &AccountView) -> &mut Self {
+                &mut *(view as *const AccountView as *mut Self)
             }
         }
     };

@@ -127,7 +127,8 @@ fn test_make_cu() {
 
     let (rent, rent_account) = mollusk.sysvars.keyed_account_for_rent_sysvar();
 
-    // Client includes keypairs for uninitialized accounts (maker_ta_b=5, vault_ta_a=6)
+    // Client builder marks maker as signer (client.rs:23)
+    // Mark uninitialized accounts (maker_ta_b=5, vault_ta_a=6) as signers for create_account CPI
     let instruction = with_signers(
         MakeInstruction {
             maker,
@@ -254,7 +255,8 @@ fn test_take_cu() {
 
     let (rent, rent_account) = mollusk.sysvars.keyed_account_for_rent_sysvar();
 
-    // Client includes keypairs for uninitialized accounts (taker_ta_a=5, maker_ta_b=7)
+    // Client builder marks taker as signer (client.rs:63)
+    // Mark uninitialized accounts (taker_ta_a=5, maker_ta_b=7) as signers for create_account CPI
     let instruction = with_signers(
         TakeInstruction {
             taker,
@@ -349,7 +351,8 @@ fn test_refund_cu() {
 
     let (rent, rent_account) = mollusk.sysvars.keyed_account_for_rent_sysvar();
 
-    // Client includes keypair for uninitialized account (maker_ta_a=3)
+    // Client builder marks maker as signer (client.rs:99)
+    // Mark uninitialized account (maker_ta_a=3) as signer for create_account CPI
     let instruction = with_signers(
         RefundInstruction {
             maker,
@@ -454,7 +457,7 @@ fn test_make_existing_token_accounts() {
 
     let (rent, rent_account) = mollusk.sysvars.keyed_account_for_rent_sysvar();
 
-    let instruction: Instruction = MakeInstruction {
+    let mut instruction: Instruction = MakeInstruction {
         maker,
         escrow,
         mint_a,
@@ -469,6 +472,7 @@ fn test_make_existing_token_accounts() {
         receive: 1337,
     }
     .into();
+    instruction.accounts[0].is_signer = true; // maker
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -559,7 +563,7 @@ fn test_make_existing_maker_ta_b_wrong_mint() {
 
     let (rent, rent_account) = mollusk.sysvars.keyed_account_for_rent_sysvar();
 
-    let instruction: Instruction = MakeInstruction {
+    let mut instruction: Instruction = MakeInstruction {
         maker,
         escrow,
         mint_a,
@@ -574,6 +578,7 @@ fn test_make_existing_maker_ta_b_wrong_mint() {
         receive: 1337,
     }
     .into();
+    instruction.accounts[0].is_signer = true; // maker
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -660,7 +665,7 @@ fn test_make_existing_maker_ta_b_wrong_owner() {
 
     let (rent, rent_account) = mollusk.sysvars.keyed_account_for_rent_sysvar();
 
-    let instruction: Instruction = MakeInstruction {
+    let mut instruction: Instruction = MakeInstruction {
         maker,
         escrow,
         mint_a,
@@ -675,6 +680,7 @@ fn test_make_existing_maker_ta_b_wrong_owner() {
         receive: 1337,
     }
     .into();
+    instruction.accounts[0].is_signer = true; // maker
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -780,7 +786,7 @@ fn test_take_existing_token_accounts() {
 
     let (rent, rent_account) = mollusk.sysvars.keyed_account_for_rent_sysvar();
 
-    let instruction: Instruction = TakeInstruction {
+    let mut instruction: Instruction = TakeInstruction {
         taker,
         escrow,
         maker,
@@ -795,6 +801,7 @@ fn test_take_existing_token_accounts() {
         system_program,
     }
     .into();
+    instruction.accounts[0].is_signer = true; // taker
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -878,7 +885,7 @@ fn test_refund_existing_maker_ta_a() {
 
     let (rent, rent_account) = mollusk.sysvars.keyed_account_for_rent_sysvar();
 
-    let instruction: Instruction = RefundInstruction {
+    let mut instruction: Instruction = RefundInstruction {
         maker,
         escrow,
         mint_a,
@@ -889,6 +896,7 @@ fn test_refund_existing_maker_ta_a() {
         system_program,
     }
     .into();
+    instruction.accounts[0].is_signer = true; // maker
 
     let result = mollusk.process_instruction(
         &instruction,

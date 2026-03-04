@@ -9,7 +9,7 @@ pub struct Create<'info> {
     #[account(seeds = [b"multisig", creator], bump)]
     pub config: &'info mut Initialize<MultisigConfig<'info>>,
     pub rent: &'info Sysvar<Rent>,
-    pub system_program: &'info SystemProgram,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> Create<'info> {

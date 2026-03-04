@@ -1,6 +1,6 @@
 use crate::prelude::*;
 
-pub trait Address: crate::traits::Program {
+pub trait Address: crate::traits::Id {
     #[inline(always)]
     fn check(view: &AccountView) -> Result<(), ProgramError> {
         if view.address() != &Self::ID {

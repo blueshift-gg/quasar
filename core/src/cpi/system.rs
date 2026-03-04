@@ -1,7 +1,6 @@
 use super::{CpiCall, InstructionAccount};
-use crate::checks;
 use crate::sysvars::rent::Rent;
-use crate::traits::{AsAccountView, Program};
+use crate::traits::{AsAccountView, Id};
 use solana_account_view::AccountView;
 use solana_address::{declare_id, Address};
 use solana_program_error::ProgramError;
@@ -88,15 +87,21 @@ pub fn assign<'a>(account: &'a AccountView, owner: &'a Address) -> CpiCall<'a, 1
     )
 }
 
-// --- SystemProgram account type ---
+// --- System program account type ---
 
-define_account!(pub struct SystemProgram => [checks::Executable, checks::Address]);
+/// Marker type for the system program.
+///
+/// Use with the `Program<T>` wrapper:
+/// ```ignore
+/// pub system_program: &'info Program<System>,
+/// ```
+pub struct System;
 
-impl Program for SystemProgram {
+impl Id for System {
     const ID: Address = Address::new_from_array([0u8; 32]);
 }
 
-impl SystemProgram {
+impl crate::accounts::Program<System> {
     #[inline(always)]
     pub fn create_account<'a>(
         &'a self,
