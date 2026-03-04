@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: instruction Vec element type must have alignment 1
+  --> tests/compile_fail/instruction_vec_alignment.rs:13:1
+   |
+13 | #[instruction(discriminator = 0)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `bad_vec::_` failed here

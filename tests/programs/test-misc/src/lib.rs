@@ -107,6 +107,19 @@ mod quasar_test_misc {
         ctx.accounts.handler(ctx.remaining_accounts())
     }
 
+    #[instruction(discriminator = 20)]
+    pub fn dynamic_account_check(ctx: Ctx<DynamicAccountCheck>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 21)]
+    pub fn dynamic_instruction_check(
+        ctx: Ctx<DynamicInstructionCheck>,
+        name: String<8>,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler(name)
+    }
+
     #[instruction(discriminator = 17)]
     pub fn space_override(ctx: Ctx<SpaceOverride>, value: u64) -> Result<(), ProgramError> {
         ctx.accounts.handler(value, &ctx.bumps)

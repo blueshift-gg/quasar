@@ -131,8 +131,8 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                         unsafe {
                             core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
                             input = input.add(__ACCOUNT_HEADER + (*raw).data_len as usize);
-                            let addr = input as usize;
-                            input = ((addr + 7) & !7) as *mut u8;
+                            let align = (input as *const u8).align_offset(8);
+                            input = input.add(align);
                         }
                     } else {
                         unsafe {
@@ -468,6 +468,19 @@ fn generate_instruction_arg_extraction(ix_args: &[InstructionArg]) -> proc_macro
 
     let has_dynamic = kinds.iter().any(|k| !matches!(k, DynKind::Fixed));
 
+    let vec_align_asserts: Vec<proc_macro2::TokenStream> = kinds
+        .iter()
+        .filter_map(|kind| match kind {
+            DynKind::Vec { elem, .. } => Some(quote! {
+                const _: () = assert!(
+                    core::mem::align_of::<#elem>() == 1,
+                    "instruction Vec element type must have alignment 1"
+                );
+            }),
+            _ => None,
+        })
+        .collect();
+
     let mut zc_field_names: Vec<Ident> = Vec::new();
     let mut zc_field_types: Vec<proc_macro2::TokenStream> = Vec::new();
 
@@ -511,6 +524,10 @@ fn generate_instruction_arg_extraction(ix_args: &[InstructionArg]) -> proc_macro
             "instruction args ZC struct must have alignment 1"
         );
     });
+
+    for assert_stmt in vec_align_asserts {
+        stmts.push(assert_stmt);
+    }
 
     stmts.push(quote! {
         if __ix_data.len() < core::mem::size_of::<__IxArgsZc>() {

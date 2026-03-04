@@ -23,6 +23,16 @@ fn build_config_data(
     label: &str,
     signers: &[Address],
 ) -> Vec<u8> {
+    build_config_data_bytes(creator, threshold, bump, label.as_bytes(), signers)
+}
+
+fn build_config_data_bytes(
+    creator: Address,
+    threshold: u8,
+    bump: u8,
+    label: &[u8],
+    signers: &[Address],
+) -> Vec<u8> {
     let zc_header_size = 32 + 1 + 1 + 2 + 2; // creator + threshold + bump + label_end + signers_end
     let total = 1 + zc_header_size + label.len() + signers.len() * 32;
     let mut data = vec![0u8; total];
@@ -48,7 +58,7 @@ fn build_config_data(
 
     // Variable tail: label bytes, then signer addresses
     let tail_start = 1 + zc_header_size;
-    data[tail_start..tail_start + label.len()].copy_from_slice(label.as_bytes());
+    data[tail_start..tail_start + label.len()].copy_from_slice(label);
     let signers_start = tail_start + label.len();
     for (i, signer) in signers.iter().enumerate() {
         data[signers_start + i * 32..signers_start + (i + 1) * 32].copy_from_slice(signer.as_ref());
@@ -419,4 +429,56 @@ fn test_execute_transfer_insufficient_signers() {
     std::println!("\n========================================");
     std::println!("  INSUFFICIENT_SIGNERS: correctly rejected");
     std::println!("========================================\n");
+}
+
+#[test]
+fn test_invalid_utf8_label_rejected() {
+    let mollusk = setup();
+
+    let creator = Address::new_unique();
+    let signer1 = Address::new_unique();
+
+    let (config, config_bump) =
+        Address::find_program_address(&[b"multisig", creator.as_ref()], &crate::ID);
+    let config_data = build_config_data_bytes(creator, 1, config_bump, &[0xFF, 0xFE], &[signer1]);
+    let config_account = Account {
+        lamports: 1_000_000,
+        data: config_data,
+        owner: crate::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let depositor = Address::new_unique();
+    let depositor_account = Account::new(10_000_000_000, 0, &Address::default());
+
+    let (vault, _vault_bump) =
+        Address::find_program_address(&[b"vault", config.as_ref()], &crate::ID);
+    let vault_account = Account::new(0, 0, &Address::default());
+
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+
+    let instruction: Instruction = DepositInstruction {
+        depositor,
+        config,
+        vault,
+        system_program,
+        amount: 1_000,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (depositor, depositor_account),
+            (config, config_account),
+            (vault, vault_account),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_err(),
+        "invalid UTF-8 label in config account should be rejected"
+    );
 }

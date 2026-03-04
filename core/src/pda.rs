@@ -54,7 +54,10 @@ pub const fn find_program_address_const(seeds: &[&[u8]], program_id: &Address) -
 /// Same `Seed`-native approach as `create_program_address`. On SBF, the
 /// seed slice passes directly to the `sol_try_find_program_address` syscall.
 #[inline(always)]
-pub fn find_program_address(seeds: &[Seed], program_id: &Address) -> (Address, u8) {
+pub fn try_find_program_address(
+    seeds: &[Seed],
+    program_id: &Address,
+) -> Result<(Address, u8), ProgramError> {
     #[cfg(any(target_os = "solana", target_arch = "bpf"))]
     {
         let mut bytes = core::mem::MaybeUninit::<Address>::uninit();
@@ -69,14 +72,25 @@ pub fn find_program_address(seeds: &[Seed], program_id: &Address) -> (Address, u
             )
         };
         match result {
-            0 => (unsafe { bytes.assume_init() }, bump),
-            _ => panic!("find_program_address syscall failed"),
+            0 => Ok((unsafe { bytes.assume_init() }, bump)),
+            _ => Err(ProgramError::InvalidSeeds),
         }
     }
 
     #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
     {
         let _ = (seeds, program_id);
-        panic!("find_program_address requires the Solana runtime");
+        Err(ProgramError::InvalidArgument)
+    }
+}
+
+/// Find a valid program derived address and its bump seed.
+///
+/// Panics on syscall failure. Prefer `try_find_program_address` when possible.
+#[inline(always)]
+pub fn find_program_address(seeds: &[Seed], program_id: &Address) -> (Address, u8) {
+    match try_find_program_address(seeds, program_id) {
+        Ok(result) => result,
+        Err(_) => panic!("find_program_address syscall failed"),
     }
 }
