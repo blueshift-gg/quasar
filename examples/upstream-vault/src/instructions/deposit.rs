@@ -5,7 +5,7 @@ pub struct Deposit<'info> {
     pub user: &'info mut Signer,
     #[account(mut, seeds = [b"vault", user], bump)]
     pub vault: &'info mut UncheckedAccount,
-    pub system_program: &'info SystemProgram,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> Deposit<'info> {

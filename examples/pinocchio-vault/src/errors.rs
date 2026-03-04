@@ -5,7 +5,7 @@ pub enum VaultError {
     InvalidInstructionData = 0,
     NotEnoughAccountKeys = 1,
     MissingRequiredSignature = 2,
-    IncorrectSystemProgram = 3,
+    IncorrectSystem = 3,
     InvalidPDA = 4,
 }
 

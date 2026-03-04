@@ -7,8 +7,8 @@ use quote::{format_ident, quote};
 use syn::{parse::ParseStream, parse_macro_input, Data, DeriveInput, Fields, Ident, Token, Type};
 
 use crate::helpers::{
-    is_composite_type, is_dynamic_string, is_dynamic_vec, is_str_ref, map_to_pod_type,
-    strip_generics, zc_deserialize_expr, DynKind,
+    extract_generic_inner_type, is_composite_type, is_dynamic_string, is_dynamic_vec, is_str_ref,
+    map_to_pod_type, strip_generics, zc_deserialize_expr, DynKind,
 };
 
 struct InstructionArg {
@@ -43,6 +43,20 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
     let bumps_name = format_ident!("{}Bumps", name);
+
+    // Parse struct-level attributes for #[account(dup)]
+    let mut allow_dup = false;
+    for attr in &input.attrs {
+        if attr.path().is_ident("account") {
+            if let Ok(meta_list) = attr.meta.require_list() {
+                for nested in meta_list.tokens.clone() {
+                    if nested.to_string() == "dup" {
+                        allow_dup = true;
+                    }
+                }
+            }
+        }
+    }
 
     let fields = match &input.data {
         Data::Struct(data) => match &data.fields {
@@ -102,17 +116,24 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         quote! { #field_count }
     };
 
+    // --- Generate parse_steps and parse_steps_no_dup ---
+
     let mut parse_steps: Vec<proc_macro2::TokenStream> = Vec::new();
+    let mut parse_steps_no_dup: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut buf_offset = quote! { 0usize };
-    for ct in &composite_types {
+
+    for (fi, ct) in composite_types.iter().enumerate() {
         if let Some(inner_ty) = ct {
+            // Composite type - recursively call parse_accounts
+            // (each inner type knows its own dup policy from its #[account(dup)] attribute)
             let cur_offset = buf_offset.clone();
+
             parse_steps.push(quote! {
                 {
                     let mut __inner_buf = core::mem::MaybeUninit::<
                         [quasar_core::__internal::AccountView; <#inner_ty as AccountCount>::COUNT]
                     >::uninit();
-                    input = <#inner_ty>::parse_accounts(input, &mut __inner_buf);
+                    input = <#inner_ty>::parse_accounts(input, &mut __inner_buf)?;
                     let __inner = unsafe { __inner_buf.assume_init() };
                     let mut __j = 0usize;
                     while __j < <#inner_ty as AccountCount>::COUNT {
@@ -121,13 +142,53 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                     }
                 }
             });
+
+            parse_steps_no_dup.push(quote! {
+                {
+                    let mut __inner_buf = core::mem::MaybeUninit::<
+                        [quasar_core::__internal::AccountView; <#inner_ty as AccountCount>::COUNT]
+                    >::uninit();
+                    input = <#inner_ty>::parse_accounts(input, &mut __inner_buf)?;
+                    let __inner = unsafe { __inner_buf.assume_init() };
+                    let mut __j = 0usize;
+                    while __j < <#inner_ty as AccountCount>::COUNT {
+                        unsafe { core::ptr::write(base.add(#cur_offset + __j), *__inner.as_ptr().add(__j)); }
+                        __j += 1;
+                    }
+                }
+            });
+
             buf_offset = quote! { #buf_offset + <#inner_ty as AccountCount>::COUNT };
         } else {
+            // Simple field - validate header for no-dup case
             let cur_offset = buf_offset.clone();
+            let attrs = &pf.field_attrs[fi];
+            let field = &fields[fi];
+            let effective_ty = extract_generic_inner_type(&field.ty, "Option").unwrap_or(&field.ty);
+            let is_ref_mut = matches!(effective_ty, Type::Reference(r) if r.mutability.is_some());
+            let expected_header = fields::compute_header_expected(field, attrs, is_ref_mut);
+
+            // Standard parse_accounts (allows duplicates, validates flags)
+            // For init_if_needed, also mask out is_signer byte since we can't know if account will be signer at parse time
+            let mask = if attrs.init_if_needed {
+                0xFFFF00FFu32  // Mask out borrow_state (byte 0) AND is_signer (byte 1)
+            } else {
+                0xFFFFFF00u32  // Mask out borrow_state (byte 0) only
+            };
+            let expected_flags = expected_header & mask;
             parse_steps.push(quote! {
                 {
                     let raw = input as *mut quasar_core::__internal::RuntimeAccount;
-                    if unsafe { (*raw).borrow_state } == quasar_core::__internal::NOT_BORROWED {
+                    let actual_header = unsafe { *(raw as *const u32) };
+
+                    // Validate flags (mask out borrow_state, and is_signer for init_if_needed)
+                    let actual_flags = actual_header & #mask;
+                    if quasar_core::utils::hint::unlikely(actual_flags != #expected_flags) {
+                        return Err(quasar_core::decode_header_error(actual_header, #expected_header));
+                    }
+
+                    // Handle dup
+                    if (actual_header & 0xFF) == quasar_core::__internal::NOT_BORROWED {
                         unsafe {
                             core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
                             input = input.add(__ACCOUNT_HEADER + (*raw).data_len as usize);
@@ -136,16 +197,73 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                         }
                     } else {
                         unsafe {
-                            let idx = (*raw).borrow_state as usize;
+                            let idx = (actual_header & 0xFF) as usize;
                             core::ptr::write(base.add(#cur_offset), core::ptr::read(base.add(idx)));
                             input = input.add(core::mem::size_of::<u64>());
                         }
                     }
                 }
             });
+
+            // No-dup parse_accounts (validates u32 header)
+            // For init_if_needed, mask out is_signer since we can't know if account will be signer at parse time
+            if attrs.init_if_needed {
+                let no_dup_mask = 0xFFFF00FFu32;  // Mask out borrow_state (byte 0) AND is_signer (byte 1)
+                let expected_flags_no_dup = expected_header & no_dup_mask;
+                parse_steps_no_dup.push(quote! {
+                    {
+                        let raw = input as *mut quasar_core::__internal::RuntimeAccount;
+                        let actual_header = unsafe { *(raw as *const u32) };
+
+                        // Validate header (masking out borrow_state and is_signer for init_if_needed)
+                        let actual_flags = actual_header & #no_dup_mask;
+                        if quasar_core::utils::hint::unlikely(actual_flags != #expected_flags_no_dup) {
+                            return Err(quasar_core::decode_header_error(actual_header, #expected_header));
+                        }
+
+                        // Ensure no duplicate (byte 0 must be 0xFF)
+                        if quasar_core::utils::hint::unlikely((actual_header & 0xFF) != 0xFF) {
+                            return Err(ProgramError::AccountBorrowFailed);
+                        }
+
+                        unsafe {
+                            core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
+                            input = input.add(__ACCOUNT_HEADER + (*raw).data_len as usize);
+                            let addr = input as usize;
+                            input = ((addr + 7) & !7) as *mut u8;
+                        }
+                    }
+                });
+            } else {
+                parse_steps_no_dup.push(quote! {
+                    {
+                        let raw = input as *mut quasar_core::__internal::RuntimeAccount;
+                        let actual_header = unsafe { *(raw as *const u32) };
+
+                        if quasar_core::utils::hint::unlikely(actual_header != #expected_header) {
+                            return Err(quasar_core::decode_header_error(actual_header, #expected_header));
+                        }
+
+                        unsafe {
+                            core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
+                            input = input.add(__ACCOUNT_HEADER + (*raw).data_len as usize);
+                            let addr = input as usize;
+                            input = ((addr + 7) & !7) as *mut u8;
+                        }
+                    }
+                });
+            }
+
             buf_offset = quote! { #buf_offset + 1usize };
         }
     }
+
+    // Choose which parse_steps to use based on allow_dup
+    let active_parse_steps = if allow_dup {
+        parse_steps  // Use dup-allowed version (still optimizes flags)
+    } else {
+        parse_steps_no_dup  // Use no-dup version (default, fully optimized)
+    };
 
     // --- Composite field_lets (pre-compute before bumps so pushes take effect) ---
 
@@ -417,7 +535,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
             pub unsafe fn parse_accounts(
                 mut input: *mut u8,
                 buf: &mut core::mem::MaybeUninit<[quasar_core::__internal::AccountView; #count_expr]>,
-            ) -> *mut u8 {
+            ) -> Result<*mut u8, ProgramError> {
                 const __ACCOUNT_HEADER: usize =
                     core::mem::size_of::<quasar_core::__internal::RuntimeAccount>()
                     + quasar_core::__internal::MAX_PERMITTED_DATA_INCREASE
@@ -425,9 +543,9 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
 
                 let base = buf.as_mut_ptr() as *mut quasar_core::__internal::AccountView;
 
-                #(#parse_steps)*
+                #(#active_parse_steps)*
 
-                input
+                Ok(input)
             }
         }
 

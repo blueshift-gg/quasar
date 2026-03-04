@@ -8,6 +8,8 @@ crate-type = ["cdylib"]
 
 [features]
 client = []
+alloc = []
+debug = ["alloc"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

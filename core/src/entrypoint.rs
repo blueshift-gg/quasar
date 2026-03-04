@@ -25,7 +25,7 @@ macro_rules! dispatch {
                         [AccountView; <$accounts_ty as AccountCount>::COUNT]
                     >::uninit();
                     let __remaining_ptr = unsafe {
-                        <$accounts_ty>::parse_accounts(__accounts_start, &mut __buf)
+                        <$accounts_ty>::parse_accounts(__accounts_start, &mut __buf)?
                     };
                     let __accounts = unsafe { __buf.assume_init() };
                     $handler(Context {

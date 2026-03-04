@@ -271,7 +271,7 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let program_type = quote! {
         quasar_core::define_account!(pub struct #program_type_name => [quasar_core::checks::Executable, quasar_core::checks::Address]);
 
-        impl Program for #program_type_name {
+        impl quasar_core::traits::Id for #program_type_name {
             const ID: Address = crate::ID;
         }
 

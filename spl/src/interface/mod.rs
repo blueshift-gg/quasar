@@ -100,62 +100,19 @@ impl<T: InterfaceResolve> InterfaceAccount<T> {
     }
 }
 
-/// Token interface program type — accepts either SPL Token or Token-2022.
+/// Marker type for the token program interface (SPL Token or Token-2022).
 ///
-/// Validates that the account is executable and its address matches one of
-/// the two token program IDs. Provides the same CPI methods as [`TokenProgram`].
-///
+/// Use with the `Interface<T>` wrapper:
 /// ```ignore
-/// pub token_program: &'info TokenInterface,
+/// pub token_program: &'info Interface<TokenInterface>,
 /// ```
-#[repr(transparent)]
-pub struct TokenInterface {
-    view: AccountView,
-}
+pub struct TokenInterface;
 
-impl AsAccountView for TokenInterface {
+impl ProgramInterface for TokenInterface {
     #[inline(always)]
-    fn to_account_view(&self) -> &AccountView {
-        &self.view
+    fn matches(address: &Address) -> bool {
+        quasar_core::keys_eq(address, &SPL_TOKEN_ID) || quasar_core::keys_eq(address, &TOKEN_2022_ID)
     }
 }
 
-impl TokenInterface {
-    #[inline(always)]
-    pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
-        if !view.executable() {
-            return Err(ProgramError::InvalidAccountData);
-        }
-        if view.address() != &SPL_TOKEN_ID && view.address() != &TOKEN_2022_ID {
-            return Err(ProgramError::IncorrectProgramId);
-        }
-        Ok(unsafe { &*(view as *const AccountView as *const Self) })
-    }
-
-    /// # Safety (invalid_reference_casting)
-    ///
-    /// `Self` is `#[repr(transparent)]` over `AccountView`, which uses
-    /// interior mutability through raw pointers to SVM account memory.
-    /// The SVM runtime manages lamports and data as separate mutable
-    /// regions behind raw pointers — `AccountView` never holds Rust
-    /// references to these regions. The `&` → `&mut` cast therefore
-    /// does not create aliased mutable references; all writes go
-    /// through `AccountView`'s raw pointer methods. This pattern is
-    /// standard in Solana frameworks (Pinocchio uses the same approach).
-    #[inline(always)]
-    #[allow(invalid_reference_casting, clippy::mut_from_ref)]
-    pub fn from_account_view_mut(view: &AccountView) -> Result<&mut Self, ProgramError> {
-        if !view.is_writable() {
-            return Err(ProgramError::Immutable);
-        }
-        if !view.executable() {
-            return Err(ProgramError::InvalidAccountData);
-        }
-        if view.address() != &SPL_TOKEN_ID && view.address() != &TOKEN_2022_ID {
-            return Err(ProgramError::IncorrectProgramId);
-        }
-        Ok(unsafe { &mut *(view as *const AccountView as *mut Self) })
-    }
-}
-
-impl TokenCpi for TokenInterface {}
+impl TokenCpi for quasar_core::accounts::Interface<TokenInterface> {}

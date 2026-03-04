@@ -8,7 +8,7 @@ pub struct Deposit<'info> {
     pub config: &'info Account<MultisigConfig<'info>>,
     #[account(mut, seeds = [b"vault", config], bump)]
     pub vault: &'info mut UncheckedAccount,
-    pub system_program: &'info SystemProgram,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> Deposit<'info> {

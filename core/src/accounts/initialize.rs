@@ -15,24 +15,28 @@ impl<T> AsAccountView for Initialize<T> {
 }
 
 impl<T> Initialize<T> {
+    /// Unchecked construction for optimized parsing where the writable flag
+    /// has been pre-validated via u32 header comparison during entrypoint
+    /// deserialization.
+    ///
+    /// # Safety
+    ///
+    /// Caller must guarantee that the account's writable flag has been validated
+    /// via u32 header check.
     #[inline(always)]
-    pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
-        Ok(unsafe { &*(view as *const AccountView as *const Self) })
+    pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
+        &*(view as *const AccountView as *const Self)
     }
 
-    /// # Safety (invalid_reference_casting)
+    /// Unchecked mutable construction for optimized parsing.
     ///
-    /// `Self` is `#[repr(transparent)]` over `AccountView`, which uses interior
-    /// mutability through raw pointers to SVM account memory. The `&` → `&mut`
-    /// cast does not create aliased mutable references to backing memory — all
-    /// writes go through `AccountView`'s raw pointer methods. This pattern is
-    /// standard in Solana frameworks (Pinocchio uses the same approach).
+    /// # Safety (invalid_reference_casting + validation requirements)
+    ///
+    /// Caller must guarantee that the account's writable flag has been validated
+    /// via u32 header check.
     #[inline(always)]
     #[allow(invalid_reference_casting, clippy::mut_from_ref)]
-    pub fn from_account_view_mut(view: &AccountView) -> Result<&mut Self, ProgramError> {
-        if !view.is_writable() {
-            return Err(ProgramError::Immutable);
-        }
-        Ok(unsafe { &mut *(view as *const AccountView as *mut Self) })
+    pub unsafe fn from_account_view_unchecked_mut(view: &AccountView) -> &mut Self {
+        &mut *(view as *const AccountView as *mut Self)
     }
 }
