@@ -1,5 +1,5 @@
 use quasar_core::prelude::*;
-use quasar_spl::{Mint, Token, TokenClose, TokenCpi, TokenProgram};
+use quasar_spl::{Mint, Token, TokenAccount, TokenClose, TokenCpi};
 
 use crate::events::TakeEvent;
 use crate::state::EscrowAccount;
@@ -20,14 +20,14 @@ pub struct Take<'info> {
     pub mint_a: &'info Account<Mint>,
     pub mint_b: &'info Account<Mint>,
     #[account(init_if_needed, payer = taker, token::mint = mint_a, token::authority = taker)]
-    pub taker_ta_a: &'info mut Account<Token>,
-    pub taker_ta_b: &'info mut Account<Token>,
+    pub taker_ta_a: &'info mut Account<TokenAccount>,
+    pub taker_ta_b: &'info mut Account<TokenAccount>,
     #[account(init_if_needed, payer = taker, token::mint = mint_b, token::authority = maker)]
-    pub maker_ta_b: &'info mut Account<Token>,
-    pub vault_ta_a: &'info mut Account<Token>,
+    pub maker_ta_b: &'info mut Account<TokenAccount>,
+    pub vault_ta_a: &'info mut Account<TokenAccount>,
     pub rent: &'info Sysvar<Rent>,
-    pub token_program: &'info TokenProgram,
-    pub system_program: &'info SystemProgram,
+    pub token_program: &'info Program<Token>,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> Take<'info> {

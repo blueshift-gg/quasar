@@ -136,5 +136,5 @@ pub use cpi::{initialize_account3, initialize_mint2, TokenCpi};
 pub use init::{validate_mint, validate_token_account, InitMint, InitToken};
 pub use interface::{InterfaceAccount, TokenInterface};
 pub use state::{MintAccountState, TokenAccountState};
-pub use token::{Mint, Token, TokenProgram};
-pub use token_2022::{Mint2022, Token2022, Token2022Program};
+pub use token::{Mint, Token, TokenAccount};
+pub use token_2022::{Mint2022Account, Token2022, Token2022Account};
