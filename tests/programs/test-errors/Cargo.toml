@@ -24,5 +24,6 @@ solana-address = { version = "2.2", features = ["decode"] }
 solana-instruction = { version = "3.2", features = ["bincode"] }
 
 [features]
-default = ["alloc"]
+default = ["alloc", "debug"]
 alloc = ["quasar-core/alloc"]
+debug = ["quasar-core/debug"]

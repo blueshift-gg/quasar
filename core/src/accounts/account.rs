@@ -189,13 +189,17 @@ impl<T: CheckOwner + AccountCheck> Account<T> {
 
     /// Unchecked mutable construction for optimized parsing.
     ///
-    /// # Safety (invalid_reference_casting + validation requirements)
+    /// # Safety
     ///
     /// Caller must guarantee:
     /// 1. The account is not a duplicate (borrow_state == 0xFF)
     /// 2. The account is writable (is_writable == 1)
     /// 3. Owner has been validated via `T::check_owner(view)`
     /// 4. Discriminator has been validated via `T::check(view)`
+    ///
+    /// This function uses `invalid_reference_casting` to convert `&AccountView`
+    /// to `&mut Self`, which is safe because `Self` is `#[repr(transparent)]`
+    /// over `AccountView` and uses interior mutability.
     #[inline(always)]
     #[allow(invalid_reference_casting, clippy::mut_from_ref)]
     pub unsafe fn from_account_view_unchecked_mut(view: &AccountView) -> &mut Self {

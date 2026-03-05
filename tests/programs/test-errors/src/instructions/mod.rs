@@ -33,3 +33,21 @@ pub use mut_account_check::*;
 
 pub mod address_custom_error;
 pub use address_custom_error::*;
+
+pub mod header_nodup_mut_signer;
+pub use header_nodup_mut_signer::*;
+
+pub mod header_nodup_mut;
+pub use header_nodup_mut::*;
+
+pub mod header_nodup_signer;
+pub use header_nodup_signer::*;
+
+pub mod header_executable;
+pub use header_executable::*;
+
+pub mod header_dup_mut;
+pub use header_dup_mut::*;
+
+pub mod header_dup_signer;
+pub use header_dup_signer::*;

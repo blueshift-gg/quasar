@@ -5,7 +5,7 @@ use crate::cpi::TokenCpi;
 use crate::interface::InterfaceAccount;
 use crate::state::{MintAccountState, TokenAccountState};
 use crate::token::{Mint, Token};
-use crate::token_2022::{Mint2022, Token2022};
+use crate::token_2022::{Mint2022Account, Token2022};
 
 #[inline(always)]
 fn is_token_program_owner(view: &AccountView) -> bool {
@@ -211,7 +211,7 @@ pub trait InitMint: AsAccountView + Sized {
 }
 
 impl InitMint for Initialize<Mint> {}
-impl InitMint for Initialize<Mint2022> {}
+impl InitMint for Initialize<Mint2022Account> {}
 impl<T: AccountCheck + ZeroCopyDeref<Target = MintAccountState>> InitMint
     for Initialize<InterfaceAccount<T>>
 {

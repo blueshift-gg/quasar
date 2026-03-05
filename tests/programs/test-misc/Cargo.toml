@@ -8,6 +8,8 @@ crate-type = ["cdylib", "lib"]
 
 [features]
 client = []
+debug = ["quasar-core/debug"]
+alloc = ["quasar-core/alloc"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

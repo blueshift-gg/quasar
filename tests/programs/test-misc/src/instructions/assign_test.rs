@@ -3,7 +3,7 @@ use quasar_core::prelude::*;
 #[derive(Accounts)]
 pub struct AssignTest<'info> {
     pub account: &'info mut Signer,
-    pub system_program: &'info SystemProgram,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> AssignTest<'info> {

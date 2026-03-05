@@ -38,9 +38,13 @@ build:
 	@cargo build
 
 build-sbf:
-	@for dir in $(SBF_ALL); do \
+	@for dir in $(SBF_EXAMPLES); do \
 		echo "Building $$dir"; \
 		cargo build-sbf --manifest-path "$$dir/Cargo.toml"; \
+	done
+	@for dir in $(SBF_TEST_PROGRAMS); do \
+		echo "Building $$dir (with debug)"; \
+		cargo build-sbf --manifest-path "$$dir/Cargo.toml" --features debug,alloc; \
 	done
 
 test:

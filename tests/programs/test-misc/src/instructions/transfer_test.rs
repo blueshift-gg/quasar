@@ -5,7 +5,7 @@ pub struct TransferTest<'info> {
     pub from: &'info mut Signer,
     #[account(mut)]
     pub to: &'info mut UncheckedAccount,
-    pub system_program: &'info SystemProgram,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> TransferTest<'info> {

@@ -1,11 +1,3 @@
-error[E0433]: failed to resolve: use of unresolved module or unlinked crate `alloc`
- --> tests/compile_fail/dynamic_vec_alignment.rs:5:1
-  |
-5 | #[account(discriminator = [1])]
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ use of unresolved module or unlinked crate `alloc`
-  |
-  = note: this error originates in the attribute macro `account` (in Nightly builds, run with -Z macro-backtrace for more info)
-
 error[E0080]: evaluation panicked: dynamic Vec element type must have alignment 1
  --> tests/compile_fail/dynamic_vec_alignment.rs:5:1
   |

@@ -41,6 +41,25 @@ pub mod __internal {
     pub use solana_account_view::{
         AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED,
     };
+
+    // Header validation constants (little-endian u32)
+    // Byte 0: borrow_state (0xFF = NOT_BORROWED)
+    // Byte 1: is_signer (bit 8)
+    // Byte 2: is_writable (bit 16)
+    // Byte 3: executable (bit 24)
+    pub const NODUP: u32 = 0xFF; // 0x000000FF - not borrowed only
+    pub const NODUP_SIGNER: u32 = 0xFF | (1 << 8); // 0x000001FF - not borrowed + signer
+    pub const NODUP_MUT: u32 = 0xFF | (1 << 16); // 0x000100FF - not borrowed + writable
+    pub const NODUP_MUT_SIGNER: u32 = 0xFF | (1 << 8) | (1 << 16); // 0x000101FF - not borrowed + signer + writable
+    pub const NODUP_EXECUTABLE: u32 = 0xFF | (1 << 24); // 0x010000FF - not borrowed + executable
+
+    /// Allocation-free logging helper for generated code.
+    /// Wraps solana_program_log::log for use in derive macro output.
+    #[inline(always)]
+    #[allow(dead_code)]
+    pub fn log_str(msg: &str) {
+        solana_program_log::log(msg);
+    }
 }
 
 /// Declarative macros: `define_account!`, `require!`, `require_eq!`, `emit!`.
@@ -131,17 +150,12 @@ pub fn is_system_program(addr: &solana_address::Address) -> bool {
 /// - Byte 3: executable (0 or 1)
 #[cold]
 #[inline(never)]
-pub fn decode_header_error(
-    header: u32,
-    expected: u32,
-) -> solana_program_error::ProgramError {
+#[allow(unused_variables)] // exec/exp_exec only used in debug builds
+pub fn decode_header_error(header: u32, expected: u32) -> solana_program_error::ProgramError {
     use solana_program_error::ProgramError;
 
     let [borrow, signer, writable, exec] = header.to_le_bytes();
     let [exp_borrow, exp_signer, exp_writable, exp_exec] = expected.to_le_bytes();
-
-    #[cfg(not(feature = "debug"))]
-    let _ = (exec, exp_exec); // Suppress unused warnings when debug is off
 
     // Check in order of likely mismatch: dup, signer, writable, executable
     if borrow != exp_borrow {
@@ -161,9 +175,13 @@ pub fn decode_header_error(
         #[cfg(feature = "debug")]
         {
             if exp_signer == 1 {
-                solana_program_log::log("Header check failed: account must be a signer but is not signed");
+                solana_program_log::log(
+                    "Header check failed: account must be a signer but is not signed",
+                );
             } else {
-                solana_program_log::log("Header check failed: account is signed but was not expected to be");
+                solana_program_log::log(
+                    "Header check failed: account is signed but was not expected to be",
+                );
             }
         }
         return ProgramError::MissingRequiredSignature;
@@ -172,9 +190,13 @@ pub fn decode_header_error(
         #[cfg(feature = "debug")]
         {
             if exp_writable == 1 {
-                solana_program_log::log("Header check failed: account must be writable but is read-only");
+                solana_program_log::log(
+                    "Header check failed: account must be writable but is read-only",
+                );
             } else {
-                solana_program_log::log("Header check failed: account is writable but was expected to be read-only");
+                solana_program_log::log(
+                    "Header check failed: account is writable but was expected to be read-only",
+                );
             }
         }
         return ProgramError::Immutable;
@@ -183,9 +205,13 @@ pub fn decode_header_error(
     #[cfg(feature = "debug")]
     {
         if exp_exec == 1 {
-            solana_program_log::log("Header check failed: account must be executable (a program) but is not");
+            solana_program_log::log(
+                "Header check failed: account must be executable (a program) but is not",
+            );
         } else {
-            solana_program_log::log("Header check failed: account is executable but was expected to be a data account");
+            solana_program_log::log(
+                "Header check failed: account is executable but was expected to be a data account",
+            );
         }
     }
     ProgramError::InvalidAccountData

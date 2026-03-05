@@ -9,7 +9,7 @@ pub struct ReadClock<'info> {
     pub payer: &'info mut Signer,
     #[account(init, payer = payer, seeds = [b"clock"], bump)]
     pub snapshot: &'info mut Account<ClockSnapshot>,
-    pub system_program: &'info SystemProgram,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> ReadClock<'info> {

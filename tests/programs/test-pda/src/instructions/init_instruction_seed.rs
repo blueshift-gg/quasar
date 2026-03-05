@@ -8,7 +8,7 @@ pub struct InitInstructionSeed<'info> {
     pub authority: &'info Signer,
     #[account(init, payer = payer, seeds = [b"item", authority], bump)]
     pub item: &'info mut Account<ItemAccount>,
-    pub system_program: &'info SystemProgram,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> InitInstructionSeed<'info> {

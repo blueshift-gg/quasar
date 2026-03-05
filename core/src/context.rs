@@ -25,7 +25,10 @@ pub struct Ctx<'info, T: ParseAccounts<'info> + AccountCount> {
 impl<'info, T: ParseAccounts<'info> + AccountCount> Ctx<'info, T> {
     #[inline(always)]
     pub fn new(ctx: Context<'info>) -> Result<Self, ProgramError> {
-        let (accounts, bumps) = T::parse_with_instruction_data(ctx.accounts, ctx.data)?;
+        // SAFETY: ctx.program_id is &[u8; 32] from the SVM, safe to cast to &Address
+        let program_id_addr = unsafe { &*(ctx.program_id as *const [u8; 32] as *const Address) };
+        let (accounts, bumps) =
+            T::parse_with_instruction_data(ctx.accounts, ctx.data, program_id_addr)?;
         Ok(Self {
             accounts,
             bumps,
@@ -50,7 +53,10 @@ pub struct CtxWithRemaining<'info, T: ParseAccounts<'info> + AccountCount> {
 impl<'info, T: ParseAccounts<'info> + AccountCount> CtxWithRemaining<'info, T> {
     #[inline(always)]
     pub fn new(ctx: Context<'info>) -> Result<Self, ProgramError> {
-        let (accounts, bumps) = T::parse_with_instruction_data(ctx.accounts, ctx.data)?;
+        // SAFETY: ctx.program_id is &[u8; 32] from the SVM, safe to cast to &Address
+        let program_id_addr = unsafe { &*(ctx.program_id as *const [u8; 32] as *const Address) };
+        let (accounts, bumps) =
+            T::parse_with_instruction_data(ctx.accounts, ctx.data, program_id_addr)?;
         Ok(Self {
             accounts,
             bumps,
@@ -67,4 +73,3 @@ impl<'info, T: ParseAccounts<'info> + AccountCount> CtxWithRemaining<'info, T> {
         RemainingAccounts::new(self.remaining_ptr, self.accounts_boundary, self.declared)
     }
 }
-

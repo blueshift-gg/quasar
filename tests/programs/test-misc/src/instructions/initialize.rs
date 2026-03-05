@@ -7,7 +7,7 @@ pub struct InitializeSimple<'info> {
     pub payer: &'info mut Signer,
     #[account(init, payer = payer, seeds = [b"simple", payer], bump)]
     pub account: &'info mut Account<SimpleAccount>,
-    pub system_program: &'info SystemProgram,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> InitializeSimple<'info> {

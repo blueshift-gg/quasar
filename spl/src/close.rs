@@ -4,8 +4,8 @@ use quasar_core::prelude::*;
 use crate::associated_token::AssociatedToken;
 use crate::cpi::TokenCpi;
 use crate::interface::InterfaceAccount;
-use crate::token::{Mint, Token};
-use crate::token_2022::{Mint2022, Token2022};
+use crate::token::{Mint, TokenAccount};
+use crate::token_2022::{Mint2022Account, Token2022Account};
 
 /// Extension trait providing `.close()` on `Account<T>` for token/mint account types.
 ///
@@ -36,4 +36,10 @@ macro_rules! impl_token_close {
     };
 }
 
-impl_token_close!(Token, Token2022, AssociatedToken, Mint, Mint2022);
+impl_token_close!(
+    TokenAccount,
+    Token2022Account,
+    AssociatedToken,
+    Mint,
+    Mint2022Account
+);

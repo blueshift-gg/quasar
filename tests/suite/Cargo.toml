@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[features]
+debug = ["quasar-test-errors/debug"]
+
 [dev-dependencies]
 quasar-core = { path = "../../core" }
 quasar-test-misc = { path = "../programs/test-misc", features = ["client"] }

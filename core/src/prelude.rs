@@ -2,8 +2,7 @@
 pub use crate::context::{Context, Ctx, CtxWithRemaining};
 pub use crate::traits::{
     AccountCheck, AccountCount, AsAccountView, CheckOwner, Discriminator, Event, Id,
-    InterfaceResolve, Owner, ParseAccounts, ProgramInterface, QuasarAccount, Space,
-    ZeroCopyDeref,
+    InterfaceResolve, Owner, ParseAccounts, ProgramInterface, QuasarAccount, Space, ZeroCopyDeref,
 };
 
 // Account types - Program<T> type shadows ProgramTrait above

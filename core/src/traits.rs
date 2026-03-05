@@ -90,7 +90,10 @@ pub trait AccountCount {
 /// seeds discovered during validation.
 pub trait ParseAccounts<'info>: Sized {
     type Bumps: Copy;
-    fn parse(accounts: &'info [AccountView]) -> Result<(Self, Self::Bumps), ProgramError>;
+    fn parse(
+        accounts: &'info [AccountView],
+        program_id: &Address,
+    ) -> Result<(Self, Self::Bumps), ProgramError>;
 
     /// Parse accounts with access to instruction data.
     ///
@@ -103,8 +106,9 @@ pub trait ParseAccounts<'info>: Sized {
     fn parse_with_instruction_data(
         accounts: &'info [AccountView],
         _data: &'info [u8],
+        program_id: &Address,
     ) -> Result<(Self, Self::Bumps), ProgramError> {
-        Self::parse(accounts)
+        Self::parse(accounts, program_id)
     }
 
     #[inline(always)]

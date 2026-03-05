@@ -9,7 +9,7 @@ authors.workspace = true
 
 [features]
 alloc = []
-debug = ["alloc"]
+debug = []
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

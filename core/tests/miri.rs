@@ -2407,7 +2407,7 @@ fn close_rejects_non_writable_destination() {
     let src_view = unsafe { src_buf.view() };
     let dst_view = unsafe { dst_buf.view() };
 
-    let account = Account::<TestCloseableType>::from_account_view(&src_view).unwrap();
+    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked(&src_view) };
     let result = account.close(&dst_view);
     assert!(
         result.is_err(),
@@ -2438,7 +2438,7 @@ fn close_rejects_lamport_overflow() {
     let src_view = unsafe { src_buf.view() };
     let dst_view = unsafe { dst_buf.view() };
 
-    let account = Account::<TestCloseableType>::from_account_view(&src_view).unwrap();
+    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked(&src_view) };
     let result = account.close(&dst_view);
     assert!(result.is_err(), "close must reject lamport overflow");
     assert_eq!(src_view.lamports(), 1_000_000, "source lamports unchanged");

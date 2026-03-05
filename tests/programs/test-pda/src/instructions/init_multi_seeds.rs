@@ -8,7 +8,7 @@ pub struct InitMultiSeeds<'info> {
     pub authority: &'info Signer,
     #[account(init, payer = payer, seeds = [b"complex", payer, authority], bump)]
     pub complex: &'info mut Account<ComplexAccount>,
-    pub system_program: &'info SystemProgram,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> InitMultiSeeds<'info> {

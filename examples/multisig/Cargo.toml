@@ -8,7 +8,7 @@ crate-type = ["cdylib"]
 
 [features]
 client = []
-debug = ["alloc"]
+debug = ["quasar-core/debug"]
 alloc = []
 
 [lints.rust]
