@@ -19,7 +19,7 @@ pub struct Refund<'info> {
     pub vault_ta_a: &'info mut Account<Token>,
     pub rent: &'info Sysvar<Rent>,
     pub token_program: &'info TokenProgram,
-    pub system_program: &'info SystemProgram,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> Refund<'info> {

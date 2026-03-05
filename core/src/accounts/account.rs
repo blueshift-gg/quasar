@@ -153,27 +153,43 @@ impl<T: CheckOwner + AccountCheck + StaticView> Account<T> {
     pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
         T::check_owner(view)?;
         T::check(view)?;
-        // SAFETY: Account is repr(transparent) over T, and T: StaticView
-        // guarantees T is repr(transparent) over AccountView.
         Ok(unsafe { &*(view as *const AccountView as *const Self) })
     }
+}
 
-    /// # Safety (invalid_reference_casting)
+impl<T: CheckOwner + AccountCheck> Account<T> {
+    /// Unchecked construction for optimized parsing where all flag checks
+    /// (signer/writable/executable/no-dup) have been pre-validated via u32
+    /// header comparison during entrypoint deserialization.
     ///
-    /// `Self` is `#[repr(transparent)]` over `T`, which is `#[repr(transparent)]`
-    /// over `AccountView`. AccountView uses interior mutability through raw
-    /// pointers to SVM account memory. The `&` → `&mut` cast does not create
-    /// aliased mutable references to backing memory — all writes go through
-    /// `AccountView`'s raw pointer methods.
+    /// # Safety
+    ///
+    /// Caller must guarantee:
+    /// 1. The account is not a duplicate (borrow_state == 0xFF)
+    /// 2. Owner has been validated via `T::check_owner(view)`
+    /// 3. Discriminator has been validated via `T::check(view)`
+    #[inline(always)]
+    pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
+        &*(view as *const AccountView as *const Self)
+    }
+
+    /// Unchecked mutable construction for optimized parsing.
+    ///
+    /// # Safety
+    ///
+    /// Caller must guarantee:
+    /// 1. The account is not a duplicate (borrow_state == 0xFF)
+    /// 2. The account is writable (is_writable == 1)
+    /// 3. Owner has been validated via `T::check_owner(view)`
+    /// 4. Discriminator has been validated via `T::check(view)`
+    ///
+    /// This function uses `invalid_reference_casting` to convert `&AccountView`
+    /// to `&mut Self`, which is safe because `Self` is `#[repr(transparent)]`
+    /// over `AccountView` and uses interior mutability.
     #[inline(always)]
     #[allow(invalid_reference_casting, clippy::mut_from_ref)]
-    pub fn from_account_view_mut(view: &AccountView) -> Result<&mut Self, ProgramError> {
-        if !view.is_writable() {
-            return Err(ProgramError::Immutable);
-        }
-        T::check_owner(view)?;
-        T::check(view)?;
-        Ok(unsafe { &mut *(view as *const AccountView as *mut Self) })
+    pub unsafe fn from_account_view_unchecked_mut(view: &AccountView) -> &mut Self {
+        &mut *(view as *const AccountView as *mut Self)
     }
 }
 

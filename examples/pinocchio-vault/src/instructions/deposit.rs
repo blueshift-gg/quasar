@@ -33,7 +33,7 @@ impl<'info> TryFrom<Context<'info>> for Deposit<'info> {
         }
 
         if system_program.address() != &pinocchio_system::ID {
-            return Err(VaultError::IncorrectSystemProgram);
+            return Err(VaultError::IncorrectSystem);
         }
 
         let (expected, _bump) = vault_pda(user.address().as_ref());

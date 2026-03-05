@@ -6,11 +6,8 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "lib"]
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = [
-    'cfg(target_os, values("solana"))',
-    'cfg(feature, values("alloc"))',
-] }
+[lints]
+workspace = true
 
 [dependencies]
 quasar-core = { path = "../../../core" }
@@ -24,5 +21,6 @@ solana-address = { version = "2.2", features = ["decode"] }
 solana-instruction = { version = "3.2", features = ["bincode"] }
 
 [features]
-default = ["alloc"]
+default = ["alloc", "debug"]
 alloc = ["quasar-core/alloc"]
+debug = []

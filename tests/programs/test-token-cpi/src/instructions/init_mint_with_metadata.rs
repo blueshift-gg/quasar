@@ -18,9 +18,9 @@ pub struct InitMintWithMetadata<'info> {
     )]
     pub mint: &'info mut Account<Mint>,
     pub metadata: &'info mut UncheckedAccount,
-    pub metadata_program: &'info MetadataProgram,
+    pub metadata_program: &'info Program<MetadataProgram>,
     pub token_program: &'info TokenProgram,
-    pub system_program: &'info SystemProgram,
+    pub system_program: &'info Program<System>,
     pub rent: &'info UncheckedAccount,
 }
 

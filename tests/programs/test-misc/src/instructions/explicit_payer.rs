@@ -7,7 +7,7 @@ pub struct ExplicitPayer<'info> {
     pub funder: &'info mut Signer,
     #[account(init, payer = funder, seeds = [b"explicit", funder], bump)]
     pub account: &'info mut Account<SimpleAccount>,
-    pub system_program: &'info SystemProgram,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> ExplicitPayer<'info> {

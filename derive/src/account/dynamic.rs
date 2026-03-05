@@ -339,8 +339,6 @@ pub(super) fn generate_dynamic_account(
 
     // --- Combine ---
     quote! {
-        // --- View type: carries &'info AccountView + cached offsets ---
-
         #(#attrs)*
         #vis struct #name<#lt> {
             __view: &#lt AccountView,

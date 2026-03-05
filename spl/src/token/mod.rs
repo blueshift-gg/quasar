@@ -1,4 +1,5 @@
 use quasar_core::prelude::*;
+use quasar_core::traits::Id;
 
 use crate::constants::{SPL_TOKEN_BYTES, SPL_TOKEN_ID};
 use crate::cpi::TokenCpi;
@@ -6,7 +7,7 @@ use crate::state::{MintAccountState, TokenAccountState};
 
 quasar_core::define_account!(pub struct TokenProgram => [checks::Executable, checks::Address]);
 
-impl Program for TokenProgram {
+impl Id for TokenProgram {
     const ID: Address = Address::new_from_array(SPL_TOKEN_BYTES);
 }
 
@@ -31,3 +32,4 @@ pub struct Mint {
 impl_single_owner!(Mint, SPL_TOKEN_ID, MintAccountState);
 
 impl TokenCpi for TokenProgram {}
+impl TokenCpi for Program<TokenProgram> {}

@@ -9,7 +9,7 @@ pub struct ReadRent<'info> {
     pub payer: &'info mut Signer,
     #[account(init, payer = payer, seeds = [b"rent"], bump)]
     pub snapshot: &'info mut Account<RentSnapshot>,
-    pub system_program: &'info SystemProgram,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> ReadRent<'info> {

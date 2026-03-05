@@ -15,7 +15,7 @@ pub struct ExecuteTransfer<'info> {
     #[account(mut, seeds = [b"vault", config], bump)]
     pub vault: &'info mut UncheckedAccount,
     pub recipient: &'info mut UncheckedAccount,
-    pub system_program: &'info SystemProgram,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> ExecuteTransfer<'info> {

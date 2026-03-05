@@ -1,6 +1,5 @@
 use core::marker::PhantomData;
 use solana_account_view::AccountView;
-use solana_program_error::ProgramError;
 
 use crate::traits::AsAccountView;
 
@@ -17,14 +16,15 @@ pub struct Sysvar<T: crate::sysvars::Sysvar> {
 }
 
 impl<T: crate::sysvars::Sysvar> Sysvar<T> {
+    /// Unchecked construction for optimized parsing where the address has been
+    /// pre-validated via explicit check during entrypoint deserialization.
+    ///
+    /// # Safety
+    ///
+    /// Caller must guarantee that `view.address() == T::ID`.
     #[inline(always)]
-    pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
-        if view.address() != &T::ID {
-            return Err(ProgramError::IncorrectProgramId);
-        }
-        // SAFETY: `Self` is `#[repr(transparent)]` over `AccountView`.
-        // The cast is a no-op at the memory level.
-        Ok(unsafe { &*(view as *const AccountView as *const Self) })
+    pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
+        &*(view as *const AccountView as *const Self)
     }
 
     /// Access the sysvar data without borrow tracking.

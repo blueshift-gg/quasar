@@ -1,5 +1,6 @@
 use quasar_core::cpi::{CpiCall, InstructionAccount, Seed};
 use quasar_core::prelude::*;
+use quasar_core::traits::Id;
 
 use crate::constants::{ATA_PROGRAM_BYTES, ATA_PROGRAM_ID, SPL_TOKEN_ID};
 use crate::cpi::TokenCpi;
@@ -16,7 +17,7 @@ const ATA_CREATE_IDEMPOTENT: u8 = 1;
 
 quasar_core::define_account!(pub struct AssociatedTokenProgram => [checks::Executable, checks::Address]);
 
-impl Program for AssociatedTokenProgram {
+impl Id for AssociatedTokenProgram {
     const ID: Address = Address::new_from_array(ATA_PROGRAM_BYTES);
 }
 
@@ -108,7 +109,7 @@ pub fn create<'a>(
     ata: &'a AccountView,
     wallet: &'a impl AsAccountView,
     mint: &'a impl AsAccountView,
-    system_program: &'a SystemProgram,
+    system_program: &'a Program<System>,
     token_program: &'a impl TokenCpi,
 ) -> CpiCall<'a, 6, 1> {
     build_ata_cpi(
@@ -136,7 +137,7 @@ pub fn create_idempotent<'a>(
     ata: &'a AccountView,
     wallet: &'a impl AsAccountView,
     mint: &'a impl AsAccountView,
-    system_program: &'a SystemProgram,
+    system_program: &'a Program<System>,
     token_program: &'a impl TokenCpi,
 ) -> CpiCall<'a, 6, 1> {
     build_ata_cpi(
@@ -159,7 +160,7 @@ fn build_ata_cpi<'a>(
     ata: &'a AccountView,
     wallet: &'a impl AsAccountView,
     mint: &'a impl AsAccountView,
-    system_program: &'a SystemProgram,
+    system_program: &'a Program<System>,
     token_program: &'a impl TokenCpi,
     discriminator: u8,
 ) -> CpiCall<'a, 6, 1> {
@@ -213,7 +214,7 @@ pub trait InitAssociatedToken: AsAccountView + Sized {
         payer: &impl AsAccountView,
         wallet: &impl AsAccountView,
         mint: &impl AsAccountView,
-        system_program: &SystemProgram,
+        system_program: &Program<System>,
         token_program: &impl TokenCpi,
         ata_program: &AssociatedTokenProgram,
     ) -> Result<(), ProgramError> {
@@ -239,7 +240,7 @@ pub trait InitAssociatedToken: AsAccountView + Sized {
         payer: &impl AsAccountView,
         wallet: &impl AsAccountView,
         mint: &impl AsAccountView,
-        system_program: &SystemProgram,
+        system_program: &Program<System>,
         token_program: &impl TokenCpi,
         ata_program: &AssociatedTokenProgram,
     ) -> Result<(), ProgramError> {

@@ -9,6 +9,9 @@ license = "MIT"
 repository = "https://github.com/blueshift-gg/quasar"
 authors = ["Leonardo Donatacci <leo@blueshift.gg>", "Dean Little <dean@blueshift.gg>"]
 
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
+
 [profile.release]
 overflow-checks = true
 lto = "fat"

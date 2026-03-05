@@ -14,3 +14,4 @@ CLAUDE.md
 # Profiler
 *.profile.svg
 profile.svg
+*.profile.json

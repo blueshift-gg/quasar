@@ -2,13 +2,13 @@ use quasar_core::prelude::*;
 
 use crate::events::SimpleEvent;
 use crate::EventAuthority;
-use crate::QuasarTestEventsProgram;
+use crate::QuasarTestEvents;
 
 #[derive(Accounts)]
 pub struct EmitViaCpi<'info> {
     pub signer: &'info Signer,
     pub event_authority: &'info EventAuthority,
-    pub program: &'info QuasarTestEventsProgram,
+    pub program: &'info Program<QuasarTestEvents>,
 }
 
 impl<'info> EmitViaCpi<'info> {

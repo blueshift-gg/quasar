@@ -6,7 +6,7 @@ pub struct InterfaceTransfer<'info> {
     pub authority: &'info Signer,
     pub from: &'info mut InterfaceAccount<Token>,
     pub to: &'info mut InterfaceAccount<Token>,
-    pub token_program: &'info TokenInterface,
+    pub token_program: &'info Interface<TokenInterface>,
 }
 
 impl<'info> InterfaceTransfer<'info> {

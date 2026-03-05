@@ -12,7 +12,7 @@ fn is_token_program_owner(view: &AccountView) -> bool {
 
 /// Extension trait for token account initialization.
 ///
-/// Chains `SystemProgram::create_account` → `InitializeAccount3` in two CPIs.
+/// Chains `System::create_account` → `InitializeAccount3` in two CPIs.
 /// The account is allocated with 165 bytes and assigned to the given token program.
 ///
 /// Prefer `#[account(init, token::mint = ..., token::authority = ...)]` for
@@ -20,12 +20,12 @@ fn is_token_program_owner(view: &AccountView) -> bool {
 pub trait InitToken: AsAccountView + Sized {
     /// Create and initialize a token account.
     ///
-    /// Chains `SystemProgram::create_account` → `InitializeAccount3` in two CPIs.
+    /// Chains `System::create_account` → `InitializeAccount3` in two CPIs.
     /// The account must not already exist.
     #[inline(always)]
     fn init(
         &self,
-        system_program: &SystemProgram,
+        system_program: &Program<System>,
         payer: &impl AsAccountView,
         token_program: &impl TokenCpi,
         mint: &impl AsAccountView,
@@ -55,7 +55,7 @@ pub trait InitToken: AsAccountView + Sized {
     #[inline(always)]
     fn init_if_needed(
         &self,
-        system_program: &SystemProgram,
+        system_program: &Program<System>,
         payer: &impl AsAccountView,
         token_program: &impl TokenCpi,
         mint: &impl AsAccountView,
@@ -95,7 +95,7 @@ pub trait InitToken: AsAccountView + Sized {
 
 /// Extension trait for mint initialization.
 ///
-/// Chains `SystemProgram::create_account` → `InitializeMint2` in two CPIs.
+/// Chains `System::create_account` → `InitializeMint2` in two CPIs.
 /// The account is allocated with 82 bytes and assigned to the given token program.
 ///
 /// Prefer `#[account(init, mint::decimals = ..., mint::authority = ...)]` for
@@ -103,13 +103,13 @@ pub trait InitToken: AsAccountView + Sized {
 pub trait InitMint: AsAccountView + Sized {
     /// Create and initialize a mint.
     ///
-    /// Chains `SystemProgram::create_account` → `InitializeMint2` in two CPIs.
+    /// Chains `System::create_account` → `InitializeMint2` in two CPIs.
     /// The account must not already exist.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     fn init(
         &self,
-        system_program: &SystemProgram,
+        system_program: &Program<System>,
         payer: &impl AsAccountView,
         token_program: &impl TokenCpi,
         decimals: u8,
@@ -141,7 +141,7 @@ pub trait InitMint: AsAccountView + Sized {
     #[allow(clippy::too_many_arguments)]
     fn init_if_needed(
         &self,
-        system_program: &SystemProgram,
+        system_program: &Program<System>,
         payer: &impl AsAccountView,
         token_program: &impl TokenCpi,
         decimals: u8,

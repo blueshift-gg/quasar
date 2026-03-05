@@ -594,7 +594,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
                     [quasar_core::checks::Executable, quasar_core::checks::Address]
             );
 
-            impl quasar_core::traits::Program for #program_type_name {
+            impl quasar_core::traits::Id for #program_type_name {
                 const ID: solana_address::Address = ID;
             }
 

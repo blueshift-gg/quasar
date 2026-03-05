@@ -36,4 +36,10 @@ macro_rules! impl_token_close {
     };
 }
 
-impl_token_close!(Token, Token2022, AssociatedToken, Mint, Mint2022);
+impl_token_close!(
+    Token,
+    Token2022,
+    AssociatedToken,
+    Mint,
+    Mint2022
+);

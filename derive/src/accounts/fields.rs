@@ -31,15 +31,40 @@ fn type_base_name(ty: &Type) -> Option<String> {
     }
 }
 
-/// Find a field by type base name. Returns the field ident if found.
+/// Find a field by type base name or Program<T>/Interface<T> wrapper. Returns the field ident if found.
 fn find_field_by_type<'a>(
     fields: &'a syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
     type_names: &[&str],
 ) -> Option<&'a Ident> {
     for field in fields.iter() {
+        // Strip reference if present
+        let ty = match &field.ty {
+            syn::Type::Reference(type_ref) => &*type_ref.elem,
+            other => other,
+        };
+
+        // Check direct type name match
         if let Some(base) = type_base_name(&field.ty) {
             if type_names.contains(&base.as_str()) {
                 return field.ident.as_ref();
+            }
+        }
+
+        // Check Program<T> wrapper
+        if let Some(inner_ty) = extract_generic_inner_type(ty, "Program") {
+            if let Some(inner_base) = type_base_name(inner_ty) {
+                if type_names.contains(&inner_base.as_str()) {
+                    return field.ident.as_ref();
+                }
+            }
+        }
+
+        // Check Interface<T> wrapper
+        if let Some(inner_ty) = extract_generic_inner_type(ty, "Interface") {
+            if let Some(inner_base) = type_base_name(inner_ty) {
+                if type_names.contains(&inner_base.as_str()) {
+                    return field.ident.as_ref();
+                }
             }
         }
     }
@@ -141,10 +166,16 @@ impl<'a> DetectedFields<'a> {
         field_attrs: &[AccountFieldAttrs],
     ) -> Self {
         // --- Type-based detection (single pass) ---
-        let system_program = find_field_by_type(fields, &["SystemProgram"]);
+        let system_program = find_field_by_type(fields, &["System"]);
         let token_program = find_field_by_type(
             fields,
-            &["TokenProgram", "Token2022Program", "TokenInterface"],
+            &[
+                "Token",
+                "Token2022",
+                "TokenProgram",
+                "Token2022Program",
+                "TokenInterface",
+            ],
         );
         let associated_token_program = find_field_by_type(fields, &["AssociatedTokenProgram"]);
         let metadata_program = find_field_by_type(fields, &["MetadataProgram"]);
@@ -242,7 +273,7 @@ pub(super) fn process_fields(
     let _system_program_field = if has_any_init {
         Some(DetectedFields::require(
             detected.system_program,
-            "#[account(init)] requires a `SystemProgram` field in the accounts struct",
+            "#[account(init)] requires a `Program<System>` field in the accounts struct",
         )?)
     } else {
         None
@@ -572,19 +603,158 @@ pub(super) fn process_fields(
         // For dynamic Account<T> (inner type has lifetime, e.g. Account<Profile<'info>>),
         // the inner type's from_account_view returns Account<T> by value (offset-cached).
         // For static Account<T> (no lifetime), Account::from_account_view returns &Account<T>.
+        //
+        // Flags (signer/writable/executable/no-dup) are already validated via u32 header check
+        // in parse_accounts. Here we only need to check owner/discriminator/address.
 
         let is_dynamic = is_dynamic_account_type(effective_ty);
 
+        // Determine the base type name for validation logic
+        let _type_name = type_base_name(&field.ty).unwrap_or_default();
+
+        // Strip reference to get the underlying type for generic extraction
+        let underlying_ty = match effective_ty {
+            Type::Reference(type_ref) => &*type_ref.elem,
+            other => other,
+        };
+
+        // Check if this is an Account<T> type that needs owner + discriminator validation
+        let inner_type = extract_generic_inner_type(underlying_ty, "Account");
+        if let Some(inner_ty) = inner_type {
+            // Account<T> needs explicit owner and discriminator checks
+            // Note: checks run after construction, so we need to convert back to AccountView
+            let field_name_str = field_name.to_string();
+            let check = quote! {
+                #[cfg(feature = "debug")]
+                if let Err(e) = <#inner_ty as quasar_core::traits::CheckOwner>::check_owner(#field_name.to_account_view()) {
+                    quasar_core::prelude::log(&::alloc::format!(
+                        "Owner check failed for account '{}'",
+                        #field_name_str
+                    ));
+                    return Err(e);
+                }
+                #[cfg(not(feature = "debug"))]
+                <#inner_ty as quasar_core::traits::CheckOwner>::check_owner(#field_name.to_account_view())?;
+
+                #[cfg(feature = "debug")]
+                if let Err(e) = <#inner_ty as quasar_core::traits::AccountCheck>::check(#field_name.to_account_view()) {
+                    quasar_core::prelude::log(&::alloc::format!(
+                        "Discriminator check failed for account '{}': data may be uninitialized or corrupted",
+                        #field_name_str
+                    ));
+                    return Err(e);
+                }
+                #[cfg(not(feature = "debug"))]
+                <#inner_ty as quasar_core::traits::AccountCheck>::check(#field_name.to_account_view())?;
+            };
+            if is_optional {
+                mut_checks.push(quote! { if let Some(ref #field_name) = #field_name { #check } });
+            } else {
+                mut_checks.push(check);
+            }
+        } else if let Some(inner_ty) = extract_generic_inner_type(underlying_ty, "Sysvar") {
+            // Sysvar<T> needs explicit address check
+            let field_name_str = field_name.to_string();
+            let check = quote! {
+                if #field_name.to_account_view().address() != &<#inner_ty as quasar_core::sysvars::Sysvar>::ID {
+                    #[cfg(feature = "debug")]
+                    quasar_core::prelude::log(&::alloc::format!(
+                        "Incorrect sysvar address for account '{}': expected {}, got {}",
+                        #field_name_str,
+                        <#inner_ty as quasar_core::sysvars::Sysvar>::ID,
+                        #field_name.to_account_view().address()
+                    ));
+                    return Err(ProgramError::IncorrectProgramId);
+                }
+            };
+            if is_optional {
+                mut_checks.push(quote! { if let Some(ref #field_name) = #field_name { #check } });
+            } else {
+                mut_checks.push(check);
+            }
+        } else if let Some(inner_ty) = extract_generic_inner_type(underlying_ty, "Program") {
+            // Program<T> needs explicit address check (executable flag already checked via header)
+            let field_name_str = field_name.to_string();
+            let check = quote! {
+                if *#field_name.to_account_view().address() != <#inner_ty as quasar_core::traits::Id>::ID {
+                    #[cfg(feature = "debug")]
+                    quasar_core::prelude::log(&::alloc::format!(
+                        "Incorrect program ID for account '{}': expected {}, got {}",
+                        #field_name_str,
+                        <#inner_ty as quasar_core::traits::Id>::ID,
+                        #field_name.to_account_view().address()
+                    ));
+                    return Err(ProgramError::IncorrectProgramId);
+                }
+            };
+            if is_optional {
+                mut_checks.push(quote! { if let Some(ref #field_name) = #field_name { #check } });
+            } else {
+                mut_checks.push(check);
+            }
+        } else if let Some(inner_ty) = extract_generic_inner_type(underlying_ty, "Interface") {
+            // Interface<T> needs explicit address check via matches() (executable flag already checked via header)
+            let field_name_str = field_name.to_string();
+            let check = quote! {
+                if !<#inner_ty as quasar_core::traits::ProgramInterface>::matches(#field_name.to_account_view().address()) {
+                    #[cfg(feature = "debug")]
+                    quasar_core::prelude::log(&::alloc::format!(
+                        "Program interface mismatch for account '{}': address {} does not match any allowed programs",
+                        #field_name_str,
+                        #field_name.to_account_view().address()
+                    ));
+                    return Err(ProgramError::IncorrectProgramId);
+                }
+            };
+            if is_optional {
+                mut_checks.push(quote! { if let Some(ref #field_name) = #field_name { #check } });
+            } else {
+                mut_checks.push(check);
+            }
+        } else {
+            // Check for known account types that need validation
+            let underlying_ty = match effective_ty {
+                Type::Reference(type_ref) => &*type_ref.elem,
+                other => other,
+            };
+            let type_name = type_base_name(&field.ty).unwrap_or_default();
+
+            // SystemAccount needs owner validation
+            if type_name == "SystemAccount" {
+                let field_name_str = field_name.to_string();
+                let base_type = strip_generics(underlying_ty);
+                let check = quote! {
+                    #[cfg(feature = "debug")]
+                    if let Err(e) = <#base_type as quasar_core::checks::Owner>::check(#field_name.to_account_view()) {
+                        quasar_core::prelude::log(&::alloc::format!(
+                            "Owner check failed for account '{}': not owned by system program",
+                            #field_name_str
+                        ));
+                        return Err(e);
+                    }
+                    #[cfg(not(feature = "debug"))]
+                    <#base_type as quasar_core::checks::Owner>::check(#field_name.to_account_view())?;
+                };
+                if is_optional {
+                    mut_checks
+                        .push(quote! { if let Some(ref #field_name) = #field_name { #check } });
+                } else {
+                    mut_checks.push(check);
+                }
+            }
+        }
+
+        // Use unchecked construction methods (flags already validated)
         match effective_ty {
             Type::Reference(type_ref) if !is_dynamic => {
                 let base_type = strip_generics(&type_ref.elem);
                 let construct_expr = if type_ref.mutability.is_some() {
-                    quote! { #base_type::from_account_view_mut(#field_name)? }
+                    quote! { unsafe { #base_type::from_account_view_unchecked_mut(#field_name) } }
                 } else {
-                    quote! { #base_type::from_account_view(#field_name)? }
+                    quote! { unsafe { #base_type::from_account_view_unchecked(#field_name) } }
                 };
                 if is_optional {
-                    field_constructs.push(quote! { #field_name: if *#field_name.address() == crate::ID { None } else { Some(#construct_expr) } });
+                    field_constructs.push(quote! { #field_name: if quasar_core::keys_eq(#field_name.address(), __program_id) { None } else { Some(#construct_expr) } });
                 } else {
                     field_constructs.push(quote! { #field_name: #construct_expr });
                 }
@@ -614,24 +784,11 @@ pub(super) fn process_fields(
             _ => {
                 let base_type = strip_generics(effective_ty);
                 if is_optional {
-                    field_constructs.push(quote! { #field_name: if *#field_name.address() == crate::ID { None } else { Some(#base_type::from_account_view(#field_name)?) } });
+                    field_constructs.push(quote! { #field_name: if quasar_core::keys_eq(#field_name.address(), __program_id) { None } else { Some(unsafe { #base_type::from_account_view_unchecked(#field_name) }) } });
                 } else {
                     field_constructs
-                        .push(quote! { #field_name: #base_type::from_account_view(#field_name)? });
+                        .push(quote! { #field_name: unsafe { #base_type::from_account_view_unchecked(#field_name) } });
                 }
-            }
-        }
-
-        if attrs.is_mut && !is_ref_mut {
-            let check = quote! {
-                if !#field_name.to_account_view().is_writable() {
-                    return Err(ProgramError::Immutable);
-                }
-            };
-            if is_optional {
-                mut_checks.push(quote! { if let Some(ref #field_name) = #field_name { #check } });
-            } else {
-                mut_checks.push(check);
             }
         }
 
@@ -751,33 +908,45 @@ pub(super) fn process_fields(
 
             match &attrs.bump {
                 Some(Some(bump_expr)) => {
-                    target_checks.push(quote! {
+                    let check = quote! {
                         {
                             #(#seed_len_checks)*
                             let __bump_val: u8 = #bump_expr;
                             let __bump_ref: &[u8] = &[__bump_val];
                             let __pda_seeds = [#(quasar_core::cpi::Seed::from(#seed_idents),)* quasar_core::cpi::Seed::from(__bump_ref)];
-                            let __expected = quasar_core::pda::create_program_address(&__pda_seeds, &crate::ID)?;
+                            let __expected = quasar_core::pda::create_program_address(&__pda_seeds, __program_id)?;
                             if #addr_access != __expected {
                                 return Err(QuasarError::InvalidPda.into());
                             }
                             #bump_var = __bump_val;
                         }
-                    });
+                    };
+                    if is_optional && !is_init_field {
+                        target_checks
+                            .push(quote! { if let Some(ref #field_name) = #field_name { #check } });
+                    } else {
+                        target_checks.push(check);
+                    }
                 }
                 Some(None) => {
-                    target_checks.push(quote! {
+                    let check = quote! {
                         {
                             #(#seed_len_checks)*
                             let __pda_seeds = [#(quasar_core::cpi::Seed::from(#seed_idents)),*];
-                            let (__expected, __bump) = quasar_core::pda::try_find_program_address(&__pda_seeds, &crate::ID)
+                            let (__expected, __bump) = quasar_core::pda::try_find_program_address(&__pda_seeds, __program_id)
                                 .map_err(|_| QuasarError::InvalidSeeds)?;
                             if #addr_access != __expected {
                                 return Err(QuasarError::InvalidPda.into());
                             }
                             #bump_var = __bump;
                         }
-                    });
+                    };
+                    if is_optional && !is_init_field {
+                        target_checks
+                            .push(quote! { if let Some(ref #field_name) = #field_name { #check } });
+                    } else {
+                        target_checks.push(check);
+                    }
                 }
                 None => {
                     return Err(syn::Error::new_spanned(
@@ -1227,4 +1396,85 @@ pub(super) fn process_fields(
         close_fields,
         needs_rent,
     })
+}
+
+/// Determine which NODUP constant to use for a field.
+/// Returns the constant name as a string for code generation.
+pub(super) fn determine_nodup_constant(
+    field: &syn::Field,
+    attrs: &super::attrs::AccountFieldAttrs,
+    is_ref_mut: bool,
+) -> &'static str {
+    let type_name = type_base_name(&field.ty).unwrap_or_default();
+
+    // Program<T> and Interface<T> are always executable
+    let underlying_ty = match field.ty {
+        Type::Reference(ref type_ref) => &*type_ref.elem,
+        ref other => other,
+    };
+    if extract_generic_inner_type(underlying_ty, "Program").is_some()
+        || extract_generic_inner_type(underlying_ty, "Interface").is_some()
+    {
+        return "NODUP_EXECUTABLE";
+    }
+
+    // Determine signer requirement
+    let is_signer = type_name == "Signer"
+        || (attrs.is_init && attrs.seeds.is_none() && attrs.associated_token_mint.is_none());
+
+    // Determine writable requirement
+    let is_writable = is_ref_mut || attrs.is_mut;
+
+    match (is_signer, is_writable) {
+        (true, true) => "NODUP_MUT_SIGNER",
+        (true, false) => "NODUP_SIGNER",
+        (false, true) => "NODUP_MUT",
+        (false, false) => "NODUP",
+    }
+}
+
+/// Compute the expected u32 header value for a field based on its attributes and type.
+///
+/// Returns a u32 in little-endian byte order:
+/// - Byte 0: borrow_state (always 0xFF for no-dup)
+/// - Byte 1: is_signer (1 if required, 0 otherwise)
+/// - Byte 2: is_writable (1 if required, 0 otherwise)
+/// - Byte 3: executable (1 if required, 0 otherwise)
+pub(super) fn compute_header_expected(
+    field: &syn::Field,
+    attrs: &super::attrs::AccountFieldAttrs,
+    is_ref_mut: bool,
+) -> u32 {
+    let mut header: u32 = 0xFF; // byte 0: always no-dup (0xFF)
+
+    // Detect signer requirement from type name or init without seeds/PDA
+    let type_name = type_base_name(&field.ty).unwrap_or_default();
+    let is_signer = type_name == "Signer";
+    // Only init (not init_if_needed) without seeds/PDA requires signer (for pre-signing)
+    // init_if_needed accounts might already exist, so they won't necessarily be signers
+    // associated_token accounts are PDAs, so they're not signers
+    let is_init_without_seeds =
+        attrs.is_init && attrs.seeds.is_none() && attrs.associated_token_mint.is_none();
+    if is_signer || is_init_without_seeds {
+        header |= 0x01 << 8; // byte 1: is_signer = 1
+    }
+
+    // Detect writable requirement from &mut or #[account(mut)]
+    let is_writable = is_ref_mut || attrs.is_mut;
+    if is_writable {
+        header |= 0x01 << 16; // byte 2: is_writable = 1
+    }
+
+    // Detect executable requirement from Program<T> or Interface<T>
+    let underlying_ty = match field.ty {
+        Type::Reference(ref type_ref) => &*type_ref.elem,
+        ref other => other,
+    };
+    let is_program_generic = extract_generic_inner_type(underlying_ty, "Program").is_some();
+    let is_interface_generic = extract_generic_inner_type(underlying_ty, "Interface").is_some();
+    if is_program_generic || is_interface_generic {
+        header |= 0x01 << 24; // byte 3: executable = 1
+    }
+
+    header
 }

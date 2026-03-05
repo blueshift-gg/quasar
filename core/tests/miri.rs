@@ -71,6 +71,7 @@ use quasar_core::__internal::{
     AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED,
 };
 use quasar_core::accounts::{Account, Signer as SignerAccount, UncheckedAccount};
+use quasar_core::checks;
 use quasar_core::cpi::{CpiCall, InstructionAccount};
 use quasar_core::error::QuasarError;
 use quasar_core::pod::*;
@@ -359,7 +360,10 @@ fn shared_to_mut_cast_then_read_lamports() {
     buf.init([1u8; 32], TEST_OWNER.to_bytes(), 500_000, 64, true, true);
 
     let view = unsafe { buf.view() };
-    let account = Account::<TestAccountType>::from_account_view_mut(&view).unwrap();
+    <TestAccountType as CheckOwner>::check_owner(&view).unwrap();
+    <TestAccountType as AccountCheck>::check(&view).unwrap();
+    assert!(view.is_writable());
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view) };
 
     // Read through the &mut Account<T> path
     assert_eq!(account.to_account_view().lamports(), 500_000);
@@ -375,7 +379,10 @@ fn shared_to_mut_cast_then_write_lamports() {
     buf.init([1u8; 32], TEST_OWNER.to_bytes(), 100, 64, true, true);
 
     let view = unsafe { buf.view() };
-    let account = Account::<TestAccountType>::from_account_view_mut(&view).unwrap();
+    <TestAccountType as CheckOwner>::check_owner(&view).unwrap();
+    <TestAccountType as AccountCheck>::check(&view).unwrap();
+    assert!(view.is_writable());
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view) };
 
     account.to_account_view().set_lamports(999);
     assert_eq!(account.to_account_view().lamports(), 999);
@@ -392,7 +399,10 @@ fn shared_to_mut_cast_then_read_original_view() {
     buf.init([1u8; 32], TEST_OWNER.to_bytes(), 100, 64, true, true);
 
     let view = unsafe { buf.view() };
-    let account = Account::<TestAccountType>::from_account_view_mut(&view).unwrap();
+    <TestAccountType as CheckOwner>::check_owner(&view).unwrap();
+    <TestAccountType as AccountCheck>::check(&view).unwrap();
+    assert!(view.is_writable());
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view) };
 
     // Write through the &mut path (to RuntimeAccount, not AccountView)
     account.to_account_view().set_lamports(777);
@@ -410,7 +420,10 @@ fn shared_to_mut_cast_interleaved_access() {
     buf.init([1u8; 32], TEST_OWNER.to_bytes(), 100, 64, true, true);
 
     let view = unsafe { buf.view() };
-    let account = Account::<TestAccountType>::from_account_view_mut(&view).unwrap();
+    <TestAccountType as CheckOwner>::check_owner(&view).unwrap();
+    <TestAccountType as AccountCheck>::check(&view).unwrap();
+    assert!(view.is_writable());
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view) };
 
     // Read through &mut
     let l1 = account.to_account_view().lamports();
@@ -466,7 +479,9 @@ fn deref_read_zc_fields() {
     // Baseline: Deref (read) through Account<T> to ZC fields.
     let mut buf = make_zc_buffer();
     let view = unsafe { buf.view() };
-    let account = Account::<TestAccountType>::from_account_view(&view).unwrap();
+    <TestAccountType as CheckOwner>::check_owner(&view).unwrap();
+    <TestAccountType as AccountCheck>::check(&view).unwrap();
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked(&view) };
 
     let zc: &TestZcData = &*account;
     assert_eq!(zc.value.get(), 42);
@@ -479,7 +494,10 @@ fn deref_mut_write_zc_fields() {
     // This creates &mut TestZcData pointing into the SVM buffer.
     let mut buf = make_zc_buffer();
     let view = unsafe { buf.view() };
-    let account = Account::<TestAccountType>::from_account_view_mut(&view).unwrap();
+    <TestAccountType as CheckOwner>::check_owner(&view).unwrap();
+    <TestAccountType as AccountCheck>::check(&view).unwrap();
+    assert!(view.is_writable());
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view) };
 
     let zc: &mut TestZcData = &mut *account;
     zc.value = PodU64::from(999u64);
@@ -497,7 +515,10 @@ fn deref_mut_write_then_read_via_view() {
     // &mut TestZcData aliases with reads through &AccountView.
     let mut buf = make_zc_buffer();
     let view = unsafe { buf.view() };
-    let account = Account::<TestAccountType>::from_account_view_mut(&view).unwrap();
+    <TestAccountType as CheckOwner>::check_owner(&view).unwrap();
+    <TestAccountType as AccountCheck>::check(&view).unwrap();
+    assert!(view.is_writable());
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view) };
 
     // Write through DerefMut
     let zc: &mut TestZcData = &mut *account;
@@ -515,7 +536,10 @@ fn deref_mut_write_then_deref_read() {
     // The &mut TestZcData and &TestZcData point to the same memory.
     let mut buf = make_zc_buffer();
     let view = unsafe { buf.view() };
-    let account = Account::<TestAccountType>::from_account_view_mut(&view).unwrap();
+    <TestAccountType as CheckOwner>::check_owner(&view).unwrap();
+    <TestAccountType as AccountCheck>::check(&view).unwrap();
+    assert!(view.is_writable());
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view) };
 
     // Write
     {
@@ -535,7 +559,10 @@ fn multiple_deref_mut_calls() {
     // &mut as still-live, this could trigger an aliasing violation.
     let mut buf = make_zc_buffer();
     let view = unsafe { buf.view() };
-    let account = Account::<TestAccountType>::from_account_view_mut(&view).unwrap();
+    <TestAccountType as CheckOwner>::check_owner(&view).unwrap();
+    <TestAccountType as AccountCheck>::check(&view).unwrap();
+    assert!(view.is_writable());
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view) };
 
     // First DerefMut
     {
@@ -619,7 +646,9 @@ fn deref_exact_size_buffer() {
     buf.write_data(&data);
 
     let view = unsafe { buf.view() };
-    let account = Account::<TestAccountType>::from_account_view(&view).unwrap();
+    <TestAccountType as CheckOwner>::check_owner(&view).unwrap();
+    <TestAccountType as AccountCheck>::check(&view).unwrap();
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked(&view) };
 
     let zc: &TestZcData = &*account;
     assert_eq!(zc.value.get(), 99);
@@ -1122,7 +1151,7 @@ fn unchecked_account_shared_to_mut_cast() {
     buf.init([1u8; 32], [0u8; 32], 500, 0, false, true);
 
     let view = unsafe { buf.view() };
-    let unchecked = UncheckedAccount::from_account_view_mut(&view).unwrap();
+    let unchecked = unsafe { UncheckedAccount::from_account_view_unchecked_mut(&view) };
 
     unchecked.to_account_view().set_lamports(123);
     assert_eq!(view.lamports(), 123);
@@ -1139,7 +1168,9 @@ fn signer_shared_to_mut_cast() {
     buf.init([1u8; 32], [0u8; 32], 500, 0, true, true);
 
     let view = unsafe { buf.view() };
-    let signer = SignerAccount::from_account_view_mut(&view).unwrap();
+    <SignerAccount as checks::Signer>::check(&view).unwrap();
+    assert!(view.is_writable());
+    let signer = unsafe { SignerAccount::from_account_view_unchecked_mut(&view) };
 
     signer.to_account_view().set_lamports(789);
     assert_eq!(view.lamports(), 789);
@@ -1216,7 +1247,9 @@ fn close_transfers_lamports_and_zeroes_fields() {
     let src_view = unsafe { src_buf.view() };
     let dst_view = unsafe { dst_buf.view() };
 
-    let account = Account::<TestCloseableType>::from_account_view(&src_view).unwrap();
+    <TestCloseableType as CheckOwner>::check_owner(&src_view).unwrap();
+    <TestCloseableType as AccountCheck>::check(&src_view).unwrap();
+    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked(&src_view) };
     account.close(&dst_view).unwrap();
 
     // Source: lamports zeroed, owner changed, data_len zeroed
@@ -1503,7 +1536,7 @@ fn parse_simulation_dup_from_partially_initialized_buf() {
             unsafe { core::ptr::write(arr_ptr.add(i), view) };
             unsafe {
                 ptr = ptr.add(ACCOUNT_HEADER + (*raw).data_len as usize);
-                ptr = ((ptr as usize + 7) & !7) as *mut u8;
+                ptr = ptr.add((ptr as usize).wrapping_neg() & 7);
             }
         } else {
             // THIS IS THE KEY PATTERN: ptr::read from a partially-initialized
@@ -1547,8 +1580,14 @@ fn duplicate_account_views_two_mut_refs_write() {
     let view_b = unsafe { AccountView::new_unchecked(buf.raw()) };
 
     // Cast both to &mut Account<T>
-    let acct_a = Account::<TestAccountType>::from_account_view_mut(&view_a).unwrap();
-    let acct_b = Account::<TestAccountType>::from_account_view_mut(&view_b).unwrap();
+    <TestAccountType as CheckOwner>::check_owner(&view_a).unwrap();
+    <TestAccountType as AccountCheck>::check(&view_a).unwrap();
+    assert!(view_a.is_writable());
+    let acct_a = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view_a) };
+    <TestAccountType as CheckOwner>::check_owner(&view_b).unwrap();
+    <TestAccountType as AccountCheck>::check(&view_b).unwrap();
+    assert!(view_b.is_writable());
+    let acct_b = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view_b) };
 
     // Write through acct_a
     acct_a.to_account_view().set_lamports(100);
@@ -1592,8 +1631,14 @@ fn duplicate_account_views_deref_mut_to_same_data() {
     let view_a = unsafe { buf.view() };
     let view_b = unsafe { AccountView::new_unchecked(buf.raw()) };
 
-    let acct_a = Account::<TestAccountType>::from_account_view_mut(&view_a).unwrap();
-    let acct_b = Account::<TestAccountType>::from_account_view_mut(&view_b).unwrap();
+    <TestAccountType as CheckOwner>::check_owner(&view_a).unwrap();
+    <TestAccountType as AccountCheck>::check(&view_a).unwrap();
+    assert!(view_a.is_writable());
+    let acct_a = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view_a) };
+    <TestAccountType as CheckOwner>::check_owner(&view_b).unwrap();
+    <TestAccountType as AccountCheck>::check(&view_b).unwrap();
+    assert!(view_b.is_writable());
+    let acct_b = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view_b) };
 
     // Write through acct_a's DerefMut
     {
@@ -2308,7 +2353,10 @@ fn close_rejected_by_from_account_view() {
     // the owner has been reassigned to the system program.
     let mut buf = make_zc_buffer();
     let view = unsafe { buf.view() };
-    let account = Account::<TestAccountType>::from_account_view_mut(&view).unwrap();
+    <TestAccountType as CheckOwner>::check_owner(&view).unwrap();
+    <TestAccountType as AccountCheck>::check(&view).unwrap();
+    assert!(view.is_writable());
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view) };
 
     let mut dest_buf = AccountBuffer::new(0);
     dest_buf.init([2u8; 32], [0u8; 32], 0, 0, false, true);
@@ -2317,7 +2365,8 @@ fn close_rejected_by_from_account_view() {
     assert!(account.close(&dest_view).is_ok());
 
     // CheckOwner sees system program, expects TEST_OWNER — must reject
-    let result = Account::<TestAccountType>::from_account_view(&view);
+    let result = <TestAccountType as CheckOwner>::check_owner(&view)
+        .and_then(|_| <TestAccountType as AccountCheck>::check(&view));
     assert!(
         result.is_err(),
         "from_account_view must reject a closed account (wrong owner)"
@@ -2346,7 +2395,7 @@ fn close_rejects_non_writable_destination() {
     let src_view = unsafe { src_buf.view() };
     let dst_view = unsafe { dst_buf.view() };
 
-    let account = Account::<TestCloseableType>::from_account_view(&src_view).unwrap();
+    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked(&src_view) };
     let result = account.close(&dst_view);
     assert!(
         result.is_err(),
@@ -2377,7 +2426,7 @@ fn close_rejects_lamport_overflow() {
     let src_view = unsafe { src_buf.view() };
     let dst_view = unsafe { dst_buf.view() };
 
-    let account = Account::<TestCloseableType>::from_account_view(&src_view).unwrap();
+    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked(&src_view) };
     let result = account.close(&dst_view);
     assert!(result.is_err(), "close must reject lamport overflow");
     assert_eq!(src_view.lamports(), 1_000_000, "source lamports unchanged");

@@ -7,13 +7,12 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[lints]
+workspace = true
+
 [features]
 alloc = []
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = [
-    'cfg(target_os, values("solana"))',
-] }
+debug = []
 
 [dependencies]
 quasar-derive = { path = "../derive" }

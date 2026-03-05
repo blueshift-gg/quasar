@@ -8,7 +8,7 @@ pub struct InitMintAccount<'info> {
     pub mint: &'info mut Account<Mint>,
     pub mint_authority: &'info Signer,
     pub token_program: &'info TokenProgram,
-    pub system_program: &'info SystemProgram,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> InitMintAccount<'info> {

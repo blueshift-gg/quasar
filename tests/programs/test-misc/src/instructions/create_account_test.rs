@@ -4,7 +4,7 @@ use quasar_core::prelude::*;
 pub struct CreateAccountTest<'info> {
     pub payer: &'info mut Signer,
     pub new_account: &'info mut Signer,
-    pub system_program: &'info SystemProgram,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> CreateAccountTest<'info> {

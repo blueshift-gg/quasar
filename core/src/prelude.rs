@@ -1,16 +1,16 @@
-// Account types
-pub use crate::accounts::*;
-pub use crate::checks;
-
 // Context & parsing
 pub use crate::context::{Context, Ctx, CtxWithRemaining};
 pub use crate::traits::{
-    AccountCheck, AccountCount, AsAccountView, CheckOwner, Discriminator, Event, InterfaceResolve,
-    Owner, ParseAccounts, Program, Space, StaticView, ZeroCopyDeref,
+    AccountCheck, AccountCount, AsAccountView, CheckOwner, Discriminator, Event, Id,
+    InterfaceResolve, Owner, ParseAccounts, ProgramInterface, Space, StaticView, ZeroCopyDeref,
 };
 
+// Account types - Program<T> type shadows ProgramTrait above
+pub use crate::accounts::*;
+pub use crate::checks;
+
 // CPI
-pub use crate::cpi::system::SystemProgram;
+pub use crate::cpi::system::{System, SYSTEM_PROGRAM_ID};
 pub use crate::cpi::Seed;
 
 // Pod types

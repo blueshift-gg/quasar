@@ -57,7 +57,7 @@ pub(super) fn generate_client_macro(
 
                 impl From<$struct_name> for quasar_core::client::Instruction {{
                     fn from(ix: $struct_name) -> quasar_core::client::Instruction {{
-                        let accounts = vec![
+                        let accounts = ::alloc::vec![
                             {account_metas}
                         ];
                         let data = quasar_core::client::build_instruction_data(

@@ -9,8 +9,8 @@ pub struct InitIfNeededAta<'info> {
     pub wallet: &'info Signer,
     pub mint: &'info Account<Mint>,
     pub token_program: &'info TokenProgram,
-    pub system_program: &'info SystemProgram,
-    pub ata_program: &'info AssociatedTokenProgram,
+    pub system_program: &'info Program<System>,
+    pub ata_program: &'info Program<AssociatedTokenProgram>,
 }
 
 impl<'info> InitIfNeededAta<'info> {

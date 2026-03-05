@@ -7,7 +7,7 @@ pub struct SpaceOverride<'info> {
     pub payer: &'info mut Signer,
     #[account(init, space = 100, seeds = [b"spacetest", payer], bump)]
     pub account: &'info mut Account<SimpleAccount>,
-    pub system_program: &'info SystemProgram,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> SpaceOverride<'info> {
