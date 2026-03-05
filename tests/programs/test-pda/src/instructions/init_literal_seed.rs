@@ -1,6 +1,6 @@
 use quasar_core::prelude::*;
 
-use crate::state::ConfigAccount;
+use crate::state::{ConfigAccount, ConfigAccountInit};
 
 #[derive(Accounts)]
 pub struct InitLiteralSeed<'info> {
@@ -13,6 +13,6 @@ pub struct InitLiteralSeed<'info> {
 impl<'info> InitLiteralSeed<'info> {
     #[inline(always)]
     pub fn handler(&mut self, bumps: &InitLiteralSeedBumps) -> Result<(), ProgramError> {
-        self.config.set(&ConfigAccount { bump: bumps.config })
+        self.config.set(&ConfigAccountInit { bump: bumps.config })
     }
 }

@@ -10,7 +10,7 @@ pub struct ExecuteTransfer<'info> {
         seeds = [b"multisig", creator],
         bump = config.bump
     )]
-    pub config: &'info Account<MultisigConfig<'info>>,
+    pub config: Account<MultisigConfig<'info>>,
     pub creator: &'info UncheckedAccount,
     #[account(mut, seeds = [b"vault", config], bump)]
     pub vault: &'info mut UncheckedAccount,

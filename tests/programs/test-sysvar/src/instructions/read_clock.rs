@@ -2,7 +2,7 @@ use quasar_core::prelude::*;
 use quasar_core::sysvars::clock::Clock;
 use quasar_core::sysvars::Sysvar as _;
 
-use crate::state::ClockSnapshot;
+use crate::state::{ClockSnapshot, ClockSnapshotInit};
 
 #[derive(Accounts)]
 pub struct ReadClock<'info> {
@@ -16,7 +16,7 @@ impl<'info> ReadClock<'info> {
     #[inline(always)]
     pub fn handler(&mut self) -> Result<(), ProgramError> {
         let clock = Clock::get()?;
-        self.snapshot.set(&ClockSnapshot {
+        self.snapshot.set(&ClockSnapshotInit {
             slot: clock.slot.get(),
             unix_timestamp: clock.unix_timestamp.get(),
         })

@@ -1,6 +1,6 @@
 use quasar_core::prelude::*;
 
-use crate::state::ComplexAccount;
+use crate::state::{ComplexAccount, ComplexAccountInit};
 
 #[derive(Accounts)]
 pub struct InitMultiSeeds<'info> {
@@ -18,7 +18,7 @@ impl<'info> InitMultiSeeds<'info> {
         amount: u64,
         bumps: &InitMultiSeedsBumps,
     ) -> Result<(), ProgramError> {
-        self.complex.set(&ComplexAccount {
+        self.complex.set(&ComplexAccountInit {
             authority: *self.authority.address(),
             amount,
             bump: bumps.complex,

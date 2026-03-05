@@ -5,7 +5,7 @@ use crate::state::DynamicAccount;
 #[derive(Accounts)]
 pub struct MutateThenReadback<'info> {
     #[account(mut)]
-    pub account: &'info mut Account<DynamicAccount<'info>>,
+    pub account: Account<DynamicAccount<'info>>,
     #[account(mut)]
     pub payer: &'info mut Signer,
     pub system_program: &'info SystemProgram,

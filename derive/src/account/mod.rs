@@ -6,8 +6,8 @@ use proc_macro::TokenStream;
 use syn::{parse_macro_input, Data, DeriveInput, Fields};
 
 use crate::helpers::{
-    classify_dynamic_string, classify_dynamic_vec, validate_discriminator_not_zero, DynKind,
-    InstructionArgs,
+    classify_dynamic_string, classify_dynamic_vec, classify_tail, validate_discriminator_not_zero,
+    DynKind, InstructionArgs,
 };
 
 pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -47,6 +47,8 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
         .map(|f| {
             if let Some((prefix, max)) = classify_dynamic_string(&f.ty) {
                 DynKind::Str { prefix, max }
+            } else if let Some(tail_elem) = classify_tail(&f.ty) {
+                DynKind::Tail { element: tail_elem }
             } else if let Some((elem, prefix, max)) = classify_dynamic_vec(&f.ty) {
                 DynKind::Vec {
                     elem: Box::new(elem),
@@ -104,11 +106,43 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
+    // Validate: at most one tail field, and it must be the last field
+    let tail_count = field_kinds
+        .iter()
+        .filter(|k| matches!(k, DynKind::Tail { .. }))
+        .count();
+    if tail_count > 1 {
+        return syn::Error::new_spanned(
+            name,
+            "at most one tail field (&str / &[u8]) is allowed per struct",
+        )
+        .to_compile_error()
+        .into();
+    }
+    if tail_count == 1 {
+        if let Some(last_kind) = field_kinds.last() {
+            if !matches!(last_kind, DynKind::Tail { .. }) {
+                let tail_field = fields_data
+                    .iter()
+                    .zip(field_kinds.iter())
+                    .find(|(_, k)| matches!(k, DynKind::Tail { .. }))
+                    .map(|(f, _)| f)
+                    .unwrap();
+                return syn::Error::new_spanned(
+                    tail_field,
+                    "tail field (&str / &[u8]) must be the last field in the struct",
+                )
+                .to_compile_error()
+                .into();
+            }
+        }
+    }
+
     // Validate: struct must have a lifetime parameter
     if input.generics.lifetimes().next().is_none() {
         return syn::Error::new_spanned(
             name,
-            "structs with dynamic fields (String/Vec) must have a lifetime parameter, e.g. Profile<'a>",
+            "structs with dynamic fields (String/Vec/tail) must have a lifetime parameter, e.g. Profile<'a>",
         )
         .to_compile_error()
         .into();

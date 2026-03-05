@@ -1,6 +1,6 @@
 use quasar_core::prelude::*;
 
-use crate::state::SimpleAccount;
+use crate::state::{SimpleAccount, SimpleAccountInit};
 
 #[derive(Accounts)]
 pub struct InitializeSimple<'info> {
@@ -17,7 +17,7 @@ impl<'info> InitializeSimple<'info> {
         value: u64,
         bumps: &InitializeSimpleBumps,
     ) -> Result<(), ProgramError> {
-        self.account.set(&SimpleAccount {
+        self.account.set(&SimpleAccountInit {
             authority: *self.payer.address(),
             value,
             bump: bumps.account,

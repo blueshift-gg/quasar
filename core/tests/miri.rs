@@ -53,6 +53,9 @@
 //! | `copy_nonoverlapping` for Vec data writes | Sound |
 //! | Stack buffer batch write (`set_dynamic_fields` pattern) | Sound |
 //! | Instruction data ZC cast + variable tail parsing | Sound |
+//! | Offset-cached view parse + O(1) accessor via __off[i] | Sound |
+//! | Tail &str (from_utf8_unchecked to end of buffer) | Sound |
+//! | Tail &[u8] (slice to end of buffer) | Sound |
 //!
 //! ## What Miri CANNOT test
 //!
@@ -281,9 +284,20 @@ struct TestZcData {
 const _: () = assert!(align_of::<TestZcData>() == 1);
 const _: () = assert!(size_of::<TestZcData>() == 9);
 
-struct TestAccountType;
+#[repr(transparent)]
+struct TestAccountType {
+    __view: AccountView,
+}
 
 const TEST_OWNER: Address = Address::new_from_array([42u8; 32]);
+
+unsafe impl StaticView for TestAccountType {}
+
+impl AsAccountView for TestAccountType {
+    fn to_account_view(&self) -> &AccountView {
+        &self.__view
+    }
+}
 
 impl Owner for TestAccountType {
     const OWNER: Address = TEST_OWNER;
@@ -292,6 +306,22 @@ impl Owner for TestAccountType {
 impl AccountCheck for TestAccountType {
     fn check(_view: &AccountView) -> Result<(), ProgramError> {
         Ok(())
+    }
+}
+
+impl core::ops::Deref for TestAccountType {
+    type Target = TestZcData;
+
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*(self.__view.data_ptr().add(4) as *const TestZcData) }
+    }
+}
+
+impl core::ops::DerefMut for TestAccountType {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *(self.__view.data_ptr().add(4) as *mut TestZcData) }
     }
 }
 
@@ -1191,7 +1221,18 @@ fn signer_shared_to_mut_cast() {
 // This tests the combined pattern with two AccountViews (source + dest).
 // ===========================================================================
 
-struct TestCloseableType;
+#[repr(transparent)]
+struct TestCloseableType {
+    __view: AccountView,
+}
+
+unsafe impl StaticView for TestCloseableType {}
+
+impl AsAccountView for TestCloseableType {
+    fn to_account_view(&self) -> &AccountView {
+        &self.__view
+    }
+}
 
 impl Owner for TestCloseableType {
     const OWNER: Address = TEST_OWNER;
@@ -1209,15 +1250,6 @@ impl Discriminator for TestCloseableType {
 
 impl Space for TestCloseableType {
     const SPACE: usize = 8;
-}
-
-impl QuasarAccount for TestCloseableType {
-    fn deserialize(_data: &[u8]) -> Result<Self, ProgramError> {
-        Ok(Self)
-    }
-    fn serialize(&self, _data: &mut [u8]) -> Result<(), ProgramError> {
-        Ok(())
-    }
 }
 
 #[test]
@@ -2410,4 +2442,188 @@ fn close_rejects_lamport_overflow() {
     let result = account.close(&dst_view);
     assert!(result.is_err(), "close must reject lamport overflow");
     assert_eq!(src_view.lamports(), 1_000_000, "source lamports unchanged");
+}
+
+// ===========================================================================
+// 26. Offset-cached view parse — walk-once offset caching
+//
+// The dynamic account redesign walks inline prefixes ONCE during parse(),
+// caching cumulative byte offsets in a [u32; N-1] array. Subsequent accessor
+// reads use __off[i-1] directly instead of re-walking. This tests the
+// parse → cache → access pattern for correctness under Miri.
+// ===========================================================================
+
+/// Simulate the offset-cached parse pattern for a dynamic account:
+///   fixed: Address (32 bytes)
+///   name: String<u32, 32>   (u32 prefix + up to 32 bytes)
+///   tags: Vec<Address, u32, 10>  (u32 prefix + up to 10 * 32 bytes)
+///
+/// parse() walks prefixes once and stores __off[0] = start of tags field.
+/// Field 0 (name) starts at compile-time constant: disc_len + sizeof(ZcHeader).
+/// Field 1 (tags) starts at __off[0].
+#[test]
+fn offset_cached_parse_walk_once_access_via_cached_offsets() {
+    let name = b"hello";
+    let tags: Vec<[u8; 32]> = vec![[0xAA; 32], [0xBB; 32]];
+    let mut buf = make_dyn_buffer_exact(name, &tags);
+    let view = unsafe { buf.view() };
+    let data = unsafe { view.borrow_unchecked() };
+
+    // --- Simulate parse(): walk prefixes once, cache offsets ---
+    let mut offset = DYN_HEADER_SIZE; // disc + fixed
+    let mut __off: [u32; 1] = [0u32; 1]; // N-1 = 1 cached offset
+
+    // Field 0 (name): read prefix, skip data, cache next field's start
+    let name_len = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
+    offset += 4 + name_len;
+    __off[0] = offset as u32; // tags field starts here
+
+    // --- Simulate accessor: name() uses compile-time offset ---
+    let name_offset = DYN_HEADER_SIZE; // field 0 at compile-time constant
+    let name_prefix_len =
+        u32::from_le_bytes(data[name_offset..name_offset + 4].try_into().unwrap()) as usize;
+    let name_start = name_offset + 4;
+    let name_str =
+        unsafe { core::str::from_utf8_unchecked(&data[name_start..name_start + name_prefix_len]) };
+    assert_eq!(name_str, "hello");
+
+    // --- Simulate accessor: tags() uses __off[0] ---
+    let tags_offset = __off[0] as usize;
+    let tags_count =
+        u32::from_le_bytes(data[tags_offset..tags_offset + 4].try_into().unwrap()) as usize;
+    let tags_start = tags_offset + 4;
+    assert_eq!(tags_count, 2);
+    let tags_slice: &[Address] = unsafe {
+        core::slice::from_raw_parts(data[tags_start..].as_ptr() as *const Address, tags_count)
+    };
+    assert_eq!(tags_slice[0].as_array(), &[0xAA; 32]);
+    assert_eq!(tags_slice[1].as_array(), &[0xBB; 32]);
+}
+
+#[test]
+fn offset_cached_parse_empty_fields_boundary() {
+    // Both dynamic fields empty — offsets touch prefix-only boundaries.
+    let mut buf = make_dyn_buffer_exact(b"", &[]);
+    let view = unsafe { buf.view() };
+    let data = unsafe { view.borrow_unchecked() };
+
+    let mut offset = DYN_HEADER_SIZE;
+    let mut __off: [u32; 1] = [0u32; 1];
+
+    let name_len = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
+    assert_eq!(name_len, 0);
+    offset += 4 + name_len;
+    __off[0] = offset as u32;
+
+    // Access tags via cached offset — 0 elements
+    let tags_offset = __off[0] as usize;
+    let tags_count =
+        u32::from_le_bytes(data[tags_offset..tags_offset + 4].try_into().unwrap()) as usize;
+    assert_eq!(tags_count, 0);
+    let tags_start = tags_offset + 4;
+    let tags_slice: &[Address] =
+        unsafe { core::slice::from_raw_parts(data[tags_start..].as_ptr() as *const Address, 0) };
+    assert_eq!(tags_slice.len(), 0);
+}
+
+// ===========================================================================
+// 27. Tail fields — &str and &[u8] consuming remaining account data
+//
+// Tail fields have no inline prefix. They read from a known offset to the
+// end of account data. The unsafe pattern is:
+//   - &str: from_utf8_unchecked(&data[offset..data_len])
+//   - &[u8]: slice indexing &data[offset..data_len]
+// These tests probe the boundary conditions.
+// ===========================================================================
+
+/// Build a tail-field account buffer:
+///   Layout: [disc(1)][fixed(32)][tail_bytes...]
+fn make_tail_buffer(tail_data: &[u8]) -> AccountBuffer {
+    let data_len = DYN_HEADER_SIZE + tail_data.len();
+    let mut buf = AccountBuffer::new(data_len);
+    buf.init(
+        [1u8; 32],
+        TEST_OWNER.to_bytes(),
+        1_000_000,
+        data_len as u64,
+        false,
+        true,
+    );
+    let mut data = vec![0u8; data_len];
+    data[0] = 0x05;
+    data[DYN_DISC_LEN..DYN_DISC_LEN + 32].copy_from_slice(&[0xAA; 32]);
+    data[DYN_HEADER_SIZE..].copy_from_slice(tail_data);
+    buf.write_data(&data);
+    buf
+}
+
+#[test]
+fn tail_str_from_utf8_unchecked_exact_boundary() {
+    // Tail &str fills remaining buffer exactly. The from_utf8_unchecked
+    // slice end is the LAST byte of account data.
+    let tail = b"tail data at boundary!";
+    let mut buf = make_tail_buffer(tail);
+    let view = unsafe { buf.view() };
+    let data = unsafe { view.borrow_unchecked() };
+
+    let offset = DYN_HEADER_SIZE;
+    let tail_len = data.len() - offset;
+    assert_eq!(tail_len, tail.len());
+
+    let s = unsafe { core::str::from_utf8_unchecked(&data[offset..offset + tail_len]) };
+    assert_eq!(s, "tail data at boundary!");
+}
+
+#[test]
+fn tail_str_empty_zero_length_slice() {
+    // Empty tail — offset equals data length. The slice is zero-length.
+    let mut buf = make_tail_buffer(b"");
+    let view = unsafe { buf.view() };
+    let data = unsafe { view.borrow_unchecked() };
+
+    let offset = DYN_HEADER_SIZE;
+    let tail_len = data.len() - offset;
+    assert_eq!(tail_len, 0);
+
+    let s = unsafe { core::str::from_utf8_unchecked(&data[offset..offset]) };
+    assert_eq!(s, "");
+}
+
+#[test]
+fn tail_bytes_slice_exact_boundary() {
+    // Tail &[u8] with arbitrary bytes (not valid UTF-8).
+    let tail: &[u8] = &[0xFF, 0xFE, 0xFD, 0x00, 0x01];
+    let mut buf = make_tail_buffer(tail);
+    let view = unsafe { buf.view() };
+    let data = unsafe { view.borrow_unchecked() };
+
+    let offset = DYN_HEADER_SIZE;
+    let tail_slice = &data[offset..];
+    assert_eq!(tail_slice, tail);
+}
+
+#[test]
+fn tail_bytes_empty_zero_length() {
+    let mut buf = make_tail_buffer(b"");
+    let view = unsafe { buf.view() };
+    let data = unsafe { view.borrow_unchecked() };
+
+    let offset = DYN_HEADER_SIZE;
+    let tail_slice = &data[offset..];
+    assert_eq!(tail_slice.len(), 0);
+}
+
+#[test]
+fn tail_str_multibyte_utf8_at_boundary() {
+    // Multi-byte UTF-8 characters at the allocation edge.
+    // "cafe\u{0301}" is "café" — the accent is U+0301 (2 bytes in UTF-8).
+    let tail = "café".as_bytes();
+    let mut buf = make_tail_buffer(tail);
+    let view = unsafe { buf.view() };
+    let data = unsafe { view.borrow_unchecked() };
+
+    let offset = DYN_HEADER_SIZE;
+    let tail_len = data.len() - offset;
+    let s = unsafe { core::str::from_utf8_unchecked(&data[offset..offset + tail_len]) };
+    assert_eq!(s, "café");
 }

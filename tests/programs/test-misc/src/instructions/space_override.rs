@@ -1,6 +1,6 @@
 use quasar_core::prelude::*;
 
-use crate::state::SimpleAccount;
+use crate::state::{SimpleAccount, SimpleAccountInit};
 
 #[derive(Accounts)]
 pub struct SpaceOverride<'info> {
@@ -13,7 +13,7 @@ pub struct SpaceOverride<'info> {
 impl<'info> SpaceOverride<'info> {
     #[inline(always)]
     pub fn handler(&mut self, value: u64, bumps: &SpaceOverrideBumps) -> Result<(), ProgramError> {
-        self.account.set(&SimpleAccount {
+        self.account.set(&SimpleAccountInit {
             authority: *self.payer.address(),
             value,
             bump: bumps.account,

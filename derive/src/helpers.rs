@@ -69,15 +69,20 @@ impl PrefixType {
     }
 }
 
+pub(crate) enum TailElement {
+    Str,
+    Bytes,
+}
+
 pub(crate) enum DynKind {
     Fixed,
     Str { prefix: PrefixType, max: usize },
-    StrRef,
     Vec {
         elem: Box<Type>,
         prefix: PrefixType,
         max: usize,
     },
+    Tail { element: TailElement },
 }
 
 // --- Discriminator argument parsing (shared by instruction, account, event, program) ---
@@ -386,16 +391,33 @@ pub(crate) fn classify_dynamic_vec(ty: &Type) -> Option<(Type, PrefixType, usize
     None
 }
 
-/// Detects `&str` or `&'a str` as a bare string reference type.
-pub(crate) fn is_str_ref(ty: &Type) -> bool {
+/// Classifies bare `&str` / `&'a str` and `&[u8]` / `&'a [u8]` as tail fields.
+///
+/// Tail fields have no length prefix — remaining account/instruction data IS the field.
+/// Must be the last dynamic field in the struct.
+pub(crate) fn classify_tail(ty: &Type) -> Option<TailElement> {
     if let Type::Reference(ref_ty) = ty {
-        if let Type::Path(type_path) = &*ref_ty.elem {
-            if let Some(seg) = type_path.path.segments.last() {
-                return seg.ident == "str" && type_path.path.segments.len() == 1;
+        match &*ref_ty.elem {
+            Type::Path(type_path) => {
+                if let Some(seg) = type_path.path.segments.last() {
+                    if seg.ident == "str" && type_path.path.segments.len() == 1 {
+                        return Some(TailElement::Str);
+                    }
+                }
             }
+            Type::Slice(slice_ty) => {
+                if let Type::Path(type_path) = &*slice_ty.elem {
+                    if let Some(seg) = type_path.path.segments.last() {
+                        if seg.ident == "u8" && type_path.path.segments.len() == 1 {
+                            return Some(TailElement::Bytes);
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     }
-    false
+    None
 }
 
 // --- Zc (zero-copy) companion struct helpers ---
@@ -421,43 +443,55 @@ pub(crate) fn map_to_pod_type(ty: &Type) -> proc_macro2::TokenStream {
     quote! { #ty }
 }
 
-pub(crate) fn zc_serialize_field(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
+fn zc_assign_expr(
+    field_name: &Ident,
+    ty: &Type,
+    value: proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
             return match seg.ident.to_string().as_str() {
-                "u8" | "i8" => quote! { __zc.#field_name = self.#field_name; },
+                "u8" | "i8" => quote! { __zc.#field_name = #value; },
                 "bool" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodBool::from(self.#field_name); }
+                    quote! { __zc.#field_name = quasar_core::pod::PodBool::from(#value); }
                 }
                 "u16" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodU16::from(self.#field_name); }
+                    quote! { __zc.#field_name = quasar_core::pod::PodU16::from(#value); }
                 }
                 "u32" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodU32::from(self.#field_name); }
+                    quote! { __zc.#field_name = quasar_core::pod::PodU32::from(#value); }
                 }
                 "u64" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodU64::from(self.#field_name); }
+                    quote! { __zc.#field_name = quasar_core::pod::PodU64::from(#value); }
                 }
                 "u128" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodU128::from(self.#field_name); }
+                    quote! { __zc.#field_name = quasar_core::pod::PodU128::from(#value); }
                 }
                 "i16" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodI16::from(self.#field_name); }
+                    quote! { __zc.#field_name = quasar_core::pod::PodI16::from(#value); }
                 }
                 "i32" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodI32::from(self.#field_name); }
+                    quote! { __zc.#field_name = quasar_core::pod::PodI32::from(#value); }
                 }
                 "i64" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodI64::from(self.#field_name); }
+                    quote! { __zc.#field_name = quasar_core::pod::PodI64::from(#value); }
                 }
                 "i128" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodI128::from(self.#field_name); }
+                    quote! { __zc.#field_name = quasar_core::pod::PodI128::from(#value); }
                 }
-                _ => quote! { __zc.#field_name = self.#field_name; },
+                _ => quote! { __zc.#field_name = #value; },
             };
         }
     }
-    quote! { __zc.#field_name = self.#field_name; }
+    quote! { __zc.#field_name = #value; }
+}
+
+pub(crate) fn zc_serialize_field(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
+    zc_assign_expr(field_name, ty, quote! { self.#field_name })
+}
+
+pub(crate) fn zc_assign_from_value(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
+    zc_assign_expr(field_name, ty, quote! { #field_name })
 }
 
 pub(crate) fn zc_deserialize_expr(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {

@@ -1,7 +1,7 @@
 use quasar_core::prelude::*;
 
 #[account(discriminator = 1)]
-pub struct EscrowAccount {
+pub struct Escrow {
     pub maker: Address,
     pub mint_a: Address,
     pub mint_b: Address,

@@ -4323,3 +4323,275 @@ fn test_adversarial_minimum_valid_account() {
         result.program_result
     );
 }
+
+// ============================================================================
+// TAIL FIELD TESTS: &str and &[u8] tail fields
+// ============================================================================
+
+const TAIL_STR_DISC: u8 = 8;
+const TAIL_BYTES_DISC: u8 = 9;
+const TAIL_FIXED_SIZE: usize = 32; // Address
+
+fn build_tail_str_account_data(authority: Address, label: &[u8]) -> Vec<u8> {
+    // Layout: [disc(1)][authority(32)][label_bytes...]
+    let mut data = vec![0u8; 1 + TAIL_FIXED_SIZE + label.len()];
+    data[0] = TAIL_STR_DISC;
+    data[1..33].copy_from_slice(authority.as_ref());
+    data[33..].copy_from_slice(label);
+    data
+}
+
+fn build_tail_bytes_account_data(authority: Address, payload: &[u8]) -> Vec<u8> {
+    // Layout: [disc(1)][authority(32)][data_bytes...]
+    let mut data = vec![0u8; 1 + TAIL_FIXED_SIZE + payload.len()];
+    data[0] = TAIL_BYTES_DISC;
+    data[1..33].copy_from_slice(authority.as_ref());
+    data[33..].copy_from_slice(payload);
+    data
+}
+
+fn build_tail_str_check_instruction(account: Address, expected_len: u8) -> Instruction {
+    Instruction {
+        program_id: quasar_test_misc::ID,
+        accounts: vec![solana_instruction::AccountMeta::new_readonly(account, false)],
+        data: vec![28, expected_len],
+    }
+}
+
+fn build_tail_bytes_check_instruction(account: Address, expected_len: u8) -> Instruction {
+    Instruction {
+        program_id: quasar_test_misc::ID,
+        accounts: vec![solana_instruction::AccountMeta::new_readonly(account, false)],
+        data: vec![29, expected_len],
+    }
+}
+
+#[test]
+fn test_tail_str_valid_utf8_accepted() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let data = build_tail_str_account_data(authority, b"hello");
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_tail_str_check_instruction(account, 5);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "valid UTF-8 tail str should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_tail_str_empty_accepted() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let data = build_tail_str_account_data(authority, b"");
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_tail_str_check_instruction(account, 0);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "empty tail str should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_tail_str_invalid_utf8_rejected() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let data = build_tail_str_account_data(authority, &[0xFF, 0xFE]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_tail_str_check_instruction(account, 2);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
+        "invalid UTF-8 in tail str must be rejected"
+    );
+}
+
+#[test]
+fn test_tail_str_truncated_multibyte_rejected() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    // Truncated 3-byte UTF-8: euro sign is E2 82 AC, give only E2 82
+    let data = build_tail_str_account_data(authority, &[0xE2, 0x82]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_tail_str_check_instruction(account, 2);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
+        "truncated multi-byte UTF-8 in tail str must be rejected"
+    );
+}
+
+#[test]
+fn test_tail_str_multibyte_utf8_accepted() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    // "café" = 63 61 66 C3 A9 = 5 bytes
+    let data = build_tail_str_account_data(authority, "café".as_bytes());
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_tail_str_check_instruction(account, 5);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "valid multi-byte UTF-8 tail str should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_tail_bytes_valid_data_accepted() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let data = build_tail_bytes_account_data(authority, &[0xFF, 0x00, 0xAB, 0xCD]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_tail_bytes_check_instruction(account, 4);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "valid tail bytes should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_tail_bytes_empty_accepted() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let data = build_tail_bytes_account_data(authority, &[]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_tail_bytes_check_instruction(account, 0);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "empty tail bytes should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_tail_str_wrong_discriminator_rejected() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let mut data = build_tail_str_account_data(authority, b"hello");
+    data[0] = 99; // wrong discriminator
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_tail_str_check_instruction(account, 5);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
+        "wrong discriminator must be rejected"
+    );
+}
+
+#[test]
+fn test_tail_str_truncated_fixed_section_rejected() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // disc(1) + only 16 bytes (need 32 for Address)
+    let mut data = vec![0u8; 17];
+    data[0] = TAIL_STR_DISC;
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_tail_str_check_instruction(account, 0);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_err(),
+        "truncated fixed section must be rejected"
+    );
+}

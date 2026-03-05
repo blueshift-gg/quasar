@@ -4,7 +4,7 @@ use crate::state::SmallPrefixAccount;
 
 #[derive(Accounts)]
 pub struct SmallPrefixCheck<'info> {
-    pub account: &'info Account<SmallPrefixAccount<'info>>,
+    pub account: Account<SmallPrefixAccount<'info>>,
 }
 
 impl<'info> SmallPrefixCheck<'info> {

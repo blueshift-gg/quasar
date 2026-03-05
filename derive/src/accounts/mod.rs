@@ -7,7 +7,7 @@ use quote::{format_ident, quote};
 use syn::{parse::ParseStream, parse_macro_input, Data, DeriveInput, Fields, Ident, Token, Type};
 
 use crate::helpers::{
-    classify_dynamic_string, classify_dynamic_vec, is_composite_type, is_str_ref, map_to_pod_type,
+    classify_dynamic_string, classify_dynamic_vec, classify_tail, is_composite_type, map_to_pod_type,
     strip_generics, zc_deserialize_expr, DynKind,
 };
 
@@ -452,8 +452,8 @@ fn generate_instruction_arg_extraction(ix_args: &[InstructionArg]) -> proc_macro
         .map(|arg| {
             if let Some((prefix, max)) = classify_dynamic_string(&arg.ty) {
                 DynKind::Str { prefix, max }
-            } else if is_str_ref(&arg.ty) {
-                DynKind::StrRef
+            } else if let Some(tail_elem) = classify_tail(&arg.ty) {
+                DynKind::Tail { element: tail_elem }
             } else if let Some((elem, prefix, max)) = classify_dynamic_vec(&arg.ty) {
                 DynKind::Vec {
                     elem: Box::new(elem),
@@ -604,38 +604,22 @@ fn generate_instruction_arg_extraction(ix_args: &[InstructionArg]) -> proc_macro
                         });
                     }
                 }
-                DynKind::StrRef => {
+                DynKind::Tail { element } => {
                     dyn_idx += 1;
-                    let pb = 4usize;
-                    stmts.push(quote! {
-                        if __data.len() < __offset + #pb {
-                            return Err(ProgramError::InvalidInstructionData);
+                    // Tail: remaining data, no prefix
+                    match element {
+                        crate::helpers::TailElement::Str => {
+                            stmts.push(quote! {
+                                let #name: &[u8] = &__data[__offset..];
+                            });
                         }
-                    });
-                    stmts.push(quote! {
-                        let __ix_dyn_len = u32::from_le_bytes([
-                            __data[__offset],
-                            __data[__offset + 1],
-                            __data[__offset + 2],
-                            __data[__offset + 3],
-                        ]) as usize;
-                    });
-                    stmts.push(quote! {
-                        __offset += #pb;
-                    });
-                    stmts.push(quote! {
-                        if __data.len() < __offset + __ix_dyn_len {
-                            return Err(ProgramError::InvalidInstructionData);
+                        crate::helpers::TailElement::Bytes => {
+                            stmts.push(quote! {
+                                let #name: &[u8] = &__data[__offset..];
+                            });
                         }
-                    });
-                    stmts.push(quote! {
-                        let #name: &[u8] = &__data[__offset..__offset + __ix_dyn_len];
-                    });
-                    if dyn_idx < dyn_count {
-                        stmts.push(quote! {
-                            __offset += __ix_dyn_len;
-                        });
                     }
+                    // Tail consumes all remaining data — no offset advance
                 }
                 DynKind::Vec { elem, prefix, max } => {
                     dyn_idx += 1;

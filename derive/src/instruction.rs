@@ -3,8 +3,8 @@ use quote::quote;
 use syn::{parse_macro_input, FnArg, Ident, ItemFn, Pat, ReturnType};
 
 use crate::helpers::{
-    classify_dynamic_string, classify_dynamic_vec, extract_generic_inner_type, is_str_ref,
-    is_unit_type, map_to_pod_type, zc_deserialize_expr, DynKind, InstructionArgs,
+    classify_dynamic_string, classify_dynamic_vec, classify_tail, extract_generic_inner_type,
+    is_unit_type, map_to_pod_type, zc_deserialize_expr, DynKind, InstructionArgs, TailElement,
 };
 
 pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -103,8 +103,8 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
             .map(|pt| {
                 if let Some((prefix, max)) = classify_dynamic_string(&pt.ty) {
                     DynKind::Str { prefix, max }
-                } else if is_str_ref(&pt.ty) {
-                    DynKind::StrRef
+                } else if let Some(tail_elem) = classify_tail(&pt.ty) {
+                    DynKind::Tail { element: tail_elem }
                 } else if let Some((elem, prefix, max)) = classify_dynamic_vec(&pt.ty) {
                     DynKind::Vec {
                         elem: Box::new(elem),
@@ -255,45 +255,28 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                             ));
                         }
                     }
-                    DynKind::StrRef => {
+                    DynKind::Tail { element } => {
                         dyn_idx += 1;
-                        // StrRef defaults to u32 prefix
-                        let pb = 4usize;
-                        new_stmts.push(syn::parse_quote!(
-                            if __data.len() < __offset + #pb {
-                                return Err(ProgramError::InvalidInstructionData);
+                        // Tail field: remaining data, no prefix
+                        match element {
+                            TailElement::Str => {
+                                new_stmts.push(syn::parse_quote!(
+                                    let #name: &str = {
+                                        let __bytes = &__data[__offset..];
+                                        match core::str::from_utf8(__bytes) {
+                                            Ok(__s) => __s,
+                                            Err(_) => return Err(ProgramError::InvalidInstructionData),
+                                        }
+                                    };
+                                ));
                             }
-                        ));
-                        new_stmts.push(syn::parse_quote!(
-                            let __dyn_len = u32::from_le_bytes([
-                                __data[__offset],
-                                __data[__offset + 1],
-                                __data[__offset + 2],
-                                __data[__offset + 3],
-                            ]) as usize;
-                        ));
-                        new_stmts.push(syn::parse_quote!(
-                            __offset += #pb;
-                        ));
-                        new_stmts.push(syn::parse_quote!(
-                            if __data.len() < __offset + __dyn_len {
-                                return Err(ProgramError::InvalidInstructionData);
+                            TailElement::Bytes => {
+                                new_stmts.push(syn::parse_quote!(
+                                    let #name: &[u8] = &__data[__offset..];
+                                ));
                             }
-                        ));
-                        new_stmts.push(syn::parse_quote!(
-                            let #name: &str = {
-                                let __bytes = &__data[__offset..__offset + __dyn_len];
-                                match core::str::from_utf8(__bytes) {
-                                    Ok(__s) => __s,
-                                    Err(_) => return Err(ProgramError::InvalidInstructionData),
-                                }
-                            };
-                        ));
-                        if dyn_idx < dyn_count {
-                            new_stmts.push(syn::parse_quote!(
-                                __offset += __dyn_len;
-                            ));
                         }
+                        // Tail consumes all remaining data — no offset advance needed
                     }
                     DynKind::Vec { elem, prefix, max } => {
                         dyn_idx += 1;

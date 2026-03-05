@@ -4,7 +4,7 @@ use crate::state::MixedAccount;
 
 #[derive(Accounts)]
 pub struct MixedAccountCheck<'info> {
-    pub account: &'info Account<MixedAccount<'info>>,
+    pub account: Account<MixedAccount<'info>>,
 }
 
 impl<'info> MixedAccountCheck<'info> {

@@ -30,3 +30,15 @@ pub struct SmallPrefixAccount<'a> {
     pub tag: String<u8, 100>,
     pub scores: Vec<u8, u8, 10>,
 }
+
+#[account(discriminator = 8)]
+pub struct TailStrAccount<'a> {
+    pub authority: Address,
+    pub label: &'a str,
+}
+
+#[account(discriminator = 9)]
+pub struct TailBytesAccount<'a> {
+    pub authority: Address,
+    pub data: &'a [u8],
+}

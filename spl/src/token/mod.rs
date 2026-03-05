@@ -10,18 +10,24 @@ impl Program for TokenProgram {
     const ID: Address = Address::new_from_array(SPL_TOKEN_BYTES);
 }
 
-/// Token account marker — validates owner is SPL Token program.
+/// Token account view — validates owner is SPL Token program.
 ///
 /// Use as `Account<Token>` for single-program token accounts,
 /// or `InterfaceAccount<Token>` to accept both SPL Token and Token-2022.
-pub struct Token;
+#[repr(transparent)]
+pub struct Token {
+    __view: AccountView,
+}
 impl_single_owner!(Token, SPL_TOKEN_ID, TokenAccountState);
 
-/// Mint account marker — validates owner is SPL Token program.
+/// Mint account view — validates owner is SPL Token program.
 ///
 /// Use as `Account<Mint>` for single-program mints,
 /// or `InterfaceAccount<Mint>` to accept both SPL Token and Token-2022.
-pub struct Mint;
+#[repr(transparent)]
+pub struct Mint {
+    __view: AccountView,
+}
 impl_single_owner!(Mint, SPL_TOKEN_ID, MintAccountState);
 
 impl TokenCpi for TokenProgram {}

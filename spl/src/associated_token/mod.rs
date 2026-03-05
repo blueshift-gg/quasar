@@ -24,14 +24,17 @@ impl Program for AssociatedTokenProgram {
 // AssociatedToken — account marker type
 // ---------------------------------------------------------------------------
 
-/// Associated token account marker — validates owner is SPL Token program.
+/// Associated token account view — validates owner is SPL Token program.
 ///
 /// Use as `Account<AssociatedToken>` for SPL Token-only ATAs, or
 /// `InterfaceAccount<AssociatedToken>` for both SPL Token and Token-2022.
 ///
 /// The derive macro recognizes this type and auto-derives the ATA address
 /// from `associated_token::mint` + `associated_token::authority` attributes.
-pub struct AssociatedToken;
+#[repr(transparent)]
+pub struct AssociatedToken {
+    __view: AccountView,
+}
 impl_single_owner!(AssociatedToken, SPL_TOKEN_ID, TokenAccountState);
 
 // ---------------------------------------------------------------------------

@@ -76,6 +76,16 @@
 /// CPI-based [`TokenClose`] trait.
 macro_rules! impl_single_owner {
     ($ty:ty, $id:expr, $target:ty) => {
+        // SAFETY: $ty is #[repr(transparent)] over AccountView.
+        unsafe impl StaticView for $ty {}
+
+        impl AsAccountView for $ty {
+            #[inline(always)]
+            fn to_account_view(&self) -> &AccountView {
+                &self.__view
+            }
+        }
+
         impl AccountCheck for $ty {
             #[inline(always)]
             fn check(view: &AccountView) -> Result<(), ProgramError> {
@@ -93,6 +103,22 @@ macro_rules! impl_single_owner {
                     return Err(ProgramError::IllegalOwner);
                 }
                 Ok(())
+            }
+        }
+
+        impl core::ops::Deref for $ty {
+            type Target = $target;
+
+            #[inline(always)]
+            fn deref(&self) -> &Self::Target {
+                unsafe { &*(self.__view.data_ptr() as *const $target) }
+            }
+        }
+
+        impl core::ops::DerefMut for $ty {
+            #[inline(always)]
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                unsafe { &mut *(self.__view.data_ptr() as *mut $target) }
             }
         }
 

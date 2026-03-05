@@ -11,7 +11,7 @@ pub struct SetLabel<'info> {
         seeds = [b"multisig", creator],
         bump = config.bump
     )]
-    pub config: &'info mut Account<MultisigConfig<'info>>,
+    pub config: Account<MultisigConfig<'info>>,
     pub system_program: &'info SystemProgram,
 }
 

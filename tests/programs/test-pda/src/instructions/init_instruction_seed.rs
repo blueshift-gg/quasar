@@ -1,6 +1,6 @@
 use quasar_core::prelude::*;
 
-use crate::state::ItemAccount;
+use crate::state::{ItemAccount, ItemAccountInit};
 
 #[derive(Accounts)]
 pub struct InitInstructionSeed<'info> {
@@ -18,7 +18,7 @@ impl<'info> InitInstructionSeed<'info> {
         id: u64,
         bumps: &InitInstructionSeedBumps,
     ) -> Result<(), ProgramError> {
-        self.item.set(&ItemAccount {
+        self.item.set(&ItemAccountInit {
             id,
             bump: bumps.item,
         })

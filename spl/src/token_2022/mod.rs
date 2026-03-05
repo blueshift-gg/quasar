@@ -10,12 +10,18 @@ impl Program for Token2022Program {
     const ID: Address = Address::new_from_array(TOKEN_2022_BYTES);
 }
 
-/// Token account marker — validates owner is Token-2022 program.
-pub struct Token2022;
+/// Token account view — validates owner is Token-2022 program.
+#[repr(transparent)]
+pub struct Token2022 {
+    __view: AccountView,
+}
 impl_single_owner!(Token2022, TOKEN_2022_ID, TokenAccountState);
 
-/// Mint account marker — validates owner is Token-2022 program.
-pub struct Mint2022;
+/// Mint account view — validates owner is Token-2022 program.
+#[repr(transparent)]
+pub struct Mint2022 {
+    __view: AccountView,
+}
 impl_single_owner!(Mint2022, TOKEN_2022_ID, MintAccountState);
 
 impl TokenCpi for Token2022Program {}

@@ -1,6 +1,6 @@
 use quasar_core::prelude::*;
 
-use crate::state::SimpleAccount;
+use crate::state::{SimpleAccount, SimpleAccountInit};
 
 #[derive(Accounts)]
 pub struct ExplicitPayer<'info> {
@@ -13,7 +13,7 @@ pub struct ExplicitPayer<'info> {
 impl<'info> ExplicitPayer<'info> {
     #[inline(always)]
     pub fn handler(&mut self, value: u64, bumps: &ExplicitPayerBumps) -> Result<(), ProgramError> {
-        self.account.set(&SimpleAccount {
+        self.account.set(&SimpleAccountInit {
             authority: *self.funder.address(),
             value,
             bump: bumps.account,

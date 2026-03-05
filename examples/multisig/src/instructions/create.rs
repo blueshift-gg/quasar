@@ -1,7 +1,7 @@
 use quasar_core::prelude::*;
 use quasar_core::remaining::RemainingAccounts;
 
-use crate::state::MultisigConfig;
+use crate::state::{MultisigConfig, MultisigConfigInit};
 
 #[derive(Accounts)]
 pub struct Create<'info> {
@@ -41,7 +41,7 @@ impl<'info> Create<'info> {
 
         let seeds = bumps.config_seeds();
 
-        MultisigConfig {
+        MultisigConfigInit {
             creator: *self.creator.address(),
             threshold,
             bump: bumps.config,

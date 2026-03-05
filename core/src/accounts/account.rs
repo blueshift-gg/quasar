@@ -1,9 +1,8 @@
 use crate::cpi::system::SYSTEM_PROGRAM_ID;
 use crate::prelude::*;
-use core::marker::PhantomData;
 
 /// Realloc an account to `new_space` bytes, transferring lamports to/from `payer`
-/// to maintain rent-exemption. Used by `Account::realloc` and generated View types.
+/// to maintain rent-exemption. Used by `Account::realloc` and generated view types.
 #[inline(always)]
 pub fn realloc_account(
     view: &AccountView,
@@ -49,73 +48,53 @@ pub fn realloc_account(
 
 /// Typed account wrapper with composable validation.
 ///
-/// `Account<T>` is the unified wrapper for all validated on-chain accounts.
-/// The trait bounds on `T` determine which capabilities are available:
+/// `Account<T>` is `#[repr(transparent)]` over `T`, the view type. This
+/// enables two construction paths:
 ///
-/// ## Single-owner accounts (T: Owner)
+/// - **Static accounts** (`T: StaticView`): `T` is `#[repr(transparent)]`
+///   over `AccountView`. Construction via pointer cast from `&AccountView`.
 ///
-/// ```ignore
-/// // Validates owner == SPL Token program
-/// pub token: &'info Account<Token>,
-/// ```
+/// - **Dynamic accounts**: `T` carries `&'info AccountView` + cached byte
+///   offsets for O(1) field access. Construction by value via `T::parse()`.
 ///
-/// Types implementing [`Owner`] get a blanket [`CheckOwner`] impl that
-/// compares against a single address (~20 CU).
+/// ## Zero-copy access (T: Deref)
 ///
-/// ## Multi-owner (interface) accounts (T: CheckOwner)
-///
-/// ```ignore
-/// // Validates owner == SPL Token OR Token-2022
-/// pub token: &'info InterfaceAccount<Token>,
-/// ```
-///
-/// Types implementing [`CheckOwner`] directly use explicit comparison
-/// chains instead of slice iteration, avoiding ~20-40 CU overhead.
-///
-/// ## Zero-copy access (T: ZeroCopyDeref)
-///
-/// When `T` implements [`ZeroCopyDeref`], `Account<T>` provides
-/// `Deref`/`DerefMut` to the ZC companion struct:
+/// When `T` implements `Deref`, `Account<T>` provides transparent `Deref`
+/// to `T::Target` (the ZC companion struct):
 ///
 /// ```ignore
 /// let amount = ctx.accounts.token.amount(); // via Deref<Target = TokenAccountState>
 /// ```
 ///
-/// ## Borsh access (T: QuasarAccount)
+/// ## Borsh access
 ///
-/// When `T` implements [`QuasarAccount`], `Account<T>` provides
-/// `.get()` / `.set()` for Borsh-style (de)serialization.
-///
-/// ## Polymorphic dispatch (via InterfaceAccount<T>)
-///
-/// For accounts that can be owned by multiple programs with different layouts,
-/// use `InterfaceAccount<T>` (from `quasar_spl`) which provides `.resolve()`
-/// for runtime dispatch:
-///
-/// ```ignore
-/// // In your accounts struct:
-/// pub oracle: &'info InterfaceAccount<OracleInterface>,
-///
-/// // In your instruction handler:
-/// match ctx.accounts.oracle.resolve()? {
-///     OraclePrice::Pyth(price) => { /* read Pyth fields */ }
-///     OraclePrice::Switchboard(price) => { /* read Switchboard fields */ }
-/// }
-/// ```
+/// For fixed-size accounts, the `#[account]` macro generates `.get()` /
+/// `.set()` methods on `Account<ViewType>` that (de)serialize through
+/// the `{Name}Init` data struct.
 #[repr(transparent)]
 pub struct Account<T> {
-    view: AccountView,
-    _marker: PhantomData<T>,
+    pub(crate) inner: T,
 }
 
-impl<T> AsAccountView for Account<T> {
+impl<T: AsAccountView> AsAccountView for Account<T> {
     #[inline(always)]
     fn to_account_view(&self) -> &AccountView {
-        &self.view
+        self.inner.to_account_view()
     }
 }
 
 impl<T> Account<T> {
+    /// Construct an Account<T> by wrapping a view value.
+    ///
+    /// Used by dynamic accounts where T carries cached offsets and
+    /// is constructed by-value via `T::parse()`.
+    #[inline(always)]
+    pub fn wrap(inner: T) -> Self {
+        Account { inner }
+    }
+}
+
+impl<T: AsAccountView> Account<T> {
     #[inline(always)]
     pub fn realloc(
         &self,
@@ -127,7 +106,7 @@ impl<T> Account<T> {
     }
 }
 
-impl<T: Owner> Account<T> {
+impl<T: Owner + AsAccountView> Account<T> {
     #[inline(always)]
     pub fn owner(&self) -> &'static Address {
         &T::OWNER
@@ -171,21 +150,27 @@ impl<T: Owner> Account<T> {
     }
 }
 
-impl<T: CheckOwner + AccountCheck> Account<T> {
+/// Static account construction — pointer cast from `&AccountView`.
+///
+/// Requires `T: StaticView` which guarantees the repr(transparent) chain:
+/// `Account<T>` → `T` → `AccountView`.
+impl<T: CheckOwner + AccountCheck + StaticView> Account<T> {
     #[inline(always)]
     pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
         T::check_owner(view)?;
         T::check(view)?;
+        // SAFETY: Account is repr(transparent) over T, and T: StaticView
+        // guarantees T is repr(transparent) over AccountView.
         Ok(unsafe { &*(view as *const AccountView as *const Self) })
     }
 
     /// # Safety (invalid_reference_casting)
     ///
-    /// `Self` is `#[repr(transparent)]` over `AccountView`, which uses interior
-    /// mutability through raw pointers to SVM account memory. The `&` → `&mut`
-    /// cast does not create aliased mutable references to backing memory — all
-    /// writes go through `AccountView`'s raw pointer methods. This pattern is
-    /// standard in Solana frameworks (Pinocchio uses the same approach).
+    /// `Self` is `#[repr(transparent)]` over `T`, which is `#[repr(transparent)]`
+    /// over `AccountView`. AccountView uses interior mutability through raw
+    /// pointers to SVM account memory. The `&` → `&mut` cast does not create
+    /// aliased mutable references to backing memory — all writes go through
+    /// `AccountView`'s raw pointer methods.
     #[inline(always)]
     #[allow(invalid_reference_casting, clippy::mut_from_ref)]
     pub fn from_account_view_mut(view: &AccountView) -> Result<&mut Self, ProgramError> {
@@ -198,41 +183,25 @@ impl<T: CheckOwner + AccountCheck> Account<T> {
     }
 }
 
-impl<T: QuasarAccount> Account<T> {
-    #[inline(always)]
-    pub fn get(&self) -> Result<T, ProgramError> {
-        let data = self.view.try_borrow()?;
-        let disc = T::DISCRIMINATOR;
-        if data.len() < disc.len() || &data[..disc.len()] != disc {
-            return Err(ProgramError::InvalidAccountData);
-        }
-        T::deserialize(&data[disc.len()..])
-    }
+/// Deref: Account<T> exposes the inner view type T.
+///
+/// For static accounts: Account<Wallet> → &Wallet → auto-deref → &WalletZc
+/// For dynamic accounts: Account<Profile<'info>> → &Profile<'info> → auto-deref → &ProfileZc
+///
+/// Methods on T (get/set, accessors) are found at the first deref level.
+/// Fields on T::Target (ZC companion struct) are found via auto-deref.
+impl<T> core::ops::Deref for Account<T> {
+    type Target = T;
 
-    #[inline(always)]
-    pub fn set(&mut self, value: &T) -> Result<(), ProgramError> {
-        let mut data = self.view.try_borrow_mut()?;
-        let disc = T::DISCRIMINATOR;
-        value.serialize(&mut data[disc.len()..])
-    }
-}
-
-impl<T: ZeroCopyDeref> core::ops::Deref for Account<T> {
-    type Target = T::Target;
-
-    /// SAFETY: Bounds validated by `AccountCheck::check` during `from_account_view`.
-    /// For fixed accounts, the target is a ZC companion struct with alignment 1.
-    /// For dynamic accounts, the target is a `#[repr(transparent)]` View over AccountView.
     #[inline(always)]
     fn deref(&self) -> &Self::Target {
-        T::deref_from(&self.view)
+        &self.inner
     }
 }
 
-impl<T: ZeroCopyDeref> core::ops::DerefMut for Account<T> {
-    /// SAFETY: Same as Deref — bounds checked upstream.
+impl<T> core::ops::DerefMut for Account<T> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        T::deref_from_mut(&self.view)
+        &mut self.inner
     }
 }

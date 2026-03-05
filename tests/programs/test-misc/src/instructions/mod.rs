@@ -78,3 +78,9 @@ pub use optional_has_one::*;
 
 pub mod mutate_then_readback;
 pub use mutate_then_readback::*;
+
+pub mod tail_str_check;
+pub use tail_str_check::*;
+
+pub mod tail_bytes_check;
+pub use tail_bytes_check::*;

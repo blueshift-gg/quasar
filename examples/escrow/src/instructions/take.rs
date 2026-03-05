@@ -2,7 +2,7 @@ use quasar_core::prelude::*;
 use quasar_spl::{Mint, Token, TokenClose, TokenCpi, TokenProgram};
 
 use crate::events::TakeEvent;
-use crate::state::EscrowAccount;
+use crate::state::Escrow;
 
 #[derive(Accounts)]
 pub struct Take<'info> {
@@ -15,7 +15,7 @@ pub struct Take<'info> {
         seeds = [b"escrow", maker],
         bump = escrow.bump
     )]
-    pub escrow: &'info mut Account<EscrowAccount>,
+    pub escrow: &'info mut Account<Escrow>,
     pub maker: &'info mut UncheckedAccount,
     pub mint_a: &'info Account<Mint>,
     pub mint_b: &'info Account<Mint>,

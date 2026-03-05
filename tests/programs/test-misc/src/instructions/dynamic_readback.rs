@@ -4,7 +4,7 @@ use crate::state::DynamicAccount;
 
 #[derive(Accounts)]
 pub struct DynamicReadback<'info> {
-    pub account: &'info Account<DynamicAccount<'info>>,
+    pub account: Account<DynamicAccount<'info>>,
 }
 
 impl<'info> DynamicReadback<'info> {

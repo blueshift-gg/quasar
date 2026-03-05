@@ -5,7 +5,7 @@ use crate::state::MultisigConfig;
 #[derive(Accounts)]
 pub struct Deposit<'info> {
     pub depositor: &'info mut Signer,
-    pub config: &'info Account<MultisigConfig<'info>>,
+    pub config: Account<MultisigConfig<'info>>,
     #[account(mut, seeds = [b"vault", config], bump)]
     pub vault: &'info mut UncheckedAccount,
     pub system_program: &'info SystemProgram,

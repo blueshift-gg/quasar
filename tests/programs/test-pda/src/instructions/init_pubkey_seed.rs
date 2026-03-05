@@ -1,6 +1,6 @@
 use quasar_core::prelude::*;
 
-use crate::state::UserAccount;
+use crate::state::{UserAccount, UserAccountInit};
 
 #[derive(Accounts)]
 pub struct InitPubkeySeed<'info> {
@@ -13,7 +13,7 @@ pub struct InitPubkeySeed<'info> {
 impl<'info> InitPubkeySeed<'info> {
     #[inline(always)]
     pub fn handler(&mut self, value: u64, bumps: &InitPubkeySeedBumps) -> Result<(), ProgramError> {
-        self.user.set(&UserAccount {
+        self.user.set(&UserAccountInit {
             authority: *self.payer.address(),
             value,
             bump: bumps.user,

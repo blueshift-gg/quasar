@@ -88,6 +88,26 @@ fn extract_account_inner_type(ty: &Type) -> Option<proc_macro2::TokenStream> {
     extract_generic_inner_type(deref_ty, "Account").map(|inner| quote!(#inner))
 }
 
+/// Check if the inner type T of Account<T> has a lifetime parameter,
+/// indicating a dynamic account type (e.g., Account<Profile<'info>>).
+fn is_dynamic_account_type(ty: &Type) -> bool {
+    let deref_ty = match ty {
+        Type::Reference(r) => &*r.elem,
+        other => other,
+    };
+    if let Some(Type::Path(type_path)) = extract_generic_inner_type(deref_ty, "Account") {
+        if let Some(last) = type_path.path.segments.last() {
+            if let syn::PathArguments::AngleBracketed(args) = &last.arguments {
+                return args
+                    .args
+                    .iter()
+                    .any(|arg| matches!(arg, syn::GenericArgument::Lifetime(_)));
+            }
+        }
+    }
+    false
+}
+
 // ---------------------------------------------------------------------------
 // Auto-detected fields — populated once, consumed by init/CPI codegen
 // ---------------------------------------------------------------------------
@@ -566,9 +586,15 @@ pub(super) fn process_fields(
         }
 
         // --- Field construction ---
+        //
+        // For dynamic Account<T> (inner type has lifetime, e.g. Account<Profile<'info>>),
+        // the inner type's from_account_view returns Account<T> by value (offset-cached).
+        // For static Account<T> (no lifetime), Account::from_account_view returns &Account<T>.
+
+        let is_dynamic = is_dynamic_account_type(effective_ty);
 
         match effective_ty {
-            Type::Reference(type_ref) => {
+            Type::Reference(type_ref) if !is_dynamic => {
                 let base_type = strip_generics(&type_ref.elem);
                 let construct_expr = if type_ref.mutability.is_some() {
                     quote! { #base_type::from_account_view_mut(#field_name)? }
@@ -579,6 +605,28 @@ pub(super) fn process_fields(
                     field_constructs.push(quote! { #field_name: if *#field_name.address() == crate::ID { None } else { Some(#construct_expr) } });
                 } else {
                     field_constructs.push(quote! { #field_name: #construct_expr });
+                }
+            }
+            _ if is_dynamic => {
+                // Dynamic account: extract inner type name, call its from_account_view
+                // which returns Account<T> by value.
+                if let Some(inner) = extract_generic_inner_type(
+                    match effective_ty {
+                        Type::Reference(r) => &r.elem,
+                        other => other,
+                    },
+                    "Account",
+                ) {
+                    let inner_base = strip_generics(inner);
+                    let construct_expr = quote! { #inner_base::from_account_view(#field_name)? };
+                    if is_optional {
+                        field_constructs.push(quote! { #field_name: if *#field_name.address() == crate::ID { None } else { Some(#construct_expr) } });
+                    } else {
+                        field_constructs.push(quote! { #field_name: #construct_expr });
+                    }
+                } else {
+                    let base_type = strip_generics(effective_ty);
+                    field_constructs.push(quote! { #field_name: #base_type::from_account_view(#field_name)? });
                 }
             }
             _ => {
