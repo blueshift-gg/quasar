@@ -10,6 +10,9 @@ authors.workspace = true
 [dependencies]
 quasar-core = { path = "../core" }
 
+[lints]
+workspace = true
+
 [dependencies.quasar-spl]
 path = "../spl"
 version = "0.1.0"
