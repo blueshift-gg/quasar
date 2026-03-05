@@ -6,11 +6,6 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "lib"]
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = [
-    'cfg(target_os, values("solana"))',
-] }
-
 [dependencies]
 pinocchio = { version = "0.10", features = ["cpi"] }
 pinocchio-system = "0.5"

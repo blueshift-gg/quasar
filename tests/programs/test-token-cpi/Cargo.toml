@@ -11,12 +11,6 @@ default = ["alloc"]
 alloc = ["quasar-core/alloc"]
 debug = []
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = [
-    'cfg(target_os, values("solana"))',
-    'cfg(feature, values("alloc"))',
-] }
-
 [dependencies]
 quasar-core = { path = "../../../core" }
 quasar-spl = { path = "../../../spl", features = ["metadata"] }

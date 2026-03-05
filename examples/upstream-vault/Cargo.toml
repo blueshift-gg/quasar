@@ -11,11 +11,6 @@ alloc = []
 client = []
 debug = []
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = [
-    'cfg(target_os, values("solana"))',
-] }
-
 [dependencies]
 quasar-core = { path = "../../core" }
 solana-address = { version = "2.2.0" }

@@ -11,11 +11,6 @@ authors.workspace = true
 alloc = []
 debug = []
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = [
-    'cfg(target_os, values("solana"))',
-] }
-
 [dependencies]
 quasar-derive = { path = "../derive" }
 quasar-pod = { path = "../pod" }
