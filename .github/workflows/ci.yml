@@ -105,7 +105,6 @@ jobs:
 
   cu_benchmark:
     name: CU Benchmark
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
