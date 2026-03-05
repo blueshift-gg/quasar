@@ -27,4 +27,4 @@ solana-instruction = { version = "3.2", features = ["bincode"] }
 default = ["alloc", "cpi"]
 cpi = []
 alloc = ["quasar-core/alloc"]
-debug = ["quasar-core/debug"]
+debug = []
