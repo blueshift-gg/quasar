@@ -1,5 +1,5 @@
 error[E0080]: evaluation panicked: dynamic Vec element type must have alignment 1
  --> tests/compile_fail/dynamic_vec_alignment.rs:6:1
   |
-5 | #[account(discriminator = [1])]
+6 | #[account(discriminator = [1])]
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed here
