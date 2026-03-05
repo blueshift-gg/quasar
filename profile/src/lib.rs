@@ -2,6 +2,7 @@ mod aggregate;
 mod dwarf;
 mod elf;
 mod output;
+mod serve;
 mod walk;
 
 use std::path::{Path, PathBuf};
@@ -10,6 +11,8 @@ use std::{
     collections::HashSet,
     fs::{self, File},
     io::{self, copy},
+    thread,
+    time::Duration,
 };
 
 use elf::DebugLevel;
@@ -18,19 +21,17 @@ use toml::Value;
 
 use sha2::{Digest, Sha256};
 
-const PROFILER_BASE_URL: &str = "https://quasar-profiler.blueshift.gg";
+const SERVER_HOST: &str = "127.0.0.1";
+const SERVER_PORT: u16 = 7777;
 
 pub struct ProfileCommand {
     pub elf_path: PathBuf,
     pub output: Option<PathBuf>,
-    pub no_gist: bool,
     pub share: bool,
 }
 
 pub fn run(command: ProfileCommand) {
     let elf_path = command.elf_path;
-    let output_path = command.output;
-    let no_gist = command.no_gist;
     let public_gist = command.share;
 
     if !elf_path.exists() {
@@ -83,13 +84,15 @@ pub fn run(command: ProfileCommand) {
         .unwrap_or("unknown");
     let version = resolve_program_version(&elf_path, program_name);
     let binary_size = fs::metadata(&elf_path).map(|m| m.len()).unwrap_or(0);
-    let output_path = output_path.unwrap_or_else(|| {
-        let name = elf_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .map(|name| format!("{}.profile.json", name))
-            .unwrap_or_else(|| "profile.json".to_string());
-        PathBuf::from(name)
+    let profile_root = profile_web_root();
+    let profiles_dir = profile_root.join("profiles");
+    fs::create_dir_all(&profiles_dir).unwrap_or_else(|e| {
+        eprintln!(
+            "Error: failed to create profile directory {}: {}",
+            profiles_dir.display(),
+            e
+        );
+        std::process::exit(1);
     });
 
     let result = aggregate::profile(&mmap, &info, &resolver);
@@ -100,29 +103,97 @@ pub fn run(command: ProfileCommand) {
         eprintln!("Error: failed to hash {}: {}", elf_path.display(), e);
         std::process::exit(1);
     });
+    
+    let now = chrono::Utc::now();
+    let timestamp = now.format("%Y-%m-%d-%H-%M-%S-%3f");
+
+    let file_name = format!("{}__{}.json", program_name, timestamp);
+    let local_output_path = profiles_dir.join(&file_name);
 
     output::write_json(
         &result,
-        &output_path,
+        &local_output_path,
         program_name,
         &version,
         binary_size,
         &binary_hash,
     );
-    eprintln!("Profile JSON written to: {}", output_path.display());
+    eprintln!("Profile JSON written to: {}", local_output_path.display());
 
-    if !no_gist {
+    ensure_frontend_assets(&profile_root);
+    ensure_local_server_running(&profile_root);
+
+    if public_gist {
         ensure_gh_installed();
         let desc = format!("{} CU profile v{}", program_name, version);
-        let gist_url = create_gist(&output_path, &desc, public_gist);
-        let profiler_url = profiler_url_from_gist(&gist_url).unwrap_or_else(|| {
-            eprintln!("Error: failed to parse gist URL: {}", gist_url);
-            std::process::exit(1);
-        });
-        println!("{}", profiler_url);
-    } else {
-        eprintln!("--no-gist enabled; no profiler URL generated");
+        let gist_url = create_gist(&local_output_path, &desc, true);
+        println!("{}", gist_url);
+        return;
     }
+
+    println!(
+        "http://{}:{}/frontend/?local={}",
+        SERVER_HOST, SERVER_PORT, file_name
+    );
+}
+
+fn ensure_frontend_assets(profile_root: &Path) {
+    fs::create_dir_all(profile_root).unwrap_or_else(|e| {
+        eprintln!(
+            "Error: failed to create profiler web root {}: {}",
+            profile_root.display(),
+            e
+        );
+        std::process::exit(1);
+    });
+
+    let index_path = profile_root.join("frontend").join("index.html");
+    if !index_path.exists() {
+        eprintln!(
+            "Error: missing frontend artifact at {}",
+            index_path.display()
+        );
+        eprintln!("Add the compiled single-file frontend index.html to quasar/profile/frontend/.");
+        std::process::exit(1);
+    }
+
+    let profiles_dir = profile_root.join("profiles");
+    fs::create_dir_all(&profiles_dir).unwrap_or_else(|e| {
+        eprintln!(
+            "Error: failed to create profile directory {}: {}",
+            profiles_dir.display(),
+            e
+        );
+        std::process::exit(1);
+    });
+}
+
+fn ensure_local_server_running(profile_root: &Path) {
+    if serve::is_port_listening(SERVER_HOST, SERVER_PORT) {
+        return;
+    }
+
+    serve::spawn_server_process(profile_root, SERVER_PORT).unwrap_or_else(|e| {
+        eprintln!("Error: failed to start local profiler server: {}", e);
+        std::process::exit(1);
+    });
+
+    for _ in 0..20 {
+        if serve::is_port_listening(SERVER_HOST, SERVER_PORT) {
+            return;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+
+    eprintln!(
+        "Error: local profiler server did not start on {}:{}",
+        SERVER_HOST, SERVER_PORT
+    );
+    std::process::exit(1);
+}
+
+fn profile_web_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
 fn resolve_program_version(elf_path: &std::path::Path, program_name: &str) -> String {
@@ -203,28 +274,6 @@ fn create_gist(path: &Path, desc: &str, public: bool) -> String {
         std::process::exit(1);
     }
     url.to_string()
-}
-
-fn profiler_url_from_gist(gist_url: &str) -> Option<String> {
-    let no_query = gist_url.split('?').next()?.trim_end_matches('/');
-    let no_scheme = no_query
-        .strip_prefix("https://")
-        .or_else(|| no_query.strip_prefix("http://"))
-        .unwrap_or(no_query);
-    let mut parts = no_scheme.split('/');
-    let host = parts.next()?;
-    if host != "gist.github.com" {
-        return None;
-    }
-    let owner = parts.next()?;
-    let gist_id = parts.next()?;
-    if owner.is_empty() || gist_id.is_empty() {
-        return None;
-    }
-    Some(format!(
-        "{}/?bench={}/{}",
-        PROFILER_BASE_URL, owner, gist_id
-    ))
 }
 
 fn find_workspace_root(start: &std::path::Path) -> Option<PathBuf> {
