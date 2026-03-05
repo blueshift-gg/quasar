@@ -3,7 +3,7 @@ use quote::{format_ident, quote};
 use syn::DeriveInput;
 
 use super::accessors;
-use crate::helpers::{map_to_pod_type, zc_serialize_field, DynKind, TailElement};
+use crate::helpers::{map_to_pod_type, zc_assign_from_value, DynKind, TailElement};
 
 fn kind_prefix(kind: &DynKind) -> Option<&crate::helpers::PrefixType> {
     match kind {
@@ -27,7 +27,6 @@ pub(super) fn generate_dynamic_account(
     let attrs = &input.attrs;
     let lt = &input.generics.lifetimes().next().unwrap().lifetime;
     let zc_name = format_ident!("{}Zc", name);
-    let init_name = format_ident!("{}Init", name);
 
     let dyn_fields: Vec<(&syn::Field, &DynKind)> = fields_data
         .iter()
@@ -39,23 +38,22 @@ pub(super) fn generate_dynamic_account(
     // N-1 cached offsets (first dynamic field starts at compile-time constant)
     let num_offsets = if num_dyn > 0 { num_dyn - 1 } else { 0 };
 
-    // --- 1. Init struct fields (data struct for initialization) ---
-    let init_fields: Vec<proc_macro2::TokenStream> = fields_data
+    // --- 1. set_inner field types (native types for fixed, slices/strs for dynamic) ---
+    let init_field_names: Vec<&Option<syn::Ident>> = fields_data.iter().map(|f| &f.ident).collect();
+    let init_field_types: Vec<proc_macro2::TokenStream> = fields_data
         .iter()
         .zip(field_kinds.iter())
         .map(|(f, kind)| {
-            let fname = &f.ident;
-            let fvis = &f.vis;
             match kind {
                 DynKind::Fixed => {
                     let fty = &f.ty;
-                    quote! { #fvis #fname: #fty }
+                    quote! { #fty }
                 }
                 DynKind::Str { .. } | DynKind::Tail { .. } => {
-                    quote! { #fvis #fname: &#lt str }
+                    quote! { &str }
                 }
                 DynKind::Vec { elem, .. } => {
-                    quote! { #fvis #fname: &#lt [#elem] }
+                    quote! { &[#elem] }
                 }
             }
         })
@@ -74,18 +72,18 @@ pub(super) fn generate_dynamic_account(
         })
         .collect();
 
-    // --- 3. ZC header serialize (fixed fields only, for init) ---
+    // --- 3. ZC header serialize (fixed fields only, for set_inner) ---
     let zc_header_stmts: Vec<proc_macro2::TokenStream> = fields_data
         .iter()
         .zip(field_kinds.iter())
         .filter(|(_, k)| matches!(k, DynKind::Fixed))
         .map(|(f, _)| {
             let fname = f.ident.as_ref().unwrap();
-            zc_serialize_field(fname, &f.ty)
+            zc_assign_from_value(fname, &f.ty)
         })
         .collect();
 
-    // --- 4. Variable tail serialize (inline prefix + data per dynamic field, for init) ---
+    // --- 4. Variable tail serialize (inline prefix + data per dynamic field) ---
     let var_serialize_stmts: Vec<proc_macro2::TokenStream> = dyn_fields
         .iter()
         .map(|(f, kind)| {
@@ -93,13 +91,13 @@ pub(super) fn generate_dynamic_account(
             match kind {
                 DynKind::Str { prefix, .. } => {
                     let pb = prefix.bytes();
-                    let write_prefix = prefix.gen_write_prefix(&quote! { self.#fname.len() });
+                    let write_prefix = prefix.gen_write_prefix(&quote! { #fname.len() });
                     quote! {
                         {
                             #write_prefix
                             __offset += #pb;
-                            let __len = self.#fname.len();
-                            __data[__offset..__offset + __len].copy_from_slice(self.#fname.as_bytes());
+                            let __len = #fname.len();
+                            __data[__offset..__offset + __len].copy_from_slice(#fname.as_bytes());
                             __offset += __len;
                         }
                     }
@@ -107,24 +105,24 @@ pub(super) fn generate_dynamic_account(
                 DynKind::Tail { .. } => {
                     quote! {
                         {
-                            let __len = self.#fname.len();
-                            __data[__offset..__offset + __len].copy_from_slice(self.#fname.as_bytes());
+                            let __len = #fname.len();
+                            __data[__offset..__offset + __len].copy_from_slice(#fname.as_bytes());
                             __offset += __len;
                         }
                     }
                 }
                 DynKind::Vec { elem, prefix, .. } => {
                     let pb = prefix.bytes();
-                    let write_prefix = prefix.gen_write_prefix(&quote! { self.#fname.len() });
+                    let write_prefix = prefix.gen_write_prefix(&quote! { #fname.len() });
                     quote! {
                         {
                             #write_prefix
                             __offset += #pb;
-                            let __bytes = self.#fname.len() * core::mem::size_of::<#elem>();
+                            let __bytes = #fname.len() * core::mem::size_of::<#elem>();
                             if __bytes > 0 {
                                 unsafe {
                                     core::ptr::copy_nonoverlapping(
-                                        self.#fname.as_ptr() as *const u8,
+                                        #fname.as_ptr() as *const u8,
                                         __data[__offset..].as_mut_ptr(),
                                         __bytes,
                                     );
@@ -139,19 +137,19 @@ pub(super) fn generate_dynamic_account(
         })
         .collect();
 
-    // --- 5. Max length checks for init ---
+    // --- 5. Max length checks for set_inner ---
     let max_checks: Vec<proc_macro2::TokenStream> = dyn_fields
         .iter()
         .map(|(f, kind)| {
             let fname = f.ident.as_ref().unwrap();
             match kind {
                 DynKind::Str { max, .. } | DynKind::Vec { max, .. } => quote! {
-                    if self.#fname.len() > #max {
+                    if #fname.len() > #max {
                         return Err(QuasarError::DynamicFieldTooLong.into());
                     }
                 },
                 DynKind::Tail { .. } => quote! {
-                    if self.#fname.len() > 1024 {
+                    if #fname.len() > 1024 {
                         return Err(QuasarError::DynamicFieldTooLong.into());
                     }
                 },
@@ -171,9 +169,9 @@ pub(super) fn generate_dynamic_account(
         .map(|(f, kind)| {
             let fname = f.ident.as_ref().unwrap();
             match kind {
-                DynKind::Str { .. } | DynKind::Tail { .. } => quote! { + self.#fname.len() },
+                DynKind::Str { .. } | DynKind::Tail { .. } => quote! { + #fname.len() },
                 DynKind::Vec { elem, .. } => {
-                    quote! { + self.#fname.len() * core::mem::size_of::<#elem>() }
+                    quote! { + #fname.len() * core::mem::size_of::<#elem>() }
                 }
                 _ => unreachable!(),
             }
@@ -283,8 +281,6 @@ pub(super) fn generate_dynamic_account(
     }
 
     // --- 9. Parse offset caching stmts (walk prefixes once, store cumulative offsets) ---
-    // __off[i] stores the byte offset (from data start) where dynamic field i+1 begins.
-    // Field 0 starts at compile-time constant: disc_len + sizeof(ZcHeader).
     let mut parse_offset_stmts: Vec<proc_macro2::TokenStream> = Vec::new();
     for (dyn_idx, (_f, kind)) in dyn_fields.iter().enumerate() {
         match kind {
@@ -300,7 +296,6 @@ pub(super) fn generate_dynamic_account(
                         }
                     });
                 }
-                // Last field: no need to store offset after it
             }
             DynKind::Vec { elem, prefix, .. } => {
                 let pb = prefix.bytes();
@@ -490,92 +485,27 @@ pub(super) fn generate_dynamic_account(
             #(#write_methods)*
         }
 
-        // --- Init type: data struct for initialization ---
+        // --- set_inner on view type (writes all fields + reallocs if needed) ---
 
-        #vis struct #init_name<#lt> {
-            #(#init_fields,)*
-        }
-
-        impl Discriminator for #init_name<'_> {
-            const DISCRIMINATOR: &'static [u8] = &[#(#disc_bytes),*];
-        }
-
-        impl Space for #init_name<'_> {
-            const SPACE: usize = #disc_len + core::mem::size_of::<#zc_name>() + #prefix_space;
-        }
-
-        impl Owner for #init_name<'_> {
-            const OWNER: Address = crate::ID;
-        }
-
-        // --- Init type methods ---
-
-        impl #init_name<'_> {
-            pub const MIN_SPACE: usize = #disc_len + core::mem::size_of::<#zc_name>() + #prefix_space;
-            pub const MAX_SPACE: usize = Self::MIN_SPACE #(#max_space_terms)*;
-
+        impl #name<'_> {
             #[inline(always)]
-            fn __dynamic_space(&self) -> usize {
-                Self::MIN_SPACE #(#space_terms)*
-            }
-
-            #[inline(always)]
-            fn __serialize_dynamic(&self, __data: &mut [u8]) -> Result<(), ProgramError> {
-                let __zc = unsafe { &mut *(__data.as_mut_ptr() as *mut #zc_name) };
-                #(#zc_header_stmts)*
-                let mut __offset = core::mem::size_of::<#zc_name>();
-                #(#var_serialize_stmts)*
-                Ok(())
-            }
-
-            #[inline(always)]
-            pub fn init<'__init>(self, account: &mut Initialize<#name<'__init>>, payer: &AccountView, rent: Option<&Rent>) -> Result<(), ProgramError> {
-                self.init_signed(account, payer, rent, &[])
-            }
-
-            #[inline(always)]
-            pub fn init_signed<'__init>(self, account: &mut Initialize<#name<'__init>>, payer: &AccountView, rent: Option<&Rent>, signers: &[quasar_core::cpi::Signer]) -> Result<(), ProgramError> {
+            #[allow(clippy::too_many_arguments)]
+            pub fn set_inner(&self, #(#init_field_names: #init_field_types,)* payer: &AccountView, rent: Option<&Rent>) -> Result<(), ProgramError> {
                 #(#max_checks)*
 
-                let view = account.to_account_view();
-                let __space = self.__dynamic_space();
+                let __space = Self::MIN_SPACE #(#space_terms)*;
+                let view = self.__view;
 
-                {
-                    let __existing = unsafe { view.borrow_unchecked() };
-                    if __existing.len() >= #disc_len {
-                        #(
-                            if unsafe { *__existing.get_unchecked(#disc_indices) } != 0 {
-                                return Err(QuasarError::AccountAlreadyInitialized.into());
-                            }
-                        )*
-                    }
-                }
-
-                let lamports = match rent {
-                    Some(rent_data) => rent_data.minimum_balance_unchecked(__space),
-                    None => {
-                        use quasar_core::sysvars::Sysvar;
-                        quasar_core::sysvars::rent::Rent::get()?.minimum_balance_unchecked(__space)
-                    }
-                };
-
-                if view.lamports() == 0 {
-                    quasar_core::cpi::system::create_account(payer, view, lamports, __space as u64, &<#init_name as Owner>::OWNER)
-                        .invoke_with_signers(signers)?;
-                } else {
-                    let required = lamports.saturating_sub(view.lamports());
-                    if required > 0 {
-                        quasar_core::cpi::system::transfer(payer, view, required)
-                            .invoke_with_signers(signers)?;
-                    }
-                    quasar_core::cpi::system::assign(view, &<#init_name as Owner>::OWNER)
-                        .invoke_with_signers(signers)?;
-                    unsafe { view.resize_unchecked(__space) }?;
+                if __space > view.data_len() {
+                    quasar_core::accounts::account::realloc_account(view, __space, payer, rent)?;
                 }
 
                 let __data = unsafe { view.borrow_unchecked_mut() };
-                __data[..<#init_name as Discriminator>::DISCRIMINATOR.len()].copy_from_slice(<#init_name as Discriminator>::DISCRIMINATOR);
-                self.__serialize_dynamic(&mut __data[<#init_name as Discriminator>::DISCRIMINATOR.len()..])?;
+                let __zc = unsafe { &mut *(__data[<#name as Discriminator>::DISCRIMINATOR.len()..].as_mut_ptr() as *mut #zc_name) };
+                #(#zc_header_stmts)*
+                let mut __offset = <#name as Discriminator>::DISCRIMINATOR.len() + core::mem::size_of::<#zc_name>();
+                #(#var_serialize_stmts)*
+                let _ = __offset;
                 Ok(())
             }
         }

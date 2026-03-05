@@ -33,19 +33,11 @@
 //!
 //! # Token lifecycle
 //!
-//! Extension traits on `Initialize<T>` provide init helpers. Pass an optional
-//! `&Rent` sysvar — when `None`, rent is fetched via the `Rent::get()` syscall:
+//! Use `#[account(init)]` to auto-create token accounts, mints, and ATAs:
 //!
 //! ```ignore
-//! // Create + initialize a token account via InitToken trait
-//! self.new_token.init(
-//!     self.system_program,
-//!     self.payer,
-//!     self.token_program,
-//!     self.mint,
-//!     self.owner.address(),
-//!     None, // fetches Rent sysvar via syscall
-//! )?;
+//! #[account(init, payer = payer, token::mint = mint, token::authority = authority)]
+//! pub token_account: &'info mut Account<Token>,
 //!
 //! // Or skip if already initialized (checks owner == system_program)
 //! self.new_token.init_if_needed(

@@ -2,7 +2,7 @@ use quasar_core::prelude::*;
 use quasar_core::sysvars::rent::Rent;
 use quasar_core::sysvars::Sysvar as _;
 
-use crate::state::{RentSnapshot, RentSnapshotInit};
+use crate::state::RentSnapshot;
 
 #[derive(Accounts)]
 pub struct ReadRent<'info> {
@@ -17,8 +17,7 @@ impl<'info> ReadRent<'info> {
     pub fn handler(&mut self) -> Result<(), ProgramError> {
         let rent = Rent::get()?;
         let min_balance = rent.minimum_balance_unchecked(100);
-        self.snapshot.set(&RentSnapshotInit {
-            min_balance_100: min_balance,
-        })
+        self.snapshot.set_inner(min_balance);
+        Ok(())
     }
 }

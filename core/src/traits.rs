@@ -4,7 +4,7 @@ use solana_program_error::ProgramError;
 
 /// Construct a typed account wrapper from a raw [`AccountView`].
 ///
-/// Implemented by the `define_account!` macro and by `Account<T>` / `Initialize<T>`.
+/// Implemented by the `define_account!` macro and by `Account<T>`.
 pub trait FromAccountView<'info>: Sized {
     fn from_account_view(view: &'info AccountView) -> Result<Self, ProgramError>;
 }
@@ -116,15 +116,6 @@ impl AsAccountView for AccountView {
     fn to_account_view(&self) -> &AccountView {
         self
     }
-}
-
-/// Borsh-style serialization for non-zero-copy account types.
-///
-/// Implemented by: `#[account]` macro when the type is not `#[repr(C)]`.
-/// Used by: `Account<T>::get()` and `Account<T>::set()`.
-pub trait QuasarAccount: Sized + Discriminator + Space {
-    fn deserialize(data: &[u8]) -> Result<Self, ProgramError>;
-    fn serialize(&self, data: &mut [u8]) -> Result<(), ProgramError>;
 }
 
 /// Validate that an account is owned by the expected program(s).

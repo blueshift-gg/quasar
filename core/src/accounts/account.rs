@@ -65,12 +65,6 @@ pub fn realloc_account(
 /// ```ignore
 /// let amount = ctx.accounts.token.amount(); // via Deref<Target = TokenAccountState>
 /// ```
-///
-/// ## Borsh access
-///
-/// For fixed-size accounts, the `#[account]` macro generates `.get()` /
-/// `.set()` methods on `Account<ViewType>` that (de)serialize through
-/// the `{Name}Init` data struct.
 #[repr(transparent)]
 pub struct Account<T> {
     pub(crate) inner: T,

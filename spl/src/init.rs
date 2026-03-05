@@ -2,10 +2,7 @@ use quasar_core::prelude::*;
 
 use crate::constants::{SPL_TOKEN_ID, TOKEN_2022_ID};
 use crate::cpi::TokenCpi;
-use crate::interface::InterfaceAccount;
 use crate::state::{MintAccountState, TokenAccountState};
-use crate::token::{Mint, Token};
-use crate::token_2022::{Mint2022, Token2022};
 
 #[inline(always)]
 fn is_token_program_owner(view: &AccountView) -> bool {
@@ -13,24 +10,13 @@ fn is_token_program_owner(view: &AccountView) -> bool {
     quasar_core::keys_eq(owner, &SPL_TOKEN_ID) || quasar_core::keys_eq(owner, &TOKEN_2022_ID)
 }
 
-/// Extension trait providing `.init()` on `Initialize<T>` for token account types.
+/// Extension trait for token account initialization.
 ///
 /// Chains `SystemProgram::create_account` → `InitializeAccount3` in two CPIs.
 /// The account is allocated with 165 bytes and assigned to the given token program.
 ///
-/// Pass `Some(&rent)` to reuse an already-fetched Rent sysvar, or `None`
-/// to fetch it via syscall (`Rent::get()`):
-///
-/// ```ignore
-/// self.new_token.init(
-///     self.system_program,
-///     self.payer,
-///     self.token_program,
-///     self.mint,
-///     self.owner.address(),
-///     None,
-/// )?;
-/// ```
+/// Prefer `#[account(init, token::mint = ..., token::authority = ...)]` for
+/// declarative initialization. This trait is available for manual use cases.
 pub trait InitToken: AsAccountView + Sized {
     /// Create and initialize a token account.
     ///
@@ -106,29 +92,14 @@ pub trait InitToken: AsAccountView + Sized {
     }
 }
 
-impl InitToken for Initialize<Token> {}
-impl InitToken for Initialize<Token2022> {}
-impl<T: AccountCheck + ZeroCopyDeref<Target = TokenAccountState>> InitToken
-    for Initialize<InterfaceAccount<T>>
-{
-}
 
-/// Extension trait providing `.init()` on `Initialize<T>` for mint account types.
+/// Extension trait for mint initialization.
 ///
 /// Chains `SystemProgram::create_account` → `InitializeMint2` in two CPIs.
 /// The account is allocated with 82 bytes and assigned to the given token program.
 ///
-/// ```ignore
-/// self.new_mint.init(
-///     self.system_program,
-///     self.payer,
-///     self.token_program,
-///     6, // decimals
-///     self.authority.address(),
-///     None, // no freeze authority
-///     None, // const rent calculation
-/// )?;
-/// ```
+/// Prefer `#[account(init, mint::decimals = ..., mint::authority = ...)]` for
+/// declarative initialization. This trait is available for manual use cases.
 pub trait InitMint: AsAccountView + Sized {
     /// Create and initialize a mint.
     ///
@@ -210,12 +181,6 @@ pub trait InitMint: AsAccountView + Sized {
     }
 }
 
-impl InitMint for Initialize<Mint> {}
-impl InitMint for Initialize<Mint2022> {}
-impl<T: AccountCheck + ZeroCopyDeref<Target = MintAccountState>> InitMint
-    for Initialize<InterfaceAccount<T>>
-{
-}
 
 /// Validate that an existing token account has the expected mint and authority.
 ///

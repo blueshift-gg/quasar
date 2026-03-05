@@ -188,8 +188,7 @@ fn build_ata_cpi<'a>(
 // InitAssociatedToken — manual init trait
 // ---------------------------------------------------------------------------
 
-/// Extension trait providing `.init()` / `.init_if_needed()` on `Initialize<T>`
-/// for associated token account types.
+/// Extension trait for associated token account initialization.
 ///
 /// Unlike [`InitToken`](crate::InitToken) which chains `create_account + initialize_account3`,
 /// this delegates to the ATA program which handles creation + initialization in a single CPI.
@@ -266,7 +265,6 @@ pub trait InitAssociatedToken: AsAccountView + Sized {
     }
 }
 
-impl InitAssociatedToken for Initialize<AssociatedToken> {}
 
 // ---------------------------------------------------------------------------
 // validate_ata — standalone validation

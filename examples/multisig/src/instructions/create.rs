@@ -1,13 +1,13 @@
 use quasar_core::prelude::*;
 use quasar_core::remaining::RemainingAccounts;
 
-use crate::state::{MultisigConfig, MultisigConfigInit};
+use crate::state::MultisigConfig;
 
 #[derive(Accounts)]
 pub struct Create<'info> {
     pub creator: &'info mut Signer,
-    #[account(seeds = [b"multisig", creator], bump)]
-    pub config: &'info mut Initialize<MultisigConfig<'info>>,
+    #[account(init, mut, payer = creator, seeds = [b"multisig", creator], bump)]
+    pub config: Account<MultisigConfig<'info>>,
     pub rent: &'info Sysvar<Rent>,
     pub system_program: &'info SystemProgram,
 }
@@ -39,20 +39,14 @@ impl<'info> Create<'info> {
             return Err(ProgramError::InvalidArgument);
         }
 
-        let seeds = bumps.config_seeds();
-
-        MultisigConfigInit {
-            creator: *self.creator.address(),
+        self.config.set_inner(
+            *self.creator.address(),
             threshold,
-            bump: bumps.config,
-            label: "",
-            signers: &addrs[..count],
-        }
-        .init_signed(
-            self.config,
+            bumps.config,
+            "",
+            &addrs[..count],
             self.creator.to_account_view(),
             Some(&**self.rent),
-            &[quasar_core::cpi::Signer::from(&seeds)],
         )
     }
 }

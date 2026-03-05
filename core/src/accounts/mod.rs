@@ -4,8 +4,6 @@ pub mod signer;
 pub use signer::*;
 pub mod system_account;
 pub use system_account::*;
-pub mod initialize;
-pub use initialize::*;
 pub mod sysvar;
 pub use sysvar::*;
 pub mod account;

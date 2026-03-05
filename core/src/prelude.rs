@@ -6,7 +6,7 @@ pub use crate::checks;
 pub use crate::context::{Context, Ctx, CtxWithRemaining};
 pub use crate::traits::{
     AccountCheck, AccountCount, AsAccountView, CheckOwner, Discriminator, Event, InterfaceResolve,
-    Owner, ParseAccounts, Program, QuasarAccount, Space, StaticView, ZeroCopyDeref,
+    Owner, ParseAccounts, Program, Space, StaticView, ZeroCopyDeref,
 };
 
 // CPI

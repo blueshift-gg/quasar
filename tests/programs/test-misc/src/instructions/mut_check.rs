@@ -1,6 +1,6 @@
 use quasar_core::prelude::*;
 
-use crate::state::{SimpleAccount, SimpleAccountInit};
+use crate::state::SimpleAccount;
 
 #[derive(Accounts)]
 pub struct MutCheck<'info> {
@@ -13,10 +13,7 @@ impl<'info> MutCheck<'info> {
     pub fn handler(&mut self, new_value: u64) -> Result<(), ProgramError> {
         let authority = self.account.authority;
         let bump = self.account.bump;
-        self.account.set(&SimpleAccountInit {
-            authority,
-            value: new_value,
-            bump,
-        })
+        self.account.set_inner(authority, new_value, bump);
+        Ok(())
     }
 }

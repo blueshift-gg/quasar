@@ -34,7 +34,7 @@
 //! | Pattern | Result |
 //! |---------|--------|
 //! | `& → &mut` cast (`from_account_view_mut`) | Sound under Tree Borrows |
-//! | `& → &mut` cast (`Initialize`, `define_account!`) | Sound under Tree Borrows |
+//! | `& → &mut` cast (`define_account!`) | Sound under Tree Borrows |
 //! | DerefMut write + aliased read via &AccountView | Sound under Tree Borrows |
 //! | Interleaved shared/mutable access | Sound under Tree Borrows |
 //! | `copy_nonoverlapping` 3-byte flag extraction | Sound |
@@ -70,7 +70,7 @@ use std::mem::{align_of, size_of, MaybeUninit};
 use quasar_core::__internal::{
     AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED,
 };
-use quasar_core::accounts::{Account, Initialize, Signer as SignerAccount, UncheckedAccount};
+use quasar_core::accounts::{Account, Signer as SignerAccount, UncheckedAccount};
 use quasar_core::cpi::{CpiCall, InstructionAccount};
 use quasar_core::error::QuasarError;
 use quasar_core::pod::*;
@@ -1105,67 +1105,6 @@ fn transparent_wrapper_sizes() {
         align_of::<Account<TestAccountType>>(),
         align_of::<AccountView>()
     );
-}
-
-// ===========================================================================
-// 10. Initialize<T> transparent cast
-//
-// Initialize<T> uses the same & → &mut pattern as Account<T> but has
-// different trait bounds (QuasarAccount instead of Owner + AccountCheck)
-// and a separate code path in initialize.rs.
-// ===========================================================================
-
-struct TestInitType;
-
-impl Discriminator for TestInitType {
-    const DISCRIMINATOR: &'static [u8] = &[0x01];
-}
-
-impl Space for TestInitType {
-    const SPACE: usize = 8;
-}
-
-impl QuasarAccount for TestInitType {
-    fn deserialize(_data: &[u8]) -> Result<Self, ProgramError> {
-        Ok(Self)
-    }
-    fn serialize(&self, _data: &mut [u8]) -> Result<(), ProgramError> {
-        Ok(())
-    }
-}
-
-#[test]
-fn initialize_shared_to_mut_cast() {
-    let mut buf = AccountBuffer::new(16);
-    buf.init([1u8; 32], [0u8; 32], 100, 16, false, true);
-
-    let view = unsafe { buf.view() };
-    let init = Initialize::<TestInitType>::from_account_view_mut(&view).unwrap();
-
-    // Write through &mut Initialize path
-    init.to_account_view().set_lamports(999);
-    // Read through original &view — aliasing test
-    assert_eq!(view.lamports(), 999);
-}
-
-#[test]
-fn initialize_interleaved_access() {
-    let mut buf = AccountBuffer::new(16);
-    buf.init([1u8; 32], [0u8; 32], 100, 16, false, true);
-
-    let view = unsafe { buf.view() };
-    let init = Initialize::<TestInitType>::from_account_view_mut(&view).unwrap();
-
-    // Interleave reads between &view and &mut Initialize
-    let l1 = init.to_account_view().lamports();
-    let l2 = view.lamports();
-    assert_eq!(l1, l2);
-
-    init.to_account_view().set_lamports(200);
-    assert_eq!(view.lamports(), 200);
-
-    view.set_lamports(300);
-    assert_eq!(init.to_account_view().lamports(), 300);
 }
 
 // ===========================================================================

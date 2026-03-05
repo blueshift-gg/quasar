@@ -378,24 +378,6 @@ pub(super) fn process_fields(
             .into());
         }
 
-        // Reject Initialize<T> when the derive macro handles init — the macro
-        // creates the account, so the user should receive Account<T> (validated,
-        // no .init() exposed). Allowing Initialize<T> here risks double-init.
-        if attrs.is_init || attrs.init_if_needed {
-            let deref_ty = match effective_ty {
-                Type::Reference(r) => &*r.elem,
-                other => other,
-            };
-            if extract_generic_inner_type(deref_ty, "Initialize").is_some() {
-                return Err(syn::Error::new_spanned(
-                    field_name,
-                    "#[account(init)] handles account creation — use `Account<T>` instead of `Initialize<T>`. \
-                     `Initialize<T>` exposes `.init()` which would double-initialize the account.",
-                )
-                .to_compile_error()
-                .into());
-            }
-        }
 
         if attrs.close.is_some() && !is_ref_mut && !attrs.is_mut {
             return Err(syn::Error::new_spanned(

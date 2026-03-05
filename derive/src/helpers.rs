@@ -486,10 +486,6 @@ fn zc_assign_expr(
     quote! { __zc.#field_name = #value; }
 }
 
-pub(crate) fn zc_serialize_field(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
-    zc_assign_expr(field_name, ty, quote! { self.#field_name })
-}
-
 pub(crate) fn zc_assign_from_value(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
     zc_assign_expr(field_name, ty, quote! { #field_name })
 }
@@ -509,7 +505,3 @@ pub(crate) fn zc_deserialize_expr(field_name: &Ident, ty: &Type) -> proc_macro2:
     quote! { __zc.#field_name }
 }
 
-pub(crate) fn zc_deserialize_field(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
-    let expr = zc_deserialize_expr(field_name, ty);
-    quote! { #field_name: #expr }
-}

@@ -3,7 +3,7 @@ use quasar_core::prelude::*;
 
 use super::cpi::MetadataCpi;
 
-/// Extension trait providing `.init()` on `Initialize<MetadataAccount>`.
+/// Extension trait for metadata account initialization.
 ///
 /// Invokes `create_metadata_accounts_v3` via CPI. The Metaplex program
 /// derives and allocates the metadata PDA internally — no
@@ -99,9 +99,8 @@ pub trait InitMetadata: AsAccountView + Sized {
     }
 }
 
-impl InitMetadata for Initialize<super::MetadataAccount> {}
 
-/// Extension trait providing `.init()` on `Initialize<MasterEditionAccount>`.
+/// Extension trait for master edition account initialization.
 ///
 /// Invokes `create_master_edition_v3` via CPI. The Metaplex program
 /// derives and allocates the master edition PDA internally.
@@ -184,4 +183,3 @@ pub trait InitMasterEdition: AsAccountView + Sized {
     }
 }
 
-impl InitMasterEdition for Initialize<super::MasterEditionAccount> {}
