@@ -1,3 +1,4 @@
+#![allow(unexpected_cfgs)]
 use quasar_core::prelude::*;
 
 solana_address::declare_id!("11111111111111111111111111111112");
