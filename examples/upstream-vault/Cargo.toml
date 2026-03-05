@@ -8,11 +8,12 @@ crate-type = ["cdylib"]
 
 [features]
 client = []
+debug = []
+alloc = []
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(target_os, values("solana"))',
-    'cfg(feature, values("alloc"))',
 ] }
 
 [dependencies]
