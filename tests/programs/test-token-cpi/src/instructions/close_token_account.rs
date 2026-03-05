@@ -2,10 +2,10 @@ use quasar_core::prelude::*;
 use quasar_spl::{Token, TokenAccount, TokenCpi};
 
 #[derive(Accounts)]
-#[account(dup)]
 pub struct CloseTokenAccount<'info> {
     pub authority: &'info Signer,
     pub account: &'info mut Account<TokenAccount>,
+    #[account(dup)]
     pub destination: &'info mut Signer,
     pub token_program: &'info Program<Token>,
 }

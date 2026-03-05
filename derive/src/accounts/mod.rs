@@ -44,20 +44,6 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
     let name = &input.ident;
     let bumps_name = format_ident!("{}Bumps", name);
 
-    // Parse struct-level attributes for #[account(dup)]
-    let mut allow_dup = false;
-    for attr in &input.attrs {
-        if attr.path().is_ident("account") {
-            if let Ok(meta_list) = attr.meta.require_list() {
-                for nested in meta_list.tokens.clone() {
-                    if nested.to_string() == "dup" {
-                        allow_dup = true;
-                    }
-                }
-            }
-        }
-    }
-
     let fields = match &input.data {
         Data::Struct(data) => match &data.fields {
             Fields::Named(fields) => &fields.named,
@@ -116,10 +102,9 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         quote! { #field_count }
     };
 
-    // --- Generate parse_steps and parse_steps_no_dup ---
+    // --- Generate parse_steps (hybrid: per-field dup-aware or no-dup) ---
 
     let mut parse_steps: Vec<proc_macro2::TokenStream> = Vec::new();
-    let mut parse_steps_no_dup: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut buf_offset = quote! { 0usize };
 
     for (fi, ct) in composite_types.iter().enumerate() {
@@ -143,61 +128,34 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                 }
             });
 
-            parse_steps_no_dup.push(quote! {
-                {
-                    let mut __inner_buf = core::mem::MaybeUninit::<
-                        [quasar_core::__internal::AccountView; <#inner_ty as AccountCount>::COUNT]
-                    >::uninit();
-                    input = <#inner_ty>::parse_accounts(input, &mut __inner_buf)?;
-                    let __inner = unsafe { __inner_buf.assume_init() };
-                    let mut __j = 0usize;
-                    while __j < <#inner_ty as AccountCount>::COUNT {
-                        unsafe { core::ptr::write(base.add(#cur_offset + __j), *__inner.as_ptr().add(__j)); }
-                        __j += 1;
-                    }
-                }
-            });
-
             buf_offset = quote! { #buf_offset + <#inner_ty as AccountCount>::COUNT };
         } else {
-            // Simple field - validate header for no-dup case
+            // Simple field - per-field dup-aware or no-dup
             let cur_offset = buf_offset.clone();
             let attrs = &pf.field_attrs[fi];
             let field = &fields[fi];
+
+            // Validate: first account (index 0) cannot be marked with #[account(dup)]
+            if attrs.dup && buf_offset.to_string() == "0usize" {
+                return syn::Error::new_spanned(
+                    field,
+                    "first account (index 0) cannot be marked with #[account(dup)] - it can never be a duplicate",
+                )
+                .to_compile_error()
+                .into();
+            }
             let effective_ty = extract_generic_inner_type(&field.ty, "Option").unwrap_or(&field.ty);
             let is_ref_mut = matches!(effective_ty, Type::Reference(r) if r.mutability.is_some());
             let expected_header = fields::compute_header_expected(field, attrs, is_ref_mut);
 
-            // Detect if this field is Optional - optional fields can be duplicates
+            // Detect if this field is Optional - optional fields always allow duplicates
             let is_optional = extract_generic_inner_type(&field.ty, "Option").is_some();
 
-            // Standard parse_accounts (allows duplicates, validates flags only for non-init_if_needed)
-            // For init_if_needed, only check duplicates (flags can vary)
-            if attrs.init_if_needed {
-                // init_if_needed: only check duplicates, skip flag validation
-                parse_steps.push(quote! {
-                    {
-                        let raw = input as *mut quasar_core::__internal::RuntimeAccount;
-                        let actual_header = unsafe { *(raw as *const u32) };
+            // Choose parsing strategy: dup-aware (checks borrow state) or no-dup (optimized u32)
+            if is_optional || attrs.dup {
+                // Dup-aware path: optional accounts or accounts marked with #[account(dup)]
+                // (init_if_needed now uses optimized nodup path with masked validation)
 
-                        // Only check for duplicates (borrow_state)
-                        if (actual_header & 0xFF) == quasar_core::__internal::NOT_BORROWED as u32 {
-                            unsafe {
-                                core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
-                                input = input.add(__ACCOUNT_HEADER + (*raw).data_len as usize);
-                                let align = (input as *const u8).align_offset(8);
-                                input = input.add(align);
-                            }
-                        } else {
-                            unsafe {
-                                let idx = (actual_header & 0xFF) as usize;
-                                core::ptr::write(base.add(#cur_offset), core::ptr::read(base.add(idx)));
-                                input = input.add(core::mem::size_of::<u64>());
-                            }
-                        }
-                    }
-                });
-            } else {
                 // Regular accounts with dup allowed: optimized dup checking
                 // Extract required flags for static compile-time checks
                 let expected_signer = (expected_header >> 8) & 0x01;
@@ -241,7 +199,10 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                 };
 
                 // Executable must match exactly if required
-                let exec_check = if expected_exec == 1 {
+                // For optional accounts, skip executable check (program_id is executable)
+                let exec_check = if is_optional {
+                    quote! {}
+                } else if expected_exec == 1 {
                     quote! {
                         if quasar_core::utils::hint::unlikely(((actual_header >> 24) & 0x01) != 1) {
                             #[cfg(feature = "debug")]
@@ -267,7 +228,8 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                         // Check duplicate flag first
                         let is_dup = (actual_header & 0xFF) != quasar_core::__internal::NOT_BORROWED as u32;
 
-                        // Validate flags for non-duplicates
+                        // Validate flags for non-duplicates only
+                        // (Duplicates don't have their own flags - they point to the original account)
                         if !is_dup {
                             #flag_check
                             #exec_check
@@ -290,88 +252,14 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                         }
                     }
                 });
-            }
-
-            // No-dup parse_accounts (validates u32 header)
-            // Optional accounts and init_if_needed accounts need special handling
-            if is_optional {
-                // Optional accounts can be duplicates, use dup-aware logic
-                // Mask out borrow_state (byte 0) AND executable (byte 3) since program_id is passed when None
-                let optional_mask = 0x00FFFF00u32; // Keep bytes 1,2 (is_signer, is_writable); mask bytes 0,3
-                let optional_expected_flags = expected_header & optional_mask;
-
+            } else {
+                // No-dup path: optimized u32 comparison for accounts without #[account(dup)]
                 let field_name = field.ident.as_ref().unwrap();
                 let account_index = buf_offset.to_string();
-                let expected_signer = (expected_header >> 8) & 0x01;
-                let expected_writable = (expected_header >> 16) & 0x01;
 
-                let constraint_msg = match (expected_signer, expected_writable) {
-                    (1, 1) => "must be writable signer",
-                    (1, 0) => "must be signer",
-                    (0, 1) => "must be writable",
-                    (0, 0) => "invalid flags",
-                    _ => unreachable!(),
-                };
-
-                parse_steps_no_dup.push(quote! {
-                    {
-                        let raw = input as *mut quasar_core::__internal::RuntimeAccount;
-                        let actual_header = unsafe { *(raw as *const u32) };
-
-                        // Validate flags (mask out borrow_state and executable)
-                        let actual_flags = actual_header & #optional_mask;
-                        if quasar_core::utils::hint::unlikely(actual_flags != #optional_expected_flags) {
-                            #[cfg(feature = "debug")]
-                            quasar_core::__internal::log_str(concat!("Optional account '", stringify!(#field_name), "' (index ", #account_index, "): ", #constraint_msg));
-                            return Err(quasar_core::decode_header_error(actual_header, #expected_header));
-                        }
-
-                        // Handle dup (optional accounts can be duplicates)
-                        if (actual_header & 0xFF) == quasar_core::__internal::NOT_BORROWED as u32 {
-                            unsafe {
-                                core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
-                                input = input.add(__ACCOUNT_HEADER + (*raw).data_len as usize);
-                                input = input.add((input as usize).wrapping_neg() & 7);
-                            }
-                        } else {
-                            unsafe {
-                                let idx = (actual_header & 0xFF) as usize;
-                                core::ptr::write(base.add(#cur_offset), core::ptr::read(base.add(idx)));
-                                input = input.add(core::mem::size_of::<u64>());
-                            }
-                        }
-                    }
-                });
-            } else if attrs.init_if_needed {
-                // init_if_needed accounts can have varying flags, only check for duplicates
-                parse_steps_no_dup.push(quote! {
-                    {
-                        let raw = input as *mut quasar_core::__internal::RuntimeAccount;
-                        let actual_header = unsafe { *(raw as *const u32) };
-
-                        // Only check for duplicates (borrow_state)
-                        if (actual_header & 0xFF) == quasar_core::__internal::NOT_BORROWED as u32 {
-                            unsafe {
-                                core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
-                                input = input.add(__ACCOUNT_HEADER + (*raw).data_len as usize);
-                                input = input.add((input as usize).wrapping_neg() & 7);
-                            }
-                        } else {
-                            unsafe {
-                                let idx = (actual_header & 0xFF) as usize;
-                                core::ptr::write(base.add(#cur_offset), core::ptr::read(base.add(idx)));
-                                input = input.add(core::mem::size_of::<u64>());
-                            }
-                        }
-                    }
-                });
-            } else {
-                // Regular nodup account: use constant lookup table
+                // Use constant lookup table for no-dup validation
                 let nodup_const = fields::determine_nodup_constant(field, attrs, is_ref_mut);
                 let nodup_const_ident = format_ident!("{}", nodup_const);
-
-                let field_name = field.ident.as_ref().unwrap();
-                let account_index = buf_offset.to_string();
 
                 // Generate human-readable constraint description
                 let constraint_desc = match nodup_const {
@@ -383,35 +271,70 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                     _ => "unknown constraint",
                 };
 
-                parse_steps_no_dup.push(quote! {
-                    unsafe {
-                        let raw = input as *mut quasar_core::__internal::RuntimeAccount;
-                        let header = *(raw as *const u32);
+                // For init_if_needed, mask out signer bit and check writable + nodup
+                if attrs.init_if_needed {
+                    parse_steps.push(quote! {
+                        unsafe {
+                            let raw = input as *mut quasar_core::__internal::RuntimeAccount;
+                            let header = *(raw as *const u32);
 
-                        // Single u32 comparison against compile-time constant (no masking!)
-                        if quasar_core::utils::hint::unlikely(header != quasar_core::__internal::#nodup_const_ident) {
-                            #[cfg(feature = "debug")]
-                            quasar_core::__internal::log_str(concat!("Account '", stringify!(#field_name), "' (index ", #account_index, "): must be ", #constraint_desc));
-                            return Err(quasar_core::decode_header_error(header, #expected_header));
+                            // Single constant: 0x000100FF (NOT_BORROWED + writable bit)
+                            // Masks out signer and upper writable bits + executable
+                            if quasar_core::utils::hint::unlikely((header & 0x000100FF) != 0x000100FF) {
+                                #[cfg(feature = "debug")]
+                                quasar_core::__internal::log_str(concat!("Account '", stringify!(#field_name), "' (index ", #account_index, "): init_if_needed must be writable with no duplicates"));
+                                return Err(quasar_core::decode_header_error(header, #expected_header));
+                            }
+
+                            core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
+                            input = input.add(__ACCOUNT_HEADER + (*raw).data_len as usize);
+                            input = input.add((input as usize).wrapping_neg() & 7);
                         }
+                    });
+                } else if nodup_const == "NODUP_SIGNER" {
+                    // For NODUP_SIGNER, use u16 comparison (bytes 0-1 only) to allow mut/executable
+                    parse_steps.push(quote! {
+                        unsafe {
+                            let raw = input as *mut quasar_core::__internal::RuntimeAccount;
+                            let header = *(raw as *const u32);
 
-                        core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
-                        input = input.add(__ACCOUNT_HEADER + (*raw).data_len as usize);
-                        input = input.add((input as usize).wrapping_neg() & 7);
-                    }
-                });
+                            // u16 comparison: only check borrow_state (byte 0) and is_signer (byte 1)
+                            // This allows the account to also be writable or executable
+                            if quasar_core::utils::hint::unlikely((header as u16) != (quasar_core::__internal::#nodup_const_ident as u16)) {
+                                #[cfg(feature = "debug")]
+                                quasar_core::__internal::log_str(concat!("Account '", stringify!(#field_name), "' (index ", #account_index, "): must be ", #constraint_desc));
+                                return Err(quasar_core::decode_header_error(header, #expected_header));
+                            }
+
+                            core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
+                            input = input.add(__ACCOUNT_HEADER + (*raw).data_len as usize);
+                            input = input.add((input as usize).wrapping_neg() & 7);
+                        }
+                    });
+                } else {
+                    parse_steps.push(quote! {
+                        unsafe {
+                            let raw = input as *mut quasar_core::__internal::RuntimeAccount;
+                            let header = *(raw as *const u32);
+
+                            // Single u32 comparison against compile-time constant (no masking!)
+                            if quasar_core::utils::hint::unlikely(header != quasar_core::__internal::#nodup_const_ident) {
+                                #[cfg(feature = "debug")]
+                                quasar_core::__internal::log_str(concat!("Account '", stringify!(#field_name), "' (index ", #account_index, "): must be ", #constraint_desc));
+                                return Err(quasar_core::decode_header_error(header, #expected_header));
+                            }
+
+                            core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
+                            input = input.add(__ACCOUNT_HEADER + (*raw).data_len as usize);
+                            input = input.add((input as usize).wrapping_neg() & 7);
+                        }
+                    });
+                }
             }
 
             buf_offset = quote! { #buf_offset + 1usize };
         }
     }
-
-    // Choose which parse_steps to use based on allow_dup
-    let active_parse_steps = if allow_dup {
-        parse_steps // Use dup-allowed version (still optimizes flags)
-    } else {
-        parse_steps_no_dup // Use no-dup version (default, fully optimized)
-    };
 
     // --- Composite field_lets (pre-compute before bumps so pushes take effect) ---
 
@@ -693,7 +616,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
 
                 let base = buf.as_mut_ptr() as *mut quasar_core::__internal::AccountView;
 
-                #(#active_parse_steps)*
+                #(#parse_steps)*
 
                 Ok(input)
             }

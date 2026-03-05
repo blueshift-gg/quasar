@@ -2,9 +2,9 @@ use quasar_core::prelude::*;
 
 /// Tests: "Account 'destination' (index 1): must be writable"
 #[derive(Accounts)]
-#[account(dup)]
 pub struct HeaderDupMut<'info> {
     pub source: &'info Signer,
+    #[account(dup)]
     pub destination: &'info mut UncheckedAccount,
 }
 

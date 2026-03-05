@@ -1567,7 +1567,7 @@ fn parse_simulation_dup_from_partially_initialized_buf() {
             unsafe { core::ptr::write(arr_ptr.add(i), view) };
             unsafe {
                 ptr = ptr.add(ACCOUNT_HEADER + (*raw).data_len as usize);
-                ptr = ((ptr as usize + 7) & !7) as *mut u8;
+                ptr = ptr.add((ptr as usize).wrapping_neg() & 7);
             }
         } else {
             // THIS IS THE KEY PATTERN: ptr::read from a partially-initialized
