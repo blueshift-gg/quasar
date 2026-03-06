@@ -1,3 +1,6 @@
+//! `#[event]` — generates event discriminator, serialization, and the `Event`
+//! trait impl for emission via `sol_log_data` or self-CPI.
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, Data, DeriveInput, Fields, Ident, Type};

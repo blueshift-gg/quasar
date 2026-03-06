@@ -1,3 +1,6 @@
+//! `#[instruction]` — generates instruction handler wrappers with context
+//! deserialization, discriminator matching, and Borsh argument decoding.
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, FnArg, Ident, ItemFn, Pat, ReturnType};

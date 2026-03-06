@@ -1,3 +1,9 @@
+//! Codegen for dynamic-layout `#[account]` types.
+//!
+//! Dynamic accounts contain String/Vec fields with length prefixes.
+//! Generates runtime codec helpers (read/write with offset tracking) and
+//! accessor methods that operate directly on the account data buffer.
+
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::DeriveInput;

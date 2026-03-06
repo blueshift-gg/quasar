@@ -1,3 +1,5 @@
+//! Parses `#[event]` structs for IDL generation.
+
 use syn::{Fields, Item};
 
 use crate::parser::helpers;

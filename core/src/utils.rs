@@ -1,5 +1,10 @@
-/// Module with functions to provide hints to the compiler about how code
-/// should be optimized.
+//! Compiler optimization hints.
+//!
+//! Provides `hint::likely`, `hint::unlikely`, and `hint::cold_path` for
+//! guiding branch prediction on the SBF backend. These are the `no_std`
+//! equivalents of the nightly `core::intrinsics::likely`/`unlikely`.
+
+/// Compiler branch-prediction hints.
 pub mod hint {
     /// A "dummy" function with a hint to the compiler that it is unlikely to be
     /// called.

@@ -1,3 +1,6 @@
+//! Parses `#[account]` state structs for IDL generation (field types,
+//! discriminators, dynamic layout classification).
+
 use syn::{Fields, Item};
 
 use super::helpers;

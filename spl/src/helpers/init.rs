@@ -1,7 +1,7 @@
 use quasar_core::prelude::*;
 
-use crate::constants::{SPL_TOKEN_ID, TOKEN_2022_ID};
-use crate::cpi::TokenCpi;
+use crate::helpers::constants::{SPL_TOKEN_ID, TOKEN_2022_ID};
+use crate::instructions::TokenCpi;
 use crate::state::{MintAccountState, TokenAccountState};
 
 #[inline(always)]

@@ -21,6 +21,7 @@ pub struct RemainingAccounts<'a> {
 }
 
 impl<'a> RemainingAccounts<'a> {
+    /// Creates a new remaining accounts accessor from the SVM buffer pointers.
     #[inline(always)]
     pub fn new(ptr: *mut u8, boundary: *const u8, declared: &'a [AccountView]) -> Self {
         Self {
@@ -30,6 +31,7 @@ impl<'a> RemainingAccounts<'a> {
         }
     }
 
+    /// Returns `true` if there are no remaining accounts.
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.ptr as *const u8 >= self.boundary
@@ -44,10 +46,13 @@ impl<'a> RemainingAccounts<'a> {
                 return None;
             }
             let raw = ptr as *mut RuntimeAccount;
+            // SAFETY: ptr is within the SVM accounts buffer (bounded by self.boundary).
+            // borrow_state is the first field of RuntimeAccount.
             let borrow = unsafe { (*raw).borrow_state };
 
             if i == index {
                 return Some(if borrow == NOT_BORROWED {
+                    // SAFETY: raw points to a valid, non-duplicate RuntimeAccount.
                     unsafe { AccountView::new_unchecked(raw) }
                 } else {
                     resolve_dup_walk(borrow as usize, self.declared, self.ptr, self.boundary)
@@ -55,12 +60,15 @@ impl<'a> RemainingAccounts<'a> {
             }
 
             if borrow == NOT_BORROWED {
+                // SAFETY: raw is a valid RuntimeAccount; data_len is set by the SVM.
+                // Advancing by header + data_len + alignment reaches the next account.
                 unsafe {
                     ptr = ptr.add(ACCOUNT_HEADER + (*raw).data_len as usize);
                     let align = (ptr as *const u8).align_offset(8);
                     ptr = ptr.add(align);
                 }
             } else {
+                // SAFETY: duplicate entries are u64-sized in the SVM buffer.
                 unsafe {
                     ptr = ptr.add(core::mem::size_of::<u64>());
                 }
@@ -102,6 +110,7 @@ fn resolve_dup_walk(
     let mut idx = orig_idx;
     for _ in 0..2 {
         if idx < declared.len() {
+            // SAFETY: idx is within bounds of the declared accounts slice.
             return unsafe { core::ptr::read(declared.as_ptr().add(idx)) };
         }
 
@@ -112,10 +121,12 @@ fn resolve_dup_walk(
                 break;
             }
             let raw = ptr as *mut RuntimeAccount;
+            // SAFETY: ptr is within the SVM buffer (bounded by boundary check above).
             let borrow = unsafe { (*raw).borrow_state };
 
             if i == target {
                 if borrow == NOT_BORROWED {
+                    // SAFETY: raw points to a valid, non-duplicate RuntimeAccount.
                     return unsafe { AccountView::new_unchecked(raw) };
                 }
                 // Follow the chain iteratively instead of recursing
@@ -124,12 +135,14 @@ fn resolve_dup_walk(
             }
 
             if borrow == NOT_BORROWED {
+                // SAFETY: same advancement logic as get() — header + data + alignment.
                 unsafe {
                     ptr = ptr.add(ACCOUNT_HEADER + (*raw).data_len as usize);
                     let align = (ptr as *const u8).align_offset(8);
                     ptr = ptr.add(align);
                 }
             } else {
+                // SAFETY: duplicate entries are u64-sized.
                 unsafe {
                     ptr = ptr.add(core::mem::size_of::<u64>());
                 }
@@ -139,6 +152,11 @@ fn resolve_dup_walk(
     unreachable!("duplicate chain exceeded maximum depth")
 }
 
+/// Iterator over remaining accounts in the SVM input buffer.
+///
+/// Builds a cache of yielded [`AccountView`]s for O(1) duplicate resolution.
+/// Returns `Err(QuasarError::RemainingAccountsOverflow)` if more than 64
+/// accounts are yielded.
 pub struct RemainingIter<'a> {
     ptr: *mut u8,
     boundary: *const u8,
@@ -165,6 +183,7 @@ impl RemainingIter<'_> {
     #[inline(always)]
     fn resolve_dup(&self, orig_idx: usize) -> Option<AccountView> {
         if orig_idx < self.declared.len() {
+            // SAFETY: orig_idx < declared.len() bounds-checked above.
             Some(unsafe { core::ptr::read(self.declared.as_ptr().add(orig_idx)) })
         } else {
             let remaining_idx = orig_idx - self.declared.len();
@@ -173,6 +192,8 @@ impl RemainingIter<'_> {
             if remaining_idx >= self.index {
                 return None;
             }
+            // SAFETY: remaining_idx < self.index, and elements 0..index are initialized
+            // by previous next() calls.
             Some(unsafe { core::ptr::read(self.cache_ptr().add(remaining_idx)) })
         }
     }
@@ -191,10 +212,13 @@ impl Iterator for RemainingIter<'_> {
         }
 
         let raw = self.ptr as *mut RuntimeAccount;
+        // SAFETY: ptr is within the SVM buffer (boundary check above).
         let borrow = unsafe { (*raw).borrow_state };
 
         let view = if borrow == NOT_BORROWED {
+            // SAFETY: raw points to a valid, non-duplicate RuntimeAccount.
             let view = unsafe { AccountView::new_unchecked(raw) };
+            // SAFETY: advancing past this account's header + data + alignment.
             unsafe {
                 self.ptr = self.ptr.add(ACCOUNT_HEADER + (*raw).data_len as usize);
                 let align = (self.ptr as *const u8).align_offset(8);
@@ -202,6 +226,7 @@ impl Iterator for RemainingIter<'_> {
             }
             view
         } else {
+            // SAFETY: duplicate entries are u64-sized.
             unsafe {
                 self.ptr = self.ptr.add(core::mem::size_of::<u64>());
             }

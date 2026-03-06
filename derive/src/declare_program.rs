@@ -1,3 +1,7 @@
+//! `declare_program!` — generates a typed client module from a program's IDL JSON.
+//! Produces account types, instruction builders, event types, and error enums
+//! for cross-program interaction without runtime IDL parsing.
+
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};

@@ -1,3 +1,8 @@
+//! Off-chain instruction builder codegen for `#[derive(Accounts)]`.
+//!
+//! Generates a `build_instruction()` function that constructs a Solana
+//! `Instruction` from typed account addresses — only compiled for non-SBF targets.
+
 use syn::Type;
 
 use super::attrs::AccountFieldAttrs;

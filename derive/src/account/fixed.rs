@@ -1,3 +1,9 @@
+//! Codegen for fixed-layout `#[account]` types.
+//!
+//! Fixed accounts have all fields known at compile time (no dynamic String/Vec).
+//! Generates the `#[repr(C)]` ZC companion struct with Pod fields, plus
+//! `Owner`, `Discriminator`, `Space`, and `AccountSerialize` impls.
+
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::DeriveInput;

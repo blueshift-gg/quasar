@@ -49,56 +49,89 @@ macro_rules! define_pod_signed {
 
 macro_rules! define_pod_common {
     ($name:ident, $native:ty, $size:expr) => {
+        #[doc = concat!(
+            "An alignment-1 wrapper around [`", stringify!($native), "`] stored as `[u8; ", stringify!($size), "]`.\n",
+            "\n",
+            "`", stringify!($name), "` enables safe zero-copy access inside `#[repr(C)]` account structs\n",
+            "by guaranteeing alignment 1 — no padding, no alignment traps on Solana's BPF runtime.\n",
+            "\n",
+            "# Arithmetic\n",
+            "\n",
+            "Operators (`+`, `-`, `*`) use **wrapping** semantics in release builds for CU\n",
+            "efficiency and **panic on overflow** in debug builds. Use [`", stringify!($name), "::checked_add`],\n",
+            "[`", stringify!($name), "::checked_sub`], [`", stringify!($name), "::checked_mul`], or\n",
+            "[`", stringify!($name), "::checked_div`] for explicit overflow detection in all build profiles.\n",
+            "\n",
+            "# Layout\n",
+            "\n",
+            "- Size: `", stringify!($size), "` bytes\n",
+            "- Alignment: `1`\n",
+            "- Representation: little-endian `[u8; ", stringify!($size), "]` (`#[repr(transparent)]`)\n",
+        )]
         #[repr(transparent)]
         #[derive(Copy, Clone, Default)]
         #[cfg_attr(feature = "wincode", derive(SchemaWrite, SchemaRead))]
         pub struct $name([u8; $size]);
 
         impl $name {
+            /// The zero value.
             pub const ZERO: Self = Self([0u8; $size]);
+
+            #[doc = concat!("The largest value representable by [`", stringify!($native), "`].")]
             pub const MAX: Self = Self(<$native>::MAX.to_le_bytes());
+
+            #[doc = concat!("The smallest value representable by [`", stringify!($native), "`].")]
             pub const MIN: Self = Self(<$native>::MIN.to_le_bytes());
 
+            #[doc = concat!("Returns the contained [`", stringify!($native), "`] value, converting from little-endian bytes.")]
             #[inline(always)]
             pub fn get(&self) -> $native {
                 <$native>::from_le_bytes(self.0)
             }
 
+            /// Returns `true` if the value is zero.
             #[inline(always)]
             pub fn is_zero(&self) -> bool {
                 self.0 == [0u8; $size]
             }
 
+            /// Checked addition. Returns `None` on overflow.
             #[inline(always)]
             pub fn checked_add(self, rhs: impl Into<$name>) -> Option<Self> {
                 self.get().checked_add(rhs.into().get()).map(Self::from)
             }
 
+            /// Checked subtraction. Returns `None` on underflow.
             #[inline(always)]
             pub fn checked_sub(self, rhs: impl Into<$name>) -> Option<Self> {
                 self.get().checked_sub(rhs.into().get()).map(Self::from)
             }
 
+            /// Checked multiplication. Returns `None` on overflow.
             #[inline(always)]
             pub fn checked_mul(self, rhs: impl Into<$name>) -> Option<Self> {
                 self.get().checked_mul(rhs.into().get()).map(Self::from)
             }
 
+            /// Checked division. Returns `None` if `rhs` is zero.
             #[inline(always)]
             pub fn checked_div(self, rhs: impl Into<$name>) -> Option<Self> {
                 self.get().checked_div(rhs.into().get()).map(Self::from)
             }
 
+            /// Saturating addition. Clamps at the numeric bounds instead of overflowing.
             #[inline(always)]
             pub fn saturating_add(self, rhs: impl Into<$name>) -> Self {
                 Self::from(self.get().saturating_add(rhs.into().get()))
             }
 
+            /// Saturating subtraction. Clamps at zero (for unsigned) or the numeric bound (for signed).
             #[inline(always)]
             pub fn saturating_sub(self, rhs: impl Into<$name>) -> Self {
                 Self::from(self.get().saturating_sub(rhs.into().get()))
             }
 
+            /// Saturating multiplication. Clamps at the numeric bounds instead of overflowing.
             #[inline(always)]
             pub fn saturating_mul(self, rhs: impl Into<$name>) -> Self {
                 Self::from(self.get().saturating_mul(rhs.into().get()))
@@ -468,12 +501,24 @@ const _: () = assert!(core::mem::size_of::<PodI16>() == 2);
 const _: () = assert!(core::mem::align_of::<PodBool>() == 1);
 const _: () = assert!(core::mem::size_of::<PodBool>() == 1);
 
+/// An alignment-1 boolean stored as a single `[u8; 1]`.
+///
+/// Any non-zero byte is considered `true`, matching Solana program conventions.
+/// This type is `#[repr(transparent)]` over `[u8; 1]`, so it has alignment 1
+/// and can be used safely in `#[repr(C)]` zero-copy account structs.
+///
+/// # Layout
+///
+/// - Size: `1` byte
+/// - Alignment: `1`
+/// - `false` = `0x00`, `true` = any non-zero byte (canonical form: `0x01`)
 #[repr(transparent)]
 #[derive(Copy, Clone, Default)]
 #[cfg_attr(feature = "wincode", derive(SchemaWrite, SchemaRead))]
 pub struct PodBool([u8; 1]);
 
 impl PodBool {
+    /// Returns the contained [`bool`] value. Any non-zero byte yields `true`.
     #[inline(always)]
     pub fn get(&self) -> bool {
         self.0[0] != 0

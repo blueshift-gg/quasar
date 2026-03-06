@@ -1,3 +1,18 @@
+//! Self-CPI event emission for spoofing-resistant on-chain events.
+//!
+//! Quasar events support two emission strategies:
+//!
+//! - **Log-based** (`emit!()` / `sol_log_data`) — ~100 CU. Fast but any program
+//!   can emit arbitrary log data, so indexers cannot prove which program produced
+//!   a given log entry.
+//!
+//! - **Self-CPI** (`emit_cpi!()`) — ~1,000 CU. The program invokes itself with
+//!   the event data, signing via the `__event_authority` PDA. Indexers can verify
+//!   the invoking program ID in the instruction trace, making the event unforgeable.
+//!
+//! This module provides `emit_event_cpi`, the low-level self-CPI helper used by
+//! the `emit_cpi!()` macro. Most programs should use the macro directly.
+
 use crate::cpi::{invoke_raw, InstructionAccount, RawCpiAccount, Seed, Signer};
 use solana_account_view::AccountView;
 use solana_program_error::ProgramError;

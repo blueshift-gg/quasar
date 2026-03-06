@@ -1,3 +1,14 @@
+//! Off-chain instruction building utilities.
+//!
+//! This module provides `WriteBytes` and `build_instruction_data` for
+//! constructing Solana instruction data in client (non-SBF) contexts.
+//! The `#[derive(Accounts)]` macro generates client-side `build_ix()` methods
+//! that use these helpers.
+//!
+//! **This is the only module in `quasar-core` that allocates** — it uses
+//! `alloc::vec::Vec` for instruction data buffers since off-chain code runs
+//! in a standard allocator environment.
+
 extern crate alloc;
 
 use alloc::vec::Vec;
