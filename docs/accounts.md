@@ -35,15 +35,14 @@ pub struct Account<T> {
 
 Construction goes through `from_account_view` (read-only) or `from_account_view_mut` (writable). The mutable variant additionally checks the `is_writable` flag on the account.
 
-### `Initialize<T>`
+### Account Initialization
 
-For accounts that do not exist yet. Skips owner and discriminator validation -- the account will be created via `init()` or `init_signed()`. The mutable variant checks `is_writable`.
+`Account<T>` handles both initialized and uninitialized accounts. When a field is annotated with `#[account(init)]` or `#[account(init_if_needed)]`, the derive macro generates account creation logic via CPI. The field type remains `Account<T>` -- the `init` directive controls whether creation happens during parsing, and the resulting field is a validated account.
 
 ```rust
-pub escrow: &'info mut Initialize<EscrowAccount>,
+#[account(init, payer = maker, seeds = [b"escrow", maker], bump)]
+pub escrow: &'info mut Account<EscrowAccount>,
 ```
-
-`Initialize<T>` is also `#[repr(transparent)]` over `AccountView`. It performs no validation in `from_account_view` -- the account data is expected to be uninitialized at this point.
 
 ### `Signer`
 
@@ -234,14 +233,6 @@ EscrowAccount {
 
 Re-initialization protection: `init()` checks that the discriminator region is all-zero before writing. Since all-zero discriminators are banned at compile time, uninitialized data (all zeros) can never match a valid account. An attacker cannot reinitialize an existing account because its discriminator bytes will be non-zero.
 
-**`Initialize<T>` rejection on `#[account(init)]`**: Fields annotated with `#[account(init)]` or `#[account(init_if_needed)]` must use `Account<T>`, not `Initialize<T>`. The derive macro's `init` directive handles account creation via CPI -- the resulting field is a validated account. Using `Initialize<T>` would expose a second `.init()` path, risking double-initialization. The macro emits a compile error:
-
-```
-#[account(init)] handles account creation — use `Account<T>` instead of
-`Initialize<T>`. `Initialize<T>` exposes `.init()` which would double-initialize
-the account.
-```
-
 ### Closing Accounts
 
 ```rust
@@ -290,8 +281,8 @@ PDA derivation. `seeds` accepts byte slices and account references (account refe
 
 ```rust
 // find_program_address -- bump is auto-discovered and stored in the bumps struct
-#[account(seeds = [b"escrow", maker], bump)]
-pub escrow: &'info mut Initialize<EscrowAccount>,
+#[account(init, payer = maker, seeds = [b"escrow", maker], bump)]
+pub escrow: &'info mut Account<EscrowAccount>,
 
 // create_program_address -- cheaper when bump is already known
 #[account(seeds = [b"escrow", maker], bump = escrow.bump)]
@@ -679,10 +670,10 @@ pub struct CreateAta<'info> {
         associated_token::mint = mint,
         associated_token::authority = authority,
     )]
-    pub token_account: &'info mut Initialize<Token>,
+    pub token_account: &'info mut Account<Token>,
     pub token_program: &'info Program<Token>,
     pub system_program: &'info Program<System>,
-    pub ata_program: &'info Program<AssociatedTokenProgram>,
+    pub ata_program: &'info AssociatedTokenProgram,
 }
 ```
 

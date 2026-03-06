@@ -298,7 +298,7 @@ The account must already be allocated with the correct size (82 bytes). `freeze_
 
 ### `InitToken` Trait
 
-Extension trait on `Initialize<T>` for token account types. Chains `SystemProgram::create_account` followed by `InitializeAccount3` in two CPIs.
+Extension trait for token account types. Chains system program `create_account` followed by `InitializeAccount3` in two CPIs.
 
 ```rust
 self.vault_ta_a.init(
@@ -312,9 +312,9 @@ self.vault_ta_a.init(
 ```
 
 Implemented for:
-- `Initialize<Token>`
-- `Initialize<Token2022>`
-- `Initialize<InterfaceAccount<Token>>`
+- `Account<Token>`
+- `Account<Token2022>`
+- `InterfaceAccount<Token>`
 
 #### `init_if_needed`
 
@@ -339,7 +339,7 @@ self.vault_ta_a.init_if_needed(
 
 ### `InitMint` Trait
 
-Extension trait on `Initialize<T>` for mint account types. Chains `SystemProgram::create_account` followed by `InitializeMint2` in two CPIs.
+Extension trait for mint account types. Chains system program `create_account` followed by `InitializeMint2` in two CPIs.
 
 ```rust
 self.new_mint.init(
@@ -354,9 +354,9 @@ self.new_mint.init(
 ```
 
 Implemented for:
-- `Initialize<Mint>`
-- `Initialize<Mint2022>`
-- `Initialize<InterfaceAccount<Mint>>`
+- `Account<Mint>`
+- `Account<Mint2022>`
+- `InterfaceAccount<Mint>`
 
 #### `init_if_needed` (Mint)
 
@@ -412,7 +412,7 @@ ata_create_idempotent(ata_program, payer, ata, wallet, mint, system_program, tok
 
 ### `InitAssociatedToken` Trait
 
-Extension trait on `Initialize<AssociatedToken>` providing `.init()` and `.init_if_needed()`:
+Extension trait for associated token account types, providing `.init()` and `.init_if_needed()`:
 
 ```rust
 // Create ATA -- fails if it already exists
@@ -622,7 +622,7 @@ Requirements:
 
 For manual (non-derive) initialization:
 
-**`InitMetadata`** (on `Initialize<MetadataAccount>`):
+**`InitMetadata`** (on `UncheckedAccount` for metadata):
 
 ```rust
 self.metadata.init(
@@ -640,7 +640,7 @@ self.metadata.init(
 )?;
 ```
 
-**`InitMasterEdition`** (on `Initialize<MasterEditionAccount>`):
+**`InitMasterEdition`** (on `UncheckedAccount` for master edition):
 
 ```rust
 self.master_edition.init(
@@ -719,43 +719,21 @@ The `Make` instruction demonstrates token account initialization, escrow creatio
 #[derive(Accounts)]
 pub struct Make<'info> {
     pub maker: &'info mut Signer,
-    #[account(seeds = [b"escrow", maker], bump)]
-    pub escrow: &'info mut Initialize<EscrowAccount>,
+    #[account(init, payer = maker, seeds = [b"escrow", maker], bump)]
+    pub escrow: &'info mut Account<Escrow>,
     pub mint_a: &'info Account<Mint>,
     pub mint_b: &'info Account<Mint>,
     pub maker_ta_a: &'info mut Account<Token>,
-    pub maker_ta_b: &'info mut Initialize<Token>,
-    pub vault_ta_a: &'info mut Initialize<Token>,
+    #[account(init_if_needed, payer = maker, token::mint = mint_b, token::authority = maker)]
+    pub maker_ta_b: &'info mut Account<Token>,
+    #[account(init_if_needed, payer = maker, token::mint = mint_a, token::authority = escrow)]
+    pub vault_ta_a: &'info mut Account<Token>,
     pub rent: &'info Sysvar<Rent>,
     pub token_program: &'info Program<Token>,
     pub system_program: &'info Program<System>,
 }
 
 impl<'info> Make<'info> {
-    pub fn init_accounts(&self) -> Result<(), ProgramError> {
-        let rent = Some(&**self.rent);
-
-        // Initialize vault token account (owned by escrow PDA)
-        self.vault_ta_a.init_if_needed(
-            self.system_program,
-            self.maker,
-            self.token_program,
-            self.mint_a,
-            self.escrow.address(),
-            rent,
-        )?;
-
-        // Initialize maker's token-B account
-        self.maker_ta_b.init_if_needed(
-            self.system_program,
-            self.maker,
-            self.token_program,
-            self.mint_b,
-            self.maker.address(),
-            rent,
-        )
-    }
-
     pub fn deposit_tokens(&mut self, amount: u64) -> Result<(), ProgramError> {
         self.token_program
             .transfer(self.maker_ta_a, self.vault_ta_a, self.maker, amount)
