@@ -243,9 +243,8 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                         if !is_dup {
                             unsafe {
                                 core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
-                                input = input.add(__ACCOUNT_HEADER + (*raw).data_len as usize);
-                                let align = (input as *const u8).align_offset(8);
-                                input = input.add(align);
+                                input = input.add(__ACCOUNT_HEADER.wrapping_add((*raw).data_len as usize));
+                                input = input.add((input as usize).wrapping_neg() & 7);
                             }
                         } else {
                             unsafe {
@@ -291,7 +290,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                             }
 
                             core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
-                            input = input.add(__ACCOUNT_HEADER + (*raw).data_len as usize);
+                            input = input.add(__ACCOUNT_HEADER.wrapping_add((*raw).data_len as usize));
                             input = input.add((input as usize).wrapping_neg() & 7);
                         }
                     });
@@ -311,7 +310,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                             }
 
                             core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
-                            input = input.add(__ACCOUNT_HEADER + (*raw).data_len as usize);
+                            input = input.add(__ACCOUNT_HEADER.wrapping_add((*raw).data_len as usize));
                             input = input.add((input as usize).wrapping_neg() & 7);
                         }
                     });
@@ -329,7 +328,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                             }
 
                             core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
-                            input = input.add(__ACCOUNT_HEADER + (*raw).data_len as usize);
+                            input = input.add(__ACCOUNT_HEADER.wrapping_add((*raw).data_len as usize));
                             input = input.add((input as usize).wrapping_neg() & 7);
                         }
                     });

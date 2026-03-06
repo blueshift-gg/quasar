@@ -19,33 +19,27 @@ pub fn update_metadata_accounts_v2<'a>(
     is_mutable: Option<bool>,
 ) -> BufCpiCall<'a, 2, 512> {
     if let Some(ref n) = name {
-        assert!(
-            n.0.len() <= super::MAX_NAME_LEN,
-            "name length {} exceeds max {}",
-            n.0.len(),
-            super::MAX_NAME_LEN
-        );
+        if n.0.len() > super::MAX_NAME_LEN {
+            metadata_field_panic();
+        }
     }
     if let Some(ref s) = symbol {
-        assert!(
-            s.0.len() <= super::MAX_SYMBOL_LEN,
-            "symbol length {} exceeds max {}",
-            s.0.len(),
-            super::MAX_SYMBOL_LEN
-        );
+        if s.0.len() > super::MAX_SYMBOL_LEN {
+            metadata_field_panic();
+        }
     }
     if let Some(ref u) = uri {
-        assert!(
-            u.0.len() <= super::MAX_URI_LEN,
-            "uri length {} exceeds max {}",
-            u.0.len(),
-            super::MAX_URI_LEN
-        );
+        if u.0.len() > super::MAX_URI_LEN {
+            metadata_field_panic();
+        }
     }
 
     let mut data = [0u8; 512];
     let mut offset = 0;
 
+    // SAFETY: All writes are within the 512-byte buffer. Field length checks
+    // above enforce name<=32, symbol<=10, uri<=200 — max serialized size is
+    // well under 512. Each ptr.add(offset) advances monotonically.
     unsafe {
         let ptr = data.as_mut_ptr();
 
@@ -134,4 +128,10 @@ pub fn update_metadata_accounts_v2<'a>(
         data,
         offset,
     )
+}
+
+#[cold]
+#[inline(never)]
+fn metadata_field_panic() -> ! {
+    panic!("metadata field lengths exceed Metaplex limits");
 }

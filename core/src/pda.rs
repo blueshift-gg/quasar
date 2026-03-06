@@ -20,7 +20,7 @@ const PDA_MARKER: &[u8; 21] = b"ProgramDerivedAddress";
 /// (1,500 CU). The seeds slice must already include the bump byte.
 ///
 /// Hashes `seeds || program_id || "ProgramDerivedAddress"` with SHA-256,
-/// then compares the result against `expected` using `keys_eq`.
+/// then compares the result against `expected` via `read_unaligned` u64 chunks.
 #[inline(always)]
 pub fn verify_program_address(
     seeds: &[&[u8]],
@@ -29,16 +29,22 @@ pub fn verify_program_address(
 ) -> Result<(), ProgramError> {
     #[cfg(any(target_os = "solana", target_arch = "bpf"))]
     {
-        let mut slices = [&[] as &[u8]; 19];
+        let mut slices = core::mem::MaybeUninit::<[&[u8]; 19]>::uninit();
+        let sptr = slices.as_mut_ptr() as *mut &[u8];
         let n = seeds.len();
         let mut i = 0;
         while i < n {
-            slices[i] = seeds[i];
+            // SAFETY: i < n <= 17 (max seeds). sptr[i] is within the 19-element array.
+            unsafe { sptr.add(i).write(seeds[i]) };
             i += 1;
         }
-        slices[n] = program_id.as_ref();
-        slices[n + 1] = PDA_MARKER.as_slice();
-        let input = &slices[..n + 2];
+        // SAFETY: sptr[n] and sptr[n+1] are within bounds (n <= 17, array has 19 slots).
+        unsafe {
+            sptr.add(n).write(program_id.as_ref());
+            sptr.add(n + 1).write(PDA_MARKER.as_slice());
+        }
+        // SAFETY: Elements 0..n+2 are initialized by the loop and two writes above.
+        let input = unsafe { core::slice::from_raw_parts(sptr, n + 2) };
         let mut hash = core::mem::MaybeUninit::<[u8; 32]>::uninit();
         // SAFETY: On SBF, &[u8] has layout (*const u8, u64) — identical to sol_sha256's
         // SolBytes. The cast reinterprets the slice-of-fat-pointers as the byte array
@@ -50,8 +56,20 @@ pub fn verify_program_address(
                 hash.as_mut_ptr() as *mut u8,
             );
         }
+        // SAFETY: sol_sha256 writes exactly 32 bytes to the output buffer,
+        // fully initializing hash.
         let hash = unsafe { hash.assume_init() };
-        if crate::keys_eq(&Address::new_from_array(hash), expected) {
+        let h = hash.as_ptr() as *const u64;
+        let e = expected.as_array().as_ptr() as *const u64;
+        // SAFETY: Both hash and expected are [u8; 32] — 32 contiguous bytes.
+        // read_unaligned at offsets 0,8,16,24 stays within bounds.
+        let eq = unsafe {
+            core::ptr::read_unaligned(h) == core::ptr::read_unaligned(e)
+                && core::ptr::read_unaligned(h.add(1)) == core::ptr::read_unaligned(e.add(1))
+                && core::ptr::read_unaligned(h.add(2)) == core::ptr::read_unaligned(e.add(2))
+                && core::ptr::read_unaligned(h.add(3)) == core::ptr::read_unaligned(e.add(3))
+        };
+        if eq {
             Ok(())
         } else {
             Err(ProgramError::InvalidSeeds)
@@ -81,21 +99,40 @@ pub fn based_try_find_program_address(
     {
         const CURVE25519_EDWARDS: u64 = 0;
         let n = seeds.len();
+
+        let mut slices = core::mem::MaybeUninit::<[&[u8]; 19]>::uninit();
+        let sptr = slices.as_mut_ptr() as *mut &[u8];
+        let mut i = 0;
+        while i < n {
+            // SAFETY: i < n <= 16 (max seeds). sptr[i] is within the 19-element array.
+            unsafe { sptr.add(i).write(seeds[i]) };
+            i += 1;
+        }
+        // SAFETY: sptr[n+1] and sptr[n+2] are within bounds (n <= 16, array has 19 slots).
+        unsafe {
+            sptr.add(n + 1).write(program_id.as_ref());
+            sptr.add(n + 2).write(PDA_MARKER.as_slice());
+        }
+
+        let mut bump_arr = [u8::MAX];
+        let bump_ptr = bump_arr.as_mut_ptr();
+        // SAFETY: sptr[n] is within bounds (n <= 16, array has 19 slots).
+        // bump_arr lives for the entire block. The fat pointer (ptr, len=1)
+        // stored in sptr[n] points to bump_arr for the duration.
+        unsafe { sptr.add(n).write(core::slice::from_raw_parts(bump_ptr, 1)) };
+
         let mut bump = u8::MAX;
         loop {
-            let bump_arr = [bump];
-            let mut slices = [&[] as &[u8]; 19];
-            let mut i = 0;
-            while i < n {
-                slices[i] = seeds[i];
-                i += 1;
-            }
-            slices[n] = &bump_arr;
-            slices[n + 1] = program_id.as_ref();
-            slices[n + 2] = PDA_MARKER.as_slice();
-            let input = &slices[..n + 3];
+            // SAFETY: bump_ptr points to bump_arr[0] which is valid for writes.
+            unsafe { bump_ptr.write(bump) };
+            // SAFETY: Elements 0..n+3 are initialized: 0..n by the loop above,
+            // n by bump write, n+1 and n+2 by program_id/marker writes.
+            let input = unsafe { core::slice::from_raw_parts(sptr, n + 3) };
             let mut hash = core::mem::MaybeUninit::<[u8; 32]>::uninit();
-            // SAFETY: Same Dean Little cast as verify_program_address.
+            // SAFETY: On SBF, &[u8] has layout (*const u8, u64) — identical to
+            // sol_sha256's SolBytes. The cast reinterprets the slice-of-fat-pointers
+            // as the byte array the syscall expects. Technique from Dean Little's
+            // solana-nostd-sha256.
             unsafe {
                 sol_sha256(
                     input as *const _ as *const u8,
@@ -103,6 +140,8 @@ pub fn based_try_find_program_address(
                     hash.as_mut_ptr() as *mut u8,
                 );
             }
+            // SAFETY: sol_sha256 writes exactly 32 bytes to the output buffer,
+            // fully initializing hash.
             let hash_bytes = unsafe { hash.assume_init() };
             // SAFETY: hash_bytes is a valid 32-byte array. sol_curve_validate_point
             // reads 32 bytes from the pointer. Returns 0 if on curve, non-zero if not.

@@ -34,11 +34,25 @@ impl<'a, const ACCTS: usize, const MAX: usize> BufCpiCall<'a, ACCTS, MAX> {
         data: [u8; MAX],
         data_len: usize,
     ) -> Self {
-        assert!(
-            data_len <= MAX,
-            "BufCpiCall: data_len exceeds buffer capacity"
-        );
-        let cpi_accounts = views.map(RawCpiAccount::from_view);
+        if data_len > MAX {
+            #[cold]
+            #[inline(never)]
+            fn capacity_exceeded() -> ! {
+                panic!("BufCpiCall: data_len exceeds buffer capacity")
+            }
+            capacity_exceeded();
+        }
+        let mut cpi_accounts = core::mem::MaybeUninit::<[RawCpiAccount<'a>; ACCTS]>::uninit();
+        let ptr = cpi_accounts.as_mut_ptr() as *mut RawCpiAccount<'a>;
+        let mut i = 0;
+        while i < ACCTS {
+            // SAFETY: i < ACCTS, and ACCTS is the array length.
+            // views[i] is valid because views has exactly ACCTS elements.
+            unsafe { ptr.add(i).write(RawCpiAccount::from_view(views[i])) };
+            i += 1;
+        }
+        // SAFETY: All ACCTS elements written by the loop above.
+        let cpi_accounts = unsafe { cpi_accounts.assume_init() };
         Self {
             program_id,
             accounts,
@@ -86,7 +100,11 @@ impl<'a, const ACCTS: usize, const MAX: usize> BufCpiCall<'a, ACCTS, MAX> {
         if result == 0 {
             Ok(())
         } else {
-            Err(ProgramError::from(result))
+            #[cold]
+            fn cpi_error(result: u64) -> ProgramError {
+                ProgramError::from(result)
+            }
+            Err(cpi_error(result))
         }
     }
 

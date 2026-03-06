@@ -12,6 +12,7 @@ const CLOCK_ID: Address = Address::new_from_array([
     75, 109, 92, 115, 85, 91, 33, 0, 0, 0, 0,
 ]);
 
+/// Clock sysvar: slot, epoch, and timestamps.
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct Clock {

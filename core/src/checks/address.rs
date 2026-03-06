@@ -5,7 +5,7 @@ pub trait Address: crate::traits::Id {
     /// Returns `Err(IncorrectProgramId)` if `view.address() != Self::ID`.
     #[inline(always)]
     fn check(view: &AccountView) -> Result<(), ProgramError> {
-        if view.address() != &Self::ID {
+        if !crate::keys_eq(view.address(), &Self::ID) {
             return Err(ProgramError::IncorrectProgramId);
         }
         Ok(())

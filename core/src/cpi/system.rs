@@ -8,8 +8,14 @@ use solana_program_error::ProgramError;
 declare_id!("11111111111111111111111111111111");
 pub use ID as SYSTEM_PROGRAM_ID;
 
-// --- Free functions (used by derive macro init_signed + account realloc) ---
+const CREATE_ACCOUNT_DISC: [u8; 4] = 0u32.to_le_bytes();
+const ASSIGN_DISC: [u8; 4] = 1u32.to_le_bytes();
+const TRANSFER_DISC: [u8; 4] = 2u32.to_le_bytes();
 
+/// Create a new account via the System program.
+///
+/// Builds a 52-byte `CreateAccount` instruction (discriminator 0 + lamports +
+/// space + owner) and returns a ready-to-invoke `CpiCall`.
 #[inline(always)]
 pub fn create_account<'a>(
     from: &'a AccountView,
@@ -23,7 +29,7 @@ pub fn create_account<'a>(
     let data = unsafe {
         let mut buf = core::mem::MaybeUninit::<[u8; 52]>::uninit();
         let ptr = buf.as_mut_ptr() as *mut u8;
-        core::ptr::copy_nonoverlapping(0u32.to_le_bytes().as_ptr(), ptr, 4);
+        core::ptr::copy_nonoverlapping(CREATE_ACCOUNT_DISC.as_ptr(), ptr, 4);
         core::ptr::copy_nonoverlapping(lamports.to_le_bytes().as_ptr(), ptr.add(4), 8);
         core::ptr::copy_nonoverlapping(space.to_le_bytes().as_ptr(), ptr.add(12), 8);
         core::ptr::copy_nonoverlapping(owner.as_ref().as_ptr(), ptr.add(20), 32);
@@ -41,6 +47,7 @@ pub fn create_account<'a>(
     )
 }
 
+/// Transfer lamports between accounts via the System program.
 #[inline(always)]
 pub fn transfer<'a>(
     from: &'a AccountView,
@@ -52,7 +59,7 @@ pub fn transfer<'a>(
     let data = unsafe {
         let mut buf = core::mem::MaybeUninit::<[u8; 12]>::uninit();
         let ptr = buf.as_mut_ptr() as *mut u8;
-        core::ptr::copy_nonoverlapping(2u32.to_le_bytes().as_ptr(), ptr, 4);
+        core::ptr::copy_nonoverlapping(TRANSFER_DISC.as_ptr(), ptr, 4);
         core::ptr::copy_nonoverlapping(lamports.to_le_bytes().as_ptr(), ptr.add(4), 8);
         buf.assume_init()
     };
@@ -68,13 +75,14 @@ pub fn transfer<'a>(
     )
 }
 
+/// Assign an account to a new owner program via the System program.
 #[inline(always)]
 pub fn assign<'a>(account: &'a AccountView, owner: &'a Address) -> CpiCall<'a, 1, 36> {
     // SAFETY: All 36 bytes are written before assume_init.
     let data = unsafe {
         let mut buf = core::mem::MaybeUninit::<[u8; 36]>::uninit();
         let ptr = buf.as_mut_ptr() as *mut u8;
-        core::ptr::copy_nonoverlapping(1u32.to_le_bytes().as_ptr(), ptr, 4);
+        core::ptr::copy_nonoverlapping(ASSIGN_DISC.as_ptr(), ptr, 4);
         core::ptr::copy_nonoverlapping(owner.as_ref().as_ptr(), ptr.add(4), 32);
         buf.assume_init()
     };

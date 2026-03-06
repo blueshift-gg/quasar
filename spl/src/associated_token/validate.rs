@@ -18,7 +18,7 @@ pub fn validate_ata(
     token_program: &Address,
 ) -> Result<(), ProgramError> {
     let (expected, _) = get_associated_token_address_with_program(wallet, mint, token_program);
-    if *view.address() != expected {
+    if !quasar_core::keys_eq(view.address(), &expected) {
         return Err(ProgramError::InvalidSeeds);
     }
     validate_token_account(view, mint, wallet)

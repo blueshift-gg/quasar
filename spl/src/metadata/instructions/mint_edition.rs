@@ -23,6 +23,7 @@ pub fn mint_new_edition_from_master_edition_via_token<'a>(
     rent: &'a AccountView,
     edition: u64,
 ) -> CpiCall<'a, 14, 9> {
+    // SAFETY: All 9 bytes are written before assume_init.
     let data = unsafe {
         let mut buf = core::mem::MaybeUninit::<[u8; 9]>::uninit();
         let ptr = buf.as_mut_ptr() as *mut u8;

@@ -25,22 +25,19 @@ pub fn create_metadata_accounts_v3<'a>(
     let name_len = name.encoded_len() - 4;
     let symbol_len = symbol.encoded_len() - 4;
     let uri_len = uri.encoded_len() - 4;
-    assert!(
-        name_len <= super::MAX_NAME_LEN
-            && symbol_len <= super::MAX_SYMBOL_LEN
-            && uri_len <= super::MAX_URI_LEN,
-        "metadata field lengths exceed Metaplex limits (name={}, symbol={}, uri={})",
-        name_len,
-        symbol_len,
-        uri_len,
-    );
+    if name_len > super::MAX_NAME_LEN
+        || symbol_len > super::MAX_SYMBOL_LEN
+        || uri_len > super::MAX_URI_LEN
+    {
+        metadata_field_panic();
+    }
 
     // Borsh-serialize: discriminator + DataV2 + is_mutable + collection_details
     // DataV2 = name(String) + symbol(String) + uri(String) + seller_fee(u16) + creators(Option<Vec>) + collection(Option) + uses(Option)
     let mut data = [0u8; 512];
     let mut offset = 0;
 
-    // SAFETY: All writes are within the 512-byte buffer. The assert above
+    // SAFETY: All writes are within the 512-byte buffer. The check above
     // enforces name<=32, symbol<=10, uri<=200, so max variable data =
     // 12 (len prefixes) + 242 (bytes) + 8 (fixed fields) + 1 (disc) = 263.
     unsafe {
@@ -111,4 +108,10 @@ pub fn create_metadata_accounts_v3<'a>(
         data,
         offset,
     )
+}
+
+#[cold]
+#[inline(never)]
+fn metadata_field_panic() -> ! {
+    panic!("metadata field lengths exceed Metaplex limits");
 }

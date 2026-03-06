@@ -7,7 +7,27 @@ const ACCOUNT_HEADER: usize = core::mem::size_of::<RuntimeAccount>()
     + MAX_PERMITTED_DATA_INCREASE
     + core::mem::size_of::<u64>();
 
+const DUP_ENTRY_SIZE: usize = core::mem::size_of::<u64>();
+
 const MAX_REMAINING_ACCOUNTS: usize = 64;
+
+/// Advance pointer past a non-duplicate account.
+///
+/// # Safety
+/// `raw` must point to a valid RuntimeAccount within the SVM buffer.
+/// The returned pointer is aligned to 8 bytes and points to the next
+/// account slot (or past the buffer end).
+#[inline(always)]
+unsafe fn advance_past_account(ptr: *mut u8, raw: *mut RuntimeAccount) -> *mut u8 {
+    let next = ptr.add(ACCOUNT_HEADER.wrapping_add((*raw).data_len as usize));
+    ((next as usize).wrapping_add(7) & !7) as *mut u8
+}
+
+/// Advance pointer past a duplicate account entry (u64-sized).
+#[inline(always)]
+unsafe fn advance_past_dup(ptr: *mut u8) -> *mut u8 {
+    ptr.add(DUP_ENTRY_SIZE)
+}
 
 /// Zero-allocation remaining accounts accessor.
 ///
@@ -61,17 +81,10 @@ impl<'a> RemainingAccounts<'a> {
 
             if borrow == NOT_BORROWED {
                 // SAFETY: raw is a valid RuntimeAccount; data_len is set by the SVM.
-                // Advancing by header + data_len + alignment reaches the next account.
-                unsafe {
-                    ptr = ptr.add(ACCOUNT_HEADER + (*raw).data_len as usize);
-                    let align = (ptr as *const u8).align_offset(8);
-                    ptr = ptr.add(align);
-                }
+                ptr = unsafe { advance_past_account(ptr, raw) };
             } else {
                 // SAFETY: duplicate entries are u64-sized in the SVM buffer.
-                unsafe {
-                    ptr = ptr.add(core::mem::size_of::<u64>());
-                }
+                ptr = unsafe { advance_past_dup(ptr) };
             }
         }
         None
@@ -135,17 +148,11 @@ fn resolve_dup_walk(
             }
 
             if borrow == NOT_BORROWED {
-                // SAFETY: same advancement logic as get() — header + data + alignment.
-                unsafe {
-                    ptr = ptr.add(ACCOUNT_HEADER + (*raw).data_len as usize);
-                    let align = (ptr as *const u8).align_offset(8);
-                    ptr = ptr.add(align);
-                }
+                // SAFETY: raw is a valid RuntimeAccount within the SVM buffer.
+                ptr = unsafe { advance_past_account(ptr, raw) };
             } else {
-                // SAFETY: duplicate entries are u64-sized.
-                unsafe {
-                    ptr = ptr.add(core::mem::size_of::<u64>());
-                }
+                // SAFETY: duplicate entries are u64-sized in the SVM buffer.
+                ptr = unsafe { advance_past_dup(ptr) };
             }
         }
     }
@@ -218,23 +225,18 @@ impl Iterator for RemainingIter<'_> {
         let view = if borrow == NOT_BORROWED {
             // SAFETY: raw points to a valid, non-duplicate RuntimeAccount.
             let view = unsafe { AccountView::new_unchecked(raw) };
-            // SAFETY: advancing past this account's header + data + alignment.
-            unsafe {
-                self.ptr = self.ptr.add(ACCOUNT_HEADER + (*raw).data_len as usize);
-                let align = (self.ptr as *const u8).align_offset(8);
-                self.ptr = self.ptr.add(align);
-            }
+            // SAFETY: raw is a valid RuntimeAccount within the SVM buffer.
+            self.ptr = unsafe { advance_past_account(self.ptr, raw) };
             view
         } else {
-            // SAFETY: duplicate entries are u64-sized.
-            unsafe {
-                self.ptr = self.ptr.add(core::mem::size_of::<u64>());
-            }
+            // SAFETY: duplicate entries are u64-sized in the SVM buffer.
+            self.ptr = unsafe { advance_past_dup(self.ptr) };
             self.resolve_dup(borrow as usize)?
         };
 
-        // Cache for future dup resolution — same pattern as the entrypoint.
-        // SAFETY: AccountView is a thin pointer wrapper; ptr::read is a bitwise copy.
+        // SAFETY: view is a valid AccountView yielded from either new_unchecked or
+        // resolve_dup. ptr::write copies into the cache at index self.index, which
+        // is < MAX_REMAINING_ACCOUNTS (checked on line above boundary check).
         unsafe {
             let copy = core::ptr::read(&view);
             core::ptr::write(self.cache_mut_ptr().add(self.index), copy);

@@ -6,6 +6,7 @@ use crate::state::{MintAccountState, TokenAccountState};
 
 #[inline(always)]
 fn is_token_program_owner(view: &AccountView) -> bool {
+    // SAFETY: view.owner() reads the 32-byte owner field from SVM account metadata.
     let owner = unsafe { view.owner() };
     quasar_core::keys_eq(owner, &SPL_TOKEN_ID) || quasar_core::keys_eq(owner, &TOKEN_2022_ID)
 }
@@ -63,28 +64,26 @@ pub trait InitToken: AsAccountView + Sized {
         rent: Option<&Rent>,
     ) -> Result<(), ProgramError> {
         let view = self.to_account_view();
+        // SAFETY: view.owner() reads the 32-byte owner from SVM account metadata.
         if quasar_core::is_system_program(unsafe { view.owner() }) {
             self.init(system_program, payer, token_program, mint, owner, rent)
         } else {
-            // Validate that the account is owned by a token program.
-            // Without this check, an attacker could pass an account owned by
-            // an arbitrary program with crafted data matching expected offsets.
             if !is_token_program_owner(view) {
                 return Err(ProgramError::IllegalOwner);
             }
             if view.data_len() < TokenAccountState::LEN {
                 return Err(ProgramError::InvalidAccountData);
             }
-            // SAFETY: data_len >= 165 checked above, TokenAccountState is
-            // #[repr(C)] with alignment 1, pointer is to account data start.
+            // SAFETY: data_len >= 165 checked above. TokenAccountState is
+            // #[repr(C)] with alignment 1 — pointer cast is sound.
             let state = unsafe { &*(view.data_ptr() as *const TokenAccountState) };
             if !state.is_initialized() {
                 return Err(ProgramError::UninitializedAccount);
             }
-            if state.mint() != mint.to_account_view().address() {
+            if !quasar_core::keys_eq(state.mint(), mint.to_account_view().address()) {
                 return Err(ProgramError::InvalidAccountData);
             }
-            if state.owner() != owner {
+            if !quasar_core::keys_eq(state.owner(), owner) {
                 return Err(ProgramError::InvalidAccountData);
             }
             Ok(())
@@ -149,6 +148,7 @@ pub trait InitMint: AsAccountView + Sized {
         rent: Option<&Rent>,
     ) -> Result<(), ProgramError> {
         let view = self.to_account_view();
+        // SAFETY: view.owner() reads the 32-byte owner from SVM account metadata.
         if quasar_core::is_system_program(unsafe { view.owner() }) {
             self.init(
                 system_program,
@@ -166,13 +166,15 @@ pub trait InitMint: AsAccountView + Sized {
             if view.data_len() < MintAccountState::LEN {
                 return Err(ProgramError::InvalidAccountData);
             }
-            // SAFETY: data_len >= 82 checked above, MintAccountState is
-            // #[repr(C)] with alignment 1, pointer is to account data start.
+            // SAFETY: data_len >= 82 checked above. MintAccountState is
+            // #[repr(C)] with alignment 1 — pointer cast is sound.
             let state = unsafe { &*(view.data_ptr() as *const MintAccountState) };
             if !state.is_initialized() {
                 return Err(ProgramError::UninitializedAccount);
             }
-            if !state.has_mint_authority() || state.mint_authority_unchecked() != mint_authority {
+            if !state.has_mint_authority()
+                || !quasar_core::keys_eq(state.mint_authority_unchecked(), mint_authority)
+            {
                 return Err(ProgramError::InvalidAccountData);
             }
             Ok(())
@@ -202,10 +204,10 @@ pub fn validate_token_account(
     if !state.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
     }
-    if state.mint() != mint {
+    if !quasar_core::keys_eq(state.mint(), mint) {
         return Err(ProgramError::InvalidAccountData);
     }
-    if state.owner() != authority {
+    if !quasar_core::keys_eq(state.owner(), authority) {
         return Err(ProgramError::InvalidAccountData);
     }
     Ok(())
@@ -229,7 +231,9 @@ pub fn validate_mint(view: &AccountView, mint_authority: &Address) -> Result<(),
     if !state.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
     }
-    if !state.has_mint_authority() || state.mint_authority_unchecked() != mint_authority {
+    if !state.has_mint_authority()
+        || !quasar_core::keys_eq(state.mint_authority_unchecked(), mint_authority)
+    {
         return Err(ProgramError::InvalidAccountData);
     }
     Ok(())
