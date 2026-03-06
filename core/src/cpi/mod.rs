@@ -48,19 +48,28 @@ impl<'a> RawCpiAccount<'a> {
         // SAFETY: raw is a valid pointer to RuntimeAccount from the SVM input buffer.
         // All fields are read through their pub accessors on RuntimeAccount.
         unsafe {
-            RawCpiAccount {
+            let mut cpi = RawCpiAccount {
                 address: &(*raw).address,
                 lamports: &(*raw).lamports,
                 data_len: (*raw).data_len,
                 data: (raw as *const u8).add(RUNTIME_ACCOUNT_SIZE),
                 owner: &(*raw).owner,
                 rent_epoch: 0,
-                is_signer: (*raw).is_signer,
-                is_writable: (*raw).is_writable,
-                executable: (*raw).executable,
+                is_signer: 0,
+                is_writable: 0,
+                executable: 0,
                 _pad: [0u8; 5],
                 _lifetime: PhantomData,
-            }
+            };
+            // RuntimeAccount layout: [borrow_state(0), is_signer(1), is_writable(2), executable(3)]
+            // Read all 4 bytes as u32, shift right 8 to drop borrow_state, keeping the 3 flag
+            // bytes. Write as u64 to is_signer offset — zero-extension covers the 5 pad bytes.
+            let flags = (raw as *const u32).read_unaligned() >> 8;
+            core::ptr::write(
+                core::ptr::addr_of_mut!(cpi.is_signer) as *mut u64,
+                flags as u64,
+            );
+            cpi
         }
     }
 }
