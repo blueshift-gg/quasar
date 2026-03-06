@@ -13,11 +13,7 @@ pub struct MutateThenReadback<'info> {
 
 impl<'info> MutateThenReadback<'info> {
     #[inline(always)]
-    pub fn handler(
-        &mut self,
-        new_name: &str,
-        expected_tags_count: u8,
-    ) -> Result<(), ProgramError> {
+    pub fn handler(&mut self, new_name: &str, expected_tags_count: u8) -> Result<(), ProgramError> {
         self.account.set_name(self.payer, new_name)?;
 
         let name = self.account.name();

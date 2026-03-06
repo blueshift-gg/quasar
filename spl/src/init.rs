@@ -92,7 +92,6 @@ pub trait InitToken: AsAccountView + Sized {
     }
 }
 
-
 /// Extension trait for mint initialization.
 ///
 /// Chains `System::create_account` → `InitializeMint2` in two CPIs.
@@ -180,7 +179,6 @@ pub trait InitMint: AsAccountView + Sized {
         }
     }
 }
-
 
 /// Validate that an existing token account has the expected mint and authority.
 ///

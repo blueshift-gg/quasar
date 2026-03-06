@@ -43,18 +43,16 @@ pub(super) fn generate_dynamic_account(
     let init_field_types: Vec<proc_macro2::TokenStream> = fields_data
         .iter()
         .zip(field_kinds.iter())
-        .map(|(f, kind)| {
-            match kind {
-                DynKind::Fixed => {
-                    let fty = &f.ty;
-                    quote! { #fty }
-                }
-                DynKind::Str { .. } | DynKind::Tail { .. } => {
-                    quote! { &str }
-                }
-                DynKind::Vec { elem, .. } => {
-                    quote! { &[#elem] }
-                }
+        .map(|(f, kind)| match kind {
+            DynKind::Fixed => {
+                let fty = &f.ty;
+                quote! { #fty }
+            }
+            DynKind::Str { .. } | DynKind::Tail { .. } => {
+                quote! { &str }
+            }
+            DynKind::Vec { elem, .. } => {
+                quote! { &[#elem] }
             }
         })
         .collect();

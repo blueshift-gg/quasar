@@ -79,9 +79,7 @@ pub trait MetadataCpi: AsAccountView {
         let symbol_len = symbol.encoded_len() - 4;
         let uri_len = uri.encoded_len() - 4;
         assert!(
-            name_len <= MAX_NAME_LEN
-                && symbol_len <= MAX_SYMBOL_LEN
-                && uri_len <= MAX_URI_LEN,
+            name_len <= MAX_NAME_LEN && symbol_len <= MAX_SYMBOL_LEN && uri_len <= MAX_URI_LEN,
             "metadata field lengths exceed Metaplex limits (name={}, symbol={}, uri={})",
             name_len,
             symbol_len,

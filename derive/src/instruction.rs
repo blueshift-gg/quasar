@@ -235,11 +235,9 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                                 return Err(ProgramError::InvalidInstructionData);
                             }
                         ));
-                        new_stmts.push(syn::parse_quote!(
-                            if __data.len() < __offset + __dyn_len {
-                                return Err(ProgramError::InvalidInstructionData);
-                            }
-                        ));
+                        new_stmts.push(syn::parse_quote!(if __data.len() < __offset + __dyn_len {
+                            return Err(ProgramError::InvalidInstructionData);
+                        }));
                         new_stmts.push(syn::parse_quote!(
                             let #name: &str = {
                                 let __bytes = &__data[__offset..__offset + __dyn_len];
