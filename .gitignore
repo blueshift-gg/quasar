@@ -12,6 +12,5 @@ CLAUDE.md
 .DS_Store
 
 # Profiler
-*.profile.svg
-profile.svg
 *.profile.json
+
