@@ -2,7 +2,7 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::DeriveInput;
 
-use crate::helpers::{map_to_pod_type, zc_deserialize_field, zc_serialize_field};
+use crate::helpers::{map_to_pod_type, pascal_to_snake, zc_assign_from_value};
 
 pub(super) fn generate_fixed_account(
     name: &syn::Ident,
@@ -12,43 +12,62 @@ pub(super) fn generate_fixed_account(
     fields_data: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
     input: &DeriveInput,
 ) -> TokenStream {
-    let field_types: Vec<_> = fields_data.iter().map(|f| &f.ty).collect();
+    let vis = &input.vis;
+    let attrs = &input.attrs;
     let zc_name = format_ident!("{}Zc", name);
+    let zc_mod = format_ident!("__{}_zc", pascal_to_snake(&name.to_string()));
+
+    let field_names: Vec<_> = fields_data.iter().map(|f| &f.ident).collect();
+    let field_types: Vec<_> = fields_data.iter().map(|f| &f.ty).collect();
 
     let zc_fields: Vec<proc_macro2::TokenStream> = fields_data
         .iter()
         .map(|f| {
             let fname = &f.ident;
-            let vis = &f.vis;
+            let fvis = &f.vis;
             let zc_ty = map_to_pod_type(&f.ty);
-            quote! { #vis #fname: #zc_ty }
+            quote! { #fvis #fname: #zc_ty }
         })
         .collect();
 
-    let serialize_stmts: Vec<proc_macro2::TokenStream> = fields_data
+    let set_inner_stmts: Vec<proc_macro2::TokenStream> = fields_data
         .iter()
-        .map(|f| zc_serialize_field(f.ident.as_ref().unwrap(), &f.ty))
-        .collect();
-
-    let deserialize_fields: Vec<proc_macro2::TokenStream> = fields_data
-        .iter()
-        .map(|f| zc_deserialize_field(f.ident.as_ref().unwrap(), &f.ty))
+        .map(|f| zc_assign_from_value(f.ident.as_ref().unwrap(), &f.ty))
         .collect();
 
     quote! {
-        #[repr(C)]
-        #input
+        // --- View type: repr(transparent) over AccountView ---
 
-        #[repr(C)]
-        #[derive(Copy, Clone)]
-        pub struct #zc_name {
-            #(#zc_fields,)*
+        #(#attrs)*
+        #[repr(transparent)]
+        #vis struct #name {
+            __view: AccountView,
         }
 
-        const _: () = assert!(
-            core::mem::align_of::<#zc_name>() == 1,
-            "ZC companion struct must have alignment 1; all fields must use Pod types or alignment-1 types"
-        );
+        unsafe impl StaticView for #name {}
+
+        impl AsAccountView for #name {
+            #[inline(always)]
+            fn to_account_view(&self) -> &AccountView {
+                &self.__view
+            }
+        }
+
+        impl core::ops::Deref for #name {
+            type Target = #zc_mod::#zc_name;
+
+            #[inline(always)]
+            fn deref(&self) -> &Self::Target {
+                unsafe { &*(self.__view.data_ptr().add(#disc_len) as *const #zc_mod::#zc_name) }
+            }
+        }
+
+        impl core::ops::DerefMut for #name {
+            #[inline(always)]
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                unsafe { &mut *(self.__view.data_ptr().add(#disc_len) as *mut #zc_mod::#zc_name) }
+            }
+        }
 
         impl Discriminator for #name {
             const DISCRIMINATOR: &'static [u8] = &[#(#disc_bytes),*];
@@ -66,7 +85,7 @@ pub(super) fn generate_fixed_account(
             #[inline(always)]
             fn check(view: &AccountView) -> Result<(), ProgramError> {
                 let __data = unsafe { view.borrow_unchecked() };
-                if __data.len() < #disc_len + core::mem::size_of::<#zc_name>() {
+                if __data.len() < #disc_len + core::mem::size_of::<#zc_mod::#zc_name>() {
                     return Err(ProgramError::AccountDataTooSmall);
                 }
                 #(
@@ -78,90 +97,47 @@ pub(super) fn generate_fixed_account(
             }
         }
 
+        // --- ZC companion struct (hidden module — not importable as state::EscrowZc) ---
+
+        #[doc(hidden)]
+        pub mod #zc_mod {
+            use super::*;
+
+            #[repr(C)]
+            #[derive(Copy, Clone)]
+            pub struct #zc_name {
+                #(#zc_fields,)*
+            }
+
+            const _: () = assert!(
+                core::mem::align_of::<#zc_name>() == 1,
+                "ZC companion struct must have alignment 1; all fields must use Pod types or alignment-1 types"
+            );
+        }
+
+        // --- set_inner on view type (for mutations after init) ---
+
+        impl #name {
+            #[inline(always)]
+            pub fn set_inner(&mut self, #(#field_names: #field_types),*) {
+                let __zc = unsafe { &mut *(self.__view.data_ptr().add(#disc_len) as *mut #zc_mod::#zc_name) };
+                #(#set_inner_stmts)*
+            }
+        }
+
+        // --- Keep ZeroCopyDeref for backward compat (InterfaceAccount, SPL types) ---
+
         impl ZeroCopyDeref for #name {
-            type Target = #zc_name;
+            type Target = #zc_mod::#zc_name;
 
             #[inline(always)]
             fn deref_from(view: &AccountView) -> &Self::Target {
-                unsafe { &*(view.data_ptr().add(Self::DISCRIMINATOR.len()) as *const #zc_name) }
+                unsafe { &*(view.data_ptr().add(#disc_len) as *const #zc_mod::#zc_name) }
             }
 
             #[inline(always)]
             fn deref_from_mut(view: &AccountView) -> &mut Self::Target {
-                unsafe { &mut *(view.data_ptr().add(Self::DISCRIMINATOR.len()) as *mut #zc_name) }
-            }
-        }
-
-        impl QuasarAccount for #name {
-            #[inline(always)]
-            fn deserialize(data: &[u8]) -> Result<Self, ProgramError> {
-                if data.len() < core::mem::size_of::<#zc_name>() {
-                    return Err(ProgramError::AccountDataTooSmall);
-                }
-                let __zc = unsafe { &*(data.as_ptr() as *const #zc_name) };
-                Ok(Self {
-                    #(#deserialize_fields,)*
-                })
-            }
-
-            #[inline(always)]
-            fn serialize(&self, data: &mut [u8]) -> Result<(), ProgramError> {
-                if data.len() < core::mem::size_of::<#zc_name>() {
-                    return Err(ProgramError::AccountDataTooSmall);
-                }
-                let __zc = unsafe { &mut *(data.as_mut_ptr() as *mut #zc_name) };
-                #(#serialize_stmts)*
-                Ok(())
-            }
-        }
-
-        impl #name {
-            #[inline(always)]
-            pub fn init(self, account: &mut Initialize<Self>, payer: &AccountView, rent: Option<&Rent>) -> Result<(), ProgramError> {
-                self.init_signed(account, payer, rent, &[])
-            }
-
-            #[inline(always)]
-            pub fn init_signed(self, account: &mut Initialize<Self>, payer: &AccountView, rent: Option<&Rent>, signers: &[quasar_core::cpi::Signer]) -> Result<(), ProgramError> {
-                let view = account.to_account_view();
-
-                {
-                    let __existing = unsafe { view.borrow_unchecked() };
-                    if __existing.len() >= #disc_len {
-                        #(
-                            if unsafe { *__existing.get_unchecked(#disc_indices) } != 0 {
-                                return Err(QuasarError::AccountAlreadyInitialized.into());
-                            }
-                        )*
-                    }
-                }
-
-                let lamports = match rent {
-                    Some(rent_data) => rent_data.minimum_balance_unchecked(Self::SPACE),
-                    None => {
-                        use quasar_core::sysvars::Sysvar;
-                        quasar_core::sysvars::rent::Rent::get()?.minimum_balance_unchecked(Self::SPACE)
-                    }
-                };
-
-                if view.lamports() == 0 {
-                    quasar_core::cpi::system::create_account(payer, view, lamports, Self::SPACE as u64, &Self::OWNER)
-                        .invoke_with_signers(signers)?;
-                } else {
-                    let required = lamports.saturating_sub(view.lamports());
-                    if required > 0 {
-                        quasar_core::cpi::system::transfer(payer, view, required)
-                            .invoke_with_signers(signers)?;
-                    }
-                    quasar_core::cpi::system::assign(view, &Self::OWNER)
-                        .invoke_with_signers(signers)?;
-                    unsafe { view.resize_unchecked(Self::SPACE) }?;
-                }
-
-                let data = unsafe { view.borrow_unchecked_mut() };
-                data[..Self::DISCRIMINATOR.len()].copy_from_slice(Self::DISCRIMINATOR);
-                self.serialize(&mut data[Self::DISCRIMINATOR.len()..])?;
-                Ok(())
+                unsafe { &mut *(view.data_ptr().add(#disc_len) as *mut #zc_mod::#zc_name) }
             }
         }
     }

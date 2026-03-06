@@ -5,6 +5,8 @@ use quasar_core::prelude::*;
 mod instructions;
 use instructions::*;
 #[cfg(test)]
+mod idl_client;
+#[cfg(test)]
 mod tests;
 
 declare_id!("33333333333333333333333333333333333333333333");

@@ -1,11 +1,11 @@
 use quasar_core::prelude::*;
-use quasar_spl::{Mint, Token, TokenAccount, TokenCpi};
+use quasar_spl::{Mint, Token, TokenCpi};
 
 #[derive(Accounts)]
 pub struct MintTo<'info> {
     pub authority: &'info Signer,
     pub mint: &'info mut Account<Mint>,
-    pub to: &'info mut Account<TokenAccount>,
+    pub to: &'info mut Account<Token>,
     pub token_program: &'info Program<Token>,
 }
 

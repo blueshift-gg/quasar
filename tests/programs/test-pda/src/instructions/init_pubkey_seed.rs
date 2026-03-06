@@ -13,10 +13,8 @@ pub struct InitPubkeySeed<'info> {
 impl<'info> InitPubkeySeed<'info> {
     #[inline(always)]
     pub fn handler(&mut self, value: u64, bumps: &InitPubkeySeedBumps) -> Result<(), ProgramError> {
-        self.user.set(&UserAccount {
-            authority: *self.payer.address(),
-            value,
-            bump: bumps.user,
-        })
+        self.user
+            .set_inner(*self.payer.address(), value, bumps.user);
+        Ok(())
     }
 }

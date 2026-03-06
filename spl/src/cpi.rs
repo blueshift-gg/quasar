@@ -88,7 +88,7 @@ pub fn initialize_mint2<'a>(
 
 /// Trait for types that can execute SPL Token CPI calls.
 ///
-/// Implemented by [`TokenProgram`], [`Token2022Program`], and [`TokenInterface`].
+/// Implemented by `Program<Token>`, `Program<Token2022>`, and [`TokenInterface`].
 /// Used as a bound in lifecycle traits ([`InitToken`], [`InitMint`], [`TokenClose`])
 /// to ensure only actual token programs are accepted — not arbitrary accounts.
 pub trait TokenCpi: AsAccountView {

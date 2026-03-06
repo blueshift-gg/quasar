@@ -17,10 +17,8 @@ impl<'info> InitializeSimple<'info> {
         value: u64,
         bumps: &InitializeSimpleBumps,
     ) -> Result<(), ProgramError> {
-        self.account.set(&SimpleAccount {
-            authority: *self.payer.address(),
-            value,
-            bump: bumps.account,
-        })
+        self.account
+            .set_inner(*self.payer.address(), value, bumps.account);
+        Ok(())
     }
 }

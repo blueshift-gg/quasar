@@ -13,6 +13,7 @@ pub struct InitLiteralSeed<'info> {
 impl<'info> InitLiteralSeed<'info> {
     #[inline(always)]
     pub fn handler(&mut self, bumps: &InitLiteralSeedBumps) -> Result<(), ProgramError> {
-        self.config.set(&ConfigAccount { bump: bumps.config })
+        self.config.set_inner(bumps.config);
+        Ok(())
     }
 }

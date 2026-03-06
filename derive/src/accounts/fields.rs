@@ -113,6 +113,26 @@ fn extract_account_inner_type(ty: &Type) -> Option<proc_macro2::TokenStream> {
     extract_generic_inner_type(deref_ty, "Account").map(|inner| quote!(#inner))
 }
 
+/// Check if the inner type T of Account<T> has a lifetime parameter,
+/// indicating a dynamic account type (e.g., Account<Profile<'info>>).
+fn is_dynamic_account_type(ty: &Type) -> bool {
+    let deref_ty = match ty {
+        Type::Reference(r) => &*r.elem,
+        other => other,
+    };
+    if let Some(Type::Path(type_path)) = extract_generic_inner_type(deref_ty, "Account") {
+        if let Some(last) = type_path.path.segments.last() {
+            if let syn::PathArguments::AngleBracketed(args) = &last.arguments {
+                return args
+                    .args
+                    .iter()
+                    .any(|arg| matches!(arg, syn::GenericArgument::Lifetime(_)));
+            }
+        }
+    }
+    false
+}
+
 // ---------------------------------------------------------------------------
 // Auto-detected fields — populated once, consumed by init/CPI codegen
 // ---------------------------------------------------------------------------
@@ -147,16 +167,7 @@ impl<'a> DetectedFields<'a> {
     ) -> Self {
         // --- Type-based detection (single pass) ---
         let system_program = find_field_by_type(fields, &["System"]);
-        let token_program = find_field_by_type(
-            fields,
-            &[
-                "Token",
-                "Token2022",
-                "TokenProgram",
-                "Token2022Program",
-                "TokenInterface",
-            ],
-        );
+        let token_program = find_field_by_type(fields, &["Token", "Token2022", "TokenInterface"]);
         let associated_token_program = find_field_by_type(fields, &["AssociatedTokenProgram"]);
         let metadata_program = find_field_by_type(fields, &["MetadataProgram"]);
 
@@ -284,7 +295,7 @@ pub(super) fn process_fields(
     {
         Some(DetectedFields::require(
                 detected.token_program,
-                "token/ATA/mint/master_edition init requires a token program field (TokenProgram, Token2022Program, or TokenInterface)",
+                "token/ATA/mint/master_edition init requires a token program field (Program<Token>, Program<Token2022>, or Interface<TokenInterface>)",
             )?)
     } else {
         None
@@ -387,25 +398,6 @@ pub(super) fn process_fields(
             )
             .to_compile_error()
             .into());
-        }
-
-        // Reject Initialize<T> when the derive macro handles init — the macro
-        // creates the account, so the user should receive Account<T> (validated,
-        // no .init() exposed). Allowing Initialize<T> here risks double-init.
-        if attrs.is_init || attrs.init_if_needed {
-            let deref_ty = match effective_ty {
-                Type::Reference(r) => &*r.elem,
-                other => other,
-            };
-            if extract_generic_inner_type(deref_ty, "Initialize").is_some() {
-                return Err(syn::Error::new_spanned(
-                    field_name,
-                    "#[account(init)] handles account creation — use `Account<T>` instead of `Initialize<T>`. \
-                     `Initialize<T>` exposes `.init()` which would double-initialize the account.",
-                )
-                .to_compile_error()
-                .into());
-            }
         }
 
         if attrs.close.is_some() && !is_ref_mut && !attrs.is_mut {
@@ -597,8 +589,15 @@ pub(super) fn process_fields(
         }
 
         // --- Field construction ---
+        //
+        // For dynamic Account<T> (inner type has lifetime, e.g. Account<Profile<'info>>),
+        // the inner type's from_account_view returns Account<T> by value (offset-cached).
+        // For static Account<T> (no lifetime), Account::from_account_view returns &Account<T>.
+        //
         // Flags (signer/writable/executable/no-dup) are already validated via u32 header check
         // in parse_accounts. Here we only need to check owner/discriminator/address.
+
+        let is_dynamic = is_dynamic_account_type(effective_ty);
 
         // Determine the base type name for validation logic
         let _type_name = type_base_name(&field.ty).unwrap_or_default();
@@ -737,7 +736,7 @@ pub(super) fn process_fields(
 
         // Use unchecked construction methods (flags already validated)
         match effective_ty {
-            Type::Reference(type_ref) => {
+            Type::Reference(type_ref) if !is_dynamic => {
                 let base_type = strip_generics(&type_ref.elem);
                 let construct_expr = if type_ref.mutability.is_some() {
                     quote! { unsafe { #base_type::from_account_view_unchecked_mut(#field_name) } }
@@ -748,6 +747,29 @@ pub(super) fn process_fields(
                     field_constructs.push(quote! { #field_name: if quasar_core::keys_eq(#field_name.address(), __program_id) { None } else { Some(#construct_expr) } });
                 } else {
                     field_constructs.push(quote! { #field_name: #construct_expr });
+                }
+            }
+            _ if is_dynamic => {
+                // Dynamic account: extract inner type name, call its from_account_view
+                // which returns Account<T> by value.
+                if let Some(inner) = extract_generic_inner_type(
+                    match effective_ty {
+                        Type::Reference(r) => &r.elem,
+                        other => other,
+                    },
+                    "Account",
+                ) {
+                    let inner_base = strip_generics(inner);
+                    let construct_expr = quote! { #inner_base::from_account_view(#field_name)? };
+                    if is_optional {
+                        field_constructs.push(quote! { #field_name: if *#field_name.address() == crate::ID { None } else { Some(#construct_expr) } });
+                    } else {
+                        field_constructs.push(quote! { #field_name: #construct_expr });
+                    }
+                } else {
+                    let base_type = strip_generics(effective_ty);
+                    field_constructs
+                        .push(quote! { #field_name: #base_type::from_account_view(#field_name)? });
                 }
             }
             _ => {

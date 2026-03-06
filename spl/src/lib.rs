@@ -16,12 +16,12 @@
 //!
 //! | Type | Accepts | Use when |
 //! |------|---------|----------|
-//! | [`TokenProgram`] | SPL Token only | CPI to Token program |
+//! | `Program<Token>` | SPL Token only | CPI to Token program |
 //! | [`TokenInterface`] | SPL Token **or** Token-2022 | CPI to either program |
 //!
 //! # CPI methods
 //!
-//! Both [`TokenProgram`] and [`TokenInterface`] expose the same CPI methods.
+//! Both `Program<Token>` and [`TokenInterface`] expose the same CPI methods.
 //! All methods return a [`CpiCall`] that can be invoked with `.invoke()` or
 //! `.invoke_signed()`:
 //!
@@ -33,19 +33,11 @@
 //!
 //! # Token lifecycle
 //!
-//! Extension traits on `Initialize<T>` provide init helpers. Pass an optional
-//! `&Rent` sysvar — when `None`, rent is fetched via the `Rent::get()` syscall:
+//! Use `#[account(init)]` to auto-create token accounts, mints, and ATAs:
 //!
 //! ```ignore
-//! // Create + initialize a token account via InitToken trait
-//! self.new_token.init(
-//!     self.system_program,
-//!     self.payer,
-//!     self.token_program,
-//!     self.mint,
-//!     self.owner.address(),
-//!     None, // fetches Rent sysvar via syscall
-//! )?;
+//! #[account(init, payer = payer, token::mint = mint, token::authority = authority)]
+//! pub token_account: &'info mut Account<Token>,
 //!
 //! // Or skip if already initialized (checks owner == system_program)
 //! self.new_token.init_if_needed(
@@ -76,6 +68,16 @@
 /// CPI-based [`TokenClose`] trait.
 macro_rules! impl_single_owner {
     ($ty:ty, $id:expr, $target:ty) => {
+        // SAFETY: $ty is #[repr(transparent)] over AccountView.
+        unsafe impl StaticView for $ty {}
+
+        impl AsAccountView for $ty {
+            #[inline(always)]
+            fn to_account_view(&self) -> &AccountView {
+                &self.__view
+            }
+        }
+
         impl AccountCheck for $ty {
             #[inline(always)]
             fn check(view: &AccountView) -> Result<(), ProgramError> {
@@ -93,6 +95,22 @@ macro_rules! impl_single_owner {
                     return Err(ProgramError::IllegalOwner);
                 }
                 Ok(())
+            }
+        }
+
+        impl core::ops::Deref for $ty {
+            type Target = $target;
+
+            #[inline(always)]
+            fn deref(&self) -> &Self::Target {
+                unsafe { &*(self.__view.data_ptr() as *const $target) }
+            }
+        }
+
+        impl core::ops::DerefMut for $ty {
+            #[inline(always)]
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                unsafe { &mut *(self.__view.data_ptr() as *mut $target) }
             }
         }
 
@@ -136,5 +154,5 @@ pub use cpi::{initialize_account3, initialize_mint2, TokenCpi};
 pub use init::{validate_mint, validate_token_account, InitMint, InitToken};
 pub use interface::{InterfaceAccount, TokenInterface};
 pub use state::{MintAccountState, TokenAccountState};
-pub use token::{Mint, Token, TokenAccount};
-pub use token_2022::{Mint2022Account, Token2022, Token2022Account};
+pub use token::{Mint, Token};
+pub use token_2022::{Mint2022, Token2022};

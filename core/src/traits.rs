@@ -4,7 +4,7 @@ use solana_program_error::ProgramError;
 
 /// Construct a typed account wrapper from a raw [`AccountView`].
 ///
-/// Implemented by the `define_account!` macro and by `Account<T>` / `Initialize<T>`.
+/// Implemented by the `define_account!` macro and by `Account<T>`.
 pub trait FromAccountView<'info>: Sized {
     fn from_account_view(view: &'info AccountView) -> Result<Self, ProgramError>;
 }
@@ -137,15 +137,6 @@ impl AsAccountView for AccountView {
     }
 }
 
-/// Borsh-style serialization for non-zero-copy account types.
-///
-/// Implemented by: `#[account]` macro when the type is not `#[repr(C)]`.
-/// Used by: `Account<T>::get()` and `Account<T>::set()`.
-pub trait QuasarAccount: Sized + Discriminator + Space {
-    fn deserialize(data: &[u8]) -> Result<Self, ProgramError>;
-    fn serialize(&self, data: &mut [u8]) -> Result<(), ProgramError>;
-}
-
 /// Validate that an account is owned by the expected program(s).
 ///
 /// Single-owner types get a blanket implementation via [`Owner`].
@@ -177,20 +168,26 @@ pub trait InterfaceResolve {
     fn resolve<'a>(view: &'a AccountView) -> Result<Self::Resolved<'a>, ProgramError>;
 }
 
+/// Marker trait for account view types that are `#[repr(transparent)]` over
+/// `AccountView` and therefore safe to construct via pointer cast.
+///
+/// # Safety
+///
+/// The implementor must be `#[repr(transparent)]` over `AccountView` (possibly
+/// through a chain of transparent wrappers). This guarantees that a pointer
+/// cast from `&AccountView` to `&Self` is sound.
+///
+/// Implemented by: `#[account]` macro for fixed-size accounts.
+pub unsafe trait StaticView {}
+
 /// Zero-copy deref target for `#[repr(C)]` account types.
 ///
-/// When an account type implements `ZeroCopyDeref`, `Account<T>` provides
+/// When an account type implements `ZeroCopyDeref`, the wrapper provides
 /// `Deref`/`DerefMut` to `T::Target` via `deref_from` / `deref_from_mut`.
 ///
-/// For fixed-size accounts, `Target` is the ZC companion struct and the
-/// methods perform a pointer cast past the discriminator.
+/// Used by `InterfaceAccount<T>` for zero-copy field access.
 ///
-/// For dynamic accounts, `Target` is a generated View type (`{Name}View`)
-/// that is `#[repr(transparent)]` over `AccountView`. The View type
-/// provides accessors for dynamic fields and derefs further to the ZC
-/// struct for fixed field access.
-///
-/// Implemented by: `#[account]` macro.
+/// Implemented by: `#[account]` macro (for SPL token/mint types).
 pub trait ZeroCopyDeref {
     type Target;
     fn deref_from(view: &AccountView) -> &Self::Target;

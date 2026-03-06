@@ -66,30 +66,28 @@ if !keys_eq(owner, &SPL_TOKEN_ID) && !keys_eq(owner, &TOKEN_2022_ID) {
 
 ## Program Types
 
-### `TokenProgram`
+### `Program<Token>`
 
-Validates that the account address matches the SPL Token program ID and that the account is executable:
+`Token` implements `Id`, so `Program<Token>` validates that the account address matches the SPL Token program ID and that the account is executable:
 
 ```rust
-pub token_program: &'info TokenProgram,
+pub token_program: &'info Program<Token>,
 ```
 
-Defined via `define_account!` with executable and address checks:
+`Token` serves double duty: `Account<Token>` for token account data, `Program<Token>` for the program account.
 
 ```rust
-define_account!(pub struct TokenProgram => [checks::Executable, checks::Address]);
-
-impl Program for TokenProgram {
+impl Id for Token {
     const ID: Address = Address::new_from_array(SPL_TOKEN_BYTES);
 }
 ```
 
-### `Token2022Program`
+### `Program<Token2022>`
 
-Same as `TokenProgram` but validates against the Token-2022 program ID:
+Same as `Program<Token>` but validates against the Token-2022 program ID:
 
 ```rust
-pub token_program: &'info Token2022Program,
+pub token_program: &'info Program<Token2022>,
 ```
 
 ### `TokenInterface`
@@ -114,7 +112,7 @@ pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
 }
 ```
 
-All three program types (`TokenProgram`, `Token2022Program`, `TokenInterface`) implement the `TokenCpi` trait and expose the same set of CPI methods.
+All three program types (`Program<Token>`, `Program<Token2022>`, `TokenInterface`) implement the `TokenCpi` trait and expose the same set of CPI methods.
 
 ## Zero-Copy State Structs
 
@@ -196,7 +194,7 @@ Both state structs use raw byte arrays for integer fields (`[u8; 8]` instead of 
 
 ## CPI Methods
 
-The `TokenCpi` trait defines all token CPI methods. It is implemented by `TokenProgram`, `Token2022Program`, and `TokenInterface`. Every method returns a `CpiCall` with compile-time-known sizes.
+The `TokenCpi` trait defines all token CPI methods. It is implemented by `Program<Token>`, `Program<Token2022>`, and `TokenInterface`. Every method returns a `CpiCall` with compile-time-known sizes.
 
 ### `transfer`
 
@@ -300,7 +298,7 @@ The account must already be allocated with the correct size (82 bytes). `freeze_
 
 ### `InitToken` Trait
 
-Extension trait on `Initialize<T>` for token account types. Chains `SystemProgram::create_account` followed by `InitializeAccount3` in two CPIs.
+Extension trait for token account types. Chains system program `create_account` followed by `InitializeAccount3` in two CPIs.
 
 ```rust
 self.vault_ta_a.init(
@@ -314,9 +312,9 @@ self.vault_ta_a.init(
 ```
 
 Implemented for:
-- `Initialize<Token>`
-- `Initialize<Token2022>`
-- `Initialize<InterfaceAccount<Token>>`
+- `Account<Token>`
+- `Account<Token2022>`
+- `InterfaceAccount<Token>`
 
 #### `init_if_needed`
 
@@ -341,7 +339,7 @@ self.vault_ta_a.init_if_needed(
 
 ### `InitMint` Trait
 
-Extension trait on `Initialize<T>` for mint account types. Chains `SystemProgram::create_account` followed by `InitializeMint2` in two CPIs.
+Extension trait for mint account types. Chains system program `create_account` followed by `InitializeMint2` in two CPIs.
 
 ```rust
 self.new_mint.init(
@@ -356,9 +354,9 @@ self.new_mint.init(
 ```
 
 Implemented for:
-- `Initialize<Mint>`
-- `Initialize<Mint2022>`
-- `Initialize<InterfaceAccount<Mint>>`
+- `Account<Mint>`
+- `Account<Mint2022>`
+- `InterfaceAccount<Mint>`
 
 #### `init_if_needed` (Mint)
 
@@ -414,7 +412,7 @@ ata_create_idempotent(ata_program, payer, ata, wallet, mint, system_program, tok
 
 ### `InitAssociatedToken` Trait
 
-Extension trait on `Initialize<AssociatedToken>` providing `.init()` and `.init_if_needed()`:
+Extension trait for associated token account types, providing `.init()` and `.init_if_needed()`:
 
 ```rust
 // Create ATA -- fails if it already exists
@@ -574,14 +572,14 @@ pub struct CreateNft<'info> {
     pub metadata: &'info mut UncheckedAccount,
     pub master_edition: &'info mut UncheckedAccount,
     pub metadata_program: &'info MetadataProgram,
-    pub token_program: &'info TokenProgram,
-    pub system_program: &'info SystemProgram,
+    pub token_program: &'info Program<Token>,
+    pub system_program: &'info Program<System>,
     pub rent: &'info UncheckedAccount,
 }
 ```
 
 The generated code:
-1. Creates the mint account (SystemProgram `create_account` + TokenProgram `InitializeMint2`)
+1. Creates the mint account (SystemProgram `create_account` + token program `InitializeMint2`)
 2. CPIs into Metaplex `create_metadata_accounts_v3` to create the metadata PDA
 3. CPIs into Metaplex `create_master_edition_v3` to create the edition PDA (if `master_edition::max_supply` is present)
 
@@ -616,7 +614,7 @@ Requirements:
 - `metadata::*` requires `init` or `init_if_needed` and `mint::decimals`
 - `metadata::name`, `metadata::symbol`, and `metadata::uri` must all be present if any is
 - `master_edition::max_supply` requires both `init` and all `metadata::*` attributes
-- The struct must include `MetadataProgram`, `mint_authority` (or `authority`), `payer`, `TokenProgram`, `SystemProgram`, and `rent` fields
+- The struct must include `MetadataProgram`, `mint_authority` (or `authority`), `payer`, `Program<Token>`, `Program<System>`, and `rent` fields
 - The struct must include a `metadata` field (`UncheckedAccount`) for metadata CPI
 - The struct must include a `master_edition` or `edition` field (`UncheckedAccount`) for master edition CPI
 
@@ -624,7 +622,7 @@ Requirements:
 
 For manual (non-derive) initialization:
 
-**`InitMetadata`** (on `Initialize<MetadataAccount>`):
+**`InitMetadata`** (on `UncheckedAccount` for metadata):
 
 ```rust
 self.metadata.init(
@@ -642,7 +640,7 @@ self.metadata.init(
 )?;
 ```
 
-**`InitMasterEdition`** (on `Initialize<MasterEditionAccount>`):
+**`InitMasterEdition`** (on `UncheckedAccount` for master edition):
 
 ```rust
 self.master_edition.init(
@@ -721,43 +719,21 @@ The `Make` instruction demonstrates token account initialization, escrow creatio
 #[derive(Accounts)]
 pub struct Make<'info> {
     pub maker: &'info mut Signer,
-    #[account(seeds = [b"escrow", maker], bump)]
-    pub escrow: &'info mut Initialize<EscrowAccount>,
+    #[account(init, payer = maker, seeds = [b"escrow", maker], bump)]
+    pub escrow: &'info mut Account<Escrow>,
     pub mint_a: &'info Account<Mint>,
     pub mint_b: &'info Account<Mint>,
     pub maker_ta_a: &'info mut Account<Token>,
-    pub maker_ta_b: &'info mut Initialize<Token>,
-    pub vault_ta_a: &'info mut Initialize<Token>,
+    #[account(init_if_needed, payer = maker, token::mint = mint_b, token::authority = maker)]
+    pub maker_ta_b: &'info mut Account<Token>,
+    #[account(init_if_needed, payer = maker, token::mint = mint_a, token::authority = escrow)]
+    pub vault_ta_a: &'info mut Account<Token>,
     pub rent: &'info Sysvar<Rent>,
-    pub token_program: &'info TokenProgram,
-    pub system_program: &'info SystemProgram,
+    pub token_program: &'info Program<Token>,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> Make<'info> {
-    pub fn init_accounts(&self) -> Result<(), ProgramError> {
-        let rent = Some(&**self.rent);
-
-        // Initialize vault token account (owned by escrow PDA)
-        self.vault_ta_a.init_if_needed(
-            self.system_program,
-            self.maker,
-            self.token_program,
-            self.mint_a,
-            self.escrow.address(),
-            rent,
-        )?;
-
-        // Initialize maker's token-B account
-        self.maker_ta_b.init_if_needed(
-            self.system_program,
-            self.maker,
-            self.token_program,
-            self.mint_b,
-            self.maker.address(),
-            rent,
-        )
-    }
-
     pub fn deposit_tokens(&mut self, amount: u64) -> Result<(), ProgramError> {
         self.token_program
             .transfer(self.maker_ta_a, self.vault_ta_a, self.maker, amount)

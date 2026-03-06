@@ -81,7 +81,7 @@ pub mod client;
 pub mod context;
 /// Const-generic cross-program invocation with stack-allocated account arrays.
 pub mod cpi;
-/// Marker types for dynamic account fields (`String<'a, N>`, `Vec<'a, T, N>`).
+/// Marker types for dynamic fields (`String<P, N>`, `Vec<T, P, N>`) and codec helpers.
 pub mod dynamic;
 /// Program entrypoint macros (`dispatch!`, `no_alloc!`, `panic_handler!`).
 pub mod entrypoint;

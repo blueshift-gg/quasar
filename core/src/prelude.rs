@@ -2,7 +2,7 @@
 pub use crate::context::{Context, Ctx, CtxWithRemaining};
 pub use crate::traits::{
     AccountCheck, AccountCount, AsAccountView, CheckOwner, Discriminator, Event, Id,
-    InterfaceResolve, Owner, ParseAccounts, ProgramInterface, QuasarAccount, Space, ZeroCopyDeref,
+    InterfaceResolve, Owner, ParseAccounts, ProgramInterface, Space, StaticView, ZeroCopyDeref,
 };
 
 // Account types - Program<T> type shadows ProgramTrait above
@@ -17,7 +17,7 @@ pub use crate::cpi::Seed;
 pub use crate::pod::{PodBool, PodI128, PodI16, PodI32, PodI64, PodU128, PodU16, PodU32, PodU64};
 
 // Dynamic field marker types
-pub use crate::dynamic::{String, Vec};
+pub use crate::dynamic::{RawEncoded, String, Vec};
 
 // Error handling
 pub use crate::error::QuasarError;

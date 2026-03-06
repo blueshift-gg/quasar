@@ -6,11 +6,88 @@ use syn::{
 
 // --- Dynamic field classification (shared by account, instruction) ---
 
+#[derive(Clone, Copy)]
+pub(crate) enum PrefixType {
+    U8,
+    U16,
+    U32,
+}
+
+impl PrefixType {
+    pub fn bytes(&self) -> usize {
+        match self {
+            PrefixType::U8 => 1,
+            PrefixType::U16 => 2,
+            PrefixType::U32 => 4,
+        }
+    }
+
+    /// Expression to read the inline prefix from `__data` at `__offset` as usize.
+    pub fn gen_read_len(&self) -> proc_macro2::TokenStream {
+        match self {
+            PrefixType::U8 => quote! { __data[__offset] as usize },
+            PrefixType::U16 => quote! {
+                u16::from_le_bytes([__data[__offset], __data[__offset + 1]]) as usize
+            },
+            PrefixType::U32 => quote! {
+                u32::from_le_bytes([
+                    __data[__offset],
+                    __data[__offset + 1],
+                    __data[__offset + 2],
+                    __data[__offset + 3],
+                ]) as usize
+            },
+        }
+    }
+
+    /// Statement to write a usize value as the inline prefix to `__data` at `__offset`.
+    pub fn gen_write_prefix(
+        &self,
+        value_expr: &proc_macro2::TokenStream,
+    ) -> proc_macro2::TokenStream {
+        match self {
+            PrefixType::U8 => quote! {
+                __data[__offset] = #value_expr as u8;
+            },
+            PrefixType::U16 => quote! {
+                {
+                    let __pb = (#value_expr as u16).to_le_bytes();
+                    __data[__offset] = __pb[0];
+                    __data[__offset + 1] = __pb[1];
+                }
+            },
+            PrefixType::U32 => quote! {
+                {
+                    let __pb = (#value_expr as u32).to_le_bytes();
+                    __data[__offset] = __pb[0];
+                    __data[__offset + 1] = __pb[1];
+                    __data[__offset + 2] = __pb[2];
+                    __data[__offset + 3] = __pb[3];
+                }
+            },
+        }
+    }
+}
+
+pub(crate) enum TailElement {
+    Str,
+    Bytes,
+}
+
 pub(crate) enum DynKind {
     Fixed,
-    Str { max: usize },
-    StrRef,
-    Vec { elem: Box<Type>, max: usize },
+    Str {
+        prefix: PrefixType,
+        max: usize,
+    },
+    Vec {
+        elem: Box<Type>,
+        prefix: PrefixType,
+        max: usize,
+    },
+    Tail {
+        element: TailElement,
+    },
 }
 
 // --- Discriminator argument parsing (shared by instruction, account, event, program) ---
@@ -189,57 +266,129 @@ pub(crate) fn snake_to_pascal(s: &str) -> String {
 
 // --- Dynamic field detection ---
 
-/// Detects `String<'a, N>` (with lifetime) or `String<N>` (without) and returns `Some(N)`.
-/// Pass `expect_lifetime = true` for account fields (`String<'a, N>`),
-/// `false` for instruction args (`String<N>`).
-pub(crate) fn is_dynamic_string(ty: &Type, expect_lifetime: bool) -> Option<usize> {
+fn extract_const_usize(arg: &GenericArgument) -> Option<usize> {
+    if let GenericArgument::Const(Expr::Lit(ExprLit {
+        lit: Lit::Int(lit_int),
+        ..
+    })) = arg
+    {
+        lit_int.base10_parse::<usize>().ok()
+    } else {
+        None
+    }
+}
+
+fn parse_prefix_type(ty: &Type) -> Option<PrefixType> {
+    if let Type::Path(tp) = ty {
+        if let Some(seg) = tp.path.segments.last() {
+            return match seg.ident.to_string().as_str() {
+                "u8" => Some(PrefixType::U8),
+                "u16" => Some(PrefixType::U16),
+                "u32" => Some(PrefixType::U32),
+                _ => None,
+            };
+        }
+    }
+    None
+}
+
+/// Classifies a type as a dynamic string. Returns `Some((prefix, max))`.
+///
+/// Handles:
+/// - `String` → (U32, 1024) — defaults
+/// - `String<P>` → (P, 1024) — custom prefix, default max
+/// - `String<P, MAX>` → (P, MAX) — fully specified
+/// - `String<'a, MAX>` → (U32, MAX) — backward-compat
+pub(crate) fn classify_dynamic_string(ty: &Type) -> Option<(PrefixType, usize)> {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
             if seg.ident == "String" {
-                if let PathArguments::AngleBracketed(args) = &seg.arguments {
-                    let mut iter = args.args.iter();
-                    if expect_lifetime && !matches!(iter.next(), Some(GenericArgument::Lifetime(_)))
-                    {
-                        return None;
+                return match &seg.arguments {
+                    PathArguments::None => Some((PrefixType::U32, 1024)),
+                    PathArguments::AngleBracketed(args) => {
+                        let mut iter = args.args.iter();
+                        match iter.next()? {
+                            GenericArgument::Lifetime(_) => {
+                                let max = extract_const_usize(iter.next()?)?;
+                                Some((PrefixType::U32, max))
+                            }
+                            GenericArgument::Type(prefix_ty) => {
+                                let prefix = parse_prefix_type(prefix_ty)?;
+                                match iter.next() {
+                                    Some(arg) => {
+                                        let max = extract_const_usize(arg)?;
+                                        Some((prefix, max))
+                                    }
+                                    None => Some((prefix, 1024)),
+                                }
+                            }
+                            other => {
+                                let max = extract_const_usize(other)?;
+                                Some((PrefixType::U32, max))
+                            }
+                        }
                     }
-                    if let Some(GenericArgument::Const(Expr::Lit(ExprLit {
-                        lit: Lit::Int(lit_int),
-                        ..
-                    }))) = iter.next()
-                    {
-                        return lit_int.base10_parse::<usize>().ok();
-                    }
-                }
+                    _ => None,
+                };
             }
         }
     }
     None
 }
 
-/// Detects `Vec<'a, T, N>` (with lifetime) or `Vec<T, N>` (without) and returns `Some((T, N))`.
-/// Pass `expect_lifetime = true` for account fields, `false` for instruction args.
-pub(crate) fn is_dynamic_vec(ty: &Type, expect_lifetime: bool) -> Option<(Type, usize)> {
+/// Classifies a type as a dynamic vec. Returns `Some((elem, prefix, max))`.
+///
+/// Handles:
+/// - `Vec<T>` → (T, U32, 8) — defaults
+/// - `Vec<T, P>` → (T, P, 8) — custom prefix, default max
+/// - `Vec<T, P, MAX>` → (T, P, MAX) — fully specified
+/// - `Vec<'a, T, MAX>` → (T, U32, MAX) — backward-compat
+pub(crate) fn classify_dynamic_vec(ty: &Type) -> Option<(Type, PrefixType, usize)> {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
             if seg.ident == "Vec" {
                 if let PathArguments::AngleBracketed(args) = &seg.arguments {
                     let mut iter = args.args.iter();
-                    if expect_lifetime && !matches!(iter.next(), Some(GenericArgument::Lifetime(_)))
-                    {
-                        return None;
+                    let first = iter.next()?;
+
+                    if let GenericArgument::Lifetime(_) = first {
+                        let elem_ty = match iter.next()? {
+                            GenericArgument::Type(ty) => ty.clone(),
+                            _ => return None,
+                        };
+                        return match iter.next() {
+                            Some(arg) => {
+                                let max = extract_const_usize(arg)?;
+                                Some((elem_ty, PrefixType::U32, max))
+                            }
+                            None => Some((elem_ty, PrefixType::U32, 8)),
+                        };
                     }
-                    let elem_ty = match iter.next() {
-                        Some(GenericArgument::Type(ty)) => ty.clone(),
+
+                    let elem_ty = match first {
+                        GenericArgument::Type(ty) => ty.clone(),
                         _ => return None,
                     };
-                    if let Some(GenericArgument::Const(Expr::Lit(ExprLit {
-                        lit: Lit::Int(lit_int),
-                        ..
-                    }))) = iter.next()
-                    {
-                        let max = lit_int.base10_parse::<usize>().ok()?;
-                        return Some((elem_ty, max));
-                    }
+
+                    return match iter.next() {
+                        None => Some((elem_ty, PrefixType::U32, 8)),
+                        Some(GenericArgument::Type(prefix_ty)) => {
+                            let prefix = parse_prefix_type(prefix_ty)?;
+                            match iter.next() {
+                                Some(arg) => {
+                                    let max = extract_const_usize(arg)?;
+                                    Some((elem_ty, prefix, max))
+                                }
+                                None => Some((elem_ty, prefix, 8)),
+                            }
+                        }
+                        Some(arg) => {
+                            let max = extract_const_usize(arg)?;
+                            Some((elem_ty, PrefixType::U32, max))
+                        }
+                    };
+                } else {
+                    return None;
                 }
             }
         }
@@ -247,16 +396,33 @@ pub(crate) fn is_dynamic_vec(ty: &Type, expect_lifetime: bool) -> Option<(Type, 
     None
 }
 
-/// Detects `&str` or `&'a str` as a bare string reference type.
-pub(crate) fn is_str_ref(ty: &Type) -> bool {
+/// Classifies bare `&str` / `&'a str` and `&[u8]` / `&'a [u8]` as tail fields.
+///
+/// Tail fields have no length prefix — remaining account/instruction data IS the field.
+/// Must be the last dynamic field in the struct.
+pub(crate) fn classify_tail(ty: &Type) -> Option<TailElement> {
     if let Type::Reference(ref_ty) = ty {
-        if let Type::Path(type_path) = &*ref_ty.elem {
-            if let Some(seg) = type_path.path.segments.last() {
-                return seg.ident == "str" && type_path.path.segments.len() == 1;
+        match &*ref_ty.elem {
+            Type::Path(type_path) => {
+                if let Some(seg) = type_path.path.segments.last() {
+                    if seg.ident == "str" && type_path.path.segments.len() == 1 {
+                        return Some(TailElement::Str);
+                    }
+                }
             }
+            Type::Slice(slice_ty) => {
+                if let Type::Path(type_path) = &*slice_ty.elem {
+                    if let Some(seg) = type_path.path.segments.last() {
+                        if seg.ident == "u8" && type_path.path.segments.len() == 1 {
+                            return Some(TailElement::Bytes);
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     }
-    false
+    None
 }
 
 // --- Zc (zero-copy) companion struct helpers ---
@@ -282,43 +448,51 @@ pub(crate) fn map_to_pod_type(ty: &Type) -> proc_macro2::TokenStream {
     quote! { #ty }
 }
 
-pub(crate) fn zc_serialize_field(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
+fn zc_assign_expr(
+    field_name: &Ident,
+    ty: &Type,
+    value: proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
             return match seg.ident.to_string().as_str() {
-                "u8" | "i8" => quote! { __zc.#field_name = self.#field_name; },
+                "u8" | "i8" => quote! { __zc.#field_name = #value; },
                 "bool" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodBool::from(self.#field_name); }
+                    quote! { __zc.#field_name = quasar_core::pod::PodBool::from(#value); }
                 }
                 "u16" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodU16::from(self.#field_name); }
+                    quote! { __zc.#field_name = quasar_core::pod::PodU16::from(#value); }
                 }
                 "u32" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodU32::from(self.#field_name); }
+                    quote! { __zc.#field_name = quasar_core::pod::PodU32::from(#value); }
                 }
                 "u64" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodU64::from(self.#field_name); }
+                    quote! { __zc.#field_name = quasar_core::pod::PodU64::from(#value); }
                 }
                 "u128" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodU128::from(self.#field_name); }
+                    quote! { __zc.#field_name = quasar_core::pod::PodU128::from(#value); }
                 }
                 "i16" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodI16::from(self.#field_name); }
+                    quote! { __zc.#field_name = quasar_core::pod::PodI16::from(#value); }
                 }
                 "i32" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodI32::from(self.#field_name); }
+                    quote! { __zc.#field_name = quasar_core::pod::PodI32::from(#value); }
                 }
                 "i64" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodI64::from(self.#field_name); }
+                    quote! { __zc.#field_name = quasar_core::pod::PodI64::from(#value); }
                 }
                 "i128" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodI128::from(self.#field_name); }
+                    quote! { __zc.#field_name = quasar_core::pod::PodI128::from(#value); }
                 }
-                _ => quote! { __zc.#field_name = self.#field_name; },
+                _ => quote! { __zc.#field_name = #value; },
             };
         }
     }
-    quote! { __zc.#field_name = self.#field_name; }
+    quote! { __zc.#field_name = #value; }
+}
+
+pub(crate) fn zc_assign_from_value(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
+    zc_assign_expr(field_name, ty, quote! { #field_name })
 }
 
 pub(crate) fn zc_deserialize_expr(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
@@ -334,9 +508,4 @@ pub(crate) fn zc_deserialize_expr(field_name: &Ident, ty: &Type) -> proc_macro2:
         }
     }
     quote! { __zc.#field_name }
-}
-
-pub(crate) fn zc_deserialize_field(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
-    let expr = zc_deserialize_expr(field_name, ty);
-    quote! { #field_name: #expr }
 }

@@ -11,7 +11,7 @@ use solana_program_pack::Pack;
 use spl_token_interface::state::Account as TokenAccount;
 use spl_token_interface::state::Mint;
 
-use crate::client::{MakeInstruction, RefundInstruction, TakeInstruction};
+use crate::idl_client::{MakeInstruction, RefundInstruction, TakeInstruction};
 
 /// Mark specific account indices as signers on an instruction.
 /// Simulates a client including keypairs in the transaction for accounts

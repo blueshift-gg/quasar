@@ -393,4 +393,4 @@ The module is gated behind `#[cfg(feature = "client")]` and requires `alloc` (it
 - **Expression-based seeds are not supported**: Seeds like `&escrow.maker.to_bytes()` or `value.to_le_bytes()` are ignored. Only byte string literals (`b"escrow"`) and direct field name references (`maker`) are parsed.
 - **No `#[path = "..."]` module resolution**: The module resolver follows standard Rust conventions only. Custom `#[path]` attributes on `mod` declarations are not handled.
 - **Single-crate scope**: The parser only resolves files within a single crate. Cross-crate type references (e.g., importing an account type from a shared library crate) appear as `{ "defined": "TypeName" }` without field expansion.
-- **Token program addresses**: `TokenProgram` and `TokenInterface` are not auto-annotated with known addresses (unlike `SystemProgram` and sysvars). The user must pass these explicitly.
+- **Token program addresses**: `Program<Token>` and `Interface<TokenInterface>` are not auto-annotated with known addresses (unlike `Program<System>` and sysvars). The user must pass these explicitly.

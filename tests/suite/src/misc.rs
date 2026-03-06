@@ -11,7 +11,10 @@ use solana_instruction::Instruction;
 const SIMPLE_ACCOUNT_SIZE: usize = 42; // 1 disc + 32 addr + 8 u64 + 1 u8
 const MULTI_DISC_SIZE: usize = 10; // 2 disc + 8 u64
 const DYNAMIC_ACCOUNT_DISC: u8 = 5;
-const DYNAMIC_HEADER_SIZE: usize = 1 + 2 + 2; // disc + name_end + tags_end
+const DYNAMIC_HEADER_SIZE: usize = 1; // disc only (no fixed ZC fields)
+const MIXED_ACCOUNT_DISC: u8 = 6;
+const MIXED_FIXED_SIZE: usize = 32 + 8; // Address + u64
+const SMALL_PREFIX_DISC: u8 = 7;
 
 fn build_simple_account_data(authority: Address, value: u64, bump: u8) -> Vec<u8> {
     let mut data = vec![0u8; 42];
@@ -31,22 +34,28 @@ fn build_multi_disc_account_data(value: u64) -> Vec<u8> {
 }
 
 fn build_dynamic_account_data(name: &[u8], tags: &[Address]) -> Vec<u8> {
+    // Inline prefix layout: [disc][u32:name_len][name_bytes][u32:tags_count][tag_elements]
     let name_len = name.len();
-    let tags_len = tags.len() * 32;
-    let total = DYNAMIC_HEADER_SIZE + name_len + tags_len;
+    let tags_count = tags.len();
+    let tags_bytes = tags_count * 32;
+    let total = DYNAMIC_HEADER_SIZE + 4 + name_len + 4 + tags_bytes;
     let mut data = vec![0u8; total];
 
-    data[0] = DYNAMIC_ACCOUNT_DISC;
-    let name_end = name_len as u16;
-    let tags_end = name_end + (tags_len as u16);
-    data[1..3].copy_from_slice(&name_end.to_le_bytes());
-    data[3..5].copy_from_slice(&tags_end.to_le_bytes());
+    let mut offset = 0;
+    data[offset] = DYNAMIC_ACCOUNT_DISC;
+    offset += 1;
 
-    let tail_start = DYNAMIC_HEADER_SIZE;
-    data[tail_start..tail_start + name_len].copy_from_slice(name);
-    let tags_start = tail_start + name_len;
+    // name: u32 prefix (byte length) + data
+    data[offset..offset + 4].copy_from_slice(&(name_len as u32).to_le_bytes());
+    offset += 4;
+    data[offset..offset + name_len].copy_from_slice(name);
+    offset += name_len;
+
+    // tags: u32 prefix (element count) + elements
+    data[offset..offset + 4].copy_from_slice(&(tags_count as u32).to_le_bytes());
+    offset += 4;
     for (i, tag) in tags.iter().enumerate() {
-        data[tags_start + i * 32..tags_start + (i + 1) * 32].copy_from_slice(tag.as_ref());
+        data[offset + i * 32..offset + (i + 1) * 32].copy_from_slice(tag.as_ref());
     }
 
     data
@@ -1856,18 +1865,15 @@ fn test_dynamic_instruction_invalid_utf8_rejected() {
 }
 
 #[test]
-fn test_dynamic_account_non_monotonic_offsets_rejected() {
+fn test_dynamic_account_name_exceeds_max_rejected() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    let tag = Address::new_unique();
-    let mut data = build_dynamic_account_data(b"hi", &[tag]);
+    // Build valid account, then corrupt: set name length prefix > max (8)
+    let mut data = build_dynamic_account_data(b"hi", &[]);
 
-    // Corrupt: set name_end > tags_end (non-monotonic)
-    // name_end is at offset 1..3, tags_end at 3..5
-    // Set name_end to 100, tags_end to 50
-    data[1..3].copy_from_slice(&100u16.to_le_bytes());
-    data[3..5].copy_from_slice(&50u16.to_le_bytes());
+    // Corrupt name length prefix (at offset 1..5) to exceed max of 8
+    data[1..5].copy_from_slice(&100u32.to_le_bytes());
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -1882,30 +1888,21 @@ fn test_dynamic_account_non_monotonic_offsets_rejected() {
 
     assert!(
         result.program_result.is_err(),
-        "non-monotonic end offsets must be rejected"
+        "name length exceeding max must be rejected"
     );
 }
 
 #[test]
-fn test_dynamic_account_misaligned_vec_rejected() {
+fn test_dynamic_account_truncated_data_rejected() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    // Build account with name="a" and 1 tag (32 bytes)
-    let tag = Address::new_unique();
-    let mut data = build_dynamic_account_data(b"a", &[tag]);
+    // Build valid account with name="hello" (5 bytes), then truncate data
+    // so the name prefix declares more bytes than available
+    let mut data = build_dynamic_account_data(b"hello", &[]);
 
-    // Corrupt: set tags_end so that the Vec region is not divisible by 32
-    // name region: [0..1], tags region should be [1..33]
-    // tags_end should be 33 for correct, set it to 34 (not divisible by 32)
-    let name_end = 1u16;
-    let tags_end = name_end + 33; // 33 bytes is not divisible by 32
-    data[1..3].copy_from_slice(&name_end.to_le_bytes());
-    data[3..5].copy_from_slice(&tags_end.to_le_bytes());
-
-    // Extend data to fit the declared size
-    let total_needed = DYNAMIC_HEADER_SIZE + tags_end as usize;
-    data.resize(total_needed, 0);
+    // Truncate: keep disc + name prefix but remove the name data
+    data.truncate(DYNAMIC_HEADER_SIZE + 4); // just disc + u32 prefix, no bytes
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -1918,10 +1915,9 @@ fn test_dynamic_account_misaligned_vec_rejected() {
     let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
-    assert_eq!(
-        result.program_result,
-        ProgramResult::Failure(ProgramError::InvalidAccountData),
-        "Vec region not divisible by element size must be rejected"
+    assert!(
+        result.program_result.is_err(),
+        "truncated data must be rejected"
     );
 }
 
@@ -2151,5 +2147,2455 @@ fn test_optional_has_one_none() {
         result.program_result.is_ok(),
         "optional has_one with None should pass (constraint skipped): {:?}",
         result.program_result
+    );
+}
+
+// ============================================================================
+// Dynamic Account — Edge Cases
+// ============================================================================
+
+#[test]
+fn test_dynamic_account_empty_string_and_empty_vec() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let data = build_dynamic_account_data(b"", &[]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "empty string + empty vec should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_dynamic_account_string_at_exact_max() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let data = build_dynamic_account_data(b"12345678", &[]); // exactly 8 bytes = max
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "string at exact max (8 bytes) should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_dynamic_account_string_exceeds_max_by_one() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let data = build_dynamic_account_data(b"123456789", &[]); // 9 bytes > max of 8
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_err(),
+        "string at max+1 (9 bytes) must be rejected"
+    );
+}
+
+#[test]
+fn test_dynamic_account_vec_at_exact_max() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let tag1 = Address::new_unique();
+    let tag2 = Address::new_unique();
+    let data = build_dynamic_account_data(b"hi", &[tag1, tag2]); // exactly 2 = max
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "vec at exact max (2 tags) should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_dynamic_account_vec_exceeds_max() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let tags: Vec<Address> = (0..3).map(|_| Address::new_unique()).collect();
+    let data = build_dynamic_account_data(b"hi", &tags); // 3 > max of 2
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_err(),
+        "vec exceeding max (3 tags) must be rejected"
+    );
+}
+
+#[test]
+fn test_dynamic_account_trailing_bytes_accepted() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let mut data = build_dynamic_account_data(b"hi", &[]);
+    data.extend_from_slice(&[0u8; 64]); // extra trailing bytes (slack space)
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "account with trailing bytes (slack space) should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_dynamic_account_wrong_discriminator() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let mut data = build_dynamic_account_data(b"hi", &[]);
+    data[0] = 99; // wrong discriminator
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData)
+    );
+}
+
+#[test]
+fn test_dynamic_account_minimum_size_empty_fields() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // Minimum valid data: disc(1) + u32 name_len=0(4) + u32 tags_count=0(4) = 9 bytes
+    let data = build_dynamic_account_data(b"", &[]);
+    assert_eq!(
+        data.len(),
+        9,
+        "minimum data size for DynamicAccount with empty fields"
+    );
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "minimum-size account should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_dynamic_account_too_small_for_prefixes() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // Only disc byte — not enough for the u32 name prefix
+    let data = vec![DYNAMIC_ACCOUNT_DISC];
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_err(),
+        "data too small for prefix bytes must be rejected"
+    );
+}
+
+// ============================================================================
+// MixedAccount (fixed + dynamic fields, discriminator = 6)
+// ============================================================================
+
+fn build_mixed_account_data(authority: Address, value: u64, label: &[u8]) -> Vec<u8> {
+    // Layout: [disc(1)][authority(32)][value(8)][u32:label_len][label_bytes]
+    let label_len = label.len();
+    let total = 1 + MIXED_FIXED_SIZE + 4 + label_len;
+    let mut data = vec![0u8; total];
+
+    let mut offset = 0;
+    data[offset] = MIXED_ACCOUNT_DISC;
+    offset += 1;
+
+    data[offset..offset + 32].copy_from_slice(authority.as_ref());
+    offset += 32;
+
+    data[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+    offset += 8;
+
+    data[offset..offset + 4].copy_from_slice(&(label_len as u32).to_le_bytes());
+    offset += 4;
+
+    data[offset..offset + label_len].copy_from_slice(label);
+
+    data
+}
+
+#[test]
+fn test_mixed_account_valid_data() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let data = build_mixed_account_data(authority, 42, b"test label");
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = MixedAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "valid mixed account should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_mixed_account_empty_label() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let data = build_mixed_account_data(authority, 0, b"");
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = MixedAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "mixed account with empty label should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_mixed_account_label_at_max() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let label = [b'x'; 32]; // exactly 32 = max
+    let data = build_mixed_account_data(authority, 99, &label);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = MixedAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "mixed account label at exact max should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_mixed_account_label_exceeds_max() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let label = [b'x'; 33]; // 33 > max of 32
+    let data = build_mixed_account_data(authority, 0, &label);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = MixedAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_err(),
+        "mixed account label exceeding max must be rejected"
+    );
+}
+
+#[test]
+fn test_mixed_account_wrong_discriminator() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let mut data = build_mixed_account_data(authority, 42, b"hi");
+    data[0] = 99; // wrong disc
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = MixedAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData)
+    );
+}
+
+#[test]
+fn test_mixed_account_truncated_in_fixed_section() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // Only disc + partial authority (20 bytes instead of 32)
+    let data = vec![MIXED_ACCOUNT_DISC; 21];
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = MixedAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_err(),
+        "data truncated in fixed section must be rejected"
+    );
+}
+
+#[test]
+fn test_mixed_account_truncated_in_dynamic_section() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let mut data = build_mixed_account_data(authority, 42, b"hello");
+    // Corrupt: set label prefix to claim 100 bytes but data only has 5
+    let label_offset = 1 + MIXED_FIXED_SIZE;
+    data[label_offset..label_offset + 4].copy_from_slice(&100u32.to_le_bytes());
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = MixedAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_err(),
+        "data truncated in dynamic section must be rejected"
+    );
+}
+
+#[test]
+fn test_mixed_account_invalid_utf8_label() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let data = build_mixed_account_data(authority, 42, &[0xFF, 0xFE]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = MixedAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_err(),
+        "invalid UTF-8 in label must be rejected"
+    );
+}
+
+// ============================================================================
+// SmallPrefixAccount (u8 prefix, discriminator = 7)
+// ============================================================================
+
+fn build_small_prefix_account_data(tag: &[u8], scores: &[u8]) -> Vec<u8> {
+    // Layout: [disc(1)][u8:tag_len][tag_bytes][u8:scores_count][score_elements]
+    let tag_len = tag.len();
+    let scores_count = scores.len();
+    let total = 1 + 1 + tag_len + 1 + scores_count;
+    let mut data = vec![0u8; total];
+
+    let mut offset = 0;
+    data[offset] = SMALL_PREFIX_DISC;
+    offset += 1;
+
+    data[offset] = tag_len as u8;
+    offset += 1;
+    data[offset..offset + tag_len].copy_from_slice(tag);
+    offset += tag_len;
+
+    data[offset] = scores_count as u8;
+    offset += 1;
+    data[offset..offset + scores_count].copy_from_slice(scores);
+
+    data
+}
+
+#[test]
+fn test_small_prefix_valid_data() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let data = build_small_prefix_account_data(b"hello", &[10, 20, 30]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = SmallPrefixCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "valid small prefix account should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_small_prefix_empty_fields() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let data = build_small_prefix_account_data(b"", &[]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = SmallPrefixCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "empty small prefix account should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_small_prefix_tag_at_max() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let tag = [b'a'; 100]; // exactly 100 = max
+    let data = build_small_prefix_account_data(&tag, &[]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = SmallPrefixCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "tag at exact max should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_small_prefix_tag_exceeds_max() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let tag = [b'a'; 101]; // 101 > max of 100
+    let data = build_small_prefix_account_data(&tag, &[]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = SmallPrefixCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_err(),
+        "tag exceeding max must be rejected"
+    );
+}
+
+#[test]
+fn test_small_prefix_scores_at_max() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let scores: Vec<u8> = (0..10).collect(); // exactly 10 = max
+    let data = build_small_prefix_account_data(b"x", &scores);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = SmallPrefixCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "scores at exact max should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_small_prefix_scores_exceeds_max() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let scores: Vec<u8> = (0..11).collect(); // 11 > max of 10
+    let data = build_small_prefix_account_data(b"x", &scores);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = SmallPrefixCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_err(),
+        "scores exceeding max must be rejected"
+    );
+}
+
+#[test]
+fn test_small_prefix_invalid_utf8_tag() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let data = build_small_prefix_account_data(&[0x80, 0x81], &[1]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = SmallPrefixCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_err(),
+        "invalid UTF-8 in tag must be rejected"
+    );
+}
+
+#[test]
+fn test_small_prefix_truncated_data() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // disc + tag prefix says 50 bytes but only provide 3
+    let data = vec![SMALL_PREFIX_DISC, 50, b'a', b'b', b'c'];
+    let _ = data.len();
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = SmallPrefixCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_err(),
+        "truncated small prefix data must be rejected"
+    );
+}
+
+// ============================================================================
+// Dynamic Accessor Readback (discriminator = 24)
+// ============================================================================
+
+fn build_readback_instruction(
+    account: Address,
+    expected_name_len: u8,
+    expected_tags_count: u8,
+) -> Instruction {
+    // Instruction data: [disc(24)][expected_name_len(u8)][expected_tags_count(u8)]
+    let data = vec![24, expected_name_len, expected_tags_count];
+    Instruction {
+        program_id: quasar_test_misc::ID,
+        accounts: vec![solana_instruction::AccountMeta::new_readonly(
+            account, false,
+        )],
+        data,
+    }
+}
+
+#[test]
+fn test_dynamic_readback_correct_lengths() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let tag = Address::new_unique();
+    let account_bytes = build_dynamic_account_data(b"hello", &[tag]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: account_bytes,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_readback_instruction(account, 5, 1);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "readback with correct lengths should succeed: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_dynamic_readback_empty_fields() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let account_bytes = build_dynamic_account_data(b"", &[]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: account_bytes,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_readback_instruction(account, 0, 0);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "readback with empty fields should succeed: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_dynamic_readback_max_fields() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let tag1 = Address::new_unique();
+    let tag2 = Address::new_unique();
+    let account_bytes = build_dynamic_account_data(b"12345678", &[tag1, tag2]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: account_bytes,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_readback_instruction(account, 8, 2);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "readback with max fields should succeed: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_dynamic_readback_wrong_name_len() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let account_bytes = build_dynamic_account_data(b"hello", &[]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: account_bytes,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_readback_instruction(account, 3, 0); // 3 != 5
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::Custom(1)),
+        "wrong name length should return Custom(1)"
+    );
+}
+
+#[test]
+fn test_dynamic_readback_wrong_tags_count() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let tag = Address::new_unique();
+    let account_bytes = build_dynamic_account_data(b"hi", &[tag]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: account_bytes,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_readback_instruction(account, 2, 0); // 0 != 1
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::Custom(2)),
+        "wrong tags count should return Custom(2)"
+    );
+}
+
+// ============================================================================
+// Dynamic Mutation (discriminator = 26)
+// ============================================================================
+
+fn build_mutate_instruction(
+    account: Address,
+    payer: Address,
+    system_program: Address,
+    new_name: &[u8],
+) -> Instruction {
+    // Instruction data: [disc(26)][u32:name_len][name_bytes]
+    let mut data = vec![26];
+    data.extend_from_slice(&(new_name.len() as u32).to_le_bytes());
+    data.extend_from_slice(new_name);
+    Instruction {
+        program_id: quasar_test_misc::ID,
+        accounts: vec![
+            solana_instruction::AccountMeta::new(account, false),
+            solana_instruction::AccountMeta::new(payer, true),
+            solana_instruction::AccountMeta::new_readonly(system_program, false),
+        ],
+        data,
+    }
+}
+
+#[test]
+fn test_dynamic_mutate_same_length_name() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let account = Address::new_unique();
+    let payer = Address::new_unique();
+
+    let tag = Address::new_unique();
+    let account_bytes = build_dynamic_account_data(b"hello", &[tag]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: account_bytes,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+
+    let instruction = build_mutate_instruction(account, payer, system_program, b"world");
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, account_data),
+            (payer, payer_account),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "same-length mutation should succeed: {:?}",
+        result.program_result
+    );
+
+    // Verify the account data was updated
+    let result_data = &result.resulting_accounts[0].1.data;
+    assert_eq!(result_data[0], DYNAMIC_ACCOUNT_DISC);
+    // Read name prefix (u32 at offset 1)
+    let name_len = u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
+    assert_eq!(name_len, 5);
+    assert_eq!(&result_data[5..10], b"world");
+    // Verify tags were preserved
+    let tags_count = u32::from_le_bytes(result_data[10..14].try_into().unwrap()) as usize;
+    assert_eq!(tags_count, 1);
+    assert_eq!(&result_data[14..46], tag.as_ref());
+}
+
+#[test]
+fn test_dynamic_mutate_shorter_name() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let account = Address::new_unique();
+    let payer = Address::new_unique();
+
+    let account_bytes = build_dynamic_account_data(b"hello", &[]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: account_bytes,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+
+    let instruction = build_mutate_instruction(account, payer, system_program, b"hi");
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, account_data),
+            (payer, payer_account),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "shorter name mutation should succeed: {:?}",
+        result.program_result
+    );
+
+    let result_data = &result.resulting_accounts[0].1.data;
+    let name_len = u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
+    assert_eq!(name_len, 2);
+    assert_eq!(&result_data[5..7], b"hi");
+}
+
+#[test]
+fn test_dynamic_mutate_longer_name() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let account = Address::new_unique();
+    let payer = Address::new_unique();
+
+    let account_bytes = build_dynamic_account_data(b"hi", &[]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: account_bytes,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+
+    let instruction = build_mutate_instruction(account, payer, system_program, b"12345678");
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, account_data),
+            (payer, payer_account),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "longer name mutation (with realloc) should succeed: {:?}",
+        result.program_result
+    );
+
+    let result_data = &result.resulting_accounts[0].1.data;
+    let name_len = u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
+    assert_eq!(name_len, 8);
+    assert_eq!(&result_data[5..13], b"12345678");
+}
+
+#[test]
+fn test_dynamic_mutate_to_empty() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let account = Address::new_unique();
+    let payer = Address::new_unique();
+
+    let account_bytes = build_dynamic_account_data(b"hello", &[]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: account_bytes,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+
+    let instruction = build_mutate_instruction(account, payer, system_program, b"");
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, account_data),
+            (payer, payer_account),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "mutation to empty string should succeed: {:?}",
+        result.program_result
+    );
+
+    let result_data = &result.resulting_accounts[0].1.data;
+    let name_len = u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
+    assert_eq!(name_len, 0);
+}
+
+#[test]
+fn test_dynamic_mutate_preserves_trailing_vec() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let account = Address::new_unique();
+    let payer = Address::new_unique();
+
+    let tag1 = Address::new_unique();
+    let tag2 = Address::new_unique();
+    let account_bytes = build_dynamic_account_data(b"abc", &[tag1, tag2]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: account_bytes,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+
+    // Change name from "abc" (3) to "abcdef" (6) — grows, shifts tags
+    let instruction = build_mutate_instruction(account, payer, system_program, b"abcdef");
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, account_data),
+            (payer, payer_account),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "mutation with trailing vec should succeed: {:?}",
+        result.program_result
+    );
+
+    let result_data = &result.resulting_accounts[0].1.data;
+    let name_len = u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
+    assert_eq!(name_len, 6);
+    assert_eq!(&result_data[5..11], b"abcdef");
+    // Verify tags were shifted correctly
+    let tags_offset = 11;
+    let tags_count = u32::from_le_bytes(
+        result_data[tags_offset..tags_offset + 4]
+            .try_into()
+            .unwrap(),
+    ) as usize;
+    assert_eq!(tags_count, 2);
+    assert_eq!(
+        &result_data[tags_offset + 4..tags_offset + 36],
+        tag1.as_ref()
+    );
+    assert_eq!(
+        &result_data[tags_offset + 36..tags_offset + 68],
+        tag2.as_ref()
+    );
+}
+
+#[test]
+fn test_dynamic_mutate_exceeds_max_rejected() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let account = Address::new_unique();
+    let payer = Address::new_unique();
+
+    let account_bytes = build_dynamic_account_data(b"hi", &[]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: account_bytes,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+
+    // Try to set name to 9 bytes (max is 8)
+    let instruction = build_mutate_instruction(account, payer, system_program, b"123456789");
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, account_data),
+            (payer, payer_account),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_err(),
+        "mutation exceeding max must be rejected"
+    );
+}
+
+// ============================================================================
+// ADVERSARIAL TESTS: Crafted Prefix Attacks
+// ============================================================================
+
+/// u32 prefix claiming u32::MAX bytes — validation must reject, not wrap/panic
+#[test]
+fn test_adversarial_prefix_u32_max_name_len() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let mut data = vec![0u8; 1 + 4 + 4]; // disc + name prefix + tags prefix
+    data[0] = DYNAMIC_ACCOUNT_DISC;
+    data[1..5].copy_from_slice(&u32::MAX.to_le_bytes()); // name len = 4 billion
+                                                         // tags prefix = 0 (starts right after, but name data is "missing")
+    data[5..9].copy_from_slice(&0u32.to_le_bytes());
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
+        "u32::MAX name prefix must be rejected (exceeds max=8)"
+    );
+}
+
+/// u32 prefix just above max (9 when max=8) — off-by-one test
+#[test]
+fn test_adversarial_prefix_one_past_max() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // Build account with 9 valid ASCII bytes but prefix says 9 (max=8)
+    let mut data = vec![0u8; 1 + 4 + 9 + 4]; // disc + prefix + "aaaaaaaaa" + tags prefix
+    data[0] = DYNAMIC_ACCOUNT_DISC;
+    data[1..5].copy_from_slice(&9u32.to_le_bytes());
+    data[5..14].copy_from_slice(b"aaaaaaaaa");
+    data[14..18].copy_from_slice(&0u32.to_le_bytes());
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
+        "name len=9 (max=8) must be rejected even if data is valid UTF-8"
+    );
+}
+
+/// Vec prefix claiming u32::MAX element count — tests count*elem_size overflow path
+#[test]
+fn test_adversarial_vec_count_u32_max() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // DynamicAccount: name="" (prefix=0), tags count=u32::MAX
+    let mut data = vec![0u8; 1 + 4 + 4]; // disc + name prefix(0) + tags prefix
+    data[0] = DYNAMIC_ACCOUNT_DISC;
+    data[1..5].copy_from_slice(&0u32.to_le_bytes()); // empty name
+    data[5..9].copy_from_slice(&u32::MAX.to_le_bytes()); // 4 billion tags
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
+        "u32::MAX vec count must be rejected (exceeds max=2)"
+    );
+}
+
+/// Vec prefix = 3 (max=2) — off-by-one on vec count
+#[test]
+fn test_adversarial_vec_count_one_past_max() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let tag1 = Address::new_unique();
+    let tag2 = Address::new_unique();
+    let tag3 = Address::new_unique();
+
+    // Build with 3 tags (max=2): name="" prefix=0, tags count=3
+    let mut data = vec![0u8; 1 + 4 + 4 + 32 * 3];
+    data[0] = DYNAMIC_ACCOUNT_DISC;
+    data[1..5].copy_from_slice(&0u32.to_le_bytes());
+    data[5..9].copy_from_slice(&3u32.to_le_bytes());
+    data[9..41].copy_from_slice(tag1.as_ref());
+    data[41..73].copy_from_slice(tag2.as_ref());
+    data[73..105].copy_from_slice(tag3.as_ref());
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
+        "vec count=3 (max=2) must be rejected"
+    );
+}
+
+/// Name prefix says valid length but data crosses into tags prefix bytes.
+/// Specifically: name len=8 but account only has disc(1)+prefix(4)+5 bytes.
+/// The name "reads into" where tags prefix would be.
+#[test]
+fn test_adversarial_name_data_overlaps_tags_prefix_region() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // 1 + 4 + 5 = 10 bytes. Prefix says len=8 but only 5 bytes of data exist.
+    let mut data = vec![0u8; 10];
+    data[0] = DYNAMIC_ACCOUNT_DISC;
+    data[1..5].copy_from_slice(&8u32.to_le_bytes()); // claims 8 bytes
+    data[5..10].copy_from_slice(b"abcde"); // only 5 bytes present
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::AccountDataTooSmall),
+        "prefix claiming more bytes than available must fail with AccountDataTooSmall"
+    );
+}
+
+/// Tags prefix positioned correctly but data truncated: count=1 but only 16
+/// of 32 tag bytes present.
+#[test]
+fn test_adversarial_vec_data_truncated_mid_element() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // name="" (prefix=0) + tags count=1 but only 16 bytes (Address is 32)
+    let mut data = vec![0u8; 1 + 4 + 4 + 16];
+    data[0] = DYNAMIC_ACCOUNT_DISC;
+    data[1..5].copy_from_slice(&0u32.to_le_bytes()); // empty name
+    data[5..9].copy_from_slice(&1u32.to_le_bytes()); // 1 tag
+                                                     // data[9..25] = 16 zero bytes (need 32 for Address)
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::AccountDataTooSmall),
+        "truncated vec element data must fail"
+    );
+}
+
+// ============================================================================
+// ADVERSARIAL TESTS: Multi-byte UTF-8 Edge Cases
+// ============================================================================
+
+/// Truncated 2-byte UTF-8 sequence: 0xC3 without continuation byte
+#[test]
+fn test_adversarial_utf8_truncated_2byte_sequence() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // 0xC3 starts a 2-byte UTF-8 char (e.g. é = C3 A9), but we only give 1 byte
+    let data = build_dynamic_account_data(&[0xC3], &[]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
+        "truncated 2-byte UTF-8 must be rejected"
+    );
+}
+
+/// Truncated 3-byte UTF-8 sequence: euro sign is E2 82 AC, give only E2 82
+#[test]
+fn test_adversarial_utf8_truncated_3byte_sequence() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let data = build_dynamic_account_data(&[0xE2, 0x82], &[]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
+        "truncated 3-byte UTF-8 must be rejected"
+    );
+}
+
+/// Overlong encoding: C0 80 is an overlong encoding of NUL (invalid UTF-8)
+#[test]
+fn test_adversarial_utf8_overlong_nul() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let data = build_dynamic_account_data(&[0xC0, 0x80], &[]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
+        "overlong UTF-8 encoding must be rejected"
+    );
+}
+
+/// Valid 2-byte UTF-8 at field boundary: name = "é" (C3 A9) = 2 bytes
+/// Ensures multi-byte chars at exact max boundary work (2 < max=8)
+#[test]
+fn test_adversarial_utf8_valid_multibyte_accepted() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let data = build_dynamic_account_data(&[0xC3, 0xA9], &[]); // "é"
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "valid multi-byte UTF-8 must be accepted: {:?}",
+        result.program_result
+    );
+}
+
+/// Valid 4-byte UTF-8 emoji filling max (8 bytes = 2 emoji chars)
+#[test]
+fn test_adversarial_utf8_4byte_chars_at_max() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // 😀 = F0 9F 98 80 (4 bytes). Two of them = 8 bytes = max
+    let data = build_dynamic_account_data(&[0xF0, 0x9F, 0x98, 0x80, 0xF0, 0x9F, 0x98, 0x80], &[]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "two 4-byte emoji chars at exact max=8 must be accepted: {:?}",
+        result.program_result
+    );
+}
+
+/// Surrogate half (ED A0 80 = U+D800) — invalid in UTF-8
+#[test]
+fn test_adversarial_utf8_surrogate_half() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let data = build_dynamic_account_data(&[0xED, 0xA0, 0x80], &[]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
+        "UTF-8 surrogate half must be rejected"
+    );
+}
+
+// ============================================================================
+// ADVERSARIAL TESTS: SmallPrefix (u8) Attack Surface
+// ============================================================================
+
+/// u8 prefix = 255 (max=100 for tag) — tests u8 max check
+#[test]
+fn test_adversarial_small_prefix_u8_max_value() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // disc + tag prefix(255) + 0 bytes of data + scores prefix
+    let mut data = vec![SMALL_PREFIX_DISC, 255];
+    // No actual tag data — prefix claims 255 bytes but max=100
+    data.push(0); // scores count = 0
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = Instruction {
+        program_id: quasar_test_misc::ID,
+        accounts: vec![solana_instruction::AccountMeta::new_readonly(
+            account, false,
+        )],
+        data: vec![23], // small_prefix_check discriminator
+    };
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
+        "u8 prefix=255 (max=100) must be rejected"
+    );
+}
+
+/// u8 scores count = 255 (max=10) — vec u8 prefix overflow
+#[test]
+fn test_adversarial_small_prefix_vec_u8_overflow() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // disc + tag(prefix=0, empty) + scores(prefix=255, max=10)
+    let data = vec![SMALL_PREFIX_DISC, 0, 255];
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = Instruction {
+        program_id: quasar_test_misc::ID,
+        accounts: vec![solana_instruction::AccountMeta::new_readonly(
+            account, false,
+        )],
+        data: vec![23],
+    };
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
+        "u8 vec count=255 (max=10) must be rejected"
+    );
+}
+
+// ============================================================================
+// ADVERSARIAL TESTS: Mutation → Readback Correctness
+// ============================================================================
+
+fn build_mutate_then_readback_instruction(
+    account: Address,
+    payer: Address,
+    system_program: Address,
+    new_name: &[u8],
+    expected_tags_count: u8,
+) -> Instruction {
+    // Fixed args come first in ZC struct, then dynamic fields with inline prefixes.
+    // Layout: [disc(27)][expected_tags_count(u8)][u32:name_len][name_bytes]
+    let mut data = vec![27];
+    data.push(expected_tags_count);
+    data.extend_from_slice(&(new_name.len() as u32).to_le_bytes());
+    data.extend_from_slice(new_name);
+    Instruction {
+        program_id: quasar_test_misc::ID,
+        accounts: vec![
+            solana_instruction::AccountMeta::new(account, false),
+            solana_instruction::AccountMeta::new(payer, true),
+            solana_instruction::AccountMeta::new_readonly(system_program, false),
+        ],
+        data,
+    }
+}
+
+/// Grow name with 2 trailing tags: verifies memmove shifts tags correctly
+/// and accessor reads them back at the new offset
+#[test]
+fn test_adversarial_mutate_grow_then_readback_tags() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let account = Address::new_unique();
+    let payer = Address::new_unique();
+
+    let tag1 = Address::new_unique();
+    let tag2 = Address::new_unique();
+    let account_bytes = build_dynamic_account_data(b"ab", &[tag1, tag2]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: account_bytes,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+
+    // Grow name from "ab" (2) to "12345678" (8=max), expect 2 tags preserved
+    let instruction =
+        build_mutate_then_readback_instruction(account, payer, system_program, b"12345678", 2);
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, account_data),
+            (payer, payer_account),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "grow name then readback tags should succeed: {:?}",
+        result.program_result
+    );
+
+    // Also verify the raw bytes to be extra paranoid
+    let rd = &result.resulting_accounts[0].1.data;
+    assert_eq!(rd[0], DYNAMIC_ACCOUNT_DISC);
+    let name_len = u32::from_le_bytes(rd[1..5].try_into().unwrap()) as usize;
+    assert_eq!(name_len, 8);
+    assert_eq!(&rd[5..13], b"12345678");
+    let tags_count = u32::from_le_bytes(rd[13..17].try_into().unwrap()) as usize;
+    assert_eq!(tags_count, 2);
+    assert_eq!(&rd[17..49], tag1.as_ref());
+    assert_eq!(&rd[49..81], tag2.as_ref());
+}
+
+/// Shrink name with trailing tags: verifies memmove on shrink
+#[test]
+fn test_adversarial_mutate_shrink_then_readback_tags() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let account = Address::new_unique();
+    let payer = Address::new_unique();
+
+    let tag1 = Address::new_unique();
+    let tag2 = Address::new_unique();
+    let account_bytes = build_dynamic_account_data(b"12345678", &[tag1, tag2]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: account_bytes,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+
+    // Shrink name from "12345678" (8) to "x" (1), expect 2 tags preserved
+    let instruction =
+        build_mutate_then_readback_instruction(account, payer, system_program, b"x", 2);
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, account_data),
+            (payer, payer_account),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "shrink name then readback tags should succeed: {:?}",
+        result.program_result
+    );
+
+    let rd = &result.resulting_accounts[0].1.data;
+    let name_len = u32::from_le_bytes(rd[1..5].try_into().unwrap()) as usize;
+    assert_eq!(name_len, 1);
+    assert_eq!(&rd[5..6], b"x");
+    let tags_count = u32::from_le_bytes(rd[6..10].try_into().unwrap()) as usize;
+    assert_eq!(tags_count, 2);
+    assert_eq!(&rd[10..42], tag1.as_ref());
+    assert_eq!(&rd[42..74], tag2.as_ref());
+}
+
+/// Mutate name to empty with trailing tags: edge case for zero-length memmove source
+#[test]
+fn test_adversarial_mutate_to_empty_then_readback_tags() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let account = Address::new_unique();
+    let payer = Address::new_unique();
+
+    let tag = Address::new_unique();
+    let account_bytes = build_dynamic_account_data(b"hello", &[tag]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: account_bytes,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+
+    let instruction =
+        build_mutate_then_readback_instruction(account, payer, system_program, b"", 1);
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, account_data),
+            (payer, payer_account),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "mutate to empty then readback tags should succeed: {:?}",
+        result.program_result
+    );
+
+    let rd = &result.resulting_accounts[0].1.data;
+    let name_len = u32::from_le_bytes(rd[1..5].try_into().unwrap()) as usize;
+    assert_eq!(name_len, 0);
+    let tags_count = u32::from_le_bytes(rd[5..9].try_into().unwrap()) as usize;
+    assert_eq!(tags_count, 1);
+    assert_eq!(&rd[9..41], tag.as_ref());
+}
+
+/// Grow from empty to max: maximum realloc + memmove distance
+#[test]
+fn test_adversarial_mutate_empty_to_max_then_readback() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let account = Address::new_unique();
+    let payer = Address::new_unique();
+
+    let tag = Address::new_unique();
+    let account_bytes = build_dynamic_account_data(b"", &[tag]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: account_bytes,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+
+    // Grow name from "" (0) to "12345678" (8=max)
+    let instruction =
+        build_mutate_then_readback_instruction(account, payer, system_program, b"12345678", 1);
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, account_data),
+            (payer, payer_account),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "grow from empty to max then readback should succeed: {:?}",
+        result.program_result
+    );
+
+    let rd = &result.resulting_accounts[0].1.data;
+    let name_len = u32::from_le_bytes(rd[1..5].try_into().unwrap()) as usize;
+    assert_eq!(name_len, 8);
+    assert_eq!(&rd[5..13], b"12345678");
+    let tags_count = u32::from_le_bytes(rd[13..17].try_into().unwrap()) as usize;
+    assert_eq!(tags_count, 1);
+    assert_eq!(&rd[17..49], tag.as_ref());
+}
+
+// ============================================================================
+// ADVERSARIAL TESTS: Sequential Mutation Stress
+// ============================================================================
+
+/// Sequential mutations: grow→shrink→grow in a single transaction chain.
+/// Tests that repeated realloc + memmove doesn't corrupt state.
+/// We do this as separate Mollusk calls since each produces new account state.
+#[test]
+fn test_adversarial_sequential_mutations_grow_shrink_grow() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let account = Address::new_unique();
+    let payer = Address::new_unique();
+
+    let tag1 = Address::new_unique();
+    let tag2 = Address::new_unique();
+
+    // Start: name="ab", 2 tags
+    let account_bytes = build_dynamic_account_data(b"ab", &[tag1, tag2]);
+    let mut current_account = Account {
+        lamports: 1_000_000,
+        data: account_bytes,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+
+    // Step 1: Grow "ab" → "12345678" (max)
+    let instruction =
+        build_mutate_then_readback_instruction(account, payer, system_program, b"12345678", 2);
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, current_account.clone()),
+            (payer, payer_account.clone()),
+            (system_program, system_program_account.clone()),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "step 1 (grow) failed: {:?}",
+        result.program_result
+    );
+    current_account = result.resulting_accounts[0].1.clone();
+
+    // Step 2: Shrink "12345678" → "x"
+    let instruction =
+        build_mutate_then_readback_instruction(account, payer, system_program, b"x", 2);
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, current_account.clone()),
+            (payer, result.resulting_accounts[1].1.clone()),
+            (system_program, system_program_account.clone()),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "step 2 (shrink) failed: {:?}",
+        result.program_result
+    );
+    current_account = result.resulting_accounts[0].1.clone();
+
+    // Step 3: Grow again "x" → "abcdef" (6 bytes, not max)
+    let instruction =
+        build_mutate_then_readback_instruction(account, payer, system_program, b"abcdef", 2);
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, current_account),
+            (payer, result.resulting_accounts[1].1.clone()),
+            (system_program, system_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "step 3 (re-grow) failed: {:?}",
+        result.program_result
+    );
+
+    // Final byte-level verification
+    let rd = &result.resulting_accounts[0].1.data;
+    let name_len = u32::from_le_bytes(rd[1..5].try_into().unwrap()) as usize;
+    assert_eq!(name_len, 6);
+    assert_eq!(&rd[5..11], b"abcdef");
+    let tags_count = u32::from_le_bytes(rd[11..15].try_into().unwrap()) as usize;
+    assert_eq!(tags_count, 2);
+    assert_eq!(
+        &rd[15..47],
+        tag1.as_ref(),
+        "tag1 corrupted after 3 mutations"
+    );
+    assert_eq!(
+        &rd[47..79],
+        tag2.as_ref(),
+        "tag2 corrupted after 3 mutations"
+    );
+}
+
+/// Mutate to same name (no-op path): verifies no data corruption
+#[test]
+fn test_adversarial_mutate_noop_same_name() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let account = Address::new_unique();
+    let payer = Address::new_unique();
+
+    let tag = Address::new_unique();
+    let account_bytes = build_dynamic_account_data(b"hello", &[tag]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: account_bytes.clone(),
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+
+    let instruction =
+        build_mutate_then_readback_instruction(account, payer, system_program, b"hello", 1);
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, account_data),
+            (payer, payer_account),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "no-op mutation should succeed: {:?}",
+        result.program_result
+    );
+
+    // Data should be byte-identical
+    assert_eq!(
+        &result.resulting_accounts[0].1.data, &account_bytes,
+        "no-op mutation must not change any bytes"
+    );
+}
+
+// ============================================================================
+// ADVERSARIAL TESTS: Validation Boundary Conditions
+// ============================================================================
+
+/// Account with just a discriminator byte and nothing else
+#[test]
+fn test_adversarial_disc_only_no_fields() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let data = vec![DYNAMIC_ACCOUNT_DISC]; // just disc, no prefix bytes at all
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::AccountDataTooSmall),
+        "disc-only account must fail (can't read first prefix)"
+    );
+}
+
+/// Account with name prefix but no tags prefix at all
+#[test]
+fn test_adversarial_missing_second_prefix() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // disc + name prefix(0) = valid empty name, but no tags prefix follows
+    let mut data = vec![0u8; 5];
+    data[0] = DYNAMIC_ACCOUNT_DISC;
+    data[1..5].copy_from_slice(&0u32.to_le_bytes());
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::AccountDataTooSmall),
+        "missing second field prefix must fail"
+    );
+}
+
+/// Partial name prefix: only 2 of 4 bytes for u32 prefix
+#[test]
+fn test_adversarial_partial_u32_prefix() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // disc + 2 bytes of what should be a 4-byte prefix
+    let data = vec![DYNAMIC_ACCOUNT_DISC, 0x00, 0x00];
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::AccountDataTooSmall),
+        "partial u32 prefix must fail"
+    );
+}
+
+/// MixedAccount: valid fixed fields but label prefix extends past end
+#[test]
+fn test_adversarial_mixed_fixed_valid_dynamic_truncated() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let authority = Address::new_unique();
+    // disc(1) + authority(32) + value(8) = 41 bytes of fixed data
+    // Then u32 label prefix claims 10 bytes but only 2 are present
+    let mut data = vec![0u8; 41 + 4 + 2]; // 47 bytes total
+    data[0] = MIXED_ACCOUNT_DISC;
+    data[1..33].copy_from_slice(authority.as_ref());
+    data[33..41].copy_from_slice(&42u64.to_le_bytes());
+    data[41..45].copy_from_slice(&10u32.to_le_bytes()); // claims 10 bytes
+    data[45..47].copy_from_slice(b"ab"); // only 2 present
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = Instruction {
+        program_id: quasar_test_misc::ID,
+        accounts: vec![solana_instruction::AccountMeta::new_readonly(
+            account, false,
+        )],
+        data: vec![22], // mixed_account_check discriminator
+    };
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::AccountDataTooSmall),
+        "truncated dynamic field after valid fixed section must fail"
+    );
+}
+
+/// MixedAccount: fixed section truncated (only 20 of 40 ZC bytes)
+#[test]
+fn test_adversarial_mixed_fixed_section_truncated() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // disc(1) + 20 bytes (need 40 for Address+u64)
+    let mut data = vec![0u8; 21];
+    data[0] = MIXED_ACCOUNT_DISC;
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = Instruction {
+        program_id: quasar_test_misc::ID,
+        accounts: vec![solana_instruction::AccountMeta::new_readonly(
+            account, false,
+        )],
+        data: vec![22],
+    };
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_err(),
+        "truncated fixed section must be rejected"
+    );
+}
+
+/// All-zero account data (0-byte discriminator = potential uninitialized attack)
+#[test]
+fn test_adversarial_all_zeros_account() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // 100 bytes of zeros — discriminator 0 is banned
+    let data = vec![0u8; 100];
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    // Try with DynamicAccountCheck (disc=5)
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_err(),
+        "all-zero account must be rejected (wrong discriminator)"
+    );
+}
+
+/// Account with correct disc and valid prefixes but extra trailing garbage
+#[test]
+fn test_adversarial_trailing_garbage_accepted() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // Valid account + 50 bytes of garbage at the end
+    let mut data = build_dynamic_account_data(b"hi", &[]);
+    data.extend_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF].repeat(12));
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "trailing garbage after valid fields should be accepted (ignored): {:?}",
+        result.program_result
+    );
+}
+
+/// Name = exactly 8 bytes of valid UTF-8 + tags = exactly 2 elements:
+/// Both fields at their maximums simultaneously
+#[test]
+fn test_adversarial_all_fields_at_max() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let tag1 = Address::new_unique();
+    let tag2 = Address::new_unique();
+    let data = build_dynamic_account_data(b"abcdefgh", &[tag1, tag2]);
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "both fields at max should be accepted: {:?}",
+        result.program_result
+    );
+
+    // Also verify via readback
+    let instruction = build_readback_instruction(account, 8, 2);
+    let account_data2 = Account {
+        lamports: 1_000_000,
+        data: build_dynamic_account_data(b"abcdefgh", &[tag1, tag2]),
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data2)]);
+    assert!(
+        result.program_result.is_ok(),
+        "readback at max should succeed: {:?}",
+        result.program_result
+    );
+}
+
+/// Both fields empty: minimum valid account
+#[test]
+fn test_adversarial_minimum_valid_account() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // disc(1) + name_prefix(4, len=0) + tags_prefix(4, count=0) = 9 bytes
+    let data = build_dynamic_account_data(b"", &[]);
+    assert_eq!(data.len(), 9, "minimum valid account should be 9 bytes");
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "minimum valid account (both fields empty) should pass: {:?}",
+        result.program_result
+    );
+}
+
+// ============================================================================
+// TAIL FIELD TESTS: &str and &[u8] tail fields
+// ============================================================================
+
+const TAIL_STR_DISC: u8 = 8;
+const TAIL_BYTES_DISC: u8 = 9;
+const TAIL_FIXED_SIZE: usize = 32; // Address
+
+fn build_tail_str_account_data(authority: Address, label: &[u8]) -> Vec<u8> {
+    // Layout: [disc(1)][authority(32)][label_bytes...]
+    let mut data = vec![0u8; 1 + TAIL_FIXED_SIZE + label.len()];
+    data[0] = TAIL_STR_DISC;
+    data[1..33].copy_from_slice(authority.as_ref());
+    data[33..].copy_from_slice(label);
+    data
+}
+
+fn build_tail_bytes_account_data(authority: Address, payload: &[u8]) -> Vec<u8> {
+    // Layout: [disc(1)][authority(32)][data_bytes...]
+    let mut data = vec![0u8; 1 + TAIL_FIXED_SIZE + payload.len()];
+    data[0] = TAIL_BYTES_DISC;
+    data[1..33].copy_from_slice(authority.as_ref());
+    data[33..].copy_from_slice(payload);
+    data
+}
+
+fn build_tail_str_check_instruction(account: Address, expected_len: u8) -> Instruction {
+    Instruction {
+        program_id: quasar_test_misc::ID,
+        accounts: vec![solana_instruction::AccountMeta::new_readonly(
+            account, false,
+        )],
+        data: vec![28, expected_len],
+    }
+}
+
+fn build_tail_bytes_check_instruction(account: Address, expected_len: u8) -> Instruction {
+    Instruction {
+        program_id: quasar_test_misc::ID,
+        accounts: vec![solana_instruction::AccountMeta::new_readonly(
+            account, false,
+        )],
+        data: vec![29, expected_len],
+    }
+}
+
+#[test]
+fn test_tail_str_valid_utf8_accepted() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let data = build_tail_str_account_data(authority, b"hello");
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_tail_str_check_instruction(account, 5);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "valid UTF-8 tail str should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_tail_str_empty_accepted() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let data = build_tail_str_account_data(authority, b"");
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_tail_str_check_instruction(account, 0);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "empty tail str should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_tail_str_invalid_utf8_rejected() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let data = build_tail_str_account_data(authority, &[0xFF, 0xFE]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_tail_str_check_instruction(account, 2);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
+        "invalid UTF-8 in tail str must be rejected"
+    );
+}
+
+#[test]
+fn test_tail_str_truncated_multibyte_rejected() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    // Truncated 3-byte UTF-8: euro sign is E2 82 AC, give only E2 82
+    let data = build_tail_str_account_data(authority, &[0xE2, 0x82]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_tail_str_check_instruction(account, 2);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
+        "truncated multi-byte UTF-8 in tail str must be rejected"
+    );
+}
+
+#[test]
+fn test_tail_str_multibyte_utf8_accepted() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    // "café" = 63 61 66 C3 A9 = 5 bytes
+    let data = build_tail_str_account_data(authority, "café".as_bytes());
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_tail_str_check_instruction(account, 5);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "valid multi-byte UTF-8 tail str should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_tail_bytes_valid_data_accepted() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let data = build_tail_bytes_account_data(authority, &[0xFF, 0x00, 0xAB, 0xCD]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_tail_bytes_check_instruction(account, 4);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "valid tail bytes should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_tail_bytes_empty_accepted() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let data = build_tail_bytes_account_data(authority, &[]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_tail_bytes_check_instruction(account, 0);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_ok(),
+        "empty tail bytes should be accepted: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_tail_str_wrong_discriminator_rejected() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+    let authority = Address::new_unique();
+
+    let mut data = build_tail_str_account_data(authority, b"hello");
+    data[0] = 99; // wrong discriminator
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_tail_str_check_instruction(account, 5);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert_eq!(
+        result.program_result,
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
+        "wrong discriminator must be rejected"
+    );
+}
+
+#[test]
+fn test_tail_str_truncated_fixed_section_rejected() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    // disc(1) + only 16 bytes (need 32 for Address)
+    let mut data = vec![0u8; 17];
+    data[0] = TAIL_STR_DISC;
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+
+    let instruction = build_tail_str_check_instruction(account, 0);
+    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
+
+    assert!(
+        result.program_result.is_err(),
+        "truncated fixed section must be rejected"
     );
 }

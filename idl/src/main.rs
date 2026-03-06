@@ -43,24 +43,9 @@ fn main() {
     std::fs::write(&ts_path, &ts_code).expect("Failed to write TS client");
     println!("{}", ts_path.display());
 
-    // Write client module into program crate src/
-    let client_path = crate_path.join("src").join("client.rs");
-    std::fs::write(&client_path, &client_code).expect("Failed to write client.rs");
+    // Write Rust client to target/idl/ (standalone, not injected into the program crate —
+    // the #[program] macro generates its own in-crate client module via WriteBytes)
+    let client_path = output_dir.join(format!("{}_client.rs", idl.metadata.name));
+    std::fs::write(&client_path, &client_code).expect("Failed to write Rust client");
     println!("{}", client_path.display());
-
-    // Inject `mod client` into lib.rs if not already present
-    let lib_path = crate_path.join("src").join("lib.rs");
-    let lib_src = std::fs::read_to_string(&lib_path).expect("Failed to read lib.rs");
-    if !lib_src.contains("mod client") {
-        let inject = "\n#[cfg(feature = \"client\")]\nextern crate alloc;\n#[cfg(feature = \"client\")]\npub mod client;\n";
-        // Insert after #![no_std] line
-        let new_src = if let Some(pos) = lib_src.find('\n') {
-            let (before, after) = lib_src.split_at(pos + 1);
-            format!("{}{}{}", before, inject, after)
-        } else {
-            format!("{}{}", lib_src, inject)
-        };
-        std::fs::write(&lib_path, new_src).expect("Failed to update lib.rs");
-        println!("injected mod client into {}", lib_path.display());
-    }
 }

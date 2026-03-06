@@ -1,12 +1,12 @@
 use quasar_core::prelude::*;
-use quasar_spl::{Mint, Token, TokenAccount, TokenCpi};
+use quasar_spl::{Mint, Token, TokenCpi};
 
 #[derive(Accounts)]
 pub struct TransferChecked<'info> {
     pub authority: &'info Signer,
-    pub from: &'info mut Account<TokenAccount>,
+    pub from: &'info mut Account<Token>,
     pub mint: &'info Account<Mint>,
-    pub to: &'info mut Account<TokenAccount>,
+    pub to: &'info mut Account<Token>,
     pub token_program: &'info Program<Token>,
 }
 

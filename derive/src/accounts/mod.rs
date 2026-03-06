@@ -7,8 +7,8 @@ use quote::{format_ident, quote};
 use syn::{parse::ParseStream, parse_macro_input, Data, DeriveInput, Fields, Ident, Token, Type};
 
 use crate::helpers::{
-    extract_generic_inner_type, is_composite_type, is_dynamic_string, is_dynamic_vec, is_str_ref,
-    map_to_pod_type, strip_generics, zc_deserialize_expr, DynKind,
+    classify_dynamic_string, classify_dynamic_vec, classify_tail, extract_generic_inner_type,
+    is_composite_type, map_to_pod_type, strip_generics, zc_deserialize_expr, DynKind,
 };
 
 struct InstructionArg {
@@ -630,10 +630,9 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
 
 /// Generate code that extracts `#[instruction(..)]` args from `__ix_data`.
 ///
-/// Follows the same ZC header + dynamic tail pattern as instruction.rs.
 /// Fixed types are read via a zero-copy `#[repr(C)]` struct pointer cast.
-/// Dynamic strings are read from a variable-length tail region using
-/// PodU16 length descriptors in the ZC header.
+/// Dynamic fields use inline prefix reads from the data buffer after the
+/// fixed ZC block.
 fn generate_instruction_arg_extraction(ix_args: &[InstructionArg]) -> proc_macro2::TokenStream {
     if ix_args.is_empty() {
         return quote! {};
@@ -642,13 +641,14 @@ fn generate_instruction_arg_extraction(ix_args: &[InstructionArg]) -> proc_macro
     let kinds: Vec<DynKind> = ix_args
         .iter()
         .map(|arg| {
-            if let Some(max) = is_dynamic_string(&arg.ty, false) {
-                DynKind::Str { max }
-            } else if is_str_ref(&arg.ty) {
-                DynKind::StrRef
-            } else if let Some((elem, max)) = is_dynamic_vec(&arg.ty, false) {
+            if let Some((prefix, max)) = classify_dynamic_string(&arg.ty) {
+                DynKind::Str { prefix, max }
+            } else if let Some(tail_elem) = classify_tail(&arg.ty) {
+                DynKind::Tail { element: tail_elem }
+            } else if let Some((elem, prefix, max)) = classify_dynamic_vec(&arg.ty) {
                 DynKind::Vec {
                     elem: Box::new(elem),
+                    prefix,
                     max,
                 }
             } else {
@@ -658,6 +658,7 @@ fn generate_instruction_arg_extraction(ix_args: &[InstructionArg]) -> proc_macro
         .collect();
 
     let has_dynamic = kinds.iter().any(|k| !matches!(k, DynKind::Fixed));
+    let has_fixed = kinds.iter().any(|k| matches!(k, DynKind::Fixed));
 
     let vec_align_asserts: Vec<proc_macro2::TokenStream> = kinds
         .iter()
@@ -672,88 +673,82 @@ fn generate_instruction_arg_extraction(ix_args: &[InstructionArg]) -> proc_macro
         })
         .collect();
 
-    let mut zc_field_names: Vec<Ident> = Vec::new();
-    let mut zc_field_types: Vec<proc_macro2::TokenStream> = Vec::new();
-
-    for (i, kind) in kinds.iter().enumerate() {
-        match kind {
-            DynKind::Fixed => {
-                zc_field_names.push(ix_args[i].name.clone());
-                zc_field_types.push(map_to_pod_type(&ix_args[i].ty));
-            }
-            DynKind::Str { .. } => {
-                let len_name = format_ident!("{}_len", ix_args[i].name);
-                zc_field_names.push(len_name);
-                zc_field_types.push(quote! { quasar_core::pod::PodU16 });
-            }
-            DynKind::StrRef => {
-                let len_name = format_ident!("{}_len", ix_args[i].name);
-                zc_field_names.push(len_name);
-                zc_field_types.push(quote! { u8 });
-            }
-            DynKind::Vec { .. } => {
-                let count_name = format_ident!("{}_count", ix_args[i].name);
-                zc_field_names.push(count_name);
-                zc_field_types.push(quote! { quasar_core::pod::PodU16 });
-            }
-        }
-    }
-
     let mut stmts: Vec<proc_macro2::TokenStream> = Vec::new();
-
-    stmts.push(quote! {
-        #[repr(C)]
-        #[derive(Copy, Clone)]
-        struct __IxArgsZc {
-            #(#zc_field_names: #zc_field_types,)*
-        }
-    });
-
-    stmts.push(quote! {
-        const _: () = assert!(
-            core::mem::align_of::<__IxArgsZc>() == 1,
-            "instruction args ZC struct must have alignment 1"
-        );
-    });
 
     for assert_stmt in vec_align_asserts {
         stmts.push(assert_stmt);
     }
 
-    stmts.push(quote! {
-        if __ix_data.len() < core::mem::size_of::<__IxArgsZc>() {
-            return Err(ProgramError::InvalidInstructionData);
+    // ZC struct with ONLY fixed fields
+    if has_fixed {
+        let mut zc_field_names: Vec<Ident> = Vec::new();
+        let mut zc_field_types: Vec<proc_macro2::TokenStream> = Vec::new();
+
+        for (i, kind) in kinds.iter().enumerate() {
+            if matches!(kind, DynKind::Fixed) {
+                zc_field_names.push(ix_args[i].name.clone());
+                zc_field_types.push(map_to_pod_type(&ix_args[i].ty));
+            }
         }
-    });
 
-    stmts.push(quote! {
-        let __ix_zc = unsafe { &*(__ix_data.as_ptr() as *const __IxArgsZc) };
-    });
+        stmts.push(quote! {
+            #[repr(C)]
+            #[derive(Copy, Clone)]
+            struct __IxArgsZc {
+                #(#zc_field_names: #zc_field_types,)*
+            }
+        });
 
-    // Extract fixed fields
-    for (i, kind) in kinds.iter().enumerate() {
-        if matches!(kind, DynKind::Fixed) {
-            let name = &ix_args[i].name;
-            let expr = zc_deserialize_expr(name, &ix_args[i].ty);
-            // Prefix with __ix_zc instead of __zc
-            let prefixed_expr = quote! { {
-                let __zc = __ix_zc;
-                #expr
-            } };
-            stmts.push(quote! {
-                let #name = #prefixed_expr;
-            });
+        stmts.push(quote! {
+            const _: () = assert!(
+                core::mem::align_of::<__IxArgsZc>() == 1,
+                "instruction args ZC struct must have alignment 1"
+            );
+        });
+
+        stmts.push(quote! {
+            if __ix_data.len() < core::mem::size_of::<__IxArgsZc>() {
+                return Err(ProgramError::InvalidInstructionData);
+            }
+        });
+
+        stmts.push(quote! {
+            let __ix_zc = unsafe { &*(__ix_data.as_ptr() as *const __IxArgsZc) };
+        });
+
+        // Extract fixed fields
+        for (i, kind) in kinds.iter().enumerate() {
+            if matches!(kind, DynKind::Fixed) {
+                let name = &ix_args[i].name;
+                let expr = zc_deserialize_expr(name, &ix_args[i].ty);
+                let prefixed_expr = quote! { {
+                    let __zc = __ix_zc;
+                    #expr
+                } };
+                stmts.push(quote! {
+                    let #name = #prefixed_expr;
+                });
+            }
         }
     }
 
-    // Extract dynamic fields from tail
+    // Extract dynamic fields with inline prefix reads
     if has_dynamic {
-        stmts.push(quote! {
-            let __ix_tail = &__ix_data[core::mem::size_of::<__IxArgsZc>()..];
-        });
-        stmts.push(quote! {
-            let mut __ix_offset: usize = 0;
-        });
+        if has_fixed {
+            stmts.push(quote! {
+                let __data = __ix_data;
+            });
+            stmts.push(quote! {
+                let mut __offset = core::mem::size_of::<__IxArgsZc>();
+            });
+        } else {
+            stmts.push(quote! {
+                let __data = __ix_data;
+            });
+            stmts.push(quote! {
+                let mut __offset: usize = 0;
+            });
+        }
 
         let dyn_count = kinds
             .iter()
@@ -765,12 +760,21 @@ fn generate_instruction_arg_extraction(ix_args: &[InstructionArg]) -> proc_macro
             let name = &ix_args[i].name;
             match kind {
                 DynKind::Fixed => {}
-                DynKind::Str { max } => {
+                DynKind::Str { prefix, max } => {
                     dyn_idx += 1;
-                    let len_name = format_ident!("{}_len", name);
+                    let pb = prefix.bytes();
                     let max_lit = *max;
+                    let read_len = prefix.gen_read_len();
                     stmts.push(quote! {
-                        let __ix_dyn_len = __ix_zc.#len_name.get() as usize;
+                        if __data.len() < __offset + #pb {
+                            return Err(ProgramError::InvalidInstructionData);
+                        }
+                    });
+                    stmts.push(quote! {
+                        let __ix_dyn_len = #read_len;
+                    });
+                    stmts.push(quote! {
+                        __offset += #pb;
                     });
                     stmts.push(quote! {
                         if __ix_dyn_len > #max_lit {
@@ -778,45 +782,51 @@ fn generate_instruction_arg_extraction(ix_args: &[InstructionArg]) -> proc_macro
                         }
                     });
                     stmts.push(quote! {
-                        if __ix_tail.len() < __ix_offset + __ix_dyn_len {
+                        if __data.len() < __offset + __ix_dyn_len {
                             return Err(ProgramError::InvalidInstructionData);
                         }
                     });
                     stmts.push(quote! {
-                        let #name: &[u8] = &__ix_tail[__ix_offset..__ix_offset + __ix_dyn_len];
+                        let #name: &[u8] = &__data[__offset..__offset + __ix_dyn_len];
                     });
                     if dyn_idx < dyn_count {
                         stmts.push(quote! {
-                            __ix_offset += __ix_dyn_len;
+                            __offset += __ix_dyn_len;
                         });
                     }
                 }
-                DynKind::StrRef => {
+                DynKind::Tail { element } => {
                     dyn_idx += 1;
-                    let len_name = format_ident!("{}_len", name);
-                    stmts.push(quote! {
-                        let __ix_dyn_len = __ix_zc.#len_name as usize;
-                    });
-                    stmts.push(quote! {
-                        if __ix_tail.len() < __ix_offset + __ix_dyn_len {
-                            return Err(ProgramError::InvalidInstructionData);
+                    // Tail: remaining data, no prefix
+                    match element {
+                        crate::helpers::TailElement::Str => {
+                            stmts.push(quote! {
+                                let #name: &[u8] = &__data[__offset..];
+                            });
                         }
-                    });
-                    stmts.push(quote! {
-                        let #name: &[u8] = &__ix_tail[__ix_offset..__ix_offset + __ix_dyn_len];
-                    });
-                    if dyn_idx < dyn_count {
-                        stmts.push(quote! {
-                            __ix_offset += __ix_dyn_len;
-                        });
+                        crate::helpers::TailElement::Bytes => {
+                            stmts.push(quote! {
+                                let #name: &[u8] = &__data[__offset..];
+                            });
+                        }
                     }
+                    // Tail consumes all remaining data — no offset advance
                 }
-                DynKind::Vec { elem, max } => {
+                DynKind::Vec { elem, prefix, max } => {
                     dyn_idx += 1;
-                    let count_name = format_ident!("{}_count", name);
+                    let pb = prefix.bytes();
                     let max_lit = *max;
+                    let read_len = prefix.gen_read_len();
                     stmts.push(quote! {
-                        let __ix_dyn_count = __ix_zc.#count_name.get() as usize;
+                        if __data.len() < __offset + #pb {
+                            return Err(ProgramError::InvalidInstructionData);
+                        }
+                    });
+                    stmts.push(quote! {
+                        let __ix_dyn_count = #read_len;
+                    });
+                    stmts.push(quote! {
+                        __offset += #pb;
                     });
                     stmts.push(quote! {
                         if __ix_dyn_count > #max_lit {
@@ -827,21 +837,21 @@ fn generate_instruction_arg_extraction(ix_args: &[InstructionArg]) -> proc_macro
                         let __ix_dyn_byte_len = __ix_dyn_count * core::mem::size_of::<#elem>();
                     });
                     stmts.push(quote! {
-                        if __ix_tail.len() < __ix_offset + __ix_dyn_byte_len {
+                        if __data.len() < __offset + __ix_dyn_byte_len {
                             return Err(ProgramError::InvalidInstructionData);
                         }
                     });
                     stmts.push(quote! {
                         let #name: &[#elem] = unsafe {
                             core::slice::from_raw_parts(
-                                __ix_tail.as_ptr().add(__ix_offset) as *const #elem,
+                                __data.as_ptr().add(__offset) as *const #elem,
                                 __ix_dyn_count,
                             )
                         };
                     });
                     if dyn_idx < dyn_count {
                         stmts.push(quote! {
-                            __ix_offset += __ix_dyn_byte_len;
+                            __offset += __ix_dyn_byte_len;
                         });
                     }
                 }
@@ -849,7 +859,7 @@ fn generate_instruction_arg_extraction(ix_args: &[InstructionArg]) -> proc_macro
         }
 
         stmts.push(quote! {
-            let _ = __ix_offset;
+            let _ = __offset;
         });
     }
 

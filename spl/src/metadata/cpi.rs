@@ -1,4 +1,4 @@
-use quasar_core::borsh::BorshString;
+use quasar_core::borsh::{BorshString, CpiEncode};
 use quasar_core::cpi::{BufCpiCall, CpiCall, InstructionAccount};
 use quasar_core::prelude::*;
 
@@ -60,9 +60,9 @@ pub trait MetadataCpi: AsAccountView {
         update_authority: &'a impl AsAccountView,
         system_program: &'a impl AsAccountView,
         rent: &'a impl AsAccountView,
-        name: BorshString<'_>,
-        symbol: BorshString<'_>,
-        uri: BorshString<'_>,
+        name: impl CpiEncode<4>,
+        symbol: impl CpiEncode<4>,
+        uri: impl CpiEncode<4>,
         seller_fee_basis_points: u16,
         is_mutable: bool,
         update_authority_is_signer: bool,
@@ -75,14 +75,15 @@ pub trait MetadataCpi: AsAccountView {
         let system_program = system_program.to_account_view();
         let rent = rent.to_account_view();
 
+        let name_len = name.encoded_len() - 4;
+        let symbol_len = symbol.encoded_len() - 4;
+        let uri_len = uri.encoded_len() - 4;
         assert!(
-            name.0.len() <= MAX_NAME_LEN
-                && symbol.0.len() <= MAX_SYMBOL_LEN
-                && uri.0.len() <= MAX_URI_LEN,
+            name_len <= MAX_NAME_LEN && symbol_len <= MAX_SYMBOL_LEN && uri_len <= MAX_URI_LEN,
             "metadata field lengths exceed Metaplex limits (name={}, symbol={}, uri={})",
-            name.0.len(),
-            symbol.0.len(),
-            uri.0.len(),
+            name_len,
+            symbol_len,
+            uri_len,
         );
 
         // Borsh-serialize: discriminator + DataV2 + is_mutable + collection_details
