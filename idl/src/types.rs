@@ -78,12 +78,18 @@ pub struct IdlDynVec {
 }
 
 #[derive(Serialize)]
+pub struct IdlTail {
+    pub element: String,
+}
+
+#[derive(Serialize)]
 #[serde(untagged)]
 pub enum IdlType {
     Primitive(String),
     Defined { defined: String },
     DynString { string: IdlDynString },
     DynVec { vec: IdlDynVec },
+    Tail { tail: IdlTail },
 }
 
 #[derive(Serialize)]

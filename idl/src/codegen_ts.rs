@@ -10,6 +10,7 @@ pub fn generate_ts_client(idl: &Idl) -> String {
     let used = collect_used_codecs(idl);
     let has_dyn_string = used.contains("dynString");
     let has_dyn_vec = used.contains("dynVec");
+    let has_tail = used.contains("tail");
     let has_instructions = !idl.instructions.is_empty();
 
     // --- Imports ---
@@ -47,17 +48,20 @@ pub fn generate_ts_client(idl: &Idl) -> String {
         codec_imports.extend_from_slice(&["getBytesCodec", "fixCodecSize", "transformCodec"]);
     }
 
+    if has_tail {
+        codec_imports.push("getBytesCodec");
+    }
+
     if has_dyn_string {
         codec_imports.extend_from_slice(&[
             "addCodecSizePrefix",
-            "fixCodecSize",
-            "getU16Codec",
+            "getU32Codec",
             "getUtf8Codec",
         ]);
     }
 
     if has_dyn_vec {
-        codec_imports.extend_from_slice(&["fixCodecSize", "getArrayCodec", "getU16Codec"]);
+        codec_imports.extend_from_slice(&["getArrayCodec", "getU32Codec"]);
     }
 
     codec_imports.sort();
@@ -68,7 +72,7 @@ pub fn generate_ts_client(idl: &Idl) -> String {
         codec_imports.join(", ")
     ));
     if has_dyn_vec {
-        out.push_str("import type { FixedSizeCodec } from \"@solana/codecs\";\n");
+        out.push_str("import type { Codec } from \"@solana/codecs\";\n");
     }
 
     out.push('\n');
@@ -525,6 +529,10 @@ fn ts_type(ty: &IdlType) -> String {
         IdlType::Defined { defined } => defined.clone(),
         IdlType::DynString { .. } => "string".to_string(),
         IdlType::DynVec { vec } => format!("Array<{}>", ts_type(&vec.items)),
+        IdlType::Tail { tail } => match tail.element.as_str() {
+            "string" => "string".to_string(),
+            _ => "Uint8Array".to_string(),
+        },
     }
 }
 
@@ -546,16 +554,14 @@ fn ts_codec(ty: &IdlType) -> String {
             other => format!("/* unknown: {} */", other),
         },
         IdlType::Defined { defined } => format!("{}Codec", defined),
-        IdlType::DynString { string } => {
-            format!("getDynStringCodec({})", string.max_length)
-        }
+        IdlType::DynString { .. } => "getDynStringCodec()".to_string(),
         IdlType::DynVec { vec } => {
-            format!(
-                "getDynVecCodec({}, {})",
-                ts_codec(&vec.items),
-                vec.max_length
-            )
+            format!("getDynVecCodec({})", ts_codec(&vec.items))
         }
+        IdlType::Tail { tail } => match tail.element.as_str() {
+            "string" => "getUtf8Codec()".to_string(),
+            _ => "getBytesCodec()".to_string(),
+        },
     }
 }
 
@@ -572,6 +578,9 @@ fn collect_used_codecs(idl: &Idl) -> HashSet<String> {
         }
         IdlType::DynVec { .. } => {
             used.insert("dynVec".to_string());
+        }
+        IdlType::Tail { .. } => {
+            used.insert("tail".to_string());
         }
     };
 
@@ -633,21 +642,14 @@ const PUBLIC_KEY_CODEC_HELPER: &str = r#"function getPublicKeyCodec() {
 }
 "#;
 
-const DYN_STRING_HELPER: &str = r#"function getDynStringCodec(maxLength: number) {
-  return fixCodecSize(
-    addCodecSizePrefix(getUtf8Codec(), getU16Codec()),
-      2 + maxLength,
-  );
+const DYN_STRING_HELPER: &str = r#"function getDynStringCodec() {
+  return addCodecSizePrefix(getUtf8Codec(), getU32Codec());
 }
 "#;
 
 const DYN_VEC_HELPER: &str = r#"function getDynVecCodec<TFrom, TTo extends TFrom = TFrom>(
-  itemCodec: FixedSizeCodec<TFrom, TTo>,
-  maxLength: number,
+  itemCodec: Codec<TFrom, TTo>,
 ) {
-  return fixCodecSize(
-    getArrayCodec(itemCodec, { size: getU16Codec() }),
-    2 + maxLength * itemCodec.fixedSize,
-  );
+  return getArrayCodec(itemCodec, { size: getU32Codec() });
 }
 "#;

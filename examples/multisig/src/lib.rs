@@ -6,6 +6,8 @@ mod instructions;
 use instructions::*;
 mod state;
 #[cfg(test)]
+mod idl_client;
+#[cfg(test)]
 mod tests;
 
 declare_id!("44444444444444444444444444444444444444444444");

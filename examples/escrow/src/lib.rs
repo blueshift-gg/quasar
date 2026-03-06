@@ -7,6 +7,8 @@ use instructions::*;
 mod events;
 mod state;
 #[cfg(test)]
+mod idl_client;
+#[cfg(test)]
 mod tests;
 
 declare_id!("22222222222222222222222222222222222222222222");
