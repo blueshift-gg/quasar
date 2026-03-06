@@ -42,8 +42,7 @@ impl<'a, const ACCTS: usize, const MAX: usize> BufCpiCall<'a, ACCTS, MAX> {
             }
             capacity_exceeded();
         }
-        let mut cpi_accounts =
-            core::mem::MaybeUninit::<[RawCpiAccount<'a>; ACCTS]>::uninit();
+        let mut cpi_accounts = core::mem::MaybeUninit::<[RawCpiAccount<'a>; ACCTS]>::uninit();
         let ptr = cpi_accounts.as_mut_ptr() as *mut RawCpiAccount<'a>;
         let mut i = 0;
         while i < ACCTS {

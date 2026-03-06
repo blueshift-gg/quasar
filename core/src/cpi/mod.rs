@@ -148,8 +148,7 @@ impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
         views: [&'a AccountView; ACCTS],
         data: [u8; DATA],
     ) -> Self {
-        let mut cpi_accounts =
-            core::mem::MaybeUninit::<[RawCpiAccount<'a>; ACCTS]>::uninit();
+        let mut cpi_accounts = core::mem::MaybeUninit::<[RawCpiAccount<'a>; ACCTS]>::uninit();
         let ptr = cpi_accounts.as_mut_ptr() as *mut RawCpiAccount<'a>;
         let mut i = 0;
         while i < ACCTS {

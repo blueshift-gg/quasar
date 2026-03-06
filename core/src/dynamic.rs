@@ -102,10 +102,10 @@ impl<'a, const PREFIX_BYTES: usize> RawEncoded<'a, PREFIX_BYTES> {
         unsafe {
             match PREFIX_BYTES {
                 1 => *self.bytes.get_unchecked(0) as u32,
-                2 => u16::from_le_bytes([
-                    *self.bytes.get_unchecked(0),
-                    *self.bytes.get_unchecked(1),
-                ]) as u32,
+                2 => {
+                    u16::from_le_bytes([*self.bytes.get_unchecked(0), *self.bytes.get_unchecked(1)])
+                        as u32
+                }
                 4 => u32::from_le_bytes([
                     *self.bytes.get_unchecked(0),
                     *self.bytes.get_unchecked(1),
