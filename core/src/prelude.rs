@@ -1,3 +1,8 @@
+//! Convenience re-exports for Quasar programs.
+//!
+//! Most programs only need `use quasar::prelude::*` to access all framework
+//! types, traits, macros, and account wrappers.
+
 // Context & parsing
 pub use crate::context::{Context, Ctx, CtxWithRemaining};
 pub use crate::traits::{

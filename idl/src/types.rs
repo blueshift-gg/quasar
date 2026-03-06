@@ -1,3 +1,9 @@
+//! IDL type definitions — the JSON schema for Quasar program interfaces.
+//!
+//! These types serialize to the IDL JSON format consumed by TypeScript clients,
+//! explorers, and other tooling. The schema covers instructions, accounts,
+//! events, errors, and all supported field types (including dynamic fields).
+
 use serde::Serialize;
 
 #[derive(Serialize)]

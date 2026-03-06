@@ -25,6 +25,7 @@ pub struct BufCpiCall<'a, const ACCTS: usize, const MAX: usize> {
 }
 
 impl<'a, const ACCTS: usize, const MAX: usize> BufCpiCall<'a, ACCTS, MAX> {
+    /// Creates a buffered CPI call. Panics if `data_len > MAX`.
     #[inline(always)]
     pub fn new(
         program_id: &'a Address,
@@ -47,16 +48,19 @@ impl<'a, const ACCTS: usize, const MAX: usize> BufCpiCall<'a, ACCTS, MAX> {
         }
     }
 
+    /// Invokes the CPI without any PDA signers.
     #[inline(always)]
     pub fn invoke(&self) -> ProgramResult {
         self.invoke_inner(&[])
     }
 
+    /// Invokes the CPI with a single PDA signer (one set of seeds).
     #[inline(always)]
     pub fn invoke_signed(&self, seeds: &[Seed]) -> ProgramResult {
         self.invoke_inner(&[Signer::from(seeds)])
     }
 
+    /// Invokes the CPI with multiple PDA signers.
     #[inline(always)]
     pub fn invoke_with_signers(&self, signers: &[Signer]) -> ProgramResult {
         self.invoke_inner(signers)

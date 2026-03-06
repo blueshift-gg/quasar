@@ -1,3 +1,6 @@
+//! Parses `#[derive(Accounts)]` structs to extract account metadata,
+//! constraints, PDA seeds, and field types for IDL generation.
+
 use syn::{Fields, Item};
 
 use crate::parser::helpers;

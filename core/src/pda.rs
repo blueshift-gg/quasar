@@ -1,3 +1,13 @@
+//! Program Derived Address (PDA) derivation.
+//!
+//! Wraps the `sol_create_program_address` and `sol_try_find_program_address`
+//! syscalls with a seed-native API. Because `Seed` is `#[repr(C)]` with the
+//! same layout as a fat `&[u8]` pointer (`*const u8, u64`), seed slices pass
+//! directly to the syscall with zero conversion overhead.
+//!
+//! Also provides `find_program_address_const` for compile-time PDA derivation
+//! using `const_crypto` — useful for declaring static PDAs in `const` contexts.
+
 #[cfg(any(target_os = "solana", target_arch = "bpf"))]
 use solana_define_syscall::definitions::{
     sol_create_program_address, sol_try_find_program_address,
@@ -19,6 +29,9 @@ pub fn create_program_address(
     #[cfg(any(target_os = "solana", target_arch = "bpf"))]
     {
         let mut bytes = core::mem::MaybeUninit::<Address>::uninit();
+        // SAFETY: seeds is a valid &[Seed] slice (Seed is #[repr(C)] matching
+        // the syscall's expected layout). program_id is a valid &Address.
+        // bytes is written to by the syscall on success (result == 0).
         let result = unsafe {
             sol_create_program_address(
                 seeds.as_ptr() as *const u8,
@@ -28,6 +41,7 @@ pub fn create_program_address(
             )
         };
         match result {
+            // SAFETY: syscall returned 0, so bytes is fully initialized.
             0 => Ok(unsafe { bytes.assume_init() }),
             _ => Err(ProgramError::InvalidSeeds),
         }
@@ -62,6 +76,8 @@ pub fn try_find_program_address(
     {
         let mut bytes = core::mem::MaybeUninit::<Address>::uninit();
         let mut bump = u8::MAX;
+        // SAFETY: Same layout argument as create_program_address. Additionally,
+        // &mut bump is a valid pointer for the syscall to write the bump seed.
         let result = unsafe {
             sol_try_find_program_address(
                 seeds.as_ptr() as *const u8,
@@ -72,6 +88,7 @@ pub fn try_find_program_address(
             )
         };
         match result {
+            // SAFETY: syscall returned 0, so bytes is fully initialized.
             0 => Ok((unsafe { bytes.assume_init() }, bump)),
             _ => Err(ProgramError::InvalidSeeds),
         }

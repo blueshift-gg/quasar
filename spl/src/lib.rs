@@ -22,7 +22,7 @@
 //! # CPI methods
 //!
 //! Both `Program<Token>` and [`TokenInterface`] expose the same CPI methods.
-//! All methods return a [`CpiCall`] that can be invoked with `.invoke()` or
+//! All methods return a `CpiCall` that can be invoked with `.invoke()` or
 //! `.invoke_signed()`:
 //!
 //! ```ignore
@@ -61,11 +61,11 @@
 
 /// Implements `CheckOwner` for a type that is owned by exactly one program.
 ///
-/// These types intentionally do NOT implement [`Owner`] — that would expose
+/// These types intentionally do NOT implement `Owner` — that would expose
 /// `Account<T>::close()` which performs a direct lamport drain. Token/mint
 /// accounts are owned by the SPL Token program, not the calling program,
 /// so the direct close would always fail at runtime. Instead, use the
-/// CPI-based [`TokenClose`] trait.
+/// CPI-based `TokenClose` trait.
 macro_rules! impl_single_owner {
     ($ty:ty, $id:expr, $target:ty) => {
         // SAFETY: $ty is #[repr(transparent)] over AccountView.
@@ -131,10 +131,8 @@ macro_rules! impl_single_owner {
 }
 
 mod associated_token;
-mod close;
-mod constants;
-mod cpi;
-mod init;
+mod helpers;
+mod instructions;
 mod interface;
 #[cfg(feature = "metadata")]
 pub mod metadata;
@@ -148,10 +146,10 @@ pub use associated_token::{
     get_associated_token_address_with_program_const, validate_ata, AssociatedToken,
     AssociatedTokenProgram, InitAssociatedToken,
 };
-pub use close::TokenClose;
-pub use constants::{ATA_PROGRAM_ID, SPL_TOKEN_ID, TOKEN_2022_ID};
-pub use cpi::{initialize_account3, initialize_mint2, TokenCpi};
-pub use init::{validate_mint, validate_token_account, InitMint, InitToken};
+pub use helpers::close::TokenClose;
+pub use helpers::constants::{ATA_PROGRAM_ID, SPL_TOKEN_ID, TOKEN_2022_ID};
+pub use helpers::init::{validate_mint, validate_token_account, InitMint, InitToken};
+pub use instructions::{initialize_account3, initialize_mint2, TokenCpi};
 pub use interface::{InterfaceAccount, TokenInterface};
 pub use state::{MintAccountState, TokenAccountState};
 pub use token::{Mint, Token};

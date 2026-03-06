@@ -78,7 +78,7 @@ impl<T: AsAccountView> AsAccountView for Account<T> {
 }
 
 impl<T> Account<T> {
-    /// Construct an Account<T> by wrapping a view value.
+    /// Construct an `Account<T>` by wrapping a view value.
     ///
     /// Used by dynamic accounts where T carries cached offsets and
     /// is constructed by-value via `T::parse()`.
@@ -193,10 +193,10 @@ impl<T: CheckOwner + AccountCheck> Account<T> {
     }
 }
 
-/// Deref: Account<T> exposes the inner view type T.
+/// Deref: `Account<T>` exposes the inner view type T.
 ///
-/// For static accounts: Account<Wallet> → &Wallet → auto-deref → &WalletZc
-/// For dynamic accounts: Account<Profile<'info>> → &Profile<'info> → auto-deref → &ProfileZc
+/// For static accounts: `Account<Wallet>` → `&Wallet` → auto-deref → `&WalletZc`
+/// For dynamic accounts: `Account<Profile<'info>>` → `&Profile<'info>` → auto-deref → `&ProfileZc`
 ///
 /// Methods on T (get/set, accessors) are found at the first deref level.
 /// Fields on T::Target (ZC companion struct) are found via auto-deref.

@@ -1,3 +1,9 @@
+//! Shared codegen helpers used across all derive macros.
+//!
+//! Contains dynamic field classification (String/Vec/Tail), discriminator
+//! parsing and validation, type inspection utilities, and zero-copy companion
+//! struct helpers for mapping native types to Pod types.
+
 use quote::quote;
 use syn::{
     parse::{Parse, ParseStream},
@@ -6,6 +12,7 @@ use syn::{
 
 // --- Dynamic field classification (shared by account, instruction) ---
 
+/// Length-prefix type for dynamic fields (String, Vec).
 #[derive(Clone, Copy)]
 pub(crate) enum PrefixType {
     U8,
@@ -69,11 +76,15 @@ impl PrefixType {
     }
 }
 
+/// Element type for tail fields (last field consumes remaining data).
 pub(crate) enum TailElement {
+    /// `&str` — remaining bytes interpreted as UTF-8.
     Str,
+    /// `&[u8]` — remaining bytes as a raw slice.
     Bytes,
 }
 
+/// Classification of a field's dynamic layout behavior.
 pub(crate) enum DynKind {
     Fixed,
     Str {
@@ -92,6 +103,7 @@ pub(crate) enum DynKind {
 
 // --- Discriminator argument parsing (shared by instruction, account, event, program) ---
 
+/// Parsed `#[instruction(discriminator = ...)]` attribute arguments.
 pub(crate) struct InstructionArgs {
     pub discriminator: Vec<LitInt>,
 }
@@ -221,10 +233,12 @@ pub(crate) fn is_composite_type(ty: &Type) -> bool {
     false
 }
 
+/// Returns `true` if `ty` is the unit type `()`.
 pub(crate) fn is_unit_type(ty: &Type) -> bool {
     matches!(ty, Type::Tuple(t) if t.elems.is_empty())
 }
 
+/// Strips generic arguments from a type path, returning the bare path.
 pub(crate) fn strip_generics(ty: &Type) -> proc_macro2::TokenStream {
     match ty {
         Type::Path(type_path) => {
@@ -241,6 +255,7 @@ pub(crate) fn strip_generics(ty: &Type) -> proc_macro2::TokenStream {
     }
 }
 
+/// Converts `PascalCase` to `snake_case` (e.g., `MakeEscrow` → `make_escrow`).
 pub(crate) fn pascal_to_snake(s: &str) -> String {
     let mut result = String::new();
     for (i, c) in s.chars().enumerate() {
@@ -252,6 +267,7 @@ pub(crate) fn pascal_to_snake(s: &str) -> String {
     result
 }
 
+/// Converts `snake_case` to `PascalCase` (e.g., `make_escrow` → `MakeEscrow`).
 pub(crate) fn snake_to_pascal(s: &str) -> String {
     s.split('_')
         .map(|word| {
@@ -427,6 +443,8 @@ pub(crate) fn classify_tail(ty: &Type) -> Option<TailElement> {
 
 // --- Zc (zero-copy) companion struct helpers ---
 
+/// Maps a native integer type to its Pod companion (e.g., `u64` → `PodU64`).
+/// Non-integer types pass through unchanged.
 pub(crate) fn map_to_pod_type(ty: &Type) -> proc_macro2::TokenStream {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
@@ -491,10 +509,12 @@ fn zc_assign_expr(
     quote! { __zc.#field_name = #value; }
 }
 
+/// Generates a ZC assignment statement: `__zc.field = PodXX::from(field)`.
 pub(crate) fn zc_assign_from_value(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
     zc_assign_expr(field_name, ty, quote! { #field_name })
 }
 
+/// Generates a ZC read expression: `__zc.field.get()` for Pod types, `__zc.field` for others.
 pub(crate) fn zc_deserialize_expr(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {

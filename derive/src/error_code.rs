@@ -1,3 +1,6 @@
+//! `#[error_code]` — generates `ProgramError` conversion for custom error enums.
+//! Each variant is assigned an error code starting at 6000 (Anchor-compatible offset).
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, Data, DeriveInput};

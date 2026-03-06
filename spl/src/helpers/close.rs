@@ -2,7 +2,7 @@ use quasar_core::cpi::CpiCall;
 use quasar_core::prelude::*;
 
 use crate::associated_token::AssociatedToken;
-use crate::cpi::TokenCpi;
+use crate::instructions::TokenCpi;
 use crate::interface::InterfaceAccount;
 use crate::token::{Mint, Token};
 use crate::token_2022::{Mint2022, Token2022};

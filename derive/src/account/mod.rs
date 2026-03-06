@@ -1,3 +1,7 @@
+//! `#[account]` — generates the zero-copy companion struct, discriminator
+//! validation, `Owner`/`Discriminator`/`Space` trait impls, and typed accessor
+//! methods for on-chain account types.
+
 mod accessors;
 mod dynamic;
 mod fixed;
