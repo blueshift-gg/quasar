@@ -76,13 +76,18 @@ pub(crate) enum TailElement {
 
 pub(crate) enum DynKind {
     Fixed,
-    Str { prefix: PrefixType, max: usize },
+    Str {
+        prefix: PrefixType,
+        max: usize,
+    },
     Vec {
         elem: Box<Type>,
         prefix: PrefixType,
         max: usize,
     },
-    Tail { element: TailElement },
+    Tail {
+        element: TailElement,
+    },
 }
 
 // --- Discriminator argument parsing (shared by instruction, account, event, program) ---
@@ -504,4 +509,3 @@ pub(crate) fn zc_deserialize_expr(field_name: &Ident, ty: &Type) -> proc_macro2:
     }
     quote! { __zc.#field_name }
 }
-

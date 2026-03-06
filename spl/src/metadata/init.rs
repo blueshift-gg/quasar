@@ -99,7 +99,6 @@ pub trait InitMetadata: AsAccountView + Sized {
     }
 }
 
-
 /// Extension trait for master edition account initialization.
 ///
 /// Invokes `create_master_edition_v3` via CPI. The Metaplex program
@@ -182,4 +181,3 @@ pub trait InitMasterEdition: AsAccountView + Sized {
             .invoke_signed(seeds)
     }
 }
-

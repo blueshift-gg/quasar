@@ -1824,7 +1824,7 @@ fn dynamic_from_raw_parts_max_tags_touches_allocation_edge() {
     let data = unsafe { view.borrow_unchecked() };
 
     // Layout: disc(1) + fixed(32) + u32_prefix(4) + name(0) + u32_prefix(4) + tags(320)
-    assert_eq!(data.len(), DYN_HEADER_SIZE + 4 + 0 + 4 + 320);
+    assert_eq!(data.len(), DYN_HEADER_SIZE + 4 + 4 + 320);
 
     // Skip name prefix
     let mut offset = DYN_HEADER_SIZE;
@@ -1916,9 +1916,8 @@ fn dynamic_setter_aliasing_shared_read_then_mut_write() {
 
     // Step 3: shared borrow again to verify
     let data = unsafe { view.borrow_unchecked() };
-    let s = unsafe {
-        core::str::from_utf8_unchecked(&data[name_data_offset..name_data_offset + 3])
-    };
+    let s =
+        unsafe { core::str::from_utf8_unchecked(&data[name_data_offset..name_data_offset + 3]) };
     assert_eq!(s, "NEW");
 }
 
@@ -1938,12 +1937,18 @@ fn dynamic_setter_interleaved_shared_mut_shared() {
     // Shared read 1: verify inline prefixes
     {
         let data = unsafe { view.borrow_unchecked() };
-        let name_len =
-            u32::from_le_bytes(data[DYN_HEADER_SIZE..DYN_HEADER_SIZE + 4].try_into().unwrap());
+        let name_len = u32::from_le_bytes(
+            data[DYN_HEADER_SIZE..DYN_HEADER_SIZE + 4]
+                .try_into()
+                .unwrap(),
+        );
         assert_eq!(name_len, 2);
         let tags_prefix_offset = name_data_offset + 2; // after name data
-        let tags_count =
-            u32::from_le_bytes(data[tags_prefix_offset..tags_prefix_offset + 4].try_into().unwrap());
+        let tags_count = u32::from_le_bytes(
+            data[tags_prefix_offset..tags_prefix_offset + 4]
+                .try_into()
+                .unwrap(),
+        );
         assert_eq!(tags_count, 1);
     }
 
@@ -1972,8 +1977,11 @@ fn dynamic_setter_interleaved_shared_mut_shared() {
     // Shared read 3: still consistent
     {
         let data = unsafe { view.borrow_unchecked() };
-        let name_len =
-            u32::from_le_bytes(data[DYN_HEADER_SIZE..DYN_HEADER_SIZE + 4].try_into().unwrap());
+        let name_len = u32::from_le_bytes(
+            data[DYN_HEADER_SIZE..DYN_HEADER_SIZE + 4]
+                .try_into()
+                .unwrap(),
+        );
         assert_eq!(name_len, 2);
         let tags_offset = name_data_offset + 2 + 4; // after name data + tags prefix
         let tag: &[u8; 32] = data[tags_offset..tags_offset + 32].try_into().unwrap();
@@ -2112,13 +2120,11 @@ fn dynamic_batch_write_shared_read_then_mut_write_same_view() {
         let mut offset = DYN_HEADER_SIZE;
 
         // Read name prefix + skip name data
-        let name_len =
-            u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
+        let name_len = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
         offset += 4 + name_len;
 
         // Read tags prefix + preserve tag data
-        let tags_count =
-            u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
+        let tags_count = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
         offset += 4;
         assert_eq!(tags_count, 1);
         preserved_tag.copy_from_slice(&data[offset..offset + 32]);
@@ -2182,7 +2188,7 @@ fn dynamic_vec_mut_write_then_shared_read_aliasing() {
     let view = unsafe { buf.view() };
 
     // tags data starts after: disc + fixed + name_prefix(4) + name(0) + tags_prefix(4)
-    let tags_data_offset = DYN_HEADER_SIZE + 4 + 0 + 4;
+    let tags_data_offset = DYN_HEADER_SIZE + 4 + 4;
 
     // Step 1: mutable slice — write
     {
@@ -2201,10 +2207,7 @@ fn dynamic_vec_mut_write_then_shared_read_aliasing() {
     {
         let data = unsafe { view.borrow_unchecked() };
         let slice: &[Address] = unsafe {
-            core::slice::from_raw_parts(
-                data[tags_data_offset..].as_ptr() as *const Address,
-                1,
-            )
+            core::slice::from_raw_parts(data[tags_data_offset..].as_ptr() as *const Address, 1)
         };
         assert_eq!(slice[0].as_array(), &[0xFF; 32]);
     }
@@ -2220,10 +2223,10 @@ fn dynamic_vec_mut_write_then_shared_read_aliasing() {
 #[test]
 fn dynamic_vec_copy_nonoverlapping_at_allocation_edge() {
     // Layout: disc(1) + fixed(32) + u32_prefix(4) + name(0) + u32_prefix(4) + 3*32 tags
-    // Total = 1 + 32 + 4 + 0 + 4 + 96 = 137
+    // Total = 1 + 32 + 4 + 4 + 96 = 137
     let mut buf = make_dyn_buffer_exact(b"", &[]);
     let view = unsafe { buf.view() };
-    let target_len = DYN_HEADER_SIZE + 4 + 0 + 4 + 96;
+    let target_len = DYN_HEADER_SIZE + 4 + 4 + 96;
     view.resize(target_len).unwrap();
 
     let new_tags = [
@@ -2234,11 +2237,11 @@ fn dynamic_vec_copy_nonoverlapping_at_allocation_edge() {
 
     let data = unsafe { view.borrow_unchecked_mut() };
     // tags data offset: disc + fixed + name_prefix(4) + name(0) + tags_prefix(4)
-    let tags_data_offset = DYN_HEADER_SIZE + 4 + 0 + 4;
+    let tags_data_offset = DYN_HEADER_SIZE + 4 + 4;
     let bytes = 96; // 3 * 32
 
     // Write tags count prefix
-    let tags_prefix_offset = DYN_HEADER_SIZE + 4 + 0;
+    let tags_prefix_offset = DYN_HEADER_SIZE + 4;
     data[tags_prefix_offset..tags_prefix_offset + 4].copy_from_slice(&3u32.to_le_bytes());
 
     // This copy_nonoverlapping writes to data[tags_data_offset..tags_data_offset+96].
@@ -2255,10 +2258,7 @@ fn dynamic_vec_copy_nonoverlapping_at_allocation_edge() {
     // Read back the last element — touches bytes [data.len()-32..data.len()]
     let data = unsafe { view.borrow_unchecked() };
     let slice: &[Address] = unsafe {
-        core::slice::from_raw_parts(
-            data[tags_data_offset..].as_ptr() as *const Address,
-            3,
-        )
+        core::slice::from_raw_parts(data[tags_data_offset..].as_ptr() as *const Address, 3)
     };
     assert_eq!(slice[2].as_array(), &[0xCC; 32]);
 }
@@ -2299,9 +2299,8 @@ fn instruction_zc_cast_exact_length_vec() {
 
     // Read inline prefix after ZC block
     let dyn_start = size_of::<IxDataZc>();
-    let dyn_len = u32::from_le_bytes(
-        after_disc[dyn_start..dyn_start + 4].try_into().unwrap(),
-    ) as usize;
+    let dyn_len =
+        u32::from_le_bytes(after_disc[dyn_start..dyn_start + 4].try_into().unwrap()) as usize;
     assert_eq!(dyn_len, 6);
 
     let name_start = dyn_start + 4;

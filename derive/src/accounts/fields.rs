@@ -167,10 +167,7 @@ impl<'a> DetectedFields<'a> {
     ) -> Self {
         // --- Type-based detection (single pass) ---
         let system_program = find_field_by_type(fields, &["System"]);
-        let token_program = find_field_by_type(
-            fields,
-            &["Token", "Token2022", "TokenInterface"],
-        );
+        let token_program = find_field_by_type(fields, &["Token", "Token2022", "TokenInterface"]);
         let associated_token_program = find_field_by_type(fields, &["AssociatedTokenProgram"]);
         let metadata_program = find_field_by_type(fields, &["MetadataProgram"]);
 
@@ -402,7 +399,6 @@ pub(super) fn process_fields(
             .to_compile_error()
             .into());
         }
-
 
         if attrs.close.is_some() && !is_ref_mut && !attrs.is_mut {
             return Err(syn::Error::new_spanned(
@@ -772,7 +768,8 @@ pub(super) fn process_fields(
                     }
                 } else {
                     let base_type = strip_generics(effective_ty);
-                    field_constructs.push(quote! { #field_name: #base_type::from_account_view(#field_name)? });
+                    field_constructs
+                        .push(quote! { #field_name: #base_type::from_account_view(#field_name)? });
                 }
             }
             _ => {
