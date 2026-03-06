@@ -154,7 +154,7 @@ pub fn is_system_program(addr: &solana_address::Address) -> bool {
 pub fn decode_header_error(header: u32, expected: u32) -> solana_program_error::ProgramError {
     use solana_program_error::ProgramError;
 
-    let [borrow, signer, writable, exec] = header.to_le_bytes();
+    let [borrow, signer, writable, _exec] = header.to_le_bytes();
     let [exp_borrow, exp_signer, exp_writable, exp_exec] = expected.to_le_bytes();
 
     // Check in order of likely mismatch: dup, signer, writable, executable

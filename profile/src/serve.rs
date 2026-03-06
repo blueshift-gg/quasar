@@ -10,7 +10,7 @@ pub fn spawn_server_process(root: &Path, port: u16) -> io::Result<()> {
 
     unsafe {
         match libc::fork() {
-            -1 => return Err(io::Error::last_os_error()),
+            -1 => Err(io::Error::last_os_error()),
             0 => {
                 daemonize_stdio()?;
                 let rc = tinysrv::serve(root_bytes.as_bytes(), port);
