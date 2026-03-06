@@ -920,8 +920,8 @@ pub(super) fn process_fields(
                     let check = quote! {
                         {
                             #(#seed_len_checks)*
-                            let __pda_seeds = [#(quasar_core::cpi::Seed::from(#seed_idents)),*];
-                            let (__expected, __bump) = quasar_core::pda::try_find_program_address(&__pda_seeds, __program_id)?;
+                            let __pda_seeds = [#(#seed_idents),*];
+                            let (__expected, __bump) = quasar_core::pda::try_find_program_address_sha(&__pda_seeds, __program_id)?;
                             if #addr_access != __expected {
                                 return Err(QuasarError::InvalidPda.into());
                             }
