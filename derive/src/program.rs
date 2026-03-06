@@ -1,3 +1,7 @@
+//! `#[program]` — generates the program entrypoint, instruction dispatch table,
+//! and CPI method stubs. Scans all `#[instruction]` functions within the module
+//! to build the discriminator → handler routing.
+
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{parse_macro_input, FnArg, Ident, Item, ItemMod, Pat, Type};

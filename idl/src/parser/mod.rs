@@ -1,3 +1,9 @@
+//! Source-level parser for Quasar programs.
+//!
+//! Reads Rust source files via `syn` and extracts program structure:
+//! instructions, account types, events, errors, and state. Also performs
+//! discriminator collision detection across all parsed types.
+
 pub mod accounts;
 pub mod errors;
 pub mod events;

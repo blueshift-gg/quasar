@@ -1,3 +1,10 @@
+//! Per-field codegen for `#[derive(Accounts)]`.
+//!
+//! Each field in the accounts struct produces: parsing code (account extraction
+//! from the accounts slice), validation code (constraint checks), and PDA seed
+//! reconstruction. This module is the largest in the derive crate because each
+//! field attribute combination produces distinct codegen paths.
+
 use quote::{format_ident, quote};
 use syn::{Expr, Ident, Type};
 

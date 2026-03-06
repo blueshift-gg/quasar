@@ -1,3 +1,5 @@
+//! Parses `#[error_code]` enums for IDL generation.
+
 use syn::Item;
 
 use crate::types::IdlError;

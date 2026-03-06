@@ -1,3 +1,6 @@
+//! Shared helpers for IDL parsing: type mapping, name conversion, and
+//! dynamic field classification.
+
 use crate::types::{IdlDynString, IdlDynVec, IdlTail, IdlType};
 
 /// Convert `snake_case` to `camelCase`.

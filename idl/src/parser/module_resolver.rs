@@ -1,3 +1,5 @@
+//! Resolves all Rust source files in a crate by walking `mod` declarations.
+
 use std::path::{Path, PathBuf};
 
 /// A resolved source file with its parsed AST.

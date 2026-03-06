@@ -1,8 +1,8 @@
 use quasar_core::prelude::*;
 use quasar_core::traits::Id;
 
-use crate::constants::{TOKEN_2022_BYTES, TOKEN_2022_ID};
-use crate::cpi::TokenCpi;
+use crate::helpers::constants::{TOKEN_2022_BYTES, TOKEN_2022_ID};
+use crate::instructions::TokenCpi;
 use crate::state::{MintAccountState, TokenAccountState};
 
 /// Token account view — validates owner is Token-2022 program.

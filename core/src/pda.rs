@@ -1,3 +1,12 @@
+//! Program Derived Address (PDA) derivation.
+//!
+//! Uses `sol_sha256` + `sol_curve_validate_point` syscalls directly instead of
+//! the higher-level `sol_create_program_address` / `sol_try_find_program_address`
+//! syscalls, reducing per-attempt cost from ~1,500 CU to ~544 CU.
+//!
+//! Also provides `find_program_address_const` for compile-time PDA derivation
+//! using `const_crypto` — useful for declaring static PDAs in `const` contexts.
+
 #[cfg(any(target_os = "solana", target_arch = "bpf"))]
 use solana_define_syscall::definitions::{sol_curve_validate_point, sol_sha256};
 use {solana_address::Address, solana_program_error::ProgramError};

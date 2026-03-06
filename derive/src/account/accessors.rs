@@ -1,3 +1,8 @@
+//! Generates typed accessor methods for dynamic account fields.
+//!
+//! Each dynamic field (String, Vec, tail) gets a getter that reads the length
+//! prefix and returns a slice/reference into the raw account data buffer.
+
 use quote::{format_ident, quote};
 
 use crate::helpers::{DynKind, TailElement};

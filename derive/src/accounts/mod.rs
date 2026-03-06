@@ -1,3 +1,7 @@
+//! `#[derive(Accounts)]` — generates account parsing, validation, and PDA
+//! derivation from a struct definition. This is the core macro that transforms
+//! a declarative accounts struct into the zero-copy parsing pipeline.
+
 mod attrs;
 mod client;
 mod fields;

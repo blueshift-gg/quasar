@@ -1,3 +1,11 @@
+//! Core macros for account definitions and runtime assertions.
+//!
+//! - `define_account!` — generates a `#[repr(transparent)]` account wrapper with
+//!   check trait implementations and unchecked constructors for optimized parsing.
+//! - `require!`, `require_eq!`, `require_keys_eq!` — constraint assertion
+//!   macros that return early with a typed error on failure.
+//! - `emit!` — emits an event via `sol_log_data` (~100 CU).
+
 #[macro_export]
 macro_rules! define_account {
     (

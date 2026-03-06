@@ -1,3 +1,12 @@
+//! Cross-program invocation (CPI) builder with const-generic stack allocation.
+//!
+//! `CpiCall` is the primary type — a const-generic struct where account count
+//! and data size are known at compile time, keeping everything on the stack.
+//! `BufCpiCall` is the variable-length variant for Borsh-serialized instructions.
+//!
+//! Both types invoke the `sol_invoke_signed_c` syscall directly, bypassing
+//! any intermediate instruction representation.
+
 pub mod buf;
 pub mod system;
 
@@ -105,6 +114,13 @@ pub(crate) unsafe fn invoke_raw(
 
 // --- CpiCall ---
 
+/// Const-generic CPI builder with compile-time-known account count and data size.
+///
+/// All data lives on the stack — no heap allocation. `ACCTS` is the number of
+/// accounts and `DATA` is the byte length of the serialized instruction data.
+///
+/// Constructed by the generated CPI methods in `#[program]` modules, or
+/// manually via [`CpiCall::new`].
 pub struct CpiCall<'a, const ACCTS: usize, const DATA: usize> {
     program_id: &'a Address,
     accounts: [InstructionAccount<'a>; ACCTS],
@@ -113,6 +129,7 @@ pub struct CpiCall<'a, const ACCTS: usize, const DATA: usize> {
 }
 
 impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
+    /// Creates a CPI call from pre-built instruction accounts and raw data.
     #[inline(always)]
     pub fn new(
         program_id: &'a Address,
@@ -129,16 +146,19 @@ impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
         }
     }
 
+    /// Invokes the CPI without any PDA signers.
     #[inline(always)]
     pub fn invoke(&self) -> ProgramResult {
         self.invoke_inner(&[])
     }
 
+    /// Invokes the CPI with a single PDA signer (one set of seeds).
     #[inline(always)]
     pub fn invoke_signed(&self, seeds: &[Seed]) -> ProgramResult {
         self.invoke_inner(&[Signer::from(seeds)])
     }
 
+    /// Invokes the CPI with multiple PDA signers.
     #[inline(always)]
     pub fn invoke_with_signers(&self, signers: &[Signer]) -> ProgramResult {
         self.invoke_inner(signers)
@@ -146,6 +166,9 @@ impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
 
     #[inline(always)]
     fn invoke_inner(&self, signers: &[Signer]) -> ProgramResult {
+        // SAFETY: All pointers derive from valid references (program_id, accounts,
+        // cpi_accounts, data). The arrays are stack-allocated with lifetime 'a
+        // tied to the AccountViews. signers is a valid slice.
         let result = unsafe {
             invoke_raw(
                 self.program_id,

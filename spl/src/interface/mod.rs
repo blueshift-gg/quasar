@@ -2,8 +2,8 @@ use core::marker::PhantomData;
 
 use quasar_core::prelude::*;
 
-use crate::constants::{SPL_TOKEN_ID, TOKEN_2022_ID};
-use crate::cpi::TokenCpi;
+use crate::helpers::constants::{SPL_TOKEN_ID, TOKEN_2022_ID};
+use crate::instructions::TokenCpi;
 
 /// Generic interface account wrapper — accepts accounts owned by either
 /// SPL Token or Token-2022.

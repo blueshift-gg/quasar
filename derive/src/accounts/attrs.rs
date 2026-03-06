@@ -1,3 +1,8 @@
+//! Constraint attribute types and parsing for `#[account(...)]` field attributes.
+//!
+//! Handles: `init`, `mut`, `signer`, `address`, `seeds`, `bump`, `space`,
+//! `payer`, `token_*`, `mint_*`, `associated_token_*`, `constraint`, and more.
+
 use syn::{
     parse::{Parse, ParseStream},
     Expr, ExprArray, Ident, Token,

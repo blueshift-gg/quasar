@@ -1,3 +1,17 @@
+//! Instruction context types used by the `dispatch!` macro.
+//!
+//! Three levels of context exist, each wrapping the previous:
+//!
+//! - `Context` — raw entrypoint data (program ID, account slice, instruction data).
+//!   Produced by the entrypoint; consumed by `Ctx::new()` or `CtxWithRemaining::new()`.
+//!
+//! - `Ctx` — parsed and validated accounts with PDA bumps. Use this for most
+//!   instructions where remaining accounts are not needed.
+//!
+//! - `CtxWithRemaining` — like `Ctx` but also captures the remaining accounts
+//!   region for instructions that forward accounts to CPIs (e.g., token transfers
+//!   with extra signers or route swaps).
+
 use crate::prelude::*;
 use crate::remaining::RemainingAccounts;
 
