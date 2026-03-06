@@ -8,8 +8,10 @@ use solana_program_error::ProgramError;
 declare_id!("11111111111111111111111111111111");
 pub use ID as SYSTEM_PROGRAM_ID;
 
-// --- Free functions (used by derive macro init_signed + account realloc) ---
-
+/// Create a new account via the System program.
+///
+/// Builds a 52-byte `CreateAccount` instruction (discriminator 0 + lamports +
+/// space + owner) and returns a ready-to-invoke `CpiCall`.
 #[inline(always)]
 pub fn create_account<'a>(
     from: &'a AccountView,
@@ -41,6 +43,7 @@ pub fn create_account<'a>(
     )
 }
 
+/// Transfer lamports between accounts via the System program.
 #[inline(always)]
 pub fn transfer<'a>(
     from: &'a AccountView,
@@ -68,6 +71,7 @@ pub fn transfer<'a>(
     )
 }
 
+/// Assign an account to a new owner program via the System program.
 #[inline(always)]
 pub fn assign<'a>(account: &'a AccountView, owner: &'a Address) -> CpiCall<'a, 1, 36> {
     // SAFETY: All 36 bytes are written before assume_init.

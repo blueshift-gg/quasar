@@ -76,35 +76,35 @@ struct CInstruction<'a> {
 }
 
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, unused_variables)]
 pub(crate) unsafe fn invoke_raw(
-    _program_id: *const Address,
-    _instruction_accounts: *const InstructionAccount,
-    _instruction_accounts_len: usize,
-    _data: *const u8,
-    _data_len: usize,
-    _cpi_accounts: *const RawCpiAccount,
-    _cpi_accounts_len: usize,
-    _signers: &[Signer],
+    program_id: *const Address,
+    instruction_accounts: *const InstructionAccount,
+    instruction_accounts_len: usize,
+    data: *const u8,
+    data_len: usize,
+    cpi_accounts: *const RawCpiAccount,
+    cpi_accounts_len: usize,
+    signers: &[Signer],
 ) -> u64 {
     #[cfg(any(target_os = "solana", target_arch = "bpf"))]
     {
         use solana_define_syscall::definitions::sol_invoke_signed_c;
 
         let instruction = CInstruction {
-            program_id: _program_id,
-            accounts: _instruction_accounts,
-            accounts_len: _instruction_accounts_len as u64,
-            data: _data,
-            data_len: _data_len as u64,
+            program_id,
+            accounts: instruction_accounts,
+            accounts_len: instruction_accounts_len as u64,
+            data,
+            data_len: data_len as u64,
         };
 
         sol_invoke_signed_c(
             &instruction as *const _ as *const u8,
-            _cpi_accounts as *const u8,
-            _cpi_accounts_len as u64,
-            _signers as *const _ as *const u8,
-            _signers.len() as u64,
+            cpi_accounts as *const u8,
+            cpi_accounts_len as u64,
+            signers as *const _ as *const u8,
+            signers.len() as u64,
         )
     }
 
@@ -137,7 +137,18 @@ impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
         views: [&'a AccountView; ACCTS],
         data: [u8; DATA],
     ) -> Self {
-        let cpi_accounts = views.map(RawCpiAccount::from_view);
+        let mut cpi_accounts =
+            core::mem::MaybeUninit::<[RawCpiAccount<'a>; ACCTS]>::uninit();
+        let ptr = cpi_accounts.as_mut_ptr() as *mut RawCpiAccount<'a>;
+        let mut i = 0;
+        while i < ACCTS {
+            // SAFETY: i < ACCTS, and ACCTS is the array length.
+            // views[i] is valid because views has exactly ACCTS elements.
+            unsafe { ptr.add(i).write(RawCpiAccount::from_view(views[i])) };
+            i += 1;
+        }
+        // SAFETY: All ACCTS elements written by the loop above.
+        let cpi_accounts = unsafe { cpi_accounts.assume_init() };
         Self {
             program_id,
             accounts,
@@ -184,7 +195,11 @@ impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
         if result == 0 {
             Ok(())
         } else {
-            Err(ProgramError::from(result))
+            #[cold]
+            fn cpi_error(result: u64) -> ProgramError {
+                ProgramError::from(result)
+            }
+            Err(cpi_error(result))
         }
     }
 

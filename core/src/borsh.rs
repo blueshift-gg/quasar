@@ -1,8 +1,8 @@
-// Borsh-compatible serialization primitives for CPI instruction data.
-//
-// These types wrap raw byte slices and write them in Borsh wire format
-// (u32 LE length prefix + payload) directly into a pre-allocated buffer.
-// Designed for stack-allocated CPI data arrays — no heap, no alloc.
+//! Borsh-compatible serialization primitives for CPI instruction data.
+//!
+//! These types wrap raw byte slices and write them in Borsh wire format
+//! (u32 LE length prefix + payload) directly into a pre-allocated buffer.
+//! Designed for stack-allocated CPI data arrays — no heap, no alloc.
 
 /// A Borsh string: u32 LE length prefix followed by UTF-8 bytes.
 ///

@@ -13,18 +13,20 @@ const RENT_ID: Address = Address::new_from_array([
 ]);
 
 const MAX_PERMITTED_DATA_LENGTH: u64 = 10 * 1024 * 1024;
-const CURRENT_EXEMPTION_THRESHOLD: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 64];
-const SIMD0194_EXEMPTION_THRESHOLD: [u8; 8] = [0, 0, 0, 0, 0, 0, 240, 63];
+const CURRENT_EXEMPTION_THRESHOLD: u64 = u64::from_le_bytes([0, 0, 0, 0, 0, 0, 0, 64]);
+const SIMD0194_EXEMPTION_THRESHOLD: u64 = u64::from_le_bytes([0, 0, 0, 0, 0, 0, 240, 63]);
 const SIMD0194_MAX_LAMPORTS_PER_BYTE: u64 = 1_759_197_129_867;
 const CURRENT_MAX_LAMPORTS_PER_BYTE: u64 = 879_598_564_933;
 pub const ACCOUNT_STORAGE_OVERHEAD: u64 = 128;
 
-// Intentionally 16 bytes: the full Rent sysvar is 17 bytes (includes
-// burn_percent: u8 at offset 16), but burn_percent is unused so we
-// only read the first 16 bytes via impl_sysvar_get with padding = 0.
-//
-// Uses PodU64 for lamports_per_byte to guarantee alignment 1, making
-// from_bytes_unchecked sound on all targets (not just SBF).
+/// Rent sysvar data (first 16 bytes only).
+///
+/// The full Rent sysvar is 17 bytes (includes `burn_percent: u8` at offset
+/// 16), but `burn_percent` is unused so only the first 16 bytes are read
+/// via `impl_sysvar_get` with padding = 0.
+///
+/// Uses `PodU64` for `lamports_per_byte` to guarantee alignment 1, making
+/// `from_bytes_unchecked` sound on all targets (not just SBF).
 #[repr(C)]
 #[derive(Clone, Debug)]
 pub struct Rent {
@@ -37,13 +39,23 @@ const _ASSERT_STRUCT_ALIGN: () = assert!(align_of::<Rent>() == 1);
 
 impl Rent {
     #[inline(always)]
-    pub fn minimum_balance_unchecked(&self, data_len: usize) -> u64 {
-        let bytes = data_len as u64;
-        let lamports_per_byte = self.lamports_per_byte.get();
+    fn exemption_threshold_u64(&self) -> u64 {
+        u64::from_le_bytes(self.exemption_threshold)
+    }
 
-        if self.exemption_threshold == SIMD0194_EXEMPTION_THRESHOLD {
+    #[inline(always)]
+    pub fn minimum_balance_unchecked(&self, data_len: usize) -> u64 {
+        self.minimum_balance_inner(data_len, self.lamports_per_byte.get())
+    }
+
+    #[inline(always)]
+    fn minimum_balance_inner(&self, data_len: usize, lamports_per_byte: u64) -> u64 {
+        let bytes = data_len as u64;
+        let threshold = self.exemption_threshold_u64();
+
+        if threshold == SIMD0194_EXEMPTION_THRESHOLD {
             (ACCOUNT_STORAGE_OVERHEAD + bytes) * lamports_per_byte
-        } else if self.exemption_threshold == CURRENT_EXEMPTION_THRESHOLD {
+        } else if threshold == CURRENT_EXEMPTION_THRESHOLD {
             2 * (ACCOUNT_STORAGE_OVERHEAD + bytes) * lamports_per_byte
         } else {
             #[cfg(not(target_arch = "bpf"))]
@@ -53,7 +65,6 @@ impl Rent {
             }
             #[cfg(target_arch = "bpf")]
             {
-                // Fallback to the current 2x exemption threshold to avoid underfunding.
                 2 * (ACCOUNT_STORAGE_OVERHEAD + bytes) * lamports_per_byte
             }
         }
@@ -67,17 +78,18 @@ impl Rent {
         }
 
         let lamports_per_byte = self.lamports_per_byte.get();
+        let threshold = self.exemption_threshold_u64();
         if lamports_per_byte > CURRENT_MAX_LAMPORTS_PER_BYTE {
-            if self.exemption_threshold == CURRENT_EXEMPTION_THRESHOLD {
+            if threshold == CURRENT_EXEMPTION_THRESHOLD {
                 return Err(ProgramError::InvalidArgument);
             }
         } else if lamports_per_byte > SIMD0194_MAX_LAMPORTS_PER_BYTE {
-            if self.exemption_threshold == SIMD0194_EXEMPTION_THRESHOLD {
+            if threshold == SIMD0194_EXEMPTION_THRESHOLD {
                 return Err(ProgramError::InvalidArgument);
             }
         }
 
-        Ok(self.minimum_balance_unchecked(data_len))
+        Ok(self.minimum_balance_inner(data_len, lamports_per_byte))
     }
 }
 

@@ -85,17 +85,35 @@ impl<'a, const PREFIX_BYTES: usize> RawEncoded<'a, PREFIX_BYTES> {
     /// The data bytes (after the prefix).
     #[inline(always)]
     pub fn data(&self) -> &'a [u8] {
-        &self.bytes[PREFIX_BYTES..]
+        const { assert!(PREFIX_BYTES <= 4) };
+        // SAFETY: RawEncoded is constructed from account data validated at parse
+        // time to be >= PREFIX_BYTES in length. PREFIX_BYTES <= 4 by const assert.
+        unsafe { self.bytes.get_unchecked(PREFIX_BYTES..) }
     }
 
     /// The data length encoded in the prefix.
     #[inline(always)]
     pub fn prefix_value(&self) -> u32 {
-        match PREFIX_BYTES {
-            1 => self.bytes[0] as u32,
-            2 => u16::from_le_bytes([self.bytes[0], self.bytes[1]]) as u32,
-            4 => u32::from_le_bytes([self.bytes[0], self.bytes[1], self.bytes[2], self.bytes[3]]),
-            _ => unreachable!(),
+        const { assert!(PREFIX_BYTES <= 4) };
+        // SAFETY: RawEncoded is constructed from account data validated at parse
+        // time to be >= PREFIX_BYTES in length. PREFIX_BYTES is const-generic
+        // and <= 4 (enforced by const assert). Indices 0..PREFIX_BYTES are
+        // within bounds.
+        unsafe {
+            match PREFIX_BYTES {
+                1 => *self.bytes.get_unchecked(0) as u32,
+                2 => u16::from_le_bytes([
+                    *self.bytes.get_unchecked(0),
+                    *self.bytes.get_unchecked(1),
+                ]) as u32,
+                4 => u32::from_le_bytes([
+                    *self.bytes.get_unchecked(0),
+                    *self.bytes.get_unchecked(1),
+                    *self.bytes.get_unchecked(2),
+                    *self.bytes.get_unchecked(3),
+                ]),
+                _ => core::hint::unreachable_unchecked(),
+            }
         }
     }
 }

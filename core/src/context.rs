@@ -15,6 +15,15 @@
 use crate::prelude::*;
 use crate::remaining::RemainingAccounts;
 
+/// Cast a `&[u8; 32]` reference to `&Address`.
+///
+/// # Safety
+/// Address is `#[repr(transparent)]` over `[u8; 32]`, making this layout-compatible.
+#[inline(always)]
+unsafe fn as_address(bytes: &[u8; 32]) -> &Address {
+    &*(bytes as *const [u8; 32] as *const Address)
+}
+
 /// Raw entrypoint context before parsing.
 pub struct Context<'info> {
     pub program_id: &'info [u8; 32],
@@ -39,8 +48,8 @@ pub struct Ctx<'info, T: ParseAccounts<'info> + AccountCount> {
 impl<'info, T: ParseAccounts<'info> + AccountCount> Ctx<'info, T> {
     #[inline(always)]
     pub fn new(ctx: Context<'info>) -> Result<Self, ProgramError> {
-        // SAFETY: ctx.program_id is &[u8; 32] from the SVM, safe to cast to &Address
-        let program_id_addr = unsafe { &*(ctx.program_id as *const [u8; 32] as *const Address) };
+        // SAFETY: program_id is &[u8; 32] from the SVM; Address is repr(transparent).
+        let program_id_addr = unsafe { as_address(ctx.program_id) };
         let (accounts, bumps) =
             T::parse_with_instruction_data(ctx.accounts, ctx.data, program_id_addr)?;
         Ok(Self {
@@ -67,8 +76,8 @@ pub struct CtxWithRemaining<'info, T: ParseAccounts<'info> + AccountCount> {
 impl<'info, T: ParseAccounts<'info> + AccountCount> CtxWithRemaining<'info, T> {
     #[inline(always)]
     pub fn new(ctx: Context<'info>) -> Result<Self, ProgramError> {
-        // SAFETY: ctx.program_id is &[u8; 32] from the SVM, safe to cast to &Address
-        let program_id_addr = unsafe { &*(ctx.program_id as *const [u8; 32] as *const Address) };
+        // SAFETY: program_id is &[u8; 32] from the SVM; Address is repr(transparent).
+        let program_id_addr = unsafe { as_address(ctx.program_id) };
         let (accounts, bumps) =
             T::parse_with_instruction_data(ctx.accounts, ctx.data, program_id_addr)?;
         Ok(Self {
