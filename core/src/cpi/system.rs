@@ -8,6 +8,10 @@ use solana_program_error::ProgramError;
 declare_id!("11111111111111111111111111111111");
 pub use ID as SYSTEM_PROGRAM_ID;
 
+const CREATE_ACCOUNT_DISC: [u8; 4] = 0u32.to_le_bytes();
+const ASSIGN_DISC: [u8; 4] = 1u32.to_le_bytes();
+const TRANSFER_DISC: [u8; 4] = 2u32.to_le_bytes();
+
 /// Create a new account via the System program.
 ///
 /// Builds a 52-byte `CreateAccount` instruction (discriminator 0 + lamports +
@@ -25,7 +29,7 @@ pub fn create_account<'a>(
     let data = unsafe {
         let mut buf = core::mem::MaybeUninit::<[u8; 52]>::uninit();
         let ptr = buf.as_mut_ptr() as *mut u8;
-        core::ptr::copy_nonoverlapping(0u32.to_le_bytes().as_ptr(), ptr, 4);
+        core::ptr::copy_nonoverlapping(CREATE_ACCOUNT_DISC.as_ptr(), ptr, 4);
         core::ptr::copy_nonoverlapping(lamports.to_le_bytes().as_ptr(), ptr.add(4), 8);
         core::ptr::copy_nonoverlapping(space.to_le_bytes().as_ptr(), ptr.add(12), 8);
         core::ptr::copy_nonoverlapping(owner.as_ref().as_ptr(), ptr.add(20), 32);
@@ -55,7 +59,7 @@ pub fn transfer<'a>(
     let data = unsafe {
         let mut buf = core::mem::MaybeUninit::<[u8; 12]>::uninit();
         let ptr = buf.as_mut_ptr() as *mut u8;
-        core::ptr::copy_nonoverlapping(2u32.to_le_bytes().as_ptr(), ptr, 4);
+        core::ptr::copy_nonoverlapping(TRANSFER_DISC.as_ptr(), ptr, 4);
         core::ptr::copy_nonoverlapping(lamports.to_le_bytes().as_ptr(), ptr.add(4), 8);
         buf.assume_init()
     };
@@ -78,7 +82,7 @@ pub fn assign<'a>(account: &'a AccountView, owner: &'a Address) -> CpiCall<'a, 1
     let data = unsafe {
         let mut buf = core::mem::MaybeUninit::<[u8; 36]>::uninit();
         let ptr = buf.as_mut_ptr() as *mut u8;
-        core::ptr::copy_nonoverlapping(1u32.to_le_bytes().as_ptr(), ptr, 4);
+        core::ptr::copy_nonoverlapping(ASSIGN_DISC.as_ptr(), ptr, 4);
         core::ptr::copy_nonoverlapping(owner.as_ref().as_ptr(), ptr.add(4), 32);
         buf.assume_init()
     };

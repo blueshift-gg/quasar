@@ -7,6 +7,8 @@ const ACCOUNT_HEADER: usize = core::mem::size_of::<RuntimeAccount>()
     + MAX_PERMITTED_DATA_INCREASE
     + core::mem::size_of::<u64>();
 
+const DUP_ENTRY_SIZE: usize = core::mem::size_of::<u64>();
+
 const MAX_REMAINING_ACCOUNTS: usize = 64;
 
 /// Advance pointer past a non-duplicate account.
@@ -17,14 +19,14 @@ const MAX_REMAINING_ACCOUNTS: usize = 64;
 /// account slot (or past the buffer end).
 #[inline(always)]
 unsafe fn advance_past_account(ptr: *mut u8, raw: *mut RuntimeAccount) -> *mut u8 {
-    let next = ptr.add(ACCOUNT_HEADER + (*raw).data_len as usize);
-    ((next as usize + 7) & !7) as *mut u8
+    let next = ptr.add(ACCOUNT_HEADER.wrapping_add((*raw).data_len as usize));
+    ((next as usize).wrapping_add(7) & !7) as *mut u8
 }
 
 /// Advance pointer past a duplicate account entry (u64-sized).
 #[inline(always)]
 unsafe fn advance_past_dup(ptr: *mut u8) -> *mut u8 {
-    ptr.add(core::mem::size_of::<u64>())
+    ptr.add(DUP_ENTRY_SIZE)
 }
 
 /// Zero-allocation remaining accounts accessor.

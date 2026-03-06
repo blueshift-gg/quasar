@@ -19,6 +19,8 @@ use solana_account_view::{AccountView, RuntimeAccount};
 use solana_address::Address;
 use solana_program_error::{ProgramError, ProgramResult};
 
+const RUNTIME_ACCOUNT_SIZE: usize = core::mem::size_of::<RuntimeAccount>();
+
 // --- Raw CPI account (layout-compatible with CpiAccount, uses u8 flags) ---
 
 #[repr(C)]
@@ -50,7 +52,7 @@ impl<'a> RawCpiAccount<'a> {
                 address: &(*raw).address,
                 lamports: &(*raw).lamports,
                 data_len: (*raw).data_len,
-                data: (raw as *const u8).add(core::mem::size_of::<RuntimeAccount>()),
+                data: (raw as *const u8).add(RUNTIME_ACCOUNT_SIZE),
                 owner: &(*raw).owner,
                 rent_epoch: 0,
                 is_signer: (*raw).is_signer,

@@ -19,9 +19,10 @@ macro_rules! dispatch {
         let __program_id: &[u8; 32] = unsafe {
             &*($ix_data.as_ptr().add($ix_data.len()) as *const [u8; 32])
         };
+        const __U64_SIZE: usize = core::mem::size_of::<u64>();
         // SAFETY: The SVM input buffer starts with a u64 account count.
-        // Accounts begin at offset size_of::<u64>().
-        let __accounts_start = unsafe { ($ptr as *mut u8).add(core::mem::size_of::<u64>()) };
+        // Accounts begin at offset 8 (size of u64).
+        let __accounts_start = unsafe { ($ptr as *mut u8).add(__U64_SIZE) };
 
         if $ix_data.len() < $disc_len {
             return Err(ProgramError::InvalidInstructionData);
@@ -52,9 +53,9 @@ macro_rules! dispatch {
                         remaining_ptr: __remaining_ptr,
                         data: $ix_data,
                         // SAFETY: Instruction data follows accounts in the SVM
-                        // buffer. Subtracting size_of::<u64>() from ix_data.as_ptr()
+                        // buffer. Subtracting 8 (u64 size) from ix_data.as_ptr()
                         // gives the end of the accounts region.
-                        accounts_boundary: unsafe { $ix_data.as_ptr().sub(core::mem::size_of::<u64>()) },
+                        accounts_boundary: unsafe { $ix_data.as_ptr().sub(__U64_SIZE) },
                     })
                 }
             ),+
