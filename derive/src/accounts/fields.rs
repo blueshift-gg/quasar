@@ -904,11 +904,8 @@ pub(super) fn process_fields(
                             #(#seed_len_checks)*
                             let __bump_val: u8 = #bump_expr;
                             let __bump_ref: &[u8] = &[__bump_val];
-                            let __pda_seeds = [#(quasar_core::cpi::Seed::from(#seed_idents),)* quasar_core::cpi::Seed::from(__bump_ref)];
-                            let __expected = quasar_core::pda::create_program_address(&__pda_seeds, __program_id)?;
-                            if #addr_access != __expected {
-                                return Err(QuasarError::InvalidPda.into());
-                            }
+                            let __pda_seeds = [#(#seed_idents,)* __bump_ref];
+                            quasar_core::pda::verify_program_address(&__pda_seeds, __program_id, &#addr_access)?;
                             #bump_var = __bump_val;
                         }
                     };
@@ -924,8 +921,7 @@ pub(super) fn process_fields(
                         {
                             #(#seed_len_checks)*
                             let __pda_seeds = [#(quasar_core::cpi::Seed::from(#seed_idents)),*];
-                            let (__expected, __bump) = quasar_core::pda::try_find_program_address(&__pda_seeds, __program_id)
-                                .map_err(|_| QuasarError::InvalidSeeds)?;
+                            let (__expected, __bump) = quasar_core::pda::try_find_program_address(&__pda_seeds, __program_id)?;
                             if #addr_access != __expected {
                                 return Err(QuasarError::InvalidPda.into());
                             }
