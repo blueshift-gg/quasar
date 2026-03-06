@@ -1,5 +1,5 @@
 use quasar_core::prelude::*;
-use quasar_spl::{AssociatedToken, Mint, TokenProgram};
+use quasar_spl::{AssociatedToken, Mint, Token};
 
 #[derive(Accounts)]
 pub struct ValidateAtaCheck<'info> {
@@ -7,7 +7,7 @@ pub struct ValidateAtaCheck<'info> {
     pub ata: &'info Account<AssociatedToken>,
     pub mint: &'info Account<Mint>,
     pub wallet: &'info Signer,
-    pub token_program: &'info TokenProgram,
+    pub token_program: &'info Program<Token>,
 }
 
 impl<'info> ValidateAtaCheck<'info> {

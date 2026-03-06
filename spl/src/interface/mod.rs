@@ -64,6 +64,26 @@ impl<T: AccountCheck> InterfaceAccount<T> {
         T::check(view)?;
         Ok(unsafe { &mut *(view as *const AccountView as *mut Self) })
     }
+
+    /// Construct without validation.
+    ///
+    /// # Safety
+    /// Caller must ensure account owner and discriminator are valid.
+    #[inline(always)]
+    pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
+        &*(view as *const AccountView as *const Self)
+    }
+
+    /// Construct without validation (mutable).
+    ///
+    /// # Safety
+    /// Caller must ensure account owner and discriminator are valid, and that
+    /// account is writable.
+    #[inline(always)]
+    #[allow(invalid_reference_casting, clippy::mut_from_ref)]
+    pub unsafe fn from_account_view_unchecked_mut(view: &AccountView) -> &mut Self {
+        &mut *(view as *const AccountView as *mut Self)
+    }
 }
 
 impl<T: ZeroCopyDeref> core::ops::Deref for InterfaceAccount<T> {

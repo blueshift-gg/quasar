@@ -278,6 +278,13 @@ pub(super) fn generate_dynamic_account(
 
     // --- Combine ---
     quote! {
+        #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
+        extern crate alloc;
+
+        #[allow(unexpected_cfgs)]
+        #[cfg(all(any(target_os = "solana", target_arch = "bpf"), feature = "alloc"))]
+        extern crate alloc;
+
         #(#attrs)*
         #vis struct #name #generics {
             #(#transformed_fields,)*
@@ -388,7 +395,7 @@ pub(super) fn generate_dynamic_account(
                 );
 
                 #[cfg(feature = "alloc")]
-                let mut __buf_vec = alloc::vec![0u8; __MAX_TAIL];
+                let mut __buf_vec = ::alloc::vec![0u8; __MAX_TAIL];
                 #[cfg(feature = "alloc")]
                 let mut __buf: &mut [u8] = __buf_vec.as_mut_slice();
 

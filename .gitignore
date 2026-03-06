@@ -12,4 +12,5 @@ CLAUDE.md
 .DS_Store
 
 # Profiler
-*.json
+*.profile.json
+

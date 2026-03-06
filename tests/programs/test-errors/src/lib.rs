@@ -76,4 +76,34 @@ mod quasar_test_errors {
     pub fn address_custom_error(ctx: Ctx<AddressCustomError>) -> Result<(), ProgramError> {
         ctx.accounts.handler()
     }
+
+    #[instruction(discriminator = 12)]
+    pub fn header_nodup_mut_signer(ctx: Ctx<HeaderNoDupMutSigner>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 13)]
+    pub fn header_nodup_mut(ctx: Ctx<HeaderNoDupMut>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 14)]
+    pub fn header_nodup_signer(ctx: Ctx<HeaderNoDupSigner>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 15)]
+    pub fn header_executable(ctx: Ctx<HeaderExecutable>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 16)]
+    pub fn header_dup_mut(ctx: Ctx<HeaderDupMut>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 17)]
+    pub fn header_dup_signer(ctx: Ctx<HeaderDupSigner>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
 }

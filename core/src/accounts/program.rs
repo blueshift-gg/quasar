@@ -45,4 +45,23 @@ impl<T: crate::traits::Id> Program<T> {
     pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
         &*(view as *const AccountView as *const Self)
     }
+
+    /// Emit an event via CPI to this program.
+    ///
+    /// This method is used by `emit_cpi!` macro for self-CPI event emission.
+    #[inline(always)]
+    pub fn emit_event<E, EA>(
+        &self,
+        event: &E,
+        event_authority: &EA,
+        bump: u8,
+    ) -> Result<(), solana_program_error::ProgramError>
+    where
+        E: crate::traits::Event,
+        EA: AsAccountView,
+    {
+        let program = self.to_account_view();
+        let ea = event_authority.to_account_view();
+        event.emit(|data| crate::event::emit_event_cpi(program, ea, data, bump))
+    }
 }

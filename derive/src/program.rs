@@ -33,7 +33,7 @@ fn extract_ctx_inner_type(sig: &syn::Signature) -> syn::Result<proc_macro2::Toke
 pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut module = parse_macro_input!(item as ItemMod);
     let mod_name = module.ident.clone();
-    let program_type_name = format_ident!("{}Program", snake_to_pascal(&mod_name.to_string()));
+    let program_type_name = format_ident!("{}", snake_to_pascal(&mod_name.to_string()));
 
     let (_, items) = match module.content.as_ref() {
         Some(content) => content,
@@ -128,7 +128,7 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
                                     _ => return None,
                                 };
                                 let ty = if is_dynamic_string(&pt.ty, false).is_some() {
-                                    syn::parse_quote!(alloc::vec::Vec<u8>)
+                                    syn::parse_quote!(::alloc::vec::Vec<u8>)
                                 } else {
                                     (*pt.ty).clone()
                                 };
@@ -257,7 +257,6 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
         let client_mod: syn::Item = syn::parse2(quote! {
             #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
             pub mod client {
-                use alloc::vec;
                 use super::*;
 
                 #(#client_items)*
@@ -301,6 +300,15 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     return Err(ProgramError::InvalidSeeds);
                 }
                 Ok(unsafe { &*(view as *const AccountView as *const Self) })
+            }
+
+            /// Construct without validation.
+            ///
+            /// # Safety
+            /// Caller must ensure account address matches the expected PDA.
+            #[inline(always)]
+            pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
+                &*(view as *const AccountView as *const Self)
             }
         }
 

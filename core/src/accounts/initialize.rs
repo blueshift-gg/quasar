@@ -30,10 +30,14 @@ impl<T> Initialize<T> {
 
     /// Unchecked mutable construction for optimized parsing.
     ///
-    /// # Safety (invalid_reference_casting + validation requirements)
+    /// # Safety
     ///
     /// Caller must guarantee that the account's writable flag has been validated
     /// via u32 header check.
+    ///
+    /// This function uses `invalid_reference_casting` to convert `&AccountView`
+    /// to `&mut Self`, which is safe because `Self` is `#[repr(transparent)]`
+    /// over `AccountView` and uses interior mutability.
     #[inline(always)]
     #[allow(invalid_reference_casting, clippy::mut_from_ref)]
     pub unsafe fn from_account_view_unchecked_mut(view: &AccountView) -> &mut Self {

@@ -1567,7 +1567,7 @@ fn parse_simulation_dup_from_partially_initialized_buf() {
             unsafe { core::ptr::write(arr_ptr.add(i), view) };
             unsafe {
                 ptr = ptr.add(ACCOUNT_HEADER + (*raw).data_len as usize);
-                ptr = ((ptr as usize + 7) & !7) as *mut u8;
+                ptr = ptr.add((ptr as usize).wrapping_neg() & 7);
             }
         } else {
             // THIS IS THE KEY PATTERN: ptr::read from a partially-initialized
@@ -2407,7 +2407,7 @@ fn close_rejects_non_writable_destination() {
     let src_view = unsafe { src_buf.view() };
     let dst_view = unsafe { dst_buf.view() };
 
-    let account = Account::<TestCloseableType>::from_account_view(&src_view).unwrap();
+    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked(&src_view) };
     let result = account.close(&dst_view);
     assert!(
         result.is_err(),
@@ -2438,7 +2438,7 @@ fn close_rejects_lamport_overflow() {
     let src_view = unsafe { src_buf.view() };
     let dst_view = unsafe { dst_buf.view() };
 
-    let account = Account::<TestCloseableType>::from_account_view(&src_view).unwrap();
+    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked(&src_view) };
     let result = account.close(&dst_view);
     assert!(result.is_err(), "close must reject lamport overflow");
     assert_eq!(src_view.lamports(), 1_000_000, "source lamports unchanged");

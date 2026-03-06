@@ -38,9 +38,13 @@ build:
 	@cargo build
 
 build-sbf:
-	@for dir in $(SBF_ALL); do \
+	@for dir in $(SBF_EXAMPLES); do \
 		echo "Building $$dir"; \
 		cargo build-sbf --manifest-path "$$dir/Cargo.toml"; \
+	done
+	@for dir in $(SBF_TEST_PROGRAMS); do \
+		echo "Building $$dir (with debug)"; \
+		cargo build-sbf --manifest-path "$$dir/Cargo.toml" --features debug,alloc; \
 	done
 
 test:
@@ -59,7 +63,7 @@ bench-cu:
 	@cargo test -p quasar-escrow -- --nocapture 2>&1 | grep -E '(MAKE|TAKE|REFUND) CU:'
 
 test-miri:
-	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
+	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
 		cargo +nightly miri test -p quasar-core --test miri
 
 # Run all checks in sequence

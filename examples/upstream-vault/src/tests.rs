@@ -9,10 +9,7 @@ use solana_instruction::Instruction;
 use crate::client::{DepositInstruction, WithdrawInstruction};
 
 fn setup() -> Mollusk {
-    Mollusk::new(
-        &crate::ID,
-        "../../target/bpfel-unknown-none/release/libupstream_vault",
-    )
+    Mollusk::new(&crate::ID, "../../target/deploy/upstream_vault")
 }
 
 #[test]

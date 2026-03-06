@@ -8,6 +8,8 @@ mod errors;
 #[cfg(test)]
 mod events;
 #[cfg(test)]
+mod header_tests;
+#[cfg(test)]
 mod misc;
 #[cfg(test)]
 mod pda;

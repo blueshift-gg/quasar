@@ -1,6 +1,6 @@
 use quasar_core::prelude::*;
 use quasar_spl::metadata::MetadataProgram;
-use quasar_spl::{Mint, TokenProgram};
+use quasar_spl::{Mint, Token};
 
 #[derive(Accounts)]
 pub struct InitMintWithMetadata<'info> {
@@ -18,9 +18,9 @@ pub struct InitMintWithMetadata<'info> {
     )]
     pub mint: &'info mut Account<Mint>,
     pub metadata: &'info mut UncheckedAccount,
-    pub metadata_program: &'info MetadataProgram,
-    pub token_program: &'info TokenProgram,
-    pub system_program: &'info SystemProgram,
+    pub metadata_program: &'info Program<MetadataProgram>,
+    pub token_program: &'info Program<Token>,
+    pub system_program: &'info Program<System>,
     pub rent: &'info UncheckedAccount,
 }
 

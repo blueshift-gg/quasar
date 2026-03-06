@@ -35,11 +35,15 @@ macro_rules! define_account {
 
             /// Unchecked mutable construction for optimized parsing.
             ///
-            /// # Safety (invalid_reference_casting + check validation)
+            /// # Safety
             ///
             /// Caller must guarantee:
             /// 1. All check trait requirements have been validated
             /// 2. `view.is_writable()` is true (validated via header check)
+            ///
+            /// Additionally, this function uses `invalid_reference_casting` to convert
+            /// `&AccountView` to `&mut Self`, which is safe because `Self` is
+            /// `#[repr(transparent)]` over `AccountView` and uses interior mutability.
             #[inline(always)]
             #[allow(invalid_reference_casting, clippy::mut_from_ref)]
             pub unsafe fn from_account_view_unchecked_mut(view: &AccountView) -> &mut Self {

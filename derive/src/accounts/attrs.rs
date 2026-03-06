@@ -7,6 +7,7 @@ pub(super) enum AccountDirective {
     Mut,
     Init,
     InitIfNeeded,
+    Dup,
     Close(Ident),
     Payer(Ident),
     Space(Expr),
@@ -43,6 +44,7 @@ impl Parse for AccountDirective {
         match key.to_string().as_str() {
             "init" => Ok(Self::Init),
             "init_if_needed" => Ok(Self::InitIfNeeded),
+            "dup" => Ok(Self::Dup),
             "close" => {
                 let _: Token![=] = input.parse()?;
                 let ident: Ident = input.parse()?;
@@ -238,6 +240,7 @@ pub(super) struct AccountFieldAttrs {
     pub is_mut: bool,
     pub is_init: bool,
     pub init_if_needed: bool,
+    pub dup: bool,
     pub close: Option<Ident>,
     pub payer: Option<Ident>,
     pub space: Option<Expr>,
@@ -270,6 +273,7 @@ impl Parse for AccountFieldAttrs {
         let mut is_mut = false;
         let mut is_init = false;
         let mut init_if_needed = false;
+        let mut dup = false;
         let mut close = None;
         let mut payer = None;
         let mut space = None;
@@ -299,6 +303,7 @@ impl Parse for AccountFieldAttrs {
                 AccountDirective::Mut => is_mut = true,
                 AccountDirective::Init => is_init = true,
                 AccountDirective::InitIfNeeded => init_if_needed = true,
+                AccountDirective::Dup => dup = true,
                 AccountDirective::Close(ident) => close = Some(ident),
                 AccountDirective::Payer(ident) => payer = Some(ident),
                 AccountDirective::Space(expr) => space = Some(expr),
@@ -337,6 +342,7 @@ impl Parse for AccountFieldAttrs {
             is_mut,
             is_init,
             init_if_needed,
+            dup,
             close,
             payer,
             space,
@@ -375,6 +381,7 @@ pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<AccountFieldA
         is_mut: false,
         is_init: false,
         init_if_needed: false,
+        dup: false,
         close: None,
         payer: None,
         space: None,

@@ -1,12 +1,12 @@
 use quasar_core::prelude::*;
-use quasar_spl::{Token, TokenCpi, TokenProgram};
+use quasar_spl::{Token, TokenAccount, TokenCpi};
 
 #[derive(Accounts)]
 pub struct Approve<'info> {
     pub authority: &'info Signer,
-    pub source: &'info mut Account<Token>,
+    pub source: &'info mut Account<TokenAccount>,
     pub delegate: &'info UncheckedAccount,
-    pub token_program: &'info TokenProgram,
+    pub token_program: &'info Program<Token>,
 }
 
 impl<'info> Approve<'info> {

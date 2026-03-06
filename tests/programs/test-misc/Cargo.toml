@@ -6,14 +6,13 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "lib"]
 
+[lints]
+workspace = true
+
 [features]
 client = []
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = [
-    'cfg(target_os, values("solana"))',
-    'cfg(feature, values("alloc"))',
-] }
+debug = []
+alloc = ["quasar-core/alloc"]
 
 [dependencies]
 quasar-core = { path = "../../../core" }

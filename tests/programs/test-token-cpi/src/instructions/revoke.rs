@@ -1,11 +1,11 @@
 use quasar_core::prelude::*;
-use quasar_spl::{Token, TokenCpi, TokenProgram};
+use quasar_spl::{Token, TokenAccount, TokenCpi};
 
 #[derive(Accounts)]
 pub struct Revoke<'info> {
     pub authority: &'info Signer,
-    pub source: &'info mut Account<Token>,
-    pub token_program: &'info TokenProgram,
+    pub source: &'info mut Account<TokenAccount>,
+    pub token_program: &'info Program<Token>,
 }
 
 impl<'info> Revoke<'info> {
