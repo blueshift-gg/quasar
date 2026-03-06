@@ -139,7 +139,8 @@ fn serialize_expr(name: &str, ty: &IdlType) -> String {
     match ty {
         IdlType::Primitive(p) => match p.as_str() {
             "bool" => format!("        data.push(ix.{} as u8);\n", name),
-            "u8" | "i8" => format!("        data.push(ix.{} as u8);\n", name),
+            "u8" => format!("        data.push(ix.{});\n", name),
+            "i8" => format!("        data.push(ix.{} as u8);\n", name),
             "publicKey" => {
                 format!("        data.extend_from_slice(ix.{}.as_ref());\n", name)
             }

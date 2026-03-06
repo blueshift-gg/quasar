@@ -20,7 +20,7 @@ impl From<CreateInstruction> for Instruction {
             AccountMeta::new_readonly(ix.system_program, false),
         ];
         let mut data = vec![0];
-        data.push(ix.threshold as u8);
+        data.push(ix.threshold);
         Instruction {
             program_id: crate::ID,
             accounts,

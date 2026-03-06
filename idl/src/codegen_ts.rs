@@ -53,11 +53,7 @@ pub fn generate_ts_client(idl: &Idl) -> String {
     }
 
     if has_dyn_string {
-        codec_imports.extend_from_slice(&[
-            "addCodecSizePrefix",
-            "getU32Codec",
-            "getUtf8Codec",
-        ]);
+        codec_imports.extend_from_slice(&["addCodecSizePrefix", "getU32Codec", "getUtf8Codec"]);
     }
 
     if has_dyn_vec {

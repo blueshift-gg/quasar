@@ -5,9 +5,9 @@ use quasar_core::prelude::*;
 mod instructions;
 use instructions::*;
 mod events;
-mod state;
 #[cfg(test)]
 mod idl_client;
+mod state;
 #[cfg(test)]
 mod tests;
 
