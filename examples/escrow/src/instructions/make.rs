@@ -1,5 +1,5 @@
 use quasar_core::prelude::*;
-use quasar_spl::{Mint, Token, TokenCpi, TokenProgram};
+use quasar_spl::{Mint, Token, TokenCpi};
 
 use crate::{events::MakeEvent, state::Escrow};
 
@@ -16,7 +16,7 @@ pub struct Make<'info> {
     #[account(init_if_needed, payer = maker, token::mint = mint_a, token::authority = escrow)]
     pub vault_ta_a: &'info mut Account<Token>,
     pub rent: &'info Sysvar<Rent>,
-    pub token_program: &'info TokenProgram,
+    pub token_program: &'info Program<Token>,
     pub system_program: &'info Program<System>,
 }
 

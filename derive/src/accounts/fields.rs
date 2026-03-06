@@ -169,13 +169,7 @@ impl<'a> DetectedFields<'a> {
         let system_program = find_field_by_type(fields, &["System"]);
         let token_program = find_field_by_type(
             fields,
-            &[
-                "Token",
-                "Token2022",
-                "TokenProgram",
-                "Token2022Program",
-                "TokenInterface",
-            ],
+            &["Token", "Token2022", "TokenInterface"],
         );
         let associated_token_program = find_field_by_type(fields, &["AssociatedTokenProgram"]);
         let metadata_program = find_field_by_type(fields, &["MetadataProgram"]);
@@ -304,7 +298,7 @@ pub(super) fn process_fields(
     {
         Some(DetectedFields::require(
                 detected.token_program,
-                "token/ATA/mint/master_edition init requires a token program field (TokenProgram, Token2022Program, or TokenInterface)",
+                "token/ATA/mint/master_edition init requires a token program field (Program<Token>, Program<Token2022>, or Interface<TokenInterface>)",
             )?)
     } else {
         None

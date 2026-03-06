@@ -16,12 +16,12 @@
 //!
 //! | Type | Accepts | Use when |
 //! |------|---------|----------|
-//! | [`TokenProgram`] | SPL Token only | CPI to Token program |
+//! | `Program<Token>` | SPL Token only | CPI to Token program |
 //! | [`TokenInterface`] | SPL Token **or** Token-2022 | CPI to either program |
 //!
 //! # CPI methods
 //!
-//! Both [`TokenProgram`] and [`TokenInterface`] expose the same CPI methods.
+//! Both `Program<Token>` and [`TokenInterface`] expose the same CPI methods.
 //! All methods return a [`CpiCall`] that can be invoked with `.invoke()` or
 //! `.invoke_signed()`:
 //!
@@ -154,5 +154,5 @@ pub use cpi::{initialize_account3, initialize_mint2, TokenCpi};
 pub use init::{validate_mint, validate_token_account, InitMint, InitToken};
 pub use interface::{InterfaceAccount, TokenInterface};
 pub use state::{MintAccountState, TokenAccountState};
-pub use token::{Mint, Token, TokenProgram};
-pub use token_2022::{Mint2022, Token2022, Token2022Program};
+pub use token::{Mint, Token};
+pub use token_2022::{Mint2022, Token2022};

@@ -1,5 +1,5 @@
 use quasar_core::prelude::*;
-use quasar_spl::{Mint, Token, TokenProgram};
+use quasar_spl::{Mint, Token};
 
 #[derive(Accounts)]
 pub struct InitTokenAccount<'info> {
@@ -7,7 +7,7 @@ pub struct InitTokenAccount<'info> {
     #[account(init, token::mint = mint, token::authority = payer)]
     pub token_account: &'info mut Account<Token>,
     pub mint: &'info Account<Mint>,
-    pub token_program: &'info TokenProgram,
+    pub token_program: &'info Program<Token>,
     pub system_program: &'info Program<System>,
 }
 

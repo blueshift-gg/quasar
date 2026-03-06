@@ -1,12 +1,12 @@
 use quasar_core::prelude::*;
-use quasar_spl::{Mint, Token, TokenCpi, TokenProgram};
+use quasar_spl::{Mint, Token, TokenCpi};
 
 #[derive(Accounts)]
 pub struct Burn<'info> {
     pub authority: &'info Signer,
     pub from: &'info mut Account<Token>,
     pub mint: &'info mut Account<Mint>,
-    pub token_program: &'info TokenProgram,
+    pub token_program: &'info Program<Token>,
 }
 
 impl<'info> Burn<'info> {

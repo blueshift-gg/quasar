@@ -1,5 +1,5 @@
 use quasar_core::prelude::*;
-use quasar_spl::{Mint, Token, TokenCpi, TokenProgram};
+use quasar_spl::{Mint, Token, TokenCpi};
 
 #[derive(Accounts)]
 pub struct TransferChecked<'info> {
@@ -7,7 +7,7 @@ pub struct TransferChecked<'info> {
     pub from: &'info mut Account<Token>,
     pub mint: &'info Account<Mint>,
     pub to: &'info mut Account<Token>,
-    pub token_program: &'info TokenProgram,
+    pub token_program: &'info Program<Token>,
 }
 
 impl<'info> TransferChecked<'info> {
