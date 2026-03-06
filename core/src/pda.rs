@@ -1,7 +1,6 @@
 #[cfg(any(target_os = "solana", target_arch = "bpf"))]
 use solana_define_syscall::definitions::{
-    sol_create_program_address, sol_curve_validate_point, sol_sha256,
-    sol_try_find_program_address,
+    sol_create_program_address, sol_curve_validate_point, sol_sha256, sol_try_find_program_address,
 };
 use {
     solana_address::Address, solana_instruction_view::cpi::Seed, solana_program_error::ProgramError,
