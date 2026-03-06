@@ -1,5 +1,9 @@
 use solana_address::Address;
 
+/// Zero-copy layout for SPL Token accounts (165 bytes).
+///
+/// Fields use raw byte arrays for alignment-1 access. The layout is identical
+/// for both SPL Token and Token-2022 (base token data occupies the first 165 bytes).
 #[repr(C)]
 pub struct TokenAccountState {
     mint: Address,

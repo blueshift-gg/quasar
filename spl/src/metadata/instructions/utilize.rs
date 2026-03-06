@@ -13,6 +13,7 @@ pub fn utilize<'a>(
     owner: &'a AccountView,
     number_of_uses: u64,
 ) -> CpiCall<'a, 5, 9> {
+    // SAFETY: All 9 bytes are written before assume_init.
     let data = unsafe {
         let mut buf = core::mem::MaybeUninit::<[u8; 9]>::uninit();
         let ptr = buf.as_mut_ptr() as *mut u8;
