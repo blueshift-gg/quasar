@@ -67,4 +67,3 @@ impl<'info, T: ParseAccounts<'info> + AccountCount> CtxWithRemaining<'info, T> {
         RemainingAccounts::new(self.remaining_ptr, self.accounts_boundary, self.declared)
     }
 }
-

@@ -111,7 +111,8 @@ pub struct TokenInterface;
 impl ProgramInterface for TokenInterface {
     #[inline(always)]
     fn matches(address: &Address) -> bool {
-        quasar_core::keys_eq(address, &SPL_TOKEN_ID) || quasar_core::keys_eq(address, &TOKEN_2022_ID)
+        quasar_core::keys_eq(address, &SPL_TOKEN_ID)
+            || quasar_core::keys_eq(address, &TOKEN_2022_ID)
     }
 }
 

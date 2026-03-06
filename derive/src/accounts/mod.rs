@@ -171,9 +171,9 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
             // Standard parse_accounts (allows duplicates, validates flags)
             // For init_if_needed, also mask out is_signer byte since we can't know if account will be signer at parse time
             let mask = if attrs.init_if_needed {
-                0xFFFF00FFu32  // Mask out borrow_state (byte 0) AND is_signer (byte 1)
+                0xFFFF00FFu32 // Mask out borrow_state (byte 0) AND is_signer (byte 1)
             } else {
-                0xFFFFFF00u32  // Mask out borrow_state (byte 0) only
+                0xFFFFFF00u32 // Mask out borrow_state (byte 0) only
             };
             let expected_flags = expected_header & mask;
             parse_steps.push(quote! {
@@ -208,7 +208,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
             // No-dup parse_accounts (validates u32 header)
             // For init_if_needed, mask out is_signer since we can't know if account will be signer at parse time
             if attrs.init_if_needed {
-                let no_dup_mask = 0xFFFF00FFu32;  // Mask out borrow_state (byte 0) AND is_signer (byte 1)
+                let no_dup_mask = 0xFFFF00FFu32; // Mask out borrow_state (byte 0) AND is_signer (byte 1)
                 let expected_flags_no_dup = expected_header & no_dup_mask;
                 parse_steps_no_dup.push(quote! {
                     {
@@ -260,9 +260,9 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
 
     // Choose which parse_steps to use based on allow_dup
     let active_parse_steps = if allow_dup {
-        parse_steps  // Use dup-allowed version (still optimizes flags)
+        parse_steps // Use dup-allowed version (still optimizes flags)
     } else {
-        parse_steps_no_dup  // Use no-dup version (default, fully optimized)
+        parse_steps_no_dup // Use no-dup version (default, fully optimized)
     };
 
     // --- Composite field_lets (pre-compute before bumps so pushes take effect) ---

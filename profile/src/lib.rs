@@ -26,7 +26,6 @@ const SERVER_PORT: u16 = 7777;
 
 pub struct ProfileCommand {
     pub elf_path: PathBuf,
-    pub output: Option<PathBuf>,
     pub share: bool,
 }
 
@@ -103,7 +102,7 @@ pub fn run(command: ProfileCommand) {
         eprintln!("Error: failed to hash {}: {}", elf_path.display(), e);
         std::process::exit(1);
     });
-    
+
     let now = chrono::Utc::now();
     let timestamp = now.format("%Y-%m-%d-%H-%M-%S-%3f");
 
@@ -126,8 +125,8 @@ pub fn run(command: ProfileCommand) {
     if public_gist {
         ensure_gh_installed();
         let desc = format!("{} CU profile v{}", program_name, version);
-        let gist_url = create_gist(&local_output_path, &desc, true);
-        println!("{}", gist_url);
+        let gist_url = create_gist(&local_output_path, &desc);
+        println!("Gist generated: {}", gist_url);
         return;
     }
 
@@ -242,16 +241,14 @@ fn ensure_gh_installed() {
     }
 }
 
-fn create_gist(path: &Path, desc: &str, public: bool) -> String {
+fn create_gist(path: &Path, desc: &str) -> String {
     let mut cmd = Command::new("gh");
     cmd.arg("gist")
         .arg("create")
         .arg(path)
         .arg("--desc")
-        .arg(desc);
-    if public {
-        cmd.arg("--public");
-    }
+        .arg(desc)
+        .arg("--public");
 
     let output = cmd.output().unwrap_or_else(|e| {
         eprintln!("Error: failed to run gh gist create: {}", e);
