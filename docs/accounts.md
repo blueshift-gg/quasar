@@ -109,14 +109,14 @@ pub fn get(&self) -> &T {
 }
 ```
 
-### `SystemProgram` / `TokenProgram` / `TokenInterface`
+### `Program<System>` / `Program<Token>` / `Interface<TokenInterface>`
 
 Program account wrappers that validate the account address matches the expected program ID and that the account is executable. Provide typed CPI methods.
 
 ```rust
-pub system_program: &'info SystemProgram,
-pub token_program: &'info TokenProgram,
-pub token_program: &'info TokenInterface,  // accepts SPL Token or Token-2022
+pub system_program: &'info Program<System>,
+pub token_program: &'info Program<Token>,
+pub token_program: &'info Interface<TokenInterface>,  // accepts SPL Token or Token-2022
 ```
 
 ## Mutability
@@ -659,7 +659,7 @@ pub struct Transfer<'info> {
         associated_token::authority = authority,
     )]
     pub token_account: &'info Account<Token>,
-    pub token_program: &'info TokenProgram,
+    pub token_program: &'info Program<Token>,
 }
 ```
 
@@ -680,9 +680,9 @@ pub struct CreateAta<'info> {
         associated_token::authority = authority,
     )]
     pub token_account: &'info mut Initialize<Token>,
-    pub token_program: &'info TokenProgram,
-    pub system_program: &'info SystemProgram,
-    pub ata_program: &'info AssociatedTokenProgram,
+    pub token_program: &'info Program<Token>,
+    pub system_program: &'info Program<System>,
+    pub ata_program: &'info Program<AssociatedTokenProgram>,
 }
 ```
 

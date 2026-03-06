@@ -2331,7 +2331,11 @@ fn test_dynamic_account_minimum_size_empty_fields() {
 
     // Minimum valid data: disc(1) + u32 name_len=0(4) + u32 tags_count=0(4) = 9 bytes
     let data = build_dynamic_account_data(b"", &[]);
-    assert_eq!(data.len(), 9, "minimum data size for DynamicAccount with empty fields");
+    assert_eq!(
+        data.len(),
+        9,
+        "minimum data size for DynamicAccount with empty fields"
+    );
     let account_data = Account {
         lamports: 1_000_000,
         data,
@@ -2837,7 +2841,9 @@ fn build_readback_instruction(
     let data = vec![24, expected_name_len, expected_tags_count];
     Instruction {
         program_id: quasar_test_misc::ID,
-        accounts: vec![solana_instruction::AccountMeta::new_readonly(account, false)],
+        accounts: vec![solana_instruction::AccountMeta::new_readonly(
+            account, false,
+        )],
         data,
     }
 }
@@ -3029,13 +3035,11 @@ fn test_dynamic_mutate_same_length_name() {
     let result_data = &result.resulting_accounts[0].1.data;
     assert_eq!(result_data[0], DYNAMIC_ACCOUNT_DISC);
     // Read name prefix (u32 at offset 1)
-    let name_len =
-        u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
+    let name_len = u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
     assert_eq!(name_len, 5);
     assert_eq!(&result_data[5..10], b"world");
     // Verify tags were preserved
-    let tags_count =
-        u32::from_le_bytes(result_data[10..14].try_into().unwrap()) as usize;
+    let tags_count = u32::from_le_bytes(result_data[10..14].try_into().unwrap()) as usize;
     assert_eq!(tags_count, 1);
     assert_eq!(&result_data[14..46], tag.as_ref());
 }
@@ -3074,8 +3078,7 @@ fn test_dynamic_mutate_shorter_name() {
     );
 
     let result_data = &result.resulting_accounts[0].1.data;
-    let name_len =
-        u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
+    let name_len = u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
     assert_eq!(name_len, 2);
     assert_eq!(&result_data[5..7], b"hi");
 }
@@ -3097,8 +3100,7 @@ fn test_dynamic_mutate_longer_name() {
     };
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
-    let instruction =
-        build_mutate_instruction(account, payer, system_program, b"12345678");
+    let instruction = build_mutate_instruction(account, payer, system_program, b"12345678");
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -3115,8 +3117,7 @@ fn test_dynamic_mutate_longer_name() {
     );
 
     let result_data = &result.resulting_accounts[0].1.data;
-    let name_len =
-        u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
+    let name_len = u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
     assert_eq!(name_len, 8);
     assert_eq!(&result_data[5..13], b"12345678");
 }
@@ -3155,8 +3156,7 @@ fn test_dynamic_mutate_to_empty() {
     );
 
     let result_data = &result.resulting_accounts[0].1.data;
-    let name_len =
-        u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
+    let name_len = u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
     assert_eq!(name_len, 0);
 }
 
@@ -3180,8 +3180,7 @@ fn test_dynamic_mutate_preserves_trailing_vec() {
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
     // Change name from "abc" (3) to "abcdef" (6) — grows, shifts tags
-    let instruction =
-        build_mutate_instruction(account, payer, system_program, b"abcdef");
+    let instruction = build_mutate_instruction(account, payer, system_program, b"abcdef");
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -3198,14 +3197,15 @@ fn test_dynamic_mutate_preserves_trailing_vec() {
     );
 
     let result_data = &result.resulting_accounts[0].1.data;
-    let name_len =
-        u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
+    let name_len = u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
     assert_eq!(name_len, 6);
     assert_eq!(&result_data[5..11], b"abcdef");
     // Verify tags were shifted correctly
     let tags_offset = 11;
     let tags_count = u32::from_le_bytes(
-        result_data[tags_offset..tags_offset + 4].try_into().unwrap(),
+        result_data[tags_offset..tags_offset + 4]
+            .try_into()
+            .unwrap(),
     ) as usize;
     assert_eq!(tags_count, 2);
     assert_eq!(
@@ -3236,8 +3236,7 @@ fn test_dynamic_mutate_exceeds_max_rejected() {
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
     // Try to set name to 9 bytes (max is 8)
-    let instruction =
-        build_mutate_instruction(account, payer, system_program, b"123456789");
+    let instruction = build_mutate_instruction(account, payer, system_program, b"123456789");
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -3266,7 +3265,7 @@ fn test_adversarial_prefix_u32_max_name_len() {
     let mut data = vec![0u8; 1 + 4 + 4]; // disc + name prefix + tags prefix
     data[0] = DYNAMIC_ACCOUNT_DISC;
     data[1..5].copy_from_slice(&u32::MAX.to_le_bytes()); // name len = 4 billion
-    // tags prefix = 0 (starts right after, but name data is "missing")
+                                                         // tags prefix = 0 (starts right after, but name data is "missing")
     data[5..9].copy_from_slice(&0u32.to_le_bytes());
 
     let account_data = Account {
@@ -3429,7 +3428,7 @@ fn test_adversarial_vec_data_truncated_mid_element() {
     data[0] = DYNAMIC_ACCOUNT_DISC;
     data[1..5].copy_from_slice(&0u32.to_le_bytes()); // empty name
     data[5..9].copy_from_slice(&1u32.to_le_bytes()); // 1 tag
-    // data[9..25] = 16 zero bytes (need 32 for Address)
+                                                     // data[9..25] = 16 zero bytes (need 32 for Address)
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -3562,10 +3561,7 @@ fn test_adversarial_utf8_4byte_chars_at_max() {
     let account = Address::new_unique();
 
     // 😀 = F0 9F 98 80 (4 bytes). Two of them = 8 bytes = max
-    let data = build_dynamic_account_data(
-        &[0xF0, 0x9F, 0x98, 0x80, 0xF0, 0x9F, 0x98, 0x80],
-        &[],
-    );
+    let data = build_dynamic_account_data(&[0xF0, 0x9F, 0x98, 0x80, 0xF0, 0x9F, 0x98, 0x80], &[]);
     let account_data = Account {
         lamports: 1_000_000,
         data,
@@ -3634,7 +3630,9 @@ fn test_adversarial_small_prefix_u8_max_value() {
 
     let instruction = Instruction {
         program_id: quasar_test_misc::ID,
-        accounts: vec![solana_instruction::AccountMeta::new_readonly(account, false)],
+        accounts: vec![solana_instruction::AccountMeta::new_readonly(
+            account, false,
+        )],
         data: vec![23], // small_prefix_check discriminator
     };
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
@@ -3665,7 +3663,9 @@ fn test_adversarial_small_prefix_vec_u8_overflow() {
 
     let instruction = Instruction {
         program_id: quasar_test_misc::ID,
-        accounts: vec![solana_instruction::AccountMeta::new_readonly(account, false)],
+        accounts: vec![solana_instruction::AccountMeta::new_readonly(
+            account, false,
+        )],
         data: vec![23],
     };
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
@@ -3727,13 +3727,8 @@ fn test_adversarial_mutate_grow_then_readback_tags() {
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
     // Grow name from "ab" (2) to "12345678" (8=max), expect 2 tags preserved
-    let instruction = build_mutate_then_readback_instruction(
-        account,
-        payer,
-        system_program,
-        b"12345678",
-        2,
-    );
+    let instruction =
+        build_mutate_then_readback_instruction(account, payer, system_program, b"12345678", 2);
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -3782,9 +3777,8 @@ fn test_adversarial_mutate_shrink_then_readback_tags() {
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
     // Shrink name from "12345678" (8) to "x" (1), expect 2 tags preserved
-    let instruction = build_mutate_then_readback_instruction(
-        account, payer, system_program, b"x", 2,
-    );
+    let instruction =
+        build_mutate_then_readback_instruction(account, payer, system_program, b"x", 2);
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -3829,9 +3823,8 @@ fn test_adversarial_mutate_to_empty_then_readback_tags() {
     };
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
-    let instruction = build_mutate_then_readback_instruction(
-        account, payer, system_program, b"", 1,
-    );
+    let instruction =
+        build_mutate_then_readback_instruction(account, payer, system_program, b"", 1);
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -3875,9 +3868,8 @@ fn test_adversarial_mutate_empty_to_max_then_readback() {
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
     // Grow name from "" (0) to "12345678" (8=max)
-    let instruction = build_mutate_then_readback_instruction(
-        account, payer, system_program, b"12345678", 1,
-    );
+    let instruction =
+        build_mutate_then_readback_instruction(account, payer, system_program, b"12345678", 1);
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -3931,9 +3923,8 @@ fn test_adversarial_sequential_mutations_grow_shrink_grow() {
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
     // Step 1: Grow "ab" → "12345678" (max)
-    let instruction = build_mutate_then_readback_instruction(
-        account, payer, system_program, b"12345678", 2,
-    );
+    let instruction =
+        build_mutate_then_readback_instruction(account, payer, system_program, b"12345678", 2);
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -3950,9 +3941,8 @@ fn test_adversarial_sequential_mutations_grow_shrink_grow() {
     current_account = result.resulting_accounts[0].1.clone();
 
     // Step 2: Shrink "12345678" → "x"
-    let instruction = build_mutate_then_readback_instruction(
-        account, payer, system_program, b"x", 2,
-    );
+    let instruction =
+        build_mutate_then_readback_instruction(account, payer, system_program, b"x", 2);
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -3969,9 +3959,8 @@ fn test_adversarial_sequential_mutations_grow_shrink_grow() {
     current_account = result.resulting_accounts[0].1.clone();
 
     // Step 3: Grow again "x" → "abcdef" (6 bytes, not max)
-    let instruction = build_mutate_then_readback_instruction(
-        account, payer, system_program, b"abcdef", 2,
-    );
+    let instruction =
+        build_mutate_then_readback_instruction(account, payer, system_program, b"abcdef", 2);
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -3993,8 +3982,16 @@ fn test_adversarial_sequential_mutations_grow_shrink_grow() {
     assert_eq!(&rd[5..11], b"abcdef");
     let tags_count = u32::from_le_bytes(rd[11..15].try_into().unwrap()) as usize;
     assert_eq!(tags_count, 2);
-    assert_eq!(&rd[15..47], tag1.as_ref(), "tag1 corrupted after 3 mutations");
-    assert_eq!(&rd[47..79], tag2.as_ref(), "tag2 corrupted after 3 mutations");
+    assert_eq!(
+        &rd[15..47],
+        tag1.as_ref(),
+        "tag1 corrupted after 3 mutations"
+    );
+    assert_eq!(
+        &rd[47..79],
+        tag2.as_ref(),
+        "tag2 corrupted after 3 mutations"
+    );
 }
 
 /// Mutate to same name (no-op path): verifies no data corruption
@@ -4016,9 +4013,8 @@ fn test_adversarial_mutate_noop_same_name() {
     };
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
-    let instruction = build_mutate_then_readback_instruction(
-        account, payer, system_program, b"hello", 1,
-    );
+    let instruction =
+        build_mutate_then_readback_instruction(account, payer, system_program, b"hello", 1);
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -4153,7 +4149,9 @@ fn test_adversarial_mixed_fixed_valid_dynamic_truncated() {
 
     let instruction = Instruction {
         program_id: quasar_test_misc::ID,
-        accounts: vec![solana_instruction::AccountMeta::new_readonly(account, false)],
+        accounts: vec![solana_instruction::AccountMeta::new_readonly(
+            account, false,
+        )],
         data: vec![22], // mixed_account_check discriminator
     };
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
@@ -4185,7 +4183,9 @@ fn test_adversarial_mixed_fixed_section_truncated() {
 
     let instruction = Instruction {
         program_id: quasar_test_misc::ID,
-        accounts: vec![solana_instruction::AccountMeta::new_readonly(account, false)],
+        accounts: vec![solana_instruction::AccountMeta::new_readonly(
+            account, false,
+        )],
         data: vec![22],
     };
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
@@ -4353,7 +4353,9 @@ fn build_tail_bytes_account_data(authority: Address, payload: &[u8]) -> Vec<u8> 
 fn build_tail_str_check_instruction(account: Address, expected_len: u8) -> Instruction {
     Instruction {
         program_id: quasar_test_misc::ID,
-        accounts: vec![solana_instruction::AccountMeta::new_readonly(account, false)],
+        accounts: vec![solana_instruction::AccountMeta::new_readonly(
+            account, false,
+        )],
         data: vec![28, expected_len],
     }
 }
@@ -4361,7 +4363,9 @@ fn build_tail_str_check_instruction(account: Address, expected_len: u8) -> Instr
 fn build_tail_bytes_check_instruction(account: Address, expected_len: u8) -> Instruction {
     Instruction {
         program_id: quasar_test_misc::ID,
-        accounts: vec![solana_instruction::AccountMeta::new_readonly(account, false)],
+        accounts: vec![solana_instruction::AccountMeta::new_readonly(
+            account, false,
+        )],
         data: vec![29, expected_len],
     }
 }

@@ -376,7 +376,7 @@ pub struct Take<'info> {
     pub escrow: &'info mut Account<EscrowAccount>,
     pub maker: &'info mut UncheckedAccount,
     // ... other accounts ...
-    pub token_program: &'info TokenProgram,
+    pub token_program: &'info Program<Token>,
 }
 
 impl<'info> Take<'info> {

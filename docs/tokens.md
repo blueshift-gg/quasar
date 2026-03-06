@@ -66,30 +66,28 @@ if !keys_eq(owner, &SPL_TOKEN_ID) && !keys_eq(owner, &TOKEN_2022_ID) {
 
 ## Program Types
 
-### `TokenProgram`
+### `Program<Token>`
 
-Validates that the account address matches the SPL Token program ID and that the account is executable:
+`Token` implements `Id`, so `Program<Token>` validates that the account address matches the SPL Token program ID and that the account is executable:
 
 ```rust
-pub token_program: &'info TokenProgram,
+pub token_program: &'info Program<Token>,
 ```
 
-Defined via `define_account!` with executable and address checks:
+`Token` serves double duty: `Account<Token>` for token account data, `Program<Token>` for the program account.
 
 ```rust
-define_account!(pub struct TokenProgram => [checks::Executable, checks::Address]);
-
-impl Program for TokenProgram {
+impl Id for Token {
     const ID: Address = Address::new_from_array(SPL_TOKEN_BYTES);
 }
 ```
 
-### `Token2022Program`
+### `Program<Token2022>`
 
-Same as `TokenProgram` but validates against the Token-2022 program ID:
+Same as `Program<Token>` but validates against the Token-2022 program ID:
 
 ```rust
-pub token_program: &'info Token2022Program,
+pub token_program: &'info Program<Token2022>,
 ```
 
 ### `TokenInterface`
@@ -114,7 +112,7 @@ pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
 }
 ```
 
-All three program types (`TokenProgram`, `Token2022Program`, `TokenInterface`) implement the `TokenCpi` trait and expose the same set of CPI methods.
+All three program types (`Program<Token>`, `Program<Token2022>`, `TokenInterface`) implement the `TokenCpi` trait and expose the same set of CPI methods.
 
 ## Zero-Copy State Structs
 
@@ -196,7 +194,7 @@ Both state structs use raw byte arrays for integer fields (`[u8; 8]` instead of 
 
 ## CPI Methods
 
-The `TokenCpi` trait defines all token CPI methods. It is implemented by `TokenProgram`, `Token2022Program`, and `TokenInterface`. Every method returns a `CpiCall` with compile-time-known sizes.
+The `TokenCpi` trait defines all token CPI methods. It is implemented by `Program<Token>`, `Program<Token2022>`, and `TokenInterface`. Every method returns a `CpiCall` with compile-time-known sizes.
 
 ### `transfer`
 
@@ -574,14 +572,14 @@ pub struct CreateNft<'info> {
     pub metadata: &'info mut UncheckedAccount,
     pub master_edition: &'info mut UncheckedAccount,
     pub metadata_program: &'info MetadataProgram,
-    pub token_program: &'info TokenProgram,
-    pub system_program: &'info SystemProgram,
+    pub token_program: &'info Program<Token>,
+    pub system_program: &'info Program<System>,
     pub rent: &'info UncheckedAccount,
 }
 ```
 
 The generated code:
-1. Creates the mint account (SystemProgram `create_account` + TokenProgram `InitializeMint2`)
+1. Creates the mint account (SystemProgram `create_account` + token program `InitializeMint2`)
 2. CPIs into Metaplex `create_metadata_accounts_v3` to create the metadata PDA
 3. CPIs into Metaplex `create_master_edition_v3` to create the edition PDA (if `master_edition::max_supply` is present)
 
@@ -616,7 +614,7 @@ Requirements:
 - `metadata::*` requires `init` or `init_if_needed` and `mint::decimals`
 - `metadata::name`, `metadata::symbol`, and `metadata::uri` must all be present if any is
 - `master_edition::max_supply` requires both `init` and all `metadata::*` attributes
-- The struct must include `MetadataProgram`, `mint_authority` (or `authority`), `payer`, `TokenProgram`, `SystemProgram`, and `rent` fields
+- The struct must include `MetadataProgram`, `mint_authority` (or `authority`), `payer`, `Program<Token>`, `Program<System>`, and `rent` fields
 - The struct must include a `metadata` field (`UncheckedAccount`) for metadata CPI
 - The struct must include a `master_edition` or `edition` field (`UncheckedAccount`) for master edition CPI
 
@@ -729,8 +727,8 @@ pub struct Make<'info> {
     pub maker_ta_b: &'info mut Initialize<Token>,
     pub vault_ta_a: &'info mut Initialize<Token>,
     pub rent: &'info Sysvar<Rent>,
-    pub token_program: &'info TokenProgram,
-    pub system_program: &'info SystemProgram,
+    pub token_program: &'info Program<Token>,
+    pub system_program: &'info Program<System>,
 }
 
 impl<'info> Make<'info> {
