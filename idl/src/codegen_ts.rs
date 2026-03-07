@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use quasar_idl::types::{Idl, IdlSeed, IdlType};
+use crate::types::{Idl, IdlSeed, IdlType};
 
 /// Generate a TypeScript client from the IDL.
 pub fn generate_ts_client(idl: &Idl) -> String {

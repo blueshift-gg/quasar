@@ -7,10 +7,6 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
-[[bin]]
-name = "quasar-idl"
-path = "src/main.rs"
-
 [lib]
 name = "quasar_idl"
 path = "src/lib.rs"

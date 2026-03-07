@@ -1,14 +1,34 @@
-use quasar_idl::parser::accounts::RawAccountField;
-use quasar_idl::parser::helpers;
-use quasar_idl::parser::ParsedProgram;
+use crate::parser::accounts::RawAccountField;
+use crate::parser::helpers;
+use crate::parser::ParsedProgram;
 
-/// Generate Rust client source code from parsed program data.
+/// Generate Cargo.toml content for the standalone client crate.
+pub fn generate_cargo_toml(name: &str, version: &str) -> String {
+    format!(
+        r#"[package]
+name = "{name}-client"
+version = "{version}"
+edition = "2021"
+
+[dependencies]
+solana-address = "2"
+solana-instruction = "2"
+"#,
+    )
+}
+
+/// Generate a standalone Rust client lib.rs from parsed program data.
 pub fn generate_client(parsed: &ParsedProgram) -> String {
     let mut out = String::new();
 
-    out.push_str("use alloc::vec;\n");
     out.push_str("use solana_address::Address;\n");
     out.push_str("use solana_instruction::{AccountMeta, Instruction};\n\n");
+
+    // Program ID constant
+    out.push_str(&format!(
+        "pub const ID: Address = solana_address::address!(\"{}\");\n\n",
+        parsed.program_id
+    ));
 
     for ix in &parsed.instructions {
         let accounts_struct = parsed
@@ -75,7 +95,7 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
         }
 
         out.push_str("        Instruction {\n");
-        out.push_str("            program_id: crate::ID,\n");
+        out.push_str("            program_id: ID,\n");
         out.push_str("            accounts,\n");
         out.push_str("            data,\n");
         out.push_str("        }\n");
