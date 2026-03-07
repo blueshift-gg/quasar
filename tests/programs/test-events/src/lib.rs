@@ -45,4 +45,29 @@ mod quasar_test_events {
     pub fn emit_via_cpi(ctx: Ctx<EmitViaCpi>, value: u64) -> Result<(), ProgramError> {
         ctx.accounts.handler(value)
     }
+
+    #[instruction(discriminator = 5)]
+    pub fn emit_empty_event(ctx: Ctx<EmitEmptyEvent>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 6)]
+    pub fn emit_large_event(
+        ctx: Ctx<EmitLargeEvent>,
+        a: u64,
+        b: u64,
+        c: u64,
+        d: u64,
+        e: Address,
+        f: Address,
+        g: u128,
+        h: u128,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler(a, b, c, d, e, f, g, h)
+    }
+
+    #[instruction(discriminator = 7)]
+    pub fn emit_two_events(ctx: Ctx<EmitTwoEvents>, first: u64, second: u64) -> Result<(), ProgramError> {
+        ctx.accounts.handler(first, second)
+    }
 }

@@ -10,6 +10,9 @@ const CONFIG_SIZE: usize = 2;
 const USER_SIZE: usize = 42;
 const ITEM_SIZE: usize = 10;
 const COMPLEX_SIZE: usize = 42;
+const EMPTY_SEED_SIZE: usize = 2;
+const MAX_SEED_SIZE: usize = 2;
+const THREE_SEED_SIZE: usize = 66;
 
 fn setup() -> Mollusk {
     Mollusk::new(&quasar_test_pda::ID, "../../target/deploy/quasar_test_pda")
@@ -595,5 +598,527 @@ fn test_pda_cu() {
     println!(
         "PDA init (literal seed) CU: {}",
         result.compute_units_consumed
+    );
+}
+
+// ── Seed type tests ─────────────────────────────────────────────────────
+
+#[test]
+fn test_empty_seed() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let payer = Address::new_unique();
+    let (empty, _) = Address::find_program_address(&[b""], &quasar_test_pda::ID);
+
+    let instruction: Instruction = InitEmptySeedInstruction {
+        payer,
+        empty,
+        system_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (payer, Account::new(1_000_000_000, 0, &system_program)),
+            (empty, Account::default()),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "empty seed init failed: {:?}",
+        result.program_result
+    );
+    let account = &result.resulting_accounts[1].1;
+    assert_eq!(account.data.len(), EMPTY_SEED_SIZE);
+    assert_eq!(account.data[0], 5);
+    assert_eq!(account.owner, quasar_test_pda::ID);
+}
+
+#[test]
+fn test_max_seed_length() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let payer = Address::new_unique();
+    let (max_seed, _) = Address::find_program_address(
+        &[b"abcdefghijklmnopqrstuvwxyz012345"],
+        &quasar_test_pda::ID,
+    );
+
+    let instruction: Instruction = InitMaxSeedInstruction {
+        payer,
+        max_seed,
+        system_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (payer, Account::new(1_000_000_000, 0, &system_program)),
+            (max_seed, Account::default()),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "max seed init failed: {:?}",
+        result.program_result
+    );
+    let account = &result.resulting_accounts[1].1;
+    assert_eq!(account.data.len(), MAX_SEED_SIZE);
+    assert_eq!(account.data[0], 6);
+    assert_eq!(account.owner, quasar_test_pda::ID);
+}
+
+#[test]
+fn test_seed_with_special_chars() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let payer = Address::new_unique();
+    let special_key = Address::new_unique();
+    let (item, _) = Address::find_program_address(
+        &[b"item", special_key.as_ref()],
+        &quasar_test_pda::ID,
+    );
+
+    let instruction: Instruction = InitInstructionSeedInstruction {
+        payer,
+        authority: special_key,
+        item,
+        system_program,
+        id: 0xFF_FF_FF_FF_FF_FF_FF_FF,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (payer, Account::new(1_000_000_000, 0, &system_program)),
+            (special_key, Account::new(1_000_000, 0, &system_program)),
+            (item, Account::default()),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "special chars seed init failed: {:?}",
+        result.program_result
+    );
+    let account = &result.resulting_accounts[2].1;
+    assert_eq!(account.data.len(), ITEM_SIZE);
+    assert_eq!(account.owner, quasar_test_pda::ID);
+}
+
+// ── Error path tests ────────────────────────────────────────────────────
+
+#[test]
+fn test_wrong_seeds_different_literal() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let payer = Address::new_unique();
+    let (wrong_pda, _) = Address::find_program_address(&[b"not-config"], &quasar_test_pda::ID);
+
+    let instruction: Instruction = InitLiteralSeedInstruction {
+        payer,
+        config: wrong_pda,
+        system_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (payer, Account::new(1_000_000_000, 0, &system_program)),
+            (wrong_pda, Account::default()),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_err(),
+        "Expected failure with different literal seed PDA"
+    );
+}
+
+#[test]
+fn test_wrong_bump_off_by_one() {
+    let mollusk = setup();
+    let authority = Address::new_unique();
+    let (pda, correct_bump) =
+        Address::find_program_address(&[b"user", authority.as_ref()], &quasar_test_pda::ID);
+
+    let wrong_bump = correct_bump.wrapping_add(1);
+    let account_data = build_user_account_data(authority, 42, wrong_bump);
+
+    let instruction: Instruction = UpdatePdaInstruction {
+        authority,
+        user: pda,
+        new_value: 100,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, Account::new(1_000_000, 0, &Address::default())),
+            (
+                pda,
+                Account {
+                    lamports: 1_000_000,
+                    data: account_data,
+                    owner: quasar_test_pda::ID,
+                    executable: false,
+                    rent_epoch: 0,
+                },
+            ),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_err(),
+        "Expected failure with bump+1"
+    );
+}
+
+#[test]
+fn test_wrong_bump_zero() {
+    let mollusk = setup();
+    let authority = Address::new_unique();
+    let (pda, correct_bump) =
+        Address::find_program_address(&[b"user", authority.as_ref()], &quasar_test_pda::ID);
+
+    let account_data = build_user_account_data(authority, 42, 0);
+
+    let instruction: Instruction = UpdatePdaInstruction {
+        authority,
+        user: pda,
+        new_value: 100,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, Account::new(1_000_000, 0, &Address::default())),
+            (
+                pda,
+                Account {
+                    lamports: 1_000_000,
+                    data: account_data,
+                    owner: quasar_test_pda::ID,
+                    executable: false,
+                    rent_epoch: 0,
+                },
+            ),
+        ],
+    );
+
+    if correct_bump != 0 {
+        assert!(
+            result.program_result.is_err(),
+            "Expected failure with bump=0 when real bump is {}",
+            correct_bump
+        );
+    }
+}
+
+#[test]
+fn test_pda_account_wrong_owner() {
+    let mollusk = setup();
+    let authority = Address::new_unique();
+    let (pda, bump) =
+        Address::find_program_address(&[b"user", authority.as_ref()], &quasar_test_pda::ID);
+
+    let wrong_owner = Address::new_unique();
+    let account_data = build_user_account_data(authority, 42, bump);
+
+    let instruction: Instruction = UpdatePdaInstruction {
+        authority,
+        user: pda,
+        new_value: 100,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, Account::new(1_000_000, 0, &Address::default())),
+            (
+                pda,
+                Account {
+                    lamports: 1_000_000,
+                    data: account_data,
+                    owner: wrong_owner,
+                    executable: false,
+                    rent_epoch: 0,
+                },
+            ),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_err(),
+        "Expected failure with wrong owner"
+    );
+}
+
+#[test]
+fn test_pda_account_not_writable_on_init() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let payer = Address::new_unique();
+    let (config, _) = Address::find_program_address(&[b"config"], &quasar_test_pda::ID);
+
+    let mut instruction: Instruction = InitLiteralSeedInstruction {
+        payer,
+        config,
+        system_program,
+    }
+    .into();
+
+    instruction.accounts[1].is_writable = false;
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (payer, Account::new(1_000_000_000, 0, &system_program)),
+            (config, Account::default()),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_err(),
+        "Expected failure when PDA not writable for init"
+    );
+}
+
+// ── Multi-seed tests ────────────────────────────────────────────────────
+
+#[test]
+fn test_multi_seed_three_components() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let payer = Address::new_unique();
+    let first = Address::new_unique();
+    let second = Address::new_unique();
+    let (triple, _) = Address::find_program_address(
+        &[b"triple", first.as_ref(), second.as_ref()],
+        &quasar_test_pda::ID,
+    );
+
+    let instruction: Instruction = InitThreeSeedsInstruction {
+        payer,
+        first,
+        second,
+        triple,
+        system_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (payer, Account::new(1_000_000_000, 0, &system_program)),
+            (first, Account::new(1_000_000, 0, &system_program)),
+            (second, Account::new(1_000_000, 0, &system_program)),
+            (triple, Account::default()),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "three seed init failed: {:?}",
+        result.program_result
+    );
+    let account = &result.resulting_accounts[3].1;
+    assert_eq!(account.data.len(), THREE_SEED_SIZE);
+    assert_eq!(account.data[0], 7);
+    assert_eq!(&account.data[1..33], first.as_ref());
+    assert_eq!(&account.data[33..65], second.as_ref());
+    assert_eq!(account.owner, quasar_test_pda::ID);
+}
+
+#[test]
+fn test_multi_seed_with_address_and_literal() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let payer = Address::new_unique();
+    let authority = Address::new_unique();
+    let (complex, _) = Address::find_program_address(
+        &[b"complex", payer.as_ref(), authority.as_ref()],
+        &quasar_test_pda::ID,
+    );
+
+    let instruction: Instruction = InitMultiSeedsInstruction {
+        payer,
+        authority,
+        complex,
+        system_program,
+        amount: 12345,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (payer, Account::new(1_000_000_000, 0, &system_program)),
+            (authority, Account::new(1_000_000, 0, &system_program)),
+            (complex, Account::default()),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "address+literal seed init failed: {:?}",
+        result.program_result
+    );
+    let account = &result.resulting_accounts[2].1;
+    assert_eq!(account.data[0], 4);
+    assert_eq!(&account.data[1..33], authority.as_ref());
+    assert_eq!(
+        u64::from_le_bytes(account.data[33..41].try_into().unwrap()),
+        12345
+    );
+}
+
+#[test]
+fn test_multi_seed_order_matters() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let payer = Address::new_unique();
+    let first = Address::new_unique();
+    let second = Address::new_unique();
+
+    let (triple_swapped, _) = Address::find_program_address(
+        &[b"triple", second.as_ref(), first.as_ref()],
+        &quasar_test_pda::ID,
+    );
+
+    let instruction: Instruction = InitThreeSeedsInstruction {
+        payer,
+        first,
+        second,
+        triple: triple_swapped,
+        system_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (payer, Account::new(1_000_000_000, 0, &system_program)),
+            (first, Account::new(1_000_000, 0, &system_program)),
+            (second, Account::new(1_000_000, 0, &system_program)),
+            (triple_swapped, Account::default()),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_err(),
+        "Expected failure when seed order is swapped"
+    );
+}
+
+// ── PDA signer tests ────────────────────────────────────────────────────
+
+#[test]
+fn test_pda_signer_cpi_success() {
+    let mollusk = setup();
+    let authority = Address::new_unique();
+    let (pda, bump) =
+        Address::find_program_address(&[b"user", authority.as_ref()], &quasar_test_pda::ID);
+    let recipient = Address::new_unique();
+
+    let pda_lamports: u64 = 10_000_000;
+    let transfer_amount: u64 = 500_000;
+    let account_data = build_user_account_data(authority, 42, bump);
+
+    let instruction: Instruction = PdaTransferInstruction {
+        authority,
+        pda,
+        recipient,
+        amount: transfer_amount,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, Account::new(1_000_000, 0, &Address::default())),
+            (
+                pda,
+                Account {
+                    lamports: pda_lamports,
+                    data: account_data,
+                    owner: quasar_test_pda::ID,
+                    executable: false,
+                    rent_epoch: 0,
+                },
+            ),
+            (recipient, Account::new(0, 0, &Address::default())),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "PDA signer CPI transfer failed: {:?}",
+        result.program_result
+    );
+    let recipient_after = &result.resulting_accounts[2].1;
+    assert_eq!(recipient_after.lamports, transfer_amount);
+}
+
+#[test]
+fn test_pda_signer_wrong_authority_cpi() {
+    let mollusk = setup();
+    let authority = Address::new_unique();
+    let wrong_authority = Address::new_unique();
+    let (pda, bump) =
+        Address::find_program_address(&[b"user", authority.as_ref()], &quasar_test_pda::ID);
+    let recipient = Address::new_unique();
+
+    let account_data = build_user_account_data(authority, 42, bump);
+
+    let instruction: Instruction = PdaTransferInstruction {
+        authority: wrong_authority,
+        pda,
+        recipient,
+        amount: 100,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (
+                wrong_authority,
+                Account::new(1_000_000, 0, &Address::default()),
+            ),
+            (
+                pda,
+                Account {
+                    lamports: 10_000_000,
+                    data: account_data,
+                    owner: quasar_test_pda::ID,
+                    executable: false,
+                    rent_epoch: 0,
+                },
+            ),
+            (recipient, Account::new(0, 0, &Address::default())),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_err(),
+        "Expected failure with wrong authority for PDA signer CPI"
     );
 }

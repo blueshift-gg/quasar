@@ -1,5 +1,6 @@
 use mollusk_svm::result::ProgramResult as MolluskResult;
 use mollusk_svm::Mollusk;
+use quasar_core::prelude::ProgramError;
 use solana_account::Account;
 use solana_address::Address;
 use solana_instruction::{AccountMeta, Instruction};
@@ -148,4 +149,214 @@ fn test_header_dup_accounts_success() {
 
     #[cfg(feature = "debug")]
     println!("✓ Test passed: dup-allowed accounts validated correctly");
+}
+
+// ============================================================================
+// Failure Cases — Non-signer passed where signer required
+// ============================================================================
+
+#[test]
+fn test_header_nodup_signer_fails_not_signer() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let instruction = Instruction {
+        program_id: quasar_test_errors::ID,
+        accounts: vec![AccountMeta::new_readonly(account, false)],
+        data: vec![14],
+    };
+
+    let result = mollusk.process_instruction(&instruction, &[(account, Account::default())]);
+
+    assert_eq!(
+        result.program_result,
+        MolluskResult::Failure(ProgramError::MissingRequiredSignature)
+    );
+}
+
+// ============================================================================
+// Failure Cases — Non-writable passed where writable required
+// ============================================================================
+
+#[test]
+fn test_header_nodup_mut_fails_not_writable() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let instruction = Instruction {
+        program_id: quasar_test_errors::ID,
+        accounts: vec![AccountMeta::new_readonly(account, false)],
+        data: vec![13],
+    };
+
+    let result = mollusk.process_instruction(&instruction, &[(account, Account::default())]);
+
+    assert_eq!(
+        result.program_result,
+        MolluskResult::Failure(ProgramError::Immutable)
+    );
+}
+
+// ============================================================================
+// Failure Cases — Non-writable non-signer passed where both required
+// ============================================================================
+
+#[test]
+fn test_header_nodup_mut_signer_fails_not_signer() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let instruction = Instruction {
+        program_id: quasar_test_errors::ID,
+        accounts: vec![AccountMeta::new(account, false)],
+        data: vec![12],
+    };
+
+    let result = mollusk.process_instruction(&instruction, &[(account, Account::default())]);
+
+    assert_eq!(
+        result.program_result,
+        MolluskResult::Failure(ProgramError::MissingRequiredSignature)
+    );
+}
+
+#[test]
+fn test_header_nodup_mut_signer_fails_not_writable() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let instruction = Instruction {
+        program_id: quasar_test_errors::ID,
+        accounts: vec![AccountMeta::new_readonly(account, true)],
+        data: vec![12],
+    };
+
+    let result = mollusk.process_instruction(&instruction, &[(account, Account::default())]);
+
+    assert_eq!(
+        result.program_result,
+        MolluskResult::Failure(ProgramError::Immutable)
+    );
+}
+
+// ============================================================================
+// Failure Cases — Not executable
+// ============================================================================
+
+#[test]
+fn test_header_executable_fails_not_executable() {
+    let mollusk = setup();
+
+    let instruction = Instruction {
+        program_id: quasar_test_errors::ID,
+        accounts: vec![AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false)],
+        data: vec![15],
+    };
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[(
+            SYSTEM_PROGRAM_ID,
+            Account {
+                lamports: 1_000_000,
+                data: vec![],
+                owner: SYSTEM_PROGRAM_ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+        )],
+    );
+
+    assert_eq!(
+        result.program_result,
+        MolluskResult::Failure(ProgramError::InvalidAccountData)
+    );
+}
+
+// ============================================================================
+// Failure Cases — Duplicate account where no-dup required
+// ============================================================================
+
+#[test]
+fn test_header_three_way_duplicate() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let instruction = Instruction {
+        program_id: quasar_test_errors::ID,
+        accounts: vec![
+            AccountMeta::new_readonly(account, true),
+            AccountMeta::new(account, false),
+            AccountMeta::new_readonly(account, false),
+        ],
+        data: vec![26],
+    };
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, Account::default()),
+            (account, Account::default()),
+            (account, Account::default()),
+        ],
+    );
+
+    assert_eq!(
+        result.program_result,
+        MolluskResult::Failure(ProgramError::AccountBorrowFailed)
+    );
+}
+
+// ============================================================================
+// Dup-allowed accounts — Duplicate with different flags
+// ============================================================================
+
+#[test]
+fn test_header_dup_mut_same_account_success() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let instruction = Instruction {
+        program_id: quasar_test_errors::ID,
+        accounts: vec![
+            AccountMeta::new_readonly(account, true),
+            AccountMeta::new(account, false),
+        ],
+        data: vec![16],
+    };
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, Account::default()),
+            (account, Account::default()),
+        ],
+    );
+
+    assert_eq!(result.program_result, MolluskResult::Success);
+}
+
+#[test]
+fn test_header_dup_signer_same_account_success() {
+    let mollusk = setup();
+    let account = Address::new_unique();
+
+    let instruction = Instruction {
+        program_id: quasar_test_errors::ID,
+        accounts: vec![
+            AccountMeta::new(account, true),
+            AccountMeta::new_readonly(account, true),
+        ],
+        data: vec![17],
+    };
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, Account::default()),
+            (account, Account::default()),
+        ],
+    );
+
+    assert_eq!(result.program_result, MolluskResult::Success);
 }

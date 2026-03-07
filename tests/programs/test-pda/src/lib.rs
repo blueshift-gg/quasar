@@ -48,4 +48,19 @@ mod quasar_test_pda {
     pub fn pda_transfer(ctx: Ctx<PdaTransfer>, amount: u64) -> Result<(), ProgramError> {
         ctx.accounts.handler(amount)
     }
+
+    #[instruction(discriminator = 7)]
+    pub fn init_empty_seed(ctx: Ctx<InitEmptySeed>) -> Result<(), ProgramError> {
+        ctx.accounts.handler(&ctx.bumps)
+    }
+
+    #[instruction(discriminator = 8)]
+    pub fn init_max_seed(ctx: Ctx<InitMaxSeed>) -> Result<(), ProgramError> {
+        ctx.accounts.handler(&ctx.bumps)
+    }
+
+    #[instruction(discriminator = 9)]
+    pub fn init_three_seeds(ctx: Ctx<InitThreeSeeds>) -> Result<(), ProgramError> {
+        ctx.accounts.handler(&ctx.bumps)
+    }
 }

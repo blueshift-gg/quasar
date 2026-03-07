@@ -1813,3 +1813,533 @@ fn test_init_mint_with_metadata_success() {
         result.compute_units_consumed
     );
 }
+
+// ---------------------------------------------------------------------------
+// transfer_checked error paths
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_transfer_checked_wrong_mint() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let wrong_mint = Address::new_unique();
+    let from = Address::new_unique();
+    let to = Address::new_unique();
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let from_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(wrong_mint, authority, 500),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let to_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 0),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let authority_account = Account::new(1_000_000, 0, &Address::default());
+    let instruction: Instruction = TransferCheckedInstruction {
+        authority,
+        from,
+        mint,
+        to,
+        token_program,
+        amount: 200,
+        decimals: 9,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, authority_account),
+            (from, from_account),
+            (mint, mint_account),
+            (to, to_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "transfer_checked should fail when from account mint doesn't match"
+    );
+}
+
+#[test]
+fn test_transfer_checked_insufficient_balance() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let from = Address::new_unique();
+    let to = Address::new_unique();
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let from_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 50),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let to_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 0),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let authority_account = Account::new(1_000_000, 0, &Address::default());
+    let instruction: Instruction = TransferCheckedInstruction {
+        authority,
+        from,
+        mint,
+        to,
+        token_program,
+        amount: 500,
+        decimals: 9,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, authority_account),
+            (from, from_account),
+            (mint, mint_account),
+            (to, to_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "transfer_checked should fail with insufficient balance"
+    );
+}
+
+#[test]
+fn test_transfer_checked_wrong_authority() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let real_authority = Address::new_unique();
+    let fake_authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let from = Address::new_unique();
+    let to = Address::new_unique();
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(real_authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let from_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, real_authority, 500),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let to_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, real_authority, 0),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let fake_authority_account = Account::new(1_000_000, 0, &Address::default());
+    let instruction: Instruction = TransferCheckedInstruction {
+        authority: fake_authority,
+        from,
+        mint,
+        to,
+        token_program,
+        amount: 200,
+        decimals: 9,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (fake_authority, fake_authority_account),
+            (from, from_account),
+            (mint, mint_account),
+            (to, to_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "transfer_checked should fail with wrong authority"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// approve error paths
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_approve_and_verify_delegate() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let source = Address::new_unique();
+    let delegate = Address::new_unique();
+    let source_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 1000),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let delegate_account = Account::new(1_000_000, 0, &Address::default());
+    let authority_account = Account::new(1_000_000, 0, &Address::default());
+    let instruction: Instruction = ApproveInstruction {
+        authority,
+        source,
+        delegate,
+        token_program,
+        amount: 750,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, authority_account),
+            (source, source_account),
+            (delegate, delegate_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "approve failed: {:?}",
+        result.program_result
+    );
+    let source_data: TokenAccount = Pack::unpack(&result.resulting_accounts[1].1.data).unwrap();
+    assert_eq!(
+        Option::<Address>::from(source_data.delegate),
+        Some(delegate),
+        "delegate should be set to correct address"
+    );
+    assert_eq!(
+        source_data.delegated_amount, 750,
+        "delegated_amount should be 750"
+    );
+}
+
+#[test]
+fn test_approve_wrong_authority() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let real_authority = Address::new_unique();
+    let fake_authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let source = Address::new_unique();
+    let delegate = Address::new_unique();
+    let source_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, real_authority, 1000),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let delegate_account = Account::new(1_000_000, 0, &Address::default());
+    let fake_authority_account = Account::new(1_000_000, 0, &Address::default());
+    let instruction: Instruction = ApproveInstruction {
+        authority: fake_authority,
+        source,
+        delegate,
+        token_program,
+        amount: 500,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (fake_authority, fake_authority_account),
+            (source, source_account),
+            (delegate, delegate_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "approve should fail with wrong authority"
+    );
+}
+
+#[test]
+fn test_approve_zero_amount() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let source = Address::new_unique();
+    let delegate = Address::new_unique();
+    let source_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 1000),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let delegate_account = Account::new(1_000_000, 0, &Address::default());
+    let authority_account = Account::new(1_000_000, 0, &Address::default());
+    let instruction: Instruction = ApproveInstruction {
+        authority,
+        source,
+        delegate,
+        token_program,
+        amount: 0,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, authority_account),
+            (source, source_account),
+            (delegate, delegate_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "approve with zero amount should succeed: {:?}",
+        result.program_result
+    );
+    let source_data: TokenAccount = Pack::unpack(&result.resulting_accounts[1].1.data).unwrap();
+    assert_eq!(source_data.delegated_amount, 0);
+}
+
+// ---------------------------------------------------------------------------
+// revoke error paths
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_revoke_wrong_authority() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let real_authority = Address::new_unique();
+    let fake_authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let source = Address::new_unique();
+    let delegate = Address::new_unique();
+    let source_account = Account {
+        lamports: 1_000_000,
+        data: pack_token_with_delegate(mint, real_authority, 1000, delegate, 500),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let fake_authority_account = Account::new(1_000_000, 0, &Address::default());
+    let instruction: Instruction = RevokeInstruction {
+        authority: fake_authority,
+        source,
+        token_program,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (fake_authority, fake_authority_account),
+            (source, source_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "revoke should fail with wrong authority"
+    );
+}
+
+#[test]
+fn test_revoke_no_delegate() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let source = Address::new_unique();
+    let source_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 1000),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let authority_account = Account::new(1_000_000, 0, &Address::default());
+    let instruction: Instruction = RevokeInstruction {
+        authority,
+        source,
+        token_program,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (authority, authority_account),
+            (source, source_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "revoke with no delegate should succeed: {:?}",
+        result.program_result
+    );
+}
+
+// ---------------------------------------------------------------------------
+// burn error paths
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_burn_wrong_authority() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let real_authority = Address::new_unique();
+    let fake_authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let from = Address::new_unique();
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(real_authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let from_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, real_authority, 1000),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let fake_authority_account = Account::new(1_000_000, 0, &Address::default());
+    let instruction: Instruction = BurnInstruction {
+        authority: fake_authority,
+        from,
+        mint,
+        token_program,
+        amount: 100,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (fake_authority, fake_authority_account),
+            (from, from_account),
+            (mint, mint_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "burn should fail with wrong authority"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// close_account error paths
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_close_token_account_wrong_authority() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let real_authority = Address::new_unique();
+    let fake_authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let account = Address::new_unique();
+    let account_acct = Account {
+        lamports: 2_000_000,
+        data: pack_token(mint, real_authority, 0),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let fake_authority_account = Account::new(1_000_000, 0, &Address::default());
+    let instruction: Instruction = CloseTokenAccountInstruction {
+        authority: fake_authority,
+        account,
+        destination: fake_authority,
+        token_program,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (fake_authority, fake_authority_account.clone()),
+            (account, account_acct),
+            (fake_authority, fake_authority_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "close_account should fail with wrong authority"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// ATA derivation verification
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_ata_derivation_matches() {
+    let wallet = Address::new_unique();
+    let mint = Address::new_unique();
+    let (ata1, bump1) = get_associated_token_address_const(&wallet, &mint);
+    let (ata2, bump2) = get_associated_token_address_const(&wallet, &mint);
+    assert_eq!(ata1, ata2, "ATA derivation should be deterministic");
+    assert_eq!(bump1, bump2, "ATA bump should be deterministic");
+    assert_ne!(
+        ata1, wallet,
+        "ATA address should differ from wallet"
+    );
+    assert_ne!(
+        ata1, mint,
+        "ATA address should differ from mint"
+    );
+}
+
+#[test]
+fn test_ata_derivation_different_wallets() {
+    let wallet_a = Address::new_unique();
+    let wallet_b = Address::new_unique();
+    let mint = Address::new_unique();
+    let (ata_a, _) = get_associated_token_address_const(&wallet_a, &mint);
+    let (ata_b, _) = get_associated_token_address_const(&wallet_b, &mint);
+    assert_ne!(
+        ata_a, ata_b,
+        "different wallets should produce different ATAs"
+    );
+}
+
+#[test]
+fn test_ata_derivation_different_mints() {
+    let wallet = Address::new_unique();
+    let mint_a = Address::new_unique();
+    let mint_b = Address::new_unique();
+    let (ata_a, _) = get_associated_token_address_const(&wallet, &mint_a);
+    let (ata_b, _) = get_associated_token_address_const(&wallet, &mint_b);
+    assert_ne!(
+        ata_a, ata_b,
+        "different mints should produce different ATAs"
+    );
+}
