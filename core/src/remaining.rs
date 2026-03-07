@@ -20,7 +20,7 @@ const MAX_REMAINING_ACCOUNTS: usize = 64;
 #[inline(always)]
 unsafe fn advance_past_account(ptr: *mut u8, raw: *mut RuntimeAccount) -> *mut u8 {
     let next = ptr.add(ACCOUNT_HEADER.wrapping_add((*raw).data_len as usize));
-    ((next as usize).wrapping_add(7) & !7) as *mut u8
+    next.add((next as usize).wrapping_neg() & 7)
 }
 
 /// Advance pointer past a duplicate account entry (u64-sized).
