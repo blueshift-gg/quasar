@@ -513,22 +513,14 @@ fn test_different_events_different_discriminators() {
     let mollusk = setup();
     let signer = Address::new_unique();
 
-    let instr_u64 = EmitU64EventInstruction {
-        signer,
-        value: 100,
-    }
-    .into();
+    let instr_u64 = EmitU64EventInstruction { signer, value: 100 }.into();
     let result_u64 = mollusk.process_instruction(
         &instr_u64,
         &[(signer, Account::new(1_000_000, 0, &Address::default()))],
     );
     assert!(result_u64.program_result.is_ok());
 
-    let instr_bool = EmitBoolEventInstruction {
-        signer,
-        flag: true,
-    }
-    .into();
+    let instr_bool = EmitBoolEventInstruction { signer, flag: true }.into();
     let result_bool = mollusk.process_instruction(
         &instr_bool,
         &[(signer, Account::new(1_000_000, 0, &Address::default()))],

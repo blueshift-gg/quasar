@@ -67,7 +67,11 @@ mod quasar_test_events {
     }
 
     #[instruction(discriminator = 7)]
-    pub fn emit_two_events(ctx: Ctx<EmitTwoEvents>, first: u64, second: u64) -> Result<(), ProgramError> {
+    pub fn emit_two_events(
+        ctx: Ctx<EmitTwoEvents>,
+        first: u64,
+        second: u64,
+    ) -> Result<(), ProgramError> {
         ctx.accounts.handler(first, second)
     }
 }

@@ -202,13 +202,11 @@ fn test_remaining_accounts_all_signers() {
 
     for _ in 0..3 {
         let addr = Address::new_unique();
-        instruction
-            .accounts
-            .push(solana_instruction::AccountMeta {
-                pubkey: addr,
-                is_signer: true,
-                is_writable: false,
-            });
+        instruction.accounts.push(solana_instruction::AccountMeta {
+            pubkey: addr,
+            is_signer: true,
+            is_writable: false,
+        });
         accounts.push((addr, Account::new(1_000_000, 0, &Address::default())));
     }
 
@@ -236,13 +234,11 @@ fn test_remaining_accounts_mixed_flags() {
     let readonly_addr = Address::new_unique();
 
     let mut instruction: Instruction = RemainingAccountsCheckInstruction { authority }.into();
-    instruction
-        .accounts
-        .push(solana_instruction::AccountMeta {
-            pubkey: signer_addr,
-            is_signer: true,
-            is_writable: false,
-        });
+    instruction.accounts.push(solana_instruction::AccountMeta {
+        pubkey: signer_addr,
+        is_signer: true,
+        is_writable: false,
+    });
     instruction
         .accounts
         .push(solana_instruction::AccountMeta::new(writable_addr, false));
@@ -257,10 +253,7 @@ fn test_remaining_accounts_mixed_flags() {
         &instruction,
         &[
             (authority, authority_account),
-            (
-                signer_addr,
-                Account::new(1_000_000, 0, &Address::default()),
-            ),
+            (signer_addr, Account::new(1_000_000, 0, &Address::default())),
             (
                 writable_addr,
                 Account::new(1_000_000, 0, &Address::default()),

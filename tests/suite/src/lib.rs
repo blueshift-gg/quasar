@@ -4,11 +4,7 @@
 // Each module tests a specific test program via Mollusk SVM.
 
 #[cfg(test)]
-mod errors;
-#[cfg(test)]
-mod events;
-#[cfg(test)]
-mod header_tests;
+mod account_validation;
 #[cfg(test)]
 mod accounts;
 #[cfg(test)]
@@ -18,14 +14,18 @@ mod cpi_system;
 #[cfg(test)]
 mod dynamic;
 #[cfg(test)]
-mod remaining;
+mod errors;
+#[cfg(test)]
+mod events;
+#[cfg(test)]
+mod header_tests;
 #[cfg(test)]
 mod pda;
+#[cfg(test)]
+mod remaining;
 #[cfg(test)]
 mod sysvar;
 #[cfg(test)]
 mod token_cpi;
-#[cfg(test)]
-mod account_validation;
 #[cfg(test)]
 mod token_state;

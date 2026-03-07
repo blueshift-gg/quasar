@@ -327,10 +327,7 @@ fn test_header_dup_mut_same_account_success() {
 
     let result = mollusk.process_instruction(
         &instruction,
-        &[
-            (account, Account::default()),
-            (account, Account::default()),
-        ],
+        &[(account, Account::default()), (account, Account::default())],
     );
 
     assert_eq!(result.program_result, MolluskResult::Success);
@@ -352,10 +349,7 @@ fn test_header_dup_signer_same_account_success() {
 
     let result = mollusk.process_instruction(
         &instruction,
-        &[
-            (account, Account::default()),
-            (account, Account::default()),
-        ],
+        &[(account, Account::default()), (account, Account::default())],
     );
 
     assert_eq!(result.program_result, MolluskResult::Success);

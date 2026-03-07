@@ -120,8 +120,7 @@ fn test_token_state_delegate_present() {
     let mint = Address::new_unique();
     let owner = Address::new_unique();
     let delegate = Address::new_unique();
-    let bytes =
-        build_token_account_bytes(&mint, &owner, 1000, Some(&delegate), 1, None, 500, None);
+    let bytes = build_token_account_bytes(&mint, &owner, 1000, Some(&delegate), 1, None, 500, None);
     let state = cast_token(&bytes);
     assert!(state.has_delegate());
     assert_eq!(state.delegate(), Some(&delegate));
@@ -192,16 +191,8 @@ fn test_token_state_delegated_amount() {
     let mint = Address::new_unique();
     let owner = Address::new_unique();
     let delegate = Address::new_unique();
-    let bytes = build_token_account_bytes(
-        &mint,
-        &owner,
-        10_000,
-        Some(&delegate),
-        1,
-        None,
-        7_777,
-        None,
-    );
+    let bytes =
+        build_token_account_bytes(&mint, &owner, 10_000, Some(&delegate), 1, None, 7_777, None);
     let state = cast_token(&bytes);
     assert_eq!(state.delegated_amount(), 7_777);
 }
@@ -211,8 +202,7 @@ fn test_token_state_close_authority_present() {
     let mint = Address::new_unique();
     let owner = Address::new_unique();
     let close_auth = Address::new_unique();
-    let bytes =
-        build_token_account_bytes(&mint, &owner, 0, None, 1, None, 0, Some(&close_auth));
+    let bytes = build_token_account_bytes(&mint, &owner, 0, None, 1, None, 0, Some(&close_auth));
     let state = cast_token(&bytes);
     assert!(state.has_close_authority());
     assert_eq!(state.close_authority(), Some(&close_auth));

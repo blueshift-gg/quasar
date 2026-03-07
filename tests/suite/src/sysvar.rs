@@ -232,8 +232,7 @@ fn test_clock_custom_slot() {
     mollusk.sysvars.clock.slot = 12345;
     let payer = Address::new_unique();
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
-    let (snapshot, _) =
-        Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
+    let (snapshot, _) = Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
     let instruction: Instruction = ReadClockFullInstruction {
         payer,
@@ -272,8 +271,7 @@ fn test_clock_unix_timestamp() {
     mollusk.sysvars.clock.unix_timestamp = 1_700_000_000;
     let payer = Address::new_unique();
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
-    let (snapshot, _) =
-        Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
+    let (snapshot, _) = Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
     let instruction: Instruction = ReadClockFullInstruction {
         payer,
@@ -310,8 +308,7 @@ fn test_clock_epoch() {
     mollusk.sysvars.clock.epoch = 42;
     let payer = Address::new_unique();
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
-    let (snapshot, _) =
-        Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
+    let (snapshot, _) = Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
     let instruction: Instruction = ReadClockFullInstruction {
         payer,
@@ -335,10 +332,7 @@ fn test_clock_epoch() {
     let data = &result.resulting_accounts[1].1.data;
     let epoch = u64::from_le_bytes(data[17..25].try_into().unwrap());
     assert_eq!(epoch, 42, "epoch mismatch");
-    println!(
-        "  clock_epoch: OK (CU: {})",
-        result.compute_units_consumed
-    );
+    println!("  clock_epoch: OK (CU: {})", result.compute_units_consumed);
 }
 
 #[test]
@@ -348,8 +342,7 @@ fn test_clock_epoch_start_timestamp() {
     mollusk.sysvars.clock.epoch_start_timestamp = 1_600_000_000;
     let payer = Address::new_unique();
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
-    let (snapshot, _) =
-        Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
+    let (snapshot, _) = Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
     let instruction: Instruction = ReadClockFullInstruction {
         payer,
@@ -389,8 +382,7 @@ fn test_clock_leader_schedule_epoch() {
     mollusk.sysvars.clock.leader_schedule_epoch = 99;
     let payer = Address::new_unique();
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
-    let (snapshot, _) =
-        Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
+    let (snapshot, _) = Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
     let instruction: Instruction = ReadClockFullInstruction {
         payer,
@@ -431,8 +423,7 @@ fn test_clock_all_fields() {
     mollusk.sysvars.clock.unix_timestamp = 1_700_000_000;
     let payer = Address::new_unique();
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
-    let (snapshot, _) =
-        Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
+    let (snapshot, _) = Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
     let instruction: Instruction = ReadClockFullInstruction {
         payer,
@@ -462,7 +453,10 @@ fn test_clock_all_fields() {
     let leader_schedule_epoch = u64::from_le_bytes(data[25..33].try_into().unwrap());
     let unix_timestamp = i64::from_le_bytes(data[33..41].try_into().unwrap());
     assert_eq!(slot, 500, "slot");
-    assert_eq!(epoch_start_timestamp, 1_600_000_000, "epoch_start_timestamp");
+    assert_eq!(
+        epoch_start_timestamp, 1_600_000_000,
+        "epoch_start_timestamp"
+    );
     assert_eq!(epoch, 10, "epoch");
     assert_eq!(leader_schedule_epoch, 11, "leader_schedule_epoch");
     assert_eq!(unix_timestamp, 1_700_000_000, "unix_timestamp");
@@ -483,8 +477,7 @@ fn test_clock_large_values() {
     mollusk.sysvars.clock.epoch_start_timestamp = i64::MAX;
     let payer = Address::new_unique();
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
-    let (snapshot, _) =
-        Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
+    let (snapshot, _) = Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
     let instruction: Instruction = ReadClockFullInstruction {
         payer,
@@ -528,8 +521,7 @@ fn test_rent_minimum_balance_small() {
     let (system_program, system_program_account) = keyed_account_for_system_program();
     let payer = Address::new_unique();
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
-    let (snapshot, _) =
-        Address::find_program_address(&[b"rent_calc"], &quasar_test_sysvar::ID);
+    let (snapshot, _) = Address::find_program_address(&[b"rent_calc"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
     let instruction: Instruction = ReadRentCalcInstruction {
         payer,
@@ -569,8 +561,7 @@ fn test_rent_minimum_balance_large() {
     let (system_program, system_program_account) = keyed_account_for_system_program();
     let payer = Address::new_unique();
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
-    let (snapshot, _) =
-        Address::find_program_address(&[b"rent_calc"], &quasar_test_sysvar::ID);
+    let (snapshot, _) = Address::find_program_address(&[b"rent_calc"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
     let instruction: Instruction = ReadRentCalcInstruction {
         payer,
@@ -608,8 +599,7 @@ fn test_rent_minimum_balance_zero() {
     let (system_program, system_program_account) = keyed_account_for_system_program();
     let payer = Address::new_unique();
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
-    let (snapshot, _) =
-        Address::find_program_address(&[b"rent_calc"], &quasar_test_sysvar::ID);
+    let (snapshot, _) = Address::find_program_address(&[b"rent_calc"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
     let instruction: Instruction = ReadRentCalcInstruction {
         payer,
@@ -635,7 +625,10 @@ fn test_rent_minimum_balance_zero() {
     let min_balance = u64::from_le_bytes(data[1..9].try_into().unwrap());
     let expected = mollusk.sysvars.rent.minimum_balance(0);
     assert_eq!(min_balance, expected, "min_balance for 0 bytes");
-    assert!(min_balance > 0, "min_balance for 0 bytes should be > 0 due to storage overhead");
+    assert!(
+        min_balance > 0,
+        "min_balance for 0 bytes should be > 0 due to storage overhead"
+    );
     println!(
         "  rent_minimum_balance_zero: OK (CU: {}, min_balance={})",
         result.compute_units_consumed, min_balance
@@ -648,8 +641,7 @@ fn test_rent_lamports_per_byte() {
     let (system_program, system_program_account) = keyed_account_for_system_program();
     let payer = Address::new_unique();
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
-    let (snapshot, _) =
-        Address::find_program_address(&[b"rent_calc"], &quasar_test_sysvar::ID);
+    let (snapshot, _) = Address::find_program_address(&[b"rent_calc"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
     let instruction: Instruction = ReadRentCalcInstruction {
         payer,
@@ -696,8 +688,7 @@ fn test_clock_syscall_vs_account_consistent() {
 
     let payer = Address::new_unique();
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
-    let (snapshot, _) =
-        Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
+    let (snapshot, _) = Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
     let instruction: Instruction = ReadClockFullInstruction {
         payer,

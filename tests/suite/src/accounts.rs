@@ -1148,8 +1148,15 @@ fn test_init_with_max_space() {
     );
 
     let resulting = &result.resulting_accounts[1].1;
-    assert_eq!(resulting.data.len(), 100, "account allocated with space = 100");
-    assert!(resulting.lamports > 0, "account should have lamports for rent");
+    assert_eq!(
+        resulting.data.len(),
+        100,
+        "account allocated with space = 100"
+    );
+    assert!(
+        resulting.lamports > 0,
+        "account should have lamports for rent"
+    );
 }
 
 // ============================================================================

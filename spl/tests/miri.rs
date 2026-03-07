@@ -58,8 +58,7 @@ use quasar_core::__internal::{
 use quasar_core::accounts::Account;
 use quasar_core::traits::*;
 use quasar_spl::{
-    InterfaceAccount, Mint, MintAccountState, SPL_TOKEN_ID, TOKEN_2022_ID, Token,
-    TokenAccountState,
+    InterfaceAccount, Mint, MintAccountState, Token, TokenAccountState, SPL_TOKEN_ID, TOKEN_2022_ID,
 };
 use solana_address::Address;
 use solana_program_error::ProgramError;
@@ -69,8 +68,8 @@ use solana_program_error::ProgramError;
 // ---------------------------------------------------------------------------
 
 const SPL_TOKEN_BYTES: [u8; 32] = [
-    6, 221, 246, 225, 215, 101, 161, 147, 217, 203, 225, 70, 206, 235, 121, 172, 28, 180, 133,
-    237, 95, 91, 55, 145, 58, 140, 245, 133, 126, 255, 0, 169,
+    6, 221, 246, 225, 215, 101, 161, 147, 217, 203, 225, 70, 206, 235, 121, 172, 28, 180, 133, 237,
+    95, 91, 55, 145, 58, 140, 245, 133, 126, 255, 0, 169,
 ];
 const TOKEN_2022_BYTES: [u8; 32] = [
     6, 221, 246, 225, 238, 130, 236, 193, 200, 168, 65, 2, 106, 93, 64, 59, 117, 155, 197, 130,
@@ -188,17 +187,17 @@ fn build_token_data(
 /// Build a simple initialized token account with given amount.
 fn build_simple_token_data(amount: u64) -> [u8; 165] {
     build_token_data(
-        [0xAA; 32],    // mint
-        [0xBB; 32],    // owner
-        amount,        // amount
-        false,         // delegate_flag
-        [0; 32],       // delegate
-        1,             // state = Initialized
-        false,         // is_native
-        0,             // native_amount
-        0,             // delegated_amount
-        false,         // close_authority_flag
-        [0; 32],       // close_authority
+        [0xAA; 32], // mint
+        [0xBB; 32], // owner
+        amount,     // amount
+        false,      // delegate_flag
+        [0; 32],    // delegate
+        1,          // state = Initialized
+        false,      // is_native
+        0,          // native_amount
+        0,          // delegated_amount
+        false,      // close_authority_flag
+        [0; 32],    // close_authority
     )
 }
 
@@ -237,13 +236,11 @@ fn build_mint_data(
 /// Build a simple initialized mint.
 fn build_simple_mint_data(supply: u64, decimals: u8) -> [u8; 82] {
     build_mint_data(
-        true,        // mint_authority_flag
-        [0xCC; 32],  // mint_authority
-        supply,
-        decimals,
-        true,        // is_initialized
-        false,       // freeze_authority_flag
-        [0; 32],     // freeze_authority
+        true,       // mint_authority_flag
+        [0xCC; 32], // mint_authority
+        supply, decimals, true,    // is_initialized
+        false,   // freeze_authority_flag
+        [0; 32], // freeze_authority
     )
 }
 
@@ -368,17 +365,17 @@ fn token_deref_mut_aliasing_stress() {
 fn token_deref_various_flag_patterns() {
     // All flags set: delegate, is_native, close_authority
     let data = build_token_data(
-        [0x11; 32],   // mint
-        [0x22; 32],   // owner
-        5_000_000,    // amount
-        true,         // delegate_flag
-        [0x33; 32],   // delegate
-        2,            // state = Frozen
-        true,         // is_native
-        100_000,      // native_amount
-        3_000_000,    // delegated_amount
-        true,         // close_authority_flag
-        [0x44; 32],   // close_authority
+        [0x11; 32], // mint
+        [0x22; 32], // owner
+        5_000_000,  // amount
+        true,       // delegate_flag
+        [0x33; 32], // delegate
+        2,          // state = Frozen
+        true,       // is_native
+        100_000,    // native_amount
+        3_000_000,  // delegated_amount
+        true,       // close_authority_flag
+        [0x44; 32], // close_authority
     );
     let mut buf = AccountBuffer::new(165);
     buf.init([1u8; 32], SPL_TOKEN_OWNER, 1_000_000, 165, false, true);
@@ -389,8 +386,14 @@ fn token_deref_various_flag_patterns() {
     let state: &TokenAccountState = &*account;
 
     assert!(state.has_delegate());
-    assert_eq!(state.delegate().unwrap(), &Address::new_from_array([0x33; 32]));
-    assert_eq!(state.delegate_unchecked(), &Address::new_from_array([0x33; 32]));
+    assert_eq!(
+        state.delegate().unwrap(),
+        &Address::new_from_array([0x33; 32])
+    );
+    assert_eq!(
+        state.delegate_unchecked(),
+        &Address::new_from_array([0x33; 32])
+    );
     assert!(state.is_frozen());
     assert!(state.is_initialized());
     assert!(state.is_native());
@@ -411,16 +414,11 @@ fn token_deref_various_flag_patterns() {
 fn token_deref_no_flags_set() {
     // All optional flags off
     let data = build_token_data(
-        [0x11; 32],
-        [0x22; 32],
-        0,     // zero amount
+        [0x11; 32], [0x22; 32], 0,     // zero amount
         false, // no delegate
-        [0; 32],
-        0,     // state = Uninitialized
+        [0; 32], 0,     // state = Uninitialized
         false, // not native
-        0,
-        0,
-        false, // no close authority
+        0, 0, false, // no close authority
         [0; 32],
     );
     let mut buf = AccountBuffer::new(165);
@@ -504,15 +502,7 @@ fn mint_deref_mut_write() {
 
 #[test]
 fn mint_all_flags_set() {
-    let data = build_mint_data(
-        true,
-        [0xAA; 32],
-        u64::MAX,
-        18,
-        true,
-        true,
-        [0xBB; 32],
-    );
+    let data = build_mint_data(true, [0xAA; 32], u64::MAX, 18, true, true, [0xBB; 32]);
     let mut buf = AccountBuffer::new(82);
     buf.init([2u8; 32], SPL_TOKEN_OWNER, 1_000_000, 82, false, true);
     buf.write_data(&data);
@@ -843,7 +833,10 @@ fn transfer_data_all_bytes_initialized() {
         buf.assume_init()
     };
     assert_eq!(data[0], 3);
-    assert_eq!(u64::from_le_bytes(data[1..9].try_into().unwrap()), 1_000_000);
+    assert_eq!(
+        u64::from_le_bytes(data[1..9].try_into().unwrap()),
+        1_000_000
+    );
 }
 
 #[test]
@@ -1138,8 +1131,14 @@ fn all_ff_token_data() {
     assert_eq!(state.delegated_amount(), u64::MAX);
     assert!(!state.has_close_authority());
     // delegate_unchecked / close_authority_unchecked still return addresses
-    assert_eq!(state.delegate_unchecked(), &Address::new_from_array([0xFF; 32]));
-    assert_eq!(state.close_authority_unchecked(), &Address::new_from_array([0xFF; 32]));
+    assert_eq!(
+        state.delegate_unchecked(),
+        &Address::new_from_array([0xFF; 32])
+    );
+    assert_eq!(
+        state.close_authority_unchecked(),
+        &Address::new_from_array([0xFF; 32])
+    );
 }
 
 #[test]
@@ -1324,7 +1323,10 @@ fn maybeunit_init_then_read_every_byte_transfer_checked() {
 #[test]
 fn keys_eq_spl_token_id() {
     // Verify the SPL_TOKEN_ID constant matches expected bytes
-    assert!(quasar_core::keys_eq(&SPL_TOKEN_ID, &Address::new_from_array(SPL_TOKEN_BYTES)));
+    assert!(quasar_core::keys_eq(
+        &SPL_TOKEN_ID,
+        &Address::new_from_array(SPL_TOKEN_BYTES)
+    ));
     assert!(!quasar_core::keys_eq(
         &SPL_TOKEN_ID,
         &Address::new_from_array(TOKEN_2022_BYTES)
@@ -1440,8 +1442,5 @@ fn spl_token_id_and_token_2022_id_differ() {
     // Verify the two program IDs are distinct (last byte differs)
     assert!(!quasar_core::keys_eq(&SPL_TOKEN_ID, &TOKEN_2022_ID));
     // Verify specific byte difference
-    assert_ne!(
-        SPL_TOKEN_BYTES[31],
-        TOKEN_2022_BYTES[31]
-    );
+    assert_ne!(SPL_TOKEN_BYTES[31], TOKEN_2022_BYTES[31]);
 }

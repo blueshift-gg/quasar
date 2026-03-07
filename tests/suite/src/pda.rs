@@ -642,10 +642,8 @@ fn test_max_seed_length() {
     let mollusk = setup();
     let (system_program, system_program_account) = keyed_account_for_system_program();
     let payer = Address::new_unique();
-    let (max_seed, _) = Address::find_program_address(
-        &[b"abcdefghijklmnopqrstuvwxyz012345"],
-        &quasar_test_pda::ID,
-    );
+    let (max_seed, _) =
+        Address::find_program_address(&[b"abcdefghijklmnopqrstuvwxyz012345"], &quasar_test_pda::ID);
 
     let instruction: Instruction = InitMaxSeedInstruction {
         payer,
@@ -680,10 +678,8 @@ fn test_seed_with_special_chars() {
     let (system_program, system_program_account) = keyed_account_for_system_program();
     let payer = Address::new_unique();
     let special_key = Address::new_unique();
-    let (item, _) = Address::find_program_address(
-        &[b"item", special_key.as_ref()],
-        &quasar_test_pda::ID,
-    );
+    let (item, _) =
+        Address::find_program_address(&[b"item", special_key.as_ref()], &quasar_test_pda::ID);
 
     let instruction: Instruction = InitInstructionSeedInstruction {
         payer,

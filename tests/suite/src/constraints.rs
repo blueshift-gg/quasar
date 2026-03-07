@@ -894,9 +894,7 @@ fn test_mut_not_writable_returns_immutable() {
 
     assert_eq!(
         result.program_result,
-        mollusk_svm::result::ProgramResult::Failure(
-            quasar_core::prelude::ProgramError::Immutable
-        )
+        mollusk_svm::result::ProgramResult::Failure(quasar_core::prelude::ProgramError::Immutable)
     );
 }
 
@@ -1067,7 +1065,10 @@ fn test_combined_has_one_and_owner_wrong_authority() {
 
     let result = mollusk.process_instruction(
         &instruction,
-        &[(fake_authority, fake_authority_account), (account, account_obj)],
+        &[
+            (fake_authority, fake_authority_account),
+            (account, account_obj),
+        ],
     );
 
     assert!(
@@ -1152,9 +1153,7 @@ fn test_constraint_custom_error_fails_with_custom_code() {
 
     assert_eq!(
         result.program_result,
-        mollusk_svm::result::ProgramResult::Failure(
-            quasar_core::prelude::ProgramError::Custom(2)
-        ),
+        mollusk_svm::result::ProgramResult::Failure(quasar_core::prelude::ProgramError::Custom(2)),
         "custom error constraint should return TestError::CustomConstraint (2)"
     );
 }
@@ -1239,7 +1238,7 @@ fn test_adversarial_has_one_correct_authority_system_owner() {
     let account_obj = Account {
         lamports: 1_000_000,
         data: build_simple_account_data(authority, 42, 0), // correct authority stored
-        owner: Address::default(), // but owned by system program!
+        owner: Address::default(),                         // but owned by system program!
         executable: false,
         rent_epoch: 0,
     };
@@ -1267,7 +1266,7 @@ fn test_adversarial_signer_on_program_owned_account() {
     let signer = Address::new_unique();
     let signer_account = Account {
         lamports: 1_000_000,
-        data: vec![0u8; 10], // has data
+        data: vec![0u8; 10],         // has data
         owner: quasar_test_misc::ID, // owned by program, not system
         executable: false,
         rent_epoch: 0,

@@ -2308,14 +2308,8 @@ fn test_ata_derivation_matches() {
     let (ata2, bump2) = get_associated_token_address_const(&wallet, &mint);
     assert_eq!(ata1, ata2, "ATA derivation should be deterministic");
     assert_eq!(bump1, bump2, "ATA bump should be deterministic");
-    assert_ne!(
-        ata1, wallet,
-        "ATA address should differ from wallet"
-    );
-    assert_ne!(
-        ata1, mint,
-        "ATA address should differ from mint"
-    );
+    assert_ne!(ata1, wallet, "ATA address should differ from wallet");
+    assert_ne!(ata1, mint, "ATA address should differ from mint");
 }
 
 #[test]
