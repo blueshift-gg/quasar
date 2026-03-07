@@ -183,4 +183,27 @@ mod quasar_test_misc {
     ) -> Result<(), ProgramError> {
         ctx.accounts.handler(expected_len)
     }
+
+    #[instruction(discriminator = 30)]
+    pub fn signer_and_mut_check(
+        ctx: Ctx<SignerAndMutCheck>,
+        new_value: u64,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler(new_value)
+    }
+
+    #[instruction(discriminator = 31)]
+    pub fn has_one_and_owner_check(ctx: Ctx<HasOneAndOwnerCheck>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 32)]
+    pub fn constraint_custom_error(ctx: Ctx<ConstraintCustomError>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 41)]
+    pub fn double_mut_check(ctx: Ctx<DoubleMutCheck>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
 }

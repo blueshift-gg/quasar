@@ -24,3 +24,20 @@ pub struct ComplexAccount {
     pub amount: u64,
     pub bump: u8,
 }
+
+#[account(discriminator = 5)]
+pub struct EmptySeedAccount {
+    pub bump: u8,
+}
+
+#[account(discriminator = 6)]
+pub struct MaxSeedAccount {
+    pub bump: u8,
+}
+
+#[account(discriminator = 7)]
+pub struct ThreeSeedAccount {
+    pub first: Address,
+    pub second: Address,
+    pub bump: u8,
+}

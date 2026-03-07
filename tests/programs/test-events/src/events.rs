@@ -22,3 +22,23 @@ pub struct MultiEvent {
     pub b: u64,
     pub c: Address,
 }
+
+#[event(discriminator = 5)]
+pub struct EmptyEvent {}
+
+#[event(discriminator = 6)]
+pub struct LargeEvent {
+    pub a: u64,
+    pub b: u64,
+    pub c: u64,
+    pub d: u64,
+    pub e: Address,
+    pub f: Address,
+    pub g: u128,
+    pub h: u128,
+}
+
+#[event(discriminator = 7)]
+pub struct SecondSimpleEvent {
+    pub value: u64,
+}

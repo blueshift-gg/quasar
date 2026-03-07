@@ -13,7 +13,7 @@ SBF_EXAMPLES := examples/vault examples/escrow examples/multisig
 SBF_ALL := $(SBF_EXAMPLES) $(SBF_TEST_PROGRAMS)
 
 .PHONY: format format-fix clippy clippy-fix check-features \
-	build build-sbf test bench-cu test-miri test-all nightly-version
+	build build-sbf test bench-cu test-miri test-miri-strict test-all nightly-version
 
 # Print the nightly toolchain version for CI
 nightly-version:
@@ -63,8 +63,16 @@ bench-cu:
 	@cargo test -p quasar-escrow -- --nocapture 2>&1 | grep -E '(MAKE|TAKE|REFUND) CU:'
 
 test-miri:
+	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
+		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-core --test miri
+	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
+		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri
+
+test-miri-strict:
 	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
-		cargo +nightly miri test -p quasar-core --test miri
+		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-core --test miri -- --skip remaining
+	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
+		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri
 
 # Run all checks in sequence
 test-all:

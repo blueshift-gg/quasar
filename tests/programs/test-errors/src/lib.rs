@@ -106,4 +106,54 @@ mod quasar_test_errors {
     pub fn header_dup_signer(ctx: Ctx<HeaderDupSigner>) -> Result<(), ProgramError> {
         ctx.accounts.handler()
     }
+
+    #[instruction(discriminator = 20)]
+    pub fn system_account_check(ctx: Ctx<SystemAccountCheck>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 21)]
+    pub fn program_check(ctx: Ctx<ProgramCheck>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 22)]
+    pub fn signer_mut_check(ctx: Ctx<SignerMutCheck>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 23)]
+    pub fn unchecked_account_check(ctx: Ctx<UncheckedAccountCheck>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 24)]
+    pub fn two_accounts_check(ctx: Ctx<TwoAccountsCheck>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 25)]
+    pub fn signer_readonly_check(ctx: Ctx<SignerReadonlyCheck>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 26)]
+    pub fn three_accounts_dup(ctx: Ctx<ThreeAccountsDup>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 27)]
+    pub fn has_one_default(ctx: Ctx<HasOneDefault>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 28)]
+    pub fn address_default(ctx: Ctx<AddressDefault>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 29)]
+    pub fn constraint_default(ctx: Ctx<ConstraintDefault>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
 }
