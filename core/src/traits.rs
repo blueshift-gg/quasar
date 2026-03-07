@@ -1,10 +1,36 @@
+//! Core trait definitions for the Quasar framework.
+//!
+//! Traits fall into three categories:
+//!
+//! **Compile-time markers** — associate constant metadata with types:
+//! - `Owner` — expected on-chain program owner for an account type
+//! - `Id` — program address for a program marker type
+//! - `Discriminator` — byte prefix for accounts and instructions
+//! - `Space` — total byte size of an account's data (including discriminator)
+//!
+//! **Parsing and validation** — drive the account deserialization pipeline:
+//! - `ParseAccounts` — parse and validate a set of accounts from raw `AccountView` slices
+//! - `FromAccountView` — construct a single typed wrapper from an `AccountView`
+//! - `AccountCheck` — runtime validation hook called during parsing
+//! - `CheckOwner` — verify an account's on-chain owner matches expectations
+//! - `AccountCount` — declare how many accounts a struct consumes
+//!
+//! **Access and dispatch** — provide uniform access to account data:
+//! - `AsAccountView` — convert any account wrapper back to its raw `AccountView`
+//! - `StaticView` — marks `#[repr(transparent)]` types safe for pointer cast construction
+//! - `ZeroCopyDeref` — zero-copy `Deref`/`DerefMut` to `#[repr(C)]` account layouts
+//! - `InterfaceResolve` — polymorphic dispatch for multi-program interface accounts
+//! - `ProgramInterface` — check an address against multiple valid program IDs
+//!
+//! **Events** — `Event` supports dual emission (log-based and self-CPI).
+
 use solana_account_view::AccountView;
 use solana_address::Address;
 use solana_program_error::ProgramError;
 
 /// Construct a typed account wrapper from a raw [`AccountView`].
 ///
-/// Implemented by the `define_account!` macro and by `Account<T>` / `Initialize<T>`.
+/// Implemented by the `define_account!` macro and by `Account<T>`.
 pub trait FromAccountView<'info>: Sized {
     fn from_account_view(view: &'info AccountView) -> Result<Self, ProgramError>;
 }
@@ -30,7 +56,7 @@ pub trait Id {
 
 /// Declares that a type represents a program interface accepting multiple program IDs.
 ///
-/// Unlike [`Program`] which represents a single program, this trait allows
+/// Unlike `Program` which represents a single program, this trait allows
 /// checking against multiple valid program addresses (e.g., Token vs Token-2022).
 ///
 /// Implemented by: Manual `impl` for interface types.
@@ -101,7 +127,7 @@ pub trait ParseAccounts<'info>: Sized {
     /// derived impl deserializes declared args from `data` and makes them
     /// available during account initialization (e.g. for `metadata::name`).
     ///
-    /// The default implementation ignores `data` and delegates to [`parse`].
+    /// The default implementation ignores `data` and delegates to `parse`.
     #[inline(always)]
     fn parse_with_instruction_data(
         accounts: &'info [AccountView],
@@ -137,15 +163,6 @@ impl AsAccountView for AccountView {
     }
 }
 
-/// Borsh-style serialization for non-zero-copy account types.
-///
-/// Implemented by: `#[account]` macro when the type is not `#[repr(C)]`.
-/// Used by: `Account<T>::get()` and `Account<T>::set()`.
-pub trait QuasarAccount: Sized + Discriminator + Space {
-    fn deserialize(data: &[u8]) -> Result<Self, ProgramError>;
-    fn serialize(&self, data: &mut [u8]) -> Result<(), ProgramError>;
-}
-
 /// Validate that an account is owned by the expected program(s).
 ///
 /// Single-owner types get a blanket implementation via [`Owner`].
@@ -177,20 +194,26 @@ pub trait InterfaceResolve {
     fn resolve<'a>(view: &'a AccountView) -> Result<Self::Resolved<'a>, ProgramError>;
 }
 
+/// Marker trait for account view types that are `#[repr(transparent)]` over
+/// `AccountView` and therefore safe to construct via pointer cast.
+///
+/// # Safety
+///
+/// The implementor must be `#[repr(transparent)]` over `AccountView` (possibly
+/// through a chain of transparent wrappers). This guarantees that a pointer
+/// cast from `&AccountView` to `&Self` is sound.
+///
+/// Implemented by: `#[account]` macro for fixed-size accounts.
+pub unsafe trait StaticView {}
+
 /// Zero-copy deref target for `#[repr(C)]` account types.
 ///
-/// When an account type implements `ZeroCopyDeref`, `Account<T>` provides
+/// When an account type implements `ZeroCopyDeref`, the wrapper provides
 /// `Deref`/`DerefMut` to `T::Target` via `deref_from` / `deref_from_mut`.
 ///
-/// For fixed-size accounts, `Target` is the ZC companion struct and the
-/// methods perform a pointer cast past the discriminator.
+/// Used by `InterfaceAccount<T>` for zero-copy field access.
 ///
-/// For dynamic accounts, `Target` is a generated View type (`{Name}View`)
-/// that is `#[repr(transparent)]` over `AccountView`. The View type
-/// provides accessors for dynamic fields and derefs further to the ZC
-/// struct for fixed field access.
-///
-/// Implemented by: `#[account]` macro.
+/// Implemented by: `#[account]` macro (for SPL token/mint types).
 pub trait ZeroCopyDeref {
     type Target;
     fn deref_from(view: &AccountView) -> &Self::Target;

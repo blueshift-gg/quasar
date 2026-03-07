@@ -6,7 +6,7 @@ use solana_account::Account;
 use solana_address::Address;
 use solana_instruction::Instruction;
 
-use crate::client::{DepositInstruction, WithdrawInstruction};
+use crate::idl_client::{DepositInstruction, WithdrawInstruction};
 
 fn setup() -> Mollusk {
     Mollusk::new(&crate::ID, "../../target/deploy/upstream_vault")

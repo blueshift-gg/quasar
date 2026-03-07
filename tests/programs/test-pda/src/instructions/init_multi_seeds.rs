@@ -18,10 +18,8 @@ impl<'info> InitMultiSeeds<'info> {
         amount: u64,
         bumps: &InitMultiSeedsBumps,
     ) -> Result<(), ProgramError> {
-        self.complex.set(&ComplexAccount {
-            authority: *self.authority.address(),
-            amount,
-            bump: bumps.complex,
-        })
+        self.complex
+            .set_inner(*self.authority.address(), amount, bumps.complex);
+        Ok(())
     }
 }

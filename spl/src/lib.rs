@@ -16,13 +16,13 @@
 //!
 //! | Type | Accepts | Use when |
 //! |------|---------|----------|
-//! | [`TokenProgram`] | SPL Token only | CPI to Token program |
+//! | `Program<Token>` | SPL Token only | CPI to Token program |
 //! | [`TokenInterface`] | SPL Token **or** Token-2022 | CPI to either program |
 //!
 //! # CPI methods
 //!
-//! Both [`TokenProgram`] and [`TokenInterface`] expose the same CPI methods.
-//! All methods return a [`CpiCall`] that can be invoked with `.invoke()` or
+//! Both `Program<Token>` and [`TokenInterface`] expose the same CPI methods.
+//! All methods return a `CpiCall` that can be invoked with `.invoke()` or
 //! `.invoke_signed()`:
 //!
 //! ```ignore
@@ -33,19 +33,11 @@
 //!
 //! # Token lifecycle
 //!
-//! Extension traits on `Initialize<T>` provide init helpers. Pass an optional
-//! `&Rent` sysvar — when `None`, rent is fetched via the `Rent::get()` syscall:
+//! Use `#[account(init)]` to auto-create token accounts, mints, and ATAs:
 //!
 //! ```ignore
-//! // Create + initialize a token account via InitToken trait
-//! self.new_token.init(
-//!     self.system_program,
-//!     self.payer,
-//!     self.token_program,
-//!     self.mint,
-//!     self.owner.address(),
-//!     None, // fetches Rent sysvar via syscall
-//! )?;
+//! #[account(init, payer = payer, token::mint = mint, token::authority = authority)]
+//! pub token_account: &'info mut Account<Token>,
 //!
 //! // Or skip if already initialized (checks owner == system_program)
 //! self.new_token.init_if_needed(
@@ -69,13 +61,24 @@
 
 /// Implements `CheckOwner` for a type that is owned by exactly one program.
 ///
-/// These types intentionally do NOT implement [`Owner`] — that would expose
+/// These types intentionally do NOT implement `Owner` — that would expose
 /// `Account<T>::close()` which performs a direct lamport drain. Token/mint
 /// accounts are owned by the SPL Token program, not the calling program,
 /// so the direct close would always fail at runtime. Instead, use the
-/// CPI-based [`TokenClose`] trait.
+/// CPI-based `TokenClose` trait.
 macro_rules! impl_single_owner {
     ($ty:ty, $id:expr, $target:ty) => {
+        // SAFETY: $ty is #[repr(transparent)] over AccountView, so
+        // &AccountView can be transmuted to &$ty without layout mismatch.
+        unsafe impl StaticView for $ty {}
+
+        impl AsAccountView for $ty {
+            #[inline(always)]
+            fn to_account_view(&self) -> &AccountView {
+                &self.__view
+            }
+        }
+
         impl AccountCheck for $ty {
             #[inline(always)]
             fn check(view: &AccountView) -> Result<(), ProgramError> {
@@ -89,10 +92,32 @@ macro_rules! impl_single_owner {
         impl CheckOwner for $ty {
             #[inline(always)]
             fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
+                // SAFETY: view.owner() reads the 32-byte owner field from SVM
+                // account metadata. The pointer is valid for the account's lifetime.
                 if !quasar_core::keys_eq(unsafe { view.owner() }, &$id) {
                     return Err(ProgramError::IllegalOwner);
                 }
                 Ok(())
+            }
+        }
+
+        impl core::ops::Deref for $ty {
+            type Target = $target;
+
+            #[inline(always)]
+            fn deref(&self) -> &Self::Target {
+                // SAFETY: AccountCheck::check verified data_len >= $target::LEN.
+                // $target is #[repr(C)] with alignment 1, so the cast is sound.
+                unsafe { &*(self.__view.data_ptr() as *const $target) }
+            }
+        }
+
+        impl core::ops::DerefMut for $ty {
+            #[inline(always)]
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                // SAFETY: Same as Deref — bounds checked during account parsing.
+                // Mutation is safe because $ty holds &mut AccountView.
+                unsafe { &mut *(self.__view.data_ptr() as *mut $target) }
             }
         }
 
@@ -101,11 +126,15 @@ macro_rules! impl_single_owner {
 
             #[inline(always)]
             fn deref_from(view: &AccountView) -> &Self::Target {
+                // SAFETY: Caller (account parsing) already verified data_len >= $target::LEN.
+                // $target is #[repr(C)] with alignment 1.
                 unsafe { &*(view.data_ptr() as *const $target) }
             }
 
             #[inline(always)]
             fn deref_from_mut(view: &AccountView) -> &mut Self::Target {
+                // SAFETY: Same as deref_from. AccountView uses interior mutability
+                // through raw pointers to SVM account memory.
                 unsafe { &mut *(view.data_ptr() as *mut $target) }
             }
         }
@@ -113,10 +142,8 @@ macro_rules! impl_single_owner {
 }
 
 mod associated_token;
-mod close;
-mod constants;
-mod cpi;
-mod init;
+mod helpers;
+mod instructions;
 mod interface;
 #[cfg(feature = "metadata")]
 pub mod metadata;
@@ -130,11 +157,11 @@ pub use associated_token::{
     get_associated_token_address_with_program_const, validate_ata, AssociatedToken,
     AssociatedTokenProgram, InitAssociatedToken,
 };
-pub use close::TokenClose;
-pub use constants::{ATA_PROGRAM_ID, SPL_TOKEN_ID, TOKEN_2022_ID};
-pub use cpi::{initialize_account3, initialize_mint2, TokenCpi};
-pub use init::{validate_mint, validate_token_account, InitMint, InitToken};
+pub use helpers::close::TokenClose;
+pub use helpers::constants::{ATA_PROGRAM_ID, SPL_TOKEN_ID, TOKEN_2022_ID};
+pub use helpers::init::{validate_mint, validate_token_account, InitMint, InitToken};
+pub use instructions::{initialize_account3, initialize_mint2, TokenCpi};
 pub use interface::{InterfaceAccount, TokenInterface};
 pub use state::{MintAccountState, TokenAccountState};
-pub use token::{Mint, Token, TokenAccount};
-pub use token_2022::{Mint2022Account, Token2022, Token2022Account};
+pub use token::{Mint, Token};
+pub use token_2022::{Mint2022, Token2022};

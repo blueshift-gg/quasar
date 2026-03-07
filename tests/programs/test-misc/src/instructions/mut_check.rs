@@ -11,10 +11,9 @@ pub struct MutCheck<'info> {
 impl<'info> MutCheck<'info> {
     #[inline(always)]
     pub fn handler(&mut self, new_value: u64) -> Result<(), ProgramError> {
-        self.account.set(&SimpleAccount {
-            authority: self.account.authority,
-            value: new_value,
-            bump: self.account.bump,
-        })
+        let authority = self.account.authority;
+        let bump = self.account.bump;
+        self.account.set_inner(authority, new_value, bump);
+        Ok(())
     }
 }

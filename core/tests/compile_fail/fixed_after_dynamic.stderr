@@ -1,0 +1,5 @@
+error: fixed fields must precede all dynamic fields (String/Vec)
+ --> tests/compile_fail/fixed_after_dynamic.rs:8:5
+  |
+8 |     pub value: u64,
+  |     ^^^^^^^^^^^^^^

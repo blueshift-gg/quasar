@@ -18,9 +18,7 @@ impl<'info> InitInstructionSeed<'info> {
         id: u64,
         bumps: &InitInstructionSeedBumps,
     ) -> Result<(), ProgramError> {
-        self.item.set(&ItemAccount {
-            id,
-            bump: bumps.item,
-        })
+        self.item.set_inner(id, bumps.item);
+        Ok(())
     }
 }

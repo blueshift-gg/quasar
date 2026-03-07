@@ -1,3 +1,14 @@
+//! Off-chain instruction building utilities.
+//!
+//! This module provides `WriteBytes` and `build_instruction_data` for
+//! constructing Solana instruction data in client (non-SBF) contexts.
+//! The `#[derive(Accounts)]` macro generates client-side `build_ix()` methods
+//! that use these helpers.
+//!
+//! **This is the only module in `quasar-core` that allocates** — it uses
+//! `alloc::vec::Vec` for instruction data buffers since off-chain code runs
+//! in a standard allocator environment.
+
 extern crate alloc;
 
 use alloc::vec::Vec;
@@ -43,11 +54,22 @@ impl<const N: usize> WriteBytes for [u8; N] {
     }
 }
 
-impl WriteBytes for Vec<u8> {
+impl<T: WriteBytes> WriteBytes for Vec<T> {
     #[inline(always)]
     fn write_bytes(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(&(self.len() as u16).to_le_bytes());
-        buf.extend_from_slice(self);
+        buf.extend_from_slice(&(self.len() as u32).to_le_bytes());
+        for item in self {
+            item.write_bytes(buf);
+        }
+    }
+}
+
+pub struct TailBytes(pub Vec<u8>);
+
+impl WriteBytes for TailBytes {
+    #[inline(always)]
+    fn write_bytes(&self, buf: &mut Vec<u8>) {
+        buf.extend_from_slice(&self.0);
     }
 }
 

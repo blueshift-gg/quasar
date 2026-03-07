@@ -3,7 +3,7 @@ use quasar_core::prelude::*;
 
 solana_address::declare_id!("11111111111111111111111111111112");
 
-type Vec<T, const N: usize> = quasar_core::dynamic::Vec<'static, T, N>;
+type Vec<T, const N: usize> = quasar_core::dynamic::Vec<T, u32, N>;
 
 #[derive(Accounts)]
 pub struct Test<'info> {

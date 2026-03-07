@@ -1,7 +1,7 @@
 use quasar_core::prelude::*;
-use quasar_spl::{Mint, Token, TokenAccount, TokenClose, TokenCpi};
+use quasar_spl::{Mint, Token, TokenClose, TokenCpi};
 
-use crate::{events::RefundEvent, state::EscrowAccount};
+use crate::{events::RefundEvent, state::Escrow};
 
 #[derive(Accounts)]
 pub struct Refund<'info> {
@@ -12,11 +12,11 @@ pub struct Refund<'info> {
         seeds = [b"escrow", maker],
         bump = escrow.bump
     )]
-    pub escrow: &'info mut Account<EscrowAccount>,
+    pub escrow: &'info mut Account<Escrow>,
     pub mint_a: &'info Account<Mint>,
     #[account(init_if_needed, payer = maker, token::mint = mint_a, token::authority = maker)]
-    pub maker_ta_a: &'info mut Account<TokenAccount>,
-    pub vault_ta_a: &'info mut Account<TokenAccount>,
+    pub maker_ta_a: &'info mut Account<Token>,
+    pub vault_ta_a: &'info mut Account<Token>,
     pub rent: &'info Sysvar<Rent>,
     pub token_program: &'info Program<Token>,
     pub system_program: &'info Program<System>,

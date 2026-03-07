@@ -1,3 +1,12 @@
+//! Cross-program invocation (CPI) builder with const-generic stack allocation.
+//!
+//! `CpiCall` is the primary type — a const-generic struct where account count
+//! and data size are known at compile time, keeping everything on the stack.
+//! `BufCpiCall` is the variable-length variant for Borsh-serialized instructions.
+//!
+//! Both types invoke the `sol_invoke_signed_c` syscall directly, bypassing
+//! any intermediate instruction representation.
+
 pub mod buf;
 pub mod system;
 
@@ -9,6 +18,8 @@ use core::marker::PhantomData;
 use solana_account_view::{AccountView, RuntimeAccount};
 use solana_address::Address;
 use solana_program_error::{ProgramError, ProgramResult};
+
+const RUNTIME_ACCOUNT_SIZE: usize = core::mem::size_of::<RuntimeAccount>();
 
 // --- Raw CPI account (layout-compatible with CpiAccount, uses u8 flags) ---
 
@@ -37,19 +48,28 @@ impl<'a> RawCpiAccount<'a> {
         // SAFETY: raw is a valid pointer to RuntimeAccount from the SVM input buffer.
         // All fields are read through their pub accessors on RuntimeAccount.
         unsafe {
-            RawCpiAccount {
+            let mut cpi = RawCpiAccount {
                 address: &(*raw).address,
                 lamports: &(*raw).lamports,
                 data_len: (*raw).data_len,
-                data: (raw as *const u8).add(core::mem::size_of::<RuntimeAccount>()),
+                data: (raw as *const u8).add(RUNTIME_ACCOUNT_SIZE),
                 owner: &(*raw).owner,
                 rent_epoch: 0,
-                is_signer: (*raw).is_signer,
-                is_writable: (*raw).is_writable,
-                executable: (*raw).executable,
+                is_signer: 0,
+                is_writable: 0,
+                executable: 0,
                 _pad: [0u8; 5],
                 _lifetime: PhantomData,
-            }
+            };
+            // RuntimeAccount layout: [borrow_state(0), is_signer(1), is_writable(2), executable(3)]
+            // Read all 4 bytes as u32, shift right 8 to drop borrow_state, keeping the 3 flag
+            // bytes. Write as u64 to is_signer offset — zero-extension covers the 5 pad bytes.
+            let flags = (raw as *const u32).read_unaligned() >> 8;
+            core::ptr::write(
+                core::ptr::addr_of_mut!(cpi.is_signer) as *mut u64,
+                flags as u64,
+            );
+            cpi
         }
     }
 }
@@ -67,35 +87,35 @@ struct CInstruction<'a> {
 }
 
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, unused_variables)]
 pub(crate) unsafe fn invoke_raw(
-    _program_id: *const Address,
-    _instruction_accounts: *const InstructionAccount,
-    _instruction_accounts_len: usize,
-    _data: *const u8,
-    _data_len: usize,
-    _cpi_accounts: *const RawCpiAccount,
-    _cpi_accounts_len: usize,
-    _signers: &[Signer],
+    program_id: *const Address,
+    instruction_accounts: *const InstructionAccount,
+    instruction_accounts_len: usize,
+    data: *const u8,
+    data_len: usize,
+    cpi_accounts: *const RawCpiAccount,
+    cpi_accounts_len: usize,
+    signers: &[Signer],
 ) -> u64 {
     #[cfg(any(target_os = "solana", target_arch = "bpf"))]
     {
         use solana_define_syscall::definitions::sol_invoke_signed_c;
 
         let instruction = CInstruction {
-            program_id: _program_id,
-            accounts: _instruction_accounts,
-            accounts_len: _instruction_accounts_len as u64,
-            data: _data,
-            data_len: _data_len as u64,
+            program_id,
+            accounts: instruction_accounts,
+            accounts_len: instruction_accounts_len as u64,
+            data,
+            data_len: data_len as u64,
         };
 
         sol_invoke_signed_c(
             &instruction as *const _ as *const u8,
-            _cpi_accounts as *const u8,
-            _cpi_accounts_len as u64,
-            _signers as *const _ as *const u8,
-            _signers.len() as u64,
+            cpi_accounts as *const u8,
+            cpi_accounts_len as u64,
+            signers as *const _ as *const u8,
+            signers.len() as u64,
         )
     }
 
@@ -105,6 +125,13 @@ pub(crate) unsafe fn invoke_raw(
 
 // --- CpiCall ---
 
+/// Const-generic CPI builder with compile-time-known account count and data size.
+///
+/// All data lives on the stack — no heap allocation. `ACCTS` is the number of
+/// accounts and `DATA` is the byte length of the serialized instruction data.
+///
+/// Constructed by the generated CPI methods in `#[program]` modules, or
+/// manually via [`CpiCall::new`].
 pub struct CpiCall<'a, const ACCTS: usize, const DATA: usize> {
     program_id: &'a Address,
     accounts: [InstructionAccount<'a>; ACCTS],
@@ -113,6 +140,7 @@ pub struct CpiCall<'a, const ACCTS: usize, const DATA: usize> {
 }
 
 impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
+    /// Creates a CPI call from pre-built instruction accounts and raw data.
     #[inline(always)]
     pub fn new(
         program_id: &'a Address,
@@ -120,7 +148,17 @@ impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
         views: [&'a AccountView; ACCTS],
         data: [u8; DATA],
     ) -> Self {
-        let cpi_accounts = views.map(RawCpiAccount::from_view);
+        let mut cpi_accounts = core::mem::MaybeUninit::<[RawCpiAccount<'a>; ACCTS]>::uninit();
+        let ptr = cpi_accounts.as_mut_ptr() as *mut RawCpiAccount<'a>;
+        let mut i = 0;
+        while i < ACCTS {
+            // SAFETY: i < ACCTS, and ACCTS is the array length.
+            // views[i] is valid because views has exactly ACCTS elements.
+            unsafe { ptr.add(i).write(RawCpiAccount::from_view(views[i])) };
+            i += 1;
+        }
+        // SAFETY: All ACCTS elements written by the loop above.
+        let cpi_accounts = unsafe { cpi_accounts.assume_init() };
         Self {
             program_id,
             accounts,
@@ -129,16 +167,19 @@ impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
         }
     }
 
+    /// Invokes the CPI without any PDA signers.
     #[inline(always)]
     pub fn invoke(&self) -> ProgramResult {
         self.invoke_inner(&[])
     }
 
+    /// Invokes the CPI with a single PDA signer (one set of seeds).
     #[inline(always)]
     pub fn invoke_signed(&self, seeds: &[Seed]) -> ProgramResult {
         self.invoke_inner(&[Signer::from(seeds)])
     }
 
+    /// Invokes the CPI with multiple PDA signers.
     #[inline(always)]
     pub fn invoke_with_signers(&self, signers: &[Signer]) -> ProgramResult {
         self.invoke_inner(signers)
@@ -146,6 +187,9 @@ impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
 
     #[inline(always)]
     fn invoke_inner(&self, signers: &[Signer]) -> ProgramResult {
+        // SAFETY: All pointers derive from valid references (program_id, accounts,
+        // cpi_accounts, data). The arrays are stack-allocated with lifetime 'a
+        // tied to the AccountViews. signers is a valid slice.
         let result = unsafe {
             invoke_raw(
                 self.program_id,
@@ -161,7 +205,11 @@ impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
         if result == 0 {
             Ok(())
         } else {
-            Err(ProgramError::from(result))
+            #[cold]
+            fn cpi_error(result: u64) -> ProgramError {
+                ProgramError::from(result)
+            }
+            Err(cpi_error(result))
         }
     }
 

@@ -8,7 +8,7 @@ use solana_account::Account;
 use solana_address::Address;
 use solana_instruction::{AccountMeta, Instruction};
 
-use crate::client::{
+use crate::idl_client::{
     CreateInstruction, DepositInstruction, ExecuteTransferInstruction, SetLabelInstruction,
 };
 
@@ -33,35 +33,33 @@ fn build_config_data_bytes(
     label: &[u8],
     signers: &[Address],
 ) -> Vec<u8> {
-    let zc_header_size = 32 + 1 + 1 + 2 + 2; // creator + threshold + bump + label_end + signers_end
-    let total = 1 + zc_header_size + label.len() + signers.len() * 32;
+    // Layout: disc(1) + ZC fixed(34) + label_prefix(u32) + label_data + signers_prefix(u32) + signers_data
+    let total = 1 + 34 + 4 + label.len() + 4 + signers.len() * 32;
     let mut data = vec![0u8; total];
 
     // Discriminator
     data[0] = 1;
 
-    // ZC header starts at offset 1
-    let header = &mut data[1..];
+    // ZC fixed fields at offset 1
+    data[1..33].copy_from_slice(creator.as_ref());
+    data[33] = threshold;
+    data[34] = bump;
 
-    // creator (32 bytes)
-    header[..32].copy_from_slice(creator.as_ref());
-    // threshold (1 byte)
-    header[32] = threshold;
-    // bump (1 byte)
-    header[33] = bump;
-    // label_end (cumulative byte offset: label bytes)
-    let label_end = label.len() as u16;
-    header[34..36].copy_from_slice(&label_end.to_le_bytes());
-    // signers_end (cumulative byte offset: label bytes + signer bytes)
-    let signers_end = label_end + (signers.len() as u16 * 32);
-    header[36..38].copy_from_slice(&signers_end.to_le_bytes());
+    // Label prefix (u32 LE): byte length
+    let label_len = label.len() as u32;
+    data[35..39].copy_from_slice(&label_len.to_le_bytes());
+    // Label data
+    data[39..39 + label.len()].copy_from_slice(label);
 
-    // Variable tail: label bytes, then signer addresses
-    let tail_start = 1 + zc_header_size;
-    data[tail_start..tail_start + label.len()].copy_from_slice(label);
-    let signers_start = tail_start + label.len();
+    // Signers prefix (u32 LE): element count
+    let signers_offset = 39 + label.len();
+    let signers_count = signers.len() as u32;
+    data[signers_offset..signers_offset + 4].copy_from_slice(&signers_count.to_le_bytes());
+    // Signers data
+    let signers_data_start = signers_offset + 4;
     for (i, signer) in signers.iter().enumerate() {
-        data[signers_start + i * 32..signers_start + (i + 1) * 32].copy_from_slice(signer.as_ref());
+        data[signers_data_start + i * 32..signers_data_start + (i + 1) * 32]
+            .copy_from_slice(signer.as_ref());
     }
 
     data
@@ -137,13 +135,14 @@ fn test_create() {
     // Verify threshold (offset: disc(1) + creator(32) = 33)
     assert_eq!(config_data[33], threshold, "threshold mismatch");
 
-    // Verify signers_end (offset: disc(1) + creator(32) + threshold(1) + bump(1) + label_end(2) = 37)
-    let signers_end = u16::from_le_bytes([config_data[37], config_data[38]]);
-    assert_eq!(
-        signers_end,
-        3 * 32,
-        "signers_end should be 96 bytes (3 addresses)"
-    );
+    // Verify signers count prefix (offset: disc(1) + ZC(34) + label_prefix(4) + label(0) = 39)
+    let signers_count = u32::from_le_bytes([
+        config_data[39],
+        config_data[40],
+        config_data[41],
+        config_data[42],
+    ]);
+    assert_eq!(signers_count, 3, "signers count should be 3");
 
     std::println!("\n========================================");
     std::println!("  CREATE CU: {}", result.compute_units_consumed);
@@ -260,12 +259,17 @@ fn test_set_label() {
 
     // Verify label was stored
     let config_data = &result.resulting_accounts[1].1.data;
-    let label_end = u16::from_le_bytes([config_data[35], config_data[36]]) as usize;
-    assert_eq!(label_end, label.len(), "label_end mismatch");
+    // Label prefix at offset 35 (disc(1) + ZC(34))
+    let label_len = u32::from_le_bytes([
+        config_data[35],
+        config_data[36],
+        config_data[37],
+        config_data[38],
+    ]) as usize;
+    assert_eq!(label_len, label.len(), "label length mismatch");
 
-    let zc_header_size = 32 + 1 + 1 + 2 + 2; // 38
-    let label_start = 1 + zc_header_size;
-    let stored_label = core::str::from_utf8(&config_data[label_start..label_start + label_end])
+    let label_start = 39; // disc(1) + ZC(34) + label_prefix(4)
+    let stored_label = core::str::from_utf8(&config_data[label_start..label_start + label_len])
         .expect("invalid UTF-8");
     assert_eq!(stored_label, label, "label content mismatch");
 

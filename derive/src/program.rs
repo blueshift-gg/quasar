@@ -1,10 +1,14 @@
+//! `#[program]` — generates the program entrypoint, instruction dispatch table,
+//! and CPI method stubs. Scans all `#[instruction]` functions within the module
+//! to build the discriminator → handler routing.
+
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{parse_macro_input, FnArg, Ident, Item, ItemMod, Pat, Type};
 
 use crate::helpers::{
-    extract_generic_inner_type, is_dynamic_string, parse_discriminator_bytes, pascal_to_snake,
-    snake_to_pascal, InstructionArgs,
+    classify_dynamic_string, classify_dynamic_vec, classify_tail, extract_generic_inner_type,
+    parse_discriminator_bytes, pascal_to_snake, snake_to_pascal, InstructionArgs,
 };
 
 /// Extracts the inner type `T` from a `Ctx<T>` or `CtxWithRemaining<T>` first parameter.
@@ -127,8 +131,12 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
                                     Pat::Ident(pi) => pi.ident.clone(),
                                     _ => return None,
                                 };
-                                let ty = if is_dynamic_string(&pt.ty, false).is_some() {
-                                    syn::parse_quote!(::alloc::vec::Vec<u8>)
+                                let ty = if classify_dynamic_string(&pt.ty).is_some() {
+                                    syn::parse_quote!(alloc::vec::Vec<u8>)
+                                } else if let Some((elem, _, _)) = classify_dynamic_vec(&pt.ty) {
+                                    syn::parse_quote!(alloc::vec::Vec<#elem>)
+                                } else if classify_tail(&pt.ty).is_some() {
+                                    syn::parse_quote!(quasar_core::client::TailBytes)
                                 } else {
                                     (*pt.ty).clone()
                                 };

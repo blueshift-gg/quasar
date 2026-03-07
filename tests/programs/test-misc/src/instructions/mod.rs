@@ -55,6 +55,18 @@ pub use dynamic_account_check::*;
 pub mod dynamic_instruction_check;
 pub use dynamic_instruction_check::*;
 
+pub mod mixed_account_check;
+pub use mixed_account_check::*;
+
+pub mod small_prefix_check;
+pub use small_prefix_check::*;
+
+pub mod dynamic_readback;
+pub use dynamic_readback::*;
+
+pub mod dynamic_mutate;
+pub use dynamic_mutate::*;
+
 pub mod space_override;
 pub use space_override::*;
 
@@ -63,3 +75,12 @@ pub use explicit_payer::*;
 
 pub mod optional_has_one;
 pub use optional_has_one::*;
+
+pub mod mutate_then_readback;
+pub use mutate_then_readback::*;
+
+pub mod tail_str_check;
+pub use tail_str_check::*;
+
+pub mod tail_bytes_check;
+pub use tail_bytes_check::*;

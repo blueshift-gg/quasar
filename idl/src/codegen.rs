@@ -1,6 +1,7 @@
-use crate::parser::accounts::RawAccountField;
-use crate::parser::helpers;
-use crate::parser::ParsedProgram;
+use quasar_idl::parser::accounts::RawAccountField;
+use quasar_idl::parser::helpers;
+use quasar_idl::parser::ParsedProgram;
+use quasar_idl::types::IdlType;
 
 /// Generate Cargo.toml content for the standalone client crate.
 pub fn generate_cargo_toml(name: &str, version: &str) -> String {
@@ -21,6 +22,21 @@ solana-instruction = "2"
 pub fn generate_client(parsed: &ParsedProgram) -> String {
     let mut out = String::new();
 
+    // Check if any instruction uses dynamic types (need Vec import)
+    let has_dynamic = parsed.instructions.iter().any(|ix| {
+        ix.args.iter().any(|(_, ty)| {
+            matches!(
+                helpers::map_type_from_syn(ty),
+                IdlType::DynString { .. } | IdlType::DynVec { .. } | IdlType::Tail { .. }
+            )
+        })
+    });
+
+    if has_dynamic {
+        out.push_str("use alloc::vec;\nuse alloc::vec::Vec;\n");
+    } else {
+        out.push_str("use alloc::vec;\n");
+    }
     out.push_str("use solana_address::Address;\n");
     out.push_str("use solana_instruction::{AccountMeta, Instruction};\n\n");
 
@@ -38,6 +54,12 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
 
         let struct_name = snake_to_pascal(&ix.name);
 
+        let arg_types: Vec<IdlType> = ix
+            .args
+            .iter()
+            .map(|(_, ty)| helpers::map_type_from_syn(ty))
+            .collect();
+
         // --- Struct definition ---
         out.push_str(&format!("pub struct {}Instruction {{\n", struct_name));
 
@@ -49,9 +71,12 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
         }
 
         // Instruction arg fields
-        for (name, ty) in &ix.args {
-            let type_name = helpers::simple_type_name(ty);
-            out.push_str(&format!("    pub {}: {},\n", name, type_name));
+        for (i, (name, _)) in ix.args.iter().enumerate() {
+            out.push_str(&format!(
+                "    pub {}: {},\n",
+                name,
+                rust_field_type(&arg_types[i])
+            ));
         }
 
         out.push_str("}\n\n");
@@ -88,9 +113,8 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
                 "        let mut data = vec![{}];\n",
                 disc_bytes.join(", ")
             ));
-            for (name, ty) in &ix.args {
-                let type_name = helpers::simple_type_name(ty);
-                out.push_str(&format!("        {};\n", extend_expr(name, &type_name)));
+            for (i, (name, _)) in ix.args.iter().enumerate() {
+                out.push_str(&serialize_expr(name, &arg_types[i]));
             }
         }
 
@@ -115,17 +139,67 @@ fn account_meta_expr(field: &RawAccountField) -> String {
     }
 }
 
-fn extend_expr(name: &str, ty: &str) -> String {
+/// Map an `IdlType` to its Rust field type for the client struct.
+fn rust_field_type(ty: &IdlType) -> String {
     match ty {
-        "bool" => format!("data.push(ix.{} as u8)", name),
-        "u8" | "i8" => format!("data.push(ix.{} as u8)", name),
-        "u16" | "u32" | "u64" | "u128" | "i16" | "i32" | "i64" | "i128" => {
-            format!("data.extend_from_slice(&ix.{}.to_le_bytes())", name)
+        IdlType::Primitive(p) => match p.as_str() {
+            "publicKey" => "Address".to_string(),
+            other => other.to_string(),
+        },
+        IdlType::DynString { .. } => "Vec<u8>".to_string(),
+        IdlType::DynVec { vec } => {
+            format!("Vec<{}>", rust_field_type(&vec.items))
         }
-        // Address / Pubkey — 32 bytes
-        "Address" | "Pubkey" => format!("data.extend_from_slice(ix.{}.as_ref())", name),
-        // Unknown type — fall back to to_le_bytes (will fail to compile if wrong)
-        _ => format!("data.extend_from_slice(&ix.{}.to_le_bytes())", name),
+        IdlType::Defined { defined } => defined.clone(),
+        IdlType::Tail { .. } => "Vec<u8>".to_string(),
+    }
+}
+
+/// Generate serialization code for an instruction argument.
+fn serialize_expr(name: &str, ty: &IdlType) -> String {
+    match ty {
+        IdlType::Primitive(p) => match p.as_str() {
+            "bool" => format!("        data.push(ix.{} as u8);\n", name),
+            "u8" => format!("        data.push(ix.{});\n", name),
+            "i8" => format!("        data.push(ix.{} as u8);\n", name),
+            "publicKey" => {
+                format!("        data.extend_from_slice(ix.{}.as_ref());\n", name)
+            }
+            _ => format!(
+                "        data.extend_from_slice(&ix.{}.to_le_bytes());\n",
+                name
+            ),
+        },
+        IdlType::DynString { .. } => {
+            format!(
+                "        data.extend_from_slice(&(ix.{n}.len() as u32).to_le_bytes());\n\
+                 \x20       data.extend_from_slice(&ix.{n});\n",
+                n = name,
+            )
+        }
+        IdlType::DynVec { vec } => {
+            let item_ser = match &*vec.items {
+                IdlType::Primitive(p) if p == "publicKey" => "__item.as_ref()".to_string(),
+                IdlType::Primitive(p) if p == "u8" || p == "i8" || p == "bool" => {
+                    "&[*__item as u8]".to_string()
+                }
+                IdlType::Primitive(_) => "&__item.to_le_bytes()".to_string(),
+                _ => "__item.as_ref()".to_string(),
+            };
+            format!(
+                "        data.extend_from_slice(&(ix.{n}.len() as u32).to_le_bytes());\n\
+                 \x20       for __item in &ix.{n} {{ data.extend_from_slice({ser}); }}\n",
+                n = name,
+                ser = item_ser,
+            )
+        }
+        IdlType::Defined { .. } => format!(
+            "        data.extend_from_slice(&ix.{}.to_le_bytes());\n",
+            name
+        ),
+        IdlType::Tail { .. } => {
+            format!("        data.extend_from_slice(&ix.{});\n", name)
+        }
     }
 }
 

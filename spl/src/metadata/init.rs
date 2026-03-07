@@ -1,9 +1,9 @@
-use quasar_core::borsh::BorshString;
+use quasar_core::borsh::CpiEncode;
 use quasar_core::prelude::*;
 
-use super::cpi::MetadataCpi;
+use super::instructions::MetadataCpi;
 
-/// Extension trait providing `.init()` on `Initialize<MetadataAccount>`.
+/// Extension trait for metadata account initialization.
 ///
 /// Invokes `create_metadata_accounts_v3` via CPI. The Metaplex program
 /// derives and allocates the metadata PDA internally — no
@@ -17,9 +17,9 @@ use super::cpi::MetadataCpi;
 ///     &self.payer,
 ///     &self.update_authority,
 ///     &self.system_program,
-///     BorshString::new(b"My Token"),
-///     BorshString::new(b"TKN"),
-///     BorshString::new(b"https://example.com/meta.json"),
+///     "My Token",
+///     "TKN",
+///     "https://example.com/meta.json",
 ///     0,    // seller_fee_basis_points
 ///     true, // is_mutable
 /// )?;
@@ -36,9 +36,9 @@ pub trait InitMetadata: AsAccountView + Sized {
         update_authority: &impl AsAccountView,
         system_program: &Program<System>,
         rent: &impl AsAccountView,
-        name: BorshString<'_>,
-        symbol: BorshString<'_>,
-        uri: BorshString<'_>,
+        name: impl CpiEncode<4>,
+        symbol: impl CpiEncode<4>,
+        uri: impl CpiEncode<4>,
         seller_fee_basis_points: u16,
         is_mutable: bool,
     ) -> Result<(), ProgramError> {
@@ -72,9 +72,9 @@ pub trait InitMetadata: AsAccountView + Sized {
         update_authority: &impl AsAccountView,
         system_program: &Program<System>,
         rent: &impl AsAccountView,
-        name: BorshString<'_>,
-        symbol: BorshString<'_>,
-        uri: BorshString<'_>,
+        name: impl CpiEncode<4>,
+        symbol: impl CpiEncode<4>,
+        uri: impl CpiEncode<4>,
         seller_fee_basis_points: u16,
         is_mutable: bool,
         seeds: &[Seed],
@@ -99,9 +99,7 @@ pub trait InitMetadata: AsAccountView + Sized {
     }
 }
 
-impl InitMetadata for Initialize<super::MetadataAccount> {}
-
-/// Extension trait providing `.init()` on `Initialize<MasterEditionAccount>`.
+/// Extension trait for master edition account initialization.
 ///
 /// Invokes `create_master_edition_v3` via CPI. The Metaplex program
 /// derives and allocates the master edition PDA internally.
@@ -183,5 +181,3 @@ pub trait InitMasterEdition: AsAccountView + Sized {
             .invoke_signed(seeds)
     }
 }
-
-impl InitMasterEdition for Initialize<super::MasterEditionAccount> {}

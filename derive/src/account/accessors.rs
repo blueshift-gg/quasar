@@ -1,81 +1,116 @@
+//! Generates typed accessor methods for dynamic account fields.
+//!
+//! Each dynamic field (String, Vec, tail) gets a getter that reads the length
+//! prefix and returns a slice/reference into the raw account data buffer.
+
 use quote::{format_ident, quote};
 
-use crate::helpers::DynKind;
+use crate::helpers::{DynKind, TailElement};
 
 pub(super) struct DynamicAccessors {
     pub accessor_methods: Vec<proc_macro2::TokenStream>,
+    pub raw_methods: Vec<proc_macro2::TokenStream>,
     pub write_methods: Vec<proc_macro2::TokenStream>,
-    pub fields_name: syn::Ident,
-    pub fields_struct_fields: Vec<proc_macro2::TokenStream>,
-    pub fields_extract_stmts: Vec<proc_macro2::TokenStream>,
-    pub fields_field_names: Vec<syn::Ident>,
-    pub set_dyn_params: Vec<proc_macro2::TokenStream>,
-    pub set_dyn_buf_stmts: Vec<proc_macro2::TokenStream>,
-    pub set_dyn_zc_updates: Vec<proc_macro2::TokenStream>,
+}
+
+/// Generate the offset expression for a dynamic field at `dyn_idx`.
+///
+/// - Field 0: compile-time constant `disc_len + sizeof(ZcHeader)`
+/// - Field i (i > 0): `self.__off[i-1] as usize` (cached offset)
+fn offset_expr(dyn_idx: usize, disc_len: usize, zc_name: &syn::Ident) -> proc_macro2::TokenStream {
+    if dyn_idx == 0 {
+        quote! { #disc_len + core::mem::size_of::<#zc_name>() }
+    } else {
+        let idx = dyn_idx - 1;
+        quote! { self.__off[#idx] as usize }
+    }
 }
 
 pub(super) fn generate_accessors(
-    name: &syn::Ident,
+    _name: &syn::Ident,
     disc_len: usize,
     fields_data: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
     field_kinds: &[DynKind],
     zc_name: &syn::Ident,
-    lt: &syn::Lifetime,
+    _lt: &syn::Lifetime,
 ) -> DynamicAccessors {
-    let dyn_fields: Vec<(&syn::Field, &DynKind)> = fields_data
+    let dyn_fields: Vec<(usize, &syn::Field, &DynKind)> = fields_data
         .iter()
         .zip(field_kinds.iter())
-        .filter(|(_, k)| !matches!(k, DynKind::Fixed))
+        .enumerate()
+        .filter(|(_, (_, k))| !matches!(k, DynKind::Fixed))
+        .map(|(i, (f, k))| (i, f, k))
         .collect();
 
-    // --- 9. Read accessor methods ---
+    let num_dyn = dyn_fields.len();
+    let num_offsets = if num_dyn > 0 { num_dyn - 1 } else { 0 };
+
+    // --- Read accessor methods (O(1) via cached offsets) ---
     let accessor_methods: Vec<proc_macro2::TokenStream> = dyn_fields
         .iter()
         .enumerate()
-        .map(|(i, (f, kind))| {
+        .map(|(dyn_idx, (_, f, kind))| {
             let fname = f.ident.as_ref().unwrap();
-            let end_name = format_ident!("{}_end", fname);
-
-            let start_expr = if i > 0 {
-                let prev_end =
-                    format_ident!("{}_end", dyn_fields[i - 1].0.ident.as_ref().unwrap());
-                quote! { #disc_len + core::mem::size_of::<#zc_name>() + __zc.#prev_end.get() as usize }
-            } else {
-                quote! { #disc_len + core::mem::size_of::<#zc_name>() }
-            };
-            let end_expr =
-                quote! { #disc_len + core::mem::size_of::<#zc_name>() + __zc.#end_name.get() as usize };
+            let off_expr = offset_expr(dyn_idx, disc_len, zc_name);
 
             match kind {
-                DynKind::Str { .. } | DynKind::StrRef => {
+                DynKind::Str { prefix, .. } => {
+                    let read = prefix.gen_read_len();
+                    let pb = prefix.bytes();
                     quote! {
                         #[inline(always)]
                         pub fn #fname(&self) -> &str {
-                            let __data = unsafe { self.to_account_view().borrow_unchecked() };
-                            let __zc = unsafe { &*(__data[#disc_len..].as_ptr() as *const #zc_name) };
-                            let __start = #start_expr;
-                            let __end = #end_expr;
-                            {
-                                let __bytes = &__data[__start..__end];
-                                #[cfg(target_os = "solana")]
-                                { unsafe { core::str::from_utf8_unchecked(__bytes) } }
-                                #[cfg(not(target_os = "solana"))]
-                                { core::str::from_utf8(__bytes).expect("account string field contains invalid UTF-8") }
-                            }
+                            let __data = unsafe { self.__view.borrow_unchecked() };
+                            let __offset = #off_expr;
+                            let __len = #read;
+                            let __start = __offset + #pb;
+                            let __bytes = &__data[__start..__start + __len];
+                            #[cfg(target_os = "solana")]
+                            { unsafe { core::str::from_utf8_unchecked(__bytes) } }
+                            #[cfg(not(target_os = "solana"))]
+                            { core::str::from_utf8(__bytes).expect("account string field contains invalid UTF-8") }
                         }
                     }
                 }
-                DynKind::Vec { elem, .. } => {
+                DynKind::Vec { elem, prefix, .. } => {
+                    let read = prefix.gen_read_len();
+                    let pb = prefix.bytes();
                     quote! {
                         #[inline(always)]
                         pub fn #fname(&self) -> &[#elem] {
-                            let __data = unsafe { self.to_account_view().borrow_unchecked() };
-                            let __zc = unsafe { &*(__data[#disc_len..].as_ptr() as *const #zc_name) };
-                            let __start = #start_expr;
-                            let __end = #end_expr;
-                            let __count = (__end - __start) / core::mem::size_of::<#elem>();
-                            // SAFETY: Bounds validated by AccountCheck::check. Alignment 1 guaranteed.
+                            let __data = unsafe { self.__view.borrow_unchecked() };
+                            let __offset = #off_expr;
+                            let __count = #read;
+                            let __start = __offset + #pb;
                             unsafe { core::slice::from_raw_parts(__data[__start..].as_ptr() as *const #elem, __count) }
+                        }
+                    }
+                }
+                DynKind::Tail { element } => {
+                    match element {
+                        TailElement::Str => {
+                            quote! {
+                                #[inline(always)]
+                                pub fn #fname(&self) -> &str {
+                                    let __data = unsafe { self.__view.borrow_unchecked() };
+                                    let __offset = #off_expr;
+                                    let __bytes = &__data[__offset..];
+                                    #[cfg(target_os = "solana")]
+                                    { unsafe { core::str::from_utf8_unchecked(__bytes) } }
+                                    #[cfg(not(target_os = "solana"))]
+                                    { core::str::from_utf8(__bytes).expect("account tail field contains invalid UTF-8") }
+                                }
+                            }
+                        }
+                        TailElement::Bytes => {
+                            quote! {
+                                #[inline(always)]
+                                pub fn #fname(&self) -> &[u8] {
+                                    let __data = unsafe { self.__view.borrow_unchecked() };
+                                    let __offset = #off_expr;
+                                    &__data[__offset..]
+                                }
+                            }
                         }
                     }
                 }
@@ -84,70 +119,114 @@ pub(super) fn generate_accessors(
         })
         .collect();
 
-    // --- 10. Write setter methods ---
+    // --- Raw accessor methods (_raw() for zero-copy CPI pass-through) ---
+    let raw_methods: Vec<proc_macro2::TokenStream> = dyn_fields
+        .iter()
+        .enumerate()
+        .map(|(dyn_idx, (_, f, kind))| {
+            let fname = f.ident.as_ref().unwrap();
+            let raw_name = format_ident!("{}_raw", fname);
+            let off_expr = offset_expr(dyn_idx, disc_len, zc_name);
+
+            match kind {
+                DynKind::Str { prefix, .. } => {
+                    let read = prefix.gen_read_len();
+                    let pb = prefix.bytes();
+                    quote! {
+                        #[inline(always)]
+                        pub fn #raw_name(&self) -> quasar_core::dynamic::RawEncoded<'_, #pb> {
+                            let __data = unsafe { self.__view.borrow_unchecked() };
+                            let __offset = #off_expr;
+                            let __len = #read;
+                            let __total = #pb + __len;
+                            quasar_core::dynamic::RawEncoded::new(&__data[__offset..__offset + __total])
+                        }
+                    }
+                }
+                DynKind::Vec { elem, prefix, .. } => {
+                    let read = prefix.gen_read_len();
+                    let pb = prefix.bytes();
+                    quote! {
+                        #[inline(always)]
+                        pub fn #raw_name(&self) -> quasar_core::dynamic::RawEncoded<'_, #pb> {
+                            let __data = unsafe { self.__view.borrow_unchecked() };
+                            let __offset = #off_expr;
+                            let __count = #read;
+                            let __total = #pb + __count * core::mem::size_of::<#elem>();
+                            quasar_core::dynamic::RawEncoded::new(&__data[__offset..__offset + __total])
+                        }
+                    }
+                }
+                DynKind::Tail { .. } => {
+                    quote! {
+                        #[inline(always)]
+                        pub fn #raw_name(&self) -> quasar_core::dynamic::RawEncoded<'_, 0> {
+                            let __data = unsafe { self.__view.borrow_unchecked() };
+                            let __offset = #off_expr;
+                            quasar_core::dynamic::RawEncoded::new(&__data[__offset..])
+                        }
+                    }
+                }
+                _ => unreachable!(),
+            }
+        })
+        .collect();
+
+    // --- Write setter methods ---
     let write_methods: Vec<proc_macro2::TokenStream> = dyn_fields
         .iter()
         .enumerate()
-        .map(|(i, (f, kind))| {
+        .map(|(dyn_idx, (_, f, kind))| {
             let fname = f.ident.as_ref().unwrap();
             let setter_name = format_ident!("set_{}", fname);
-            let end_name = format_ident!("{}_end", fname);
+            let off_expr = offset_expr(dyn_idx, disc_len, zc_name);
 
-            let (field_offset_expr, old_bytes_expr) = if i > 0 {
-                let prev_end =
-                    format_ident!("{}_end", dyn_fields[i - 1].0.ident.as_ref().unwrap());
-                (
-                    quote! { __field_offset = #disc_len + core::mem::size_of::<#zc_name>() + __zc.#prev_end.get() as usize; },
-                    quote! { __old_bytes = (__zc.#end_name.get() - __zc.#prev_end.get()) as usize; },
-                )
-            } else {
-                (
-                    quote! { __field_offset = #disc_len + core::mem::size_of::<#zc_name>(); },
-                    quote! { __old_bytes = __zc.#end_name.get() as usize; },
-                )
-            };
-
-            let fields_to_bump: Vec<syn::Ident> = dyn_fields[i..]
-                .iter()
-                .map(|(bf, _)| format_ident!("{}_end", bf.ident.as_ref().unwrap()))
+            // After a setter changes a field's length, all subsequent cached
+            // offsets must be adjusted by the delta. This generates the fixup
+            // statements for __off[dyn_idx..num_offsets-1].
+            let offset_fixup_stmts: Vec<proc_macro2::TokenStream> = (dyn_idx..num_offsets)
+                .map(|i| {
+                    quote! {
+                        self.__off[#i] = (self.__off[#i] as i64 + __delta) as u32;
+                    }
+                })
                 .collect();
 
-            let str_max = match kind {
-                DynKind::Str { max } => *max,
-                DynKind::StrRef => 255,
-                _ => 0,
-            };
             match kind {
-                DynKind::Str { .. } | DynKind::StrRef => {
+                DynKind::Str { max, prefix } => {
+                    let max_val = *max;
+                    let pb = prefix.bytes();
+                    let read = prefix.gen_read_len();
+                    let write_stmt = prefix.gen_write_prefix(&quote! { __new_data_len });
+
                     quote! {
                         #[inline(always)]
                         pub fn #setter_name(&mut self, __payer: &impl AsAccountView, __value: &str) -> Result<(), ProgramError> {
-                            if __value.len() > #str_max {
+                            if __value.len() > #max_val {
                                 return Err(QuasarError::DynamicFieldTooLong.into());
                             }
-                            let __view = self.to_account_view();
-                            let __old_bytes;
+                            let __view = self.__view;
+                            let __prefix_offset;
+                            let __old_data_len;
                             let __old_total;
-                            let __field_offset;
                             {
                                 let __data = unsafe { __view.borrow_unchecked() };
-                                let __zc = unsafe { &*(__data[#disc_len..].as_ptr() as *const #zc_name) };
-                                #field_offset_expr
-                                #old_bytes_expr
+                                let __offset = #off_expr;
+                                __prefix_offset = __offset;
+                                __old_data_len = #read;
                                 __old_total = __data.len();
                             }
-                            let __new_bytes = __value.len();
-                            if __old_bytes != __new_bytes {
-                                let __new_total = __old_total + __new_bytes - __old_bytes;
-                                let __tail_start = __field_offset + __old_bytes;
+                            let __new_data_len = __value.len();
+                            if __old_data_len != __new_data_len {
+                                let __new_total = __old_total + __new_data_len - __old_data_len;
+                                let __tail_start = __prefix_offset + #pb + __old_data_len;
                                 let __tail_len = __old_total - __tail_start;
-                                if __new_bytes > __old_bytes {
+                                if __new_data_len > __old_data_len {
                                     self.realloc(__new_total, __payer.to_account_view(), None)?;
                                 }
                                 if __tail_len > 0 {
-                                    let __new_tail = __field_offset + __new_bytes;
+                                    let __new_tail = __prefix_offset + #pb + __new_data_len;
                                     let __data = unsafe { __view.borrow_unchecked_mut() };
-                                    // SAFETY: copy handles overlapping source/dest.
                                     unsafe {
                                         core::ptr::copy(
                                             __data.as_ptr().add(__tail_start),
@@ -156,63 +235,59 @@ pub(super) fn generate_accessors(
                                         );
                                     }
                                 }
-                                if __new_bytes < __old_bytes {
+                                if __new_data_len < __old_data_len {
                                     self.realloc(__new_total, __payer.to_account_view(), None)?;
                                 }
+                                let __delta = __new_data_len as i64 - __old_data_len as i64;
+                                #(#offset_fixup_stmts)*
                             }
-                            let __data = unsafe { __view.borrow_unchecked_mut() };
-                            __data[__field_offset..__field_offset + __new_bytes].copy_from_slice(__value.as_bytes());
-                            let __zc = unsafe { &mut *(__data[#disc_len..].as_mut_ptr() as *mut #zc_name) };
-                            let __delta = __new_bytes as i32 - __old_bytes as i32;
-                            if __delta != 0 {
-                                #(
-                                    __zc.#fields_to_bump = quasar_core::pod::PodU16::from((__zc.#fields_to_bump.get() as i32 + __delta) as u16);
-                                )*
+                            {
+                                let __data = unsafe { __view.borrow_unchecked_mut() };
+                                let mut __offset = __prefix_offset;
+                                #write_stmt
+                                __offset += #pb;
+                                __data[__offset..__offset + __new_data_len].copy_from_slice(__value.as_bytes());
                             }
                             Ok(())
                         }
                     }
                 }
-                DynKind::Vec { elem, max } => {
+                DynKind::Vec { elem, max, prefix: vec_prefix } => {
+                    let max_val = *max;
+                    let pb = vec_prefix.bytes();
+                    let read = vec_prefix.gen_read_len();
                     let mut_name = format_ident!("{}_mut", fname);
-
-                    let start_expr = if i > 0 {
-                        let prev_end =
-                            format_ident!("{}_end", dyn_fields[i - 1].0.ident.as_ref().unwrap());
-                        quote! { #disc_len + core::mem::size_of::<#zc_name>() + __zc.#prev_end.get() as usize }
-                    } else {
-                        quote! { #disc_len + core::mem::size_of::<#zc_name>() }
-                    };
-                    let end_expr = quote! { #disc_len + core::mem::size_of::<#zc_name>() + __zc.#end_name.get() as usize };
+                    let write_count_stmt = vec_prefix.gen_write_prefix(&quote! { __value.len() });
 
                     quote! {
                         #[inline(always)]
                         pub fn #setter_name(&mut self, __payer: &impl AsAccountView, __value: &[#elem]) -> Result<(), ProgramError> {
-                            if __value.len() > #max {
+                            if __value.len() > #max_val {
                                 return Err(QuasarError::DynamicFieldTooLong.into());
                             }
                             let __elem_size = core::mem::size_of::<#elem>();
-                            let __view = self.to_account_view();
-                            let __old_bytes;
+                            let __view = self.__view;
+                            let __prefix_offset;
+                            let __old_count;
                             let __old_total;
-                            let __field_offset;
                             {
                                 let __data = unsafe { __view.borrow_unchecked() };
-                                let __zc = unsafe { &*(__data[#disc_len..].as_ptr() as *const #zc_name) };
-                                #field_offset_expr
-                                #old_bytes_expr
+                                let __offset = #off_expr;
+                                __prefix_offset = __offset;
+                                __old_count = #read;
                                 __old_total = __data.len();
                             }
-                            let __new_bytes = __value.len() * __elem_size;
-                            if __old_bytes != __new_bytes {
-                                let __new_total = __old_total + __new_bytes - __old_bytes;
-                                let __tail_start = __field_offset + __old_bytes;
+                            let __old_data_len = __old_count * __elem_size;
+                            let __new_data_len = __value.len() * __elem_size;
+                            if __old_data_len != __new_data_len {
+                                let __new_total = __old_total + __new_data_len - __old_data_len;
+                                let __tail_start = __prefix_offset + #pb + __old_data_len;
                                 let __tail_len = __old_total - __tail_start;
-                                if __new_bytes > __old_bytes {
+                                if __new_data_len > __old_data_len {
                                     self.realloc(__new_total, __payer.to_account_view(), None)?;
                                 }
                                 if __tail_len > 0 {
-                                    let __new_tail = __field_offset + __new_bytes;
+                                    let __new_tail = __prefix_offset + #pb + __new_data_len;
                                     let __data = unsafe { __view.borrow_unchecked_mut() };
                                     unsafe {
                                         core::ptr::copy(
@@ -222,231 +297,101 @@ pub(super) fn generate_accessors(
                                         );
                                     }
                                 }
-                                if __new_bytes < __old_bytes {
+                                if __new_data_len < __old_data_len {
                                     self.realloc(__new_total, __payer.to_account_view(), None)?;
                                 }
+                                let __delta = __new_data_len as i64 - __old_data_len as i64;
+                                #(#offset_fixup_stmts)*
                             }
-                            let __data = unsafe { __view.borrow_unchecked_mut() };
-                            if !__value.is_empty() {
-                                // SAFETY: Source and dest do not overlap. Alignment 1 guaranteed.
-                                unsafe {
-                                    core::ptr::copy_nonoverlapping(
-                                        __value.as_ptr() as *const u8,
-                                        __data[__field_offset..].as_mut_ptr(),
-                                        __new_bytes,
-                                    );
+                            {
+                                let __data = unsafe { __view.borrow_unchecked_mut() };
+                                let mut __offset = __prefix_offset;
+                                #write_count_stmt
+                                __offset += #pb;
+                                if !__value.is_empty() {
+                                    unsafe {
+                                        core::ptr::copy_nonoverlapping(
+                                            __value.as_ptr() as *const u8,
+                                            __data[__offset..].as_mut_ptr(),
+                                            __new_data_len,
+                                        );
+                                    }
                                 }
-                            }
-                            let __zc = unsafe { &mut *(__data[#disc_len..].as_mut_ptr() as *mut #zc_name) };
-                            let __delta = __new_bytes as i32 - __old_bytes as i32;
-                            if __delta != 0 {
-                                #(
-                                    __zc.#fields_to_bump = quasar_core::pod::PodU16::from((__zc.#fields_to_bump.get() as i32 + __delta) as u16);
-                                )*
                             }
                             Ok(())
                         }
 
                         #[inline(always)]
                         pub fn #mut_name(&mut self) -> &mut [#elem] {
-                            let __data = unsafe { self.to_account_view().borrow_unchecked_mut() };
-                            let __zc = unsafe { &*(__data[#disc_len..].as_ptr() as *const #zc_name) };
-                            let __start = #start_expr;
-                            let __end = #end_expr;
-                            let __count = (__end - __start) / core::mem::size_of::<#elem>();
-                            // SAFETY: Bounds validated by AccountCheck::check. Alignment 1 guaranteed.
+                            let __data = unsafe { self.__view.borrow_unchecked_mut() };
+                            let __offset = #off_expr;
+                            let __count = #read;
+                            let __start = __offset + #pb;
                             unsafe { core::slice::from_raw_parts_mut(__data[__start..].as_mut_ptr() as *mut #elem, __count) }
                         }
                     }
                 }
-                _ => unreachable!(),
-            }
-        })
-        .collect();
-
-    // --- 11. Batch fields struct for single-pass access ---
-    let fields_name = format_ident!("{}DynamicFields", name);
-
-    let fields_struct_fields: Vec<proc_macro2::TokenStream> = dyn_fields
-        .iter()
-        .map(|(f, kind)| {
-            let fname = &f.ident;
-            let fvis = &f.vis;
-            match kind {
-                DynKind::Str { .. } | DynKind::StrRef => quote! { #fvis #fname: &#lt str },
-                DynKind::Vec { elem, .. } => quote! { #fvis #fname: &#lt [#elem] },
-                _ => unreachable!(),
-            }
-        })
-        .collect();
-
-    let fields_extract_stmts: Vec<proc_macro2::TokenStream> = dyn_fields
-        .iter()
-        .map(|(f, kind)| {
-            let fname = f.ident.as_ref().unwrap();
-            let end_name = format_ident!("{}_end", fname);
-            match kind {
-                DynKind::Str { .. } | DynKind::StrRef => {
-                    quote! {
-                        let #fname = {
-                            let __end = __tail_start + __zc.#end_name.get() as usize;
-                            let __s = {
-                                let __bytes = &__data[__offset..__end];
-                                #[cfg(target_os = "solana")]
-                                { unsafe { core::str::from_utf8_unchecked(__bytes) } }
-                                #[cfg(not(target_os = "solana"))]
-                                { core::str::from_utf8(__bytes).expect("account string field contains invalid UTF-8") }
-                            };
-                            __offset = __end;
-                            __s
-                        };
-                    }
-                }
-                DynKind::Vec { elem, .. } => {
-                    quote! {
-                        let #fname = {
-                            let __end = __tail_start + __zc.#end_name.get() as usize;
-                            let __count = (__end - __offset) / core::mem::size_of::<#elem>();
-                            let __slice = unsafe {
-                                core::slice::from_raw_parts(
-                                    __data[__offset..].as_ptr() as *const #elem,
-                                    __count,
-                                )
-                            };
-                            __offset = __end;
-                            __slice
-                        };
-                    }
-                }
-                _ => unreachable!(),
-            }
-        })
-        .collect();
-
-    let fields_field_names: Vec<syn::Ident> = dyn_fields
-        .iter()
-        .map(|(f, _)| f.ident.as_ref().unwrap().clone())
-        .collect();
-
-    // --- 12. Batch set_dynamic_fields method (Option params, stack buffer) ---
-    let set_dyn_params: Vec<proc_macro2::TokenStream> = dyn_fields
-        .iter()
-        .map(|(f, kind)| {
-            let fname = f.ident.as_ref().unwrap();
-            match kind {
-                DynKind::Str { .. } | DynKind::StrRef => quote! { #fname: Option<&str> },
-                DynKind::Vec { elem, .. } => quote! { #fname: Option<&[#elem]> },
-                _ => unreachable!(),
-            }
-        })
-        .collect();
-
-    let set_dyn_buf_stmts: Vec<proc_macro2::TokenStream> = dyn_fields
-        .iter()
-        .enumerate()
-        .map(|(i, (f, kind))| {
-            let fname = f.ident.as_ref().unwrap();
-            let end_name = format_ident!("{}_end", fname);
-            let cum_end_var = format_ident!("__{}_cum_end", fname);
-
-            let old_bytes_expr = if i > 0 {
-                let prev_end =
-                    format_ident!("{}_end", dyn_fields[i - 1].0.ident.as_ref().unwrap());
-                quote! { (__zc.#end_name.get() - __zc.#prev_end.get()) as usize }
-            } else {
-                quote! { __zc.#end_name.get() as usize }
-            };
-
-            let buf_max = match kind {
-                DynKind::Str { max } => *max,
-                DynKind::StrRef => 255,
-                _ => 0,
-            };
-            match kind {
-                DynKind::Str { .. } | DynKind::StrRef => {
-                    quote! {
-                        let #cum_end_var: usize;
-                        {
-                            let __old_bytes = #old_bytes_expr;
-                            match #fname {
-                                Some(__val) => {
-                                    if __val.len() > #buf_max {
+                DynKind::Tail { element } => {
+                    let max_val = 1024usize;
+                    match element {
+                        TailElement::Str => {
+                            quote! {
+                                #[inline(always)]
+                                pub fn #setter_name(&mut self, __payer: &impl AsAccountView, __value: &str) -> Result<(), ProgramError> {
+                                    if __value.len() > #max_val {
                                         return Err(QuasarError::DynamicFieldTooLong.into());
                                     }
-                                    let __new_bytes = __val.len();
-                                    __buf[__buf_offset..__buf_offset + __new_bytes]
-                                        .copy_from_slice(__val.as_bytes());
-                                    __buf_offset += __new_bytes;
-                                }
-                                None => {
-                                    __buf[__buf_offset..__buf_offset + __old_bytes]
-                                        .copy_from_slice(&__data[__old_offset..__old_offset + __old_bytes]);
-                                    __buf_offset += __old_bytes;
+                                    let __view = self.__view;
+                                    let __start_offset = #off_expr;
+                                    let __old_len = unsafe { __view.borrow_unchecked() }.len() - __start_offset;
+                                    let __new_len = __value.len();
+                                    let __new_total = __start_offset + __new_len;
+                                    if __new_len > __old_len {
+                                        self.realloc(__new_total, __payer.to_account_view(), None)?;
+                                    }
+                                    let __data = unsafe { __view.borrow_unchecked_mut() };
+                                    __data[__start_offset..__start_offset + __new_len].copy_from_slice(__value.as_bytes());
+                                    if __new_len < __old_len {
+                                        self.realloc(__new_total, __payer.to_account_view(), None)?;
+                                    }
+                                    Ok(())
                                 }
                             }
-                            #cum_end_var = __buf_offset;
-                            __old_offset += __old_bytes;
                         }
-                    }
-                }
-                DynKind::Vec { elem, max } => {
-                    quote! {
-                        let #cum_end_var: usize;
-                        {
-                            let __old_bytes = #old_bytes_expr;
-                            let __elem_size = core::mem::size_of::<#elem>();
-                            match #fname {
-                                Some(__val) => {
-                                    if __val.len() > #max {
+                        TailElement::Bytes => {
+                            quote! {
+                                #[inline(always)]
+                                pub fn #setter_name(&mut self, __payer: &impl AsAccountView, __value: &[u8]) -> Result<(), ProgramError> {
+                                    if __value.len() > #max_val {
                                         return Err(QuasarError::DynamicFieldTooLong.into());
                                     }
-                                    let __new_bytes = __val.len() * __elem_size;
-                                    if __new_bytes > 0 {
-                                        unsafe {
-                                            core::ptr::copy_nonoverlapping(
-                                                __val.as_ptr() as *const u8,
-                                                __buf[__buf_offset..].as_mut_ptr(),
-                                                __new_bytes,
-                                            );
-                                        }
+                                    let __view = self.__view;
+                                    let __start_offset = #off_expr;
+                                    let __old_len = unsafe { __view.borrow_unchecked() }.len() - __start_offset;
+                                    let __new_len = __value.len();
+                                    let __new_total = __start_offset + __new_len;
+                                    if __new_len > __old_len {
+                                        self.realloc(__new_total, __payer.to_account_view(), None)?;
                                     }
-                                    __buf_offset += __new_bytes;
-                                }
-                                None => {
-                                    __buf[__buf_offset..__buf_offset + __old_bytes]
-                                        .copy_from_slice(&__data[__old_offset..__old_offset + __old_bytes]);
-                                    __buf_offset += __old_bytes;
+                                    let __data = unsafe { __view.borrow_unchecked_mut() };
+                                    __data[__start_offset..__start_offset + __new_len].copy_from_slice(__value);
+                                    if __new_len < __old_len {
+                                        self.realloc(__new_total, __payer.to_account_view(), None)?;
+                                    }
+                                    Ok(())
                                 }
                             }
-                            #cum_end_var = __buf_offset;
-                            __old_offset += __old_bytes;
                         }
                     }
                 }
                 _ => unreachable!(),
             }
-        })
-        .collect();
-
-    let set_dyn_zc_updates: Vec<proc_macro2::TokenStream> = dyn_fields
-        .iter()
-        .map(|(f, _kind)| {
-            let fname = f.ident.as_ref().unwrap();
-            let end_name = format_ident!("{}_end", fname);
-            let cum_end_var = format_ident!("__{}_cum_end", fname);
-            quote! { __zc.#end_name = quasar_core::pod::PodU16::from(#cum_end_var as u16); }
         })
         .collect();
 
     DynamicAccessors {
         accessor_methods,
+        raw_methods,
         write_methods,
-        fields_name,
-        fields_struct_fields,
-        fields_extract_stmts,
-        fields_field_names,
-        set_dyn_params,
-        set_dyn_buf_stmts,
-        set_dyn_zc_updates,
     }
 }

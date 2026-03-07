@@ -13,10 +13,8 @@ pub struct InitIfNeeded<'info> {
 impl<'info> InitIfNeeded<'info> {
     #[inline(always)]
     pub fn handler(&mut self, value: u64, bumps: &InitIfNeededBumps) -> Result<(), ProgramError> {
-        self.account.set(&SimpleAccount {
-            authority: *self.payer.address(),
-            value,
-            bump: bumps.account,
-        })
+        self.account
+            .set_inner(*self.payer.address(), value, bumps.account);
+        Ok(())
     }
 }

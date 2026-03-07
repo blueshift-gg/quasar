@@ -15,9 +15,8 @@ impl<'info> ReadClockFromAccount<'info> {
     #[inline(always)]
     pub fn handler(&mut self) -> Result<(), ProgramError> {
         let clock = self.clock;
-        self.snapshot.set(&ClockSnapshot {
-            slot: clock.slot.get(),
-            unix_timestamp: clock.unix_timestamp.get(),
-        })
+        self.snapshot
+            .set_inner(clock.slot.get(), clock.unix_timestamp.get());
+        Ok(())
     }
 }

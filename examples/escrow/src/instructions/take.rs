@@ -1,8 +1,8 @@
 use quasar_core::prelude::*;
-use quasar_spl::{Mint, Token, TokenAccount, TokenClose, TokenCpi};
+use quasar_spl::{Mint, Token, TokenClose, TokenCpi};
 
 use crate::events::TakeEvent;
-use crate::state::EscrowAccount;
+use crate::state::Escrow;
 
 #[derive(Accounts)]
 pub struct Take<'info> {
@@ -15,16 +15,16 @@ pub struct Take<'info> {
         seeds = [b"escrow", maker],
         bump = escrow.bump
     )]
-    pub escrow: &'info mut Account<EscrowAccount>,
+    pub escrow: &'info mut Account<Escrow>,
     pub maker: &'info mut UncheckedAccount,
     pub mint_a: &'info Account<Mint>,
     pub mint_b: &'info Account<Mint>,
     #[account(init_if_needed, payer = taker, token::mint = mint_a, token::authority = taker)]
-    pub taker_ta_a: &'info mut Account<TokenAccount>,
-    pub taker_ta_b: &'info mut Account<TokenAccount>,
+    pub taker_ta_a: &'info mut Account<Token>,
+    pub taker_ta_b: &'info mut Account<Token>,
     #[account(init_if_needed, payer = taker, token::mint = mint_b, token::authority = maker)]
-    pub maker_ta_b: &'info mut Account<TokenAccount>,
-    pub vault_ta_a: &'info mut Account<TokenAccount>,
+    pub maker_ta_b: &'info mut Account<Token>,
+    pub vault_ta_a: &'info mut Account<Token>,
     pub rent: &'info Sysvar<Rent>,
     pub token_program: &'info Program<Token>,
     pub system_program: &'info Program<System>,

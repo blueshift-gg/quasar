@@ -81,7 +81,7 @@ pub mod client;
 pub mod context;
 /// Const-generic cross-program invocation with stack-allocated account arrays.
 pub mod cpi;
-/// Marker types for dynamic account fields (`String<'a, N>`, `Vec<'a, T, N>`).
+/// Marker types for dynamic fields (`String<P, N>`, `Vec<T, P, N>`) and codec helpers.
 pub mod dynamic;
 /// Program entrypoint macros (`dispatch!`, `no_alloc!`, `panic_handler!`).
 pub mod entrypoint;
@@ -106,21 +106,26 @@ pub mod traits;
 /// Utility functions
 pub mod utils;
 
-/// 32-byte address comparison via four u64 word comparisons.
+/// 32-byte address comparison via four `read_unaligned` u64 word comparisons.
 ///
 /// Short-circuits on the first non-matching word — wrong owner fails fast
 /// on the first 8 bytes. Native-width u64 ops on SBF (64-bit target).
+///
+/// Uses `read_unaligned` instead of slice-then-`try_into().unwrap()` to
+/// eliminate bounds-checked slicing, `Result` construction, and panic paths.
 #[inline(always)]
 pub fn keys_eq(a: &solana_address::Address, b: &solana_address::Address) -> bool {
-    let a: &[u8] = a.as_ref();
-    let b: &[u8] = b.as_ref();
-    u64::from_le_bytes(a[..8].try_into().unwrap()) == u64::from_le_bytes(b[..8].try_into().unwrap())
-        && u64::from_le_bytes(a[8..16].try_into().unwrap())
-            == u64::from_le_bytes(b[8..16].try_into().unwrap())
-        && u64::from_le_bytes(a[16..24].try_into().unwrap())
-            == u64::from_le_bytes(b[16..24].try_into().unwrap())
-        && u64::from_le_bytes(a[24..32].try_into().unwrap())
-            == u64::from_le_bytes(b[24..32].try_into().unwrap())
+    let a = a.as_array().as_ptr() as *const u64;
+    let b = b.as_array().as_ptr() as *const u64;
+    // SAFETY: Address is [u8; 32] — 32 contiguous bytes. read_unaligned
+    // handles alignment-1. Offsets 0,8,16,24 are all within the 32-byte
+    // allocation. Short-circuit && avoids reading further on mismatch.
+    unsafe {
+        core::ptr::read_unaligned(a) == core::ptr::read_unaligned(b)
+            && core::ptr::read_unaligned(a.add(1)) == core::ptr::read_unaligned(b.add(1))
+            && core::ptr::read_unaligned(a.add(2)) == core::ptr::read_unaligned(b.add(2))
+            && core::ptr::read_unaligned(a.add(3)) == core::ptr::read_unaligned(b.add(3))
+    }
 }
 
 /// Checks if an address is all zeros (the System program address).
@@ -129,12 +134,16 @@ pub fn keys_eq(a: &solana_address::Address, b: &solana_address::Address) -> bool
 /// there's no second operand.
 #[inline(always)]
 pub fn is_system_program(addr: &solana_address::Address) -> bool {
-    let a: &[u8] = addr.as_ref();
-    u64::from_le_bytes(a[..8].try_into().unwrap())
-        | u64::from_le_bytes(a[8..16].try_into().unwrap())
-        | u64::from_le_bytes(a[16..24].try_into().unwrap())
-        | u64::from_le_bytes(a[24..32].try_into().unwrap())
-        == 0
+    let a = addr.as_array().as_ptr() as *const u64;
+    // SAFETY: Address is [u8; 32] — 32 contiguous bytes. read_unaligned
+    // handles alignment-1. Offsets 0,8,16,24 are all within bounds.
+    unsafe {
+        (core::ptr::read_unaligned(a)
+            | core::ptr::read_unaligned(a.add(1))
+            | core::ptr::read_unaligned(a.add(2))
+            | core::ptr::read_unaligned(a.add(3)))
+            == 0
+    }
 }
 
 /// Decode a failed account header check into the appropriate error.
@@ -154,7 +163,7 @@ pub fn is_system_program(addr: &solana_address::Address) -> bool {
 pub fn decode_header_error(header: u32, expected: u32) -> solana_program_error::ProgramError {
     use solana_program_error::ProgramError;
 
-    let [borrow, signer, writable, exec] = header.to_le_bytes();
+    let [borrow, signer, writable, _exec] = header.to_le_bytes();
     let [exp_borrow, exp_signer, exp_writable, exp_exec] = expected.to_le_bytes();
 
     // Check in order of likely mismatch: dup, signer, writable, executable
@@ -215,4 +224,55 @@ pub fn decode_header_error(header: u32, expected: u32) -> solana_program_error::
         }
     }
     ProgramError::InvalidAccountData
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use solana_address::Address;
+
+    #[test]
+    fn keys_eq_identical() {
+        let a = Address::new_from_array([0xAB; 32]);
+        assert!(keys_eq(&a, &a));
+    }
+
+    #[test]
+    fn keys_eq_first_word_mismatch() {
+        let a = Address::new_from_array([0xFF; 32]);
+        let mut b_bytes = [0xFF; 32];
+        b_bytes[0] = 0x00;
+        let b = Address::new_from_array(b_bytes);
+        assert!(!keys_eq(&a, &b));
+    }
+
+    #[test]
+    fn keys_eq_last_word_mismatch() {
+        let a = Address::new_from_array([0xFF; 32]);
+        let mut b_bytes = [0xFF; 32];
+        b_bytes[31] = 0x00;
+        let b = Address::new_from_array(b_bytes);
+        assert!(!keys_eq(&a, &b));
+    }
+
+    #[test]
+    fn keys_eq_all_zero() {
+        let a = Address::new_from_array([0; 32]);
+        let b = Address::new_from_array([0; 32]);
+        assert!(keys_eq(&a, &b));
+    }
+
+    #[test]
+    fn is_system_program_zero() {
+        let addr = Address::new_from_array([0; 32]);
+        assert!(is_system_program(&addr));
+    }
+
+    #[test]
+    fn is_system_program_nonzero() {
+        let mut bytes = [0u8; 32];
+        bytes[16] = 1;
+        let addr = Address::new_from_array(bytes);
+        assert!(!is_system_program(&addr));
+    }
 }

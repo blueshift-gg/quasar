@@ -17,8 +17,7 @@ impl<'info> ReadRent<'info> {
     pub fn handler(&mut self) -> Result<(), ProgramError> {
         let rent = Rent::get()?;
         let min_balance = rent.minimum_balance_unchecked(100);
-        self.snapshot.set(&RentSnapshot {
-            min_balance_100: min_balance,
-        })
+        self.snapshot.set_inner(min_balance);
+        Ok(())
     }
 }

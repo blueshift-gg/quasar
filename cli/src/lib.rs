@@ -32,12 +32,6 @@ pub enum Command {
 pub struct ProfileCommand {
     #[arg(value_name = "PATH_TO_ELF_SO")]
     pub elf_path: PathBuf,
-    #[arg(short, long)]
-    pub output: Option<PathBuf>,
-    #[arg(long, action = ArgAction::SetTrue)]
-    pub json: bool,
-    #[arg(long, action = ArgAction::SetTrue, conflicts_with = "share")]
-    pub no_gist: bool,
     #[arg(long, action = ArgAction::SetTrue)]
     pub share: bool,
 }
@@ -66,8 +60,6 @@ pub fn run(cli: Cli) -> CliResult {
         Command::Profile(command) => {
             quasar_profile::run(quasar_profile::ProfileCommand {
                 elf_path: command.elf_path,
-                output: command.output,
-                no_gist: command.no_gist,
                 share: command.share,
             });
 

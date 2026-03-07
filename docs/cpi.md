@@ -193,7 +193,7 @@ On non-SBF targets (tests, native builds), `invoke_raw` returns 0 (success) as a
 
 ## System Program CPI
 
-The `SystemProgram` type provides typed CPI methods. Each method returns a `CpiCall` with the exact const-generic sizes:
+`Program<System>` provides typed CPI methods. Each method returns a `CpiCall` with the exact const-generic sizes:
 
 ### `create_account`
 
@@ -255,7 +255,7 @@ When you declare PDA seeds:
 
 ```rust
 #[account(seeds = [b"escrow", maker], bump)]
-pub escrow: &'info mut Initialize<EscrowAccount>,
+pub escrow: &'info mut Account<EscrowAccount>,
 ```
 
 The macro generates:
@@ -270,7 +270,7 @@ For the `Make` instruction with:
 
 ```rust
 #[account(seeds = [b"escrow", maker], bump)]
-pub escrow: &'info mut Initialize<EscrowAccount>,
+pub escrow: &'info mut Account<EscrowAccount>,
 ```
 
 The generated bumps struct looks like:
@@ -317,13 +317,13 @@ pub fn make_escrow(&mut self, receive: u64, bumps: &MakeBumps) -> Result<(), Pro
 
 ### `find_program_address` vs `create_program_address`
 
-- **`bump` (no value)** -- uses `find_program_address` syscall to discover the bump. More expensive (~tens of thousands of CU) but necessary when the bump is not yet known (e.g., during `Initialize`).
+- **`bump` (no value)** -- uses `find_program_address` syscall to discover the bump. More expensive (~tens of thousands of CU) but necessary when the bump is not yet known (e.g., during account initialization).
 - **`bump = expr`** -- uses `create_program_address` with the provided bump. Cheaper (~1,500 CU) because it skips the search loop. Use when the bump is stored in the account data.
 
 ```rust
 // First time: discover bump
 #[account(seeds = [b"escrow", maker], bump)]
-pub escrow: &'info mut Initialize<EscrowAccount>,
+pub escrow: &'info mut Account<EscrowAccount>,
 
 // Subsequent: use stored bump
 #[account(seeds = [b"escrow", maker], bump = escrow.bump)]
@@ -376,7 +376,7 @@ pub struct Take<'info> {
     pub escrow: &'info mut Account<EscrowAccount>,
     pub maker: &'info mut UncheckedAccount,
     // ... other accounts ...
-    pub token_program: &'info TokenProgram,
+    pub token_program: &'info Program<Token>,
 }
 
 impl<'info> Take<'info> {

@@ -1,36 +1,23 @@
 use quasar_core::prelude::*;
 
-use crate::constants::{SPL_TOKEN_ID, TOKEN_2022_ID};
-use crate::cpi::TokenCpi;
-use crate::interface::InterfaceAccount;
+use crate::helpers::constants::{SPL_TOKEN_ID, TOKEN_2022_ID};
+use crate::instructions::TokenCpi;
 use crate::state::{MintAccountState, TokenAccountState};
-use crate::token::{Mint, Token};
-use crate::token_2022::{Mint2022Account, Token2022};
 
 #[inline(always)]
 fn is_token_program_owner(view: &AccountView) -> bool {
+    // SAFETY: view.owner() reads the 32-byte owner field from SVM account metadata.
     let owner = unsafe { view.owner() };
     quasar_core::keys_eq(owner, &SPL_TOKEN_ID) || quasar_core::keys_eq(owner, &TOKEN_2022_ID)
 }
 
-/// Extension trait providing `.init()` on `Initialize<T>` for token account types.
+/// Extension trait for token account initialization.
 ///
 /// Chains `System::create_account` → `InitializeAccount3` in two CPIs.
 /// The account is allocated with 165 bytes and assigned to the given token program.
 ///
-/// Pass `Some(&rent)` to reuse an already-fetched Rent sysvar, or `None`
-/// to fetch it via syscall (`Rent::get()`):
-///
-/// ```ignore
-/// self.new_token.init(
-///     self.system_program,
-///     self.payer,
-///     self.token_program,
-///     self.mint,
-///     self.owner.address(),
-///     None,
-/// )?;
-/// ```
+/// Prefer `#[account(init, token::mint = ..., token::authority = ...)]` for
+/// declarative initialization. This trait is available for manual use cases.
 pub trait InitToken: AsAccountView + Sized {
     /// Create and initialize a token account.
     ///
@@ -77,28 +64,26 @@ pub trait InitToken: AsAccountView + Sized {
         rent: Option<&Rent>,
     ) -> Result<(), ProgramError> {
         let view = self.to_account_view();
+        // SAFETY: view.owner() reads the 32-byte owner from SVM account metadata.
         if quasar_core::is_system_program(unsafe { view.owner() }) {
             self.init(system_program, payer, token_program, mint, owner, rent)
         } else {
-            // Validate that the account is owned by a token program.
-            // Without this check, an attacker could pass an account owned by
-            // an arbitrary program with crafted data matching expected offsets.
             if !is_token_program_owner(view) {
                 return Err(ProgramError::IllegalOwner);
             }
             if view.data_len() < TokenAccountState::LEN {
                 return Err(ProgramError::InvalidAccountData);
             }
-            // SAFETY: data_len >= 165 checked above, TokenAccountState is
-            // #[repr(C)] with alignment 1, pointer is to account data start.
+            // SAFETY: data_len >= 165 checked above. TokenAccountState is
+            // #[repr(C)] with alignment 1 — pointer cast is sound.
             let state = unsafe { &*(view.data_ptr() as *const TokenAccountState) };
             if !state.is_initialized() {
                 return Err(ProgramError::UninitializedAccount);
             }
-            if state.mint() != mint.to_account_view().address() {
+            if !quasar_core::keys_eq(state.mint(), mint.to_account_view().address()) {
                 return Err(ProgramError::InvalidAccountData);
             }
-            if state.owner() != owner {
+            if !quasar_core::keys_eq(state.owner(), owner) {
                 return Err(ProgramError::InvalidAccountData);
             }
             Ok(())
@@ -106,29 +91,13 @@ pub trait InitToken: AsAccountView + Sized {
     }
 }
 
-impl InitToken for Initialize<Token> {}
-impl InitToken for Initialize<Token2022> {}
-impl<T: AccountCheck + ZeroCopyDeref<Target = TokenAccountState>> InitToken
-    for Initialize<InterfaceAccount<T>>
-{
-}
-
-/// Extension trait providing `.init()` on `Initialize<T>` for mint account types.
+/// Extension trait for mint initialization.
 ///
 /// Chains `System::create_account` → `InitializeMint2` in two CPIs.
 /// The account is allocated with 82 bytes and assigned to the given token program.
 ///
-/// ```ignore
-/// self.new_mint.init(
-///     self.system_program,
-///     self.payer,
-///     self.token_program,
-///     6, // decimals
-///     self.authority.address(),
-///     None, // no freeze authority
-///     None, // const rent calculation
-/// )?;
-/// ```
+/// Prefer `#[account(init, mint::decimals = ..., mint::authority = ...)]` for
+/// declarative initialization. This trait is available for manual use cases.
 pub trait InitMint: AsAccountView + Sized {
     /// Create and initialize a mint.
     ///
@@ -179,6 +148,7 @@ pub trait InitMint: AsAccountView + Sized {
         rent: Option<&Rent>,
     ) -> Result<(), ProgramError> {
         let view = self.to_account_view();
+        // SAFETY: view.owner() reads the 32-byte owner from SVM account metadata.
         if quasar_core::is_system_program(unsafe { view.owner() }) {
             self.init(
                 system_program,
@@ -196,25 +166,20 @@ pub trait InitMint: AsAccountView + Sized {
             if view.data_len() < MintAccountState::LEN {
                 return Err(ProgramError::InvalidAccountData);
             }
-            // SAFETY: data_len >= 82 checked above, MintAccountState is
-            // #[repr(C)] with alignment 1, pointer is to account data start.
+            // SAFETY: data_len >= 82 checked above. MintAccountState is
+            // #[repr(C)] with alignment 1 — pointer cast is sound.
             let state = unsafe { &*(view.data_ptr() as *const MintAccountState) };
             if !state.is_initialized() {
                 return Err(ProgramError::UninitializedAccount);
             }
-            if !state.has_mint_authority() || state.mint_authority_unchecked() != mint_authority {
+            if !state.has_mint_authority()
+                || !quasar_core::keys_eq(state.mint_authority_unchecked(), mint_authority)
+            {
                 return Err(ProgramError::InvalidAccountData);
             }
             Ok(())
         }
     }
-}
-
-impl InitMint for Initialize<Mint> {}
-impl InitMint for Initialize<Mint2022Account> {}
-impl<T: AccountCheck + ZeroCopyDeref<Target = MintAccountState>> InitMint
-    for Initialize<InterfaceAccount<T>>
-{
 }
 
 /// Validate that an existing token account has the expected mint and authority.
@@ -239,10 +204,10 @@ pub fn validate_token_account(
     if !state.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
     }
-    if state.mint() != mint {
+    if !quasar_core::keys_eq(state.mint(), mint) {
         return Err(ProgramError::InvalidAccountData);
     }
-    if state.owner() != authority {
+    if !quasar_core::keys_eq(state.owner(), authority) {
         return Err(ProgramError::InvalidAccountData);
     }
     Ok(())
@@ -266,7 +231,9 @@ pub fn validate_mint(view: &AccountView, mint_authority: &Address) -> Result<(),
     if !state.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
     }
-    if !state.has_mint_authority() || state.mint_authority_unchecked() != mint_authority {
+    if !state.has_mint_authority()
+        || !quasar_core::keys_eq(state.mint_authority_unchecked(), mint_authority)
+    {
         return Err(ProgramError::InvalidAccountData);
     }
     Ok(())
