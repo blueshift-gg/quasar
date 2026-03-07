@@ -2,7 +2,7 @@ use std::fmt;
 use std::fs;
 use std::path::Path;
 
-use dialoguer::{Input, Select, theme::ColorfulTheme};
+use dialoguer::{theme::ColorfulTheme, Input, Select};
 use serde::Serialize;
 
 use crate::error::CliResult;
@@ -99,7 +99,10 @@ pub fn run() -> CliResult {
         .map_err(anyhow::Error::from)?;
 
     // Toolchain
-    let toolchain_items = &["solana    (cargo build-sbf)", "upstream  (cargo +nightly build-bpf)"];
+    let toolchain_items = &[
+        "solana    (cargo build-sbf)",
+        "upstream  (cargo +nightly build-bpf)",
+    ];
     let toolchain_idx = Select::with_theme(&theme)
         .with_prompt("Toolchain")
         .items(toolchain_items)
@@ -215,16 +218,22 @@ fn scaffold(
             fs::create_dir_all(&instructions_dir).map_err(anyhow::Error::from)?;
             fs::write(instructions_dir.join("mod.rs"), INSTRUCTIONS_MOD)
                 .map_err(anyhow::Error::from)?;
-            fs::write(instructions_dir.join("initialize.rs"), INSTRUCTION_INITIALIZE)
-                .map_err(anyhow::Error::from)?;
+            fs::write(
+                instructions_dir.join("initialize.rs"),
+                INSTRUCTION_INITIALIZE,
+            )
+            .map_err(anyhow::Error::from)?;
         }
         Template::Full => {
             let instructions_dir = src.join("instructions");
             fs::create_dir_all(&instructions_dir).map_err(anyhow::Error::from)?;
             fs::write(instructions_dir.join("mod.rs"), INSTRUCTIONS_MOD)
                 .map_err(anyhow::Error::from)?;
-            fs::write(instructions_dir.join("initialize.rs"), INSTRUCTION_INITIALIZE)
-                .map_err(anyhow::Error::from)?;
+            fs::write(
+                instructions_dir.join("initialize.rs"),
+                INSTRUCTION_INITIALIZE,
+            )
+            .map_err(anyhow::Error::from)?;
             fs::write(src.join("state.rs"), STATE_RS).map_err(anyhow::Error::from)?;
             fs::write(src.join("events.rs"), EVENTS_RS).map_err(anyhow::Error::from)?;
         }

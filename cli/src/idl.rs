@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use quasar_idl::{codegen, codegen_ts, parser};
+use quasar_idl::{codegen, parser};
 
 use crate::error::CliResult;
 use crate::IdlCommand;
@@ -17,15 +17,14 @@ pub fn run(command: IdlCommand) -> CliResult {
     let parsed = parser::parse_program(crate_path);
 
     // Generate client code before build_idl consumes parsed
-    let client_code = codegen::generate_client(&parsed);
-    let client_cargo_toml =
-        codegen::generate_cargo_toml(&parsed.program_name, &parsed.version);
+    let client_code = codegen::rust::generate_client(&parsed);
+    let client_cargo_toml = codegen::rust::generate_cargo_toml(&parsed.program_name, &parsed.version);
 
     // Build the IDL
     let idl = parser::build_idl(parsed);
 
     // Generate TypeScript client from IDL
-    let ts_code = codegen_ts::generate_ts_client(&idl);
+    let ts_code = codegen::typescript::generate_ts_client(&idl);
 
     // Write IDL JSON to target/idl/
     let idl_dir = PathBuf::from("target").join("idl");

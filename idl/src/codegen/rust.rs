@@ -1,7 +1,7 @@
-use quasar_idl::parser::accounts::RawAccountField;
-use quasar_idl::parser::helpers;
-use quasar_idl::parser::ParsedProgram;
-use quasar_idl::types::IdlType;
+use crate::parser::accounts::RawAccountField;
+use crate::parser::helpers;
+use crate::parser::ParsedProgram;
+use crate::types::IdlType;
 
 /// Generate Cargo.toml content for the standalone client crate.
 pub fn generate_cargo_toml(name: &str, version: &str) -> String {

@@ -15,6 +15,6 @@
 //! ```bash
 //! cargo run -p quasar-idl -- path/to/program/crate
 //! ```
-
+pub mod codegen;
 pub mod parser;
 pub mod types;
