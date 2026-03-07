@@ -5,6 +5,7 @@ use solana_address::Address;
 // Helpers
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 fn build_token_account_bytes(
     mint: &Address,
     owner: &Address,

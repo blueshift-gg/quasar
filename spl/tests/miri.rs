@@ -145,6 +145,7 @@ impl AccountBuffer {
 /// Layout: mint(32) | owner(32) | amount(8) | delegate_flag(4) | delegate(32) |
 ///         state(1) | is_native(4) | native_amount(8) | delegated_amount(8) |
 ///         close_authority_flag(4) | close_authority(32)
+#[allow(clippy::too_many_arguments)]
 fn build_token_data(
     mint: [u8; 32],
     owner: [u8; 32],

@@ -157,6 +157,7 @@ impl AccountBuffer {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn init_with_executable(
         &mut self,
         address: [u8; 32],
@@ -2305,7 +2306,7 @@ fn adversarial_remaining_all_duplicates() {
 
     let views: Vec<_> = remaining.iter().collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(views.len(), 8);
-    let first_addr = views[0].address().clone();
+    let first_addr = *views[0].address();
     for v in &views[1..] {
         assert_eq!(v.address(), &first_addr);
     }
