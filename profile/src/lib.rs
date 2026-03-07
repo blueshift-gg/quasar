@@ -25,12 +25,21 @@ const SERVER_HOST: &str = "127.0.0.1";
 const SERVER_PORT: u16 = 7777;
 
 pub struct ProfileCommand {
-    pub elf_path: PathBuf,
+    pub elf_path: Option<PathBuf>,
+    pub diff_program: Option<String>,
     pub share: bool,
 }
 
 pub fn run(command: ProfileCommand) {
-    let elf_path = command.elf_path;
+    if let Some(program) = command.diff_program {
+        run_diff(program);
+        return;
+    }
+
+    let elf_path = command.elf_path.unwrap_or_else(|| {
+        eprintln!("Error: missing ELF path. Use `quasar profile <PATH_TO_ELF_SO>`.");
+        std::process::exit(1);
+    });
     let public_gist = command.share;
 
     if !elf_path.exists() {
@@ -106,7 +115,7 @@ pub fn run(command: ProfileCommand) {
     let now = chrono::Utc::now();
     let timestamp = now.format("%Y-%m-%d-%H-%M-%S-%3f");
 
-    let file_name = format!("{}__{}.json", program_name, timestamp);
+    let file_name = format!("{}__{}.profile.json", program_name, timestamp);
     let local_output_path = profiles_dir.join(&file_name);
 
     output::write_json(
@@ -131,8 +140,18 @@ pub fn run(command: ProfileCommand) {
     }
 
     println!(
-        "http://{}:{}/frontend/?local={}",
-        SERVER_HOST, SERVER_PORT, file_name
+        "http://{}:{}/?program={}",
+        SERVER_HOST, SERVER_PORT, program_name
+    );
+}
+
+fn run_diff(program: String) {
+    let profile_root = profile_web_root();
+    ensure_frontend_assets(&profile_root);
+    ensure_local_server_running(&profile_root);
+    println!(
+        "http://{}:{}/?program={}&view=diff",
+        SERVER_HOST, SERVER_PORT, program
     );
 }
 
@@ -146,13 +165,13 @@ fn ensure_frontend_assets(profile_root: &Path) {
         std::process::exit(1);
     });
 
-    let index_path = profile_root.join("frontend").join("index.html");
-    if !index_path.exists() {
+    let root_index = profile_root.join("index.html");
+    if !root_index.exists() {
         eprintln!(
             "Error: missing frontend artifact at {}",
-            index_path.display()
+            root_index.display()
         );
-        eprintln!("Add the compiled single-file frontend index.html to quasar/profile/frontend/.");
+        eprintln!("Add the compiled single-file frontend index.html to quasar/profile/.");
         std::process::exit(1);
     }
 
