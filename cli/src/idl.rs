@@ -18,7 +18,8 @@ pub fn run(command: IdlCommand) -> CliResult {
 
     // Generate client code before build_idl consumes parsed
     let client_code = codegen::rust::generate_client(&parsed);
-    let client_cargo_toml = codegen::rust::generate_cargo_toml(&parsed.program_name, &parsed.version);
+    let client_cargo_toml =
+        codegen::rust::generate_cargo_toml(&parsed.program_name, &parsed.version);
 
     // Build the IDL
     let idl = parser::build_idl(parsed);
