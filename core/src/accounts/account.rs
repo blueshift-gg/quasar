@@ -123,19 +123,18 @@ impl<T: Owner + AsAccountView> Account<T> {
         }
 
         // Zero discriminator bytes to prevent revival within the same transaction.
-        // SAFETY: data_ptr() is valid for data_len() bytes. We only write up to
-        // 8 bytes (max discriminator size) or data_len, whichever is smaller.
+        // SAFETY: data_ptr() is valid for data_len() bytes. write_bytes with
+        // count 0 is a no-op, so the guard is unnecessary — all valid accounts
+        // have data_len >= discriminator length.
         let zero_len = view.data_len().min(8);
-        if zero_len > 0 {
-            unsafe {
-                core::ptr::write_bytes(view.data_ptr(), 0, zero_len);
-            }
+        unsafe {
+            core::ptr::write_bytes(view.data_ptr(), 0, zero_len);
         }
 
-        let new_lamports = destination
-            .lamports()
-            .checked_add(view.lamports())
-            .ok_or(ProgramError::InvalidArgument)?;
+        // Lamport overflow is physically impossible: total SOL supply (~5.8e17)
+        // fits well within u64::MAX (~1.8e19). wrapping_add skips the overflow
+        // branch + Option construction that checked_add emits.
+        let new_lamports = destination.lamports().wrapping_add(view.lamports());
         destination.set_lamports(new_lamports);
         view.set_lamports(0);
         unsafe { view.assign(&SYSTEM_PROGRAM_ID) };

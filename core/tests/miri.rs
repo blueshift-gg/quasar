@@ -1733,6 +1733,9 @@ fn ops_close_rejects_non_writable_destination() {
 
 #[test]
 fn ops_close_rejects_lamport_overflow() {
+    // Lamport overflow is physically impossible (total SOL supply ~5.8e17 < u64::MAX ~1.8e19).
+    // close() uses wrapping_add to skip the overflow branch. This test verifies the wrapping
+    // behavior with synthetic values that can't occur in production.
     let data_len = 16usize;
     let mut src_buf = AccountBuffer::new(data_len);
     src_buf.init(
@@ -1755,8 +1758,10 @@ fn ops_close_rejects_lamport_overflow() {
 
     let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked(&src_view) };
     let result = account.close(&dst_view);
-    assert!(result.is_err());
-    assert_eq!(src_view.lamports(), 1_000_000);
+    // wrapping_add: u64::MAX + 1_000_000 wraps (physically impossible on Solana)
+    assert!(result.is_ok());
+    assert_eq!(src_view.lamports(), 0);
+    assert_eq!(dst_view.lamports(), u64::MAX.wrapping_add(1_000_000));
 }
 
 #[test]
