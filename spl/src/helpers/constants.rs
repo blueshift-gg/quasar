@@ -11,15 +11,15 @@ pub(crate) const TOKEN_2022_BYTES: [u8; 32] = [
 ];
 
 /// SPL Token program address.
-#[cfg(target_arch = "bpf")]
+#[cfg(any(target_os = "solana", target_arch = "bpf"))]
 pub static SPL_TOKEN_ID: Address = Address::new_from_array(SPL_TOKEN_BYTES);
-#[cfg(not(target_arch = "bpf"))]
+#[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
 pub const SPL_TOKEN_ID: Address = Address::new_from_array(SPL_TOKEN_BYTES);
 
 /// Token-2022 program address.
-#[cfg(target_arch = "bpf")]
+#[cfg(any(target_os = "solana", target_arch = "bpf"))]
 pub static TOKEN_2022_ID: Address = Address::new_from_array(TOKEN_2022_BYTES);
-#[cfg(not(target_arch = "bpf"))]
+#[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
 pub const TOKEN_2022_ID: Address = Address::new_from_array(TOKEN_2022_BYTES);
 
 pub(crate) const ATA_PROGRAM_BYTES: [u8; 32] = [
@@ -28,7 +28,7 @@ pub(crate) const ATA_PROGRAM_BYTES: [u8; 32] = [
 ];
 
 /// Associated Token Account program address.
-#[cfg(target_arch = "bpf")]
+#[cfg(any(target_os = "solana", target_arch = "bpf"))]
 pub static ATA_PROGRAM_ID: Address = Address::new_from_array(ATA_PROGRAM_BYTES);
-#[cfg(not(target_arch = "bpf"))]
+#[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
 pub const ATA_PROGRAM_ID: Address = Address::new_from_array(ATA_PROGRAM_BYTES);

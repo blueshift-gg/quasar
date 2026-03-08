@@ -29,7 +29,7 @@ impl<'info> ExecuteTransfer<'info> {
         let stored_signers = self.config.signers();
         let threshold = self.config.threshold;
 
-        let mut approvals = 0u8;
+        let mut approvals = 0u32;
         for account in remaining.iter() {
             let account = account?;
             if !account.is_signer() {
@@ -38,13 +38,13 @@ impl<'info> ExecuteTransfer<'info> {
             let addr = account.address();
             for stored in stored_signers {
                 if addr == stored {
-                    approvals += 1;
+                    approvals = approvals.wrapping_add(1);
                     break;
                 }
             }
         }
 
-        if approvals < threshold {
+        if approvals < threshold as u32 {
             return Err(ProgramError::MissingRequiredSignature);
         }
 

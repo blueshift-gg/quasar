@@ -121,14 +121,18 @@ pub fn based_try_find_program_address(
         // stored in sptr[n] points to bump_arr for the duration.
         unsafe { sptr.add(n).write(core::slice::from_raw_parts(bump_ptr, 1)) };
 
-        let mut bump = u8::MAX;
+        // Use u64 for the loop counter to avoid per-iteration `and64 r, 0xff`
+        // zero-extension the compiler emits for u8 arithmetic on SBF.
+        let mut bump: u64 = u8::MAX as u64;
+        // Pre-build the input slice once — only the bump byte changes per iteration.
+        // SAFETY: Elements 0..n+3 are initialized: 0..n by the loop above,
+        // n by bump write, n+1 and n+2 by program_id/marker writes.
+        let input = unsafe { core::slice::from_raw_parts(sptr, n + 3) };
+        // Allocate the hash buffer once outside the loop.
+        let mut hash = core::mem::MaybeUninit::<[u8; 32]>::uninit();
         loop {
-            // SAFETY: bump_ptr points to bump_arr[0] which is valid for writes.
-            unsafe { bump_ptr.write(bump) };
-            // SAFETY: Elements 0..n+3 are initialized: 0..n by the loop above,
-            // n by bump write, n+1 and n+2 by program_id/marker writes.
-            let input = unsafe { core::slice::from_raw_parts(sptr, n + 3) };
-            let mut hash = core::mem::MaybeUninit::<[u8; 32]>::uninit();
+            // SAFETY: bump is in [0, 255], the cast is lossless.
+            unsafe { bump_ptr.write(bump as u8) };
             // SAFETY: On SBF, &[u8] has layout (*const u8, u64) — identical to
             // sol_sha256's SolBytes. The cast reinterprets the slice-of-fat-pointers
             // as the byte array the syscall expects. Technique from Dean Little's
@@ -140,20 +144,20 @@ pub fn based_try_find_program_address(
                     hash.as_mut_ptr() as *mut u8,
                 );
             }
-            // SAFETY: sol_sha256 writes exactly 32 bytes to the output buffer,
-            // fully initializing hash.
-            let hash_bytes = unsafe { hash.assume_init() };
-            // SAFETY: hash_bytes is a valid 32-byte array. sol_curve_validate_point
-            // reads 32 bytes from the pointer. Returns 0 if on curve, non-zero if not.
+            // SAFETY: sol_sha256 writes exactly 32 bytes to hash. We pass the
+            // pointer directly to sol_curve_validate_point which only reads it.
+            // Returns 0 if on curve, non-zero if off curve (valid PDA).
             let on_curve = unsafe {
                 sol_curve_validate_point(
                     CURVE25519_EDWARDS,
-                    hash_bytes.as_ptr(),
+                    hash.as_ptr() as *const u8,
                     core::ptr::null_mut(),
                 )
             };
             if on_curve != 0 {
-                return Ok((Address::new_from_array(hash_bytes), bump));
+                // SAFETY: sol_sha256 fully initialized the 32-byte buffer.
+                let hash_bytes = unsafe { hash.assume_init() };
+                return Ok((Address::new_from_array(hash_bytes), bump as u8));
             }
             if bump == 0 {
                 break;

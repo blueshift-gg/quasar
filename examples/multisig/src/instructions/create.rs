@@ -20,7 +20,8 @@ impl<'info> Create<'info> {
         bumps: &CreateBumps,
         remaining: RemainingAccounts,
     ) -> Result<(), ProgramError> {
-        let mut addrs = [Address::default(); 10];
+        let mut addrs = core::mem::MaybeUninit::<[Address; 10]>::uninit();
+        let addrs_ptr = addrs.as_mut_ptr() as *mut Address;
         let mut count = 0usize;
 
         for account in remaining.iter() {
@@ -31,20 +32,24 @@ impl<'info> Create<'info> {
             if !account.is_signer() {
                 return Err(ProgramError::MissingRequiredSignature);
             }
-            addrs[count] = *account.address();
-            count += 1;
+            // SAFETY: count < 10, so addrs_ptr.add(count) is within the 10-element array.
+            unsafe { core::ptr::write(addrs_ptr.add(count), *account.address()) };
+            count = count.wrapping_add(1);
         }
 
         if threshold == 0 || threshold as usize > count {
             return Err(ProgramError::InvalidArgument);
         }
 
+        // SAFETY: Elements 0..count were initialized by the loop above.
+        let signers = unsafe { core::slice::from_raw_parts(addrs_ptr, count) };
+
         self.config.set_inner(
             *self.creator.address(),
             threshold,
             bumps.config,
             "",
-            &addrs[..count],
+            signers,
             self.creator.to_account_view(),
             Some(&**self.rent),
         )

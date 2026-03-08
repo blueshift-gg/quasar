@@ -241,7 +241,7 @@ impl Iterator for RemainingIter<'_> {
             let copy = core::ptr::read(&view);
             core::ptr::write(self.cache_mut_ptr().add(self.index), copy);
         }
-        self.index += 1;
+        self.index = self.index.wrapping_add(1);
         Some(Ok(view))
     }
 }
