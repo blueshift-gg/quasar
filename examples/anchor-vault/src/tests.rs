@@ -37,8 +37,7 @@ fn test_deposit() {
     let user = Address::new_unique();
     let user_account = Account::new(10_000_000_000, 0, &system_program);
 
-    let (vault, _vault_bump) =
-        Address::find_program_address(&[b"vault", user.as_ref()], &pid);
+    let (vault, _vault_bump) = Address::find_program_address(&[b"vault", user.as_ref()], &pid);
     let vault_account = Account::new(0, 0, &system_program);
 
     let deposit_amount: u64 = 1_000_000_000;
@@ -93,8 +92,7 @@ fn test_withdraw() {
     let user = Address::new_unique();
     let user_account = Account::new(10_000_000_000, 0, &system_program);
 
-    let (vault, _vault_bump) =
-        Address::find_program_address(&[b"vault", user.as_ref()], &pid);
+    let (vault, _vault_bump) = Address::find_program_address(&[b"vault", user.as_ref()], &pid);
     let vault_account = Account::new(0, 0, &pid);
 
     let deposit_amount: u64 = 1_000_000_000;
@@ -132,10 +130,7 @@ fn test_withdraw() {
 
     let withdraw_ix = Instruction {
         program_id: pid,
-        accounts: vec![
-            AccountMeta::new(user, true),
-            AccountMeta::new(vault, false),
-        ],
+        accounts: vec![AccountMeta::new(user, true), AccountMeta::new(vault, false)],
         data: withdraw_ix_data(withdraw_amount),
     };
 

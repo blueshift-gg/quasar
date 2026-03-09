@@ -54,10 +54,7 @@ pub fn verify_program_address(
             );
         }
 
-        if crate::keys_eq(
-            unsafe { &*(hash.as_ptr() as *const Address) },
-            expected,
-        ) {
+        if crate::keys_eq(unsafe { &*(hash.as_ptr() as *const Address) }, expected) {
             Ok(())
         } else {
             Err(ProgramError::InvalidSeeds)
