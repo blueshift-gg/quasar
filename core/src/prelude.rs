@@ -43,6 +43,6 @@ pub use quasar_derive::{
 
 // External types
 pub use solana_account_view::AccountView;
-pub use solana_address::{declare_id, Address};
+pub use solana_address::{address, declare_id, Address};
 pub use solana_program_error::ProgramError;
 pub use solana_program_log::log;

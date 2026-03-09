@@ -2129,7 +2129,6 @@ dependencies = [
  "mollusk-svm",
  "quasar-core",
  "solana-account",
- "solana-address 2.2.0",
  "solana-instruction",
 ]
 

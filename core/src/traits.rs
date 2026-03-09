@@ -24,9 +24,9 @@
 //!
 //! **Events** — `Event` supports dual emission (log-based and self-CPI).
 
-use solana_account_view::AccountView;
-use solana_address::Address;
-use solana_program_error::ProgramError;
+use crate::prelude::AccountView;
+use crate::prelude::Address;
+use crate::prelude::ProgramError;
 
 /// Construct a typed account wrapper from a raw [`AccountView`].
 ///

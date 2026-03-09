@@ -35,7 +35,6 @@
 //! - [Repository README](https://github.com/nickkuk/quasar) — full guide and examples
 
 #![no_std]
-
 pub use quasar_core::*;
 
 #[cfg(feature = "spl")]
