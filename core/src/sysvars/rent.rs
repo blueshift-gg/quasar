@@ -1,10 +1,10 @@
 use crate::impl_sysvar_get;
 use crate::pod::PodU64;
 use {
+    crate::prelude::Address,
+    crate::prelude::ProgramError,
     crate::sysvars::Sysvar,
     core::mem::{align_of, size_of},
-    solana_address::Address,
-    solana_program_error::ProgramError,
 };
 
 const RENT_ID: Address = Address::new_from_array([

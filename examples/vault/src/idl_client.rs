@@ -1,5 +1,5 @@
 use alloc::vec;
-use solana_address::Address;
+use quasar_core::prelude::*;
 use solana_instruction::{AccountMeta, Instruction};
 
 pub struct DepositInstruction {

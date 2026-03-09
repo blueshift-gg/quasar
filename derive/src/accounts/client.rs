@@ -20,7 +20,7 @@ pub(super) fn generate_client_macro(
         .iter()
         .map(|f| {
             let field_name = f.ident.as_ref().unwrap().to_string();
-            format!("pub {}: solana_address::Address,", field_name)
+            format!("pub {}: quasar_core::prelude::Address,", field_name)
         })
         .collect::<Vec<_>>()
         .join("\n                ");

@@ -120,7 +120,7 @@ fn map_idl_type(ty: &IdlType) -> Result<TypeInfo, String> {
                 is_reference: false,
             }),
             "pubkey" => Ok(TypeInfo {
-                rust_type: quote! { &solana_address::Address },
+                rust_type: quote! { &quasar_core::prelude::Address },
                 byte_size: 32,
                 is_reference: true,
             }),
@@ -209,7 +209,7 @@ fn generate_instruction(ix: &IdlInstruction) -> Result<TokenStream2, String> {
         .iter()
         .map(|a| {
             let name = Ident::new(&to_snake_case(&a.name), Span::call_site());
-            quote! { #name: &'a solana_account_view::AccountView }
+            quote! { #name: &'a quasar_core::prelude::AccountView }
         })
         .collect();
 
@@ -265,7 +265,7 @@ fn generate_instruction(ix: &IdlInstruction) -> Result<TokenStream2, String> {
     let free_fn = quote! {
         #[inline(always)]
         pub fn #fn_name<'a>(
-            __program: &'a solana_account_view::AccountView,
+            __program: &'a quasar_core::prelude::AccountView,
             #(#free_acct_params,)*
             #(#arg_params,)*
         ) -> quasar_core::cpi::CpiCall<'a, #acct_count, #data_size> {
@@ -459,7 +459,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
     // Generate address bytes from IDL
     let address_str = &idl.address;
     let address_tokens = quote! {
-        solana_address::address!(#address_str)
+        quasar_core::prelude::address!(#address_str)
     };
 
     // Generate instruction code (free functions + method fragments)
@@ -490,7 +490,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
             .iter()
             .map(|a| {
                 let name = Ident::new(&to_snake_case(&a.name), Span::call_site());
-                quote! { #name: &'a solana_account_view::AccountView }
+                quote! { #name: &'a quasar_core::prelude::AccountView }
             })
             .collect();
 
@@ -533,7 +533,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         free_functions.push(quote! {
             #[inline(always)]
             pub fn #fn_name<'a>(
-                __program: &'a solana_account_view::AccountView,
+                __program: &'a quasar_core::prelude::AccountView,
                 #(#free_acct_params,)*
                 #(#arg_params,)*
             ) -> quasar_core::cpi::CpiCall<'a, #acct_count, #data_size> {
@@ -591,7 +591,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
 
     let output = quote! {
         pub mod #mod_name {
-            pub const ID: solana_address::Address = #address_tokens;
+            pub const ID: quasar_core::prelude::Address = #address_tokens;
 
             quasar_core::define_account!(
                 pub struct #program_type_name =>
@@ -599,7 +599,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
             );
 
             impl quasar_core::traits::Id for #program_type_name {
-                const ID: solana_address::Address = ID;
+                const ID: quasar_core::prelude::Address = ID;
             }
 
             #(#free_functions)*

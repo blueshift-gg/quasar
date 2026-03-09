@@ -1,9 +1,10 @@
 extern crate std;
 
+use quasar_core::prelude::*;
+
 use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
 
 use solana_account::Account;
-use solana_address::Address;
 use solana_instruction::Instruction;
 
 use crate::idl_client::{DepositInstruction, WithdrawInstruction};
