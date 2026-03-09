@@ -61,7 +61,6 @@ pub trait InitAssociatedToken: AsAccountView + Sized {
         ata_program: &AssociatedTokenProgram,
     ) -> Result<(), ProgramError> {
         let view = self.to_account_view();
-        // SAFETY: view.owner() reads the 32-byte owner from SVM account metadata.
         if quasar_core::is_system_program(unsafe { view.owner() }) {
             create_idempotent(
                 ata_program,

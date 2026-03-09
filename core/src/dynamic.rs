@@ -86,8 +86,6 @@ impl<'a, const PREFIX_BYTES: usize> RawEncoded<'a, PREFIX_BYTES> {
     #[inline(always)]
     pub fn data(&self) -> &'a [u8] {
         const { assert!(PREFIX_BYTES <= 4) };
-        // SAFETY: RawEncoded is constructed from account data validated at parse
-        // time to be >= PREFIX_BYTES in length. PREFIX_BYTES <= 4 by const assert.
         unsafe { self.bytes.get_unchecked(PREFIX_BYTES..) }
     }
 
@@ -95,9 +93,6 @@ impl<'a, const PREFIX_BYTES: usize> RawEncoded<'a, PREFIX_BYTES> {
     #[inline(always)]
     pub fn prefix_value(&self) -> u32 {
         const { assert!(PREFIX_BYTES <= 4) };
-        // SAFETY: RawEncoded is constructed from account data validated at parse
-        // time to be >= PREFIX_BYTES in length. SBF is little-endian so
-        // read_unaligned gives the correct value directly.
         unsafe {
             match PREFIX_BYTES {
                 1 => *self.bytes.get_unchecked(0) as u32,

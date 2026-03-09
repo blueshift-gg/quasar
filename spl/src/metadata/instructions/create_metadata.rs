@@ -37,9 +37,6 @@ pub fn create_metadata_accounts_v3<'a>(
     let mut data = [0u8; 512];
     let mut offset = 0;
 
-    // SAFETY: All writes are within the 512-byte buffer. The check above
-    // enforces name<=32, symbol<=10, uri<=200, so max variable data =
-    // 12 (len prefixes) + 242 (bytes) + 8 (fixed fields) + 1 (disc) = 263.
     unsafe {
         let ptr = data.as_mut_ptr();
 

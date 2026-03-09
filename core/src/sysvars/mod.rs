@@ -21,10 +21,7 @@ pub trait Sysvar: Sized {
     const ID: Address;
 
     /// # Safety
-    ///
-    /// Caller must ensure `bytes.len() >= size_of::<Self>()` and that the data
-    /// represents a valid sysvar. The pointer cast may be misaligned on non-SBF
-    /// targets, but SBF handles unaligned access natively.
+    /// `bytes.len()` must be `>= size_of::<Self>()` with valid sysvar data.
     unsafe fn from_bytes_unchecked(bytes: &[u8]) -> &Self;
 
     fn get() -> Result<Self, ProgramError> {
@@ -39,7 +36,6 @@ macro_rules! impl_sysvar_get {
 
         #[inline(always)]
         unsafe fn from_bytes_unchecked(bytes: &[u8]) -> &Self {
-            // SAFETY: caller guarantees bytes.len() >= size_of::<Self>() and valid data.
             unsafe { &*(bytes.as_ptr() as *const Self) }
         }
 
@@ -49,13 +45,9 @@ macro_rules! impl_sysvar_get {
             let var_addr = var.as_mut_ptr() as *mut _ as *mut u8;
 
             #[cfg(target_os = "solana")]
-            // SAFETY: var_addr points to a MaybeUninit<Self> with sufficient size.
-            // We zero-fill the padding region, then the syscall writes `length` bytes.
-            // On success (result == 0), the full struct is initialized.
             let result = unsafe {
                 let length = core::mem::size_of::<Self>() - $padding;
                 var_addr.add(length).write_bytes(0, $padding);
-
                 solana_define_syscall::definitions::sol_get_sysvar(
                     &$syscall_id as *const _ as *const u8,
                     var_addr,
@@ -66,14 +58,11 @@ macro_rules! impl_sysvar_get {
 
             #[cfg(not(target_os = "solana"))]
             let result = {
-                // SAFETY: var_addr points to a valid MaybeUninit buffer; zero-filling
-                // is always safe and simulates a successful syscall for off-chain tests.
                 unsafe { var_addr.write_bytes(0, core::mem::size_of::<Self>()) };
                 core::hint::black_box(var_addr as *const _ as u64)
             };
 
             match result {
-                // SAFETY: syscall returned 0 (or we zero-filled off-chain), so var is initialized.
                 0 => Ok(unsafe { var.assume_init() }),
                 $crate::sysvars::OFFSET_LENGTH_EXCEEDS_SYSVAR => Err(ProgramError::InvalidArgument),
                 $crate::sysvars::SYSVAR_NOT_FOUND => Err(ProgramError::UnsupportedSysvar),
@@ -84,10 +73,7 @@ macro_rules! impl_sysvar_get {
 }
 
 /// # Safety
-///
-/// `dst` must point to a buffer of at least `len` bytes. `sysvar_id` must be
-/// a valid sysvar address. The caller is responsible for ensuring the buffer
-/// is large enough to hold the requested sysvar data.
+/// `dst` must point to a buffer of at least `len` bytes.
 #[inline]
 pub unsafe fn get_sysvar_unchecked(
     dst: *mut u8,

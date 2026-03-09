@@ -18,8 +18,6 @@ pub fn create_master_edition_v3<'a>(
     rent: &'a AccountView,
     max_supply: Option<u64>,
 ) -> CpiCall<'a, 9, 10> {
-    // SAFETY: All 10 bytes are written before assume_init.
-    // Layout: discriminator(1) + Option<u64>(1 tag + 8 value) = 10 bytes
     let data = unsafe {
         let mut buf = core::mem::MaybeUninit::<[u8; 10]>::uninit();
         let ptr = buf.as_mut_ptr() as *mut u8;

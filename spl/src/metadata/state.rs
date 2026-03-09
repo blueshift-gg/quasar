@@ -114,9 +114,6 @@ impl AccountCheck for MetadataAccount {
         if view.data_len() < MetadataPrefix::LEN {
             return Err(ProgramError::AccountDataTooSmall);
         }
-        // SAFETY: data_len >= 65 checked above. MetadataPrefix is #[repr(C)]
-        // with alignment 1. The pointer is to the start of account data.
-        // SAFETY: data_len >= 65 checked above. Reading one byte from data start.
         let key = unsafe { *view.data_ptr() };
         if key != KEY_METADATA_V1 {
             return Err(ProgramError::InvalidAccountData);
@@ -128,7 +125,6 @@ impl AccountCheck for MetadataAccount {
 impl CheckOwner for MetadataAccount {
     #[inline(always)]
     fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
-        // SAFETY: view.owner() reads the 32-byte owner from SVM account metadata.
         if !quasar_core::keys_eq(unsafe { view.owner() }, &METADATA_PROGRAM_ID) {
             return Err(ProgramError::IllegalOwner);
         }
@@ -141,15 +137,11 @@ impl ZeroCopyDeref for MetadataAccount {
 
     #[inline(always)]
     fn deref_from(view: &AccountView) -> &Self::Target {
-        // SAFETY: AccountCheck validates data_len >= 65 and key == MetadataV1.
-        // MetadataPrefix is #[repr(C)] alignment 1, cast from data start.
         unsafe { &*(view.data_ptr() as *const MetadataPrefix) }
     }
 
     #[inline(always)]
     fn deref_from_mut(view: &AccountView) -> &mut Self::Target {
-        // SAFETY: Same as deref_from. AccountView uses interior mutability
-        // through raw pointers to SVM account memory.
         unsafe { &mut *(view.data_ptr() as *mut MetadataPrefix) }
     }
 }
@@ -174,7 +166,6 @@ impl AccountCheck for MasterEditionAccount {
         if view.data_len() < MasterEditionPrefix::LEN {
             return Err(ProgramError::AccountDataTooSmall);
         }
-        // SAFETY: data_len >= 18 checked above. Reading one byte from data start.
         let key = unsafe { *view.data_ptr() };
         if key != KEY_MASTER_EDITION_V2 {
             return Err(ProgramError::InvalidAccountData);
@@ -186,7 +177,6 @@ impl AccountCheck for MasterEditionAccount {
 impl CheckOwner for MasterEditionAccount {
     #[inline(always)]
     fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
-        // SAFETY: view.owner() reads the 32-byte owner from SVM account metadata.
         if !quasar_core::keys_eq(unsafe { view.owner() }, &METADATA_PROGRAM_ID) {
             return Err(ProgramError::IllegalOwner);
         }
@@ -199,14 +189,11 @@ impl ZeroCopyDeref for MasterEditionAccount {
 
     #[inline(always)]
     fn deref_from(view: &AccountView) -> &Self::Target {
-        // SAFETY: AccountCheck validates data_len >= 18 and key == MasterEditionV2.
-        // MasterEditionPrefix is #[repr(C)] alignment 1, cast from data start.
         unsafe { &*(view.data_ptr() as *const MasterEditionPrefix) }
     }
 
     #[inline(always)]
     fn deref_from_mut(view: &AccountView) -> &mut Self::Target {
-        // SAFETY: Same as deref_from. AccountView uses interior mutability.
         unsafe { &mut *(view.data_ptr() as *mut MasterEditionPrefix) }
     }
 }

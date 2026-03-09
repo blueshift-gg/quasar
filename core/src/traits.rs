@@ -175,8 +175,6 @@ pub trait CheckOwner {
 impl<T: Owner> CheckOwner for T {
     #[inline(always)]
     fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
-        // SAFETY: owner() returns &Address from the SVM buffer. Called during
-        // account parsing before any handler runs.
         if !crate::keys_eq(unsafe { view.owner() }, &T::OWNER) {
             return Err(ProgramError::IllegalOwner);
         }

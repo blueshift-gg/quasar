@@ -68,8 +68,6 @@
 /// CPI-based `TokenClose` trait.
 macro_rules! impl_single_owner {
     ($ty:ty, $id:expr, $target:ty) => {
-        // SAFETY: $ty is #[repr(transparent)] over AccountView, so
-        // &AccountView can be transmuted to &$ty without layout mismatch.
         unsafe impl StaticView for $ty {}
 
         impl AsAccountView for $ty {
@@ -92,8 +90,6 @@ macro_rules! impl_single_owner {
         impl CheckOwner for $ty {
             #[inline(always)]
             fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
-                // SAFETY: view.owner() reads the 32-byte owner field from SVM
-                // account metadata. The pointer is valid for the account's lifetime.
                 if !quasar_core::keys_eq(unsafe { view.owner() }, &$id) {
                     return Err(ProgramError::IllegalOwner);
                 }
@@ -106,8 +102,6 @@ macro_rules! impl_single_owner {
 
             #[inline(always)]
             fn deref(&self) -> &Self::Target {
-                // SAFETY: AccountCheck::check verified data_len >= $target::LEN.
-                // $target is #[repr(C)] with alignment 1, so the cast is sound.
                 unsafe { &*(self.__view.data_ptr() as *const $target) }
             }
         }
@@ -115,8 +109,6 @@ macro_rules! impl_single_owner {
         impl core::ops::DerefMut for $ty {
             #[inline(always)]
             fn deref_mut(&mut self) -> &mut Self::Target {
-                // SAFETY: Same as Deref — bounds checked during account parsing.
-                // Mutation is safe because $ty holds &mut AccountView.
                 unsafe { &mut *(self.__view.data_ptr() as *mut $target) }
             }
         }
@@ -126,15 +118,11 @@ macro_rules! impl_single_owner {
 
             #[inline(always)]
             fn deref_from(view: &AccountView) -> &Self::Target {
-                // SAFETY: Caller (account parsing) already verified data_len >= $target::LEN.
-                // $target is #[repr(C)] with alignment 1.
                 unsafe { &*(view.data_ptr() as *const $target) }
             }
 
             #[inline(always)]
             fn deref_from_mut(view: &AccountView) -> &mut Self::Target {
-                // SAFETY: Same as deref_from. AccountView uses interior mutability
-                // through raw pointers to SVM account memory.
                 unsafe { &mut *(view.data_ptr() as *mut $target) }
             }
         }
