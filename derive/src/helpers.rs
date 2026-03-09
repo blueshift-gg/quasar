@@ -30,24 +30,26 @@ impl PrefixType {
     }
 
     /// Expression to read the inline prefix from `__data` at `__offset` as usize.
+    ///
+    /// Uses `read_unaligned` for u16/u32 prefixes — SBF is little-endian so
+    /// a single unaligned load replaces the multi-instruction byte reassembly
+    /// that `from_le_bytes([data[i], data[i+1], ...])` compiles to.
     pub fn gen_read_len(&self) -> proc_macro2::TokenStream {
         match self {
             PrefixType::U8 => quote! { __data[__offset] as usize },
             PrefixType::U16 => quote! {
-                u16::from_le_bytes([__data[__offset], __data[__offset + 1]]) as usize
+                unsafe { core::ptr::read_unaligned(__data.as_ptr().add(__offset) as *const u16) } as usize
             },
             PrefixType::U32 => quote! {
-                u32::from_le_bytes([
-                    __data[__offset],
-                    __data[__offset + 1],
-                    __data[__offset + 2],
-                    __data[__offset + 3],
-                ]) as usize
+                unsafe { core::ptr::read_unaligned(__data.as_ptr().add(__offset) as *const u32) } as usize
             },
         }
     }
 
     /// Statement to write a usize value as the inline prefix to `__data` at `__offset`.
+    ///
+    /// Uses `write_unaligned` for u16/u32 prefixes — single store instead of
+    /// the multi-instruction byte decomposition from `to_le_bytes()` + per-byte writes.
     pub fn gen_write_prefix(
         &self,
         value_expr: &proc_macro2::TokenStream,
@@ -57,20 +59,10 @@ impl PrefixType {
                 __data[__offset] = #value_expr as u8;
             },
             PrefixType::U16 => quote! {
-                {
-                    let __pb = (#value_expr as u16).to_le_bytes();
-                    __data[__offset] = __pb[0];
-                    __data[__offset + 1] = __pb[1];
-                }
+                unsafe { core::ptr::write_unaligned(__data.as_mut_ptr().add(__offset) as *mut u16, #value_expr as u16) };
             },
             PrefixType::U32 => quote! {
-                {
-                    let __pb = (#value_expr as u32).to_le_bytes();
-                    __data[__offset] = __pb[0];
-                    __data[__offset + 1] = __pb[1];
-                    __data[__offset + 2] = __pb[2];
-                    __data[__offset + 3] = __pb[3];
-                }
+                unsafe { core::ptr::write_unaligned(__data.as_mut_ptr().add(__offset) as *mut u32, #value_expr as u32) };
             },
         }
     }

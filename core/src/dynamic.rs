@@ -96,22 +96,13 @@ impl<'a, const PREFIX_BYTES: usize> RawEncoded<'a, PREFIX_BYTES> {
     pub fn prefix_value(&self) -> u32 {
         const { assert!(PREFIX_BYTES <= 4) };
         // SAFETY: RawEncoded is constructed from account data validated at parse
-        // time to be >= PREFIX_BYTES in length. PREFIX_BYTES is const-generic
-        // and <= 4 (enforced by const assert). Indices 0..PREFIX_BYTES are
-        // within bounds.
+        // time to be >= PREFIX_BYTES in length. SBF is little-endian so
+        // read_unaligned gives the correct value directly.
         unsafe {
             match PREFIX_BYTES {
                 1 => *self.bytes.get_unchecked(0) as u32,
-                2 => {
-                    u16::from_le_bytes([*self.bytes.get_unchecked(0), *self.bytes.get_unchecked(1)])
-                        as u32
-                }
-                4 => u32::from_le_bytes([
-                    *self.bytes.get_unchecked(0),
-                    *self.bytes.get_unchecked(1),
-                    *self.bytes.get_unchecked(2),
-                    *self.bytes.get_unchecked(3),
-                ]),
+                2 => core::ptr::read_unaligned(self.bytes.as_ptr() as *const u16) as u32,
+                4 => core::ptr::read_unaligned(self.bytes.as_ptr() as *const u32),
                 _ => core::hint::unreachable_unchecked(),
             }
         }

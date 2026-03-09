@@ -130,17 +130,18 @@ macro_rules! heap_alloc {
                     let pos_ptr = self.start as *mut usize;
                     let pos = *pos_ptr;
 
-                    let allocation = (pos + layout.align() - 1) & !(layout.align() - 1);
+                    let allocation = (pos.wrapping_add(layout.align() - 1)) & !(layout.align() - 1);
 
                     // Overflow guard: any request > 256 KiB cannot succeed and prevents
                     // allocation + layout.size() from wrapping usize.
+                    let end = allocation.wrapping_add(layout.size());
                     if $crate::utils::hint::unlikely(layout.size() > MAX_HEAP_LENGTH as usize)
-                        || $crate::utils::hint::unlikely(self.end < allocation + layout.size())
+                        || $crate::utils::hint::unlikely(self.end < end)
                     {
                         return core::ptr::null_mut();
                     }
 
-                    *pos_ptr = allocation + layout.size();
+                    *pos_ptr = end;
                     allocation as *mut u8
                 }
 

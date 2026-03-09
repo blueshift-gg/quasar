@@ -40,7 +40,7 @@ const _ASSERT_STRUCT_ALIGN: () = assert!(align_of::<Rent>() == 1);
 impl Rent {
     #[inline(always)]
     fn exemption_threshold_u64(&self) -> u64 {
-        u64::from_le_bytes(self.exemption_threshold)
+        unsafe { core::ptr::read_unaligned(self.exemption_threshold.as_ptr() as *const u64) }
     }
 
     #[inline(always)]
@@ -58,12 +58,12 @@ impl Rent {
         } else if threshold == CURRENT_EXEMPTION_THRESHOLD {
             2 * (ACCOUNT_STORAGE_OVERHEAD + bytes) * lamports_per_byte
         } else {
-            #[cfg(not(target_arch = "bpf"))]
+            #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
             {
                 (((ACCOUNT_STORAGE_OVERHEAD + bytes) * lamports_per_byte) as f64
                     * f64::from_le_bytes(self.exemption_threshold)) as u64
             }
-            #[cfg(target_arch = "bpf")]
+            #[cfg(any(target_os = "solana", target_arch = "bpf"))]
             {
                 2 * (ACCOUNT_STORAGE_OVERHEAD + bytes) * lamports_per_byte
             }
