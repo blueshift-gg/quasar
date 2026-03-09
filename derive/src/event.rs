@@ -86,10 +86,19 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
         impl #name {
             #[inline(always)]
             pub fn emit_log(&self) {
-                let mut buf = [0u8; #total_buf_size];
-                buf[..#disc_len].copy_from_slice(<Self as quasar_core::traits::Event>::DISCRIMINATOR);
-                <Self as quasar_core::traits::Event>::write_data(self, &mut buf[#disc_len..]);
-                quasar_core::log::log_data(&[&buf]);
+                let mut buf = core::mem::MaybeUninit::<[u8; #total_buf_size]>::uninit();
+                let ptr = buf.as_mut_ptr() as *mut u8;
+                unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        <Self as quasar_core::traits::Event>::DISCRIMINATOR.as_ptr(),
+                        ptr,
+                        #disc_len,
+                    );
+                }
+                <Self as quasar_core::traits::Event>::write_data(self, unsafe {
+                    core::slice::from_raw_parts_mut(ptr.add(#disc_len), #data_size)
+                });
+                quasar_core::log::log_data(&[unsafe { buf.assume_init_ref() }]);
             }
         }
     };
