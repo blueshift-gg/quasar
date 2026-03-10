@@ -41,7 +41,7 @@ pub use quasar_derive::{
     account, declare_program, emit_cpi, error_code, event, instruction, program, Accounts,
 };
 
-// External types
+// AccountView
 pub use solana_account_view::AccountView;
 pub use solana_address::{address, declare_id, Address};
 pub use solana_program_error::ProgramError;

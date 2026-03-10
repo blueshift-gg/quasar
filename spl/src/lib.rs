@@ -90,7 +90,7 @@ macro_rules! impl_single_owner {
         impl CheckOwner for $ty {
             #[inline(always)]
             fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
-                if !quasar_core::keys_eq(unsafe { view.owner() }, &$id) {
+                if !quasar_core::keys_eq(view.owner(), &$id) {
                     return Err(ProgramError::IllegalOwner);
                 }
                 Ok(())
@@ -109,7 +109,7 @@ macro_rules! impl_single_owner {
         impl core::ops::DerefMut for $ty {
             #[inline(always)]
             fn deref_mut(&mut self) -> &mut Self::Target {
-                unsafe { &mut *(self.__view.data_ptr() as *mut $target) }
+                unsafe { &mut *(self.__view.data_mut_ptr() as *mut $target) }
             }
         }
 
@@ -122,8 +122,8 @@ macro_rules! impl_single_owner {
             }
 
             #[inline(always)]
-            fn deref_from_mut(view: &AccountView) -> &mut Self::Target {
-                unsafe { &mut *(view.data_ptr() as *mut $target) }
+            fn deref_from_mut(view: &mut AccountView) -> &mut Self::Target {
+                unsafe { &mut *(view.data_mut_ptr() as *mut $target) }
             }
         }
     };

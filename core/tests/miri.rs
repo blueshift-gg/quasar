@@ -76,6 +76,7 @@ use quasar_core::error::QuasarError;
 use quasar_core::pod::*;
 use quasar_core::remaining::RemainingAccounts;
 use quasar_core::traits::*;
+use quasar_core::accounts::account::{resize, set_lamports};
 use solana_address::Address;
 use solana_program_error::ProgramError;
 
@@ -149,7 +150,7 @@ impl AccountBuffer {
             (*raw).is_signer = is_signer as u8;
             (*raw).is_writable = is_writable as u8;
             (*raw).executable = 0;
-            (*raw).resize_delta = 0;
+            (*raw).padding = [0u8; 4];
             (*raw).address = Address::new_from_array(address);
             (*raw).owner = Address::new_from_array(owner);
             (*raw).lamports = lamports;
@@ -240,7 +241,7 @@ impl MultiAccountBuffer {
                     raw.is_signer = *is_signer as u8;
                     raw.is_writable = *is_writable as u8;
                     raw.executable = 0;
-                    raw.resize_delta = 0;
+                    raw.padding = [0u8; 4];
                     raw.address = Address::new_from_array(*address);
                     raw.owner = Address::new_from_array(*owner);
                     raw.lamports = *lamports;
@@ -379,7 +380,7 @@ impl ZeroCopyDeref for TestAccountType {
     }
 
     #[inline(always)]
-    fn deref_from_mut(view: &AccountView) -> &mut Self::Target {
+    fn deref_from_mut(view: &mut AccountView) -> &mut Self::Target {
         unsafe { &mut *(view.data_ptr().add(4) as *mut TestZcData) }
     }
 }
@@ -528,10 +529,10 @@ fn make_tail_buffer(tail_data: &[u8]) -> AccountBuffer {
 fn aliasing_shared_to_mut_cast_read_lamports() {
     let mut buf = AccountBuffer::new(64);
     buf.init([1u8; 32], TEST_OWNER.to_bytes(), 500_000, 64, true, true);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
     <TestAccountType as CheckOwner>::check_owner(&view).unwrap();
     <TestAccountType as AccountCheck>::check(&view).unwrap();
-    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view) };
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view) };
     assert_eq!(account.to_account_view().lamports(), 500_000);
 }
 
@@ -539,10 +540,10 @@ fn aliasing_shared_to_mut_cast_read_lamports() {
 fn aliasing_shared_to_mut_cast_write_lamports() {
     let mut buf = AccountBuffer::new(64);
     buf.init([1u8; 32], TEST_OWNER.to_bytes(), 100, 64, true, true);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
     <TestAccountType as CheckOwner>::check_owner(&view).unwrap();
-    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view) };
-    account.to_account_view().set_lamports(999);
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view) };
+    set_lamports(account.to_account_view(), 999);
     assert_eq!(account.to_account_view().lamports(), 999);
 }
 
@@ -550,10 +551,10 @@ fn aliasing_shared_to_mut_cast_write_lamports() {
 fn aliasing_write_then_read_original_view() {
     let mut buf = AccountBuffer::new(64);
     buf.init([1u8; 32], TEST_OWNER.to_bytes(), 100, 64, true, true);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
     <TestAccountType as CheckOwner>::check_owner(&view).unwrap();
-    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view) };
-    account.to_account_view().set_lamports(777);
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view) };
+    set_lamports(account.to_account_view(), 777);
     assert_eq!(view.lamports(), 777);
 }
 
@@ -562,13 +563,14 @@ fn aliasing_interleaved_50_cycles() {
     let mut buf = AccountBuffer::new(64);
     buf.init([1u8; 32], TEST_OWNER.to_bytes(), 0, 64, true, true);
     let view = unsafe { buf.view() };
+    let mut view2 = unsafe { AccountView::new_unchecked(buf.raw()) };
     <TestAccountType as CheckOwner>::check_owner(&view).unwrap();
-    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view) };
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view2) };
 
     for i in 0u64..50 {
-        account.to_account_view().set_lamports(i);
+        set_lamports(account.to_account_view(), i);
         assert_eq!(view.lamports(), i);
-        view.set_lamports(i + 1000);
+        set_lamports(&view, i + 1000);
         assert_eq!(account.to_account_view().lamports(), i + 1000);
     }
 }
@@ -577,10 +579,11 @@ fn aliasing_interleaved_50_cycles() {
 fn aliasing_triple_ref_view_account_zc() {
     let mut buf = make_zc_buffer();
     let view = unsafe { buf.view() };
+    let mut view2 = unsafe { AccountView::new_unchecked(buf.raw()) };
     <TestAccountType as CheckOwner>::check_owner(&view).unwrap();
-    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view) };
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view2) };
 
-    view.set_lamports(111);
+    set_lamports(&view, 111);
     assert_eq!(account.to_account_view().lamports(), 111);
     {
         let zc: &mut TestZcData = &mut *account;
@@ -614,8 +617,8 @@ fn aliasing_deref_mut_offset_sweep() {
         data[disc_len + 8] = 1;
         buf.write_data(&data);
 
-        let view = unsafe { buf.view() };
-        let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view) };
+        let mut view = unsafe { buf.view() };
+        let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view) };
         let zc: &mut TestZcData = &mut *account;
         assert_eq!(zc.value.get(), extra_slack as u64);
         zc.value = PodU64::from(42u64);
@@ -628,16 +631,16 @@ fn aliasing_duplicate_accounts_2_mut_refs() {
     let mut buf = AccountBuffer::new(64);
     buf.init([1u8; 32], TEST_OWNER.to_bytes(), 1_000_000, 64, true, true);
 
-    let view_a = unsafe { buf.view() };
-    let view_b = unsafe { AccountView::new_unchecked(buf.raw()) };
+    let mut view_a = unsafe { buf.view() };
+    let mut view_b = unsafe { AccountView::new_unchecked(buf.raw()) };
 
-    let acct_a = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view_a) };
-    let acct_b = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view_b) };
+    let acct_a = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view_a) };
+    let acct_b = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view_b) };
 
     for i in 0u64..20 {
-        acct_a.to_account_view().set_lamports(i);
+        set_lamports(acct_a.to_account_view(), i);
         assert_eq!(acct_b.to_account_view().lamports(), i);
-        acct_b.to_account_view().set_lamports(i + 1000);
+        set_lamports(acct_b.to_account_view(), i + 1000);
         assert_eq!(acct_a.to_account_view().lamports(), i + 1000);
     }
 }
@@ -647,19 +650,19 @@ fn aliasing_duplicate_accounts_3_mut_refs() {
     let mut buf = AccountBuffer::new(64);
     buf.init([1u8; 32], TEST_OWNER.to_bytes(), 0, 64, true, true);
 
-    let view_a = unsafe { buf.view() };
-    let view_b = unsafe { AccountView::new_unchecked(buf.raw()) };
-    let view_c = unsafe { AccountView::new_unchecked(buf.raw()) };
+    let mut view_a = unsafe { buf.view() };
+    let mut view_b = unsafe { AccountView::new_unchecked(buf.raw()) };
+    let mut view_c = unsafe { AccountView::new_unchecked(buf.raw()) };
 
-    let a = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view_a) };
-    let b = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view_b) };
-    let c = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view_c) };
+    let a = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view_a) };
+    let b = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view_b) };
+    let c = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view_c) };
 
-    a.to_account_view().set_lamports(1);
+    set_lamports(a.to_account_view(), 1);
     assert_eq!(b.to_account_view().lamports(), 1);
-    b.to_account_view().set_lamports(2);
+    set_lamports(b.to_account_view(), 2);
     assert_eq!(c.to_account_view().lamports(), 2);
-    c.to_account_view().set_lamports(3);
+    set_lamports(c.to_account_view(), 3);
     assert_eq!(a.to_account_view().lamports(), 3);
 }
 
@@ -680,11 +683,11 @@ fn aliasing_duplicate_accounts_4_deref_mut_to_same_data() {
     data[..disc_len].copy_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]);
     buf.write_data(&data);
 
-    let views: Vec<AccountView> = (0..4)
+    let mut views: Vec<AccountView> = (0..4)
         .map(|_| unsafe { AccountView::new_unchecked(buf.raw()) })
         .collect();
     let accts: Vec<&mut Account<TestAccountType>> = views
-        .iter()
+        .iter_mut()
         .map(|v| unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(v) })
         .collect();
 
@@ -705,7 +708,7 @@ fn aliasing_duplicate_accounts_4_deref_mut_to_same_data() {
 fn aliasing_borrow_unchecked_mut_rapid_cycling() {
     let mut buf = AccountBuffer::new(32);
     buf.init([1u8; 32], [0u8; 32], 100, 32, false, true);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
 
     for i in 0u64..50 {
         let data = unsafe { view.borrow_unchecked_mut() };
@@ -720,12 +723,13 @@ fn aliasing_unchecked_account_write_read() {
     let mut buf = AccountBuffer::new(0);
     buf.init([1u8; 32], [0u8; 32], 500, 0, false, true);
     let view = unsafe { buf.view() };
-    let unchecked = unsafe { UncheckedAccount::from_account_view_unchecked_mut(&view) };
+    let mut view2 = unsafe { AccountView::new_unchecked(buf.raw()) };
+    let unchecked = unsafe { UncheckedAccount::from_account_view_unchecked_mut(&mut view2) };
 
     for i in 0u64..10 {
-        unchecked.to_account_view().set_lamports(i);
+        set_lamports(unchecked.to_account_view(), i);
         assert_eq!(view.lamports(), i);
-        view.set_lamports(i + 100);
+        set_lamports(&view, i + 100);
         assert_eq!(unchecked.to_account_view().lamports(), i + 100);
     }
 }
@@ -735,13 +739,14 @@ fn aliasing_signer_write_read() {
     let mut buf = AccountBuffer::new(0);
     buf.init([1u8; 32], [0u8; 32], 500, 0, true, true);
     let view = unsafe { buf.view() };
+    let mut view2 = unsafe { AccountView::new_unchecked(buf.raw()) };
     <SignerAccount as checks::Signer>::check(&view).unwrap();
-    let signer = unsafe { SignerAccount::from_account_view_unchecked_mut(&view) };
+    let signer = unsafe { SignerAccount::from_account_view_unchecked_mut(&mut view2) };
 
     for i in 0u64..10 {
-        signer.to_account_view().set_lamports(i);
+        set_lamports(signer.to_account_view(), i);
         assert_eq!(view.lamports(), i);
-        view.set_lamports(i + 100);
+        set_lamports(&view, i + 100);
         assert_eq!(signer.to_account_view().lamports(), i + 100);
     }
 }
@@ -749,8 +754,8 @@ fn aliasing_signer_write_read() {
 #[test]
 fn aliasing_deref_mut_write_then_deref_read() {
     let mut buf = make_zc_buffer();
-    let view = unsafe { buf.view() };
-    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view) };
+    let mut view = unsafe { buf.view() };
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view) };
 
     {
         let zc: &mut TestZcData = &mut *account;
@@ -763,8 +768,8 @@ fn aliasing_deref_mut_write_then_deref_read() {
 #[test]
 fn aliasing_deref_mut_write_then_read_via_view() {
     let mut buf = make_zc_buffer();
-    let view = unsafe { buf.view() };
-    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view) };
+    let mut view = unsafe { buf.view() };
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view) };
 
     let zc: &mut TestZcData = &mut *account;
     zc.value = PodU64::from(12345u64);
@@ -777,8 +782,8 @@ fn aliasing_deref_mut_write_then_read_via_view() {
 #[test]
 fn aliasing_multiple_deref_mut_calls() {
     let mut buf = make_zc_buffer();
-    let view = unsafe { buf.view() };
-    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&view) };
+    let mut view = unsafe { buf.view() };
+    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view) };
 
     for i in 0u64..10 {
         let zc: &mut TestZcData = &mut *account;
@@ -1021,7 +1026,7 @@ fn bounds_remaining_boundary_pointer_subtraction() {
         (*raw).is_signer = 0;
         (*raw).is_writable = 1;
         (*raw).executable = 0;
-        (*raw).resize_delta = 0;
+        (*raw).padding = [0u8; 4];
         (*raw).address = Address::new_from_array([0x01; 32]);
         (*raw).owner = Address::new_from_array([0xAA; 32]);
         (*raw).lamports = 100;
@@ -1322,7 +1327,7 @@ fn uninit_parse_simulation_dup_from_partially_initialized() {
         (*raw0).is_signer = 1;
         (*raw0).is_writable = 1;
         (*raw0).executable = 0;
-        (*raw0).resize_delta = 0;
+        (*raw0).padding = [0u8; 4];
         (*raw0).address = Address::new_from_array([0x01; 32]);
         (*raw0).owner = Address::new_from_array([0xAA; 32]);
         (*raw0).lamports = 100;
@@ -1335,7 +1340,7 @@ fn uninit_parse_simulation_dup_from_partially_initialized() {
         (*raw1).is_signer = 0;
         (*raw1).is_writable = 1;
         (*raw1).executable = 0;
-        (*raw1).resize_delta = 0;
+        (*raw1).padding = [0u8; 4];
         (*raw1).address = Address::new_from_array([0x02; 32]);
         (*raw1).owner = Address::new_from_array([0xBB; 32]);
         (*raw1).lamports = 200;
@@ -1394,7 +1399,7 @@ fn uninit_parse_simulation_many_dups() {
             (*raw).is_signer = 0;
             (*raw).is_writable = 1;
             (*raw).executable = 0;
-            (*raw).resize_delta = 0;
+            (*raw).padding = [0u8; 4];
             (*raw).address = Address::new_from_array([(idx + 1) as u8; 32]);
             (*raw).owner = Address::new_from_array([0xAA; 32]);
             (*raw).lamports = (idx as u64 + 1) * 100;
@@ -1606,7 +1611,7 @@ fn event_memcpy_max_all_pod_types() {
 fn ops_assign_changes_owner() {
     let mut buf = AccountBuffer::new(8);
     buf.init([1u8; 32], [0xAA; 32], 100, 8, false, true);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
 
     for i in 0..5u8 {
         let owner = Address::new_from_array([i; 32]);
@@ -1629,17 +1634,17 @@ fn ops_resize_grows_and_zeroes_extension() {
     );
     buf.write_data(&[0xFF; 8]);
 
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
     assert_eq!(view.data_len(), 8);
 
-    view.resize(16).unwrap();
+    resize(&mut view, 16).unwrap();
     assert_eq!(view.data_len(), 16);
 
     let data = unsafe { view.borrow_unchecked() };
     assert!(data[..8].iter().all(|&b| b == 0xFF));
     assert!(data[8..16].iter().all(|&b| b == 0));
 
-    view.resize(4).unwrap();
+    resize(&mut view, 4).unwrap();
     assert_eq!(view.data_len(), 4);
 }
 
@@ -1662,10 +1667,10 @@ fn ops_close_transfers_lamports_and_zeroes_fields() {
     let mut dst_buf = AccountBuffer::new(0);
     dst_buf.init([2u8; 32], [0u8; 32], 500_000, 0, false, true);
 
-    let src_view = unsafe { src_buf.view() };
+    let mut src_view = unsafe { src_buf.view() };
     let dst_view = unsafe { dst_buf.view() };
 
-    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked(&src_view) };
+    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked_mut(&mut src_view) };
     account.close(&dst_view).unwrap();
 
     assert_eq!(src_view.lamports(), 0);
@@ -1693,10 +1698,10 @@ fn ops_close_rejected_by_check_owner() {
     let mut dest_buf = AccountBuffer::new(0);
     dest_buf.init([2u8; 32], [0u8; 32], 0, 0, false, true);
 
-    let src_view = unsafe { src_buf.view() };
+    let mut src_view = unsafe { src_buf.view() };
     let dest_view = unsafe { dest_buf.view() };
 
-    let closeable = unsafe { Account::<TestCloseableType>::from_account_view_unchecked(&src_view) };
+    let closeable = unsafe { Account::<TestCloseableType>::from_account_view_unchecked_mut(&mut src_view) };
     closeable.close(&dest_view).unwrap();
 
     let result = <TestCloseableType as CheckOwner>::check_owner(&src_view);
@@ -1722,10 +1727,10 @@ fn ops_close_rejects_non_writable_destination() {
     let mut dst_buf = AccountBuffer::new(0);
     dst_buf.init([2u8; 32], [0u8; 32], 500_000, 0, false, false);
 
-    let src_view = unsafe { src_buf.view() };
+    let mut src_view = unsafe { src_buf.view() };
     let dst_view = unsafe { dst_buf.view() };
 
-    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked(&src_view) };
+    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked_mut(&mut src_view) };
     let result = account.close(&dst_view);
     assert!(result.is_err());
     assert_eq!(src_view.lamports(), 1_000_000);
@@ -1753,10 +1758,10 @@ fn ops_close_rejects_lamport_overflow() {
     let mut dst_buf = AccountBuffer::new(0);
     dst_buf.init([2u8; 32], [0u8; 32], u64::MAX, 0, false, true);
 
-    let src_view = unsafe { src_buf.view() };
+    let mut src_view = unsafe { src_buf.view() };
     let dst_view = unsafe { dst_buf.view() };
 
-    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked(&src_view) };
+    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked_mut(&mut src_view) };
     let result = account.close(&dst_view);
     // wrapping_add: u64::MAX + 1_000_000 wraps (physically impossible on Solana)
     assert!(result.is_ok());
@@ -1768,7 +1773,7 @@ fn ops_close_rejects_lamport_overflow() {
 fn ops_borrow_unchecked_mut_write_then_read_via_data_ptr() {
     let mut buf = AccountBuffer::new(16);
     buf.init([1u8; 32], [0u8; 32], 100, 16, false, true);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
 
     {
         let data = unsafe { view.borrow_unchecked_mut() };
@@ -1846,8 +1851,8 @@ fn dynamic_memmove_1byte_grow_1byte_tail() {
     data[name_data_offset + 1] = 0xEE;
     buf.write_data(&data);
 
-    let view = unsafe { buf.view() };
-    view.resize(data_len + 1).unwrap();
+    let mut view = unsafe { buf.view() };
+    resize(&mut view, data_len + 1).unwrap();
     let data = unsafe { view.borrow_unchecked_mut() };
 
     let old_end = name_data_offset + 1;
@@ -1887,7 +1892,7 @@ fn dynamic_memmove_1byte_shrink_overlapping() {
     data[name_data_offset + 3] = 0xEE;
     buf.write_data(&data);
 
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
     let data = unsafe { view.borrow_unchecked_mut() };
 
     let old_end = name_data_offset + 2;
@@ -1902,7 +1907,7 @@ fn dynamic_memmove_1byte_shrink_overlapping() {
     data[name_data_offset] = b'A';
     assert_eq!(data[name_data_offset + 1], 0xDD);
     assert_eq!(data[name_data_offset + 2], 0xEE);
-    view.resize(name_data_offset + 3).unwrap();
+    resize(&mut view, name_data_offset + 3).unwrap();
 }
 
 #[test]
@@ -1910,7 +1915,7 @@ fn dynamic_batch_write_shared_read_then_mut_write() {
     let name = b"hello";
     let tags = [[0xDD; 32]];
     let mut buf = make_dyn_buffer_exact(name, &tags);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
 
     let mut preserved_tag = [0u8; 32];
     {
@@ -1937,7 +1942,7 @@ fn dynamic_batch_write_shared_read_then_mut_write() {
         offset += 4;
         data[offset..offset + 32].copy_from_slice(&preserved_tag);
     }
-    view.resize(new_total).unwrap();
+    resize(&mut view, new_total).unwrap();
 
     let data = unsafe { view.borrow_unchecked() };
     let mut offset = DYN_HEADER_SIZE;
@@ -1957,7 +1962,7 @@ fn dynamic_batch_write_shared_read_then_mut_write() {
 fn dynamic_vec_mut_write_then_shared_read() {
     let tags = [[0x11; 32]];
     let mut buf = make_dyn_buffer_exact(b"", &tags);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
 
     let tags_data_offset = DYN_HEADER_SIZE + 4 + 4;
 
@@ -1984,9 +1989,9 @@ fn dynamic_vec_mut_write_then_shared_read() {
 #[test]
 fn dynamic_copy_nonoverlapping_at_allocation_edge() {
     let mut buf = make_dyn_buffer_exact(b"", &[]);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
     let target_len = DYN_HEADER_SIZE + 4 + 4 + 96;
-    view.resize(target_len).unwrap();
+    resize(&mut view, target_len).unwrap();
 
     let new_tags = [
         Address::new_from_array([0xAA; 32]),
@@ -1999,7 +2004,7 @@ fn dynamic_copy_nonoverlapping_at_allocation_edge() {
     let tags_prefix_offset = DYN_HEADER_SIZE + 4;
     data[tags_prefix_offset..tags_prefix_offset + 4].copy_from_slice(&3u32.to_le_bytes());
 
-    assert_eq!(tags_data_offset + 96, view.data_len());
+    assert_eq!(tags_data_offset + 96, target_len);
     unsafe {
         core::ptr::copy_nonoverlapping(
             new_tags.as_ptr() as *const u8,
@@ -2020,7 +2025,7 @@ fn dynamic_interleaved_shared_mut_shared() {
     let name = b"AB";
     let tags = [[0xCC; 32]];
     let mut buf = make_dyn_buffer_exact(name, &tags);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
 
     let name_data_offset = DYN_HEADER_SIZE + 4;
 
@@ -2246,9 +2251,9 @@ fn adversarial_max_lamports() {
     buf.init([1u8; 32], [0u8; 32], u64::MAX, 0, true, true);
     let view = unsafe { buf.view() };
     assert_eq!(view.lamports(), u64::MAX);
-    view.set_lamports(u64::MAX);
+    set_lamports(&view, u64::MAX);
     assert_eq!(view.lamports(), u64::MAX);
-    view.set_lamports(0);
+    set_lamports(&view, 0);
     assert_eq!(view.lamports(), 0);
 }
 
@@ -2274,16 +2279,16 @@ fn adversarial_interleaved_close_write_read() {
     let mut dst_buf = AccountBuffer::new(0);
     dst_buf.init([2u8; 32], [0u8; 32], 100, 0, false, true);
 
-    let src_view = unsafe { src_buf.view() };
+    let mut src_view = unsafe { src_buf.view() };
     let other_view = unsafe { other_buf.view() };
     let dst_view = unsafe { dst_buf.view() };
 
-    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked(&src_view) };
+    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked_mut(&mut src_view) };
     account.close(&dst_view).unwrap();
 
     assert_eq!(src_view.lamports(), 0);
     assert_eq!(other_view.lamports(), 999);
-    other_view.set_lamports(888);
+    set_lamports(&other_view, 888);
     assert_eq!(other_view.lamports(), 888);
 }
 
@@ -2346,12 +2351,12 @@ fn adversarial_transparent_wrapper_sizes() {
 fn adversarial_resize_to_max_permitted_data_increase() {
     let mut buf = AccountBuffer::new(0);
     buf.init([1u8; 32], [0u8; 32], 100, 0, false, true);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
 
-    view.resize(MAX_PERMITTED_DATA_INCREASE).unwrap();
+    resize(&mut view, MAX_PERMITTED_DATA_INCREASE).unwrap();
     assert_eq!(view.data_len(), MAX_PERMITTED_DATA_INCREASE);
 
-    let result = view.resize(MAX_PERMITTED_DATA_INCREASE + 1);
+    let result = resize(&mut view, MAX_PERMITTED_DATA_INCREASE + 1);
     assert!(result.is_err());
 }
 
@@ -2359,14 +2364,14 @@ fn adversarial_resize_to_max_permitted_data_increase() {
 fn adversarial_resize_ping_pong() {
     let mut buf = AccountBuffer::new(0);
     buf.init([1u8; 32], [0u8; 32], 100, 0, false, true);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
 
     for _ in 0..20 {
-        view.resize(100).unwrap();
+        resize(&mut view, 100).unwrap();
         assert_eq!(view.data_len(), 100);
         let data = unsafe { view.borrow_unchecked() };
         assert!(data.iter().all(|&b| b == 0));
-        view.resize(0).unwrap();
+        resize(&mut view, 0).unwrap();
         assert_eq!(view.data_len(), 0);
     }
 }
@@ -2376,7 +2381,7 @@ fn adversarial_write_all_data_bytes_then_verify() {
     for &data_len in &[1usize, 7, 8, 15, 16, 31, 32, 64, 128, 255] {
         let mut buf = AccountBuffer::new(data_len);
         buf.init([1u8; 32], [0u8; 32], 100, data_len as u64, false, true);
-        let view = unsafe { buf.view() };
+        let mut view = unsafe { buf.view() };
 
         {
             let data = unsafe { view.borrow_unchecked_mut() };

@@ -1038,7 +1038,7 @@ pub(super) fn process_fields(
                 if attrs.init_if_needed {
                     init_blocks.push(quote! {
                         {
-                            if quasar_core::is_system_program(unsafe { #field_name.owner() }) {
+                            if quasar_core::is_system_program(#field_name.owner()) {
                                 quasar_core::cpi::CpiCall::new(
                                     #ata_prog.address(),
                                     [
@@ -1062,7 +1062,7 @@ pub(super) fn process_fields(
                 } else {
                     init_blocks.push(quote! {
                         {
-                            if !quasar_core::is_system_program(unsafe { #field_name.owner() }) {
+                            if !quasar_core::is_system_program(#field_name.owner()) {
                                 return Err(ProgramError::AccountAlreadyInitialized);
                             }
                             quasar_core::cpi::CpiCall::new(
@@ -1089,7 +1089,7 @@ pub(super) fn process_fields(
                 if attrs.init_if_needed {
                     init_blocks.push(quote! {
                         {
-                            if quasar_core::is_system_program(unsafe { #field_name.owner() }) {
+                            if quasar_core::is_system_program(#field_name.owner()) {
                                 let __init_lamports = __shared_rent.try_minimum_balance(
                                     quasar_spl::TokenAccountState::LEN
                                 )?;
@@ -1112,7 +1112,7 @@ pub(super) fn process_fields(
                 } else {
                     init_blocks.push(quote! {
                         {
-                            if !quasar_core::is_system_program(unsafe { #field_name.owner() }) {
+                            if !quasar_core::is_system_program(#field_name.owner()) {
                                 return Err(ProgramError::AccountAlreadyInitialized);
                             }
                             let __init_lamports = __shared_rent.try_minimum_balance(
@@ -1153,7 +1153,7 @@ pub(super) fn process_fields(
                 if attrs.init_if_needed {
                     init_blocks.push(quote! {
                         {
-                            if quasar_core::is_system_program(unsafe { #field_name.owner() }) {
+                            if quasar_core::is_system_program(#field_name.owner()) {
                                 let __init_lamports = __shared_rent.try_minimum_balance(
                                     quasar_spl::MintAccountState::LEN
                                 )?;
@@ -1179,7 +1179,7 @@ pub(super) fn process_fields(
                 } else {
                     init_blocks.push(quote! {
                         {
-                            if !quasar_core::is_system_program(unsafe { #field_name.owner() }) {
+                            if !quasar_core::is_system_program(#field_name.owner()) {
                                 return Err(ProgramError::AccountAlreadyInitialized);
                             }
                             let __init_lamports = __shared_rent.try_minimum_balance(
@@ -1224,7 +1224,7 @@ pub(super) fn process_fields(
                 if attrs.init_if_needed {
                     init_blocks.push(quote! {
                         {
-                            if quasar_core::is_system_program(unsafe { #field_name.owner() }) {
+                            if quasar_core::is_system_program(#field_name.owner()) {
                                 let __init_space = #space_expr;
                                 let __init_lamports = __shared_rent.try_minimum_balance(__init_space as usize)?;
                                 let __init_cpi = quasar_core::cpi::system::create_account(
@@ -1235,7 +1235,7 @@ pub(super) fn process_fields(
                                 unsafe {
                                     core::ptr::copy_nonoverlapping(
                                         __disc.as_ptr(),
-                                        #field_name.data_ptr() as *mut u8,
+                                        #field_name.data_mut_ptr(),
                                         __disc.len(),
                                     );
                                 }
@@ -1245,7 +1245,7 @@ pub(super) fn process_fields(
                 } else {
                     init_blocks.push(quote! {
                         {
-                            if !quasar_core::is_system_program(unsafe { #field_name.owner() }) {
+                            if !quasar_core::is_system_program(#field_name.owner()) {
                                 return Err(ProgramError::AccountAlreadyInitialized);
                             }
                             let __init_space = #space_expr;
@@ -1258,7 +1258,7 @@ pub(super) fn process_fields(
                             unsafe {
                                 core::ptr::copy_nonoverlapping(
                                     __disc.as_ptr(),
-                                    #field_name.data_ptr() as *mut u8,
+                                    #field_name.data_mut_ptr(),
                                     __disc.len(),
                                 );
                             }

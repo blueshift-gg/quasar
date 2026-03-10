@@ -346,16 +346,21 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
     let mut field_lets: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut non_composite_constructs: Vec<proc_macro2::TokenStream> = Vec::new();
     if has_composites {
-        let mut idx_offset = quote! { 0usize };
+        // Use split_at_mut to progressively carve off chunks from the &mut slice.
+        // Each field takes its chunk, and __accounts_rest is the remainder.
+        field_lets.push(quote! {
+            let mut __accounts_rest = accounts;
+        });
         for (fi, field) in fields.iter().enumerate() {
             let field_name = field.ident.as_ref().unwrap();
             if composite_types[fi].is_some() {
                 let inner_ty = composite_types[fi].as_ref().unwrap();
                 let bumps_var = format_ident!("__composite_bumps_{}", field_name);
-                let cur_offset = idx_offset.clone();
                 field_lets.push(quote! {
+                    let (__chunk, __rest) = __accounts_rest.split_at_mut(<#inner_ty as AccountCount>::COUNT);
+                    __accounts_rest = __rest;
                     let (#field_name, #bumps_var) = <#inner_ty as ParseAccounts>::parse(
-                        &accounts[#cur_offset..#cur_offset + <#inner_ty as AccountCount>::COUNT],
+                        __chunk,
                         __program_id
                     )?;
                 });
@@ -363,15 +368,17 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                     .push(quote! { pub #field_name: <#inner_ty as ParseAccounts>::Bumps });
                 pf.bump_struct_inits
                     .push(quote! { #field_name: #bumps_var });
-                idx_offset = quote! { #idx_offset + <#inner_ty as AccountCount>::COUNT };
             } else {
-                let cur_offset = idx_offset.clone();
                 field_lets.push(quote! {
-                    let #field_name = &accounts[#cur_offset];
+                    let (__chunk, __rest) = __accounts_rest.split_at_mut(1);
+                    __accounts_rest = __rest;
+                    let #field_name = &mut __chunk[0];
                 });
-                idx_offset = quote! { #idx_offset + 1usize };
             }
         }
+        field_lets.push(quote! {
+            let _ = __accounts_rest;
+        });
 
         non_composite_constructs = fields
             .iter()
@@ -535,7 +542,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
             .collect();
         quote! {
             #[inline(always)]
-            fn epilogue(&self) -> Result<(), ProgramError> {
+            fn epilogue(&mut self) -> Result<(), ProgramError> {
                 #(#close_stmts)*
                 Ok(())
             }
@@ -563,13 +570,13 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                 type Bumps = #bumps_name;
 
                 #[inline(always)]
-                fn parse(accounts: &'info [AccountView], program_id: &Address) -> Result<(Self, Self::Bumps), ProgramError> {
+                fn parse(accounts: &'info mut [AccountView], program_id: &Address) -> Result<(Self, Self::Bumps), ProgramError> {
                     Self::parse_with_instruction_data(accounts, &[], program_id)
                 }
 
                 #[inline(always)]
                 fn parse_with_instruction_data(
-                    accounts: &'info [AccountView],
+                    accounts: &'info mut [AccountView],
                     __ix_data: &'info [u8],
                     __program_id: &Address,
                 ) -> Result<(Self, Self::Bumps), ProgramError> {
@@ -586,7 +593,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                 type Bumps = #bumps_name;
 
                 #[inline(always)]
-                fn parse(accounts: &'info [AccountView], __program_id: &Address) -> Result<(Self, Self::Bumps), ProgramError> {
+                fn parse(accounts: &'info mut [AccountView], __program_id: &Address) -> Result<(Self, Self::Bumps), ProgramError> {
                     #parse_body
                 }
 

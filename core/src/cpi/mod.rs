@@ -4,70 +4,62 @@
 //! and data size are known at compile time, keeping everything on the stack.
 //! `BufCpiCall` is the variable-length variant for Borsh-serialized instructions.
 //!
-//! Both types invoke the `sol_invoke_signed_c` syscall directly, bypassing
-//! any intermediate instruction representation.
+//! Account types (`CpiAccount`, `InstructionAccount`, `Seed`, `Signer`) come
+//! from `solana-instruction-view`. Invocation goes directly through
+//! `sol_invoke_signed_c` with no intermediate borrow checking.
 
 pub mod buf;
 pub mod system;
 
 pub use buf::BufCpiCall;
-pub use solana_instruction_view::cpi::{Seed, Signer};
-pub use solana_instruction_view::InstructionAccount;
+pub use solana_instruction_view::cpi::{CpiAccount, Seed, Signer};
+pub use solana_instruction_view::{InstructionAccount, InstructionView};
 
-use core::marker::PhantomData;
 use solana_account_view::{AccountView, RuntimeAccount};
 use solana_address::Address;
 use solana_program_error::{ProgramError, ProgramResult};
 
 const RUNTIME_ACCOUNT_SIZE: usize = core::mem::size_of::<RuntimeAccount>();
 
-// Layout-compatible with the runtime's CpiAccount (u8 flags variant).
+// Layout-compatible helper for batched flag extraction.
+// Transmuted to `CpiAccount` after construction.
 #[repr(C)]
-pub(crate) struct RawCpiAccount<'a> {
+struct RawCpiBuilder {
     address: *const Address,
     lamports: *const u64,
     data_len: u64,
     data: *const u8,
     owner: *const Address,
     rent_epoch: u64,
-    is_signer: u8,
-    is_writable: u8,
-    executable: u8,
-    _pad: [u8; 5],
-    _lifetime: PhantomData<&'a AccountView>,
+    // [is_signer, is_writable, executable, 0, 0, 0, 0, 0]
+    flags: u64,
 }
 
-const _: () = assert!(core::mem::size_of::<RawCpiAccount>() == 56);
-const _: () = assert!(core::mem::align_of::<RawCpiAccount>() == 8);
+const _: () = assert!(core::mem::size_of::<RawCpiBuilder>() == 56);
+const _: () = assert!(core::mem::size_of::<RawCpiBuilder>() == core::mem::size_of::<CpiAccount>());
+const _: () =
+    assert!(core::mem::align_of::<RawCpiBuilder>() == core::mem::align_of::<CpiAccount>());
 
-impl<'a> RawCpiAccount<'a> {
-    #[inline(always)]
-    pub(crate) fn from_view(view: &'a AccountView) -> Self {
-        let raw = view.account_ptr();
-        unsafe {
-            let mut cpi = RawCpiAccount {
-                address: &(*raw).address,
-                lamports: &(*raw).lamports,
-                data_len: (*raw).data_len,
-                data: (raw as *const u8).add(RUNTIME_ACCOUNT_SIZE),
-                owner: &(*raw).owner,
-                rent_epoch: 0,
-                is_signer: 0,
-                is_writable: 0,
-                executable: 0,
-                _pad: [0u8; 5],
-                _lifetime: PhantomData,
-            };
-            // Read the 4-byte header as u32, shift right 8 to drop borrow_state,
-            // keeping [is_signer, is_writable, executable]. Write as u64 so
-            // zero-extension covers the 5 pad bytes.
-            let flags = (raw as *const u32).read_unaligned() >> 8;
-            core::ptr::write(
-                core::ptr::addr_of_mut!(cpi.is_signer) as *mut u64,
-                flags as u64,
-            );
-            cpi
-        }
+/// Construct a `CpiAccount` from an `AccountView` with batched flag extraction.
+///
+/// Reads the 4-byte header as u32, shifts right 8 to drop borrow_state,
+/// keeping [is_signer, is_writable, executable]. The result is transmuted
+/// to the upstream `CpiAccount` which has an identical `#[repr(C)]` layout.
+#[inline(always)]
+pub(crate) fn cpi_account_from_view(view: &AccountView) -> CpiAccount<'_> {
+    let raw = view.account_ptr();
+    unsafe {
+        let flags = (raw as *const u32).read_unaligned() >> 8;
+        let builder = RawCpiBuilder {
+            address: &(*raw).address,
+            lamports: &(*raw).lamports,
+            data_len: (*raw).data_len,
+            data: (raw as *const u8).add(RUNTIME_ACCOUNT_SIZE),
+            owner: &(*raw).owner,
+            rent_epoch: 0,
+            flags: flags as u64,
+        };
+        core::mem::transmute(builder)
     }
 }
 
@@ -91,7 +83,7 @@ pub(crate) unsafe fn invoke_raw(
     instruction_accounts_len: usize,
     data: *const u8,
     data_len: usize,
-    cpi_accounts: *const RawCpiAccount,
+    cpi_accounts: *const CpiAccount,
     cpi_accounts_len: usize,
     signers: &[Signer],
 ) -> u64 {
@@ -134,16 +126,16 @@ pub(crate) fn result_from_raw(result: u64) -> ProgramResult {
     }
 }
 
-/// Initialize a `MaybeUninit<[RawCpiAccount; N]>` from an array of views.
+/// Initialize a `[CpiAccount; N]` from an array of views.
 #[inline(always)]
 pub(crate) fn init_cpi_accounts<'a, const N: usize>(
     views: [&'a AccountView; N],
-) -> [RawCpiAccount<'a>; N] {
-    let mut buf = core::mem::MaybeUninit::<[RawCpiAccount<'a>; N]>::uninit();
-    let ptr = buf.as_mut_ptr() as *mut RawCpiAccount<'a>;
+) -> [CpiAccount<'a>; N] {
+    let mut buf = core::mem::MaybeUninit::<[CpiAccount<'a>; N]>::uninit();
+    let ptr = buf.as_mut_ptr() as *mut CpiAccount<'a>;
     let mut i = 0;
     while i < N {
-        unsafe { ptr.add(i).write(RawCpiAccount::from_view(views[i])) };
+        unsafe { ptr.add(i).write(cpi_account_from_view(views[i])) };
         i += 1;
     }
     unsafe { buf.assume_init() }
@@ -157,7 +149,7 @@ pub(crate) fn init_cpi_accounts<'a, const N: usize>(
 pub struct CpiCall<'a, const ACCTS: usize, const DATA: usize> {
     program_id: &'a Address,
     accounts: [InstructionAccount<'a>; ACCTS],
-    cpi_accounts: [RawCpiAccount<'a>; ACCTS],
+    cpi_accounts: [CpiAccount<'a>; ACCTS],
     data: [u8; DATA],
 }
 

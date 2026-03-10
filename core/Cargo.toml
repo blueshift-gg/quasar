@@ -19,9 +19,9 @@ quasar-derive = { path = "../derive" }
 quasar-pod = { path = "../pod" }
 const-crypto = "0.3.0"
 solana-program-error = "3.0.0"
-solana-account-view = "1.0.0"
+solana-account-view = "2.0.0"
 solana-address = { version = "2.2.0", features = ["wincode", "decode", "copy"] }
-solana-instruction-view = { version = "1.0.0", features = ["cpi"] }
+solana-instruction-view = { version = "2.0.0", features = ["cpi"] }
 solana-program-log = "1.0.0"
 
 [target.'cfg(any(target_os = "solana", target_arch = "bpf"))'.dependencies]

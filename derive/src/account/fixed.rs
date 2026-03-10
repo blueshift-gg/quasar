@@ -71,7 +71,7 @@ pub(super) fn generate_fixed_account(
         impl core::ops::DerefMut for #name {
             #[inline(always)]
             fn deref_mut(&mut self) -> &mut Self::Target {
-                unsafe { &mut *(self.__view.data_ptr().add(#disc_len) as *mut #zc_mod::#zc_name) }
+                unsafe { &mut *(self.__view.data_mut_ptr().add(#disc_len) as *mut #zc_mod::#zc_name) }
             }
         }
 
@@ -126,7 +126,7 @@ pub(super) fn generate_fixed_account(
         impl #name {
             #[inline(always)]
             pub fn set_inner(&mut self, #(#field_names: #field_types),*) {
-                let __zc = unsafe { &mut *(self.__view.data_ptr().add(#disc_len) as *mut #zc_mod::#zc_name) };
+                let __zc = unsafe { &mut *(self.__view.data_mut_ptr().add(#disc_len) as *mut #zc_mod::#zc_name) };
                 #(#set_inner_stmts)*
             }
         }
@@ -142,8 +142,8 @@ pub(super) fn generate_fixed_account(
             }
 
             #[inline(always)]
-            fn deref_from_mut(view: &AccountView) -> &mut Self::Target {
-                unsafe { &mut *(view.data_ptr().add(#disc_len) as *mut #zc_mod::#zc_name) }
+            fn deref_from_mut(view: &mut AccountView) -> &mut Self::Target {
+                unsafe { &mut *(view.data_mut_ptr().add(#disc_len) as *mut #zc_mod::#zc_name) }
             }
         }
     }

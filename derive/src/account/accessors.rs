@@ -205,7 +205,7 @@ pub(super) fn generate_accessors(
                             if __value.len() > #max_val {
                                 return Err(QuasarError::DynamicFieldTooLong.into());
                             }
-                            let __view = self.__view;
+                            let __view = &*self.__view;
                             let __prefix_offset;
                             let __old_data_len;
                             let __old_total;
@@ -226,7 +226,8 @@ pub(super) fn generate_accessors(
                                 }
                                 if __tail_len > 0 {
                                     let __new_tail = __prefix_offset + #pb + __new_data_len;
-                                    let __data = unsafe { __view.borrow_unchecked_mut() };
+                                    let __len = self.__view.data_len();
+                                    let __data = unsafe { core::slice::from_raw_parts_mut(self.__view.data_mut_ptr(), __len) };
                                     unsafe {
                                         core::ptr::copy(
                                             __data.as_ptr().add(__tail_start),
@@ -242,7 +243,8 @@ pub(super) fn generate_accessors(
                                 #(#offset_fixup_stmts)*
                             }
                             {
-                                let __data = unsafe { __view.borrow_unchecked_mut() };
+                                let __len = self.__view.data_len();
+                                    let __data = unsafe { core::slice::from_raw_parts_mut(self.__view.data_mut_ptr(), __len) };
                                 let mut __offset = __prefix_offset;
                                 #write_stmt
                                 __offset += #pb;
@@ -266,7 +268,7 @@ pub(super) fn generate_accessors(
                                 return Err(QuasarError::DynamicFieldTooLong.into());
                             }
                             let __elem_size = core::mem::size_of::<#elem>();
-                            let __view = self.__view;
+                            let __view = &*self.__view;
                             let __prefix_offset;
                             let __old_count;
                             let __old_total;
@@ -288,7 +290,8 @@ pub(super) fn generate_accessors(
                                 }
                                 if __tail_len > 0 {
                                     let __new_tail = __prefix_offset + #pb + __new_data_len;
-                                    let __data = unsafe { __view.borrow_unchecked_mut() };
+                                    let __len = self.__view.data_len();
+                                    let __data = unsafe { core::slice::from_raw_parts_mut(self.__view.data_mut_ptr(), __len) };
                                     unsafe {
                                         core::ptr::copy(
                                             __data.as_ptr().add(__tail_start),
@@ -304,7 +307,8 @@ pub(super) fn generate_accessors(
                                 #(#offset_fixup_stmts)*
                             }
                             {
-                                let __data = unsafe { __view.borrow_unchecked_mut() };
+                                let __len = self.__view.data_len();
+                                    let __data = unsafe { core::slice::from_raw_parts_mut(self.__view.data_mut_ptr(), __len) };
                                 let mut __offset = __prefix_offset;
                                 #write_count_stmt
                                 __offset += #pb;
@@ -323,7 +327,8 @@ pub(super) fn generate_accessors(
 
                         #[inline(always)]
                         pub fn #mut_name(&mut self) -> &mut [#elem] {
-                            let __data = unsafe { self.__view.borrow_unchecked_mut() };
+                            let __len = self.__view.data_len();
+                            let __data = unsafe { core::slice::from_raw_parts_mut(self.__view.data_mut_ptr(), __len) };
                             let __offset = #off_expr;
                             let __count = #read;
                             let __start = __offset + #pb;
@@ -341,7 +346,7 @@ pub(super) fn generate_accessors(
                                     if __value.len() > #max_val {
                                         return Err(QuasarError::DynamicFieldTooLong.into());
                                     }
-                                    let __view = self.__view;
+                                    let __view = &*self.__view;
                                     let __start_offset = #off_expr;
                                     let __old_len = unsafe { __view.borrow_unchecked() }.len() - __start_offset;
                                     let __new_len = __value.len();
@@ -349,7 +354,8 @@ pub(super) fn generate_accessors(
                                     if __new_len > __old_len {
                                         self.realloc(__new_total, __payer.to_account_view(), None)?;
                                     }
-                                    let __data = unsafe { __view.borrow_unchecked_mut() };
+                                    let __len = self.__view.data_len();
+                                    let __data = unsafe { core::slice::from_raw_parts_mut(self.__view.data_mut_ptr(), __len) };
                                     __data[__start_offset..__start_offset + __new_len].copy_from_slice(__value.as_bytes());
                                     if __new_len < __old_len {
                                         self.realloc(__new_total, __payer.to_account_view(), None)?;
@@ -365,7 +371,7 @@ pub(super) fn generate_accessors(
                                     if __value.len() > #max_val {
                                         return Err(QuasarError::DynamicFieldTooLong.into());
                                     }
-                                    let __view = self.__view;
+                                    let __view = &*self.__view;
                                     let __start_offset = #off_expr;
                                     let __old_len = unsafe { __view.borrow_unchecked() }.len() - __start_offset;
                                     let __new_len = __value.len();
@@ -373,7 +379,8 @@ pub(super) fn generate_accessors(
                                     if __new_len > __old_len {
                                         self.realloc(__new_total, __payer.to_account_view(), None)?;
                                     }
-                                    let __data = unsafe { __view.borrow_unchecked_mut() };
+                                    let __len = self.__view.data_len();
+                                    let __data = unsafe { core::slice::from_raw_parts_mut(self.__view.data_mut_ptr(), __len) };
                                     __data[__start_offset..__start_offset + __new_len].copy_from_slice(__value);
                                     if __new_len < __old_len {
                                         self.realloc(__new_total, __payer.to_account_view(), None)?;
