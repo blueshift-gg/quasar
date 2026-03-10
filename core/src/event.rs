@@ -24,22 +24,18 @@ pub fn emit_event_cpi(
     ];
     let signer = Signer::from(&seeds as &[Seed]);
 
-    let result = unsafe {
+    unsafe {
         invoke_raw(
             program.address(),
-            &instruction_account as *const InstructionAccount,
+            &instruction_account as *const _,
             1,
             instruction_data.as_ptr(),
             instruction_data.len(),
             &cpi_account as *const _,
             1,
             &[signer],
-        )
-    };
-
-    if result == 0 {
-        Ok(())
-    } else {
-        Err(ProgramError::from(result))
+        );
     }
+
+    Ok(())
 }

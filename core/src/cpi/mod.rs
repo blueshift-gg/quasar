@@ -5,8 +5,8 @@
 //! `BufCpiCall` is the variable-length variant for Borsh-serialized instructions.
 //!
 //! Account types (`CpiAccount`, `InstructionAccount`, `Seed`, `Signer`) come
-//! from `solana-instruction-view`. Invocation goes directly through
-//! `sol_invoke_signed_c` with no intermediate borrow checking.
+//! from `solana-instruction-view`. Invocation goes through the upstream
+//! `invoke_signed_unchecked` with no intermediate borrow checking.
 
 pub mod buf;
 pub mod system;
@@ -18,6 +18,83 @@ pub use solana_instruction_view::{InstructionAccount, InstructionView};
 use solana_account_view::{AccountView, RuntimeAccount};
 use solana_address::Address;
 use solana_program_error::{ProgramError, ProgramResult};
+
+#[cfg(any(target_os = "solana", target_arch = "bpf"))]
+#[repr(C)]
+struct CInstruction<'a> {
+    program_id: *const Address,
+    accounts: *const InstructionAccount<'a>,
+    accounts_len: u64,
+    data: *const u8,
+    data_len: u64,
+}
+
+/// Direct CPI syscall — passes raw pointers to `sol_invoke_signed_c`.
+///
+/// Uses SDK types (`InstructionAccount`, `CpiAccount`, `Seed`, `Signer`)
+/// but bypasses `InstructionView` / `invoke_signed_unchecked` to go
+/// directly to the `sol_invoke_signed_c` syscall.
+#[inline(always)]
+#[allow(clippy::too_many_arguments, unused_variables)]
+pub(crate) unsafe fn invoke_raw(
+    program_id: *const Address,
+    instruction_accounts: *const InstructionAccount,
+    instruction_accounts_len: usize,
+    data: *const u8,
+    data_len: usize,
+    cpi_accounts: *const CpiAccount,
+    cpi_accounts_len: usize,
+    signers: &[Signer],
+) -> u64 {
+    #[cfg(any(target_os = "solana", target_arch = "bpf"))]
+    {
+        let instruction = CInstruction {
+            program_id,
+            accounts: instruction_accounts,
+            accounts_len: instruction_accounts_len as u64,
+            data,
+            data_len: data_len as u64,
+        };
+
+        solana_instruction_view::cpi::sol_invoke_signed_c(
+            &instruction as *const _ as *const u8,
+            cpi_accounts as *const u8,
+            cpi_accounts_len as u64,
+            signers as *const _ as *const u8,
+            signers.len() as u64,
+        )
+    }
+
+    #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
+    {
+        let instruction = InstructionView {
+            program_id: &*program_id,
+            accounts: core::slice::from_raw_parts(instruction_accounts, instruction_accounts_len),
+            data: core::slice::from_raw_parts(data, data_len),
+        };
+        let cpi_slice = core::slice::from_raw_parts(cpi_accounts, cpi_accounts_len);
+        solana_instruction_view::cpi::invoke_signed_unchecked(
+            &instruction,
+            cpi_slice,
+            signers,
+        );
+        0
+    }
+}
+
+/// Convert a raw syscall result to `ProgramResult`.
+#[inline(always)]
+pub(crate) fn result_from_raw(result: u64) -> ProgramResult {
+    if result == 0 {
+        Ok(())
+    } else {
+        #[cold]
+        fn cpi_error(result: u64) -> ProgramError {
+            ProgramError::from(result)
+        }
+        Err(cpi_error(result))
+    }
+}
 
 const RUNTIME_ACCOUNT_SIZE: usize = core::mem::size_of::<RuntimeAccount>();
 
@@ -60,69 +137,6 @@ pub(crate) fn cpi_account_from_view(view: &AccountView) -> CpiAccount<'_> {
             flags: flags as u64,
         };
         core::mem::transmute(builder)
-    }
-}
-
-// --- Direct syscall wrapper ---
-
-#[cfg(any(target_os = "solana", target_arch = "bpf"))]
-#[repr(C)]
-struct CInstruction<'a> {
-    program_id: *const Address,
-    accounts: *const InstructionAccount<'a>,
-    accounts_len: u64,
-    data: *const u8,
-    data_len: u64,
-}
-
-#[inline(always)]
-#[allow(clippy::too_many_arguments, unused_variables)]
-pub(crate) unsafe fn invoke_raw(
-    program_id: *const Address,
-    instruction_accounts: *const InstructionAccount,
-    instruction_accounts_len: usize,
-    data: *const u8,
-    data_len: usize,
-    cpi_accounts: *const CpiAccount,
-    cpi_accounts_len: usize,
-    signers: &[Signer],
-) -> u64 {
-    #[cfg(any(target_os = "solana", target_arch = "bpf"))]
-    {
-        use solana_define_syscall::definitions::sol_invoke_signed_c;
-
-        let instruction = CInstruction {
-            program_id,
-            accounts: instruction_accounts,
-            accounts_len: instruction_accounts_len as u64,
-            data,
-            data_len: data_len as u64,
-        };
-
-        sol_invoke_signed_c(
-            &instruction as *const _ as *const u8,
-            cpi_accounts as *const u8,
-            cpi_accounts_len as u64,
-            signers as *const _ as *const u8,
-            signers.len() as u64,
-        )
-    }
-
-    #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
-    0
-}
-
-/// Convert a raw syscall result to `ProgramResult`.
-#[inline(always)]
-pub(crate) fn result_from_raw(result: u64) -> ProgramResult {
-    if result == 0 {
-        Ok(())
-    } else {
-        #[cold]
-        fn cpi_error(result: u64) -> ProgramError {
-            ProgramError::from(result)
-        }
-        Err(cpi_error(result))
     }
 }
 

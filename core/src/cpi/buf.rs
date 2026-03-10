@@ -1,12 +1,10 @@
 //! Variable-length CPI call with a stack-allocated maximum-capacity buffer.
 
-use super::{init_cpi_accounts, invoke_raw, result_from_raw, InstructionAccount};
+use super::{init_cpi_accounts, invoke_raw, result_from_raw, InstructionAccount, Seed, Signer};
 use solana_account_view::AccountView;
 use solana_address::Address;
 use solana_instruction_view::cpi::CpiAccount;
 use solana_program_error::ProgramResult;
-
-use super::{Seed, Signer};
 
 /// Like [`super::CpiCall`] but with a runtime-tracked `data_len` within
 /// a compile-time `MAX` capacity buffer. Used for Borsh-serialized
