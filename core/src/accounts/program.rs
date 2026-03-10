@@ -33,14 +33,8 @@ impl<T: crate::traits::Id> crate::traits::Id for Program<T> {
 }
 
 impl<T: crate::traits::Id> Program<T> {
-    /// Unchecked construction for optimized parsing where executable flag and address
-    /// have been pre-validated during entrypoint deserialization.
-    ///
     /// # Safety
-    ///
-    /// Caller must guarantee:
-    /// 1. `view.executable()` is true (validated via header check)
-    /// 2. `view.address() == T::ID` (validated explicitly)
+    /// Caller must ensure executable flag and address are valid.
     #[inline(always)]
     pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
         &*(view as *const AccountView as *const Self)

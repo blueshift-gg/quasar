@@ -16,8 +16,6 @@ pub fn initialize_mint2<'a>(
     mint_authority: &Address,
     freeze_authority: Option<&Address>,
 ) -> CpiCall<'a, 1, 67> {
-    // SAFETY: All 67 bytes are written before assume_init. The None branch
-    // explicitly zeroes bytes 34..67 (COption::None tag + 32 padding bytes).
     let data = unsafe {
         let mut buf = core::mem::MaybeUninit::<[u8; 67]>::uninit();
         let ptr = buf.as_mut_ptr() as *mut u8;

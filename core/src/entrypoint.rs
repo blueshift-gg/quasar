@@ -13,22 +13,15 @@ macro_rules! dispatch {
     ($ptr:expr, $ix_data:expr, $disc_len:literal, {
         $([$($disc_byte:literal),+] => $handler:ident($accounts_ty:ty)),+ $(,)?
     }) => {{
-        // SAFETY: The SVM runtime appends the 32-byte program_id immediately
-        // after instruction data. ix_data.as_ptr().add(ix_data.len()) points
-        // to this location.
         let __program_id: &[u8; 32] = unsafe {
             &*($ix_data.as_ptr().add($ix_data.len()) as *const [u8; 32])
         };
         const __U64_SIZE: usize = core::mem::size_of::<u64>();
-        // SAFETY: The SVM input buffer starts with a u64 account count.
-        // Accounts begin at offset 8 (size of u64).
         let __accounts_start = unsafe { ($ptr as *mut u8).add(__U64_SIZE) };
 
         if $ix_data.len() < $disc_len {
             return Err(ProgramError::InvalidInstructionData);
         }
-        // SAFETY: ix_data.len() >= disc_len is checked above. The pointer
-        // cast reads disc_len bytes from a valid slice.
         let __disc: [u8; $disc_len] = unsafe {
             *($ix_data.as_ptr() as *const [u8; $disc_len])
         };
@@ -38,23 +31,15 @@ macro_rules! dispatch {
                     let mut __buf = core::mem::MaybeUninit::<
                         [AccountView; <$accounts_ty as AccountCount>::COUNT]
                     >::uninit();
-                    // SAFETY: accounts_start points into the SVM input buffer
-                    // past the u64 count header. parse_accounts walks the buffer
-                    // and initializes buf with COUNT AccountViews.
                     let __remaining_ptr = unsafe {
                         <$accounts_ty>::parse_accounts(__accounts_start, &mut __buf)?
                     };
-                    // SAFETY: parse_accounts returns Ok only after writing all
-                    // COUNT elements into buf.
                     let __accounts = unsafe { __buf.assume_init() };
                     $handler(Context {
                         program_id: __program_id,
                         accounts: &__accounts,
                         remaining_ptr: __remaining_ptr,
                         data: $ix_data,
-                        // SAFETY: Instruction data follows accounts in the SVM
-                        // buffer. Subtracting 8 (u64 size) from ix_data.as_ptr()
-                        // gives the end of the accounts region.
                         accounts_boundary: unsafe { $ix_data.as_ptr().sub(__U64_SIZE) },
                     })
                 }
