@@ -69,6 +69,7 @@ use std::mem::{align_of, size_of, MaybeUninit};
 use quasar_core::__internal::{
     AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED,
 };
+use quasar_core::accounts::account::{resize, set_lamports};
 use quasar_core::accounts::{Account, Signer as SignerAccount, UncheckedAccount};
 use quasar_core::checks;
 use quasar_core::cpi::{CpiCall, InstructionAccount};
@@ -76,7 +77,6 @@ use quasar_core::error::QuasarError;
 use quasar_core::pod::*;
 use quasar_core::remaining::RemainingAccounts;
 use quasar_core::traits::*;
-use quasar_core::accounts::account::{resize, set_lamports};
 use solana_address::Address;
 use solana_program_error::ProgramError;
 
@@ -565,7 +565,8 @@ fn aliasing_interleaved_50_cycles() {
     let view = unsafe { buf.view() };
     let mut view2 = unsafe { AccountView::new_unchecked(buf.raw()) };
     <TestAccountType as CheckOwner>::check_owner(&view).unwrap();
-    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view2) };
+    let account =
+        unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view2) };
 
     for i in 0u64..50 {
         set_lamports(account.to_account_view(), i);
@@ -581,7 +582,8 @@ fn aliasing_triple_ref_view_account_zc() {
     let view = unsafe { buf.view() };
     let mut view2 = unsafe { AccountView::new_unchecked(buf.raw()) };
     <TestAccountType as CheckOwner>::check_owner(&view).unwrap();
-    let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view2) };
+    let account =
+        unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view2) };
 
     set_lamports(&view, 111);
     assert_eq!(account.to_account_view().lamports(), 111);
@@ -618,7 +620,8 @@ fn aliasing_deref_mut_offset_sweep() {
         buf.write_data(&data);
 
         let mut view = unsafe { buf.view() };
-        let account = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view) };
+        let account =
+            unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view) };
         let zc: &mut TestZcData = &mut *account;
         assert_eq!(zc.value.get(), extra_slack as u64);
         zc.value = PodU64::from(42u64);
@@ -634,8 +637,10 @@ fn aliasing_duplicate_accounts_2_mut_refs() {
     let mut view_a = unsafe { buf.view() };
     let mut view_b = unsafe { AccountView::new_unchecked(buf.raw()) };
 
-    let acct_a = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view_a) };
-    let acct_b = unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view_b) };
+    let acct_a =
+        unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view_a) };
+    let acct_b =
+        unsafe { Account::<TestAccountType>::from_account_view_unchecked_mut(&mut view_b) };
 
     for i in 0u64..20 {
         set_lamports(acct_a.to_account_view(), i);
@@ -1670,7 +1675,8 @@ fn ops_close_transfers_lamports_and_zeroes_fields() {
     let mut src_view = unsafe { src_buf.view() };
     let dst_view = unsafe { dst_buf.view() };
 
-    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked_mut(&mut src_view) };
+    let account =
+        unsafe { Account::<TestCloseableType>::from_account_view_unchecked_mut(&mut src_view) };
     account.close(&dst_view).unwrap();
 
     assert_eq!(src_view.lamports(), 0);
@@ -1701,7 +1707,8 @@ fn ops_close_rejected_by_check_owner() {
     let mut src_view = unsafe { src_buf.view() };
     let dest_view = unsafe { dest_buf.view() };
 
-    let closeable = unsafe { Account::<TestCloseableType>::from_account_view_unchecked_mut(&mut src_view) };
+    let closeable =
+        unsafe { Account::<TestCloseableType>::from_account_view_unchecked_mut(&mut src_view) };
     closeable.close(&dest_view).unwrap();
 
     let result = <TestCloseableType as CheckOwner>::check_owner(&src_view);
@@ -1730,7 +1737,8 @@ fn ops_close_rejects_non_writable_destination() {
     let mut src_view = unsafe { src_buf.view() };
     let dst_view = unsafe { dst_buf.view() };
 
-    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked_mut(&mut src_view) };
+    let account =
+        unsafe { Account::<TestCloseableType>::from_account_view_unchecked_mut(&mut src_view) };
     let result = account.close(&dst_view);
     assert!(result.is_err());
     assert_eq!(src_view.lamports(), 1_000_000);
@@ -1761,7 +1769,8 @@ fn ops_close_rejects_lamport_overflow() {
     let mut src_view = unsafe { src_buf.view() };
     let dst_view = unsafe { dst_buf.view() };
 
-    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked_mut(&mut src_view) };
+    let account =
+        unsafe { Account::<TestCloseableType>::from_account_view_unchecked_mut(&mut src_view) };
     let result = account.close(&dst_view);
     // wrapping_add: u64::MAX + 1_000_000 wraps (physically impossible on Solana)
     assert!(result.is_ok());
@@ -2283,7 +2292,8 @@ fn adversarial_interleaved_close_write_read() {
     let other_view = unsafe { other_buf.view() };
     let dst_view = unsafe { dst_buf.view() };
 
-    let account = unsafe { Account::<TestCloseableType>::from_account_view_unchecked_mut(&mut src_view) };
+    let account =
+        unsafe { Account::<TestCloseableType>::from_account_view_unchecked_mut(&mut src_view) };
     account.close(&dst_view).unwrap();
 
     assert_eq!(src_view.lamports(), 0);

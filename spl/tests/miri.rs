@@ -55,9 +55,9 @@ use std::mem::{size_of, MaybeUninit};
 use quasar_core::__internal::{
     AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED,
 };
+use quasar_core::accounts::account::set_lamports;
 use quasar_core::accounts::Account;
 use quasar_core::traits::*;
-use quasar_core::accounts::account::set_lamports;
 use quasar_spl::{
     InterfaceAccount, Mint, MintAccountState, Token, TokenAccountState, SPL_TOKEN_ID, TOKEN_2022_ID,
 };

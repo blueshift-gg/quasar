@@ -73,11 +73,7 @@ pub(crate) unsafe fn invoke_raw(
             data: core::slice::from_raw_parts(data, data_len),
         };
         let cpi_slice = core::slice::from_raw_parts(cpi_accounts, cpi_accounts_len);
-        solana_instruction_view::cpi::invoke_signed_unchecked(
-            &instruction,
-            cpi_slice,
-            signers,
-        );
+        solana_instruction_view::cpi::invoke_signed_unchecked(&instruction, cpi_slice, signers);
         0
     }
 }
