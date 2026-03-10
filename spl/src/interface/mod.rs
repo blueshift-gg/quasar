@@ -33,7 +33,7 @@ impl<T> AsAccountView for InterfaceAccount<T> {
 impl<T: AccountCheck> InterfaceAccount<T> {
     #[inline(always)]
     pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
-        let owner = unsafe { view.owner() };
+        let owner = view.owner();
         if !quasar_core::keys_eq(owner, &SPL_TOKEN_ID)
             && !quasar_core::keys_eq(owner, &TOKEN_2022_ID)
         {
@@ -44,19 +44,18 @@ impl<T: AccountCheck> InterfaceAccount<T> {
     }
 
     #[inline(always)]
-    #[allow(invalid_reference_casting, clippy::mut_from_ref)]
-    pub fn from_account_view_mut(view: &AccountView) -> Result<&mut Self, ProgramError> {
+    pub fn from_account_view_mut(view: &mut AccountView) -> Result<&mut Self, ProgramError> {
         if !view.is_writable() {
             return Err(ProgramError::Immutable);
         }
-        let owner = unsafe { view.owner() };
+        let owner = view.owner();
         if !quasar_core::keys_eq(owner, &SPL_TOKEN_ID)
             && !quasar_core::keys_eq(owner, &TOKEN_2022_ID)
         {
             return Err(ProgramError::IllegalOwner);
         }
         T::check(view)?;
-        Ok(unsafe { &mut *(view as *const AccountView as *mut Self) })
+        Ok(unsafe { &mut *(view as *mut AccountView as *mut Self) })
     }
 
     /// # Safety
@@ -69,9 +68,8 @@ impl<T: AccountCheck> InterfaceAccount<T> {
     /// # Safety
     /// Caller must ensure owner, discriminator, and writability.
     #[inline(always)]
-    #[allow(invalid_reference_casting, clippy::mut_from_ref)]
-    pub unsafe fn from_account_view_unchecked_mut(view: &AccountView) -> &mut Self {
-        &mut *(view as *const AccountView as *mut Self)
+    pub unsafe fn from_account_view_unchecked_mut(view: &mut AccountView) -> &mut Self {
+        &mut *(view as *mut AccountView as *mut Self)
     }
 }
 
@@ -87,7 +85,7 @@ impl<T: ZeroCopyDeref> core::ops::Deref for InterfaceAccount<T> {
 impl<T: ZeroCopyDeref> core::ops::DerefMut for InterfaceAccount<T> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        T::deref_from_mut(&self.view)
+        T::deref_from_mut(&mut self.view)
     }
 }
 

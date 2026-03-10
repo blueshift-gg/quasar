@@ -125,7 +125,7 @@ impl AccountCheck for MetadataAccount {
 impl CheckOwner for MetadataAccount {
     #[inline(always)]
     fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
-        if !quasar_core::keys_eq(unsafe { view.owner() }, &METADATA_PROGRAM_ID) {
+        if !quasar_core::keys_eq(view.owner(), &METADATA_PROGRAM_ID) {
             return Err(ProgramError::IllegalOwner);
         }
         Ok(())
@@ -141,8 +141,8 @@ impl ZeroCopyDeref for MetadataAccount {
     }
 
     #[inline(always)]
-    fn deref_from_mut(view: &AccountView) -> &mut Self::Target {
-        unsafe { &mut *(view.data_ptr() as *mut MetadataPrefix) }
+    fn deref_from_mut(view: &mut AccountView) -> &mut Self::Target {
+        unsafe { &mut *(view.data_mut_ptr() as *mut MetadataPrefix) }
     }
 }
 
@@ -177,7 +177,7 @@ impl AccountCheck for MasterEditionAccount {
 impl CheckOwner for MasterEditionAccount {
     #[inline(always)]
     fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
-        if !quasar_core::keys_eq(unsafe { view.owner() }, &METADATA_PROGRAM_ID) {
+        if !quasar_core::keys_eq(view.owner(), &METADATA_PROGRAM_ID) {
             return Err(ProgramError::IllegalOwner);
         }
         Ok(())
@@ -193,7 +193,7 @@ impl ZeroCopyDeref for MasterEditionAccount {
     }
 
     #[inline(always)]
-    fn deref_from_mut(view: &AccountView) -> &mut Self::Target {
-        unsafe { &mut *(view.data_ptr() as *mut MasterEditionPrefix) }
+    fn deref_from_mut(view: &mut AccountView) -> &mut Self::Target {
+        unsafe { &mut *(view.data_mut_ptr() as *mut MasterEditionPrefix) }
     }
 }

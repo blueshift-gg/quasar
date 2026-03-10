@@ -12,8 +12,8 @@ impl<'info> Withdraw<'info> {
     pub fn withdraw(&self, amount: u64) -> Result<(), ProgramError> {
         let vault = self.vault.to_account_view();
         let user = self.user.to_account_view();
-        vault.set_lamports(vault.lamports() - amount);
-        user.set_lamports(user.lamports() + amount);
+        set_lamports(vault, vault.lamports() - amount);
+        set_lamports(user, user.lamports() + amount);
         Ok(())
     }
 }

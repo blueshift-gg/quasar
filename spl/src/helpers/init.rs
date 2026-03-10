@@ -6,7 +6,7 @@ use crate::state::{MintAccountState, TokenAccountState};
 
 #[inline(always)]
 fn is_token_program_owner(view: &AccountView) -> bool {
-    let owner = unsafe { view.owner() };
+    let owner = view.owner();
     quasar_core::keys_eq(owner, &SPL_TOKEN_ID) || quasar_core::keys_eq(owner, &TOKEN_2022_ID)
 }
 
@@ -63,7 +63,7 @@ pub trait InitToken: AsAccountView + Sized {
         rent: Option<&Rent>,
     ) -> Result<(), ProgramError> {
         let view = self.to_account_view();
-        if quasar_core::is_system_program(unsafe { view.owner() }) {
+        if quasar_core::is_system_program(view.owner()) {
             self.init(system_program, payer, token_program, mint, owner, rent)
         } else {
             if !is_token_program_owner(view) {
@@ -144,7 +144,7 @@ pub trait InitMint: AsAccountView + Sized {
         rent: Option<&Rent>,
     ) -> Result<(), ProgramError> {
         let view = self.to_account_view();
-        if quasar_core::is_system_program(unsafe { view.owner() }) {
+        if quasar_core::is_system_program(view.owner()) {
             self.init(
                 system_program,
                 payer,

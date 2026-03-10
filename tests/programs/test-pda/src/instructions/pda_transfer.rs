@@ -19,8 +19,8 @@ impl<'info> PdaTransfer<'info> {
         if pda_lamports < amount {
             return Err(ProgramError::InsufficientFunds);
         }
-        pda_view.set_lamports(pda_lamports - amount);
-        recipient_view.set_lamports(recipient_view.lamports() + amount);
+        set_lamports(pda_view, pda_lamports - amount);
+        set_lamports(recipient_view, recipient_view.lamports() + amount);
         Ok(())
     }
 }
