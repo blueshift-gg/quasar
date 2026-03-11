@@ -34,10 +34,10 @@ macro_rules! dispatch {
                     let __remaining_ptr = unsafe {
                         <$accounts_ty>::parse_accounts(__accounts_start, &mut __buf)?
                     };
-                    let __accounts = unsafe { __buf.assume_init() };
+                    let mut __accounts = unsafe { __buf.assume_init() };
                     $handler(Context {
                         program_id: __program_id,
-                        accounts: &__accounts,
+                        accounts: &mut __accounts,
                         remaining_ptr: __remaining_ptr,
                         data: $ix_data,
                         accounts_boundary: unsafe { $ix_data.as_ptr().sub(__U64_SIZE) },

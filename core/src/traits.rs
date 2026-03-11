@@ -117,7 +117,7 @@ pub trait AccountCount {
 pub trait ParseAccounts<'info>: Sized {
     type Bumps: Copy;
     fn parse(
-        accounts: &'info [AccountView],
+        accounts: &'info mut [AccountView],
         program_id: &Address,
     ) -> Result<(Self, Self::Bumps), ProgramError>;
 
@@ -130,7 +130,7 @@ pub trait ParseAccounts<'info>: Sized {
     /// The default implementation ignores `data` and delegates to `parse`.
     #[inline(always)]
     fn parse_with_instruction_data(
-        accounts: &'info [AccountView],
+        accounts: &'info mut [AccountView],
         _data: &'info [u8],
         program_id: &Address,
     ) -> Result<(Self, Self::Bumps), ProgramError> {
@@ -138,7 +138,7 @@ pub trait ParseAccounts<'info>: Sized {
     }
 
     #[inline(always)]
-    fn epilogue(&self) -> Result<(), ProgramError> {
+    fn epilogue(&mut self) -> Result<(), ProgramError> {
         Ok(())
     }
 }
@@ -175,7 +175,7 @@ pub trait CheckOwner {
 impl<T: Owner> CheckOwner for T {
     #[inline(always)]
     fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
-        if !crate::keys_eq(unsafe { view.owner() }, &T::OWNER) {
+        if !crate::keys_eq(view.owner(), &T::OWNER) {
             return Err(ProgramError::IllegalOwner);
         }
         Ok(())
@@ -216,7 +216,7 @@ pub trait ZeroCopyDeref {
     type Target;
     fn deref_from(view: &AccountView) -> &Self::Target;
     #[allow(clippy::mut_from_ref)]
-    fn deref_from_mut(view: &AccountView) -> &mut Self::Target;
+    fn deref_from_mut(view: &mut AccountView) -> &mut Self::Target;
 }
 
 /// On-chain event with a discriminator, fixed-size data, and emission logic.

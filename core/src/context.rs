@@ -24,7 +24,7 @@ unsafe fn as_address(bytes: &[u8; 32]) -> &Address {
 /// Raw entrypoint context before parsing.
 pub struct Context<'info> {
     pub program_id: &'info [u8; 32],
-    pub accounts: &'info [AccountView],
+    pub accounts: &'info mut [AccountView],
     pub remaining_ptr: *mut u8,
     pub data: &'info [u8],
     /// End of accounts region: `ix_data_ptr - sizeof(u64)`.
@@ -71,15 +71,21 @@ impl<'info, T: ParseAccounts<'info> + AccountCount> CtxWithRemaining<'info, T> {
     #[inline(always)]
     pub fn new(ctx: Context<'info>) -> Result<Self, ProgramError> {
         let program_id_addr = unsafe { as_address(ctx.program_id) };
+        // Save slice metadata before parse consumes the &mut borrow.
+        // Safety: AccountView is Copy and values are stable after parsing.
+        // The declared slice is only used for read-only duplicate resolution.
+        let declared_ptr = ctx.accounts.as_ptr();
+        let declared_len = ctx.accounts.len();
         let (accounts, bumps) =
             T::parse_with_instruction_data(ctx.accounts, ctx.data, program_id_addr)?;
+        let declared = unsafe { core::slice::from_raw_parts(declared_ptr, declared_len) };
         Ok(Self {
             accounts,
             bumps,
             program_id: ctx.program_id,
             data: ctx.data,
             remaining_ptr: ctx.remaining_ptr,
-            declared: ctx.accounts,
+            declared,
             accounts_boundary: ctx.accounts_boundary,
         })
     }

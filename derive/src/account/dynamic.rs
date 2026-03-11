@@ -345,7 +345,7 @@ pub(super) fn generate_dynamic_account(
     quote! {
         #(#attrs)*
         #vis struct #name<#lt> {
-            __view: &#lt AccountView,
+            __view: &#lt mut AccountView,
             __off: #off_array_type,
         }
 
@@ -379,7 +379,7 @@ pub(super) fn generate_dynamic_account(
         impl AsAccountView for #name<'_> {
             #[inline(always)]
             fn to_account_view(&self) -> &AccountView {
-                self.__view
+                &*self.__view
             }
         }
 
@@ -395,7 +395,7 @@ pub(super) fn generate_dynamic_account(
         impl core::ops::DerefMut for #name<'_> {
             #[inline(always)]
             fn deref_mut(&mut self) -> &mut Self::Target {
-                unsafe { &mut *(self.__view.data_ptr().add(#disc_len) as *mut #zc_name) }
+                unsafe { &mut *(self.__view.data_mut_ptr().add(#disc_len) as *mut #zc_name) }
             }
         }
 
@@ -431,14 +431,14 @@ pub(super) fn generate_dynamic_account(
             /// Validates discriminator and walks inline prefixes ONCE to cache
             /// byte offsets for O(1) field access.
             #[inline(always)]
-            pub fn from_account_view(view: &#lt AccountView) -> Result<Account<Self>, ProgramError> {
+            pub fn from_account_view(view: &#lt mut AccountView) -> Result<Account<Self>, ProgramError> {
                 <Self as CheckOwner>::check_owner(view)?;
                 <Self as AccountCheck>::check(view)?;
                 Self::__parse(view)
             }
 
             #[inline(always)]
-            fn __parse(view: &#lt AccountView) -> Result<Account<Self>, ProgramError> {
+            fn __parse(view: &#lt mut AccountView) -> Result<Account<Self>, ProgramError> {
                 let __data = unsafe { view.borrow_unchecked() };
                 let mut __offset = #disc_len + core::mem::size_of::<#zc_name>();
                 let mut __off = #off_array_init;
@@ -448,38 +448,37 @@ pub(super) fn generate_dynamic_account(
             }
 
             #[inline(always)]
-            pub fn close(&self, destination: &AccountView) -> Result<(), ProgramError> {
-                let view = self.__view;
+            pub fn close(&mut self, destination: &AccountView) -> Result<(), ProgramError> {
                 if !destination.is_writable() {
                     return Err(ProgramError::Immutable);
                 }
 
-                let zero_len = view.data_len().min(8);
+                let zero_len = self.__view.data_len().min(8);
                 if zero_len > 0 {
                     unsafe {
-                        core::ptr::write_bytes(view.data_ptr(), 0, zero_len);
+                        core::ptr::write_bytes(self.__view.data_mut_ptr(), 0, zero_len);
                     }
                 }
 
                 let new_lamports = destination
                     .lamports()
-                    .checked_add(view.lamports())
+                    .checked_add(self.__view.lamports())
                     .ok_or(ProgramError::InvalidArgument)?;
-                destination.set_lamports(new_lamports);
-                view.set_lamports(0);
-                unsafe { view.assign(&quasar_core::cpi::system::SYSTEM_PROGRAM_ID) };
-                view.resize(0)?;
+                quasar_core::accounts::account::set_lamports(destination, new_lamports);
+                self.__view.set_lamports(0);
+                unsafe { self.__view.assign(&quasar_core::cpi::system::SYSTEM_PROGRAM_ID) };
+                quasar_core::accounts::account::resize(&mut *self.__view, 0)?;
                 Ok(())
             }
 
             #[inline(always)]
             pub fn realloc(
-                &self,
+                &mut self,
                 new_space: usize,
                 payer: &AccountView,
                 rent: Option<&Rent>,
             ) -> Result<(), ProgramError> {
-                quasar_core::accounts::account::realloc_account(self.__view, new_space, payer, rent)
+                quasar_core::accounts::account::realloc_account(&mut *self.__view, new_space, payer, rent)
             }
 
             #(#accessor_methods)*
@@ -492,17 +491,17 @@ pub(super) fn generate_dynamic_account(
         impl #name<'_> {
             #[inline(always)]
             #[allow(clippy::too_many_arguments)]
-            pub fn set_inner(&self, #(#init_field_names: #init_field_types,)* payer: &AccountView, rent: Option<&Rent>) -> Result<(), ProgramError> {
+            pub fn set_inner(&mut self, #(#init_field_names: #init_field_types,)* payer: &AccountView, rent: Option<&Rent>) -> Result<(), ProgramError> {
                 #(#max_checks)*
 
                 let __space = Self::MIN_SPACE #(#space_terms)*;
-                let view = self.__view;
 
-                if __space > view.data_len() {
-                    quasar_core::accounts::account::realloc_account(view, __space, payer, rent)?;
+                if __space > self.__view.data_len() {
+                    quasar_core::accounts::account::realloc_account(&mut *self.__view, __space, payer, rent)?;
                 }
 
-                let __data = unsafe { view.borrow_unchecked_mut() };
+                let __len = self.__view.data_len();
+                let __data = unsafe { core::slice::from_raw_parts_mut(self.__view.data_mut_ptr(), __len) };
                 let __zc = unsafe { &mut *(__data[<#name as Discriminator>::DISCRIMINATOR.len()..].as_mut_ptr() as *mut #zc_name) };
                 #(#zc_header_stmts)*
                 let mut __offset = <#name as Discriminator>::DISCRIMINATOR.len() + core::mem::size_of::<#zc_name>();

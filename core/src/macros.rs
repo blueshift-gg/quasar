@@ -38,9 +38,8 @@ macro_rules! define_account {
             /// # Safety
             /// Caller must ensure all check traits and writability.
             #[inline(always)]
-            #[allow(invalid_reference_casting, clippy::mut_from_ref)]
-            pub unsafe fn from_account_view_unchecked_mut(view: &AccountView) -> &mut Self {
-                &mut *(view as *const AccountView as *mut Self)
+            pub unsafe fn from_account_view_unchecked_mut(view: &mut AccountView) -> &mut Self {
+                &mut *(view as *mut AccountView as *mut Self)
             }
         }
     };
