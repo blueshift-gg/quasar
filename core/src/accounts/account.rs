@@ -1,11 +1,61 @@
 use crate::cpi::system::SYSTEM_PROGRAM_ID;
 use crate::prelude::*;
+use solana_account_view::{RuntimeAccount, MAX_PERMITTED_DATA_INCREASE};
 
-/// Realloc an account to `new_space` bytes, transferring lamports to/from `payer`
-/// to maintain rent-exemption. Used by `Account::realloc` and generated view types.
+/// Resize account data, tracking the accumulated delta in the padding field.
+///
+/// Upstream v2 removed `resize()`. This reimplements it using the `padding`
+/// bytes (which replaced v1's `resize_delta: i32`) as an i32 resize delta.
+#[inline(always)]
+pub fn resize(view: &mut AccountView, new_len: usize) -> Result<(), ProgramError> {
+    let raw = view.account_mut_ptr();
+    let current_len = unsafe { (*raw).data_len } as i32;
+    let new_len_i32 = i32::try_from(new_len).map_err(|_| ProgramError::InvalidRealloc)?;
+
+    if new_len_i32 == current_len {
+        return Ok(());
+    }
+
+    let difference = new_len_i32 - current_len;
+
+    let delta_ptr = unsafe { core::ptr::addr_of_mut!((*raw).padding) as *mut i32 };
+    let accumulated = unsafe { delta_ptr.read_unaligned() } + difference;
+
+    if accumulated > MAX_PERMITTED_DATA_INCREASE as i32 {
+        return Err(ProgramError::InvalidRealloc);
+    }
+
+    unsafe {
+        (*raw).data_len = new_len as u64;
+        delta_ptr.write_unaligned(accumulated);
+    }
+
+    if difference > 0 {
+        unsafe {
+            core::ptr::write_bytes(
+                view.data_mut_ptr().add(current_len as usize),
+                0,
+                difference as usize,
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Set lamports on a shared `&AccountView` for cross-account mutations.
+///
+/// Used when two accounts from a parsed context both need lamport writes
+/// (e.g. close drains to destination, realloc returns excess to payer).
+#[inline(always)]
+pub fn set_lamports(view: &AccountView, lamports: u64) {
+    unsafe { (*(view.account_ptr() as *mut RuntimeAccount)).lamports = lamports };
+}
+
+/// Realloc an account to `new_space` bytes, adjusting lamports for rent-exemption.
 #[inline(always)]
 pub fn realloc_account(
-    view: &AccountView,
+    view: &mut AccountView,
     new_space: usize,
     payer: &AccountView,
     rent: Option<&crate::sysvars::rent::Rent>,
@@ -21,50 +71,32 @@ pub fn realloc_account(
     let current_lamports = view.lamports();
 
     if rent_exempt_lamports > current_lamports {
-        crate::cpi::system::transfer(payer, view, rent_exempt_lamports - current_lamports)
+        crate::cpi::system::transfer(payer, &*view, rent_exempt_lamports - current_lamports)
             .invoke()?;
     } else if current_lamports > rent_exempt_lamports {
         let excess = current_lamports - rent_exempt_lamports;
         view.set_lamports(rent_exempt_lamports);
-        payer.set_lamports(payer.lamports() + excess);
+        set_lamports(payer, payer.lamports() + excess);
     }
 
     let old_len = view.data_len();
 
-    // Zero trailing bytes on shrink to prevent data leakage if the account
-    // is later re-grown — the runtime does not zero the realloc region.
+    // Zero trailing bytes on shrink — the runtime does not zero the realloc region.
     if new_space < old_len {
-        // SAFETY: data_ptr() is valid for old_len bytes. The bytes in
-        // [new_space..old_len] are within the current allocation.
         unsafe {
-            core::ptr::write_bytes(view.data_ptr().add(new_space), 0, old_len - new_space);
+            core::ptr::write_bytes(view.data_mut_ptr().add(new_space), 0, old_len - new_space);
         }
     }
 
-    view.resize(new_space)?;
+    resize(view, new_space)?;
 
     Ok(())
 }
 
 /// Typed account wrapper with composable validation.
 ///
-/// `Account<T>` is `#[repr(transparent)]` over `T`, the view type. This
-/// enables two construction paths:
-///
-/// - **Static accounts** (`T: StaticView`): `T` is `#[repr(transparent)]`
-///   over `AccountView`. Construction via pointer cast from `&AccountView`.
-///
-/// - **Dynamic accounts**: `T` carries `&'info AccountView` + cached byte
-///   offsets for O(1) field access. Construction by value via `T::parse()`.
-///
-/// ## Zero-copy access (T: Deref)
-///
-/// When `T` implements `Deref`, `Account<T>` provides transparent `Deref`
-/// to `T::Target` (the ZC companion struct):
-///
-/// ```ignore
-/// let amount = ctx.accounts.token.amount(); // via Deref<Target = TokenAccountState>
-/// ```
+/// `#[repr(transparent)]` over `T`. Static accounts (`T: StaticView`)
+/// construct via pointer cast; dynamic accounts carry cached byte offsets.
 #[repr(transparent)]
 pub struct Account<T> {
     pub(crate) inner: T,
@@ -78,10 +110,7 @@ impl<T: AsAccountView> AsAccountView for Account<T> {
 }
 
 impl<T> Account<T> {
-    /// Construct an `Account<T>` by wrapping a view value.
-    ///
-    /// Used by dynamic accounts where T carries cached offsets and
-    /// is constructed by-value via `T::parse()`.
+    /// Wrap a view value. Used by dynamic accounts constructed via `T::parse()`.
     #[inline(always)]
     pub fn wrap(inner: T) -> Self {
         Account { inner }
@@ -91,12 +120,13 @@ impl<T> Account<T> {
 impl<T: AsAccountView> Account<T> {
     #[inline(always)]
     pub fn realloc(
-        &self,
+        &mut self,
         new_space: usize,
         payer: &AccountView,
         rent: Option<&crate::sysvars::rent::Rent>,
     ) -> Result<(), ProgramError> {
-        realloc_account(self.to_account_view(), new_space, payer, rent)
+        let view = unsafe { &mut *(self as *mut Account<T> as *mut AccountView) };
+        realloc_account(view, new_space, payer, rent)
     }
 }
 
@@ -107,46 +137,31 @@ impl<T: Owner + AsAccountView> Account<T> {
     }
 
     /// Close a program-owned account: zero discriminator, drain lamports,
-    /// reassign to system program, and resize to zero.
+    /// reassign to system program, resize to zero.
     ///
-    /// Zeroes the discriminator bytes before draining to prevent account revival
-    /// attacks within the same transaction.
-    ///
-    /// Only works for accounts owned by the calling program (i.e. types
-    /// implementing [`Owner`]). For token/mint accounts owned by the SPL Token
-    /// or Token-2022 programs, use the CPI-based close via the token program.
+    /// For token/mint accounts, use the CPI-based `TokenClose` trait instead.
     #[inline(always)]
-    pub fn close(&self, destination: &AccountView) -> Result<(), ProgramError> {
-        let view = self.to_account_view();
+    pub fn close(&mut self, destination: &AccountView) -> Result<(), ProgramError> {
+        let view = unsafe { &mut *(self as *mut Account<T> as *mut AccountView) };
         if !destination.is_writable() {
             return Err(ProgramError::Immutable);
         }
 
-        // Zero discriminator bytes to prevent revival within the same transaction.
-        // SAFETY: data_ptr() is valid for data_len() bytes. write_bytes with
-        // count 0 is a no-op, so the guard is unnecessary — all valid accounts
-        // have data_len >= discriminator length.
+        // Zero discriminator to prevent revival within the same transaction.
         let zero_len = view.data_len().min(8);
-        unsafe {
-            core::ptr::write_bytes(view.data_ptr(), 0, zero_len);
-        }
+        unsafe { core::ptr::write_bytes(view.data_mut_ptr(), 0, zero_len) };
 
-        // Lamport overflow is physically impossible: total SOL supply (~5.8e17)
-        // fits well within u64::MAX (~1.8e19). wrapping_add skips the overflow
-        // branch + Option construction that checked_add emits.
+        // wrapping_add: total SOL supply (~5.8e17) fits within u64::MAX.
         let new_lamports = destination.lamports().wrapping_add(view.lamports());
-        destination.set_lamports(new_lamports);
+        set_lamports(destination, new_lamports);
         view.set_lamports(0);
         unsafe { view.assign(&SYSTEM_PROGRAM_ID) };
-        view.resize(0)?;
+        resize(view, 0)?;
         Ok(())
     }
 }
 
-/// Static account construction — pointer cast from `&AccountView`.
-///
-/// Requires `T: StaticView` which guarantees the repr(transparent) chain:
-/// `Account<T>` → `T` → `AccountView`.
+/// Static account construction via pointer cast from `&AccountView`.
 impl<T: CheckOwner + AccountCheck + StaticView> Account<T> {
     #[inline(always)]
     pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
@@ -157,48 +172,21 @@ impl<T: CheckOwner + AccountCheck + StaticView> Account<T> {
 }
 
 impl<T: CheckOwner + AccountCheck> Account<T> {
-    /// Unchecked construction for optimized parsing where all flag checks
-    /// (signer/writable/executable/no-dup) have been pre-validated via u32
-    /// header comparison during entrypoint deserialization.
-    ///
     /// # Safety
-    ///
-    /// Caller must guarantee:
-    /// 1. The account is not a duplicate (borrow_state == 0xFF)
-    /// 2. Owner has been validated via `T::check_owner(view)`
-    /// 3. Discriminator has been validated via `T::check(view)`
+    /// Caller must ensure owner, discriminator, and borrow state are valid.
     #[inline(always)]
     pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
         &*(view as *const AccountView as *const Self)
     }
 
-    /// Unchecked mutable construction for optimized parsing.
-    ///
     /// # Safety
-    ///
-    /// Caller must guarantee:
-    /// 1. The account is not a duplicate (borrow_state == 0xFF)
-    /// 2. The account is writable (is_writable == 1)
-    /// 3. Owner has been validated via `T::check_owner(view)`
-    /// 4. Discriminator has been validated via `T::check(view)`
-    ///
-    /// This function uses `invalid_reference_casting` to convert `&AccountView`
-    /// to `&mut Self`, which is safe because `Self` is `#[repr(transparent)]`
-    /// over `AccountView` and uses interior mutability.
+    /// Caller must ensure owner, discriminator, borrow state, and writability.
     #[inline(always)]
-    #[allow(invalid_reference_casting, clippy::mut_from_ref)]
-    pub unsafe fn from_account_view_unchecked_mut(view: &AccountView) -> &mut Self {
-        &mut *(view as *const AccountView as *mut Self)
+    pub unsafe fn from_account_view_unchecked_mut(view: &mut AccountView) -> &mut Self {
+        &mut *(view as *mut AccountView as *mut Self)
     }
 }
 
-/// Deref: `Account<T>` exposes the inner view type T.
-///
-/// For static accounts: `Account<Wallet>` → `&Wallet` → auto-deref → `&WalletZc`
-/// For dynamic accounts: `Account<Profile<'info>>` → `&Profile<'info>` → auto-deref → `&ProfileZc`
-///
-/// Methods on T (get/set, accessors) are found at the first deref level.
-/// Fields on T::Target (ZC companion struct) are found via auto-deref.
 impl<T> core::ops::Deref for Account<T> {
     type Target = T;
 

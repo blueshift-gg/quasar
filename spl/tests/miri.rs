@@ -37,7 +37,7 @@
 //! | `&AccountView -> &MintAccountState` via Deref | Sound |
 //! | `&AccountView -> &InterfaceAccount<T>` cast | Sound |
 //! | `&AccountView -> &mut InterfaceAccount<T>` cast | Sound under Tree Borrows |
-//! | `view.owner()` unsafe read for CheckOwner | Sound |
+//! | `view.owner()` read for CheckOwner | Sound |
 //! | MaybeUninit [u8; N] instruction data (transfer, mint_to, etc.) | Sound |
 //! | ZeroCopyDeref `deref_from` / `deref_from_mut` | Sound under Tree Borrows |
 //! | Interleaved shared/mutable access via InterfaceAccount | Sound under Tree Borrows |
@@ -55,6 +55,7 @@ use std::mem::{size_of, MaybeUninit};
 use quasar_core::__internal::{
     AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED,
 };
+use quasar_core::accounts::account::set_lamports;
 use quasar_core::accounts::Account;
 use quasar_core::traits::*;
 use quasar_spl::{
@@ -119,7 +120,7 @@ impl AccountBuffer {
             (*raw).is_signer = is_signer as u8;
             (*raw).is_writable = is_writable as u8;
             (*raw).executable = 0;
-            (*raw).resize_delta = 0;
+            (*raw).padding = [0u8; 4];
             (*raw).address = Address::new_from_array(address);
             (*raw).owner = Address::new_from_array(owner);
             (*raw).lamports = lamports;
@@ -309,9 +310,9 @@ fn token_deref_exact_size_buffer() {
 #[test]
 fn token_deref_mut_writes_amount() {
     let (mut buf, _data) = token_account_buffer(100);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
 
-    let account = unsafe { Account::<Token>::from_account_view_unchecked_mut(&view) };
+    let account = unsafe { Account::<Token>::from_account_view_unchecked_mut(&mut view) };
 
     // Read initial amount
     assert_eq!(account.amount(), 100);
@@ -334,18 +335,18 @@ fn token_deref_mut_writes_amount() {
 fn token_deref_mut_aliasing_stress() {
     // &view and &mut Account<Token>, interleaved reads/writes
     let (mut buf, _data) = token_account_buffer(500);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
 
-    let account = unsafe { Account::<Token>::from_account_view_unchecked_mut(&view) };
+    let account = unsafe { Account::<Token>::from_account_view_unchecked_mut(&mut view) };
 
     // Read through &mut Account
     assert_eq!(account.amount(), 500);
 
-    // Read lamports through the original &view
-    assert_eq!(view.lamports(), 1_000_000);
+    // Read lamports through the account's view
+    assert_eq!(account.to_account_view().lamports(), 1_000_000);
 
-    // Write lamports through the view (interior mutability)
-    view.set_lamports(2_000_000);
+    // Write lamports through the account's view (interior mutability)
+    set_lamports(account.to_account_view(), 2_000_000);
 
     // Read back through &mut Account
     assert_eq!(account.to_account_view().lamports(), 2_000_000);
@@ -353,11 +354,11 @@ fn token_deref_mut_aliasing_stress() {
     // Read token data through &mut
     assert_eq!(account.amount(), 500);
 
-    // Interleave: read view, read account, repeat
+    // Interleave: read account view, read account, repeat
     for _ in 0..10 {
-        let _ = view.lamports();
+        let _ = account.to_account_view().lamports();
         let _ = account.amount();
-        let _ = view.data_len();
+        let _ = account.to_account_view().data_len();
         let _ = account.mint();
     }
 }
@@ -486,9 +487,9 @@ fn mint_exact_size_buffer() {
 #[test]
 fn mint_deref_mut_write() {
     let (mut buf, _data) = mint_account_buffer(500, 6);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
 
-    let account = unsafe { Account::<Mint>::from_account_view_unchecked_mut(&view) };
+    let account = unsafe { Account::<Mint>::from_account_view_unchecked_mut(&mut view) };
     assert_eq!(account.supply(), 500);
 
     // Write supply through raw pointer. Supply is at offset 36 (flag=4, authority=32)
@@ -584,8 +585,8 @@ fn interface_account_mut_cast() {
     buf.init([1u8; 32], SPL_TOKEN_OWNER, 1_000_000, 165, true, true);
     buf.write_data(&data);
 
-    let view = unsafe { buf.view() };
-    let iface = InterfaceAccount::<Token>::from_account_view_mut(&view).unwrap();
+    let mut view = unsafe { buf.view() };
+    let iface = InterfaceAccount::<Token>::from_account_view_mut(&mut view).unwrap();
 
     // Read through &mut InterfaceAccount
     assert_eq!(iface.amount(), 100);
@@ -603,27 +604,28 @@ fn interface_account_mut_cast() {
 
 #[test]
 fn interface_account_aliasing() {
-    // &view + &mut InterfaceAccount<Token>, interleaved R/W
+    // &mut view -> &mut InterfaceAccount<Token>, interleaved R/W
     let data = build_simple_token_data(50);
     let mut buf = AccountBuffer::new(165);
     buf.init([1u8; 32], SPL_TOKEN_OWNER, 1_000_000, 165, false, true);
     buf.write_data(&data);
 
-    let view = unsafe { buf.view() };
-    let iface = InterfaceAccount::<Token>::from_account_view_mut(&view).unwrap();
+    let mut view = unsafe { buf.view() };
+    let iface = InterfaceAccount::<Token>::from_account_view_mut(&mut view).unwrap();
 
-    // Interleaved access
+    // Interleaved access — go through iface.to_account_view() to avoid
+    // reborrowing `view` while `iface` holds a mutable borrow.
     assert_eq!(iface.amount(), 50);
-    assert_eq!(view.lamports(), 1_000_000);
+    assert_eq!(iface.to_account_view().lamports(), 1_000_000);
 
-    view.set_lamports(2_000_000);
+    set_lamports(iface.to_account_view(), 2_000_000);
     assert_eq!(iface.to_account_view().lamports(), 2_000_000);
 
-    // Rapid interleaving
+    // Rapid interleaving through the wrapper
     for _ in 0..20 {
-        let _ = view.lamports();
+        let _ = iface.to_account_view().lamports();
         let _ = iface.amount();
-        let _ = view.data_len();
+        let _ = iface.to_account_view().data_len();
         let _ = iface.mint();
     }
 }
@@ -651,8 +653,8 @@ fn interface_account_immutable_rejected() {
     buf.init([1u8; 32], SPL_TOKEN_OWNER, 1_000_000, 165, false, false); // NOT writable
     buf.write_data(&data);
 
-    let view = unsafe { buf.view() };
-    let result = InterfaceAccount::<Token>::from_account_view_mut(&view);
+    let mut view = unsafe { buf.view() };
+    let result = InterfaceAccount::<Token>::from_account_view_mut(&mut view);
     match result {
         Err(e) => assert_eq!(e, ProgramError::Immutable),
         Ok(_) => panic!("expected Immutable"),
@@ -718,8 +720,8 @@ fn interface_account_unchecked_mut_cast() {
     buf.init([1u8; 32], SPL_TOKEN_OWNER, 1_000_000, 165, false, true);
     buf.write_data(&data);
 
-    let view = unsafe { buf.view() };
-    let iface = unsafe { InterfaceAccount::<Token>::from_account_view_unchecked_mut(&view) };
+    let mut view = unsafe { buf.view() };
+    let iface = unsafe { InterfaceAccount::<Token>::from_account_view_unchecked_mut(&mut view) };
     assert_eq!(iface.amount(), 88);
 }
 
@@ -741,9 +743,9 @@ fn zero_copy_deref_from_token() {
 #[test]
 fn zero_copy_deref_from_mut_token() {
     let (mut buf, _data) = token_account_buffer(500);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
 
-    let state = <Token as ZeroCopyDeref>::deref_from_mut(&view);
+    let state = <Token as ZeroCopyDeref>::deref_from_mut(&mut view);
 
     // Read
     assert_eq!(state.amount(), 500);
@@ -770,9 +772,9 @@ fn zero_copy_deref_from_mint() {
 #[test]
 fn zero_copy_deref_from_mut_mint() {
     let (mut buf, _data) = mint_account_buffer(100, 9);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
 
-    let state = <Mint as ZeroCopyDeref>::deref_from_mut(&view);
+    let state = <Mint as ZeroCopyDeref>::deref_from_mut(&mut view);
     assert_eq!(state.supply(), 100);
 
     // Write supply
@@ -799,19 +801,20 @@ fn zero_copy_deref_from_exact_boundary() {
 
 #[test]
 fn zero_copy_deref_aliased_read_after_mut() {
-    // Get &mut via deref_from_mut, then get & via deref_from from same view.
-    // This is the aliasing pattern under Tree Borrows.
+    // Get &mut via deref_from_mut, write, drop it, then get & via deref_from.
     let (mut buf, _data) = token_account_buffer(300);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
 
-    let state_mut = <Token as ZeroCopyDeref>::deref_from_mut(&view);
-    assert_eq!(state_mut.amount(), 300);
+    {
+        let state_mut = <Token as ZeroCopyDeref>::deref_from_mut(&mut view);
+        assert_eq!(state_mut.amount(), 300);
 
-    // Write through mut
-    unsafe {
-        let amount_ptr = (state_mut as *mut TokenAccountState as *mut u8).add(64);
-        let new_amount: u64 = 600;
-        core::ptr::copy_nonoverlapping(new_amount.to_le_bytes().as_ptr(), amount_ptr, 8);
+        // Write through mut
+        unsafe {
+            let amount_ptr = (state_mut as *mut TokenAccountState as *mut u8).add(64);
+            let new_amount: u64 = 600;
+            core::ptr::copy_nonoverlapping(new_amount.to_le_bytes().as_ptr(), amount_ptr, 8);
+        }
     }
 
     // Read through a fresh deref_from — tests that the write is visible
@@ -1174,14 +1177,16 @@ fn max_amount_values() {
 fn rapid_deref_mut_cycling() {
     // 50 mut/shared cycles on the same view
     let (mut buf, _data) = token_account_buffer(0);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
 
     for i in 0u64..50 {
-        // Mutable deref
-        let state_mut = <Token as ZeroCopyDeref>::deref_from_mut(&view);
-        unsafe {
-            let amount_ptr = (state_mut as *mut TokenAccountState as *mut u8).add(64);
-            core::ptr::copy_nonoverlapping(i.to_le_bytes().as_ptr(), amount_ptr, 8);
+        // Mutable deref — scoped so borrow is released before shared deref
+        {
+            let state_mut = <Token as ZeroCopyDeref>::deref_from_mut(&mut view);
+            unsafe {
+                let amount_ptr = (state_mut as *mut TokenAccountState as *mut u8).add(64);
+                core::ptr::copy_nonoverlapping(i.to_le_bytes().as_ptr(), amount_ptr, 8);
+            }
         }
 
         // Shared deref
@@ -1198,13 +1203,13 @@ fn rapid_interface_account_cycling() {
     buf.init([1u8; 32], SPL_TOKEN_OWNER, 1_000_000, 165, false, true);
     buf.write_data(&data);
 
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
 
     for _ in 0..30 {
         let shared = InterfaceAccount::<Token>::from_account_view(&view).unwrap();
         let _ = shared.amount();
 
-        let mutable = InterfaceAccount::<Token>::from_account_view_mut(&view).unwrap();
+        let mutable = InterfaceAccount::<Token>::from_account_view_mut(&mut view).unwrap();
         let _ = mutable.amount();
     }
 }
@@ -1226,19 +1231,19 @@ fn mint_account_size_assertion() {
 fn token_deref_then_lamport_write_then_reread() {
     // Lifecycle: read token data, write lamports, re-read token data
     let (mut buf, _data) = token_account_buffer(42);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
 
-    let account = unsafe { Account::<Token>::from_account_view_unchecked_mut(&view) };
+    let account = unsafe { Account::<Token>::from_account_view_unchecked_mut(&mut view) };
 
     // Read token state
     assert_eq!(account.amount(), 42);
 
     // Modify lamports (different region of RuntimeAccount)
-    view.set_lamports(0);
+    set_lamports(account.to_account_view(), 0);
 
     // Re-read token state — should be unaffected
     assert_eq!(account.amount(), 42);
-    assert_eq!(view.lamports(), 0);
+    assert_eq!(account.to_account_view().lamports(), 0);
 }
 
 #[test]
@@ -1376,7 +1381,7 @@ fn multiple_interface_accounts_from_different_buffers() {
 
 #[test]
 fn account_view_owner_read_for_interface_check() {
-    // Tests the unsafe view.owner() call path used in InterfaceAccount::from_account_view
+    // Tests the view.owner() call path used in InterfaceAccount::from_account_view
     let data = build_simple_token_data(100);
     let mut buf = AccountBuffer::new(165);
     buf.init([1u8; 32], SPL_TOKEN_OWNER, 1_000_000, 165, false, true);
@@ -1385,7 +1390,7 @@ fn account_view_owner_read_for_interface_check() {
     let view = unsafe { buf.view() };
 
     // Explicitly test the owner read
-    let owner = unsafe { view.owner() };
+    let owner = view.owner();
     assert!(quasar_core::keys_eq(owner, &SPL_TOKEN_ID));
 }
 
@@ -1397,7 +1402,7 @@ fn account_view_owner_read_token_2022() {
     buf.write_data(&data);
 
     let view = unsafe { buf.view() };
-    let owner = unsafe { view.owner() };
+    let owner = view.owner();
     assert!(quasar_core::keys_eq(owner, &TOKEN_2022_ID));
 }
 
@@ -1405,12 +1410,12 @@ fn account_view_owner_read_token_2022() {
 fn token_deref_after_lamport_drain() {
     // Simulate closing: drain lamports, then read token data
     let (mut buf, _data) = token_account_buffer(42);
-    let view = unsafe { buf.view() };
+    let mut view = unsafe { buf.view() };
 
-    let account = unsafe { Account::<Token>::from_account_view_unchecked_mut(&view) };
+    let account = unsafe { Account::<Token>::from_account_view_unchecked_mut(&mut view) };
 
     // Drain lamports
-    view.set_lamports(0);
+    set_lamports(account.to_account_view(), 0);
 
     // Token data should still be readable (account data region unchanged)
     assert_eq!(account.amount(), 42);

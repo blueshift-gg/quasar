@@ -33,14 +33,8 @@ impl<T: ProgramInterface> AsAccountView for Interface<T> {
 }
 
 impl<T: ProgramInterface> Interface<T> {
-    /// Unchecked construction for optimized parsing where executable flag and address
-    /// have been pre-validated during entrypoint deserialization.
-    ///
     /// # Safety
-    ///
-    /// Caller must guarantee:
-    /// 1. `view.executable()` is true (validated via header check)
-    /// 2. `T::matches(view.address())` is true (validated explicitly)
+    /// Caller must ensure executable flag and address match.
     #[inline(always)]
     pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
         &*(view as *const AccountView as *const Self)

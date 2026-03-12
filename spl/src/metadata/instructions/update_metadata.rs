@@ -37,9 +37,6 @@ pub fn update_metadata_accounts_v2<'a>(
     let mut data = [0u8; 512];
     let mut offset = 0;
 
-    // SAFETY: All writes are within the 512-byte buffer. Field length checks
-    // above enforce name<=32, symbol<=10, uri<=200 — max serialized size is
-    // well under 512. Each ptr.add(offset) advances monotonically.
     unsafe {
         let ptr = data.as_mut_ptr();
 

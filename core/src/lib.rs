@@ -106,20 +106,14 @@ pub mod traits;
 /// Utility functions
 pub mod utils;
 
-/// 32-byte address comparison via four `read_unaligned` u64 word comparisons.
+/// 32-byte address comparison via four `read_unaligned` u64 words.
 ///
-/// Short-circuits on the first non-matching word — wrong owner fails fast
-/// on the first 8 bytes. Native-width u64 ops on SBF (64-bit target).
-///
-/// Uses `read_unaligned` instead of slice-then-`try_into().unwrap()` to
-/// eliminate bounds-checked slicing, `Result` construction, and panic paths.
+/// Short-circuits on first mismatch. Uses `read_unaligned` to avoid
+/// bounds-checked slicing, `Result` construction, and panic paths.
 #[inline(always)]
 pub fn keys_eq(a: &solana_address::Address, b: &solana_address::Address) -> bool {
     let a = a.as_array().as_ptr() as *const u64;
     let b = b.as_array().as_ptr() as *const u64;
-    // SAFETY: Address is [u8; 32] — 32 contiguous bytes. read_unaligned
-    // handles alignment-1. Offsets 0,8,16,24 are all within the 32-byte
-    // allocation. Short-circuit && avoids reading further on mismatch.
     unsafe {
         core::ptr::read_unaligned(a) == core::ptr::read_unaligned(b)
             && core::ptr::read_unaligned(a.add(1)) == core::ptr::read_unaligned(b.add(1))
@@ -128,15 +122,12 @@ pub fn keys_eq(a: &solana_address::Address, b: &solana_address::Address) -> bool
     }
 }
 
-/// Checks if an address is all zeros (the System program address).
+/// Check if an address is all zeros (the System program address).
 ///
-/// OR-folds four u64 words — half the loads of a full comparison since
-/// there's no second operand.
+/// OR-folds four u64 words — half the loads of a full comparison.
 #[inline(always)]
 pub fn is_system_program(addr: &solana_address::Address) -> bool {
     let a = addr.as_array().as_ptr() as *const u64;
-    // SAFETY: Address is [u8; 32] — 32 contiguous bytes. read_unaligned
-    // handles alignment-1. Offsets 0,8,16,24 are all within bounds.
     unsafe {
         (core::ptr::read_unaligned(a)
             | core::ptr::read_unaligned(a.add(1))
@@ -146,83 +137,38 @@ pub fn is_system_program(addr: &solana_address::Address) -> bool {
     }
 }
 
-/// Decode a failed account header check into the appropriate error.
+/// Decode a failed u32 header check into the appropriate error.
 ///
-/// This is a cold path helper called only when the u32 header comparison fails.
-/// It decomposes the header to determine which flag validation failed and returns
-/// the corresponding error.
-///
-/// The header layout (little-endian u32):
-/// - Byte 0: borrow_state (0xFF = unique, else = duplicate index)
-/// - Byte 1: is_signer (0 or 1)
-/// - Byte 2: is_writable (0 or 1)
-/// - Byte 3: executable (0 or 1)
+/// Cold path — called only when the header comparison fails. Decomposes
+/// the header `[borrow_state, is_signer, is_writable, executable]` to
+/// determine which flag validation failed.
 #[cold]
 #[inline(never)]
-#[allow(unused_variables)] // exec/exp_exec only used in debug builds
+#[allow(unused_variables)]
 pub fn decode_header_error(header: u32, expected: u32) -> solana_program_error::ProgramError {
     use solana_program_error::ProgramError;
 
     let [borrow, signer, writable, _exec] = header.to_le_bytes();
     let [exp_borrow, exp_signer, exp_writable, exp_exec] = expected.to_le_bytes();
 
-    // Check in order of likely mismatch: dup, signer, writable, executable
     if borrow != exp_borrow {
         #[cfg(feature = "debug")]
-        {
-            if borrow == 0xFF && exp_borrow != 0xFF {
-                solana_program_log::log("Header check failed: account is marked as unique but was expected to allow duplicates");
-            } else if borrow != 0xFF && exp_borrow == 0xFF {
-                solana_program_log::log("Header check failed: duplicate account detected (account used multiple times in instruction)");
-            } else {
-                solana_program_log::log("Header check failed: borrow_state mismatch");
-            }
-        }
-        return ProgramError::AccountBorrowFailed; // duplicate account detected
+        solana_program_log::log("duplicate account detected");
+        return ProgramError::AccountBorrowFailed;
     }
     if signer != exp_signer {
         #[cfg(feature = "debug")]
-        {
-            if exp_signer == 1 {
-                solana_program_log::log(
-                    "Header check failed: account must be a signer but is not signed",
-                );
-            } else {
-                solana_program_log::log(
-                    "Header check failed: account is signed but was not expected to be",
-                );
-            }
-        }
+        solana_program_log::log("missing required signature");
         return ProgramError::MissingRequiredSignature;
     }
     if writable != exp_writable {
         #[cfg(feature = "debug")]
-        {
-            if exp_writable == 1 {
-                solana_program_log::log(
-                    "Header check failed: account must be writable but is read-only",
-                );
-            } else {
-                solana_program_log::log(
-                    "Header check failed: account is writable but was expected to be read-only",
-                );
-            }
-        }
+        solana_program_log::log("account not writable");
         return ProgramError::Immutable;
     }
-    // exec != exp_exec
+
     #[cfg(feature = "debug")]
-    {
-        if exp_exec == 1 {
-            solana_program_log::log(
-                "Header check failed: account must be executable (a program) but is not",
-            );
-        } else {
-            solana_program_log::log(
-                "Header check failed: account is executable but was expected to be a data account",
-            );
-        }
-    }
+    solana_program_log::log("account not executable");
     ProgramError::InvalidAccountData
 }
 
