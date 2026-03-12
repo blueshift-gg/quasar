@@ -38,7 +38,9 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     let has_pda_account_seeds = idl.instructions.iter().any(|ix| {
         ix.accounts.iter().any(|a| {
             a.pda.as_ref().is_some_and(|pda| {
-                pda.seeds.iter().any(|s| matches!(s, IdlSeed::Account { .. }))
+                pda.seeds
+                    .iter()
+                    .any(|s| matches!(s, IdlSeed::Account { .. }))
             })
         })
     });
@@ -318,10 +320,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         for (i, ix) in idl.instructions.iter().enumerate() {
             let pascal = snake_to_pascal(&ix.name);
             if ix.args.is_empty() {
-                out.push_str(&format!(
-                    "  | {{ type: ProgramInstruction.{} }}",
-                    pascal
-                ));
+                out.push_str(&format!("  | {{ type: ProgramInstruction.{} }}", pascal));
             } else {
                 out.push_str(&format!(
                     "  | {{ type: ProgramInstruction.{}; args: {}InstructionArgs }}",
@@ -374,10 +373,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         for event in &idl.events {
             let has_type = idl.types.iter().any(|t| t.name == event.name);
             let const_name = format!("{}_DISCRIMINATOR", pascal_to_screaming_snake(&event.name));
-            out.push_str(&format!(
-                "    if (matchDisc(data, {}))\n",
-                const_name
-            ));
+            out.push_str(&format!("    if (matchDisc(data, {}))\n", const_name));
             if has_type {
                 out.push_str(&format!(
                     "      return {{ type: ProgramEvent.{0}, data: {0}Codec.decode(data.slice({1}.length)) }};\n",
@@ -405,19 +401,13 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
                 pascal_to_screaming_snake(&pascal)
             );
             if ix.args.is_empty() {
-                out.push_str(&format!(
-                    "    if (matchDisc(data, {}))\n",
-                    const_name
-                ));
+                out.push_str(&format!("    if (matchDisc(data, {}))\n", const_name));
                 out.push_str(&format!(
                     "      return {{ type: ProgramInstruction.{} }};\n",
                     pascal
                 ));
             } else {
-                out.push_str(&format!(
-                    "    if (matchDisc(data, {})) {{\n",
-                    const_name
-                ));
+                out.push_str(&format!("    if (matchDisc(data, {})) {{\n", const_name));
                 out.push_str("      const argsCodec = getStructCodec([\n");
                 for arg in &ix.args {
                     out.push_str(&format!(
@@ -547,7 +537,9 @@ fn generate_instruction_builders_web3js(out: &mut String, idl: &Idl) {
                         }
                     }
                 }
-                out.push_str(&format!("      ],\n      {class_name}.programId,\n    )[0];\n"));
+                out.push_str(&format!(
+                    "      ],\n      {class_name}.programId,\n    )[0];\n"
+                ));
             }
         }
 

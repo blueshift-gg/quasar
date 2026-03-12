@@ -76,8 +76,7 @@ pub fn parse_program(crate_root: &Path) -> ParsedProgram {
 
     // 9. Read version and crate name from Cargo.toml
     let version = read_cargo_version(crate_root).unwrap_or_else(|| "0.1.0".to_string());
-    let crate_name =
-        read_cargo_name(crate_root).unwrap_or_else(|| program_name.replace('_', "-"));
+    let crate_name = read_cargo_name(crate_root).unwrap_or_else(|| program_name.replace('_', "-"));
 
     ParsedProgram {
         program_id,
