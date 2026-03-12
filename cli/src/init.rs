@@ -407,7 +407,7 @@ mod {module_name} {{
 
 fn generate_package_json(name: &str, framework: Framework) -> String {
     let solana_dep = if framework.is_kit() {
-        "\"@solana/kit\": \"^3.0.0\""
+        "\"@solana/kit\": \"^6.0.0\""
     } else {
         "\"@solana/web3.js\": \"github:blueshift-gg/web3.js#v2\""
     };
@@ -421,7 +421,7 @@ fn generate_package_json(name: &str, framework: Framework) -> String {
     "test": "mocha --require tsx --delay tests/*.test.ts"
   }},
   "dependencies": {{
-    "@blueshift-gg/quasar-svm": "latest",
+    "@blueshift-gg/quasar-svm": "^0.1",
     {solana_dep}
   }},
   "devDependencies": {{

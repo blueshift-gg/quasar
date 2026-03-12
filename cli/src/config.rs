@@ -56,14 +56,11 @@ impl QuasarConfig {
     pub fn has_typescript_tests(&self) -> bool {
         matches!(
             self.testing.framework.as_str(),
-            "litesvm-web3js" | "litesvm-kit" | "quasarvm-web3js" | "quasarvm-kit"
+            "quasarsvm-web3js" | "quasarsvm-kit"
         )
     }
 
     pub fn has_rust_tests(&self) -> bool {
-        matches!(
-            self.testing.framework.as_str(),
-            "mollusk" | "litesvm" | "quasarvm"
-        )
+        matches!(self.testing.framework.as_str(), "mollusk")
     }
 }

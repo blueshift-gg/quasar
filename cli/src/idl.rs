@@ -67,7 +67,7 @@ pub fn generate(crate_path: &Path) -> CliResult {
     "./kit": "./kit.ts"
   }},
   "dependencies": {{{codecs_dep}
-    "@solana/kit": "^3.0.0",
+    "@solana/kit": "^6.0.0",
     "@solana/web3.js": "github:blueshift-gg/web3.js#v2"
   }}
 }}
