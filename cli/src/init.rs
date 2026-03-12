@@ -113,12 +113,7 @@ pub fn run(name: Option<String>) -> CliResult {
     };
 
     // Testing framework
-    let framework_items = &[
-        "None",
-        "Mollusk",
-        "QuasarSVM/Web3.js",
-        "QuasarSVM/Kit",
-    ];
+    let framework_items = &["None", "Mollusk", "QuasarSVM/Web3.js", "QuasarSVM/Kit"];
     let framework_idx = Select::with_theme(&theme)
         .with_prompt("Testing framework")
         .items(framework_items)
@@ -316,9 +311,7 @@ quasar-core = {{ git = "https://github.com/blueshift-gg/quasar" }}
     }
 
     // Dev dependencies based on testing framework
-    let client_dep = format!(
-        "{name}-client = {{ path = \"target/client/rust/{name}-client\" }}\n"
-    );
+    let client_dep = format!("{name}-client = {{ path = \"target/client/rust/{name}-client\" }}\n");
 
     match framework {
         Framework::None => {}
@@ -348,7 +341,12 @@ solana-instruction = {{ version = "3.2.0", features = ["bincode"] }}
     out
 }
 
-fn generate_lib_rs(module_name: &str, program_id: &str, template: Template, has_tests: bool) -> String {
+fn generate_lib_rs(
+    module_name: &str,
+    program_id: &str,
+    template: Template,
+    has_tests: bool,
+) -> String {
     let test_mod = if has_tests {
         "\n#[cfg(test)]\nmod tests;\n"
     } else {
@@ -538,13 +536,13 @@ describe("{class_name} Program", async () => {{
 
 fn snake_to_pascal(s: &str) -> String {
     s.split('_')
-        .map(|word| {{
+        .map(|word| {
             let mut chars = word.chars();
             match chars.next() {
                 None => String::new(),
                 Some(c) => c.to_uppercase().to_string() + &chars.collect::<String>(),
             }
-        }})
+        })
         .collect()
 }
 
@@ -598,16 +596,14 @@ fn test_initialize() {{
 "#
             )
         }
-        _ => {
-            r#"extern crate std;
+        _ => r#"extern crate std;
 
 #[test]
 fn test_initialize() {
     // TODO: implement test
 }
 "#
-            .to_string()
-        }
+        .to_string(),
     }
 }
 
