@@ -2,9 +2,12 @@ use std::path::PathBuf;
 
 use clap::{ArgAction, Args, Parser, Subcommand};
 
+pub mod build;
+pub mod config;
 pub mod error;
 pub mod idl;
 pub mod init;
+pub mod test;
 pub use error::CliResult;
 
 #[derive(Parser, Debug)]
@@ -39,7 +42,11 @@ pub struct ProfileCommand {
 }
 
 #[derive(Args, Debug, Default)]
-pub struct InitCommand {}
+pub struct InitCommand {
+    /// Project name (pre-fills the name prompt)
+    #[arg(value_name = "NAME")]
+    pub name: Option<String>,
+}
 
 #[derive(Args, Debug, Default)]
 pub struct BuildCommand {}
@@ -69,9 +76,9 @@ pub fn run(cli: Cli) -> CliResult {
             Ok(())
         }
         Command::Idl(command) => idl::run(command),
-        Command::Init(_) => init::run(),
-        Command::Build(_) => todo!(),
-        Command::Test(_) => todo!(),
+        Command::Init(command) => init::run(command.name),
+        Command::Build(_) => build::run(),
+        Command::Test(_) => test::run(),
         Command::Deploy(_) => todo!(),
     }
 }

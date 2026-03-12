@@ -19,7 +19,10 @@ use crate::types::*;
 /// All data extracted from parsing a quasar program crate.
 pub struct ParsedProgram {
     pub program_id: String,
+    /// The Rust module name from `#[program] mod <name>` (uses underscores).
     pub program_name: String,
+    /// The package name from `Cargo.toml` (uses dashes).
+    pub crate_name: String,
     pub version: String,
     pub instructions: Vec<program::RawInstruction>,
     pub accounts_structs: Vec<accounts::RawAccountsStruct>,
@@ -71,12 +74,15 @@ pub fn parse_program(crate_root: &Path) -> ParsedProgram {
         all_errors.extend(errors::extract_errors(&file.file));
     }
 
-    // 9. Read version from Cargo.toml
+    // 9. Read version and crate name from Cargo.toml
     let version = read_cargo_version(crate_root).unwrap_or_else(|| "0.1.0".to_string());
+    let crate_name =
+        read_cargo_name(crate_root).unwrap_or_else(|| program_name.replace('_', "-"));
 
     ParsedProgram {
         program_id,
         program_name,
+        crate_name,
         version,
         instructions,
         accounts_structs,
@@ -142,6 +148,7 @@ pub fn build_idl(parsed: ParsedProgram) -> Idl {
         address: parsed.program_id,
         metadata: IdlMetadata {
             name: parsed.program_name,
+            crate_name: parsed.crate_name,
             version: parsed.version,
             spec: "0.1.0".to_string(),
         },
@@ -272,6 +279,14 @@ fn check_discriminator_collisions(parsed: &ParsedProgram) {
         }
         std::process::exit(1);
     }
+}
+
+fn read_cargo_name(crate_root: &Path) -> Option<String> {
+    let cargo_path = crate_root.join("Cargo.toml");
+    let content = std::fs::read_to_string(cargo_path).ok()?;
+    let table: toml::Table = content.parse().ok()?;
+    let package = table.get("package")?.as_table()?;
+    package.get("name")?.as_str().map(|s| s.to_string())
 }
 
 fn read_cargo_version(crate_root: &Path) -> Option<String> {

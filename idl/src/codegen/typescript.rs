@@ -2,8 +2,24 @@ use std::collections::HashSet;
 
 use crate::types::{Idl, IdlSeed, IdlType};
 
-/// Generate a TypeScript client from the IDL.
+/// Target flavor for TypeScript client generation.
+#[derive(Clone, Copy, PartialEq)]
+pub enum TsTarget {
+    Web3js,
+    Kit,
+}
+
+/// Generate a TypeScript client targeting @solana/web3.js.
 pub fn generate_ts_client(idl: &Idl) -> String {
+    generate_ts(idl, TsTarget::Web3js)
+}
+
+/// Generate a TypeScript client targeting @solana/kit.
+pub fn generate_ts_client_kit(idl: &Idl) -> String {
+    generate_ts(idl, TsTarget::Kit)
+}
+
+fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     let mut out = String::new();
 
     // --- Collect which codecs are actually used ---
@@ -12,17 +28,57 @@ pub fn generate_ts_client(idl: &Idl) -> String {
     let has_dyn_vec = used.contains("dynVec");
     let has_tail = used.contains("tail");
     let has_instructions = !idl.instructions.is_empty();
+    let has_public_key = used.contains("publicKey");
+
+    // Check if any instruction uses PDAs or PDA account seeds
+    let has_pdas = idl
+        .instructions
+        .iter()
+        .any(|ix| ix.accounts.iter().any(|a| a.pda.is_some()));
+    let has_pda_account_seeds = idl.instructions.iter().any(|ix| {
+        ix.accounts.iter().any(|a| {
+            a.pda.as_ref().is_some_and(|pda| {
+                pda.seeds.iter().any(|s| matches!(s, IdlSeed::Account { .. }))
+            })
+        })
+    });
 
     // --- Imports ---
-    if has_instructions {
-        out.push_str("import { Buffer } from \"buffer\";\n");
+    match target {
+        TsTarget::Web3js => {
+            if has_instructions {
+                out.push_str("import { Buffer } from \"buffer\";\n");
+            }
+            out.push_str(
+                "import { PublicKey as Address, TransactionInstruction } from \"@solana/web3.js\";\n",
+            );
+        }
+        TsTarget::Kit => {
+            let mut kit_imports: Vec<&str> = vec!["type Address", "address"];
+            if has_instructions {
+                kit_imports.push("AccountRole");
+                kit_imports.push("type IInstruction");
+            }
+            if has_pdas {
+                kit_imports.push("getProgramDerivedAddress");
+            }
+            if has_pda_account_seeds || has_public_key {
+                kit_imports.push("getAddressCodec");
+            }
+            out.push_str(&format!(
+                "import {{ {} }} from \"@solana/kit\";\n",
+                kit_imports.join(", ")
+            ));
+        }
     }
-    out.push_str(
-        "import { PublicKey as Address, TransactionInstruction } from \"@solana/web3.js\";\n",
-    );
 
     // Build codec imports list
-    let mut codec_imports: Vec<&str> = vec!["getStructCodec"];
+    let has_struct_codec =
+        !idl.types.is_empty() || idl.instructions.iter().any(|ix| !ix.args.is_empty());
+    let mut codec_imports: Vec<&str> = Vec::new();
+    if has_struct_codec {
+        codec_imports.push("getStructCodec");
+    }
     let integer_codec_map = [
         ("u8", "getU8Codec"),
         ("u16", "getU16Codec"),
@@ -44,7 +100,8 @@ pub fn generate_ts_client(idl: &Idl) -> String {
         codec_imports.push("getBooleanCodec");
     }
 
-    if used.contains("publicKey") {
+    // PublicKey codec imports: web3.js uses custom helper, kit uses getAddressCodec from @solana/kit
+    if target == TsTarget::Web3js && has_public_key {
         codec_imports.extend_from_slice(&["getBytesCodec", "fixCodecSize", "transformCodec"]);
     }
 
@@ -63,18 +120,20 @@ pub fn generate_ts_client(idl: &Idl) -> String {
     codec_imports.sort();
     codec_imports.dedup();
 
-    out.push_str(&format!(
-        "import {{ {} }} from \"@solana/codecs\";\n",
-        codec_imports.join(", ")
-    ));
+    if !codec_imports.is_empty() {
+        out.push_str(&format!(
+            "import {{ {} }} from \"@solana/codecs\";\n",
+            codec_imports.join(", ")
+        ));
+    }
     if has_dyn_vec {
         out.push_str("import type { Codec } from \"@solana/codecs\";\n");
     }
 
     out.push('\n');
 
-    // --- PublicKey codec helper ---
-    if used.contains("publicKey") {
+    // --- PublicKey codec helper (web3.js only) ---
+    if target == TsTarget::Web3js && has_public_key {
         out.push_str(PUBLIC_KEY_CODEC_HELPER);
         out.push('\n');
     }
@@ -89,12 +148,27 @@ pub fn generate_ts_client(idl: &Idl) -> String {
         out.push('\n');
     }
 
+    // --- Discriminator match helper ---
+    let has_decoders =
+        !idl.accounts.is_empty() || !idl.events.is_empty() || !idl.instructions.is_empty();
+    if has_decoders {
+        out.push_str(MATCH_DISC_HELPER);
+        out.push('\n');
+    }
+
     // === Constants ===
     out.push_str("/* Constants */\n");
-    out.push_str(&format!(
-        "export const PROGRAM_ADDRESS = new Address(\"{}\");\n",
-        idl.address
-    ));
+    match target {
+        TsTarget::Web3js => {
+            // Program address is a public readonly on the client class
+        }
+        TsTarget::Kit => {
+            out.push_str(&format!(
+                "export const PROGRAM_ADDRESS = address(\"{}\");\n",
+                idl.address
+            ));
+        }
+    }
 
     // Account discriminators
     for account in &idl.accounts {
@@ -187,7 +261,9 @@ pub fn generate_ts_client(idl: &Idl) -> String {
     }
 
     // === Codecs ===
-    out.push_str("/* Codecs */\n");
+    if !idl.types.is_empty() {
+        out.push_str("/* Codecs */\n");
+    }
     for type_def in &idl.types {
         let name = &type_def.name;
         let fields = &type_def.ty.fields;
@@ -196,7 +272,7 @@ pub fn generate_ts_client(idl: &Idl) -> String {
             out.push_str(&format!(
                 "  [\"{}\", {}],\n",
                 field.name,
-                ts_codec(&field.ty)
+                ts_codec(&field.ty, target)
             ));
         }
         out.push_str("]);\n\n");
@@ -242,7 +318,10 @@ pub fn generate_ts_client(idl: &Idl) -> String {
         for (i, ix) in idl.instructions.iter().enumerate() {
             let pascal = snake_to_pascal(&ix.name);
             if ix.args.is_empty() {
-                out.push_str(&format!("  | {{ type: ProgramInstruction.{} }}", pascal));
+                out.push_str(&format!(
+                    "  | {{ type: ProgramInstruction.{} }}",
+                    pascal
+                ));
             } else {
                 out.push_str(&format!(
                     "  | {{ type: ProgramInstruction.{}; args: {}InstructionArgs }}",
@@ -260,7 +339,13 @@ pub fn generate_ts_client(idl: &Idl) -> String {
     out.push_str("/* Client */\n");
     let class_name = format!("{}Client", snake_to_pascal(&idl.metadata.name));
     out.push_str(&format!("export class {} {{\n", class_name));
-    out.push_str("  constructor(readonly programId: Address = PROGRAM_ADDRESS) {}\n");
+
+    if target == TsTarget::Web3js {
+        out.push_str(&format!(
+            "  static readonly programId = new Address(\"{}\");\n",
+            idl.address
+        ));
+    }
 
     // --- Account decoders ---
     for account in &idl.accounts {
@@ -271,16 +356,13 @@ pub fn generate_ts_client(idl: &Idl) -> String {
             "  decode{}(data: Uint8Array): {} {{\n",
             name, name
         ));
-        out.push_str(&format!("    const disc = {}_DISCRIMINATOR;\n", const_name));
-        out.push_str("    for (let i = 0; i < disc.length; i++) {\n");
         out.push_str(&format!(
-            "      if (data[i] !== disc[i]) throw new Error(\"Invalid {} discriminator\");\n",
-            name
+            "    if (!matchDisc(data, {}_DISCRIMINATOR)) throw new Error(\"Invalid {} discriminator\");\n",
+            const_name, name
         ));
-        out.push_str("    }\n");
         out.push_str(&format!(
-            "    return {}Codec.decode(data.slice(disc.length));\n",
-            name
+            "    return {}Codec.decode(data.slice({}_DISCRIMINATOR.length));\n",
+            name, const_name
         ));
         out.push_str("  }\n");
     }
@@ -293,7 +375,7 @@ pub fn generate_ts_client(idl: &Idl) -> String {
             let has_type = idl.types.iter().any(|t| t.name == event.name);
             let const_name = format!("{}_DISCRIMINATOR", pascal_to_screaming_snake(&event.name));
             out.push_str(&format!(
-                "    if (data.length >= {0}.length && {0}.every((b, i) => data[i] === b))\n",
+                "    if (matchDisc(data, {}))\n",
                 const_name
             ));
             if has_type {
@@ -324,7 +406,7 @@ pub fn generate_ts_client(idl: &Idl) -> String {
             );
             if ix.args.is_empty() {
                 out.push_str(&format!(
-                    "    if (data.length >= {0}.length && {0}.every((b, i) => data[i] === b))\n",
+                    "    if (matchDisc(data, {}))\n",
                     const_name
                 ));
                 out.push_str(&format!(
@@ -333,7 +415,7 @@ pub fn generate_ts_client(idl: &Idl) -> String {
                 ));
             } else {
                 out.push_str(&format!(
-                    "    if (data.length >= {0}.length && {0}.every((b, i) => data[i] === b)) {{\n",
+                    "    if (matchDisc(data, {})) {{\n",
                     const_name
                 ));
                 out.push_str("      const argsCodec = getStructCodec([\n");
@@ -341,7 +423,7 @@ pub fn generate_ts_client(idl: &Idl) -> String {
                     out.push_str(&format!(
                         "        [\"{}\", {}],\n",
                         arg.name,
-                        ts_codec(&arg.ty)
+                        ts_codec(&arg.ty, target)
                     ));
                 }
                 out.push_str("      ]);\n");
@@ -356,15 +438,49 @@ pub fn generate_ts_client(idl: &Idl) -> String {
         out.push_str("  }\n");
     }
 
-    // --- Instruction builders ---
+    // --- Instruction builders (target-specific) ---
+    match target {
+        TsTarget::Web3js => generate_instruction_builders_web3js(&mut out, idl),
+        TsTarget::Kit => generate_instruction_builders_kit(&mut out, idl),
+    }
+
+    out.push_str("}\n\n");
+
+    // === Errors ===
+    if !idl.errors.is_empty() {
+        out.push_str("/* Errors */\n");
+        out.push_str(
+            "export const PROGRAM_ERRORS: Record<number, { name: string; msg?: string }> = {\n",
+        );
+        for err in &idl.errors {
+            match &err.msg {
+                Some(msg) => {
+                    out.push_str(&format!(
+                        "  {}: {{ name: \"{}\", msg: \"{}\" }},\n",
+                        err.code, err.name, msg
+                    ));
+                }
+                None => {
+                    out.push_str(&format!("  {}: {{ name: \"{}\" }},\n", err.code, err.name));
+                }
+            }
+        }
+        out.push_str("};\n\n");
+    }
+
+    out
+}
+
+// ---------------------------------------------------------------------------
+// Instruction builders — @solana/web3.js
+// ---------------------------------------------------------------------------
+
+fn generate_instruction_builders_web3js(out: &mut String, idl: &Idl) {
+    let class_name = format!("{}Client", snake_to_pascal(&idl.metadata.name));
     for ix in &idl.instructions {
         out.push('\n');
         let pascal = snake_to_pascal(&ix.name);
 
-        // Accounts used by instruction builders are handled in three categories:
-        // - user-provided: passed by caller via InstructionInput
-        // - fixed-address: resolved once and stored in accountsMap
-        // - PDA: derived with findProgramAddressSync and stored in accountsMap
         let mut user_accs = Vec::new();
         let mut has_non_input_accounts = false;
         for acc in &ix.accounts {
@@ -378,9 +494,6 @@ pub fn generate_ts_client(idl: &Idl) -> String {
         let input_account_names: HashSet<&str> =
             user_accs.iter().map(|a| a.name.as_str()).collect();
 
-        // Map an account name to the generated TS expression that provides its value.
-        // User accounts come from input.<name>; fixed/PDA accounts, when they exist,
-        // come from accountsMap["name"].
         let account_expr = |name: &str| {
             if input_account_names.contains(name) {
                 format!("input.{name}")
@@ -389,7 +502,7 @@ pub fn generate_ts_client(idl: &Idl) -> String {
             }
         };
 
-        // Method signature — interface arguments
+        // Method signature
         let input_param = if user_accs.is_empty() && ix.args.is_empty() {
             String::new()
         } else {
@@ -434,7 +547,7 @@ pub fn generate_ts_client(idl: &Idl) -> String {
                         }
                     }
                 }
-                out.push_str("      ],\n      this.programId,\n    )[0];\n");
+                out.push_str(&format!("      ],\n      {class_name}.programId,\n    )[0];\n"));
             }
         }
 
@@ -451,7 +564,7 @@ pub fn generate_ts_client(idl: &Idl) -> String {
                 out.push_str(&format!(
                     "      [\"{}\", {}],\n",
                     arg.name,
-                    ts_codec(&arg.ty)
+                    ts_codec(&arg.ty, TsTarget::Web3js)
                 ));
             }
             out.push_str("    ]);\n");
@@ -469,7 +582,7 @@ pub fn generate_ts_client(idl: &Idl) -> String {
 
         // Return TransactionInstruction
         out.push_str("    return new TransactionInstruction({\n");
-        out.push_str("      programId: this.programId,\n");
+        out.push_str(&format!("      programId: {class_name}.programId,\n"));
         if !ix.accounts.is_empty() {
             out.push_str("      keys: [\n");
             for acc in &ix.accounts {
@@ -485,33 +598,161 @@ pub fn generate_ts_client(idl: &Idl) -> String {
         out.push_str("    });\n");
         out.push_str("  }\n");
     }
+}
 
-    out.push_str("}\n\n");
+// ---------------------------------------------------------------------------
+// Instruction builders — @solana/kit
+// ---------------------------------------------------------------------------
 
-    // === Errors ===
-    if !idl.errors.is_empty() {
-        out.push_str("/* Errors */\n");
-        out.push_str(
-            "export const PROGRAM_ERRORS: Record<number, { name: string; msg?: string }> = {\n",
-        );
-        for err in &idl.errors {
-            match &err.msg {
-                Some(msg) => {
-                    out.push_str(&format!(
-                        "  {}: {{ name: \"{}\", msg: \"{}\" }},\n",
-                        err.code, err.name, msg
-                    ));
-                }
-                None => {
-                    out.push_str(&format!("  {}: {{ name: \"{}\" }},\n", err.code, err.name));
-                }
+fn generate_instruction_builders_kit(out: &mut String, idl: &Idl) {
+    for ix in &idl.instructions {
+        out.push('\n');
+        let pascal = snake_to_pascal(&ix.name);
+
+        let mut user_accs = Vec::new();
+        let mut has_non_input_accounts = false;
+        for acc in &ix.accounts {
+            if acc.pda.is_none() && acc.address.is_none() {
+                user_accs.push(acc);
+            } else {
+                has_non_input_accounts = true;
             }
         }
-        out.push_str("};\n\n");
-    }
 
-    out
+        let input_account_names: HashSet<&str> =
+            user_accs.iter().map(|a| a.name.as_str()).collect();
+
+        let account_expr = |name: &str| {
+            if input_account_names.contains(name) {
+                format!("input.{name}")
+            } else {
+                format!("accountsMap[\"{}\"]", name)
+            }
+        };
+
+        // Check if this instruction has any PDAs (requires async)
+        let ix_has_pdas = ix.accounts.iter().any(|a| a.pda.is_some());
+
+        // Method signature
+        let input_param = if user_accs.is_empty() && ix.args.is_empty() {
+            String::new()
+        } else {
+            format!("input: {pascal}InstructionInput")
+        };
+        let return_type = if ix_has_pdas {
+            "Promise<IInstruction>"
+        } else {
+            "IInstruction"
+        };
+        let async_kw = if ix_has_pdas { "async " } else { "" };
+        out.push_str(&format!(
+            "  {async_kw}create{pascal}Instruction({input_param}): {return_type} {{\n"
+        ));
+
+        if has_non_input_accounts {
+            out.push_str("    const accountsMap: Record<string, Address> = {};\n");
+        }
+
+        // Derive fixed-address accounts
+        for acc in &ix.accounts {
+            if let Some(addr) = &acc.address {
+                out.push_str(&format!(
+                    "    accountsMap[\"{}\"] = address(\"{}\");\n",
+                    acc.name, addr
+                ));
+            }
+        }
+
+        // Derive PDA accounts (async in kit)
+        for acc in &ix.accounts {
+            if let Some(pda) = &acc.pda {
+                out.push_str(&format!(
+                    "    accountsMap[\"{}\"] = (await getProgramDerivedAddress({{\n      programAddress: PROGRAM_ADDRESS,\n      seeds: [\n",
+                    acc.name
+                ));
+                for seed in &pda.seeds {
+                    match seed {
+                        IdlSeed::Const { value } => {
+                            let bytes: Vec<String> = value.iter().map(|b| b.to_string()).collect();
+                            out.push_str(&format!(
+                                "        new Uint8Array([{}]),\n",
+                                bytes.join(", ")
+                            ));
+                        }
+                        IdlSeed::Account { path } => {
+                            out.push_str(&format!(
+                                "        getAddressCodec().encode({}),\n",
+                                account_expr(path)
+                            ));
+                        }
+                    }
+                }
+                out.push_str("      ],\n    }))[0];\n");
+            }
+        }
+
+        // Encode instruction data
+        let disc_bytes: Vec<String> = ix.discriminator.iter().map(|b| b.to_string()).collect();
+        if ix.args.is_empty() {
+            out.push_str(&format!(
+                "    const data = Uint8Array.from([{}]);\n",
+                disc_bytes.join(", ")
+            ));
+        } else {
+            out.push_str("    const argsCodec = getStructCodec([\n");
+            for arg in &ix.args {
+                out.push_str(&format!(
+                    "      [\"{}\", {}],\n",
+                    arg.name,
+                    ts_codec(&arg.ty, TsTarget::Kit)
+                ));
+            }
+            out.push_str("    ]);\n");
+            let arg_names: Vec<String> = ix
+                .args
+                .iter()
+                .map(|a| format!("{}: input.{}", a.name, a.name))
+                .collect();
+            out.push_str(&format!(
+                "    const data = Uint8Array.from([{}, ...argsCodec.encode({{ {} }})]);\n",
+                disc_bytes.join(", "),
+                arg_names.join(", ")
+            ));
+        }
+
+        // Return IInstruction
+        out.push_str("    return {\n");
+        out.push_str("      programAddress: PROGRAM_ADDRESS,\n");
+        if !ix.accounts.is_empty() {
+            out.push_str("      accounts: [\n");
+            for acc in &ix.accounts {
+                let addr_expr = account_expr(&acc.name);
+                let role = account_role(acc.signer, acc.writable);
+                out.push_str(&format!(
+                    "        {{ address: {}, role: {} }},\n",
+                    addr_expr, role
+                ));
+            }
+            out.push_str("      ],\n");
+        }
+        out.push_str("      data,\n");
+        out.push_str("    };\n");
+        out.push_str("  }\n");
+    }
 }
+
+fn account_role(signer: bool, writable: bool) -> &'static str {
+    match (signer, writable) {
+        (true, true) => "AccountRole.WRITABLE_SIGNER",
+        (true, false) => "AccountRole.READONLY_SIGNER",
+        (false, true) => "AccountRole.WRITABLE",
+        (false, false) => "AccountRole.READONLY",
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
 
 fn ts_type(ty: &IdlType) -> String {
     match ty {
@@ -532,7 +773,7 @@ fn ts_type(ty: &IdlType) -> String {
     }
 }
 
-fn ts_codec(ty: &IdlType) -> String {
+fn ts_codec(ty: &IdlType, target: TsTarget) -> String {
     match ty {
         IdlType::Primitive(p) => match p.as_str() {
             "u8" => "getU8Codec()".to_string(),
@@ -546,13 +787,16 @@ fn ts_codec(ty: &IdlType) -> String {
             "i64" => "getI64Codec()".to_string(),
             "i128" => "getI128Codec()".to_string(),
             "bool" => "getBooleanCodec()".to_string(),
-            "publicKey" => "getPublicKeyCodec()".to_string(),
+            "publicKey" => match target {
+                TsTarget::Web3js => "getPublicKeyCodec()".to_string(),
+                TsTarget::Kit => "getAddressCodec()".to_string(),
+            },
             other => format!("/* unknown: {} */", other),
         },
         IdlType::Defined { defined } => format!("{}Codec", defined),
         IdlType::DynString { .. } => "getDynStringCodec()".to_string(),
         IdlType::DynVec { vec } => {
-            format!("getDynVecCodec({})", ts_codec(&vec.items))
+            format!("getDynVecCodec({})", ts_codec(&vec.items, target))
         }
         IdlType::Tail { tail } => match tail.element.as_str() {
             "string" => "getUtf8Codec()".to_string(),
@@ -647,5 +891,14 @@ const DYN_VEC_HELPER: &str = r#"function getDynVecCodec<TFrom, TTo extends TFrom
   itemCodec: Codec<TFrom, TTo>,
 ) {
   return getArrayCodec(itemCodec, { size: getU32Codec() });
+}
+"#;
+
+const MATCH_DISC_HELPER: &str = r#"function matchDisc(data: Uint8Array, disc: Uint8Array): boolean {
+  if (data.length < disc.length) return false;
+  for (let i = 0; i < disc.length; i++) {
+    if (data[i] !== disc[i]) return false;
+  }
+  return true;
 }
 "#;

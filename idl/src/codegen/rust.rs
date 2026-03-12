@@ -13,7 +13,7 @@ edition = "2021"
 
 [dependencies]
 solana-address = "2"
-solana-instruction = "2"
+solana-instruction = "3"
 "#,
     )
 }
@@ -33,9 +33,9 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
     });
 
     if has_dynamic {
-        out.push_str("use alloc::vec;\nuse alloc::vec::Vec;\n");
+        out.push_str("use std::vec;\nuse std::vec::Vec;\n");
     } else {
-        out.push_str("use alloc::vec;\n");
+        out.push_str("use std::vec;\n");
     }
     out.push_str("use solana_address::Address;\n");
     out.push_str("use solana_instruction::{AccountMeta, Instruction};\n\n");

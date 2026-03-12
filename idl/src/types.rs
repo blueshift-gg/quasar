@@ -20,6 +20,8 @@ pub struct Idl {
 #[derive(Serialize)]
 pub struct IdlMetadata {
     pub name: String,
+    #[serde(skip)]
+    pub crate_name: String,
     pub version: String,
     pub spec: String,
 }
