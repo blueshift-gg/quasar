@@ -10,7 +10,6 @@
 // Error handling
 // Pod types
 // Utilities
-pub use crate::return_data::set_return_data;
 // Sysvar data types
 pub use crate::sysvars::clock::Clock;
 // Macros
@@ -29,6 +28,7 @@ pub use {
         dynamic::{RawEncoded, String, Vec},
         error::QuasarError,
         pod::{PodBool, PodI128, PodI16, PodI32, PodI64, PodU128, PodU16, PodU32, PodU64},
+        return_data::set_return_data,
         sysvars::rent::Rent,
         traits::{
             AccountCheck, AccountCount, AsAccountView, CheckOwner, Discriminator, Event, Id,

@@ -53,7 +53,8 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
                 out.push_str("import { Buffer } from \"buffer\";\n");
             }
             out.push_str(
-                "import { PublicKey as Address, TransactionInstruction } from \"@solana/web3.js\";\n",
+                "import { PublicKey as Address, TransactionInstruction } from \
+                 \"@solana/web3.js\";\n",
             );
         }
         TsTarget::Kit => {
@@ -103,7 +104,8 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         codec_imports.push("getBooleanCodec");
     }
 
-    // PublicKey codec imports: web3.js uses custom helper, kit uses getAddressCodec from @solana/kit
+    // PublicKey codec imports: web3.js uses custom helper, kit uses getAddressCodec
+    // from @solana/kit
     if target == TsTarget::Web3js && has_public_key {
         codec_imports.extend_from_slice(&["getBytesCodec", "fixCodecSize", "transformCodec"]);
     }
@@ -357,7 +359,8 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
             name, name
         ));
         out.push_str(&format!(
-            "    if (!matchDisc(data, {}_DISCRIMINATOR)) throw new Error(\"Invalid {} discriminator\");\n",
+            "    if (!matchDisc(data, {}_DISCRIMINATOR)) throw new Error(\"Invalid {} \
+             discriminator\");\n",
             const_name, name
         ));
         out.push_str(&format!(
@@ -662,7 +665,8 @@ fn generate_instruction_builders_kit(out: &mut String, idl: &Idl) {
         for acc in &ix.accounts {
             if let Some(pda) = &acc.pda {
                 out.push_str(&format!(
-                    "    accountsMap[\"{}\"] = (await getProgramDerivedAddress({{\n      programAddress: PROGRAM_ADDRESS,\n      seeds: [\n",
+                    "    accountsMap[\"{}\"] = (await getProgramDerivedAddress({{\n      \
+                     programAddress: PROGRAM_ADDRESS,\n      seeds: [\n",
                     acc.name
                 ));
                 for seed in &pda.seeds {
