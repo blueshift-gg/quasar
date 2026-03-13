@@ -79,6 +79,31 @@ pub(super) fn generate_client_macro(
                     }}
                 }}
             }};
+            ($struct_name:ident, [$($disc:expr),*], {{$($arg_name:ident : $arg_ty:ty),*}}, remaining) => {{
+                pub struct $struct_name {{
+                    {account_fields}
+                    $(pub $arg_name: $arg_ty,)*
+                    pub remaining_accounts: ::alloc::vec::Vec<quasar_core::client::AccountMeta>,
+                }}
+
+                impl From<$struct_name> for quasar_core::client::Instruction {{
+                    fn from(ix: $struct_name) -> quasar_core::client::Instruction {{
+                        let mut accounts = ::alloc::vec![
+                            {account_metas}
+                        ];
+                        accounts.extend(ix.remaining_accounts);
+                        let data = quasar_core::client::build_instruction_data(
+                            &[$($disc),*],
+                            |_data| {{ $(quasar_core::client::WriteBytes::write_bytes(&ix.$arg_name, _data);)* }}
+                        );
+                        quasar_core::client::Instruction {{
+                            program_id: $crate::ID,
+                            accounts,
+                            data,
+                        }}
+                    }}
+                }}
+            }};
         }}
         "#,
         macro_name = macro_name_str,

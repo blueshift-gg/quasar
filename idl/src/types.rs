@@ -32,6 +32,8 @@ pub struct IdlInstruction {
     pub discriminator: Vec<u8>,
     pub accounts: Vec<IdlAccountItem>,
     pub args: Vec<IdlField>,
+    #[serde(rename = "hasRemaining", skip_serializing_if = "is_false")]
+    pub has_remaining: bool,
 }
 
 #[derive(Serialize)]

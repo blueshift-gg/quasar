@@ -89,25 +89,19 @@ fn test_create() {
     let threshold: u8 = 2;
 
     // Build instruction with remaining accounts for signers
-    let mut instruction: Instruction = CreateInstruction {
+    let instruction: Instruction = CreateInstruction {
         creator,
         config,
         rent,
         system_program,
         threshold,
+        remaining_accounts: vec![
+            AccountMeta::new_readonly(signer1, true),
+            AccountMeta::new_readonly(signer2, true),
+            AccountMeta::new_readonly(signer3, true),
+        ],
     }
     .into();
-
-    // Add remaining accounts (signers)
-    instruction
-        .accounts
-        .push(AccountMeta::new_readonly(signer1, true));
-    instruction
-        .accounts
-        .push(AccountMeta::new_readonly(signer2, true));
-    instruction
-        .accounts
-        .push(AccountMeta::new_readonly(signer3, true));
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -314,22 +308,19 @@ fn test_execute_transfer() {
     let transfer_amount: u64 = 1_000_000_000;
 
     // Build instruction with 2 signers as remaining accounts (meets threshold of 2)
-    let mut instruction: Instruction = ExecuteTransferInstruction {
+    let instruction: Instruction = ExecuteTransferInstruction {
         config,
         creator,
         vault,
         recipient,
         system_program,
         amount: transfer_amount,
+        remaining_accounts: vec![
+            AccountMeta::new_readonly(signer1, true),
+            AccountMeta::new_readonly(signer2, true),
+        ],
     }
     .into();
-
-    instruction
-        .accounts
-        .push(AccountMeta::new_readonly(signer1, true));
-    instruction
-        .accounts
-        .push(AccountMeta::new_readonly(signer2, true));
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -400,19 +391,16 @@ fn test_execute_transfer_insufficient_signers() {
     let recipient_account = Account::new(0, 0, &system_program);
 
     // Only 1 signer — threshold is 2, should fail
-    let mut instruction: Instruction = ExecuteTransferInstruction {
+    let instruction: Instruction = ExecuteTransferInstruction {
         config,
         creator,
         vault,
         recipient,
         system_program,
         amount: 1_000_000_000,
+        remaining_accounts: vec![AccountMeta::new_readonly(signer1, true)],
     }
     .into();
-
-    instruction
-        .accounts
-        .push(AccountMeta::new_readonly(signer1, true));
 
     let result = mollusk.process_instruction(
         &instruction,

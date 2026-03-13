@@ -124,6 +124,7 @@ pub fn build_idl(parsed: ParsedProgram) -> Idl {
                 discriminator: ix.discriminator.clone(),
                 accounts: accounts_items,
                 args,
+                has_remaining: ix.has_remaining,
             }
         })
         .collect();

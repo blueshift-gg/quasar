@@ -297,6 +297,7 @@ fn no_collision_different_kinds() {
             discriminator: vec![1],
             accounts_type_name: "Make".to_string(),
             args: vec![],
+            has_remaining: false,
         }],
         accounts_structs: vec![],
         state_accounts: vec![state::RawStateAccount {
@@ -359,6 +360,7 @@ fn build_idl_full_pipeline() {
             discriminator: vec![1],
             accounts_type_name: "MakeOffer".to_string(),
             args: vec![],
+            has_remaining: false,
         }],
         accounts_structs: vec![],
         state_accounts,
@@ -410,12 +412,14 @@ fn collision_two_instructions_same_discriminator() {
                 discriminator: vec![1],
                 accounts_type_name: "Make".to_string(),
                 args: vec![],
+                has_remaining: false,
             },
             program::RawInstruction {
                 name: "take".to_string(),
                 discriminator: vec![1], // collision with make
                 accounts_type_name: "Take".to_string(),
                 args: vec![],
+                has_remaining: false,
             },
         ],
         accounts_structs: vec![],
@@ -510,6 +514,7 @@ fn no_collision_same_disc_different_kinds() {
             discriminator: vec![1],
             accounts_type_name: "Make".to_string(),
             args: vec![],
+            has_remaining: false,
         }],
         accounts_structs: vec![],
         state_accounts: vec![state::RawStateAccount {
@@ -547,18 +552,21 @@ fn collision_three_instructions_pairwise() {
                 discriminator: vec![1],
                 accounts_type_name: "A".to_string(),
                 args: vec![],
+                has_remaining: false,
             },
             program::RawInstruction {
                 name: "b".to_string(),
                 discriminator: vec![1],
                 accounts_type_name: "B".to_string(),
                 args: vec![],
+                has_remaining: false,
             },
             program::RawInstruction {
                 name: "c".to_string(),
                 discriminator: vec![1],
                 accounts_type_name: "C".to_string(),
                 args: vec![],
+                has_remaining: false,
             },
         ],
         accounts_structs: vec![],
@@ -570,4 +578,281 @@ fn collision_three_instructions_pairwise() {
     let collisions = find_discriminator_collisions(&parsed);
     // 3 instructions with same disc → 3 pairwise collisions: (a,b), (a,c), (b,c)
     assert_eq!(collisions.len(), 3, "should detect all pairwise collisions");
+}
+
+// ---------------------------------------------------------------------------
+// Rust codegen: events
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rust_codegen_events() {
+    use quasar_idl::{codegen::rust::generate_client, parser::ParsedProgram};
+
+    let evts = events::extract_events(&parse_file(
+        r#"
+        #[event(discriminator = [10])]
+        pub struct TradeExecuted {
+            pub maker: Address,
+            pub amount: u64,
+        }
+
+        #[event(discriminator = 5)]
+        pub struct OrderCancelled {}
+        "#,
+    ));
+
+    let parsed = ParsedProgram {
+        program_id: "ABcDeFgH111111111111111111111111111111111111".to_string(),
+        program_name: "test_program".to_string(),
+        crate_name: "test-program".to_string(),
+        version: "0.1.0".to_string(),
+        instructions: vec![],
+        accounts_structs: vec![],
+        state_accounts: vec![],
+        events: evts,
+        errors: vec![],
+    };
+
+    let code = generate_client(&parsed);
+
+    // Event discriminator constants
+    assert!(
+        code.contains("TRADE_EXECUTED_EVENT_DISCRIMINATOR"),
+        "should generate TradeExecuted discriminator constant"
+    );
+    assert!(
+        code.contains("ORDER_CANCELLED_EVENT_DISCRIMINATOR"),
+        "should generate OrderCancelled discriminator constant"
+    );
+
+    // Event struct with fields
+    assert!(
+        code.contains("pub struct TradeExecuted"),
+        "should generate TradeExecuted struct"
+    );
+    assert!(
+        code.contains("pub maker: Address"),
+        "should generate maker field"
+    );
+    assert!(
+        code.contains("pub amount: u64"),
+        "should generate amount field"
+    );
+
+    // Event struct without fields
+    assert!(
+        code.contains("pub struct OrderCancelled"),
+        "should generate empty OrderCancelled struct"
+    );
+
+    // Event enum
+    assert!(
+        code.contains("pub enum ProgramEvent"),
+        "should generate ProgramEvent enum"
+    );
+    assert!(
+        code.contains("TradeExecuted(TradeExecuted)"),
+        "should have TradeExecuted variant with data"
+    );
+    assert!(
+        code.contains("OrderCancelled,"),
+        "should have OrderCancelled variant without data"
+    );
+
+    // Decoder function
+    assert!(
+        code.contains("pub fn decode_event"),
+        "should generate decode_event function"
+    );
+    assert!(
+        code.contains("data.starts_with(TRADE_EXECUTED_EVENT_DISCRIMINATOR)"),
+        "should match TradeExecuted discriminator"
+    );
+    assert!(
+        code.contains("data.starts_with(ORDER_CANCELLED_EVENT_DISCRIMINATOR)"),
+        "should match OrderCancelled discriminator"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Rust codegen: remaining accounts
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rust_codegen_remaining_accounts() {
+    use quasar_idl::{codegen::rust::generate_client, parser::ParsedProgram};
+
+    let parsed = ParsedProgram {
+        program_id: "ABcDeFgH111111111111111111111111111111111111".to_string(),
+        program_name: "test_program".to_string(),
+        crate_name: "test-program".to_string(),
+        version: "0.1.0".to_string(),
+        instructions: vec![
+            program::RawInstruction {
+                name: "create".to_string(),
+                discriminator: vec![0],
+                accounts_type_name: "Create".to_string(),
+                args: vec![],
+                has_remaining: true,
+            },
+            program::RawInstruction {
+                name: "deposit".to_string(),
+                discriminator: vec![1],
+                accounts_type_name: "Deposit".to_string(),
+                args: vec![],
+                has_remaining: false,
+            },
+        ],
+        accounts_structs: vec![],
+        state_accounts: vec![],
+        events: vec![],
+        errors: vec![],
+    };
+
+    let code = generate_client(&parsed);
+
+    // Instruction with remaining should have the field and extend
+    assert!(
+        code.contains("pub remaining_accounts: Vec<AccountMeta>,"),
+        "CreateInstruction should have remaining_accounts field"
+    );
+    assert!(
+        code.contains("accounts.extend(ix.remaining_accounts)"),
+        "CreateInstruction should extend accounts"
+    );
+
+    // Instruction without remaining should NOT have the field
+    let deposit_section = code.split("pub struct DepositInstruction").nth(1).unwrap();
+    let deposit_impl = deposit_section.split("impl From").next().unwrap();
+    assert!(
+        !deposit_impl.contains("remaining_accounts"),
+        "DepositInstruction should NOT have remaining_accounts field"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TypeScript codegen: remaining accounts
+// ---------------------------------------------------------------------------
+
+#[test]
+fn ts_codegen_remaining_accounts() {
+    use quasar_idl::{codegen::typescript::generate_ts_client_kit, parser::build_idl};
+    use quasar_idl::parser::ParsedProgram;
+
+    let parsed = ParsedProgram {
+        program_id: "ABcDeFgH111111111111111111111111111111111111".to_string(),
+        program_name: "test_program".to_string(),
+        crate_name: "test-program".to_string(),
+        version: "0.1.0".to_string(),
+        instructions: vec![program::RawInstruction {
+            name: "create".to_string(),
+            discriminator: vec![0],
+            accounts_type_name: "Create".to_string(),
+            args: vec![],
+            has_remaining: true,
+        }],
+        accounts_structs: vec![],
+        state_accounts: vec![],
+        events: vec![],
+        errors: vec![],
+    };
+
+    let idl = build_idl(parsed);
+    let code = generate_ts_client_kit(&idl);
+
+    assert!(
+        code.contains("remainingAccounts?"),
+        "Kit InstructionInput should have remainingAccounts field"
+    );
+    assert!(
+        code.contains("...(input.remainingAccounts ?? [])"),
+        "Kit instruction builder should spread remaining accounts"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// IDL JSON: has_remaining serialization
+// ---------------------------------------------------------------------------
+
+#[test]
+fn idl_json_has_remaining_serialization() {
+    use quasar_idl::parser::{build_idl, ParsedProgram};
+
+    let parsed = ParsedProgram {
+        program_id: "ABcDeFgH111111111111111111111111111111111111".to_string(),
+        program_name: "test_program".to_string(),
+        crate_name: "test-program".to_string(),
+        version: "0.1.0".to_string(),
+        instructions: vec![
+            program::RawInstruction {
+                name: "create".to_string(),
+                discriminator: vec![0],
+                accounts_type_name: "Create".to_string(),
+                args: vec![],
+                has_remaining: true,
+            },
+            program::RawInstruction {
+                name: "deposit".to_string(),
+                discriminator: vec![1],
+                accounts_type_name: "Deposit".to_string(),
+                args: vec![],
+                has_remaining: false,
+            },
+        ],
+        accounts_structs: vec![],
+        state_accounts: vec![],
+        events: vec![],
+        errors: vec![],
+    };
+
+    let idl = build_idl(parsed);
+    let json = serde_json::to_string_pretty(&idl).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+    // Instruction with remaining should have hasRemaining: true
+    assert_eq!(
+        value["instructions"][0]["hasRemaining"], true,
+        "create should have hasRemaining: true"
+    );
+
+    // Instruction without remaining should omit the field (skip_serializing_if)
+    assert!(
+        value["instructions"][1].get("hasRemaining").is_none(),
+        "deposit should not have hasRemaining in JSON"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Parser: CtxWithRemaining detection
+// ---------------------------------------------------------------------------
+
+#[test]
+fn extract_instruction_ctx_with_remaining() {
+    let file = parse_file(
+        r#"
+        #[program]
+        mod my_program {
+            #[instruction(discriminator = 0)]
+            pub fn create(ctx: CtxWithRemaining<Create>, threshold: u8) -> Result<(), ProgramError> {
+                Ok(())
+            }
+
+            #[instruction(discriminator = 1)]
+            pub fn deposit(ctx: Ctx<Deposit>, amount: u64) -> Result<(), ProgramError> {
+                Ok(())
+            }
+        }
+        "#,
+    );
+
+    let (_, instructions) = program::extract_program_module(&file).unwrap();
+    assert_eq!(instructions.len(), 2);
+    assert!(
+        instructions[0].has_remaining,
+        "create should have has_remaining = true"
+    );
+    assert!(
+        !instructions[1].has_remaining,
+        "deposit should have has_remaining = false"
+    );
 }

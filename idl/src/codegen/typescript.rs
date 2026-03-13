@@ -243,7 +243,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
             .filter(|a| a.pda.is_none() && a.address.is_none())
             .collect();
 
-        if user_accs.is_empty() && ix.args.is_empty() {
+        if user_accs.is_empty() && ix.args.is_empty() && !ix.has_remaining {
             continue;
         }
 
@@ -259,6 +259,21 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         if !ix.args.is_empty() {
             for arg in &ix.args {
                 out.push_str(&format!("  {}: {};\n", arg.name, ts_type(&arg.ty)));
+            }
+        }
+
+        if ix.has_remaining {
+            match target {
+                TsTarget::Kit => {
+                    out.push_str(
+                        "  remainingAccounts?: Array<{ address: Address; role: AccountRole }>;\n",
+                    );
+                }
+                TsTarget::Web3js => {
+                    out.push_str(
+                        "  remainingAccounts?: Array<{ pubkey: Address; isSigner: boolean; isWritable: boolean }>;\n",
+                    );
+                }
             }
         }
 
@@ -499,7 +514,7 @@ fn generate_instruction_builders_web3js(out: &mut String, idl: &Idl) {
         };
 
         // Method signature
-        let input_param = if user_accs.is_empty() && ix.args.is_empty() {
+        let input_param = if user_accs.is_empty() && ix.args.is_empty() && !ix.has_remaining {
             String::new()
         } else {
             format!("input: {pascal}InstructionInput")
@@ -581,7 +596,7 @@ fn generate_instruction_builders_web3js(out: &mut String, idl: &Idl) {
         // Return TransactionInstruction
         out.push_str("    return new TransactionInstruction({\n");
         out.push_str(&format!("      programId: {class_name}.programId,\n"));
-        if !ix.accounts.is_empty() {
+        if !ix.accounts.is_empty() || ix.has_remaining {
             out.push_str("      keys: [\n");
             for acc in &ix.accounts {
                 let pubkey_expr = account_expr(&acc.name);
@@ -589,6 +604,9 @@ fn generate_instruction_builders_web3js(out: &mut String, idl: &Idl) {
                     "        {{ pubkey: {}, isSigner: {}, isWritable: {} }},\n",
                     pubkey_expr, acc.signer, acc.writable
                 ));
+            }
+            if ix.has_remaining {
+                out.push_str("        ...(input.remainingAccounts ?? []),\n");
             }
             out.push_str("      ],\n");
         }
@@ -632,7 +650,7 @@ fn generate_instruction_builders_kit(out: &mut String, idl: &Idl) {
         let ix_has_pdas = ix.accounts.iter().any(|a| a.pda.is_some());
 
         // Method signature
-        let input_param = if user_accs.is_empty() && ix.args.is_empty() {
+        let input_param = if user_accs.is_empty() && ix.args.is_empty() && !ix.has_remaining {
             String::new()
         } else {
             format!("input: {pascal}InstructionInput")
@@ -722,7 +740,7 @@ fn generate_instruction_builders_kit(out: &mut String, idl: &Idl) {
         // Return IInstruction
         out.push_str("    return {\n");
         out.push_str("      programAddress: PROGRAM_ADDRESS,\n");
-        if !ix.accounts.is_empty() {
+        if !ix.accounts.is_empty() || ix.has_remaining {
             out.push_str("      accounts: [\n");
             for acc in &ix.accounts {
                 let addr_expr = account_expr(&acc.name);
@@ -731,6 +749,9 @@ fn generate_instruction_builders_kit(out: &mut String, idl: &Idl) {
                     "        {{ address: {}, role: {} }},\n",
                     addr_expr, role
                 ));
+            }
+            if ix.has_remaining {
+                out.push_str("        ...(input.remainingAccounts ?? []),\n");
             }
             out.push_str("      ],\n");
         }

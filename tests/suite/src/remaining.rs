@@ -4,7 +4,7 @@ use {
     quasar_test_misc::client::*,
     solana_account::Account,
     solana_address::Address,
-    solana_instruction::Instruction,
+    solana_instruction::{AccountMeta, Instruction},
 };
 
 fn setup() -> Mollusk {
@@ -29,13 +29,14 @@ fn test_remaining_accounts_with_extras() {
     let extra1_account = Account::new(1_000_000, 0, &Address::default());
     let extra2_account = Account::new(1_000_000, 0, &Address::default());
 
-    let mut instruction: Instruction = RemainingAccountsCheckInstruction { authority }.into();
-    instruction
-        .accounts
-        .push(solana_instruction::AccountMeta::new_readonly(extra1, false));
-    instruction
-        .accounts
-        .push(solana_instruction::AccountMeta::new_readonly(extra2, false));
+    let instruction: Instruction = RemainingAccountsCheckInstruction {
+        authority,
+        remaining_accounts: vec![
+            AccountMeta::new_readonly(extra1, false),
+            AccountMeta::new_readonly(extra2, false),
+        ],
+    }
+    .into();
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -59,7 +60,11 @@ fn test_remaining_accounts_empty() {
     let authority = Address::new_unique();
     let authority_account = Account::new(1_000_000, 0, &Address::default());
 
-    let instruction: Instruction = RemainingAccountsCheckInstruction { authority }.into();
+    let instruction: Instruction = RemainingAccountsCheckInstruction {
+        authority,
+        remaining_accounts: vec![],
+    }
+    .into();
 
     let result = mollusk.process_instruction(&instruction, &[(authority, authority_account)]);
 
@@ -76,16 +81,20 @@ fn test_remaining_accounts_overflow_errors() {
     let authority = Address::new_unique();
     let authority_account = Account::new(1_000_000, 0, &Address::default());
 
-    let mut instruction: Instruction = RemainingAccountsCheckInstruction { authority }.into();
+    let mut remaining = Vec::new();
     let mut accounts = vec![(authority, authority_account)];
 
     for _ in 0..=64 {
         let addr = Address::new_unique();
-        instruction
-            .accounts
-            .push(solana_instruction::AccountMeta::new_readonly(addr, false));
+        remaining.push(AccountMeta::new_readonly(addr, false));
         accounts.push((addr, Account::new(1_000_000, 0, &Address::default())));
     }
+
+    let instruction: Instruction = RemainingAccountsCheckInstruction {
+        authority,
+        remaining_accounts: remaining,
+    }
+    .into();
 
     let result = mollusk.process_instruction(&instruction, &accounts);
 
@@ -110,10 +119,11 @@ fn test_remaining_one_account() {
     let authority_account = Account::new(1_000_000, 0, &Address::default());
     let extra_account = Account::new(1_000_000, 0, &Address::default());
 
-    let mut instruction: Instruction = RemainingAccountsCheckInstruction { authority }.into();
-    instruction
-        .accounts
-        .push(solana_instruction::AccountMeta::new_readonly(extra, false));
+    let instruction: Instruction = RemainingAccountsCheckInstruction {
+        authority,
+        remaining_accounts: vec![AccountMeta::new_readonly(extra, false)],
+    }
+    .into();
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -137,16 +147,20 @@ fn test_remaining_five_accounts() {
     let authority = Address::new_unique();
     let authority_account = Account::new(1_000_000, 0, &Address::default());
 
-    let mut instruction: Instruction = RemainingAccountsCheckInstruction { authority }.into();
+    let mut remaining = Vec::new();
     let mut accounts = vec![(authority, authority_account)];
 
     for _ in 0..5 {
         let addr = Address::new_unique();
-        instruction
-            .accounts
-            .push(solana_instruction::AccountMeta::new_readonly(addr, false));
+        remaining.push(AccountMeta::new_readonly(addr, false));
         accounts.push((addr, Account::new(1_000_000, 0, &Address::default())));
     }
+
+    let instruction: Instruction = RemainingAccountsCheckInstruction {
+        authority,
+        remaining_accounts: remaining,
+    }
+    .into();
 
     let result = mollusk.process_instruction(&instruction, &accounts);
 
@@ -167,16 +181,20 @@ fn test_remaining_ten_accounts() {
     let authority = Address::new_unique();
     let authority_account = Account::new(1_000_000, 0, &Address::default());
 
-    let mut instruction: Instruction = RemainingAccountsCheckInstruction { authority }.into();
+    let mut remaining = Vec::new();
     let mut accounts = vec![(authority, authority_account)];
 
     for _ in 0..10 {
         let addr = Address::new_unique();
-        instruction
-            .accounts
-            .push(solana_instruction::AccountMeta::new_readonly(addr, false));
+        remaining.push(AccountMeta::new_readonly(addr, false));
         accounts.push((addr, Account::new(1_000_000, 0, &Address::default())));
     }
+
+    let instruction: Instruction = RemainingAccountsCheckInstruction {
+        authority,
+        remaining_accounts: remaining,
+    }
+    .into();
 
     let result = mollusk.process_instruction(&instruction, &accounts);
 
@@ -197,18 +215,24 @@ fn test_remaining_accounts_all_signers() {
     let authority = Address::new_unique();
     let authority_account = Account::new(1_000_000, 0, &Address::default());
 
-    let mut instruction: Instruction = RemainingAccountsCheckInstruction { authority }.into();
+    let mut remaining = Vec::new();
     let mut accounts = vec![(authority, authority_account)];
 
     for _ in 0..3 {
         let addr = Address::new_unique();
-        instruction.accounts.push(solana_instruction::AccountMeta {
+        remaining.push(AccountMeta {
             pubkey: addr,
             is_signer: true,
             is_writable: false,
         });
         accounts.push((addr, Account::new(1_000_000, 0, &Address::default())));
     }
+
+    let instruction: Instruction = RemainingAccountsCheckInstruction {
+        authority,
+        remaining_accounts: remaining,
+    }
+    .into();
 
     let result = mollusk.process_instruction(&instruction, &accounts);
 
@@ -233,21 +257,19 @@ fn test_remaining_accounts_mixed_flags() {
     let writable_addr = Address::new_unique();
     let readonly_addr = Address::new_unique();
 
-    let mut instruction: Instruction = RemainingAccountsCheckInstruction { authority }.into();
-    instruction.accounts.push(solana_instruction::AccountMeta {
-        pubkey: signer_addr,
-        is_signer: true,
-        is_writable: false,
-    });
-    instruction
-        .accounts
-        .push(solana_instruction::AccountMeta::new(writable_addr, false));
-    instruction
-        .accounts
-        .push(solana_instruction::AccountMeta::new_readonly(
-            readonly_addr,
-            false,
-        ));
+    let instruction: Instruction = RemainingAccountsCheckInstruction {
+        authority,
+        remaining_accounts: vec![
+            AccountMeta {
+                pubkey: signer_addr,
+                is_signer: true,
+                is_writable: false,
+            },
+            AccountMeta::new(writable_addr, false),
+            AccountMeta::new_readonly(readonly_addr, false),
+        ],
+    }
+    .into();
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -282,16 +304,20 @@ fn test_remaining_64_accounts_max() {
     let authority = Address::new_unique();
     let authority_account = Account::new(1_000_000, 0, &Address::default());
 
-    let mut instruction: Instruction = RemainingAccountsCheckInstruction { authority }.into();
+    let mut remaining = Vec::new();
     let mut accounts = vec![(authority, authority_account)];
 
     for _ in 0..64 {
         let addr = Address::new_unique();
-        instruction
-            .accounts
-            .push(solana_instruction::AccountMeta::new_readonly(addr, false));
+        remaining.push(AccountMeta::new_readonly(addr, false));
         accounts.push((addr, Account::new(1_000_000, 0, &Address::default())));
     }
+
+    let instruction: Instruction = RemainingAccountsCheckInstruction {
+        authority,
+        remaining_accounts: remaining,
+    }
+    .into();
 
     let result = mollusk.process_instruction(&instruction, &accounts);
 
@@ -312,16 +338,20 @@ fn test_remaining_65_accounts_overflow() {
     let authority = Address::new_unique();
     let authority_account = Account::new(1_000_000, 0, &Address::default());
 
-    let mut instruction: Instruction = RemainingAccountsCheckInstruction { authority }.into();
+    let mut remaining = Vec::new();
     let mut accounts = vec![(authority, authority_account)];
 
     for _ in 0..65 {
         let addr = Address::new_unique();
-        instruction
-            .accounts
-            .push(solana_instruction::AccountMeta::new_readonly(addr, false));
+        remaining.push(AccountMeta::new_readonly(addr, false));
         accounts.push((addr, Account::new(1_000_000, 0, &Address::default())));
     }
+
+    let instruction: Instruction = RemainingAccountsCheckInstruction {
+        authority,
+        remaining_accounts: remaining,
+    }
+    .into();
 
     let result = mollusk.process_instruction(&instruction, &accounts);
 
@@ -346,13 +376,11 @@ fn test_remaining_accounts_include_system_program() {
 
     let system_program = Address::default();
 
-    let mut instruction: Instruction = RemainingAccountsCheckInstruction { authority }.into();
-    instruction
-        .accounts
-        .push(solana_instruction::AccountMeta::new_readonly(
-            system_program,
-            false,
-        ));
+    let instruction: Instruction = RemainingAccountsCheckInstruction {
+        authority,
+        remaining_accounts: vec![AccountMeta::new_readonly(system_program, false)],
+    }
+    .into();
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -382,12 +410,11 @@ fn test_remaining_duplicate_of_declared() {
     let authority = Address::new_unique();
     let authority_account = Account::new(1_000_000, 0, &Address::default());
 
-    let mut instruction: Instruction = RemainingAccountsCheckInstruction { authority }.into();
-    instruction
-        .accounts
-        .push(solana_instruction::AccountMeta::new_readonly(
-            authority, false,
-        ));
+    let instruction: Instruction = RemainingAccountsCheckInstruction {
+        authority,
+        remaining_accounts: vec![AccountMeta::new_readonly(authority, false)],
+    }
+    .into();
 
     let result = mollusk.process_instruction(
         &instruction,

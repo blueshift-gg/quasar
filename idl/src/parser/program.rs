@@ -12,6 +12,7 @@ pub struct RawInstruction {
     pub discriminator: Vec<u8>,
     pub accounts_type_name: String,
     pub args: Vec<(String, syn::Type)>,
+    pub has_remaining: bool,
 }
 
 /// Extract the program address from `declare_id!("...")`.
@@ -68,6 +69,7 @@ fn extract_instruction(func: &syn::ItemFn) -> Option<RawInstruction> {
     let discriminator = parse_discriminator_attr(attr)?;
     let name = func.sig.ident.to_string();
     let accounts_type_name = extract_ctx_type_name(&func.sig)?;
+    let has_remaining = uses_ctx_with_remaining(&func.sig);
 
     // Extract extra args (everything after the first `ctx` parameter)
     let args: Vec<(String, syn::Type)> = func
@@ -92,7 +94,24 @@ fn extract_instruction(func: &syn::ItemFn) -> Option<RawInstruction> {
         discriminator,
         accounts_type_name,
         args,
+        has_remaining,
     })
+}
+
+/// Check if the first parameter uses `CtxWithRemaining<T>` (vs plain `Ctx<T>`).
+fn uses_ctx_with_remaining(sig: &syn::Signature) -> bool {
+    let first = match sig.inputs.first() {
+        Some(FnArg::Typed(pt)) => pt,
+        _ => return false,
+    };
+    match &*first.ty {
+        Type::Path(type_path) => type_path
+            .path
+            .segments
+            .last()
+            .map_or(false, |seg| seg.ident == "CtxWithRemaining"),
+        _ => false,
+    }
 }
 
 fn parse_discriminator_attr(attr: &syn::Attribute) -> Option<Vec<u8>> {

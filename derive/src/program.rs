@@ -12,6 +12,20 @@ use {
     syn::{parse_macro_input, FnArg, Ident, Item, ItemMod, Pat, Type},
 };
 
+/// Returns `true` if the first parameter is `CtxWithRemaining<T>`.
+fn is_ctx_with_remaining(sig: &syn::Signature) -> bool {
+    let first_arg = match sig.inputs.first() {
+        Some(FnArg::Typed(pt)) => pt,
+        _ => return false,
+    };
+    if let Type::Path(type_path) = &*first_arg.ty {
+        if let Some(last) = type_path.path.segments.last() {
+            return last.ident == "CtxWithRemaining";
+        }
+    }
+    false
+}
+
 /// Extracts the inner type `T` from a `Ctx<T>` or `CtxWithRemaining<T>` first
 /// parameter.
 fn extract_ctx_inner_type(sig: &syn::Signature) -> syn::Result<proc_macro2::TokenStream> {
@@ -155,9 +169,16 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     let arg_names: Vec<&Ident> = remaining_args.iter().map(|(n, _)| n).collect();
                     let arg_types: Vec<&Type> = remaining_args.iter().map(|(_, t)| t).collect();
 
-                    client_items.push(quote! {
-                        #macro_ident!(#struct_name, [#(#disc_values),*], {#(#arg_names : #arg_types),*});
-                    });
+                    let has_remaining = is_ctx_with_remaining(&func.sig);
+                    if has_remaining {
+                        client_items.push(quote! {
+                            #macro_ident!(#struct_name, [#(#disc_values),*], {#(#arg_names : #arg_types),*}, remaining);
+                        });
+                    } else {
+                        client_items.push(quote! {
+                            #macro_ident!(#struct_name, [#(#disc_values),*], {#(#arg_names : #arg_types),*});
+                        });
+                    }
 
                     break;
                 }
