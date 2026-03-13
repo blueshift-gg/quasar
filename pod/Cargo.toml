@@ -11,4 +11,4 @@ authors.workspace = true
 wincode = ["dep:wincode"]
 
 [dependencies]
-wincode = { version = "0.4.4", features = ["derive"], optional = true }
+wincode = { version = "0.4.7", features = ["derive"], optional = true }

@@ -130,6 +130,18 @@ fn detect_known_address(ty: &syn::Type) -> Option<String> {
 
     match base.as_str() {
         "SystemProgram" => Some("11111111111111111111111111111111".to_string()),
+        "Program" => {
+            let inner = helpers::type_inner_name(ty)?;
+            match inner.as_str() {
+                "System" => Some("11111111111111111111111111111111".to_string()),
+                "Token" => Some("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()),
+                "Token2022" => Some("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb".to_string()),
+                "AssociatedTokenProgram" => {
+                    Some("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL".to_string())
+                }
+                _ => None,
+            }
+        }
         "Sysvar" => {
             let inner = helpers::type_inner_name(ty)?;
             match inner.as_str() {

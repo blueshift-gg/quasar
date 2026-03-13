@@ -22,44 +22,39 @@ impl fmt::Display for Toolchain {
 
 #[derive(Debug, Clone, Copy)]
 enum Framework {
+    None,
     Mollusk,
-    LiteSVM,
-    QuasarVM,
-    LiteSVMWeb3js,
-    LiteSVMKit,
-    QuasarVMWeb3js,
-    QuasarVMKit,
+    QuasarSVMWeb3js,
+    QuasarSVMKit,
 }
 
 impl Framework {
     fn has_typescript(&self) -> bool {
-        matches!(
-            self,
-            Framework::LiteSVMWeb3js
-                | Framework::LiteSVMKit
-                | Framework::QuasarVMWeb3js
-                | Framework::QuasarVMKit
-        )
+        matches!(self, Framework::QuasarSVMWeb3js | Framework::QuasarSVMKit)
+    }
+
+    fn is_kit(&self) -> bool {
+        matches!(self, Framework::QuasarSVMKit)
+    }
+
+    fn has_rust_tests(&self) -> bool {
+        matches!(self, Framework::Mollusk)
     }
 }
 
 impl fmt::Display for Framework {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Framework::None => write!(f, "none"),
             Framework::Mollusk => write!(f, "mollusk"),
-            Framework::LiteSVM => write!(f, "litesvm"),
-            Framework::QuasarVM => write!(f, "quasarvm"),
-            Framework::LiteSVMWeb3js => write!(f, "litesvm-web3js"),
-            Framework::LiteSVMKit => write!(f, "litesvm-kit"),
-            Framework::QuasarVMWeb3js => write!(f, "quasarvm-web3js"),
-            Framework::QuasarVMKit => write!(f, "quasarvm-kit"),
+            Framework::QuasarSVMWeb3js => write!(f, "quasarsvm-web3js"),
+            Framework::QuasarSVMKit => write!(f, "quasarsvm-kit"),
         }
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 enum Template {
-    Bare,
     Minimal,
     Full,
 }
@@ -87,14 +82,17 @@ struct QuasarTesting {
     framework: String,
 }
 
-pub fn run() -> CliResult {
+pub fn run(name: Option<String>) -> CliResult {
     let theme = ColorfulTheme::default();
 
     // Project name
-    let name: String = Input::with_theme(&theme)
-        .with_prompt("Project name")
-        .interact_text()
-        .map_err(anyhow::Error::from)?;
+    let name: String = {
+        let mut prompt = Input::with_theme(&theme).with_prompt("Project name");
+        if let Some(default) = name {
+            prompt = prompt.default(default);
+        }
+        prompt.interact_text().map_err(anyhow::Error::from)?
+    };
 
     // Toolchain
     let toolchain_items = &[
@@ -113,33 +111,22 @@ pub fn run() -> CliResult {
     };
 
     // Testing framework
-    let framework_items = &[
-        "Mollusk",
-        "LiteSVM",
-        "QuasarVM",
-        "LiteSVM/Web3.js",
-        "LiteSVM/Kit",
-        "QuasarVM/Web3.js",
-        "QuasarVM/Kit",
-    ];
+    let framework_items = &["None", "Mollusk", "QuasarSVM/Web3.js", "QuasarSVM/Kit"];
     let framework_idx = Select::with_theme(&theme)
         .with_prompt("Testing framework")
         .items(framework_items)
-        .default(0)
+        .default(1)
         .interact()
         .map_err(anyhow::Error::from)?;
     let framework = match framework_idx {
-        0 => Framework::Mollusk,
-        1 => Framework::LiteSVM,
-        2 => Framework::QuasarVM,
-        3 => Framework::LiteSVMWeb3js,
-        4 => Framework::LiteSVMKit,
-        5 => Framework::QuasarVMWeb3js,
-        _ => Framework::QuasarVMKit,
+        0 => Framework::None,
+        1 => Framework::Mollusk,
+        2 => Framework::QuasarSVMWeb3js,
+        _ => Framework::QuasarSVMKit,
     };
 
     // Template
-    let template_items = &["Bare", "Minimal", "Full"];
+    let template_items = &["Minimal", "Full"];
     let template_idx = Select::with_theme(&theme)
         .with_prompt("Template")
         .items(template_items)
@@ -147,8 +134,7 @@ pub fn run() -> CliResult {
         .interact()
         .map_err(anyhow::Error::from)?;
     let template = match template_idx {
-        0 => Template::Bare,
-        1 => Template::Minimal,
+        0 => Template::Minimal,
         _ => Template::Full,
     };
 
@@ -203,14 +189,38 @@ fn scaffold(
         fs::write(cargo_dir.join("config.toml"), CARGO_CONFIG).map_err(anyhow::Error::from)?;
     }
 
+    // .gitignore
+    fs::write(root.join(".gitignore"), GITIGNORE).map_err(anyhow::Error::from)?;
+
+    // Generate program keypair
+    let deploy_dir = root.join("target").join("deploy");
+    fs::create_dir_all(&deploy_dir).map_err(anyhow::Error::from)?;
+
+    let signing_key = ed25519_dalek::SigningKey::generate(&mut rand::thread_rng());
+    let program_id = bs58::encode(signing_key.verifying_key().as_bytes()).into_string();
+
+    // Write keypair as Solana CLI-compatible JSON (64-byte array: secret + public)
+    let mut keypair_bytes = Vec::with_capacity(64);
+    keypair_bytes.extend_from_slice(signing_key.as_bytes());
+    keypair_bytes.extend_from_slice(signing_key.verifying_key().as_bytes());
+    let keypair_json = serde_json::to_string(&keypair_bytes).map_err(anyhow::Error::from)?;
+    fs::write(
+        deploy_dir.join(format!("{name}-keypair.json")),
+        &keypair_json,
+    )
+    .map_err(anyhow::Error::from)?;
+
     // src/lib.rs
     let module_name = name.replace('-', "_");
-    fs::write(src.join("lib.rs"), generate_lib_rs(&module_name, template))
-        .map_err(anyhow::Error::from)?;
+    let has_rust_tests = framework.has_rust_tests();
+    fs::write(
+        src.join("lib.rs"),
+        generate_lib_rs(&module_name, &program_id, template, has_rust_tests),
+    )
+    .map_err(anyhow::Error::from)?;
 
     // Template-specific files
     match template {
-        Template::Bare => {}
         Template::Minimal => {
             let instructions_dir = src.join("instructions");
             fs::create_dir_all(&instructions_dir).map_err(anyhow::Error::from)?;
@@ -237,16 +247,29 @@ fn scaffold(
         }
     }
 
+    // Rust test scaffold
+    if framework.has_rust_tests() {
+        fs::write(
+            src.join("tests.rs"),
+            generate_tests_rs(&module_name, framework, template),
+        )
+        .map_err(anyhow::Error::from)?;
+    }
+
     // TypeScript test scaffold
     if framework.has_typescript() {
         let tests_dir = root.join("tests");
         fs::create_dir_all(&tests_dir).map_err(anyhow::Error::from)?;
+
+        // package.json and tsconfig.json go in the project root
         fs::write(
-            tests_dir.join("package.json"),
+            root.join("package.json"),
             generate_package_json(name, framework),
         )
         .map_err(anyhow::Error::from)?;
-        fs::write(tests_dir.join("tsconfig.json"), TSCONFIG).map_err(anyhow::Error::from)?;
+        fs::write(root.join("tsconfig.json"), TS_TEST_TSCONFIG).map_err(anyhow::Error::from)?;
+
+        // Test files go in tests/
         fs::write(
             tests_dir.join(format!("{}.test.ts", name)),
             generate_test_ts(name, framework),
@@ -277,7 +300,7 @@ client = []
 debug = []
 
 [dependencies]
-quasar = {{ version = "0.1.0" }}
+quasar-core = {{ git = "https://github.com/blueshift-gg/quasar" }}
 "#,
     );
 
@@ -286,71 +309,59 @@ quasar = {{ version = "0.1.0" }}
     }
 
     // Dev dependencies based on testing framework
+    let client_dep = format!("{name}-client = {{ path = \"target/client/rust/{name}-client\" }}\n");
+
     match framework {
+        Framework::None => {}
         Framework::Mollusk => {
-            out.push_str(
+            out.push_str(&format!(
                 r#"
 [dev-dependencies]
-mollusk-svm = "0.10.3"
-solana-account = { version = "3.4.0" }
-solana-address = { version = "2.2.0", features = ["decode"] }
-solana-instruction = { version = "3.2.0", features = ["bincode"] }
+{client_dep}mollusk-svm = "0.10.3"
+solana-account = {{ version = "3.4.0" }}
+solana-address = {{ version = "2.2.0", features = ["decode"] }}
+solana-instruction = {{ version = "3.2.0", features = ["bincode"] }}
 "#,
-            );
+            ));
         }
-        Framework::LiteSVM | Framework::LiteSVMWeb3js | Framework::LiteSVMKit => {
-            out.push_str(
+        Framework::QuasarSVMWeb3js | Framework::QuasarSVMKit => {
+            out.push_str(&format!(
                 r#"
 [dev-dependencies]
-litesvm = "0.6"
-solana-account = { version = "3.4.0" }
-solana-address = { version = "2.2.0", features = ["decode"] }
-solana-instruction = { version = "3.2.0", features = ["bincode"] }
+{client_dep}solana-account = {{ version = "3.4.0" }}
+solana-address = {{ version = "2.2.0", features = ["decode"] }}
+solana-instruction = {{ version = "3.2.0", features = ["bincode"] }}
 "#,
-            );
-        }
-        Framework::QuasarVM | Framework::QuasarVMWeb3js | Framework::QuasarVMKit => {
-            out.push_str(
-                r#"
-[dev-dependencies]
-solana-account = { version = "3.4.0" }
-solana-address = { version = "2.2.0", features = ["decode"] }
-solana-instruction = { version = "3.2.0", features = ["bincode"] }
-"#,
-            );
+            ));
         }
     }
 
     out
 }
 
-fn generate_lib_rs(module_name: &str, template: Template) -> String {
+fn generate_lib_rs(
+    module_name: &str,
+    program_id: &str,
+    template: Template,
+    has_tests: bool,
+) -> String {
+    let test_mod = if has_tests {
+        "\n#[cfg(test)]\nmod tests;\n"
+    } else {
+        ""
+    };
+
     match template {
-        Template::Bare => {
-            format!(
-                r#"#![no_std]
-
-use quasar::prelude::*;
-
-declare_id!("11111111111111111111111111111111");
-
-#[program]
-mod {module_name} {{
-    use super::*;
-}}
-"#
-            )
-        }
         Template::Minimal => {
             format!(
-                r#"#![no_std]
+                r#"#![cfg_attr(not(test), no_std)]
 
-use quasar::prelude::*;
+use quasar_core::prelude::*;
 
 mod instructions;
 use instructions::*;
 
-declare_id!("11111111111111111111111111111111");
+declare_id!("{program_id}");
 
 #[program]
 mod {module_name} {{
@@ -361,21 +372,21 @@ mod {module_name} {{
         ctx.accounts.initialize()
     }}
 }}
-"#
+{test_mod}"#
             )
         }
         Template::Full => {
             format!(
-                r#"#![no_std]
+                r#"#![cfg_attr(not(test), no_std)]
 
-use quasar::prelude::*;
+use quasar_core::prelude::*;
 
 mod events;
 mod instructions;
 mod state;
 use instructions::*;
 
-declare_id!("11111111111111111111111111111111");
+declare_id!("{program_id}");
 
 #[program]
 mod {module_name} {{
@@ -386,36 +397,39 @@ mod {module_name} {{
         ctx.accounts.initialize()
     }}
 }}
-"#
+{test_mod}"#
             )
         }
     }
 }
 
 fn generate_package_json(name: &str, framework: Framework) -> String {
-    let (test_dep, test_dep_version) = match framework {
-        Framework::LiteSVMWeb3js | Framework::QuasarVMWeb3js => ("@solana/web3.js", "^1.95.0"),
-        Framework::LiteSVMKit | Framework::QuasarVMKit => ("@solana/kit", "^2.0.0"),
-        _ => unreachable!(),
+    let solana_dep = if framework.is_kit() {
+        "\"@solana/kit\": \"^6.0.0\""
+    } else {
+        "\"@solana/web3.js\": \"github:blueshift-gg/web3.js#v2\""
     };
-
     format!(
         r#"{{
-  "name": "{name}-tests",
+  "name": "{name}",
   "version": "0.1.0",
   "private": true,
+  "type": "commonjs",
   "scripts": {{
-    "test": "npx ts-mocha -p ./tsconfig.json {name}.test.ts"
+    "test": "mocha --require tsx --delay tests/*.test.ts"
   }},
   "dependencies": {{
-    "{test_dep}": "{test_dep_version}"
+    "@blueshift-gg/quasar-svm": "^0.1",
+    {solana_dep}
   }},
   "devDependencies": {{
+    "@types/chai": "^5.2.0",
     "@types/mocha": "^10.0.0",
-    "chai": "^4.3.0",
-    "mocha": "^10.0.0",
-    "ts-mocha": "^10.0.0",
-    "typescript": "^5.0.0"
+    "@types/node": "^22.0.0",
+    "chai": "^6.2.2",
+    "mocha": "^11.7.5",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   }}
 }}
 "#
@@ -423,33 +437,197 @@ fn generate_package_json(name: &str, framework: Framework) -> String {
 }
 
 fn generate_test_ts(name: &str, framework: Framework) -> String {
-    let import_line = match framework {
-        Framework::LiteSVMWeb3js | Framework::QuasarVMWeb3js => {
-            "import { Connection, PublicKey } from \"@solana/web3.js\";"
-        }
-        Framework::LiteSVMKit | Framework::QuasarVMKit => {
-            "import { address } from \"@solana/kit\";"
-        }
-        _ => unreachable!(),
-    };
-
     let module_name = name.replace('-', "_");
+    let class_name = snake_to_pascal(&module_name);
 
-    format!(
-        r#"{import_line}
+    if framework.is_kit() {
+        format!(
+            r#"import {{ generateKeyPairSigner, address, lamports, Account }} from "@solana/kit";
+import {{ {class_name}Client, PROGRAM_ADDRESS }} from "../target/client/typescript/{name}/kit";
+import {{ describe, it, run }} from "mocha";
+import {{ QuasarSvm }} from "@blueshift-gg/quasar-svm/kit";
+import {{ readFile }} from "node:fs/promises";
+import {{ assert }} from "chai";
 
-describe("{module_name}", () => {{
+const {class_name}Program = new {class_name}Client();
+
+describe("{class_name} Program", async () => {{
+
+  const vm = new QuasarSvm()
+    .addSystemProgram()
+    .addProgram(PROGRAM_ADDRESS, await readFile("target/deploy/{name}.so"))
+
+  const payer = await generateKeyPairSigner();
+
   it("initializes", async () => {{
-    // TODO: implement test
+    const initializeInstruction = {class_name}Program.createInitializeInstruction({{
+      payer: payer.address,
+    }});
+
+    const accounts: Account<Uint8Array>[] = [
+      {{
+        address: payer.address,
+        data: new Uint8Array(),
+        executable: false,
+        lamports: lamports(1_000_000_000n),
+        programAddress: address("11111111111111111111111111111111"),
+        space: 0n,
+      }}
+    ];
+
+    const result = vm.processInstruction(initializeInstruction, accounts);
+
+    assert.equal(result.status, 0);
   }});
+
+  run()
 }});
 "#
-    )
+        )
+    } else {
+        format!(
+            r#"import {{ Keypair, SystemProgram, KeyedAccountInfo }} from "@solana/web3.js";
+import {{ {class_name}Client }} from "../target/client/typescript/{name}/web3.js";
+import {{ readFile }} from "node:fs/promises";
+import {{ describe, it, run }} from "mocha";
+import {{ assert }} from "chai";
+import {{ QuasarSvm }} from "@blueshift-gg/quasar-svm/web3.js";
+
+const {class_name}Program = new {class_name}Client();
+
+describe("{class_name} Program", async () => {{
+  const vm = new QuasarSvm()
+    .addSystemProgram()
+    .addProgram({class_name}Client.programId, await readFile("target/deploy/{name}.so"));
+
+  const {{ publicKey: payer }} = await Keypair.generate();
+
+  it("initializes", async () => {{
+    const initializeInstruction = {class_name}Program.createInitializeInstruction({{
+      payer,
+    }});
+
+    const accounts = [
+      {{
+        accountId: payer,
+        accountInfo: {{
+          executable: false,
+          owner: SystemProgram.programId,
+          lamports: 1_000_000_000n,
+          data: new Uint8Array(),
+          rentEpoch: 0n,
+        }},
+      }} as KeyedAccountInfo,
+    ];
+
+    const result = vm.processInstruction(initializeInstruction, accounts);
+
+    assert.equal(result.status, 0);
+  }});
+
+  run();
+}});
+"#
+        )
+    }
+}
+
+fn snake_to_pascal(s: &str) -> String {
+    s.split('_')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(c) => c.to_uppercase().to_string() + &chars.collect::<String>(),
+            }
+        })
+        .collect()
+}
+
+fn generate_tests_rs(module_name: &str, framework: Framework, template: Template) -> String {
+    let client_crate = format!("{module_name}_client");
+
+    match (framework, template) {
+        (Framework::Mollusk, Template::Minimal | Template::Full) => {
+            format!(
+                r#"extern crate std;
+
+use mollusk_svm::{{program::keyed_account_for_system_program, Mollusk}};
+use solana_account::Account;
+use solana_address::Address;
+use solana_instruction::Instruction;
+
+use {client_crate}::InitializeInstruction;
+
+fn setup() -> Mollusk {{
+    Mollusk::new(&crate::ID, "target/deploy/{module_name}")
+}}
+
+#[test]
+fn test_initialize() {{
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+
+    let payer = Address::new_unique();
+    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+
+    let instruction: Instruction = InitializeInstruction {{
+        payer,
+        system_program,
+    }}
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (payer, payer_account),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "initialize failed: {{:?}}",
+        result.program_result,
+    );
+}}
+"#
+            )
+        }
+        _ => r#"extern crate std;
+
+#[test]
+fn test_initialize() {
+    // TODO: implement test
+}
+"#
+        .to_string(),
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Static templates
 // ---------------------------------------------------------------------------
+
+const GITIGNORE: &str = "\
+# Build artifacts
+/target
+
+# Lock files
+Cargo.lock
+package-lock.json
+yarn.lock
+
+# Dependencies
+node_modules
+
+# Environment
+.env
+.env.*
+
+# OS
+.DS_Store
+";
 
 const CARGO_CONFIG: &str = r#"[unstable]
 build-std = ["core", "alloc"]
@@ -474,7 +652,7 @@ const INSTRUCTIONS_MOD: &str = r#"mod initialize;
 pub use initialize::*;
 "#;
 
-const INSTRUCTION_INITIALIZE: &str = r#"use quasar::prelude::*;
+const INSTRUCTION_INITIALIZE: &str = r#"use quasar_core::prelude::*;
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
@@ -490,7 +668,7 @@ impl<'info> Initialize<'info> {
 }
 "#;
 
-const STATE_RS: &str = r#"use quasar::prelude::*;
+const STATE_RS: &str = r#"use quasar_core::prelude::*;
 
 #[account(discriminator = 1)]
 pub struct MyAccount {
@@ -499,7 +677,7 @@ pub struct MyAccount {
 }
 "#;
 
-const EVENTS_RS: &str = r#"use quasar::prelude::*;
+const EVENTS_RS: &str = r#"use quasar_core::prelude::*;
 
 #[event(discriminator = 0)]
 pub struct InitializeEvent {
@@ -507,7 +685,7 @@ pub struct InitializeEvent {
 }
 "#;
 
-const TSCONFIG: &str = r#"{
+const TS_TEST_TSCONFIG: &str = r#"{
   "compilerOptions": {
     "target": "es2020",
     "module": "commonjs",
@@ -515,8 +693,8 @@ const TSCONFIG: &str = r#"{
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "outDir": "./dist"
+    "types": ["node", "mocha"]
   },
-  "include": ["*.test.ts"]
+  "include": ["tests/*.test.ts"]
 }
 "#;

@@ -290,6 +290,7 @@ fn no_collision_different_kinds() {
     let parsed = ParsedProgram {
         program_id: "11111111111111111111111111111111".to_string(),
         program_name: "test".to_string(),
+        crate_name: "test".to_string(),
         version: "0.1.0".to_string(),
         instructions: vec![program::RawInstruction {
             name: "make".to_string(),
@@ -351,6 +352,7 @@ fn build_idl_full_pipeline() {
     let parsed = ParsedProgram {
         program_id: "ABcDeFgH111111111111111111111111111111111111".to_string(),
         program_name: "test_program".to_string(),
+        crate_name: "test-program".to_string(),
         version: "0.1.0".to_string(),
         instructions: vec![program::RawInstruction {
             name: "make_offer".to_string(),
@@ -400,6 +402,7 @@ fn collision_two_instructions_same_discriminator() {
     let parsed = ParsedProgram {
         program_id: "11111111111111111111111111111111".to_string(),
         program_name: "test".to_string(),
+        crate_name: "test".to_string(),
         version: "0.1.0".to_string(),
         instructions: vec![
             program::RawInstruction {
@@ -434,6 +437,7 @@ fn collision_two_accounts_same_discriminator() {
     let parsed = ParsedProgram {
         program_id: "11111111111111111111111111111111".to_string(),
         program_name: "test".to_string(),
+        crate_name: "test".to_string(),
         version: "0.1.0".to_string(),
         instructions: vec![],
         accounts_structs: vec![],
@@ -466,6 +470,7 @@ fn collision_two_events_same_discriminator() {
     let parsed = ParsedProgram {
         program_id: "11111111111111111111111111111111".to_string(),
         program_name: "test".to_string(),
+        crate_name: "test".to_string(),
         version: "0.1.0".to_string(),
         instructions: vec![],
         accounts_structs: vec![],
@@ -498,6 +503,7 @@ fn no_collision_same_disc_different_kinds() {
     let parsed = ParsedProgram {
         program_id: "11111111111111111111111111111111".to_string(),
         program_name: "test".to_string(),
+        crate_name: "test".to_string(),
         version: "0.1.0".to_string(),
         instructions: vec![program::RawInstruction {
             name: "make".to_string(),
@@ -533,6 +539,7 @@ fn collision_three_instructions_pairwise() {
     let parsed = ParsedProgram {
         program_id: "11111111111111111111111111111111".to_string(),
         program_name: "test".to_string(),
+        crate_name: "test".to_string(),
         version: "0.1.0".to_string(),
         instructions: vec![
             program::RawInstruction {
