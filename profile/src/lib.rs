@@ -5,21 +5,21 @@ mod output;
 mod serve;
 mod walk;
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::{
-    collections::HashSet,
-    fs::{self, File},
-    io::{self, copy},
-    thread,
-    time::Duration,
+use {
+    elf::DebugLevel,
+    memmap2::Mmap,
+    sha2::{Digest, Sha256},
+    std::{
+        collections::HashSet,
+        fs::{self, File},
+        io::{self, copy},
+        path::{Path, PathBuf},
+        process::Command,
+        thread,
+        time::Duration,
+    },
+    toml::Value,
 };
-
-use elf::DebugLevel;
-use memmap2::Mmap;
-use toml::Value;
-
-use sha2::{Digest, Sha256};
 
 const SERVER_HOST: &str = "127.0.0.1";
 const SERVER_PORT: u16 = 7777;
@@ -72,8 +72,8 @@ pub fn run(command: ProfileCommand) {
         DebugLevel::SymbolsOnly => {
             eprintln!("DWARF debug info: no (symbol table only)");
             eprintln!(
-                "Warning: inline functions will not be resolved. \
-                 Rebuild with debug info for full resolution."
+                "Warning: inline functions will not be resolved. Rebuild with debug info for full \
+                 resolution."
             );
             dwarf::Resolver::Symbol(dwarf::SymbolResolver::new(&info.symbols))
         }

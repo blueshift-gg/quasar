@@ -1,7 +1,7 @@
-use quasar_core::prelude::*;
-
-use crate::errors::TestError;
-use crate::state::SimpleAccount;
+use {
+    crate::{errors::TestError, state::SimpleAccount},
+    quasar_core::prelude::*,
+};
 
 #[derive(Accounts)]
 pub struct ConstraintCustomError<'info> {

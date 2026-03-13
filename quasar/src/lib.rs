@@ -1,8 +1,8 @@
 //! Zero-copy Solana program framework.
 //!
-//! Quasar provides Anchor-compatible ergonomics with minimal compute unit overhead.
-//! Account data is accessed through pointer casts to `#[repr(C)]` companion structs —
-//! no deserialization, no heap allocation.
+//! Quasar provides Anchor-compatible ergonomics with minimal compute unit
+//! overhead. Account data is accessed through pointer casts to `#[repr(C)]`
+//! companion structs — no deserialization, no heap allocation.
 //!
 //! # Quick start
 //!
@@ -22,7 +22,8 @@
 //!
 //! # Feature flags
 //!
-//! - **`spl`** (default) — SPL Token and Token-2022 integration via [`quasar_spl`]
+//! - **`spl`** (default) — SPL Token and Token-2022 integration via
+//!   [`quasar_spl`]
 //! - **`alloc`** — Enables `alloc`-dependent features in `quasar-core`
 //!
 //! # Crate structure
@@ -32,10 +33,10 @@
 //!
 //! - [`quasar_core`] — framework primitives, traits, CPI, events
 //! - [`quasar_spl`] — SPL Token CPI, token account types, metadata integration
-//! - [Repository README](https://github.com/nickkuk/quasar) — full guide and examples
+//! - [Repository README](https://github.com/nickkuk/quasar) — full guide and
+//!   examples
 
 #![no_std]
 pub use quasar_core::*;
-
 #[cfg(feature = "spl")]
 pub use quasar_spl;

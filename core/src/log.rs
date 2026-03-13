@@ -9,6 +9,9 @@ use solana_define_syscall::definitions::sol_log_data;
 #[inline(always)]
 pub fn log_data(data: &[&[u8]]) {
     #[cfg(any(target_os = "solana", target_arch = "bpf"))]
+    // SAFETY: `sol_log_data` expects `(*const SolBytes, u64)` where `SolBytes`
+    // has the same layout as `&[u8]` on SBF (`*const u8, u64`). The cast from
+    // `&[&[u8]]` is layout-compatible.
     unsafe {
         sol_log_data(data.as_ptr() as *const u8, data.len() as u64);
     }

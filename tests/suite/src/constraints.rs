@@ -1,8 +1,7 @@
-use mollusk_svm::Mollusk;
-use quasar_test_misc::client::*;
-use solana_account::Account;
-use solana_address::Address;
-use solana_instruction::Instruction;
+use {
+    mollusk_svm::Mollusk, quasar_test_misc::client::*, solana_account::Account,
+    solana_address::Address, solana_instruction::Instruction,
+};
 
 fn build_simple_account_data(authority: Address, value: u64, bump: u8) -> Vec<u8> {
     let mut data = vec![0u8; 42];
@@ -1285,8 +1284,8 @@ fn test_adversarial_signer_on_program_owned_account() {
 }
 
 /// Mut check: modify account value to 0 then try constraint check.
-/// First mutate the value to 0, then run constraint_check which requires value > 0.
-/// This is a cross-instruction attack within the same test.
+/// First mutate the value to 0, then run constraint_check which requires value
+/// > 0. This is a cross-instruction attack within the same test.
 #[test]
 fn test_adversarial_mut_then_constraint_sequence() {
     let mollusk = setup();

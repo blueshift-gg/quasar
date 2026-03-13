@@ -8,11 +8,13 @@
 /// | 1 | vault          | no     | yes      | PDA: `["vault", user]`   |
 /// | 2 | system_program | no     | no       | System program           |
 use pinocchio::{AccountView, ProgramResult};
-use pinocchio_system::instructions::Transfer;
-
-use crate::errors::VaultError;
-use crate::utils::pda::vault_pda;
-use crate::utils::Context;
+use {
+    crate::{
+        errors::VaultError,
+        utils::{pda::vault_pda, Context},
+    },
+    pinocchio_system::instructions::Transfer,
+};
 
 pub struct Deposit<'info> {
     user: &'info AccountView,

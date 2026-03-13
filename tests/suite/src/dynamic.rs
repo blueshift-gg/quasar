@@ -1,10 +1,11 @@
-use mollusk_svm::result::ProgramResult;
-use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
-use quasar_core::prelude::ProgramError;
-use quasar_test_misc::client::*;
-use solana_account::Account;
-use solana_address::Address;
-use solana_instruction::Instruction;
+use {
+    mollusk_svm::{program::keyed_account_for_system_program, result::ProgramResult, Mollusk},
+    quasar_core::prelude::ProgramError,
+    quasar_test_misc::client::*,
+    solana_account::Account,
+    solana_address::Address,
+    solana_instruction::Instruction,
+};
 
 const DYNAMIC_ACCOUNT_DISC: u8 = 5;
 const DYNAMIC_HEADER_SIZE: usize = 1; // disc only (no fixed ZC fields)
@@ -16,7 +17,8 @@ const TAIL_BYTES_DISC: u8 = 9;
 const TAIL_FIXED_SIZE: usize = 32; // Address
 
 fn build_dynamic_account_data(name: &[u8], tags: &[Address]) -> Vec<u8> {
-    // Inline prefix layout: [disc][u32:name_len][name_bytes][u32:tags_count][tag_elements]
+    // Inline prefix layout:
+    // [disc][u32:name_len][name_bytes][u32:tags_count][tag_elements]
     let name_len = name.len();
     let tags_count = tags.len();
     let tags_bytes = tags_count * 32;
@@ -504,7 +506,8 @@ fn test_dynamic_account_minimum_size_empty_fields() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    // Minimum valid data: disc(1) + u32 name_len=0(4) + u32 tags_count=0(4) = 9 bytes
+    // Minimum valid data: disc(1) + u32 name_len=0(4) + u32 tags_count=0(4) = 9
+    // bytes
     let data = build_dynamic_account_data(b"", &[]);
     assert_eq!(
         data.len(),
@@ -1408,7 +1411,8 @@ fn test_adversarial_prefix_one_past_max() {
     );
 }
 
-/// Vec prefix claiming u32::MAX element count — tests count*elem_size overflow path
+/// Vec prefix claiming u32::MAX element count — tests count*elem_size overflow
+/// path
 #[test]
 fn test_adversarial_vec_count_u32_max() {
     let mollusk = setup();
@@ -1871,7 +1875,8 @@ fn test_adversarial_mutate_shrink_then_readback_tags() {
     assert_eq!(&rd[42..74], tag2.as_ref());
 }
 
-/// Mutate name to empty with trailing tags: edge case for zero-length memmove source
+/// Mutate name to empty with trailing tags: edge case for zero-length memmove
+/// source
 #[test]
 fn test_adversarial_mutate_to_empty_then_readback_tags() {
     let mollusk = setup();
@@ -2263,7 +2268,8 @@ fn test_adversarial_mixed_fixed_section_truncated() {
     );
 }
 
-/// All-zero account data (0-byte discriminator = potential uninitialized attack)
+/// All-zero account data (0-byte discriminator = potential uninitialized
+/// attack)
 #[test]
 fn test_adversarial_all_zeros_account() {
     let mollusk = setup();
@@ -2630,7 +2636,8 @@ fn test_tail_str_truncated_fixed_section_rejected() {
 // ============================================================================
 
 /// Send completely empty instruction data (0 bytes) — no discriminator at all.
-/// The dispatch macro should reject this because ix_data.len() < discriminator_len.
+/// The dispatch macro should reject this because ix_data.len() <
+/// discriminator_len.
 #[test]
 fn test_adversarial_ix_data_empty() {
     let mollusk = setup();
@@ -2651,7 +2658,8 @@ fn test_adversarial_ix_data_empty() {
 }
 
 /// Send 1 byte that does NOT match any known discriminator.
-/// Even for 1-byte discriminator instructions, an unrecognized value should fail.
+/// Even for 1-byte discriminator instructions, an unrecognized value should
+/// fail.
 #[test]
 fn test_adversarial_ix_data_one_byte_unknown_disc() {
     let mollusk = setup();
@@ -2699,8 +2707,8 @@ fn test_adversarial_ix_dynamic_string_prefix_overflow_u32_max() {
     );
 }
 
-/// Instruction discriminator=21: string prefix=1024 but only 10 bytes of data follow.
-/// Slightly above actual data — subtler than u32::MAX.
+/// Instruction discriminator=21: string prefix=1024 but only 10 bytes of data
+/// follow. Slightly above actual data — subtler than u32::MAX.
 #[test]
 fn test_adversarial_ix_dynamic_string_prefix_overflow_1024() {
     let mollusk = setup();
@@ -2780,8 +2788,9 @@ fn test_adversarial_ix_data_with_extra_trailing_garbage() {
     // We do NOT assert pass/fail here — we assert no panic/abort occurred.
 }
 
-/// Instruction with discriminator only, no args, for an instruction that expects args.
-/// discriminator=21 expects String<8> but we only send the discriminator byte.
+/// Instruction with discriminator only, no args, for an instruction that
+/// expects args. discriminator=21 expects String<8> but we only send the
+/// discriminator byte.
 #[test]
 fn test_adversarial_ix_disc_only_missing_args() {
     let mollusk = setup();

@@ -1,6 +1,8 @@
-use alloc::vec;
-use solana_address::Address;
-use solana_instruction::{AccountMeta, Instruction};
+use {
+    alloc::vec,
+    solana_address::Address,
+    solana_instruction::{AccountMeta, Instruction},
+};
 
 pub struct DepositInstruction {
     pub user: Address,

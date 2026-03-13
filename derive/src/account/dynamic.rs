@@ -4,21 +4,13 @@
 //! Generates runtime codec helpers (read/write with offset tracking) and
 //! accessor methods that operate directly on the account data buffer.
 
-use proc_macro::TokenStream;
-use quote::{format_ident, quote};
-use syn::DeriveInput;
-
-use super::accessors;
-use crate::helpers::{map_to_pod_type, zc_assign_from_value, DynKind, TailElement};
-
-fn kind_prefix(kind: &DynKind) -> Option<&crate::helpers::PrefixType> {
-    match kind {
-        DynKind::Str { prefix, .. } => Some(prefix),
-        DynKind::Vec { prefix, .. } => Some(prefix),
-        DynKind::Tail { .. } => None,
-        _ => unreachable!(),
-    }
-}
+use {
+    super::accessors,
+    crate::helpers::{map_to_pod_type, zc_assign_from_value, DynFieldKind, DynKind, TailElement},
+    proc_macro::TokenStream,
+    quote::{format_ident, quote},
+    syn::DeriveInput,
+};
 
 pub(super) fn generate_dynamic_account(
     name: &syn::Ident,
@@ -34,17 +26,18 @@ pub(super) fn generate_dynamic_account(
     let lt = &input.generics.lifetimes().next().unwrap().lifetime;
     let zc_name = format_ident!("{}Zc", name);
 
-    let dyn_fields: Vec<(&syn::Field, &DynKind)> = fields_data
+    let dyn_fields: Vec<(&syn::Field, DynFieldKind<'_>)> = fields_data
         .iter()
         .zip(field_kinds.iter())
-        .filter(|(_, k)| !matches!(k, DynKind::Fixed))
+        .filter_map(|(f, k)| k.as_dynamic().map(|dk| (f, dk)))
         .collect();
 
     let num_dyn = dyn_fields.len();
     // N-1 cached offsets (first dynamic field starts at compile-time constant)
-    let num_offsets = if num_dyn > 0 { num_dyn - 1 } else { 0 };
+    let num_offsets = num_dyn.saturating_sub(1);
 
-    // --- 1. set_inner field types (native types for fixed, slices/strs for dynamic) ---
+    // --- 1. set_inner field types (native types for fixed, slices/strs for
+    // dynamic) ---
     let init_field_names: Vec<&Option<syn::Ident>> = fields_data.iter().map(|f| &f.ident).collect();
     let init_field_types: Vec<proc_macro2::TokenStream> = fields_data
         .iter()
@@ -93,7 +86,7 @@ pub(super) fn generate_dynamic_account(
         .map(|(f, kind)| {
             let fname = f.ident.as_ref().unwrap();
             match kind {
-                DynKind::Str { prefix, .. } => {
+                DynFieldKind::Str { prefix, .. } => {
                     let pb = prefix.bytes();
                     let write_prefix = prefix.gen_write_prefix(&quote! { #fname.len() });
                     quote! {
@@ -106,7 +99,7 @@ pub(super) fn generate_dynamic_account(
                         }
                     }
                 }
-                DynKind::Tail { .. } => {
+                DynFieldKind::Tail { .. } => {
                     quote! {
                         {
                             let __len = #fname.len();
@@ -115,7 +108,7 @@ pub(super) fn generate_dynamic_account(
                         }
                     }
                 }
-                DynKind::Vec { elem, prefix, .. } => {
+                DynFieldKind::Vec { elem, prefix, .. } => {
                     let pb = prefix.bytes();
                     let write_prefix = prefix.gen_write_prefix(&quote! { #fname.len() });
                     quote! {
@@ -136,7 +129,6 @@ pub(super) fn generate_dynamic_account(
                         }
                     }
                 }
-                _ => unreachable!(),
             }
         })
         .collect();
@@ -147,37 +139,34 @@ pub(super) fn generate_dynamic_account(
         .map(|(f, kind)| {
             let fname = f.ident.as_ref().unwrap();
             match kind {
-                DynKind::Str { max, .. } | DynKind::Vec { max, .. } => quote! {
+                DynFieldKind::Str { max, .. } | DynFieldKind::Vec { max, .. } => quote! {
                     if #fname.len() > #max {
                         return Err(QuasarError::DynamicFieldTooLong.into());
                     }
                 },
-                DynKind::Tail { .. } => quote! {
+                DynFieldKind::Tail { .. } => quote! {
                     if #fname.len() > 1024 {
                         return Err(QuasarError::DynamicFieldTooLong.into());
                     }
                 },
-                _ => unreachable!(),
             }
         })
         .collect();
 
     // --- 6. Dynamic space terms (prefix bytes + data bytes per field) ---
-    let prefix_space: usize = dyn_fields
-        .iter()
-        .map(|(_, k)| kind_prefix(k).map_or(0, |p| p.bytes()))
-        .sum();
+    let prefix_space: usize = dyn_fields.iter().map(|(_, k)| k.prefix_bytes()).sum();
 
     let space_terms: Vec<proc_macro2::TokenStream> = dyn_fields
         .iter()
         .map(|(f, kind)| {
             let fname = f.ident.as_ref().unwrap();
             match kind {
-                DynKind::Str { .. } | DynKind::Tail { .. } => quote! { + #fname.len() },
-                DynKind::Vec { elem, .. } => {
+                DynFieldKind::Str { .. } | DynFieldKind::Tail { .. } => {
+                    quote! { + #fname.len() }
+                }
+                DynFieldKind::Vec { elem, .. } => {
                     quote! { + #fname.len() * core::mem::size_of::<#elem>() }
                 }
-                _ => unreachable!(),
             }
         })
         .collect();
@@ -186,12 +175,11 @@ pub(super) fn generate_dynamic_account(
     let max_space_terms: Vec<proc_macro2::TokenStream> = dyn_fields
         .iter()
         .map(|(_, kind)| match kind {
-            DynKind::Str { max, .. } => quote! { + #max },
-            DynKind::Tail { .. } => quote! { + 1024usize },
-            DynKind::Vec { elem, max, .. } => {
+            DynFieldKind::Str { max, .. } => quote! { + #max },
+            DynFieldKind::Tail { .. } => quote! { + 1024usize },
+            DynFieldKind::Vec { elem, max, .. } => {
                 quote! { + #max * core::mem::size_of::<#elem>() }
             }
-            _ => unreachable!(),
         })
         .collect();
 
@@ -209,15 +197,15 @@ pub(super) fn generate_dynamic_account(
         })
         .collect();
 
-    // --- 8. AccountCheck validation stmts (walks inline prefixes — runs once during parse) ---
+    // --- 8. AccountCheck validation stmts (walks inline prefixes — runs once
+    // during parse) ---
     let mut validation_stmts: Vec<proc_macro2::TokenStream> = Vec::new();
 
     for (_f, kind) in &dyn_fields {
         match kind {
-            DynKind::Str { prefix, max, .. } => {
+            DynFieldKind::Str { prefix, max, .. } => {
                 let read = prefix.gen_read_len();
                 let pb = prefix.bytes();
-                let max_val = *max;
                 validation_stmts.push(quote! {
                     {
                         if __offset + #pb > __data_len {
@@ -225,7 +213,7 @@ pub(super) fn generate_dynamic_account(
                         }
                         let __len = #read;
                         __offset += #pb;
-                        if __len > #max_val {
+                        if __len > #max {
                             return Err(ProgramError::InvalidAccountData);
                         }
                         if __offset + __len > __data_len {
@@ -238,7 +226,7 @@ pub(super) fn generate_dynamic_account(
                     }
                 });
             }
-            DynKind::Tail { element } => {
+            DynFieldKind::Tail { element } => {
                 let validate_utf8 = matches!(element, TailElement::Str);
                 if validate_utf8 {
                     validation_stmts.push(quote! {
@@ -258,10 +246,9 @@ pub(super) fn generate_dynamic_account(
                     });
                 }
             }
-            DynKind::Vec { elem, prefix, max } => {
+            DynFieldKind::Vec { elem, prefix, max } => {
                 let read = prefix.gen_read_len();
                 let pb = prefix.bytes();
-                let max_val = *max;
                 validation_stmts.push(quote! {
                     {
                         if __offset + #pb > __data_len {
@@ -269,7 +256,7 @@ pub(super) fn generate_dynamic_account(
                         }
                         let __count = #read;
                         __offset += #pb;
-                        if __count > #max_val {
+                        if __count > #max {
                             return Err(ProgramError::InvalidAccountData);
                         }
                         let __byte_len = __count * core::mem::size_of::<#elem>();
@@ -280,15 +267,15 @@ pub(super) fn generate_dynamic_account(
                     }
                 });
             }
-            _ => unreachable!(),
         }
     }
 
-    // --- 9. Parse offset caching stmts (walk prefixes once, store cumulative offsets) ---
+    // --- 9. Parse offset caching stmts (walk prefixes once, store cumulative
+    // offsets) ---
     let mut parse_offset_stmts: Vec<proc_macro2::TokenStream> = Vec::new();
     for (dyn_idx, (_f, kind)) in dyn_fields.iter().enumerate() {
         match kind {
-            DynKind::Str { prefix, .. } => {
+            DynFieldKind::Str { prefix, .. } => {
                 let pb = prefix.bytes();
                 let read = prefix.gen_read_len();
                 if dyn_idx < num_offsets {
@@ -301,7 +288,7 @@ pub(super) fn generate_dynamic_account(
                     });
                 }
             }
-            DynKind::Vec { elem, prefix, .. } => {
+            DynFieldKind::Vec { elem, prefix, .. } => {
                 let pb = prefix.bytes();
                 let read = prefix.gen_read_len();
                 if dyn_idx < num_offsets {
@@ -314,32 +301,22 @@ pub(super) fn generate_dynamic_account(
                     });
                 }
             }
-            DynKind::Tail { .. } => {
+            DynFieldKind::Tail { .. } => {
                 // Tail is always last — no offset to store after it
             }
-            _ => unreachable!(),
         }
     }
 
     // --- 10. Accessor methods (O(1) via cached offsets) ---
-    let acc = accessors::generate_accessors(name, disc_len, fields_data, field_kinds, &zc_name, lt);
+    let acc = accessors::generate_accessors(disc_len, fields_data, field_kinds, &zc_name);
 
     let accessor_methods = &acc.accessor_methods;
     let raw_methods = &acc.raw_methods;
     let write_methods = &acc.write_methods;
 
     // --- 11. Offset array type ---
-    let off_array_type = if num_offsets > 0 {
-        quote! { [u32; #num_offsets] }
-    } else {
-        quote! { [u32; 0] }
-    };
-
-    let off_array_init = if num_offsets > 0 {
-        quote! { [0u32; #num_offsets] }
-    } else {
-        quote! { [0u32; 0] }
-    };
+    let off_array_type = quote! { [u32; #num_offsets] };
+    let off_array_init = quote! { [0u32; #num_offsets] };
 
     // --- Combine ---
     quote! {

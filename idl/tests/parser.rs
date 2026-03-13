@@ -1,5 +1,7 @@
-use quasar_idl::parser::{errors, events, helpers, program, state};
-use quasar_idl::types::IdlType;
+use quasar_idl::{
+    parser::{errors, events, helpers, program, state},
+    types::IdlType,
+};
 
 fn parse_file(src: &str) -> syn::File {
     syn::parse_file(src).expect("failed to parse test source")

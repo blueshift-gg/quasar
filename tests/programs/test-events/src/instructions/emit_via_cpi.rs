@@ -1,8 +1,7 @@
-use quasar_core::prelude::*;
-
-use crate::events::SimpleEvent;
-use crate::EventAuthority;
-use crate::QuasarTestEvents;
+use {
+    crate::{events::SimpleEvent, EventAuthority, QuasarTestEvents},
+    quasar_core::prelude::*,
+};
 
 #[derive(Accounts)]
 pub struct EmitViaCpi<'info> {

@@ -1,10 +1,11 @@
-use mollusk_svm::result::ProgramResult as MolluskResult;
-use mollusk_svm::Mollusk;
-use quasar_core::prelude::ProgramError;
-use quasar_test_errors::client::*;
-use solana_account::Account;
-use solana_address::Address;
-use solana_instruction::{AccountMeta, Instruction};
+use {
+    mollusk_svm::{result::ProgramResult as MolluskResult, Mollusk},
+    quasar_core::prelude::ProgramError,
+    quasar_test_errors::client::*,
+    solana_account::Account,
+    solana_address::Address,
+    solana_instruction::{AccountMeta, Instruction},
+};
 
 const ERROR_ACCOUNT_SIZE: usize = 41;
 

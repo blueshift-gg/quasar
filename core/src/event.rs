@@ -3,10 +3,17 @@
 //! - **Log-based** (`emit!`) — ~100 CU, fast but spoofable.
 //! - **Self-CPI** (`emit_cpi!`) — ~1,000 CU, unforgeable (program ID in trace).
 
-use crate::cpi::{cpi_account_from_view, invoke_raw, InstructionAccount, Seed, Signer};
-use solana_account_view::AccountView;
-use solana_program_error::ProgramError;
+use {
+    crate::cpi::{cpi_account_from_view, invoke_raw, InstructionAccount, Seed, Signer},
+    solana_account_view::AccountView,
+    solana_program_error::ProgramError,
+};
 
+/// Emit an event via self-CPI to the program's own `__event_authority` PDA.
+///
+/// The self-CPI proves the event was emitted by the program (the program ID
+/// appears in the transaction trace), preventing log spoofing by other
+/// programs.
 #[inline(always)]
 pub fn emit_event_cpi(
     program: &AccountView,
@@ -24,6 +31,9 @@ pub fn emit_event_cpi(
     ];
     let signer = Signer::from(&seeds as &[Seed]);
 
+    // SAFETY: All pointer/length arguments are derived from stack-local
+    // values that outlive the syscall. Single account (count = 1) ensures
+    // the pointer-to-element casts are valid.
     unsafe {
         invoke_raw(
             program.address(),

@@ -1,6 +1,7 @@
-use std::path::PathBuf;
-
-use clap::{ArgAction, Args, Parser, Subcommand};
+use {
+    clap::{ArgAction, Args, Parser, Subcommand},
+    std::path::PathBuf,
+};
 
 pub mod error;
 pub mod idl;

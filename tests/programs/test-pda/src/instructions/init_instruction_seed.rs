@@ -1,6 +1,4 @@
-use quasar_core::prelude::*;
-
-use crate::state::ItemAccount;
+use {crate::state::ItemAccount, quasar_core::prelude::*};
 
 #[derive(Accounts)]
 pub struct InitInstructionSeed<'info> {

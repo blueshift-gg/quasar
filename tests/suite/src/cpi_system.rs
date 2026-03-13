@@ -1,8 +1,10 @@
-use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
-use quasar_test_misc::client::*;
-use solana_account::Account;
-use solana_address::Address;
-use solana_instruction::Instruction;
+use {
+    mollusk_svm::{program::keyed_account_for_system_program, Mollusk},
+    quasar_test_misc::client::*,
+    solana_account::Account,
+    solana_address::Address,
+    solana_instruction::Instruction,
+};
 
 fn setup() -> Mollusk {
     Mollusk::new(

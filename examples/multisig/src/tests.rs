@@ -1,15 +1,14 @@
 extern crate std;
 
-use alloc::vec;
-use alloc::vec::Vec;
-use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
-
-use solana_account::Account;
-use solana_address::Address;
-use solana_instruction::{AccountMeta, Instruction};
-
-use crate::idl_client::{
-    CreateInstruction, DepositInstruction, ExecuteTransferInstruction, SetLabelInstruction,
+use {
+    crate::idl_client::{
+        CreateInstruction, DepositInstruction, ExecuteTransferInstruction, SetLabelInstruction,
+    },
+    alloc::{vec, vec::Vec},
+    mollusk_svm::{program::keyed_account_for_system_program, Mollusk},
+    solana_account::Account,
+    solana_address::Address,
+    solana_instruction::{AccountMeta, Instruction},
 };
 
 fn setup() -> Mollusk {
@@ -33,7 +32,8 @@ fn build_config_data_bytes(
     label: &[u8],
     signers: &[Address],
 ) -> Vec<u8> {
-    // Layout: disc(1) + ZC fixed(34) + label_prefix(u32) + label_data + signers_prefix(u32) + signers_data
+    // Layout: disc(1) + ZC fixed(34) + label_prefix(u32) + label_data +
+    // signers_prefix(u32) + signers_data
     let total = 1 + 34 + 4 + label.len() + 4 + signers.len() * 32;
     let mut data = vec![0u8; total];
 
@@ -135,7 +135,8 @@ fn test_create() {
     // Verify threshold (offset: disc(1) + creator(32) = 33)
     assert_eq!(config_data[33], threshold, "threshold mismatch");
 
-    // Verify signers count prefix (offset: disc(1) + ZC(34) + label_prefix(4) + label(0) = 39)
+    // Verify signers count prefix (offset: disc(1) + ZC(34) + label_prefix(4) +
+    // label(0) = 39)
     let signers_count = u32::from_le_bytes([
         config_data[39],
         config_data[40],

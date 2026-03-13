@@ -57,7 +57,8 @@ impl<'a> From<&'a str> for BorshString<'a> {
     }
 }
 
-/// A Borsh vector: u32 LE element count followed by pre-serialized element bytes.
+/// A Borsh vector: u32 LE element count followed by pre-serialized element
+/// bytes.
 ///
 /// The caller is responsible for ensuring the `bytes` slice contains exactly
 /// `count` elements in their Borsh-serialized form (e.g., `#[repr(C)]` Pod
@@ -107,8 +108,8 @@ impl<'a> BorshVec<'a> {
     ///
     /// # Safety
     ///
-    /// Caller must ensure `ptr.add(offset)..ptr.add(offset + 4 + self.bytes.len())`
-    /// is valid for writes.
+    /// Caller must ensure `ptr.add(offset)..ptr.add(offset + 4 +
+    /// self.bytes.len())` is valid for writes.
     #[inline(always)]
     pub unsafe fn write_to(self, ptr: *mut u8, offset: usize) -> usize {
         core::ptr::copy_nonoverlapping(self.count.to_le_bytes().as_ptr(), ptr.add(offset), 4);
@@ -158,8 +159,8 @@ pub trait CpiEncode<const TARGET_PREFIX: usize> {
     ///
     /// # Safety
     ///
-    /// Caller must ensure `ptr.add(offset)..ptr.add(offset + self.encoded_len())`
-    /// is valid for writes.
+    /// Caller must ensure `ptr.add(offset)..ptr.add(offset +
+    /// self.encoded_len())` is valid for writes.
     unsafe fn write_to(&self, ptr: *mut u8, offset: usize) -> usize;
 }
 
@@ -167,7 +168,8 @@ pub trait CpiEncode<const TARGET_PREFIX: usize> {
 ///
 /// # Safety
 ///
-/// Caller must ensure `ptr.add(offset)..ptr.add(offset + PREFIX_BYTES)` is valid.
+/// Caller must ensure `ptr.add(offset)..ptr.add(offset + PREFIX_BYTES)` is
+/// valid.
 #[inline(always)]
 unsafe fn write_prefix<const PREFIX_BYTES: usize>(ptr: *mut u8, offset: usize, value: u32) {
     match PREFIX_BYTES {
@@ -253,8 +255,8 @@ impl<'a, const N: usize> CpiEncode<N> for RawEncoded<'a, N> {
 ///
 /// # Safety
 ///
-/// Caller must ensure `ptr.add(offset)..ptr.add(offset + TARGET + raw.data().len())`
-/// is valid for writes.
+/// Caller must ensure `ptr.add(offset)..ptr.add(offset + TARGET +
+/// raw.data().len())` is valid for writes.
 #[inline(always)]
 pub unsafe fn cpi_reencode<const TARGET: usize, const SOURCE: usize>(
     raw: &RawEncoded<'_, SOURCE>,

@@ -1,11 +1,11 @@
-use mollusk_svm::result::ProgramResult;
-use mollusk_svm::Mollusk;
-use quasar_core::error::QuasarError;
-use quasar_core::prelude::ProgramError;
-use quasar_test_misc::client::*;
-use solana_account::Account;
-use solana_address::Address;
-use solana_instruction::Instruction;
+use {
+    mollusk_svm::{result::ProgramResult, Mollusk},
+    quasar_core::{error::QuasarError, prelude::ProgramError},
+    quasar_test_misc::client::*,
+    solana_account::Account,
+    solana_address::Address,
+    solana_instruction::Instruction,
+};
 
 fn setup() -> Mollusk {
     Mollusk::new(

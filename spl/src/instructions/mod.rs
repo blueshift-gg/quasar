@@ -9,11 +9,8 @@ mod sync_native;
 mod transfer;
 mod transfer_checked;
 
-pub use initialize_account::initialize_account3;
-pub use initialize_mint::initialize_mint2;
-
-use quasar_core::cpi::CpiCall;
-use quasar_core::prelude::*;
+use quasar_core::{cpi::CpiCall, prelude::*};
+pub use {initialize_account::initialize_account3, initialize_mint::initialize_mint2};
 
 /// Trait for types that can execute SPL Token CPI calls.
 ///
@@ -22,6 +19,11 @@ use quasar_core::prelude::*;
 /// to ensure only actual token programs are accepted — not arbitrary accounts.
 pub trait TokenCpi: AsAccountView {
     /// Transfer tokens between accounts.
+    ///
+    /// ### Accounts:
+    ///   0. `[WRITE]` Source token account
+    ///   1. `[WRITE]` Destination token account
+    ///   2. `[SIGNER]` Source account owner / delegate
     #[inline(always)]
     fn transfer<'a>(
         &'a self,
@@ -39,7 +41,13 @@ pub trait TokenCpi: AsAccountView {
         )
     }
 
-    /// Transfer tokens with decimal verification.
+    /// Transfer tokens with mint decimal verification.
+    ///
+    /// ### Accounts:
+    ///   0. `[WRITE]` Source token account
+    ///   1. `[]`      Token mint
+    ///   2. `[WRITE]` Destination token account
+    ///   3. `[SIGNER]` Source account owner / delegate
     #[inline(always)]
     fn transfer_checked<'a>(
         &'a self,
@@ -61,7 +69,12 @@ pub trait TokenCpi: AsAccountView {
         )
     }
 
-    /// Mint tokens to an account.
+    /// Mint new tokens to an account.
+    ///
+    /// ### Accounts:
+    ///   0. `[WRITE]` Mint account
+    ///   1. `[WRITE]` Destination token account
+    ///   2. `[SIGNER]` Mint authority
     #[inline(always)]
     fn mint_to<'a>(
         &'a self,
@@ -80,6 +93,11 @@ pub trait TokenCpi: AsAccountView {
     }
 
     /// Burn tokens from an account.
+    ///
+    /// ### Accounts:
+    ///   0. `[WRITE]` Source token account
+    ///   1. `[WRITE]` Token mint
+    ///   2. `[SIGNER]` Source account owner / delegate
     #[inline(always)]
     fn burn<'a>(
         &'a self,
@@ -98,6 +116,11 @@ pub trait TokenCpi: AsAccountView {
     }
 
     /// Approve a delegate to transfer tokens.
+    ///
+    /// ### Accounts:
+    ///   0. `[WRITE]` Source token account
+    ///   1. `[]`      Delegate
+    ///   2. `[SIGNER]` Source account owner
     #[inline(always)]
     fn approve<'a>(
         &'a self,
@@ -116,6 +139,11 @@ pub trait TokenCpi: AsAccountView {
     }
 
     /// Close a token account and reclaim its lamports.
+    ///
+    /// ### Accounts:
+    ///   0. `[WRITE]` Account to close
+    ///   1. `[WRITE]` Destination for remaining lamports
+    ///   2. `[SIGNER]` Account owner / close authority
     #[inline(always)]
     fn close_account<'a>(
         &'a self,
@@ -132,6 +160,10 @@ pub trait TokenCpi: AsAccountView {
     }
 
     /// Revoke a delegate's authority.
+    ///
+    /// ### Accounts:
+    ///   0. `[WRITE]` Source token account
+    ///   1. `[SIGNER]` Source account owner
     #[inline(always)]
     fn revoke<'a>(
         &'a self,
@@ -146,6 +178,9 @@ pub trait TokenCpi: AsAccountView {
     }
 
     /// Sync the lamport balance of a native SOL token account.
+    ///
+    /// ### Accounts:
+    ///   0. `[WRITE]` Native SOL token account
     #[inline(always)]
     fn sync_native<'a>(&'a self, token_account: &'a impl AsAccountView) -> CpiCall<'a, 1, 1> {
         sync_native::sync_native(self.to_account_view(), token_account.to_account_view())

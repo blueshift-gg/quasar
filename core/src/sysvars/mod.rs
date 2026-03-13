@@ -6,10 +6,9 @@
 
 #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
 use core::hint::black_box;
-use solana_address::Address;
 #[cfg(any(target_os = "solana", target_arch = "bpf"))]
 use solana_define_syscall::definitions::sol_get_sysvar;
-use solana_program_error::ProgramError;
+use {solana_address::Address, solana_program_error::ProgramError};
 
 pub mod clock;
 pub mod rent;
@@ -36,6 +35,9 @@ macro_rules! impl_sysvar_get {
 
         #[inline(always)]
         unsafe fn from_bytes_unchecked(bytes: &[u8]) -> &Self {
+            // SAFETY: Caller guarantees `bytes` contains valid sysvar data
+            // with length >= size_of::<Self>(). The struct is `#[repr(C)]`
+            // with alignment 1, so the pointer cast is always valid.
             unsafe { &*(bytes.as_ptr() as *const Self) }
         }
 
@@ -45,6 +47,9 @@ macro_rules! impl_sysvar_get {
             let var_addr = var.as_mut_ptr() as *mut _ as *mut u8;
 
             #[cfg(target_os = "solana")]
+            // SAFETY: `var_addr` points to `MaybeUninit<Self>` which has
+            // enough space. The syscall writes `length` bytes; we zero the
+            // trailing `$padding` bytes so the full struct is initialized.
             let result = unsafe {
                 let length = core::mem::size_of::<Self>() - $padding;
                 var_addr.add(length).write_bytes(0, $padding);
@@ -58,11 +63,15 @@ macro_rules! impl_sysvar_get {
 
             #[cfg(not(target_os = "solana"))]
             let result = {
+                // SAFETY: Zero-init the full struct for off-chain use.
                 unsafe { var_addr.write_bytes(0, core::mem::size_of::<Self>()) };
                 core::hint::black_box(var_addr as *const _ as u64)
             };
 
             match result {
+                // SAFETY: On success (result == 0), the syscall has written
+                // valid sysvar data and the padding was zeroed — all bytes
+                // of `MaybeUninit<Self>` are initialized.
                 0 => Ok(unsafe { var.assume_init() }),
                 $crate::sysvars::OFFSET_LENGTH_EXCEEDS_SYSVAR => Err(ProgramError::InvalidArgument),
                 $crate::sysvars::SYSVAR_NOT_FOUND => Err(ProgramError::UnsupportedSysvar),
@@ -72,8 +81,12 @@ macro_rules! impl_sysvar_get {
     };
 }
 
+/// Read raw sysvar bytes at a given offset.
+///
 /// # Safety
-/// `dst` must point to a buffer of at least `len` bytes.
+///
+/// - `dst` must point to a buffer of at least `len` bytes.
+/// - The caller is responsible for interpreting the raw bytes correctly.
 #[inline]
 pub unsafe fn get_sysvar_unchecked(
     dst: *mut u8,
@@ -83,6 +96,8 @@ pub unsafe fn get_sysvar_unchecked(
 ) -> Result<(), ProgramError> {
     #[cfg(any(target_os = "solana", target_arch = "bpf"))]
     {
+        // SAFETY: Caller guarantees `dst` is valid for `len` bytes.
+        // `sysvar_id` points to a valid 32-byte address.
         let result = unsafe {
             sol_get_sysvar(
                 sysvar_id as *const _ as *const u8,

@@ -1,5 +1,7 @@
-use quasar_spl::{MintAccountState, TokenAccountState};
-use solana_address::Address;
+use {
+    quasar_spl::{MintAccountState, TokenAccountState},
+    solana_address::Address,
+};
 
 // ---------------------------------------------------------------------------
 // Helpers

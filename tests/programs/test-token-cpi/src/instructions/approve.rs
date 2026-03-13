@@ -1,5 +1,7 @@
-use quasar_core::prelude::*;
-use quasar_spl::{Token, TokenCpi};
+use {
+    quasar_core::prelude::*,
+    quasar_spl::{Token, TokenCpi},
+};
 
 #[derive(Accounts)]
 pub struct Approve<'info> {

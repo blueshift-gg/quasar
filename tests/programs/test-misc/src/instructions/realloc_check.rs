@@ -1,6 +1,4 @@
-use quasar_core::prelude::*;
-
-use crate::state::SimpleAccount;
+use {crate::state::SimpleAccount, quasar_core::prelude::*};
 
 #[derive(Accounts)]
 #[instruction(new_space: u64)]

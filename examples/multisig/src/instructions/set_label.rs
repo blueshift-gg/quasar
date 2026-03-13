@@ -1,6 +1,4 @@
-use quasar_core::prelude::*;
-
-use crate::state::MultisigConfig;
+use {crate::state::MultisigConfig, quasar_core::prelude::*};
 
 #[derive(Accounts)]
 pub struct SetLabel<'info> {

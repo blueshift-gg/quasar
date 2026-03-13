@@ -13,15 +13,20 @@ macro_rules! dispatch {
     ($ptr:expr, $ix_data:expr, $disc_len:literal, {
         $([$($disc_byte:literal),+] => $handler:ident($accounts_ty:ty)),+ $(,)?
     }) => {{
+        // SAFETY: The SVM appends the 32-byte program ID immediately after
+        // instruction data in the input buffer.
         let __program_id: &[u8; 32] = unsafe {
             &*($ix_data.as_ptr().add($ix_data.len()) as *const [u8; 32])
         };
         const __U64_SIZE: usize = core::mem::size_of::<u64>();
+        // SAFETY: The SVM places the account count (u64) at offset 0,
+        // followed by the account entries. Skip past the count.
         let __accounts_start = unsafe { ($ptr as *mut u8).add(__U64_SIZE) };
 
         if $ix_data.len() < $disc_len {
             return Err(ProgramError::InvalidInstructionData);
         }
+        // SAFETY: Length checked above — at least `$disc_len` bytes available.
         let __disc: [u8; $disc_len] = unsafe {
             *($ix_data.as_ptr() as *const [u8; $disc_len])
         };
@@ -31,15 +36,21 @@ macro_rules! dispatch {
                     let mut __buf = core::mem::MaybeUninit::<
                         [AccountView; <$accounts_ty as AccountCount>::COUNT]
                     >::uninit();
+                    // SAFETY: `parse_accounts` walks the SVM buffer from
+                    // `__accounts_start`, validating each account entry.
                     let __remaining_ptr = unsafe {
                         <$accounts_ty>::parse_accounts(__accounts_start, &mut __buf)?
                     };
+                    // SAFETY: All COUNT elements initialized by `parse_accounts`.
                     let mut __accounts = unsafe { __buf.assume_init() };
                     $handler(Context {
                         program_id: __program_id,
                         accounts: &mut __accounts,
                         remaining_ptr: __remaining_ptr,
                         data: $ix_data,
+                        // SAFETY: Instruction data is preceded by a u64 length
+                        // field in the SVM buffer. Subtracting 8 gives the
+                        // boundary between accounts and instruction data.
                         accounts_boundary: unsafe { $ix_data.as_ptr().sub(__U64_SIZE) },
                     })
                 }
@@ -108,6 +119,16 @@ macro_rules! heap_alloc {
                 }
             }
 
+            /// # Safety
+            ///
+            /// - `self.start` must point to a valid heap cursor (usize at heap start).
+            /// - The SVM zero-inits the heap region and the entrypoint writes the
+            ///   initial cursor value before any allocation.
+            /// - Re-entrancy is forbidden by the SVM, so no aliasing can occur.
+            /// - `alloc_zeroed` delegates to `alloc` because the SVM heap is
+            ///   pre-zeroed.
+            /// - `dealloc` is a no-op — bump allocators do not free individual
+            ///   allocations.
             #[allow(clippy::arithmetic_side_effects)]
             unsafe impl alloc::alloc::GlobalAlloc for BumpAllocator {
                 #[inline]

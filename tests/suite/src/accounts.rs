@@ -1,8 +1,10 @@
-use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
-use quasar_test_misc::client::*;
-use solana_account::Account;
-use solana_address::Address;
-use solana_instruction::Instruction;
+use {
+    mollusk_svm::{program::keyed_account_for_system_program, Mollusk},
+    quasar_test_misc::client::*,
+    solana_account::Account,
+    solana_address::Address,
+    solana_instruction::Instruction,
+};
 
 const SIMPLE_ACCOUNT_SIZE: usize = 42; // 1 disc + 32 addr + 8 u64 + 1 u8
 const MULTI_DISC_SIZE: usize = 10; // 2 disc + 8 u64
@@ -807,7 +809,8 @@ fn test_partial_discriminator_match() {
     let mollusk = setup();
 
     let account = Address::new_unique();
-    // MultiDiscAccount expects discriminator [1, 2]. Provide [1, 0] — partial match.
+    // MultiDiscAccount expects discriminator [1, 2]. Provide [1, 0] — partial
+    // match.
     let mut data = vec![0u8; MULTI_DISC_SIZE];
     data[0] = 1; // First byte matches
     data[1] = 0; // Second byte doesn't match (should be 2)
@@ -1798,7 +1801,8 @@ fn test_adversarial_multi_disc_first_byte_only_match_variants() {
 }
 
 /// Account with all-zero data (including zero discriminator).
-/// All-zero discriminator is banned — this should be rejected regardless of size.
+/// All-zero discriminator is banned — this should be rejected regardless of
+/// size.
 #[test]
 fn test_adversarial_all_zero_data_simple_account() {
     let mollusk = setup();
@@ -1901,14 +1905,14 @@ fn test_adversarial_realloc_shrink_grow_data_leakage() {
     let tail_region = &regrown.data[50..100];
     assert!(
         tail_region.iter().all(|&b| b == 0),
-        "BUG: bytes 50..100 after shrink-then-grow are NOT zeroed. \
-         Data leakage from previous allocation: {:?}",
+        "BUG: bytes 50..100 after shrink-then-grow are NOT zeroed. Data leakage from previous \
+         allocation: {:?}",
         &tail_region[..10]
     );
 }
 
-/// Pass the same account address for two different `#[account(mut)]` parameters.
-/// The SVM should detect the duplicate mutable borrow and reject.
+/// Pass the same account address for two different `#[account(mut)]`
+/// parameters. The SVM should detect the duplicate mutable borrow and reject.
 #[test]
 fn test_adversarial_same_account_for_two_mut_params() {
     let mollusk = setup();
@@ -1930,7 +1934,8 @@ fn test_adversarial_same_account_for_two_mut_params() {
         accounts: vec![
             solana_instruction::AccountMeta::new_readonly(signer, true),
             solana_instruction::AccountMeta::new(account_addr, false),
-            solana_instruction::AccountMeta::new(account_addr, false), // SAME address for both mut params
+            solana_instruction::AccountMeta::new(account_addr, false), /* SAME address for both
+                                                                        * mut params */
         ],
         data: vec![41],
     };
@@ -2000,7 +2005,8 @@ fn test_adversarial_account_disc_only_no_fields() {
 }
 
 /// Account with oversized data: 10,000 bytes with correct discriminator.
-/// The framework should accept this (extra space is ignored for static accounts).
+/// The framework should accept this (extra space is ignored for static
+/// accounts).
 #[test]
 fn test_adversarial_account_oversized_data() {
     let mollusk = setup();

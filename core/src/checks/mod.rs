@@ -11,8 +11,6 @@ pub mod mutable;
 pub mod owner;
 pub mod signer;
 
-pub use address::Address;
-pub use executable::Executable;
-pub use mutable::Mutable;
-pub use owner::Owner;
-pub use signer::Signer;
+pub use {
+    address::Address, executable::Executable, mutable::Mutable, owner::Owner, signer::Signer,
+};

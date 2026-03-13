@@ -5,7 +5,8 @@ pub(crate) const METADATA_PROGRAM_BYTES: [u8; 32] = [
     26, 160, 253, 181, 73, 182, 209, 188, 3, 248, 41, 70,
 ];
 
-/// Metaplex Token Metadata program address (`metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s`).
+/// Metaplex Token Metadata program address
+/// (`metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s`).
 #[cfg(any(target_os = "solana", target_arch = "bpf"))]
 pub static METADATA_PROGRAM_ID: Address = Address::new_from_array(METADATA_PROGRAM_BYTES);
 #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]

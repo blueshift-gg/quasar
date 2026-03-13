@@ -1,4 +1,5 @@
-//! Constraint attribute types and parsing for `#[account(...)]` field attributes.
+//! Constraint attribute types and parsing for `#[account(...)]` field
+//! attributes.
 //!
 //! Handles: `init`, `mut`, `signer`, `address`, `seeds`, `bump`, `space`,
 //! `payer`, `token_*`, `mint_*`, `associated_token_*`, `constraint`, and more.
@@ -241,6 +242,7 @@ impl Parse for AccountDirective {
     }
 }
 
+#[derive(Default)]
 pub(super) struct AccountFieldAttrs {
     pub is_mut: bool,
     pub is_init: bool,
@@ -275,141 +277,56 @@ pub(super) struct AccountFieldAttrs {
 impl Parse for AccountFieldAttrs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let directives = input.parse_terminated(AccountDirective::parse, Token![,])?;
-        let mut is_mut = false;
-        let mut is_init = false;
-        let mut init_if_needed = false;
-        let mut dup = false;
-        let mut close = None;
-        let mut payer = None;
-        let mut space = None;
-        let mut has_ones = Vec::new();
-        let mut constraints = Vec::new();
-        let mut seeds = None;
-        let mut bump = None;
-        let mut address = None;
-        let mut token_mint = None;
-        let mut token_authority = None;
-        let mut associated_token_mint = None;
-        let mut associated_token_authority = None;
-        let mut associated_token_token_program = None;
-        let mut realloc = None;
-        let mut realloc_payer = None;
-        let mut metadata_name = None;
-        let mut metadata_symbol = None;
-        let mut metadata_uri = None;
-        let mut metadata_seller_fee_basis_points = None;
-        let mut metadata_is_mutable = None;
-        let mut master_edition_max_supply = None;
-        let mut mint_decimals = None;
-        let mut mint_init_authority = None;
-        let mut mint_freeze_authority = None;
+        let mut r = Self::default();
         for d in directives {
             match d {
-                AccountDirective::Mut => is_mut = true,
-                AccountDirective::Init => is_init = true,
-                AccountDirective::InitIfNeeded => init_if_needed = true,
-                AccountDirective::Dup => dup = true,
-                AccountDirective::Close(ident) => close = Some(ident),
-                AccountDirective::Payer(ident) => payer = Some(ident),
-                AccountDirective::Space(expr) => space = Some(expr),
-                AccountDirective::HasOne(ident, err) => has_ones.push((ident, err)),
-                AccountDirective::Constraint(expr, err) => constraints.push((expr, err)),
-                AccountDirective::Seeds(s) => seeds = Some(s),
-                AccountDirective::Bump(b) => bump = Some(b),
-                AccountDirective::Address(expr, err) => address = Some((expr, err)),
-                AccountDirective::TokenMint(ident) => token_mint = Some(ident),
-                AccountDirective::TokenAuthority(ident) => token_authority = Some(ident),
-                AccountDirective::AssociatedTokenMint(ident) => associated_token_mint = Some(ident),
-                AccountDirective::AssociatedTokenAuthority(ident) => {
-                    associated_token_authority = Some(ident)
+                AccountDirective::Mut => r.is_mut = true,
+                AccountDirective::Init => r.is_init = true,
+                AccountDirective::InitIfNeeded => r.init_if_needed = true,
+                AccountDirective::Dup => r.dup = true,
+                AccountDirective::Close(v) => r.close = Some(v),
+                AccountDirective::Payer(v) => r.payer = Some(v),
+                AccountDirective::Space(v) => r.space = Some(v),
+                AccountDirective::HasOne(id, err) => r.has_ones.push((id, err)),
+                AccountDirective::Constraint(expr, err) => r.constraints.push((expr, err)),
+                AccountDirective::Seeds(v) => r.seeds = Some(v),
+                AccountDirective::Bump(v) => r.bump = Some(v),
+                AccountDirective::Address(expr, err) => r.address = Some((expr, err)),
+                AccountDirective::TokenMint(v) => r.token_mint = Some(v),
+                AccountDirective::TokenAuthority(v) => r.token_authority = Some(v),
+                AccountDirective::AssociatedTokenMint(v) => r.associated_token_mint = Some(v),
+                AccountDirective::AssociatedTokenAuthority(v) => {
+                    r.associated_token_authority = Some(v)
                 }
-                AccountDirective::AssociatedTokenTokenProgram(ident) => {
-                    associated_token_token_program = Some(ident)
+                AccountDirective::AssociatedTokenTokenProgram(v) => {
+                    r.associated_token_token_program = Some(v)
                 }
-                AccountDirective::Realloc(expr) => realloc = Some(expr),
-                AccountDirective::ReallocPayer(ident) => realloc_payer = Some(ident),
-                AccountDirective::MetadataName(expr) => metadata_name = Some(expr),
-                AccountDirective::MetadataSymbol(expr) => metadata_symbol = Some(expr),
-                AccountDirective::MetadataUri(expr) => metadata_uri = Some(expr),
-                AccountDirective::MetadataSellerFeeBasisPoints(expr) => {
-                    metadata_seller_fee_basis_points = Some(expr)
+                AccountDirective::Realloc(v) => r.realloc = Some(v),
+                AccountDirective::ReallocPayer(v) => r.realloc_payer = Some(v),
+                AccountDirective::MetadataName(v) => r.metadata_name = Some(v),
+                AccountDirective::MetadataSymbol(v) => r.metadata_symbol = Some(v),
+                AccountDirective::MetadataUri(v) => r.metadata_uri = Some(v),
+                AccountDirective::MetadataSellerFeeBasisPoints(v) => {
+                    r.metadata_seller_fee_basis_points = Some(v)
                 }
-                AccountDirective::MetadataIsMutable(expr) => metadata_is_mutable = Some(expr),
-                AccountDirective::MasterEditionMaxSupply(expr) => {
-                    master_edition_max_supply = Some(expr)
+                AccountDirective::MetadataIsMutable(v) => r.metadata_is_mutable = Some(v),
+                AccountDirective::MasterEditionMaxSupply(v) => {
+                    r.master_edition_max_supply = Some(v)
                 }
-                AccountDirective::MintDecimals(expr) => mint_decimals = Some(expr),
-                AccountDirective::MintInitAuthority(ident) => mint_init_authority = Some(ident),
-                AccountDirective::MintFreezeAuthority(ident) => mint_freeze_authority = Some(ident),
+                AccountDirective::MintDecimals(v) => r.mint_decimals = Some(v),
+                AccountDirective::MintInitAuthority(v) => r.mint_init_authority = Some(v),
+                AccountDirective::MintFreezeAuthority(v) => r.mint_freeze_authority = Some(v),
             }
         }
-        Ok(Self {
-            is_mut,
-            is_init,
-            init_if_needed,
-            dup,
-            close,
-            payer,
-            space,
-            has_ones,
-            constraints,
-            seeds,
-            bump,
-            address,
-            token_mint,
-            token_authority,
-            associated_token_mint,
-            associated_token_authority,
-            associated_token_token_program,
-            realloc,
-            realloc_payer,
-            metadata_name,
-            metadata_symbol,
-            metadata_uri,
-            metadata_seller_fee_basis_points,
-            metadata_is_mutable,
-            master_edition_max_supply,
-            mint_decimals,
-            mint_init_authority,
-            mint_freeze_authority,
-        })
+        Ok(r)
     }
 }
 
 pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<AccountFieldAttrs> {
-    for attr in &field.attrs {
-        if attr.path().is_ident("account") {
-            return attr.parse_args::<AccountFieldAttrs>();
-        }
-    }
-    Ok(AccountFieldAttrs {
-        is_mut: false,
-        is_init: false,
-        init_if_needed: false,
-        dup: false,
-        close: None,
-        payer: None,
-        space: None,
-        has_ones: vec![],
-        constraints: vec![],
-        seeds: None,
-        bump: None,
-        address: None,
-        token_mint: None,
-        token_authority: None,
-        associated_token_mint: None,
-        associated_token_authority: None,
-        associated_token_token_program: None,
-        realloc: None,
-        realloc_payer: None,
-        metadata_name: None,
-        metadata_symbol: None,
-        metadata_uri: None,
-        metadata_seller_fee_basis_points: None,
-        metadata_is_mutable: None,
-        master_edition_max_supply: None,
-        mint_decimals: None,
-        mint_init_authority: None,
-        mint_freeze_authority: None,
-    })
+    field
+        .attrs
+        .iter()
+        .find(|a| a.path().is_ident("account"))
+        .map(|a| a.parse_args::<AccountFieldAttrs>())
+        .unwrap_or_else(|| Ok(AccountFieldAttrs::default()))
 }

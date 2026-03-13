@@ -1,11 +1,12 @@
 //! `#[event]` — generates event discriminator, serialization, and the `Event`
 //! trait impl for emission via `sol_log_data` or self-CPI.
 
-use proc_macro::TokenStream;
-use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Fields, Ident, Type};
-
-use crate::helpers::InstructionArgs;
+use {
+    crate::helpers::InstructionArgs,
+    proc_macro::TokenStream,
+    quote::quote,
+    syn::{parse_macro_input, Data, DeriveInput, Fields, Type},
+};
 
 fn event_field_size(ty: &Type) -> syn::Result<usize> {
     if let Type::Path(type_path) = ty {
@@ -17,32 +18,18 @@ fn event_field_size(ty: &Type) -> syn::Result<usize> {
                 "u64" | "i64" => Ok(8),
                 "u128" | "i128" => Ok(16),
                 "Address" => Ok(32),
-                _ => Err(syn::Error::new_spanned(ty, format!("unsupported event field type `{}`; only primitive integers, bool, and Address are supported", seg.ident))),
+                _ => Err(syn::Error::new_spanned(
+                    ty,
+                    format!(
+                        "unsupported event field type `{}`; only primitive integers, bool, and \
+                         Address are supported",
+                        seg.ident
+                    ),
+                )),
             };
         }
     }
     Err(syn::Error::new_spanned(ty, "unsupported event field type"))
-}
-
-fn event_field_write(
-    name: &Ident,
-    ty: &Type,
-    offset: usize,
-    size: usize,
-) -> proc_macro2::TokenStream {
-    let end = offset + size;
-    if let Type::Path(type_path) = ty {
-        if let Some(seg) = type_path.path.segments.last() {
-            return match seg.ident.to_string().as_str() {
-                "u8" => quote! { buf[#offset] = self.#name; },
-                "i8" => quote! { buf[#offset] = self.#name as u8; },
-                "bool" => quote! { buf[#offset] = self.#name as u8; },
-                "Address" => quote! { buf[#offset..#end].copy_from_slice(self.#name.as_ref()); },
-                _ => quote! { buf[#offset..#end].copy_from_slice(&self.#name.to_le_bytes()); },
-            };
-        }
-    }
-    unreachable!()
 }
 
 pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -69,15 +56,11 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     let mut data_size: usize = 0;
-    let mut write_stmts: Vec<proc_macro2::TokenStream> = Vec::new();
-
     for field in fields_data.iter() {
-        let field_name = field.ident.as_ref().unwrap();
         let size = match event_field_size(&field.ty) {
             Ok(s) => s,
             Err(e) => return e.to_compile_error().into(),
         };
-        write_stmts.push(event_field_write(field_name, &field.ty, data_size, size));
         data_size += size;
     }
 

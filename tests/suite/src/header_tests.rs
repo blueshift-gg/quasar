@@ -1,9 +1,10 @@
-use mollusk_svm::result::ProgramResult as MolluskResult;
-use mollusk_svm::Mollusk;
-use quasar_core::prelude::ProgramError;
-use solana_account::Account;
-use solana_address::Address;
-use solana_instruction::{AccountMeta, Instruction};
+use {
+    mollusk_svm::{result::ProgramResult as MolluskResult, Mollusk},
+    quasar_core::prelude::ProgramError,
+    solana_account::Account,
+    solana_address::Address,
+    solana_instruction::{AccountMeta, Instruction},
+};
 
 fn setup() -> Mollusk {
     Mollusk::new(
@@ -20,7 +21,8 @@ const SYSTEM_PROGRAM_ID: Address = Address::new_from_array([
 // Header Validation Debug Message Tests
 //
 // Build test-errors with debug feature:
-//   cargo build-sbf --manifest-path tests/programs/test-errors/Cargo.toml --features debug,alloc
+//   cargo build-sbf --manifest-path tests/programs/test-errors/Cargo.toml
+// --features debug,alloc
 //
 // Run with:
 //   cargo test -p quasar-test-suite --features debug -- test_header --nocapture
@@ -39,7 +41,8 @@ fn test_header_nodup_mut_signer_success() {
     let instruction = Instruction {
         program_id: quasar_test_errors::ID,
         accounts: vec![AccountMeta::new(account, true)], // writable + signer
-        data: vec![12], // discriminator 12 = header_nodup_mut_signer
+        data: vec![12],                                  /* discriminator 12 =
+                                                          * header_nodup_mut_signer */
     };
 
     let result = mollusk.process_instruction(&instruction, &[(account, Account::default())]);
@@ -79,7 +82,8 @@ fn test_header_nodup_signer_success() {
     let instruction = Instruction {
         program_id: quasar_test_errors::ID,
         accounts: vec![AccountMeta::new_readonly(account, true)], // signer only
-        data: vec![14], // discriminator 14 = header_nodup_signer
+        data: vec![14],                                           /* discriminator 14 =
+                                                                   * header_nodup_signer */
     };
 
     let result = mollusk.process_instruction(&instruction, &[(account, Account::default())]);

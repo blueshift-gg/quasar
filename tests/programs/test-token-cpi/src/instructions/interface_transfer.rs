@@ -1,5 +1,7 @@
-use quasar_core::prelude::*;
-use quasar_spl::{InterfaceAccount, Token, TokenCpi, TokenInterface};
+use {
+    quasar_core::prelude::*,
+    quasar_spl::{InterfaceAccount, Token, TokenCpi, TokenInterface},
+};
 
 #[derive(Accounts)]
 pub struct InterfaceTransfer<'info> {
