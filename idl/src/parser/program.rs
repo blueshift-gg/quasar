@@ -109,7 +109,7 @@ fn uses_ctx_with_remaining(sig: &syn::Signature) -> bool {
             .path
             .segments
             .last()
-            .map_or(false, |seg| seg.ident == "CtxWithRemaining"),
+            .is_some_and(|seg| seg.ident == "CtxWithRemaining"),
         _ => false,
     }
 }

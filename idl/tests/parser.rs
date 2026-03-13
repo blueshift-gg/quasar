@@ -736,8 +736,10 @@ fn rust_codegen_remaining_accounts() {
 
 #[test]
 fn ts_codegen_remaining_accounts() {
-    use quasar_idl::{codegen::typescript::generate_ts_client_kit, parser::build_idl};
-    use quasar_idl::parser::ParsedProgram;
+    use quasar_idl::{
+        codegen::typescript::generate_ts_client_kit,
+        parser::{build_idl, ParsedProgram},
+    };
 
     let parsed = ParsedProgram {
         program_id: "ABcDeFgH111111111111111111111111111111111111".to_string(),

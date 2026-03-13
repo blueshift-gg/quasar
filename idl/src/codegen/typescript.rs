@@ -271,7 +271,8 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
                 }
                 TsTarget::Web3js => {
                     out.push_str(
-                        "  remainingAccounts?: Array<{ pubkey: Address; isSigner: boolean; isWritable: boolean }>;\n",
+                        "  remainingAccounts?: Array<{ pubkey: Address; isSigner: boolean; \
+                         isWritable: boolean }>;\n",
                     );
                 }
             }

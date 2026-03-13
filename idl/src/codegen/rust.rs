@@ -22,7 +22,8 @@ solana-instruction = "3"
 pub fn generate_client(parsed: &ParsedProgram) -> String {
     let mut out = String::new();
 
-    // Check if any instruction uses dynamic types or remaining accounts (need Vec import)
+    // Check if any instruction uses dynamic types or remaining accounts (need Vec
+    // import)
     let has_dynamic = parsed.instructions.iter().any(|ix| {
         ix.args.iter().any(|(_, ty)| {
             matches!(
@@ -317,22 +318,25 @@ fn deserialize_field_expr(name: &str, ty: &IdlType) -> String {
                 name
             ),
             "publicKey" => format!(
-                "        let {n} = Address::from(<[u8; 32]>::try_from(&data[offset..offset + 32]).ok()?);\n\
-                 \x20       offset += 32;\n",
+                "        let {n} = Address::from(<[u8; 32]>::try_from(&data[offset..offset + \
+                 32]).ok()?);\n\x20       offset += 32;\n",
                 n = name,
             ),
             other => {
                 let size = primitive_size(other);
                 format!(
-                    "        let {n} = {ty}::from_le_bytes(data[offset..offset + {sz}].try_into().ok()?);\n\
-                     \x20       offset += {sz};\n",
+                    "        let {n} = {ty}::from_le_bytes(data[offset..offset + \
+                     {sz}].try_into().ok()?);\n\x20       offset += {sz};\n",
                     n = name,
                     ty = other,
                     sz = size,
                 )
             }
         },
-        _ => format!("        let {} = Default::default(); // unsupported type\n", name),
+        _ => format!(
+            "        let {} = Default::default(); // unsupported type\n",
+            name
+        ),
     }
 }
 
