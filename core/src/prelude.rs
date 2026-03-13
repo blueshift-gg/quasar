@@ -10,12 +10,8 @@
 // Error handling
 // Pod types
 // Utilities
-// Sysvar data types
-pub use crate::sysvars::clock::Clock;
 // Macros
-pub use crate::{dispatch, emit, no_alloc, panic_handler, require, require_eq, require_keys_eq};
 // AccountView
-pub use solana_account_view::AccountView;
 pub use {
     crate::{
         accounts::*,
@@ -25,11 +21,15 @@ pub use {
             system::{System, SYSTEM_PROGRAM_ID},
             Seed,
         },
+        dispatch,
         dynamic::{RawEncoded, String, Vec},
+        emit,
         error::QuasarError,
+        no_alloc, panic_handler,
         pod::{PodBool, PodI128, PodI16, PodI32, PodI64, PodU128, PodU16, PodU32, PodU64},
+        require, require_eq, require_keys_eq,
         return_data::set_return_data,
-        sysvars::rent::Rent,
+        sysvars::{clock::Clock, rent::Rent},
         traits::{
             AccountCheck, AccountCount, AsAccountView, CheckOwner, Discriminator, Event, Id,
             InterfaceResolve, Owner, ParseAccounts, ProgramInterface, Space, StaticView,
@@ -40,6 +40,7 @@ pub use {
     quasar_derive::{
         account, declare_program, emit_cpi, error_code, event, instruction, program, Accounts,
     },
+    solana_account_view::AccountView,
     solana_address::{address, declare_id, Address},
     solana_program_error::ProgramError,
     solana_program_log::log,
