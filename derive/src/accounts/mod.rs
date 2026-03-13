@@ -229,18 +229,10 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                         let raw = input as *mut quasar_core::__internal::RuntimeAccount;
                         let actual_header = unsafe { *(raw as *const u32) };
 
-                        // Check duplicate flag first
-                        let is_dup = (actual_header & 0xFF) != quasar_core::__internal::NOT_BORROWED as u32;
-
-                        // Validate flags for non-duplicates only
-                        // (Duplicates don't have their own flags - they point to the original account)
-                        if !is_dup {
+                        // Single branch: non-duplicate (validate flags + construct) vs duplicate (copy from original)
+                        if (actual_header & 0xFF) == quasar_core::__internal::NOT_BORROWED as u32 {
                             #flag_check
                             #exec_check
-                        }
-
-                        // Handle dup
-                        if !is_dup {
                             unsafe {
                                 core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
                                 input = input.add(__ACCOUNT_HEADER.wrapping_add((*raw).data_len as usize));

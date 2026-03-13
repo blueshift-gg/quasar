@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Gate: full CI must pass before any release action ──
+  ci:
+    name: CI Gate
+    uses: ./.github/workflows/ci.yml
+
+  # ── Miri: verify unsafe soundness under Tree Borrows ──
+  miri:
+    name: Miri (Tree Borrows)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-miri-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-miri-
+      - name: Get nightly toolchain version
+        id: nightly
+        run: echo "version=$(make nightly-version)" >> $GITHUB_OUTPUT
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.nightly.outputs.version }}
+          components: miri
+      - name: Run Miri tests
+        run: make test-miri
+
+  # ── Publish crates to crates.io in dependency order ──
+  publish:
+    name: Publish to crates.io
+    needs: [ci, miri]
+    runs-on: ubuntu-latest
+    environment: crates-io
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Tier 1: no workspace deps (parallel-safe)
+      - name: Publish quasar-pod
+        run: cargo publish -p quasar-pod
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Publish quasar-derive
+        run: cargo publish -p quasar-derive
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Publish quasar-idl
+        run: cargo publish -p quasar-idl
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Publish quasar-profile
+        run: cargo publish -p quasar-profile
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      # Tier 2: depends on tier 1
+      - name: Wait for crates.io index
+        run: sleep 30
+
+      - name: Publish quasar-core
+        run: cargo publish -p quasar-core
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      # Tier 3: depends on core
+      - name: Wait for crates.io index
+        run: sleep 30
+
+      - name: Publish quasar-spl
+        run: cargo publish -p quasar-spl
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      # Tier 4: facade crate
+      - name: Wait for crates.io index
+        run: sleep 30
+
+      - name: Publish quasar
+        run: cargo publish -p quasar
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  # ── GitHub Release with auto-generated notes ──
+  github-release:
+    name: GitHub Release
+    needs: [ci, miri]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Create GitHub Release
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

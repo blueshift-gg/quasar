@@ -595,6 +595,27 @@ pub(super) fn process_fields(
             .into());
         }
 
+        // #[account(dup)] requires a doc comment explaining why the duplicate is safe.
+        // Duplicate accounts allow two AccountViews to alias the same RuntimeAccount,
+        // which is sound under Tree Borrows but creates program-logic hazards
+        // (double-spend, self-referential operations, etc.).
+        if attrs.dup {
+            let has_doc = field
+                .attrs
+                .iter()
+                .any(|a| a.path().is_ident("doc"));
+            if !has_doc {
+                return Err(syn::Error::new_spanned(
+                    field_name,
+                    "#[account(dup)] requires a /// CHECK: <reason> doc comment explaining \
+                     why this account is safe to use as a duplicate. Duplicate accounts allow \
+                     aliased mutable access to the same underlying data.",
+                )
+                .to_compile_error()
+                .into());
+            }
+        }
+
         // --- Field construction ---
         //
         // For dynamic Account<T> (inner type has lifetime, e.g. Account<Profile<'info>>),

@@ -4,6 +4,7 @@ use quasar_core::prelude::*;
 #[derive(Accounts)]
 pub struct HeaderDupMut<'info> {
     pub source: &'info Signer,
+    /// CHECK: test-only — validates that dup mut accounts are parsed correctly.
     #[account(dup)]
     pub destination: &'info mut UncheckedAccount,
 }

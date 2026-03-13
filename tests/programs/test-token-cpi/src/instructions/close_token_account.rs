@@ -5,6 +5,7 @@ use quasar_spl::{Token, TokenCpi};
 pub struct CloseTokenAccount<'info> {
     pub authority: &'info Signer,
     pub account: &'info mut Account<Token>,
+    /// CHECK: destination may equal authority when the signer is closing to themselves.
     #[account(dup)]
     pub destination: &'info mut Signer,
     pub token_program: &'info Program<Token>,

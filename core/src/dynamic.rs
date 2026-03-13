@@ -86,6 +86,7 @@ impl<'a, const PREFIX_BYTES: usize> RawEncoded<'a, PREFIX_BYTES> {
     #[inline(always)]
     pub fn data(&self) -> &'a [u8] {
         const { assert!(PREFIX_BYTES <= 4) };
+        debug_assert!(self.bytes.len() >= PREFIX_BYTES);
         unsafe { self.bytes.get_unchecked(PREFIX_BYTES..) }
     }
 
@@ -93,6 +94,7 @@ impl<'a, const PREFIX_BYTES: usize> RawEncoded<'a, PREFIX_BYTES> {
     #[inline(always)]
     pub fn prefix_value(&self) -> u32 {
         const { assert!(PREFIX_BYTES <= 4) };
+        debug_assert!(self.bytes.len() >= PREFIX_BYTES);
         unsafe {
             match PREFIX_BYTES {
                 1 => *self.bytes.get_unchecked(0) as u32,

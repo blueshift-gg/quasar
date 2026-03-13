@@ -113,6 +113,15 @@ const _: () = assert!(core::mem::size_of::<RawCpiBuilder>() == core::mem::size_o
 const _: () =
     assert!(core::mem::align_of::<RawCpiBuilder>() == core::mem::align_of::<CpiAccount>());
 
+// Guard the 4-byte header layout assumed by `cpi_account_from_view`.
+// The flag extraction reads bytes 0-3 as u32 and shifts right 8 to drop
+// borrow_state, keeping [is_signer, is_writable, executable].
+// If solana-account-view reorders these fields, these assertions catch it.
+const _: () = assert!(core::mem::offset_of!(RuntimeAccount, borrow_state) == 0);
+const _: () = assert!(core::mem::offset_of!(RuntimeAccount, is_signer) == 1);
+const _: () = assert!(core::mem::offset_of!(RuntimeAccount, is_writable) == 2);
+const _: () = assert!(core::mem::offset_of!(RuntimeAccount, executable) == 3);
+
 /// Construct a `CpiAccount` from an `AccountView` with batched flag extraction.
 ///
 /// Reads the 4-byte header as u32, shifts right 8 to drop borrow_state,
