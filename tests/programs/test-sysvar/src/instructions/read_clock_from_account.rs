@@ -1,7 +1,7 @@
-use quasar_core::prelude::*;
-use quasar_core::sysvars::clock::Clock;
-
-use crate::state::ClockSnapshot;
+use {
+    crate::state::ClockSnapshot,
+    quasar_core::{prelude::*, sysvars::clock::Clock},
+};
 
 #[derive(Accounts)]
 pub struct ReadClockFromAccount<'info> {

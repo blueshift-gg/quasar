@@ -15,6 +15,7 @@ use crate::prelude::*;
 /// ```
 #[repr(transparent)]
 pub struct Program<T: crate::traits::Id> {
+    /// The underlying account view.
     view: AccountView,
     _marker: core::marker::PhantomData<T>,
 }

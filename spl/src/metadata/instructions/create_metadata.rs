@@ -1,6 +1,8 @@
-use quasar_core::borsh::CpiEncode;
-use quasar_core::cpi::{BufCpiCall, InstructionAccount};
-use quasar_core::prelude::*;
+use quasar_core::{
+    borsh::CpiEncode,
+    cpi::{BufCpiCall, InstructionAccount},
+    prelude::*,
+};
 
 const CREATE_METADATA_ACCOUNTS_V3: u8 = 33;
 
@@ -33,7 +35,8 @@ pub fn create_metadata_accounts_v3<'a>(
     }
 
     // Borsh-serialize: discriminator + DataV2 + is_mutable + collection_details
-    // DataV2 = name(String) + symbol(String) + uri(String) + seller_fee(u16) + creators(Option<Vec>) + collection(Option) + uses(Option)
+    // DataV2 = name(String) + symbol(String) + uri(String) + seller_fee(u16) +
+    // creators(Option<Vec>) + collection(Option) + uses(Option)
     let mut data = [0u8; 512];
     let mut offset = 0;
 

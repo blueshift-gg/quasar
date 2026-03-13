@@ -1,9 +1,10 @@
 //! Parses `#[program]` modules to extract instruction handlers, their
 //! discriminators, arguments, and context types.
 
-use syn::{FnArg, Item, Pat, Type};
-
-use super::helpers;
+use {
+    super::helpers,
+    syn::{FnArg, Item, Pat, Type},
+};
 
 /// Raw instruction data extracted from a `#[instruction(...)]` function.
 pub struct RawInstruction {

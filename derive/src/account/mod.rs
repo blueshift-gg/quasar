@@ -6,12 +6,13 @@ mod accessors;
 mod dynamic;
 mod fixed;
 
-use proc_macro::TokenStream;
-use syn::{parse_macro_input, Data, DeriveInput, Fields};
-
-use crate::helpers::{
-    classify_dynamic_string, classify_dynamic_vec, classify_tail, validate_discriminator_not_zero,
-    DynKind, InstructionArgs,
+use {
+    crate::helpers::{
+        classify_dynamic_string, classify_dynamic_vec, classify_tail,
+        validate_discriminator_not_zero, DynKind, InstructionArgs,
+    },
+    proc_macro::TokenStream,
+    syn::{parse_macro_input, Data, DeriveInput, Fields},
 };
 
 pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -79,35 +80,44 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 
     // Validate: fixed fields must precede all dynamic fields
-    let mut seen_dynamic = false;
-    for (f, kind) in fields_data.iter().zip(field_kinds.iter()) {
-        match kind {
-            DynKind::Fixed => {
-                if seen_dynamic {
-                    return syn::Error::new_spanned(
-                        f,
-                        "fixed fields must precede all dynamic fields (String/Vec)",
-                    )
-                    .to_compile_error()
-                    .into();
-                }
-            }
-            _ => seen_dynamic = true,
+    let first_dynamic = field_kinds
+        .iter()
+        .position(|k| !matches!(k, DynKind::Fixed));
+    let last_fixed = field_kinds
+        .iter()
+        .rposition(|k| matches!(k, DynKind::Fixed));
+    if let (Some(fd), Some(lf)) = (first_dynamic, last_fixed) {
+        if lf > fd {
+            return syn::Error::new_spanned(
+                &fields_data[lf],
+                "fixed fields must precede all dynamic fields (String/Vec)",
+            )
+            .to_compile_error()
+            .into();
         }
     }
 
-    // Validate: Vec element types must not be dynamic (no nested String/Vec).
-    for (f, kind) in fields_data.iter().zip(field_kinds.iter()) {
-        if let DynKind::Vec { elem, .. } = kind {
-            if classify_dynamic_string(elem).is_some() || classify_dynamic_vec(elem).is_some() {
-                return syn::Error::new_spanned(
-                    f,
-                    "Vec element type must be a fixed-size type; nested dynamic types (String/Vec) are not supported",
-                )
-                .to_compile_error()
-                .into();
+    // Validate: Vec element types must not be dynamic (no nested String/Vec)
+    if let Some(f) = fields_data
+        .iter()
+        .zip(field_kinds.iter())
+        .find_map(|(f, k)| match k {
+            DynKind::Vec { elem, .. }
+                if classify_dynamic_string(elem).is_some()
+                    || classify_dynamic_vec(elem).is_some() =>
+            {
+                Some(f)
             }
-        }
+            _ => None,
+        })
+    {
+        return syn::Error::new_spanned(
+            f,
+            "Vec element type must be a fixed-size type; nested dynamic types (String/Vec) are \
+             not supported",
+        )
+        .to_compile_error()
+        .into();
     }
 
     // Validate: at most one tail field, and it must be the last field
@@ -123,30 +133,26 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
         .to_compile_error()
         .into();
     }
-    if tail_count == 1 {
-        if let Some(last_kind) = field_kinds.last() {
-            if !matches!(last_kind, DynKind::Tail { .. }) {
-                let tail_field = fields_data
-                    .iter()
-                    .zip(field_kinds.iter())
-                    .find(|(_, k)| matches!(k, DynKind::Tail { .. }))
-                    .map(|(f, _)| f)
-                    .unwrap();
-                return syn::Error::new_spanned(
-                    tail_field,
-                    "tail field (&str / &[u8]) must be the last field in the struct",
-                )
-                .to_compile_error()
-                .into();
-            }
-        }
+    if tail_count == 1 && !matches!(field_kinds.last(), Some(DynKind::Tail { .. })) {
+        let tail_field = fields_data
+            .iter()
+            .zip(field_kinds.iter())
+            .find_map(|(f, k)| matches!(k, DynKind::Tail { .. }).then_some(f))
+            .unwrap();
+        return syn::Error::new_spanned(
+            tail_field,
+            "tail field (&str / &[u8]) must be the last field in the struct",
+        )
+        .to_compile_error()
+        .into();
     }
 
     // Validate: struct must have a lifetime parameter
     if input.generics.lifetimes().next().is_none() {
         return syn::Error::new_spanned(
             name,
-            "structs with dynamic fields (String/Vec/tail) must have a lifetime parameter, e.g. Profile<'a>",
+            "structs with dynamic fields (String/Vec/tail) must have a lifetime parameter, e.g. \
+             Profile<'a>",
         )
         .to_compile_error()
         .into();

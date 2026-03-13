@@ -1,9 +1,8 @@
-use std::path::PathBuf;
-
-use quasar_idl::{codegen, parser};
-
-use crate::error::CliResult;
-use crate::IdlCommand;
+use {
+    crate::{error::CliResult, IdlCommand},
+    quasar_idl::{codegen, parser},
+    std::path::PathBuf,
+};
 
 pub fn run(command: IdlCommand) -> CliResult {
     let crate_path = &command.crate_path;

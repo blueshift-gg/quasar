@@ -1,5 +1,7 @@
-use quasar_core::cpi::{CpiCall, InstructionAccount};
-use quasar_core::prelude::*;
+use quasar_core::{
+    cpi::{CpiCall, InstructionAccount},
+    prelude::*,
+};
 
 const FREEZE_DELEGATED_ACCOUNT: u8 = 26;
 const THAW_DELEGATED_ACCOUNT: u8 = 27;

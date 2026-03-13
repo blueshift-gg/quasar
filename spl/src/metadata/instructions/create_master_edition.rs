@@ -1,5 +1,7 @@
-use quasar_core::cpi::{CpiCall, InstructionAccount};
-use quasar_core::prelude::*;
+use quasar_core::{
+    cpi::{CpiCall, InstructionAccount},
+    prelude::*,
+};
 
 const CREATE_MASTER_EDITION_V3: u8 = 17;
 

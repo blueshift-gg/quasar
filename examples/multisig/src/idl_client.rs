@@ -1,7 +1,8 @@
-use alloc::vec;
-use alloc::vec::Vec;
-use solana_address::Address;
-use solana_instruction::{AccountMeta, Instruction};
+use {
+    alloc::{vec, vec::Vec},
+    solana_address::Address,
+    solana_instruction::{AccountMeta, Instruction},
+};
 
 pub struct CreateInstruction {
     pub creator: Address,

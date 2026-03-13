@@ -1,8 +1,20 @@
-use quasar_core::cpi::{CpiCall, InstructionAccount};
-use quasar_core::prelude::*;
+use quasar_core::{
+    cpi::{CpiCall, InstructionAccount},
+    prelude::*,
+};
 
-const MINT_TO: u8 = 7;
-
+/// Mint new tokens to an account via CPI.
+///
+/// ### Accounts:
+///   0. `[WRITE]` Mint account
+///   1. `[WRITE]` Destination token account
+///   2. `[SIGNER]` Mint authority
+///
+/// ### Instruction data (9 bytes):
+/// ```text
+/// [0  ] discriminator (7)
+/// [1..9] amount        (u64 LE)
+/// ```
 #[inline(always)]
 pub fn mint_to<'a>(
     token_program: &'a AccountView,
@@ -11,11 +23,11 @@ pub fn mint_to<'a>(
     authority: &'a AccountView,
     amount: u64,
 ) -> CpiCall<'a, 3, 9> {
-    // SAFETY: All 9 bytes are written before assume_init.
+    // SAFETY: All 9 bytes written before `assume_init`.
     let data = unsafe {
         let mut buf = core::mem::MaybeUninit::<[u8; 9]>::uninit();
         let ptr = buf.as_mut_ptr() as *mut u8;
-        core::ptr::write(ptr, MINT_TO);
+        core::ptr::write(ptr, 7);
         core::ptr::copy_nonoverlapping(amount.to_le_bytes().as_ptr(), ptr.add(1), 8);
         buf.assume_init()
     };

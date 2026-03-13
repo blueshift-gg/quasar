@@ -1,5 +1,7 @@
-use quasar_core::prelude::*;
-use quasar_spl::{AssociatedToken, AssociatedTokenProgram, Mint, Token};
+use {
+    quasar_core::prelude::*,
+    quasar_spl::{AssociatedToken, AssociatedTokenProgram, Mint, Token},
+};
 
 #[derive(Accounts)]
 pub struct InitIfNeededAta<'info> {

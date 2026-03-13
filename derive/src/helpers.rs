@@ -4,10 +4,12 @@
 //! parsing and validation, type inspection utilities, and zero-copy companion
 //! struct helpers for mapping native types to Pod types.
 
-use quote::quote;
-use syn::{
-    parse::{Parse, ParseStream},
-    Expr, ExprLit, GenericArgument, Ident, Lit, LitInt, PathArguments, Token, Type,
+use {
+    quote::quote,
+    syn::{
+        parse::{Parse, ParseStream},
+        Expr, ExprLit, GenericArgument, Ident, Lit, LitInt, PathArguments, Token, Type,
+    },
 };
 
 // --- Dynamic field classification (shared by account, instruction) ---
@@ -23,45 +25,48 @@ pub(crate) enum PrefixType {
 impl PrefixType {
     pub fn bytes(&self) -> usize {
         match self {
-            PrefixType::U8 => 1,
-            PrefixType::U16 => 2,
-            PrefixType::U32 => 4,
+            Self::U8 => 1,
+            Self::U16 => 2,
+            Self::U32 => 4,
         }
     }
 
-    /// Expression to read the inline prefix from `__data` at `__offset` as usize.
+    /// Expression to read the inline prefix from `__data` at `__offset` as
+    /// usize.
     ///
     /// Uses `read_unaligned` for u16/u32 prefixes — SBF is little-endian so
     /// a single unaligned load replaces the multi-instruction byte reassembly
     /// that `from_le_bytes([data[i], data[i+1], ...])` compiles to.
     pub fn gen_read_len(&self) -> proc_macro2::TokenStream {
         match self {
-            PrefixType::U8 => quote! { __data[__offset] as usize },
-            PrefixType::U16 => quote! {
+            Self::U8 => quote! { __data[__offset] as usize },
+            Self::U16 => quote! {
                 unsafe { core::ptr::read_unaligned(__data.as_ptr().add(__offset) as *const u16) } as usize
             },
-            PrefixType::U32 => quote! {
+            Self::U32 => quote! {
                 unsafe { core::ptr::read_unaligned(__data.as_ptr().add(__offset) as *const u32) } as usize
             },
         }
     }
 
-    /// Statement to write a usize value as the inline prefix to `__data` at `__offset`.
+    /// Statement to write a usize value as the inline prefix to `__data` at
+    /// `__offset`.
     ///
     /// Uses `write_unaligned` for u16/u32 prefixes — single store instead of
-    /// the multi-instruction byte decomposition from `to_le_bytes()` + per-byte writes.
+    /// the multi-instruction byte decomposition from `to_le_bytes()` + per-byte
+    /// writes.
     pub fn gen_write_prefix(
         &self,
         value_expr: &proc_macro2::TokenStream,
     ) -> proc_macro2::TokenStream {
         match self {
-            PrefixType::U8 => quote! {
+            Self::U8 => quote! {
                 __data[__offset] = #value_expr as u8;
             },
-            PrefixType::U16 => quote! {
+            Self::U16 => quote! {
                 unsafe { core::ptr::write_unaligned(__data.as_mut_ptr().add(__offset) as *mut u16, #value_expr as u16) };
             },
-            PrefixType::U32 => quote! {
+            Self::U32 => quote! {
                 unsafe { core::ptr::write_unaligned(__data.as_mut_ptr().add(__offset) as *mut u32, #value_expr as u32) };
             },
         }
@@ -69,6 +74,7 @@ impl PrefixType {
 }
 
 /// Element type for tail fields (last field consumes remaining data).
+#[derive(Clone, Copy)]
 pub(crate) enum TailElement {
     /// `&str` — remaining bytes interpreted as UTF-8.
     Str,
@@ -93,7 +99,64 @@ pub(crate) enum DynKind {
     },
 }
 
-// --- Discriminator argument parsing (shared by instruction, account, event, program) ---
+impl DynKind {
+    /// Project to `DynFieldKind` if this is a dynamic field, `None` if `Fixed`.
+    ///
+    /// Use with `filter_map` to obtain a collection where every match is
+    /// exhaustive over dynamic variants — no `unreachable!()` needed.
+    pub(crate) fn as_dynamic(&self) -> Option<DynFieldKind<'_>> {
+        match self {
+            Self::Str { prefix, max } => Some(DynFieldKind::Str {
+                prefix: *prefix,
+                max: *max,
+            }),
+            Self::Vec { elem, prefix, max } => Some(DynFieldKind::Vec {
+                elem,
+                prefix: *prefix,
+                max: *max,
+            }),
+            Self::Tail { element } => Some(DynFieldKind::Tail { element: *element }),
+            Self::Fixed => None,
+        }
+    }
+}
+
+/// Dynamic-only field kind — the type-safe projection of [`DynKind`] after
+/// filtering out `Fixed` fields. Matches are exhaustive without
+/// `unreachable!()`.
+pub(crate) enum DynFieldKind<'a> {
+    Str {
+        prefix: PrefixType,
+        max: usize,
+    },
+    Vec {
+        elem: &'a Type,
+        prefix: PrefixType,
+        max: usize,
+    },
+    Tail {
+        element: TailElement,
+    },
+}
+
+impl DynFieldKind<'_> {
+    /// Length-prefix type, if this field has one (Str and Vec do, Tail does
+    /// not).
+    pub(crate) fn prefix(&self) -> Option<PrefixType> {
+        match self {
+            Self::Str { prefix, .. } | Self::Vec { prefix, .. } => Some(*prefix),
+            Self::Tail { .. } => None,
+        }
+    }
+
+    /// Byte size of the length prefix (0 for Tail fields).
+    pub(crate) fn prefix_bytes(&self) -> usize {
+        self.prefix().map_or(0, |p| p.bytes())
+    }
+}
+
+// --- Discriminator argument parsing (shared by instruction, account, event,
+// program) ---
 
 /// Parsed `#[instruction(discriminator = ...)]` attribute arguments.
 pub(crate) struct InstructionArgs {
@@ -149,7 +212,8 @@ pub(crate) fn validate_discriminator_not_zero(disc_bytes: &[LitInt]) -> syn::Res
     if values.iter().all(|&b| b == 0) {
         return Err(syn::Error::new_spanned(
             &disc_bytes[0],
-            "discriminator must contain at least one non-zero byte; all-zero discriminators are indistinguishable from uninitialized account data",
+            "discriminator must contain at least one non-zero byte; all-zero discriminators are \
+             indistinguishable from uninitialized account data",
         ));
     }
     Ok(values)
@@ -157,7 +221,8 @@ pub(crate) fn validate_discriminator_not_zero(disc_bytes: &[LitInt]) -> syn::Res
 
 // --- Type helpers ---
 
-/// Expand a seed expression into a byte slice for use inside parse (fields are local variables).
+/// Expand a seed expression into a byte slice for use inside parse (fields are
+/// local variables).
 pub(crate) fn seed_slice_expr_for_parse(
     expr: &Expr,
     field_names: &[String],
@@ -188,7 +253,8 @@ pub(crate) fn is_signer_type(ty: &Type) -> bool {
 }
 
 /// Extract the first generic type argument from a named wrapper type.
-/// E.g. `extract_generic_inner_type(ty, "Option")` returns `Some(&T)` for `Option<T>`.
+/// E.g. `extract_generic_inner_type(ty, "Option")` returns `Some(&T)` for
+/// `Option<T>`.
 pub(crate) fn extract_generic_inner_type<'a>(ty: &'a Type, wrapper: &str) -> Option<&'a Type> {
     if let Type::Path(type_path) = ty {
         if let Some(last) = type_path.path.segments.last() {
@@ -204,7 +270,8 @@ pub(crate) fn extract_generic_inner_type<'a>(ty: &'a Type, wrapper: &str) -> Opt
     None
 }
 
-/// Check if a type is a composite (non-reference, non-Option type with a lifetime parameter).
+/// Check if a type is a composite (non-reference, non-Option type with a
+/// lifetime parameter).
 pub(crate) fn is_composite_type(ty: &Type) -> bool {
     if matches!(ty, Type::Reference(_)) {
         return false;
@@ -406,8 +473,8 @@ pub(crate) fn classify_dynamic_vec(ty: &Type) -> Option<(Type, PrefixType, usize
 
 /// Classifies bare `&str` / `&'a str` and `&[u8]` / `&'a [u8]` as tail fields.
 ///
-/// Tail fields have no length prefix — remaining account/instruction data IS the field.
-/// Must be the last dynamic field in the struct.
+/// Tail fields have no length prefix — remaining account/instruction data IS
+/// the field. Must be the last dynamic field in the struct.
 pub(crate) fn classify_tail(ty: &Type) -> Option<TailElement> {
     if let Type::Reference(ref_ty) = ty {
         match &*ref_ty.elem {
@@ -465,37 +532,20 @@ fn zc_assign_expr(
 ) -> proc_macro2::TokenStream {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
-            return match seg.ident.to_string().as_str() {
-                "u8" | "i8" => quote! { __zc.#field_name = #value; },
-                "bool" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodBool::from(#value); }
-                }
-                "u16" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodU16::from(#value); }
-                }
-                "u32" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodU32::from(#value); }
-                }
-                "u64" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodU64::from(#value); }
-                }
-                "u128" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodU128::from(#value); }
-                }
-                "i16" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodI16::from(#value); }
-                }
-                "i32" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodI32::from(#value); }
-                }
-                "i64" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodI64::from(#value); }
-                }
-                "i128" => {
-                    quote! { __zc.#field_name = quasar_core::pod::PodI128::from(#value); }
-                }
-                _ => quote! { __zc.#field_name = #value; },
+            let pod_type = match seg.ident.to_string().as_str() {
+                "u8" | "i8" => return quote! { __zc.#field_name = #value; },
+                "bool" => quote! { quasar_core::pod::PodBool },
+                "u16" => quote! { quasar_core::pod::PodU16 },
+                "u32" => quote! { quasar_core::pod::PodU32 },
+                "u64" => quote! { quasar_core::pod::PodU64 },
+                "u128" => quote! { quasar_core::pod::PodU128 },
+                "i16" => quote! { quasar_core::pod::PodI16 },
+                "i32" => quote! { quasar_core::pod::PodI32 },
+                "i64" => quote! { quasar_core::pod::PodI64 },
+                "i128" => quote! { quasar_core::pod::PodI128 },
+                _ => return quote! { __zc.#field_name = #value; },
             };
+            return quote! { __zc.#field_name = #pod_type::from(#value); };
         }
     }
     quote! { __zc.#field_name = #value; }
@@ -506,7 +556,8 @@ pub(crate) fn zc_assign_from_value(field_name: &Ident, ty: &Type) -> proc_macro2
     zc_assign_expr(field_name, ty, quote! { #field_name })
 }
 
-/// Generates a ZC read expression: `__zc.field.get()` for Pod types, `__zc.field` for others.
+/// Generates a ZC read expression: `__zc.field.get()` for Pod types,
+/// `__zc.field` for others.
 pub(crate) fn zc_deserialize_expr(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {

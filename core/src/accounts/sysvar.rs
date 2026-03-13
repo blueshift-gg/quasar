@@ -1,7 +1,4 @@
-use core::marker::PhantomData;
-use solana_account_view::AccountView;
-
-use crate::traits::AsAccountView;
+use {crate::traits::AsAccountView, core::marker::PhantomData, solana_account_view::AccountView};
 
 /// Generic sysvar account wrapper. Validates the account address matches
 /// `T::ID` on construction and provides zero-copy access to the sysvar data

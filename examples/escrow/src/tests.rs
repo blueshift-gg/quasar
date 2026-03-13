@@ -1,17 +1,15 @@
 extern crate std;
 
-use alloc::vec;
-use alloc::vec::Vec;
-use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
-
-use solana_account::Account;
-use solana_address::Address;
-use solana_instruction::Instruction;
-use solana_program_pack::Pack;
-use spl_token_interface::state::Account as TokenAccount;
-use spl_token_interface::state::Mint;
-
-use crate::idl_client::{MakeInstruction, RefundInstruction, TakeInstruction};
+use {
+    crate::idl_client::{MakeInstruction, RefundInstruction, TakeInstruction},
+    alloc::{vec, vec::Vec},
+    mollusk_svm::{program::keyed_account_for_system_program, Mollusk},
+    solana_account::Account,
+    solana_address::Address,
+    solana_instruction::Instruction,
+    solana_program_pack::Pack,
+    spl_token_interface::state::{Account as TokenAccount, Mint},
+};
 
 /// Mark specific account indices as signers on an instruction.
 /// Simulates a client including keypairs in the transaction for accounts
@@ -128,7 +126,8 @@ fn test_make_cu() {
     let (rent, rent_account) = mollusk.sysvars.keyed_account_for_rent_sysvar();
 
     // Client builder marks maker as signer (client.rs:23)
-    // Mark uninitialized accounts (maker_ta_b=5, vault_ta_a=6) as signers for create_account CPI
+    // Mark uninitialized accounts (maker_ta_b=5, vault_ta_a=6) as signers for
+    // create_account CPI
     let instruction = with_signers(
         MakeInstruction {
             maker,
@@ -256,7 +255,8 @@ fn test_take_cu() {
     let (rent, rent_account) = mollusk.sysvars.keyed_account_for_rent_sysvar();
 
     // Client builder marks taker as signer (client.rs:63)
-    // Mark uninitialized accounts (taker_ta_a=5, maker_ta_b=7) as signers for create_account CPI
+    // Mark uninitialized accounts (taker_ta_a=5, maker_ta_b=7) as signers for
+    // create_account CPI
     let instruction = with_signers(
         TakeInstruction {
             taker,

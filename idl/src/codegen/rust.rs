@@ -1,7 +1,7 @@
-use crate::parser::accounts::RawAccountField;
-use crate::parser::helpers;
-use crate::parser::ParsedProgram;
-use crate::types::IdlType;
+use crate::{
+    parser::{accounts::RawAccountField, helpers, ParsedProgram},
+    types::IdlType,
+};
 
 /// Generate Cargo.toml content for the standalone client crate.
 pub fn generate_cargo_toml(name: &str, version: &str) -> String {

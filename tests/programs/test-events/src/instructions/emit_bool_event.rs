@@ -1,6 +1,4 @@
-use quasar_core::prelude::*;
-
-use crate::events::BoolEvent;
+use {crate::events::BoolEvent, quasar_core::prelude::*};
 
 #[derive(Accounts)]
 pub struct EmitBoolEvent<'info> {

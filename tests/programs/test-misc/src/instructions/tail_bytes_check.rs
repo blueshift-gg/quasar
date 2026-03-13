@@ -1,6 +1,4 @@
-use quasar_core::prelude::*;
-
-use crate::state::TailBytesAccount;
+use {crate::state::TailBytesAccount, quasar_core::prelude::*};
 
 #[derive(Accounts)]
 pub struct TailBytesCheck<'info> {

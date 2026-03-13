@@ -1,8 +1,8 @@
-use addr2line::gimli;
-use addr2line::LookupResult;
-use object::{Object, ObjectSection};
-
-use crate::elf::Symbol;
+use {
+    crate::elf::Symbol,
+    addr2line::{gimli, LookupResult},
+    object::{Object, ObjectSection},
+};
 
 pub enum Resolver<'a> {
     Dwarf(DwarfResolver<'a>, SymbolResolver),

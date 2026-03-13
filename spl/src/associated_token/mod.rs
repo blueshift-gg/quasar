@@ -1,21 +1,25 @@
-use quasar_core::prelude::*;
-use quasar_core::traits::Id;
-
-use crate::helpers::constants::{ATA_PROGRAM_BYTES, SPL_TOKEN_ID};
-use crate::state::TokenAccountState;
+use {
+    crate::{
+        helpers::constants::{ATA_PROGRAM_BYTES, SPL_TOKEN_ID},
+        state::TokenAccountState,
+    },
+    quasar_core::{prelude::*, traits::Id},
+};
 
 mod address;
 pub mod init;
 pub mod instructions;
 mod validate;
 
-pub use address::{
-    get_associated_token_address, get_associated_token_address_const,
-    get_associated_token_address_with_program, get_associated_token_address_with_program_const,
+pub use {
+    address::{
+        get_associated_token_address, get_associated_token_address_const,
+        get_associated_token_address_with_program, get_associated_token_address_with_program_const,
+    },
+    init::InitAssociatedToken,
+    instructions::{create, create_idempotent},
+    validate::validate_ata,
 };
-pub use init::InitAssociatedToken;
-pub use instructions::{create, create_idempotent};
-pub use validate::validate_ata;
 
 // ---------------------------------------------------------------------------
 // AssociatedTokenProgram — program account type

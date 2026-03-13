@@ -1,8 +1,11 @@
-use quasar_core::cpi::{CpiCall, InstructionAccount};
-use quasar_core::prelude::*;
-
-use super::AssociatedTokenProgram;
-use crate::instructions::TokenCpi;
+use {
+    super::AssociatedTokenProgram,
+    crate::instructions::TokenCpi,
+    quasar_core::{
+        cpi::{CpiCall, InstructionAccount},
+        prelude::*,
+    },
+};
 
 // ATA program instruction discriminators.
 const ATA_CREATE: u8 = 0;

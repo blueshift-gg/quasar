@@ -1,5 +1,7 @@
-use quasar_core::prelude::*;
-use quasar_spl::{Mint, Token};
+use {
+    quasar_core::prelude::*,
+    quasar_spl::{Mint, Token},
+};
 
 #[derive(Accounts)]
 pub struct InitIfNeededToken<'info> {

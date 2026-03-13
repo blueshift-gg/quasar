@@ -1,6 +1,7 @@
-use quasar_core::prelude::*;
-use quasar_spl::metadata::MetadataProgram;
-use quasar_spl::{Mint, Token};
+use {
+    quasar_core::prelude::*,
+    quasar_spl::{metadata::MetadataProgram, Mint, Token},
+};
 
 #[derive(Accounts)]
 pub struct InitMintWithMetadata<'info> {

@@ -1,9 +1,12 @@
 //! Parses `#[event]` structs for IDL generation.
 
-use syn::{Fields, Item};
-
-use crate::parser::helpers;
-use crate::types::{IdlEventDef, IdlField, IdlTypeDef, IdlTypeDefType};
+use {
+    crate::{
+        parser::helpers,
+        types::{IdlEventDef, IdlField, IdlTypeDef, IdlTypeDefType},
+    },
+    syn::{Fields, Item},
+};
 
 /// Raw parsed data for a `#[event(discriminator = N)]` struct.
 pub struct RawEvent {

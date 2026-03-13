@@ -1,5 +1,7 @@
-use quasar_core::cpi::{CpiCall, InstructionAccount};
-use quasar_core::prelude::*;
+use quasar_core::{
+    cpi::{CpiCall, InstructionAccount},
+    prelude::*,
+};
 
 const SET_COLLECTION_SIZE: u8 = 34;
 const BUBBLEGUM_SET_COLLECTION_SIZE: u8 = 36;

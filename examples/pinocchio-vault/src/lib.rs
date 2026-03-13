@@ -10,10 +10,11 @@ mod utils;
 #[cfg(test)]
 mod tests;
 
-pub use constants::{ID, ID_BYTES};
-pub use errors::VaultError;
-
 use utils::Context;
+pub use {
+    constants::{ID, ID_BYTES},
+    errors::VaultError,
+};
 
 program_entrypoint!(process_instruction);
 no_allocator!();

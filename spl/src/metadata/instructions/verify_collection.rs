@@ -1,5 +1,7 @@
-use quasar_core::cpi::{CpiCall, InstructionAccount};
-use quasar_core::prelude::*;
+use quasar_core::{
+    cpi::{CpiCall, InstructionAccount},
+    prelude::*,
+};
 
 const VERIFY_COLLECTION: u8 = 18;
 const VERIFY_SIZED_COLLECTION_ITEM: u8 = 30;

@@ -1,6 +1,7 @@
-use std::collections::HashSet;
-
-use crate::types::{Idl, IdlSeed, IdlType};
+use {
+    crate::types::{Idl, IdlSeed, IdlType},
+    std::collections::HashSet,
+};
 
 /// Generate a TypeScript client from the IDL.
 pub fn generate_ts_client(idl: &Idl) -> String {
@@ -298,7 +299,8 @@ pub fn generate_ts_client(idl: &Idl) -> String {
             ));
             if has_type {
                 out.push_str(&format!(
-                    "      return {{ type: ProgramEvent.{0}, data: {0}Codec.decode(data.slice({1}.length)) }};\n",
+                    "      return {{ type: ProgramEvent.{0}, data: \
+                     {0}Codec.decode(data.slice({1}.length)) }};\n",
                     event.name, const_name
                 ));
             } else {
@@ -346,7 +348,8 @@ pub fn generate_ts_client(idl: &Idl) -> String {
                 }
                 out.push_str("      ]);\n");
                 out.push_str(&format!(
-                    "      return {{ type: ProgramInstruction.{}, args: argsCodec.decode(data.slice({}.length)) }};\n",
+                    "      return {{ type: ProgramInstruction.{}, args: \
+                     argsCodec.decode(data.slice({}.length)) }};\n",
                     pascal, const_name
                 ));
                 out.push_str("    }\n");

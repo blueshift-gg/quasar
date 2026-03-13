@@ -1,6 +1,4 @@
-use quasar_core::prelude::*;
-
-use crate::state::SimpleAccount;
+use {crate::state::SimpleAccount, quasar_core::prelude::*};
 
 #[derive(Accounts)]
 pub struct SpaceOverride<'info> {

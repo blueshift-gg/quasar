@@ -1,6 +1,4 @@
-use quasar_core::prelude::*;
-
-use crate::state::MaxSeedAccount;
+use {crate::state::MaxSeedAccount, quasar_core::prelude::*};
 
 #[derive(Accounts)]
 pub struct InitMaxSeed<'info> {

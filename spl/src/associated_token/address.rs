@@ -1,6 +1,7 @@
-use quasar_core::prelude::*;
-
-use crate::helpers::constants::{ATA_PROGRAM_ID, SPL_TOKEN_ID};
+use {
+    crate::helpers::constants::{ATA_PROGRAM_ID, SPL_TOKEN_ID},
+    quasar_core::prelude::*,
+};
 
 /// Derive the associated token account address for a wallet and mint.
 ///
@@ -14,7 +15,8 @@ pub fn get_associated_token_address(wallet: &Address, mint: &Address) -> (Addres
     get_associated_token_address_with_program(wallet, mint, &SPL_TOKEN_ID)
 }
 
-/// Derive the associated token account address for a wallet, mint, and token program.
+/// Derive the associated token account address for a wallet, mint, and token
+/// program.
 ///
 /// Returns `(address, bump)`.
 ///
@@ -36,7 +38,8 @@ pub fn get_associated_token_address_with_program(
     }
 }
 
-/// Const-compatible ATA address derivation (works off-chain and in const contexts).
+/// Const-compatible ATA address derivation (works off-chain and in const
+/// contexts).
 ///
 /// Uses `const_crypto` for SHA-256 and Ed25519 off-curve evaluation.
 pub const fn get_associated_token_address_const(wallet: &Address, mint: &Address) -> (Address, u8) {

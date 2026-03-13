@@ -1,12 +1,14 @@
 //! Off-chain instruction builder codegen for `#[derive(Accounts)]`.
 //!
 //! Generates a `build_instruction()` function that constructs a Solana
-//! `Instruction` from typed account addresses — only compiled for non-SBF targets.
+//! `Instruction` from typed account addresses — only compiled for non-SBF
+//! targets.
 
-use syn::Type;
-
-use super::attrs::AccountFieldAttrs;
-use crate::helpers::{is_signer_type, pascal_to_snake};
+use {
+    super::attrs::AccountFieldAttrs,
+    crate::helpers::{is_signer_type, pascal_to_snake},
+    syn::Type,
+};
 
 pub(super) fn generate_client_macro(
     name: &syn::Ident,

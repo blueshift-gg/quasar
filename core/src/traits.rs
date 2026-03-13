@@ -9,24 +9,27 @@
 //! - `Space` — total byte size of an account's data (including discriminator)
 //!
 //! **Parsing and validation** — drive the account deserialization pipeline:
-//! - `ParseAccounts` — parse and validate a set of accounts from raw `AccountView` slices
+//! - `ParseAccounts` — parse and validate a set of accounts from raw
+//!   `AccountView` slices
 //! - `FromAccountView` — construct a single typed wrapper from an `AccountView`
 //! - `AccountCheck` — runtime validation hook called during parsing
 //! - `CheckOwner` — verify an account's on-chain owner matches expectations
 //! - `AccountCount` — declare how many accounts a struct consumes
 //!
 //! **Access and dispatch** — provide uniform access to account data:
-//! - `AsAccountView` — convert any account wrapper back to its raw `AccountView`
-//! - `StaticView` — marks `#[repr(transparent)]` types safe for pointer cast construction
-//! - `ZeroCopyDeref` — zero-copy `Deref`/`DerefMut` to `#[repr(C)]` account layouts
-//! - `InterfaceResolve` — polymorphic dispatch for multi-program interface accounts
+//! - `AsAccountView` — convert any account wrapper back to its raw
+//!   `AccountView`
+//! - `StaticView` — marks `#[repr(transparent)]` types safe for pointer cast
+//!   construction
+//! - `ZeroCopyDeref` — zero-copy `Deref`/`DerefMut` to `#[repr(C)]` account
+//!   layouts
+//! - `InterfaceResolve` — polymorphic dispatch for multi-program interface
+//!   accounts
 //! - `ProgramInterface` — check an address against multiple valid program IDs
 //!
 //! **Events** — `Event` supports dual emission (log-based and self-CPI).
 
-use crate::prelude::AccountView;
-use crate::prelude::Address;
-use crate::prelude::ProgramError;
+use crate::prelude::{AccountView, Address, ProgramError};
 
 /// Construct a typed account wrapper from a raw [`AccountView`].
 ///
@@ -46,7 +49,8 @@ pub trait Owner {
 /// Declares the on-chain address (ID) for a program type.
 ///
 /// This trait simply provides the program's address constant. The `Program<T>`
-/// wrapper type requires `T: Id` to validate that accounts match the expected address.
+/// wrapper type requires `T: Id` to validate that accounts match the expected
+/// address.
 ///
 /// Implemented by: Program marker types (e.g., `System`, `Token`).
 /// Used by: `Program<T>` wrapper for address validation.
@@ -54,15 +58,18 @@ pub trait Id {
     const ID: Address;
 }
 
-/// Declares that a type represents a program interface accepting multiple program IDs.
+/// Declares that a type represents a program interface accepting multiple
+/// program IDs.
 ///
 /// Unlike `Program` which represents a single program, this trait allows
-/// checking against multiple valid program addresses (e.g., Token vs Token-2022).
+/// checking against multiple valid program addresses (e.g., Token vs
+/// Token-2022).
 ///
 /// Implemented by: Manual `impl` for interface types.
 /// Used by: `Interface<T>` to validate the address during parsing.
 pub trait ProgramInterface {
-    /// Check if the given address matches any valid program ID for this interface.
+    /// Check if the given address matches any valid program ID for this
+    /// interface.
     fn matches(address: &Address) -> bool;
 }
 
@@ -77,7 +84,8 @@ pub trait Discriminator {
     const DISCRIMINATOR: &'static [u8];
 }
 
-/// Declares the total byte size of an account's data (including discriminator prefix).
+/// Declares the total byte size of an account's data (including discriminator
+/// prefix).
 ///
 /// Implemented by: `#[account]` derive macro.
 /// Used by: `create_account` CPI to allocate the correct account size.
@@ -175,7 +183,7 @@ pub trait CheckOwner {
 impl<T: Owner> CheckOwner for T {
     #[inline(always)]
     fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
-        if !crate::keys_eq(view.owner(), &T::OWNER) {
+        if crate::utils::hint::unlikely(!crate::keys_eq(view.owner(), &T::OWNER)) {
             return Err(ProgramError::IllegalOwner);
         }
         Ok(())

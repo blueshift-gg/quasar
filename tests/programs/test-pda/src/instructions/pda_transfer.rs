@@ -1,6 +1,4 @@
-use quasar_core::prelude::*;
-
-use crate::state::UserAccount;
+use {crate::state::UserAccount, quasar_core::prelude::*};
 
 #[derive(Accounts)]
 pub struct PdaTransfer<'info> {

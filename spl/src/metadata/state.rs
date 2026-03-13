@@ -1,7 +1,7 @@
-use quasar_core::prelude::*;
-use solana_address::Address;
-
-use crate::metadata::constants::METADATA_PROGRAM_ID;
+use {
+    crate::metadata::constants::METADATA_PROGRAM_ID, quasar_core::prelude::*,
+    solana_address::Address,
+};
 
 /// Metaplex Key enum discriminant for MetadataV1 accounts.
 const KEY_METADATA_V1: u8 = 4;
@@ -19,8 +19,8 @@ const KEY_MASTER_EDITION_V2: u8 = 6;
 /// - `update_authority` (32 bytes): pubkey authorized to update this metadata
 /// - `mint` (32 bytes): the SPL Token mint this metadata describes
 ///
-/// Fields after the prefix (name, symbol, uri, creators, etc.) are variable-length
-/// Borsh-serialized data and require offset walking to access.
+/// Fields after the prefix (name, symbol, uri, creators, etc.) are
+/// variable-length Borsh-serialized data and require offset walking to access.
 #[repr(C)]
 pub struct MetadataPrefix {
     key: u8,
@@ -54,12 +54,16 @@ const _: () = assert!(core::mem::align_of::<MetadataPrefix>() == 1);
 // MasterEditionPrefix — zero-copy layout for the fixed 18-byte header
 // ---------------------------------------------------------------------------
 
-/// Zero-copy layout for the fixed-size prefix of Metaplex MasterEdition accounts.
+/// Zero-copy layout for the fixed-size prefix of Metaplex MasterEdition
+/// accounts.
 ///
-/// - `key` (1 byte): Metaplex account type discriminant (`Key::MasterEditionV2 = 6`)
+/// - `key` (1 byte): Metaplex account type discriminant (`Key::MasterEditionV2
+///   = 6`)
 /// - `supply` (8 bytes, u64 LE): number of editions printed
-/// - `max_supply_flag` (1 byte): `Option<u64>` tag — 0 = None (unlimited), 1 = Some
-/// - `max_supply` (8 bytes, u64 LE): maximum editions (valid only when flag == 1)
+/// - `max_supply_flag` (1 byte): `Option<u64>` tag — 0 = None (unlimited), 1 =
+///   Some
+/// - `max_supply` (8 bytes, u64 LE): maximum editions (valid only when flag ==
+///   1)
 #[repr(C)]
 pub struct MasterEditionPrefix {
     key: u8,
@@ -155,7 +159,8 @@ impl ZeroCopyDeref for MetadataAccount {
 /// Validates:
 /// - Owner is the Metaplex Token Metadata program
 /// - Data length >= 18 bytes (prefix size)
-/// - First byte (`Key`) is `MasterEditionV2` (6), rejecting uninitialized accounts
+/// - First byte (`Key`) is `MasterEditionV2` (6), rejecting uninitialized
+///   accounts
 ///
 /// Use as `Account<MasterEditionAccount>` for reading existing master editions.
 pub struct MasterEditionAccount;
