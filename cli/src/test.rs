@@ -1,7 +1,7 @@
-use std::process::Command;
-
-use crate::config::QuasarConfig;
-use crate::error::CliResult;
+use {
+    crate::{config::QuasarConfig, error::CliResult},
+    std::process::Command,
+};
 
 pub fn run() -> CliResult {
     let config = QuasarConfig::load()?;

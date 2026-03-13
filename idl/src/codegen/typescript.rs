@@ -1,6 +1,7 @@
-use std::collections::HashSet;
-
-use crate::types::{Idl, IdlSeed, IdlType};
+use {
+    crate::types::{Idl, IdlSeed, IdlType},
+    std::collections::HashSet,
+};
 
 /// Target flavor for TypeScript client generation.
 #[derive(Clone, Copy, PartialEq)]
@@ -52,7 +53,8 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
                 out.push_str("import { Buffer } from \"buffer\";\n");
             }
             out.push_str(
-                "import { PublicKey as Address, TransactionInstruction } from \"@solana/web3.js\";\n",
+                "import { PublicKey as Address, TransactionInstruction } from \
+                 \"@solana/web3.js\";\n",
             );
         }
         TsTarget::Kit => {
@@ -102,7 +104,8 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         codec_imports.push("getBooleanCodec");
     }
 
-    // PublicKey codec imports: web3.js uses custom helper, kit uses getAddressCodec from @solana/kit
+    // PublicKey codec imports: web3.js uses custom helper, kit uses getAddressCodec
+    // from @solana/kit
     if target == TsTarget::Web3js && has_public_key {
         codec_imports.extend_from_slice(&["getBytesCodec", "fixCodecSize", "transformCodec"]);
     }
@@ -240,7 +243,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
             .filter(|a| a.pda.is_none() && a.address.is_none())
             .collect();
 
-        if user_accs.is_empty() && ix.args.is_empty() {
+        if user_accs.is_empty() && ix.args.is_empty() && !ix.has_remaining {
             continue;
         }
 
@@ -256,6 +259,22 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         if !ix.args.is_empty() {
             for arg in &ix.args {
                 out.push_str(&format!("  {}: {};\n", arg.name, ts_type(&arg.ty)));
+            }
+        }
+
+        if ix.has_remaining {
+            match target {
+                TsTarget::Kit => {
+                    out.push_str(
+                        "  remainingAccounts?: Array<{ address: Address; role: AccountRole }>;\n",
+                    );
+                }
+                TsTarget::Web3js => {
+                    out.push_str(
+                        "  remainingAccounts?: Array<{ pubkey: Address; isSigner: boolean; \
+                         isWritable: boolean }>;\n",
+                    );
+                }
             }
         }
 
@@ -356,7 +375,8 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
             name, name
         ));
         out.push_str(&format!(
-            "    if (!matchDisc(data, {}_DISCRIMINATOR)) throw new Error(\"Invalid {} discriminator\");\n",
+            "    if (!matchDisc(data, {}_DISCRIMINATOR)) throw new Error(\"Invalid {} \
+             discriminator\");\n",
             const_name, name
         ));
         out.push_str(&format!(
@@ -376,7 +396,8 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
             out.push_str(&format!("    if (matchDisc(data, {}))\n", const_name));
             if has_type {
                 out.push_str(&format!(
-                    "      return {{ type: ProgramEvent.{0}, data: {0}Codec.decode(data.slice({1}.length)) }};\n",
+                    "      return {{ type: ProgramEvent.{0}, data: \
+                     {0}Codec.decode(data.slice({1}.length)) }};\n",
                     event.name, const_name
                 ));
             } else {
@@ -418,7 +439,8 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
                 }
                 out.push_str("      ]);\n");
                 out.push_str(&format!(
-                    "      return {{ type: ProgramInstruction.{}, args: argsCodec.decode(data.slice({}.length)) }};\n",
+                    "      return {{ type: ProgramInstruction.{}, args: \
+                     argsCodec.decode(data.slice({}.length)) }};\n",
                     pascal, const_name
                 ));
                 out.push_str("    }\n");
@@ -493,7 +515,7 @@ fn generate_instruction_builders_web3js(out: &mut String, idl: &Idl) {
         };
 
         // Method signature
-        let input_param = if user_accs.is_empty() && ix.args.is_empty() {
+        let input_param = if user_accs.is_empty() && ix.args.is_empty() && !ix.has_remaining {
             String::new()
         } else {
             format!("input: {pascal}InstructionInput")
@@ -575,7 +597,7 @@ fn generate_instruction_builders_web3js(out: &mut String, idl: &Idl) {
         // Return TransactionInstruction
         out.push_str("    return new TransactionInstruction({\n");
         out.push_str(&format!("      programId: {class_name}.programId,\n"));
-        if !ix.accounts.is_empty() {
+        if !ix.accounts.is_empty() || ix.has_remaining {
             out.push_str("      keys: [\n");
             for acc in &ix.accounts {
                 let pubkey_expr = account_expr(&acc.name);
@@ -583,6 +605,9 @@ fn generate_instruction_builders_web3js(out: &mut String, idl: &Idl) {
                     "        {{ pubkey: {}, isSigner: {}, isWritable: {} }},\n",
                     pubkey_expr, acc.signer, acc.writable
                 ));
+            }
+            if ix.has_remaining {
+                out.push_str("        ...(input.remainingAccounts ?? []),\n");
             }
             out.push_str("      ],\n");
         }
@@ -626,7 +651,7 @@ fn generate_instruction_builders_kit(out: &mut String, idl: &Idl) {
         let ix_has_pdas = ix.accounts.iter().any(|a| a.pda.is_some());
 
         // Method signature
-        let input_param = if user_accs.is_empty() && ix.args.is_empty() {
+        let input_param = if user_accs.is_empty() && ix.args.is_empty() && !ix.has_remaining {
             String::new()
         } else {
             format!("input: {pascal}InstructionInput")
@@ -659,7 +684,8 @@ fn generate_instruction_builders_kit(out: &mut String, idl: &Idl) {
         for acc in &ix.accounts {
             if let Some(pda) = &acc.pda {
                 out.push_str(&format!(
-                    "    accountsMap[\"{}\"] = (await getProgramDerivedAddress({{\n      programAddress: PROGRAM_ADDRESS,\n      seeds: [\n",
+                    "    accountsMap[\"{}\"] = (await getProgramDerivedAddress({{\n      \
+                     programAddress: PROGRAM_ADDRESS,\n      seeds: [\n",
                     acc.name
                 ));
                 for seed in &pda.seeds {
@@ -715,7 +741,7 @@ fn generate_instruction_builders_kit(out: &mut String, idl: &Idl) {
         // Return IInstruction
         out.push_str("    return {\n");
         out.push_str("      programAddress: PROGRAM_ADDRESS,\n");
-        if !ix.accounts.is_empty() {
+        if !ix.accounts.is_empty() || ix.has_remaining {
             out.push_str("      accounts: [\n");
             for acc in &ix.accounts {
                 let addr_expr = account_expr(&acc.name);
@@ -724,6 +750,9 @@ fn generate_instruction_builders_kit(out: &mut String, idl: &Idl) {
                     "        {{ address: {}, role: {} }},\n",
                     addr_expr, role
                 ));
+            }
+            if ix.has_remaining {
+                out.push_str("        ...(input.remainingAccounts ?? []),\n");
             }
             out.push_str("      ],\n");
         }

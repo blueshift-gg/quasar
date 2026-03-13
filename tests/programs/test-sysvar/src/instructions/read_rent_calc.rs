@@ -1,8 +1,10 @@
-use quasar_core::prelude::*;
-use quasar_core::sysvars::rent::Rent;
-use quasar_core::sysvars::Sysvar as _;
-
-use crate::state::RentCalcSnapshot;
+use {
+    crate::state::RentCalcSnapshot,
+    quasar_core::{
+        prelude::*,
+        sysvars::{rent::Rent, Sysvar as _},
+    },
+};
 
 #[derive(Accounts)]
 pub struct ReadRentCalc<'info> {

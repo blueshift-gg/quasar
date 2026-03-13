@@ -1,12 +1,14 @@
 //! Alignment-1 Pod integer types for zero-copy Solana account access.
 //!
-//! Pod types (`PodU64`, `PodU32`, etc.) wrap native integers in `[u8; N]` arrays,
-//! guaranteeing alignment 1. This allows direct pointer casts from account data
-//! without alignment concerns — critical for `#[repr(C)]` zero-copy structs on Solana.
+//! Pod types (`PodU64`, `PodU32`, etc.) wrap native integers in `[u8; N]`
+//! arrays, guaranteeing alignment 1. This allows direct pointer casts from
+//! account data without alignment concerns — critical for `#[repr(C)]`
+//! zero-copy structs on Solana.
 //!
-//! Arithmetic operators (`+`, `-`, `*`) use wrapping semantics in release builds
-//! for CU efficiency and panic on overflow in debug builds. Use `checked_add`,
-//! `checked_sub`, `checked_mul`, `checked_div` where overflow must be detected.
+//! Arithmetic operators (`+`, `-`, `*`) use wrapping semantics in release
+//! builds for CU efficiency and panic on overflow in debug builds. Use
+//! `checked_add`, `checked_sub`, `checked_mul`, `checked_div` where overflow
+//! must be detected.
 
 #![no_std]
 
@@ -481,7 +483,8 @@ define_pod_signed!(PodI32, i32, 4);
 define_pod_signed!(PodI16, i16, 2);
 
 // Compile-time invariant: all Pod types must have alignment 1 and correct size.
-// These assertions guard against future changes that could break zero-copy access.
+// These assertions guard against future changes that could break zero-copy
+// access.
 const _: () = assert!(core::mem::align_of::<PodU128>() == 1);
 const _: () = assert!(core::mem::size_of::<PodU128>() == 16);
 const _: () = assert!(core::mem::align_of::<PodU64>() == 1);

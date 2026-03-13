@@ -6,13 +6,14 @@ mod attrs;
 mod client;
 mod fields;
 
-use proc_macro::TokenStream;
-use quote::{format_ident, quote};
-use syn::{parse::ParseStream, parse_macro_input, Data, DeriveInput, Fields, Ident, Token, Type};
-
-use crate::helpers::{
-    classify_dynamic_string, classify_dynamic_vec, classify_tail, extract_generic_inner_type,
-    is_composite_type, map_to_pod_type, strip_generics, zc_deserialize_expr, DynKind,
+use {
+    crate::helpers::{
+        classify_dynamic_string, classify_dynamic_vec, classify_tail, extract_generic_inner_type,
+        is_composite_type, map_to_pod_type, strip_generics, zc_deserialize_expr, DynKind,
+    },
+    proc_macro::TokenStream,
+    quote::{format_ident, quote},
+    syn::{parse::ParseStream, parse_macro_input, Data, DeriveInput, Fields, Ident, Token, Type},
 };
 
 struct InstructionArg {
@@ -21,26 +22,26 @@ struct InstructionArg {
 }
 
 fn parse_struct_instruction_args(input: &DeriveInput) -> Option<Vec<InstructionArg>> {
-    for attr in &input.attrs {
-        if attr.path().is_ident("instruction") {
-            let result: syn::Result<Vec<InstructionArg>> =
-                attr.parse_args_with(|stream: ParseStream| {
-                    let mut args = Vec::new();
-                    while !stream.is_empty() {
-                        let name: Ident = stream.parse()?;
-                        let _: Token![:] = stream.parse()?;
-                        let ty: Type = stream.parse()?;
-                        args.push(InstructionArg { name, ty });
-                        if !stream.is_empty() {
-                            let _: Token![,] = stream.parse()?;
-                        }
+    input
+        .attrs
+        .iter()
+        .find(|a| a.path().is_ident("instruction"))
+        .and_then(|attr| {
+            attr.parse_args_with(|stream: ParseStream| {
+                let mut args = Vec::new();
+                while !stream.is_empty() {
+                    let name: Ident = stream.parse()?;
+                    let _: Token![:] = stream.parse()?;
+                    let ty: Type = stream.parse()?;
+                    args.push(InstructionArg { name, ty });
+                    if !stream.is_empty() {
+                        let _: Token![,] = stream.parse()?;
                     }
-                    Ok(args)
-                });
-            return result.ok();
-        }
-    }
-    None
+                }
+                Ok(args)
+            })
+            .ok()
+        })
 }
 
 pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
@@ -134,16 +135,15 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
 
             buf_offset = quote! { #buf_offset + <#inner_ty as AccountCount>::COUNT };
         } else {
-            // Simple field - per-field dup-aware or no-dup
             let cur_offset = buf_offset.clone();
             let attrs = &pf.field_attrs[fi];
             let field = &fields[fi];
 
-            // Validate: first account (index 0) cannot be marked with #[account(dup)]
             if attrs.dup && buf_offset.to_string() == "0usize" {
                 return syn::Error::new_spanned(
                     field,
-                    "first account (index 0) cannot be marked with #[account(dup)] - it can never be a duplicate",
+                    "first account (index 0) cannot be marked with #[account(dup)] - it can never \
+                     be a duplicate",
                 )
                 .to_compile_error()
                 .into();
@@ -152,75 +152,57 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
             let is_ref_mut = matches!(effective_ty, Type::Reference(r) if r.mutability.is_some());
             let expected_header = fields::compute_header_expected(field, attrs, is_ref_mut);
 
-            // Detect if this field is Optional - optional fields always allow duplicates
             let is_optional = extract_generic_inner_type(&field.ty, "Option").is_some();
+            let field_name = field.ident.as_ref().unwrap();
+            let account_index = buf_offset.to_string();
 
-            // Choose parsing strategy: dup-aware (checks borrow state) or no-dup (optimized u32)
             if is_optional || attrs.dup {
-                // Dup-aware path: optional accounts or accounts marked with #[account(dup)]
-                // (init_if_needed now uses optimized nodup path with masked validation)
-
-                // Regular accounts with dup allowed: optimized dup checking
-                // Extract required flags for static compile-time checks
+                // Dup-aware path: checks borrow state to detect duplicates
                 let expected_signer = (expected_header >> 8) & 0x01;
                 let expected_writable = (expected_header >> 16) & 0x01;
                 let expected_exec = (expected_header >> 24) & 0x01;
 
-                let field_name = field.ident.as_ref().unwrap();
-                let account_index = buf_offset.to_string();
-
-                // Generate optimal check based on requirements
-                let flag_check = if expected_signer == 1 && expected_writable == 1 {
-                    // Both mut+signer required: combined u16 check (bytes 1-2)
+                let dup_check = |cond: proc_macro2::TokenStream, msg: &str| {
                     quote! {
-                        if quasar_core::utils::hint::unlikely((actual_header >> 8) as u16 != 0x0101) {
+                        if quasar_core::utils::hint::unlikely(#cond) {
                             #[cfg(feature = "debug")]
-                            quasar_core::__internal::log_str(concat!("Account '", stringify!(#field_name), "' (index ", #account_index, "): must be writable signer"));
+                            quasar_core::__internal::log_str(concat!(
+                                "Account '", stringify!(#field_name),
+                                "' (index ", #account_index, "): ", #msg
+                            ));
                             return Err(quasar_core::decode_header_error(actual_header, #expected_header));
                         }
                     }
-                } else if expected_writable == 1 {
-                    // At least mut required (may or may not be signer)
-                    quote! {
-                        if quasar_core::utils::hint::unlikely(((actual_header >> 16) & 0x01) == 0) {
-                            #[cfg(feature = "debug")]
-                            quasar_core::__internal::log_str(concat!("Account '", stringify!(#field_name), "' (index ", #account_index, "): must be writable"));
-                            return Err(quasar_core::decode_header_error(actual_header, #expected_header));
-                        }
-                    }
-                } else if expected_signer == 1 {
-                    // At least signer required (not writable)
-                    quote! {
-                        if quasar_core::utils::hint::unlikely(((actual_header >> 8) & 0x01) == 0) {
-                            #[cfg(feature = "debug")]
-                            quasar_core::__internal::log_str(concat!("Account '", stringify!(#field_name), "' (index ", #account_index, "): must be signer"));
-                            return Err(quasar_core::decode_header_error(actual_header, #expected_header));
-                        }
-                    }
-                } else {
-                    // No signer/mut requirements
-                    quote! {}
                 };
 
-                // Executable must match exactly if required
-                // For optional accounts, skip executable check (program_id is executable)
+                let flag_check = match (expected_signer, expected_writable) {
+                    (1, 1) => dup_check(
+                        quote! { (actual_header >> 8) as u16 != 0x0101 },
+                        "must be writable signer",
+                    ),
+                    (0, 1) => dup_check(
+                        quote! { ((actual_header >> 16) & 0x01) == 0 },
+                        "must be writable",
+                    ),
+                    (1, 0) => dup_check(
+                        quote! { ((actual_header >> 8) & 0x01) == 0 },
+                        "must be signer",
+                    ),
+                    _ => quote! {},
+                };
+
                 let exec_check = if is_optional {
                     quote! {}
-                } else if expected_exec == 1 {
-                    quote! {
-                        if quasar_core::utils::hint::unlikely(((actual_header >> 24) & 0x01) != 1) {
-                            #[cfg(feature = "debug")]
-                            quasar_core::__internal::log_str(concat!("Account '", stringify!(#field_name), "' (index ", #account_index, "): must be executable program"));
-                            return Err(quasar_core::decode_header_error(actual_header, #expected_header));
-                        }
-                    }
                 } else {
-                    quote! {
-                        if quasar_core::utils::hint::unlikely(((actual_header >> 24) & 0x01) != 0) {
-                            #[cfg(feature = "debug")]
-                            quasar_core::__internal::log_str(concat!("Account '", stringify!(#field_name), "' (index ", #account_index, "): must not be executable"));
-                            return Err(quasar_core::decode_header_error(actual_header, #expected_header));
-                        }
+                    match expected_exec {
+                        1 => dup_check(
+                            quote! { ((actual_header >> 24) & 0x01) != 1 },
+                            "must be executable program",
+                        ),
+                        _ => dup_check(
+                            quote! { ((actual_header >> 24) & 0x01) != 0 },
+                            "must not be executable",
+                        ),
                     }
                 };
 
@@ -229,18 +211,9 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                         let raw = input as *mut quasar_core::__internal::RuntimeAccount;
                         let actual_header = unsafe { *(raw as *const u32) };
 
-                        // Check duplicate flag first
-                        let is_dup = (actual_header & 0xFF) != quasar_core::__internal::NOT_BORROWED as u32;
-
-                        // Validate flags for non-duplicates only
-                        // (Duplicates don't have their own flags - they point to the original account)
-                        if !is_dup {
+                        if (actual_header & 0xFF) == quasar_core::__internal::NOT_BORROWED as u32 {
                             #flag_check
                             #exec_check
-                        }
-
-                        // Handle dup
-                        if !is_dup {
                             unsafe {
                                 core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
                                 input = input.add(__ACCOUNT_HEADER.wrapping_add((*raw).data_len as usize));
@@ -256,83 +229,53 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                     }
                 });
             } else {
-                // No-dup path: optimized u32 comparison for accounts without #[account(dup)]
-                let field_name = field.ident.as_ref().unwrap();
-                let account_index = buf_offset.to_string();
-
-                // Use constant lookup table for no-dup validation
+                // No-dup path: single constant comparison
                 let nodup_const = fields::determine_nodup_constant(field, attrs, is_ref_mut);
                 let nodup_const_ident = format_ident!("{}", nodup_const);
 
-                // Generate human-readable constraint description
-                let constraint_desc = match nodup_const {
-                    "NODUP" => "no duplicates",
-                    "NODUP_SIGNER" => "signer with no duplicates",
-                    "NODUP_MUT" => "writable with no duplicates",
-                    "NODUP_MUT_SIGNER" => "writable signer with no duplicates",
-                    "NODUP_EXECUTABLE" => "executable program with no duplicates",
-                    _ => "unknown constraint",
+                let (check_cond, debug_msg) = if attrs.init_if_needed {
+                    (
+                        quote! { (header & 0x000100FF) != 0x000100FF },
+                        "init_if_needed requires writable, no duplicates",
+                    )
+                } else if nodup_const == "NODUP_SIGNER" {
+                    // u16: borrow_state + is_signer only, permits writable/executable
+                    (
+                        quote! { (header as u16) != (quasar_core::__internal::#nodup_const_ident as u16) },
+                        "must be signer, no duplicates",
+                    )
+                } else {
+                    (
+                        quote! { header != quasar_core::__internal::#nodup_const_ident },
+                        match nodup_const {
+                            "NODUP" => "no duplicates allowed",
+                            "NODUP_MUT" => "must be writable, no duplicates",
+                            "NODUP_MUT_SIGNER" => "must be writable signer, no duplicates",
+                            "NODUP_EXECUTABLE" => "must be executable, no duplicates",
+                            _ => "constraint violated",
+                        },
+                    )
                 };
 
-                // For init_if_needed, mask out signer bit and check writable + nodup
-                if attrs.init_if_needed {
-                    parse_steps.push(quote! {
-                        unsafe {
-                            let raw = input as *mut quasar_core::__internal::RuntimeAccount;
-                            let header = *(raw as *const u32);
+                parse_steps.push(quote! {
+                    unsafe {
+                        let raw = input as *mut quasar_core::__internal::RuntimeAccount;
+                        let header = *(raw as *const u32);
 
-                            // Single constant: 0x000100FF (NOT_BORROWED + writable bit)
-                            // Masks out signer and upper writable bits + executable
-                            if quasar_core::utils::hint::unlikely((header & 0x000100FF) != 0x000100FF) {
-                                #[cfg(feature = "debug")]
-                                quasar_core::__internal::log_str(concat!("Account '", stringify!(#field_name), "' (index ", #account_index, "): init_if_needed must be writable with no duplicates"));
-                                return Err(quasar_core::decode_header_error(header, #expected_header));
-                            }
-
-                            core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
-                            input = input.add(__ACCOUNT_HEADER.wrapping_add((*raw).data_len as usize));
-                            input = input.add((input as usize).wrapping_neg() & 7);
+                        if quasar_core::utils::hint::unlikely(#check_cond) {
+                            #[cfg(feature = "debug")]
+                            quasar_core::__internal::log_str(concat!(
+                                "Account '", stringify!(#field_name),
+                                "' (index ", #account_index, "): ", #debug_msg
+                            ));
+                            return Err(quasar_core::decode_header_error(header, #expected_header));
                         }
-                    });
-                } else if nodup_const == "NODUP_SIGNER" {
-                    // For NODUP_SIGNER, use u16 comparison (bytes 0-1 only) to allow mut/executable
-                    parse_steps.push(quote! {
-                        unsafe {
-                            let raw = input as *mut quasar_core::__internal::RuntimeAccount;
-                            let header = *(raw as *const u32);
 
-                            // u16 comparison: only check borrow_state (byte 0) and is_signer (byte 1)
-                            // This allows the account to also be writable or executable
-                            if quasar_core::utils::hint::unlikely((header as u16) != (quasar_core::__internal::#nodup_const_ident as u16)) {
-                                #[cfg(feature = "debug")]
-                                quasar_core::__internal::log_str(concat!("Account '", stringify!(#field_name), "' (index ", #account_index, "): must be ", #constraint_desc));
-                                return Err(quasar_core::decode_header_error(header, #expected_header));
-                            }
-
-                            core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
-                            input = input.add(__ACCOUNT_HEADER.wrapping_add((*raw).data_len as usize));
-                            input = input.add((input as usize).wrapping_neg() & 7);
-                        }
-                    });
-                } else {
-                    parse_steps.push(quote! {
-                        unsafe {
-                            let raw = input as *mut quasar_core::__internal::RuntimeAccount;
-                            let header = *(raw as *const u32);
-
-                            // Single u32 comparison against compile-time constant (no masking!)
-                            if quasar_core::utils::hint::unlikely(header != quasar_core::__internal::#nodup_const_ident) {
-                                #[cfg(feature = "debug")]
-                                quasar_core::__internal::log_str(concat!("Account '", stringify!(#field_name), "' (index ", #account_index, "): must be ", #constraint_desc));
-                                return Err(quasar_core::decode_header_error(header, #expected_header));
-                            }
-
-                            core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
-                            input = input.add(__ACCOUNT_HEADER.wrapping_add((*raw).data_len as usize));
-                            input = input.add((input as usize).wrapping_neg() & 7);
-                        }
-                    });
-                }
+                        core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));
+                        input = input.add(__ACCOUNT_HEADER.wrapping_add((*raw).data_len as usize));
+                        input = input.add((input as usize).wrapping_neg() & 7);
+                    }
+                });
             }
 
             buf_offset = quote! { #buf_offset + 1usize };
@@ -683,11 +626,7 @@ fn generate_instruction_arg_extraction(ix_args: &[InstructionArg]) -> proc_macro
         })
         .collect();
 
-    let mut stmts: Vec<proc_macro2::TokenStream> = Vec::new();
-
-    for assert_stmt in vec_align_asserts {
-        stmts.push(assert_stmt);
-    }
+    let mut stmts: Vec<proc_macro2::TokenStream> = vec_align_asserts;
 
     // ZC struct with ONLY fixed fields
     if has_fixed {
@@ -744,17 +683,12 @@ fn generate_instruction_arg_extraction(ix_args: &[InstructionArg]) -> proc_macro
 
     // Extract dynamic fields with inline prefix reads
     if has_dynamic {
+        stmts.push(quote! { let __data = __ix_data; });
         if has_fixed {
-            stmts.push(quote! {
-                let __data = __ix_data;
-            });
             stmts.push(quote! {
                 let mut __offset = core::mem::size_of::<__IxArgsZc>();
             });
         } else {
-            stmts.push(quote! {
-                let __data = __ix_data;
-            });
             stmts.push(quote! {
                 let mut __offset: usize = 0;
             });
@@ -805,21 +739,12 @@ fn generate_instruction_arg_extraction(ix_args: &[InstructionArg]) -> proc_macro
                         });
                     }
                 }
-                DynKind::Tail { element } => {
+                DynKind::Tail { .. } => {
                     dyn_idx += 1;
                     // Tail: remaining data, no prefix
-                    match element {
-                        crate::helpers::TailElement::Str => {
-                            stmts.push(quote! {
-                                let #name: &[u8] = &__data[__offset..];
-                            });
-                        }
-                        crate::helpers::TailElement::Bytes => {
-                            stmts.push(quote! {
-                                let #name: &[u8] = &__data[__offset..];
-                            });
-                        }
-                    }
+                    stmts.push(quote! {
+                        let #name: &[u8] = &__data[__offset..];
+                    });
                     // Tail consumes all remaining data — no offset advance
                 }
                 DynKind::Vec { elem, prefix, max } => {

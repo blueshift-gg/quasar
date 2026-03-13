@@ -1,8 +1,11 @@
-use quasar_core::prelude::*;
-
-use crate::helpers::constants::{SPL_TOKEN_ID, TOKEN_2022_ID};
-use crate::instructions::TokenCpi;
-use crate::state::{MintAccountState, TokenAccountState};
+use {
+    crate::{
+        helpers::constants::{SPL_TOKEN_ID, TOKEN_2022_ID},
+        instructions::TokenCpi,
+        state::{MintAccountState, TokenAccountState},
+    },
+    quasar_core::{prelude::*, utils::hint::unlikely},
+};
 
 #[inline(always)]
 fn is_token_program_owner(view: &AccountView) -> bool {
@@ -13,7 +16,8 @@ fn is_token_program_owner(view: &AccountView) -> bool {
 /// Extension trait for token account initialization.
 ///
 /// Chains `System::create_account` → `InitializeAccount3` in two CPIs.
-/// The account is allocated with 165 bytes and assigned to the given token program.
+/// The account is allocated with 165 bytes and assigned to the given token
+/// program.
 ///
 /// Prefer `#[account(init, token::mint = ..., token::authority = ...)]` for
 /// declarative initialization. This trait is available for manual use cases.
@@ -66,20 +70,26 @@ pub trait InitToken: AsAccountView + Sized {
         if quasar_core::is_system_program(view.owner()) {
             self.init(system_program, payer, token_program, mint, owner, rent)
         } else {
-            if !is_token_program_owner(view) {
+            if unlikely(!is_token_program_owner(view)) {
                 return Err(ProgramError::IllegalOwner);
             }
-            if view.data_len() < TokenAccountState::LEN {
+            if unlikely(view.data_len() < TokenAccountState::LEN) {
                 return Err(ProgramError::InvalidAccountData);
             }
+            // SAFETY: Owner is a token program and `data_len >= LEN`
+            // checked above. `TokenAccountState` is `#[repr(C)]` with
+            // alignment 1.
             let state = unsafe { &*(view.data_ptr() as *const TokenAccountState) };
-            if !state.is_initialized() {
+            if unlikely(!state.is_initialized()) {
                 return Err(ProgramError::UninitializedAccount);
             }
-            if !quasar_core::keys_eq(state.mint(), mint.to_account_view().address()) {
+            if unlikely(!quasar_core::keys_eq(
+                state.mint(),
+                mint.to_account_view().address(),
+            )) {
                 return Err(ProgramError::InvalidAccountData);
             }
-            if !quasar_core::keys_eq(state.owner(), owner) {
+            if unlikely(!quasar_core::keys_eq(state.owner(), owner)) {
                 return Err(ProgramError::InvalidAccountData);
             }
             Ok(())
@@ -90,7 +100,8 @@ pub trait InitToken: AsAccountView + Sized {
 /// Extension trait for mint initialization.
 ///
 /// Chains `System::create_account` → `InitializeMint2` in two CPIs.
-/// The account is allocated with 82 bytes and assigned to the given token program.
+/// The account is allocated with 82 bytes and assigned to the given token
+/// program.
 ///
 /// Prefer `#[account(init, mint::decimals = ..., mint::authority = ...)]` for
 /// declarative initialization. This trait is available for manual use cases.
@@ -155,19 +166,23 @@ pub trait InitMint: AsAccountView + Sized {
                 rent,
             )
         } else {
-            if !is_token_program_owner(view) {
+            if unlikely(!is_token_program_owner(view)) {
                 return Err(ProgramError::IllegalOwner);
             }
-            if view.data_len() < MintAccountState::LEN {
+            if unlikely(view.data_len() < MintAccountState::LEN) {
                 return Err(ProgramError::InvalidAccountData);
             }
+            // SAFETY: Owner is a token program and `data_len >= LEN`
+            // checked above. `MintAccountState` is `#[repr(C)]` with
+            // alignment 1.
             let state = unsafe { &*(view.data_ptr() as *const MintAccountState) };
-            if !state.is_initialized() {
+            if unlikely(!state.is_initialized()) {
                 return Err(ProgramError::UninitializedAccount);
             }
-            if !state.has_mint_authority()
-                || !quasar_core::keys_eq(state.mint_authority_unchecked(), mint_authority)
-            {
+            if unlikely(
+                !state.has_mint_authority()
+                    || !quasar_core::keys_eq(state.mint_authority_unchecked(), mint_authority),
+            ) {
                 return Err(ProgramError::InvalidAccountData);
             }
             Ok(())
@@ -185,20 +200,22 @@ pub fn validate_token_account(
     mint: &Address,
     authority: &Address,
 ) -> Result<(), ProgramError> {
-    if !is_token_program_owner(view) {
+    if unlikely(!is_token_program_owner(view)) {
         return Err(ProgramError::IllegalOwner);
     }
-    if view.data_len() < TokenAccountState::LEN {
+    if unlikely(view.data_len() < TokenAccountState::LEN) {
         return Err(ProgramError::InvalidAccountData);
     }
+    // SAFETY: Owner is a token program and `data_len >= LEN` checked
+    // above. `TokenAccountState` is `#[repr(C)]` with alignment 1.
     let state = unsafe { &*(view.data_ptr() as *const TokenAccountState) };
-    if !state.is_initialized() {
+    if unlikely(!state.is_initialized()) {
         return Err(ProgramError::UninitializedAccount);
     }
-    if !quasar_core::keys_eq(state.mint(), mint) {
+    if unlikely(!quasar_core::keys_eq(state.mint(), mint)) {
         return Err(ProgramError::InvalidAccountData);
     }
-    if !quasar_core::keys_eq(state.owner(), authority) {
+    if unlikely(!quasar_core::keys_eq(state.owner(), authority)) {
         return Err(ProgramError::InvalidAccountData);
     }
     Ok(())
@@ -210,19 +227,22 @@ pub fn validate_token_account(
 /// account is already initialized.
 #[inline(always)]
 pub fn validate_mint(view: &AccountView, mint_authority: &Address) -> Result<(), ProgramError> {
-    if !is_token_program_owner(view) {
+    if unlikely(!is_token_program_owner(view)) {
         return Err(ProgramError::IllegalOwner);
     }
-    if view.data_len() < MintAccountState::LEN {
+    if unlikely(view.data_len() < MintAccountState::LEN) {
         return Err(ProgramError::InvalidAccountData);
     }
+    // SAFETY: Owner is a token program and `data_len >= LEN` checked
+    // above. `MintAccountState` is `#[repr(C)]` with alignment 1.
     let state = unsafe { &*(view.data_ptr() as *const MintAccountState) };
-    if !state.is_initialized() {
+    if unlikely(!state.is_initialized()) {
         return Err(ProgramError::UninitializedAccount);
     }
-    if !state.has_mint_authority()
-        || !quasar_core::keys_eq(state.mint_authority_unchecked(), mint_authority)
-    {
+    if unlikely(
+        !state.has_mint_authority()
+            || !quasar_core::keys_eq(state.mint_authority_unchecked(), mint_authority),
+    ) {
         return Err(ProgramError::InvalidAccountData);
     }
     Ok(())

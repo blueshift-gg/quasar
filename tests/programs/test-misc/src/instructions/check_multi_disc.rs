@@ -1,6 +1,4 @@
-use quasar_core::prelude::*;
-
-use crate::state::MultiDiscAccount;
+use {crate::state::MultiDiscAccount, quasar_core::prelude::*};
 
 #[derive(Accounts)]
 pub struct CheckMultiDisc<'info> {

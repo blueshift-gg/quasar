@@ -1,13 +1,14 @@
 //! `#[instruction]` — generates instruction handler wrappers with context
 //! deserialization, discriminator matching, and Borsh argument decoding.
 
-use proc_macro::TokenStream;
-use quote::quote;
-use syn::{parse_macro_input, FnArg, Ident, ItemFn, Pat, ReturnType};
-
-use crate::helpers::{
-    classify_dynamic_string, classify_dynamic_vec, classify_tail, extract_generic_inner_type,
-    is_unit_type, map_to_pod_type, zc_deserialize_expr, DynKind, InstructionArgs, TailElement,
+use {
+    crate::helpers::{
+        classify_dynamic_string, classify_dynamic_vec, classify_tail, extract_generic_inner_type,
+        is_unit_type, map_to_pod_type, zc_deserialize_expr, DynKind, InstructionArgs, TailElement,
+    },
+    proc_macro::TokenStream,
+    quote::quote,
+    syn::{parse_macro_input, FnArg, Ident, ItemFn, Pat, ReturnType},
 };
 
 pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -191,17 +192,14 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         // Extract dynamic fields with inline prefix reads
         if has_dynamic {
+            new_stmts.push(syn::parse_quote!(
+                let __data = #param_ident.data;
+            ));
             if has_fixed {
-                new_stmts.push(syn::parse_quote!(
-                    let __data = #param_ident.data;
-                ));
                 new_stmts.push(syn::parse_quote!(
                     let mut __offset = core::mem::size_of::<InstructionDataZc>();
                 ));
             } else {
-                new_stmts.push(syn::parse_quote!(
-                    let __data = #param_ident.data;
-                ));
                 new_stmts.push(syn::parse_quote!(
                     let mut __offset: usize = 0;
                 ));
@@ -277,7 +275,8 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                                 ));
                             }
                         }
-                        // Tail consumes all remaining data — no offset advance needed
+                        // Tail consumes all remaining data — no offset advance
+                        // needed
                     }
                     DynKind::Vec { elem, prefix, max } => {
                         dyn_idx += 1;

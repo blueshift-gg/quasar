@@ -1,8 +1,20 @@
-use quasar_core::cpi::{CpiCall, InstructionAccount};
-use quasar_core::prelude::*;
+use quasar_core::{
+    cpi::{CpiCall, InstructionAccount},
+    prelude::*,
+};
 
-const TRANSFER: u8 = 3;
-
+/// Transfer tokens between accounts via CPI.
+///
+/// ### Accounts:
+///   0. `[WRITE]` Source token account
+///   1. `[WRITE]` Destination token account
+///   2. `[SIGNER]` Source account owner / delegate
+///
+/// ### Instruction data (9 bytes):
+/// ```text
+/// [0  ] discriminator (3)
+/// [1..9] amount        (u64 LE)
+/// ```
 #[inline(always)]
 pub fn transfer<'a>(
     token_program: &'a AccountView,
@@ -11,11 +23,11 @@ pub fn transfer<'a>(
     authority: &'a AccountView,
     amount: u64,
 ) -> CpiCall<'a, 3, 9> {
-    // SAFETY: All 9 bytes are written before assume_init.
+    // SAFETY: All 9 bytes written before `assume_init`.
     let data = unsafe {
         let mut buf = core::mem::MaybeUninit::<[u8; 9]>::uninit();
         let ptr = buf.as_mut_ptr() as *mut u8;
-        core::ptr::write(ptr, TRANSFER);
+        core::ptr::write(ptr, 3);
         core::ptr::copy_nonoverlapping(amount.to_le_bytes().as_ptr(), ptr.add(1), 8);
         buf.assume_init()
     };

@@ -1,6 +1,4 @@
-use quasar_core::prelude::*;
-
-use crate::events::SimpleEvent;
+use {crate::events::SimpleEvent, quasar_core::prelude::*};
 
 #[derive(Accounts)]
 pub struct EmitU64Event<'info> {

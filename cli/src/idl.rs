@@ -1,9 +1,8 @@
-use std::path::{Path, PathBuf};
-
-use quasar_idl::{codegen, parser};
-
-use crate::error::CliResult;
-use crate::IdlCommand;
+use {
+    crate::{error::CliResult, IdlCommand},
+    quasar_idl::{codegen, parser},
+    std::path::{Path, PathBuf},
+};
 
 /// Generate IDL, TypeScript client, and Rust client crate for a program.
 ///

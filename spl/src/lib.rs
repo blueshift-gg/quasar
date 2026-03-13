@@ -80,7 +80,7 @@ macro_rules! impl_single_owner {
         impl AccountCheck for $ty {
             #[inline(always)]
             fn check(view: &AccountView) -> Result<(), ProgramError> {
-                if view.data_len() < <$target>::LEN {
+                if quasar_core::utils::hint::unlikely(view.data_len() < <$target>::LEN) {
                     return Err(ProgramError::AccountDataTooSmall);
                 }
                 Ok(())
@@ -90,7 +90,7 @@ macro_rules! impl_single_owner {
         impl CheckOwner for $ty {
             #[inline(always)]
             fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
-                if !quasar_core::keys_eq(view.owner(), &$id) {
+                if quasar_core::utils::hint::unlikely(!quasar_core::keys_eq(view.owner(), &$id)) {
                     return Err(ProgramError::IllegalOwner);
                 }
                 Ok(())
@@ -102,6 +102,9 @@ macro_rules! impl_single_owner {
 
             #[inline(always)]
             fn deref(&self) -> &Self::Target {
+                // SAFETY: `AccountCheck::check` validated `data_len >= LEN`.
+                // `$target` is `#[repr(C)]` with alignment 1 — any data
+                // pointer is valid.
                 unsafe { &*(self.__view.data_ptr() as *const $target) }
             }
         }
@@ -109,6 +112,8 @@ macro_rules! impl_single_owner {
         impl core::ops::DerefMut for $ty {
             #[inline(always)]
             fn deref_mut(&mut self) -> &mut Self::Target {
+                // SAFETY: Same as Deref — length validated, alignment 1.
+                // Mutability checked by the writable constraint.
                 unsafe { &mut *(self.__view.data_mut_ptr() as *mut $target) }
             }
         }
@@ -118,11 +123,15 @@ macro_rules! impl_single_owner {
 
             #[inline(always)]
             fn deref_from(view: &AccountView) -> &Self::Target {
+                // SAFETY: Caller ensures `view.data_len() >= LEN`.
+                // `$target` is `#[repr(C)]` with alignment 1.
                 unsafe { &*(view.data_ptr() as *const $target) }
             }
 
             #[inline(always)]
             fn deref_from_mut(view: &mut AccountView) -> &mut Self::Target {
+                // SAFETY: Same as `deref_from` — caller ensures length
+                // and writable.
                 unsafe { &mut *(view.data_mut_ptr() as *mut $target) }
             }
         }
@@ -139,17 +148,21 @@ mod state;
 mod token;
 mod token_2022;
 
-pub use associated_token::{
-    create as ata_create, create_idempotent as ata_create_idempotent, get_associated_token_address,
-    get_associated_token_address_const, get_associated_token_address_with_program,
-    get_associated_token_address_with_program_const, validate_ata, AssociatedToken,
-    AssociatedTokenProgram, InitAssociatedToken,
+pub use {
+    associated_token::{
+        create as ata_create, create_idempotent as ata_create_idempotent,
+        get_associated_token_address, get_associated_token_address_const,
+        get_associated_token_address_with_program, get_associated_token_address_with_program_const,
+        validate_ata, AssociatedToken, AssociatedTokenProgram, InitAssociatedToken,
+    },
+    helpers::{
+        close::TokenClose,
+        constants::{ATA_PROGRAM_ID, SPL_TOKEN_ID, TOKEN_2022_ID},
+        init::{validate_mint, validate_token_account, InitMint, InitToken},
+    },
+    instructions::{initialize_account3, initialize_mint2, TokenCpi},
+    interface::{InterfaceAccount, TokenInterface},
+    state::{MintAccountState, TokenAccountState},
+    token::{Mint, Token},
+    token_2022::{Mint2022, Token2022},
 };
-pub use helpers::close::TokenClose;
-pub use helpers::constants::{ATA_PROGRAM_ID, SPL_TOKEN_ID, TOKEN_2022_ID};
-pub use helpers::init::{validate_mint, validate_token_account, InitMint, InitToken};
-pub use instructions::{initialize_account3, initialize_mint2, TokenCpi};
-pub use interface::{InterfaceAccount, TokenInterface};
-pub use state::{MintAccountState, TokenAccountState};
-pub use token::{Mint, Token};
-pub use token_2022::{Mint2022, Token2022};

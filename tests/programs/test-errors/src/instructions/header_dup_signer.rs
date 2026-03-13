@@ -4,6 +4,8 @@ use quasar_core::prelude::*;
 #[derive(Accounts)]
 pub struct HeaderDupSigner<'info> {
     pub payer: &'info mut Signer,
+    /// CHECK: test-only — validates that dup signer accounts are parsed
+    /// correctly.
     #[account(dup)]
     pub authority: &'info Signer,
 }

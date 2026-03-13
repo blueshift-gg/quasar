@@ -1,13 +1,13 @@
-use std::path::Path;
-use std::process::Command;
-
-use crate::config::QuasarConfig;
-use crate::error::CliResult;
+use {
+    crate::{config::QuasarConfig, error::CliResult},
+    std::{path::Path, process::Command},
+};
 
 pub fn run() -> CliResult {
     let config = QuasarConfig::load()?;
 
-    // Generate IDL + client crate first (cargo needs the client crate to resolve dev-deps)
+    // Generate IDL + client crate first (cargo needs the client crate to resolve
+    // dev-deps)
     println!("Generating IDL...");
     crate::idl::generate(Path::new("."))?;
 

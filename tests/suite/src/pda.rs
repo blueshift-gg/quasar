@@ -1,10 +1,10 @@
-use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
-
-use solana_account::Account;
-use solana_address::Address;
-use solana_instruction::Instruction;
-
-use quasar_test_pda::client::*;
+use {
+    mollusk_svm::{program::keyed_account_for_system_program, Mollusk},
+    quasar_test_pda::client::*,
+    solana_account::Account,
+    solana_address::Address,
+    solana_instruction::Instruction,
+};
 
 const CONFIG_SIZE: usize = 2;
 const USER_SIZE: usize = 42;

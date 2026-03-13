@@ -1,13 +1,13 @@
-use mollusk_svm::Mollusk;
-use quasar_spl::get_associated_token_address_const;
-use quasar_test_token_cpi::client::*;
-use solana_account::Account;
-use solana_address::Address;
-use solana_instruction::Instruction;
-use solana_program_pack::Pack;
-use spl_token_interface::state::Account as TokenAccount;
-use spl_token_interface::state::AccountState;
-use spl_token_interface::state::Mint;
+use {
+    mollusk_svm::Mollusk,
+    quasar_spl::get_associated_token_address_const,
+    quasar_test_token_cpi::client::*,
+    solana_account::Account,
+    solana_address::Address,
+    solana_instruction::Instruction,
+    solana_program_pack::Pack,
+    spl_token_interface::state::{Account as TokenAccount, AccountState, Mint},
+};
 
 fn setup() -> Mollusk {
     let mut mollusk = Mollusk::new(
@@ -934,7 +934,8 @@ fn test_validate_ata_wrong_authority() {
 }
 
 // ---------------------------------------------------------------------------
-// Init token account (#[account(init, token::mint = ..., token::authority = ...)])
+// Init token account (#[account(init, token::mint = ..., token::authority =
+// ...)])
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -1134,7 +1135,8 @@ fn test_executable_check_non_executable_program() {
 }
 
 // ---------------------------------------------------------------------------
-// Init-if-needed token account (#[account(init_if_needed, token::mint, token::authority)])
+// Init-if-needed token account (#[account(init_if_needed, token::mint,
+// token::authority)])
 // ---------------------------------------------------------------------------
 
 fn setup_with_ata() -> Mollusk {
@@ -1323,7 +1325,8 @@ fn test_init_if_needed_token_wrong_mint() {
 }
 
 // ---------------------------------------------------------------------------
-// Init ATA (#[account(init, associated_token::mint, associated_token::authority)])
+// Init ATA (#[account(init, associated_token::mint,
+// associated_token::authority)])
 // ---------------------------------------------------------------------------
 
 fn ata_program_account() -> (Address, Account) {

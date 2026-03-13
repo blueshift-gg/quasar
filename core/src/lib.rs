@@ -21,12 +21,13 @@
 //! Quasar uses `unsafe` for zero-copy access, CPI syscalls, and pointer casts.
 //! Soundness relies on:
 //!
-//! - **Alignment-1 guarantee**: Pod types and ZC companion structs are `#[repr(C)]`
-//!   with alignment 1. Compile-time assertions verify this.
-//! - **Bounds checking**: Account data length is validated during parsing before
-//!   any pointer cast occurs.
-//! - **Discriminator validation**: All-zero discriminators are banned at compile
-//!   time. Account data is checked against the expected discriminator before access.
+//! - **Alignment-1 guarantee**: Pod types and ZC companion structs are
+//!   `#[repr(C)]` with alignment 1. Compile-time assertions verify this.
+//! - **Bounds checking**: Account data length is validated during parsing
+//!   before any pointer cast occurs.
+//! - **Discriminator validation**: All-zero discriminators are banned at
+//!   compile time. Account data is checked against the expected discriminator
+//!   before access.
 //!
 //! Every `unsafe` block is validated by Miri under Tree Borrows with symbolic
 //! alignment checking.
@@ -42,16 +43,31 @@ pub mod __internal {
         AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED,
     };
 
-    // Header validation constants (little-endian u32)
-    // Byte 0: borrow_state (0xFF = NOT_BORROWED)
-    // Byte 1: is_signer (bit 8)
-    // Byte 2: is_writable (bit 16)
-    // Byte 3: executable (bit 24)
-    pub const NODUP: u32 = 0xFF; // 0x000000FF - not borrowed only
-    pub const NODUP_SIGNER: u32 = 0xFF | (1 << 8); // 0x000001FF - not borrowed + signer
-    pub const NODUP_MUT: u32 = 0xFF | (1 << 16); // 0x000100FF - not borrowed + writable
-    pub const NODUP_MUT_SIGNER: u32 = 0xFF | (1 << 8) | (1 << 16); // 0x000101FF - not borrowed + signer + writable
-    pub const NODUP_EXECUTABLE: u32 = 0xFF | (1 << 24); // 0x010000FF - not borrowed + executable
+    // Header validation constants (little-endian u32).
+    //
+    // The first 4 bytes of a `RuntimeAccount` encode the borrow/flag state:
+    //
+    // ```text
+    // byte 0: borrow_state  (0xFF = NOT_BORROWED)
+    // byte 1: is_signer     (0 or 1)
+    // byte 2: is_writable   (0 or 1)
+    // byte 3: executable    (0 or 1)
+    // ```
+    //
+    // These constants are the expected u32 value for each account mode.
+    // The generated `parse_accounts` code reads the header as a single u32
+    // and compares it against the expected constant in one instruction.
+
+    /// Not borrowed, no flags required.
+    pub const NODUP: u32 = 0xFF;
+    /// Not borrowed + signer.
+    pub const NODUP_SIGNER: u32 = 0xFF | (1 << 8);
+    /// Not borrowed + writable.
+    pub const NODUP_MUT: u32 = 0xFF | (1 << 16);
+    /// Not borrowed + signer + writable.
+    pub const NODUP_MUT_SIGNER: u32 = 0xFF | (1 << 8) | (1 << 16);
+    /// Not borrowed + executable.
+    pub const NODUP_EXECUTABLE: u32 = 0xFF | (1 << 24);
 
     /// Allocation-free logging helper for generated code.
     /// Wraps solana_program_log::log for use in derive macro output.
@@ -72,7 +88,8 @@ pub mod sysvars;
 pub mod accounts;
 /// Borsh-compatible serialization primitives for CPI instruction data.
 pub mod borsh;
-/// Compile-time account validation traits (`Address`, `Owner`, `Executable`, `Mutable`, `Signer`).
+/// Compile-time account validation traits (`Address`, `Owner`, `Executable`,
+/// `Mutable`, `Signer`).
 pub mod checks;
 /// Off-chain instruction building utilities. Only compiled for non-SBF targets.
 #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
@@ -81,7 +98,8 @@ pub mod client;
 pub mod context;
 /// Const-generic cross-program invocation with stack-allocated account arrays.
 pub mod cpi;
-/// Marker types for dynamic fields (`String<P, N>`, `Vec<T, P, N>`) and codec helpers.
+/// Marker types for dynamic fields (`String<P, N>`, `Vec<T, P, N>`) and codec
+/// helpers.
 pub mod dynamic;
 /// Program entrypoint macros (`dispatch!`, `no_alloc!`, `panic_handler!`).
 pub mod entrypoint;
@@ -114,6 +132,8 @@ pub mod utils;
 pub fn keys_eq(a: &solana_address::Address, b: &solana_address::Address) -> bool {
     let a = a.as_array().as_ptr() as *const u64;
     let b = b.as_array().as_ptr() as *const u64;
+    // SAFETY: `Address` is a 32-byte array. Reading four u64 words covers
+    // all 32 bytes. `read_unaligned` is used because `Address` has align 1.
     unsafe {
         core::ptr::read_unaligned(a) == core::ptr::read_unaligned(b)
             && core::ptr::read_unaligned(a.add(1)) == core::ptr::read_unaligned(b.add(1))
@@ -128,6 +148,8 @@ pub fn keys_eq(a: &solana_address::Address, b: &solana_address::Address) -> bool
 #[inline(always)]
 pub fn is_system_program(addr: &solana_address::Address) -> bool {
     let a = addr.as_array().as_ptr() as *const u64;
+    // SAFETY: Same as `keys_eq` — 32 bytes read as four u64 words.
+    // `read_unaligned` handles the align-1 `Address` layout.
     unsafe {
         (core::ptr::read_unaligned(a)
             | core::ptr::read_unaligned(a.add(1))
@@ -174,8 +196,7 @@ pub fn decode_header_error(header: u32, expected: u32) -> solana_program_error::
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use solana_address::Address;
+    use {super::*, solana_address::Address};
 
     #[test]
     fn keys_eq_identical() {

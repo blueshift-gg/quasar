@@ -1,15 +1,19 @@
-use quasar_core::cpi::CpiCall;
-use quasar_core::prelude::*;
+use {
+    crate::{
+        associated_token::AssociatedToken,
+        instructions::TokenCpi,
+        interface::InterfaceAccount,
+        token::{Mint, Token},
+        token_2022::{Mint2022, Token2022},
+    },
+    quasar_core::{cpi::CpiCall, prelude::*},
+};
 
-use crate::associated_token::AssociatedToken;
-use crate::instructions::TokenCpi;
-use crate::interface::InterfaceAccount;
-use crate::token::{Mint, Token};
-use crate::token_2022::{Mint2022, Token2022};
-
-/// Extension trait providing `.close()` on `Account<T>` for token/mint account types.
+/// Extension trait providing `.close()` on `Account<T>` for token/mint account
+/// types.
 ///
-/// Returns a deferred `CpiCall` — caller controls `.invoke()` vs `.invoke_signed()`.
+/// Returns a deferred `CpiCall` — caller controls `.invoke()` vs
+/// `.invoke_signed()`.
 ///
 /// ```ignore
 /// self.vault.close(&self.token_program, &self.maker, &self.escrow)

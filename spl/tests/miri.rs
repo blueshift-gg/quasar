@@ -50,19 +50,20 @@
 //! | Actual CPI execution | Requires SVM runtime |
 //! | Token-2022 extensions beyond 165/82 bytes | Layout-dependent on runtime |
 
-use std::mem::{size_of, MaybeUninit};
-
-use quasar_core::__internal::{
-    AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED,
+use {
+    quasar_core::{
+        __internal::{AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED},
+        accounts::{account::set_lamports, Account},
+        traits::*,
+    },
+    quasar_spl::{
+        InterfaceAccount, Mint, MintAccountState, Token, TokenAccountState, SPL_TOKEN_ID,
+        TOKEN_2022_ID,
+    },
+    solana_address::Address,
+    solana_program_error::ProgramError,
+    std::mem::{size_of, MaybeUninit},
 };
-use quasar_core::accounts::account::set_lamports;
-use quasar_core::accounts::Account;
-use quasar_core::traits::*;
-use quasar_spl::{
-    InterfaceAccount, Mint, MintAccountState, Token, TokenAccountState, SPL_TOKEN_ID, TOKEN_2022_ID,
-};
-use solana_address::Address;
-use solana_program_error::ProgramError;
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -492,7 +493,8 @@ fn mint_deref_mut_write() {
     let account = unsafe { Account::<Mint>::from_account_view_unchecked_mut(&mut view) };
     assert_eq!(account.supply(), 500);
 
-    // Write supply through raw pointer. Supply is at offset 36 (flag=4, authority=32)
+    // Write supply through raw pointer. Supply is at offset 36 (flag=4,
+    // authority=32)
     let state: &mut MintAccountState = &mut *account;
     unsafe {
         let supply_ptr = (state as *mut MintAccountState as *mut u8).add(36);

@@ -1,7 +1,7 @@
-use crate::parser::accounts::RawAccountField;
-use crate::parser::helpers;
-use crate::parser::ParsedProgram;
-use crate::types::IdlType;
+use crate::{
+    parser::{accounts::RawAccountField, helpers, ParsedProgram},
+    types::IdlType,
+};
 
 /// Generate Cargo.toml content for the standalone client crate.
 pub fn generate_cargo_toml(name: &str, version: &str) -> String {
@@ -22,7 +22,8 @@ solana-instruction = "3"
 pub fn generate_client(parsed: &ParsedProgram) -> String {
     let mut out = String::new();
 
-    // Check if any instruction uses dynamic types (need Vec import)
+    // Check if any instruction uses dynamic types or remaining accounts (need Vec
+    // import)
     let has_dynamic = parsed.instructions.iter().any(|ix| {
         ix.args.iter().any(|(_, ty)| {
             matches!(
@@ -31,8 +32,9 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
             )
         })
     });
+    let has_remaining = parsed.instructions.iter().any(|ix| ix.has_remaining);
 
-    if has_dynamic {
+    if has_dynamic || has_remaining {
         out.push_str("use std::vec;\nuse std::vec::Vec;\n");
     } else {
         out.push_str("use std::vec;\n");
@@ -79,6 +81,11 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
             ));
         }
 
+        // Remaining accounts field
+        if ix.has_remaining {
+            out.push_str("    pub remaining_accounts: Vec<AccountMeta>,\n");
+        }
+
         out.push_str("}\n\n");
 
         // --- From impl ---
@@ -92,13 +99,20 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
         ));
 
         // Account metas
-        out.push_str("        let accounts = vec![\n");
+        if ix.has_remaining {
+            out.push_str("        let mut accounts = vec![\n");
+        } else {
+            out.push_str("        let accounts = vec![\n");
+        }
         if let Some(accs) = accounts_struct {
             for field in &accs.fields {
                 out.push_str(&format!("            {},\n", account_meta_expr(field)));
             }
         }
         out.push_str("        ];\n");
+        if ix.has_remaining {
+            out.push_str("        accounts.extend(ix.remaining_accounts);\n");
+        }
 
         // Instruction data
         let disc_bytes: Vec<String> = ix.discriminator.iter().map(|b| b.to_string()).collect();
@@ -124,6 +138,89 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
         out.push_str("            data,\n");
         out.push_str("        }\n");
         out.push_str("    }\n");
+        out.push_str("}\n\n");
+    }
+
+    // --- Events ---
+    if !parsed.events.is_empty() {
+        // Build IDL type defs for events (to get field info)
+        let event_types: Vec<_> = parsed
+            .events
+            .iter()
+            .map(crate::parser::events::to_idl_type_def)
+            .collect();
+
+        // Event discriminator constants
+        for ev in &parsed.events {
+            let const_name = pascal_to_screaming_snake(&ev.name);
+            let disc_bytes: Vec<String> = ev.discriminator.iter().map(|b| b.to_string()).collect();
+            out.push_str(&format!(
+                "pub const {}_EVENT_DISCRIMINATOR: &[u8] = &[{}];\n",
+                const_name,
+                disc_bytes.join(", ")
+            ));
+        }
+        out.push('\n');
+
+        // Event struct definitions
+        for type_def in &event_types {
+            out.push_str(&format!("pub struct {} {{\n", type_def.name));
+            for field in &type_def.ty.fields {
+                out.push_str(&format!(
+                    "    pub {}: {},\n",
+                    field.name,
+                    rust_field_type(&field.ty)
+                ));
+            }
+            out.push_str("}\n\n");
+        }
+
+        // Event enum
+        out.push_str("pub enum ProgramEvent {\n");
+        for type_def in &event_types {
+            if type_def.ty.fields.is_empty() {
+                out.push_str(&format!("    {},\n", type_def.name));
+            } else {
+                out.push_str(&format!("    {}({}),\n", type_def.name, type_def.name));
+            }
+        }
+        out.push_str("}\n\n");
+
+        // decode_event function
+        out.push_str("pub fn decode_event(data: &[u8]) -> Option<ProgramEvent> {\n");
+        for (i, ev) in parsed.events.iter().enumerate() {
+            let const_name = pascal_to_screaming_snake(&ev.name);
+            let type_def = &event_types[i];
+            out.push_str(&format!(
+                "    if data.starts_with({}_EVENT_DISCRIMINATOR) {{\n",
+                const_name
+            ));
+            if type_def.ty.fields.is_empty() {
+                out.push_str(&format!(
+                    "        return Some(ProgramEvent::{});\n",
+                    type_def.name
+                ));
+            } else {
+                out.push_str(&format!(
+                    "        let data = &data[{}_EVENT_DISCRIMINATOR.len()..];\n",
+                    const_name
+                ));
+                out.push_str("        let mut offset = 0usize;\n");
+                for field in &type_def.ty.fields {
+                    out.push_str(&deserialize_field_expr(&field.name, &field.ty));
+                }
+                let field_names: Vec<&str> =
+                    type_def.ty.fields.iter().map(|f| f.name.as_str()).collect();
+                out.push_str(&format!(
+                    "        return Some(ProgramEvent::{}({} {{ {} }}));\n",
+                    type_def.name,
+                    type_def.name,
+                    field_names.join(", ")
+                ));
+            }
+            out.push_str("    }\n");
+        }
+        out.push_str("    None\n");
         out.push_str("}\n\n");
     }
 
@@ -201,6 +298,69 @@ fn serialize_expr(name: &str, ty: &IdlType) -> String {
             format!("        data.extend_from_slice(&ix.{});\n", name)
         }
     }
+}
+
+/// Generate deserialization code for a single event field (reads from `data` at
+/// `offset`).
+fn deserialize_field_expr(name: &str, ty: &IdlType) -> String {
+    match ty {
+        IdlType::Primitive(p) => match p.as_str() {
+            "bool" => format!(
+                "        let {} = data[offset] != 0;\n        offset += 1;\n",
+                name
+            ),
+            "u8" => format!(
+                "        let {} = data[offset];\n        offset += 1;\n",
+                name
+            ),
+            "i8" => format!(
+                "        let {} = data[offset] as i8;\n        offset += 1;\n",
+                name
+            ),
+            "publicKey" => format!(
+                "        let {n} = Address::from(<[u8; 32]>::try_from(&data[offset..offset + \
+                 32]).ok()?);\n\x20       offset += 32;\n",
+                n = name,
+            ),
+            other => {
+                let size = primitive_size(other);
+                format!(
+                    "        let {n} = {ty}::from_le_bytes(data[offset..offset + \
+                     {sz}].try_into().ok()?);\n\x20       offset += {sz};\n",
+                    n = name,
+                    ty = other,
+                    sz = size,
+                )
+            }
+        },
+        _ => format!(
+            "        let {} = Default::default(); // unsupported type\n",
+            name
+        ),
+    }
+}
+
+fn primitive_size(p: &str) -> usize {
+    match p {
+        "u8" | "i8" | "bool" => 1,
+        "u16" | "i16" => 2,
+        "u32" | "i32" => 4,
+        "u64" | "i64" => 8,
+        "u128" | "i128" => 16,
+        "publicKey" => 32,
+        _ => 0,
+    }
+}
+
+fn pascal_to_screaming_snake(s: &str) -> String {
+    let mut result = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if c.is_uppercase() && i > 0 {
+            result.push('_');
+        }
+        result.push(c.to_ascii_uppercase());
+    }
+    result
 }
 
 fn snake_to_pascal(s: &str) -> String {

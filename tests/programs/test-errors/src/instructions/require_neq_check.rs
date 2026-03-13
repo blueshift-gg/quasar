@@ -1,6 +1,4 @@
-use quasar_core::prelude::*;
-
-use crate::errors::TestError;
+use {crate::errors::TestError, quasar_core::prelude::*};
 
 #[derive(Accounts)]
 pub struct RequireNeqCheck<'info> {

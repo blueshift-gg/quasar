@@ -1,7 +1,9 @@
-use crate::impl_sysvar_get;
-use crate::pod::{PodI64, PodU64};
 use {
-    crate::sysvars::Sysvar,
+    crate::{
+        impl_sysvar_get,
+        pod::{PodI64, PodU64},
+        sysvars::Sysvar,
+    },
     core::mem::{align_of, size_of},
     solana_address::Address,
     solana_program_error::ProgramError,

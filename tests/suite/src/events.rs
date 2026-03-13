@@ -1,7 +1,7 @@
-use mollusk_svm::Mollusk;
-use quasar_test_events::client::*;
-use solana_account::Account;
-use solana_address::Address;
+use {
+    mollusk_svm::Mollusk, quasar_test_events::client::*, solana_account::Account,
+    solana_address::Address,
+};
 
 fn setup() -> Mollusk {
     Mollusk::new(

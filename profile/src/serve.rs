@@ -1,8 +1,10 @@
-use std::ffi::CString;
-use std::io;
-use std::net::{SocketAddr, TcpStream};
-use std::path::Path;
-use std::time::Duration;
+use std::{
+    ffi::CString,
+    io,
+    net::{SocketAddr, TcpStream},
+    path::Path,
+    time::Duration,
+};
 
 pub fn spawn_server_process(root: &Path, port: u16) -> io::Result<()> {
     // converting path into owned UFT-8 string

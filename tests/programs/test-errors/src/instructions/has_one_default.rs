@@ -1,6 +1,4 @@
-use quasar_core::prelude::*;
-
-use crate::state::ErrorTestAccount;
+use {crate::state::ErrorTestAccount, quasar_core::prelude::*};
 
 #[derive(Accounts)]
 pub struct HasOneDefault<'info> {

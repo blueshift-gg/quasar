@@ -39,7 +39,8 @@ pub fn map_type(rust_type: &str) -> IdlType {
 /// Map a `syn::Type` to an `IdlType`, detecting dynamic fields:
 ///
 /// - `String<'a, N>` / `String<N>` → `IdlType::DynString { maxLength: N }`
-/// - `Vec<'a, T, N>` / `Vec<T, N>` → `IdlType::DynVec { items: T, maxLength: N }`
+/// - `Vec<'a, T, N>` / `Vec<T, N>` → `IdlType::DynVec { items: T, maxLength: N
+///   }`
 ///
 /// Falls back to `simple_type_name + map_type` for everything else.
 pub fn map_type_from_syn(ty: &syn::Type) -> IdlType {
@@ -174,8 +175,8 @@ pub fn is_signer_type(ty: &syn::Type) -> bool {
     type_base_name(ty).as_deref() == Some("Signer")
 }
 
-/// Parse a discriminator value from a token string containing `discriminator = N` or
-/// `discriminator = [N, M, ...]`.
+/// Parse a discriminator value from a token string containing `discriminator =
+/// N` or `discriminator = [N, M, ...]`.
 ///
 /// Shared by event, account, and instruction parsers.
 pub fn parse_discriminator_value(tokens_str: &str) -> Option<Vec<u8>> {

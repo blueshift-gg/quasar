@@ -1,8 +1,7 @@
-use std::collections::HashMap;
-
-use crate::dwarf::Resolver;
-use crate::elf::ElfInfo;
-use crate::walk::InstructionWalker;
+use {
+    crate::{dwarf::Resolver, elf::ElfInfo, walk::InstructionWalker},
+    std::collections::HashMap,
+};
 
 pub struct ProfileResult {
     pub folded_stacks: String,

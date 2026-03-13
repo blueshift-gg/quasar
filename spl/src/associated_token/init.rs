@@ -1,14 +1,17 @@
-use quasar_core::prelude::*;
-
-use super::instructions::{create, create_idempotent};
-use super::AssociatedTokenProgram;
-use crate::helpers::init::validate_token_account;
-use crate::instructions::TokenCpi;
+use {
+    super::{
+        instructions::{create, create_idempotent},
+        AssociatedTokenProgram,
+    },
+    crate::{helpers::init::validate_token_account, instructions::TokenCpi},
+    quasar_core::prelude::*,
+};
 
 /// Extension trait for associated token account initialization.
 ///
-/// Unlike [`InitToken`](crate::InitToken) which chains `create_account + initialize_account3`,
-/// this delegates to the ATA program which handles creation + initialization in a single CPI.
+/// Unlike [`InitToken`](crate::InitToken) which chains `create_account +
+/// initialize_account3`, this delegates to the ATA program which handles
+/// creation + initialization in a single CPI.
 ///
 /// ```ignore
 /// self.new_ata.init(

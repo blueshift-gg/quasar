@@ -12,9 +12,10 @@ pub mod module_resolver;
 pub mod program;
 pub mod state;
 
-use std::{collections::BTreeMap, path::Path};
-
-use crate::types::*;
+use {
+    crate::types::*,
+    std::{collections::BTreeMap, path::Path},
+};
 
 /// All data extracted from parsing a quasar program crate.
 pub struct ParsedProgram {
@@ -123,6 +124,7 @@ pub fn build_idl(parsed: ParsedProgram) -> Idl {
                 discriminator: ix.discriminator.clone(),
                 accounts: accounts_items,
                 args,
+                has_remaining: ix.has_remaining,
             }
         })
         .collect();
@@ -210,8 +212,9 @@ fn check_instruction_input_name_collision(parsed: &ParsedProgram) {
     }
 }
 
-/// Check for discriminator collisions across all instruction, account, and event discriminators.
-/// Returns a list of collision descriptions, empty if no collisions found.
+/// Check for discriminator collisions across all instruction, account, and
+/// event discriminators. Returns a list of collision descriptions, empty if no
+/// collisions found.
 pub fn find_discriminator_collisions(parsed: &ParsedProgram) -> Vec<String> {
     struct DiscEntry {
         kind: &'static str,

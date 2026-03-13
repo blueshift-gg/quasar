@@ -1,9 +1,11 @@
-use core::marker::PhantomData;
-
-use quasar_core::prelude::*;
-
-use crate::helpers::constants::{SPL_TOKEN_ID, TOKEN_2022_ID};
-use crate::instructions::TokenCpi;
+use {
+    crate::{
+        helpers::constants::{SPL_TOKEN_ID, TOKEN_2022_ID},
+        instructions::TokenCpi,
+    },
+    core::marker::PhantomData,
+    quasar_core::prelude::*,
+};
 
 /// Generic interface account wrapper — accepts accounts owned by either
 /// SPL Token or Token-2022.
@@ -31,30 +33,52 @@ impl<T> AsAccountView for InterfaceAccount<T> {
 }
 
 impl<T: AccountCheck> InterfaceAccount<T> {
+    /// Construct an interface account reference from an `AccountView`,
+    /// validating that the owner is SPL Token or Token-2022.
+    ///
+    /// # Errors
+    ///
+    /// Returns `IllegalOwner` if the owner is neither SPL Token nor
+    /// Token-2022, or any error from `T::check`.
     #[inline(always)]
     pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
         let owner = view.owner();
-        if !quasar_core::keys_eq(owner, &SPL_TOKEN_ID)
-            && !quasar_core::keys_eq(owner, &TOKEN_2022_ID)
-        {
+        if quasar_core::utils::hint::unlikely(
+            !quasar_core::keys_eq(owner, &SPL_TOKEN_ID)
+                && !quasar_core::keys_eq(owner, &TOKEN_2022_ID),
+        ) {
             return Err(ProgramError::IllegalOwner);
         }
         T::check(view)?;
+        // SAFETY: `InterfaceAccount<T>` is `#[repr(transparent)]` over
+        // `AccountView` — the pointer cast is layout-compatible. Owner
+        // and data-length checks ran above.
         Ok(unsafe { &*(view as *const AccountView as *const Self) })
     }
 
+    /// Construct a mutable interface account reference from an
+    /// `AccountView`, validating owner and writability.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Immutable` if the account is not writable, `IllegalOwner`
+    /// if the owner is neither SPL Token nor Token-2022, or any error
+    /// from `T::check`.
     #[inline(always)]
     pub fn from_account_view_mut(view: &mut AccountView) -> Result<&mut Self, ProgramError> {
-        if !view.is_writable() {
+        if quasar_core::utils::hint::unlikely(!view.is_writable()) {
             return Err(ProgramError::Immutable);
         }
         let owner = view.owner();
-        if !quasar_core::keys_eq(owner, &SPL_TOKEN_ID)
-            && !quasar_core::keys_eq(owner, &TOKEN_2022_ID)
-        {
+        if quasar_core::utils::hint::unlikely(
+            !quasar_core::keys_eq(owner, &SPL_TOKEN_ID)
+                && !quasar_core::keys_eq(owner, &TOKEN_2022_ID),
+        ) {
             return Err(ProgramError::IllegalOwner);
         }
         T::check(view)?;
+        // SAFETY: Same as `from_account_view` — `#[repr(transparent)]`
+        // guarantees layout compatibility. Writability checked above.
         Ok(unsafe { &mut *(view as *mut AccountView as *mut Self) })
     }
 

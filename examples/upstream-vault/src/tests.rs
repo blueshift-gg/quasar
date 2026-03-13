@@ -1,12 +1,12 @@
 extern crate std;
 
-use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
-
-use solana_account::Account;
-use solana_address::Address;
-use solana_instruction::Instruction;
-
-use crate::idl_client::{DepositInstruction, WithdrawInstruction};
+use {
+    crate::idl_client::{DepositInstruction, WithdrawInstruction},
+    mollusk_svm::{program::keyed_account_for_system_program, Mollusk},
+    solana_account::Account,
+    solana_address::Address,
+    solana_instruction::Instruction,
+};
 
 fn setup() -> Mollusk {
     Mollusk::new(&crate::ID, "../../target/deploy/upstream_vault")

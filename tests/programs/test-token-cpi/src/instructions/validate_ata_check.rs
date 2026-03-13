@@ -1,5 +1,7 @@
-use quasar_core::prelude::*;
-use quasar_spl::{AssociatedToken, Mint, Token};
+use {
+    quasar_core::prelude::*,
+    quasar_spl::{AssociatedToken, Mint, Token},
+};
 
 #[derive(Accounts)]
 pub struct ValidateAtaCheck<'info> {

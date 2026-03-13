@@ -2,16 +2,32 @@
 //! and CPI method stubs. Scans all `#[instruction]` functions within the module
 //! to build the discriminator → handler routing.
 
-use proc_macro::TokenStream;
-use quote::{format_ident, quote};
-use syn::{parse_macro_input, FnArg, Ident, Item, ItemMod, Pat, Type};
-
-use crate::helpers::{
-    classify_dynamic_string, classify_dynamic_vec, classify_tail, extract_generic_inner_type,
-    parse_discriminator_bytes, pascal_to_snake, snake_to_pascal, InstructionArgs,
+use {
+    crate::helpers::{
+        classify_dynamic_string, classify_dynamic_vec, classify_tail, extract_generic_inner_type,
+        parse_discriminator_bytes, pascal_to_snake, snake_to_pascal, InstructionArgs,
+    },
+    proc_macro::TokenStream,
+    quote::{format_ident, quote},
+    syn::{parse_macro_input, FnArg, Ident, Item, ItemMod, Pat, Type},
 };
 
-/// Extracts the inner type `T` from a `Ctx<T>` or `CtxWithRemaining<T>` first parameter.
+/// Returns `true` if the first parameter is `CtxWithRemaining<T>`.
+fn is_ctx_with_remaining(sig: &syn::Signature) -> bool {
+    let first_arg = match sig.inputs.first() {
+        Some(FnArg::Typed(pt)) => pt,
+        _ => return false,
+    };
+    if let Type::Path(type_path) = &*first_arg.ty {
+        if let Some(last) = type_path.path.segments.last() {
+            return last.ident == "CtxWithRemaining";
+        }
+    }
+    false
+}
+
+/// Extracts the inner type `T` from a `Ctx<T>` or `CtxWithRemaining<T>` first
+/// parameter.
 fn extract_ctx_inner_type(sig: &syn::Signature) -> syn::Result<proc_macro2::TokenStream> {
     let first_arg = match sig.inputs.first() {
         Some(FnArg::Typed(pt)) => pt,
@@ -25,12 +41,12 @@ fn extract_ctx_inner_type(sig: &syn::Signature) -> syn::Result<proc_macro2::Toke
 
     extract_generic_inner_type(&first_arg.ty, "Ctx")
         .or_else(|| extract_generic_inner_type(&first_arg.ty, "CtxWithRemaining"))
-        .map(|ty| Ok(quote!(#ty)))
-        .unwrap_or_else(|| {
-            Err(syn::Error::new_spanned(
+        .map(|ty| quote!(#ty))
+        .ok_or_else(|| {
+            syn::Error::new_spanned(
                 &first_arg.ty,
                 "first parameter must be Ctx<T> or CtxWithRemaining<T>",
-            ))
+            )
         })
 }
 
@@ -79,10 +95,14 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
                                 return syn::Error::new_spanned(
                                     attr,
                                     format!(
-                                        "all instruction discriminators must have the same length: expected {} byte(s), found {}",
-                                        len, disc_bytes.len()
+                                        "all instruction discriminators must have the same \
+                                         length: expected {} byte(s), found {}",
+                                        len,
+                                        disc_bytes.len()
                                     ),
-                                ).to_compile_error().into();
+                                )
+                                .to_compile_error()
+                                .into();
                             }
                         }
                         None => disc_len = Some(disc_bytes.len()),
@@ -149,17 +169,16 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     let arg_names: Vec<&Ident> = remaining_args.iter().map(|(n, _)| n).collect();
                     let arg_types: Vec<&Type> = remaining_args.iter().map(|(_, t)| t).collect();
 
-                    let disc_byte_lits: Vec<proc_macro2::TokenStream> = disc_values
-                        .iter()
-                        .map(|b| {
-                            let lit = proc_macro2::Literal::u8_unsuffixed(*b);
-                            quote! { #lit }
-                        })
-                        .collect();
-
-                    client_items.push(quote! {
-                        #macro_ident!(#struct_name, [#(#disc_byte_lits),*], {#(#arg_names : #arg_types),*});
-                    });
+                    let has_remaining = is_ctx_with_remaining(&func.sig);
+                    if has_remaining {
+                        client_items.push(quote! {
+                            #macro_ident!(#struct_name, [#(#disc_values),*], {#(#arg_names : #arg_types),*}, remaining);
+                        });
+                    } else {
+                        client_items.push(quote! {
+                            #macro_ident!(#struct_name, [#(#disc_values),*], {#(#arg_names : #arg_types),*});
+                        });
+                    }
 
                     break;
                 }
@@ -177,10 +196,13 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
         return syn::Error::new_spanned(
             &module.ident,
             format!(
-                "instruction `{}` has a discriminator starting with 0xFF which is reserved for events",
+                "instruction `{}` has a discriminator starting with 0xFF which is reserved for \
+                 events",
                 fn_name
             ),
-        ).to_compile_error().into();
+        )
+        .to_compile_error()
+        .into();
     }
 
     // Append dispatch + entrypoint to the module

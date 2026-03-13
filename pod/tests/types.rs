@@ -1,6 +1,7 @@
-use std::mem::{align_of, size_of};
-
-use quasar_pod::*;
+use {
+    quasar_pod::*,
+    std::mem::{align_of, size_of},
+};
 
 // ---------------------------------------------------------------------------
 // Representation invariants

@@ -1,6 +1,7 @@
-use quasar_core::prelude::*;
-
-use crate::events::{SecondSimpleEvent, SimpleEvent};
+use {
+    crate::events::{SecondSimpleEvent, SimpleEvent},
+    quasar_core::prelude::*,
+};
 
 #[derive(Accounts)]
 pub struct EmitTwoEvents<'info> {

@@ -1,10 +1,12 @@
 //! Variable-length CPI call with a stack-allocated maximum-capacity buffer.
 
-use super::{init_cpi_accounts, invoke_raw, result_from_raw, InstructionAccount, Seed, Signer};
-use solana_account_view::AccountView;
-use solana_address::Address;
-use solana_instruction_view::cpi::CpiAccount;
-use solana_program_error::ProgramResult;
+use {
+    super::{init_cpi_accounts, invoke_raw, result_from_raw, InstructionAccount, Seed, Signer},
+    solana_account_view::AccountView,
+    solana_address::Address,
+    solana_instruction_view::cpi::CpiAccount,
+    solana_program_error::ProgramResult,
+};
 
 /// Like [`super::CpiCall`] but with a runtime-tracked `data_len` within
 /// a compile-time `MAX` capacity buffer. Used for Borsh-serialized
@@ -60,6 +62,8 @@ impl<'a, const ACCTS: usize, const MAX: usize> BufCpiCall<'a, ACCTS, MAX> {
 
     #[inline(always)]
     fn invoke_inner(&self, signers: &[Signer]) -> ProgramResult {
+        // SAFETY: All pointer/length pairs derive from owned arrays. `data_len`
+        // is validated <= MAX in `new()`, so `data[..data_len]` is in-bounds.
         let result = unsafe {
             invoke_raw(
                 self.program_id,

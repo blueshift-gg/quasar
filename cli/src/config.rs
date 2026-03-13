@@ -1,8 +1,4 @@
-use std::path::Path;
-
-use serde::Deserialize;
-
-use crate::error::CliError;
+use {crate::error::CliError, serde::Deserialize, std::path::Path};
 
 #[derive(Debug, Deserialize)]
 pub struct QuasarConfig {
