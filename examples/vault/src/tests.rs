@@ -1,13 +1,12 @@
 extern crate std;
 
-use quasar_core::prelude::*;
-
-use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
-
-use solana_account::Account;
-use solana_instruction::Instruction;
-
-use crate::idl_client::{DepositInstruction, WithdrawInstruction};
+use {
+    crate::idl_client::{DepositInstruction, WithdrawInstruction},
+    mollusk_svm::{program::keyed_account_for_system_program, Mollusk},
+    quasar_core::prelude::*,
+    solana_account::Account,
+    solana_instruction::Instruction,
+};
 
 fn setup() -> Mollusk {
     Mollusk::new(&crate::ID, "../../target/deploy/quasar_vault")

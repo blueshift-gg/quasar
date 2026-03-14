@@ -1,10 +1,11 @@
 //! Parses `#[account]` state structs for IDL generation (field types,
 //! discriminators, dynamic layout classification).
 
-use syn::{Fields, Item};
-
-use super::helpers;
-use crate::types::{IdlAccountDef, IdlField, IdlTypeDef, IdlTypeDefType};
+use {
+    super::helpers,
+    crate::types::{IdlAccountDef, IdlField, IdlTypeDef, IdlTypeDefType},
+    syn::{Fields, Item},
+};
 
 /// Raw parsed data for a `#[account(discriminator = N)]` struct.
 pub struct RawStateAccount {
@@ -43,9 +44,9 @@ pub fn extract_state_accounts(file: &syn::File) -> Vec<RawStateAccount> {
     result
 }
 
-/// Check if a struct has `#[account(discriminator = N)]` and extract the discriminator.
-/// Distinguishes from `#[account(...)]` field attributes on derive(Accounts) fields
-/// by checking if it's on a struct item (not a field).
+/// Check if a struct has `#[account(discriminator = N)]` and extract the
+/// discriminator. Distinguishes from `#[account(...)]` field attributes on
+/// derive(Accounts) fields by checking if it's on a struct item (not a field).
 fn get_account_discriminator(attrs: &[syn::Attribute]) -> Option<Vec<u8>> {
     for attr in attrs {
         if !attr.path().is_ident("account") {
@@ -66,7 +67,8 @@ fn get_account_discriminator(attrs: &[syn::Attribute]) -> Option<Vec<u8>> {
     None
 }
 
-/// Convert a `RawStateAccount` to an `IdlAccountDef` (for the "accounts" array).
+/// Convert a `RawStateAccount` to an `IdlAccountDef` (for the "accounts"
+/// array).
 pub fn to_idl_account_def(raw: &RawStateAccount) -> IdlAccountDef {
     IdlAccountDef {
         name: raw.name.clone(),

@@ -1,12 +1,14 @@
 //! Off-chain instruction builder codegen for `#[derive(Accounts)]`.
 //!
 //! Generates a `build_instruction()` function that constructs a Solana
-//! `Instruction` from typed account addresses — only compiled for non-SBF targets.
+//! `Instruction` from typed account addresses — only compiled for non-SBF
+//! targets.
 
-use syn::Type;
-
-use super::attrs::AccountFieldAttrs;
-use crate::helpers::{is_signer_type, pascal_to_snake};
+use {
+    super::attrs::AccountFieldAttrs,
+    crate::helpers::{is_signer_type, pascal_to_snake},
+    syn::Type,
+};
 
 pub(super) fn generate_client_macro(
     name: &syn::Ident,
@@ -65,6 +67,31 @@ pub(super) fn generate_client_macro(
                         let accounts = ::alloc::vec![
                             {account_metas}
                         ];
+                        let data = quasar_core::client::build_instruction_data(
+                            &[$($disc),*],
+                            |_data| {{ $(quasar_core::client::WriteBytes::write_bytes(&ix.$arg_name, _data);)* }}
+                        );
+                        quasar_core::client::Instruction {{
+                            program_id: $crate::ID,
+                            accounts,
+                            data,
+                        }}
+                    }}
+                }}
+            }};
+            ($struct_name:ident, [$($disc:expr),*], {{$($arg_name:ident : $arg_ty:ty),*}}, remaining) => {{
+                pub struct $struct_name {{
+                    {account_fields}
+                    $(pub $arg_name: $arg_ty,)*
+                    pub remaining_accounts: ::alloc::vec::Vec<quasar_core::client::AccountMeta>,
+                }}
+
+                impl From<$struct_name> for quasar_core::client::Instruction {{
+                    fn from(ix: $struct_name) -> quasar_core::client::Instruction {{
+                        let mut accounts = ::alloc::vec![
+                            {account_metas}
+                        ];
+                        accounts.extend(ix.remaining_accounts);
                         let data = quasar_core::client::build_instruction_data(
                             &[$($disc),*],
                             |_data| {{ $(quasar_core::client::WriteBytes::write_bytes(&ix.$arg_name, _data);)* }}

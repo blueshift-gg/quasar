@@ -1,6 +1,4 @@
-use quasar_core::prelude::*;
-
-use crate::state::DynamicAccount;
+use {crate::state::DynamicAccount, quasar_core::prelude::*};
 
 #[derive(Accounts)]
 pub struct DynamicAccountCheck<'info> {

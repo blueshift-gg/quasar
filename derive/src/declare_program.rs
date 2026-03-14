@@ -1,10 +1,13 @@
-//! `declare_program!` — generates a typed client module from a program's IDL JSON.
-//! Produces account types, instruction builders, event types, and error enums
-//! for cross-program interaction without runtime IDL parsing.
+//! `declare_program!` — generates a typed client module from a program's IDL
+//! JSON. Produces account types, instruction builders, event types, and error
+//! enums for cross-program interaction without runtime IDL parsing.
 
-use proc_macro::TokenStream;
-use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
-use quote::{format_ident, quote};
+use {
+    crate::helpers::{pascal_to_snake, snake_to_pascal},
+    proc_macro::TokenStream,
+    proc_macro2::{Ident, Span, TokenStream as TokenStream2},
+    quote::{format_ident, quote},
+};
 
 // ---------------------------------------------------------------------------
 // Minimal IDL types for declare_program! macro.
@@ -63,69 +66,34 @@ struct TypeInfo {
 
 fn map_idl_type(ty: &IdlType) -> Result<TypeInfo, String> {
     match ty {
-        IdlType::Primitive(s) => match s.as_str() {
-            "u8" => Ok(TypeInfo {
-                rust_type: quote! { u8 },
-                byte_size: 1,
+        IdlType::Primitive(s) => {
+            let (rust_type, byte_size) = match s.as_str() {
+                "u8" => (quote! { u8 }, 1),
+                "i8" => (quote! { i8 }, 1),
+                "bool" => (quote! { bool }, 1),
+                "u16" => (quote! { u16 }, 2),
+                "i16" => (quote! { i16 }, 2),
+                "u32" => (quote! { u32 }, 4),
+                "i32" => (quote! { i32 }, 4),
+                "u64" => (quote! { u64 }, 8),
+                "i64" => (quote! { i64 }, 8),
+                "u128" => (quote! { u128 }, 16),
+                "i128" => (quote! { i128 }, 16),
+                "pubkey" => {
+                    return Ok(TypeInfo {
+                        rust_type: quote! { &quasar_core::prelude::Address },
+                        byte_size: 32,
+                        is_reference: true,
+                    });
+                }
+                other => return Err(format!("unsupported primitive type '{other}'")),
+            };
+            Ok(TypeInfo {
+                rust_type,
+                byte_size,
                 is_reference: false,
-            }),
-            "u16" => Ok(TypeInfo {
-                rust_type: quote! { u16 },
-                byte_size: 2,
-                is_reference: false,
-            }),
-            "u32" => Ok(TypeInfo {
-                rust_type: quote! { u32 },
-                byte_size: 4,
-                is_reference: false,
-            }),
-            "u64" => Ok(TypeInfo {
-                rust_type: quote! { u64 },
-                byte_size: 8,
-                is_reference: false,
-            }),
-            "u128" => Ok(TypeInfo {
-                rust_type: quote! { u128 },
-                byte_size: 16,
-                is_reference: false,
-            }),
-            "i8" => Ok(TypeInfo {
-                rust_type: quote! { i8 },
-                byte_size: 1,
-                is_reference: false,
-            }),
-            "i16" => Ok(TypeInfo {
-                rust_type: quote! { i16 },
-                byte_size: 2,
-                is_reference: false,
-            }),
-            "i32" => Ok(TypeInfo {
-                rust_type: quote! { i32 },
-                byte_size: 4,
-                is_reference: false,
-            }),
-            "i64" => Ok(TypeInfo {
-                rust_type: quote! { i64 },
-                byte_size: 8,
-                is_reference: false,
-            }),
-            "i128" => Ok(TypeInfo {
-                rust_type: quote! { i128 },
-                byte_size: 16,
-                is_reference: false,
-            }),
-            "bool" => Ok(TypeInfo {
-                rust_type: quote! { bool },
-                byte_size: 1,
-                is_reference: false,
-            }),
-            "pubkey" => Ok(TypeInfo {
-                rust_type: quote! { &quasar_core::prelude::Address },
-                byte_size: 32,
-                is_reference: true,
-            }),
-            other => Err(format!("unsupported primitive type '{other}'")),
-        },
+            })
+        }
         IdlType::Defined { defined } => Err(format!(
             "defined type '{defined}' is not supported — CPI helpers require fixed-size args"
         )),
@@ -133,7 +101,7 @@ fn map_idl_type(ty: &IdlType) -> Result<TypeInfo, String> {
 }
 
 // ---------------------------------------------------------------------------
-// Code generation
+// Code generation helpers
 // ---------------------------------------------------------------------------
 
 fn generate_data_write(args: &[IdlField], disc: &[u8]) -> Result<(TokenStream2, usize), String> {
@@ -141,23 +109,19 @@ fn generate_data_write(args: &[IdlField], disc: &[u8]) -> Result<(TokenStream2, 
     let mut offset = disc_len;
     let mut write_stmts = Vec::new();
 
-    // Write discriminator bytes
     for (i, &byte) in disc.iter().enumerate() {
         let byte_lit = proc_macro2::Literal::u8_suffixed(byte);
-        let idx = i;
         write_stmts.push(quote! {
-            core::ptr::write(__ptr.add(#idx), #byte_lit);
+            core::ptr::write(__ptr.add(#i), #byte_lit);
         });
     }
 
-    // Write each arg
     for field in args {
         let info = map_idl_type(&field.ty)?;
-        let fname = Ident::new(&to_snake_case(&field.name), Span::call_site());
+        let fname = Ident::new(&pascal_to_snake(&field.name), Span::call_site());
         let size = info.byte_size;
 
         if info.is_reference {
-            // &Address → copy 32 bytes
             write_stmts.push(quote! {
                 core::ptr::copy_nonoverlapping(
                     #fname.as_ref().as_ptr(),
@@ -166,13 +130,11 @@ fn generate_data_write(args: &[IdlField], disc: &[u8]) -> Result<(TokenStream2, 
                 );
             });
         } else if size == 1 {
-            // Single byte types (u8, i8, bool)
             let rust_type = &info.rust_type;
             write_stmts.push(quote! {
                 core::ptr::write(__ptr.add(#offset), #fname as #rust_type as u8);
             });
         } else {
-            // Multi-byte types → to_le_bytes
             write_stmts.push(quote! {
                 core::ptr::copy_nonoverlapping(
                     #fname.to_le_bytes().as_ptr(),
@@ -186,7 +148,6 @@ fn generate_data_write(args: &[IdlField], disc: &[u8]) -> Result<(TokenStream2, 
     }
 
     let total_size = offset;
-
     let block = quote! {
         unsafe {
             let mut __buf = core::mem::MaybeUninit::<[u8; #total_size]>::uninit();
@@ -199,164 +160,14 @@ fn generate_data_write(args: &[IdlField], disc: &[u8]) -> Result<(TokenStream2, 
     Ok((block, total_size))
 }
 
-fn generate_instruction(ix: &IdlInstruction) -> Result<TokenStream2, String> {
-    let fn_name = Ident::new(&to_snake_case(&ix.name), Span::call_site());
-    let acct_count = ix.accounts.len();
-
-    // Build account parameter list (for free function: all &'a AccountView)
-    let free_acct_params: Vec<TokenStream2> = ix
-        .accounts
-        .iter()
-        .map(|a| {
-            let name = Ident::new(&to_snake_case(&a.name), Span::call_site());
-            quote! { #name: &'a quasar_core::prelude::AccountView }
-        })
-        .collect();
-
-    // Build InstructionAccount array entries
-    let ia_entries: Vec<TokenStream2> = ix
-        .accounts
-        .iter()
-        .map(|a| {
-            let name = Ident::new(&to_snake_case(&a.name), Span::call_site());
-            match (a.writable, a.signer) {
-                (true, true) => {
-                    quote! { quasar_core::cpi::InstructionAccount::writable_signer(#name.address()) }
-                }
-                (true, false) => {
-                    quote! { quasar_core::cpi::InstructionAccount::writable(#name.address()) }
-                }
-                (false, true) => {
-                    quote! { quasar_core::cpi::InstructionAccount::readonly_signer(#name.address()) }
-                }
-                (false, false) => {
-                    quote! { quasar_core::cpi::InstructionAccount::readonly(#name.address()) }
-                }
-            }
-        })
-        .collect();
-
-    // Build views array entries
-    let view_entries: Vec<TokenStream2> = ix
-        .accounts
-        .iter()
-        .map(|a| {
-            let name = Ident::new(&to_snake_case(&a.name), Span::call_site());
-            quote! { #name }
-        })
-        .collect();
-
-    // Build arg parameters for the free function
-    let arg_params: Vec<TokenStream2> = ix
-        .args
-        .iter()
-        .map(|a| {
-            let info = map_idl_type(&a.ty).expect("type already validated");
-            let name = Ident::new(&to_snake_case(&a.name), Span::call_site());
-            let ty = &info.rust_type;
-            quote! { #name: #ty }
-        })
-        .collect();
-
-    // Build the data buffer
-    let (data_write, data_size) = generate_data_write(&ix.args, &ix.discriminator)?;
-
-    // --- Free function ---
-    let free_fn = quote! {
-        #[inline(always)]
-        pub fn #fn_name<'a>(
-            __program: &'a quasar_core::prelude::AccountView,
-            #(#free_acct_params,)*
-            #(#arg_params,)*
-        ) -> quasar_core::cpi::CpiCall<'a, #acct_count, #data_size> {
-            let __data = #data_write;
-
-            quasar_core::cpi::CpiCall::new(
-                __program.address(),
-                [#(#ia_entries),*],
-                [#(#view_entries),*],
-                __data,
-            )
-        }
-    };
-
-    // --- Method on program type ---
-    // Method params use &'a impl AsAccountView instead of &'a AccountView
-    let method_acct_params: Vec<TokenStream2> = ix
-        .accounts
-        .iter()
-        .map(|a| {
-            let name = Ident::new(&to_snake_case(&a.name), Span::call_site());
-            quote! { #name: &'a impl quasar_core::traits::AsAccountView }
-        })
-        .collect();
-
-    // Method body: convert to account_view then delegate to free function
-    let method_acct_conversions: Vec<TokenStream2> = ix
-        .accounts
-        .iter()
-        .map(|a| {
-            let name = Ident::new(&to_snake_case(&a.name), Span::call_site());
-            quote! { #name.to_account_view() }
-        })
-        .collect();
-
-    let arg_names: Vec<Ident> = ix
-        .args
-        .iter()
-        .map(|a| Ident::new(&to_snake_case(&a.name), Span::call_site()))
-        .collect();
-
-    let method_fn = quote! {
-        #[inline(always)]
-        pub fn #fn_name<'a>(
-            &'a self,
-            #(#method_acct_params,)*
-            #(#arg_params,)*
-        ) -> quasar_core::cpi::CpiCall<'a, #acct_count, #data_size> {
-            #fn_name(
-                self.to_account_view(),
-                #(#method_acct_conversions,)*
-                #(#arg_names,)*
-            )
-        }
-    };
-
-    Ok(quote! {
-        #free_fn
-        __methods! { #method_fn }
-    })
-}
-
-fn to_snake_case(s: &str) -> String {
-    let mut result = String::with_capacity(s.len() + 4);
-    for (i, ch) in s.chars().enumerate() {
-        if ch.is_uppercase() {
-            if i > 0 {
-                result.push('_');
-            }
-            result.push(ch.to_lowercase().next().unwrap());
-        } else {
-            result.push(ch);
-        }
+/// Build an InstructionAccount constructor call for the given account flags.
+fn ia_constructor(writable: bool, signer: bool) -> &'static str {
+    match (writable, signer) {
+        (true, true) => "writable_signer",
+        (true, false) => "writable",
+        (false, true) => "readonly_signer",
+        (false, false) => "readonly",
     }
-    result
-}
-
-fn to_pascal_case(s: &str) -> String {
-    s.split('_')
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                Some(c) => {
-                    let mut s = c.to_uppercase().to_string();
-                    s.push_str(&chars.collect::<String>());
-                    s
-                }
-                None => String::new(),
-            }
-        })
-        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -367,7 +178,6 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
     let input2 = proc_macro2::TokenStream::from(input);
     let mut iter = input2.into_iter();
 
-    // Parse: module_name, "path/to/idl.json"
     let mod_name = match iter.next() {
         Some(proc_macro2::TokenTree::Ident(id)) => id,
         _ => {
@@ -377,7 +187,6 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         }
     };
 
-    // Skip comma
     match iter.next() {
         Some(proc_macro2::TokenTree::Punct(p)) if p.as_char() == ',' => {}
         _ => {
@@ -387,11 +196,9 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         }
     };
 
-    // Parse string literal (IDL path)
     let idl_path = match iter.next() {
         Some(proc_macro2::TokenTree::Literal(lit)) => {
             let s = lit.to_string();
-            // Strip surrounding quotes
             if s.starts_with('"') && s.ends_with('"') {
                 s[1..s.len() - 1].to_string()
             } else {
@@ -407,11 +214,9 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         }
     };
 
-    // Parse IDL JSON at compile time
     let idl_json = match std::fs::read_to_string(&idl_path) {
         Ok(json) => json,
         Err(_) => {
-            // Fall back to CARGO_MANIFEST_DIR-relative path
             let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
             let full_path = std::path::Path::new(&manifest_dir).join(&idl_path);
             match std::fs::read_to_string(&full_path) {
@@ -453,67 +258,31 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         }
     }
 
-    // Generate program type name from module name
-    let program_type_name = format_ident!("{}", to_pascal_case(&mod_name.to_string()));
-
-    // Generate address bytes from IDL
+    let program_type_name = format_ident!("{}", snake_to_pascal(&mod_name.to_string()));
     let address_str = &idl.address;
-    let address_tokens = quote! {
-        quasar_core::prelude::address!(#address_str)
-    };
+    let address_tokens = quote! { quasar_core::prelude::address!(#address_str) };
 
-    // Generate instruction code (free functions + method fragments)
     let mut free_functions = Vec::new();
     let mut method_impls = Vec::new();
 
     for ix in &idl.instructions {
-        match generate_instruction(ix) {
-            Ok(tokens) => {
-                // We need to split free functions from methods.
-                // The generate_instruction uses a __methods! sentinel.
-                // We'll generate them separately instead.
-                let _ = tokens; // discard combined
-            }
-            Err(msg) => {
-                return syn::Error::new(Span::call_site(), msg)
-                    .to_compile_error()
-                    .into();
-            }
-        }
-
-        // Generate free function directly
-        let fn_name = Ident::new(&to_snake_case(&ix.name), Span::call_site());
+        let fn_name = Ident::new(&pascal_to_snake(&ix.name), Span::call_site());
         let acct_count = ix.accounts.len();
 
-        let free_acct_params: Vec<TokenStream2> = ix
+        // Pre-compute per-account identifiers once
+        let acct_idents: Vec<Ident> = ix
             .accounts
             .iter()
-            .map(|a| {
-                let name = Ident::new(&to_snake_case(&a.name), Span::call_site());
-                quote! { #name: &'a quasar_core::prelude::AccountView }
-            })
+            .map(|a| Ident::new(&pascal_to_snake(&a.name), Span::call_site()))
             .collect();
 
         let ia_entries: Vec<TokenStream2> = ix
             .accounts
             .iter()
-            .map(|a| {
-                let name = Ident::new(&to_snake_case(&a.name), Span::call_site());
-                match (a.writable, a.signer) {
-                    (true, true) => quote! { quasar_core::cpi::InstructionAccount::writable_signer(#name.address()) },
-                    (true, false) => quote! { quasar_core::cpi::InstructionAccount::writable(#name.address()) },
-                    (false, true) => quote! { quasar_core::cpi::InstructionAccount::readonly_signer(#name.address()) },
-                    (false, false) => quote! { quasar_core::cpi::InstructionAccount::readonly(#name.address()) },
-                }
-            })
-            .collect();
-
-        let view_entries: Vec<TokenStream2> = ix
-            .accounts
-            .iter()
-            .map(|a| {
-                let name = Ident::new(&to_snake_case(&a.name), Span::call_site());
-                quote! { #name }
+            .zip(&acct_idents)
+            .map(|(a, name)| {
+                let method = Ident::new(ia_constructor(a.writable, a.signer), Span::call_site());
+                quote! { quasar_core::cpi::InstructionAccount::#method(#name.address()) }
             })
             .collect();
 
@@ -522,13 +291,19 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
             .iter()
             .map(|a| {
                 let info = map_idl_type(&a.ty).unwrap();
-                let name = Ident::new(&to_snake_case(&a.name), Span::call_site());
+                let name = Ident::new(&pascal_to_snake(&a.name), Span::call_site());
                 let ty = &info.rust_type;
                 quote! { #name: #ty }
             })
             .collect();
 
         let (data_write, data_size) = generate_data_write(&ix.args, &ix.discriminator).unwrap();
+
+        // Free function: accounts as &'a AccountView
+        let free_acct_params: Vec<TokenStream2> = acct_idents
+            .iter()
+            .map(|name| quote! { #name: &'a quasar_core::prelude::AccountView })
+            .collect();
 
         free_functions.push(quote! {
             #[inline(always)]
@@ -538,39 +313,30 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
                 #(#arg_params,)*
             ) -> quasar_core::cpi::CpiCall<'a, #acct_count, #data_size> {
                 let __data = #data_write;
-
                 quasar_core::cpi::CpiCall::new(
                     __program.address(),
                     [#(#ia_entries),*],
-                    [#(#view_entries),*],
+                    [#(#acct_idents),*],
                     __data,
                 )
             }
         });
 
-        // Method variant
-        let method_acct_params: Vec<TokenStream2> = ix
-            .accounts
+        // Method variant: accounts as &'a impl AsAccountView
+        let method_acct_params: Vec<TokenStream2> = acct_idents
             .iter()
-            .map(|a| {
-                let name = Ident::new(&to_snake_case(&a.name), Span::call_site());
-                quote! { #name: &'a impl quasar_core::traits::AsAccountView }
-            })
+            .map(|name| quote! { #name: &'a impl quasar_core::traits::AsAccountView })
             .collect();
 
-        let method_acct_conversions: Vec<TokenStream2> = ix
-            .accounts
+        let method_acct_conversions: Vec<TokenStream2> = acct_idents
             .iter()
-            .map(|a| {
-                let name = Ident::new(&to_snake_case(&a.name), Span::call_site());
-                quote! { #name.to_account_view() }
-            })
+            .map(|name| quote! { #name.to_account_view() })
             .collect();
 
         let arg_names: Vec<Ident> = ix
             .args
             .iter()
-            .map(|a| Ident::new(&to_snake_case(&a.name), Span::call_site()))
+            .map(|a| Ident::new(&pascal_to_snake(&a.name), Span::call_site()))
             .collect();
 
         method_impls.push(quote! {
@@ -589,7 +355,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         });
     }
 
-    let output = quote! {
+    quote! {
         pub mod #mod_name {
             pub const ID: quasar_core::prelude::Address = #address_tokens;
 
@@ -608,7 +374,6 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
                 #(#method_impls)*
             }
         }
-    };
-
-    output.into()
+    }
+    .into()
 }

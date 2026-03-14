@@ -1,7 +1,7 @@
-use quasar_core::prelude::*;
-use quasar_core::traits::Id;
-
-use crate::metadata::constants::METADATA_PROGRAM_BYTES;
+use {
+    crate::metadata::constants::METADATA_PROGRAM_BYTES,
+    quasar_core::{prelude::*, traits::Id},
+};
 
 quasar_core::define_account!(pub struct MetadataProgram => [checks::Executable, checks::Address]);
 

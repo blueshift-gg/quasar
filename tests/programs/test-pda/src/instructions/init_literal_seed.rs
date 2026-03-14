@@ -1,6 +1,4 @@
-use quasar_core::prelude::*;
-
-use crate::state::ConfigAccount;
+use {crate::state::ConfigAccount, quasar_core::prelude::*};
 
 #[derive(Accounts)]
 pub struct InitLiteralSeed<'info> {

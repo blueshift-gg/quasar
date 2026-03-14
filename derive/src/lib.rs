@@ -1,7 +1,8 @@
 //! Proc macros for the Quasar Solana framework.
 //!
 //! These macros generate the parsing, validation, and dispatch code that makes
-//! Quasar programs work. Users typically access them through `quasar_core::prelude`.
+//! Quasar programs work. Users typically access them through
+//! `quasar_core::prelude`.
 //!
 //! | Macro | Purpose |
 //! |-------|---------|
@@ -26,21 +27,24 @@ mod program;
 
 /// Derive account parsing and validation for an instruction's accounts struct.
 ///
-/// Each field specifies an account with optional constraints via the `#[account]` attribute.
+/// Each field specifies an account with optional constraints via the
+/// `#[account]` attribute.
 ///
 /// # Field attributes
 ///
 /// - `mut` — account must be writable
 /// - `signer` — account must be a signer
 /// - `address = <expr>` — account address must match the given value
-/// - `seeds = [seed, ...]` — PDA derivation seeds (verifies address matches derived PDA)
+/// - `seeds = [seed, ...]` — PDA derivation seeds (verifies address matches
+///   derived PDA)
 /// - `init`, `init_if_needed` — create the account via CPI if it doesn't exist
 /// - `payer = <field>` — which signer pays for account creation
 /// - `space = <expr>` — account data size for creation
 ///
 /// # Generated code
 ///
-/// - A `parse()` method that validates all constraints and returns the parsed struct
+/// - A `parse()` method that validates all constraints and returns the parsed
+///   struct
 /// - A `Bumps` companion struct containing PDA bump seeds
 /// - `AccountCount` implementation for dispatch buffer sizing
 #[proc_macro_derive(Accounts, attributes(account, instruction))]
@@ -69,8 +73,8 @@ pub fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// Define an on-chain account type with an explicit discriminator.
 ///
 /// Generates a zero-copy companion struct (`Zc*`) with `#[repr(C)]` layout
-/// and alignment-1 Pod fields, plus implementations of `Discriminator`, `Space`,
-/// `Owner`, `AccountCheck`, and `ZeroCopyDeref`.
+/// and alignment-1 Pod fields, plus implementations of `Discriminator`,
+/// `Space`, `Owner`, `AccountCheck`, and `ZeroCopyDeref`.
 ///
 /// # Syntax
 ///
@@ -89,7 +93,8 @@ pub fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     account::account(attr, item)
 }
 
-/// Mark a module as a Quasar program, generating the entrypoint and dispatch logic.
+/// Mark a module as a Quasar program, generating the entrypoint and dispatch
+/// logic.
 ///
 /// # Syntax
 ///
@@ -157,8 +162,9 @@ pub fn error_code(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Emit an event via self-CPI for spoofing resistance.
 ///
-/// Must be called inside an instruction handler that has access to `self.program`
-/// and `self.event_authority`. Costs ~1,000 CU (vs ~100 CU for `emit!()`).
+/// Must be called inside an instruction handler that has access to
+/// `self.program` and `self.event_authority`. Costs ~1,000 CU (vs ~100 CU for
+/// `emit!()`).
 ///
 /// # Syntax
 ///
@@ -198,7 +204,8 @@ pub fn emit_cpi(input: TokenStream) -> TokenStream {
 /// ```
 ///
 /// The IDL path resolves relative to the calling crate's `CARGO_MANIFEST_DIR`.
-/// Only fixed-size argument types are supported (u8–u128, i8–i128, bool, pubkey).
+/// Only fixed-size argument types are supported (u8–u128, i8–i128, bool,
+/// pubkey).
 #[proc_macro]
 pub fn declare_program(input: TokenStream) -> TokenStream {
     declare_program::declare_program(input)

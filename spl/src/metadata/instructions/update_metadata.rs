@@ -1,6 +1,8 @@
-use quasar_core::borsh::BorshString;
-use quasar_core::cpi::{BufCpiCall, InstructionAccount};
-use quasar_core::prelude::*;
+use quasar_core::{
+    borsh::BorshString,
+    cpi::{BufCpiCall, InstructionAccount},
+    prelude::*,
+};
 
 const UPDATE_METADATA_ACCOUNTS_V2: u8 = 15;
 

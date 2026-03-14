@@ -1,7 +1,8 @@
-use quasar_core::prelude::*;
-use quasar_spl::{Mint, Token, TokenCpi};
-
-use crate::{events::MakeEvent, state::Escrow};
+use {
+    crate::{events::MakeEvent, state::Escrow},
+    quasar_core::prelude::*,
+    quasar_spl::{Mint, Token, TokenCpi},
+};
 
 #[derive(Accounts)]
 pub struct Make<'info> {

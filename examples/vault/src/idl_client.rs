@@ -1,6 +1,8 @@
-use alloc::vec;
-use quasar_core::prelude::*;
-use solana_instruction::{AccountMeta, Instruction};
+use {
+    alloc::vec,
+    quasar_core::prelude::*,
+    solana_instruction::{AccountMeta, Instruction},
+};
 
 pub struct DepositInstruction {
     pub user: Address,

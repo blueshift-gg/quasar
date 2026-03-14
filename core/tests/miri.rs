@@ -18,8 +18,8 @@
 //! - `-Zmiri-tree-borrows`: Tree Borrows model. The `& -> &mut` cast in
 //!   `from_account_view_unchecked_mut` is instant UB under Stacked Borrows.
 //!   Under Tree Borrows it is sound because the `&mut Account<T>` never writes
-//!   to the AccountView memory itself -- writes go through the raw pointer to
-//!   a separate RuntimeAccount allocation. The retag creates a "Reserved" child
+//!   to the AccountView memory itself -- writes go through the raw pointer to a
+//!   separate RuntimeAccount allocation. The retag creates a "Reserved" child
 //!   that never transitions to "Active".
 //! - `-Zmiri-symbolic-alignment-check`: Catch alignment issues that depend on
 //!   allocation placement rather than happenstance.
@@ -64,21 +64,24 @@
     clippy::borrow_deref_ref
 )]
 
-use std::mem::{align_of, size_of, MaybeUninit};
-
-use quasar_core::__internal::{
-    AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED,
+use {
+    quasar_core::{
+        __internal::{AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED},
+        accounts::{
+            account::{resize, set_lamports},
+            Account, Signer as SignerAccount, UncheckedAccount,
+        },
+        checks,
+        cpi::{CpiCall, InstructionAccount},
+        error::QuasarError,
+        pod::*,
+        remaining::RemainingAccounts,
+        traits::*,
+    },
+    solana_address::Address,
+    solana_program_error::ProgramError,
+    std::mem::{align_of, size_of, MaybeUninit},
 };
-use quasar_core::accounts::account::{resize, set_lamports};
-use quasar_core::accounts::{Account, Signer as SignerAccount, UncheckedAccount};
-use quasar_core::checks;
-use quasar_core::cpi::{CpiCall, InstructionAccount};
-use quasar_core::error::QuasarError;
-use quasar_core::pod::*;
-use quasar_core::remaining::RemainingAccounts;
-use quasar_core::traits::*;
-use solana_address::Address;
-use solana_program_error::ProgramError;
 
 // ===========================================================================
 // Sweep constants -- reused across parameterized tests
@@ -1746,9 +1749,10 @@ fn ops_close_rejects_non_writable_destination() {
 
 #[test]
 fn ops_close_rejects_lamport_overflow() {
-    // Lamport overflow is physically impossible (total SOL supply ~5.8e17 < u64::MAX ~1.8e19).
-    // close() uses wrapping_add to skip the overflow branch. This test verifies the wrapping
-    // behavior with synthetic values that can't occur in production.
+    // Lamport overflow is physically impossible (total SOL supply ~5.8e17 <
+    // u64::MAX ~1.8e19). close() uses wrapping_add to skip the overflow branch.
+    // This test verifies the wrapping behavior with synthetic values that can't
+    // occur in production.
     let data_len = 16usize;
     let mut src_buf = AccountBuffer::new(data_len);
     src_buf.init(

@@ -16,9 +16,11 @@ mod update_primary_sale;
 mod utilize;
 mod verify_collection;
 
-use quasar_core::borsh::{BorshString, CpiEncode};
-use quasar_core::cpi::{BufCpiCall, CpiCall};
-use quasar_core::prelude::*;
+use quasar_core::{
+    borsh::{BorshString, CpiEncode},
+    cpi::{BufCpiCall, CpiCall},
+    prelude::*,
+};
 
 // Metaplex-enforced maximum field lengths.
 const MAX_NAME_LEN: usize = 32;
@@ -516,8 +518,8 @@ pub trait MetadataCpi: AsAccountView {
     /// Burn an edition NFT.
     ///
     /// Accounts (10): metadata, owner, print_edition_mint, master_edition_mint,
-    /// print_edition_token, master_edition_token, master_edition, print_edition,
-    /// edition_marker, spl_token.
+    /// print_edition_token, master_edition_token, master_edition,
+    /// print_edition, edition_marker, spl_token.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     fn burn_edition_nft<'a>(

@@ -1,14 +1,15 @@
 //! Codegen for fixed-layout `#[account]` types.
 //!
-//! Fixed accounts have all fields known at compile time (no dynamic String/Vec).
-//! Generates the `#[repr(C)]` ZC companion struct with Pod fields, plus
-//! `Owner`, `Discriminator`, `Space`, and `AccountSerialize` impls.
+//! Fixed accounts have all fields known at compile time (no dynamic
+//! String/Vec). Generates the `#[repr(C)]` ZC companion struct with Pod fields,
+//! plus `Owner`, `Discriminator`, `Space`, and `AccountSerialize` impls.
 
-use proc_macro::TokenStream;
-use quote::{format_ident, quote};
-use syn::DeriveInput;
-
-use crate::helpers::{map_to_pod_type, pascal_to_snake, zc_assign_from_value};
+use {
+    crate::helpers::{map_to_pod_type, pascal_to_snake, zc_assign_from_value},
+    proc_macro::TokenStream,
+    quote::{format_ident, quote},
+    syn::DeriveInput,
+};
 
 pub(super) fn generate_fixed_account(
     name: &syn::Ident,

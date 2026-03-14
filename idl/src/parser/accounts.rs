@@ -1,10 +1,13 @@
 //! Parses `#[derive(Accounts)]` structs to extract account metadata,
 //! constraints, PDA seeds, and field types for IDL generation.
 
-use syn::{Fields, Item};
-
-use crate::parser::helpers;
-use crate::types::{IdlAccountItem, IdlPda, IdlSeed};
+use {
+    crate::{
+        parser::helpers,
+        types::{IdlAccountItem, IdlPda, IdlSeed},
+    },
+    syn::{Fields, Item},
+};
 
 /// Raw parsed data for a `#[derive(Accounts)]` struct.
 pub struct RawAccountsStruct {
@@ -242,7 +245,8 @@ fn parse_seeds_from_tokens(
         .collect()
 }
 
-/// Split seed expressions by comma, respecting nested brackets and string literals.
+/// Split seed expressions by comma, respecting nested brackets and string
+/// literals.
 fn split_seeds(s: &str) -> Vec<String> {
     let mut parts = Vec::new();
     let mut current = String::new();

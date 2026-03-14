@@ -1,11 +1,9 @@
-use std::fmt;
-use std::fs;
-use std::path::Path;
-
-use dialoguer::{theme::ColorfulTheme, Input, Select};
-use serde::Serialize;
-
-use crate::error::CliResult;
+use {
+    crate::error::CliResult,
+    dialoguer::{theme::ColorfulTheme, Input, Select},
+    serde::Serialize,
+    std::{fmt, fs, path::Path},
+};
 
 #[derive(Debug, Clone, Copy)]
 enum Toolchain {

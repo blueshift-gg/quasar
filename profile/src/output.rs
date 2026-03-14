@@ -1,10 +1,13 @@
-use std::io::{BufWriter, Write};
-use std::path::Path;
-use std::{collections::HashMap, mem};
-
-use serde::Serialize;
-
-use crate::aggregate::ProfileResult;
+use {
+    crate::aggregate::ProfileResult,
+    serde::Serialize,
+    std::{
+        collections::HashMap,
+        io::{BufWriter, Write},
+        mem,
+        path::Path,
+    },
+};
 
 pub fn print_summary(result: &ProfileResult) {
     eprintln!("Total .text instructions: {} CUs", result.total_cus);

@@ -1,16 +1,19 @@
-use quasar_core::prelude::*;
-use quasar_core::traits::Id;
-
-use crate::helpers::constants::{SPL_TOKEN_BYTES, SPL_TOKEN_ID};
-use crate::instructions::TokenCpi;
-use crate::state::{MintAccountState, TokenAccountState};
+use {
+    crate::{
+        helpers::constants::{SPL_TOKEN_BYTES, SPL_TOKEN_ID},
+        instructions::TokenCpi,
+        state::{MintAccountState, TokenAccountState},
+    },
+    quasar_core::{prelude::*, traits::Id},
+};
 
 /// Token account view — validates owner is SPL Token program.
 ///
 /// Use as `Account<Token>` for single-program token accounts,
 /// or `InterfaceAccount<Token>` to accept both SPL Token and Token-2022.
 ///
-/// Also implements `Id`, so `Program<Token>` serves as the program account type.
+/// Also implements `Id`, so `Program<Token>` serves as the program account
+/// type.
 #[repr(transparent)]
 pub struct Token {
     __view: AccountView,

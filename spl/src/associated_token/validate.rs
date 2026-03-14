@@ -1,7 +1,7 @@
-use quasar_core::prelude::*;
-
-use super::address::get_associated_token_address_with_program;
-use crate::helpers::init::validate_token_account;
+use {
+    super::address::get_associated_token_address_with_program,
+    crate::helpers::init::validate_token_account, quasar_core::prelude::*,
+};
 
 /// Validate that an account is the correct ATA for a wallet and mint.
 ///

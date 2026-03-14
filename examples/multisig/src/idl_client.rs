@@ -1,7 +1,8 @@
-use alloc::vec;
-use alloc::vec::Vec;
-use solana_address::Address;
-use solana_instruction::{AccountMeta, Instruction};
+use {
+    alloc::{vec, vec::Vec},
+    solana_address::Address,
+    solana_instruction::{AccountMeta, Instruction},
+};
 
 pub struct CreateInstruction {
     pub creator: Address,
@@ -9,16 +10,18 @@ pub struct CreateInstruction {
     pub rent: Address,
     pub system_program: Address,
     pub threshold: u8,
+    pub remaining_accounts: Vec<AccountMeta>,
 }
 
 impl From<CreateInstruction> for Instruction {
     fn from(ix: CreateInstruction) -> Instruction {
-        let accounts = vec![
+        let mut accounts = vec![
             AccountMeta::new(ix.creator, true),
             AccountMeta::new(ix.config, false),
             AccountMeta::new_readonly(ix.rent, false),
             AccountMeta::new_readonly(ix.system_program, false),
         ];
+        accounts.extend(ix.remaining_accounts);
         let mut data = vec![0];
         data.push(ix.threshold);
         Instruction {
@@ -87,17 +90,19 @@ pub struct ExecuteTransferInstruction {
     pub recipient: Address,
     pub system_program: Address,
     pub amount: u64,
+    pub remaining_accounts: Vec<AccountMeta>,
 }
 
 impl From<ExecuteTransferInstruction> for Instruction {
     fn from(ix: ExecuteTransferInstruction) -> Instruction {
-        let accounts = vec![
+        let mut accounts = vec![
             AccountMeta::new_readonly(ix.config, false),
             AccountMeta::new_readonly(ix.creator, false),
             AccountMeta::new(ix.vault, false),
             AccountMeta::new(ix.recipient, false),
             AccountMeta::new_readonly(ix.system_program, false),
         ];
+        accounts.extend(ix.remaining_accounts);
         let mut data = vec![3];
         data.extend_from_slice(&ix.amount.to_le_bytes());
         Instruction {

@@ -8,7 +8,8 @@ use crate::error::CliResult;
 pub fn run(debug: bool) -> CliResult {
     let config = QuasarConfig::load()?;
 
-    // Generate IDL + client crate first (cargo needs the client crate to resolve dev-deps)
+    // Generate IDL + client crate first (cargo needs the client crate to resolve
+    // dev-deps)
     println!("Generating IDL...");
     crate::idl::generate(Path::new("."), config.has_typescript_tests())?;
 

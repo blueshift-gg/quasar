@@ -1,3 +1,7 @@
+use crate::{
+    errors::VaultError,
+    utils::{pda::vault_pda, Context},
+};
 /// # Withdraw Instruction
 ///
 /// Withdraws SOL from vault PDA to user via direct lamport manipulation.
@@ -8,10 +12,6 @@
 /// | 0 | user    | yes    | yes      | Withdrawer               |
 /// | 1 | vault   | no     | yes      | PDA: `["vault", user]`   |
 use pinocchio::{AccountView, ProgramResult};
-
-use crate::errors::VaultError;
-use crate::utils::pda::vault_pda;
-use crate::utils::Context;
 
 pub struct Withdraw<'info> {
     user: &'info AccountView,
