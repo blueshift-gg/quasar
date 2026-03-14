@@ -10,15 +10,15 @@ use {
 
 extern crate toml;
 
-pub fn run(debug: bool, watch: bool) -> CliResult {
+pub fn run(debug: bool, watch: bool, features: Option<String>) -> CliResult {
     if watch {
-        return run_watch(debug);
+        return run_watch(debug, features);
     }
 
-    run_once(debug)
+    run_once(debug, features.as_deref())
 }
 
-fn run_once(debug: bool) -> CliResult {
+fn run_once(debug: bool, features: Option<&str>) -> CliResult {
     let config = QuasarConfig::load()?;
     let start = Instant::now();
 
@@ -31,6 +31,9 @@ fn run_once(debug: bool) -> CliResult {
         cmd.arg("build-sbf");
         if debug {
             cmd.arg("--debug");
+        }
+        if let Some(f) = features {
+            cmd.args(["--features", f]);
         }
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output()
     } else {
@@ -53,6 +56,9 @@ fn run_once(debug: bool) -> CliResult {
             cmd.env("RUSTFLAGS", "-C link-arg=--btf -C debuginfo=2");
         }
         cmd.arg("build-bpf");
+        if let Some(f) = features {
+            cmd.args(["--features", f]);
+        }
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output()
     };
 
@@ -252,8 +258,8 @@ fn find_so(config: &QuasarConfig) -> Option<PathBuf> {
     .find(|p| p.exists())
 }
 
-fn run_watch(debug: bool) -> CliResult {
-    if let Err(e) = run_once(debug) {
+fn run_watch(debug: bool, features: Option<String>) -> CliResult {
+    if let Err(e) = run_once(debug, features.as_deref()) {
         eprintln!("  {}", style::fail(&format!("{e}")));
     }
 
@@ -263,7 +269,7 @@ fn run_watch(debug: bool) -> CliResult {
             std::thread::sleep(std::time::Duration::from_secs(1));
             let current = collect_mtimes(Path::new("src"));
             if current != baseline {
-                if let Err(e) = run_once(debug) {
+                if let Err(e) = run_once(debug, features.as_deref()) {
                     eprintln!("  {}", style::fail(&format!("{e}")));
                 }
                 break;

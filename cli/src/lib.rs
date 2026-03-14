@@ -7,6 +7,7 @@ pub mod build;
 pub mod cfg;
 pub mod clean;
 pub mod config;
+pub mod deploy;
 pub mod dump;
 pub mod error;
 pub mod idl;
@@ -80,6 +81,10 @@ pub struct BuildCommand {
     /// Watch src/ for changes and rebuild automatically
     #[arg(long, short, action = ArgAction::SetTrue)]
     pub watch: bool,
+
+    /// Cargo features to enable (comma-separated or repeated)
+    #[arg(long, value_name = "FEATURES")]
+    pub features: Option<String>,
 }
 
 #[derive(Args, Debug, Default)]
@@ -102,7 +107,15 @@ pub struct TestCommand {
 }
 
 #[derive(Args, Debug, Default)]
-pub struct DeployCommand {}
+pub struct DeployCommand {
+    /// Path to a program keypair (default: target/deploy/<name>-keypair.json)
+    #[arg(long, value_name = "KEYPAIR")]
+    pub program_keypair: Option<PathBuf>,
+
+    /// Upgrade authority keypair (default: Solana CLI default keypair)
+    #[arg(long, value_name = "KEYPAIR")]
+    pub upgrade_authority: Option<PathBuf>,
+}
 
 #[derive(Args, Debug, Default)]
 pub struct CleanCommand {}
@@ -175,6 +188,10 @@ pub struct ProfileCommand {
     /// Show full terminal output with all functions
     #[arg(long, action = ArgAction::SetTrue)]
     pub expand: bool,
+
+    /// Watch src/ for changes and re-profile automatically
+    #[arg(long, short, action = ArgAction::SetTrue)]
+    pub watch: bool,
 }
 
 #[derive(Args, Debug)]
@@ -191,9 +208,9 @@ pub struct CompletionsCommand {
 pub fn run(cli: Cli) -> CliResult {
     match cli.command {
         Command::Init(cmd) => init::run(cmd.name, cmd.yes, cmd.no_git),
-        Command::Build(cmd) => build::run(cmd.debug, cmd.watch),
+        Command::Build(cmd) => build::run(cmd.debug, cmd.watch, cmd.features),
         Command::Test(cmd) => test::run(cmd.debug, cmd.filter, cmd.watch, cmd.no_build),
-        Command::Deploy(_) => todo!(),
+        Command::Deploy(cmd) => deploy::run(cmd.program_keypair, cmd.upgrade_authority),
         Command::Clean(_) => clean::run(),
         Command::Config(cmd) => cfg::run(cmd.action),
         Command::Idl(cmd) => idl::run(cmd),
@@ -208,6 +225,10 @@ pub fn run(cli: Cli) -> CliResult {
             Ok(())
         }
         Command::Profile(cmd) => {
+            if cmd.watch {
+                return profile_watch(cmd.expand);
+            }
+
             let elf_path = if let Some(path) = cmd.elf_path {
                 path
             } else if cmd.diff_program.is_none() {
@@ -253,14 +274,20 @@ pub fn print_help() {
     println!();
     println!("  {}", style::bold("Commands:"));
     print_cmd("init   [name] [-y] [--no-git]", "Scaffold a new project");
-    print_cmd("build  [--debug] [--watch]", "Compile the on-chain program");
-    print_cmd("test   [--debug] [-f] [-w] [--no-build]", "Run the test suite");
-    print_cmd("deploy", "Deploy to a cluster");
+    print_cmd(
+        "build  [--debug] [--watch] [--features]",
+        "Compile the on-chain program",
+    );
+    print_cmd(
+        "test   [--debug] [-f] [-w] [--no-build]",
+        "Run the test suite",
+    );
+    print_cmd("deploy [--program-keypair]", "Deploy to a cluster");
     print_cmd("clean", "Remove build artifacts");
     print_cmd("config [get|set|list|reset]", "Manage global settings");
     print_cmd("idl    <path>", "Generate the program IDL");
     print_cmd(
-        "profile [elf] [--expand] [--diff]",
+        "profile [elf] [--expand] [--diff] [-w]",
         "Measure compute-unit usage",
     );
     print_cmd("dump    [elf] [-f] [-S]", "Dump sBPF assembly");
@@ -278,4 +305,36 @@ pub fn print_help() {
 
 fn print_cmd(cmd: &str, desc: &str) {
     println!("    {}  {}", style::color(45, &format!("{cmd:<34}")), desc);
+}
+
+fn profile_watch(expand: bool) -> CliResult {
+    fn profile_once(expand: bool) {
+        match build::profile_build() {
+            Ok(elf) => {
+                quasar_profile::run(quasar_profile::ProfileCommand {
+                    elf_path: Some(elf),
+                    diff_program: None,
+                    share: false,
+                    expand,
+                });
+            }
+            Err(e) => {
+                eprintln!("  {}", style::fail(&format!("{e}")));
+            }
+        }
+    }
+
+    profile_once(expand);
+
+    loop {
+        let baseline = build::collect_mtimes(std::path::Path::new("src"));
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            let current = build::collect_mtimes(std::path::Path::new("src"));
+            if current != baseline {
+                profile_once(expand);
+                break;
+            }
+        }
+    }
 }
