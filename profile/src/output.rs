@@ -53,16 +53,16 @@ pub fn print_summary(result: &ProfileResult, program_name: &str, _binary_size: u
     let prev = load_previous_profile(program_name);
     let prev_total = prev.as_ref().map(|p| p.values().sum::<u64>());
 
-    // Header: name + CU + inline delta
+    // Header: name + CU + inline delta in parens
     let total_delta = match prev_total {
         Some(pt) => {
             let diff = total as i64 - pt as i64;
             if diff > 0 {
-                format!("  {}", red(&format!("+{}", format_cu(diff as u64))))
+                format!(" {}", red(&format!("(+{})", format_cu(diff as u64))))
             } else if diff < 0 {
-                format!("  {}", green(&format!("-{}", format_cu((-diff) as u64))))
+                format!(" {}", green(&format!("(-{})", format_cu((-diff) as u64))))
             } else {
-                format!("  {}", dim("="))
+                format!(" {}", dim("(=)"))
             }
         }
         _ => String::new(),
@@ -76,6 +76,7 @@ pub fn print_summary(result: &ProfileResult, program_name: &str, _binary_size: u
     );
 
     if fn_count == 0 {
+        println!();
         save_current_profile(program_name, result);
         return;
     }
@@ -89,6 +90,7 @@ pub fn print_summary(result: &ProfileResult, program_name: &str, _binary_size: u
     } else {
         print_top_functions(result, total);
     }
+    println!();
 
     save_current_profile(program_name, result);
 }
@@ -160,9 +162,9 @@ fn print_deltas(result: &ProfileResult, prev: &HashMap<String, u64>, total: u64)
             "removed".to_string()
         };
         let delta_str = if *diff > 0 {
-            red(&format!("+{}", format_cu(diff.unsigned_abs())))
+            red(&format!("(+{})", format_cu(diff.unsigned_abs())))
         } else {
-            green(&format!("-{}", format_cu(diff.unsigned_abs())))
+            green(&format!("(-{})", format_cu(diff.unsigned_abs())))
         };
         let pct = if total > 0 {
             diff.unsigned_abs() as f64 / total as f64 * 100.0
@@ -209,9 +211,9 @@ fn print_full_table(
                 if diff == 0 {
                     None
                 } else if diff > 0 {
-                    Some(red(&format!(" +{diff}")))
+                    Some(format!(" {}", red(&format!("(+{diff})"))))
                 } else {
-                    Some(green(&format!(" {diff}")))
+                    Some(format!(" {}", green(&format!("({diff})"))))
                 }
             })
             .unwrap_or_default();

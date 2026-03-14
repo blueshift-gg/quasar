@@ -419,7 +419,10 @@ fn scaffold(
     let root = Path::new(name);
 
     if root.exists() {
-        eprintln!("Error: directory '{}' already exists", name);
+        eprintln!(
+            "  {}",
+            crate::style::fail(&format!("directory '{name}' already exists"))
+        );
         std::process::exit(1);
     }
 
