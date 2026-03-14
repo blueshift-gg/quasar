@@ -59,6 +59,7 @@ mod counter_program {
 
 | Document | Content |
 |----------|---------|
+| [CLI](docs/cli.md) | `quasar` build tool — init, build, test, profile, dump, config |
 | [Accounts](docs/accounts.md) | Account types, zero-copy access, discriminators, constraints, dynamic data, remaining accounts |
 | [CPI](docs/cpi.md) | `CpiCall` const-generic builder, SystemProgram CPI, raw syscalls, PDA seeds, signing patterns |
 | [Tokens](docs/tokens.md) | SPL Token / Token-2022 integration, interface types, CPI methods, initialization |
@@ -78,24 +79,34 @@ mod counter_program {
 | `quasar-pod` | `pod/` | Alignment-1 integer types — usable independently of the framework |
 | `quasar-spl` | `spl/` | SPL Token program CPI and zero-copy `TokenAccountState` |
 | `quasar-idl` | `idl/` | IDL generator with discriminator collision detection |
+| `quasar-profile` | `profile/` | Static CU profiler, flamegraph JSON output, background server |
+| `cli` | `cli/` | `quasar` binary — build, test, profile, dump, init, config |
 
-## Building
+## CLI
 
 ```bash
-# Build SBF binaries
-cargo build-sbf --manifest-path examples/escrow/Cargo.toml
+cargo install --path cli
+```
 
-# Run tests (prints CU consumption)
-cargo test -p quasar-escrow -- --nocapture
+```bash
+quasar init my-program    # Scaffold a new project
+quasar build              # Compile the on-chain program
+quasar test               # Run the test suite
+quasar profile            # Measure compute-unit usage
+quasar dump               # Dump sBPF assembly
+quasar config list        # Manage global settings
+```
 
+See [CLI docs](docs/cli.md) for flags and configuration.
+
+## Development
+
+```bash
 # Check workspace
 cargo check --workspace
 
 # Lint
 cargo clippy --workspace -- -D warnings
-
-# Generate IDL
-cargo run -p quasar-idl
 
 # Run Miri UB tests (requires nightly)
 MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
