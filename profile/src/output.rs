@@ -44,7 +44,7 @@ fn bar_fill(s: &str) -> String {
 
 const LAST_PROFILE: &str = "target/profile/.last-profile";
 
-pub fn print_summary(result: &ProfileResult, program_name: &str, binary_size: u64, expand: bool) {
+pub fn print_summary(result: &ProfileResult, program_name: &str, _binary_size: u64, expand: bool) {
     println!();
     let total = result.total_cus;
     let fn_count = result.function_cus.len();
@@ -53,47 +53,42 @@ pub fn print_summary(result: &ProfileResult, program_name: &str, binary_size: u6
     let prev = load_previous_profile(program_name);
     let prev_total = prev.as_ref().map(|p| p.values().sum::<u64>());
 
-    // Header with total CU delta
+    // Header: name + CU + inline delta
     let total_delta = match prev_total {
-        Some(pt) if pt != total => {
+        Some(pt) => {
             let diff = total as i64 - pt as i64;
             if diff > 0 {
-                format!(" {}", red(&format!("+{}", format_cu(diff as u64))))
+                format!("  {}", red(&format!("+{}", format_cu(diff as u64))))
+            } else if diff < 0 {
+                format!("  {}", green(&format!("-{}", format_cu((-diff) as u64))))
             } else {
-                format!(" {}", green(&format!("-{}", format_cu((-diff) as u64))))
+                format!("  {}", dim("="))
             }
         }
         _ => String::new(),
     };
 
     println!(
-        "  {}  {}{}  {}",
+        "  {}  {}{}",
         bold(program_name),
         cyan(&format!("{} CU", format_cu(total))),
         total_delta,
-        dim(&human_size(binary_size))
     );
 
     if fn_count == 0 {
         save_current_profile(program_name, result);
-        println!("  {}", dim("No functions found."));
         return;
     }
 
     let has_baseline = prev.is_some();
 
     if expand {
-        // --expand: full terminal view with all functions and bars
         print_full_table(result, prev.as_ref(), total, fn_count);
     } else if has_baseline {
-        // Subsequent runs: show regressions and improvements
         print_deltas(result, prev.as_ref().unwrap(), total);
     } else {
-        // First run: show top hottest functions
         print_top_functions(result, total);
     }
-
-    // Flamegraph link is printed by the caller after the server starts
 
     save_current_profile(program_name, result);
 }
@@ -151,7 +146,6 @@ fn print_deltas(result: &ProfileResult, prev: &HashMap<String, u64>, total: u64)
     }
 
     if deltas.is_empty() {
-        println!("  {}", dim("no changes"));
         return;
     }
 
@@ -374,16 +368,6 @@ fn format_cu(n: u64) -> String {
         result.push(c);
     }
     result
-}
-
-fn human_size(bytes: u64) -> String {
-    if bytes < 1024 {
-        format!("{bytes} B")
-    } else if bytes < 1024 * 1024 {
-        format!("{:.1} KB", bytes as f64 / 1024.0)
-    } else {
-        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
-    }
 }
 
 // ---------------------------------------------------------------------------
