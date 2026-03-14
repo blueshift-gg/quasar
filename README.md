@@ -59,7 +59,7 @@ mod counter_program {
 
 | Document | Content |
 |----------|---------|
-| [CLI](docs/cli.md) | `quasar` build tool — init, build, test, profile, dump, config |
+| [CLI](docs/cli.md) | `quasar` build tool — init, build, test, deploy, profile, dump, config |
 | [Accounts](docs/accounts.md) | Account types, zero-copy access, discriminators, constraints, dynamic data, remaining accounts |
 | [CPI](docs/cpi.md) | `CpiCall` const-generic builder, SystemProgram CPI, raw syscalls, PDA seeds, signing patterns |
 | [Tokens](docs/tokens.md) | SPL Token / Token-2022 integration, interface types, CPI methods, initialization |
@@ -93,7 +93,8 @@ quasar init my-program       # Scaffold with saved defaults (no prompts)
 quasar init                  # Interactive wizard
 quasar build [--watch]       # Compile the on-chain program
 quasar test [--watch]        # Run the test suite
-quasar profile               # Measure compute-unit usage
+quasar deploy                # Deploy to a cluster
+quasar profile [--watch]     # Measure compute-unit usage
 quasar dump                  # Dump sBPF assembly
 quasar config list           # Manage global settings
 quasar completions <shell>   # Generate shell completions

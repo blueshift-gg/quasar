@@ -32,7 +32,7 @@ quasar init my-program       # Use saved defaults, no prompts
 quasar init .                # Scaffold into current directory
 ```
 
-### `quasar build [--debug] [--watch]`
+### `quasar build [--debug] [--watch] [--features FEATURES]`
 
 Compile the on-chain program. Reads `Quasar.toml` to determine which toolchain to use and automatically generates the IDL before building.
 
@@ -40,6 +40,7 @@ Compile the on-chain program. Reads `Quasar.toml` to determine which toolchain t
 |------|--------|
 | `--debug` | Emit debug symbols (required for profiling and source-interleaved dump) |
 | `--watch` | Watch `src/` for changes and rebuild automatically |
+| `--features FEATURES` | Cargo features to enable (passed through to the build command) |
 
 On success, prints the binary size and delta from the previous build:
 
@@ -60,7 +61,7 @@ Run the test suite. Builds first, then runs either Rust tests (Mollusk/QuasarSVM
 
 TypeScript tests are parsed from Mocha's JSON reporter for structured pass/fail output. Rust tests are parsed from `cargo test` output.
 
-### `quasar profile [elf] [--expand] [--diff PROGRAM] [--share]`
+### `quasar profile [elf] [--expand] [--diff PROGRAM] [--share] [--watch]`
 
 Measure compute-unit usage by statically walking the sBPF binary's call graph. If no ELF path is given, runs a debug build automatically.
 
@@ -69,6 +70,7 @@ Measure compute-unit usage by statically walking the sBPF binary's call graph. I
 | `--expand` | Show all functions with bar charts and per-function deltas |
 | `--diff PROGRAM` | Compare against an on-chain program (starts a blocking server) |
 | `--share` | Upload the profile as a public GitHub Gist |
+| `-w, --watch` | Watch `src/` for changes and re-profile automatically |
 
 The profiler tracks results between runs. On the first run, it shows the top 5 hottest functions. On subsequent runs, it shows the biggest regressions and improvements by magnitude:
 
@@ -100,6 +102,23 @@ quasar dump --function initialize -S
 ```
 
 Prints an instruction count summary at the end.
+
+### `quasar deploy [--program-keypair KEYPAIR] [--upgrade-authority KEYPAIR]`
+
+Deploy the program to a Solana cluster using the Solana CLI. Uses the cluster and wallet from your Solana CLI config (`solana config get`).
+
+The program binary is auto-detected from `target/deploy/`. The program keypair defaults to `target/deploy/<name>-keypair.json` (generated during `quasar build`).
+
+| Flag | Effect |
+|------|--------|
+| `--program-keypair KEYPAIR` | Path to the program keypair (overrides auto-detection) |
+| `--upgrade-authority KEYPAIR` | Upgrade authority keypair (defaults to Solana CLI default) |
+
+```bash
+quasar build && quasar deploy          # Build and deploy
+quasar deploy                          # Deploy existing binary
+quasar deploy --program-keypair ./my-key.json
+```
 
 ### `quasar clean`
 

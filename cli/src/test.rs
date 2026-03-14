@@ -17,12 +17,13 @@ fn run_once(debug: bool, filter: Option<&str>, no_build: bool) -> CliResult {
     let config = QuasarConfig::load()?;
 
     if !no_build {
-        crate::build::run(debug, false)?;
+        crate::build::run(debug, false, None)?;
     }
 
     let sp = style::spinner("Testing...");
     let start = Instant::now();
 
+    let is_mollusk = config.testing.framework == "mollusk";
     let result = if config.has_typescript_tests() {
         run_typescript_tests(filter)
     } else if config.has_rust_tests() {
@@ -66,13 +67,15 @@ fn run_once(debug: bool, filter: Option<&str>, no_build: bool) -> CliResult {
                 summary.failed,
                 style::human_duration(elapsed)
             );
-            eprintln!();
-            eprintln!(
-                "  {}",
-                style::dim(
-                    "Tip: enable the \"debug\" feature for more descriptive error messages."
-                )
-            );
+            if is_mollusk {
+                eprintln!();
+                eprintln!(
+                    "  {}",
+                    style::dim(
+                        "Tip: enable the \"debug\" feature for more descriptive error messages."
+                    )
+                );
+            }
             std::process::exit(1);
         }
     }
