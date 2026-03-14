@@ -978,7 +978,7 @@ fn test_initialize() {{
             format!(
                 r#"extern crate std;
 
-use quasar_svm::{{Account, Instruction, Pubkey, QuasarSvm}};
+use quasar_svm::{{Account, Check, Instruction, ProgramError, Pubkey, QuasarSvm}};
 use solana_address::Address;
 
 use {client_crate}::InitializeInstruction;
@@ -1002,12 +1002,11 @@ fn test_initialize() {{
     }}
     .into();
 
-    let result = svm.process_transaction(
+    svm.process_and_validate_transaction(
         &[instruction],
         &[(payer, Account::new(10_000_000_000, 0, &system_program))],
+        &[Check::success()],
     );
-
-    result.expect("initialize failed");
 }}
 "#
             )
