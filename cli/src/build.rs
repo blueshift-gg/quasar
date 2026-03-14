@@ -114,8 +114,9 @@ fn run_once(debug: bool) -> CliResult {
             Ok(())
         }
         Ok(o) => {
+            let elapsed = start.elapsed();
             let stderr = String::from_utf8_lossy(&o.stderr);
-            print_build_errors(&stderr);
+            print_build_errors(&stderr, elapsed);
             std::process::exit(o.status.code().unwrap_or(1));
         }
         Err(e) => {
@@ -223,8 +224,9 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
             Ok(dest)
         }
         Ok(o) => {
+            let elapsed = start.elapsed();
             let stderr = String::from_utf8_lossy(&o.stderr);
-            print_build_errors(&stderr);
+            print_build_errors(&stderr, elapsed);
             std::process::exit(o.status.code().unwrap_or(1));
         }
         Err(e) => {
@@ -304,7 +306,7 @@ fn extract_warnings(stderr: &str) -> Vec<String> {
 
 /// Extract and display only the meaningful error/warning lines from cargo
 /// output.
-fn print_build_errors(stderr: &str) {
+fn print_build_errors(stderr: &str, elapsed: std::time::Duration) {
     let mut errors: Vec<String> = Vec::new();
     let mut capture = false;
 
@@ -340,7 +342,13 @@ fn print_build_errors(stderr: &str) {
         if !stderr.is_empty() {
             eprint!("{stderr}");
         }
-        eprintln!("  {}", style::fail("build failed"));
+        eprintln!(
+            "  {}",
+            style::fail(&format!(
+                "build failed in {}",
+                style::bold(&style::human_duration(elapsed))
+            ))
+        );
         return;
     }
 
@@ -371,7 +379,13 @@ fn print_build_errors(stderr: &str) {
         ));
     }
 
-    eprintln!("  {}", style::fail(&format!("build failed ({summary})")));
+    eprintln!(
+        "  {}",
+        style::fail(&format!(
+            "build failed in {} ({summary})",
+            style::bold(&style::human_duration(elapsed))
+        ))
+    );
 }
 
 // ---------------------------------------------------------------------------

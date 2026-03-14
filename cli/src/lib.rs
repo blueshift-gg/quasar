@@ -1,5 +1,5 @@
 use {
-    clap::{ArgAction, Args, Parser, Subcommand},
+    clap::{ArgAction, Args, CommandFactory, Parser, Subcommand},
     std::path::PathBuf,
 };
 
@@ -48,6 +48,8 @@ pub enum Command {
     Profile(ProfileCommand),
     /// Dump sBPF assembly
     Dump(DumpCommand),
+    /// Generate shell completions
+    Completions(CompletionsCommand),
 }
 
 // ---------------------------------------------------------------------------
@@ -175,6 +177,13 @@ pub struct ProfileCommand {
     pub expand: bool,
 }
 
+#[derive(Args, Debug)]
+pub struct CompletionsCommand {
+    /// Shell to generate completions for
+    #[arg(value_enum)]
+    pub shell: clap_complete::Shell,
+}
+
 // ---------------------------------------------------------------------------
 // Run
 // ---------------------------------------------------------------------------
@@ -189,6 +198,15 @@ pub fn run(cli: Cli) -> CliResult {
         Command::Config(cmd) => cfg::run(cmd.action),
         Command::Idl(cmd) => idl::run(cmd),
         Command::Dump(cmd) => dump::run(cmd.elf_path, cmd.function, cmd.source),
+        Command::Completions(cmd) => {
+            clap_complete::generate(
+                cmd.shell,
+                &mut Cli::command(),
+                "quasar",
+                &mut std::io::stdout(),
+            );
+            Ok(())
+        }
         Command::Profile(cmd) => {
             let elf_path = if let Some(path) = cmd.elf_path {
                 path

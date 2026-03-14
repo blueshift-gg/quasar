@@ -276,6 +276,9 @@ fn dim(s: &str) -> String {
 pub fn run(name: Option<String>, yes: bool, no_git: bool) -> CliResult {
     let globals = GlobalConfig::load();
 
+    // Skip prompts when a name is provided (or --yes is set)
+    let skip_prompts = yes || name.is_some();
+
     if globals.ui.animation {
         print_banner();
     }
@@ -283,7 +286,7 @@ pub fn run(name: Option<String>, yes: bool, no_git: bool) -> CliResult {
     let theme = ColorfulTheme::default();
 
     // Project name
-    let name: String = if yes {
+    let name: String = if skip_prompts {
         name.unwrap_or_else(|| {
             eprintln!("  {}", crate::style::fail("--yes requires a project name"));
             std::process::exit(1);
@@ -311,7 +314,7 @@ pub fn run(name: Option<String>, yes: bool, no_git: bool) -> CliResult {
         Some("upstream") => 1,
         _ => 0,
     };
-    let toolchain_idx = if yes {
+    let toolchain_idx = if skip_prompts {
         toolchain_default
     } else {
         let toolchain_items = &[
@@ -355,7 +358,7 @@ pub fn run(name: Option<String>, yes: bool, no_git: bool) -> CliResult {
         Some("none") => 0,
         _ => 2,
     };
-    let framework_idx = if yes {
+    let framework_idx = if skip_prompts {
         framework_default
     } else {
         let framework_items = &[
@@ -385,7 +388,7 @@ pub fn run(name: Option<String>, yes: bool, no_git: bool) -> CliResult {
         Some("full") => 1,
         _ => 0,
     };
-    let template_idx = if yes {
+    let template_idx = if skip_prompts {
         template_default
     } else {
         let template_items = &[
@@ -404,7 +407,7 @@ pub fn run(name: Option<String>, yes: bool, no_git: bool) -> CliResult {
         _ => Template::Full,
     };
 
-    if yes {
+    if skip_prompts {
         println!();
         println!(
             "  {} {} {} {} {}",
