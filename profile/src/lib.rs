@@ -5,12 +5,18 @@ mod output;
 mod serve;
 mod walk;
 
-use std::{
-    collections::HashSet,
-    fs::{self, File},
-    io::{self, copy},
-    path::{Path, PathBuf},
-    process::Command,
+use {
+    crate::elf::DebugLevel,
+    memmap2::Mmap,
+    sha2::{Digest, Sha256},
+    std::{
+        collections::HashSet,
+        fs::{self, File},
+        io::{self, copy},
+        path::{Path, PathBuf},
+        process::Command,
+    },
+    toml::Value,
 };
 
 const SERVER_HOST: &str = "127.0.0.1";
