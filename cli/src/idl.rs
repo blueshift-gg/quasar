@@ -8,9 +8,10 @@ use {
 ///
 /// Outputs:
 /// - `target/idl/<name>.idl.json`
-/// - `target/client/typescript/<name>/web3.ts`
 /// - `target/client/rust/<name>-client/` (standalone Rust crate)
-pub fn generate(crate_path: &Path) -> CliResult {
+/// - `target/client/typescript/<name>/web3.ts` when `generate_typescript` is
+///   true
+pub fn generate(crate_path: &Path, generate_typescript: bool) -> CliResult {
     // Parse the program
     let parsed = parser::parse_program(crate_path);
 
@@ -21,10 +22,6 @@ pub fn generate(crate_path: &Path) -> CliResult {
     // Build the IDL
     let idl = parser::build_idl(parsed);
 
-    // Generate TypeScript clients from IDL (web3.js + kit entrypoints)
-    let ts_code = codegen::typescript::generate_ts_client(&idl);
-    let ts_kit_code = codegen::typescript::generate_ts_client_kit(&idl);
-
     // Write IDL JSON to target/idl/
     let idl_dir = PathBuf::from("target").join("idl");
     std::fs::create_dir_all(&idl_dir).expect("Failed to create target/idl directory");
@@ -34,30 +31,34 @@ pub fn generate(crate_path: &Path) -> CliResult {
     std::fs::write(&idl_path, &json).expect("Failed to write IDL file");
     println!("{}", idl_path.display());
 
-    // Write TypeScript clients to target/client/typescript/<name>/
-    let ts_dir = PathBuf::from("target")
-        .join("client")
-        .join("typescript")
-        .join(&idl.metadata.name);
-    std::fs::create_dir_all(&ts_dir)
-        .expect("Failed to create target/client/typescript/<name> directory");
-    let ts_path = ts_dir.join("web3.ts");
-    std::fs::write(&ts_path, &ts_code).expect("Failed to write TS client");
-    println!("{}", ts_path.display());
-    let ts_kit_path = ts_dir.join("kit.ts");
-    std::fs::write(&ts_kit_path, &ts_kit_code).expect("Failed to write TS kit client");
-    println!("{}", ts_kit_path.display());
+    if generate_typescript {
+        let ts_code = codegen::typescript::generate_ts_client(&idl);
+        let ts_kit_code = codegen::typescript::generate_ts_client_kit(&idl);
 
-    // Write package.json for the TS client
-    let needs_codecs =
-        !idl.types.is_empty() || idl.instructions.iter().any(|ix| !ix.args.is_empty());
-    let codecs_dep = if needs_codecs {
-        "\n    \"@solana/codecs\": \"^6.2.0\","
-    } else {
-        ""
-    };
-    let ts_package_json = format!(
-        r#"{{
+        // Write TypeScript clients to target/client/typescript/<name>/
+        let ts_dir = PathBuf::from("target")
+            .join("client")
+            .join("typescript")
+            .join(&idl.metadata.name);
+        std::fs::create_dir_all(&ts_dir)
+            .expect("Failed to create target/client/typescript/<name> directory");
+        let ts_path = ts_dir.join("web3.ts");
+        std::fs::write(&ts_path, &ts_code).expect("Failed to write TS client");
+        println!("{}", ts_path.display());
+        let ts_kit_path = ts_dir.join("kit.ts");
+        std::fs::write(&ts_kit_path, &ts_kit_code).expect("Failed to write TS kit client");
+        println!("{}", ts_kit_path.display());
+
+        // Write package.json for the TS client
+        let needs_codecs =
+            !idl.types.is_empty() || idl.instructions.iter().any(|ix| !ix.args.is_empty());
+        let codecs_dep = if needs_codecs {
+            "\n    \"@solana/codecs\": \"^6.2.0\","
+        } else {
+            ""
+        };
+        let ts_package_json = format!(
+            r#"{{
   "name": "{crate_name}-client",
   "version": "{version}",
   "private": true,
@@ -71,11 +72,12 @@ pub fn generate(crate_path: &Path) -> CliResult {
   }}
 }}
 "#,
-        crate_name = idl.metadata.crate_name,
-        version = idl.metadata.version,
-    );
-    std::fs::write(ts_dir.join("package.json"), &ts_package_json)
-        .expect("Failed to write TS client package.json");
+            crate_name = idl.metadata.crate_name,
+            version = idl.metadata.version,
+        );
+        std::fs::write(ts_dir.join("package.json"), &ts_package_json)
+            .expect("Failed to write TS client package.json");
+    }
 
     // Write Rust client as a standalone crate in target/client/rust/<name>-client/
     let crate_name = &idl.metadata.crate_name;
@@ -104,5 +106,5 @@ pub fn run(command: IdlCommand) -> CliResult {
         std::process::exit(1);
     }
 
-    generate(crate_path)
+    generate(crate_path, true)
 }

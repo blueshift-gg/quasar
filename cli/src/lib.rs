@@ -50,10 +50,20 @@ pub struct InitCommand {
 }
 
 #[derive(Args, Debug, Default)]
-pub struct BuildCommand {}
+pub struct BuildCommand {
+    /// Build in debug mode (unoptimized, with debug symbols needed for
+    /// profiling)
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub debug: bool,
+}
 
 #[derive(Args, Debug, Default)]
-pub struct TestCommand {}
+pub struct TestCommand {
+    /// Build and test in debug mode (unoptimized, with debug symbols needed for
+    /// profiling)
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub debug: bool,
+}
 
 #[derive(Args, Debug, Default)]
 pub struct DeployCommand {}
@@ -68,8 +78,10 @@ pub struct IdlCommand {
 pub fn run(cli: Cli) -> CliResult {
     match cli.command {
         Command::Profile(command) => {
+            let elf_path = command.elf_path.or_else(resolve_default_profile_elf_path);
+
             quasar_profile::run(quasar_profile::ProfileCommand {
-                elf_path: command.elf_path,
+                elf_path,
                 diff_program: command.diff_program,
                 share: command.share,
             });
@@ -78,8 +90,28 @@ pub fn run(cli: Cli) -> CliResult {
         }
         Command::Idl(command) => idl::run(command),
         Command::Init(command) => init::run(command.name),
-        Command::Build(_) => build::run(),
-        Command::Test(_) => test::run(),
+        Command::Build(command) => build::run(command.debug),
+        Command::Test(command) => test::run(command.debug),
         Command::Deploy(_) => todo!(),
     }
+}
+
+fn resolve_default_profile_elf_path() -> Option<PathBuf> {
+    let config = config::QuasarConfig::load().ok()?;
+    let module_name = config.module_name();
+    let project_name = config.project.name;
+
+    [
+        PathBuf::from("target")
+            .join("deploy")
+            .join(format!("{project_name}.so")),
+        PathBuf::from("target")
+            .join("deploy")
+            .join(format!("{module_name}.so")),
+        PathBuf::from("target")
+            .join("deploy")
+            .join(format!("lib{module_name}.so")),
+    ]
+    .into_iter()
+    .find(|path| path.exists())
 }

@@ -5,20 +5,12 @@ mod output;
 mod serve;
 mod walk;
 
-use {
-    elf::DebugLevel,
-    memmap2::Mmap,
-    sha2::{Digest, Sha256},
-    std::{
-        collections::HashSet,
-        fs::{self, File},
-        io::{self, copy},
-        path::{Path, PathBuf},
-        process::Command,
-        thread,
-        time::Duration,
-    },
-    toml::Value,
+use std::{
+    collections::HashSet,
+    fs::{self, File},
+    io::{self, copy},
+    path::{Path, PathBuf},
+    process::Command,
 };
 
 const SERVER_HOST: &str = "127.0.0.1";
@@ -37,7 +29,10 @@ pub fn run(command: ProfileCommand) {
     }
 
     let elf_path = command.elf_path.unwrap_or_else(|| {
-        eprintln!("Error: missing ELF path. Use `quasar profile <PATH_TO_ELF_SO>`.");
+        eprintln!(
+            "Error: missing ELF path. Put the program at target/deploy/<program>.so or pass \
+             `quasar profile <PATH_TO_ELF_SO>`."
+        );
         std::process::exit(1);
     });
     let public_gist = command.share;
@@ -129,7 +124,6 @@ pub fn run(command: ProfileCommand) {
     eprintln!("Profile JSON written to: {}", local_output_path.display());
 
     ensure_frontend_assets(&profile_root);
-    ensure_local_server_running(&profile_root);
 
     if public_gist {
         ensure_gh_installed();
@@ -143,16 +137,25 @@ pub fn run(command: ProfileCommand) {
         "http://{}:{}/?program={}",
         SERVER_HOST, SERVER_PORT, program_name
     );
+    eprintln!("Press Ctrl-C to stop the profiler server.");
+    serve::serve(&profile_root, SERVER_PORT).unwrap_or_else(|e| {
+        eprintln!("Error: failed to start local profiler server: {}", e);
+        std::process::exit(1);
+    });
 }
 
 fn run_diff(program: String) {
     let profile_root = profile_web_root();
     ensure_frontend_assets(&profile_root);
-    ensure_local_server_running(&profile_root);
     println!(
         "http://{}:{}/?program={}&view=diff",
         SERVER_HOST, SERVER_PORT, program
     );
+    eprintln!("Press Ctrl-C to stop the profiler server.");
+    serve::serve(&profile_root, SERVER_PORT).unwrap_or_else(|e| {
+        eprintln!("Error: failed to start local profiler server: {}", e);
+        std::process::exit(1);
+    });
 }
 
 fn ensure_frontend_assets(profile_root: &Path) {
@@ -184,30 +187,6 @@ fn ensure_frontend_assets(profile_root: &Path) {
         );
         std::process::exit(1);
     });
-}
-
-fn ensure_local_server_running(profile_root: &Path) {
-    if serve::is_port_listening(SERVER_HOST, SERVER_PORT) {
-        return;
-    }
-
-    serve::spawn_server_process(profile_root, SERVER_PORT).unwrap_or_else(|e| {
-        eprintln!("Error: failed to start local profiler server: {}", e);
-        std::process::exit(1);
-    });
-
-    for _ in 0..20 {
-        if serve::is_port_listening(SERVER_HOST, SERVER_PORT) {
-            return;
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-
-    eprintln!(
-        "Error: local profiler server did not start on {}:{}",
-        SERVER_HOST, SERVER_PORT
-    );
-    std::process::exit(1);
 }
 
 fn profile_web_root() -> PathBuf {

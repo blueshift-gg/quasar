@@ -126,7 +126,10 @@ pub fn run(name: Option<String>) -> CliResult {
     };
 
     // Template
-    let template_items = &["Minimal", "Full"];
+    let template_items = &[
+        "Minimal (instruction file only)",
+        "Full(state, events, and instruction files)",
+    ];
     let template_idx = Select::with_theme(&theme)
         .with_prompt("Template")
         .items(template_items)
@@ -251,7 +254,7 @@ fn scaffold(
     if framework.has_rust_tests() {
         fs::write(
             src.join("tests.rs"),
-            generate_tests_rs(&module_name, framework, template),
+            generate_tests_rs(&module_name, framework, template, toolchain),
         )
         .map_err(anyhow::Error::from)?;
     }
@@ -290,6 +293,12 @@ fn generate_cargo_toml(name: &str, toolchain: Toolchain, framework: Framework) -
 name = "{name}"
 version = "0.1.0"
 edition = "2021"
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = [
+    'cfg(target_os, values("solana"))',
+]
 
 [lib]
 crate-type = ["cdylib"]
@@ -443,7 +452,7 @@ fn generate_test_ts(name: &str, framework: Framework) -> String {
     if framework.is_kit() {
         format!(
             r#"import {{ generateKeyPairSigner, address, lamports, Account }} from "@solana/kit";
-import {{ {class_name}Client, PROGRAM_ADDRESS }} from "../target/client/typescript/{name}/kit";
+import {{ {class_name}Client, PROGRAM_ADDRESS }} from "../target/client/typescript/{module_name}/kit";
 import {{ describe, it, run }} from "mocha";
 import {{ QuasarSvm }} from "@blueshift-gg/quasar-svm/kit";
 import {{ readFile }} from "node:fs/promises";
@@ -487,7 +496,7 @@ describe("{class_name} Program", async () => {{
     } else {
         format!(
             r#"import {{ Keypair, SystemProgram, KeyedAccountInfo }} from "@solana/web3.js";
-import {{ {class_name}Client }} from "../target/client/typescript/{name}/web3.js";
+import {{ {class_name}Client }} from "../target/client/typescript/{module_name}/web3.js";
 import {{ readFile }} from "node:fs/promises";
 import {{ describe, it, run }} from "mocha";
 import {{ assert }} from "chai";
@@ -544,7 +553,16 @@ fn snake_to_pascal(s: &str) -> String {
         .collect()
 }
 
-fn generate_tests_rs(module_name: &str, framework: Framework, template: Template) -> String {
+fn generate_tests_rs(
+    module_name: &str,
+    framework: Framework,
+    template: Template,
+    toolchain: Toolchain,
+) -> String {
+    let mut libname = module_name.to_string();
+    if matches!(toolchain, Toolchain::Upstream) {
+        libname = format!("lib{libname}");
+    };
     let client_crate = format!("{module_name}_client");
 
     match (framework, template) {
@@ -560,7 +578,7 @@ use solana_instruction::Instruction;
 use {client_crate}::InitializeInstruction;
 
 fn setup() -> Mollusk {{
-    Mollusk::new(&crate::ID, "target/deploy/{module_name}")
+    Mollusk::new(&crate::ID, "target/deploy/{libname}")
 }}
 
 #[test]

@@ -3,11 +3,11 @@ use {
     std::process::Command,
 };
 
-pub fn run() -> CliResult {
+pub fn run(debug: bool) -> CliResult {
     let config = QuasarConfig::load()?;
 
     // Build (generates IDL client crate + SBF binary)
-    crate::build::run()?;
+    crate::build::run(debug)?;
 
     if config.has_typescript_tests() {
         run_typescript_tests()
