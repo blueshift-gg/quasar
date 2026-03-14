@@ -63,6 +63,10 @@ pub struct InitCommand {
     /// Skip prompts and use saved defaults
     #[arg(long, short, action = ArgAction::SetTrue)]
     pub yes: bool,
+
+    /// Skip git init
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub no_git: bool,
 }
 
 #[derive(Args, Debug, Default)]
@@ -89,6 +93,10 @@ pub struct TestCommand {
     /// Watch src/ for changes and re-run tests automatically
     #[arg(long, short, action = ArgAction::SetTrue)]
     pub watch: bool,
+
+    /// Skip the build step (use existing binary)
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub no_build: bool,
 }
 
 #[derive(Args, Debug, Default)]
@@ -173,9 +181,9 @@ pub struct ProfileCommand {
 
 pub fn run(cli: Cli) -> CliResult {
     match cli.command {
-        Command::Init(cmd) => init::run(cmd.name, cmd.yes),
+        Command::Init(cmd) => init::run(cmd.name, cmd.yes, cmd.no_git),
         Command::Build(cmd) => build::run(cmd.debug, cmd.watch),
-        Command::Test(cmd) => test::run(cmd.debug, cmd.filter, cmd.watch),
+        Command::Test(cmd) => test::run(cmd.debug, cmd.filter, cmd.watch, cmd.no_build),
         Command::Deploy(_) => todo!(),
         Command::Clean(_) => clean::run(),
         Command::Config(cmd) => cfg::run(cmd.action),
@@ -226,9 +234,9 @@ pub fn print_help() {
     );
     println!();
     println!("  {}", style::bold("Commands:"));
-    print_cmd("init   [name] [-y]", "Scaffold a new project");
+    print_cmd("init   [name] [-y] [--no-git]", "Scaffold a new project");
     print_cmd("build  [--debug] [--watch]", "Compile the on-chain program");
-    print_cmd("test   [--debug] [--filter] [-w]", "Run the test suite");
+    print_cmd("test   [--debug] [-f] [-w] [--no-build]", "Run the test suite");
     print_cmd("deploy", "Deploy to a cluster");
     print_cmd("clean", "Remove build artifacts");
     print_cmd("config [get|set|list|reset]", "Manage global settings");

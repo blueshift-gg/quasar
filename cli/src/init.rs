@@ -273,7 +273,7 @@ fn dim(s: &str) -> String {
 // Entry point
 // ---------------------------------------------------------------------------
 
-pub fn run(name: Option<String>, yes: bool) -> CliResult {
+pub fn run(name: Option<String>, yes: bool, no_git: bool) -> CliResult {
     let globals = GlobalConfig::load();
 
     if globals.ui.animation {
@@ -417,6 +417,22 @@ pub fn run(name: Option<String>, yes: bool) -> CliResult {
     }
 
     scaffold(&name, &crate_name, toolchain, framework, template)?;
+
+    // git init (unless --no-git or already in a git repo)
+    if !no_git {
+        let root = Path::new(&name);
+        let already_git = if name == "." {
+            Path::new(".git").exists()
+        } else {
+            root.join(".git").exists()
+        };
+        if !already_git {
+            let _ = std::process::Command::new("git")
+                .args(["init", "--quiet"])
+                .current_dir(root)
+                .status();
+        }
+    }
 
     // Save preferences for next time
     let new_globals = GlobalConfig {

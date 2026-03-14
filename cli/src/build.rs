@@ -24,6 +24,8 @@ fn run_once(debug: bool) -> CliResult {
 
     crate::idl::generate(Path::new("."), config.has_typescript_tests())?;
 
+    let sp = style::spinner("Building...");
+
     let output = if config.is_solana_toolchain() {
         let mut cmd = Command::new("cargo");
         cmd.arg("build-sbf");
@@ -33,6 +35,7 @@ fn run_once(debug: bool) -> CliResult {
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output()
     } else {
         if !toolchain::has_sbpf_linker() {
+            sp.finish_and_clear();
             eprintln!("\n  {}", style::fail("sbpf-linker not found on PATH."));
             eprintln!();
             eprintln!("  Install platform-tools first:");
@@ -52,6 +55,8 @@ fn run_once(debug: bool) -> CliResult {
         cmd.arg("build-bpf");
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output()
     };
+
+    sp.finish_and_clear();
 
     match output {
         Ok(o) if o.status.success() => {
@@ -73,6 +78,16 @@ fn run_once(debug: bool) -> CliResult {
                     );
                     e
                 })?;
+            }
+
+            // Show warnings even on success
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            let warnings = extract_warnings(&stderr);
+            if !warnings.is_empty() {
+                eprintln!();
+                for line in &warnings {
+                    eprintln!("  {line}");
+                }
             }
 
             let so_path = find_so(&config);
@@ -121,12 +136,15 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
 
     crate::idl::generate(Path::new("."), config.has_typescript_tests())?;
 
+    let sp = style::spinner("Profile build...");
+
     let output = if config.is_solana_toolchain() {
         let mut cmd = Command::new("cargo");
         cmd.arg("build-sbf").arg("--debug");
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output()
     } else {
         if !toolchain::has_sbpf_linker() {
+            sp.finish_and_clear();
             eprintln!("\n  {}", style::fail("sbpf-linker not found on PATH."));
             eprintln!();
             eprintln!("  Install platform-tools first:");
@@ -156,6 +174,8 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
         cmd.arg("build-bpf");
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output()
     };
+
+    sp.finish_and_clear();
 
     match output {
         Ok(o) if o.status.success() => {
@@ -253,6 +273,34 @@ fn run_watch(debug: bool) -> CliResult {
 // ---------------------------------------------------------------------------
 // Build error formatting
 // ---------------------------------------------------------------------------
+
+/// Extract warning lines from cargo output (for display on success).
+fn extract_warnings(stderr: &str) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let mut capture = false;
+
+    for line in stderr.lines() {
+        if line.starts_with("warning") {
+            if line.contains("warnings emitted")
+                || line.contains("warning emitted")
+                || line.contains("user-defined alias")
+                || line.contains("shadowing")
+            {
+                continue;
+            }
+            capture = true;
+            warnings.push(line.to_string());
+        } else if capture {
+            if line.starts_with("  ") || line.starts_with(" -->") || line.is_empty() {
+                warnings.push(line.to_string());
+            } else {
+                capture = false;
+            }
+        }
+    }
+
+    warnings
+}
 
 /// Extract and display only the meaningful error/warning lines from cargo
 /// output.

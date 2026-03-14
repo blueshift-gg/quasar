@@ -85,6 +85,35 @@ pub fn human_size(bytes: u64) -> String {
     }
 }
 
+/// Create a space-themed cyan spinner with a message.
+pub fn spinner(msg: &str) -> indicatif::ProgressBar {
+    use indicatif::{ProgressBar, ProgressStyle};
+    use std::time::Duration;
+
+    let sp = ProgressBar::new_spinner();
+    sp.set_style(
+        ProgressStyle::default_spinner()
+            .tick_strings(&[
+                "✦ ·  · ",
+                " ✦ ·  ·",
+                "·  ✦ · ",
+                " ·  ✦ ·",
+                "·  · ✦ ",
+                " ·  · ✦",
+                "·  · ✦ ",
+                " ·  ✦ ·",
+                "·  ✦ · ",
+                " ✦ ·  ·",
+                "✦ ·  · ",
+            ])
+            .template("  {spinner:.cyan} {msg}")
+            .unwrap(),
+    );
+    sp.enable_steady_tick(Duration::from_millis(80));
+    sp.set_message(msg.to_string());
+    sp
+}
+
 /// Format a duration in a human-readable way.
 pub fn human_duration(d: std::time::Duration) -> String {
     let secs = d.as_secs_f64();

@@ -6,18 +6,21 @@ use {
     },
 };
 
-pub fn run(debug: bool, filter: Option<String>, watch: bool) -> CliResult {
+pub fn run(debug: bool, filter: Option<String>, watch: bool, no_build: bool) -> CliResult {
     if watch {
-        return run_watch(debug, filter);
+        return run_watch(debug, filter, no_build);
     }
-    run_once(debug, filter.as_deref())
+    run_once(debug, filter.as_deref(), no_build)
 }
 
-fn run_once(debug: bool, filter: Option<&str>) -> CliResult {
+fn run_once(debug: bool, filter: Option<&str>, no_build: bool) -> CliResult {
     let config = QuasarConfig::load()?;
 
-    crate::build::run(debug, false)?;
+    if !no_build {
+        crate::build::run(debug, false)?;
+    }
 
+    let sp = style::spinner("Testing...");
     let start = Instant::now();
 
     let result = if config.has_typescript_tests() {
@@ -25,9 +28,12 @@ fn run_once(debug: bool, filter: Option<&str>) -> CliResult {
     } else if config.has_rust_tests() {
         run_rust_tests(filter)
     } else {
+        sp.finish_and_clear();
         println!("  {}", style::warn("no test framework configured"));
         return Ok(());
     };
+
+    sp.finish_and_clear();
 
     let elapsed = start.elapsed();
 
@@ -72,8 +78,8 @@ fn run_once(debug: bool, filter: Option<&str>) -> CliResult {
     }
 }
 
-fn run_watch(debug: bool, filter: Option<String>) -> CliResult {
-    if let Err(e) = run_once(debug, filter.as_deref()) {
+fn run_watch(debug: bool, filter: Option<String>, no_build: bool) -> CliResult {
+    if let Err(e) = run_once(debug, filter.as_deref(), no_build) {
         eprintln!("  {}", style::fail(&format!("{e}")));
     }
 
@@ -83,7 +89,7 @@ fn run_watch(debug: bool, filter: Option<String>) -> CliResult {
             std::thread::sleep(std::time::Duration::from_secs(1));
             let current = crate::build::collect_mtimes(std::path::Path::new("src"));
             if current != baseline {
-                if let Err(e) = run_once(debug, filter.as_deref()) {
+                if let Err(e) = run_once(debug, filter.as_deref(), no_build) {
                     eprintln!("  {}", style::fail(&format!("{e}")));
                 }
                 break;

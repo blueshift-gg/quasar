@@ -10,7 +10,7 @@ cargo install --path cli
 
 ## Commands
 
-### `quasar init [name] [--yes]`
+### `quasar init [name] [--yes] [--no-git]`
 
 Scaffold a new Quasar project. Launches an interactive wizard that prompts for:
 
@@ -19,11 +19,12 @@ Scaffold a new Quasar project. Launches an interactive wizard that prompts for:
 - **Testing framework** — None, Mollusk, QuasarSVM/Rust, QuasarSVM/Web3.js, or QuasarSVM/Kit
 - **Template** — Minimal (single instruction) or Full (state, events, instruction files)
 
-The wizard generates a complete project directory with `Cargo.toml`, `Quasar.toml`, source files, test scaffolding, and a program keypair. Preferences are saved to `~/.quasar/config.toml` so subsequent `init` runs use the same defaults.
+The wizard generates a complete project directory with `Cargo.toml`, `Quasar.toml`, source files, test scaffolding, and a program keypair. Runs `git init` automatically. Preferences are saved to `~/.quasar/config.toml` so subsequent `init` runs use the same defaults.
 
 | Flag | Effect |
 |------|--------|
 | `-y, --yes` | Skip all prompts and use saved defaults (requires a name argument) |
+| `--no-git` | Skip `git init` |
 
 ```bash
 quasar init my-program       # Interactive wizard
@@ -55,6 +56,7 @@ Run the test suite. Builds first, then runs either Rust tests (Mollusk/QuasarSVM
 | `--debug` | Build with debug symbols before testing |
 | `-f, --filter PATTERN` | Only run tests matching the pattern |
 | `-w, --watch` | Watch `src/` for changes and re-run tests automatically |
+| `--no-build` | Skip the build step (use existing binary) |
 
 TypeScript tests are parsed from Mocha's JSON reporter for structured pass/fail output. Rust tests are parsed from `cargo test` output.
 

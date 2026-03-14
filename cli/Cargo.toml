@@ -24,3 +24,4 @@ ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand = "0.8"
 bs58 = "0.5"
 dirs = "6"
+indicatif = "0.18.4"
