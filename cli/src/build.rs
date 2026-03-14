@@ -36,7 +36,10 @@ fn run_once(debug: bool) -> CliResult {
             eprintln!("\n  {}", style::fail("sbpf-linker not found on PATH."));
             eprintln!();
             eprintln!("  Install platform-tools first:");
-            eprintln!("    {}", style::bold("git clone https://github.com/anza-xyz/platform-tools"));
+            eprintln!(
+                "    {}",
+                style::bold("git clone https://github.com/anza-xyz/platform-tools")
+            );
             eprintln!("    {}", style::bold("cd platform-tools"));
             eprintln!("    {}", style::bold("cargo install-with-gallery"));
             std::process::exit(1);
@@ -64,7 +67,10 @@ fn run_once(debug: bool) -> CliResult {
                 fs::create_dir_all(&dest_dir)?;
                 let dest = dest_dir.join(format!("lib{}.so", program));
                 fs::copy(&src, &dest).map_err(|e| {
-                    eprintln!("  {}", style::fail(&format!("failed to copy {}: {e}", src.display())));
+                    eprintln!(
+                        "  {}",
+                        style::fail(&format!("failed to copy {}: {e}", src.display()))
+                    );
                     e
                 })?;
             }
@@ -76,7 +82,10 @@ fn run_once(debug: bool) -> CliResult {
                     let new_size = meta.len();
                     let delta = size_delta(&p, new_size);
                     save_last_size(&p, new_size);
-                    Some(format!(" ({}{delta})", style::dim(&style::human_size(new_size))))
+                    Some(format!(
+                        " ({}{delta})",
+                        style::dim(&style::human_size(new_size))
+                    ))
                 })
                 .unwrap_or_default();
 
@@ -95,7 +104,10 @@ fn run_once(debug: bool) -> CliResult {
             std::process::exit(o.status.code().unwrap_or(1));
         }
         Err(e) => {
-            eprintln!("  {}", style::fail(&format!("failed to run build command: {e}")));
+            eprintln!(
+                "  {}",
+                style::fail(&format!("failed to run build command: {e}"))
+            );
             std::process::exit(1);
         }
     }
@@ -118,7 +130,10 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
             eprintln!("\n  {}", style::fail("sbpf-linker not found on PATH."));
             eprintln!();
             eprintln!("  Install platform-tools first:");
-            eprintln!("    {}", style::bold("git clone https://github.com/anza-xyz/platform-tools"));
+            eprintln!(
+                "    {}",
+                style::bold("git clone https://github.com/anza-xyz/platform-tools")
+            );
             eprintln!("    {}", style::bold("cd platform-tools"));
             eprintln!("    {}", style::bold("cargo install-with-gallery"));
             std::process::exit(1);
@@ -151,7 +166,8 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
 
             // Find the built .so and copy to target/profile/
             let src = if config.is_solana_toolchain() {
-                // build-sbf --debug puts it in target/deploy/ or target/sbf-solana-solana/release/
+                // build-sbf --debug puts it in target/deploy/ or
+                // target/sbf-solana-solana/release/
                 find_so(&config).unwrap_or_else(|| {
                     PathBuf::from("target")
                         .join("sbf-solana-solana")
@@ -167,7 +183,10 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
 
             let dest = profile_dir.join(format!("{}.so", program));
             fs::copy(&src, &dest).map_err(|e| {
-                eprintln!("  {}", style::fail(&format!("failed to copy {}: {e}", src.display())));
+                eprintln!(
+                    "  {}",
+                    style::fail(&format!("failed to copy {}: {e}", src.display()))
+                );
                 e
             })?;
 
@@ -189,7 +208,10 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
             std::process::exit(o.status.code().unwrap_or(1));
         }
         Err(e) => {
-            eprintln!("  {}", style::fail(&format!("failed to run build command: {e}")));
+            eprintln!(
+                "  {}",
+                style::fail(&format!("failed to run build command: {e}"))
+            );
             std::process::exit(1);
         }
     }
@@ -232,7 +254,8 @@ fn run_watch(debug: bool) -> CliResult {
 // Build error formatting
 // ---------------------------------------------------------------------------
 
-/// Extract and display only the meaningful error/warning lines from cargo output.
+/// Extract and display only the meaningful error/warning lines from cargo
+/// output.
 fn print_build_errors(stderr: &str) {
     let mut errors: Vec<String> = Vec::new();
     let mut capture = false;
@@ -281,13 +304,19 @@ fn print_build_errors(stderr: &str) {
 
     let mut summary = String::new();
     if err_count > 0 {
-        summary.push_str(&format!("{err_count} error{}", if err_count == 1 { "" } else { "s" }));
+        summary.push_str(&format!(
+            "{err_count} error{}",
+            if err_count == 1 { "" } else { "s" }
+        ));
     }
     if warn_count > 0 {
         if !summary.is_empty() {
             summary.push_str(", ");
         }
-        summary.push_str(&format!("{warn_count} warning{}", if warn_count == 1 { "" } else { "s" }));
+        summary.push_str(&format!(
+            "{warn_count} warning{}",
+            if warn_count == 1 { "" } else { "s" }
+        ));
     }
 
     eprintln!("  {}", style::fail(&format!("build failed ({summary})")));
@@ -321,9 +350,15 @@ fn size_delta(so_path: &Path, new_size: u64) -> String {
 
     let diff = new_size as i64 - prev as i64;
     if diff > 0 {
-        format!(", {}", style::color(196, &format!("+{}", style::human_size(diff as u64))))
+        format!(
+            ", {}",
+            style::color(196, &format!("+{}", style::human_size(diff as u64)))
+        )
     } else {
-        format!(", {}", style::color(83, &format!("-{}", style::human_size((-diff) as u64))))
+        format!(
+            ", {}",
+            style::color(83, &format!("-{}", style::human_size((-diff) as u64)))
+        )
     }
 }
 

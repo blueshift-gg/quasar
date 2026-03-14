@@ -39,19 +39,31 @@ impl QuasarConfig {
     pub fn load_from(path: &Path) -> Result<Self, CliError> {
         if !path.exists() {
             use crate::style;
-            eprintln!("\n  {}", style::fail(&format!("{} not found.", path.display())));
+            eprintln!(
+                "\n  {}",
+                style::fail(&format!("{} not found.", path.display()))
+            );
             eprintln!();
             eprintln!("  Are you in a Quasar project directory?");
-            eprintln!("  Run {} to create a new project.", style::bold("quasar init"));
+            eprintln!(
+                "  Run {} to create a new project.",
+                style::bold("quasar init")
+            );
             eprintln!();
             std::process::exit(1);
         }
         let contents = std::fs::read_to_string(path).map_err(|e| {
-            eprintln!("\n  {}", crate::style::fail(&format!("Failed to read {}: {e}", path.display())));
+            eprintln!(
+                "\n  {}",
+                crate::style::fail(&format!("Failed to read {}: {e}", path.display()))
+            );
             e
         })?;
         let config: QuasarConfig = toml::from_str(&contents).map_err(|e| {
-            eprintln!("\n  {}", crate::style::fail(&format!("Invalid {}: {e}", path.display())));
+            eprintln!(
+                "\n  {}",
+                crate::style::fail(&format!("Invalid {}: {e}", path.display()))
+            );
             e
         })?;
         Ok(config)
@@ -75,7 +87,6 @@ impl QuasarConfig {
     pub fn has_rust_tests(&self) -> bool {
         matches!(self.testing.framework.as_str(), "mollusk")
     }
-
 }
 
 // ---------------------------------------------------------------------------

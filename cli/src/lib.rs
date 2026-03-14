@@ -21,7 +21,7 @@ pub use error::CliResult;
     name = "quasar",
     version,
     about = "Build programs that execute at the speed of light",
-    disable_help_subcommand = true,
+    disable_help_subcommand = true
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -217,7 +217,10 @@ pub fn print_help() {
         style::bold("quasar"),
         style::dim(&format!("v{v}"))
     );
-    println!("  {}", style::dim("Build programs that execute at the speed of light"));
+    println!(
+        "  {}",
+        style::dim("Build programs that execute at the speed of light")
+    );
     println!();
     println!("  {}", style::bold("Commands:"));
     print_cmd("init   [name]", "Scaffold a new project");
@@ -231,10 +234,7 @@ pub fn print_help() {
         "profile [elf] [--web] [--diff]",
         "Measure compute-unit usage",
     );
-    print_cmd(
-        "dump    [elf] [-f] [-S]",
-        "Dump sBPF assembly",
-    );
+    print_cmd("dump    [elf] [-f] [-S]", "Dump sBPF assembly");
     println!();
     println!("  {}", style::bold("Options:"));
     print_cmd("-h, --help", "Print help");
@@ -248,10 +248,5 @@ pub fn print_help() {
 }
 
 fn print_cmd(cmd: &str, desc: &str) {
-    println!(
-        "    {}  {}",
-        style::color(45, &format!("{cmd:<34}")),
-        desc
-    );
+    println!("    {}  {}", style::color(45, &format!("{cmd:<34}")), desc);
 }
-

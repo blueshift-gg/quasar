@@ -187,11 +187,7 @@ fn print_banner() {
                         for _ in 0..by_off {
                             write!(out, " ").ok();
                         }
-                        write!(
-                            out,
-                            "\x1b[90mby \x1b[36mblueshift.gg\x1b[0m"
-                        )
-                        .ok();
+                        write!(out, "\x1b[90mby \x1b[36mblueshift.gg\x1b[0m").ok();
                     }
                     _ => {}
                 }
@@ -199,7 +195,7 @@ fn print_banner() {
                 // ── Aurora frame (+ text overlay on transition) ──
                 for ci in 0..w {
                     // FIGlet text overlay during transition
-                    if is_trans && li >= 1 && li <= 7 {
+                    if is_trans && (1..=7).contains(&li) {
                         let tc = ci.wrapping_sub(fig_off);
                         if tc < fig_w {
                             let ch = fig[li - 1].get(tc).copied().unwrap_or(' ');
@@ -316,13 +312,13 @@ pub fn run(name: Option<String>) -> CliResult {
     // For upstream: sbpf-linker must be installed
     if matches!(toolchain, Toolchain::Upstream) && !toolchain::has_sbpf_linker() {
         eprintln!();
-        eprintln!(
-            "  {} sbpf-linker not found.",
-            color(196, "\u{2718}")
-        );
+        eprintln!("  {} sbpf-linker not found.", color(196, "\u{2718}"));
         eprintln!();
         eprintln!("  Install platform-tools first:");
-        eprintln!("    {}", bold("git clone https://github.com/anza-xyz/platform-tools"));
+        eprintln!(
+            "    {}",
+            bold("git clone https://github.com/anza-xyz/platform-tools")
+        );
         eprintln!("    {}", bold("cd platform-tools"));
         eprintln!("    {}", bold("cargo install-with-gallery"));
         eprintln!();
@@ -399,17 +395,9 @@ pub fn run(name: Option<String>) -> CliResult {
         color(45, "\u{276f}"),
         bold(&format!("cd {name}"))
     );
-    println!(
-        "    {}  {}",
-        color(45, "\u{276f}"),
-        bold("quasar build")
-    );
+    println!("    {}  {}", color(45, "\u{276f}"), bold("quasar build"));
     if framework.has_rust_tests() || framework.has_typescript() {
-        println!(
-            "    {}  {}",
-            color(45, "\u{276f}"),
-            bold("quasar test")
-        );
+        println!("    {}  {}", color(45, "\u{276f}"), bold("quasar test"));
     }
     println!();
     println!(
@@ -421,7 +409,6 @@ pub fn run(name: Option<String>) -> CliResult {
 
     Ok(())
 }
-
 
 fn scaffold(
     name: &str,

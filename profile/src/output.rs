@@ -104,17 +104,20 @@ pub fn print_summary(result: &ProfileResult, program_name: &str, binary_size: u6
         let bar_empty: String = "░".repeat(bar_width - filled);
 
         // Per-function delta
-        let delta = prev.as_ref().and_then(|p| {
-            let prev_cu = p.get(name)?;
-            let diff = *cus as i64 - *prev_cu as i64;
-            if diff == 0 {
-                None
-            } else if diff > 0 {
-                Some(red(&format!(" +{diff}")))
-            } else {
-                Some(green(&format!(" {diff}")))
-            }
-        }).unwrap_or_default();
+        let delta = prev
+            .as_ref()
+            .and_then(|p| {
+                let prev_cu = p.get(name)?;
+                let diff = *cus as i64 - *prev_cu as i64;
+                if diff == 0 {
+                    None
+                } else if diff > 0 {
+                    Some(red(&format!(" +{diff}")))
+                } else {
+                    Some(green(&format!(" {diff}")))
+                }
+            })
+            .unwrap_or_default();
 
         println!(
             "  {:>8} {}  {}{}  {}{}",
@@ -128,7 +131,12 @@ pub fn print_summary(result: &ProfileResult, program_name: &str, binary_size: u6
     }
 
     if !full && fn_count > cutoff {
-        let rest: u64 = result.function_cus.iter().skip(cutoff).map(|(_, c)| c).sum();
+        let rest: u64 = result
+            .function_cus
+            .iter()
+            .skip(cutoff)
+            .map(|(_, c)| c)
+            .sum();
         println!(
             "  {}",
             dim(&format!(
@@ -171,8 +179,8 @@ fn save_current_profile(program_name: &str, result: &ProfileResult) {
 
 /// Simplify a demangled Rust function name for the terminal.
 ///
-/// Turns `<quasar_test::instructions::initialize::Initialize as quasar_core::Accounts>::verify`
-/// into `Initialize::verify`
+/// Turns `<quasar_test::instructions::initialize::Initialize as
+/// quasar_core::Accounts>::verify` into `Initialize::verify`
 fn simplify_name(name: &str) -> String {
     let name = name.trim();
 
@@ -241,13 +249,15 @@ fn simplify_name(name: &str) -> String {
     };
 
     // If we ended up with just a generic param like "T" or "U", use the method name
-    if simplified.is_empty() || (simplified.len() == 1 && simplified.chars().next().unwrap().is_uppercase()) {
+    if simplified.is_empty()
+        || (simplified.len() == 1 && simplified.chars().next().unwrap().is_uppercase())
+    {
         // Grab the last `::segment` from the original name (before generics)
         let last_fn = name
             .rsplit("::")
             .next()
             .unwrap_or(name)
-            .trim_end_matches(|c: char| c == ')' || c == '(' || c == ' ');
+            .trim_end_matches([')', '(', ' ']);
         if last_fn.is_empty() || last_fn == name {
             name.to_string()
         } else {
@@ -263,7 +273,7 @@ fn format_cu(n: u64) -> String {
     let s = n.to_string();
     let mut result = String::with_capacity(s.len() + s.len() / 3);
     for (i, c) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i) % 3 == 0 {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
             result.push(',');
         }
         result.push(c);

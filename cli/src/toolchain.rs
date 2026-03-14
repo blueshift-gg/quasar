@@ -27,9 +27,7 @@ pub fn sbpf_linker_llvm_version() -> Option<u32> {
         if platform_tools.exists() {
             if let Ok(entries) = std::fs::read_dir(&platform_tools) {
                 for entry in entries.flatten() {
-                    let llvm_config = entry
-                        .path()
-                        .join("platform-tools/llvm/bin/llvm-config");
+                    let llvm_config = entry.path().join("platform-tools/llvm/bin/llvm-config");
                     if llvm_config.exists() {
                         if let Some(v) =
                             llvm_config_version(llvm_config.to_str().unwrap_or_default())
@@ -43,10 +41,7 @@ pub fn sbpf_linker_llvm_version() -> Option<u32> {
     }
 
     // Last resort: map known sbpf-linker versions to LLVM versions
-    let output = Command::new("sbpf-linker")
-        .arg("--version")
-        .output()
-        .ok()?;
+    let output = Command::new("sbpf-linker").arg("--version").output().ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
     if text.contains("0.1.") {
         return Some(21);

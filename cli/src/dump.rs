@@ -21,7 +21,10 @@ pub fn run(elf_path: Option<PathBuf>, function: Option<String>, source: bool) ->
     }
 
     let objdump = find_objdump().unwrap_or_else(|| {
-        eprintln!("  {}", style::fail("llvm-objdump not found in Solana platform-tools."));
+        eprintln!(
+            "  {}",
+            style::fail("llvm-objdump not found in Solana platform-tools.")
+        );
         eprintln!();
         eprintln!("  Looked in ~/.cache/solana/*/platform-tools/llvm/bin/");
         eprintln!(
@@ -56,11 +59,11 @@ pub fn run(elf_path: Option<PathBuf>, function: Option<String>, source: bool) ->
 
             if lines.is_empty() || (function.is_some() && lines.len() <= 2) {
                 if let Some(sym) = function {
+                    eprintln!("  {}", style::fail(&format!("symbol not found: {sym}")));
                     eprintln!(
                         "  {}",
-                        style::fail(&format!("symbol not found: {sym}"))
+                        style::dim("Try a mangled or partial name, e.g. 'entrypoint'")
                     );
-                    eprintln!("  {}", style::dim("Try a mangled or partial name, e.g. 'entrypoint'"));
                 } else {
                     eprintln!("  {}", style::fail("no disassembly output"));
                 }
@@ -78,10 +81,9 @@ pub fn run(elf_path: Option<PathBuf>, function: Option<String>, source: bool) ->
                 .filter(|l| {
                     let trimmed = l.trim();
                     // Instruction lines start with an address (hex digits followed by colon)
-                    trimmed
-                        .split(':')
-                        .next()
-                        .is_some_and(|addr| !addr.is_empty() && addr.trim().chars().all(|c| c.is_ascii_hexdigit()))
+                    trimmed.split(':').next().is_some_and(|addr| {
+                        !addr.is_empty() && addr.trim().chars().all(|c| c.is_ascii_hexdigit())
+                    })
                 })
                 .count();
 

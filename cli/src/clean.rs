@@ -4,7 +4,12 @@ use {
 };
 
 pub fn run() -> CliResult {
-    let dirs = ["target/deploy", "target/profile", "target/idl", "target/client"];
+    let dirs = [
+        "target/deploy",
+        "target/profile",
+        "target/idl",
+        "target/client",
+    ];
 
     let removed: Vec<&str> = dirs
         .iter()

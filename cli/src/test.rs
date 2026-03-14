@@ -1,7 +1,9 @@
 use {
     crate::{config::QuasarConfig, error::CliResult, style},
-    std::process::{Command, Stdio},
-    std::time::Instant,
+    std::{
+        process::{Command, Stdio},
+        time::Instant,
+    },
 };
 
 pub fn run(debug: bool, filter: Option<String>) -> CliResult {
@@ -54,7 +56,9 @@ pub fn run(debug: bool, filter: Option<String>) -> CliResult {
             eprintln!();
             eprintln!(
                 "  {}",
-                style::dim("Tip: enable the \"debug\" feature for more descriptive error messages.")
+                style::dim(
+                    "Tip: enable the \"debug\" feature for more descriptive error messages."
+                )
             );
             std::process::exit(1);
         }
@@ -90,7 +94,10 @@ fn run_typescript_tests(filter: Option<&str>) -> Result<TestSummary, TestSummary
                 std::process::exit(o.status.code().unwrap_or(1));
             }
             Err(e) => {
-                eprintln!("  {}", style::fail(&format!("failed to run npm install: {e}")));
+                eprintln!(
+                    "  {}",
+                    style::fail(&format!("failed to run npm install: {e}"))
+                );
                 std::process::exit(1);
             }
         }
@@ -108,10 +115,7 @@ fn run_typescript_tests(filter: Option<&str>) -> Result<TestSummary, TestSummary
         cmd.args(["--grep", pattern]);
     }
 
-    let output = cmd
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output();
+    let output = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output();
 
     let o = match output {
         Ok(o) => o,
@@ -156,7 +160,10 @@ fn parse_mocha_json(json: &serde_json::Value) -> Result<TestSummary, TestSummary
 
     if let Some(passes) = json.get("passes").and_then(|v| v.as_array()) {
         for test in passes {
-            let title = test.get("fullTitle").and_then(|t| t.as_str()).unwrap_or("?");
+            let title = test
+                .get("fullTitle")
+                .and_then(|t| t.as_str())
+                .unwrap_or("?");
             lines.push(style::success(title));
             passed += 1;
         }
@@ -164,7 +171,10 @@ fn parse_mocha_json(json: &serde_json::Value) -> Result<TestSummary, TestSummary
 
     if let Some(failures) = json.get("failures").and_then(|v| v.as_array()) {
         for test in failures {
-            let title = test.get("fullTitle").and_then(|t| t.as_str()).unwrap_or("?");
+            let title = test
+                .get("fullTitle")
+                .and_then(|t| t.as_str())
+                .unwrap_or("?");
             lines.push(style::fail(title));
 
             // Show error message indented
@@ -204,15 +214,15 @@ fn run_rust_tests(filter: Option<&str>) -> Result<TestSummary, TestSummary> {
         cmd.arg(pattern);
     }
 
-    let output = cmd
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output();
+    let output = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output();
 
     let o = match output {
         Ok(o) => o,
         Err(e) => {
-            eprintln!("  {}", style::fail(&format!("failed to run cargo test: {e}")));
+            eprintln!(
+                "  {}",
+                style::fail(&format!("failed to run cargo test: {e}"))
+            );
             std::process::exit(1);
         }
     };
@@ -232,10 +242,7 @@ fn run_rust_tests(filter: Option<&str>) -> Result<TestSummary, TestSummary> {
     parse_cargo_test_output(&stdout, &stderr)
 }
 
-fn parse_cargo_test_output(
-    stdout: &str,
-    stderr: &str,
-) -> Result<TestSummary, TestSummary> {
+fn parse_cargo_test_output(stdout: &str, stderr: &str) -> Result<TestSummary, TestSummary> {
     let mut lines = Vec::new();
     let mut passed = 0usize;
     let mut failed = 0usize;
