@@ -27,7 +27,7 @@ pub struct ProfileCommand {
     pub diff_program: Option<String>,
     pub share: bool,
     pub web: bool,
-    pub full: bool,
+    pub expand: bool,
 }
 
 pub fn run(command: ProfileCommand) {
@@ -45,7 +45,7 @@ pub fn run(command: ProfileCommand) {
     });
     let public_gist = command.share;
     let open_web = command.web;
-    let full = command.full;
+    let expand = command.expand;
 
     if !elf_path.exists() {
         eprintln!("Error: file not found: {}", elf_path.display());
@@ -100,7 +100,7 @@ pub fn run(command: ProfileCommand) {
 
     let result = aggregate::profile(&mmap, &info, &resolver);
 
-    output::print_summary(&result, program_name, binary_size, full);
+    output::print_summary(&result, program_name, binary_size, expand);
 
     let binary_hash = sha256_file(&elf_path).unwrap_or_else(|e| {
         eprintln!("Error: failed to hash {}: {}", elf_path.display(), e);

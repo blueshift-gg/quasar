@@ -158,9 +158,9 @@ pub struct ProfileCommand {
     #[arg(long, action = ArgAction::SetTrue)]
     pub web: bool,
 
-    /// Show all functions (default shows only >= 1%)
+    /// Show full terminal output with all functions
     #[arg(long, action = ArgAction::SetTrue)]
-    pub full: bool,
+    pub expand: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -197,7 +197,7 @@ pub fn run(cli: Cli) -> CliResult {
                 diff_program: cmd.diff_program,
                 share: cmd.share,
                 web: cmd.web,
-                full: cmd.full,
+                expand: cmd.expand,
             });
             Ok(())
         }
@@ -231,7 +231,7 @@ pub fn print_help() {
     print_cmd("config [get|set|list|reset]", "Manage global settings");
     print_cmd("idl    <path>", "Generate the program IDL");
     print_cmd(
-        "profile [elf] [--web] [--diff]",
+        "profile [elf] [--expand] [--web]",
         "Measure compute-unit usage",
     );
     print_cmd("dump    [elf] [-f] [-S]", "Dump sBPF assembly");

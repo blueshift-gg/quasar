@@ -44,7 +44,7 @@ fn bar_fill(s: &str) -> String {
 
 const LAST_PROFILE: &str = "target/profile/.last-profile";
 
-pub fn print_summary(result: &ProfileResult, program_name: &str, binary_size: u64, full: bool) {
+pub fn print_summary(result: &ProfileResult, program_name: &str, binary_size: u64, expand: bool) {
     let total = result.total_cus;
     let fn_count = result.function_cus.len();
 
@@ -79,33 +79,136 @@ pub fn print_summary(result: &ProfileResult, program_name: &str, binary_size: u6
         return;
     }
 
+    let has_baseline = prev.is_some();
+
+    if expand {
+        // --expand: full terminal view with all functions and bars
+        print_full_table(result, prev.as_ref(), total, fn_count);
+    } else if has_baseline {
+        // Subsequent runs: show regressions and improvements
+        print_deltas(result, prev.as_ref().unwrap(), total);
+    } else {
+        // First run: show top hottest functions
+        print_top_functions(result, total);
+    }
+
+    // Always hint at the flamegraph
+    println!("  {}", dim("quasar profile --web    open flamegraph"));
+
+    save_current_profile(program_name, result);
+}
+
+/// First run — show the top hottest functions so the user has a baseline.
+fn print_top_functions(result: &ProfileResult, total: u64) {
+    let fn_count = result.function_cus.len();
+    let show = 5.min(fn_count);
+
+    for (name, cus) in result.function_cus.iter().take(show) {
+        let pct = *cus as f64 / total as f64 * 100.0;
+        println!(
+            "  {:>8} {}  {}",
+            format_cu(*cus),
+            dim(&format!("{:>5.1}%", pct)),
+            simplify_name(name),
+        );
+    }
+
+    if fn_count > show {
+        let rest: u64 = result.function_cus.iter().skip(show).map(|(_, c)| c).sum();
+        println!(
+            "  {}",
+            dim(&format!(
+                "{:>8} {:>5.1}%  +{} more (--expand)",
+                format_cu(rest),
+                rest as f64 / total as f64 * 100.0,
+                fn_count - show,
+            ))
+        );
+    }
+}
+
+/// Subsequent runs — show the biggest regressions and improvements.
+fn print_deltas(result: &ProfileResult, prev: &HashMap<String, u64>, total: u64) {
+    let mut deltas: Vec<(&str, i64, u64)> = result
+        .function_cus
+        .iter()
+        .filter_map(|(name, cus)| {
+            let prev_cu = prev.get(name).copied().unwrap_or(0);
+            let diff = *cus as i64 - prev_cu as i64;
+            if diff != 0 {
+                Some((name.as_str(), diff, *cus))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Also check for functions that disappeared (were in prev but not in current)
+    for (name, prev_cu) in prev {
+        if !result.function_cus.iter().any(|(n, _)| n == name) {
+            deltas.push((name.as_str(), -(*prev_cu as i64), 0));
+        }
+    }
+
+    if deltas.is_empty() {
+        println!("  {}", dim("no changes"));
+        return;
+    }
+
+    // Sort by absolute magnitude (biggest changes first)
+    deltas.sort_by_key(|d| std::cmp::Reverse(d.1.unsigned_abs()));
+
+    let show = 10.min(deltas.len());
+    for (name, diff, cus) in deltas.iter().take(show) {
+        let cu_str = if *cus > 0 {
+            format_cu(*cus)
+        } else {
+            "removed".to_string()
+        };
+        let delta_str = if *diff > 0 {
+            red(&format!("+{}", format_cu(diff.unsigned_abs())))
+        } else {
+            green(&format!("-{}", format_cu(diff.unsigned_abs())))
+        };
+        let pct = if total > 0 {
+            diff.unsigned_abs() as f64 / total as f64 * 100.0
+        } else {
+            0.0
+        };
+        println!(
+            "  {:>8} {}  {}  {}",
+            cu_str,
+            delta_str,
+            dim(&format!("{:>5.1}%", pct)),
+            simplify_name(name),
+        );
+    }
+
+    if deltas.len() > show {
+        println!(
+            "  {}",
+            dim(&format!("+{} more (--expand)", deltas.len() - show))
+        );
+    }
+}
+
+/// --expand: full view with bars and per-function deltas.
+fn print_full_table(
+    result: &ProfileResult,
+    prev: Option<&HashMap<String, u64>>,
+    total: u64,
+    fn_count: usize,
+) {
     let max_cu = result.function_cus.first().map(|(_, c)| *c).unwrap_or(1);
     let bar_width: usize = 20;
 
-    let cutoff = if full {
-        fn_count
-    } else {
-        let meaningful = result
-            .function_cus
-            .iter()
-            .take_while(|(_, cus)| *cus as f64 / total as f64 >= 0.01)
-            .count();
-        meaningful.max(5).min(fn_count)
-    };
-
-    for (i, (name, cus)) in result.function_cus.iter().enumerate() {
-        if i >= cutoff {
-            break;
-        }
-
+    for (name, cus) in &result.function_cus {
         let pct = *cus as f64 / total as f64 * 100.0;
         let filled = (*cus as f64 / max_cu as f64 * bar_width as f64).round() as usize;
         let bar_filled: String = "█".repeat(filled);
         let bar_empty: String = "░".repeat(bar_width - filled);
 
-        // Per-function delta
         let delta = prev
-            .as_ref()
             .and_then(|p| {
                 let prev_cu = p.get(name)?;
                 let diff = *cus as i64 - *prev_cu as i64;
@@ -130,25 +233,13 @@ pub fn print_summary(result: &ProfileResult, program_name: &str, binary_size: u6
         );
     }
 
-    if !full && fn_count > cutoff {
-        let rest: u64 = result
-            .function_cus
-            .iter()
-            .skip(cutoff)
-            .map(|(_, c)| c)
-            .sum();
-        println!(
-            "  {}",
-            dim(&format!(
-                "{:>8} {:>5.1}%                        +{} more (--full)",
-                format_cu(rest),
-                rest as f64 / total as f64 * 100.0,
-                fn_count - cutoff,
-            ))
-        );
-    }
-
-    save_current_profile(program_name, result);
+    println!(
+        "  {}",
+        dim(&format!(
+            "{fn_count} functions, {} CU total",
+            format_cu(total)
+        ))
+    );
 }
 
 fn load_previous_profile(program_name: &str) -> Option<HashMap<String, u64>> {
