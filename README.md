@@ -89,13 +89,14 @@ cargo install --path cli
 ```
 
 ```bash
-quasar init my-program       # Scaffold a new project
-quasar init my-program -y    # Skip prompts, use saved defaults
-quasar build              # Compile the on-chain program
-quasar test               # Run the test suite
-quasar profile            # Measure compute-unit usage
-quasar dump               # Dump sBPF assembly
-quasar config list        # Manage global settings
+quasar init my-program       # Scaffold with saved defaults (no prompts)
+quasar init                  # Interactive wizard
+quasar build [--watch]       # Compile the on-chain program
+quasar test [--watch]        # Run the test suite
+quasar profile               # Measure compute-unit usage
+quasar dump                  # Dump sBPF assembly
+quasar config list           # Manage global settings
+quasar completions <shell>   # Generate shell completions
 ```
 
 See [CLI docs](docs/cli.md) for flags and configuration.

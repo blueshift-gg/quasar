@@ -12,24 +12,24 @@ cargo install --path cli
 
 ### `quasar init [name] [--yes] [--no-git]`
 
-Scaffold a new Quasar project. Launches an interactive wizard that prompts for:
+Scaffold a new Quasar project. When a name is provided, uses saved defaults and skips prompts. Without a name, launches an interactive wizard that prompts for:
 
 - **Project name** — becomes the crate name and `Quasar.toml` project name
 - **Toolchain** — `solana` (cargo build-sbf) or `upstream` (cargo +nightly build-bpf)
 - **Testing framework** — None, Mollusk, QuasarSVM/Rust, QuasarSVM/Web3.js, or QuasarSVM/Kit
 - **Template** — Minimal (single instruction) or Full (state, events, instruction files)
 
-The wizard generates a complete project directory with `Cargo.toml`, `Quasar.toml`, source files, test scaffolding, and a program keypair. Runs `git init` automatically. Preferences are saved to `~/.quasar/config.toml` so subsequent `init` runs use the same defaults.
+The wizard generates a complete project directory with `Cargo.toml`, `Quasar.toml`, source files, test scaffolding, a program keypair, and runs `git init`. Preferences are saved to `~/.quasar/config.toml` and used as defaults for future runs.
 
 | Flag | Effect |
 |------|--------|
-| `-y, --yes` | Skip all prompts and use saved defaults (requires a name argument) |
+| `-y, --yes` | Explicitly skip prompts (same as providing a name) |
 | `--no-git` | Skip `git init` |
 
 ```bash
-quasar init my-program       # Interactive wizard
-quasar init my-program -y    # Use saved defaults, no prompts
-quasar init . -y             # Scaffold into current directory
+quasar init                  # Interactive wizard
+quasar init my-program       # Use saved defaults, no prompts
+quasar init .                # Scaffold into current directory
 ```
 
 ### `quasar build [--debug] [--watch]`
@@ -108,6 +108,21 @@ Remove build artifacts from `target/deploy/`, `target/profile/`, `target/idl/`, 
 ### `quasar idl <path>`
 
 Generate the IDL for a program crate. Produces JSON, TypeScript client, and Rust client module. See [IDL docs](idl.md) for details.
+
+### `quasar completions <shell>`
+
+Generate shell completions for your shell. Supported shells: `bash`, `zsh`, `fish`, `elvish`, `powershell`.
+
+```bash
+# Bash
+quasar completions bash >> ~/.bashrc
+
+# Zsh
+quasar completions zsh >> ~/.zshrc
+
+# Fish
+quasar completions fish > ~/.config/fish/completions/quasar.fish
+```
 
 ### `quasar config [get|set|list|reset]`
 
