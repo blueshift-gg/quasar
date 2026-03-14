@@ -29,7 +29,6 @@ pub fn generate(crate_path: &Path, generate_typescript: bool) -> CliResult {
     let idl_path = idl_dir.join(format!("{}.idl.json", idl.metadata.name));
     let json = serde_json::to_string_pretty(&idl).expect("Failed to serialize IDL");
     std::fs::write(&idl_path, &json).expect("Failed to write IDL file");
-    println!("{}", idl_path.display());
 
     if generate_typescript {
         let ts_code = codegen::typescript::generate_ts_client(&idl);
@@ -44,10 +43,8 @@ pub fn generate(crate_path: &Path, generate_typescript: bool) -> CliResult {
             .expect("Failed to create target/client/typescript/<name> directory");
         let ts_path = ts_dir.join("web3.ts");
         std::fs::write(&ts_path, &ts_code).expect("Failed to write TS client");
-        println!("{}", ts_path.display());
         let ts_kit_path = ts_dir.join("kit.ts");
         std::fs::write(&ts_kit_path, &ts_kit_code).expect("Failed to write TS kit client");
-        println!("{}", ts_kit_path.display());
 
         // Write package.json for the TS client
         let needs_codecs =
@@ -93,7 +90,6 @@ pub fn generate(crate_path: &Path, generate_typescript: bool) -> CliResult {
         .expect("Failed to write client Cargo.toml");
     std::fs::write(client_src_dir.join("lib.rs"), &client_code)
         .expect("Failed to write client lib.rs");
-    println!("{}", client_dir.display());
 
     Ok(())
 }
@@ -106,5 +102,7 @@ pub fn run(command: IdlCommand) -> CliResult {
         std::process::exit(1);
     }
 
-    generate(crate_path, true)
+    generate(crate_path, true)?;
+    println!("  {}", crate::style::success("IDL generated"));
+    Ok(())
 }

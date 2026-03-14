@@ -170,7 +170,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                                 "Account '", stringify!(#field_name),
                                 "' (index ", #account_index, "): ", #msg
                             ));
-                            return Err(quasar_core::decode_header_error(actual_header, #expected_header));
+                            return Err(ProgramError::from(quasar_core::decode_header_error(actual_header, #expected_header)));
                         }
                     }
                 };
@@ -268,7 +268,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                                 "Account '", stringify!(#field_name),
                                 "' (index ", #account_index, "): ", #debug_msg
                             ));
-                            return Err(quasar_core::decode_header_error(header, #expected_header));
+                            return Err(ProgramError::from(quasar_core::decode_header_error(header, #expected_header)));
                         }
 
                         core::ptr::write(base.add(#cur_offset), quasar_core::__internal::AccountView::new_unchecked(raw));

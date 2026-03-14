@@ -208,6 +208,7 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
     // Append dispatch + entrypoint to the module
     if let Some((_, ref mut items)) = module.content {
         items.push(syn::parse_quote! {
+            #[inline(always)]
             fn __handle_event(ptr: *mut u8, instruction_data: &[u8]) -> Result<(), ProgramError> {
                 // SAFETY: Pointer arithmetic follows the SVM input buffer layout. The u64 casts
                 // for address comparison are technically misaligned (Address is align 1), but SBF

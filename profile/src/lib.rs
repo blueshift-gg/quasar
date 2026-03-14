@@ -26,6 +26,8 @@ pub struct ProfileCommand {
     pub elf_path: Option<PathBuf>,
     pub diff_program: Option<String>,
     pub share: bool,
+    pub web: bool,
+    pub full: bool,
 }
 
 pub fn run(command: ProfileCommand) {
@@ -42,6 +44,8 @@ pub fn run(command: ProfileCommand) {
         std::process::exit(1);
     });
     let public_gist = command.share;
+    let open_web = command.web;
+    let full = command.full;
 
     if !elf_path.exists() {
         eprintln!("Error: file not found: {}", elf_path.display());
@@ -60,22 +64,12 @@ pub fn run(command: ProfileCommand) {
 
     let info = elf::load(&mmap, &elf_path);
 
-    eprintln!("quasar-profile: {}", elf_path.display());
-
     let resolver = match info.debug_level {
-        DebugLevel::Dwarf => {
-            eprintln!("DWARF debug info: yes");
-            dwarf::Resolver::Dwarf(
-                dwarf::DwarfResolver::new(&mmap),
-                dwarf::SymbolResolver::new(&info.symbols),
-            )
-        }
+        DebugLevel::Dwarf => dwarf::Resolver::Dwarf(
+            dwarf::DwarfResolver::new(&mmap),
+            dwarf::SymbolResolver::new(&info.symbols),
+        ),
         DebugLevel::SymbolsOnly => {
-            eprintln!("DWARF debug info: no (symbol table only)");
-            eprintln!(
-                "Warning: inline functions will not be resolved. Rebuild with debug info for full \
-                 resolution."
-            );
             dwarf::Resolver::Symbol(dwarf::SymbolResolver::new(&info.symbols))
         }
         DebugLevel::Stripped => {
@@ -106,7 +100,7 @@ pub fn run(command: ProfileCommand) {
 
     let result = aggregate::profile(&mmap, &info, &resolver);
 
-    output::print_summary(&result);
+    output::print_summary(&result, program_name, binary_size, full);
 
     let binary_hash = sha256_file(&elf_path).unwrap_or_else(|e| {
         eprintln!("Error: failed to hash {}: {}", elf_path.display(), e);
@@ -127,27 +121,26 @@ pub fn run(command: ProfileCommand) {
         binary_size,
         &binary_hash,
     );
-    eprintln!("Profile JSON written to: {}", local_output_path.display());
-
-    ensure_frontend_assets(&profile_root);
-
     if public_gist {
+        ensure_frontend_assets(&profile_root);
         ensure_gh_installed();
         let desc = format!("{} CU profile v{}", program_name, version);
         let gist_url = create_gist(&local_output_path, &desc);
-        println!("Gist generated: {}", gist_url);
+        println!("  {gist_url}");
         return;
     }
 
-    println!(
-        "http://{}:{}/?program={}",
-        SERVER_HOST, SERVER_PORT, program_name
-    );
-    eprintln!("Press Ctrl-C to stop the profiler server.");
-    serve::serve(&profile_root, SERVER_PORT).unwrap_or_else(|e| {
-        eprintln!("Error: failed to start local profiler server: {}", e);
-        std::process::exit(1);
-    });
+    if open_web {
+        ensure_frontend_assets(&profile_root);
+        println!(
+            "\n  http://{}:{}/?program={}",
+            SERVER_HOST, SERVER_PORT, program_name
+        );
+        serve::serve(&profile_root, SERVER_PORT).unwrap_or_else(|e| {
+            eprintln!("Error: failed to start local profiler server: {}", e);
+            std::process::exit(1);
+        });
+    }
 }
 
 fn run_diff(program: String) {

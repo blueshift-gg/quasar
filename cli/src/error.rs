@@ -10,6 +10,8 @@ pub enum CliError {
     IoError(#[from] std::io::Error),
     #[error("Toml parse error")]
     TomlParseError(#[from] toml::de::Error),
+    #[error("Toml serialize error")]
+    TomlSerError(#[from] toml::ser::Error),
     #[error("Anyhow error")]
     Anyhow(#[from] anyhow::Error),
 }

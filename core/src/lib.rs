@@ -167,7 +167,7 @@ pub fn is_system_program(addr: &solana_address::Address) -> bool {
 #[cold]
 #[inline(never)]
 #[allow(unused_variables)]
-pub fn decode_header_error(header: u32, expected: u32) -> solana_program_error::ProgramError {
+pub fn decode_header_error(header: u32, expected: u32) -> u64 {
     use solana_program_error::ProgramError;
 
     let [borrow, signer, writable, _exec] = header.to_le_bytes();
@@ -176,22 +176,22 @@ pub fn decode_header_error(header: u32, expected: u32) -> solana_program_error::
     if borrow != exp_borrow {
         #[cfg(feature = "debug")]
         solana_program_log::log("duplicate account detected");
-        return ProgramError::AccountBorrowFailed;
+        return u64::from(ProgramError::AccountBorrowFailed);
     }
     if signer != exp_signer {
         #[cfg(feature = "debug")]
         solana_program_log::log("missing required signature");
-        return ProgramError::MissingRequiredSignature;
+        return u64::from(ProgramError::MissingRequiredSignature);
     }
     if writable != exp_writable {
         #[cfg(feature = "debug")]
         solana_program_log::log("account not writable");
-        return ProgramError::Immutable;
+        return u64::from(ProgramError::Immutable);
     }
 
     #[cfg(feature = "debug")]
     solana_program_log::log("account not executable");
-    ProgramError::InvalidAccountData
+    u64::from(ProgramError::InvalidAccountData)
 }
 
 #[cfg(test)]

@@ -3,33 +3,287 @@ use {
     serde::Serialize,
     std::{
         collections::HashMap,
+        fs,
         io::{BufWriter, Write},
         mem,
         path::Path,
     },
 };
 
-pub fn print_summary(result: &ProfileResult) {
-    eprintln!("Total .text instructions: {} CUs", result.total_cus);
-    eprintln!();
-    eprintln!("Top functions by CU (leaf attribution):");
+// ---------------------------------------------------------------------------
+// ANSI helpers (standalone — profile crate doesn't depend on cli)
+// ---------------------------------------------------------------------------
 
-    let top_n = 20.min(result.function_cus.len());
-    for (i, (name, cus)) in result.function_cus.iter().take(top_n).enumerate() {
-        let pct = *cus as f64 / result.total_cus as f64 * 100.0;
-        eprintln!("  {:>3}. {:>6} CUs ({:>5.1}%)  {}", i + 1, cus, pct, name);
+fn bold(s: &str) -> String {
+    format!("\x1b[1m{s}\x1b[0m")
+}
+
+fn dim(s: &str) -> String {
+    format!("\x1b[2m{s}\x1b[0m")
+}
+
+fn cyan(s: &str) -> String {
+    format!("\x1b[36m{s}\x1b[0m")
+}
+
+fn red(s: &str) -> String {
+    format!("\x1b[38;5;196m{s}\x1b[0m")
+}
+
+fn green(s: &str) -> String {
+    format!("\x1b[38;5;83m{s}\x1b[0m")
+}
+
+fn bar_fill(s: &str) -> String {
+    cyan(s)
+}
+
+// ---------------------------------------------------------------------------
+// Terminal profile summary
+// ---------------------------------------------------------------------------
+
+const LAST_PROFILE: &str = "target/profile/.last-profile";
+
+pub fn print_summary(result: &ProfileResult, program_name: &str, binary_size: u64, full: bool) {
+    let total = result.total_cus;
+    let fn_count = result.function_cus.len();
+
+    // Load previous profile for diffing
+    let prev = load_previous_profile(program_name);
+    let prev_total = prev.as_ref().map(|p| p.values().sum::<u64>());
+
+    // Header with total CU delta
+    let total_delta = match prev_total {
+        Some(pt) if pt != total => {
+            let diff = total as i64 - pt as i64;
+            if diff > 0 {
+                format!(" {}", red(&format!("+{}", format_cu(diff as u64))))
+            } else {
+                format!(" {}", green(&format!("-{}", format_cu((-diff) as u64))))
+            }
+        }
+        _ => String::new(),
+    };
+
+    println!(
+        "  {}  {}{}  {}",
+        bold(program_name),
+        cyan(&format!("{} CU", format_cu(total))),
+        total_delta,
+        dim(&human_size(binary_size))
+    );
+
+    if fn_count == 0 {
+        save_current_profile(program_name, result);
+        println!("  {}", dim("No functions found."));
+        return;
     }
 
-    if result.function_cus.len() > top_n {
-        eprintln!(
-            "  ... and {} more functions",
-            result.function_cus.len() - top_n
+    let max_cu = result.function_cus.first().map(|(_, c)| *c).unwrap_or(1);
+    let bar_width: usize = 20;
+
+    let cutoff = if full {
+        fn_count
+    } else {
+        let meaningful = result
+            .function_cus
+            .iter()
+            .take_while(|(_, cus)| *cus as f64 / total as f64 >= 0.01)
+            .count();
+        meaningful.max(5).min(fn_count)
+    };
+
+    for (i, (name, cus)) in result.function_cus.iter().enumerate() {
+        if i >= cutoff {
+            break;
+        }
+
+        let pct = *cus as f64 / total as f64 * 100.0;
+        let filled = (*cus as f64 / max_cu as f64 * bar_width as f64).round() as usize;
+        let bar_filled: String = "█".repeat(filled);
+        let bar_empty: String = "░".repeat(bar_width - filled);
+
+        // Per-function delta
+        let delta = prev.as_ref().and_then(|p| {
+            let prev_cu = p.get(name)?;
+            let diff = *cus as i64 - *prev_cu as i64;
+            if diff == 0 {
+                None
+            } else if diff > 0 {
+                Some(red(&format!(" +{diff}")))
+            } else {
+                Some(green(&format!(" {diff}")))
+            }
+        }).unwrap_or_default();
+
+        println!(
+            "  {:>8} {}  {}{}  {}{}",
+            format_cu(*cus),
+            dim(&format!("{:>5.1}%", pct)),
+            bar_fill(&bar_filled),
+            dim(&bar_empty),
+            simplify_name(name),
+            delta,
         );
     }
 
-    eprintln!();
-    eprintln!("Note: Syscall CU costs (CPI, logging, etc.) are runtime-dependent and excluded.");
+    if !full && fn_count > cutoff {
+        let rest: u64 = result.function_cus.iter().skip(cutoff).map(|(_, c)| c).sum();
+        println!(
+            "  {}",
+            dim(&format!(
+                "{:>8} {:>5.1}%                        +{} more (--full)",
+                format_cu(rest),
+                rest as f64 / total as f64 * 100.0,
+                fn_count - cutoff,
+            ))
+        );
+    }
+
+    save_current_profile(program_name, result);
 }
+
+fn load_previous_profile(program_name: &str) -> Option<HashMap<String, u64>> {
+    let path = format!("{LAST_PROFILE}.{program_name}");
+    let contents = fs::read_to_string(path).ok()?;
+    let mut map = HashMap::new();
+    for line in contents.lines() {
+        let (cu_str, name) = line.split_once(' ')?;
+        let cu: u64 = cu_str.parse().ok()?;
+        map.insert(name.to_string(), cu);
+    }
+    Some(map)
+}
+
+fn save_current_profile(program_name: &str, result: &ProfileResult) {
+    let path = format!("{LAST_PROFILE}.{program_name}");
+    if let Some(parent) = Path::new(&path).parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let contents: String = result
+        .function_cus
+        .iter()
+        .map(|(name, cu)| format!("{cu} {name}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let _ = fs::write(path, contents);
+}
+
+/// Simplify a demangled Rust function name for the terminal.
+///
+/// Turns `<quasar_test::instructions::initialize::Initialize as quasar_core::Accounts>::verify`
+/// into `Initialize::verify`
+fn simplify_name(name: &str) -> String {
+    let name = name.trim();
+
+    if name == "[unknown]" || name == "entrypoint" {
+        return name.to_string();
+    }
+
+    // Handle `<Type as Trait>::method` → `Type::method`
+    let working = if name.starts_with('<') {
+        if let Some(rest) = name.strip_prefix('<') {
+            // Find matching '>' for the impl block
+            if let Some(as_pos) = rest.find(" as ") {
+                let type_part = &rest[..as_pos];
+                // Find the closing '>'
+                if let Some(gt_pos) = rest[as_pos..].find('>') {
+                    let after = &rest[as_pos + gt_pos + 1..];
+                    format!("{type_part}{after}")
+                } else {
+                    type_part.to_string()
+                }
+            } else if let Some(gt_pos) = rest.find('>') {
+                let type_part = &rest[..gt_pos];
+                let after = &rest[gt_pos + 1..];
+                format!("{type_part}{after}")
+            } else {
+                name.to_string()
+            }
+        } else {
+            name.to_string()
+        }
+    } else {
+        name.to_string()
+    };
+
+    // Strip generic parameters <...>
+    let mut result = String::new();
+    let mut depth = 0i32;
+    for ch in working.chars() {
+        match ch {
+            '<' => depth += 1,
+            '>' => depth -= 1,
+            _ if depth == 0 => result.push(ch),
+            _ => {}
+        }
+    }
+
+    // Take the last N meaningful segments
+    let segments: Vec<&str> = result.split("::").filter(|s| !s.is_empty()).collect();
+    let simplified = if segments.is_empty() {
+        return name.to_string();
+    } else if segments.len() <= 2 {
+        segments.join("::")
+    } else {
+        // Take last 2, but if the second-to-last is a single char or starts with
+        // lowercase (like a module), take 3
+        let last2 = &segments[segments.len() - 2..];
+        if last2[0].len() <= 1 || last2[0].starts_with(|c: char| c.is_lowercase()) {
+            if segments.len() >= 3 {
+                segments[segments.len() - 3..].join("::")
+            } else {
+                last2.join("::")
+            }
+        } else {
+            last2.join("::")
+        }
+    };
+
+    // If we ended up with just a generic param like "T" or "U", use the method name
+    if simplified.is_empty() || (simplified.len() == 1 && simplified.chars().next().unwrap().is_uppercase()) {
+        // Grab the last `::segment` from the original name (before generics)
+        let last_fn = name
+            .rsplit("::")
+            .next()
+            .unwrap_or(name)
+            .trim_end_matches(|c: char| c == ')' || c == '(' || c == ' ');
+        if last_fn.is_empty() || last_fn == name {
+            name.to_string()
+        } else {
+            last_fn.to_string()
+        }
+    } else {
+        simplified
+    }
+}
+
+/// Format CU count with comma separators
+fn format_cu(n: u64) -> String {
+    let s = n.to_string();
+    let mut result = String::with_capacity(s.len() + s.len() / 3);
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i) % 3 == 0 {
+            result.push(',');
+        }
+        result.push(c);
+    }
+    result
+}
+
+fn human_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{bytes} B")
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// JSON output (unchanged)
+// ---------------------------------------------------------------------------
 
 #[derive(Serialize)]
 struct ProfileData {

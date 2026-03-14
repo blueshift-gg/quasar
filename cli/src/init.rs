@@ -1,9 +1,17 @@
 use {
-    crate::error::CliResult,
+    crate::{
+        config::{GlobalConfig, GlobalDefaults},
+        error::CliResult,
+        toolchain,
+    },
     dialoguer::{theme::ColorfulTheme, Input, Select},
     serde::Serialize,
     std::{fmt, fs, path::Path},
 };
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy)]
 enum Toolchain {
@@ -59,6 +67,19 @@ enum Template {
     Full,
 }
 
+impl fmt::Display for Template {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Template::Minimal => write!(f, "minimal"),
+            Template::Full => write!(f, "full"),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Quasar.toml schema
+// ---------------------------------------------------------------------------
+
 #[derive(Serialize)]
 struct QuasarToml {
     project: QuasarProject,
@@ -82,7 +103,185 @@ struct QuasarTesting {
     framework: String,
 }
 
+// ---------------------------------------------------------------------------
+// Banner — sparse blue aurora + FIGlet "Quasar" text reveal
+// ---------------------------------------------------------------------------
+
+fn print_banner() {
+    use std::io::{self, IsTerminal, Write};
+
+    let stdout = io::stdout();
+    if !stdout.is_terminal() {
+        println!("\n  Quasar\n  Build programs that execute at the speed of light\n");
+        return;
+    }
+
+    use std::{thread, time::Duration};
+    let mut out = stdout.lock();
+    write!(out, "\x1b[?25l").ok();
+
+    let w: usize = 70;
+    let h: usize = 11; // 1 blank + 7 figlet + 1 blank + 1 tagline + 1 byline
+    let n_total: usize = 8; // 6 aurora + 1 transition + 1 final
+
+    // FIGlet "Quasar" — block style, 7 lines tall
+    #[rustfmt::skip]
+    let figlet: [&str; 7] = [
+        " ██████╗ ██╗   ██╗ █████╗ ███████╗ █████╗ ██████╗ ",
+        "██╔═══██╗██║   ██║██╔══██╗██╔════╝██╔══██╗██╔══██╗",
+        "██║   ██║██║   ██║███████║███████╗███████║██████╔╝",
+        "██║▄▄ ██║██║   ██║██╔══██║╚════██║██╔══██║██╔══██╗",
+        "╚██████╔╝╚██████╔╝██║  ██║███████║██║  ██║██║  ██║",
+        " ╚══▀▀═╝  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝",
+        "",
+    ];
+    let fig: Vec<Vec<char>> = figlet.iter().map(|l| l.chars().collect()).collect();
+    let fig_w = fig.iter().map(|l| l.len()).max().unwrap_or(0);
+    let fig_off = w.saturating_sub(fig_w) / 2;
+
+    // Reserve space
+    writeln!(out).ok();
+    for _ in 0..h {
+        writeln!(out).ok();
+    }
+    out.flush().ok();
+
+    for frame in 0..n_total {
+        write!(out, "\x1b[{h}A").ok();
+        let is_final = frame == n_total - 1;
+        let is_trans = frame == n_total - 2;
+        let fade: f32 = if is_trans { 0.15 } else { 1.0 };
+
+        #[allow(clippy::needless_range_loop)]
+        for li in 0..h {
+            write!(out, "\x1b[2K  ").ok();
+
+            if is_final {
+                // ── Final: gradient FIGlet text + tagline ──
+                match li {
+                    1..=7 => {
+                        let row = &fig[li - 1];
+                        for _ in 0..fig_off {
+                            write!(out, " ").ok();
+                        }
+                        for &ch in row.iter() {
+                            if ch != ' ' {
+                                write!(out, "\x1b[36m{ch}\x1b[0m").ok();
+                            } else {
+                                write!(out, " ").ok();
+                            }
+                        }
+                    }
+                    9 => {
+                        let tagline = "Build programs that execute at the speed of light";
+                        let tag_off = w.saturating_sub(tagline.len()) / 2;
+                        for _ in 0..tag_off {
+                            write!(out, " ").ok();
+                        }
+                        write!(out, "\x1b[1m{tagline}\x1b[0m").ok();
+                    }
+                    10 => {
+                        // "by " in grey + "blueshift.gg" in blue, centered
+                        let byline_len = 15; // "by blueshift.gg"
+                        let by_off = w.saturating_sub(byline_len) / 2;
+                        for _ in 0..by_off {
+                            write!(out, " ").ok();
+                        }
+                        write!(
+                            out,
+                            "\x1b[90mby \x1b[36mblueshift.gg\x1b[0m"
+                        )
+                        .ok();
+                    }
+                    _ => {}
+                }
+            } else {
+                // ── Aurora frame (+ text overlay on transition) ──
+                for ci in 0..w {
+                    // FIGlet text overlay during transition
+                    if is_trans && li >= 1 && li <= 7 {
+                        let tc = ci.wrapping_sub(fig_off);
+                        if tc < fig_w {
+                            let ch = fig[li - 1].get(tc).copied().unwrap_or(' ');
+                            if ch != ' ' {
+                                write!(out, "\x1b[36m{ch}\x1b[0m").ok();
+                                continue;
+                            }
+                        }
+                    }
+
+                    // Aurora cell
+                    let d = aurora_density(ci, li, frame) * fade;
+
+                    if d < 0.10 {
+                        write!(out, " ").ok();
+                    } else if d < 0.25 {
+                        write!(out, "\x1b[38;2;15;25;85m░\x1b[0m").ok();
+                    } else if d < 0.42 {
+                        write!(out, "\x1b[38;2;30;55;145m░\x1b[0m").ok();
+                    } else if d < 0.60 {
+                        write!(out, "\x1b[38;2;50;95;200m▒\x1b[0m").ok();
+                    } else if d < 0.78 {
+                        write!(out, "\x1b[38;2;75;140;235m▓\x1b[0m").ok();
+                    } else {
+                        write!(out, "\x1b[38;2;100;170;255m█\x1b[0m").ok();
+                    }
+                }
+            }
+            writeln!(out).ok();
+        }
+        out.flush().ok();
+
+        if frame < n_total - 1 {
+            thread::sleep(Duration::from_millis(if frame == 0 { 60 } else { 80 }));
+        }
+    }
+
+    write!(out, "\x1b[?25h").ok();
+    writeln!(out).ok();
+    out.flush().ok();
+}
+
+/// Aurora density — sine waves flowing rightward, tuned for sparse output.
+fn aurora_density(col: usize, line: usize, frame: usize) -> f32 {
+    let c = col as f32;
+    let l = line as f32;
+    let f = frame as f32;
+
+    let w1 = ((c - f * 5.0) / 8.0 + l * 0.35).sin();
+    let w2 = ((c - f * 3.5) / 5.5 - l * 0.25).sin() * 0.45;
+    let w3 = ((c - f * 7.0) / 12.0 + l * 0.15).sin() * 0.3;
+
+    ((w1 + w2 + w3 + 1.5) / 3.5).clamp(0.0, 1.0)
+}
+
+// ---------------------------------------------------------------------------
+// ANSI helpers (delegate to shared style module)
+// ---------------------------------------------------------------------------
+
+fn color(code: u8, s: &str) -> String {
+    crate::style::color(code, s)
+}
+
+fn bold(s: &str) -> String {
+    crate::style::bold(s)
+}
+
+fn dim(s: &str) -> String {
+    crate::style::dim(s)
+}
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
 pub fn run(name: Option<String>) -> CliResult {
+    let globals = GlobalConfig::load();
+
+    if globals.ui.animation {
+        print_banner();
+    }
+
     let theme = ColorfulTheme::default();
 
     // Project name
@@ -99,10 +298,14 @@ pub fn run(name: Option<String>) -> CliResult {
         "solana    (cargo build-sbf)",
         "upstream  (cargo +nightly build-bpf)",
     ];
+    let toolchain_default = match globals.defaults.toolchain.as_deref() {
+        Some("upstream") => 1,
+        _ => 0,
+    };
     let toolchain_idx = Select::with_theme(&theme)
         .with_prompt("Toolchain")
         .items(toolchain_items)
-        .default(0)
+        .default(toolchain_default)
         .interact()
         .map_err(anyhow::Error::from)?;
     let toolchain = match toolchain_idx {
@@ -110,12 +313,35 @@ pub fn run(name: Option<String>) -> CliResult {
         _ => Toolchain::Upstream,
     };
 
+    // For upstream: sbpf-linker must be installed
+    if matches!(toolchain, Toolchain::Upstream) && !toolchain::has_sbpf_linker() {
+        eprintln!();
+        eprintln!(
+            "  {} sbpf-linker not found.",
+            color(196, "\u{2718}")
+        );
+        eprintln!();
+        eprintln!("  Install platform-tools first:");
+        eprintln!("    {}", bold("git clone https://github.com/anza-xyz/platform-tools"));
+        eprintln!("    {}", bold("cd platform-tools"));
+        eprintln!("    {}", bold("cargo install-with-gallery"));
+        eprintln!();
+        std::process::exit(1);
+    }
+
     // Testing framework
     let framework_items = &["None", "Mollusk", "QuasarSVM/Web3.js", "QuasarSVM/Kit"];
+    let framework_default = match globals.defaults.framework.as_deref() {
+        Some("mollusk") => 1,
+        Some("quasarsvm-web3js") => 2,
+        Some("quasarsvm-kit") => 3,
+        Some("none") => 0,
+        _ => 1,
+    };
     let framework_idx = Select::with_theme(&theme)
         .with_prompt("Testing framework")
         .items(framework_items)
-        .default(1)
+        .default(framework_default)
         .interact()
         .map_err(anyhow::Error::from)?;
     let framework = match framework_idx {
@@ -128,12 +354,16 @@ pub fn run(name: Option<String>) -> CliResult {
     // Template
     let template_items = &[
         "Minimal (instruction file only)",
-        "Full(state, events, and instruction files)",
+        "Full (state, events, and instruction files)",
     ];
+    let template_default = match globals.defaults.template.as_deref() {
+        Some("full") => 1,
+        _ => 0,
+    };
     let template_idx = Select::with_theme(&theme)
         .with_prompt("Template")
         .items(template_items)
-        .default(0)
+        .default(template_default)
         .interact()
         .map_err(anyhow::Error::from)?;
     let template = match template_idx {
@@ -143,9 +373,55 @@ pub fn run(name: Option<String>) -> CliResult {
 
     scaffold(&name, toolchain, framework, template)?;
 
-    println!("\nCreated project: {name}/");
+    // Save preferences for next time
+    let new_globals = GlobalConfig {
+        defaults: GlobalDefaults {
+            toolchain: Some(toolchain.to_string()),
+            framework: Some(framework.to_string()),
+            template: Some(template.to_string()),
+        },
+        ui: globals.ui,
+    };
+    let _ = new_globals.save(); // best-effort
+
+    // Success message
+    println!();
+    println!(
+        "  {}  Created {} {}",
+        color(83, "\u{2714}"),
+        bold(&name),
+        dim("project")
+    );
+    println!();
+    println!("  {}", dim("Next steps:"));
+    println!(
+        "    {}  {}",
+        color(45, "\u{276f}"),
+        bold(&format!("cd {name}"))
+    );
+    println!(
+        "    {}  {}",
+        color(45, "\u{276f}"),
+        bold("quasar build")
+    );
+    if framework.has_rust_tests() || framework.has_typescript() {
+        println!(
+            "    {}  {}",
+            color(45, "\u{276f}"),
+            bold("quasar test")
+        );
+    }
+    println!();
+    println!(
+        "  {} saved to {}",
+        dim("Preferences"),
+        dim(&GlobalConfig::path().display().to_string()),
+    );
+    println!();
+
     Ok(())
 }
+
 
 fn scaffold(
     name: &str,
@@ -275,7 +551,7 @@ fn scaffold(
         // Test files go in tests/
         fs::write(
             tests_dir.join(format!("{}.test.ts", name)),
-            generate_test_ts(name, framework),
+            generate_test_ts(name, framework, toolchain),
         )
         .map_err(anyhow::Error::from)?;
     }
@@ -445,9 +721,13 @@ fn generate_package_json(name: &str, framework: Framework) -> String {
     )
 }
 
-fn generate_test_ts(name: &str, framework: Framework) -> String {
+fn generate_test_ts(name: &str, framework: Framework, toolchain: Toolchain) -> String {
     let module_name = name.replace('-', "_");
     let class_name = snake_to_pascal(&module_name);
+    let so_name = match toolchain {
+        Toolchain::Upstream => format!("lib{module_name}"),
+        Toolchain::Solana => module_name.clone(),
+    };
 
     if framework.is_kit() {
         format!(
@@ -464,7 +744,7 @@ describe("{class_name} Program", async () => {{
 
   const vm = new QuasarSvm()
     .addSystemProgram()
-    .addProgram(PROGRAM_ADDRESS, await readFile("target/deploy/{name}.so"))
+    .addProgram(PROGRAM_ADDRESS, await readFile("target/deploy/{so_name}.so"))
 
   const payer = await generateKeyPairSigner();
 
@@ -507,7 +787,7 @@ const {class_name}Program = new {class_name}Client();
 describe("{class_name} Program", async () => {{
   const vm = new QuasarSvm()
     .addSystemProgram()
-    .addProgram({class_name}Client.programId, await readFile("target/deploy/{name}.so"));
+    .addProgram({class_name}Client.programId, await readFile("target/deploy/{so_name}.so"));
 
   const {{ publicKey: payer }} = await Keypair.generate();
 
@@ -652,6 +932,7 @@ build-std = ["core", "alloc"]
 
 [target.bpfel-unknown-none]
 rustflags = [
+"--cfg", "target_os=\"solana\"",
 "--cfg", "feature=\"mem_unaligned\"",
 "-C", "linker=sbpf-linker",
 "-C", "panic=abort",
