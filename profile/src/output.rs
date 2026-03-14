@@ -45,6 +45,7 @@ fn bar_fill(s: &str) -> String {
 const LAST_PROFILE: &str = "target/profile/.last-profile";
 
 pub fn print_summary(result: &ProfileResult, program_name: &str, binary_size: u64, expand: bool) {
+    println!();
     let total = result.total_cus;
     let fn_count = result.function_cus.len();
 
@@ -92,8 +93,7 @@ pub fn print_summary(result: &ProfileResult, program_name: &str, binary_size: u6
         print_top_functions(result, total);
     }
 
-    // Always hint at the flamegraph
-    println!("  {}", dim("quasar profile --web    open flamegraph"));
+    // Flamegraph link is printed by the caller after the server starts
 
     save_current_profile(program_name, result);
 }
@@ -240,6 +240,10 @@ fn print_full_table(
             format_cu(total)
         ))
     );
+}
+
+pub fn print_flamegraph_link(url: &str) {
+    println!("  {}  {}", dim("flamegraph"), cyan(url));
 }
 
 fn load_previous_profile(program_name: &str) -> Option<HashMap<String, u64>> {

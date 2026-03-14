@@ -2120,7 +2120,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "tinysrv",
  "toml 0.8.23",
 ]
 
@@ -3819,15 +3818,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
-]
-
-[[package]]
-name = "tinysrv"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18a3811f4dc480bb8cb0c91e1d7e1390dab36ac1d783d942970a3e700c91e563"
-dependencies = [
- "libc",
 ]
 
 [[package]]

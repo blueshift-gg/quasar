@@ -26,7 +26,6 @@ pub struct ProfileCommand {
     pub elf_path: Option<PathBuf>,
     pub diff_program: Option<String>,
     pub share: bool,
-    pub web: bool,
     pub expand: bool,
 }
 
@@ -44,7 +43,6 @@ pub fn run(command: ProfileCommand) {
         std::process::exit(1);
     });
     let public_gist = command.share;
-    let open_web = command.web;
     let expand = command.expand;
 
     if !elf_path.exists() {
@@ -130,16 +128,21 @@ pub fn run(command: ProfileCommand) {
         return;
     }
 
-    if open_web {
-        ensure_frontend_assets(&profile_root);
-        println!(
-            "\n  http://{}:{}/?program={}",
+    // Start flamegraph server in the background (auto-shuts down when idle)
+    if has_frontend_assets(&profile_root) {
+        let url = format!(
+            "http://{}:{}/?program={}",
             SERVER_HOST, SERVER_PORT, program_name
         );
-        serve::serve(&profile_root, SERVER_PORT).unwrap_or_else(|e| {
-            eprintln!("Error: failed to start local profiler server: {}", e);
-            std::process::exit(1);
-        });
+        match serve::serve_background(&profile_root, SERVER_PORT, program_name) {
+            Ok(_) => output::print_flamegraph_link(&url),
+            Err(_) => {
+                // Port busy — server already running, just show the link
+                if serve::is_alive(SERVER_PORT) {
+                    output::print_flamegraph_link(&url);
+                }
+            }
+        }
     }
 }
 
@@ -151,10 +154,14 @@ fn run_diff(program: String) {
         SERVER_HOST, SERVER_PORT, program
     );
     eprintln!("Press Ctrl-C to stop the profiler server.");
-    serve::serve(&profile_root, SERVER_PORT).unwrap_or_else(|e| {
+    serve::serve_blocking(&profile_root, SERVER_PORT).unwrap_or_else(|e| {
         eprintln!("Error: failed to start local profiler server: {}", e);
         std::process::exit(1);
     });
+}
+
+fn has_frontend_assets(profile_root: &Path) -> bool {
+    profile_root.join("index.html").exists()
 }
 
 fn ensure_frontend_assets(profile_root: &Path) {
