@@ -89,7 +89,8 @@ cargo install --path cli
 ```
 
 ```bash
-quasar init my-program    # Scaffold a new project
+quasar init my-program       # Scaffold a new project
+quasar init my-program -y    # Skip prompts, use saved defaults
 quasar build              # Compile the on-chain program
 quasar test               # Run the test suite
 quasar profile            # Measure compute-unit usage

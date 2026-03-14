@@ -10,19 +10,24 @@ cargo install --path cli
 
 ## Commands
 
-### `quasar init [name]`
+### `quasar init [name] [--yes]`
 
 Scaffold a new Quasar project. Launches an interactive wizard that prompts for:
 
 - **Project name** — becomes the crate name and `Quasar.toml` project name
 - **Toolchain** — `solana` (cargo build-sbf) or `upstream` (cargo +nightly build-bpf)
-- **Testing framework** — None, Mollusk, QuasarSVM/Web3.js, or QuasarSVM/Kit
+- **Testing framework** — None, Mollusk, QuasarSVM/Rust, QuasarSVM/Web3.js, or QuasarSVM/Kit
 - **Template** — Minimal (single instruction) or Full (state, events, instruction files)
 
 The wizard generates a complete project directory with `Cargo.toml`, `Quasar.toml`, source files, test scaffolding, and a program keypair. Preferences are saved to `~/.quasar/config.toml` so subsequent `init` runs use the same defaults.
 
+| Flag | Effect |
+|------|--------|
+| `-y, --yes` | Skip all prompts and use saved defaults (requires a name argument) |
+
 ```bash
-quasar init my-program
+quasar init my-program       # Interactive wizard
+quasar init my-program -y    # Use saved defaults, no prompts
 ```
 
 ### `quasar build [--debug] [--watch]`
@@ -125,7 +130,7 @@ name = "my-program"
 type = "solana"        # "solana" or "upstream"
 
 [testing]
-framework = "mollusk"  # "none", "mollusk", "quasarsvm-web3js", or "quasarsvm-kit"
+framework = "mollusk"  # "none", "mollusk", "quasarsvm-rust", "quasarsvm-web3js", or "quasarsvm-kit"
 ```
 
 ### Global config (`~/.quasar/config.toml`)

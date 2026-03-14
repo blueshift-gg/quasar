@@ -34,6 +34,7 @@ enum Framework {
     Mollusk,
     QuasarSVMWeb3js,
     QuasarSVMKit,
+    QuasarSVMRust,
 }
 
 impl Framework {
@@ -46,7 +47,7 @@ impl Framework {
     }
 
     fn has_rust_tests(&self) -> bool {
-        matches!(self, Framework::Mollusk)
+        matches!(self, Framework::Mollusk | Framework::QuasarSVMRust)
     }
 }
 
@@ -57,6 +58,7 @@ impl fmt::Display for Framework {
             Framework::Mollusk => write!(f, "mollusk"),
             Framework::QuasarSVMWeb3js => write!(f, "quasarsvm-web3js"),
             Framework::QuasarSVMKit => write!(f, "quasarsvm-kit"),
+            Framework::QuasarSVMRust => write!(f, "quasarsvm-rust"),
         }
     }
 }
@@ -271,7 +273,7 @@ fn dim(s: &str) -> String {
 // Entry point
 // ---------------------------------------------------------------------------
 
-pub fn run(name: Option<String>) -> CliResult {
+pub fn run(name: Option<String>, yes: bool) -> CliResult {
     let globals = GlobalConfig::load();
 
     if globals.ui.animation {
@@ -281,7 +283,12 @@ pub fn run(name: Option<String>) -> CliResult {
     let theme = ColorfulTheme::default();
 
     // Project name
-    let name: String = {
+    let name: String = if yes {
+        name.unwrap_or_else(|| {
+            eprintln!("  {}", crate::style::fail("--yes requires a project name"));
+            std::process::exit(1);
+        })
+    } else {
         let mut prompt = Input::with_theme(&theme).with_prompt("Project name");
         if let Some(default) = name {
             prompt = prompt.default(default);
@@ -290,20 +297,24 @@ pub fn run(name: Option<String>) -> CliResult {
     };
 
     // Toolchain
-    let toolchain_items = &[
-        "solana    (cargo build-sbf)",
-        "upstream  (cargo +nightly build-bpf)",
-    ];
     let toolchain_default = match globals.defaults.toolchain.as_deref() {
         Some("upstream") => 1,
         _ => 0,
     };
-    let toolchain_idx = Select::with_theme(&theme)
-        .with_prompt("Toolchain")
-        .items(toolchain_items)
-        .default(toolchain_default)
-        .interact()
-        .map_err(anyhow::Error::from)?;
+    let toolchain_idx = if yes {
+        toolchain_default
+    } else {
+        let toolchain_items = &[
+            "solana    (cargo build-sbf)",
+            "upstream  (cargo +nightly build-bpf)",
+        ];
+        Select::with_theme(&theme)
+            .with_prompt("Toolchain")
+            .items(toolchain_items)
+            .default(toolchain_default)
+            .interact()
+            .map_err(anyhow::Error::from)?
+    };
     let toolchain = match toolchain_idx {
         0 => Toolchain::Solana,
         _ => Toolchain::Upstream,
@@ -326,42 +337,58 @@ pub fn run(name: Option<String>) -> CliResult {
     }
 
     // Testing framework
-    let framework_items = &["None", "Mollusk", "QuasarSVM/Web3.js", "QuasarSVM/Kit"];
     let framework_default = match globals.defaults.framework.as_deref() {
         Some("mollusk") => 1,
-        Some("quasarsvm-web3js") => 2,
-        Some("quasarsvm-kit") => 3,
+        Some("quasarsvm-rust") => 2,
+        Some("quasarsvm-web3js") => 3,
+        Some("quasarsvm-kit") => 4,
         Some("none") => 0,
-        _ => 1,
+        _ => 2,
     };
-    let framework_idx = Select::with_theme(&theme)
-        .with_prompt("Testing framework")
-        .items(framework_items)
-        .default(framework_default)
-        .interact()
-        .map_err(anyhow::Error::from)?;
+    let framework_idx = if yes {
+        framework_default
+    } else {
+        let framework_items = &[
+            "None",
+            "Mollusk",
+            "QuasarSVM/Rust",
+            "QuasarSVM/Web3.js",
+            "QuasarSVM/Kit",
+        ];
+        Select::with_theme(&theme)
+            .with_prompt("Testing framework")
+            .items(framework_items)
+            .default(framework_default)
+            .interact()
+            .map_err(anyhow::Error::from)?
+    };
     let framework = match framework_idx {
         0 => Framework::None,
         1 => Framework::Mollusk,
-        2 => Framework::QuasarSVMWeb3js,
+        2 => Framework::QuasarSVMRust,
+        3 => Framework::QuasarSVMWeb3js,
         _ => Framework::QuasarSVMKit,
     };
 
     // Template
-    let template_items = &[
-        "Minimal (instruction file only)",
-        "Full (state, events, and instruction files)",
-    ];
     let template_default = match globals.defaults.template.as_deref() {
         Some("full") => 1,
         _ => 0,
     };
-    let template_idx = Select::with_theme(&theme)
-        .with_prompt("Template")
-        .items(template_items)
-        .default(template_default)
-        .interact()
-        .map_err(anyhow::Error::from)?;
+    let template_idx = if yes {
+        template_default
+    } else {
+        let template_items = &[
+            "Minimal (instruction file only)",
+            "Full (state, events, and instruction files)",
+        ];
+        Select::with_theme(&theme)
+            .with_prompt("Template")
+            .items(template_items)
+            .default(template_default)
+            .interact()
+            .map_err(anyhow::Error::from)?
+    };
     let template = match template_idx {
         0 => Template::Minimal,
         _ => Template::Full,
@@ -596,6 +623,18 @@ quasar-core = {{ git = "https://github.com/blueshift-gg/quasar" }}
 solana-account = {{ version = "3.4.0" }}
 solana-address = {{ version = "2.2.0", features = ["decode"] }}
 solana-instruction = {{ version = "3.2.0", features = ["bincode"] }}
+"#,
+            ));
+        }
+        Framework::QuasarSVMRust => {
+            out.push_str(&format!(
+                r#"
+[dev-dependencies]
+{client_dep}quasar-svm = {{ git = "https://github.com/blueshift-gg/quasar-svm" }}
+solana-account = {{ version = "3.4.0" }}
+solana-address = {{ version = "2.2.0", features = ["decode"] }}
+solana-instruction = {{ version = "3.2.0", features = ["bincode"] }}
+solana-pubkey = {{ version = "4.1.0" }}
 "#,
             ));
         }
@@ -878,6 +917,44 @@ fn test_initialize() {{
         "initialize failed: {{:?}}",
         result.program_result,
     );
+}}
+"#
+            )
+        }
+        (Framework::QuasarSVMRust, Template::Minimal | Template::Full) => {
+            format!(
+                r#"extern crate std;
+
+use quasar_svm::{{Account, Instruction, Pubkey, QuasarSvm}};
+use solana_address::Address;
+
+use {client_crate}::InitializeInstruction;
+
+fn setup() -> QuasarSvm {{
+    let elf = include_bytes!("../target/deploy/{libname}.so");
+    QuasarSvm::new()
+        .with_program(&Pubkey::from(crate::ID), elf)
+}}
+
+#[test]
+fn test_initialize() {{
+    let mut svm = setup();
+
+    let payer = Pubkey::new_unique();
+    let system_program = quasar_svm::system_program::ID;
+
+    let instruction: Instruction = InitializeInstruction {{
+        payer: Address::from(payer.to_bytes()),
+        system_program: Address::from(system_program.to_bytes()),
+    }}
+    .into();
+
+    let result = svm.process_transaction(
+        &[instruction],
+        &[(payer, Account::new(10_000_000_000, 0, &system_program))],
+    );
+
+    result.expect("initialize failed");
 }}
 "#
             )

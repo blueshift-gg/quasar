@@ -85,7 +85,10 @@ impl QuasarConfig {
     }
 
     pub fn has_rust_tests(&self) -> bool {
-        matches!(self.testing.framework.as_str(), "mollusk")
+        matches!(
+            self.testing.framework.as_str(),
+            "mollusk" | "quasarsvm-rust"
+        )
     }
 }
 

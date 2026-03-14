@@ -59,6 +59,10 @@ pub struct InitCommand {
     /// Project name — skips the interactive name prompt
     #[arg(value_name = "NAME")]
     pub name: Option<String>,
+
+    /// Skip prompts and use saved defaults
+    #[arg(long, short, action = ArgAction::SetTrue)]
+    pub yes: bool,
 }
 
 #[derive(Args, Debug, Default)]
@@ -165,7 +169,7 @@ pub struct ProfileCommand {
 
 pub fn run(cli: Cli) -> CliResult {
     match cli.command {
-        Command::Init(cmd) => init::run(cmd.name),
+        Command::Init(cmd) => init::run(cmd.name, cmd.yes),
         Command::Build(cmd) => build::run(cmd.debug, cmd.watch),
         Command::Test(cmd) => test::run(cmd.debug, cmd.filter),
         Command::Deploy(_) => todo!(),
@@ -218,7 +222,7 @@ pub fn print_help() {
     );
     println!();
     println!("  {}", style::bold("Commands:"));
-    print_cmd("init   [name]", "Scaffold a new project");
+    print_cmd("init   [name] [-y]", "Scaffold a new project");
     print_cmd("build  [--debug] [--watch]", "Compile the on-chain program");
     print_cmd("test   [--debug] [--filter]", "Run the test suite");
     print_cmd("deploy", "Deploy to a cluster");
