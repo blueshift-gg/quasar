@@ -9,7 +9,8 @@ use {
 /// Outputs:
 /// - `target/idl/<name>.idl.json`
 /// - `target/client/rust/<name>-client/` (standalone Rust crate)
-/// - `target/client/typescript/<name>/web3.ts` when `generate_typescript` is true
+/// - `target/client/typescript/<name>/web3.ts` when `generate_typescript` is
+///   true
 pub fn generate(crate_path: &Path, generate_typescript: bool) -> CliResult {
     // Parse the program
     let parsed = parser::parse_program(crate_path);

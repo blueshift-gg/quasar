@@ -1,5 +1,4 @@
-use std::io;
-use std::path::Path;
+use std::{io, path::Path};
 
 pub fn serve(root: &Path, port: u16) -> io::Result<()> {
     let root_bytes = root.to_string_lossy().into_owned();

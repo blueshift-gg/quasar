@@ -51,14 +51,16 @@ pub struct InitCommand {
 
 #[derive(Args, Debug, Default)]
 pub struct BuildCommand {
-    /// Build in debug mode (unoptimized, with debug symbols needed for profiling)
+    /// Build in debug mode (unoptimized, with debug symbols needed for
+    /// profiling)
     #[arg(long, action = ArgAction::SetTrue)]
     pub debug: bool,
 }
 
 #[derive(Args, Debug, Default)]
 pub struct TestCommand {
-    /// Build and test in debug mode (unoptimized, with debug symbols needed for profiling)
+    /// Build and test in debug mode (unoptimized, with debug symbols needed for
+    /// profiling)
     #[arg(long, action = ArgAction::SetTrue)]
     pub debug: bool,
 }

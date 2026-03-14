@@ -1,9 +1,11 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-
-use crate::config::QuasarConfig;
-use crate::error::CliResult;
+use {
+    crate::{config::QuasarConfig, error::CliResult},
+    std::{
+        fs,
+        path::{Path, PathBuf},
+        process::Command,
+    },
+};
 
 pub fn run(debug: bool) -> CliResult {
     let config = QuasarConfig::load()?;

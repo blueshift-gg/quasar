@@ -5,12 +5,12 @@ mod output;
 mod serve;
 mod walk;
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::{
     collections::HashSet,
     fs::{self, File},
     io::{self, copy},
+    path::{Path, PathBuf},
+    process::Command,
 };
 
 const SERVER_HOST: &str = "127.0.0.1";
@@ -30,7 +30,8 @@ pub fn run(command: ProfileCommand) {
 
     let elf_path = command.elf_path.unwrap_or_else(|| {
         eprintln!(
-            "Error: missing ELF path. Put the program at target/deploy/<program>.so or pass `quasar profile <PATH_TO_ELF_SO>`."
+            "Error: missing ELF path. Put the program at target/deploy/<program>.so or pass \
+             `quasar profile <PATH_TO_ELF_SO>`."
         );
         std::process::exit(1);
     });
