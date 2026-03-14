@@ -85,6 +85,10 @@ pub struct TestCommand {
     /// Only run tests whose name matches PATTERN
     #[arg(long, short, value_name = "PATTERN")]
     pub filter: Option<String>,
+
+    /// Watch src/ for changes and re-run tests automatically
+    #[arg(long, short, action = ArgAction::SetTrue)]
+    pub watch: bool,
 }
 
 #[derive(Args, Debug, Default)]
@@ -171,7 +175,7 @@ pub fn run(cli: Cli) -> CliResult {
     match cli.command {
         Command::Init(cmd) => init::run(cmd.name, cmd.yes),
         Command::Build(cmd) => build::run(cmd.debug, cmd.watch),
-        Command::Test(cmd) => test::run(cmd.debug, cmd.filter),
+        Command::Test(cmd) => test::run(cmd.debug, cmd.filter, cmd.watch),
         Command::Deploy(_) => todo!(),
         Command::Clean(_) => clean::run(),
         Command::Config(cmd) => cfg::run(cmd.action),
@@ -224,7 +228,7 @@ pub fn print_help() {
     println!("  {}", style::bold("Commands:"));
     print_cmd("init   [name] [-y]", "Scaffold a new project");
     print_cmd("build  [--debug] [--watch]", "Compile the on-chain program");
-    print_cmd("test   [--debug] [--filter]", "Run the test suite");
+    print_cmd("test   [--debug] [--filter] [-w]", "Run the test suite");
     print_cmd("deploy", "Deploy to a cluster");
     print_cmd("clean", "Remove build artifacts");
     print_cmd("config [get|set|list|reset]", "Manage global settings");

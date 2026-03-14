@@ -28,6 +28,7 @@ The wizard generates a complete project directory with `Cargo.toml`, `Quasar.tom
 ```bash
 quasar init my-program       # Interactive wizard
 quasar init my-program -y    # Use saved defaults, no prompts
+quasar init . -y             # Scaffold into current directory
 ```
 
 ### `quasar build [--debug] [--watch]`
@@ -45,14 +46,15 @@ On success, prints the binary size and delta from the previous build:
   ✔ Build complete in 1.2s (56.6 KB, -1.2 KB)
 ```
 
-### `quasar test [--debug] [--filter PATTERN]`
+### `quasar test [--debug] [--filter PATTERN] [--watch]`
 
-Run the test suite. Builds first, then runs either Rust tests (Mollusk) or TypeScript tests (Mocha) based on the `Quasar.toml` testing framework.
+Run the test suite. Builds first, then runs either Rust tests (Mollusk/QuasarSVM) or TypeScript tests (Mocha) based on the `Quasar.toml` testing framework.
 
 | Flag | Effect |
 |------|--------|
 | `--debug` | Build with debug symbols before testing |
-| `--filter PATTERN` | Only run tests matching the pattern |
+| `-f, --filter PATTERN` | Only run tests matching the pattern |
+| `-w, --watch` | Watch `src/` for changes and re-run tests automatically |
 
 TypeScript tests are parsed from Mocha's JSON reporter for structured pass/fail output. Rust tests are parsed from `cargo test` output.
 

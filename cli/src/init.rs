@@ -296,6 +296,16 @@ pub fn run(name: Option<String>, yes: bool) -> CliResult {
         prompt.interact_text().map_err(anyhow::Error::from)?
     };
 
+    // When scaffolding into ".", derive the crate name from the current directory
+    let crate_name = if name == "." {
+        std::env::current_dir()
+            .ok()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+            .unwrap_or_else(|| "my-program".to_string())
+    } else {
+        name.clone()
+    };
+
     // Toolchain
     let toolchain_default = match globals.defaults.toolchain.as_deref() {
         Some("upstream") => 1,
@@ -394,7 +404,19 @@ pub fn run(name: Option<String>, yes: bool) -> CliResult {
         _ => Template::Full,
     };
 
-    scaffold(&name, toolchain, framework, template)?;
+    if yes {
+        println!();
+        println!(
+            "  {} {} {} {} {}",
+            dim("Using:"),
+            bold(&toolchain.to_string()),
+            dim("+"),
+            bold(&framework.to_string()),
+            bold(&template.to_string()),
+        );
+    }
+
+    scaffold(&name, &crate_name, toolchain, framework, template)?;
 
     // Save preferences for next time
     let new_globals = GlobalConfig {
@@ -412,16 +434,18 @@ pub fn run(name: Option<String>, yes: bool) -> CliResult {
     println!(
         "  {}  Created {} {}",
         color(83, "\u{2714}"),
-        bold(&name),
+        bold(&crate_name),
         dim("project")
     );
     println!();
     println!("  {}", dim("Next steps:"));
-    println!(
-        "    {}  {}",
-        color(45, "\u{276f}"),
-        bold(&format!("cd {name}"))
-    );
+    if name != "." {
+        println!(
+            "    {}  {}",
+            color(45, "\u{276f}"),
+            bold(&format!("cd {name}"))
+        );
+    }
     println!("    {}  {}", color(45, "\u{276f}"), bold("quasar build"));
     if framework.has_rust_tests() || framework.has_typescript() {
         println!("    {}  {}", color(45, "\u{276f}"), bold("quasar test"));
@@ -438,17 +462,27 @@ pub fn run(name: Option<String>, yes: bool) -> CliResult {
 }
 
 fn scaffold(
+    dir: &str,
     name: &str,
     toolchain: Toolchain,
     framework: Framework,
     template: Template,
 ) -> CliResult {
-    let root = Path::new(name);
+    let root = Path::new(dir);
 
-    if root.exists() {
+    if dir == "." {
+        // Scaffold into current directory — check it doesn't already have a project
+        if root.join("Cargo.toml").exists() || root.join("Quasar.toml").exists() {
+            eprintln!(
+                "  {}",
+                crate::style::fail("current directory already contains a project")
+            );
+            std::process::exit(1);
+        }
+    } else if root.exists() {
         eprintln!(
             "  {}",
-            crate::style::fail(&format!("directory '{name}' already exists"))
+            crate::style::fail(&format!("directory '{dir}' already exists"))
         );
         std::process::exit(1);
     }

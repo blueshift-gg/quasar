@@ -261,7 +261,7 @@ fn print_build_errors(stderr: &str) {
     let mut capture = false;
 
     for line in stderr.lines() {
-        // Primary error/warning lines from rustc
+        // Primary error/warning lines from rustc or cargo
         if line.starts_with("error") || line.starts_with("warning") {
             // Skip "warning: N warnings emitted" summary lines
             if line.contains("warnings emitted") || line.contains("warning emitted") {
@@ -274,8 +274,12 @@ fn print_build_errors(stderr: &str) {
             capture = true;
             errors.push(line.to_string());
         } else if capture {
-            // Capture continuation lines (source snippets, arrows, notes)
-            if line.starts_with("  ") || line.starts_with(" -->") || line.is_empty() {
+            // Capture continuation lines (source snippets, arrows, notes, "Caused by:")
+            if line.starts_with("  ")
+                || line.starts_with(" -->")
+                || line.starts_with("Caused by:")
+                || line.is_empty()
+            {
                 errors.push(line.to_string());
             } else {
                 capture = false;
@@ -401,7 +405,7 @@ fn read_target_rustflags() -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn collect_mtimes(dir: &Path) -> Vec<(PathBuf, std::time::SystemTime)> {
+pub fn collect_mtimes(dir: &Path) -> Vec<(PathBuf, std::time::SystemTime)> {
     let mut times = Vec::new();
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {

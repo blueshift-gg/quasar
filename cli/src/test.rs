@@ -6,7 +6,14 @@ use {
     },
 };
 
-pub fn run(debug: bool, filter: Option<String>) -> CliResult {
+pub fn run(debug: bool, filter: Option<String>, watch: bool) -> CliResult {
+    if watch {
+        return run_watch(debug, filter);
+    }
+    run_once(debug, filter.as_deref())
+}
+
+fn run_once(debug: bool, filter: Option<&str>) -> CliResult {
     let config = QuasarConfig::load()?;
 
     crate::build::run(debug, false)?;
@@ -14,9 +21,9 @@ pub fn run(debug: bool, filter: Option<String>) -> CliResult {
     let start = Instant::now();
 
     let result = if config.has_typescript_tests() {
-        run_typescript_tests(filter.as_deref())
+        run_typescript_tests(filter)
     } else if config.has_rust_tests() {
-        run_rust_tests(filter.as_deref())
+        run_rust_tests(filter)
     } else {
         println!("  {}", style::warn("no test framework configured"));
         return Ok(());
@@ -61,6 +68,26 @@ pub fn run(debug: bool, filter: Option<String>) -> CliResult {
                 )
             );
             std::process::exit(1);
+        }
+    }
+}
+
+fn run_watch(debug: bool, filter: Option<String>) -> CliResult {
+    if let Err(e) = run_once(debug, filter.as_deref()) {
+        eprintln!("  {}", style::fail(&format!("{e}")));
+    }
+
+    loop {
+        let baseline = crate::build::collect_mtimes(std::path::Path::new("src"));
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            let current = crate::build::collect_mtimes(std::path::Path::new("src"));
+            if current != baseline {
+                if let Err(e) = run_once(debug, filter.as_deref()) {
+                    eprintln!("  {}", style::fail(&format!("{e}")));
+                }
+                break;
+            }
         }
     }
 }
