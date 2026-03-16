@@ -61,10 +61,7 @@ impl<'info> {pascal}<'info> {{
         let lib_content = fs::read_to_string(&lib_path).map_err(anyhow::Error::from)?;
         if let Some(updated) = add_instruction_to_entrypoint(&lib_content, &snake, &pascal) {
             fs::write(&lib_path, updated).map_err(anyhow::Error::from)?;
-            println!(
-                "  {} src/lib.rs",
-                style::success("updated")
-            );
+            println!("  {} src/lib.rs", style::success("updated"));
         }
     }
 
@@ -72,10 +69,7 @@ impl<'info> {pascal}<'info> {{
         "  {} src/instructions/{snake}.rs",
         style::success("created")
     );
-    println!(
-        "  {} src/instructions/mod.rs",
-        style::success("updated")
-    );
+    println!("  {} src/instructions/mod.rs", style::success("updated"));
 
     Ok(())
 }
@@ -104,8 +98,9 @@ fn add_instruction_to_entrypoint(lib_content: &str, snake: &str, pascal: &str) -
 
     // Find the closing `}}` of the #[program] mod block.
     // Strategy: find the last `}` that closes the program module.
-    // We look for the pattern: a line with just `}` or `}}` that ends the mod block.
-    // The program block ends with a `}` at indent level 0 after `#[program]`.
+    // We look for the pattern: a line with just `}` or `}}` that ends the mod
+    // block. The program block ends with a `}` at indent level 0 after
+    // `#[program]`.
     let mut in_program = false;
     let mut program_brace_depth = 0;
     let mut insert_pos = None;
@@ -143,10 +138,8 @@ fn add_instruction_to_entrypoint(lib_content: &str, snake: &str, pascal: &str) -
     let insert_pos = insert_pos?;
 
     let new_entry = format!(
-        "\n    #[instruction(discriminator = {next_disc})]\n    \
-         pub fn {snake}(ctx: Ctx<{pascal}>) -> Result<(), ProgramError> {{\n        \
-         ctx.accounts.{snake}()\n    \
-         }}\n"
+        "\n    #[instruction(discriminator = {next_disc})]\n    pub fn {snake}(ctx: \
+         Ctx<{pascal}>) -> Result<(), ProgramError> {{\n        ctx.accounts.{snake}()\n    }}\n"
     );
 
     let mut result = String::with_capacity(lib_content.len() + new_entry.len());

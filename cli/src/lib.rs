@@ -74,7 +74,8 @@ pub struct InitCommand {
     #[arg(long, action = ArgAction::SetTrue)]
     pub no_git: bool,
 
-    /// Testing framework (none, mollusk, quasarsvm-rust, quasarsvm-web3js, quasarsvm-kit)
+    /// Testing framework (none, mollusk, quasarsvm-rust, quasarsvm-web3js,
+    /// quasarsvm-kit)
     #[arg(long)]
     pub framework: Option<String>,
 
@@ -238,7 +239,14 @@ pub struct CompletionsCommand {
 
 pub fn run(cli: Cli) -> CliResult {
     match cli.command {
-        Command::Init(cmd) => init::run(cmd.name, cmd.yes, cmd.no_git, cmd.framework, cmd.template, cmd.toolchain),
+        Command::Init(cmd) => init::run(
+            cmd.name,
+            cmd.yes,
+            cmd.no_git,
+            cmd.framework,
+            cmd.template,
+            cmd.toolchain,
+        ),
         Command::New(cmd) => match cmd.what {
             NewWhat::Instruction { name } => new::run_instruction(&name),
         },

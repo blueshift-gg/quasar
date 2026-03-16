@@ -281,7 +281,9 @@ fn run_rust_tests(filter: Option<&str>) -> Result<TestSummary, TestSummary> {
 /// Format a test failure detail line with special handling for program logs.
 fn format_failure_line(line: &str) -> String {
     // Program invoke/success/failed traces
-    if line.starts_with("Program ") && (line.contains("invoke [") || line.contains(" success") || line.contains(" failed")) {
+    if line.starts_with("Program ")
+        && (line.contains("invoke [") || line.contains(" success") || line.contains(" failed"))
+    {
         return style::dim(line);
     }
     // Program CU consumption
@@ -297,11 +299,16 @@ fn format_failure_line(line: &str) -> String {
         return style::fail(line);
     }
     // Common error patterns from our ProgramError Display
-    if line.starts_with("invalid ") || line.starts_with("insufficient ")
-        || line.starts_with("incorrect ") || line.starts_with("missing ")
-        || line.starts_with("account ") || line.starts_with("arithmetic ")
-        || line.starts_with("compute budget") || line.starts_with("custom program error")
-        || line.starts_with("runtime error") || line.starts_with("borsh ")
+    if line.starts_with("invalid ")
+        || line.starts_with("insufficient ")
+        || line.starts_with("incorrect ")
+        || line.starts_with("missing ")
+        || line.starts_with("account ")
+        || line.starts_with("arithmetic ")
+        || line.starts_with("compute budget")
+        || line.starts_with("custom program error")
+        || line.starts_with("runtime error")
+        || line.starts_with("borsh ")
     {
         return style::fail(line);
     }

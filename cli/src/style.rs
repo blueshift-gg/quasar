@@ -87,8 +87,10 @@ pub fn human_size(bytes: u64) -> String {
 
 /// Create a space-themed cyan spinner with a message.
 pub fn spinner(msg: &str) -> indicatif::ProgressBar {
-    use indicatif::{ProgressBar, ProgressStyle};
-    use std::time::Duration;
+    use {
+        indicatif::{ProgressBar, ProgressStyle},
+        std::time::Duration,
+    };
 
     let sp = ProgressBar::new_spinner();
     sp.set_style(

@@ -283,7 +283,8 @@ pub fn run(
 ) -> CliResult {
     let globals = GlobalConfig::load();
 
-    // Skip prompts when a name is provided (or --yes is set), or when explicit flags given
+    // Skip prompts when a name is provided (or --yes is set), or when explicit
+    // flags given
     let skip_prompts = yes
         || name.is_some()
         || framework_override.is_some()
@@ -321,7 +322,10 @@ pub fn run(
     };
 
     // Toolchain
-    let toolchain_default = match toolchain_override.as_deref().or(globals.defaults.toolchain.as_deref()) {
+    let toolchain_default = match toolchain_override
+        .as_deref()
+        .or(globals.defaults.toolchain.as_deref())
+    {
         Some("upstream") => 1,
         _ => 0,
     };
@@ -361,7 +365,10 @@ pub fn run(
     }
 
     // Testing framework
-    let framework_default = match framework_override.as_deref().or(globals.defaults.framework.as_deref()) {
+    let framework_default = match framework_override
+        .as_deref()
+        .or(globals.defaults.framework.as_deref())
+    {
         Some("mollusk") => 1,
         Some("quasarsvm-rust") => 2,
         Some("quasarsvm-web3js") => 3,
@@ -395,7 +402,10 @@ pub fn run(
     };
 
     // Template
-    let template_default = match template_override.as_deref().or(globals.defaults.template.as_deref()) {
+    let template_default = match template_override
+        .as_deref()
+        .or(globals.defaults.template.as_deref())
+    {
         Some("full") => 1,
         _ => 0,
     };
