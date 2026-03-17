@@ -1,6 +1,9 @@
-use crate::{
-    parser::{accounts::RawAccountField, helpers, ParsedProgram},
-    types::IdlType,
+use {
+    crate::{
+        parser::{accounts::RawAccountField, helpers, ParsedProgram},
+        types::IdlType,
+    },
+    std::fmt::Write,
 };
 
 /// Generate Cargo.toml content for the standalone client crate.
@@ -43,10 +46,12 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
     out.push_str("use solana_instruction::{AccountMeta, Instruction};\n\n");
 
     // Program ID constant
-    out.push_str(&format!(
+    write!(
+        out,
         "pub const ID: Address = solana_address::address!(\"{}\");\n\n",
         parsed.program_id
-    ));
+    )
+    .expect("write to String");
 
     for ix in &parsed.instructions {
         let accounts_struct = parsed
@@ -63,22 +68,19 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
             .collect();
 
         // --- Struct definition ---
-        out.push_str(&format!("pub struct {}Instruction {{\n", struct_name));
+        writeln!(out, "pub struct {}Instruction {{", struct_name).expect("write to String");
 
         // Account fields (all Address)
         if let Some(accs) = accounts_struct {
             for field in &accs.fields {
-                out.push_str(&format!("    pub {}: Address,\n", field.name));
+                writeln!(out, "    pub {}: Address,", field.name).expect("write to String");
             }
         }
 
         // Instruction arg fields
         for (i, (name, _)) in ix.args.iter().enumerate() {
-            out.push_str(&format!(
-                "    pub {}: {},\n",
-                name,
-                rust_field_type(&arg_types[i])
-            ));
+            writeln!(out, "    pub {}: {},", name, rust_field_type(&arg_types[i]))
+                .expect("write to String");
         }
 
         // Remaining accounts field
@@ -89,14 +91,18 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
         out.push_str("}\n\n");
 
         // --- From impl ---
-        out.push_str(&format!(
-            "impl From<{}Instruction> for Instruction {{\n",
+        writeln!(
+            out,
+            "impl From<{}Instruction> for Instruction {{",
             struct_name
-        ));
-        out.push_str(&format!(
-            "    fn from(ix: {}Instruction) -> Instruction {{\n",
+        )
+        .expect("write to String");
+        writeln!(
+            out,
+            "    fn from(ix: {}Instruction) -> Instruction {{",
             struct_name
-        ));
+        )
+        .expect("write to String");
 
         // Account metas
         if ix.has_remaining {
@@ -106,7 +112,8 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
         }
         if let Some(accs) = accounts_struct {
             for field in &accs.fields {
-                out.push_str(&format!("            {},\n", account_meta_expr(field)));
+                writeln!(out, "            {},", account_meta_expr(field))
+                    .expect("write to String");
             }
         }
         out.push_str("        ];\n");
@@ -115,18 +122,12 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
         }
 
         // Instruction data
-        let disc_bytes: Vec<String> = ix.discriminator.iter().map(|b| b.to_string()).collect();
+        let disc_str = format_disc_list(&ix.discriminator);
 
         if ix.args.is_empty() {
-            out.push_str(&format!(
-                "        let data = vec![{}];\n",
-                disc_bytes.join(", ")
-            ));
+            writeln!(out, "        let data = vec![{}];", disc_str).expect("write to String");
         } else {
-            out.push_str(&format!(
-                "        let mut data = vec![{}];\n",
-                disc_bytes.join(", ")
-            ));
+            writeln!(out, "        let mut data = vec![{}];", disc_str).expect("write to String");
             for (i, (name, _)) in ix.args.iter().enumerate() {
                 out.push_str(&serialize_expr(name, &arg_types[i]));
             }
@@ -153,24 +154,27 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
         // Event discriminator constants
         for ev in &parsed.events {
             let const_name = pascal_to_screaming_snake(&ev.name);
-            let disc_bytes: Vec<String> = ev.discriminator.iter().map(|b| b.to_string()).collect();
-            out.push_str(&format!(
-                "pub const {}_EVENT_DISCRIMINATOR: &[u8] = &[{}];\n",
-                const_name,
-                disc_bytes.join(", ")
-            ));
+            let disc_str = format_disc_list(&ev.discriminator);
+            writeln!(
+                out,
+                "pub const {}_EVENT_DISCRIMINATOR: &[u8] = &[{}];",
+                const_name, disc_str
+            )
+            .expect("write to String");
         }
         out.push('\n');
 
         // Event struct definitions
         for type_def in &event_types {
-            out.push_str(&format!("pub struct {} {{\n", type_def.name));
+            writeln!(out, "pub struct {} {{", type_def.name).expect("write to String");
             for field in &type_def.ty.fields {
-                out.push_str(&format!(
-                    "    pub {}: {},\n",
+                writeln!(
+                    out,
+                    "    pub {}: {},",
                     field.name,
                     rust_field_type(&field.ty)
-                ));
+                )
+                .expect("write to String");
             }
             out.push_str("}\n\n");
         }
@@ -179,9 +183,10 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
         out.push_str("pub enum ProgramEvent {\n");
         for type_def in &event_types {
             if type_def.ty.fields.is_empty() {
-                out.push_str(&format!("    {},\n", type_def.name));
+                writeln!(out, "    {},", type_def.name).expect("write to String");
             } else {
-                out.push_str(&format!("    {}({}),\n", type_def.name, type_def.name));
+                writeln!(out, "    {}({}),", type_def.name, type_def.name)
+                    .expect("write to String");
             }
         }
         out.push_str("}\n\n");
@@ -191,32 +196,36 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
         for (i, ev) in parsed.events.iter().enumerate() {
             let const_name = pascal_to_screaming_snake(&ev.name);
             let type_def = &event_types[i];
-            out.push_str(&format!(
-                "    if data.starts_with({}_EVENT_DISCRIMINATOR) {{\n",
+            writeln!(
+                out,
+                "    if data.starts_with({}_EVENT_DISCRIMINATOR) {{",
                 const_name
-            ));
+            )
+            .expect("write to String");
             if type_def.ty.fields.is_empty() {
-                out.push_str(&format!(
-                    "        return Some(ProgramEvent::{});\n",
-                    type_def.name
-                ));
+                writeln!(out, "        return Some(ProgramEvent::{});", type_def.name)
+                    .expect("write to String");
             } else {
-                out.push_str(&format!(
-                    "        let data = &data[{}_EVENT_DISCRIMINATOR.len()..];\n",
+                writeln!(
+                    out,
+                    "        let data = &data[{}_EVENT_DISCRIMINATOR.len()..];",
                     const_name
-                ));
+                )
+                .expect("write to String");
                 out.push_str("        let mut offset = 0usize;\n");
                 for field in &type_def.ty.fields {
                     out.push_str(&deserialize_field_expr(&field.name, &field.ty));
                 }
                 let field_names: Vec<&str> =
                     type_def.ty.fields.iter().map(|f| f.name.as_str()).collect();
-                out.push_str(&format!(
-                    "        return Some(ProgramEvent::{}({} {{ {} }}));\n",
+                writeln!(
+                    out,
+                    "        return Some(ProgramEvent::{}({} {{ {} }}));",
                     type_def.name,
                     type_def.name,
                     field_names.join(", ")
-                ));
+                )
+                .expect("write to String");
             }
             out.push_str("    }\n");
         }
@@ -352,8 +361,20 @@ fn primitive_size(p: &str) -> usize {
     }
 }
 
+/// Format discriminator bytes as a comma-separated list (no brackets).
+fn format_disc_list(disc: &[u8]) -> String {
+    let mut s = String::with_capacity(disc.len() * 4);
+    for (i, b) in disc.iter().enumerate() {
+        if i > 0 {
+            s.push_str(", ");
+        }
+        write!(s, "{}", b).expect("write to String");
+    }
+    s
+}
+
 fn pascal_to_screaming_snake(s: &str) -> String {
-    let mut result = String::new();
+    let mut result = String::with_capacity(s.len() + 4);
     for (i, c) in s.chars().enumerate() {
         if c.is_uppercase() && i > 0 {
             result.push('_');

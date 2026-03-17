@@ -98,13 +98,23 @@ pub fn build_idl(parsed: ParsedProgram) -> Idl {
     check_discriminator_collisions(&parsed);
     check_instruction_input_name_collision(&parsed);
 
-    let instructions: Vec<IdlInstruction> = parsed
-        .instructions
-        .iter()
+    let ParsedProgram {
+        program_id,
+        program_name,
+        crate_name,
+        version,
+        instructions: raw_instructions,
+        accounts_structs,
+        state_accounts,
+        events: raw_events,
+        errors,
+    } = parsed;
+
+    let instructions: Vec<IdlInstruction> = raw_instructions
+        .into_iter()
         .map(|ix| {
-            // Look up the accounts struct by name
-            let accounts_items = parsed
-                .accounts_structs
+            // Look up the accounts struct by name (borrows, not consumed)
+            let accounts_items = accounts_structs
                 .iter()
                 .find(|s| s.name == ix.accounts_type_name)
                 .map(accounts::to_idl_accounts)
@@ -121,7 +131,7 @@ pub fn build_idl(parsed: ParsedProgram) -> Idl {
 
             IdlInstruction {
                 name: helpers::to_camel_case(&ix.name),
-                discriminator: ix.discriminator.clone(),
+                discriminator: ix.discriminator,
                 accounts: accounts_items,
                 args,
                 has_remaining: ix.has_remaining,
@@ -129,35 +139,73 @@ pub fn build_idl(parsed: ParsedProgram) -> Idl {
         })
         .collect();
 
-    let account_defs: Vec<IdlAccountDef> = parsed
-        .state_accounts
-        .iter()
-        .map(state::to_idl_account_def)
-        .collect();
+    let (account_defs, mut type_defs): (Vec<IdlAccountDef>, Vec<IdlTypeDef>) = state_accounts
+        .into_iter()
+        .map(|sa| {
+            let fields = sa
+                .fields
+                .iter()
+                .map(|(name, ty)| IdlField {
+                    name: helpers::to_camel_case(name),
+                    ty: helpers::map_type_from_syn(ty),
+                })
+                .collect();
+            let account_def = IdlAccountDef {
+                name: sa.name.clone(),
+                discriminator: sa.discriminator,
+            };
+            let type_def = IdlTypeDef {
+                name: sa.name,
+                ty: IdlTypeDefType {
+                    kind: "struct".to_string(),
+                    fields,
+                },
+            };
+            (account_def, type_def)
+        })
+        .unzip();
 
-    let event_defs: Vec<IdlEventDef> = parsed.events.iter().map(events::to_idl_event_def).collect();
+    let (event_defs, event_type_defs): (Vec<IdlEventDef>, Vec<IdlTypeDef>) = raw_events
+        .into_iter()
+        .map(|ev| {
+            let fields = ev
+                .fields
+                .iter()
+                .map(|(name, ty)| IdlField {
+                    name: helpers::to_camel_case(name),
+                    ty: helpers::map_type_from_syn(ty),
+                })
+                .collect();
+            let event_def = IdlEventDef {
+                name: ev.name.clone(),
+                discriminator: ev.discriminator,
+            };
+            let type_def = IdlTypeDef {
+                name: ev.name,
+                ty: IdlTypeDefType {
+                    kind: "struct".to_string(),
+                    fields,
+                },
+            };
+            (event_def, type_def)
+        })
+        .unzip();
 
-    let mut type_defs: Vec<IdlTypeDef> = parsed
-        .state_accounts
-        .iter()
-        .map(state::to_idl_type_def)
-        .collect();
-
-    type_defs.extend(parsed.events.iter().map(events::to_idl_type_def));
+    type_defs.extend(event_type_defs);
 
     Idl {
-        address: parsed.program_id,
+        address: program_id,
         metadata: IdlMetadata {
-            name: parsed.program_name,
-            crate_name: parsed.crate_name,
-            version: parsed.version,
+            name: program_name,
+            crate_name,
+            version,
             spec: "0.1.0".to_string(),
         },
         instructions,
         accounts: account_defs,
         events: event_defs,
         types: type_defs,
-        errors: parsed.errors,
+        errors,
     }
 }
 
