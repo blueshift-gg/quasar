@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
 dialoguer = "0.11"
+quasar-audit = { path = "../audit" }
 quasar-idl = { path = "../idl" }
 quasar-profile = { path = "../profile" }
 serde = { version = "1", features = ["derive"] }

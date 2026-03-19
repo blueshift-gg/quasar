@@ -34,10 +34,19 @@ pub struct ParsedProgram {
 
 /// Parse an entire quasar program crate and produce a `ParsedProgram`.
 pub fn parse_program(crate_root: &Path) -> ParsedProgram {
-    // 1. Resolve all source files
     let files = module_resolver::resolve_crate(crate_root);
+    parse_program_from_files(crate_root, &files)
+}
 
-    // 2. Find lib.rs (first resolved file that has declare_id! or #[program])
+/// Parse pre-resolved source files into a `ParsedProgram`.
+///
+/// This is the lower-level entry point used when the caller already has the
+/// resolved file list (e.g. the audit crate, which also inspects the raw ASTs).
+pub fn parse_program_from_files(
+    crate_root: &Path,
+    files: &[module_resolver::ResolvedFile],
+) -> ParsedProgram {
+    // 1. Find lib.rs (first resolved file that has declare_id! or #[program])
     let lib_file = files
         .iter()
         .find(|f| f.path.ends_with("lib.rs"))
@@ -53,25 +62,25 @@ pub fn parse_program(crate_root: &Path) -> ParsedProgram {
 
     // 5. Collect all #[derive(Accounts)] structs across all files
     let mut accounts_structs = Vec::new();
-    for file in &files {
+    for file in files {
         accounts_structs.extend(accounts::extract_accounts_structs(&file.file));
     }
 
     // 6. Collect all #[account(discriminator = N)] state structs
     let mut state_accounts = Vec::new();
-    for file in &files {
+    for file in files {
         state_accounts.extend(state::extract_state_accounts(&file.file));
     }
 
     // 7. Collect all #[event(discriminator = N)] structs
     let mut all_events = Vec::new();
-    for file in &files {
+    for file in files {
         all_events.extend(events::extract_events(&file.file));
     }
 
     // 8. Collect all #[error_code] enums
     let mut all_errors = Vec::new();
-    for file in &files {
+    for file in files {
         all_errors.extend(errors::extract_errors(&file.file));
     }
 

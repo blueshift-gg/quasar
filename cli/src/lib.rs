@@ -3,6 +3,7 @@ use {
     std::path::PathBuf,
 };
 
+pub mod audit;
 pub mod build;
 pub mod cfg;
 pub mod clean;
@@ -32,6 +33,8 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
+    /// Run security audit on a program crate
+    Audit(AuditCommand),
     /// Scaffold a new Quasar project
     Init(InitCommand),
     /// Generate boilerplate (instructions, state, etc.)
@@ -59,6 +62,13 @@ pub enum Command {
 // ---------------------------------------------------------------------------
 // Command args
 // ---------------------------------------------------------------------------
+
+#[derive(Args, Debug)]
+pub struct AuditCommand {
+    /// Path to the program crate directory
+    #[arg(value_name = "PATH")]
+    pub crate_path: PathBuf,
+}
 
 #[derive(Args, Debug, Default)]
 pub struct InitCommand {
@@ -239,6 +249,7 @@ pub struct CompletionsCommand {
 
 pub fn run(cli: Cli) -> CliResult {
     match cli.command {
+        Command::Audit(cmd) => audit::run(cmd),
         Command::Init(cmd) => init::run(
             cmd.name,
             cmd.yes,
@@ -315,6 +326,7 @@ pub fn print_help() {
     );
     println!();
     println!("  {}", style::bold("Commands:"));
+    print_cmd("audit  <path>", "Run security audit on a program");
     print_cmd("init   [name] [-y] [--no-git]", "Scaffold a new project");
     print_cmd("new    instruction <name>", "Generate a new instruction");
     print_cmd(
