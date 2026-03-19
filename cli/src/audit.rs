@@ -1,4 +1,7 @@
-use crate::{error::{CliError, CliResult}, style, AuditCommand};
+use crate::{
+    error::{CliError, CliResult},
+    style, AuditCommand,
+};
 
 pub fn run(cmd: AuditCommand) -> CliResult {
     let crate_path = &cmd.crate_path;
@@ -7,16 +10,15 @@ pub fn run(cmd: AuditCommand) -> CliResult {
         return Err(CliError::PathDoesNotExist(crate_path.display().to_string()));
     }
 
-    let report = quasar_audit::audit_program(crate_path);
+    let mut findings = quasar_audit::audit_program(crate_path);
 
-    if report.findings.is_empty() {
+    if findings.is_empty() {
         println!();
         println!("  {}", style::success("No issues found"));
         println!();
         return Ok(());
     }
 
-    let mut findings = report.findings;
     findings.sort_by_key(|f| f.severity);
 
     println!();
@@ -44,22 +46,37 @@ pub fn run(cmd: AuditCommand) -> CliResult {
             quasar_audit::Severity::Info => style::dim("INFO"),
         };
 
-        let location = match (&finding.instruction, &finding.field) {
-            (Some(ix), Some(field)) => format!("{} → {}", ix, field),
-            (Some(ix), None) => ix.clone(),
-            _ => "global".to_string(),
-        };
-
         println!(
             "  {} {} {}",
             severity_str,
             style::bold(&format!("[{}]", finding.rule)),
-            style::dim(&location),
+            style::dim(&finding.location),
         );
-        println!("    {}", finding.message);
-        if let Some(url) = finding.learn_url {
-            println!("    {} {}", style::dim("Learn more:"), style::dim(url));
+
+        if finding.source_line > 0 {
+            println!(
+                "    {} {}:{}",
+                style::dim("at"),
+                style::dim(&finding.source_file),
+                style::dim(&finding.source_line.to_string()),
+            );
         }
+
+        println!("    {}", finding.message);
+
+        if !finding.snippet.is_empty() {
+            println!();
+            for line in finding.snippet.lines() {
+                println!("    {}", style::dim(line));
+            }
+            println!();
+        }
+
+        println!(
+            "    {} {}",
+            style::dim("Learn more:"),
+            style::dim(finding.rule.learn_url()),
+        );
         println!();
     }
 

@@ -13,4 +13,5 @@ path = "src/lib.rs"
 
 [dependencies]
 quasar-idl = { path = "../idl" }
+proc-macro2 = { version = "1", features = ["span-locations"] }
 syn = { version = "2", features = ["full", "parsing", "visit"] }

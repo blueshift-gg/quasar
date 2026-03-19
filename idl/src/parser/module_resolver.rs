@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 /// A resolved source file with its parsed AST.
 pub struct ResolvedFile {
     pub path: PathBuf,
+    pub source: String,
     pub file: syn::File,
 }
 
@@ -84,6 +85,7 @@ fn resolve_file(path: &Path, files: &mut Vec<ResolvedFile>) {
 
     files.push(ResolvedFile {
         path: path.to_path_buf(),
+        source,
         file,
     });
 }
