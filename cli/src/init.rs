@@ -545,7 +545,7 @@ pub fn run(
         );
     }
 
-    scaffold(&name, &crate_name, toolchain, framework, template)?;
+    scaffold(&name, &crate_name, toolchain, framework, template, crate::toolchain::LATEST_KNOWN_VERSION)?;
 
     // git init (unless --no-git or already in a git repo)
     if !no_git {
@@ -615,6 +615,7 @@ fn scaffold(
     toolchain: Toolchain,
     framework: Framework,
     template: Template,
+    quasar_version: &str,
 ) -> CliResult {
     let root = Path::new(dir);
 
@@ -656,7 +657,7 @@ fn scaffold(
     // Cargo.toml
     fs::write(
         root.join("Cargo.toml"),
-        generate_cargo_toml(name, toolchain, framework),
+        generate_cargo_toml(name, toolchain, framework, quasar_version),
     )
     .map_err(anyhow::Error::from)?;
 
@@ -754,7 +755,7 @@ fn scaffold(
 // Generators
 // ---------------------------------------------------------------------------
 
-fn generate_cargo_toml(name: &str, toolchain: Toolchain, framework: Framework) -> String {
+fn generate_cargo_toml(name: &str, toolchain: Toolchain, framework: Framework, quasar_version: &str) -> String {
     let mut out = format!(
         r#"[package]
 name = "{name}"
@@ -779,6 +780,15 @@ debug = []
 quasar-lang = {{ git = "https://github.com/blueshift-gg/quasar" }}
 "#,
     );
+
+    // Once quasar-lang is published to crates.io, pin the version instead.
+    // For now, 0.0.0 always uses the git dependency.
+    if quasar_version != "0.0.0" {
+        out = out.replace(
+            "quasar-lang = { git = \"https://github.com/blueshift-gg/quasar\" }\n",
+            &format!("quasar-lang = \"{quasar_version}\"\n"),
+        );
+    }
 
     if matches!(toolchain, Toolchain::Solana) {
         out.push_str("solana-instruction = { version = \"3.2.0\" }\n");
