@@ -19,11 +19,12 @@ pub struct ToolchainRequirements {
 /// Compatibility matrix: maps quasar-lang versions to required toolchain versions.
 /// Updated with each CLI release.
 ///
-/// `solana_version` is a major.minor prefix (e.g. "2.1" matches any 2.1.x).
+/// `solana_version` is a concrete installable version (e.g. "2.1.21").
+/// Comparison uses major.minor only — any 2.1.x satisfies a "2.1.21" requirement.
 /// `rust_version` is a minimum version (e.g. "1.87.0" means >= 1.87.0).
 const COMPAT_TABLE: &[(&str, ToolchainRequirements)] = &[
-    ("0.0.0", ToolchainRequirements { solana_version: "2.1", rust_version: "1.87.0" }),
-    // ("0.1.0", ToolchainRequirements { solana_version: "2.2", rust_version: "1.87.0" }),
+    ("0.0.0", ToolchainRequirements { solana_version: "2.1.21", rust_version: "1.87.0" }),
+    // ("0.1.0", ToolchainRequirements { solana_version: "2.2.0", rust_version: "1.87.0" }),
 ];
 
 /// The latest quasar-lang version this CLI knows about.
@@ -157,7 +158,7 @@ pub fn ensure_toolchain(project_root: &Path) {
         Some(ref installed) => {
             eprintln!();
             eprintln!(
-                "  {} Switching Solana CLI: v{installed} -> v{}.x (required by quasar-lang v{version})",
+                "  {} Switching Solana CLI: v{installed} -> v{} (required by quasar-lang v{version})",
                 style::dim(""),
                 reqs.solana_version,
             );
@@ -166,7 +167,7 @@ pub fn ensure_toolchain(project_root: &Path) {
         None => {
             eprintln!();
             eprintln!(
-                "  {} Installing Solana CLI v{}.x (required by quasar-lang v{version})...",
+                "  {} Installing Solana CLI v{} (required by quasar-lang v{version})...",
                 style::dim(""),
                 reqs.solana_version,
             );
