@@ -35,7 +35,7 @@ solana-hash = "3"
 solana-signature = "3"
 solana-message = { version = "3", features = ["bincode"] }
 solana-instruction = "3"
-solana-address = "2"
+solana-address = { version = "2", features = ["curve25519"] }
 sha2 = "0.10"
 base64 = "0.22"
 ureq = { version = "3", features = ["json"] }
