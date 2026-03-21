@@ -50,7 +50,7 @@ pub fn run() -> CliResult {
     match toolchain::requirements_for(&version) {
         Some(reqs) => {
             println!(
-                "  {} Solana CLI v{}.x, Rust >= v{}",
+                "  {} Solana CLI v{}, Rust >= v{}",
                 style::dim("Required:"),
                 reqs.solana_version,
                 reqs.rust_version,
