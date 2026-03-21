@@ -644,6 +644,38 @@ mod tests {
     }
 
     #[test]
+    fn verify_squads_program_id() {
+        let expected = bs58::decode("SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf")
+            .into_vec()
+            .unwrap();
+        assert_eq!(SQUADS_PROGRAM_ID.as_ref(), &expected[..]);
+    }
+
+    #[test]
+    fn verify_bpf_loader_id() {
+        let expected = bs58::decode("BPFLoaderUpgradeab1e11111111111111111111111")
+            .into_vec()
+            .unwrap();
+        assert_eq!(BPF_LOADER_UPGRADEABLE_ID.as_ref(), &expected[..]);
+    }
+
+    #[test]
+    fn verify_sysvar_rent_id() {
+        let expected = bs58::decode("SysvarRent111111111111111111111111111111111")
+            .into_vec()
+            .unwrap();
+        assert_eq!(SYSVAR_RENT_ID.as_ref(), &expected[..]);
+    }
+
+    #[test]
+    fn verify_sysvar_clock_id() {
+        let expected = bs58::decode("SysvarC1ock11111111111111111111111111111111")
+            .into_vec()
+            .unwrap();
+        assert_eq!(SYSVAR_CLOCK_ID.as_ref(), &expected[..]);
+    }
+
+    #[test]
     fn upgrade_message_is_valid() {
         let vault = Address::from([1u8; 32]);
         let program = Address::from([2u8; 32]);
