@@ -5,7 +5,7 @@ use {
     solana_hash::Hash,
     solana_signature::Signature,
     solana_signer::{Signer, SignerError},
-    std::{fs, path::Path},
+    std::{fs, path::Path, process::{Command, Stdio}},
 };
 
 // ---------------------------------------------------------------------------
@@ -425,6 +425,52 @@ pub fn proposal_approve_ix(
         ],
         data,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Buffer upload
+// ---------------------------------------------------------------------------
+
+/// Upload a program binary as a buffer via the Solana CLI.
+/// Returns the buffer address.
+pub fn write_buffer(
+    so_path: &Path,
+    keypair_path: &Path,
+    rpc_url: &str,
+) -> Result<Address, crate::error::CliError> {
+    let output = Command::new("solana")
+        .args([
+            "program", "write-buffer",
+            so_path.to_str().unwrap_or_default(),
+            "--keypair", keypair_path.to_str().unwrap_or_default(),
+            "--url", rpc_url,
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| anyhow::anyhow!("failed to run solana program write-buffer: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!("write-buffer failed: {stderr}").into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Output format: "Buffer: <ADDRESS>"
+    let addr_str = stdout
+        .lines()
+        .find(|l| l.contains("Buffer:"))
+        .and_then(|l| l.split(':').nth(1))
+        .map(|s| s.trim())
+        .ok_or_else(|| anyhow::anyhow!("could not parse buffer address from: {stdout}"))?;
+
+    let bytes: [u8; 32] = bs58::decode(addr_str)
+        .into_vec()
+        .map_err(|e| anyhow::anyhow!("invalid buffer address: {e}"))?
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("buffer address wrong length"))?;
+
+    Ok(Address::from(bytes))
 }
 
 #[cfg(test)]
