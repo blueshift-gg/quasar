@@ -1,5 +1,6 @@
 use {
     ed25519_dalek::SigningKey,
+    sha2::{Sha256, Digest},
     solana_address::Address,
     solana_hash::Hash,
     solana_signature::Signature,
@@ -260,6 +261,172 @@ pub fn read_transaction_index(account_data: &[u8]) -> Result<u64, crate::error::
     Ok(u64::from_le_bytes(bytes))
 }
 
+// ---------------------------------------------------------------------------
+// Instruction building
+// ---------------------------------------------------------------------------
+
+/// Compute an Anchor instruction discriminator: first 8 bytes of sha256("global:<name>").
+fn anchor_discriminator(name: &str) -> [u8; 8] {
+    let mut hasher = Sha256::new();
+    hasher.update(format!("global:{name}").as_bytes());
+    let hash = hasher.finalize();
+    hash[..8].try_into().unwrap()
+}
+
+/// Build the inner TransactionMessage bytes for a BPF upgrade.
+/// This is the Squads SmallVec-encoded message that gets stored on-chain.
+///
+/// The inner instruction upgrades `program_id` using `buffer` with the
+/// `vault` PDA as the upgrade authority.
+pub fn build_upgrade_message(
+    vault: &Address,
+    program_id: &Address,
+    buffer: &Address,
+    spill: &Address,
+) -> Vec<u8> {
+    let (programdata, _) = programdata_pda(program_id);
+
+    // Account keys ordering:
+    // [0] vault (writable signer — the authority)
+    // [1] programdata (writable)
+    // [2] program_id (writable)
+    // [3] buffer (writable)
+    // [4] spill (writable)
+    // [5] rent sysvar (readonly)
+    // [6] clock sysvar (readonly)
+    // [7] BPF loader upgradeable (readonly, program)
+    let account_keys: Vec<&Address> = vec![
+        vault, &programdata, program_id, buffer, spill,
+        &SYSVAR_RENT_ID, &SYSVAR_CLOCK_ID, &BPF_LOADER_UPGRADEABLE_ID,
+    ];
+
+    let num_signers: u8 = 1;            // vault
+    let num_writable_signers: u8 = 1;   // vault is writable
+    let num_writable_non_signers: u8 = 4; // programdata, program, buffer, spill
+
+    // BPF upgrade instruction data: u32 LE = 3 (Upgrade variant)
+    let ix_data: [u8; 4] = [0x03, 0x00, 0x00, 0x00];
+
+    // Compiled instruction: program_id_index=7 (BPF loader), accounts=[1,2,3,4,5,6,0]
+    // Account order for upgrade(): programdata, program, buffer, spill, rent, clock, authority
+    let account_indexes: Vec<u8> = vec![1, 2, 3, 4, 5, 6, 0];
+
+    // Serialize TransactionMessage with SmallVec encoding
+    let mut msg = Vec::new();
+    msg.push(num_signers);
+    msg.push(num_writable_signers);
+    msg.push(num_writable_non_signers);
+
+    // account_keys: SmallVec<u8, Pubkey>
+    msg.push(account_keys.len() as u8);
+    for key in &account_keys {
+        msg.extend_from_slice(key.as_ref());
+    }
+
+    // instructions: SmallVec<u8, CompiledInstruction>
+    msg.push(1u8); // 1 instruction
+    // CompiledInstruction:
+    msg.push(7u8); // program_id_index
+    // account_indexes: SmallVec<u8, u8>
+    msg.push(account_indexes.len() as u8);
+    msg.extend_from_slice(&account_indexes);
+    // data: SmallVec<u16, u8>
+    msg.extend_from_slice(&(ix_data.len() as u16).to_le_bytes());
+    msg.extend_from_slice(&ix_data);
+
+    // address_table_lookups: SmallVec<u8, _> — empty
+    msg.push(0u8);
+
+    msg
+}
+
+/// Build the VaultTransactionCreate instruction.
+pub fn vault_transaction_create_ix(
+    multisig: &Address,
+    transaction: &Address,
+    creator: &Address,
+    rent_payer: &Address,
+    vault_index: u8,
+    transaction_message: Vec<u8>,
+) -> solana_instruction::Instruction {
+    let discriminator = anchor_discriminator("vault_transaction_create");
+
+    let mut data = Vec::new();
+    data.extend_from_slice(&discriminator);
+    data.push(vault_index);
+    data.push(0u8); // ephemeral_signers = 0
+    // transaction_message: Borsh Vec<u8> = u32 LE length + bytes
+    data.extend_from_slice(&(transaction_message.len() as u32).to_le_bytes());
+    data.extend_from_slice(&transaction_message);
+    data.push(0u8); // memo: Option<String> = None
+
+    use solana_instruction::AccountMeta;
+    solana_instruction::Instruction {
+        program_id: SQUADS_PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(*multisig, false),
+            AccountMeta::new(*transaction, false),
+            AccountMeta::new_readonly(*creator, true),
+            AccountMeta::new(*rent_payer, true),
+            AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
+        ],
+        data,
+    }
+}
+
+/// Build the ProposalCreate instruction.
+pub fn proposal_create_ix(
+    multisig: &Address,
+    proposal: &Address,
+    creator: &Address,
+    rent_payer: &Address,
+    transaction_index: u64,
+) -> solana_instruction::Instruction {
+    let discriminator = anchor_discriminator("proposal_create");
+
+    let mut data = Vec::new();
+    data.extend_from_slice(&discriminator);
+    data.extend_from_slice(&transaction_index.to_le_bytes());
+    data.push(0u8); // draft = false (start as Active)
+
+    use solana_instruction::AccountMeta;
+    solana_instruction::Instruction {
+        program_id: SQUADS_PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new_readonly(*multisig, false),
+            AccountMeta::new(*proposal, false),
+            AccountMeta::new_readonly(*creator, true),
+            AccountMeta::new(*rent_payer, true),
+            AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
+        ],
+        data,
+    }
+}
+
+/// Build the ProposalApprove instruction.
+pub fn proposal_approve_ix(
+    multisig: &Address,
+    member: &Address,
+    proposal: &Address,
+) -> solana_instruction::Instruction {
+    let discriminator = anchor_discriminator("proposal_approve");
+
+    let mut data = Vec::new();
+    data.extend_from_slice(&discriminator);
+    data.push(0u8); // memo: Option<String> = None
+
+    use solana_instruction::AccountMeta;
+    solana_instruction::Instruction {
+        program_id: SQUADS_PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new_readonly(*multisig, false),
+            AccountMeta::new(*member, true),
+            AccountMeta::new(*proposal, false),
+        ],
+        data,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,5 +450,43 @@ mod tests {
     fn transaction_index_too_short() {
         let data = vec![0u8; 50];
         assert!(read_transaction_index(&data).is_err());
+    }
+
+    #[test]
+    fn anchor_discriminators() {
+        assert_eq!(
+            anchor_discriminator("vault_transaction_create"),
+            [0x30, 0xfa, 0x4e, 0xa8, 0xd0, 0xe2, 0xda, 0xd3]
+        );
+        assert_eq!(
+            anchor_discriminator("proposal_create"),
+            [0xdc, 0x3c, 0x49, 0xe0, 0x1e, 0x6c, 0x4f, 0x9f]
+        );
+        assert_eq!(
+            anchor_discriminator("proposal_approve"),
+            [0x90, 0x25, 0xa4, 0x88, 0xbc, 0xd8, 0x2a, 0xf8]
+        );
+    }
+
+    #[test]
+    fn upgrade_message_is_valid() {
+        let vault = Address::from([1u8; 32]);
+        let program = Address::from([2u8; 32]);
+        let buffer = Address::from([3u8; 32]);
+        let spill = Address::from([4u8; 32]);
+        let msg = build_upgrade_message(&vault, &program, &buffer, &spill);
+
+        // Check header
+        assert_eq!(msg[0], 1); // num_signers
+        assert_eq!(msg[1], 1); // num_writable_signers
+        assert_eq!(msg[2], 4); // num_writable_non_signers
+
+        // Check 8 account keys
+        assert_eq!(msg[3], 8);
+
+        // Total size: 3 header + 1 len + 8*32 keys + 1 ix_count
+        //   + 1 program_id_index + 1 acct_idx_len + 7 acct_idxs
+        //   + 2 data_len + 4 data + 1 lookups_len
+        assert_eq!(msg.len(), 3 + 1 + 256 + 1 + 1 + 1 + 7 + 2 + 4 + 1);
     }
 }
