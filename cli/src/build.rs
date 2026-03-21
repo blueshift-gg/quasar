@@ -20,6 +20,9 @@ fn run_once(debug: bool, features: Option<&str>) -> CliResult {
     let config = QuasarConfig::load()?;
     let start = Instant::now();
 
+    // Auto-switch toolchain based on quasar-lang version
+    toolchain::ensure_toolchain(Path::new("."));
+
     crate::idl::generate(Path::new("."), config.has_typescript_tests())?;
 
     let sp = style::spinner("Building...");
