@@ -12,6 +12,7 @@ pub mod dump;
 pub mod error;
 pub mod idl;
 pub mod init;
+pub mod keys;
 pub mod new;
 pub mod style;
 pub mod sync;
@@ -55,6 +56,8 @@ pub enum Command {
     Profile(ProfileCommand),
     /// Dump sBPF assembly
     Dump(DumpCommand),
+    /// Manage program keypair
+    Keys(KeysCommand),
     /// Ensure the correct toolchain versions are installed
     Sync,
     /// Update the Quasar CLI to the latest version
@@ -253,6 +256,26 @@ pub struct ProfileCommand {
 }
 
 #[derive(Args, Debug)]
+pub struct KeysCommand {
+    #[command(subcommand)]
+    pub action: KeysAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum KeysAction {
+    /// Print the program ID from the keypair file
+    List,
+    /// Update declare_id!() to match the keypair
+    Sync,
+    /// Generate a new program keypair
+    New {
+        /// Overwrite existing keypair
+        #[arg(long, action = ArgAction::SetTrue)]
+        force: bool,
+    },
+}
+
+#[derive(Args, Debug)]
 pub struct CompletionsCommand {
     /// Shell to generate completions for
     #[arg(value_enum)]
@@ -318,6 +341,11 @@ pub fn run(cli: Cli) -> CliResult {
             );
             Ok(())
         }
+        Command::Keys(cmd) => match cmd.action {
+            KeysAction::List => keys::list(),
+            KeysAction::Sync => keys::sync(),
+            KeysAction::New { force } => keys::new(force),
+        },
         Command::Sync => sync::run(),
         Command::Update => update::run(),
         Command::Profile(cmd) => {
@@ -397,6 +425,7 @@ pub fn print_help() {
         "profile [elf] [--expand] [--diff] [-w]",
         "Measure compute-unit usage",
     );
+    print_cmd("keys    [list|sync|new]", "Manage program keypair");
     print_cmd("dump    [elf] [-f] [-S]", "Dump sBPF assembly");
     print_cmd("update", "Update the CLI to the latest version");
     println!();

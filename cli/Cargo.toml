@@ -28,6 +28,7 @@ dirs = "6"
 indicatif = "0.18.4"
 clap_complete = "4.6.0"
 ctrlc = "3.4"
+syn = { version = "2", features = ["full", "parsing"] }
 
 [dev-dependencies]
 tempfile = "3"
