@@ -16,6 +16,7 @@ pub mod new;
 pub mod style;
 pub mod test;
 pub mod toolchain;
+pub mod update;
 pub mod utils;
 pub use error::CliResult;
 
@@ -53,6 +54,8 @@ pub enum Command {
     Profile(ProfileCommand),
     /// Dump sBPF assembly
     Dump(DumpCommand),
+    /// Update the Quasar CLI to the latest version
+    Update,
     /// Generate shell completions
     Completions(CompletionsCommand),
 }
@@ -312,6 +315,7 @@ pub fn run(cli: Cli) -> CliResult {
             );
             Ok(())
         }
+        Command::Update => update::run(),
         Command::Profile(cmd) => {
             if cmd.watch {
                 return profile_watch(cmd.expand);
@@ -389,6 +393,7 @@ pub fn print_help() {
         "Measure compute-unit usage",
     );
     print_cmd("dump    [elf] [-f] [-S]", "Dump sBPF assembly");
+    print_cmd("update", "Update the CLI to the latest version");
     println!();
     println!("  {}", style::bold("Options:"));
     print_cmd("-h, --help", "Print help");
