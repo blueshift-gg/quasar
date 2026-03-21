@@ -23,8 +23,8 @@ pub struct ToolchainRequirements {
 /// Comparison uses major.minor only — any 2.1.x satisfies a "2.1.21" requirement.
 /// `rust_version` is a minimum version (e.g. "1.87.0" means >= 1.87.0).
 const COMPAT_TABLE: &[(&str, ToolchainRequirements)] = &[
-    ("0.0.0", ToolchainRequirements { solana_version: "2.1.21", rust_version: "1.87.0" }),
-    // ("0.1.0", ToolchainRequirements { solana_version: "2.2.0", rust_version: "1.87.0" }),
+    ("0.0.0", ToolchainRequirements { solana_version: "3.0.0", rust_version: "1.87.0" }),
+    // ("0.1.0", ToolchainRequirements { solana_version: "3.1.0", rust_version: "1.87.0" }),
 ];
 
 /// The latest quasar-lang version this CLI knows about.
