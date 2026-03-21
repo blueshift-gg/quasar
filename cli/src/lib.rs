@@ -14,6 +14,7 @@ pub mod idl;
 pub mod init;
 pub mod new;
 pub mod style;
+pub mod sync;
 pub mod test;
 pub mod toolchain;
 pub mod update;
@@ -54,6 +55,8 @@ pub enum Command {
     Profile(ProfileCommand),
     /// Dump sBPF assembly
     Dump(DumpCommand),
+    /// Ensure the correct toolchain versions are installed
+    Sync,
     /// Update the Quasar CLI to the latest version
     Update,
     /// Generate shell completions
@@ -315,6 +318,7 @@ pub fn run(cli: Cli) -> CliResult {
             );
             Ok(())
         }
+        Command::Sync => sync::run(),
         Command::Update => update::run(),
         Command::Profile(cmd) => {
             if cmd.watch {
@@ -387,6 +391,7 @@ pub fn print_help() {
     );
     print_cmd("clean   [-a]", "Remove build artifacts");
     print_cmd("config  [get|set|list|reset]", "Manage global settings");
+    print_cmd("sync", "Ensure correct toolchain versions");
     print_cmd("idl     <path>", "Generate the program IDL");
     print_cmd(
         "profile [elf] [--expand] [--diff] [-w]",
