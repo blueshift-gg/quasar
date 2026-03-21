@@ -1,8 +1,10 @@
+extern crate std;
 use {
     mollusk_svm::{program::keyed_account_for_system_program, Mollusk},
     solana_account::Account,
     solana_address::Address,
     solana_instruction::{AccountMeta, Instruction},
+    std::{println, vec},
 };
 
 fn program_id() -> Address {
@@ -19,12 +21,12 @@ fn deposit_instruction(
     system_program: Address,
     amount: u64,
 ) -> Instruction {
-    let accounts = std::vec![
+    let accounts = vec![
         AccountMeta::new(user, true),
         AccountMeta::new(vault, false),
         AccountMeta::new_readonly(system_program, false),
     ];
-    let mut data = std::vec![0u8];
+    let mut data = vec![0u8];
     data.extend_from_slice(&amount.to_le_bytes());
     Instruction {
         program_id: program_id(),
@@ -34,8 +36,8 @@ fn deposit_instruction(
 }
 
 fn withdraw_instruction(user: Address, vault: Address, amount: u64) -> Instruction {
-    let accounts = std::vec![AccountMeta::new(user, true), AccountMeta::new(vault, false),];
-    let mut data = std::vec![1u8];
+    let accounts = vec![AccountMeta::new(user, true), AccountMeta::new(vault, false)];
+    let mut data = vec![1u8];
     data.extend_from_slice(&amount.to_le_bytes());
     Instruction {
         program_id: program_id(),

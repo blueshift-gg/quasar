@@ -1,3 +1,4 @@
+extern crate std;
 use {
     crate::idl_client::{
         CreateInstruction, DepositInstruction, ExecuteTransferInstruction, SetLabelInstruction,
@@ -7,6 +8,7 @@ use {
     solana_account::Account,
     solana_address::Address,
     solana_instruction::{AccountMeta, Instruction},
+    std::println,
 };
 
 fn setup() -> Mollusk {

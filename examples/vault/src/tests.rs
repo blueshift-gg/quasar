@@ -1,9 +1,11 @@
+extern crate std;
 use {
     crate::idl_client::{DepositInstruction, WithdrawInstruction},
     mollusk_svm::{program::keyed_account_for_system_program, Mollusk},
     quasar_lang::prelude::*,
     solana_account::Account,
     solana_instruction::Instruction,
+    std::println,
 };
 
 fn setup() -> Mollusk {
