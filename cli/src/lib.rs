@@ -16,6 +16,7 @@ pub mod keys;
 pub mod multisig;
 pub mod new;
 pub mod rpc;
+pub mod bpf_loader;
 pub mod style;
 pub mod sync;
 pub mod test;

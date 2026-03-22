@@ -1,5 +1,9 @@
 use {
     crate::{
+        bpf_loader::{
+            BPF_LOADER_UPGRADEABLE_ID, SYSTEM_PROGRAM_ID, SYSVAR_CLOCK_ID, SYSVAR_RENT_ID,
+            programdata_pda,
+        },
         rpc::{get_account_data, get_latest_blockhash, send_transaction, Keypair},
         style,
     },
@@ -25,30 +29,6 @@ const SQUADS_PROGRAM_ID: Address = Address::new_from_array([
     0x2e, 0xfc, 0x7e, 0xfb, 0xb6, 0x6c, 0xa3, 0xf5, 0x2f, 0xbf, 0x68, 0xd4, 0xac, 0x9c, 0xb7, 0xa8,
 ]);
 
-/// BPF Loader Upgradeable — BPFLoaderUpgradeab1e11111111111111111111111.
-/// Verify with:
-/// `bs58::decode("BPFLoaderUpgradeab1e11111111111111111111111").into_vec()`
-const BPF_LOADER_UPGRADEABLE_ID: Address = Address::new_from_array([
-    0x02, 0xa8, 0xf6, 0x91, 0x4e, 0x88, 0xa1, 0xb0, 0xe2, 0x10, 0x15, 0x3e, 0xf7, 0x63, 0xae, 0x2b,
-    0x00, 0xc2, 0xb9, 0x3d, 0x16, 0xc1, 0x24, 0xd2, 0xc0, 0x53, 0x7a, 0x10, 0x04, 0x80, 0x00, 0x00,
-]);
-
-/// System program ID.
-const SYSTEM_PROGRAM_ID: Address = Address::new_from_array([0; 32]);
-
-/// Sysvar Rent — SysvarRent111111111111111111111111111111111.
-/// Matches `lang/src/sysvars/rent.rs` RENT_ID.
-const SYSVAR_RENT_ID: Address = Address::new_from_array([
-    6, 167, 213, 23, 25, 44, 92, 81, 33, 140, 201, 76, 61, 74, 241, 127, 88, 218, 238, 8, 155, 161,
-    253, 68, 227, 219, 217, 138, 0, 0, 0, 0,
-]);
-
-/// Sysvar Clock — SysvarC1ock11111111111111111111111111111111.
-/// Matches `lang/src/sysvars/clock.rs` CLOCK_ID.
-const SYSVAR_CLOCK_ID: Address = Address::new_from_array([
-    6, 167, 213, 23, 24, 199, 116, 201, 40, 86, 99, 152, 105, 29, 94, 182, 139, 94, 184, 163, 155,
-    75, 109, 92, 115, 85, 91, 33, 0, 0, 0, 0,
-]);
 
 pub fn vault_pda(multisig: &Address, vault_index: u8) -> (Address, u8) {
     Address::find_program_address(
@@ -80,10 +60,6 @@ pub fn proposal_pda(multisig: &Address, transaction_index: u64) -> (Address, u8)
         ],
         &SQUADS_PROGRAM_ID,
     )
-}
-
-pub fn programdata_pda(program_id: &Address) -> (Address, u8) {
-    Address::find_program_address(&[program_id.as_ref()], &BPF_LOADER_UPGRADEABLE_ID)
 }
 
 /// Read the current transaction_index from a multisig account's on-chain data.
@@ -1011,30 +987,6 @@ mod tests {
             .into_vec()
             .unwrap();
         assert_eq!(SQUADS_PROGRAM_ID.as_ref(), &expected[..]);
-    }
-
-    #[test]
-    fn verify_bpf_loader_id() {
-        let expected = bs58::decode("BPFLoaderUpgradeab1e11111111111111111111111")
-            .into_vec()
-            .unwrap();
-        assert_eq!(BPF_LOADER_UPGRADEABLE_ID.as_ref(), &expected[..]);
-    }
-
-    #[test]
-    fn verify_sysvar_rent_id() {
-        let expected = bs58::decode("SysvarRent111111111111111111111111111111111")
-            .into_vec()
-            .unwrap();
-        assert_eq!(SYSVAR_RENT_ID.as_ref(), &expected[..]);
-    }
-
-    #[test]
-    fn verify_sysvar_clock_id() {
-        let expected = bs58::decode("SysvarC1ock11111111111111111111111111111111")
-            .into_vec()
-            .unwrap();
-        assert_eq!(SYSVAR_CLOCK_ID.as_ref(), &expected[..]);
     }
 
     #[test]
