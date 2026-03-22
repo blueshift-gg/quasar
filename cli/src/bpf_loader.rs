@@ -1,4 +1,5 @@
 use solana_address::Address;
+use solana_instruction::{AccountMeta, Instruction};
 
 // ---------------------------------------------------------------------------
 // Well-known program & sysvar addresses
@@ -54,6 +55,140 @@ pub fn programdata_pda(program_id: &Address) -> (Address, u8) {
 }
 
 // ---------------------------------------------------------------------------
+// Instruction builders
+// ---------------------------------------------------------------------------
+
+/// Build an `InitializeBuffer` instruction for the BPF Loader Upgradeable.
+pub fn initialize_buffer_ix(buffer: &Address, authority: &Address) -> Instruction {
+    let data = 0u32.to_le_bytes().to_vec();
+    Instruction {
+        program_id: BPF_LOADER_UPGRADEABLE_ID,
+        accounts: vec![
+            AccountMeta::new(*buffer, false),
+            AccountMeta::new_readonly(*authority, false),
+        ],
+        data,
+    }
+}
+
+/// Build a `Write` instruction for the BPF Loader Upgradeable.
+pub fn write_ix(buffer: &Address, authority: &Address, offset: u32, bytes: &[u8]) -> Instruction {
+    let mut data = Vec::with_capacity(4 + 4 + 4 + bytes.len());
+    data.extend_from_slice(&1u32.to_le_bytes());
+    data.extend_from_slice(&offset.to_le_bytes());
+    data.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+    data.extend_from_slice(bytes);
+    Instruction {
+        program_id: BPF_LOADER_UPGRADEABLE_ID,
+        accounts: vec![
+            AccountMeta::new(*buffer, false),
+            AccountMeta::new_readonly(*authority, true),
+        ],
+        data,
+    }
+}
+
+/// Build a `DeployWithMaxDataLen` instruction for the BPF Loader Upgradeable.
+pub fn deploy_with_max_data_len_ix(
+    payer: &Address,
+    programdata: &Address,
+    program: &Address,
+    buffer: &Address,
+    authority: &Address,
+    max_data_len: u64,
+) -> Instruction {
+    let mut data = Vec::with_capacity(12);
+    data.extend_from_slice(&2u32.to_le_bytes());
+    data.extend_from_slice(&max_data_len.to_le_bytes());
+    Instruction {
+        program_id: BPF_LOADER_UPGRADEABLE_ID,
+        accounts: vec![
+            AccountMeta::new(*payer, true),
+            AccountMeta::new(*programdata, false),
+            AccountMeta::new(*program, false),
+            AccountMeta::new(*buffer, false),
+            AccountMeta::new_readonly(SYSVAR_RENT_ID, false),
+            AccountMeta::new_readonly(SYSVAR_CLOCK_ID, false),
+            AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
+            AccountMeta::new_readonly(*authority, true),
+        ],
+        data,
+    }
+}
+
+/// Build an `Upgrade` instruction for the BPF Loader Upgradeable.
+pub fn upgrade_ix(
+    programdata: &Address,
+    program: &Address,
+    buffer: &Address,
+    spill: &Address,
+    authority: &Address,
+) -> Instruction {
+    let data = 3u32.to_le_bytes().to_vec();
+    Instruction {
+        program_id: BPF_LOADER_UPGRADEABLE_ID,
+        accounts: vec![
+            AccountMeta::new(*programdata, false),
+            AccountMeta::new(*program, false),
+            AccountMeta::new(*buffer, false),
+            AccountMeta::new(*spill, false),
+            AccountMeta::new_readonly(SYSVAR_RENT_ID, false),
+            AccountMeta::new_readonly(SYSVAR_CLOCK_ID, false),
+            AccountMeta::new_readonly(*authority, true),
+        ],
+        data,
+    }
+}
+
+/// Build a `SetAuthority` instruction for the BPF Loader Upgradeable.
+///
+/// When `new_authority` is `None` the program is made immutable.
+pub fn set_authority_ix(
+    account: &Address,
+    current_authority: &Address,
+    new_authority: Option<&Address>,
+) -> Instruction {
+    let data = 4u32.to_le_bytes().to_vec();
+    let mut accounts = vec![
+        AccountMeta::new(*account, false),
+        AccountMeta::new_readonly(*current_authority, true),
+    ];
+    if let Some(new_auth) = new_authority {
+        accounts.push(AccountMeta::new_readonly(*new_auth, false));
+    }
+    Instruction {
+        program_id: BPF_LOADER_UPGRADEABLE_ID,
+        accounts,
+        data,
+    }
+}
+
+/// Build a `SetComputeUnitPrice` instruction for the Compute Budget program.
+pub fn set_compute_unit_price_ix(micro_lamports: u64) -> Instruction {
+    let mut data = Vec::with_capacity(9);
+    data.push(3u8);
+    data.extend_from_slice(&micro_lamports.to_le_bytes());
+    Instruction {
+        program_id: COMPUTE_BUDGET_PROGRAM_ID,
+        accounts: vec![],
+        data,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Return the number of `CHUNK_SIZE` chunks needed to upload `file_size` bytes.
+pub fn num_chunks(file_size: usize) -> usize {
+    if file_size == 0 {
+        0
+    } else {
+        file_size.div_ceil(CHUNK_SIZE)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -96,5 +231,110 @@ mod tests {
     #[test]
     fn buffer_header_size() {
         assert_eq!(BUFFER_HEADER_SIZE, 4 + 1 + 32);
+    }
+
+    #[test]
+    fn initialize_buffer_ix_serialization() {
+        let buffer = Address::from([1u8; 32]);
+        let authority = Address::from([2u8; 32]);
+        let ix = initialize_buffer_ix(&buffer, &authority);
+        assert_eq!(ix.program_id, BPF_LOADER_UPGRADEABLE_ID);
+        assert_eq!(&ix.data[..4], &[0, 0, 0, 0]);
+        assert_eq!(ix.data.len(), 4);
+        assert_eq!(ix.accounts.len(), 2);
+        assert!(ix.accounts[0].is_writable);
+        assert!(!ix.accounts[1].is_writable);
+    }
+
+    #[test]
+    fn write_ix_serialization() {
+        let buffer = Address::from([1u8; 32]);
+        let authority = Address::from([2u8; 32]);
+        let chunk = vec![0xAA; 100];
+        let ix = write_ix(&buffer, &authority, 500, &chunk);
+        assert_eq!(ix.program_id, BPF_LOADER_UPGRADEABLE_ID);
+        assert_eq!(&ix.data[..4], &[1, 0, 0, 0]);
+        assert_eq!(&ix.data[4..8], &500u32.to_le_bytes());
+        assert_eq!(&ix.data[8..12], &100u32.to_le_bytes());
+        assert_eq!(&ix.data[12..], &chunk[..]);
+        assert_eq!(ix.accounts.len(), 2);
+        assert!(ix.accounts[0].is_writable);
+        assert!(ix.accounts[1].is_signer);
+    }
+
+    #[test]
+    fn deploy_with_max_data_len_ix_serialization() {
+        let payer = Address::from([1u8; 32]);
+        let programdata = Address::from([2u8; 32]);
+        let program = Address::from([3u8; 32]);
+        let buffer = Address::from([4u8; 32]);
+        let authority = Address::from([5u8; 32]);
+        let ix =
+            deploy_with_max_data_len_ix(&payer, &programdata, &program, &buffer, &authority, 10000);
+        assert_eq!(ix.program_id, BPF_LOADER_UPGRADEABLE_ID);
+        assert_eq!(&ix.data[..4], &[2, 0, 0, 0]);
+        assert_eq!(&ix.data[4..12], &10000u64.to_le_bytes());
+        assert_eq!(ix.data.len(), 12);
+        assert_eq!(ix.accounts.len(), 8);
+        // Verify account ordering
+        assert_eq!(ix.accounts[0].pubkey, payer);
+        assert_eq!(ix.accounts[1].pubkey, programdata);
+        assert_eq!(ix.accounts[2].pubkey, program);
+        assert_eq!(ix.accounts[3].pubkey, buffer);
+        assert_eq!(ix.accounts[4].pubkey, SYSVAR_RENT_ID);
+        assert_eq!(ix.accounts[5].pubkey, SYSVAR_CLOCK_ID);
+        assert_eq!(ix.accounts[6].pubkey, SYSTEM_PROGRAM_ID);
+        assert_eq!(ix.accounts[7].pubkey, authority);
+        assert!(ix.accounts[7].is_signer);
+    }
+
+    #[test]
+    fn upgrade_ix_serialization() {
+        let programdata = Address::from([1u8; 32]);
+        let program = Address::from([2u8; 32]);
+        let buffer = Address::from([3u8; 32]);
+        let spill = Address::from([4u8; 32]);
+        let authority = Address::from([5u8; 32]);
+        let ix = upgrade_ix(&programdata, &program, &buffer, &spill, &authority);
+        assert_eq!(ix.program_id, BPF_LOADER_UPGRADEABLE_ID);
+        assert_eq!(&ix.data[..4], &[3, 0, 0, 0]);
+        assert_eq!(ix.data.len(), 4);
+        assert_eq!(ix.accounts.len(), 7);
+        assert!(ix.accounts[6].is_signer);
+    }
+
+    #[test]
+    fn set_authority_ix_serialization() {
+        let account = Address::from([1u8; 32]);
+        let current = Address::from([2u8; 32]);
+        let new_auth = Address::from([3u8; 32]);
+        let ix = set_authority_ix(&account, &current, Some(&new_auth));
+        assert_eq!(ix.program_id, BPF_LOADER_UPGRADEABLE_ID);
+        assert_eq!(&ix.data[..4], &[4, 0, 0, 0]);
+        assert_eq!(ix.data.len(), 4);
+        assert_eq!(ix.accounts.len(), 3);
+
+        let ix2 = set_authority_ix(&account, &current, None);
+        assert_eq!(ix2.accounts.len(), 2);
+    }
+
+    #[test]
+    fn set_compute_unit_price_ix_serialization() {
+        let ix = set_compute_unit_price_ix(1000);
+        assert_eq!(ix.program_id, COMPUTE_BUDGET_PROGRAM_ID);
+        assert_eq!(ix.data[0], 3);
+        assert_eq!(&ix.data[1..9], &1000u64.to_le_bytes());
+        assert_eq!(ix.data.len(), 9);
+        assert!(ix.accounts.is_empty());
+    }
+
+    #[test]
+    fn chunk_count_calculation() {
+        assert_eq!(num_chunks(0), 0);
+        assert_eq!(num_chunks(1), 1);
+        assert_eq!(num_chunks(CHUNK_SIZE), 1);
+        assert_eq!(num_chunks(CHUNK_SIZE + 1), 2);
+        assert_eq!(num_chunks(CHUNK_SIZE * 3), 3);
+        assert_eq!(num_chunks(CHUNK_SIZE * 3 + 1), 4);
     }
 }
