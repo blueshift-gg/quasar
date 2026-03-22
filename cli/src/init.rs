@@ -1231,14 +1231,111 @@ fn test_initialize() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Static templates
+// ---------------------------------------------------------------------------
+
+const GITIGNORE: &str = "\
+# Build artifacts
+/target
+
+# Lock files
+Cargo.lock
+package-lock.json
+yarn.lock
+
+# Dependencies
+node_modules
+
+# Environment
+.env
+.env.*
+
+# OS
+.DS_Store
+";
+
+const CARGO_CONFIG: &str = r#"[unstable]
+build-std = ["core", "alloc"]
+
+[target.bpfel-unknown-none]
+rustflags = [
+"--cfg", "target_os=\"solana\"",
+"--cfg", "feature=\"mem_unaligned\"",
+"-C", "linker=sbpf-linker",
+"-C", "panic=abort",
+"-C", "relocation-model=static",
+"-C", "link-arg=--disable-memory-builtins",
+"-C", "link-arg=--llvm-args=--bpf-stack-size=4096",
+"-C", "link-arg=--disable-expand-memcpy-in-order",
+"-C", "link-arg=--export=entrypoint",
+"-C", "target-cpu=v2",
+]
+[alias]
+build-bpf = "build --release --target bpfel-unknown-none"
+"#;
+
+const INSTRUCTIONS_MOD: &str = r#"mod initialize;
+pub use initialize::*;
+"#;
+
+const INSTRUCTION_INITIALIZE: &str = r#"use quasar_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Initialize<'info> {
+    pub payer: &'info mut Signer,
+    pub system_program: &'info Program<System>,
+}
+
+impl<'info> Initialize<'info> {
+    #[inline(always)]
+    pub fn initialize(&self) -> Result<(), ProgramError> {
+        Ok(())
+    }
+}
+"#;
+
+const STATE_RS: &str = r#"use quasar_lang::prelude::*;
+
+#[account(discriminator = 1)]
+pub struct MyAccount {
+    pub authority: Address,
+    pub value: u64,
+}
+"#;
+
+const ERRORS_RS: &str = r#"use quasar_lang::prelude::*;
+
+#[error_code]
+pub enum MyError {
+    Unauthorized,
+}
+"#;
+
+const TS_TEST_TSCONFIG: &str = r#"{
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "commonjs",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node", "mocha"]
+  },
+  "include": ["tests/*.test.ts"]
+}
+"#;
+
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::{
-        env,
-        path::PathBuf,
-        sync::Mutex,
-        time::{SystemTime, UNIX_EPOCH},
+    use {
+        super::*,
+        std::{
+            env,
+            path::PathBuf,
+            sync::Mutex,
+            time::{SystemTime, UNIX_EPOCH},
+        },
     };
 
     static PATH_LOCK: Mutex<()> = Mutex::new(());
@@ -1336,18 +1433,21 @@ mod tests {
                 path.push(existing);
             }
 
-            // Safety: tests hold PATH_LOCK, so process-global env mutation stays serialized.
+            // Safety: tests hold PATH_LOCK, so process-global env mutation stays
+            // serialized.
             unsafe {
                 env::set_var("PATH", path);
                 env::set_var("QUASAR_TEST_GIT_LOG", &log_path);
             }
             if let Some(cmd) = fail_on {
-                // Safety: tests hold PATH_LOCK, so process-global env mutation stays serialized.
+                // Safety: tests hold PATH_LOCK, so process-global env mutation stays
+                // serialized.
                 unsafe {
                     env::set_var("QUASAR_TEST_GIT_FAIL_ON", cmd);
                 }
             } else {
-                // Safety: tests hold PATH_LOCK, so process-global env mutation stays serialized.
+                // Safety: tests hold PATH_LOCK, so process-global env mutation stays
+                // serialized.
                 unsafe {
                     env::remove_var("QUASAR_TEST_GIT_FAIL_ON");
                 }
@@ -1363,7 +1463,8 @@ mod tests {
 
     impl Drop for TestGitEnv {
         fn drop(&mut self) {
-            // Safety: tests hold PATH_LOCK, so process-global env mutation stays serialized.
+            // Safety: tests hold PATH_LOCK, so process-global env mutation stays
+            // serialized.
             unsafe {
                 restore_env_var("PATH", self.old_path.as_ref());
                 restore_env_var("QUASAR_TEST_GIT_LOG", self.old_log.as_ref());
@@ -1383,7 +1484,8 @@ mod tests {
     fn write_fake_git(path: &Path) {
         fs::write(
             path,
-            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$QUASAR_TEST_GIT_LOG\"\nif [ \"$1\" = \"$QUASAR_TEST_GIT_FAIL_ON\" ]; then\n  exit 1\nfi\nexit 0\n",
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$QUASAR_TEST_GIT_LOG\"\nif [ \"$1\" = \
+             \"$QUASAR_TEST_GIT_FAIL_ON\" ]; then\n  exit 1\nfi\nexit 0\n",
         )
         .unwrap();
         #[cfg(unix)]
@@ -1396,98 +1498,3 @@ mod tests {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Static templates
-// ---------------------------------------------------------------------------
-
-const GITIGNORE: &str = "\
-# Build artifacts
-/target
-
-# Lock files
-Cargo.lock
-package-lock.json
-yarn.lock
-
-# Dependencies
-node_modules
-
-# Environment
-.env
-.env.*
-
-# OS
-.DS_Store
-";
-
-const CARGO_CONFIG: &str = r#"[unstable]
-build-std = ["core", "alloc"]
-
-[target.bpfel-unknown-none]
-rustflags = [
-"--cfg", "target_os=\"solana\"",
-"--cfg", "feature=\"mem_unaligned\"",
-"-C", "linker=sbpf-linker",
-"-C", "panic=abort",
-"-C", "relocation-model=static",
-"-C", "link-arg=--disable-memory-builtins",
-"-C", "link-arg=--llvm-args=--bpf-stack-size=4096",
-"-C", "link-arg=--disable-expand-memcpy-in-order",
-"-C", "link-arg=--export=entrypoint",
-"-C", "target-cpu=v2",
-]
-[alias]
-build-bpf = "build --release --target bpfel-unknown-none"
-"#;
-
-const INSTRUCTIONS_MOD: &str = r#"mod initialize;
-pub use initialize::*;
-"#;
-
-const INSTRUCTION_INITIALIZE: &str = r#"use quasar_lang::prelude::*;
-
-#[derive(Accounts)]
-pub struct Initialize<'info> {
-    pub payer: &'info mut Signer,
-    pub system_program: &'info Program<System>,
-}
-
-impl<'info> Initialize<'info> {
-    #[inline(always)]
-    pub fn initialize(&self) -> Result<(), ProgramError> {
-        Ok(())
-    }
-}
-"#;
-
-const STATE_RS: &str = r#"use quasar_lang::prelude::*;
-
-#[account(discriminator = 1)]
-pub struct MyAccount {
-    pub authority: Address,
-    pub value: u64,
-}
-"#;
-
-const ERRORS_RS: &str = r#"use quasar_lang::prelude::*;
-
-#[error_code]
-pub enum MyError {
-    Unauthorized,
-}
-"#;
-
-const TS_TEST_TSCONFIG: &str = r#"{
-  "compilerOptions": {
-    "target": "es2020",
-    "module": "commonjs",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "types": ["node", "mocha"]
-  },
-  "include": ["tests/*.test.ts"]
-}
-"#;
