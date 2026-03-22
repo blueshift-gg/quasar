@@ -54,7 +54,7 @@ fn unknown_key(key: &str) -> ! {
     eprintln!("  {}", style::fail(&format!("unknown config key: {key}")));
     eprintln!();
     eprintln!("  Available keys:");
-    eprintln!("    defaults.toolchain, defaults.framework, defaults.template");
+    eprintln!("    defaults.toolchain, defaults.framework, defaults.template, defaults.git");
     eprintln!("    ui.animation, ui.color");
     std::process::exit(1);
 }
@@ -75,6 +75,10 @@ fn print_all(config: &GlobalConfig) {
     println!(
         "    template   = {}",
         config.defaults.template.as_deref().unwrap_or("(not set)")
+    );
+    println!(
+        "    git        = {}",
+        config.defaults.git.as_deref().unwrap_or("(not set)")
     );
     println!();
     println!("  [ui]");
@@ -118,6 +122,11 @@ const ITEMS: &[ConfigItem] = &[
         key: "defaults.template",
         label: "Default template",
         kind: ConfigKind::Choice(&["minimal", "full"]),
+    },
+    ConfigItem {
+        key: "defaults.git",
+        label: "Default git setup",
+        kind: ConfigKind::Choice(&["commit", "init", "skip"]),
     },
     ConfigItem {
         key: "ui.animation",
@@ -257,6 +266,14 @@ fn get_value(config: &GlobalConfig, key: &str) -> Option<String> {
                 .unwrap_or("(not set)")
                 .to_string(),
         ),
+        "defaults.git" => Some(
+            config
+                .defaults
+                .git
+                .as_deref()
+                .unwrap_or("(not set)")
+                .to_string(),
+        ),
         "ui.animation" => Some(config.ui.animation.to_string()),
         "ui.color" => Some(config.ui.color.to_string()),
         _ => None,
@@ -268,6 +285,7 @@ fn set_value(config: &mut GlobalConfig, key: &str, value: &str) -> bool {
         "defaults.toolchain" => config.defaults.toolchain = some_or_none(value),
         "defaults.framework" => config.defaults.framework = some_or_none(value),
         "defaults.template" => config.defaults.template = some_or_none(value),
+        "defaults.git" => config.defaults.git = some_or_none(value),
         "ui.animation" => config.ui.animation = parse_bool(value),
         "ui.color" => config.ui.color = parse_bool(value),
         _ => return false,
@@ -306,6 +324,13 @@ fn validate_value(key: &str, value: &str) -> Result<(), &'static str> {
                 Ok(())
             } else {
                 Err("minimal, full")
+            }
+        }
+        "defaults.git" => {
+            if matches!(value, "commit" | "init" | "skip" | "none" | "null" | "") {
+                Ok(())
+            } else {
+                Err("commit, init, skip")
             }
         }
         "ui.animation" | "ui.color" => {

@@ -74,7 +74,7 @@ pub struct InitCommand {
     #[arg(long, short, action = ArgAction::SetTrue)]
     pub yes: bool,
 
-    /// Skip git init
+    /// Skip git init and the initial commit
     #[arg(long, action = ArgAction::SetTrue)]
     pub no_git: bool,
 
@@ -185,7 +185,7 @@ pub struct ConfigCommand {
 pub enum ConfigAction {
     /// Read a single config value
     Get {
-        /// Config key (e.g. ui.animation, defaults.toolchain)
+        /// Config key (e.g. ui.animation, defaults.toolchain, defaults.git)
         #[arg(value_name = "KEY")]
         key: String,
     },

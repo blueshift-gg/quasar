@@ -18,13 +18,14 @@ Scaffold a new Quasar project. When a name is provided, uses saved defaults and 
 - **Toolchain** — `solana` (cargo build-sbf) or `upstream` (cargo +nightly build-bpf)
 - **Testing framework** — None, Mollusk, QuasarSVM/Rust, QuasarSVM/Web3.js, or QuasarSVM/Kit
 - **Template** — Minimal (single instruction) or Full (state, events, instruction files)
+- **Git setup** — Initialize + Commit, Initialize, or Skip
 
-The wizard generates a complete project directory with `Cargo.toml`, `Quasar.toml`, source files, test scaffolding, a program keypair, and runs `git init`. Preferences are saved to `~/.quasar/config.toml` and used as defaults for future runs.
+The wizard generates a complete project directory with `Cargo.toml`, `Quasar.toml`, source files, test scaffolding, a program keypair, and optional git setup. Preferences are saved to `~/.quasar/config.toml` and used as defaults for future runs.
 
 | Flag | Effect |
 |------|--------|
 | `-y, --yes` | Explicitly skip prompts (same as providing a name) |
-| `--no-git` | Skip `git init` |
+| `--no-git` | Skip git repo setup |
 
 ```bash
 quasar init                  # Interactive wizard
@@ -180,9 +181,9 @@ Preferences that apply across all projects:
 toolchain = "solana"
 framework = "mollusk"
 template = "minimal"
+git = "commit"      # "commit", "init", or "skip"
 
 [ui]
 animation = true   # Animated banner on `quasar init`
 color = true       # Colored terminal output
-timing = true      # Show build timing
 ```

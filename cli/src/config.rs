@@ -109,6 +109,7 @@ pub struct GlobalDefaults {
     pub toolchain: Option<String>,
     pub framework: Option<String>,
     pub template: Option<String>,
+    pub git: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -212,6 +213,7 @@ mod tests {
                 toolchain: Some("solana".into()),
                 framework: Some("quasarsvm-rust".into()),
                 template: Some("minimal".into()),
+                git: Some("commit".into()),
             },
             ui: UiConfig {
                 animation: false,
@@ -222,5 +224,6 @@ mod tests {
         let reloaded = GlobalConfig::load_from_str(&toml_str);
         assert!(!reloaded.ui.animation);
         assert_eq!(reloaded.defaults.toolchain.as_deref(), Some("solana"));
+        assert_eq!(reloaded.defaults.git.as_deref(), Some("commit"));
     }
 }
