@@ -4,6 +4,7 @@ use {
         TypeScriptSdk,
     },
     crate::error::CliResult,
+    dialoguer::{theme::ColorfulTheme, Confirm},
     std::{fs, path::Path},
 };
 
@@ -18,6 +19,7 @@ pub(super) fn scaffold(
     template: Template,
     package_manager: Option<&PackageManager>,
     client_languages: &[String],
+    interactive: bool,
 ) -> CliResult {
     let root = Path::new(dir);
 
@@ -31,11 +33,39 @@ pub(super) fn scaffold(
             std::process::exit(1);
         }
     } else if root.exists() {
-        eprintln!(
-            "  {}",
-            crate::style::fail(&format!("directory '{dir}' already exists"))
-        );
-        std::process::exit(1);
+        if !root.is_dir() {
+            eprintln!(
+                "  {}",
+                crate::style::fail(&format!(
+                    "path '{dir}' already exists and is not a directory"
+                ))
+            );
+            std::process::exit(1);
+        }
+
+        if interactive {
+            let delete_existing = Confirm::with_theme(&ColorfulTheme::default())
+                .with_prompt(format!(
+                    "Directory '{dir}' already exists. Delete it and continue?"
+                ))
+                .default(false)
+                .interact_opt()
+                .map_err(anyhow::Error::from)?
+                .unwrap_or(false);
+
+            if delete_existing {
+                fs::remove_dir_all(root).map_err(anyhow::Error::from)?;
+            } else {
+                eprintln!("  {}", crate::style::fail("project initialization aborted"));
+                std::process::exit(1);
+            }
+        } else {
+            eprintln!(
+                "  {}",
+                crate::style::fail(&format!("directory '{dir}' already exists"))
+            );
+            std::process::exit(1);
+        }
     }
 
     let src = root.join("src");

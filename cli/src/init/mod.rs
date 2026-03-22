@@ -669,6 +669,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
         template,
         package_manager.as_ref(),
         &client_languages,
+        !skip_prompts,
     )?;
 
     // Optional git setup (unless already in a git repo)
