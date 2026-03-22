@@ -34,7 +34,9 @@ pub fn run(
     skip_build: bool,
     multisig: Option<String>,
     status: bool,
+    upgrade: bool,
 ) -> CliResult {
+    let _ = upgrade;
     let config = QuasarConfig::load()?;
     let name = &config.project.name;
 

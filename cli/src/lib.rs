@@ -174,12 +174,16 @@ pub struct DeployCommand {
     #[arg(long, action = ArgAction::SetTrue)]
     pub skip_build: bool,
 
+    /// Upgrade an existing program (required if program is already deployed)
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub upgrade: bool,
+
     /// Propose upgrade through a Squads multisig
     #[arg(long, value_name = "ADDRESS")]
     pub multisig: Option<String>,
 
     /// Show approval status of the latest multisig proposal
-    #[arg(long, action = ArgAction::SetTrue, requires = "multisig")]
+    #[arg(long, action = ArgAction::SetTrue, requires = "multisig", requires = "upgrade")]
     pub status: bool,
 }
 
@@ -338,6 +342,7 @@ pub fn run(cli: Cli) -> CliResult {
             cmd.skip_build,
             cmd.multisig,
             cmd.status,
+            cmd.upgrade,
         ),
         Command::Clean(cmd) => clean::run(cmd.all),
         Command::Config(cmd) => cfg::run(cmd.action),
@@ -425,8 +430,8 @@ pub fn print_help() {
         "Run the test suite",
     );
     print_cmd(
-        "deploy  [-u url] [-k keypair] [--multisig addr] [--status]",
-        "Deploy to a cluster",
+        "deploy  [-u url] [-k keypair] [--upgrade] [--multisig addr]",
+        "Deploy or upgrade a program",
     );
     print_cmd("clean   [-a]", "Remove build artifacts");
     print_cmd("config  [get|set|list|reset]", "Manage global settings");
