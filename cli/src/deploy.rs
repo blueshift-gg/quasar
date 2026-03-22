@@ -183,6 +183,7 @@ pub fn run(opts: DeployOpts) -> CliResult {
                     &multisig_key,
                     &payer_path,
                     &rpc_url,
+                    0,
                 );
             }
 
@@ -197,6 +198,7 @@ pub fn run(opts: DeployOpts) -> CliResult {
                 &multisig_key,
                 &payer_path,
                 &rpc_url,
+                0,
                 0,
             );
         }
@@ -265,11 +267,13 @@ pub fn run(opts: DeployOpts) -> CliResult {
         let payer_path = crate::rpc::solana_keypair_path(keypair.as_deref());
 
         let sp = style::spinner("Transferring upgrade authority to multisig vault...");
-        crate::multisig::set_upgrade_authority(
-            &program_id,
-            &vault,
-            &payer_path,
+        let authority_keypair = crate::rpc::Keypair::read_from_file(&payer_path)?;
+        crate::bpf_loader::set_authority(
+            &crate::bpf_loader::programdata_pda(&program_id).0,
+            &authority_keypair,
+            Some(&vault),
             &rpc_url,
+            0,
         )?;
         sp.finish_and_clear();
 

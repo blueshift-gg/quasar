@@ -1,7 +1,7 @@
 use {
     crate::{
         bpf_loader::{
-            BPF_LOADER_UPGRADEABLE_ID, SYSTEM_PROGRAM_ID, SYSVAR_CLOCK_ID, SYSVAR_RENT_ID,
+            self, BPF_LOADER_UPGRADEABLE_ID, SYSTEM_PROGRAM_ID, SYSVAR_CLOCK_ID, SYSVAR_RENT_ID,
             programdata_pda,
         },
         rpc::{get_account_data, get_latest_blockhash, send_transaction, Keypair},
@@ -10,10 +10,7 @@ use {
     sha2::{Digest, Sha256},
     solana_address::Address,
     solana_instruction::AccountMeta,
-    std::{
-        path::Path,
-        process::{Command, Stdio},
-    },
+    std::path::Path,
 };
 
 // ---------------------------------------------------------------------------
@@ -417,123 +414,6 @@ pub fn proposal_approve_ix(
 }
 
 // ---------------------------------------------------------------------------
-// Buffer upload
-// ---------------------------------------------------------------------------
-
-/// Upload a program binary as a buffer via the Solana CLI.
-/// Returns the buffer address.
-pub fn write_buffer(
-    so_path: &Path,
-    keypair_path: &Path,
-    rpc_url: &str,
-) -> Result<Address, crate::error::CliError> {
-    let output = Command::new("solana")
-        .args([
-            "program",
-            "write-buffer",
-            so_path.to_str().unwrap_or_default(),
-            "--keypair",
-            keypair_path.to_str().unwrap_or_default(),
-            "--url",
-            rpc_url,
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| anyhow::anyhow!("failed to run solana program write-buffer: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow::anyhow!("write-buffer failed: {stderr}").into());
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // Output format: "Buffer: <ADDRESS>"
-    let addr_str = stdout
-        .lines()
-        .find(|l| l.contains("Buffer:"))
-        .and_then(|l| l.split(':').nth(1))
-        .map(|s| s.trim())
-        .ok_or_else(|| anyhow::anyhow!("could not parse buffer address from: {stdout}"))?;
-
-    let bytes: [u8; 32] = bs58::decode(addr_str)
-        .into_vec()
-        .map_err(|e| anyhow::anyhow!("invalid buffer address: {e}"))?
-        .try_into()
-        .map_err(|_| anyhow::anyhow!("buffer address wrong length"))?;
-
-    Ok(Address::from(bytes))
-}
-
-/// Transfer buffer authority to a new address (the vault PDA) so Squads
-/// can execute the upgrade.
-fn set_buffer_authority(
-    buffer: &Address,
-    new_authority: &Address,
-    keypair_path: &Path,
-    rpc_url: &str,
-) -> Result<(), crate::error::CliError> {
-    let output = Command::new("solana")
-        .args([
-            "program",
-            "set-buffer-authority",
-            &bs58::encode(buffer).into_string(),
-            "--new-buffer-authority",
-            &bs58::encode(new_authority).into_string(),
-            "--keypair",
-            keypair_path.to_str().unwrap_or_default(),
-            "--url",
-            rpc_url,
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| anyhow::anyhow!("failed to run solana program set-buffer-authority: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow::anyhow!("set-buffer-authority failed: {stderr}").into());
-    }
-
-    Ok(())
-}
-
-/// Transfer a program's upgrade authority to a new address.
-/// Used after initial deploy to hand authority to the Squads vault PDA.
-pub fn set_upgrade_authority(
-    program_id: &Address,
-    new_authority: &Address,
-    keypair_path: &Path,
-    rpc_url: &str,
-) -> Result<(), crate::error::CliError> {
-    let output = Command::new("solana")
-        .args([
-            "program",
-            "set-upgrade-authority",
-            &bs58::encode(program_id).into_string(),
-            "--new-upgrade-authority",
-            &bs58::encode(new_authority).into_string(),
-            "--keypair",
-            keypair_path.to_str().unwrap_or_default(),
-            "--url",
-            rpc_url,
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| {
-            anyhow::anyhow!("failed to run solana program set-upgrade-authority: {e}")
-        })?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow::anyhow!("set-upgrade-authority failed: {stderr}").into());
-    }
-
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
 // Top-level orchestrator
 // ---------------------------------------------------------------------------
 
@@ -549,13 +429,14 @@ pub fn propose_upgrade(
     keypair_path: &Path,
     rpc_url: &str,
     vault_index: u8,
+    priority_fee: u64,
 ) -> crate::error::CliResult {
     let keypair = Keypair::read_from_file(keypair_path)?;
     let member = keypair.address();
 
     // 1. Upload buffer
     let sp = style::spinner("Uploading program buffer...");
-    let buffer = write_buffer(so_path, keypair_path, rpc_url)?;
+    let buffer = bpf_loader::write_buffer(so_path, &keypair, rpc_url, priority_fee)?;
     sp.finish_and_clear();
     println!(
         "  {} Buffer: {}",
@@ -566,7 +447,7 @@ pub fn propose_upgrade(
     // 2. Transfer buffer authority to the vault so Squads can use it
     let (vault, _) = vault_pda(multisig, vault_index);
     let sp = style::spinner("Transferring buffer authority to vault...");
-    set_buffer_authority(&buffer, &vault, keypair_path, rpc_url)?;
+    bpf_loader::set_authority(&buffer, &keypair, Some(&vault), rpc_url, priority_fee)?;
     sp.finish_and_clear();
     println!("  {} Buffer authority transferred to vault", style::dim("✓"));
 
@@ -604,9 +485,17 @@ pub fn propose_upgrade(
     // 7. Build, sign, send transaction
     let sp = style::spinner("Submitting proposal...");
 
+    let mut ixs = vec![];
+    if priority_fee > 0 {
+        ixs.push(bpf_loader::set_compute_unit_price_ix(priority_fee));
+    }
+    ixs.push(ix_create);
+    ixs.push(ix_propose);
+    ixs.push(ix_approve);
+
     let blockhash = get_latest_blockhash(rpc_url)?;
     let tx = solana_transaction::Transaction::new_signed_with_payer(
-        &[ix_create, ix_propose, ix_approve],
+        &ixs,
         Some(&member),
         &[&keypair],
         blockhash,
@@ -646,6 +535,7 @@ pub fn show_proposal_status(
     multisig: &Address,
     keypair_path: &Path,
     rpc_url: &str,
+    priority_fee: u64,
 ) -> crate::error::CliResult {
     // 1. Fetch and parse the multisig account
     let sp = style::spinner("Fetching multisig state...");
@@ -759,6 +649,7 @@ pub fn show_proposal_status(
                 &proposal,
                 keypair_path,
                 rpc_url,
+                priority_fee,
             )?;
         } else {
             println!();
@@ -785,6 +676,7 @@ fn execute_approved_proposal(
     proposal: &ProposalState,
     keypair_path: &Path,
     rpc_url: &str,
+    priority_fee: u64,
 ) -> crate::error::CliResult {
     let keypair = Keypair::read_from_file(keypair_path)?;
     let member = keypair.address();
@@ -810,9 +702,15 @@ fn execute_approved_proposal(
         ms,
     )?;
 
+    let mut ixs = vec![];
+    if priority_fee > 0 {
+        ixs.push(bpf_loader::set_compute_unit_price_ix(priority_fee));
+    }
+    ixs.push(ix);
+
     let blockhash = get_latest_blockhash(rpc_url)?;
     let tx = solana_transaction::Transaction::new_signed_with_payer(
-        &[ix],
+        &ixs,
         Some(&member),
         &[&keypair],
         blockhash,
