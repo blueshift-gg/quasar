@@ -496,7 +496,7 @@ pub fn parse_proposal_account(data: &[u8]) -> Result<ProposalState, crate::error
 }
 
 /// Format an address as "1234...5678".
-fn short_address(addr: &Address) -> String {
+pub fn short_addr(addr: &Address) -> String {
     let s = bs58::encode(addr).into_string();
     if s.len() <= 8 {
         return s;
@@ -959,7 +959,7 @@ pub fn show_proposal_status(
     sp.finish_and_clear();
 
     // 3. Display header
-    let multisig_short = short_address(multisig);
+    let multisig_short = short_addr(multisig);
     println!();
     println!(
         "  {} Multisig {} — Transaction #{}",
@@ -986,7 +986,7 @@ pub fn show_proposal_status(
     let approved_count = proposal.approved.len();
 
     for member in &voters {
-        let addr = short_address(&member.key);
+        let addr = short_addr(&member.key);
         let voted = proposal.approved.contains(&member.key);
         if voted {
             // Green checkmark
@@ -1292,14 +1292,14 @@ mod tests {
     }
 
     #[test]
-    fn short_address_formatting() {
+    fn short_addr_formatting() {
         // Use a known address
         let addr = Address::from([
             0x06, 0x81, 0xc4, 0xce, 0x47, 0xe2, 0x23, 0x68, 0xb8, 0xb1, 0x55, 0x5e, 0xc8, 0x87,
             0xaf, 0x09, 0x2e, 0xfc, 0x7e, 0xfb, 0xb6, 0x6c, 0xa3, 0xf5, 0x2f, 0xbf, 0x68, 0xd4,
             0xac, 0x9c, 0xb7, 0xa8,
         ]);
-        let short = short_address(&addr);
+        let short = short_addr(&addr);
         assert!(short.contains("..."), "should contain ellipsis");
         assert_eq!(&short[..4], &bs58::encode(addr).into_string()[..4]);
     }
