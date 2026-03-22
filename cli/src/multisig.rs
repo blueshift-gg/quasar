@@ -212,6 +212,41 @@ pub fn get_account_data(
     ))
 }
 
+/// Check whether a program exists on-chain at the given address.
+/// Returns `true` if the account exists and is owned by the BPF Loader Upgradeable.
+pub fn program_exists_on_chain(
+    rpc_url: &str,
+    program_id: &Address,
+) -> Result<bool, crate::error::CliError> {
+    let resp: serde_json::Value = ureq::post(rpc_url)
+        .send_json(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "getAccountInfo",
+            "params": [
+                bs58::encode(program_id).into_string(),
+                {"encoding": "base64", "commitment": "confirmed"}
+            ]
+        }))
+        .map_err(anyhow::Error::from)?
+        .body_mut()
+        .read_json()
+        .map_err(anyhow::Error::from)?;
+
+    if let Some(err) = resp.get("error") {
+        return Err(anyhow::anyhow!("RPC error: {}", err).into());
+    }
+
+    let value = &resp["result"]["value"];
+    if value.is_null() {
+        return Ok(false);
+    }
+
+    // Check if owned by BPF Loader Upgradeable
+    let owner = value["owner"].as_str().unwrap_or_default();
+    Ok(owner == "BPFLoaderUpgradeab1e11111111111111111111111")
+}
+
 // ---------------------------------------------------------------------------
 // Squads v4 PDAs
 // ---------------------------------------------------------------------------
