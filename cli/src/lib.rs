@@ -15,6 +15,7 @@ pub mod init;
 pub mod keys;
 pub mod multisig;
 pub mod new;
+pub mod rpc;
 pub mod style;
 pub mod sync;
 pub mod test;

@@ -175,8 +175,8 @@ pub fn run(opts: DeployOpts) -> CliResult {
     if upgrade {
         if let Some(multisig_addr) = &multisig {
             let multisig_key = parse_multisig_address(multisig_addr)?;
-            let payer_path = crate::multisig::solana_keypair_path(keypair.as_deref());
-            let rpc_url = crate::multisig::solana_rpc_url(url.as_deref());
+            let payer_path = crate::rpc::solana_keypair_path(keypair.as_deref());
+            let rpc_url = crate::rpc::solana_rpc_url(url.as_deref());
 
             if status {
                 return crate::multisig::show_proposal_status(
@@ -189,7 +189,7 @@ pub fn run(opts: DeployOpts) -> CliResult {
             let so_path = build_and_find_so(&config, name, skip_build)?;
             let prog_keypair_path = resolve_program_keypair(&config, program_keypair);
             let program_id =
-                crate::multisig::read_program_id_from_keypair(&prog_keypair_path)?;
+                crate::rpc::read_program_id_from_keypair(&prog_keypair_path)?;
 
             return crate::multisig::propose_upgrade(
                 &so_path,
@@ -204,7 +204,7 @@ pub fn run(opts: DeployOpts) -> CliResult {
 
     // Resolve cluster URL once — handles shorthands like "localnet" that
     // the Solana CLI doesn't understand natively.
-    let rpc_url = crate::multisig::solana_rpc_url(url.as_deref());
+    let rpc_url = crate::rpc::solana_rpc_url(url.as_deref());
 
     // Everything below needs a build and a .so
     let so_path = build_and_find_so(&config, name, skip_build)?;
@@ -229,10 +229,10 @@ pub fn run(opts: DeployOpts) -> CliResult {
     }
 
     // Read program ID from the keypair for on-chain check
-    let program_id = crate::multisig::read_program_id_from_keypair(&keypair_path)?;
+    let program_id = crate::rpc::read_program_id_from_keypair(&keypair_path)?;
 
     // If NOT --upgrade, verify the program doesn't already exist on-chain
-    if !upgrade && crate::multisig::program_exists_on_chain(&rpc_url, &program_id)? {
+    if !upgrade && crate::rpc::program_exists_on_chain(&rpc_url, &program_id)? {
         eprintln!(
             "\n  {}",
             style::fail(&format!(
@@ -262,7 +262,7 @@ pub fn run(opts: DeployOpts) -> CliResult {
     if let Some(multisig_addr) = &multisig {
         let multisig_key = parse_multisig_address(multisig_addr)?;
         let (vault, _) = crate::multisig::vault_pda(&multisig_key, 0);
-        let payer_path = crate::multisig::solana_keypair_path(keypair.as_deref());
+        let payer_path = crate::rpc::solana_keypair_path(keypair.as_deref());
 
         let sp = style::spinner("Transferring upgrade authority to multisig vault...");
         crate::multisig::set_upgrade_authority(
