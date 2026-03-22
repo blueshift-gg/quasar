@@ -334,16 +334,16 @@ pub fn run(cli: Cli) -> CliResult {
         Command::Test(cmd) => {
             test::run(cmd.debug, cmd.filter, cmd.watch, cmd.no_build, cmd.features)
         }
-        Command::Deploy(cmd) => deploy::run(
-            cmd.program_keypair,
-            cmd.upgrade_authority,
-            cmd.keypair,
-            cmd.url,
-            cmd.skip_build,
-            cmd.multisig,
-            cmd.status,
-            cmd.upgrade,
-        ),
+        Command::Deploy(cmd) => deploy::run(deploy::DeployOpts {
+            program_keypair: cmd.program_keypair,
+            upgrade_authority: cmd.upgrade_authority,
+            keypair: cmd.keypair,
+            url: cmd.url,
+            skip_build: cmd.skip_build,
+            multisig: cmd.multisig,
+            status: cmd.status,
+            upgrade: cmd.upgrade,
+        }),
         Command::Clean(cmd) => clean::run(cmd.all),
         Command::Config(cmd) => cfg::run(cmd.action),
         Command::Idl(cmd) => idl::run(cmd),

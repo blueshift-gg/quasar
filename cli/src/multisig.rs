@@ -1146,30 +1146,46 @@ fn vault_transaction_execute_ix(
 ) -> Result<solana_instruction::Instruction, crate::error::CliError> {
     let discriminator = anchor_discriminator("vault_transaction_execute");
 
-    // VaultTransaction layout:
-    // 8 disc + 32 multisig + 8 creator + 8 tx_index + 1 bump + 1 vault_index
-    // + 1 ephemeral_signers + 4 message_len + message_bytes
-    // We need the vault_index to derive vault PDA, and the message's account_keys
-    // to pass as remaining accounts.
-    if vault_tx_data.len() < 59 {
+    // VaultTransaction layout (Squads v4):
+    //  0: [u8; 8]  Anchor discriminator
+    //  8: Pubkey    multisig          (32 bytes)
+    // 40: Pubkey    creator           (32 bytes)
+    // 72: u64       index             ( 8 bytes)
+    // 80: u8        bump              ( 1 byte)
+    // 81: u8        vault_index       ( 1 byte)
+    // 82: u8        vault_bump        ( 1 byte)
+    // 83: Vec<u8>   ephemeral_signer_bumps (4 byte len + N bytes)
+    // 87+N: message (VaultTransactionMessage, variable)
+    if vault_tx_data.len() < 87 {
         return Err(anyhow::anyhow!("vault transaction data too short").into());
     }
 
-    let vault_index = vault_tx_data[49];
+    let vault_index = vault_tx_data[81];
     let (vault, _) = vault_pda(multisig, vault_index);
 
-    // Parse inner message account keys
-    // Offset 50: ephemeral_signers (u8), 51: message (Borsh Vec<u8>: u32 len + bytes)
-    let _ephemeral_signers = vault_tx_data[50];
-    if vault_tx_data.len() < 55 {
-        return Err(anyhow::anyhow!("vault transaction data too short for message").into());
+    // Parse ephemeral_signer_bumps Vec<u8> to skip past it
+    let eph_bumps_len =
+        u32::from_le_bytes(vault_tx_data[83..87].try_into().unwrap()) as usize;
+    let msg_offset = 87 + eph_bumps_len;
+
+    // The message field is serialized as a Borsh Vec<u8>: u32 LE length + bytes
+    if vault_tx_data.len() < msg_offset + 4 {
+        return Err(
+            anyhow::anyhow!("vault transaction data too short for message length").into(),
+        );
     }
-    let msg_len =
-        u32::from_le_bytes(vault_tx_data[51..55].try_into().unwrap()) as usize;
-    if vault_tx_data.len() < 55 + msg_len {
-        return Err(anyhow::anyhow!("vault transaction data too short for message bytes").into());
+    let msg_len = u32::from_le_bytes(
+        vault_tx_data[msg_offset..msg_offset + 4]
+            .try_into()
+            .unwrap(),
+    ) as usize;
+    let msg_start = msg_offset + 4;
+    if vault_tx_data.len() < msg_start + msg_len {
+        return Err(
+            anyhow::anyhow!("vault transaction data too short for message bytes").into(),
+        );
     }
-    let msg = &vault_tx_data[55..55 + msg_len];
+    let msg = &vault_tx_data[msg_start..msg_start + msg_len];
 
     // TransactionMessage layout (SmallVec):
     // 3 header bytes, then u8 num_keys, then num_keys * 32 bytes of account keys
@@ -1424,5 +1440,144 @@ mod tests {
         //   + 1 program_id_index + 1 acct_idx_len + 7 acct_idxs
         //   + 2 data_len + 4 data + 1 lookups_len
         assert_eq!(msg.len(), 3 + 1 + 256 + 1 + 1 + 1 + 7 + 2 + 4 + 1);
+    }
+
+    #[test]
+    fn vault_transaction_execute_ix_parses_correct_offsets() {
+        // Build a synthetic VaultTransaction account matching Squads v4 layout:
+        //  0: discriminator (8)
+        //  8: multisig (32)
+        // 40: creator (32)
+        // 72: index (8)
+        // 80: bump (1)
+        // 81: vault_index (1)
+        // 82: vault_bump (1)
+        // 83: ephemeral_signer_bumps vec len (4) + data (0)
+        // 87: message vec len (4) + message data
+
+        let multisig_addr = Address::from([0xAA; 32]);
+
+        // Build an inner TransactionMessage with 2 account keys (vault + 1 extra)
+        let vault_index: u8 = 0;
+        let (vault, _) = vault_pda(&multisig_addr, vault_index);
+        let extra_key = Address::from([0xBB; 32]);
+
+        let mut inner_msg = vec![
+            1u8, // num_signers
+            1,   // num_writable_signers
+            0,   // num_writable_non_signers
+            2,   // num_keys
+        ];
+        inner_msg.extend_from_slice(vault.as_ref());
+        inner_msg.extend_from_slice(extra_key.as_ref());
+        // 1 compiled instruction
+        inner_msg.push(1); // num_instructions
+        inner_msg.push(0); // program_id_index
+        inner_msg.push(0); // account_indexes len
+        inner_msg.extend_from_slice(&0u16.to_le_bytes()); // data len
+        inner_msg.push(0); // address_table_lookups len
+
+        // Build full account data
+        let mut data = vec![0u8; 87];
+        // discriminator at 0..8 (zeroes fine)
+        data[8..40].copy_from_slice(&[0xAA; 32]); // multisig
+        data[40..72].copy_from_slice(&[0xCC; 32]); // creator
+        data[72..80].copy_from_slice(&1u64.to_le_bytes()); // index
+        data[80] = 255; // bump
+        data[81] = vault_index;
+        data[82] = 254; // vault_bump
+        // ephemeral_signer_bumps: empty vec (len=0)
+        data[83..87].copy_from_slice(&0u32.to_le_bytes());
+        // message: Vec<u8>
+        data.extend_from_slice(&(inner_msg.len() as u32).to_le_bytes());
+        data.extend_from_slice(&inner_msg);
+
+        let ms = MultisigState {
+            threshold: 1,
+            transaction_index: 1,
+            members: vec![MultisigMember {
+                key: Address::from([0xDD; 32]),
+                permissions: 0x07,
+            }],
+        };
+
+        let transaction_addr = Address::from([0xEE; 32]);
+        let proposal_addr = Address::from([0xFF; 32]);
+        let member_addr = Address::from([0xDD; 32]);
+
+        let ix = vault_transaction_execute_ix(
+            &multisig_addr,
+            &transaction_addr,
+            &proposal_addr,
+            &member_addr,
+            &data,
+            &ms,
+        )
+        .unwrap();
+
+        // Verify the instruction was built with correct accounts:
+        // [multisig, transaction, proposal, member, ...members, vault, ...remaining]
+        assert_eq!(ix.program_id, SQUADS_PROGRAM_ID);
+        assert_eq!(ix.accounts[0].pubkey, multisig_addr);
+        assert_eq!(ix.accounts[1].pubkey, transaction_addr);
+        assert_eq!(ix.accounts[2].pubkey, proposal_addr);
+        assert_eq!(ix.accounts[3].pubkey, member_addr);
+        // member list (1 member)
+        assert_eq!(ix.accounts[4].pubkey, Address::from([0xDD; 32]));
+        // vault PDA
+        assert_eq!(ix.accounts[5].pubkey, vault);
+        // remaining accounts from inner message (skip index 0 which is vault)
+        assert_eq!(ix.accounts[6].pubkey, extra_key);
+        assert_eq!(ix.accounts.len(), 7);
+    }
+
+    #[test]
+    fn vault_transaction_execute_ix_with_ephemeral_bumps() {
+        // Same as above but with 2 ephemeral signer bumps to verify offset math
+        let multisig_addr = Address::from([0xAA; 32]);
+        let vault_index: u8 = 0;
+        let (vault, _) = vault_pda(&multisig_addr, vault_index);
+
+        // Minimal inner message: just the vault key, no extra accounts
+        let mut inner_msg = vec![1, 1, 0, 1]; // 1 key (vault only)
+        inner_msg.extend_from_slice(vault.as_ref());
+        inner_msg.push(0); // 0 instructions
+        inner_msg.push(0); // 0 lookups
+
+        let mut data = vec![0u8; 87];
+        data[8..40].copy_from_slice(&[0xAA; 32]); // multisig
+        data[40..72].copy_from_slice(&[0xCC; 32]); // creator
+        data[72..80].copy_from_slice(&1u64.to_le_bytes());
+        data[80] = 255;
+        data[81] = vault_index;
+        data[82] = 254;
+        // ephemeral_signer_bumps: 2 bumps
+        data[83..87].copy_from_slice(&2u32.to_le_bytes());
+        data.push(200); // bump 0
+        data.push(201); // bump 1
+        // message comes after bumps
+        data.extend_from_slice(&(inner_msg.len() as u32).to_le_bytes());
+        data.extend_from_slice(&inner_msg);
+
+        let ms = MultisigState {
+            threshold: 1,
+            transaction_index: 1,
+            members: vec![],
+        };
+
+        let ix = vault_transaction_execute_ix(
+            &multisig_addr,
+            &Address::from([0xEE; 32]),
+            &Address::from([0xFF; 32]),
+            &Address::from([0xDD; 32]),
+            &data,
+            &ms,
+        )
+        .unwrap();
+
+        // Should still find the vault correctly despite the bump offset
+        assert_eq!(ix.program_id, SQUADS_PROGRAM_ID);
+        // accounts: multisig, transaction, proposal, member, vault (no remaining, no members)
+        assert_eq!(ix.accounts[4].pubkey, vault);
     }
 }

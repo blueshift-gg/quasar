@@ -146,16 +146,28 @@ fn solana_deploy(
     }
 }
 
-pub fn run(
-    program_keypair: Option<PathBuf>,
-    upgrade_authority: Option<PathBuf>,
-    keypair: Option<PathBuf>,
-    url: Option<String>,
-    skip_build: bool,
-    multisig: Option<String>,
-    status: bool,
-    upgrade: bool,
-) -> CliResult {
+pub struct DeployOpts {
+    pub program_keypair: Option<PathBuf>,
+    pub upgrade_authority: Option<PathBuf>,
+    pub keypair: Option<PathBuf>,
+    pub url: Option<String>,
+    pub skip_build: bool,
+    pub multisig: Option<String>,
+    pub status: bool,
+    pub upgrade: bool,
+}
+
+pub fn run(opts: DeployOpts) -> CliResult {
+    let DeployOpts {
+        program_keypair,
+        upgrade_authority,
+        keypair,
+        url,
+        skip_build,
+        multisig,
+        status,
+        upgrade,
+    } = opts;
     let config = QuasarConfig::load()?;
     let name = &config.project.name;
 
@@ -190,6 +202,10 @@ pub fn run(
         }
     }
 
+    // Resolve cluster URL once — handles shorthands like "localnet" that
+    // the Solana CLI doesn't understand natively.
+    let rpc_url = crate::multisig::solana_rpc_url(url.as_deref());
+
     // Everything below needs a build and a .so
     let so_path = build_and_find_so(&config, name, skip_build)?;
     let keypair_path = resolve_program_keypair(&config, program_keypair);
@@ -216,24 +232,21 @@ pub fn run(
     let program_id = crate::multisig::read_program_id_from_keypair(&keypair_path)?;
 
     // If NOT --upgrade, verify the program doesn't already exist on-chain
-    if !upgrade {
-        let rpc_url = crate::multisig::solana_rpc_url(url.as_deref());
-        if crate::multisig::program_exists_on_chain(&rpc_url, &program_id)? {
-            eprintln!(
-                "\n  {}",
-                style::fail(&format!(
-                    "program already deployed at {}",
-                    bs58::encode(program_id).into_string()
-                ))
-            );
-            eprintln!();
-            eprintln!(
-                "  Use {} to upgrade an existing program.",
-                style::bold("quasar deploy --upgrade")
-            );
-            eprintln!();
-            std::process::exit(1);
-        }
+    if !upgrade && crate::multisig::program_exists_on_chain(&rpc_url, &program_id)? {
+        eprintln!(
+            "\n  {}",
+            style::fail(&format!(
+                "program already deployed at {}",
+                bs58::encode(program_id).into_string()
+            ))
+        );
+        eprintln!();
+        eprintln!(
+            "  Use {} to upgrade an existing program.",
+            style::bold("quasar deploy --upgrade")
+        );
+        eprintln!();
+        std::process::exit(1);
     }
 
     // Deploy (or upgrade) via solana CLI
@@ -242,7 +255,7 @@ pub fn run(
         &keypair_path,
         upgrade_authority.as_deref(),
         keypair.as_deref(),
-        url.as_deref(),
+        Some(&rpc_url),
     )?;
 
     // --multisig without --upgrade: transfer authority to vault after deploy
@@ -250,7 +263,6 @@ pub fn run(
         let multisig_key = parse_multisig_address(multisig_addr)?;
         let (vault, _) = crate::multisig::vault_pda(&multisig_key, 0);
         let payer_path = crate::multisig::solana_keypair_path(keypair.as_deref());
-        let rpc_url = crate::multisig::solana_rpc_url(url.as_deref());
 
         let sp = style::spinner("Transferring upgrade authority to multisig vault...");
         crate::multisig::set_upgrade_authority(
