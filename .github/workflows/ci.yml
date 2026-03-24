@@ -14,7 +14,7 @@ env:
 jobs:
   rust_fmt:
     name: Rustfmt
-    runs-on: ubuntu-latest
+    runs-on: fireactions-ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - name: Get nightly toolchain version
@@ -29,7 +29,7 @@ jobs:
 
   rust_clippy:
     name: Clippy
-    runs-on: ubuntu-latest
+    runs-on: fireactions-ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - uses: actions/cache@v5
@@ -53,7 +53,7 @@ jobs:
 
   check_features:
     name: Check Features
-    runs-on: ubuntu-latest
+    runs-on: fireactions-ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - uses: actions/cache@v5
@@ -74,7 +74,7 @@ jobs:
 
   cargo_test:
     name: Build & Test
-    runs-on: ubuntu-latest
+    runs-on: fireactions-ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - name: Cache Solana tools
@@ -106,7 +106,7 @@ jobs:
 
   miri:
     name: Miri (Tree Borrows)
-    runs-on: ubuntu-latest
+    runs-on: fireactions-ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - uses: actions/cache@v5
@@ -131,7 +131,7 @@ jobs:
   cu_benchmark_pr:
     name: CU Benchmark (PR)
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: fireactions-ubuntu-24.04
     permissions:
       contents: read
       pull-requests: write
@@ -240,7 +240,7 @@ jobs:
   check_if_pr_commit:
     name: Detect merged PR push
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: fireactions-ubuntu-24.04
     permissions:
       contents: read
       pull-requests: read
@@ -266,7 +266,7 @@ jobs:
     name: CU Benchmark (Push)
     needs: [check_if_pr_commit]
     if: github.event_name == 'push' && needs.check_if_pr_commit.outputs.skip_bench != 'true'
-    runs-on: ubuntu-latest
+    runs-on: fireactions-ubuntu-24.04
     permissions:
       contents: read
     steps:
