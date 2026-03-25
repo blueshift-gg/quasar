@@ -98,4 +98,30 @@ mod quasar_test_token_cpi {
     ) -> Result<(), ProgramError> {
         ctx.accounts.handler()
     }
+
+    #[instruction(discriminator = 16)]
+    pub fn validate_token_check(ctx: Ctx<ValidateTokenCheck>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 17)]
+    pub fn validate_token_interface_check(
+        ctx: Ctx<ValidateTokenInterfaceCheck>,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 18)]
+    pub fn validate_ata_interface_check(
+        ctx: Ctx<ValidateAtaInterfaceCheck>,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 19)]
+    pub fn validate_token_no_program(
+        ctx: Ctx<ValidateTokenNoProgram>,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
 }

@@ -1,6 +1,6 @@
 use {
     mollusk_svm::Mollusk,
-    quasar_spl::get_associated_token_address_const,
+    quasar_spl::{get_associated_token_address_const, get_associated_token_address_with_program_const},
     quasar_test_token_cpi::client::*,
     solana_account::Account,
     solana_address::Address,
@@ -3249,5 +3249,801 @@ fn test_ata_derivation_different_mints() {
     assert_ne!(
         ata_a, ata_b,
         "different mints should produce different ATAs"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Non-init token::mint + token::authority validation (ValidateTokenCheck)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_validate_token_check_success() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let token_account_addr = Address::new_unique();
+
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let token_acct = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 500),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let authority_account = Account::new(1_000_000, 0, &Address::default());
+
+    let instruction: Instruction = ValidateTokenCheckInstruction {
+        token_account: token_account_addr,
+        mint,
+        authority,
+        token_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (token_account_addr, token_acct),
+            (mint, mint_account),
+            (authority, authority_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "validate_token_check should pass with correct mint + authority: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_validate_token_check_wrong_mint() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let wrong_mint = Address::new_unique();
+    let token_account_addr = Address::new_unique();
+
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let token_acct = Account {
+        lamports: 1_000_000,
+        data: pack_token(wrong_mint, authority, 500),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let authority_account = Account::new(1_000_000, 0, &Address::default());
+
+    let instruction: Instruction = ValidateTokenCheckInstruction {
+        token_account: token_account_addr,
+        mint,
+        authority,
+        token_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (token_account_addr, token_acct),
+            (mint, mint_account),
+            (authority, authority_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "validate_token_check should fail with wrong mint"
+    );
+}
+
+#[test]
+fn test_validate_token_check_wrong_authority() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let authority = Address::new_unique();
+    let wrong_authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let token_account_addr = Address::new_unique();
+
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let token_acct = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, wrong_authority, 500),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let authority_account = Account::new(1_000_000, 0, &Address::default());
+
+    let instruction: Instruction = ValidateTokenCheckInstruction {
+        token_account: token_account_addr,
+        mint,
+        authority,
+        token_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (token_account_addr, token_acct),
+            (mint, mint_account),
+            (authority, authority_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "validate_token_check should fail with wrong authority"
+    );
+}
+
+#[test]
+fn test_validate_token_check_wrong_owner() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let token_account_addr = Address::new_unique();
+    let wrong_program = Address::new_unique();
+
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let token_acct = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 500),
+        owner: wrong_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let authority_account = Account::new(1_000_000, 0, &Address::default());
+
+    let instruction: Instruction = ValidateTokenCheckInstruction {
+        token_account: token_account_addr,
+        mint,
+        authority,
+        token_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (token_account_addr, token_acct),
+            (mint, mint_account),
+            (authority, authority_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "validate_token_check should fail with wrong owner program"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Non-init token::mint + token::authority via InterfaceAccount
+// (ValidateTokenInterfaceCheck)
+// ---------------------------------------------------------------------------
+
+fn token_2022_program_account() -> (Address, Account) {
+    mollusk_svm_programs_token::token2022::keyed_account()
+}
+
+#[test]
+fn test_validate_token_interface_check_t22_success() {
+    let mut mollusk = setup();
+    mollusk_svm_programs_token::token2022::add_program(&mut mollusk);
+    let (token_2022_program, token_2022_account) = token_2022_program_account();
+    let authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let token_account_addr = Address::new_unique();
+
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(authority, 9),
+        owner: token_2022_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let token_acct = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 500),
+        owner: token_2022_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let authority_account = Account::new(1_000_000, 0, &Address::default());
+
+    let instruction: Instruction = ValidateTokenInterfaceCheckInstruction {
+        token_account: token_account_addr,
+        mint,
+        authority,
+        token_program: token_2022_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (token_account_addr, token_acct),
+            (mint, mint_account),
+            (authority, authority_account),
+            (token_2022_program, token_2022_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "validate_token_interface_check (Token-2022) should pass: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_validate_token_interface_check_spl_success() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let token_account_addr = Address::new_unique();
+
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let token_acct = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 500),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let authority_account = Account::new(1_000_000, 0, &Address::default());
+
+    let instruction: Instruction = ValidateTokenInterfaceCheckInstruction {
+        token_account: token_account_addr,
+        mint,
+        authority,
+        token_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (token_account_addr, token_acct),
+            (mint, mint_account),
+            (authority, authority_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "validate_token_interface_check (SPL Token) should pass: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_validate_token_interface_check_wrong_mint() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let wrong_mint = Address::new_unique();
+    let token_account_addr = Address::new_unique();
+
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let token_acct = Account {
+        lamports: 1_000_000,
+        data: pack_token(wrong_mint, authority, 500),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let authority_account = Account::new(1_000_000, 0, &Address::default());
+
+    let instruction: Instruction = ValidateTokenInterfaceCheckInstruction {
+        token_account: token_account_addr,
+        mint,
+        authority,
+        token_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (token_account_addr, token_acct),
+            (mint, mint_account),
+            (authority, authority_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "validate_token_interface_check should fail with wrong mint"
+    );
+}
+
+#[test]
+fn test_validate_token_interface_check_wrong_authority() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let authority = Address::new_unique();
+    let wrong_authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let token_account_addr = Address::new_unique();
+
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let token_acct = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, wrong_authority, 500),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let authority_account = Account::new(1_000_000, 0, &Address::default());
+
+    let instruction: Instruction = ValidateTokenInterfaceCheckInstruction {
+        token_account: token_account_addr,
+        mint,
+        authority,
+        token_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (token_account_addr, token_acct),
+            (mint, mint_account),
+            (authority, authority_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "validate_token_interface_check should fail with wrong authority"
+    );
+}
+
+#[test]
+fn test_validate_token_interface_check_wrong_program() {
+    let mut mollusk = setup();
+    mollusk_svm_programs_token::token2022::add_program(&mut mollusk);
+    let (token_program, token_program_account) = token_program_account();
+    let (token_2022_program, _) = token_2022_program_account();
+    let authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let token_account_addr = Address::new_unique();
+
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(authority, 9),
+        owner: token_2022_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    // Account is owned by Token-2022, but we pass SPL Token as the program
+    let token_acct = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 500),
+        owner: token_2022_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let authority_account = Account::new(1_000_000, 0, &Address::default());
+
+    let instruction: Instruction = ValidateTokenInterfaceCheckInstruction {
+        token_account: token_account_addr,
+        mint,
+        authority,
+        token_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (token_account_addr, token_acct),
+            (mint, mint_account),
+            (authority, authority_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "validate_token_interface_check should fail when account owned by Token-2022 but program is SPL Token"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Non-init associated_token::* via InterfaceAccount
+// (ValidateAtaInterfaceCheck)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_validate_ata_interface_check_t22_success() {
+    let mut mollusk = setup();
+    mollusk_svm_programs_token::token2022::add_program(&mut mollusk);
+    let (token_2022_program, token_2022_account) = token_2022_program_account();
+    let wallet = Address::new_unique();
+    let mint = Address::new_unique();
+    let (ata_addr, _) =
+        get_associated_token_address_with_program_const(&wallet, &mint, &token_2022_program);
+
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(wallet, 9),
+        owner: token_2022_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let ata_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, wallet, 100),
+        owner: token_2022_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let wallet_account = Account::new(1_000_000, 0, &Address::default());
+
+    let instruction: Instruction = ValidateAtaInterfaceCheckInstruction {
+        ata: ata_addr,
+        mint,
+        wallet,
+        token_program: token_2022_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (ata_addr, ata_account),
+            (mint, mint_account),
+            (wallet, wallet_account),
+            (token_2022_program, token_2022_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "validate_ata_interface_check (Token-2022) should pass: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_validate_ata_interface_check_spl_success() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let wallet = Address::new_unique();
+    let mint = Address::new_unique();
+    let (ata_addr, _) =
+        get_associated_token_address_with_program_const(&wallet, &mint, &token_program);
+
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(wallet, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let ata_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, wallet, 100),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let wallet_account = Account::new(1_000_000, 0, &Address::default());
+
+    let instruction: Instruction = ValidateAtaInterfaceCheckInstruction {
+        ata: ata_addr,
+        mint,
+        wallet,
+        token_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (ata_addr, ata_account),
+            (mint, mint_account),
+            (wallet, wallet_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "validate_ata_interface_check (SPL Token) should pass: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_validate_ata_interface_check_wrong_address() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let wallet = Address::new_unique();
+    let mint = Address::new_unique();
+    let wrong_ata = Address::new_unique();
+
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(wallet, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let ata_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, wallet, 100),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let wallet_account = Account::new(1_000_000, 0, &Address::default());
+
+    let instruction: Instruction = ValidateAtaInterfaceCheckInstruction {
+        ata: wrong_ata,
+        mint,
+        wallet,
+        token_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (wrong_ata, ata_account),
+            (mint, mint_account),
+            (wallet, wallet_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "validate_ata_interface_check should fail with wrong ATA address"
+    );
+}
+
+#[test]
+fn test_validate_ata_interface_check_wrong_mint() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let wallet = Address::new_unique();
+    let mint = Address::new_unique();
+    let wrong_mint = Address::new_unique();
+    let (ata_addr, _) =
+        get_associated_token_address_with_program_const(&wallet, &mint, &token_program);
+
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(wallet, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let ata_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(wrong_mint, wallet, 100),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let wallet_account = Account::new(1_000_000, 0, &Address::default());
+
+    let instruction: Instruction = ValidateAtaInterfaceCheckInstruction {
+        ata: ata_addr,
+        mint,
+        wallet,
+        token_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (ata_addr, ata_account),
+            (mint, mint_account),
+            (wallet, wallet_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "validate_ata_interface_check should fail with wrong mint"
+    );
+}
+
+#[test]
+fn test_validate_ata_interface_check_wrong_authority() {
+    let mollusk = setup();
+    let (token_program, token_program_account) = token_program_account();
+    let wallet = Address::new_unique();
+    let wrong_wallet = Address::new_unique();
+    let mint = Address::new_unique();
+    let (ata_addr, _) =
+        get_associated_token_address_with_program_const(&wallet, &mint, &token_program);
+
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(wallet, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let ata_account = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, wrong_wallet, 100),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let wallet_account = Account::new(1_000_000, 0, &Address::default());
+
+    let instruction: Instruction = ValidateAtaInterfaceCheckInstruction {
+        ata: ata_addr,
+        mint,
+        wallet,
+        token_program,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (ata_addr, ata_account),
+            (mint, mint_account),
+            (wallet, wallet_account),
+            (token_program, token_program_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "validate_ata_interface_check should fail with wrong authority"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Non-init token::* without token_program field (ValidateTokenNoProgram)
+// Account<Token> resolves to SPL_TOKEN_ID at compile time.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_validate_token_no_program_success() {
+    let mollusk = setup();
+    let (token_program, _) = token_program_account();
+    let authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let token_account_addr = Address::new_unique();
+
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let token_acct = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 500),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let authority_account = Account::new(1_000_000, 0, &Address::default());
+
+    let instruction: Instruction = ValidateTokenNoProgramInstruction {
+        token_account: token_account_addr,
+        mint,
+        authority,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (token_account_addr, token_acct),
+            (mint, mint_account),
+            (authority, authority_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "validate_token_no_program should pass: {:?}",
+        result.program_result
+    );
+}
+
+#[test]
+fn test_validate_token_no_program_wrong_owner() {
+    let mollusk = setup();
+    let authority = Address::new_unique();
+    let mint = Address::new_unique();
+    let token_account_addr = Address::new_unique();
+    let wrong_program = Address::new_unique();
+    let (token_program, _) = token_program_account();
+
+    let mint_account = Account {
+        lamports: 1_000_000,
+        data: pack_mint(authority, 9),
+        owner: token_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    // Token account owned by wrong program — should fail the compile-time
+    // SPL_TOKEN_ID check in validate_token_account.
+    let token_acct = Account {
+        lamports: 1_000_000,
+        data: pack_token(mint, authority, 500),
+        owner: wrong_program,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let authority_account = Account::new(1_000_000, 0, &Address::default());
+
+    let instruction: Instruction = ValidateTokenNoProgramInstruction {
+        token_account: token_account_addr,
+        mint,
+        authority,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (token_account_addr, token_acct),
+            (mint, mint_account),
+            (authority, authority_account),
+        ],
+    );
+    assert!(
+        result.program_result.is_err(),
+        "validate_token_no_program should fail with wrong owner"
     );
 }
