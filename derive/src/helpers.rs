@@ -7,8 +7,7 @@
 use {
     quote::quote,
     syn::{
-        parse::{Parse, ParseStream},
-        Expr, ExprLit, GenericArgument, Ident, Lit, LitInt, PathArguments, Token, Type,
+        AngleBracketedGenericArguments, Expr, ExprLit, GenericArgument, Ident, Lit, LitInt, PathArguments, Token, Type, parse::{Parse, ParseStream}
     },
 };
 
@@ -410,7 +409,6 @@ pub(crate) fn classify_dynamic_string(ty: &Type) -> Option<(PrefixType, usize)> 
     }
     None
 }
-
 /// Classifies a type as a dynamic vec. Returns `Some((elem, prefix, max))`.
 ///
 /// Handles:
@@ -419,58 +417,119 @@ pub(crate) fn classify_dynamic_string(ty: &Type) -> Option<(PrefixType, usize)> 
 /// - `Vec<T, P, MAX>` → (T, P, MAX) — fully specified
 /// - `Vec<'a, T, MAX>` → (T, U32, MAX) — backward-compat
 pub(crate) fn classify_dynamic_vec(ty: &Type) -> Option<(Type, PrefixType, usize)> {
-    if let Type::Path(type_path) = ty {
-        if let Some(seg) = type_path.path.segments.last() {
-            if seg.ident == "Vec" {
-                if let PathArguments::AngleBracketed(args) = &seg.arguments {
-                    let mut iter = args.args.iter();
-                    let first = iter.next()?;
+    let vec_segment = extract_vec_segment(ty)?;
+    let args = extract_angle_bracketed_args(&vec_segment.arguments)?;
+    let mut arg_iter = args.args.iter();
 
-                    if let GenericArgument::Lifetime(_) = first {
-                        let elem_ty = match iter.next()? {
-                            GenericArgument::Type(ty) => ty.clone(),
-                            _ => return None,
-                        };
-                        return match iter.next() {
-                            Some(arg) => {
-                                let max = extract_const_usize(arg)?;
-                                Some((elem_ty, PrefixType::U32, max))
-                            }
-                            None => Some((elem_ty, PrefixType::U32, 8)),
-                        };
-                    }
+    let first_arg = arg_iter.next()?;
 
-                    let elem_ty = match first {
-                        GenericArgument::Type(ty) => ty.clone(),
-                        _ => return None,
-                    };
-
-                    return match iter.next() {
-                        None => Some((elem_ty, PrefixType::U32, 8)),
-                        Some(GenericArgument::Type(prefix_ty)) => {
-                            let prefix = parse_prefix_type(prefix_ty)?;
-                            match iter.next() {
-                                Some(arg) => {
-                                    let max = extract_const_usize(arg)?;
-                                    Some((elem_ty, prefix, max))
-                                }
-                                None => Some((elem_ty, prefix, 8)),
-                            }
-                        }
-                        Some(arg) => {
-                            let max = extract_const_usize(arg)?;
-                            Some((elem_ty, PrefixType::U32, max))
-                        }
-                    };
-                } else {
-                    return None;
-                }
-            }
-        }
+    // Handle legacy syntax: Vec<'a, T, MAX>
+    if is_lifetime_argument(first_arg) {
+        return parse_legacy_vec_syntax(&mut arg_iter);
     }
-    None
+
+    // Handle modern syntax: Vec<T>, Vec<T, P>, Vec<T, P, MAX>
+    let element_type = extract_type_argument(first_arg)?;
+    parse_modern_vec_syntax(element_type, &mut arg_iter)
 }
 
+/// Extracts the path segment for `Vec` from a type.
+/// Returns `None` if the type is not a path type or the final segment is not `Vec`.
+pub(crate) fn extract_vec_segment(ty: &Type) -> Option<&syn::PathSegment> {
+    let type_path = match ty {
+        Type::Path(p) => p,
+        _ => return None,
+    };
+    let segment = type_path.path.segments.last()?;
+    if segment.ident != "Vec" {
+        return None;
+    }
+    Some(segment)
+}
+
+/// Extracts angle-bracketed generic arguments from path arguments.
+/// Returns `None` if the arguments are not angle-bracketed (e.g., `Vec` without `<T>`).
+fn extract_angle_bracketed_args(args: &PathArguments) -> Option<&AngleBracketedGenericArguments> {
+    match args {
+        PathArguments::AngleBracketed(args) => Some(args),
+        _ => None,
+    }
+}
+
+/// Determines whether a generic argument is a lifetime parameter.
+/// Used to distinguish legacy `Vec<'a, T>` syntax from modern `Vec<T>` syntax.
+fn is_lifetime_argument(arg: &GenericArgument) -> bool {
+    matches!(arg, GenericArgument::Lifetime(_))
+}
+
+/// Unwraps a type value from a generic argument.
+/// Returns `None` if the argument is a lifetime or a const generic.
+fn extract_type_argument(arg: &GenericArgument) -> Option<Type> {
+    match arg {
+        GenericArgument::Type(ty) => Some(ty.clone()),
+        _ => None,
+    }
+}
+
+/// Parses the legacy Vec syntax: `Vec<'a, T, MAX>` or `Vec<'a, T>`.
+/// 
+/// The lifetime parameter is ignored. The prefix is always `U32` for legacy syntax.
+/// Returns the element type, prefix type (always U32), and maximum element count.
+fn parse_legacy_vec_syntax<'a>(
+    arg_iter: &mut impl Iterator<Item = &'a GenericArgument>,
+) -> Option<(Type, PrefixType, usize)> {
+    // Skip the lifetime parameter and extract the element type
+    let element_type = arg_iter.next().and_then(extract_type_argument)?;
+    
+    // Extract the maximum element count, defaulting to 8 if not specified
+    let max_elements = arg_iter
+        .next()
+        .and_then(extract_const_usize)
+        .unwrap_or(8);
+    
+    Some((element_type, PrefixType::U32, max_elements))
+}
+
+/// Parses modern Vec syntax variants: `Vec<T>`, `Vec<T, P>`, or `Vec<T, P, MAX>`.
+/// 
+/// - `Vec<T>`: Uses default prefix (U32) and default max (8)
+/// - `Vec<T, P>`: Uses custom prefix P and default max (8)
+/// - `Vec<T, P, MAX>`: Uses custom prefix P and specified max
+/// - `Vec<T, MAX>`: Uses default prefix (U32) and specified max
+fn parse_modern_vec_syntax<'a>(
+    element_type: Type,
+    arg_iter: &mut impl Iterator<Item = &'a GenericArgument>,
+) -> Option<(Type, PrefixType, usize)> {
+    let second_arg = arg_iter.next();
+
+    // Vec<T> only - use defaults
+    let Some(arg) = second_arg else {
+        return Some((element_type, PrefixType::U32, 8));
+    };
+
+    // Try to parse as prefix type (Vec<T, P>)
+    if let Some(prefix_type) = try_parse_prefix_type(arg) {
+        let max_elements = arg_iter
+            .next()
+            .and_then(extract_const_usize)
+            .unwrap_or(8);
+        
+        return Some((element_type, prefix_type, max_elements));
+    }
+
+    // Otherwise it's just max (Vec<T, MAX>)
+    let max_elements = extract_const_usize(arg)?;
+    Some((element_type, PrefixType::U32, max_elements))
+}
+
+/// Attempts to parse a generic argument as a length prefix type.
+/// 
+/// Valid prefix types are `u8`, `u16`, and `u32`. Returns `None` if the
+/// argument is not a type or is not one of the valid prefix types.
+fn try_parse_prefix_type(arg: &GenericArgument) -> Option<PrefixType> {
+    let ty = extract_type_argument(arg)?;
+    parse_prefix_type(&ty)
+}
 /// Classifies bare `&str` / `&'a str` and `&[u8]` / `&'a [u8]` as tail fields.
 ///
 /// Tail fields have no length prefix — remaining account/instruction data IS
