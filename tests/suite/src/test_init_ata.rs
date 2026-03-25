@@ -102,7 +102,7 @@ fn init_ata_t22_happy() {
     let (ata_key, _) =
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
-    let instruction: Instruction = InitAtaInstruction {
+    let instruction: Instruction = InitAtaT22Instruction {
         payer,
         ata: ata_key,
         wallet,
@@ -141,7 +141,7 @@ fn init_ata_t22_already_initialized() {
     let (ata_key, _) =
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
-    let instruction: Instruction = InitAtaInstruction {
+    let instruction: Instruction = InitAtaT22Instruction {
         payer,
         ata: ata_key,
         wallet,
@@ -389,7 +389,7 @@ fn init_if_needed_ata_t22_happy_new() {
     let (ata_key, _) =
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
-    let instruction: Instruction = InitIfNeededAtaInstruction {
+    let instruction: Instruction = InitIfNeededAtaT22Instruction {
         payer,
         ata: ata_key,
         wallet,
@@ -432,7 +432,7 @@ fn init_if_needed_ata_t22_existing_valid() {
     let (ata_key, _) =
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
-    let instruction: Instruction = InitIfNeededAtaInstruction {
+    let instruction: Instruction = InitIfNeededAtaT22Instruction {
         payer,
         ata: ata_key,
         wallet,
@@ -476,7 +476,7 @@ fn init_if_needed_ata_t22_existing_wrong_mint() {
     let (ata_key, _) =
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
-    let instruction: Instruction = InitIfNeededAtaInstruction {
+    let instruction: Instruction = InitIfNeededAtaT22Instruction {
         payer,
         ata: ata_key,
         wallet,
@@ -515,7 +515,7 @@ fn init_if_needed_ata_t22_existing_wrong_authority() {
     let (ata_key, _) =
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
-    let instruction: Instruction = InitIfNeededAtaInstruction {
+    let instruction: Instruction = InitIfNeededAtaT22Instruction {
         payer,
         ata: ata_key,
         wallet,
@@ -553,7 +553,7 @@ fn init_if_needed_ata_t22_existing_wrong_owner() {
     let (ata_key, _) =
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
-    let instruction: Instruction = InitIfNeededAtaInstruction {
+    let instruction: Instruction = InitIfNeededAtaT22Instruction {
         payer,
         ata: ata_key,
         wallet,

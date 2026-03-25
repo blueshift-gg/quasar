@@ -86,7 +86,7 @@ fn init_mint_t22_happy() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitMintInstruction {
+    let instruction: Instruction = InitMintT22Instruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
@@ -119,7 +119,7 @@ fn init_mint_t22_already_initialized() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitMintInstruction {
+    let instruction: Instruction = InitMintT22Instruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
@@ -325,7 +325,7 @@ fn init_if_needed_mint_spl_unexpected_freeze() {
     let system_program = quasar_svm::system_program::ID;
 
     // Use the no-freeze handler but provide a mint that has freeze_authority set.
-    // The handler only validates decimals + authority, so this should succeed.
+    // validate_mint with freeze_authority=None rejects mints that have one on-chain.
     let instruction: Instruction = InitIfNeededMintInstruction {
         payer,
         mint: mint_key,
@@ -344,9 +344,8 @@ fn init_if_needed_mint_spl_unexpected_freeze() {
         ],
     );
     assert!(
-        result.is_ok(),
-        "init_if_needed mint with unexpected freeze_authority should still succeed: {:?}",
-        result.raw_result
+        result.is_err(),
+        "init_if_needed mint with unexpected freeze_authority should fail"
     );
 }
 
@@ -363,7 +362,7 @@ fn init_if_needed_mint_t22_happy_new() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededMintInstruction {
+    let instruction: Instruction = InitIfNeededMintT22Instruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
@@ -396,7 +395,7 @@ fn init_if_needed_mint_t22_existing_valid() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededMintInstruction {
+    let instruction: Instruction = InitIfNeededMintT22Instruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
@@ -429,7 +428,7 @@ fn init_if_needed_mint_t22_wrong_decimals() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededMintInstruction {
+    let instruction: Instruction = InitIfNeededMintT22Instruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
@@ -462,7 +461,7 @@ fn init_if_needed_mint_t22_wrong_authority() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededMintInstruction {
+    let instruction: Instruction = InitIfNeededMintT22Instruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
@@ -494,7 +493,7 @@ fn init_if_needed_mint_t22_wrong_owner() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededMintInstruction {
+    let instruction: Instruction = InitIfNeededMintT22Instruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
@@ -532,7 +531,7 @@ fn init_if_needed_mint_t22_unexpected_freeze() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededMintInstruction {
+    let instruction: Instruction = InitIfNeededMintT22Instruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
@@ -550,9 +549,8 @@ fn init_if_needed_mint_t22_unexpected_freeze() {
         ],
     );
     assert!(
-        result.is_ok(),
-        "init_if_needed mint with unexpected freeze_authority should still succeed (T22): {:?}",
-        result.raw_result
+        result.is_err(),
+        "init_if_needed mint with unexpected freeze_authority should fail (T22)"
     );
 }
 
@@ -718,7 +716,7 @@ fn init_if_needed_mint_freeze_t22_happy_new() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededMintWithFreezeInstruction {
+    let instruction: Instruction = InitIfNeededMintWithFreezeT22Instruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
@@ -754,7 +752,7 @@ fn init_if_needed_mint_freeze_t22_existing_valid() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededMintWithFreezeInstruction {
+    let instruction: Instruction = InitIfNeededMintWithFreezeT22Instruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
@@ -791,7 +789,7 @@ fn init_if_needed_mint_freeze_t22_wrong_freeze_authority() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededMintWithFreezeInstruction {
+    let instruction: Instruction = InitIfNeededMintWithFreezeT22Instruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
@@ -826,7 +824,7 @@ fn init_if_needed_mint_freeze_t22_missing_freeze_authority() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededMintWithFreezeInstruction {
+    let instruction: Instruction = InitIfNeededMintWithFreezeT22Instruction {
         payer,
         mint: mint_key,
         mint_authority: authority,

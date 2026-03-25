@@ -49,4 +49,39 @@ mod quasar_test_token_init {
     pub fn init_mint_with_metadata(ctx: Ctx<InitMintWithMetadata>) -> Result<(), ProgramError> {
         ctx.accounts.handler()
     }
+
+    #[instruction(discriminator = 8)]
+    pub fn init_token_t22(ctx: Ctx<InitTokenT22>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 9)]
+    pub fn init_if_needed_token_t22(ctx: Ctx<InitIfNeededTokenT22>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 10)]
+    pub fn init_ata_t22(ctx: Ctx<InitAtaT22>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 11)]
+    pub fn init_if_needed_ata_t22(ctx: Ctx<InitIfNeededAtaT22>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 12)]
+    pub fn init_mint_t22(ctx: Ctx<InitMintT22>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 13)]
+    pub fn init_if_needed_mint_t22(ctx: Ctx<InitIfNeededMintT22>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 14)]
+    pub fn init_if_needed_mint_with_freeze_t22(ctx: Ctx<InitIfNeededMintWithFreezeT22>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
 }

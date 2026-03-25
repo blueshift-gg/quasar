@@ -89,7 +89,7 @@ fn init_token_t22_happy() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitTokenInstruction {
+    let instruction: Instruction = InitTokenT22Instruction {
         payer,
         token_account: token_key,
         mint: mint_key,
@@ -123,7 +123,7 @@ fn init_token_t22_already_initialized() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitTokenInstruction {
+    let instruction: Instruction = InitTokenT22Instruction {
         payer,
         token_account: token_key,
         mint: mint_key,
@@ -341,7 +341,7 @@ fn init_if_needed_token_t22_happy_new() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededTokenInstruction {
+    let instruction: Instruction = InitIfNeededTokenT22Instruction {
         payer,
         token_account: token_key,
         mint: mint_key,
@@ -379,7 +379,7 @@ fn init_if_needed_token_t22_existing_valid() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededTokenInstruction {
+    let instruction: Instruction = InitIfNeededTokenT22Instruction {
         payer,
         token_account: token_key,
         mint: mint_key,
@@ -418,7 +418,7 @@ fn init_if_needed_token_t22_existing_wrong_mint() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededTokenInstruction {
+    let instruction: Instruction = InitIfNeededTokenT22Instruction {
         payer,
         token_account: token_key,
         mint: mint_key,
@@ -452,7 +452,7 @@ fn init_if_needed_token_t22_existing_wrong_authority() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededTokenInstruction {
+    let instruction: Instruction = InitIfNeededTokenT22Instruction {
         payer,
         token_account: token_key,
         mint: mint_key,
@@ -485,7 +485,7 @@ fn init_if_needed_token_t22_existing_wrong_owner() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededTokenInstruction {
+    let instruction: Instruction = InitIfNeededTokenT22Instruction {
         payer,
         token_account: token_key,
         mint: mint_key,
