@@ -8,6 +8,7 @@ repository.workspace = true
 authors.workspace = true
 
 [features]
+debug = []
 metadata = []
 
 [dependencies]
