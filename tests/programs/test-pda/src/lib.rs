@@ -55,12 +55,20 @@ mod quasar_test_pda {
     }
 
     #[instruction(discriminator = 8)]
-    pub fn init_max_seed(ctx: Ctx<InitMaxSeed>) -> Result<(), ProgramError> {
+    pub fn init_max_seed_length(ctx: Ctx<InitMaxSeedLength>) -> Result<(), ProgramError> {
         ctx.accounts.handler(&ctx.bumps)
     }
 
     #[instruction(discriminator = 9)]
     pub fn init_three_seeds(ctx: Ctx<InitThreeSeeds>) -> Result<(), ProgramError> {
         ctx.accounts.handler(&ctx.bumps)
+    }
+
+    #[instruction(discriminator = 10)]
+    pub fn init_max_multi_seeds(
+        ctx: Ctx<InitMaxMultiSeeds>,
+        amount: u64,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler(amount, &ctx.bumps)
     }
 }

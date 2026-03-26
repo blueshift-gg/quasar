@@ -1133,6 +1133,23 @@ pub(super) fn process_fields(
                 .map(|expr| seed_slice_expr_for_parse(expr, field_name_strings))
                 .collect();
 
+            // Solana enforces MAX_SEEDS = 16 at runtime; we catch it here at compile time
+            // since seed count is always statically known from the attribute.
+            // (15 explicit seeds + 1 bump = 16 total)
+            if seed_slices.len() > 15 {
+                return Err(syn::Error::new_spanned(
+                    field_name,
+                    format!(
+                        "`{}` exceeds Solana's PDA seed limit: {} seeds provided, max is 16 \
+                         including bump",
+                        field_name,
+                        seed_slices.len()
+                    ),
+                )
+                .to_compile_error()
+                .into());
+            }
+
             let seed_idents: Vec<Ident> = seed_slices
                 .iter()
                 .enumerate()

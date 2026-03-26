@@ -645,7 +645,7 @@ fn test_max_seed_length() {
     let (max_seed, _) =
         Address::find_program_address(&[b"abcdefghijklmnopqrstuvwxyz012345"], &quasar_test_pda::ID);
 
-    let instruction: Instruction = InitMaxSeedInstruction {
+    let instruction: Instruction = InitMaxSeedLengthInstruction {
         payer,
         max_seed,
         system_program,
@@ -938,6 +938,46 @@ fn test_multi_seed_three_components() {
     assert_eq!(account.data[0], 7);
     assert_eq!(&account.data[1..33], first.as_ref());
     assert_eq!(&account.data[33..65], second.as_ref());
+    assert_eq!(account.owner, quasar_test_pda::ID);
+}
+
+#[test]
+fn test_max_multi_seeds() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let payer = Address::new_unique();
+    let max_seeds: Vec<&[u8]> = (0..15).map(|_| b"complex".as_slice()).collect(); // MAX seeds allowed is 16 including bump seed
+    let authority = Address::new_unique();
+    let (complex, _) = Address::find_program_address(&max_seeds, &quasar_test_pda::ID);
+
+    let instruction: Instruction = InitMaxMultiSeedsInstruction {
+        payer,
+        authority,
+        complex,
+        system_program,
+        amount: 12345,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (payer, Account::new(1_000_000_000, 0, &system_program)),
+            (authority, Account::new(1_000_000, 0, &system_program)),
+            (complex, Account::default()),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "MAX 15 seeds init failed: {:?}",
+        result.program_result
+    );
+
+    let account = &result.resulting_accounts[2].1;
+    assert_eq!(account.data.len(), COMPLEX_SIZE);
+    assert_eq!(account.data[0], 4);
     assert_eq!(account.owner, quasar_test_pda::ID);
 }
 

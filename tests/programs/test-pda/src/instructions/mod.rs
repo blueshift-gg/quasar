@@ -7,6 +7,9 @@ pub use init_pubkey_seed::*;
 pub mod init_instruction_seed;
 pub use init_instruction_seed::*;
 
+pub mod init_max_multi_seeds;
+pub use init_max_multi_seeds::*;
+
 pub mod init_multi_seeds;
 pub use init_multi_seeds::*;
 
@@ -22,8 +25,8 @@ pub use pda_transfer::*;
 pub mod init_empty_seed;
 pub use init_empty_seed::*;
 
-pub mod init_max_seed;
-pub use init_max_seed::*;
+pub mod init_max_seed_length;
+pub use init_max_seed_length::*;
 
 pub mod init_three_seeds;
 pub use init_three_seeds::*;
