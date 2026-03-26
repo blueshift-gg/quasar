@@ -233,7 +233,7 @@ fn test_dynamic_instruction_invalid_utf8_rejected() {
 
     let instruction: Instruction = DynamicInstructionCheckInstruction {
         authority,
-        name: quasar_lang::client::DynBytes(vec![0xFF]),
+        name: quasar_lang::client::DynBytes::new(vec![0xFF]),
     }
     .into();
 

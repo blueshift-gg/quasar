@@ -151,10 +151,12 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
                                     Pat::Ident(pi) => pi.ident.clone(),
                                     _ => return None,
                                 };
-                                let ty = if classify_dynamic_string(&pt.ty).is_some() {
-                                    syn::parse_quote!(quasar_lang::client::DynBytes)
-                                } else if let Some((elem, _, _)) = classify_dynamic_vec(&pt.ty) {
-                                    syn::parse_quote!(quasar_lang::client::DynVec<#elem>)
+                                let ty = if let Some((prefix, _)) = classify_dynamic_string(&pt.ty) {
+                                    let prefix_ty = prefix.to_type();
+                                    syn::parse_quote!(quasar_lang::client::DynBytes<#prefix_ty>)
+                                } else if let Some((elem, prefix, _)) = classify_dynamic_vec(&pt.ty) {
+                                    let prefix_ty = prefix.to_type();
+                                    syn::parse_quote!(quasar_lang::client::DynVec<#elem, #prefix_ty>)
                                 } else if classify_tail(&pt.ty).is_some() {
                                     syn::parse_quote!(quasar_lang::client::TailBytes)
                                 } else {

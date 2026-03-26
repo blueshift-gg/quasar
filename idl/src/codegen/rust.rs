@@ -44,6 +44,9 @@ pub fn generate_client(parsed: &ParsedProgram) -> String {
     } else {
         out.push_str("use std::vec;\n");
     }
+    if has_dynamic {
+        out.push_str("use quasar_lang::client::{DynBytes, DynVec, TailBytes};\n");
+    }
     out.push_str("use wincode::{SchemaWrite, SchemaRead};\n");
     out.push_str("use solana_address::Address;\n");
     out.push_str("use solana_instruction::{AccountMeta, Instruction};\n\n");
@@ -381,12 +384,33 @@ fn rust_field_type(ty: &IdlType) -> String {
             "publicKey" => "Address".to_string(),
             other => other.to_string(),
         },
-        IdlType::DynString { .. } => "Vec<u8>".to_string(),
+        IdlType::DynString { string } => prefix_generic("DynBytes", string.prefix_bytes),
         IdlType::DynVec { vec } => {
-            format!("Vec<{}>", rust_field_type(&vec.items))
+            let inner = rust_field_type(&vec.items);
+            match vec.prefix_bytes {
+                4 => format!("DynVec<{}>", inner),
+                _ => format!("DynVec<{}, {}>", inner, prefix_rust_type(vec.prefix_bytes)),
+            }
         }
         IdlType::Defined { defined } => defined.clone(),
-        IdlType::Tail { .. } => "Vec<u8>".to_string(),
+        IdlType::Tail { .. } => "TailBytes".to_string(),
+    }
+}
+
+/// Map prefix byte width to a Rust type name or generic type string.
+fn prefix_generic(wrapper: &str, prefix_bytes: usize) -> String {
+    match prefix_bytes {
+        4 => wrapper.to_string(),
+        _ => format!("{}<{}>", wrapper, prefix_rust_type(prefix_bytes)),
+    }
+}
+
+fn prefix_rust_type(prefix_bytes: usize) -> &'static str {
+    match prefix_bytes {
+        1 => "u8",
+        2 => "u16",
+        4 => "u32",
+        _ => "u32",
     }
 }
 

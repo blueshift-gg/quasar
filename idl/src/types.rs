@@ -78,6 +78,13 @@ pub struct IdlField {
 pub struct IdlDynString {
     #[serde(rename = "maxLength")]
     pub max_length: usize,
+    /// Byte width of the length prefix (1 = u8, 2 = u16, 4 = u32).
+    #[serde(rename = "prefixBytes", skip_serializing_if = "is_default_prefix")]
+    pub prefix_bytes: usize,
+}
+
+fn is_default_prefix(v: &usize) -> bool {
+    *v == 4
 }
 
 #[derive(Serialize)]
@@ -85,6 +92,9 @@ pub struct IdlDynVec {
     pub items: Box<IdlType>,
     #[serde(rename = "maxLength")]
     pub max_length: usize,
+    /// Byte width of the count prefix (1 = u8, 2 = u16, 4 = u32).
+    #[serde(rename = "prefixBytes", skip_serializing_if = "is_default_prefix")]
+    pub prefix_bytes: usize,
 }
 
 #[derive(Serialize)]

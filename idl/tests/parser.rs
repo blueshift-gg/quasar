@@ -587,15 +587,462 @@ fn collision_three_instructions_pairwise() {
     assert_eq!(collisions.len(), 3, "should detect all pairwise collisions");
 }
 
+// ===========================================================================
+// Rust codegen
+//
+// Tests that the generated Rust client code is structurally correct,
+// uses the right types for wire compatibility, and handles all feature
+// combinations (events, accounts, dynamic types, remaining accounts).
+// ===========================================================================
+
+use quasar_idl::{
+    codegen::rust::generate_client,
+    parser::{accounts::RawAccountField, ParsedProgram},
+};
+
+fn test_program() -> ParsedProgram {
+    ParsedProgram {
+        program_id: "ABcDeFgH111111111111111111111111111111111111".to_string(),
+        program_name: "test_program".to_string(),
+        crate_name: "test-program".to_string(),
+        version: "0.1.0".to_string(),
+        instructions: vec![],
+        accounts_structs: vec![],
+        state_accounts: vec![],
+        events: vec![],
+        errors: vec![],
+        data_structs: vec![],
+    }
+}
+
 // ---------------------------------------------------------------------------
-// Rust codegen: events
+// Instruction codegen: no args
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rust_codegen_no_arg_instruction() {
+    let mut parsed = test_program();
+    parsed.instructions.push(program::RawInstruction {
+        name: "initialize".to_string(),
+        discriminator: vec![0],
+        accounts_type_name: "Initialize".to_string(),
+        args: vec![],
+        has_remaining: false,
+    });
+    let code = generate_client(&parsed);
+
+    assert!(code.contains("pub struct InitializeInstruction {"), "{code}");
+    // No args → immutable `data` (no `mut`)
+    assert!(code.contains("let data = vec![0];"), "{code}");
+    // No manual serialization
+    assert!(!code.contains("to_le_bytes"), "{code}");
+}
+
+// ---------------------------------------------------------------------------
+// Instruction codegen: primitive args
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rust_codegen_primitive_args() {
+    let mut parsed = test_program();
+    parsed.instructions.push(program::RawInstruction {
+        name: "deposit".to_string(),
+        discriminator: vec![1],
+        accounts_type_name: "Deposit".to_string(),
+        args: vec![
+            ("amount".to_string(), syn::parse_str("u64").unwrap()),
+            ("flag".to_string(), syn::parse_str("bool").unwrap()),
+        ],
+        has_remaining: false,
+    });
+    let code = generate_client(&parsed);
+
+    // Struct fields use native types
+    assert!(code.contains("pub amount: u64,"), "{code}");
+    assert!(code.contains("pub flag: bool,"), "{code}");
+    // Each arg serialized via wincode
+    assert!(code.contains("wincode::serialize(&ix.amount)"), "{code}");
+    assert!(code.contains("wincode::serialize(&ix.flag)"), "{code}");
+}
+
+// ---------------------------------------------------------------------------
+// Instruction codegen: account metas
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rust_codegen_account_metas() {
+    let mut parsed = test_program();
+    parsed.instructions.push(program::RawInstruction {
+        name: "transfer".to_string(),
+        discriminator: vec![2],
+        accounts_type_name: "Transfer".to_string(),
+        args: vec![("amount".to_string(), syn::parse_str("u64").unwrap())],
+        has_remaining: false,
+    });
+    parsed.accounts_structs.push(
+        quasar_idl::parser::accounts::RawAccountsStruct {
+            name: "Transfer".to_string(),
+            fields: vec![
+                RawAccountField {
+                    name: "from".to_string(),
+                    writable: true,
+                    signer: true,
+                    pda: None,
+                    address: None,
+                },
+                RawAccountField {
+                    name: "to".to_string(),
+                    writable: true,
+                    signer: false,
+                    pda: None,
+                    address: None,
+                },
+                RawAccountField {
+                    name: "authority".to_string(),
+                    writable: false,
+                    signer: true,
+                    pda: None,
+                    address: None,
+                },
+            ],
+        },
+    );
+    let code = generate_client(&parsed);
+
+    assert!(
+        code.contains("AccountMeta::new(ix.from, true)"),
+        "writable+signer → new(..., true): {code}"
+    );
+    assert!(
+        code.contains("AccountMeta::new(ix.to, false)"),
+        "writable+!signer → new(..., false): {code}"
+    );
+    assert!(
+        code.contains("AccountMeta::new_readonly(ix.authority, true)"),
+        "!writable+signer → new_readonly(..., true): {code}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Instruction codegen: dynamic types use wrapper types
+//
+// This is the critical wire compatibility test. DynString and DynVec
+// must map to DynBytes/DynVec<T> (u32 LE prefix), NOT to plain
+// Vec<u8>/Vec<T> whose wincode encoding may differ.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rust_codegen_dynamic_string_uses_dyn_bytes() {
+    let file = parse_file(
+        r#"
+        #[program]
+        mod my_program {
+            #[instruction(discriminator = [1])]
+            pub fn set_name(ctx: Ctx<SetName>, name: String<8>) -> Result<(), ProgramError> {
+                Ok(())
+            }
+        }
+        "#,
+    );
+    let (_, instructions) = program::extract_program_module(&file).unwrap();
+    let mut parsed = test_program();
+    parsed.instructions = instructions;
+    let code = generate_client(&parsed);
+
+    assert!(
+        code.contains("pub name: DynBytes,"),
+        "DynString must map to DynBytes for u32 LE wire compat, got:\n{code}"
+    );
+    assert!(
+        !code.contains("pub name: Vec<u8>"),
+        "must NOT use Vec<u8> — different length prefix: {code}"
+    );
+}
+
+#[test]
+fn rust_codegen_dynamic_types_import() {
+    let file = parse_file(
+        r#"
+        #[program]
+        mod my_program {
+            #[instruction(discriminator = [1])]
+            pub fn set_name(ctx: Ctx<SetName>, name: String<8>) -> Result<(), ProgramError> {
+                Ok(())
+            }
+        }
+        "#,
+    );
+    let (_, instructions) = program::extract_program_module(&file).unwrap();
+    let mut parsed = test_program();
+    parsed.instructions = instructions;
+    let code = generate_client(&parsed);
+
+    assert!(
+        code.contains("use quasar_lang::client::{DynBytes, DynVec, TailBytes};"),
+        "dynamic types must be imported: {code}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Instruction codegen: prefix-width variants for dynamic types
+//
+// Verifies that String<P, N> / Vec<T, P, N> with non-default prefix
+// types produce DynBytes<P> / DynVec<T, P> in generated code.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rust_codegen_dyn_bytes_u8_prefix() {
+    let file = parse_file(
+        r#"
+        #[program]
+        mod my_program {
+            #[instruction(discriminator = [1])]
+            pub fn set_name(ctx: Ctx<SetName>, name: String<u8, 100>) -> Result<(), ProgramError> {
+                Ok(())
+            }
+        }
+        "#,
+    );
+    let (_, instructions) = program::extract_program_module(&file).unwrap();
+    let mut parsed = test_program();
+    parsed.instructions = instructions;
+    let code = generate_client(&parsed);
+
+    assert!(
+        code.contains("pub name: DynBytes<u8>,"),
+        "String<u8, N> must map to DynBytes<u8>, got:\n{code}"
+    );
+}
+
+#[test]
+fn rust_codegen_dyn_bytes_u16_prefix() {
+    let file = parse_file(
+        r#"
+        #[program]
+        mod my_program {
+            #[instruction(discriminator = [1])]
+            pub fn set_name(ctx: Ctx<SetName>, name: String<u16, 1000>) -> Result<(), ProgramError> {
+                Ok(())
+            }
+        }
+        "#,
+    );
+    let (_, instructions) = program::extract_program_module(&file).unwrap();
+    let mut parsed = test_program();
+    parsed.instructions = instructions;
+    let code = generate_client(&parsed);
+
+    assert!(
+        code.contains("pub name: DynBytes<u16>,"),
+        "String<u16, N> must map to DynBytes<u16>, got:\n{code}"
+    );
+}
+
+#[test]
+fn rust_codegen_dyn_bytes_u32_default() {
+    let file = parse_file(
+        r#"
+        #[program]
+        mod my_program {
+            #[instruction(discriminator = [1])]
+            pub fn set_name(ctx: Ctx<SetName>, name: String<100>) -> Result<(), ProgramError> {
+                Ok(())
+            }
+        }
+        "#,
+    );
+    let (_, instructions) = program::extract_program_module(&file).unwrap();
+    let mut parsed = test_program();
+    parsed.instructions = instructions;
+    let code = generate_client(&parsed);
+
+    assert!(
+        code.contains("pub name: DynBytes,"),
+        "String<N> (default u32) must map to DynBytes (no generic param), got:\n{code}"
+    );
+    assert!(
+        !code.contains("DynBytes<u32>"),
+        "default u32 should omit the generic, got:\n{code}"
+    );
+}
+
+#[test]
+fn rust_codegen_dyn_vec_u8_prefix() {
+    let file = parse_file(
+        r#"
+        #[program]
+        mod my_program {
+            #[instruction(discriminator = [1])]
+            pub fn set_tags(ctx: Ctx<SetTags>, tags: Vec<u64, u8, 10>) -> Result<(), ProgramError> {
+                Ok(())
+            }
+        }
+        "#,
+    );
+    let (_, instructions) = program::extract_program_module(&file).unwrap();
+    let mut parsed = test_program();
+    parsed.instructions = instructions;
+    let code = generate_client(&parsed);
+
+    assert!(
+        code.contains("pub tags: DynVec<u64, u8>,"),
+        "Vec<u64, u8, N> must map to DynVec<u64, u8>, got:\n{code}"
+    );
+}
+
+#[test]
+fn rust_codegen_dyn_vec_u16_prefix() {
+    let file = parse_file(
+        r#"
+        #[program]
+        mod my_program {
+            #[instruction(discriminator = [1])]
+            pub fn set_tags(ctx: Ctx<SetTags>, tags: Vec<u64, u16, 500>) -> Result<(), ProgramError> {
+                Ok(())
+            }
+        }
+        "#,
+    );
+    let (_, instructions) = program::extract_program_module(&file).unwrap();
+    let mut parsed = test_program();
+    parsed.instructions = instructions;
+    let code = generate_client(&parsed);
+
+    assert!(
+        code.contains("pub tags: DynVec<u64, u16>,"),
+        "Vec<u64, u16, N> must map to DynVec<u64, u16>, got:\n{code}"
+    );
+}
+
+#[test]
+fn rust_codegen_dyn_vec_u32_default() {
+    let file = parse_file(
+        r#"
+        #[program]
+        mod my_program {
+            #[instruction(discriminator = [1])]
+            pub fn set_tags(ctx: Ctx<SetTags>, tags: Vec<u64, 10>) -> Result<(), ProgramError> {
+                Ok(())
+            }
+        }
+        "#,
+    );
+    let (_, instructions) = program::extract_program_module(&file).unwrap();
+    let mut parsed = test_program();
+    parsed.instructions = instructions;
+    let code = generate_client(&parsed);
+
+    assert!(
+        code.contains("pub tags: DynVec<u64>,"),
+        "Vec<u64, N> (default u32) must map to DynVec<u64> (no prefix param), got:\n{code}"
+    );
+    assert!(
+        !code.contains("DynVec<u64, u32>"),
+        "default u32 should omit the prefix generic, got:\n{code}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Instruction codegen: remaining accounts
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rust_codegen_remaining_accounts_present() {
+    let mut parsed = test_program();
+    parsed.instructions.push(program::RawInstruction {
+        name: "create".to_string(),
+        discriminator: vec![0],
+        accounts_type_name: "Create".to_string(),
+        args: vec![],
+        has_remaining: true,
+    });
+    let code = generate_client(&parsed);
+
+    assert!(
+        code.contains("pub remaining_accounts: Vec<AccountMeta>,"),
+        "{code}"
+    );
+    assert!(
+        code.contains("accounts.extend(ix.remaining_accounts)"),
+        "{code}"
+    );
+}
+
+#[test]
+fn rust_codegen_remaining_accounts_absent() {
+    let mut parsed = test_program();
+    parsed.instructions.push(program::RawInstruction {
+        name: "deposit".to_string(),
+        discriminator: vec![1],
+        accounts_type_name: "Deposit".to_string(),
+        args: vec![],
+        has_remaining: false,
+    });
+    let code = generate_client(&parsed);
+
+    assert!(!code.contains("remaining_accounts"), "{code}");
+}
+
+// ---------------------------------------------------------------------------
+// Account codegen
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rust_codegen_accounts() {
+    let mut parsed = test_program();
+    parsed.state_accounts = state::extract_state_accounts(&parse_file(
+        r#"
+        #[account(discriminator = [1])]
+        pub struct Escrow {
+            pub maker: Address,
+            pub amount: u64,
+        }
+
+        #[account(discriminator = [2])]
+        pub struct Empty {}
+        "#,
+    ));
+    let code = generate_client(&parsed);
+
+    // Discriminator constants
+    assert!(
+        code.contains("ESCROW_ACCOUNT_DISCRIMINATOR: &[u8] = &[1]"),
+        "{code}"
+    );
+    assert!(
+        code.contains("EMPTY_ACCOUNT_DISCRIMINATOR: &[u8] = &[2]"),
+        "{code}"
+    );
+
+    // Struct with wincode derives and repr(C)
+    assert!(
+        code.contains("#[derive(Clone, Copy, SchemaWrite, SchemaRead)]\n#[repr(C)]\npub struct Escrow {"),
+        "{code}"
+    );
+    assert!(code.contains("pub maker: Address,"), "{code}");
+    assert!(code.contains("pub amount: u64,"), "{code}");
+
+    // Enum
+    assert!(code.contains("Escrow(Escrow),"), "{code}");
+    assert!(code.contains("Empty,"), "{code}");
+
+    // Decoder uses wincode::deserialize, no manual offset tracking
+    assert!(code.contains("pub fn decode_account"), "{code}");
+    assert!(
+        code.contains("wincode::deserialize::<Escrow>(payload)"),
+        "{code}"
+    );
+    assert!(!code.contains("let mut offset"), "{code}");
+}
+
+// ---------------------------------------------------------------------------
+// Event codegen
 // ---------------------------------------------------------------------------
 
 #[test]
 fn rust_codegen_events() {
-    use quasar_idl::{codegen::rust::generate_client, parser::ParsedProgram};
-
-    let evts = events::extract_events(&parse_file(
+    let mut parsed = test_program();
+    parsed.events = events::extract_events(&parse_file(
         r#"
         #[event(discriminator = [10])]
         pub struct TradeExecuted {
@@ -607,349 +1054,213 @@ fn rust_codegen_events() {
         pub struct OrderCancelled {}
         "#,
     ));
-
-    let parsed = ParsedProgram {
-        program_id: "ABcDeFgH111111111111111111111111111111111111".to_string(),
-        program_name: "test_program".to_string(),
-        crate_name: "test-program".to_string(),
-        version: "0.1.0".to_string(),
-        instructions: vec![],
-        accounts_structs: vec![],
-        state_accounts: vec![],
-        events: evts,
-        errors: vec![],
-        data_structs: vec![],
-    };
-
     let code = generate_client(&parsed);
 
-    // Event discriminator constants
+    // Discriminator constants
     assert!(
-        code.contains("TRADE_EXECUTED_EVENT_DISCRIMINATOR"),
-        "should generate TradeExecuted discriminator constant"
+        code.contains("TRADE_EXECUTED_EVENT_DISCRIMINATOR: &[u8] = &[10]"),
+        "{code}"
     );
     assert!(
-        code.contains("ORDER_CANCELLED_EVENT_DISCRIMINATOR"),
-        "should generate OrderCancelled discriminator constant"
-    );
-
-    // Event struct with fields
-    assert!(
-        code.contains("pub struct TradeExecuted"),
-        "should generate TradeExecuted struct"
-    );
-    assert!(
-        code.contains("pub maker: Address"),
-        "should generate maker field"
-    );
-    assert!(
-        code.contains("pub amount: u64"),
-        "should generate amount field"
+        code.contains("ORDER_CANCELLED_EVENT_DISCRIMINATOR: &[u8] = &[5]"),
+        "{code}"
     );
 
-    // Event struct without fields
+    // Struct with wincode derives
     assert!(
-        code.contains("pub struct OrderCancelled"),
-        "should generate empty OrderCancelled struct"
+        code.contains("#[derive(SchemaWrite, SchemaRead)]\npub struct TradeExecuted {"),
+        "{code}"
     );
+    assert!(code.contains("pub maker: Address,"), "{code}");
+    assert!(code.contains("pub amount: u64,"), "{code}");
 
-    // Event enum
-    assert!(
-        code.contains("pub enum ProgramEvent"),
-        "should generate ProgramEvent enum"
-    );
-    assert!(
-        code.contains("TradeExecuted(TradeExecuted)"),
-        "should have TradeExecuted variant with data"
-    );
-    assert!(
-        code.contains("OrderCancelled,"),
-        "should have OrderCancelled variant without data"
-    );
+    // Enum
+    assert!(code.contains("TradeExecuted(TradeExecuted),"), "{code}");
+    assert!(code.contains("OrderCancelled,"), "{code}");
 
-    // Decoder function
+    // Decoder uses wincode, no manual offset tracking
+    assert!(code.contains("pub fn decode_event"), "{code}");
     assert!(
-        code.contains("pub fn decode_event"),
-        "should generate decode_event function"
+        code.contains("wincode::deserialize::<TradeExecuted>(payload)"),
+        "{code}"
     );
-    assert!(
-        code.contains("data.starts_with(TRADE_EXECUTED_EVENT_DISCRIMINATOR)"),
-        "should match TradeExecuted discriminator"
-    );
-    assert!(
-        code.contains("data.starts_with(ORDER_CANCELLED_EVENT_DISCRIMINATOR)"),
-        "should match OrderCancelled discriminator"
-    );
-
-    // Event structs should have wincode derives
-    assert!(
-        code.contains("#[derive(SchemaWrite, SchemaRead)]"),
-        "event structs should have wincode derives"
-    );
-
-    // decode_event should use wincode::deserialize
-    assert!(
-        code.contains("wincode::deserialize"),
-        "decode_event should use wincode::deserialize"
-    );
-
-    // Should NOT have manual offset tracking
-    assert!(
-        !code.contains("let mut offset"),
-        "should not have manual offset deserialization"
-    );
+    assert!(!code.contains("let mut offset"), "{code}");
 }
 
 // ---------------------------------------------------------------------------
-// Rust codegen: accounts with wincode
+// Custom data struct codegen
 // ---------------------------------------------------------------------------
 
 #[test]
-fn rust_codegen_accounts_wincode() {
-    use quasar_idl::{codegen::rust::generate_client, parser::ParsedProgram};
-
-    let state_accounts = state::extract_state_accounts(&parse_file(
-        r#"
-        #[account(discriminator = [1])]
-        pub struct Escrow {
-            pub maker: Address,
-            pub amount: u64,
-        }
-        "#,
-    ));
-
-    let parsed = ParsedProgram {
-        program_id: "ABcDeFgH111111111111111111111111111111111111".to_string(),
-        program_name: "test_program".to_string(),
-        crate_name: "test-program".to_string(),
-        version: "0.1.0".to_string(),
-        instructions: vec![],
-        accounts_structs: vec![],
-        state_accounts,
-        events: vec![],
-        errors: vec![],
-        data_structs: vec![],
-    };
-
-    let code = generate_client(&parsed);
-
-    // Account structs should have wincode derives
-    assert!(
-        code.contains("#[derive(Clone, Copy, SchemaWrite, SchemaRead)]"),
-        "account structs should have wincode derives, got:\n{code}"
-    );
-
-    // decode_account should use wincode::deserialize
-    assert!(
-        code.contains("wincode::deserialize"),
-        "decode_account should use wincode::deserialize, got:\n{code}"
-    );
-
-    // Should NOT have manual offset tracking
-    assert!(
-        !code.contains("let mut offset"),
-        "should not have manual offset deserialization"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Rust codegen: instruction serialization with wincode
-// ---------------------------------------------------------------------------
-
-#[test]
-fn rust_codegen_instruction_wincode_serialize() {
-    use quasar_idl::{codegen::rust::generate_client, parser::ParsedProgram};
-
-    let parsed = ParsedProgram {
-        program_id: "ABcDeFgH111111111111111111111111111111111111".to_string(),
-        program_name: "test_program".to_string(),
-        crate_name: "test-program".to_string(),
-        version: "0.1.0".to_string(),
-        instructions: vec![program::RawInstruction {
-            name: "deposit".to_string(),
-            discriminator: vec![1],
-            accounts_type_name: "Deposit".to_string(),
-            args: vec![("amount".to_string(), syn::parse_str("u64").unwrap())],
-            has_remaining: false,
-        }],
-        accounts_structs: vec![],
-        state_accounts: vec![],
-        events: vec![],
-        errors: vec![],
-        data_structs: vec![],
-    };
-
-    let code = generate_client(&parsed);
-
-    // Should use wincode::serialize for instruction args
-    assert!(
-        code.contains("wincode::serialize"),
-        "instruction builder should use wincode::serialize, got:\n{code}"
-    );
-
-    // Should NOT have manual to_le_bytes serialization
-    assert!(
-        !code.contains("to_le_bytes"),
-        "should not have manual byte serialization"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Rust codegen: remaining accounts
-// ---------------------------------------------------------------------------
-
-#[test]
-fn rust_codegen_remaining_accounts() {
-    use quasar_idl::{codegen::rust::generate_client, parser::ParsedProgram};
-
-    let parsed = ParsedProgram {
-        program_id: "ABcDeFgH111111111111111111111111111111111111".to_string(),
-        program_name: "test_program".to_string(),
-        crate_name: "test-program".to_string(),
-        version: "0.1.0".to_string(),
-        instructions: vec![
-            program::RawInstruction {
-                name: "create".to_string(),
-                discriminator: vec![0],
-                accounts_type_name: "Create".to_string(),
-                args: vec![],
-                has_remaining: true,
-            },
-            program::RawInstruction {
-                name: "deposit".to_string(),
-                discriminator: vec![1],
-                accounts_type_name: "Deposit".to_string(),
-                args: vec![],
-                has_remaining: false,
-            },
+fn rust_codegen_custom_data_structs() {
+    let mut parsed = test_program();
+    parsed.data_structs.push(quasar_idl::parser::RawDataStruct {
+        name: "OrderConfig".to_string(),
+        fields: vec![
+            ("limit".to_string(), syn::parse_str("u64").unwrap()),
+            ("owner".to_string(), syn::parse_str("Address").unwrap()),
         ],
-        accounts_structs: vec![],
-        state_accounts: vec![],
-        events: vec![],
-        errors: vec![],
-        data_structs: vec![],
-    };
-
+    });
+    parsed.instructions.push(program::RawInstruction {
+        name: "place_order".to_string(),
+        discriminator: vec![3],
+        accounts_type_name: "PlaceOrder".to_string(),
+        args: vec![(
+            "config".to_string(),
+            syn::parse_str("OrderConfig").unwrap(),
+        )],
+        has_remaining: false,
+    });
     let code = generate_client(&parsed);
 
-    // Instruction with remaining should have the field and extend
+    // Custom struct generated with wincode derives
     assert!(
-        code.contains("pub remaining_accounts: Vec<AccountMeta>,"),
-        "CreateInstruction should have remaining_accounts field"
+        code.contains("#[derive(SchemaWrite, SchemaRead)]\npub struct OrderConfig {"),
+        "{code}"
     );
-    assert!(
-        code.contains("accounts.extend(ix.remaining_accounts)"),
-        "CreateInstruction should extend accounts"
-    );
+    assert!(code.contains("pub limit: u64,"), "{code}");
+    assert!(code.contains("pub owner: Address,"), "{code}");
 
-    // Instruction without remaining should NOT have the field
-    let deposit_section = code.split("pub struct DepositInstruction").nth(1).unwrap();
-    let deposit_impl = deposit_section.split("impl From").next().unwrap();
+    // Instruction uses the custom type
+    assert!(code.contains("pub config: OrderConfig,"), "{code}");
     assert!(
-        !deposit_impl.contains("remaining_accounts"),
-        "DepositInstruction should NOT have remaining_accounts field"
+        code.contains("wincode::serialize(&ix.config)"),
+        "{code}"
     );
 }
 
 // ---------------------------------------------------------------------------
-// TypeScript codegen: remaining accounts
+// Cargo.toml generation
 // ---------------------------------------------------------------------------
+
+#[test]
+fn rust_codegen_cargo_toml() {
+    use quasar_idl::codegen::rust::generate_cargo_toml;
+    let toml = generate_cargo_toml("my-program", "0.1.0");
+    assert!(toml.contains("name = \"my-program-client\""), "{toml}");
+    assert!(toml.contains("version = \"0.1.0\""), "{toml}");
+    assert!(toml.contains("quasar-lang"), "{toml}");
+    assert!(toml.contains("wincode"), "{toml}");
+}
+
+// ---------------------------------------------------------------------------
+// Program ID in output
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rust_codegen_program_id() {
+    let parsed = test_program();
+    let code = generate_client(&parsed);
+    assert!(
+        code.contains(
+            r#"pub const ID: Address = solana_address::address!("ABcDeFgH111111111111111111111111111111111111");"#
+        ),
+        "{code}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Imports: conditional Vec and wrapper types
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rust_codegen_imports_no_dynamic() {
+    let mut parsed = test_program();
+    parsed.instructions.push(program::RawInstruction {
+        name: "init".to_string(),
+        discriminator: vec![0],
+        accounts_type_name: "Init".to_string(),
+        args: vec![],
+        has_remaining: false,
+    });
+    let code = generate_client(&parsed);
+
+    // No dynamic types → no Vec import, no wrapper import
+    assert!(!code.contains("use std::vec::Vec;"), "{code}");
+    assert!(!code.contains("DynBytes"), "{code}");
+}
+
+#[test]
+fn rust_codegen_imports_with_remaining() {
+    let mut parsed = test_program();
+    parsed.instructions.push(program::RawInstruction {
+        name: "multi".to_string(),
+        discriminator: vec![0],
+        accounts_type_name: "Multi".to_string(),
+        args: vec![],
+        has_remaining: true,
+    });
+    let code = generate_client(&parsed);
+
+    // remaining_accounts needs Vec
+    assert!(code.contains("use std::vec::Vec;"), "{code}");
+}
+
+// ===========================================================================
+// TypeScript codegen
+// ===========================================================================
 
 #[test]
 fn ts_codegen_remaining_accounts() {
     use quasar_idl::{
         codegen::typescript::generate_ts_client_kit,
-        parser::{build_idl, ParsedProgram},
+        parser::build_idl,
     };
 
-    let parsed = ParsedProgram {
-        program_id: "ABcDeFgH111111111111111111111111111111111111".to_string(),
-        program_name: "test_program".to_string(),
-        crate_name: "test-program".to_string(),
-        version: "0.1.0".to_string(),
-        instructions: vec![program::RawInstruction {
-            name: "create".to_string(),
-            discriminator: vec![0],
-            accounts_type_name: "Create".to_string(),
-            args: vec![],
-            has_remaining: true,
-        }],
-        accounts_structs: vec![],
-        state_accounts: vec![],
-        events: vec![],
-        errors: vec![],
-        data_structs: vec![],
-    };
+    let mut parsed = test_program();
+    parsed.instructions.push(program::RawInstruction {
+        name: "create".to_string(),
+        discriminator: vec![0],
+        accounts_type_name: "Create".to_string(),
+        args: vec![],
+        has_remaining: true,
+    });
 
     let idl = build_idl(parsed);
     let code = generate_ts_client_kit(&idl);
 
-    assert!(
-        code.contains("remainingAccounts?"),
-        "Kit InstructionInput should have remainingAccounts field"
-    );
+    assert!(code.contains("remainingAccounts?"), "{code}");
     assert!(
         code.contains("...(input.remainingAccounts ?? [])"),
-        "Kit instruction builder should spread remaining accounts"
+        "{code}"
     );
 }
 
-// ---------------------------------------------------------------------------
-// IDL JSON: has_remaining serialization
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// IDL JSON serialization
+// ===========================================================================
 
 #[test]
-fn idl_json_has_remaining_serialization() {
-    use quasar_idl::parser::{build_idl, ParsedProgram};
+fn idl_json_has_remaining() {
+    use quasar_idl::parser::build_idl;
 
-    let parsed = ParsedProgram {
-        program_id: "ABcDeFgH111111111111111111111111111111111111".to_string(),
-        program_name: "test_program".to_string(),
-        crate_name: "test-program".to_string(),
-        version: "0.1.0".to_string(),
-        instructions: vec![
-            program::RawInstruction {
-                name: "create".to_string(),
-                discriminator: vec![0],
-                accounts_type_name: "Create".to_string(),
-                args: vec![],
-                has_remaining: true,
-            },
-            program::RawInstruction {
-                name: "deposit".to_string(),
-                discriminator: vec![1],
-                accounts_type_name: "Deposit".to_string(),
-                args: vec![],
-                has_remaining: false,
-            },
-        ],
-        accounts_structs: vec![],
-        state_accounts: vec![],
-        events: vec![],
-        errors: vec![],
-        data_structs: vec![],
-    };
+    let mut parsed = test_program();
+    parsed.instructions.push(program::RawInstruction {
+        name: "create".to_string(),
+        discriminator: vec![0],
+        accounts_type_name: "Create".to_string(),
+        args: vec![],
+        has_remaining: true,
+    });
+    parsed.instructions.push(program::RawInstruction {
+        name: "deposit".to_string(),
+        discriminator: vec![1],
+        accounts_type_name: "Deposit".to_string(),
+        args: vec![],
+        has_remaining: false,
+    });
 
     let idl = build_idl(parsed);
     let json = serde_json::to_string_pretty(&idl).unwrap();
     let value: serde_json::Value = serde_json::from_str(&json).unwrap();
 
-    // Instruction with remaining should have hasRemaining: true
-    assert_eq!(
-        value["instructions"][0]["hasRemaining"], true,
-        "create should have hasRemaining: true"
-    );
-
-    // Instruction without remaining should omit the field (skip_serializing_if)
-    assert!(
-        value["instructions"][1].get("hasRemaining").is_none(),
-        "deposit should not have hasRemaining in JSON"
-    );
+    assert_eq!(value["instructions"][0]["hasRemaining"], true);
+    assert!(value["instructions"][1].get("hasRemaining").is_none());
 }
 
-// ---------------------------------------------------------------------------
+// ===========================================================================
 // Parser: CtxWithRemaining detection
-// ---------------------------------------------------------------------------
+// ===========================================================================
 
 #[test]
 fn extract_instruction_ctx_with_remaining() {
@@ -972,12 +1283,6 @@ fn extract_instruction_ctx_with_remaining() {
 
     let (_, instructions) = program::extract_program_module(&file).unwrap();
     assert_eq!(instructions.len(), 2);
-    assert!(
-        instructions[0].has_remaining,
-        "create should have has_remaining = true"
-    );
-    assert!(
-        !instructions[1].has_remaining,
-        "deposit should have has_remaining = false"
-    );
+    assert!(instructions[0].has_remaining);
+    assert!(!instructions[1].has_remaining);
 }
