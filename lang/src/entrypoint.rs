@@ -19,8 +19,9 @@ macro_rules! dispatch {
             &*($ix_data.as_ptr().add($ix_data.len()) as *const [u8; 32])
         };
         const __U64_SIZE: usize = core::mem::size_of::<u64>();
-        // SAFETY: The SVM places the account count (u64) at offset 0,
-        // followed by the account entries. Skip past the count.
+        // SAFETY: The SVM places the account count (u64) at offset 0.
+        let __num_accounts = unsafe { *($ptr as *const u64) };
+        // SAFETY: Skip past the count to reach the first account entry.
         let __accounts_start = unsafe { ($ptr as *mut u8).add(__U64_SIZE) };
 
         if $ix_data.len() < $disc_len {
@@ -33,6 +34,9 @@ macro_rules! dispatch {
         match __disc {
             $(
                 [$($disc_byte),+] => {
+                    if (__num_accounts as usize) < <$accounts_ty as AccountCount>::COUNT {
+                        return Err(ProgramError::NotEnoughAccountKeys);
+                    }
                     let mut __buf = core::mem::MaybeUninit::<
                         [AccountView; <$accounts_ty as AccountCount>::COUNT]
                     >::uninit();

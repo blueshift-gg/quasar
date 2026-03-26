@@ -212,6 +212,10 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
         items.push(syn::parse_quote! {
             #[inline(always)]
             fn __handle_event(ptr: *mut u8, instruction_data: &[u8]) -> Result<(), ProgramError> {
+                // SAFETY: The SVM places the account count (u64) at offset 0.
+                if unsafe { *(ptr as *const u64) } == 0 {
+                    return Err(ProgramError::NotEnoughAccountKeys);
+                }
                 // SAFETY: Pointer arithmetic follows the SVM input buffer layout. The u64 casts
                 // for address comparison are technically misaligned (Address is align 1), but SBF
                 // handles unaligned access natively — this 4×u64 compare saves ~20 CU vs memcmp.

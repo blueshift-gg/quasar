@@ -631,6 +631,32 @@ pub(super) fn process_fields(
         None
     };
 
+    // Validate payer writability: init and realloc payers must be mutable.
+    for (label, payer) in [("init", &payer_field), ("realloc", &realloc_payer_field)] {
+        if let Some(payer_ident) = payer {
+            let writable = fields
+                .iter()
+                .zip(field_attrs.iter())
+                .find(|(f, _)| f.ident.as_ref() == Some(payer_ident))
+                .map(|(f, attrs)| {
+                    let eff = extract_generic_inner_type(&f.ty, "Option").unwrap_or(&f.ty);
+                    attrs.is_mut || matches!(eff, Type::Reference(r) if r.mutability.is_some())
+                })
+                .unwrap_or(false);
+            if !writable {
+                return Err(syn::Error::new_spanned(
+                    payer_ident,
+                    format!(
+                        "`{}` payer `{}` must be `&mut` or `#[account(mut)]`",
+                        label, payer_ident
+                    ),
+                )
+                .to_compile_error()
+                .into());
+            }
+        }
+    }
+
     // Close on token/mint types requires a token program field for CPI close.
     let has_any_token_close = field_attrs
         .iter()
