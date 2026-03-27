@@ -100,6 +100,7 @@ fn run_server(listener: TcpListener, root: &Path, idle_secs: u64) {
 }
 
 fn handle_connection(mut stream: TcpStream, root: &Path) {
+    let _ = stream.set_nonblocking(false);
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
 
     let buf_reader = BufReader::new(&stream);
