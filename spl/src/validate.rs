@@ -163,6 +163,16 @@ pub fn validate_ata(
     mint: &Address,
     token_program: &Address,
 ) -> Result<(), ProgramError> {
+    // Verify the token program is a known SPL token program.
+    if unlikely(
+        !quasar_lang::keys_eq(token_program, &crate::SPL_TOKEN_ID)
+            && !quasar_lang::keys_eq(token_program, &crate::TOKEN_2022_ID)
+    ) {
+        #[cfg(feature = "debug")]
+        quasar_lang::prelude::log("validate_ata: token_program is not SPL Token or Token-2022");
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
     let (expected, _) = crate::associated_token::get_associated_token_address_with_program(
         wallet,
         mint,

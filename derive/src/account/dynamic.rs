@@ -259,7 +259,9 @@ pub(super) fn generate_dynamic_account(
                         if __count > #max {
                             return Err(ProgramError::InvalidAccountData);
                         }
-                        let __byte_len = __count * core::mem::size_of::<#elem>();
+                        let __byte_len = __count
+                            .checked_mul(core::mem::size_of::<#elem>())
+                            .ok_or(ProgramError::InvalidAccountData)?;
                         if __offset + __byte_len > __data_len {
                             return Err(ProgramError::AccountDataTooSmall);
                         }
@@ -295,7 +297,10 @@ pub(super) fn generate_dynamic_account(
                     parse_offset_stmts.push(quote! {
                         {
                             let __count = #read;
-                            __offset += #pb + __count * core::mem::size_of::<#elem>();
+                            let __byte_len = __count
+                                .checked_mul(core::mem::size_of::<#elem>())
+                                .ok_or(ProgramError::InvalidAccountData)?;
+                            __offset += #pb + __byte_len;
                             __off[#dyn_idx] = __offset as u32;
                         }
                     });
