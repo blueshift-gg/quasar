@@ -275,40 +275,6 @@ impl<'a> DetectedFields<'a> {
     }
 }
 
-/// Wrap a CPI body with the init/init_if_needed guard pattern.
-///
-/// - `init`: reject if already initialized, then run CPI body.
-/// - `init_if_needed`: if uninitialized run CPI body, else run validation (if
-///   provided).
-fn wrap_init_block(
-    field_name: &Ident,
-    init_if_needed: bool,
-    cpi_body: proc_macro2::TokenStream,
-    validate_existing: Option<proc_macro2::TokenStream>,
-) -> proc_macro2::TokenStream {
-    if init_if_needed {
-        let validate = validate_existing.unwrap_or_default();
-        quote! {
-            {
-                if quasar_lang::is_system_program(#field_name.owner()) {
-                    #cpi_body
-                } else {
-                    #validate
-                }
-            }
-        }
-    } else {
-        quote! {
-            {
-                if !quasar_lang::is_system_program(#field_name.owner()) {
-                    return Err(ProgramError::AccountAlreadyInitialized);
-                }
-                #cpi_body
-            }
-        }
-    }
-}
-
 /// Validate attribute combinations on a single field. Returns a compile error
 /// on conflict.
 fn validate_field_attrs(
@@ -514,7 +480,7 @@ pub(super) fn process_fields(
 
     // --- Validate required fields per feature ---
 
-    let _system_program_field = if has_any_init {
+    let system_program_field = if has_any_init {
         Some(DetectedFields::require(
             detected.system_program,
             "#[account(init)] requires a `Program<System>` field in the accounts struct",
@@ -702,6 +668,7 @@ pub(super) fn process_fields(
     let mut init_blocks: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut close_fields: Vec<CloseFieldInfo> = Vec::new();
     let mut sweep_fields: Vec<SweepFieldInfo> = Vec::new();
+    let mut needs_rent = false;
 
     for (field, attrs) in fields.iter().zip(field_attrs.iter()) {
         let field_name = field.ident.as_ref().unwrap();
@@ -1292,208 +1259,37 @@ pub(super) fn process_fields(
         // --- Init code generation ---
 
         if is_init_field {
-            let is_token_init = attrs.token_mint.is_some();
-            let is_ata_init = attrs.associated_token_mint.is_some();
-            let has_pda = attrs.seeds.is_some();
-            let pay_field = payer_field.unwrap();
-
-            // Build PDA signer seeds (if applicable) for init_account.
-            let (signers_setup, signers_ref) = if has_pda {
-                let bump_var = format_ident!("__bumps_{}", field_name);
-                let seed_exprs = attrs.seeds.as_ref().unwrap();
-                let seed_slices: Vec<proc_macro2::TokenStream> = seed_exprs
-                    .iter()
-                    .map(|expr| seed_slice_expr_for_parse(expr, field_name_strings))
-                    .collect();
-                (
-                    quote! {
-                        let __init_bump_ref: &[u8] = &[#bump_var];
-                        let __init_signer_seeds = [#(quasar_lang::cpi::Seed::from(#seed_slices),)* quasar_lang::cpi::Seed::from(__init_bump_ref)];
-                        let __init_signers = [quasar_lang::cpi::Signer::from(&__init_signer_seeds[..])];
-                    },
-                    quote! { &__init_signers },
-                )
-            } else {
-                (quote! {}, quote! { &[] })
+            let init_ctx = super::init::InitContext {
+                payer: payer_field.unwrap(),
+                system_program: system_program_field.unwrap(),
+                token_program: token_program_field,
+                ata_program: ata_program_field,
+                metadata_account: metadata_account_field,
+                master_edition_account: master_edition_account_field,
+                metadata_program: metadata_program_field,
+                mint_authority: mint_authority_field,
+                update_authority: update_authority_field,
+                rent: rent_field,
+                field_name_strings,
             };
 
-            if is_ata_init {
-                let ata_prog = ata_program_field.unwrap();
-                let mint_field = attrs.associated_token_mint.as_ref().unwrap();
-                let auth_field = attrs.associated_token_authority.as_ref().unwrap();
-                let sys_field = _system_program_field.unwrap();
-                let tok_field = attrs
-                    .associated_token_token_program
-                    .as_ref()
-                    .unwrap_or_else(|| token_program_field.unwrap());
-                let token_program_addr = if let Some(tp) = &attrs.associated_token_token_program {
-                    quote! { #tp.address() }
-                } else {
-                    let tp = token_program_field.unwrap();
-                    quote! { #tp.address() }
-                };
+            if let Some(result) =
+                super::init::gen_init_block(field_name, attrs, effective_ty, &init_ctx)?
+            {
+                init_blocks.push(result.tokens);
+                needs_rent |= result.uses_rent;
+            }
 
-                let ata_cpi = |instruction_byte: u8| {
-                    quote! {
-                        quasar_lang::cpi::CpiCall::new(
-                            #ata_prog.address(),
-                            [
-                                quasar_lang::cpi::InstructionAccount::writable_signer(#pay_field.address()),
-                                quasar_lang::cpi::InstructionAccount::writable(#field_name.address()),
-                                quasar_lang::cpi::InstructionAccount::readonly(#auth_field.address()),
-                                quasar_lang::cpi::InstructionAccount::readonly(#mint_field.address()),
-                                quasar_lang::cpi::InstructionAccount::readonly(#sys_field.address()),
-                                quasar_lang::cpi::InstructionAccount::readonly(#tok_field.address()),
-                            ],
-                            [#pay_field, #field_name, #auth_field, #mint_field, #sys_field, #tok_field],
-                            [#instruction_byte],
-                        ).invoke()?;
-                    }
-                };
+            // Metadata CPI (does not use __shared_rent)
+            if let Some(block) = super::init::gen_metadata_init(field_name, attrs, &init_ctx) {
+                init_blocks.push(block);
+            }
 
-                let validate = quote! {
-                    quasar_spl::validate_ata(
-                        #field_name.to_account_view(),
-                        #auth_field.to_account_view().address(),
-                        #mint_field.to_account_view().address(),
-                        #token_program_addr,
-                    )?;
-                };
-                // ATA: create_idempotent (1) for init_if_needed, create (0) for init
-                init_blocks.push(wrap_init_block(
-                    field_name,
-                    attrs.init_if_needed,
-                    ata_cpi(if attrs.init_if_needed { 1 } else { 0 }),
-                    Some(validate),
-                ));
-            } else if is_token_init {
-                let tok_field = token_program_field.unwrap();
-                let mint_field = attrs.token_mint.as_ref().unwrap();
-                let auth_field = attrs.token_authority.as_ref().unwrap();
-
-                let cpi_body = quote! {
-                    let __init_lamports = __shared_rent.try_minimum_balance(
-                        quasar_spl::TokenAccountState::LEN
-                    )?;
-                    #signers_setup
-                    quasar_lang::cpi::system::init_account(
-                        #pay_field, #field_name, __init_lamports,
-                        quasar_spl::TokenAccountState::LEN as u64,
-                        #tok_field.address(), #signers_ref,
-                    )?;
-                    quasar_spl::initialize_account3(
-                        #tok_field, #field_name, #mint_field, #auth_field.address(),
-                    ).invoke()?;
-                };
-                let tok_addr = quote! { #tok_field.address() };
-                let validate = quote! {
-                    quasar_spl::validate_token_account(
-                        #field_name.to_account_view(),
-                        #mint_field.to_account_view().address(),
-                        #auth_field.to_account_view().address(),
-                        #tok_addr,
-                    )?;
-                };
-                init_blocks.push(wrap_init_block(
-                    field_name,
-                    attrs.init_if_needed,
-                    cpi_body,
-                    Some(validate),
-                ));
-            } else if let Some(decimals_expr) = attrs.mint_decimals.as_ref() {
-                let tok_field = token_program_field.unwrap();
-                let auth_field = match attrs.mint_init_authority.as_ref() {
-                    Some(f) => f,
-                    None => {
-                        return Err(syn::Error::new_spanned(
-                            field_name,
-                            "`mint::decimals` requires `mint::authority = <field>`",
-                        )
-                        .to_compile_error()
-                        .into());
-                    }
-                };
-                let freeze_expr = if let Some(freeze_field) = &attrs.mint_freeze_authority {
-                    quote! { Some(#freeze_field.address()) }
-                } else {
-                    quote! { None }
-                };
-
-                let cpi_body = quote! {
-                    let __init_lamports = __shared_rent.try_minimum_balance(
-                        quasar_spl::MintAccountState::LEN
-                    )?;
-                    #signers_setup
-                    quasar_lang::cpi::system::init_account(
-                        #pay_field, #field_name, __init_lamports,
-                        quasar_spl::MintAccountState::LEN as u64,
-                        #tok_field.address(), #signers_ref,
-                    )?;
-                    quasar_spl::initialize_mint2(
-                        #tok_field, #field_name,
-                        (#decimals_expr) as u8,
-                        #auth_field.address(),
-                        #freeze_expr,
-                    ).invoke()?;
-                };
-                let tok_addr = quote! { #tok_field.address() };
-                let freeze_expr_ref = if let Some(freeze_field) = &attrs.mint_freeze_authority {
-                    quote! { Some(#freeze_field.address()) }
-                } else {
-                    quote! { None }
-                };
-                let validate = quote! {
-                    quasar_spl::validate_mint(
-                        #field_name.to_account_view(),
-                        #auth_field.to_account_view().address(),
-                        (#decimals_expr) as u8,
-                        #freeze_expr_ref,
-                        #tok_addr,
-                    )?;
-                };
-                init_blocks.push(wrap_init_block(
-                    field_name,
-                    attrs.init_if_needed,
-                    cpi_body,
-                    Some(validate),
-                ));
-            } else if let FieldKind::Account { inner_ty } = &kind {
-                let space_expr = if let Some(space) = &attrs.space {
-                    quote! { (#space) as u64 }
-                } else {
-                    quote! { <#inner_ty as quasar_lang::traits::Space>::SPACE as u64 }
-                };
-
-                let cpi_body = quote! {
-                    let __init_space = #space_expr;
-                    let __init_lamports = __shared_rent.try_minimum_balance(__init_space as usize)?;
-                    #signers_setup
-                    quasar_lang::cpi::system::init_account(
-                        #pay_field, #field_name, __init_lamports, __init_space, &crate::ID,
-                        #signers_ref,
-                    )?;
-                    let __disc = <#inner_ty as quasar_lang::traits::Discriminator>::DISCRIMINATOR;
-                    unsafe {
-                        core::ptr::copy_nonoverlapping(
-                            __disc.as_ptr(), #field_name.data_mut_ptr(), __disc.len(),
-                        );
-                    }
-                };
-                init_blocks.push(wrap_init_block(
-                    field_name,
-                    attrs.init_if_needed,
-                    cpi_body,
-                    None,
-                ));
-            } else {
-                return Err(syn::Error::new_spanned(
-                    field_name,
-                    "#[account(init)] on non-Account<T> type requires `token::mint` and \
-                     `token::authority`, `associated_token::mint` and \
-                     `associated_token::authority`, or `mint::decimals` and `mint::authority`",
-                )
-                .to_compile_error()
-                .into());
+            // Master edition CPI (does not use __shared_rent)
+            if let Some(block) =
+                super::init::gen_master_edition_init(field_name, attrs, &init_ctx)
+            {
+                init_blocks.push(block);
             }
         }
 
@@ -1566,6 +1362,7 @@ pub(super) fn process_fields(
 
         if let Some(realloc_expr) = &attrs.realloc {
             let realloc_pay = realloc_payer_field.unwrap();
+            needs_rent = true;
 
             init_blocks.push(quote! {
                 {
@@ -1575,70 +1372,6 @@ pub(super) fn process_fields(
                     )?;
                 }
             });
-        }
-
-        // --- Metadata init CPI generation ---
-
-        if is_init_field {
-            if let Some(meta_name) = attrs.metadata_name.as_ref() {
-                let meta_symbol = attrs.metadata_symbol.as_ref().unwrap();
-                let meta_uri = attrs.metadata_uri.as_ref().unwrap();
-                let seller_fee = attrs
-                    .metadata_seller_fee_basis_points
-                    .as_ref()
-                    .map(|e| quote! { (#e) as u16 })
-                    .unwrap_or(quote! { 0u16 });
-                let is_mutable = attrs
-                    .metadata_is_mutable
-                    .as_ref()
-                    .map(|e| quote! { #e })
-                    .unwrap_or(quote! { false });
-
-                let meta_field = metadata_account_field.unwrap();
-                let meta_prog = metadata_program_field.unwrap();
-                let mint_auth = mint_authority_field.unwrap();
-                let update_auth = update_authority_field.unwrap();
-                let pay = payer_field.unwrap();
-                let sys = _system_program_field.unwrap();
-                let rent = rent_field.unwrap();
-
-                init_blocks.push(quote! {
-                    {
-                        quasar_spl::metadata::MetadataCpi::create_metadata_accounts_v3(
-                            #meta_prog, #meta_field, #field_name, #mint_auth,
-                            #pay, #update_auth, #sys, #rent,
-                            quasar_lang::borsh::BorshString::new(#meta_name),
-                            quasar_lang::borsh::BorshString::new(#meta_symbol),
-                            quasar_lang::borsh::BorshString::new(#meta_uri),
-                            #seller_fee, #is_mutable, true,
-                        ).invoke()?;
-                    }
-                });
-            }
-
-            // --- Master Edition init CPI generation ---
-
-            if let Some(max_supply) = attrs.master_edition_max_supply.as_ref() {
-                let me_field = master_edition_account_field.unwrap();
-                let meta_field = metadata_account_field.unwrap();
-                let meta_prog = metadata_program_field.unwrap();
-                let mint_auth = mint_authority_field.unwrap();
-                let update_auth = update_authority_field.unwrap();
-                let pay = payer_field.unwrap();
-                let tok = token_program_field.unwrap();
-                let sys = _system_program_field.unwrap();
-                let rent = rent_field.unwrap();
-
-                init_blocks.push(quote! {
-                    {
-                        quasar_spl::metadata::MetadataCpi::create_master_edition_v3(
-                            #meta_prog, #me_field, #field_name, #update_auth,
-                            #mint_auth, #pay, #meta_field, #tok, #sys, #rent,
-                            Some(#max_supply as u64),
-                        ).invoke()?;
-                    }
-                });
-            }
         }
 
         // --- Flush per-field checks ---
@@ -1654,8 +1387,6 @@ pub(super) fn process_fields(
             }
         }
     }
-
-    let needs_rent = !init_blocks.is_empty();
 
     Ok(ProcessedFields {
         field_constructs,

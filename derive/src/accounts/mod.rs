@@ -6,6 +6,7 @@ mod attrs;
 mod client;
 mod field_kind;
 mod fields;
+mod init;
 
 use {
     crate::helpers::{
