@@ -199,10 +199,16 @@ pub fn decode_header_error(header: u32, expected: u32) -> u64 {
 /// Off-chain: panics with a descriptive message for test ergonomics.
 #[inline(always)]
 pub fn abort_program() -> ! {
-    #[cfg(any(target_os = "solana", target_arch = "bpf"))]
+    #[cfg(target_os = "solana")]
+    unsafe {
+        core::arch::asm!("lddw r0, 0x100000000", "exit", options(noreturn));
+    }
+
+    #[cfg(all(target_arch = "bpf", not(target_os = "solana")))]
     unsafe {
         core::arch::asm!("r1, = 0x100000000 ll", "exit", options(noreturn));
     }
+    
     #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
     panic!("program aborted");
 }
