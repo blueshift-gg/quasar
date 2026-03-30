@@ -6,7 +6,7 @@ use {
 };
 
 fn setup() -> QuasarSvm {
-    let elf = std::fs::read("../../target/deploy/upstream_vault.so").unwrap();
+    let elf = std::fs::read("../../target/bpfel-unknown-none/release/libupstream_vault.so").unwrap();
     QuasarSvm::new().with_program(&crate::ID, &elf)
 }
 

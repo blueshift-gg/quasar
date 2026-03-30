@@ -201,7 +201,7 @@ pub fn decode_header_error(header: u32, expected: u32) -> u64 {
 pub fn abort_program() -> ! {
     #[cfg(any(target_os = "solana", target_arch = "bpf"))]
     unsafe {
-        core::arch::asm!("lddw r0, 0x100000000", "exit", options(noreturn));
+        core::arch::asm!("r1, = 0x100000000 ll", "exit", options(noreturn));
     }
     #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
     panic!("program aborted");

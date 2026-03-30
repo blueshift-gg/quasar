@@ -12,6 +12,7 @@ rustflags = [
 "-C", "link-arg=--disable-expand-memcpy-in-order",
 "-C", "link-arg=--export=entrypoint",
 "-C", "target-cpu=v2",
+"-C", "overflow-checks=off",
 ]
 [alias]
 build-bpf = "build --release --target bpfel-unknown-none"
