@@ -372,7 +372,7 @@ pub(crate) fn pascal_to_snake(s: &str) -> String {
         if c.is_uppercase() && i > 0 {
             result.push('_');
         }
-        result.push(c.to_lowercase().next().unwrap());
+        result.push(c.to_lowercase().next().expect("char::to_lowercase always yields at least one char"));
     }
     result
 }

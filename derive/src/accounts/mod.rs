@@ -130,7 +130,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         if let Some(inner_ty) = ct {
             // Composite type - recursively call parse_accounts
             // (each inner type knows its own dup policy from its #[account(dup)] attribute)
-            let cur_offset = buf_offset_expr.clone().unwrap();
+            let cur_offset = buf_offset_expr.clone().expect("buf_offset_expr must be set before processing composite types");
 
             parse_steps.push(quote! {
                 {
@@ -171,7 +171,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
             let expected_header = fields::compute_header_expected(field, attrs, is_ref_mut);
 
             let is_optional = extract_generic_inner_type(&field.ty, "Option").is_some();
-            let field_name = field.ident.as_ref().unwrap();
+            let field_name = field.ident.as_ref().expect("account field must have an identifier");
             let account_index = if let Some(ref expr) = buf_offset_expr {
                 expr.to_string()
             } else {
@@ -304,9 +304,9 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
             let mut __accounts_rest = accounts;
         });
         for (fi, field) in fields.iter().enumerate() {
-            let field_name = field.ident.as_ref().unwrap();
+            let field_name = field.ident.as_ref().expect("account field must have an identifier");
             if composite_types[fi].is_some() {
-                let inner_ty = composite_types[fi].as_ref().unwrap();
+                let inner_ty = composite_types[fi].as_ref().expect("composite type must be Some when is_some() returned true");
                 let bumps_var = format_ident!("__composite_bumps_{}", field_name);
                 field_lets.push(quote! {
                     // SAFETY: dispatch! guarantees the total slice has COUNT
@@ -342,7 +342,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
             .iter()
             .enumerate()
             .map(|(fi, field)| {
-                let field_name = field.ident.as_ref().unwrap();
+                let field_name = field.ident.as_ref().expect("account field must have an identifier");
                 if composite_types[fi].is_some() {
                     quote! { #field_name }
                 } else {

@@ -23,7 +23,7 @@ pub(super) fn generate_dynamic_account(
 ) -> TokenStream {
     let vis = &input.vis;
     let attrs = &input.attrs;
-    let lt = &input.generics.lifetimes().next().unwrap().lifetime;
+    let lt = &input.generics.lifetimes().next().expect("dynamic account struct must have a lifetime parameter").lifetime;
     let zc_name = format_ident!("{}Zc", name);
 
     let dyn_fields: Vec<(&syn::Field, DynFieldKind<'_>)> = fields_data
@@ -63,7 +63,7 @@ pub(super) fn generate_dynamic_account(
         .filter(|(_, k)| matches!(k, DynKind::Fixed))
         .map(|(f, _)| {
             let fvis = &f.vis;
-            let fname = f.ident.as_ref().unwrap();
+            let fname = f.ident.as_ref().expect("field must have an identifier");
             let zc_ty = map_to_pod_type(&f.ty);
             quote! { #fvis #fname: #zc_ty }
         })
@@ -75,7 +75,7 @@ pub(super) fn generate_dynamic_account(
         .zip(field_kinds.iter())
         .filter(|(_, k)| matches!(k, DynKind::Fixed))
         .map(|(f, _)| {
-            let fname = f.ident.as_ref().unwrap();
+            let fname = f.ident.as_ref().expect("field must have an identifier");
             zc_assign_from_value(fname, &f.ty)
         })
         .collect();
@@ -84,7 +84,7 @@ pub(super) fn generate_dynamic_account(
     let var_serialize_stmts: Vec<proc_macro2::TokenStream> = dyn_fields
         .iter()
         .map(|(f, kind)| {
-            let fname = f.ident.as_ref().unwrap();
+            let fname = f.ident.as_ref().expect("field must have an identifier");
             match kind {
                 DynFieldKind::Str { prefix, .. } => {
                     let pb = prefix.bytes();
@@ -139,7 +139,7 @@ pub(super) fn generate_dynamic_account(
     let max_checks: Vec<proc_macro2::TokenStream> = dyn_fields
         .iter()
         .map(|(f, kind)| {
-            let fname = f.ident.as_ref().unwrap();
+            let fname = f.ident.as_ref().expect("field must have an identifier");
             match kind {
                 DynFieldKind::Str { max, .. } | DynFieldKind::Vec { max, .. } => quote! {
                     if #fname.len() > #max {
@@ -161,7 +161,7 @@ pub(super) fn generate_dynamic_account(
     let space_terms: Vec<proc_macro2::TokenStream> = dyn_fields
         .iter()
         .map(|(f, kind)| {
-            let fname = f.ident.as_ref().unwrap();
+            let fname = f.ident.as_ref().expect("field must have an identifier");
             match kind {
                 DynFieldKind::Str { .. } | DynFieldKind::Tail { .. } => {
                     quote! { + #fname.len() }

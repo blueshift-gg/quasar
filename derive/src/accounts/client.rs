@@ -21,7 +21,7 @@ pub(super) fn generate_client_macro(
     let account_fields_str: String = fields
         .iter()
         .map(|f| {
-            let field_name = f.ident.as_ref().unwrap().to_string();
+            let field_name = f.ident.as_ref().expect("account field must have an identifier").to_string();
             format!("pub {}: quasar_lang::prelude::Address,", field_name)
         })
         .collect::<Vec<_>>()
@@ -31,7 +31,7 @@ pub(super) fn generate_client_macro(
         .iter()
         .enumerate()
         .map(|(fi, f)| {
-            let field_name = f.ident.as_ref().unwrap().to_string();
+            let field_name = f.ident.as_ref().expect("account field must have an identifier").to_string();
             let writable = field_attrs[fi].is_mut
                 || matches!(&f.ty, Type::Reference(r) if r.mutability.is_some());
             let is_init_without_seeds = (field_attrs[fi].is_init || field_attrs[fi].init_if_needed)

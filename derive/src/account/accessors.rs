@@ -48,7 +48,7 @@ pub(super) fn generate_accessors(
         .iter()
         .enumerate()
         .map(|(dyn_idx, (_, f, kind))| {
-            let fname = f.ident.as_ref().unwrap();
+            let fname = f.ident.as_ref().expect("field must have an identifier");
             let off_expr = offset_expr(dyn_idx, disc_len, zc_name);
 
             match kind {
@@ -121,7 +121,7 @@ pub(super) fn generate_accessors(
         .iter()
         .enumerate()
         .map(|(dyn_idx, (_, f, kind))| {
-            let fname = f.ident.as_ref().unwrap();
+            let fname = f.ident.as_ref().expect("field must have an identifier");
             let raw_name = format_ident!("{}_raw", fname);
             let off_expr = offset_expr(dyn_idx, disc_len, zc_name);
 
@@ -206,7 +206,7 @@ pub(super) fn generate_accessors(
         .iter()
         .enumerate()
         .map(|(dyn_idx, (_, f, kind))| {
-            let fname = f.ident.as_ref().unwrap();
+            let fname = f.ident.as_ref().expect("field must have an identifier");
             let setter_name = format_ident!("set_{}", fname);
             let off_expr = offset_expr(dyn_idx, disc_len, zc_name);
 

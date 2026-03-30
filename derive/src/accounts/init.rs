@@ -134,17 +134,17 @@ pub(super) fn gen_init_block(
 
     // --- ATA init ---
     if let Some(mint_field) = &attrs.associated_token_mint {
-        let ata_prog = ctx.ata_program.unwrap();
-        let auth_field = attrs.associated_token_authority.as_ref().unwrap();
+        let ata_prog = ctx.ata_program.expect("ata_program field must be present for ATA init");
+        let auth_field = attrs.associated_token_authority.as_ref().expect("associated_token_authority must be set for ATA init");
         let sys_field = ctx.system_program;
         let tok_field = attrs
             .associated_token_token_program
             .as_ref()
-            .unwrap_or_else(|| ctx.token_program.unwrap());
+            .unwrap_or_else(|| ctx.token_program.expect("token_program field must be present for ATA init"));
         let token_program_addr = if let Some(tp) = &attrs.associated_token_token_program {
             quote! { #tp.address() }
         } else {
-            let tp = ctx.token_program.unwrap();
+            let tp = ctx.token_program.expect("token_program field must be present for ATA init");
             quote! { #tp.address() }
         };
 
@@ -189,8 +189,8 @@ pub(super) fn gen_init_block(
 
     // --- Token init ---
     if let Some(mint_field) = &attrs.token_mint {
-        let tok_field = ctx.token_program.unwrap();
-        let auth_field = attrs.token_authority.as_ref().unwrap();
+        let tok_field = ctx.token_program.expect("token_program field must be present for token account init");
+        let auth_field = attrs.token_authority.as_ref().expect("token_authority must be set for token account init");
 
         let cpi_body = gen_init_cpi_body(
             pay,
@@ -223,7 +223,7 @@ pub(super) fn gen_init_block(
 
     // --- Mint init ---
     if let Some(decimals_expr) = attrs.mint_decimals.as_ref() {
-        let tok_field = ctx.token_program.unwrap();
+        let tok_field = ctx.token_program.expect("token_program field must be present for mint init");
         let auth_field =
             attrs
                 .mint_init_authority
@@ -341,8 +341,8 @@ pub(super) fn gen_metadata_init(
     ctx: &InitContext,
 ) -> Option<proc_macro2::TokenStream> {
     let meta_name = attrs.metadata_name.as_ref()?;
-    let meta_symbol = attrs.metadata_symbol.as_ref().unwrap();
-    let meta_uri = attrs.metadata_uri.as_ref().unwrap();
+    let meta_symbol = attrs.metadata_symbol.as_ref().expect("metadata_symbol must be set when metadata_name is set");
+    let meta_uri = attrs.metadata_uri.as_ref().expect("metadata_uri must be set when metadata_name is set");
     let seller_fee = attrs
         .metadata_seller_fee_basis_points
         .as_ref()
@@ -354,13 +354,13 @@ pub(super) fn gen_metadata_init(
         .map(|e| quote! { #e })
         .unwrap_or(quote! { false });
 
-    let meta_field = ctx.metadata_account.unwrap();
-    let meta_prog = ctx.metadata_program.unwrap();
-    let mint_auth = ctx.mint_authority.unwrap();
-    let update_auth = ctx.update_authority.unwrap();
+    let meta_field = ctx.metadata_account.expect("metadata_account field must be present for metadata init");
+    let meta_prog = ctx.metadata_program.expect("metadata_program field must be present for metadata init");
+    let mint_auth = ctx.mint_authority.expect("mint_authority field must be present for metadata init");
+    let update_auth = ctx.update_authority.expect("update_authority field must be present for metadata init");
     let pay = ctx.payer;
     let sys = ctx.system_program;
-    let rent = ctx.rent.unwrap();
+    let rent = ctx.rent.expect("rent field must be present for metadata init");
 
     Some(quote! {
         {
@@ -385,15 +385,15 @@ pub(super) fn gen_master_edition_init(
 ) -> Option<proc_macro2::TokenStream> {
     let max_supply = attrs.master_edition_max_supply.as_ref()?;
 
-    let me_field = ctx.master_edition_account.unwrap();
-    let meta_field = ctx.metadata_account.unwrap();
-    let meta_prog = ctx.metadata_program.unwrap();
-    let mint_auth = ctx.mint_authority.unwrap();
-    let update_auth = ctx.update_authority.unwrap();
+    let me_field = ctx.master_edition_account.expect("master_edition_account field must be present for master edition init");
+    let meta_field = ctx.metadata_account.expect("metadata_account field must be present for master edition init");
+    let meta_prog = ctx.metadata_program.expect("metadata_program field must be present for master edition init");
+    let mint_auth = ctx.mint_authority.expect("mint_authority field must be present for master edition init");
+    let update_auth = ctx.update_authority.expect("update_authority field must be present for master edition init");
     let pay = ctx.payer;
-    let tok = ctx.token_program.unwrap();
+    let tok = ctx.token_program.expect("token_program field must be present for master edition init");
     let sys = ctx.system_program;
-    let rent = ctx.rent.unwrap();
+    let rent = ctx.rent.expect("rent field must be present for master edition init");
 
     Some(quote! {
         {

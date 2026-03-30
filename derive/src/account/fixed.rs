@@ -39,7 +39,7 @@ pub(super) fn generate_fixed_account(
 
     let set_inner_stmts: Vec<proc_macro2::TokenStream> = fields_data
         .iter()
-        .map(|f| zc_assign_from_value(f.ident.as_ref().unwrap(), &f.ty))
+        .map(|f| zc_assign_from_value(f.ident.as_ref().expect("field must have an identifier"), &f.ty))
         .collect();
 
     // Detect a `bump: u8` field for PDA bump auto-detection.

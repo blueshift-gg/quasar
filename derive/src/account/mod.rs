@@ -152,7 +152,7 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
             .iter()
             .zip(field_kinds.iter())
             .find_map(|(f, k)| matches!(k, DynKind::Tail { .. }).then_some(f))
-            .unwrap();
+            .expect("tail field must exist when tail_count == 1");
         return syn::Error::new_spanned(
             tail_field,
             "tail field (&str / &[u8]) must be the last field in the struct",
