@@ -645,7 +645,11 @@ pub(super) fn process_fields(
     };
 
     let update_authority_field = if has_any_metadata_init || has_any_master_edition_init {
-        Some(detected.update_authority.expect("update_authority field must be present for metadata/master_edition init"))
+        Some(
+            detected
+                .update_authority
+                .expect("update_authority field must be present for metadata/master_edition init"),
+        )
     } else {
         None
     };
@@ -674,7 +678,10 @@ pub(super) fn process_fields(
     let mut needs_rent = false;
 
     for (field, attrs) in fields.iter().zip(field_attrs.iter()) {
-        let field_name = field.ident.as_ref().expect("account field must have an identifier");
+        let field_name = field
+            .ident
+            .as_ref()
+            .expect("account field must have an identifier");
 
         let is_optional = extract_generic_inner_type(&field.ty, "Option").is_some();
         let effective_ty = extract_generic_inner_type(&field.ty, "Option").unwrap_or(&field.ty);
@@ -1010,9 +1017,17 @@ pub(super) fn process_fields(
                 }
             }
 
-            let mint = attrs.token_mint.clone().expect("token_mint must be set when sweep is configured");
-            let authority = attrs.token_authority.clone().expect("token_authority must be set when sweep is configured");
-            let tp_field = token_program_field.cloned().expect("token_program field must be present when sweep is configured");
+            let mint = attrs
+                .token_mint
+                .clone()
+                .expect("token_mint must be set when sweep is configured");
+            let authority = attrs
+                .token_authority
+                .clone()
+                .expect("token_authority must be set when sweep is configured");
+            let tp_field = token_program_field
+                .cloned()
+                .expect("token_program field must be present when sweep is configured");
 
             sweep_fields.push(SweepFieldInfo {
                 field: field_name.clone(),
@@ -1126,14 +1141,15 @@ pub(super) fn process_fields(
                             let __bump_val: u8 = #bump_expr;
                             let __bump_ref: &[u8] = &[__bump_val];
                             let __pda_seeds = [#(#seed_idents,)* __bump_ref];
-                            if let Err(__e) = quasar_lang::pda::verify_program_address(&__pda_seeds, __program_id, &#addr_access) {
-                                #[cfg(feature = "debug")]
-                                quasar_lang::prelude::log(concat!(
-                                    "Account '", stringify!(#field_name),
-                                    "': PDA verification failed"
-                                ));
-                                return Err(__e);
-                            }
+                            quasar_lang::pda::verify_program_address(&__pda_seeds, __program_id, &#addr_access)
+                                .map_err(|__e| {
+                                    #[cfg(feature = "debug")]
+                                    quasar_lang::prelude::log(concat!(
+                                        "Account '", stringify!(#field_name),
+                                        "': PDA verification failed"
+                                    ));
+                                    __e
+                                })?;
                             #bump_var = __bump_val;
                         }
                     };
@@ -1171,14 +1187,15 @@ pub(super) fn process_fields(
                                 let __bump_val: u8 = #arg_ident;
                                 let __bump_ref: &[u8] = &[__bump_val];
                                 let __pda_seeds = [#(#seed_idents,)* __bump_ref];
-                                if let Err(__e) = quasar_lang::pda::verify_program_address(&__pda_seeds, __program_id, &#addr_access) {
-                                    #[cfg(feature = "debug")]
-                                    quasar_lang::prelude::log(concat!(
-                                        "Account '", stringify!(#field_name),
-                                        "': PDA verification failed"
-                                    ));
-                                    return Err(__e);
-                                }
+                                quasar_lang::pda::verify_program_address(&__pda_seeds, __program_id, &#addr_access)
+                                    .map_err(|__e| {
+                                        #[cfg(feature = "debug")]
+                                        quasar_lang::prelude::log(concat!(
+                                            "Account '", stringify!(#field_name),
+                                            "': PDA verification failed"
+                                        ));
+                                        __e
+                                    })?;
                                 #bump_var = __bump_val;
                             }
                         }
@@ -1204,14 +1221,15 @@ pub(super) fn process_fields(
                                         let __bump_val: u8 = unsafe { *#view_access.data_ptr().add(__offset) };
                                         let __bump_ref: &[u8] = &[__bump_val];
                                         let __pda_seeds = [#(#seed_idents,)* __bump_ref];
-                                        if let Err(__e) = quasar_lang::pda::verify_program_address(&__pda_seeds, __program_id, &#addr_access) {
-                                            #[cfg(feature = "debug")]
-                                            quasar_lang::prelude::log(concat!(
-                                                "Account '", stringify!(#field_name),
-                                                "': PDA verification failed"
-                                            ));
-                                            return Err(__e);
-                                        }
+                                        quasar_lang::pda::verify_program_address(&__pda_seeds, __program_id, &#addr_access)
+                                            .map_err(|__e| {
+                                                #[cfg(feature = "debug")]
+                                                quasar_lang::prelude::log(concat!(
+                                                    "Account '", stringify!(#field_name),
+                                                    "': PDA verification failed"
+                                                ));
+                                                __e
+                                            })?;
                                         #bump_var = __bump_val;
                                     } else {
                                         let __pda_seeds = [#(#seed_idents),*];
@@ -1323,7 +1341,8 @@ pub(super) fn process_fields(
         if is_init_field {
             let init_ctx = super::init::InitContext {
                 payer: payer_field.expect("payer field must be present for init"),
-                system_program: system_program_field.expect("system_program field must be present for init"),
+                system_program: system_program_field
+                    .expect("system_program field must be present for init"),
                 token_program: token_program_field,
                 ata_program: ata_program_field,
                 metadata_account: metadata_account_field,

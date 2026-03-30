@@ -220,12 +220,10 @@ pub(super) fn debug_checked(
     msg: &str,
 ) -> proc_macro2::TokenStream {
     quote::quote! {
-        #[cfg(feature = "debug")]
-        if let Err(e) = #check_expr {
+        #check_expr.map_err(|__e| {
+            #[cfg(feature = "debug")]
             quasar_lang::prelude::log(&::alloc::format!(#msg, #field_name_str));
-            return Err(e);
-        }
-        #[cfg(not(feature = "debug"))]
-        #check_expr?;
+            __e
+        })?;
     }
 }
