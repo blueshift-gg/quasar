@@ -208,7 +208,7 @@ pub fn abort_program() -> ! {
     unsafe {
         core::arch::asm!("r1, = 0x100000000 ll", "exit", options(noreturn));
     }
-    
+
     #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
     panic!("program aborted");
 }
