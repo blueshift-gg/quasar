@@ -1137,6 +1137,12 @@ pub(crate) fn process_fields(
             // are captured in the Bumps struct. Field access expressions
             // (e.g. config.namespace) are not capturable because the typed
             // fields aren't available at Bumps-construction time.
+            //
+            // When `has_uncapturable_seeds` is true, the `<field>_seeds()`
+            // method is intentionally NOT generated. Users must manually
+            // reconstruct signer seeds for CPI when field-access seeds are
+            // used. PDA verification still works — only the CPI convenience
+            // method is omitted.
             if !has_uncapturable_seeds {
                 seeds_methods.push(quote! {
                     #[inline(always)]
