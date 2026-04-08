@@ -438,6 +438,33 @@ fn extract_plain_structs(file: &syn::File) -> Vec<RawDataStruct> {
     result
 }
 
+/// Parse a program from inline source code. Used by integration tests.
+pub fn parse_program_from_source(src: &str) -> ParsedProgram {
+    let file = syn::parse_file(src).expect("failed to parse source");
+
+    let program_id = program::extract_program_id(&file).unwrap_or_default();
+    let (program_name, instructions) =
+        program::extract_program_module(&file).unwrap_or_else(|| ("test".to_string(), vec![]));
+    let accounts_structs = accounts::extract_accounts_structs(&file);
+    let state_accounts = state::extract_state_accounts(&file);
+    let all_events = events::extract_events(&file);
+    let all_errors = errors::extract_errors(&file);
+    let data_structs = extract_plain_structs(&file);
+
+    ParsedProgram {
+        program_id,
+        program_name,
+        crate_name: "test".to_string(),
+        version: "0.1.0".to_string(),
+        instructions,
+        accounts_structs,
+        state_accounts,
+        events: all_events,
+        errors: all_errors,
+        data_structs,
+    }
+}
+
 fn read_cargo_name(crate_root: &Path) -> Option<String> {
     let cargo_path = crate_root.join("Cargo.toml");
     let content = std::fs::read_to_string(cargo_path).ok()?;
