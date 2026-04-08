@@ -204,7 +204,8 @@ pub fn abort_program() -> ! {
         core::arch::asm!("lddw r0, 0x100000000", "exit", options(noreturn));
     }
 
-    // For the BPF target we need to use correct dialect syntax to emit same instruction set.
+    // For the BPF target we need to use correct dialect syntax to emit same
+    // instruction set.
     #[cfg(all(target_arch = "bpf", not(target_os = "solana")))]
     unsafe {
         core::arch::asm!("r0, = 0x100000000 ll", "exit", options(noreturn));
