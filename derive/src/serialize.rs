@@ -102,24 +102,31 @@ pub(crate) fn derive_quasar_serialize(input: TokenStream) -> TokenStream {
         }
 
         // Wincode SchemaWrite + SchemaRead (off-chain only)
+        //
+        // Serializes each field via its ZC (zero-copy) representation to
+        // guarantee the wire format matches the on-chain ZC layout exactly.
+        // This is critical for types like Option<T> where wincode's built-in
+        // encoding is variable-length but the on-chain ZC companion (OptionZc)
+        // is fixed-size.
         #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
         unsafe impl<__C: wincode::config::ConfigCore> wincode::SchemaWrite<__C>
             for #name #ty_generics #where_clause
         {
             type Src = Self;
 
-            fn size_of(src: &Self) -> wincode::error::WriteResult<usize> {
-                let mut __total = 0usize;
-                #(
-                    __total += <#field_types as wincode::SchemaWrite<__C>>::size_of(&src.#field_names)?;
-                )*
-                Ok(__total)
+            fn size_of(_src: &Self) -> wincode::error::WriteResult<usize> {
+                Ok(core::mem::size_of::<#zc_name>())
             }
 
             fn write(mut __writer: impl wincode::io::Writer, src: &Self) -> wincode::error::WriteResult<()> {
-                #(
-                    <#field_types as wincode::SchemaWrite<__C>>::write(__writer.by_ref(), &src.#field_names)?;
-                )*
+                let __zc = <Self as quasar_lang::instruction_arg::InstructionArg>::to_zc(src);
+                let __bytes = unsafe {
+                    core::slice::from_raw_parts(
+                        &__zc as *const #zc_name as *const u8,
+                        core::mem::size_of::<#zc_name>(),
+                    )
+                };
+                __writer.write(__bytes)?;
                 Ok(())
             }
         }
@@ -134,13 +141,9 @@ pub(crate) fn derive_quasar_serialize(input: TokenStream) -> TokenStream {
                 mut __reader: impl wincode::io::Reader<'__de>,
                 __dst: &mut core::mem::MaybeUninit<Self>,
             ) -> wincode::error::ReadResult<()> {
-                let __ptr = __dst.as_mut_ptr();
-                #(
-                    <#field_types as wincode::SchemaRead<'__de, __C>>::read(
-                        __reader.by_ref(),
-                        unsafe { &mut *core::ptr::addr_of_mut!((*__ptr).#field_names).cast() },
-                    )?;
-                )*
+                let __bytes = __reader.take_scoped(core::mem::size_of::<#zc_name>())?;
+                let __zc = unsafe { &*(__bytes.as_ptr() as *const #zc_name) };
+                __dst.write(<Self as quasar_lang::instruction_arg::InstructionArg>::from_zc(__zc));
                 Ok(())
             }
         }

@@ -128,3 +128,115 @@ macro_rules! impl_instruction_arg_identity {
 impl_instruction_arg_identity!(
     PodU16, PodU32, PodU64, PodU128, PodI16, PodI32, PodI64, PodI128, PodBool
 );
+
+// --- Option<T> blanket impl ---
+
+/// Zero-copy companion for `Option<T>`.
+///
+/// Tag byte (0 = None, 1 = Some) followed by the inner ZC value.
+/// For None, payload bytes are zeroed but wrapped in `MaybeUninit`
+/// to avoid soundness issues with types that have validity constraints.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct OptionZc<Z: Copy> {
+    pub tag: u8,
+    pub value: core::mem::MaybeUninit<Z>,
+}
+
+// Compile-time alignment and size checks.
+const _: () = assert!(core::mem::align_of::<OptionZc<[u8; 1]>>() == 1);
+const _: () = assert!(core::mem::size_of::<OptionZc<[u8; 1]>>() == 2);
+
+impl<T: InstructionArg> InstructionArg for Option<T> {
+    type Zc = OptionZc<T::Zc>;
+
+    #[inline(always)]
+    fn from_zc(zc: &Self::Zc) -> Self {
+        if zc.tag == 0 {
+            None
+        } else {
+            // SAFETY: tag != 0 means the value was written by to_zc()
+            // or populated by the SVM instruction data buffer (fully initialized).
+            Some(T::from_zc(unsafe { zc.value.assume_init_ref() }))
+        }
+    }
+
+    #[inline(always)]
+    fn to_zc(&self) -> Self::Zc {
+        match self {
+            None => OptionZc {
+                tag: 0,
+                // MaybeUninit::zeroed() -- payload is never read when tag == 0.
+                // Zeroed for determinism in serialized instruction data.
+                value: core::mem::MaybeUninit::zeroed(),
+            },
+            Some(v) => OptionZc {
+                tag: 1,
+                value: core::mem::MaybeUninit::new(v.to_zc()),
+            },
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn option_u64_some_round_trip() {
+        let val: Option<u64> = Some(42);
+        let zc = val.to_zc();
+        assert_eq!(zc.tag, 1);
+        let decoded = Option::<u64>::from_zc(&zc);
+        assert_eq!(decoded, Some(42));
+    }
+
+    #[test]
+    fn option_u64_none_round_trip() {
+        let val: Option<u64> = None;
+        let zc = val.to_zc();
+        assert_eq!(zc.tag, 0);
+        let decoded = Option::<u64>::from_zc(&zc);
+        assert_eq!(decoded, None);
+    }
+
+    #[test]
+    fn option_address_some_round_trip() {
+        let addr = solana_address::Address::from([42u8; 32]);
+        let val: Option<solana_address::Address> = Some(addr);
+        let zc = val.to_zc();
+        assert_eq!(zc.tag, 1);
+        let decoded = Option::<solana_address::Address>::from_zc(&zc);
+        assert_eq!(decoded, Some(addr));
+    }
+
+    #[test]
+    fn option_address_none_round_trip() {
+        let val: Option<solana_address::Address> = None;
+        let zc = val.to_zc();
+        assert_eq!(zc.tag, 0);
+        let decoded = Option::<solana_address::Address>::from_zc(&zc);
+        assert_eq!(decoded, None);
+    }
+
+    #[test]
+    fn option_zc_alignment_is_one() {
+        assert_eq!(core::mem::align_of::<OptionZc<[u8; 8]>>(), 1);
+        assert_eq!(core::mem::align_of::<OptionZc<[u8; 32]>>(), 1);
+        assert_eq!(core::mem::align_of::<OptionZc<crate::pod::PodU64>>(), 1);
+    }
+
+    #[test]
+    fn option_zc_size_is_fixed() {
+        // OptionZc<PodU64> = 1 (tag) + 8 (MaybeUninit<PodU64>) = 9
+        assert_eq!(
+            core::mem::size_of::<OptionZc<crate::pod::PodU64>>(),
+            1 + core::mem::size_of::<crate::pod::PodU64>()
+        );
+        // OptionZc<Address> = 1 (tag) + 32 (MaybeUninit<Address>) = 33
+        assert_eq!(
+            core::mem::size_of::<OptionZc<solana_address::Address>>(),
+            1 + core::mem::size_of::<solana_address::Address>()
+        );
+    }
+}

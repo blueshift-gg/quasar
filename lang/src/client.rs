@@ -201,6 +201,47 @@ unsafe impl<'de, C: ConfigCore> SchemaRead<'de, C> for TailBytes {
 }
 
 // ---------------------------------------------------------------------------
+// OptionZc<Z> — fixed-size Option serialization matching on-chain ZC layout
+// ---------------------------------------------------------------------------
+
+use crate::instruction_arg::OptionZc;
+
+unsafe impl<Z, C: ConfigCore> SchemaWrite<C> for OptionZc<Z>
+where
+    Z: Copy,
+{
+    type Src = Self;
+
+    fn size_of(_src: &Self) -> WriteResult<usize> {
+        Ok(core::mem::size_of::<Self>())
+    }
+
+    fn write(mut writer: impl Writer, src: &Self) -> WriteResult<()> {
+        let bytes = unsafe {
+            core::slice::from_raw_parts(src as *const Self as *const u8, core::mem::size_of::<Self>())
+        };
+        writer.write(bytes)?;
+        Ok(())
+    }
+}
+
+unsafe impl<'de, Z, C: ConfigCore> SchemaRead<'de, C> for OptionZc<Z>
+where
+    Z: Copy,
+{
+    type Dst = Self;
+
+    fn read(mut reader: impl Reader<'de>, dst: &mut MaybeUninit<Self>) -> ReadResult<()> {
+        let bytes = reader.take_scoped(core::mem::size_of::<Self>())?;
+        // SAFETY: OptionZc<Z> is #[repr(C)] with alignment 1 (tag: u8 + MaybeUninit<Z>).
+        // The bytes from the reader are fully initialized.
+        let zc = unsafe { core::ptr::read_unaligned(bytes.as_ptr() as *const Self) };
+        dst.write(zc);
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
