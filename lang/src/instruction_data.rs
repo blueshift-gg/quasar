@@ -9,6 +9,11 @@
 
 use solana_program_error::ProgramError;
 
+// Prefix reads use native byte order via read_unaligned. Solana instruction
+// data is little-endian. This is correct on all Solana-supported targets
+// (SBF, x86-64, aarch64) but would silently produce wrong results on BE.
+const _: () = assert!(cfg!(target_endian = "little"));
+
 /// Read a length-prefixed UTF-8 string from instruction data.
 ///
 /// Returns `(parsed_str, new_offset)`. The `PREFIX` const generic (1, 2, or 4)
@@ -42,8 +47,8 @@ pub fn read_dynamic_str<'a, const PREFIX: usize>(
 
 /// Read a length-prefixed typed slice from instruction data.
 ///
-/// Returns `(parsed_slice, new_offset)`. The `PREFIX` const generic (1, 2, or 4)
-/// determines the byte width of the count prefix.
+/// Returns `(parsed_slice, new_offset)`. The `PREFIX` const generic (1, 2, or
+/// 4) determines the byte width of the count prefix.
 ///
 /// # Safety contract
 ///
@@ -78,9 +83,8 @@ pub fn read_dynamic_vec<'a, T, const PREFIX: usize>(
     // SAFETY: Bounds checked above. The caller (derive macro) ensures T has
     // alignment 1 via a compile-time assertion. The pointer from `data` is
     // valid for `byte_len` bytes.
-    let slice = unsafe {
-        core::slice::from_raw_parts(data.as_ptr().add(offset) as *const T, count)
-    };
+    let slice =
+        unsafe { core::slice::from_raw_parts(data.as_ptr().add(offset) as *const T, count) };
 
     Ok((slice, offset + byte_len))
 }

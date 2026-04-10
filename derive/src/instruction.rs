@@ -37,8 +37,8 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
     {
         return syn::Error::new_spanned(
             &disc_bytes[0],
-            "instruction discriminator must contain at least one non-zero byte; \
-             all-zero multi-byte discriminators are dangerous because zeroed instruction data would match",
+            "instruction discriminator must contain at least one non-zero byte; all-zero \
+             multi-byte discriminators are dangerous because zeroed instruction data would match",
         )
         .to_compile_error()
         .into();
@@ -272,14 +272,20 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                         dyn_idx += 1;
                         let pb = prefix.bytes();
                         let max_lit = *max;
-                        new_stmts.push(syn::parse_quote!(
-                            let (#name, __new_offset) = quasar_lang::instruction_data::read_dynamic_str::<#pb>(
-                                __data, __offset, #max_lit,
-                            )?;
-                        ));
                         if dyn_idx < dyn_count {
                             new_stmts.push(syn::parse_quote!(
+                                let (#name, __new_offset) = quasar_lang::instruction_data::read_dynamic_str::<#pb>(
+                                    __data, __offset, #max_lit,
+                                )?;
+                            ));
+                            new_stmts.push(syn::parse_quote!(
                                 __offset = __new_offset;
+                            ));
+                        } else {
+                            new_stmts.push(syn::parse_quote!(
+                                let (#name, _) = quasar_lang::instruction_data::read_dynamic_str::<#pb>(
+                                    __data, __offset, #max_lit,
+                                )?;
                             ));
                         }
                     }
@@ -302,14 +308,20 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                         dyn_idx += 1;
                         let pb = prefix.bytes();
                         let max_lit = *max;
-                        new_stmts.push(syn::parse_quote!(
-                            let (#name, __new_offset) = quasar_lang::instruction_data::read_dynamic_vec::<#elem, #pb>(
-                                __data, __offset, #max_lit,
-                            )?;
-                        ));
                         if dyn_idx < dyn_count {
                             new_stmts.push(syn::parse_quote!(
+                                let (#name, __new_offset) = quasar_lang::instruction_data::read_dynamic_vec::<#elem, #pb>(
+                                    __data, __offset, #max_lit,
+                                )?;
+                            ));
+                            new_stmts.push(syn::parse_quote!(
                                 __offset = __new_offset;
+                            ));
+                        } else {
+                            new_stmts.push(syn::parse_quote!(
+                                let (#name, _) = quasar_lang::instruction_data::read_dynamic_vec::<#elem, #pb>(
+                                    __data, __offset, #max_lit,
+                                )?;
                             ));
                         }
                     }

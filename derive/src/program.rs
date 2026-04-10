@@ -243,11 +243,14 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
         items.push(syn::parse_quote! {
             #[inline(always)]
             fn __handle_event(ptr: *mut u8, instruction_data: &[u8]) -> Result<(), ProgramError> {
-                quasar_lang::event::handle_event(
-                    ptr,
-                    instruction_data,
-                    &super::EventAuthority::ADDRESS,
-                )
+                // SAFETY: `ptr` is the SVM input buffer from the entrypoint.
+                unsafe {
+                    quasar_lang::event::handle_event(
+                        ptr,
+                        instruction_data,
+                        &super::EventAuthority::ADDRESS,
+                    )
+                }
             }
         });
 

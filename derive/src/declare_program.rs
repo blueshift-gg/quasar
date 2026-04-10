@@ -293,7 +293,10 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
             .iter()
             .map(|a| {
                 let info = map_idl_type(&a.ty).map_err(|msg| {
-                    syn::Error::new(Span::call_site(), format!("in instruction '{}', arg '{}': {}", ix.name, a.name, msg))
+                    syn::Error::new(
+                        Span::call_site(),
+                        format!("in instruction '{}', arg '{}': {}", ix.name, a.name, msg),
+                    )
                 })?;
                 let name = Ident::new(&pascal_to_snake(&a.name), Span::call_site());
                 let ty = &info.rust_type;

@@ -16,28 +16,30 @@ use {
 /// Called by the generated `__handle_event` dispatch stub. Checks that the
 /// first account is a signer matching the program's event authority PDA,
 /// then logs the instruction data (minus the `0xFF` prefix).
+///
+/// # Safety
+///
+/// `ptr` must point to the start of a valid SVM input buffer (account count
+/// at offset 0, followed by serialized `RuntimeAccount` entries).
 #[inline(always)]
-pub fn handle_event(
+pub unsafe fn handle_event(
     ptr: *mut u8,
     instruction_data: &[u8],
     event_authority: &solana_address::Address,
 ) -> Result<(), ProgramError> {
     // SAFETY: The SVM places the account count (u64) at offset 0.
-    if unsafe { *(ptr as *const u64) } == 0 {
+    if *(ptr as *const u64) == 0 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     // SAFETY: Pointer arithmetic follows the SVM input buffer layout.
-    unsafe {
-        let raw = ptr.add(core::mem::size_of::<u64>())
-            as *const crate::__internal::RuntimeAccount;
+    let raw = ptr.add(core::mem::size_of::<u64>()) as *const crate::__internal::RuntimeAccount;
 
-        if (*raw).is_signer == 0 {
-            return Err(ProgramError::MissingRequiredSignature);
-        }
+    if (*raw).is_signer == 0 {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
-        if !crate::keys_eq(&(*raw).address, event_authority) {
-            return Err(ProgramError::InvalidSeeds);
-        }
+    if !crate::keys_eq(&(*raw).address, event_authority) {
+        return Err(ProgramError::InvalidSeeds);
     }
 
     if instruction_data.len() <= 1 {

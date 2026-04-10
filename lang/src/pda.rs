@@ -15,7 +15,8 @@ use {solana_address::Address, solana_program_error::ProgramError};
 #[cfg(any(target_os = "solana", target_arch = "bpf"))]
 const PDA_MARKER: &[u8; 21] = b"ProgramDerivedAddress";
 
-/// Maximum number of slices in a PDA hash input: up to 17 seeds + bump + program_id + PDA_MARKER.
+/// Maximum number of slices in a PDA hash input: up to 17 seeds + bump +
+/// program_id + PDA_MARKER.
 #[cfg(any(target_os = "solana", target_arch = "bpf"))]
 const MAX_PDA_SLICES: usize = 19;
 

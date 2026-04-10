@@ -275,11 +275,10 @@ mod tests {
 
     use {
         super::*,
+        crate::cpi::tests::AccountBuffer,
         solana_account_view::{RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED},
         solana_address::Address,
     };
-
-    use crate::cpi::tests::AccountBuffer;
 
     static PROGRAM_ID: Address = Address::new_from_array([0x11; 32]);
 

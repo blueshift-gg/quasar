@@ -417,13 +417,15 @@ fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef]) -> Strin
                 n = name,
             ),
             2 => format!(
-                "\t{{ b := []byte(input.{n}); var buf [2]byte; binary.LittleEndian.PutUint16(buf[:], \
-                 uint16(len(b))); data = append(data, buf[:]...); data = append(data, b...) }}\n",
+                "\t{{ b := []byte(input.{n}); var buf [2]byte; \
+                 binary.LittleEndian.PutUint16(buf[:], uint16(len(b))); data = append(data, \
+                 buf[:]...); data = append(data, b...) }}\n",
                 n = name,
             ),
             _ => format!(
-                "\t{{ b := []byte(input.{n}); var buf [4]byte; binary.LittleEndian.PutUint32(buf[:], \
-                 uint32(len(b))); data = append(data, buf[:]...); data = append(data, b...) }}\n",
+                "\t{{ b := []byte(input.{n}); var buf [4]byte; \
+                 binary.LittleEndian.PutUint32(buf[:], uint32(len(b))); data = append(data, \
+                 buf[:]...); data = append(data, b...) }}\n",
                 n = name,
             ),
         },
@@ -465,6 +467,15 @@ fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef]) -> Strin
             format!("\tdata = append(data, input.{}...)\n", name,)
         }
     }
+}
+
+/// Go float decode expression. Extracted to prevent rustfmt from splitting
+/// the `\n` in the format string across a line continuation.
+fn go_float_decode(t: &str, n: &str, math_fn: &str, le_fn: &str, size: usize) -> String {
+    format!(
+        "{t}{n} := math.{math_fn}(binary.LittleEndian.{le_fn}(data[offset:]))\n{t}offset += \
+         {size}\n"
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -521,16 +532,8 @@ fn decode_field_expr(name: &str, ty: &IdlType, depth: usize, types: &[IdlTypeDef
                 t = t,
                 n = name,
             ),
-            "f32" => format!(
-                "{t}{n} := math.Float32frombits(binary.LittleEndian.Uint32(data[offset:]))\n{t}offset += 4\n",
-                t = t,
-                n = name,
-            ),
-            "f64" => format!(
-                "{t}{n} := math.Float64frombits(binary.LittleEndian.Uint64(data[offset:]))\n{t}offset += 8\n",
-                t = t,
-                n = name,
-            ),
+            "f32" => go_float_decode(&t, name, "Float32frombits", "Uint32", 4),
+            "f64" => go_float_decode(&t, name, "Float64frombits", "Uint64", 8),
             "publicKey" => format!(
                 "{t}var {n} solana.PublicKey\n{t}copy({n}[:], data[offset:offset+32])\n{t}offset \
                  += 32\n",

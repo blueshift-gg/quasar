@@ -23,9 +23,8 @@ fn generate_idl(crate_path: &Path) -> Result<(Idl, ParsedProgram), anyhow::Error
     let client_cargo_toml =
         codegen::rust::generate_cargo_toml(&parsed.crate_name, &parsed.version, pdas);
 
-    let idl = parser::build_idl(parsed).map_err(|errors| {
-        anyhow::anyhow!("{}", errors.join("\n"))
-    })?;
+    let idl =
+        parser::build_idl(parsed).map_err(|errors| anyhow::anyhow!("{}", errors.join("\n")))?;
 
     // Write IDL JSON
     let idl_dir = PathBuf::from("target").join("idl");

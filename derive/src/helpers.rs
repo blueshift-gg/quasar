@@ -550,7 +550,7 @@ pub(crate) fn pascal_to_snake(s: &str) -> String {
             // previous char is lowercase, OR the next char is lowercase
             // (handles acronym runs like "HTTP" → "http" not "h_t_t_p").
             let prev_lower = chars[i - 1].is_lowercase();
-            let next_lower = chars.get(i + 1).map_or(false, |n| n.is_lowercase());
+            let next_lower = chars.get(i + 1).is_some_and(|n| n.is_lowercase());
             if prev_lower || next_lower {
                 result.push('_');
             }
