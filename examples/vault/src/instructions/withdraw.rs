@@ -2,6 +2,7 @@ use quasar_lang::prelude::*;
 
 #[derive(Accounts)]
 pub struct Withdraw {
+    #[account(mut)]
     pub user: Signer,
     #[account(mut, seeds = [b"vault", user], bump)]
     pub vault: UncheckedAccount,
