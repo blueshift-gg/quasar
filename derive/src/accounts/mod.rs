@@ -33,10 +33,12 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
     {
         let message = match param {
             GenericParam::Type(_) => {
-                "#[derive(Accounts)] only supports lifetime parameters; type parameters are not supported"
+                "#[derive(Accounts)] only supports lifetime parameters; type parameters are not \
+                 supported"
             }
             GenericParam::Const(_) => {
-                "#[derive(Accounts)] only supports lifetime parameters; const parameters are not supported"
+                "#[derive(Accounts)] only supports lifetime parameters; const parameters are not \
+                 supported"
             }
             GenericParam::Lifetime(_) => unreachable!("filtered above"),
         };
@@ -47,8 +49,9 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let mut parse_generics = input.generics.clone();
-    // 'input is the default lifetime used for account references in the generated traits, so
-    // we need to make sure that it lives longer than any user-defined lifetimes.
+    // 'input is the default lifetime used for account references in the generated
+    // traits, so we need to make sure that it lives longer than any
+    // user-defined lifetimes.
     parse_generics.params.push(parse_quote!('input));
     {
         let parse_where = parse_generics.make_where_clause();
@@ -59,8 +62,8 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                 .push(syn::parse_quote!('input: #lifetime));
         }
     }
-    // These generics are used for the ParseAccounts impl, which may have different lifetime
-    // requirements than the original struct.
+    // These generics are used for the ParseAccounts impl, which may have different
+    // lifetime requirements than the original struct.
     let (parse_impl_generics, _, parse_where_clause) = parse_generics.split_for_impl();
 
     let fields = match &input.data {
