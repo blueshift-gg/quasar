@@ -4,7 +4,11 @@ use {
             attrs::{parse_field_attrs, AccountFieldAttrs, TypedSeeds},
             composition::validate_composition,
             constraint::verify_all_directives_mapped,
-            evidence::{BumpEvidence, FieldEvidence, InitEvidence, OwnerEvidence, PdaEvidence},
+            evidence::{
+                BumpEvidence, FieldCheckEvidence, FieldEvidence, InitEvidence,
+                LifecycleEvidence, MetaplexInitEvidence, OwnerEvidence, PdaEvidence,
+                ReallocEvidence, TokenValidationEvidence,
+            },
             field_kind::{debug_checked, strip_ref, FieldKind},
             init, InstructionArg,
         },
@@ -1323,8 +1327,14 @@ pub(crate) fn process_fields(
         field_constructs.push(gen_field_construct(&ctx)?);
 
         this_field_checks.extend(gen_validation_checks(&ctx));
+        if !attrs.has_ones.is_empty() || !attrs.constraints.is_empty() || attrs.address.is_some() {
+            evidence.field_check = Some(FieldCheckEvidence::produced());
+        }
 
         gen_close_sweep(&ctx, fields, &field_attrs, &mut close_fields, &mut sweep_fields)?;
+        if attrs.close.is_some() || attrs.sweep.is_some() {
+            evidence.lifecycle = Some(LifecycleEvidence::produced());
+        }
 
         // Reject using both seed syntaxes on the same field.
         if attrs.seeds.is_some() && attrs.typed_seeds.is_some() {
@@ -1440,18 +1450,25 @@ pub(crate) fn process_fields(
 
             if let Some(block) = init::gen_metadata_init(field_name, attrs, &init_ctx) {
                 init_blocks.push(block);
+                evidence.metaplex_init = Some(MetaplexInitEvidence::produced());
             }
 
             if let Some(block) = init::gen_master_edition_init(field_name, attrs, &init_ctx) {
                 init_blocks.push(block);
+                evidence.metaplex_init = Some(MetaplexInitEvidence::produced());
             }
         }
 
         this_field_checks.extend(gen_token_validation(&ctx));
-
-        // Validate that every declared constraint produced its evidence.
-        let has_seeds = attrs.seeds.is_some() || attrs.typed_seeds.is_some();
-        evidence.validate(&field_name.to_string(), has_seeds, is_init_field);
+        let has_token_attrs = attrs.token_mint.is_some()
+            || attrs.token_authority.is_some()
+            || attrs.associated_token_mint.is_some()
+            || attrs.associated_token_authority.is_some()
+            || attrs.mint_decimals.is_some()
+            || attrs.mint_init_authority.is_some();
+        if !is_init_field && has_token_attrs {
+            evidence.token_validation = Some(TokenValidationEvidence::produced());
+        }
 
         if let Some(realloc_expr) = &attrs.realloc {
             let realloc_pay = realloc_payer_field.expect("payer field must be present for realloc");
@@ -1465,7 +1482,12 @@ pub(crate) fn process_fields(
                     )?;
                 }
             });
+            evidence.realloc = Some(ReallocEvidence::produced());
         }
+
+        // Validate that every declared constraint produced its evidence.
+        let has_seeds = attrs.seeds.is_some() || attrs.typed_seeds.is_some();
+        evidence.validate(&field_name.to_string(), attrs, has_seeds, is_init_field);
 
         if !this_field_checks.is_empty() {
             if is_optional {
