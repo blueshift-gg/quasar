@@ -478,20 +478,27 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
     let rent_fetch = if pf.needs_rent {
         if let Some(ref rent_field) = pf.rent_sysvar_field {
             // Read Rent from the Sysvar<Rent> account — avoids sol_get_rent_sysvar syscall.
+            // Extract just the two u64 values we need instead of carrying the struct.
             // SAFETY: At this point #rent_field is &mut AccountView. borrow_unchecked
             // returns the account data; from_bytes_unchecked casts it to &Rent.
             // The address is validated later in the normal check phase.
             quote! {
-                let __shared_rent = unsafe {
-                    core::clone::Clone::clone(
+                let (__rent_lpb, __rent_threshold): (u64, u64) = {
+                    let __r = unsafe {
                         <quasar_lang::sysvars::rent::Rent as quasar_lang::sysvars::Sysvar>::from_bytes_unchecked(
                             #rent_field.borrow_unchecked()
                         )
-                    )
+                    };
+                    (__r.lamports_per_byte(), __r.exemption_threshold_raw())
                 };
             }
         } else {
-            quote! { let __shared_rent = <quasar_lang::sysvars::rent::Rent as quasar_lang::sysvars::Sysvar>::get()?; }
+            quote! {
+                let (__rent_lpb, __rent_threshold): (u64, u64) = {
+                    let __r = <quasar_lang::sysvars::rent::Rent as quasar_lang::sysvars::Sysvar>::get()?;
+                    (__r.lamports_per_byte(), __r.exemption_threshold_raw())
+                };
+            }
         }
     } else {
         quote! {}

@@ -35,7 +35,7 @@ pub(super) struct InitContext<'a> {
 /// Result of generating an init block.
 pub(super) struct InitBlockResult {
     pub tokens: proc_macro2::TokenStream,
-    /// True if this init path uses `__shared_rent` (false for ATA).
+    /// True if this init path uses `__rent_lpb` / `__rent_threshold` (false for ATA).
     pub uses_rent: bool,
 }
 
@@ -104,7 +104,9 @@ fn gen_init_cpi_body(
     post_init: proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
     quote! {
-        let __init_lamports = __shared_rent.try_minimum_balance(#space_expr as usize)?;
+        let __init_lamports = quasar_lang::sysvars::rent::minimum_balance_raw(
+            __rent_lpb, __rent_threshold, #space_expr as u64,
+        )?;
         #signers_setup
         quasar_lang::cpi::system::init_account(
             #pay_field, #field_name, __init_lamports, #space_expr as u64,

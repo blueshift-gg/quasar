@@ -146,6 +146,46 @@ pub fn realloc_account(
     Ok(())
 }
 
+/// Realloc an account using pre-extracted rent values.
+///
+/// Like [`realloc_account`] but takes `(lamports_per_byte, threshold)` directly
+/// instead of an `Option<&Rent>`. Used by codegen when the rent sysvar has
+/// already been destructured into its u64 components.
+#[inline(always)]
+pub fn realloc_account_raw(
+    view: &mut AccountView,
+    new_space: usize,
+    payer: &AccountView,
+    rent_lpb: u64,
+    rent_threshold: u64,
+) -> Result<(), ProgramError> {
+    let rent_exempt_lamports =
+        crate::sysvars::rent::minimum_balance_raw(rent_lpb, rent_threshold, new_space as u64)?;
+
+    let current_lamports = view.lamports();
+
+    if rent_exempt_lamports > current_lamports {
+        crate::cpi::system::transfer(payer, &*view, rent_exempt_lamports - current_lamports)
+            .invoke()?;
+    } else if current_lamports > rent_exempt_lamports {
+        let excess = current_lamports - rent_exempt_lamports;
+        view.set_lamports(rent_exempt_lamports);
+        set_lamports(payer, payer.lamports() + excess);
+    }
+
+    let old_len = view.data_len();
+
+    if new_space < old_len {
+        unsafe {
+            core::ptr::write_bytes(view.data_mut_ptr().add(new_space), 0, old_len - new_space);
+        }
+    }
+
+    resize(view, new_space)?;
+
+    Ok(())
+}
+
 /// Typed account wrapper with composable validation.
 ///
 /// `Account<T>` wraps a zero-copy view type `T` and provides validated

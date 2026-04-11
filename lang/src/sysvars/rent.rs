@@ -19,10 +19,10 @@ const RENT_ID: Address = Address::new_from_array([
 const MAX_PERMITTED_DATA_LENGTH: u64 = 10 * 1024 * 1024;
 
 /// The `f64::to_le_bytes` representation of `2.0` (current default threshold).
-const CURRENT_EXEMPTION_THRESHOLD: u64 = u64::from_le_bytes([0, 0, 0, 0, 0, 0, 0, 64]);
+pub const CURRENT_EXEMPTION_THRESHOLD: u64 = u64::from_le_bytes([0, 0, 0, 0, 0, 0, 0, 64]);
 
 /// The `f64::to_le_bytes` representation of `1.0` (SIMD-0194 threshold).
-const SIMD0194_EXEMPTION_THRESHOLD: u64 = u64::from_le_bytes([0, 0, 0, 0, 0, 0, 240, 63]);
+pub const SIMD0194_EXEMPTION_THRESHOLD: u64 = u64::from_le_bytes([0, 0, 0, 0, 0, 0, 240, 63]);
 
 /// Maximum lamports/byte that avoids overflow with SIMD-0194 threshold.
 const SIMD0194_MAX_LAMPORTS_PER_BYTE: u64 = 1_759_197_129_867;
@@ -62,6 +62,20 @@ const _: () = assert!(size_of::<Rent>() == 16);
 const _: () = assert!(align_of::<Rent>() == 1);
 
 impl Rent {
+    /// Returns the lamports-per-byte rental rate.
+    #[inline(always)]
+    pub fn lamports_per_byte(&self) -> u64 {
+        self.lamports_per_byte.get()
+    }
+
+    /// Returns the raw exemption threshold as a `u64` (bit representation
+    /// of the f64 threshold). Compare against [`CURRENT_EXEMPTION_THRESHOLD`]
+    /// or [`SIMD0194_EXEMPTION_THRESHOLD`].
+    #[inline(always)]
+    pub fn exemption_threshold_raw(&self) -> u64 {
+        self.exemption_threshold_u64()
+    }
+
     #[inline(always)]
     fn exemption_threshold_u64(&self) -> u64 {
         // SAFETY: `exemption_threshold` is a `[u8; 8]` — reading it as u64
@@ -132,6 +146,28 @@ impl Rent {
         }
 
         Ok(self.minimum_balance_inner(data_len, lamports_per_byte))
+    }
+}
+
+/// Compute the rent-exempt minimum balance from raw values.
+///
+/// Standalone function for use in codegen where the full `Rent` struct
+/// is destructured into its `u64` components. Keeps overflow guards
+/// behind `unlikely()` for safety.
+#[inline(always)]
+pub fn minimum_balance_raw(
+    lamports_per_byte: u64,
+    threshold: u64,
+    space: u64,
+) -> Result<u64, ProgramError> {
+    let total_bytes = ACCOUNT_STORAGE_OVERHEAD + space;
+    if unlikely(total_bytes > MAX_PERMITTED_DATA_LENGTH + ACCOUNT_STORAGE_OVERHEAD) {
+        return Err(ProgramError::InvalidArgument);
+    }
+    if threshold == SIMD0194_EXEMPTION_THRESHOLD {
+        Ok(total_bytes * lamports_per_byte)
+    } else {
+        Ok(2 * total_bytes * lamports_per_byte)
     }
 }
 
