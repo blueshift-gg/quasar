@@ -22,7 +22,7 @@ pub use {
             CpiReturn, DynCpiCall, Seed,
         },
         dispatch,
-        dynamic::{String, Vec},
+        pod::{PodString as String, PodVec as Vec},
         emit,
         error::QuasarError,
         instruction_arg::{InstructionArg, OptionZc},
