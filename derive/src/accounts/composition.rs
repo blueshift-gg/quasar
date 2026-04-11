@@ -1,8 +1,7 @@
 //! Constraint composition rules as a static, auditable table.
 //!
-//! Replaces the ad-hoc `reject!()` wall in `validate_field_attrs` with a
-//! declarative rule table. An auditor reviews [`COMPOSITION_RULES`] as a
-//! single, flat specification of which constraints are incompatible,
+//! [`COMPOSITION_RULES`] is a declarative rule table that an auditor reviews
+//! as a single, flat specification of which constraints are incompatible,
 //! which require others, and which are restricted to certain field kinds.
 
 use super::{
@@ -275,9 +274,8 @@ static COMPOSITION_RULES: &[Rule] = &[
 
 /// Validate constraint composition rules for a single field.
 ///
-/// Returns a compile error on the first violated rule. This replaces the
-/// ad-hoc `reject!()` wall in the old `validate_field_attrs` — the rules
-/// are now a reviewable static table above.
+/// Returns a compile error on the first violated rule. Each rule is
+/// defined in the [`COMPOSITION_RULES`] table above.
 pub(super) fn validate_composition(
     field: &syn::Field,
     field_name: &Ident,

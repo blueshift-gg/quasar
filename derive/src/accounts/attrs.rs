@@ -421,17 +421,6 @@ impl AccountFieldAttrs {
     }
 }
 
-impl Parse for AccountFieldAttrs {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let directives = input.parse_terminated(AccountDirective::parse, Token![,])?;
-        let mut r = Self::default();
-        for d in directives {
-            r.apply(&d);
-        }
-        Ok(r)
-    }
-}
-
 /// Parsed result: the flat struct for backward compat + the raw directive list
 /// for exhaustive-match verification.
 pub(super) struct ParsedAttrs {

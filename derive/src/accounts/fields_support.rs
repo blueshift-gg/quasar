@@ -319,4 +319,3 @@ pub(super) fn resolve_token_program_addr(
         .expect("InterfaceAccount with token/ata attrs requires a token program field");
     quote! { #tp.to_account_view().address() }
 }
-

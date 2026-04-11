@@ -1201,7 +1201,6 @@ pub(crate) fn process_fields(
 
         let is_optional = extract_generic_inner_type(&field.ty, "Option").is_some();
         let effective_ty = extract_generic_inner_type(&field.ty, "Option").unwrap_or(&field.ty);
-        let _is_ref_mut = matches!(effective_ty, Type::Reference(r) if r.mutability.is_some());
         let underlying_ty = strip_ref(effective_ty);
         let kind = FieldKind::classify(underlying_ty);
         let is_dynamic = kind.is_dynamic();
