@@ -24,7 +24,7 @@ const MAX_PDA_SLICES: usize = 19;
 /// "ProgramDerivedAddress")`.
 ///
 /// The seeds slice must already include the bump byte.
-#[inline(always)]
+#[inline]
 pub fn verify_program_address(
     seeds: &[&[u8]],
     program_id: &Address,
@@ -94,7 +94,7 @@ pub fn verify_program_address(
 /// and checking off-curve with `sol_curve_validate_point`.
 ///
 /// For a typical PDA (bump 255, first try): ~544 CU vs ~1,500 CU.
-#[inline(always)]
+#[inline]
 pub fn based_try_find_program_address(
     seeds: &[&[u8]],
     program_id: &Address,
@@ -212,7 +212,7 @@ pub fn based_try_find_program_address(
 /// **Init caveat**: during `#[account(init)]`, the account does not yet
 /// exist on-chain. Correctness relies on defense-in-depth: the subsequent
 /// `create_account` CPI will itself reject an on-curve address.
-#[inline(always)]
+#[inline]
 pub fn find_bump_for_address(
     seeds: &[&[u8]],
     program_id: &Address,
