@@ -6,8 +6,7 @@
 //!
 //! The tradeoff is rent: the full `N` bytes are always allocated in the account
 //! even if the string is shorter or empty. Use `PodString` for small,
-//! frequently-mutated fields (labels, names); use dynamic `String` for large,
-//! rarely-written fields (bios, descriptions).
+//! frequently-mutated fields (labels, names, symbols, tickers).
 //!
 //! # Layout
 //!
@@ -18,6 +17,22 @@
 //! - Total size: `1 + N` bytes, alignment 1.
 //! - `data[..len]` contains valid UTF-8 bytes.
 //! - `data[len..N]` is uninitialized (MaybeUninit).
+//!
+//! # Usage in account structs
+//!
+//! `PodString<N>` is a fixed-size Pod type — use it directly in `#[account]`
+//! structs. Writes go through `DerefMut` on `Account<T>`:
+//!
+//! ```ignore
+//! #[account(discriminator = 1)]
+//! pub struct Config {
+//!     pub label: PodString<32>,   // 33 bytes in account data
+//!     pub owner: Address,
+//! }
+//!
+//! // In instruction handler:
+//! ctx.accounts.config.label.set("my-label");
+//! ```
 
 use core::mem::MaybeUninit;
 
@@ -36,7 +51,12 @@ pub struct PodString<const N: usize> {
     data: [MaybeUninit<u8>; N],
 }
 
-// Compile-time invariants.
+// Compile-time: N must fit in u8 length prefix.
+impl<const N: usize> PodString<N> {
+    const _CAP_CHECK: () = assert!(N <= 255, "PodString<N>: N cannot exceed 255 (u8 length prefix)");
+}
+
+// Compile-time layout invariants.
 const _: () = assert!(core::mem::size_of::<PodString<0>>() == 1);
 const _: () = assert!(core::mem::size_of::<PodString<1>>() == 2);
 const _: () = assert!(core::mem::size_of::<PodString<32>>() == 33);
@@ -49,6 +69,8 @@ impl<const N: usize> PodString<N> {
     /// Number of active bytes in the string.
     #[inline(always)]
     pub fn len(&self) -> usize {
+        #[allow(clippy::let_unit_value)]
+        let _ = Self::_CAP_CHECK;
         // Clamp to N to prevent out-of-bounds on corrupted account data.
         (self.len as usize).min(N)
     }
@@ -59,9 +81,13 @@ impl<const N: usize> PodString<N> {
         self.len == 0
     }
 
+    /// Maximum number of bytes this string can hold.
+    #[inline(always)]
+    pub const fn capacity(&self) -> usize {
+        N
+    }
+
     /// Returns the string as a `&str`.
-    ///
-    /// # Safety (internal)
     ///
     /// Uses `from_utf8_unchecked` — sound because only the owning program
     /// can write account data, and `set()` only accepts `&str` (guaranteed
@@ -82,20 +108,17 @@ impl<const N: usize> PodString<N> {
     #[inline(always)]
     pub fn as_bytes(&self) -> &[u8] {
         let len = self.len();
-        // SAFETY: same as `as_str` — `data[..len]` is initialized.
-        // SAFETY: same as `as_str` — `data[..len]` is initialized.
+        // SAFETY: `data[..len]` is initialized, `len` clamped to N.
         unsafe { core::slice::from_raw_parts(self.data.as_ptr() as *const u8, len) }
     }
 
-    /// Set the string contents.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `value.len() > N`.
+    /// Set the string contents. Returns `false` if `value.len() > N`.
     #[inline(always)]
-    pub fn set(&mut self, value: &str) {
+    pub fn set(&mut self, value: &str) -> bool {
         let vlen = value.len();
-        assert!(vlen <= N, "PodString::set: value length exceeds capacity");
+        if vlen > N {
+            return false;
+        }
         // SAFETY: `vlen <= N` checked above. The source is valid UTF-8
         // (Rust `&str` invariant). Writing to MaybeUninit is always safe.
         unsafe {
@@ -106,6 +129,7 @@ impl<const N: usize> PodString<N> {
             );
         }
         self.len = vlen as u8;
+        true
     }
 
     /// Clear the string (set length to 0).
@@ -119,9 +143,54 @@ impl<const N: usize> Default for PodString<N> {
     fn default() -> Self {
         Self {
             len: 0,
-            // SAFETY: MaybeUninit::uninit() for an array of MaybeUninit is valid.
-            data: unsafe { MaybeUninit::<[MaybeUninit<u8>; N]>::uninit().assume_init() },
+            data: [MaybeUninit::uninit(); N],
         }
+    }
+}
+
+impl<const N: usize> core::ops::Deref for PodString<N> {
+    type Target = str;
+
+    #[inline(always)]
+    fn deref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl<const N: usize> AsRef<str> for PodString<N> {
+    #[inline(always)]
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl<const N: usize> AsRef<[u8]> for PodString<N> {
+    #[inline(always)]
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
+impl<const N: usize> PartialEq for PodString<N> {
+    #[inline(always)]
+    fn eq(&self, other: &Self) -> bool {
+        self.as_bytes() == other.as_bytes()
+    }
+}
+
+impl<const N: usize> Eq for PodString<N> {}
+
+impl<const N: usize> PartialEq<str> for PodString<N> {
+    #[inline(always)]
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
+impl<const N: usize> PartialEq<&str> for PodString<N> {
+    #[inline(always)]
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
     }
 }
 
@@ -153,7 +222,7 @@ mod tests {
     #[test]
     fn set_and_read() {
         let mut s = PodString::<32>::default();
-        s.set("hello");
+        assert!(s.set("hello"));
         assert_eq!(s.len(), 5);
         assert_eq!(s.as_str(), "hello");
         assert_eq!(s.as_bytes(), b"hello");
@@ -162,24 +231,25 @@ mod tests {
     #[test]
     fn set_max_length() {
         let mut s = PodString::<5>::default();
-        s.set("abcde");
+        assert!(s.set("abcde"));
         assert_eq!(s.len(), 5);
         assert_eq!(s.as_str(), "abcde");
     }
 
     #[test]
-    #[should_panic(expected = "exceeds capacity")]
-    fn set_over_capacity_panics() {
+    fn set_over_capacity_returns_false() {
         let mut s = PodString::<3>::default();
-        s.set("abcd");
+        assert!(!s.set("abcd"));
+        // Original state unchanged.
+        assert!(s.is_empty());
     }
 
     #[test]
     fn overwrite_shorter() {
         let mut s = PodString::<32>::default();
-        s.set("hello world");
+        assert!(s.set("hello world"));
         assert_eq!(s.as_str(), "hello world");
-        s.set("hi");
+        assert!(s.set("hi"));
         assert_eq!(s.len(), 2);
         assert_eq!(s.as_str(), "hi");
     }
@@ -187,7 +257,7 @@ mod tests {
     #[test]
     fn clear() {
         let mut s = PodString::<32>::default();
-        s.set("test");
+        assert!(s.set("test"));
         s.clear();
         assert!(s.is_empty());
         assert_eq!(s.as_str(), "");
@@ -196,19 +266,18 @@ mod tests {
     #[test]
     fn corrupted_len_clamped() {
         let mut s = PodString::<4>::default();
-        s.set("ab");
+        assert!(s.set("ab"));
         // Simulate corrupted len > N
         s.len = 255;
         // Should NOT panic — len is clamped to N
         assert_eq!(s.len(), 4);
-        // as_bytes returns 4 bytes (the 2 written + 2 uninit-but-in-bounds)
         assert_eq!(s.as_bytes().len(), 4);
     }
 
     #[test]
     fn utf8_multibyte() {
         let mut s = PodString::<32>::default();
-        s.set("caf\u{00e9}"); // "café" — 5 bytes in UTF-8
+        assert!(s.set("caf\u{00e9}")); // "café" — 5 bytes in UTF-8
         assert_eq!(s.len(), 5);
         assert_eq!(s.as_str(), "café");
     }
@@ -219,5 +288,41 @@ mod tests {
         assert_eq!(core::mem::align_of::<PodString<32>>(), 1);
         assert_eq!(core::mem::size_of::<PodString<0>>(), 1);
         assert_eq!(core::mem::align_of::<PodString<0>>(), 1);
+    }
+
+    #[test]
+    fn deref_to_str() {
+        let mut s = PodString::<32>::default();
+        assert!(s.set("hello"));
+        let r: &str = &*s;
+        assert_eq!(r, "hello");
+        // str methods via Deref
+        assert!(s.starts_with("hel"));
+        assert!(s.contains("llo"));
+    }
+
+    #[test]
+    fn partial_eq_str() {
+        let mut s = PodString::<32>::default();
+        assert!(s.set("hello"));
+        assert_eq!(s, "hello");
+        assert_eq!(s, *"hello");
+    }
+
+    #[test]
+    fn partial_eq_pod_string() {
+        let mut a = PodString::<32>::default();
+        let mut b = PodString::<32>::default();
+        assert!(a.set("same"));
+        assert!(b.set("same"));
+        assert_eq!(a, b);
+        assert!(b.set("diff"));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn capacity() {
+        let s = PodString::<42>::default();
+        assert_eq!(s.capacity(), 42);
     }
 }
