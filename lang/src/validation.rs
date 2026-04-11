@@ -4,6 +4,11 @@
 //! auditable, independently testable. The derive macro generates calls
 //! to these functions instead of inline `quote!` blocks, so an auditor
 //! reads this file once and then verifies the macro just wires them.
+//!
+//! Debug logging: every check accepts a `_field: &str` parameter carrying
+//! the field name from the accounts struct. In release builds the
+//! `#[cfg(feature = "debug")]` blocks are stripped and LLVM eliminates
+//! the parameter entirely — zero CU cost.
 
 use {
     crate::{
@@ -23,9 +28,21 @@ use {
 #[inline(always)]
 pub fn check_account<T: CheckOwner + AccountCheck>(
     view: &AccountView,
+    _field: &str,
 ) -> Result<(), ProgramError> {
-    T::check_owner(view)?;
-    T::check(view)?;
+    T::check_owner(view).map_err(|__e| {
+        #[cfg(feature = "debug")]
+        crate::prelude::log(&::alloc::format!("Owner check failed for account '{}'", _field));
+        __e
+    })?;
+    T::check(view).map_err(|__e| {
+        #[cfg(feature = "debug")]
+        crate::prelude::log(&::alloc::format!(
+            "Discriminator check failed for account '{}': data may be uninitialized or corrupted",
+            _field
+        ));
+        __e
+    })?;
     Ok(())
 }
 
@@ -35,8 +52,15 @@ pub fn check_account<T: CheckOwner + AccountCheck>(
 
 /// Validate a `Program<T>` field's address matches `T::ID`.
 #[inline(always)]
-pub fn check_program<T: Id>(view: &AccountView) -> Result<(), ProgramError> {
+pub fn check_program<T: Id>(view: &AccountView, _field: &str) -> Result<(), ProgramError> {
     if unlikely(!crate::keys_eq(view.address(), &T::ID)) {
+        #[cfg(feature = "debug")]
+        crate::prelude::log(&::alloc::format!(
+            "Incorrect program ID for account '{}': expected {}, got {}",
+            _field,
+            T::ID,
+            view.address()
+        ));
         return Err(ProgramError::IncorrectProgramId);
     }
     Ok(())
@@ -46,8 +70,16 @@ pub fn check_program<T: Id>(view: &AccountView) -> Result<(), ProgramError> {
 #[inline(always)]
 pub fn check_sysvar<T: crate::sysvars::Sysvar>(
     view: &AccountView,
+    _field: &str,
 ) -> Result<(), ProgramError> {
     if unlikely(!crate::keys_eq(view.address(), &T::ID)) {
+        #[cfg(feature = "debug")]
+        crate::prelude::log(&::alloc::format!(
+            "Incorrect sysvar address for account '{}': expected {}, got {}",
+            _field,
+            T::ID,
+            view.address()
+        ));
         return Err(ProgramError::IncorrectProgramId);
     }
     Ok(())
@@ -57,8 +89,15 @@ pub fn check_sysvar<T: crate::sysvars::Sysvar>(
 #[inline(always)]
 pub fn check_interface<T: ProgramInterface>(
     view: &AccountView,
+    _field: &str,
 ) -> Result<(), ProgramError> {
     if unlikely(!T::matches(view.address())) {
+        #[cfg(feature = "debug")]
+        crate::prelude::log(&::alloc::format!(
+            "Program interface mismatch for account '{}': address {} does not match any allowed programs",
+            _field,
+            view.address()
+        ));
         return Err(ProgramError::IncorrectProgramId);
     }
     Ok(())

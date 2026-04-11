@@ -303,17 +303,17 @@ fn gen_type_checks(
     let underlying_ty = ctx.underlying_ty;
     let mut checks: Vec<proc_macro2::TokenStream> = Vec::new();
 
+    let field_name_str = field_name.to_string();
     match &ctx.kind {
         FieldKind::Account { inner_ty } => {
             if !skip_mut_checks {
                 checks.push(quote! {
-                    quasar_lang::validation::check_account::<#inner_ty>(#field_name.to_account_view())?;
+                    quasar_lang::validation::check_account::<#inner_ty>(#field_name.to_account_view(), #field_name_str)?;
                 });
             }
         }
         FieldKind::InterfaceAccount { inner_ty } => {
             if !skip_mut_checks {
-                let field_name_str = field_name.to_string();
                 let owner = debug_checked(
                     &field_name_str,
                     quote! {
@@ -326,17 +326,17 @@ fn gen_type_checks(
         }
         FieldKind::Sysvar { inner_ty } => {
             checks.push(quote! {
-                quasar_lang::validation::check_sysvar::<#inner_ty>(#field_name.to_account_view())?;
+                quasar_lang::validation::check_sysvar::<#inner_ty>(#field_name.to_account_view(), #field_name_str)?;
             });
         }
         FieldKind::Program { inner_ty } => {
             checks.push(quote! {
-                quasar_lang::validation::check_program::<#inner_ty>(#field_name.to_account_view())?;
+                quasar_lang::validation::check_program::<#inner_ty>(#field_name.to_account_view(), #field_name_str)?;
             });
         }
         FieldKind::Interface { inner_ty } => {
             checks.push(quote! {
-                quasar_lang::validation::check_interface::<#inner_ty>(#field_name.to_account_view())?;
+                quasar_lang::validation::check_interface::<#inner_ty>(#field_name.to_account_view(), #field_name_str)?;
             });
         }
         FieldKind::SystemAccount => {
