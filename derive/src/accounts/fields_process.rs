@@ -19,6 +19,26 @@ use {
     syn::{Expr, ExprLit, Ident, Lit, Type},
 };
 
+/// Recursively check if a `syn::Expr` contains an identifier matching `name`.
+///
+/// Walks method calls (`config.key()`), field access (`config.creator`),
+/// references (`&config`), and paths (`config`). Returns `true` if the
+/// root identifier of any sub-expression matches.
+fn contains_ident(expr: &Expr, name: &str) -> bool {
+    match expr {
+        Expr::Path(ep) => {
+            ep.path.segments.len() == 1
+                && ep.qself.is_none()
+                && ep.path.segments[0].ident == name
+        }
+        Expr::MethodCall(mc) => contains_ident(&mc.receiver, name),
+        Expr::Field(ef) => contains_ident(&ef.base, name),
+        Expr::Reference(er) => contains_ident(&er.expr, name),
+        Expr::Paren(ep) => contains_ident(&ep.expr, name),
+        _ => false,
+    }
+}
+
 /// Check if a syn::Type is `u8`.
 fn is_type_u8(ty: &Type) -> bool {
     matches!(ty, Type::Path(tp) if tp.path.is_ident("u8"))
@@ -661,6 +681,42 @@ pub(crate) fn process_fields(
                     __e
                 })?;
             });
+        }
+
+        // --- has_one + PDA seed overlap warning ---
+        // Warn when a has_one target also appears as a seed reference, since
+        // the PDA derivation already validates the relationship.
+        if let Some(ref seed_exprs) = attrs.seeds {
+            for (target, _) in &attrs.has_ones {
+                let target_str = target.to_string();
+                let is_seed_ref = seed_exprs.iter().any(|expr| {
+                    contains_ident(expr, &target_str)
+                });
+                if is_seed_ref {
+                    // Emit compile-time deprecation warning. The const decl
+                    // triggers the warning; the usage is allow(deprecated) so
+                    // #![deny(deprecated)] won't hard-error.
+                    let warn_msg = format!(
+                        "has_one = {} may be redundant: '{}' is already a PDA seed for '{}', \
+                         so the derivation validates this relationship. Consider removing \
+                         has_one for ~10 CU savings, or keep for defense-in-depth.",
+                        target, target, field_name,
+                    );
+                    let warn_const = format_ident!(
+                        "__WARN_REDUNDANT_HAS_ONE_{}_{}",
+                        field_name.to_string().to_uppercase(),
+                        target_str.to_uppercase(),
+                    );
+                    this_field_checks.push(quote! {
+                        {
+                            #[deprecated(note = #warn_msg)]
+                            const #warn_const: () = ();
+                            #[allow(deprecated)]
+                            let _ = #warn_const;
+                        }
+                    });
+                }
+            }
         }
 
         for (expr, custom_error) in &attrs.constraints {
