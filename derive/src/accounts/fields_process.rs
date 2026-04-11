@@ -4,6 +4,7 @@ use {
             attrs::{parse_field_attrs, AccountFieldAttrs, TypedSeeds},
             composition::validate_composition,
             constraint::verify_all_directives_mapped,
+            evidence::{BumpEvidence, FieldEvidence, InitEvidence, OwnerEvidence, PdaEvidence},
             field_kind::{debug_checked, strip_ref, FieldKind},
             init, InstructionArg,
         },
@@ -1312,7 +1313,12 @@ pub(crate) fn process_fields(
             token_program_for_ata,
         };
 
+        let mut evidence = FieldEvidence::default();
+
         let mut this_field_checks = gen_type_checks(&ctx, skip_mut_checks);
+        if !skip_mut_checks && matches!(ctx.kind, FieldKind::Account { .. }) {
+            evidence.owner = Some(OwnerEvidence::produced());
+        }
 
         field_constructs.push(gen_field_construct(&ctx)?);
 
@@ -1371,6 +1377,8 @@ pub(crate) fn process_fields(
                 pda_target_checks,
                 &mut seeds_methods,
             )?;
+            evidence.pda = Some(PdaEvidence::produced());
+            evidence.bump = Some(BumpEvidence::produced());
         }
 
         // --- Typed seeds: seeds = Type::seeds(arg1, arg2, ...) ---
@@ -1393,6 +1401,8 @@ pub(crate) fn process_fields(
                 &mut field_checks,
                 &mut seed_addr_captures,
             )?;
+            evidence.pda = Some(PdaEvidence::produced());
+            evidence.bump = Some(BumpEvidence::produced());
         }
 
         if is_init_field {
@@ -1425,6 +1435,7 @@ pub(crate) fn process_fields(
             {
                 init_blocks.push(result.tokens);
                 needs_rent |= result.uses_rent;
+                evidence.init = Some(InitEvidence::produced());
             }
 
             if let Some(block) = init::gen_metadata_init(field_name, attrs, &init_ctx) {
@@ -1437,6 +1448,10 @@ pub(crate) fn process_fields(
         }
 
         this_field_checks.extend(gen_token_validation(&ctx));
+
+        // Validate that every declared constraint produced its evidence.
+        let has_seeds = attrs.seeds.is_some() || attrs.typed_seeds.is_some();
+        evidence.validate(&field_name.to_string(), has_seeds, is_init_field);
 
         if let Some(realloc_expr) = &attrs.realloc {
             let realloc_pay = realloc_payer_field.expect("payer field must be present for realloc");

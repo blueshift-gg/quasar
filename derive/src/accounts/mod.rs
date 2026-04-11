@@ -6,6 +6,7 @@ mod attrs;
 mod client;
 mod composition;
 mod constraint;
+mod evidence;
 mod field_kind;
 mod fields;
 mod init;
