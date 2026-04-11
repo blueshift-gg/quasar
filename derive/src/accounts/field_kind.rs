@@ -227,6 +227,7 @@ impl FieldFlags {
 /// Use for checks where the condition and error are explicit (address
 /// mismatches, interface checks, etc.) rather than wrapping a Result-returning
 /// expression.
+#[allow(dead_code)]
 pub(super) fn debug_guard(
     condition: proc_macro2::TokenStream,
     debug_msg: proc_macro2::TokenStream,

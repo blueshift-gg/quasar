@@ -4,7 +4,7 @@ use {
             attrs::{parse_field_attrs, AccountFieldAttrs, TypedSeeds},
             composition::validate_composition,
             constraint::verify_all_directives_mapped,
-            field_kind::{debug_checked, debug_guard, strip_ref, FieldKind},
+            field_kind::{debug_checked, strip_ref, FieldKind},
             init, InstructionArg,
         },
         support::{
@@ -306,29 +306,12 @@ fn gen_type_checks(
     match &ctx.kind {
         FieldKind::Account { inner_ty } => {
             if !skip_mut_checks {
-                let field_name_str = field_name.to_string();
-                let owner = debug_checked(
-                    &field_name_str,
-                    quote! { <#inner_ty as quasar_lang::traits::CheckOwner>::check_owner(#field_name.to_account_view()) },
-                    "Owner check failed for account '{}'",
-                );
-                let disc = debug_checked(
-                    &field_name_str,
-                    quote! { <#inner_ty as quasar_lang::traits::AccountCheck>::check(#field_name.to_account_view()) },
-                    "Discriminator check failed for account '{}': data may be uninitialized \
-                     or corrupted",
-                );
                 checks.push(quote! {
-                    #owner
-                    #disc
+                    quasar_lang::validation::check_account::<#inner_ty>(#field_name.to_account_view())?;
                 });
             }
         }
         FieldKind::InterfaceAccount { inner_ty } => {
-            // Owner and data checks are handled inside
-            // InterfaceAccount::from_account_view() via T::owners() and
-            // T::check(). The derive only needs to emit checks when
-            // skip_mut_checks is false (non-init path).
             if !skip_mut_checks {
                 let field_name_str = field_name.to_string();
                 let owner = debug_checked(
@@ -342,52 +325,25 @@ fn gen_type_checks(
             }
         }
         FieldKind::Sysvar { inner_ty } => {
-            let field_name_str = field_name.to_string();
-            checks.push(debug_guard(
-                quote! { !quasar_lang::keys_eq(#field_name.to_account_view().address(), &<#inner_ty as quasar_lang::sysvars::Sysvar>::ID) },
-                quote! { ::alloc::format!(
-                    "Incorrect sysvar address for account '{}': expected {}, got {}",
-                    #field_name_str,
-                    <#inner_ty as quasar_lang::sysvars::Sysvar>::ID,
-                    #field_name.to_account_view().address()
-                ) },
-                quote! { ProgramError::IncorrectProgramId },
-            ));
+            checks.push(quote! {
+                quasar_lang::validation::check_sysvar::<#inner_ty>(#field_name.to_account_view())?;
+            });
         }
         FieldKind::Program { inner_ty } => {
-            let field_name_str = field_name.to_string();
-            checks.push(debug_guard(
-                quote! { !quasar_lang::keys_eq(#field_name.to_account_view().address(), &<#inner_ty as quasar_lang::traits::Id>::ID) },
-                quote! { ::alloc::format!(
-                    "Incorrect program ID for account '{}': expected {}, got {}",
-                    #field_name_str,
-                    <#inner_ty as quasar_lang::traits::Id>::ID,
-                    #field_name.to_account_view().address()
-                ) },
-                quote! { ProgramError::IncorrectProgramId },
-            ));
+            checks.push(quote! {
+                quasar_lang::validation::check_program::<#inner_ty>(#field_name.to_account_view())?;
+            });
         }
         FieldKind::Interface { inner_ty } => {
-            let field_name_str = field_name.to_string();
-            checks.push(debug_guard(
-                quote! { !<#inner_ty as quasar_lang::traits::ProgramInterface>::matches(#field_name.to_account_view().address()) },
-                quote! { ::alloc::format!(
-                    "Program interface mismatch for account '{}': address {} does not match any allowed programs",
-                    #field_name_str,
-                    #field_name.to_account_view().address()
-                ) },
-                quote! { ProgramError::IncorrectProgramId },
-            ));
+            checks.push(quote! {
+                quasar_lang::validation::check_interface::<#inner_ty>(#field_name.to_account_view())?;
+            });
         }
         FieldKind::SystemAccount => {
-            let field_name_str = field_name.to_string();
             let base_type = strip_generics(underlying_ty);
-            let owner = debug_checked(
-                &field_name_str,
-                quote! { <#base_type as quasar_lang::checks::Owner>::check(#field_name.to_account_view()) },
-                "Owner check failed for account '{}': not owned by system program",
-            );
-            checks.push(owner);
+            checks.push(quote! {
+                <#base_type as quasar_lang::checks::Owner>::check(#field_name.to_account_view())?;
+            });
         }
         FieldKind::Signer | FieldKind::Other => {}
     }
@@ -441,26 +397,17 @@ fn gen_validation_checks(ctx: &FieldContext<'_>) -> Vec<proc_macro2::TokenStream
     let attrs = ctx.attrs;
     let mut checks: Vec<proc_macro2::TokenStream> = Vec::new();
 
-    let field_name_str = field_name.to_string();
     for (target, custom_error) in &attrs.has_ones {
         let error = match custom_error {
             Some(err) => quote! { #err.into() },
             None => quote! { QuasarError::HasOneMismatch.into() },
         };
-        let target_str = target.to_string();
         checks.push(quote! {
             quasar_lang::validation::check_has_one(
                 &#field_name.#target,
                 #target.to_account_view().address(),
                 #error,
-            ).map_err(|__e| {
-                #[cfg(feature = "debug")]
-                quasar_lang::prelude::log(&::alloc::format!(
-                    "has_one mismatch: '{}.{}' does not match account '{}'",
-                    #field_name_str, #target_str, #target_str,
-                ));
-                __e
-            })?;
+            )?;
         });
     }
 
@@ -505,15 +452,9 @@ fn gen_validation_checks(ctx: &FieldContext<'_>) -> Vec<proc_macro2::TokenStream
             Some(err) => quote! { #err.into() },
             None => quote! { QuasarError::ConstraintViolation.into() },
         };
-        let expr_str = quote!(#expr).to_string();
-        checks.push(debug_guard(
-            quote! { !(#expr) },
-            quote! { ::alloc::format!(
-                "Constraint violated on '{}': `{}`",
-                #field_name_str, #expr_str,
-            ) },
-            quote! { #error },
-        ));
+        checks.push(quote! {
+            quasar_lang::validation::check_constraint(#expr, #error)?;
+        });
     }
 
     if let Some((addr_expr, custom_error)) = &attrs.address {
@@ -526,15 +467,7 @@ fn gen_validation_checks(ctx: &FieldContext<'_>) -> Vec<proc_macro2::TokenStream
                 #field_name.to_account_view().address(),
                 &#addr_expr,
                 #error,
-            ).map_err(|__e| {
-                #[cfg(feature = "debug")]
-                quasar_lang::prelude::log(&::alloc::format!(
-                    "Address mismatch on '{}': got {}",
-                    #field_name_str,
-                    #field_name.to_account_view().address(),
-                ));
-                __e
-            })?;
+            )?;
         });
     }
 
