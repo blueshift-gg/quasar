@@ -135,16 +135,15 @@ fn gen_bump_check(
                                 #bump_var = __bump_val;
                             } else {
                                 let __pda_seeds = [#(#seed_idents),*];
-                                let (__expected, __bump) = quasar_lang::pda::based_try_find_program_address(&__pda_seeds, __program_id)?;
-                                if #addr_access != __expected {
-                                    #[cfg(feature = "debug")]
-                                    quasar_lang::prelude::log(concat!(
-                                        "Account '", stringify!(#field_name),
-                                        "': PDA verification failed"
-                                    ));
-                                    return Err(QuasarError::InvalidPda.into());
-                                }
-                                #bump_var = __bump;
+                                #bump_var = quasar_lang::pda::find_bump_for_address(&__pda_seeds, __program_id, &#addr_access)
+                                    .map_err(|__e| {
+                                        #[cfg(feature = "debug")]
+                                        quasar_lang::prelude::log(concat!(
+                                            "Account '", stringify!(#field_name),
+                                            "': PDA verification failed"
+                                        ));
+                                        QuasarError::InvalidPda
+                                    })?;
                             }
                         }
                     }
