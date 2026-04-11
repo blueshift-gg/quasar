@@ -1,72 +1,462 @@
-//! Codegen for fixed-layout `#[account]` types.
+//! Unified codegen for `#[account]` types (fixed and Pod-dynamic layouts).
 //!
-//! Fixed accounts have all fields known at compile time (no dynamic
-//! String/Vec). Generates the `#[repr(C)]` ZC companion struct with Pod fields,
-//! plus `Owner`, `Discriminator`, `Space`, and `AccountSerialize` impls.
+//! Fixed accounts have all fields known at compile time (no PodString/PodVec).
+//! Pod-dynamic accounts have `PodString<N>` / `PodVec<T, N>` fields that use
+//! dynamic sizing, walk-from-header accessors, and a runtime memmove helper for
+//! writes that grow.
+//!
+//! This single function handles both cases: when all fields have `pod_dyn: None`
+//! it produces pure fixed-layout output; when any field has `pod_dyn: Some(...)`
+//! it generates the dynamic parts (MIN_SPACE/MAX_SPACE, accessors, setters, and
+//! modified AccountCheck validation).
 
 use {
-    crate::helpers::{map_to_pod_type, pascal_to_snake, zc_assign_from_value},
+    crate::helpers::{map_to_pod_type, pascal_to_snake, zc_assign_from_value, PodDynField},
     proc_macro::TokenStream,
     quote::{format_ident, quote},
     syn::DeriveInput,
 };
 
-pub(super) fn generate_fixed_account(
+/// Info about each field needed for codegen.
+pub(super) struct PodFieldInfo<'a> {
+    pub field: &'a syn::Field,
+    pub pod_dyn: Option<PodDynField>,
+}
+
+pub(super) fn generate_account(
     name: &syn::Ident,
     disc_bytes: &[syn::LitInt],
     disc_len: usize,
     disc_indices: &[usize],
-    fields_data: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
+    field_infos: &[PodFieldInfo<'_>],
     input: &DeriveInput,
     gen_set_inner: bool,
 ) -> TokenStream {
     let vis = &input.vis;
     let attrs = &input.attrs;
-    let inner_name = format_ident!("{}Inner", name);
-    let zc_name = format_ident!("{}Zc", name);
-    let zc_mod = format_ident!("__{}_zc", pascal_to_snake(&name.to_string()));
 
-    let field_names: Vec<_> = fields_data.iter().map(|f| &f.ident).collect();
-    let field_types: Vec<_> = fields_data.iter().map(|f| &f.ty).collect();
+    let has_dynamic = field_infos.iter().any(|fi| fi.pod_dyn.is_some());
 
-    let zc_fields: Vec<proc_macro2::TokenStream> = fields_data
+    // --- ZC companion struct ---
+    // Fixed: all fields. Dynamic: only non-dynamic fields go in ZC.
+    let zc_fields: Vec<proc_macro2::TokenStream> = field_infos
         .iter()
-        .map(|f| {
-            let fname = &f.ident;
+        .filter(|fi| fi.pod_dyn.is_none())
+        .map(|fi| {
+            let f = fi.field;
             let fvis = &f.vis;
+            let fname = f.ident.as_ref().unwrap();
             let zc_ty = map_to_pod_type(&f.ty);
             quote! { #fvis #fname: #zc_ty }
         })
         .collect();
 
-    let set_inner_stmts: Vec<proc_macro2::TokenStream> = fields_data
+    // Names for ZC struct and its containing module.
+    // Dynamic: ZC is public (no wrapping module).
+    // Fixed: ZC is inside a hidden module.
+    let zc_name = format_ident!("{}Zc", name);
+    let zc_mod = format_ident!("__{}_zc", pascal_to_snake(&name.to_string()));
+
+    // Qualified path to the ZC struct for use in impls.
+    let zc_path = if has_dynamic {
+        quote! { #zc_name }
+    } else {
+        quote! { #zc_mod::#zc_name }
+    };
+
+    // --- Detect bump: u8 field for PDA bump auto-detection (fixed only) ---
+    let has_bump_u8 = !has_dynamic
+        && field_infos.iter().any(|fi| {
+            fi.field.ident.as_ref().is_some_and(|id| id == "bump")
+                && matches!(&fi.field.ty, syn::Type::Path(tp) if tp.path.is_ident("u8"))
+        });
+
+    let bump_offset_impl = if has_bump_u8 {
+        quote! {
+            const BUMP_OFFSET: Option<usize> = Some(
+                #disc_len + core::mem::offset_of!(#zc_path, bump)
+            );
+        }
+    } else {
+        quote! {}
+    };
+
+    // =========================================================================
+    // Dynamic-only pieces
+    // =========================================================================
+
+    let dyn_fields: Vec<(&syn::Field, &PodDynField)> = field_infos
         .iter()
-        .map(|f| {
-            zc_assign_from_value(
-                f.ident.as_ref().expect("field must have an identifier"),
-                &f.ty,
-            )
+        .filter_map(|fi| fi.pod_dyn.as_ref().map(|pd| (fi.field, pd)))
+        .collect();
+
+    // Alignment assertions for PodVec element types
+    let align_asserts: Vec<proc_macro2::TokenStream> = dyn_fields
+        .iter()
+        .filter_map(|(_, pd)| match pd {
+            PodDynField::Vec { elem, .. } => Some(quote! {
+                const _: () = assert!(
+                    core::mem::align_of::<#elem>() == 1,
+                    "PodVec element type must have alignment 1"
+                );
+            }),
+            _ => None,
         })
         .collect();
 
-    // Detect a `bump: u8` field for PDA bump auto-detection.
-    let has_bump_u8 = fields_data.iter().any(|f| {
-        f.ident.as_ref().is_some_and(|id| id == "bump")
-            && matches!(&f.ty, syn::Type::Path(tp) if tp.path.is_ident("u8"))
-    });
+    // Prefix total (for MIN_SPACE)
+    let prefix_total: usize = dyn_fields
+        .iter()
+        .map(|(_, pd)| match pd {
+            PodDynField::Str { .. } => 1usize,
+            PodDynField::Vec { .. } => 2usize,
+        })
+        .sum();
+
+    // MAX_SPACE terms
+    let max_space_terms: Vec<proc_macro2::TokenStream> = dyn_fields
+        .iter()
+        .map(|(_, pd)| match pd {
+            PodDynField::Str { max } => quote! { + #max },
+            PodDynField::Vec { elem, max } => {
+                quote! { + #max * core::mem::size_of::<#elem>() }
+            }
+        })
+        .collect();
+
+    // AccountCheck validation for dynamic field prefixes
+    let validation_stmts: Vec<proc_macro2::TokenStream> = dyn_fields
+        .iter()
+        .map(|(_f, pd)| match pd {
+            PodDynField::Str { max } => quote! {
+                {
+                    if __offset + 1 > __data_len {
+                        return Err(ProgramError::AccountDataTooSmall);
+                    }
+                    let __len = __data[__offset] as usize;
+                    __offset += 1;
+                    if __len > #max {
+                        return Err(ProgramError::InvalidAccountData);
+                    }
+                    if __offset + __len > __data_len {
+                        return Err(ProgramError::AccountDataTooSmall);
+                    }
+                    if core::str::from_utf8(&__data[__offset..__offset + __len]).is_err() {
+                        return Err(ProgramError::InvalidAccountData);
+                    }
+                    __offset += __len;
+                }
+            },
+            PodDynField::Vec { elem, max } => quote! {
+                {
+                    if __offset + 2 > __data_len {
+                        return Err(ProgramError::AccountDataTooSmall);
+                    }
+                    let __count = u16::from_le_bytes([__data[__offset], __data[__offset + 1]]) as usize;
+                    __offset += 2;
+                    if __count > #max {
+                        return Err(ProgramError::InvalidAccountData);
+                    }
+                    let __byte_len = __count * core::mem::size_of::<#elem>();
+                    if __offset + __byte_len > __data_len {
+                        return Err(ProgramError::AccountDataTooSmall);
+                    }
+                    __offset += __byte_len;
+                }
+            },
+        })
+        .collect();
+
+    // Walk codegen: read accessors
+    let dyn_start = quote! { #disc_len + core::mem::size_of::<#zc_path>() };
+
+    let read_accessors: Vec<proc_macro2::TokenStream> = dyn_fields
+        .iter()
+        .enumerate()
+        .map(|(dyn_idx, (f, pd))| {
+            let fname = f.ident.as_ref().unwrap();
+            let walk_stmts: Vec<proc_macro2::TokenStream> = dyn_fields[..dyn_idx]
+                .iter()
+                .map(|(_, prev_pd)| match prev_pd {
+                    PodDynField::Str { .. } => quote! {
+                        __off += 1 + __data[__off] as usize;
+                    },
+                    PodDynField::Vec { elem, .. } => quote! {
+                        __off += 2 + u16::from_le_bytes([__data[__off], __data[__off + 1]]) as usize
+                            * core::mem::size_of::<#elem>();
+                    },
+                })
+                .collect();
+
+            match pd {
+                PodDynField::Str { .. } => quote! {
+                    #[inline(always)]
+                    pub fn #fname(&self) -> &str {
+                        let __data = unsafe { self.__view.borrow_unchecked() };
+                        let mut __off = #dyn_start;
+                        #(#walk_stmts)*
+                        let __len = __data[__off] as usize;
+                        unsafe { core::str::from_utf8_unchecked(&__data[__off + 1..__off + 1 + __len]) }
+                    }
+                },
+                PodDynField::Vec { elem, .. } => quote! {
+                    #[inline(always)]
+                    pub fn #fname(&self) -> &[#elem] {
+                        let __data = unsafe { self.__view.borrow_unchecked() };
+                        let mut __off = #dyn_start;
+                        #(#walk_stmts)*
+                        let __count = u16::from_le_bytes([__data[__off], __data[__off + 1]]) as usize;
+                        unsafe { core::slice::from_raw_parts(__data[__off + 2..].as_ptr() as *const #elem, __count) }
+                    }
+                },
+            }
+        })
+        .collect();
+
+    // Write methods
+    let write_methods: Vec<proc_macro2::TokenStream> = dyn_fields
+        .iter()
+        .enumerate()
+        .map(|(dyn_idx, (f, pd))| {
+            let fname = f.ident.as_ref().unwrap();
+            let setter_name = format_ident!("set_{}", fname);
+            let walk_stmts: Vec<proc_macro2::TokenStream> = dyn_fields[..dyn_idx]
+                .iter()
+                .map(|(_, prev_pd)| match prev_pd {
+                    PodDynField::Str { .. } => quote! {
+                        __off += 1 + unsafe { *__ptr.add(__off) } as usize;
+                    },
+                    PodDynField::Vec { elem, .. } => quote! {
+                        __off += 2 + u16::from_le_bytes(unsafe {
+                            [*__ptr.add(__off), *__ptr.add(__off + 1)]
+                        }) as usize * core::mem::size_of::<#elem>();
+                    },
+                })
+                .collect();
+
+            match pd {
+                PodDynField::Str { max } => quote! {
+                    pub fn #setter_name(
+                        &mut self,
+                        value: &str,
+                        payer: &AccountView,
+                        rent_lpb: u64,
+                        rent_threshold: u64,
+                    ) -> Result<(), ProgramError> {
+                        if value.len() > #max {
+                            return Err(QuasarError::DynamicFieldTooLong.into());
+                        }
+                        let __ptr = self.__view.data_ptr();
+                        let mut __off = #dyn_start;
+                        #(#walk_stmts)*
+                        let __old_len = unsafe { *__ptr.add(__off) } as usize;
+                        // SAFETY: #name is #[repr(transparent)] over AccountView.
+                        let __view = unsafe { &mut *(self as *mut Self as *mut AccountView) };
+                        quasar_lang::pod_dynamic::pod_field_rewrite(
+                            __view, __off, 1, __old_len,
+                            &[value.len() as u8],
+                            value.as_bytes(),
+                            payer, rent_lpb, rent_threshold,
+                        )
+                    }
+                },
+                PodDynField::Vec { elem, max } => quote! {
+                    pub fn #setter_name(
+                        &mut self,
+                        values: &[#elem],
+                        payer: &AccountView,
+                        rent_lpb: u64,
+                        rent_threshold: u64,
+                    ) -> Result<(), ProgramError> {
+                        if values.len() > #max {
+                            return Err(QuasarError::DynamicFieldTooLong.into());
+                        }
+                        let __ptr = self.__view.data_ptr();
+                        let mut __off = #dyn_start;
+                        #(#walk_stmts)*
+                        let __old_count = u16::from_le_bytes(unsafe {
+                            [*__ptr.add(__off), *__ptr.add(__off + 1)]
+                        }) as usize;
+                        let __old_bytes = __old_count * core::mem::size_of::<#elem>();
+                        let __new_bytes = values.len() * core::mem::size_of::<#elem>();
+                        // SAFETY: #name is #[repr(transparent)] over AccountView.
+                        let __view = unsafe { &mut *(self as *mut Self as *mut AccountView) };
+                        quasar_lang::pod_dynamic::pod_field_rewrite(
+                            __view, __off, 2, __old_bytes,
+                            &(values.len() as u16).to_le_bytes(),
+                            unsafe { core::slice::from_raw_parts(values.as_ptr() as *const u8, __new_bytes) },
+                            payer, rent_lpb, rent_threshold,
+                        )
+                    }
+                },
+            }
+        })
+        .collect();
+
+    // =========================================================================
+    // set_inner — differs between fixed and dynamic
+    // =========================================================================
 
     let set_inner_impl = if gen_set_inner {
-        quote! {
-            #vis struct #inner_name {
-                #(pub #field_names: #field_types,)*
-            }
+        if has_dynamic {
+            // Dynamic set_inner: takes payer + rent args, handles realloc
+            let inner_name = format_ident!("{}Inner", name);
 
-            impl #name {
-                #[inline(always)]
-                pub fn set_inner(&mut self, inner: #inner_name) {
-                    let __zc = unsafe { &mut *(self.__view.data_mut_ptr().add(#disc_len) as *mut #zc_mod::#zc_name) };
-                    #(let #field_names = inner.#field_names;)*
-                    #(#set_inner_stmts)*
+            let inner_fields: Vec<proc_macro2::TokenStream> = field_infos
+                .iter()
+                .map(|fi| {
+                    let fname = fi.field.ident.as_ref().unwrap();
+                    match &fi.pod_dyn {
+                        None => {
+                            let fty = &fi.field.ty;
+                            quote! { pub #fname: #fty }
+                        }
+                        Some(PodDynField::Str { .. }) => quote! { pub #fname: &'a str },
+                        Some(PodDynField::Vec { elem, .. }) => quote! { pub #fname: &'a [#elem] },
+                    }
+                })
+                .collect();
+
+            let max_checks: Vec<proc_macro2::TokenStream> = field_infos
+                .iter()
+                .filter_map(|fi| {
+                    let fname = fi.field.ident.as_ref().unwrap();
+                    match &fi.pod_dyn {
+                        Some(PodDynField::Str { max }) => Some(quote! {
+                            if #fname.len() > #max { return Err(QuasarError::DynamicFieldTooLong.into()); }
+                        }),
+                        Some(PodDynField::Vec { max, .. }) => Some(quote! {
+                            if #fname.len() > #max { return Err(QuasarError::DynamicFieldTooLong.into()); }
+                        }),
+                        None => None,
+                    }
+                })
+                .collect();
+
+            let space_terms: Vec<proc_macro2::TokenStream> = field_infos
+                .iter()
+                .filter_map(|fi| {
+                    let fname = fi.field.ident.as_ref().unwrap();
+                    match &fi.pod_dyn {
+                        Some(PodDynField::Str { .. }) => Some(quote! { + #fname.len() }),
+                        Some(PodDynField::Vec { elem, .. }) => Some(quote! {
+                            + #fname.len() * core::mem::size_of::<#elem>()
+                        }),
+                        None => None,
+                    }
+                })
+                .collect();
+
+            let zc_header_stmts: Vec<proc_macro2::TokenStream> = field_infos
+                .iter()
+                .filter(|fi| fi.pod_dyn.is_none())
+                .map(|fi| zc_assign_from_value(fi.field.ident.as_ref().unwrap(), &fi.field.ty))
+                .collect();
+
+            let var_write_stmts: Vec<proc_macro2::TokenStream> = field_infos
+                .iter()
+                .filter_map(|fi| {
+                    let fname = fi.field.ident.as_ref().unwrap();
+                    match &fi.pod_dyn {
+                        Some(PodDynField::Str { .. }) => Some(quote! {
+                            {
+                                __data[__offset] = #fname.len() as u8;
+                                __offset += 1;
+                                __data[__offset..__offset + #fname.len()].copy_from_slice(#fname.as_bytes());
+                                __offset += #fname.len();
+                            }
+                        }),
+                        Some(PodDynField::Vec { elem, .. }) => Some(quote! {
+                            {
+                                let __count_bytes = (#fname.len() as u16).to_le_bytes();
+                                __data[__offset] = __count_bytes[0];
+                                __data[__offset + 1] = __count_bytes[1];
+                                __offset += 2;
+                                let __bytes = #fname.len() * core::mem::size_of::<#elem>();
+                                if __bytes > 0 {
+                                    unsafe {
+                                        core::ptr::copy_nonoverlapping(
+                                            #fname.as_ptr() as *const u8,
+                                            __data[__offset..].as_mut_ptr(),
+                                            __bytes,
+                                        );
+                                    }
+                                }
+                                __offset += __bytes;
+                            }
+                        }),
+                        None => None,
+                    }
+                })
+                .collect();
+
+            let init_field_names: Vec<&syn::Ident> = field_infos
+                .iter()
+                .map(|fi| fi.field.ident.as_ref().unwrap())
+                .collect();
+
+            quote! {
+                #vis struct #inner_name<'a> {
+                    #(#inner_fields,)*
+                }
+
+                impl #name {
+                    #[inline(always)]
+                    pub fn set_inner(&mut self, inner: #inner_name<'_>, payer: &AccountView, rent_lpb: u64, rent_threshold: u64) -> Result<(), ProgramError> {
+                        #(let #init_field_names = inner.#init_field_names;)*
+                        #(#max_checks)*
+
+                        let __space = Self::MIN_SPACE #(#space_terms)*;
+                        // SAFETY: #name is #[repr(transparent)] over AccountView.
+                            let __view = unsafe { &mut *(self as *mut Self as *mut AccountView) };
+
+                        if __space != __view.data_len() {
+                            quasar_lang::accounts::account::realloc_account_raw(__view, __space, payer, rent_lpb, rent_threshold)?;
+                        }
+
+                        // Derive __zc from raw pointer (not from __data slice) to avoid
+                        // overlapping &mut references (Stacked Borrows violation).
+                        let __ptr = __view.data_mut_ptr();
+                        let __zc = unsafe { &mut *(__ptr.add(#disc_len) as *mut #zc_name) };
+                        #(#zc_header_stmts)*
+                        let __dyn_start = #disc_len + core::mem::size_of::<#zc_name>();
+                        let __len = __view.data_len();
+                        let __data = unsafe { core::slice::from_raw_parts_mut(__ptr.add(__dyn_start), __len - __dyn_start) };
+                        let mut __offset = 0usize;
+                        #(#var_write_stmts)*
+                        let _ = __offset;
+                        Ok(())
+                    }
+                }
+            }
+        } else {
+            // Fixed set_inner: simple field assignment, no realloc
+            let inner_name = format_ident!("{}Inner", name);
+            let field_names: Vec<_> = field_infos.iter().map(|fi| &fi.field.ident).collect();
+            let field_types: Vec<_> = field_infos.iter().map(|fi| &fi.field.ty).collect();
+
+            let set_inner_stmts: Vec<proc_macro2::TokenStream> = field_infos
+                .iter()
+                .map(|fi| {
+                    zc_assign_from_value(
+                        fi.field.ident.as_ref().expect("field must have an identifier"),
+                        &fi.field.ty,
+                    )
+                })
+                .collect();
+
+            quote! {
+                #vis struct #inner_name {
+                    #(pub #field_names: #field_types,)*
+                }
+
+                impl #name {
+                    #[inline(always)]
+                    pub fn set_inner(&mut self, inner: #inner_name) {
+                        let __zc = unsafe { &mut *(self.__view.data_mut_ptr().add(#disc_len) as *mut #zc_path) };
+                        #(let #field_names = inner.#field_names;)*
+                        #(#set_inner_stmts)*
+                    }
                 }
             }
         }
@@ -74,24 +464,149 @@ pub(super) fn generate_fixed_account(
         quote! {}
     };
 
-    let bump_offset_impl = if has_bump_u8 {
+    // =========================================================================
+    // Space impl — fixed vs dynamic
+    // =========================================================================
+
+    let space_impl = if has_dynamic {
+        // For dynamic accounts, Space::SPACE = MIN_SPACE (disc + ZC header + prefix sizes)
         quote! {
-            const BUMP_OFFSET: Option<usize> = Some(
-                #disc_len + core::mem::offset_of!(#zc_mod::#zc_name, bump)
+            impl Space for #name {
+                const SPACE: usize = #disc_len + core::mem::size_of::<#zc_path>() + #prefix_total;
+            }
+        }
+    } else {
+        let field_types: Vec<_> = field_infos.iter().map(|fi| &fi.field.ty).collect();
+        quote! {
+            impl Space for #name {
+                const SPACE: usize = #disc_len #(+ core::mem::size_of::<#field_types>())*;
+            }
+        }
+    };
+
+    // =========================================================================
+    // AccountCheck impl — fixed vs dynamic
+    // =========================================================================
+
+    let account_check_impl = if has_dynamic {
+        quote! {
+            impl AccountCheck for #name {
+                #[inline(always)]
+                fn check(view: &AccountView) -> Result<(), ProgramError> {
+                    let __data = unsafe { view.borrow_unchecked() };
+                    let __data_len = __data.len();
+                    let __min = #disc_len + core::mem::size_of::<#zc_path>() + #prefix_total;
+                    if __data_len < __min {
+                        return Err(ProgramError::AccountDataTooSmall);
+                    }
+                    #(
+                        if unsafe { *__data.get_unchecked(#disc_indices) } != #disc_bytes {
+                            return Err(ProgramError::InvalidAccountData);
+                        }
+                    )*
+                    let mut __offset = #disc_len + core::mem::size_of::<#zc_path>();
+                    #(#validation_stmts)*
+                    let _ = __offset;
+                    Ok(())
+                }
+            }
+        }
+    } else {
+        quote! {
+            impl AccountCheck for #name {
+                #[inline(always)]
+                fn check(view: &AccountView) -> Result<(), ProgramError> {
+                    let __data = unsafe { view.borrow_unchecked() };
+                    if __data.len() < #disc_len + core::mem::size_of::<#zc_path>() {
+                        return Err(ProgramError::AccountDataTooSmall);
+                    }
+                    #(
+                        if unsafe { *__data.get_unchecked(#disc_indices) } != #disc_bytes {
+                            return Err(ProgramError::InvalidAccountData);
+                        }
+                    )*
+                    Ok(())
+                }
+            }
+        }
+    };
+
+    // =========================================================================
+    // ZC struct definition — fixed uses hidden module, dynamic is public
+    // =========================================================================
+
+    let zc_definition = if has_dynamic {
+        quote! {
+            #[repr(C)]
+            #[derive(Copy, Clone)]
+            pub struct #zc_name {
+                #(#zc_fields,)*
+            }
+
+            const _: () = assert!(
+                core::mem::align_of::<#zc_name>() == 1,
+                "ZC companion struct must have alignment 1"
             );
+
+            #(#align_asserts)*
+
+            // SAFETY: #name is #[repr(transparent)] over AccountView.
+            // This assertion guards the pointer cast in write methods.
+            const _: () = assert!(
+                core::mem::size_of::<#name>() == core::mem::size_of::<AccountView>(),
+                "Pod-dynamic struct must be #[repr(transparent)] over AccountView"
+            );
+        }
+    } else {
+        quote! {
+            #[doc(hidden)]
+            pub mod #zc_mod {
+                use super::*;
+
+                #[repr(C)]
+                #[derive(Copy, Clone)]
+                pub struct #zc_name {
+                    #(#zc_fields,)*
+                }
+
+                const _: () = assert!(
+                    core::mem::align_of::<#zc_name>() == 1,
+                    "ZC companion struct must have alignment 1; all fields must use Pod types or alignment-1 types"
+                );
+            }
+        }
+    };
+
+    // =========================================================================
+    // Dynamic-only: MIN_SPACE/MAX_SPACE constants + accessors + setters
+    // =========================================================================
+
+    let dynamic_impl_block = if has_dynamic {
+        quote! {
+            impl #name {
+                pub const MIN_SPACE: usize = #disc_len + core::mem::size_of::<#zc_path>() + #prefix_total;
+                pub const MAX_SPACE: usize = Self::MIN_SPACE #(#max_space_terms)*;
+
+                #(#read_accessors)*
+                #(#write_methods)*
+            }
         }
     } else {
         quote! {}
     };
 
-    quote! {
-        // --- View type: repr(transparent) over AccountView ---
+    // =========================================================================
+    // Combine everything
+    // =========================================================================
 
+    quote! {
         #(#attrs)*
         #[repr(transparent)]
         #vis struct #name {
             __view: AccountView,
         }
+
+        #zc_definition
 
         unsafe impl StaticView for #name {}
 
@@ -103,18 +618,18 @@ pub(super) fn generate_fixed_account(
         }
 
         impl core::ops::Deref for #name {
-            type Target = #zc_mod::#zc_name;
+            type Target = #zc_path;
 
             #[inline(always)]
             fn deref(&self) -> &Self::Target {
-                unsafe { &*(self.__view.data_ptr().add(#disc_len) as *const #zc_mod::#zc_name) }
+                unsafe { &*(self.__view.data_ptr().add(#disc_len) as *const #zc_path) }
             }
         }
 
         impl core::ops::DerefMut for #name {
             #[inline(always)]
             fn deref_mut(&mut self) -> &mut Self::Target {
-                unsafe { &mut *(self.__view.data_mut_ptr().add(#disc_len) as *mut #zc_mod::#zc_name) }
+                unsafe { &mut *(self.__view.data_mut_ptr().add(#disc_len) as *mut #zc_path) }
             }
         }
 
@@ -123,52 +638,17 @@ pub(super) fn generate_fixed_account(
             #bump_offset_impl
         }
 
-        impl Space for #name {
-            const SPACE: usize = #disc_len #(+ core::mem::size_of::<#field_types>())*;
-        }
-
         impl Owner for #name {
             const OWNER: Address = crate::ID;
         }
 
-        impl AccountCheck for #name {
-            #[inline(always)]
-            fn check(view: &AccountView) -> Result<(), ProgramError> {
-                let __data = unsafe { view.borrow_unchecked() };
-                if __data.len() < #disc_len + core::mem::size_of::<#zc_mod::#zc_name>() {
-                    return Err(ProgramError::AccountDataTooSmall);
-                }
-                #(
-                    if unsafe { *__data.get_unchecked(#disc_indices) } != #disc_bytes {
-                        return Err(ProgramError::InvalidAccountData);
-                    }
-                )*
-                Ok(())
-            }
-        }
+        #space_impl
 
-        // --- ZC companion struct (hidden module — not importable as state::EscrowZc) ---
+        #account_check_impl
 
-        #[doc(hidden)]
-        pub mod #zc_mod {
-            use super::*;
-
-            #[repr(C)]
-            #[derive(Copy, Clone)]
-            pub struct #zc_name {
-                #(#zc_fields,)*
-            }
-
-            const _: () = assert!(
-                core::mem::align_of::<#zc_name>() == 1,
-                "ZC companion struct must have alignment 1; all fields must use Pod types or alignment-1 types"
-            );
-        }
-
-        // --- set_inner (opt-in via #[account(..., set_inner)]) ---
+        #dynamic_impl_block
 
         #set_inner_impl
-
     }
     .into()
 }

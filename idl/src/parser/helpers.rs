@@ -1,7 +1,7 @@
 //! Shared helpers for IDL parsing: type mapping, name conversion, and
 //! dynamic field classification.
 
-use crate::types::{IdlDynString, IdlDynVec, IdlTail, IdlType};
+use crate::types::{IdlDynString, IdlDynVec, IdlType};
 
 /// Convert `snake_case` to `camelCase`.
 pub fn to_camel_case(s: &str) -> String {
@@ -44,36 +44,6 @@ pub fn map_type(rust_type: &str) -> IdlType {
 ///
 /// Falls back to `simple_type_name + map_type` for everything else.
 pub fn map_type_from_syn(ty: &syn::Type) -> IdlType {
-    if let syn::Type::Reference(ref_ty) = ty {
-        match &*ref_ty.elem {
-            syn::Type::Path(type_path) => {
-                if let Some(seg) = type_path.path.segments.last() {
-                    if seg.ident == "str" && type_path.path.segments.len() == 1 {
-                        return IdlType::Tail {
-                            tail: IdlTail {
-                                element: "string".to_string(),
-                            },
-                        };
-                    }
-                }
-            }
-            syn::Type::Slice(slice_ty) => {
-                if let syn::Type::Path(type_path) = &*slice_ty.elem {
-                    if let Some(seg) = type_path.path.segments.last() {
-                        if seg.ident == "u8" && type_path.path.segments.len() == 1 {
-                            return IdlType::Tail {
-                                tail: IdlTail {
-                                    element: "bytes".to_string(),
-                                },
-                            };
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
     let inner = match ty {
         syn::Type::Reference(r) => &*r.elem,
         other => other,

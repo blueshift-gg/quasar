@@ -27,7 +27,6 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     let used = collect_used_codecs(idl);
     let has_dyn_string = used.contains("dynString");
     let has_dyn_vec = used.contains("dynVec");
-    let has_tail = used.contains("tail");
     let has_instructions = !idl.instructions.is_empty();
     let has_public_key = used.contains("publicKey");
 
@@ -112,10 +111,6 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     let has_fixed_array = used.iter().any(|u| u.starts_with('['));
     if has_fixed_array {
         codec_imports.extend_from_slice(&["fixCodecSize", "getBytesCodec"]);
-    }
-
-    if has_tail {
-        codec_imports.push("getBytesCodec");
     }
 
     if has_dyn_string {
@@ -827,10 +822,6 @@ fn ts_type(ty: &IdlType) -> String {
         IdlType::Defined { defined } => defined.clone(),
         IdlType::DynString { .. } => "string".to_string(),
         IdlType::DynVec { vec } => format!("Array<{}>", ts_type(&vec.items)),
-        IdlType::Tail { tail } => match tail.element.as_str() {
-            "string" => "string".to_string(),
-            _ => "Uint8Array".to_string(),
-        },
     }
 }
 
@@ -872,10 +863,6 @@ fn ts_codec(ty: &IdlType, target: TsTarget) -> String {
                 prefix_codec(vec.prefix_bytes)
             )
         }
-        IdlType::Tail { tail } => match tail.element.as_str() {
-            "string" => "getUtf8Codec()".to_string(),
-            _ => "getBytesCodec()".to_string(),
-        },
     }
 }
 
@@ -912,9 +899,6 @@ fn collect_used_codecs(idl: &Idl) -> HashSet<String> {
         IdlType::DynVec { vec } => {
             used.insert("dynVec".to_string());
             used.insert(prefix_int_type(vec.prefix_bytes).to_string());
-        }
-        IdlType::Tail { .. } => {
-            used.insert("tail".to_string());
         }
     };
 

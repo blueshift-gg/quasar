@@ -29,14 +29,14 @@ pub fn generate_python_client(idl: &Idl) -> String {
         ix.args.iter().any(|a| {
             matches!(
                 a.ty,
-                IdlType::DynString { .. } | IdlType::DynVec { .. } | IdlType::Tail { .. }
+                IdlType::DynString { .. } | IdlType::DynVec { .. }
             )
         })
     }) || idl.types.iter().any(|t| {
         t.ty.fields.iter().any(|f| {
             matches!(
                 f.ty,
-                IdlType::DynString { .. } | IdlType::DynVec { .. } | IdlType::Tail { .. }
+                IdlType::DynString { .. } | IdlType::DynVec { .. }
             )
         })
     });
@@ -355,7 +355,6 @@ fn python_type(ty: &IdlType) -> String {
         IdlType::DynString { .. } => "str".to_string(),
         IdlType::DynVec { .. } => "list".to_string(),
         IdlType::Defined { defined } => defined.clone(),
-        IdlType::Tail { .. } => "bytes".to_string(),
     }
 }
 
@@ -432,9 +431,6 @@ fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef]) -> Strin
             } else {
                 format!("    data += input.{}  # unknown type\n", name)
             }
-        }
-        IdlType::Tail { .. } => {
-            format!("    data += input.{}\n", name)
         }
     }
 }
@@ -572,11 +568,6 @@ fn decode_field_expr(name: &str, ty: &IdlType, indent: usize, types: &[IdlTypeDe
                 )
             }
         }
-        IdlType::Tail { .. } => format!(
-            "{pad}{n} = data[offset:]  # remaining bytes\n",
-            pad = pad,
-            n = name,
-        ),
     }
 }
 

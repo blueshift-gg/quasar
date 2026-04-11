@@ -324,7 +324,6 @@ fn go_type(ty: &IdlType) -> String {
         IdlType::DynString { .. } => "string".to_string(),
         IdlType::DynVec { .. } => "[]byte".to_string(),
         IdlType::Defined { defined } => defined.clone(),
-        IdlType::Tail { .. } => "[]byte".to_string(),
     }
 }
 
@@ -463,9 +462,6 @@ fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef]) -> Strin
                 n = name,
             ),
         },
-        IdlType::Tail { .. } => {
-            format!("\tdata = append(data, input.{}...)\n", name,)
-        }
     }
 }
 
@@ -632,11 +628,6 @@ fn decode_field_expr(name: &str, ty: &IdlType, depth: usize, types: &[IdlTypeDef
                 n = name,
             ),
         },
-        IdlType::Tail { .. } => format!(
-            "{t}{n} := data[offset:] // remaining bytes\n{t}_ = {n}\n",
-            t = t,
-            n = name,
-        ),
     }
 }
 

@@ -3,7 +3,6 @@
 //! methods for on-chain account types.
 
 mod fixed;
-mod pod_dynamic;
 pub mod seeds;
 
 use {
@@ -67,9 +66,9 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
-    // --- Classify fields: String<N>/PodString<N> → PodDynField::Str,
-    //     Vec<T,N>/PodVec<T,N> → PodDynField::Vec, everything else → fixed ---
-    let pod_field_infos: Vec<pod_dynamic::PodFieldInfo<'_>> = fields_data
+    // --- Classify fields: String<N>/PodString<N> -> PodDynField::Str,
+    //     Vec<T,N>/PodVec<T,N> -> PodDynField::Vec, everything else -> fixed ---
+    let pod_field_infos: Vec<fixed::PodFieldInfo<'_>> = fields_data
         .iter()
         .map(|f| {
             let pod_dyn = if let Some(max) = classify_pod_string(&f.ty) {
@@ -82,7 +81,7 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
             } else {
                 None
             };
-            pod_dynamic::PodFieldInfo { field: f, pod_dyn }
+            fixed::PodFieldInfo { field: f, pod_dyn }
         })
         .collect();
 
@@ -110,29 +109,14 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
             .to_compile_error()
             .into();
         }
-
-        let mut output = pod_dynamic::generate_pod_dynamic_account(
-            name,
-            &disc_bytes,
-            disc_len,
-            &disc_indices,
-            &pod_field_infos,
-            &input,
-            gen_set_inner,
-        );
-        if let Some(seeds_tokens) = &seeds_impl {
-            output.extend(TokenStream::from(seeds_tokens.clone()));
-        }
-        return output;
     }
 
-    // All fixed fields — generate fixed account
-    let mut output = fixed::generate_fixed_account(
+    let mut output = fixed::generate_account(
         name,
         &disc_bytes,
         disc_len,
         &disc_indices,
-        fields_data,
+        &pod_field_infos,
         &input,
         gen_set_inner,
     );

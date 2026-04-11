@@ -95,7 +95,7 @@ pub mod client;
 pub mod context;
 /// Const-generic cross-program invocation with stack-allocated account arrays.
 pub mod cpi;
-/// Marker types for dynamic fields (`String<P, N>`, `Vec<T, P, N>`) and codec
+/// Marker types for dynamic fields (`String<N>`, `Vec<T, N>`) and codec
 /// helpers.
 pub mod dynamic;
 /// Runtime helpers for Pod-based dynamic account fields (`PodString`, `PodVec`).

@@ -189,7 +189,6 @@ fn emit_instructions(
     // (ProgramInstruction enum + decode_instruction use these types)
     let mut needs_dyn_bytes = false;
     let mut needs_dyn_vec = false;
-    let mut needs_tail_bytes = false;
     let mut needs_address = false;
     for ix in &parsed.instructions {
         for (_, ty) in &ix.args {
@@ -198,19 +197,13 @@ fn emit_instructions(
                 &idl_ty,
                 &mut needs_dyn_bytes,
                 &mut needs_dyn_vec,
-                &mut needs_tail_bytes,
             );
             if field_needs_address(&idl_ty) {
                 needs_address = true;
             }
         }
     }
-    emit_wrapper_imports(
-        &mut mod_rs,
-        needs_dyn_bytes,
-        needs_dyn_vec,
-        needs_tail_bytes,
-    );
+    emit_wrapper_imports(&mut mod_rs, needs_dyn_bytes, needs_dyn_vec);
     if needs_address {
         mod_rs.push_str("use solana_address::Address;\n");
     }
@@ -391,16 +384,10 @@ fn emit_single_instruction(
     // Check if this instruction needs wrapper imports
     let mut needs_dyn_bytes = false;
     let mut needs_dyn_vec = false;
-    let mut needs_tail_bytes = false;
     for arg_ty in &arg_types {
-        collect_wrapper_needs(
-            arg_ty,
-            &mut needs_dyn_bytes,
-            &mut needs_dyn_vec,
-            &mut needs_tail_bytes,
-        );
+        collect_wrapper_needs(arg_ty, &mut needs_dyn_bytes, &mut needs_dyn_vec);
     }
-    emit_wrapper_imports(&mut out, needs_dyn_bytes, needs_dyn_vec, needs_tail_bytes);
+    emit_wrapper_imports(&mut out, needs_dyn_bytes, needs_dyn_vec);
 
     // Check if this instruction references any defined types
     for arg_ty in &arg_types {
@@ -602,15 +589,9 @@ fn emit_single_state_account(
     let mut needs_address = false;
     let mut needs_dyn_bytes = false;
     let mut needs_dyn_vec = false;
-    let mut needs_tail_bytes = false;
     for (_, ty) in &acc.fields {
         let idl_ty = helpers::map_type_from_syn(ty);
-        collect_wrapper_needs(
-            &idl_ty,
-            &mut needs_dyn_bytes,
-            &mut needs_dyn_vec,
-            &mut needs_tail_bytes,
-        );
+        collect_wrapper_needs(&idl_ty, &mut needs_dyn_bytes, &mut needs_dyn_vec);
         if field_needs_address(&idl_ty) {
             needs_address = true;
         }
@@ -619,7 +600,7 @@ fn emit_single_state_account(
     if needs_address {
         out.push_str("use solana_address::Address;\n");
     }
-    emit_wrapper_imports(&mut out, needs_dyn_bytes, needs_dyn_vec, needs_tail_bytes);
+    emit_wrapper_imports(&mut out, needs_dyn_bytes, needs_dyn_vec);
 
     out.push('\n');
 
@@ -763,15 +744,9 @@ fn emit_single_event(
     let mut needs_address = false;
     let mut needs_dyn_bytes = false;
     let mut needs_dyn_vec = false;
-    let mut needs_tail_bytes = false;
     for (_, ty) in &ev.fields {
         let idl_ty = helpers::map_type_from_syn(ty);
-        collect_wrapper_needs(
-            &idl_ty,
-            &mut needs_dyn_bytes,
-            &mut needs_dyn_vec,
-            &mut needs_tail_bytes,
-        );
+        collect_wrapper_needs(&idl_ty, &mut needs_dyn_bytes, &mut needs_dyn_vec);
         if field_needs_address(&idl_ty) {
             needs_address = true;
         }
@@ -780,7 +755,7 @@ fn emit_single_event(
     if needs_address {
         out.push_str("use solana_address::Address;\n");
     }
-    emit_wrapper_imports(&mut out, needs_dyn_bytes, needs_dyn_vec, needs_tail_bytes);
+    emit_wrapper_imports(&mut out, needs_dyn_bytes, needs_dyn_vec);
 
     out.push('\n');
 
@@ -851,14 +826,8 @@ fn emit_single_type(
     let mut needs_address = false;
     let mut needs_dyn_bytes = false;
     let mut needs_dyn_vec = false;
-    let mut needs_tail_bytes = false;
     for (_, fty) in fields {
-        collect_wrapper_needs(
-            fty,
-            &mut needs_dyn_bytes,
-            &mut needs_dyn_vec,
-            &mut needs_tail_bytes,
-        );
+        collect_wrapper_needs(fty, &mut needs_dyn_bytes, &mut needs_dyn_vec);
         if field_needs_address(fty) {
             needs_address = true;
         }
@@ -867,7 +836,7 @@ fn emit_single_type(
     if needs_address {
         out.push_str("use solana_address::Address;\n");
     }
-    emit_wrapper_imports(&mut out, needs_dyn_bytes, needs_dyn_vec, needs_tail_bytes);
+    emit_wrapper_imports(&mut out, needs_dyn_bytes, needs_dyn_vec);
 
     out.push('\n');
 
@@ -1162,7 +1131,7 @@ fn emit_manual_impls(
     let has_dynamic = raw_fields.iter().any(|(_, ty)| {
         matches!(
             helpers::map_type_from_syn(ty),
-            IdlType::DynString { .. } | IdlType::DynVec { .. } | IdlType::Tail { .. }
+            IdlType::DynString { .. } | IdlType::DynVec { .. }
         )
     });
 
@@ -1325,7 +1294,6 @@ fn rust_field_type(ty: &IdlType) -> String {
             }
         }
         IdlType::Defined { defined } => defined.clone(),
-        IdlType::Tail { .. } => "TailBytes".to_string(),
     }
 }
 
@@ -1356,20 +1324,18 @@ fn collect_defined_refs(ty: &IdlType, out: &mut std::collections::BTreeSet<Strin
     }
 }
 
-/// Scan an IdlType for wrapper type usage (DynBytes, DynVec, TailBytes).
+/// Scan an IdlType for wrapper type usage (DynBytes, DynVec).
 fn collect_wrapper_needs(
     ty: &IdlType,
     needs_dyn_bytes: &mut bool,
     needs_dyn_vec: &mut bool,
-    needs_tail_bytes: &mut bool,
 ) {
     match ty {
         IdlType::DynString { .. } => *needs_dyn_bytes = true,
         IdlType::DynVec { vec } => {
             *needs_dyn_vec = true;
-            collect_wrapper_needs(&vec.items, needs_dyn_bytes, needs_dyn_vec, needs_tail_bytes);
+            collect_wrapper_needs(&vec.items, needs_dyn_bytes, needs_dyn_vec);
         }
-        IdlType::Tail { .. } => *needs_tail_bytes = true,
         _ => {}
     }
 }
@@ -1436,21 +1402,13 @@ fn field_needs_address(ty: &IdlType) -> bool {
 }
 
 /// Emit `use quasar_lang::client::{...};` for wrapper types.
-fn emit_wrapper_imports(
-    out: &mut String,
-    needs_dyn_bytes: bool,
-    needs_dyn_vec: bool,
-    needs_tail_bytes: bool,
-) {
+fn emit_wrapper_imports(out: &mut String, needs_dyn_bytes: bool, needs_dyn_vec: bool) {
     let mut wrappers = Vec::new();
     if needs_dyn_bytes {
         wrappers.push("DynBytes");
     }
     if needs_dyn_vec {
         wrappers.push("DynVec");
-    }
-    if needs_tail_bytes {
-        wrappers.push("TailBytes");
     }
     if !wrappers.is_empty() {
         writeln!(out, "use quasar_lang::client::{{{}}};", wrappers.join(", "))

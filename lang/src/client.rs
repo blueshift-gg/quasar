@@ -7,7 +7,6 @@
 //! |------|-------------|
 //! | [`DynBytes<P>`] | `P` LE length prefix + raw bytes (`P` defaults to `u32`) |
 //! | [`DynVec<T, P>`] | `P` LE count prefix + each item serialized |
-//! | [`TailBytes`] | raw bytes (no length prefix) |
 //!
 //! The prefix type `P` (u8, u16, or u32) must match the on-chain declaration.
 //! For example, `String<u8, 100>` on-chain requires `DynBytes<u8>` off-chain.
@@ -43,7 +42,7 @@ use {
 /// Fixed-size types (`u64`, `bool`, `Option<T>`, custom `QuasarSerialize`)
 /// go through `InstructionArg::to_zc()` → raw bytes, guaranteeing the wire
 /// format matches the on-chain zero-copy layout exactly. Dynamic types
-/// (`DynBytes`, `DynVec`, `TailBytes`) use wincode's standard encoding.
+/// (`DynBytes`, `DynVec`) use wincode's standard encoding.
 pub trait SerializeArg {
     fn serialize_arg(&self) -> Vec<u8>;
 }
@@ -185,47 +184,6 @@ where
 }
 
 // ---------------------------------------------------------------------------
-// TailBytes — unprefixed trailing bytes
-// ---------------------------------------------------------------------------
-
-/// Raw trailing bytes with no length prefix.
-///
-/// On write, emits the raw bytes. On read, consumes all remaining bytes
-/// from the reader. Useful for variable-length trailing data in instruction
-/// payloads.
-#[derive(Debug, Clone, PartialEq)]
-pub struct TailBytes(pub Vec<u8>);
-
-unsafe impl<C: ConfigCore> SchemaWrite<C> for TailBytes {
-    type Src = Self;
-
-    fn size_of(src: &Self) -> WriteResult<usize> {
-        Ok(src.0.len())
-    }
-
-    fn write(mut writer: impl Writer, src: &Self) -> WriteResult<()> {
-        writer.write(&src.0)?;
-        Ok(())
-    }
-}
-
-unsafe impl<'de, C: ConfigCore> SchemaRead<'de, C> for TailBytes {
-    type Dst = Self;
-
-    fn read(mut reader: impl Reader<'de>, dst: &mut MaybeUninit<Self>) -> ReadResult<()> {
-        // Consume all remaining bytes one at a time. This is only used
-        // off-chain for instruction data deserialization, so the byte-at-a-time
-        // approach is acceptable.
-        let mut bytes = Vec::new();
-        while let Ok(b) = reader.take_byte() {
-            bytes.push(b);
-        }
-        dst.write(TailBytes(bytes));
-        Ok(())
-    }
-}
-
-// ---------------------------------------------------------------------------
 // SerializeArg impls for dynamic types (bypass InstructionArg blanket impl)
 // ---------------------------------------------------------------------------
 
@@ -245,12 +203,6 @@ where
 {
     fn serialize_arg(&self) -> Vec<u8> {
         wincode::serialize(self).expect("DynVec serialization")
-    }
-}
-
-impl SerializeArg for TailBytes {
-    fn serialize_arg(&self) -> Vec<u8> {
-        wincode::serialize(self).expect("TailBytes serialization")
     }
 }
 
@@ -430,22 +382,6 @@ mod tests {
     }
 
     // ===================================================================
-    // TailBytes — no prefix
-    // ===================================================================
-
-    #[test]
-    fn tail_bytes_wire_format() {
-        let wire = wincode::serialize(&TailBytes(vec![0xDE, 0xAD, 0xBE, 0xEF])).unwrap();
-        assert_eq!(wire, [0xDE, 0xAD, 0xBE, 0xEF]);
-    }
-
-    #[test]
-    fn tail_bytes_wire_empty() {
-        let wire = wincode::serialize(&TailBytes(vec![])).unwrap();
-        assert!(wire.is_empty());
-    }
-
-    // ===================================================================
     // Round-trip: serialize → deserialize = identity
     //
     // Exhaustive for every prefix width × element type combination.
@@ -557,14 +493,6 @@ mod tests {
         ]);
         let wire = wincode::serialize(&original).unwrap();
         let decoded: DynVec<solana_address::Address, u32> = wincode::deserialize(&wire).unwrap();
-        assert_eq!(decoded.0, original.0);
-    }
-
-    #[test]
-    fn tail_bytes_roundtrip() {
-        let original = TailBytes(vec![10, 20, 30]);
-        let wire = wincode::serialize(&original).unwrap();
-        let decoded: TailBytes = wincode::deserialize(&wire).unwrap();
         assert_eq!(decoded.0, original.0);
     }
 
