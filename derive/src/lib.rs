@@ -23,6 +23,7 @@ mod error_code;
 mod event;
 mod helpers;
 mod instruction;
+mod pda_precompute;
 mod program;
 mod serialize;
 

@@ -45,7 +45,55 @@ fn gen_bump_check(
     instruction_args: &Option<Vec<InstructionArg>>,
     bare_bump_pda_count: usize,
     seeds_syntax_label: &str,
+    raw_seed_exprs: Option<&[Expr]>,
 ) -> Result<proc_macro2::TokenStream, proc_macro::TokenStream> {
+    // --- Compile-time PDA precomputation ---
+    // When all seeds are byte literals and we can discover the program ID,
+    // emit const bump + const address to skip runtime derivation entirely.
+    if let Some(seed_exprs) = raw_seed_exprs {
+        if let Some(seed_bytes) = crate::pda_precompute::seeds_as_byte_literals(seed_exprs) {
+            if let Some(program_id) = crate::pda_precompute::discover_program_id() {
+                let seed_refs: Vec<&[u8]> = seed_bytes.iter().map(|v| v.as_slice()).collect();
+                if let Some((precomputed_bump, precomputed_addr)) =
+                    crate::pda_precompute::precompute_pda(&seed_refs, &program_id)
+                {
+                    let bump_lit = precomputed_bump;
+                    let addr_bytes = precomputed_addr;
+                    let addr_array: Vec<proc_macro2::TokenStream> =
+                        addr_bytes.iter().map(|b| quote! { #b }).collect();
+
+                    if is_init_field {
+                        // For init: emit const bump, skip find entirely.
+                        return Ok(quote! {
+                            {
+                                #bump_var = #bump_lit;
+                            }
+                        });
+                    } else {
+                        // For non-init: emit const address, use keys_eq instead
+                        // of verify_program_address.
+                        return Ok(quote! {
+                            {
+                                const __PRECOMPUTED_PDA: quasar_lang::prelude::Address =
+                                    quasar_lang::prelude::Address::new_from_array([#(#addr_array),*]);
+                                if !quasar_lang::keys_eq(&#addr_access, &__PRECOMPUTED_PDA) {
+                                    #[cfg(feature = "debug")]
+                                    quasar_lang::prelude::log(concat!(
+                                        "Account '", stringify!(#field_name),
+                                        "': PDA address mismatch (compile-time precomputed)"
+                                    ));
+                                    return Err(QuasarError::InvalidPda.into());
+                                }
+                                #bump_var = #bump_lit;
+                            }
+                        });
+                    }
+                }
+            }
+        }
+    }
+    // --- End precomputation; fall through to runtime paths ---
+
     match bump {
         Some(Some(bump_expr)) => Ok(quote! {
             {
@@ -881,6 +929,7 @@ pub(crate) fn process_fields(
                 instruction_args,
                 bare_bump_pda_count,
                 "seeds = [...]",
+                Some(seed_exprs),
             )?;
             target_checks.push(check);
 
@@ -1010,6 +1059,7 @@ pub(crate) fn process_fields(
                 instruction_args,
                 bare_bump_pda_count,
                 "seeds = Type::seeds(...)",
+                None, // typed seeds can't be precomputed at macro time
             )?;
             target_checks.push(check);
 
