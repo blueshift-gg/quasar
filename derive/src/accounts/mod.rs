@@ -4,6 +4,7 @@
 
 mod attrs;
 mod client;
+mod composition;
 mod constraint;
 mod field_kind;
 mod fields;

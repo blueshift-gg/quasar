@@ -2,13 +2,14 @@ use {
     super::{
         super::{
             attrs::{parse_field_attrs, AccountFieldAttrs},
+            composition::validate_composition,
             constraint::verify_all_directives_mapped,
-            field_kind::{debug_checked, debug_guard, strip_ref, FieldFlags, FieldKind},
+            field_kind::{debug_checked, debug_guard, strip_ref, FieldKind},
             init, InstructionArg,
         },
         support::{
             find_field_by_name, resolve_token_program_addr, resolve_token_program_field,
-            validate_field_attrs, DetectedFields, TokenProgramResolution,
+            DetectedFields, TokenProgramResolution,
         },
         CloseFieldInfo, CpiCloseInfo, ProcessedFields, SweepFieldInfo,
     },
@@ -458,13 +459,12 @@ pub(crate) fn process_fields(
 
         let is_optional = extract_generic_inner_type(&field.ty, "Option").is_some();
         let effective_ty = extract_generic_inner_type(&field.ty, "Option").unwrap_or(&field.ty);
-        let is_ref_mut = matches!(effective_ty, Type::Reference(r) if r.mutability.is_some());
+        let _is_ref_mut = matches!(effective_ty, Type::Reference(r) if r.mutability.is_some());
         let underlying_ty = strip_ref(effective_ty);
         let kind = FieldKind::classify(underlying_ty);
-        let flags = FieldFlags::compute(&kind, attrs, is_ref_mut);
         let is_dynamic = kind.is_dynamic();
 
-        validate_field_attrs(field, field_name, attrs, &kind, &flags)?;
+        validate_composition(field, field_name, attrs, &kind)?;
 
         let token_program_for_token = if attrs.token_mint.is_some()
             || attrs.sweep.is_some()
