@@ -216,23 +216,24 @@ fn gen_bump_check(
                         }
                     }
                 } else {
-                    // Non-Account type, non-init: use find_bump_for_address
-                    // (keys_eq) instead of based_try_find_program_address
-                    // (on-curve check). The account exists in the transaction
-                    // so hash-match ⟹ valid PDA.
+                    // Non-Account type (UncheckedAccount, Mint, TokenAccount, etc.):
+                    // must use based_try_find_program_address with on-curve check.
+                    // We can't skip the on-curve check because we didn't create these
+                    // accounts — only our own program's PDAs are guaranteed off-curve.
                     quote! {
                         {
                             #(#seed_len_checks)*
                             let __pda_seeds = [#(#seed_idents),*];
-                            #bump_var = quasar_lang::pda::find_bump_for_address(&__pda_seeds, __program_id, &#addr_access)
-                                .map_err(|__e| {
-                                    #[cfg(feature = "debug")]
-                                    quasar_lang::prelude::log(concat!(
-                                        "Account '", stringify!(#field_name),
-                                        "': PDA verification failed"
-                                    ));
-                                    QuasarError::InvalidPda
-                                })?;
+                            let (__expected, __bump) = quasar_lang::pda::based_try_find_program_address(&__pda_seeds, __program_id)?;
+                            if #addr_access != __expected {
+                                #[cfg(feature = "debug")]
+                                quasar_lang::prelude::log(concat!(
+                                    "Account '", stringify!(#field_name),
+                                    "': PDA verification failed"
+                                ));
+                                return Err(QuasarError::InvalidPda.into());
+                            }
+                            #bump_var = __bump;
                         }
                     }
                 }
