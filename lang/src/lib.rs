@@ -98,6 +98,8 @@ pub mod cpi;
 /// Marker types for dynamic fields (`String<P, N>`, `Vec<T, P, N>`) and codec
 /// helpers.
 pub mod dynamic;
+/// Runtime helpers for Pod-based dynamic account fields (`PodString`, `PodVec`).
+pub mod pod_dynamic;
 /// Program entrypoint macros (`dispatch!`, `no_alloc!`, `panic_handler!`).
 pub mod entrypoint;
 /// Framework error types.

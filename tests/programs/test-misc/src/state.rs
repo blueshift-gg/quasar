@@ -89,6 +89,15 @@ pub struct TailBytesAccount<'a> {
     pub data: &'a [u8],
 }
 
+/// Pod-dynamic account test — uses PodString/PodVec with dynamic sizing.
+#[account(discriminator = 10, set_inner)]
+pub struct PodDynamicAccount {
+    pub authority: Address,
+    pub bump: u8,
+    pub label: PodString<32>,
+    pub members: PodVec<Address, 10>,
+}
+
 /// Same shape as SimpleAccount but with a different seed prefix — for
 /// space-override test.
 #[account(discriminator = 1, set_inner)]

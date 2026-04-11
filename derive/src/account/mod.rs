@@ -5,12 +5,14 @@
 mod accessors;
 mod dynamic;
 mod fixed;
+mod pod_dynamic;
 pub mod seeds;
 
 use {
     crate::helpers::{
-        classify_dynamic_string, classify_dynamic_vec, classify_tail,
-        validate_discriminator_not_zero, validate_prefix_capacity, AccountAttr, DynKind,
+        classify_dynamic_string, classify_dynamic_vec, classify_pod_string, classify_pod_vec,
+        classify_tail, validate_discriminator_not_zero, validate_prefix_capacity, AccountAttr,
+        DynKind, PodDynField,
     },
     proc_macro::TokenStream,
     syn::{parse_macro_input, Data, DeriveInput, Fields},
@@ -93,6 +95,74 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 
     let has_dynamic = field_kinds.iter().any(|k| !matches!(k, DynKind::Fixed));
+
+    // --- Pod-dynamic detection: check for PodString<N> / PodVec<T, N> fields ---
+    let pod_field_infos: Vec<pod_dynamic::PodFieldInfo<'_>> = fields_data
+        .iter()
+        .map(|f| {
+            let pod_dyn = if let Some(max) = classify_pod_string(&f.ty) {
+                Some(PodDynField::Str { max })
+            } else if let Some((elem, max)) = classify_pod_vec(&f.ty) {
+                Some(PodDynField::Vec {
+                    elem: Box::new(elem),
+                    max,
+                })
+            } else {
+                None
+            };
+            pod_dynamic::PodFieldInfo { field: f, pod_dyn }
+        })
+        .collect();
+
+    let has_pod_dynamic = pod_field_infos.iter().any(|fi| fi.pod_dyn.is_some());
+
+    if has_pod_dynamic {
+        // Validate: cannot mix old String/Vec with PodString/PodVec
+        if has_dynamic {
+            return syn::Error::new_spanned(
+                name,
+                "cannot mix dynamic String/Vec fields with PodString/PodVec fields in the same struct",
+            )
+            .to_compile_error()
+            .into();
+        }
+        // Validate: fixed fields must precede Pod-dynamic fields
+        let first_pod_dyn = pod_field_infos.iter().position(|fi| fi.pod_dyn.is_some());
+        let last_fixed = pod_field_infos.iter().rposition(|fi| fi.pod_dyn.is_none());
+        if let (Some(fd), Some(lf)) = (first_pod_dyn, last_fixed) {
+            if lf > fd {
+                return syn::Error::new_spanned(
+                    &fields_data[lf],
+                    "fixed fields must precede all PodString/PodVec fields",
+                )
+                .to_compile_error()
+                .into();
+            }
+        }
+        if unsafe_no_disc {
+            return syn::Error::new_spanned(
+                name,
+                "unsafe_no_disc accounts cannot have PodString/PodVec fields",
+            )
+            .to_compile_error()
+            .into();
+        }
+
+        let mut output = pod_dynamic::generate_pod_dynamic_account(
+            name,
+            &disc_bytes,
+            disc_len,
+            &disc_indices,
+            fields_data,
+            &pod_field_infos,
+            &input,
+            gen_set_inner,
+        );
+        if let Some(seeds_tokens) = &seeds_impl {
+            output.extend(TokenStream::from(seeds_tokens.clone()));
+        }
+        return output;
+    }
 
     if unsafe_no_disc && has_dynamic {
         return syn::Error::new_spanned(

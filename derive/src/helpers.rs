@@ -755,6 +755,51 @@ pub(crate) fn classify_tail(ty: &Type) -> Option<TailElement> {
     None
 }
 
+// --- Pod dynamic field detection ---
+
+/// Classification of a Pod dynamic field.
+pub(crate) enum PodDynField {
+    /// `PodString<N>`: u8 prefix, max N bytes.
+    Str { max: usize },
+    /// `PodVec<T, N>`: PodU16 prefix, max N elements.
+    Vec { elem: Box<Type>, max: usize },
+}
+
+/// Classifies a type as `PodString<N>`. Returns `Some(max)`.
+pub(crate) fn classify_pod_string(ty: &Type) -> Option<usize> {
+    if let Type::Path(type_path) = ty {
+        if let Some(seg) = type_path.path.segments.last() {
+            if seg.ident == "PodString" && type_path.path.segments.len() == 1 {
+                if let PathArguments::AngleBracketed(args) = &seg.arguments {
+                    let mut iter = args.args.iter();
+                    return extract_const_usize(iter.next()?);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Classifies a type as `PodVec<T, N>`. Returns `Some((elem, max))`.
+pub(crate) fn classify_pod_vec(ty: &Type) -> Option<(Type, usize)> {
+    if let Type::Path(type_path) = ty {
+        if let Some(seg) = type_path.path.segments.last() {
+            if seg.ident == "PodVec" && type_path.path.segments.len() == 1 {
+                if let PathArguments::AngleBracketed(args) = &seg.arguments {
+                    let mut iter = args.args.iter();
+                    let elem = match iter.next()? {
+                        GenericArgument::Type(ty) => ty.clone(),
+                        _ => return None,
+                    };
+                    let max = extract_const_usize(iter.next()?)?;
+                    return Some((elem, max));
+                }
+            }
+        }
+    }
+    None
+}
+
 // --- Zc (zero-copy) companion struct helpers ---
 
 /// Maps a native integer type to its Pod companion (e.g., `u64` → `PodU64`).
