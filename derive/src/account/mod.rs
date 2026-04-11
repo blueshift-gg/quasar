@@ -153,7 +153,6 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
             &disc_bytes,
             disc_len,
             &disc_indices,
-            fields_data,
             &pod_field_infos,
             &input,
             gen_set_inner,

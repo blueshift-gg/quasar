@@ -160,23 +160,6 @@ impl<T: Copy, const N: usize> PodVec<T, N> {
         true
     }
 
-    /// Write a single element at `index` without updating `len`.
-    /// Returns `false` if `index >= N`.
-    ///
-    /// For incremental construction: call `write()` for each element,
-    /// then `set_len()` once. This avoids temporary stack buffers and
-    /// double copies.
-    #[inline(always)]
-    pub fn write(&mut self, index: usize, value: T) -> bool {
-        #[allow(clippy::let_unit_value)]
-        let _ = Self::_ALIGN_CHECK;
-        if index >= N {
-            return false;
-        }
-        self.data[index] = MaybeUninit::new(value);
-        true
-    }
-
     /// Push an element to the end. Returns `false` if the vector is full.
     #[inline(always)]
     pub fn push(&mut self, value: T) -> bool {
@@ -201,19 +184,6 @@ impl<T: Copy, const N: usize> PodVec<T, N> {
         let val = unsafe { self.data[new_len].assume_init() };
         self.len = PodU16::from(new_len as u16);
         Some(val)
-    }
-
-    /// Set the active length.
-    ///
-    /// # Safety
-    ///
-    /// Caller must ensure `data[..n]` has been initialized via `write()`
-    /// or `set_from_slice()` before any subsequent `as_slice()` call.
-    /// `n` must be `<= N`.
-    #[inline(always)]
-    pub unsafe fn set_len(&mut self, n: usize) {
-        debug_assert!(n <= N, "PodVec::set_len: length exceeds capacity");
-        self.len = PodU16::from(n as u16);
     }
 
     /// Remove element at `index` by swapping with the last element.
@@ -415,24 +385,6 @@ mod tests {
         assert_eq!(v.pop(), Some(10));
         assert_eq!(v.pop(), None);
         assert!(v.is_empty());
-    }
-
-    #[test]
-    fn incremental_write_then_set_len() {
-        let mut v = PodVec::<u8, 10>::default();
-        assert!(v.write(0, 0xAA));
-        assert!(v.write(1, 0xBB));
-        assert!(v.write(2, 0xCC));
-        unsafe { v.set_len(3) };
-        assert_eq!(v.as_slice(), &[0xAA, 0xBB, 0xCC]);
-    }
-
-    #[test]
-    fn write_out_of_bounds_returns_false() {
-        let mut v = PodVec::<u8, 2>::default();
-        assert!(v.write(0, 1));
-        assert!(v.write(1, 2));
-        assert!(!v.write(2, 3));
     }
 
     #[test]

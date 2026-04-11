@@ -57,6 +57,8 @@ pub fn pod_field_rewrite(
 
         // SAFETY: `tail_start` and destination are within the (possibly
         // realloc'd) account buffer. `core::ptr::copy` handles overlap.
+        // SVM realloc is in-place (10KB realloc zone pre-allocated per account),
+        // so `view.data_mut_ptr()` returns the same base address after realloc.
         if tail_size > 0 {
             unsafe {
                 let ptr = view.data_mut_ptr();
@@ -82,9 +84,7 @@ pub fn pod_field_rewrite(
     unsafe {
         let ptr = view.data_mut_ptr().add(field_offset);
         core::ptr::copy_nonoverlapping(new_prefix.as_ptr(), ptr, prefix_bytes);
-        if new_data_bytes > 0 {
-            core::ptr::copy_nonoverlapping(new_data.as_ptr(), ptr.add(prefix_bytes), new_data_bytes);
-        }
+        core::ptr::copy_nonoverlapping(new_data.as_ptr(), ptr.add(prefix_bytes), new_data_bytes);
     }
 
     Ok(())

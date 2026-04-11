@@ -18,13 +18,11 @@ pub(super) struct PodFieldInfo<'a> {
     pub pod_dyn: Option<PodDynField>,
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn generate_pod_dynamic_account(
     name: &syn::Ident,
     disc_bytes: &[syn::LitInt],
     disc_len: usize,
     disc_indices: &[usize],
-    _fields_data: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
     field_infos: &[PodFieldInfo<'_>],
     input: &DeriveInput,
     gen_set_inner: bool,
@@ -120,6 +118,17 @@ pub(super) fn generate_pod_dynamic_account(
         })
         .sum();
 
+    // --- MAX_SPACE terms: max data per field ---
+    let max_space_terms: Vec<proc_macro2::TokenStream> = dyn_fields
+        .iter()
+        .map(|(_, pd)| match pd {
+            PodDynField::Str { max } => quote! { + #max },
+            PodDynField::Vec { elem, max } => {
+                quote! { + #max * core::mem::size_of::<#elem>() }
+            }
+        })
+        .collect();
+
     // --- Walk codegen: for each dynamic field, generate the skip-past expr ---
     // Each accessor for field N walks past fields 0..N-1 from the dynamic start.
     let dyn_start = quote! { #disc_len + core::mem::size_of::<#zc_name>() };
@@ -207,6 +216,7 @@ pub(super) fn generate_pod_dynamic_account(
                         let mut __off = #dyn_start;
                         #(#walk_stmts)*
                         let __old_len = unsafe { *__ptr.add(__off) } as usize;
+                        // SAFETY: #name is #[repr(transparent)] over AccountView.
                         let __view = unsafe { &mut *(self as *mut Self as *mut AccountView) };
                         quasar_lang::pod_dynamic::pod_field_rewrite(
                             __view, __off, 1, __old_len,
@@ -235,6 +245,7 @@ pub(super) fn generate_pod_dynamic_account(
                         }) as usize;
                         let __old_bytes = __old_count * core::mem::size_of::<#elem>();
                         let __new_bytes = values.len() * core::mem::size_of::<#elem>();
+                        // SAFETY: #name is #[repr(transparent)] over AccountView.
                         let __view = unsafe { &mut *(self as *mut Self as *mut AccountView) };
                         quasar_lang::pod_dynamic::pod_field_rewrite(
                             __view, __off, 2, __old_bytes,
@@ -358,17 +369,22 @@ pub(super) fn generate_pod_dynamic_account(
                     #(#max_checks)*
 
                     let __space = Self::MIN_SPACE #(#space_terms)*;
-                    let __view = unsafe { &mut *(self as *mut Self as *mut AccountView) };
+                    // SAFETY: #name is #[repr(transparent)] over AccountView.
+                        let __view = unsafe { &mut *(self as *mut Self as *mut AccountView) };
 
                     if __space != __view.data_len() {
                         quasar_lang::accounts::account::realloc_account_raw(__view, __space, payer, rent_lpb, rent_threshold)?;
                     }
 
-                    let __len = __view.data_len();
-                    let __data = unsafe { core::slice::from_raw_parts_mut(__view.data_mut_ptr(), __len) };
-                    let __zc = unsafe { &mut *(__data[#disc_len..].as_mut_ptr() as *mut #zc_name) };
+                    // Derive __zc from raw pointer (not from __data slice) to avoid
+                    // overlapping &mut references (Stacked Borrows violation).
+                    let __ptr = __view.data_mut_ptr();
+                    let __zc = unsafe { &mut *(__ptr.add(#disc_len) as *mut #zc_name) };
                     #(#zc_header_stmts)*
-                    let mut __offset = #disc_len + core::mem::size_of::<#zc_name>();
+                    let __dyn_start = #disc_len + core::mem::size_of::<#zc_name>();
+                    let __len = __view.data_len();
+                    let __data = unsafe { core::slice::from_raw_parts_mut(__ptr.add(__dyn_start), __len - __dyn_start) };
+                    let mut __offset = 0usize;
                     #(#var_write_stmts)*
                     let _ = __offset;
                     Ok(())
@@ -399,6 +415,13 @@ pub(super) fn generate_pod_dynamic_account(
         );
 
         #(#align_asserts)*
+
+        // SAFETY: #name is #[repr(transparent)] over AccountView.
+        // This assertion guards the pointer cast in write methods.
+        const _: () = assert!(
+            core::mem::size_of::<#name>() == core::mem::size_of::<AccountView>(),
+            "Pod-dynamic struct must be #[repr(transparent)] over AccountView"
+        );
 
         unsafe impl StaticView for #name {}
 
@@ -460,6 +483,7 @@ pub(super) fn generate_pod_dynamic_account(
 
         impl #name {
             pub const MIN_SPACE: usize = #disc_len + core::mem::size_of::<#zc_name>() + #prefix_total;
+            pub const MAX_SPACE: usize = Self::MIN_SPACE #(#max_space_terms)*;
 
             #(#read_accessors)*
             #(#write_methods)*
