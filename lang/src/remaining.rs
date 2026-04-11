@@ -178,15 +178,10 @@ impl<'a> RemainingAccounts<'a> {
     /// `MAX_REMAINING_ACCOUNTS` are accessed via the iterator.
     #[inline(always)]
     pub fn iter(&self) -> RemainingIter<'a> {
-        // Seed the bloom filter with declared account addresses for O(1)
-        // fast-reject in strict-mode duplicate detection.
-        let mut bloom = [0u64; 4];
-        if self.mode == RemainingMode::Strict {
-            for view in self.declared.iter() {
-                let (idx, bit) = bloom_hash(view.address());
-                bloom[idx] |= bit;
-            }
-        }
+        // Bloom filter starts empty — seeded lazily on first `next()` call.
+        // This avoids the O(declared.len()) seeding cost when the iterator
+        // is constructed but never consumed (e.g. early-return after
+        // `is_empty()` check).
         RemainingIter {
             ptr: self.ptr,
             boundary: self.boundary,
@@ -194,7 +189,8 @@ impl<'a> RemainingAccounts<'a> {
             mode: self.mode,
             index: 0,
             cache: core::mem::MaybeUninit::uninit(),
-            bloom,
+            bloom: [0u64; 4],
+            bloom_seeded: false,
         }
     }
 }
@@ -266,10 +262,15 @@ pub struct RemainingIter<'a> {
     /// Cache of yielded views. Elements `0..index` are initialized.
     cache: core::mem::MaybeUninit<[AccountView; MAX_REMAINING_ACCOUNTS]>,
     /// 256-bit bloom filter for fast-reject in `has_seen_address`. Seeded
-    /// with declared account addresses at construction; updated on each yield.
-    /// False positives fall through to the exact `keys_eq` scan; false
-    /// negatives are impossible (all inserted addresses set their bit).
+    /// lazily on first `next()` with declared account addresses, then updated
+    /// on each yield. False positives fall through to the exact `keys_eq`
+    /// scan; false negatives are impossible (all inserted addresses set
+    /// their bit).
     bloom: [u64; 4],
+    /// Whether the bloom filter has been seeded with declared accounts.
+    /// Lazy initialization avoids the O(declared.len()) seeding cost when
+    /// the iterator is never consumed.
+    bloom_seeded: bool,
 }
 
 /// Hash an address into a (bucket, bit) pair for the 256-bit bloom filter.
@@ -349,6 +350,20 @@ impl Iterator for RemainingIter<'_> {
         if crate::utils::hint::unlikely(self.index >= MAX_REMAINING_ACCOUNTS) {
             self.ptr = self.boundary as *mut u8;
             return Some(Err(QuasarError::RemainingAccountsOverflow.into()));
+        }
+
+        // Lazy bloom seeding: deferred from iter() to first next() call.
+        // Saves ~14 CU per declared account when the iterator is created
+        // but never consumed. The bool check is ~1 CU per subsequent call
+        // (branch-predicted after first call).
+        if !self.bloom_seeded {
+            if self.mode == RemainingMode::Strict {
+                for view in self.declared.iter() {
+                    let (idx, bit) = bloom_hash(view.address());
+                    self.bloom[idx] |= bit;
+                }
+            }
+            self.bloom_seeded = true;
         }
 
         let raw = self.ptr as *mut RuntimeAccount;
