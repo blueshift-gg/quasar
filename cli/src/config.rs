@@ -61,6 +61,7 @@ pub struct TypeScriptTestingConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct ClientsConfig {
+    pub path: PathBuf,
     pub languages: Vec<String>,
 }
 
@@ -114,6 +115,13 @@ impl QuasarConfig {
 
     pub fn lint_enabled(&self) -> bool {
         self.lint.as_ref().is_some_and(|l| l.enabled)
+    }
+
+    pub fn client_path(&self) -> PathBuf {
+        self.clients
+            .as_ref()
+            .map(|c| c.path.clone())
+            .unwrap_or(PathBuf::from("target").join("client"))
     }
 
     pub fn client_languages(&self) -> Vec<&str> {

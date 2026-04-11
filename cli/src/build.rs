@@ -37,11 +37,12 @@ pub fn run(debug: bool, watch: bool, features: Option<String>, lint: bool) -> Cl
 
 fn run_once(debug: bool, features: Option<&str>, lint_flag: bool) -> CliResult {
     let config = QuasarConfig::load()?;
+    let clients_path = config.client_path();
     let start = Instant::now();
 
     let languages = config.client_languages();
     let crate_root = utils::find_program_crate(&config);
-    let parsed = crate::idl::generate(&crate_root, &languages)?;
+    let parsed = crate::idl::generate(&crate_root, &languages, &clients_path)?;
 
     if lint_flag || config.lint_enabled() {
         crate::lint::run_lint_on_parsed(&parsed, &quasar_idl::lint::LintConfig::default())?;
@@ -166,11 +167,12 @@ fn run_once(debug: bool, features: Option<&str>, lint_flag: bool) -> CliResult {
 /// Copies the .so to target/profile/ and returns the path.
 pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
     let config = QuasarConfig::load()?;
+    let clients_path = config.client_path();
     let start = Instant::now();
 
     let languages = config.client_languages();
     let crate_root = utils::find_program_crate(&config);
-    let _parsed = crate::idl::generate(&crate_root, &languages)?;
+    let _parsed = crate::idl::generate(&crate_root, &languages, &clients_path)?;
 
     let sp = style::spinner("Profile build...");
 
