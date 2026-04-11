@@ -21,6 +21,12 @@
 
 #![no_std]
 
+pub mod string;
+pub mod vec;
+
+pub use string::PodString;
+pub use vec::PodVec;
+
 use core::fmt;
 #[cfg(feature = "wincode")]
 use wincode::{SchemaRead, SchemaWrite};

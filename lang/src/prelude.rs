@@ -27,7 +27,10 @@ pub use {
         error::QuasarError,
         instruction_arg::{InstructionArg, OptionZc},
         no_alloc, panic_handler,
-        pod::{PodBool, PodI128, PodI16, PodI32, PodI64, PodU128, PodU16, PodU32, PodU64},
+        pod::{
+            PodBool, PodI128, PodI16, PodI32, PodI64, PodString, PodU128, PodU16, PodU32,
+            PodU64, PodVec,
+        },
         require, require_eq, require_keys_eq,
         return_data::set_return_data,
         sysvars::{clock::Clock, rent::Rent},
