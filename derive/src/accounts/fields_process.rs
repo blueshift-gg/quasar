@@ -2,6 +2,7 @@ use {
     super::{
         super::{
             attrs::{parse_field_attrs, AccountFieldAttrs},
+            constraint::verify_all_directives_mapped,
             field_kind::{debug_checked, debug_guard, strip_ref, FieldFlags, FieldKind},
             init, InstructionArg,
         },
@@ -276,11 +277,20 @@ pub(crate) fn process_fields(
     instruction_args: &Option<Vec<InstructionArg>>,
     bumps_name: &Ident,
 ) -> Result<ProcessedFields, proc_macro::TokenStream> {
-    let field_attrs: Vec<AccountFieldAttrs> = fields
+    let parsed: Vec<super::super::attrs::ParsedAttrs> = fields
         .iter()
         .map(parse_field_attrs)
         .collect::<syn::Result<Vec<_>>>()
         .map_err(|e| -> proc_macro::TokenStream { e.to_compile_error().into() })?;
+
+    // Verify every directive variant has a known handler. This exhaustive
+    // match is the compiler-enforced completeness guarantee — adding a new
+    // AccountDirective variant without handling it here causes a compile error.
+    for p in &parsed {
+        verify_all_directives_mapped(&p.directives);
+    }
+
+    let field_attrs: Vec<AccountFieldAttrs> = parsed.into_iter().map(|p| p.attrs).collect();
 
     let bare_bump_pda_count = field_attrs
         .iter()
