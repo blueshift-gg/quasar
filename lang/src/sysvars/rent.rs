@@ -152,18 +152,27 @@ impl Rent {
 /// Compute the rent-exempt minimum balance from raw values.
 ///
 /// Standalone function for use in codegen where the full `Rent` struct
-/// is destructured into its `u64` components. Keeps overflow guards
-/// behind `unlikely()` for safety.
+/// is destructured into its `u64` components.
 #[inline(always)]
 pub fn minimum_balance_raw(
     lamports_per_byte: u64,
     threshold: u64,
     space: u64,
 ) -> Result<u64, ProgramError> {
-    let total_bytes = ACCOUNT_STORAGE_OVERHEAD + space;
-    if unlikely(total_bytes > MAX_PERMITTED_DATA_LENGTH + ACCOUNT_STORAGE_OVERHEAD) {
+    if unlikely(space > MAX_PERMITTED_DATA_LENGTH) {
         return Err(ProgramError::InvalidArgument);
     }
+    // Overflow guard: same check as try_minimum_balance.
+    if unlikely(lamports_per_byte > CURRENT_MAX_LAMPORTS_PER_BYTE) {
+        if threshold == CURRENT_EXEMPTION_THRESHOLD {
+            return Err(ProgramError::InvalidArgument);
+        }
+    } else if unlikely(lamports_per_byte > SIMD0194_MAX_LAMPORTS_PER_BYTE) {
+        if threshold == SIMD0194_EXEMPTION_THRESHOLD {
+            return Err(ProgramError::InvalidArgument);
+        }
+    }
+    let total_bytes = ACCOUNT_STORAGE_OVERHEAD + space;
     if threshold == SIMD0194_EXEMPTION_THRESHOLD {
         Ok(total_bytes * lamports_per_byte)
     } else {

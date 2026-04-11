@@ -112,45 +112,19 @@ pub fn realloc_account(
     payer: &AccountView,
     rent: Option<&crate::sysvars::rent::Rent>,
 ) -> Result<(), ProgramError> {
-    let rent_exempt_lamports = if let Some(r) = rent {
-        r.try_minimum_balance(new_space)?
+    let r = if let Some(r) = rent {
+        r.clone()
     } else {
         use crate::sysvars::Sysvar;
-        crate::sysvars::rent::Rent::get()?.try_minimum_balance(new_space)?
+        crate::sysvars::rent::Rent::get()?
     };
-
-    let current_lamports = view.lamports();
-
-    if rent_exempt_lamports > current_lamports {
-        crate::cpi::system::transfer(payer, &*view, rent_exempt_lamports - current_lamports)
-            .invoke()?;
-    } else if current_lamports > rent_exempt_lamports {
-        let excess = current_lamports - rent_exempt_lamports;
-        view.set_lamports(rent_exempt_lamports);
-        set_lamports(payer, payer.lamports() + excess);
-    }
-
-    let old_len = view.data_len();
-
-    // Zero trailing bytes on shrink — the runtime does not zero the realloc region.
-    if new_space < old_len {
-        // SAFETY: `data_mut_ptr()` is valid for `old_len` bytes. We zero
-        // the range `[new_space, old_len)` which is within the original allocation.
-        unsafe {
-            core::ptr::write_bytes(view.data_mut_ptr().add(new_space), 0, old_len - new_space);
-        }
-    }
-
-    resize(view, new_space)?;
-
-    Ok(())
+    realloc_account_raw(view, new_space, payer, r.lamports_per_byte(), r.exemption_threshold_raw())
 }
 
 /// Realloc an account using pre-extracted rent values.
 ///
-/// Like [`realloc_account`] but takes `(lamports_per_byte, threshold)` directly
-/// instead of an `Option<&Rent>`. Used by codegen when the rent sysvar has
-/// already been destructured into its u64 components.
+/// Takes `(lamports_per_byte, threshold)` directly instead of a `Rent` struct.
+/// This is the canonical implementation — [`realloc_account`] delegates here.
 #[inline(always)]
 pub fn realloc_account_raw(
     view: &mut AccountView,
@@ -175,7 +149,10 @@ pub fn realloc_account_raw(
 
     let old_len = view.data_len();
 
+    // Zero trailing bytes on shrink — the runtime does not zero the realloc region.
     if new_space < old_len {
+        // SAFETY: `data_mut_ptr()` is valid for `old_len` bytes. We zero
+        // the range `[new_space, old_len)` which is within the original allocation.
         unsafe {
             core::ptr::write_bytes(view.data_mut_ptr().add(new_space), 0, old_len - new_space);
         }
