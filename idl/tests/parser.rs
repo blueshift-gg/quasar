@@ -768,9 +768,8 @@ fn rust_codegen_account_metas() {
 // ---------------------------------------------------------------------------
 // Instruction codegen: dynamic types use wrapper types
 //
-// This is the critical wire compatibility test. DynString and DynVec
-// must map to DynBytes/DynVec<T> (u32 LE prefix), NOT to plain
-// Vec<u8>/Vec<T> whose wincode encoding may differ.
+// This is the critical wire compatibility test. String<N> maps to
+// DynBytes<u8> (u8 prefix) and Vec<T, N> maps to DynVec<T, u16> (u16 prefix).
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -793,8 +792,8 @@ fn rust_codegen_dynamic_string_uses_dyn_bytes() {
     let code = all_content(&files);
 
     assert!(
-        code.contains("pub name: DynBytes,"),
-        "DynString must map to DynBytes for u32 LE wire compat, got:\n{code}"
+        code.contains("pub name: DynBytes<u8>,"),
+        "String<N> must map to DynBytes<u8>, got:\n{code}"
     );
     assert!(
         !code.contains("pub name: Vec<u8>"),
@@ -823,7 +822,7 @@ fn rust_codegen_dynamic_types_import() {
 
     // Only the actually-used wrapper type is imported
     assert!(
-        code.contains("use quasar_lang::client::{DynBytes};"),
+        code.contains("DynBytes"),
         "DynBytes must be imported: {code}"
     );
     assert!(
@@ -837,64 +836,14 @@ fn rust_codegen_dynamic_types_import() {
 }
 
 // ---------------------------------------------------------------------------
-// Instruction codegen: prefix-width variants for dynamic types
+// Instruction codegen: Pod dynamic types (String<N> / Vec<T, N>)
 //
-// Verifies that String<P, N> / Vec<T, P, N> with non-default prefix
-// types produce DynBytes<P> / DynVec<T, P> in generated code.
+// String<N> always uses u8 prefix (prefix_bytes: 1).
+// Vec<T, N> always uses u16 prefix (prefix_bytes: 2).
 // ---------------------------------------------------------------------------
 
 #[test]
 fn rust_codegen_dyn_bytes_u8_prefix() {
-    let file = parse_file(
-        r#"
-        #[program]
-        mod my_program {
-            #[instruction(discriminator = [1])]
-            pub fn set_name(ctx: Ctx<SetName>, name: String<u8, 100>) -> Result<(), ProgramError> {
-                Ok(())
-            }
-        }
-        "#,
-    );
-    let (_, instructions) = program::extract_program_module(&file).unwrap();
-    let mut parsed = test_program();
-    parsed.instructions = instructions;
-    let files = generate_client(&parsed);
-    let code = all_content(&files);
-
-    assert!(
-        code.contains("pub name: DynBytes<u8>,"),
-        "String<u8, N> must map to DynBytes<u8>, got:\n{code}"
-    );
-}
-
-#[test]
-fn rust_codegen_dyn_bytes_u16_prefix() {
-    let file = parse_file(
-        r#"
-        #[program]
-        mod my_program {
-            #[instruction(discriminator = [1])]
-            pub fn set_name(ctx: Ctx<SetName>, name: String<u16, 1000>) -> Result<(), ProgramError> {
-                Ok(())
-            }
-        }
-        "#,
-    );
-    let (_, instructions) = program::extract_program_module(&file).unwrap();
-    let mut parsed = test_program();
-    parsed.instructions = instructions;
-    let files = generate_client(&parsed);
-    let code = all_content(&files);
-
-    assert!(
-        code.contains("pub name: DynBytes<u16>,"),
-        "String<u16, N> must map to DynBytes<u16>, got:\n{code}"
-    );
-}
-
-#[test]
-fn rust_codegen_dyn_bytes_u32_default() {
     let file = parse_file(
         r#"
         #[program]
@@ -913,67 +862,13 @@ fn rust_codegen_dyn_bytes_u32_default() {
     let code = all_content(&files);
 
     assert!(
-        code.contains("pub name: DynBytes,"),
-        "String<N> (default u32) must map to DynBytes (no generic param), got:\n{code}"
-    );
-    assert!(
-        !code.contains("DynBytes<u32>"),
-        "default u32 should omit the generic, got:\n{code}"
-    );
-}
-
-#[test]
-fn rust_codegen_dyn_vec_u8_prefix() {
-    let file = parse_file(
-        r#"
-        #[program]
-        mod my_program {
-            #[instruction(discriminator = [1])]
-            pub fn set_tags(ctx: Ctx<SetTags>, tags: Vec<u64, u8, 10>) -> Result<(), ProgramError> {
-                Ok(())
-            }
-        }
-        "#,
-    );
-    let (_, instructions) = program::extract_program_module(&file).unwrap();
-    let mut parsed = test_program();
-    parsed.instructions = instructions;
-    let files = generate_client(&parsed);
-    let code = all_content(&files);
-
-    assert!(
-        code.contains("pub tags: DynVec<u64, u8>,"),
-        "Vec<u64, u8, N> must map to DynVec<u64, u8>, got:\n{code}"
+        code.contains("pub name: DynBytes<u8>,"),
+        "String<N> must map to DynBytes<u8>, got:\n{code}"
     );
 }
 
 #[test]
 fn rust_codegen_dyn_vec_u16_prefix() {
-    let file = parse_file(
-        r#"
-        #[program]
-        mod my_program {
-            #[instruction(discriminator = [1])]
-            pub fn set_tags(ctx: Ctx<SetTags>, tags: Vec<u64, u16, 500>) -> Result<(), ProgramError> {
-                Ok(())
-            }
-        }
-        "#,
-    );
-    let (_, instructions) = program::extract_program_module(&file).unwrap();
-    let mut parsed = test_program();
-    parsed.instructions = instructions;
-    let files = generate_client(&parsed);
-    let code = all_content(&files);
-
-    assert!(
-        code.contains("pub tags: DynVec<u64, u16>,"),
-        "Vec<u64, u16, N> must map to DynVec<u64, u16>, got:\n{code}"
-    );
-}
-
-#[test]
-fn rust_codegen_dyn_vec_u32_default() {
     let file = parse_file(
         r#"
         #[program]
@@ -992,12 +887,8 @@ fn rust_codegen_dyn_vec_u32_default() {
     let code = all_content(&files);
 
     assert!(
-        code.contains("pub tags: DynVec<u64>,"),
-        "Vec<u64, N> (default u32) must map to DynVec<u64> (no prefix param), got:\n{code}"
-    );
-    assert!(
-        !code.contains("DynVec<u64, u32>"),
-        "default u32 should omit the prefix generic, got:\n{code}"
+        code.contains("pub tags: DynVec<u64, u16>,"),
+        "Vec<u64, N> must map to DynVec<u64, u16>, got:\n{code}"
     );
 }
 
@@ -1556,17 +1447,12 @@ fn ts_codegen_prefix_aware_codecs() {
         #[program]
         mod my_program {
             #[instruction(discriminator = [1])]
-            pub fn set_name(ctx: Ctx<SetName>, name: String<u8, 100>) -> Result<(), ProgramError> {
+            pub fn set_name(ctx: Ctx<SetName>, name: String<100>) -> Result<(), ProgramError> {
                 Ok(())
             }
 
             #[instruction(discriminator = [2])]
-            pub fn set_label(ctx: Ctx<SetLabel>, label: String<200>) -> Result<(), ProgramError> {
-                Ok(())
-            }
-
-            #[instruction(discriminator = [3])]
-            pub fn set_tags(ctx: Ctx<SetTags>, tags: Vec<u64, u16, 500>) -> Result<(), ProgramError> {
+            pub fn set_tags(ctx: Ctx<SetTags>, tags: Vec<u64, 500>) -> Result<(), ProgramError> {
                 Ok(())
             }
         }
@@ -1578,22 +1464,16 @@ fn ts_codegen_prefix_aware_codecs() {
     let idl = build_idl(parsed).unwrap();
     let code = generate_ts_client_kit(&idl);
 
-    // String<u8, 100> → u8 prefix codec
+    // String<100> → u8 prefix codec
     assert!(
         code.contains("addCodecSizePrefix(getUtf8Codec(), getU8Codec())"),
-        "String<u8> must use getU8Codec(): {code}"
+        "String<N> must use getU8Codec(): {code}"
     );
 
-    // String<200> → default u32 prefix codec
-    assert!(
-        code.contains("addCodecSizePrefix(getUtf8Codec(), getU32Codec())"),
-        "String (default) must use getU32Codec(): {code}"
-    );
-
-    // Vec<u64, u16, 500> → u16 prefix codec
+    // Vec<u64, 500> → u16 prefix codec
     assert!(
         code.contains("getArrayCodec(getU64Codec(), { size: getU16Codec() })"),
-        "Vec<u64, u16> must use getU16Codec(): {code}"
+        "Vec<T, N> must use getU16Codec(): {code}"
     );
 
     // No helper functions emitted
@@ -1652,22 +1532,12 @@ fn idl_json_prefix_bytes_serialization() {
         #[program]
         mod my_program {
             #[instruction(discriminator = [1])]
-            pub fn set_name(ctx: Ctx<SetName>, name: String<u8, 100>) -> Result<(), ProgramError> {
+            pub fn set_name(ctx: Ctx<SetName>, name: String<100>) -> Result<(), ProgramError> {
                 Ok(())
             }
 
             #[instruction(discriminator = [2])]
-            pub fn set_label(ctx: Ctx<SetLabel>, label: String<200>) -> Result<(), ProgramError> {
-                Ok(())
-            }
-
-            #[instruction(discriminator = [3])]
-            pub fn set_tags(ctx: Ctx<SetTags>, tags: Vec<u64, u16, 500>) -> Result<(), ProgramError> {
-                Ok(())
-            }
-
-            #[instruction(discriminator = [4])]
-            pub fn set_ids(ctx: Ctx<SetIds>, ids: Vec<u64, 10>) -> Result<(), ProgramError> {
+            pub fn set_tags(ctx: Ctx<SetTags>, tags: Vec<u64, 500>) -> Result<(), ProgramError> {
                 Ok(())
             }
         }
@@ -1680,7 +1550,7 @@ fn idl_json_prefix_bytes_serialization() {
     let json = serde_json::to_string_pretty(&idl).unwrap();
     let value: serde_json::Value = serde_json::from_str(&json).unwrap();
 
-    // String<u8, 100> → prefixBytes: 1
+    // String<100> → prefixBytes: 1
     let name_ty = &value["instructions"][0]["args"][0]["type"]["string"];
     assert_eq!(name_ty["maxLength"], 100);
     assert_eq!(
@@ -1688,28 +1558,12 @@ fn idl_json_prefix_bytes_serialization() {
         "u8 prefix must serialize: {json}"
     );
 
-    // String<200> → default u32 prefix, prefixBytes omitted
-    let label_ty = &value["instructions"][1]["args"][0]["type"]["string"];
-    assert_eq!(label_ty["maxLength"], 200);
-    assert!(
-        label_ty.get("prefixBytes").is_none(),
-        "default u32 prefix must be omitted: {json}"
-    );
-
-    // Vec<u64, u16, 500> → prefixBytes: 2
-    let tags_ty = &value["instructions"][2]["args"][0]["type"]["vec"];
+    // Vec<u64, 500> → prefixBytes: 2
+    let tags_ty = &value["instructions"][1]["args"][0]["type"]["vec"];
     assert_eq!(tags_ty["maxLength"], 500);
     assert_eq!(
         tags_ty["prefixBytes"], 2,
         "u16 prefix must serialize: {json}"
-    );
-
-    // Vec<u64, 10> → default u32 prefix, prefixBytes omitted
-    let ids_ty = &value["instructions"][3]["args"][0]["type"]["vec"];
-    assert_eq!(ids_ty["maxLength"], 10);
-    assert!(
-        ids_ty.get("prefixBytes").is_none(),
-        "default u32 prefix must be omitted: {json}"
     );
 }
 

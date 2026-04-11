@@ -1,8 +1,5 @@
 use {
-    crate::helpers::{
-        classify_dynamic_string, classify_dynamic_vec, classify_tail, validate_prefix_capacity,
-        DynKind,
-    },
+    crate::helpers::{classify_pod_string, classify_pod_vec, PodDynField},
     quote::quote,
     syn::{parse::ParseStream, DeriveInput, Ident, Token, Type},
 };
@@ -38,8 +35,8 @@ pub(super) fn parse_struct_instruction_args(input: &DeriveInput) -> Option<Vec<I
 /// Generate code that extracts `#[instruction(..)]` args from `__ix_data`.
 ///
 /// Fixed types are read via a zero-copy `#[repr(C)]` struct pointer cast.
-/// Dynamic fields use inline prefix reads from the data buffer after the
-/// fixed ZC block.
+/// Dynamic fields (String<N>/Vec<T,N>) use inline prefix reads from the data
+/// buffer after the fixed ZC block. String uses u8 prefix, Vec uses u16 prefix.
 pub(super) fn generate_instruction_arg_extraction(
     ix_args: &[InstructionArg],
 ) -> proc_macro2::TokenStream {
@@ -47,37 +44,28 @@ pub(super) fn generate_instruction_arg_extraction(
         return quote! {};
     }
 
-    let mut kinds = Vec::with_capacity(ix_args.len());
+    let mut pod_dyns: Vec<Option<PodDynField>> = Vec::with_capacity(ix_args.len());
     for arg in ix_args {
-        let kind = if let Some((prefix, max)) = classify_dynamic_string(&arg.ty) {
-            if let Err(e) = validate_prefix_capacity(&arg.ty, prefix, max, "String") {
-                return e.to_compile_error();
-            }
-            DynKind::Str { prefix, max }
-        } else if let Some(tail_elem) = classify_tail(&arg.ty) {
-            DynKind::Tail { element: tail_elem }
-        } else if let Some((elem, prefix, max)) = classify_dynamic_vec(&arg.ty) {
-            if let Err(e) = validate_prefix_capacity(&arg.ty, prefix, max, "Vec") {
-                return e.to_compile_error();
-            }
-            DynKind::Vec {
+        let pd = if let Some(max) = classify_pod_string(&arg.ty) {
+            Some(PodDynField::Str { max })
+        } else if let Some((elem, max)) = classify_pod_vec(&arg.ty) {
+            Some(PodDynField::Vec {
                 elem: Box::new(elem),
-                prefix,
                 max,
-            }
+            })
         } else {
-            DynKind::Fixed
+            None
         };
-        kinds.push(kind);
+        pod_dyns.push(pd);
     }
 
-    let has_dynamic = kinds.iter().any(|k| !matches!(k, DynKind::Fixed));
-    let has_fixed = kinds.iter().any(|k| matches!(k, DynKind::Fixed));
+    let has_dynamic = pod_dyns.iter().any(|pd| pd.is_some());
+    let has_fixed = pod_dyns.iter().any(|pd| pd.is_none());
 
-    let vec_align_asserts: Vec<proc_macro2::TokenStream> = kinds
+    let vec_align_asserts: Vec<proc_macro2::TokenStream> = pod_dyns
         .iter()
-        .filter_map(|kind| match kind {
-            DynKind::Vec { elem, .. } => Some(quote! {
+        .filter_map(|pd| match pd {
+            Some(PodDynField::Vec { elem, .. }) => Some(quote! {
                 const _: () = assert!(
                     core::mem::align_of::<#elem>() == 1,
                     "instruction Vec element type must have alignment 1"
@@ -94,8 +82,8 @@ pub(super) fn generate_instruction_arg_extraction(
         let mut zc_field_types: Vec<proc_macro2::TokenStream> = Vec::new();
         let mut zc_field_orig_types: Vec<Type> = Vec::new();
 
-        for (i, kind) in kinds.iter().enumerate() {
-            if matches!(kind, DynKind::Fixed) {
+        for (i, pd) in pod_dyns.iter().enumerate() {
+            if pd.is_none() {
                 zc_field_names.push(ix_args[i].name.clone());
                 let ty = &ix_args[i].ty;
                 zc_field_types
@@ -129,8 +117,8 @@ pub(super) fn generate_instruction_arg_extraction(
         });
 
         let mut zc_idx = 0usize;
-        for (i, kind) in kinds.iter().enumerate() {
-            if matches!(kind, DynKind::Fixed) {
+        for (i, pd) in pod_dyns.iter().enumerate() {
+            if pd.is_none() {
                 let name = &ix_args[i].name;
                 let ty = &zc_field_orig_types[zc_idx];
                 zc_idx += 1;
@@ -153,31 +141,27 @@ pub(super) fn generate_instruction_arg_extraction(
             });
         }
 
-        let dyn_count = kinds
-            .iter()
-            .filter(|k| !matches!(k, DynKind::Fixed))
-            .count();
+        let dyn_count = pod_dyns.iter().filter(|pd| pd.is_some()).count();
         let mut dyn_idx = 0usize;
 
-        for (i, kind) in kinds.iter().enumerate() {
+        for (i, pd) in pod_dyns.iter().enumerate() {
             let name = &ix_args[i].name;
-            match kind {
-                DynKind::Fixed => {}
-                DynKind::Str { prefix, max } => {
+            match pd {
+                None => {}
+                Some(PodDynField::Str { max }) => {
                     dyn_idx += 1;
-                    let pb = prefix.bytes();
                     let max_lit = *max;
-                    let read_len = prefix.gen_read_len();
+                    // String<N> uses u8 prefix (1 byte)
                     stmts.push(quote! {
-                        if __data.len() < __offset + #pb {
+                        if __data.len() < __offset + 1 {
                             return Err(ProgramError::InvalidInstructionData);
                         }
                     });
                     stmts.push(quote! {
-                        let __ix_dyn_len = #read_len;
+                        let __ix_dyn_len = __data[__offset] as usize;
                     });
                     stmts.push(quote! {
-                        __offset += #pb;
+                        __offset += 1;
                     });
                     stmts.push(quote! {
                         if __ix_dyn_len > #max_lit {
@@ -198,27 +182,20 @@ pub(super) fn generate_instruction_arg_extraction(
                         });
                     }
                 }
-                DynKind::Tail { .. } => {
+                Some(PodDynField::Vec { elem, max }) => {
                     dyn_idx += 1;
-                    stmts.push(quote! {
-                        let #name: &[u8] = &__data[__offset..];
-                    });
-                }
-                DynKind::Vec { elem, prefix, max } => {
-                    dyn_idx += 1;
-                    let pb = prefix.bytes();
                     let max_lit = *max;
-                    let read_len = prefix.gen_read_len();
+                    // Vec<T, N> uses u16 prefix (2 bytes)
                     stmts.push(quote! {
-                        if __data.len() < __offset + #pb {
+                        if __data.len() < __offset + 2 {
                             return Err(ProgramError::InvalidInstructionData);
                         }
                     });
                     stmts.push(quote! {
-                        let __ix_dyn_count = #read_len;
+                        let __ix_dyn_count = u16::from_le_bytes([__data[__offset], __data[__offset + 1]]) as usize;
                     });
                     stmts.push(quote! {
-                        __offset += #pb;
+                        __offset += 2;
                     });
                     stmts.push(quote! {
                         if __ix_dyn_count > #max_lit {

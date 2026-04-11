@@ -1,5 +1,0 @@
-error: Vec max 70000 exceeds u16 prefix capacity 65535
- --> tests/compile_fail/dynamic_vec_prefix_capacity.rs:9:17
-  |
-9 |     pub values: Vec<PodU64, u16, 70000>,
-  |                 ^^^^^^^^^^^^^^^^^^^^^^^

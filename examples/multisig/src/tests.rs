@@ -39,8 +39,8 @@ fn config_account(
         creator,
         threshold,
         bump,
-        label: DynBytes::new(label.to_vec()),
-        signers: DynVec::new(signers.to_vec()),
+        label: DynBytes::<u8>::new(label.to_vec()),
+        signers: DynVec::<Pubkey, u16>::new(signers.to_vec()),
     };
     Account {
         address,
@@ -99,14 +99,9 @@ fn test_create() {
     assert_eq!(config_data[0], 1, "discriminator should be 1");
     assert_eq!(config_data[33], threshold, "threshold mismatch");
 
-    // Signers count prefix at offset 39 (disc(1) + ZC(34) + label_prefix(4) +
+    // Signers count prefix at offset 36 (disc(1) + ZC(34) + label_prefix(1) +
     // label(0))
-    let signers_count = u32::from_le_bytes([
-        config_data[39],
-        config_data[40],
-        config_data[41],
-        config_data[42],
-    ]);
+    let signers_count = u16::from_le_bytes([config_data[36], config_data[37]]);
     assert_eq!(signers_count, 3, "signers count should be 3");
 
     println!("  CREATE CU: {}", result.compute_units_consumed);
@@ -170,7 +165,7 @@ fn test_set_label() {
         creator,
         config,
         system_program,
-        label: DynBytes::new(label.as_bytes().to_vec()),
+        label: DynBytes::<u8>::new(label.as_bytes().to_vec()),
     }
     .into();
 
@@ -185,16 +180,12 @@ fn test_set_label() {
     assert!(result.is_ok(), "set_label failed: {:?}", result.raw_result);
 
     // Verify label was stored
+    // Layout: disc(1) + ZC(34) + u8_label_prefix(1) + label_bytes
     let config_data = &result.account(&config).unwrap().data;
-    let label_len = u32::from_le_bytes([
-        config_data[35],
-        config_data[36],
-        config_data[37],
-        config_data[38],
-    ]) as usize;
+    let label_len = config_data[35] as usize;
     assert_eq!(label_len, label.len(), "label length mismatch");
 
-    let stored_label = core::str::from_utf8(&config_data[39..39 + label_len]).unwrap();
+    let stored_label = core::str::from_utf8(&config_data[36..36 + label_len]).unwrap();
     assert_eq!(stored_label, label, "label content mismatch");
 
     println!("  SET_LABEL CU: {}", result.compute_units_consumed);

@@ -1,11 +1,11 @@
 use {crate::state::TailBytesAccount, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
-pub struct TailBytesCheck<'info> {
-    pub account: Account<TailBytesAccount<'info>>,
+pub struct TailBytesCheck {
+    pub account: Account<TailBytesAccount>,
 }
 
-impl<'info> TailBytesCheck<'info> {
+impl TailBytesCheck {
     #[inline(always)]
     pub fn handler(&self, expected_len: u8) -> Result<(), ProgramError> {
         let data = self.account.data();

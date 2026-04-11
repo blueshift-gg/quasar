@@ -1,5 +1,0 @@
-error: String max 300 exceeds u8 prefix capacity 255
- --> tests/compile_fail/dynamic_string_prefix_capacity.rs:9:15
-  |
-9 |     pub name: String<u8, 300>,
-  |               ^^^^^^^^^^^^^^^

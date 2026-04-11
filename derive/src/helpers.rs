@@ -1,6 +1,6 @@
 //! Shared codegen helpers used across all derive macros.
 //!
-//! Contains dynamic field classification (String/Vec/Tail), discriminator
+//! Contains Pod dynamic field classification (PodString/PodVec), discriminator
 //! parsing and validation, type inspection utilities, and zero-copy companion
 //! struct helpers for mapping native types to Pod types.
 
@@ -11,175 +11,6 @@ use {
         Expr, ExprLit, GenericArgument, Ident, Lit, LitInt, PathArguments, Token, Type,
     },
 };
-
-// --- Dynamic field classification (shared by account, instruction) ---
-
-/// Length-prefix type for dynamic fields (String, Vec).
-#[derive(Clone, Copy)]
-pub(crate) enum PrefixType {
-    U8,
-    U16,
-    U32,
-}
-
-impl PrefixType {
-    pub fn bytes(&self) -> usize {
-        match self {
-            Self::U8 => 1,
-            Self::U16 => 2,
-            Self::U32 => 4,
-        }
-    }
-
-    /// Returns the prefix integer as a `syn::Type` token for use in generic
-    /// type parameters (e.g. `DynBytes<u8>`).
-    pub fn to_type(self) -> syn::Type {
-        match self {
-            Self::U8 => syn::parse_quote!(u8),
-            Self::U16 => syn::parse_quote!(u16),
-            Self::U32 => syn::parse_quote!(u32),
-        }
-    }
-
-    pub fn max_value(self) -> usize {
-        match self {
-            Self::U8 => u8::MAX as usize,
-            Self::U16 => u16::MAX as usize,
-            Self::U32 => u32::MAX as usize,
-        }
-    }
-
-    pub fn display_name(self) -> &'static str {
-        match self {
-            Self::U8 => "u8",
-            Self::U16 => "u16",
-            Self::U32 => "u32",
-        }
-    }
-
-    /// Expression to read the inline prefix from `__data` at `__offset` as
-    /// usize.
-    ///
-    /// Uses `read_unaligned` for u16/u32 prefixes — SBF is little-endian so
-    /// a single unaligned load replaces the multi-instruction byte reassembly
-    /// that `from_le_bytes([data[i], data[i+1], ...])` compiles to.
-    pub fn gen_read_len(&self) -> proc_macro2::TokenStream {
-        match self {
-            Self::U8 => quote! { __data[__offset] as usize },
-            Self::U16 => quote! {
-                unsafe { core::ptr::read_unaligned(__data.as_ptr().add(__offset) as *const u16) } as usize
-            },
-            Self::U32 => quote! {
-                unsafe { core::ptr::read_unaligned(__data.as_ptr().add(__offset) as *const u32) } as usize
-            },
-        }
-    }
-
-    /// Statement to write a usize value as the inline prefix to `__data` at
-    /// `__offset`.
-    ///
-    /// Uses `write_unaligned` for u16/u32 prefixes — single store instead of
-    /// the multi-instruction byte decomposition from `to_le_bytes()` + per-byte
-    /// writes.
-    pub fn gen_write_prefix(
-        &self,
-        value_expr: &proc_macro2::TokenStream,
-    ) -> proc_macro2::TokenStream {
-        match self {
-            Self::U8 => quote! {
-                __data[__offset] = #value_expr as u8;
-            },
-            Self::U16 => quote! {
-                unsafe { core::ptr::write_unaligned(__data.as_mut_ptr().add(__offset) as *mut u16, #value_expr as u16) };
-            },
-            Self::U32 => quote! {
-                unsafe { core::ptr::write_unaligned(__data.as_mut_ptr().add(__offset) as *mut u32, #value_expr as u32) };
-            },
-        }
-    }
-}
-
-/// Element type for tail fields (last field consumes remaining data).
-#[derive(Clone, Copy)]
-pub(crate) enum TailElement {
-    /// `&str` — remaining bytes interpreted as UTF-8.
-    Str,
-    /// `&[u8]` — remaining bytes as a raw slice.
-    Bytes,
-}
-
-/// Classification of a field's dynamic layout behavior.
-pub(crate) enum DynKind {
-    Fixed,
-    Str {
-        prefix: PrefixType,
-        max: usize,
-    },
-    Vec {
-        elem: Box<Type>,
-        prefix: PrefixType,
-        max: usize,
-    },
-    Tail {
-        element: TailElement,
-    },
-}
-
-impl DynKind {
-    /// Project to `DynFieldKind` if this is a dynamic field, `None` if `Fixed`.
-    ///
-    /// Use with `filter_map` to obtain a collection where every match is
-    /// exhaustive over dynamic variants — no `unreachable!()` needed.
-    pub(crate) fn as_dynamic(&self) -> Option<DynFieldKind<'_>> {
-        match self {
-            Self::Str { prefix, max } => Some(DynFieldKind::Str {
-                prefix: *prefix,
-                max: *max,
-            }),
-            Self::Vec { elem, prefix, max } => Some(DynFieldKind::Vec {
-                elem,
-                prefix: *prefix,
-                max: *max,
-            }),
-            Self::Tail { element } => Some(DynFieldKind::Tail { element: *element }),
-            Self::Fixed => None,
-        }
-    }
-}
-
-/// Dynamic-only field kind — the type-safe projection of [`DynKind`] after
-/// filtering out `Fixed` fields. Matches are exhaustive without
-/// `unreachable!()`.
-pub(crate) enum DynFieldKind<'a> {
-    Str {
-        prefix: PrefixType,
-        max: usize,
-    },
-    Vec {
-        elem: &'a Type,
-        prefix: PrefixType,
-        max: usize,
-    },
-    Tail {
-        element: TailElement,
-    },
-}
-
-impl DynFieldKind<'_> {
-    /// Length-prefix type, if this field has one (Str and Vec do, Tail does
-    /// not).
-    pub(crate) fn prefix(&self) -> Option<PrefixType> {
-        match self {
-            Self::Str { prefix, .. } | Self::Vec { prefix, .. } => Some(*prefix),
-            Self::Tail { .. } => None,
-        }
-    }
-
-    /// Byte size of the length prefix (0 for Tail fields).
-    pub(crate) fn prefix_bytes(&self) -> usize {
-        self.prefix().map_or(0, |p| p.bytes())
-    }
-}
 
 // --- Discriminator argument parsing (shared by instruction, account, event,
 // program) ---
@@ -573,7 +404,7 @@ pub(crate) fn snake_to_pascal(s: &str) -> String {
         .collect()
 }
 
-// --- Dynamic field detection ---
+// --- Pod dynamic field detection ---
 
 fn extract_const_usize(arg: &GenericArgument) -> Option<usize> {
     if let GenericArgument::Const(Expr::Lit(ExprLit {
@@ -587,189 +418,22 @@ fn extract_const_usize(arg: &GenericArgument) -> Option<usize> {
     }
 }
 
-fn parse_prefix_type(ty: &Type) -> Option<PrefixType> {
-    if let Type::Path(tp) = ty {
-        if let Some(seg) = tp.path.segments.last() {
-            return match seg.ident.to_string().as_str() {
-                "u8" => Some(PrefixType::U8),
-                "u16" => Some(PrefixType::U16),
-                "u32" => Some(PrefixType::U32),
-                _ => None,
-            };
-        }
-    }
-    None
-}
-
-/// Classifies a type as a dynamic string. Returns `Some((prefix, max))`.
-///
-/// Handles:
-/// - `String` → (U32, 1024) — defaults
-/// - `String<P>` → (P, 1024) — custom prefix, default max
-/// - `String<P, MAX>` → (P, MAX) — fully specified
-/// - `String<'a, MAX>` → (U32, MAX) — backward-compat
-pub(crate) fn classify_dynamic_string(ty: &Type) -> Option<(PrefixType, usize)> {
-    if let Type::Path(type_path) = ty {
-        if let Some(seg) = type_path.path.segments.last() {
-            // Only match unqualified `String` (the Quasar import), not
-            // `std::string::String` or `my_crate::String`.
-            if seg.ident == "String" && type_path.path.segments.len() == 1 {
-                return match &seg.arguments {
-                    PathArguments::None => Some((PrefixType::U32, 1024)),
-                    PathArguments::AngleBracketed(args) => {
-                        let mut iter = args.args.iter();
-                        match iter.next()? {
-                            GenericArgument::Lifetime(_) => {
-                                let max = extract_const_usize(iter.next()?)?;
-                                Some((PrefixType::U32, max))
-                            }
-                            GenericArgument::Type(prefix_ty) => {
-                                let prefix = parse_prefix_type(prefix_ty)?;
-                                match iter.next() {
-                                    Some(arg) => {
-                                        let max = extract_const_usize(arg)?;
-                                        Some((prefix, max))
-                                    }
-                                    None => Some((prefix, 1024)),
-                                }
-                            }
-                            other => {
-                                let max = extract_const_usize(other)?;
-                                Some((PrefixType::U32, max))
-                            }
-                        }
-                    }
-                    _ => None,
-                };
-            }
-        }
-    }
-    None
-}
-
-/// Classifies a type as a dynamic vec. Returns `Some((elem, prefix, max))`.
-///
-/// Handles:
-/// - `Vec<T>` → (T, U32, 8) — defaults
-/// - `Vec<T, P>` → (T, P, 8) — custom prefix, default max
-/// - `Vec<T, P, MAX>` → (T, P, MAX) — fully specified
-/// - `Vec<'a, T, MAX>` → (T, U32, MAX) — backward-compat
-pub(crate) fn classify_dynamic_vec(ty: &Type) -> Option<(Type, PrefixType, usize)> {
-    if let Type::Path(type_path) = ty {
-        if let Some(seg) = type_path.path.segments.last() {
-            if seg.ident == "Vec" && type_path.path.segments.len() == 1 {
-                if let PathArguments::AngleBracketed(args) = &seg.arguments {
-                    let mut iter = args.args.iter();
-                    let first = iter.next()?;
-
-                    if let GenericArgument::Lifetime(_) = first {
-                        let elem_ty = match iter.next()? {
-                            GenericArgument::Type(ty) => ty.clone(),
-                            _ => return None,
-                        };
-                        return match iter.next() {
-                            Some(arg) => {
-                                let max = extract_const_usize(arg)?;
-                                Some((elem_ty, PrefixType::U32, max))
-                            }
-                            None => Some((elem_ty, PrefixType::U32, 8)),
-                        };
-                    }
-
-                    let elem_ty = match first {
-                        GenericArgument::Type(ty) => ty.clone(),
-                        _ => return None,
-                    };
-
-                    return match iter.next() {
-                        None => Some((elem_ty, PrefixType::U32, 8)),
-                        Some(GenericArgument::Type(prefix_ty)) => {
-                            let prefix = parse_prefix_type(prefix_ty)?;
-                            match iter.next() {
-                                Some(arg) => {
-                                    let max = extract_const_usize(arg)?;
-                                    Some((elem_ty, prefix, max))
-                                }
-                                None => Some((elem_ty, prefix, 8)),
-                            }
-                        }
-                        Some(arg) => {
-                            let max = extract_const_usize(arg)?;
-                            Some((elem_ty, PrefixType::U32, max))
-                        }
-                    };
-                } else {
-                    return None;
-                }
-            }
-        }
-    }
-    None
-}
-
-pub(crate) fn validate_prefix_capacity(
-    ty: &Type,
-    prefix: PrefixType,
-    max: usize,
-    field_kind: &str,
-) -> syn::Result<()> {
-    let capacity = prefix.max_value();
-    if max > capacity {
-        return Err(syn::Error::new_spanned(
-            ty,
-            format!(
-                "{field_kind} max {max} exceeds {} prefix capacity {capacity}",
-                prefix.display_name()
-            ),
-        ));
-    }
-    Ok(())
-}
-
-/// Classifies bare `&str` / `&'a str` and `&[u8]` / `&'a [u8]` as tail fields.
-///
-/// Tail fields have no length prefix — remaining account/instruction data IS
-/// the field. Must be the last dynamic field in the struct.
-pub(crate) fn classify_tail(ty: &Type) -> Option<TailElement> {
-    if let Type::Reference(ref_ty) = ty {
-        match &*ref_ty.elem {
-            Type::Path(type_path) => {
-                if let Some(seg) = type_path.path.segments.last() {
-                    if seg.ident == "str" && type_path.path.segments.len() == 1 {
-                        return Some(TailElement::Str);
-                    }
-                }
-            }
-            Type::Slice(slice_ty) => {
-                if let Type::Path(type_path) = &*slice_ty.elem {
-                    if let Some(seg) = type_path.path.segments.last() {
-                        if seg.ident == "u8" && type_path.path.segments.len() == 1 {
-                            return Some(TailElement::Bytes);
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-// --- Pod dynamic field detection ---
-
 /// Classification of a Pod dynamic field.
 pub(crate) enum PodDynField {
-    /// `PodString<N>`: u8 prefix, max N bytes.
+    /// `PodString<N>` / `String<N>`: u8 prefix, max N bytes.
     Str { max: usize },
-    /// `PodVec<T, N>`: PodU16 prefix, max N elements.
+    /// `PodVec<T, N>` / `Vec<T, N>`: PodU16 prefix, max N elements.
     Vec { elem: Box<Type>, max: usize },
 }
 
-/// Classifies a type as `PodString<N>`. Returns `Some(max)`.
+/// Classifies a type as `PodString<N>` or `String<N>` (type alias).
+/// Returns `Some(max)`.
 pub(crate) fn classify_pod_string(ty: &Type) -> Option<usize> {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
-            if seg.ident == "PodString" && type_path.path.segments.len() == 1 {
+            if (seg.ident == "PodString" || seg.ident == "String")
+                && type_path.path.segments.len() == 1
+            {
                 if let PathArguments::AngleBracketed(args) = &seg.arguments {
                     let mut iter = args.args.iter();
                     return extract_const_usize(iter.next()?);
@@ -780,11 +444,14 @@ pub(crate) fn classify_pod_string(ty: &Type) -> Option<usize> {
     None
 }
 
-/// Classifies a type as `PodVec<T, N>`. Returns `Some((elem, max))`.
+/// Classifies a type as `PodVec<T, N>` or `Vec<T, N>` (type alias).
+/// Returns `Some((elem, max))`.
 pub(crate) fn classify_pod_vec(ty: &Type) -> Option<(Type, usize)> {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
-            if seg.ident == "PodVec" && type_path.path.segments.len() == 1 {
+            if (seg.ident == "PodVec" || seg.ident == "Vec")
+                && type_path.path.segments.len() == 1
+            {
                 if let PathArguments::AngleBracketed(args) = &seg.arguments {
                     let mut iter = args.args.iter();
                     let elem = match iter.next()? {

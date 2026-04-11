@@ -9,7 +9,7 @@ pub struct SetLabelInstruction {
     pub creator: Address,
     pub config: Address,
     pub system_program: Address,
-    pub label: DynBytes,
+    pub label: DynBytes<u8>,
 }
 
 impl From<SetLabelInstruction> for Instruction {

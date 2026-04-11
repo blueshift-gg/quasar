@@ -4,9 +4,8 @@
 
 use {
     crate::helpers::{
-        classify_dynamic_string, classify_dynamic_vec, classify_tail, extract_generic_inner_type,
-        parse_discriminator_bytes, pascal_to_snake, snake_to_pascal, validate_prefix_capacity,
-        InstructionArgs,
+        classify_pod_string, classify_pod_vec, extract_generic_inner_type,
+        parse_discriminator_bytes, pascal_to_snake, snake_to_pascal, InstructionArgs,
     },
     proc_macro::TokenStream,
     quote::{format_ident, quote},
@@ -176,21 +175,12 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
                             Pat::Ident(pi) => pi.ident.clone(),
                             _ => continue,
                         };
-                        let ty = if let Some((prefix, max)) = classify_dynamic_string(&pt.ty) {
-                            if let Err(e) = validate_prefix_capacity(&pt.ty, prefix, max, "String")
-                            {
-                                return e.to_compile_error().into();
-                            }
-                            let prefix_ty = prefix.to_type();
-                            syn::parse_quote!(quasar_lang::client::DynBytes<#prefix_ty>)
-                        } else if let Some((elem, prefix, max)) = classify_dynamic_vec(&pt.ty) {
-                            if let Err(e) = validate_prefix_capacity(&pt.ty, prefix, max, "Vec") {
-                                return e.to_compile_error().into();
-                            }
-                            let prefix_ty = prefix.to_type();
-                            syn::parse_quote!(quasar_lang::client::DynVec<#elem, #prefix_ty>)
-                        } else if classify_tail(&pt.ty).is_some() {
-                            syn::parse_quote!(quasar_lang::client::TailBytes)
+                        let ty = if classify_pod_string(&pt.ty).is_some() {
+                            // String<N> / PodString<N> → DynBytes<u8> (u8 prefix)
+                            syn::parse_quote!(quasar_lang::client::DynBytes<u8>)
+                        } else if let Some((elem, _max)) = classify_pod_vec(&pt.ty) {
+                            // Vec<T, N> / PodVec<T, N> → DynVec<T, u16> (u16 prefix)
+                            syn::parse_quote!(quasar_lang::client::DynVec<#elem, u16>)
                         } else {
                             (*pt.ty).clone()
                         };

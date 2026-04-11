@@ -22,7 +22,7 @@ pub use {
             CpiReturn, DynCpiCall, Seed,
         },
         dispatch,
-        dynamic::{RawEncoded, String, Vec},
+        dynamic::{String, Vec},
         emit,
         error::QuasarError,
         instruction_arg::{InstructionArg, OptionZc},

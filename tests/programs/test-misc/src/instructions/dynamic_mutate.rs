@@ -1,18 +1,27 @@
-use {crate::state::DynamicAccount, quasar_lang::prelude::*};
+use {
+    crate::state::DynamicAccount,
+    quasar_lang::{prelude::*, sysvars::Sysvar as _},
+};
 
 #[derive(Accounts)]
-pub struct DynamicMutate<'account> {
+pub struct DynamicMutate {
     #[account(mut)]
-    pub account: Account<DynamicAccount<'account>>,
+    pub account: Account<DynamicAccount>,
     #[account(mut)]
     pub payer: Signer,
     pub system_program: Program<System>,
 }
 
-impl DynamicMutate<'_> {
+impl DynamicMutate {
     #[inline(always)]
     pub fn handler(&mut self, new_name: &str) -> Result<(), ProgramError> {
-        self.account.set_name(&self.payer, new_name)?;
+        let rent = Rent::get()?;
+        self.account.set_name(
+            new_name,
+            self.payer.to_account_view(),
+            rent.lamports_per_byte(),
+            rent.exemption_threshold_raw(),
+        )?;
         Ok(())
     }
 }
