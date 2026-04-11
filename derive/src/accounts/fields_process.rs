@@ -74,9 +74,9 @@ fn gen_bump_check(
         if let Some(seed_bytes) = crate::pda_precompute::seeds_as_byte_literals(seed_exprs) {
             if let Some(program_id) = crate::pda_precompute::discover_program_id() {
                 let seed_refs: Vec<&[u8]> = seed_bytes.iter().map(|v| v.as_slice()).collect();
-                if let Some((precomputed_bump, precomputed_addr)) =
-                    crate::pda_precompute::precompute_pda(&seed_refs, &program_id)
                 {
+                    let (precomputed_bump, precomputed_addr) =
+                        crate::pda_precompute::precompute_pda(&seed_refs, &program_id);
                     let bump_lit = precomputed_bump;
                     let addr_bytes = precomputed_addr;
                     let addr_array: Vec<proc_macro2::TokenStream> =
@@ -216,20 +216,23 @@ fn gen_bump_check(
                         }
                     }
                 } else {
+                    // Non-Account type, non-init: use find_bump_for_address
+                    // (keys_eq) instead of based_try_find_program_address
+                    // (on-curve check). The account exists in the transaction
+                    // so hash-match ⟹ valid PDA.
                     quote! {
                         {
                             #(#seed_len_checks)*
                             let __pda_seeds = [#(#seed_idents),*];
-                            let (__expected, __bump) = quasar_lang::pda::based_try_find_program_address(&__pda_seeds, __program_id)?;
-                            if #addr_access != __expected {
-                                #[cfg(feature = "debug")]
-                                quasar_lang::prelude::log(concat!(
-                                    "Account '", stringify!(#field_name),
-                                    "': PDA verification failed"
-                                ));
-                                return Err(QuasarError::InvalidPda.into());
-                            }
-                            #bump_var = __bump;
+                            #bump_var = quasar_lang::pda::find_bump_for_address(&__pda_seeds, __program_id, &#addr_access)
+                                .map_err(|__e| {
+                                    #[cfg(feature = "debug")]
+                                    quasar_lang::prelude::log(concat!(
+                                        "Account '", stringify!(#field_name),
+                                        "': PDA verification failed"
+                                    ));
+                                    QuasarError::InvalidPda
+                                })?;
                         }
                     }
                 }

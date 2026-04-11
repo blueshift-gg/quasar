@@ -87,14 +87,14 @@ pub(crate) fn seeds_as_byte_literals(seeds: &[syn::Expr]) -> Option<Vec<Vec<u8>>
 
 /// Host-side PDA derivation using `const_crypto`.
 ///
-/// Returns `(bump, pda_address)` or `None` if no valid bump exists
-/// (cryptographically negligible — ~2^-256).
-pub(crate) fn precompute_pda(seeds: &[&[u8]], program_id: &[u8; 32]) -> Option<(u8, [u8; 32])> {
+/// Returns `(bump, pda_address)`. Always succeeds — the probability of
+/// all 256 bumps landing on-curve is cryptographically negligible (~2^-256).
+pub(crate) fn precompute_pda(seeds: &[&[u8]], program_id: &[u8; 32]) -> (u8, [u8; 32]) {
     // const_crypto::ed25519::derive_program_address is a const fn that also
     // works at runtime. It iterates bumps 255→0 and returns the first
     // off-curve hash — identical to Solana's find_program_address.
     let (addr, bump) = const_crypto::ed25519::derive_program_address(seeds, program_id);
-    Some((bump, addr))
+    (bump, addr)
 }
 
 #[cfg(test)]
@@ -125,9 +125,9 @@ mod tests {
         // Use a known program ID and verify the result is deterministic.
         let program_id = [1u8; 32];
         let seeds: Vec<&[u8]> = vec![b"test"];
-        let (bump, addr) = precompute_pda(&seeds, &program_id).unwrap();
+        let (bump, addr) = precompute_pda(&seeds, &program_id);
         // Re-derive to confirm determinism.
-        let (bump2, addr2) = precompute_pda(&seeds, &program_id).unwrap();
+        let (bump2, addr2) = precompute_pda(&seeds, &program_id);
         assert_eq!(bump, bump2);
         assert_eq!(addr, addr2);
         // Bump should be in valid range.
