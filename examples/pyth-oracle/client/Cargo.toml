@@ -1,0 +1,12 @@
+[package]
+name = "quasar-pyth-oracle-client"
+version = "0.1.0"
+edition = "2021"
+
+[lints]
+workspace = true
+
+[dependencies]
+quasar-lang = { path = "../../../lang" }
+solana-address = { version = "2.2", features = ["curve25519"] }
+solana-instruction = "3"

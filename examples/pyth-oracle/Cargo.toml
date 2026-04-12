@@ -1,0 +1,23 @@
+[package]
+name = "quasar-pyth-oracle"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[lints]
+workspace = true
+
+[features]
+alloc = []
+client = []
+debug = []
+
+[dependencies]
+quasar-lang = { path = "../../lang" }
+
+[dev-dependencies]
+quasar-pyth-oracle-client = { path = "client" }
+quasar-svm = { git = "https://github.com/blueshift-gg/quasar-svm" }
+base64 = "0.22"

@@ -2253,6 +2253,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "quasar-pyth-oracle"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "quasar-lang",
+ "quasar-pyth-oracle-client",
+ "quasar-svm",
+]
+
+[[package]]
+name = "quasar-pyth-oracle-client"
+version = "0.1.0"
+dependencies = [
+ "quasar-lang",
+ "solana-address 2.2.0",
+ "solana-instruction",
+]
+
+[[package]]
 name = "quasar-spl"
 version = "0.0.0"
 dependencies = [
