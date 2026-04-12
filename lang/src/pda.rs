@@ -212,6 +212,15 @@ pub fn based_try_find_program_address(
 /// **Init caveat**: during `#[account(init)]`, the account does not yet
 /// exist on-chain. Correctness relies on defense-in-depth: the subsequent
 /// `create_account` CPI will itself reject an on-curve address.
+///
+/// # Caller contract
+///
+/// Callers MUST guarantee that `expected` is the address of an account
+/// that exists in the current transaction. Passing a fabricated address
+/// that lies on the ed25519 curve would produce a bump value for an
+/// invalid PDA. The framework's codegen never calls this function in
+/// `#[account(init)]` contexts — init paths use
+/// [`based_try_find_program_address`] which includes the on-curve check.
 #[inline]
 pub fn find_bump_for_address(
     seeds: &[&[u8]],
