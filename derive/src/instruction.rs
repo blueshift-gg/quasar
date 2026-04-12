@@ -256,48 +256,29 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             for (i, pd) in pod_dyns.iter().enumerate() {
                 let name = &field_names[i];
-                match pd {
-                    None => {}
-                    Some(PodDynField::Str { max }) => {
-                        dyn_idx += 1;
-                        let max_lit = *max;
-                        if dyn_idx < dyn_count {
-                            new_stmts.push(syn::parse_quote!(
-                                let (#name, __new_offset) = quasar_lang::instruction_data::read_dynamic_str::<1>(
-                                    __data, __offset, #max_lit,
-                                )?;
-                            ));
-                            new_stmts.push(syn::parse_quote!(
-                                __offset = __new_offset;
-                            ));
-                        } else {
-                            new_stmts.push(syn::parse_quote!(
-                                let (#name, _) = quasar_lang::instruction_data::read_dynamic_str::<1>(
-                                    __data, __offset, #max_lit,
-                                )?;
-                            ));
-                        }
-                    }
-                    Some(PodDynField::Vec { elem, max }) => {
-                        dyn_idx += 1;
-                        let max_lit = *max;
-                        if dyn_idx < dyn_count {
-                            new_stmts.push(syn::parse_quote!(
-                                let (#name, __new_offset) = quasar_lang::instruction_data::read_dynamic_vec::<#elem, 2>(
-                                    __data, __offset, #max_lit,
-                                )?;
-                            ));
-                            new_stmts.push(syn::parse_quote!(
-                                __offset = __new_offset;
-                            ));
-                        } else {
-                            new_stmts.push(syn::parse_quote!(
-                                let (#name, _) = quasar_lang::instruction_data::read_dynamic_vec::<#elem, 2>(
-                                    __data, __offset, #max_lit,
-                                )?;
-                            ));
-                        }
-                    }
+                let (read_call, max_lit) = match pd {
+                    None => continue,
+                    Some(PodDynField::Str { max }) => (
+                        quote!(quasar_lang::instruction_data::read_dynamic_str::<1>),
+                        *max,
+                    ),
+                    Some(PodDynField::Vec { elem, max }) => (
+                        quote!(quasar_lang::instruction_data::read_dynamic_vec::<#elem, 2>),
+                        *max,
+                    ),
+                };
+                dyn_idx += 1;
+                if dyn_idx < dyn_count {
+                    new_stmts.push(syn::parse_quote!(
+                        let (#name, __new_offset) = #read_call(__data, __offset, #max_lit)?;
+                    ));
+                    new_stmts.push(syn::parse_quote!(
+                        __offset = __new_offset;
+                    ));
+                } else {
+                    new_stmts.push(syn::parse_quote!(
+                        let (#name, _) = #read_call(__data, __offset, #max_lit)?;
+                    ));
                 }
             }
 
