@@ -37,6 +37,8 @@
     any(target_os = "solana", target_arch = "bpf"),
     feature(asm_experimental_arch)
 )]
+#[cfg(feature = "debug")]
+extern crate alloc;
 extern crate self as quasar_lang;
 
 /// Internal re-exports for proc macro codegen. Not part of the public API.
