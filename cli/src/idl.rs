@@ -15,16 +15,14 @@ use {
 /// Returns the IDL for optional downstream client generation.
 fn generate_idl(crate_path: &Path) -> Result<(Idl, ParsedProgram), anyhow::Error> {
     let parsed = parser::parse_program(crate_path);
-
-    // Rust client needs the parsed AST (not just IDL), generate before build_idl
-    // consumes it.
-    let pdas = codegen::rust::has_pdas(&parsed);
-    let client_code = codegen::rust::generate_client(&parsed);
-    let client_cargo_toml =
-        codegen::rust::generate_cargo_toml(&parsed.crate_name, &parsed.version, pdas);
-
     let idl =
-        parser::build_idl(parsed).map_err(|errors| anyhow::anyhow!("{}", errors.join("\n")))?;
+        parser::build_idl(&parsed).map_err(|errors| anyhow::anyhow!("{}", errors.join("\n")))?;
+
+    // All codegens now work from the IDL — single source of truth.
+    let pdas = codegen::rust::has_pdas(&idl);
+    let client_code = codegen::rust::generate_client(&idl);
+    let client_cargo_toml =
+        codegen::rust::generate_cargo_toml(&idl.metadata.crate_name, &idl.metadata.version, pdas);
 
     // Write IDL JSON
     let idl_dir = PathBuf::from("target").join("idl");
@@ -54,11 +52,8 @@ fn generate_idl(crate_path: &Path) -> Result<(Idl, ParsedProgram), anyhow::Error
         std::fs::write(&file_path, content)?;
     }
 
-    // Re-parse for downstream consumers (lint). build_idl consumed the first
-    // parse, but re-parsing is cheap and avoids Clone on syn types.
-    let parsed_for_lint = parser::parse_program(crate_path);
-
-    Ok((idl, parsed_for_lint))
+    // No re-parse needed — build_idl borrows, parsed survives for lint.
+    Ok((idl, parsed))
 }
 
 /// Called by `quasar idl <path>` — generates IDL JSON + Rust client only.

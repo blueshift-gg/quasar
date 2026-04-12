@@ -1,11 +1,5 @@
 use {
-    crate::{
-        parser::{
-            accounts::{RawAccountField, RawSeed},
-            helpers, ParsedProgram,
-        },
-        types::IdlType,
-    },
+    crate::types::{Idl, IdlAccountItem, IdlField, IdlSeed, IdlType},
     std::{collections::HashMap, fmt::Write},
 };
 
@@ -31,39 +25,45 @@ solana-instruction = "3"
     )
 }
 
-/// Check whether the parsed program has any resolvable PDA annotations.
+/// Check whether the IDL has any resolvable PDA annotations.
 /// Used by the CLI to decide whether `generate_cargo_toml` needs PDA deps.
-pub fn has_pdas(parsed: &ParsedProgram) -> bool {
-    !collect_pdas(parsed).is_empty()
+pub fn has_pdas(idl: &Idl) -> bool {
+    idl.instructions
+        .iter()
+        .any(|ix| ix.accounts.iter().any(|a| a.pda.is_some()))
 }
 
-/// Generate a standalone Rust client crate from parsed program data.
+/// Generate a standalone Rust client crate from the IDL.
 ///
 /// Returns a `Vec<(relative_path, file_content)>` where paths are relative to
 /// the client crate `src/` directory (e.g. `"lib.rs"`,
 /// `"instructions/mod.rs"`).
-pub fn generate_client(parsed: &ParsedProgram) -> Vec<(String, String)> {
+pub fn generate_client(idl: &Idl) -> Vec<(String, String)> {
     let mut files: Vec<(String, String)> = Vec::new();
 
-    // Build type map for custom data types referenced anywhere: instruction args,
-    // state account fields, and event fields. Transitively resolves nested types.
-    let type_map: HashMap<String, Vec<(String, IdlType)>> = build_type_map(parsed);
+    // Build type map for custom data types. The IDL already resolved these
+    // transitively in build_idl — this is the single source of truth.
+    let type_map: HashMap<String, Vec<IdlField>> = idl
+        .types
+        .iter()
+        .map(|td| (td.name.clone(), td.ty.fields.clone()))
+        .collect();
 
-    let has_instructions = !parsed.instructions.is_empty();
-    let has_state = !parsed.state_accounts.is_empty();
-    let has_events = !parsed.events.is_empty();
+    let has_instructions = !idl.instructions.is_empty();
+    let has_state = !idl.accounts.is_empty();
+    let has_events = !idl.events.is_empty();
     let has_types = !type_map.is_empty();
-    let has_errors = !parsed.errors.is_empty();
+    let has_errors = !idl.errors.is_empty();
 
     // Collect PDA info for pda.rs generation
-    let pdas = collect_pdas(parsed);
+    let pdas = collect_pdas(idl);
     let has_pdas = !pdas.is_empty();
 
     // --- lib.rs ---
     files.push((
         "lib.rs".to_string(),
         emit_lib_rs(
-            parsed,
+            idl,
             has_instructions,
             has_state,
             has_events,
@@ -75,7 +75,7 @@ pub fn generate_client(parsed: &ParsedProgram) -> Vec<(String, String)> {
 
     // --- instructions/ ---
     if has_instructions {
-        let (mod_rs, ix_files) = emit_instructions(parsed, &type_map);
+        let (mod_rs, ix_files) = emit_instructions(idl, &type_map);
         files.push(("instructions/mod.rs".to_string(), mod_rs));
         for (name, content) in ix_files {
             files.push((format!("instructions/{}.rs", name), content));
@@ -84,7 +84,13 @@ pub fn generate_client(parsed: &ParsedProgram) -> Vec<(String, String)> {
 
     // --- state/ ---
     if has_state {
-        let (mod_rs, state_files) = emit_state(parsed, &type_map);
+        let (mod_rs, state_files) = emit_discriminated_module(
+            &idl.accounts,
+            "account",
+            "ProgramAccount",
+            "decode_account",
+            &type_map,
+        );
         files.push(("state/mod.rs".to_string(), mod_rs));
         for (name, content) in state_files {
             files.push((format!("state/{}.rs", name), content));
@@ -93,7 +99,13 @@ pub fn generate_client(parsed: &ParsedProgram) -> Vec<(String, String)> {
 
     // --- events/ ---
     if has_events {
-        let (mod_rs, event_files) = emit_events(parsed, &type_map);
+        let (mod_rs, event_files) = emit_discriminated_module(
+            &idl.events,
+            "event",
+            "ProgramEvent",
+            "decode_event",
+            &type_map,
+        );
         files.push(("events/mod.rs".to_string(), mod_rs));
         for (name, content) in event_files {
             files.push((format!("events/{}.rs", name), content));
@@ -111,7 +123,7 @@ pub fn generate_client(parsed: &ParsedProgram) -> Vec<(String, String)> {
 
     // --- errors.rs ---
     if has_errors {
-        files.push(("errors.rs".to_string(), emit_errors(parsed)));
+        files.push(("errors.rs".to_string(), emit_errors(idl)));
     }
 
     // --- pda.rs ---
@@ -127,7 +139,7 @@ pub fn generate_client(parsed: &ParsedProgram) -> Vec<(String, String)> {
 // ===========================================================================
 
 fn emit_lib_rs(
-    parsed: &ParsedProgram,
+    idl: &Idl,
     has_instructions: bool,
     has_state: bool,
     has_events: bool,
@@ -141,7 +153,7 @@ fn emit_lib_rs(
     writeln!(
         out,
         "pub const ID: Address = solana_address::address!(\"{}\");",
-        parsed.program_id
+        idl.address
     )
     .expect("write to String");
 
@@ -179,22 +191,20 @@ fn emit_lib_rs(
 // ===========================================================================
 
 fn emit_instructions(
-    parsed: &ParsedProgram,
-    type_map: &HashMap<String, Vec<(String, IdlType)>>,
+    idl: &Idl,
+    type_map: &HashMap<String, Vec<IdlField>>,
 ) -> (String, Vec<(String, String)>) {
     let mut mod_rs = String::new();
     let mut ix_files: Vec<(String, String)> = Vec::new();
 
     // Scan all instruction arg types for imports needed by mod.rs
-    // (ProgramInstruction enum + decode_instruction use these types)
     let mut needs_dyn_bytes = false;
     let mut needs_dyn_vec = false;
     let mut needs_address = false;
-    for ix in &parsed.instructions {
-        for (_, ty) in &ix.args {
-            let idl_ty = helpers::map_type_from_syn(ty);
-            collect_wrapper_needs(&idl_ty, &mut needs_dyn_bytes, &mut needs_dyn_vec);
-            if field_needs_address(&idl_ty) {
+    for ix in &idl.instructions {
+        for arg in &ix.args {
+            collect_wrapper_needs(&arg.ty, &mut needs_dyn_bytes, &mut needs_dyn_vec);
+            if field_needs_address(&arg.ty) {
                 needs_address = true;
             }
         }
@@ -204,44 +214,43 @@ fn emit_instructions(
         mod_rs.push_str("use solana_address::Address;\n");
     }
     // Import defined types used in instruction args
-    for ix in &parsed.instructions {
-        for (_, ty) in &ix.args {
-            let idl_ty = helpers::map_type_from_syn(ty);
-            emit_type_use_imports(&mut mod_rs, &idl_ty, type_map);
+    for ix in &idl.instructions {
+        for arg in &ix.args {
+            emit_type_use_imports(&mut mod_rs, &arg.ty, type_map);
         }
     }
 
     // mod declarations and re-exports
-    for ix in &parsed.instructions {
-        let snake = pascal_to_snake(&snake_to_pascal(&ix.name));
+    for ix in &idl.instructions {
+        let snake = camel_to_snake(&ix.name);
         writeln!(mod_rs, "pub mod {};", snake).expect("write to String");
     }
     mod_rs.push('\n');
-    for ix in &parsed.instructions {
-        let snake = pascal_to_snake(&snake_to_pascal(&ix.name));
+    for ix in &idl.instructions {
+        let snake = camel_to_snake(&ix.name);
         writeln!(mod_rs, "pub use {}::*;", snake).expect("write to String");
     }
     mod_rs.push('\n');
 
     // ProgramInstruction enum
     mod_rs.push_str("pub enum ProgramInstruction {\n");
-    for ix in &parsed.instructions {
-        let pascal = snake_to_pascal(&ix.name);
-        let arg_types: Vec<IdlType> = ix
-            .args
-            .iter()
-            .map(|(_, ty)| helpers::map_type_from_syn(ty))
-            .collect();
+    for ix in &idl.instructions {
+        let pascal = camel_to_pascal(&ix.name);
         if ix.args.is_empty() {
             writeln!(mod_rs, "    {},", pascal).expect("write to String");
         } else {
             write!(mod_rs, "    {} {{ ", pascal).expect("write to String");
-            for (i, (name, _)) in ix.args.iter().enumerate() {
+            for (i, arg) in ix.args.iter().enumerate() {
                 if i > 0 {
                     write!(mod_rs, ", ").expect("write to String");
                 }
-                write!(mod_rs, "{}: {}", name, rust_field_type(&arg_types[i]))
-                    .expect("write to String");
+                write!(
+                    mod_rs,
+                    "{}: {}",
+                    camel_to_snake(&arg.name),
+                    rust_field_type(&arg.ty)
+                )
+                .expect("write to String");
             }
             writeln!(mod_rs, " }},").expect("write to String");
         }
@@ -251,8 +260,8 @@ fn emit_instructions(
     // decode_instruction function
     mod_rs.push_str("pub fn decode_instruction(data: &[u8]) -> Option<ProgramInstruction> {\n");
 
-    // Determine discriminator width (use first instruction's disc length)
-    let disc_len = parsed
+    // All instructions share the same discriminator width (enforced by the parser).
+    let disc_len = idl
         .instructions
         .first()
         .map(|ix| ix.discriminator.len())
@@ -266,8 +275,8 @@ fn emit_instructions(
         mod_rs.push_str("    match disc {\n");
     }
 
-    for ix in &parsed.instructions {
-        let pascal = snake_to_pascal(&ix.name);
+    for ix in &idl.instructions {
+        let pascal = camel_to_pascal(&ix.name);
         let disc_str = format_disc_list(&ix.discriminator);
 
         if disc_len == 1 {
@@ -282,17 +291,13 @@ fn emit_instructions(
             mod_rs.push_str("{\n");
             writeln!(mod_rs, "            let payload = &data[{}..];", disc_len)
                 .expect("write to String");
-            let arg_types: Vec<IdlType> = ix
-                .args
-                .iter()
-                .map(|(_, ty)| helpers::map_type_from_syn(ty))
-                .collect();
             let arg_count = ix.args.len();
             if arg_count > 1 {
                 mod_rs.push_str("            let mut offset = 0usize;\n");
             }
-            for (i, (name, _)) in ix.args.iter().enumerate() {
-                let rty = rust_field_type(&arg_types[i]);
+            for (i, arg) in ix.args.iter().enumerate() {
+                let name = camel_to_snake(&arg.name);
+                let rty = rust_field_type(&arg.ty);
                 if arg_count == 1 {
                     writeln!(
                         mod_rs,
@@ -323,11 +328,11 @@ fn emit_instructions(
                 pascal
             )
             .expect("write to String");
-            for (i, (name, _)) in ix.args.iter().enumerate() {
+            for (i, arg) in ix.args.iter().enumerate() {
                 if i > 0 {
                     write!(mod_rs, ", ").expect("write to String");
                 }
-                write!(mod_rs, "{}", name).expect("write to String");
+                write!(mod_rs, "{}", camel_to_snake(&arg.name)).expect("write to String");
             }
             mod_rs.push_str(" })\n");
             mod_rs.push_str("        }\n");
@@ -339,9 +344,9 @@ fn emit_instructions(
     mod_rs.push_str("}\n");
 
     // Individual instruction files
-    for ix in &parsed.instructions {
-        let snake = pascal_to_snake(&snake_to_pascal(&ix.name));
-        let content = emit_single_instruction(parsed, ix, type_map);
+    for ix in &idl.instructions {
+        let snake = camel_to_snake(&ix.name);
+        let content = emit_single_instruction(ix, type_map);
         ix_files.push((snake, content));
     }
 
@@ -349,24 +354,12 @@ fn emit_instructions(
 }
 
 fn emit_single_instruction(
-    parsed: &ParsedProgram,
-    ix: &crate::parser::program::RawInstruction,
-    type_map: &HashMap<String, Vec<(String, IdlType)>>,
+    ix: &crate::types::IdlInstruction,
+    type_map: &HashMap<String, Vec<IdlField>>,
 ) -> String {
     let mut out = String::new();
 
-    let accounts_struct = parsed
-        .accounts_structs
-        .iter()
-        .find(|s| s.name == ix.accounts_type_name);
-
-    let struct_name = snake_to_pascal(&ix.name);
-
-    let arg_types: Vec<IdlType> = ix
-        .args
-        .iter()
-        .map(|(_, ty)| helpers::map_type_from_syn(ty))
-        .collect();
+    let struct_name = camel_to_pascal(&ix.name);
 
     // --- Per-file imports ---
     if ix.has_remaining {
@@ -377,33 +370,26 @@ fn emit_single_instruction(
     out.push_str("use solana_instruction::{AccountMeta, Instruction};\n");
     out.push_str("use crate::ID;\n");
 
-    // Check if this instruction needs wrapper imports
-    let mut needs_dyn_bytes = false;
-    let mut needs_dyn_vec = false;
-    for arg_ty in &arg_types {
-        collect_wrapper_needs(arg_ty, &mut needs_dyn_bytes, &mut needs_dyn_vec);
-    }
-    emit_wrapper_imports(&mut out, needs_dyn_bytes, needs_dyn_vec);
-
-    // Check if this instruction references any defined types
-    for arg_ty in &arg_types {
-        emit_type_use_imports(&mut out, arg_ty, type_map);
-    }
+    emit_field_imports(&mut out, ix.args.iter().map(|a| &a.ty), type_map);
 
     out.push('\n');
 
     // --- Struct definition ---
     writeln!(out, "pub struct {}Instruction {{", struct_name).expect("write to String");
 
-    if let Some(accs) = accounts_struct {
-        for field in &accs.fields {
-            writeln!(out, "    pub {}: Address,", field.name).expect("write to String");
-        }
+    for account in &ix.accounts {
+        writeln!(out, "    pub {}: Address,", camel_to_snake(&account.name))
+            .expect("write to String");
     }
 
-    for (i, (name, _)) in ix.args.iter().enumerate() {
-        writeln!(out, "    pub {}: {},", name, rust_field_type(&arg_types[i]))
-            .expect("write to String");
+    for arg in &ix.args {
+        writeln!(
+            out,
+            "    pub {}: {},",
+            camel_to_snake(&arg.name),
+            rust_field_type(&arg.ty)
+        )
+        .expect("write to String");
     }
 
     if ix.has_remaining {
@@ -431,10 +417,8 @@ fn emit_single_instruction(
     } else {
         out.push_str("        let accounts = vec![\n");
     }
-    if let Some(accs) = accounts_struct {
-        for field in &accs.fields {
-            writeln!(out, "            {},", account_meta_expr(field)).expect("write to String");
-        }
+    for account in &ix.accounts {
+        writeln!(out, "            {},", account_meta_expr(account)).expect("write to String");
     }
     out.push_str("        ];\n");
     if ix.has_remaining {
@@ -448,11 +432,11 @@ fn emit_single_instruction(
         writeln!(out, "        let data = vec![{}];", disc_str).expect("write to String");
     } else {
         writeln!(out, "        let mut data = vec![{}];", disc_str).expect("write to String");
-        for (name, _) in &ix.args {
+        for arg in &ix.args {
             writeln!(
                 out,
                 "        wincode::serialize_into(&mut data, &ix.{}).unwrap();",
-                name
+                camel_to_snake(&arg.name)
             )
             .expect("write to String");
         }
@@ -470,86 +454,126 @@ fn emit_single_instruction(
 }
 
 // ===========================================================================
-// state/
+// state/ and events/ — unified via DiscriminatedItem trait
 // ===========================================================================
 
-fn emit_state(
-    parsed: &ParsedProgram,
-    type_map: &HashMap<String, Vec<(String, IdlType)>>,
+/// Trait abstracting over IdlAccountDef and IdlEventDef for shared codegen.
+trait DiscriminatedItem {
+    fn name(&self) -> &str;
+    fn discriminator(&self) -> &[u8];
+}
+
+impl DiscriminatedItem for crate::types::IdlAccountDef {
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn discriminator(&self) -> &[u8] {
+        &self.discriminator
+    }
+}
+
+impl DiscriminatedItem for crate::types::IdlEventDef {
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn discriminator(&self) -> &[u8] {
+        &self.discriminator
+    }
+}
+
+/// Generate mod.rs + individual files for a discriminated module (state or
+/// events).
+///
+/// `kind` is `"account"` or `"event"` — controls discriminator constant suffix,
+/// enum name stripping, and SchemaRead error messages.
+fn emit_discriminated_module<T: DiscriminatedItem>(
+    items: &[T],
+    kind: &str,
+    enum_name: &str,
+    decode_fn: &str,
+    type_map: &HashMap<String, Vec<IdlField>>,
 ) -> (String, Vec<(String, String)>) {
     let mut mod_rs = String::new();
-    let mut state_files: Vec<(String, String)> = Vec::new();
+    let mut item_files: Vec<(String, String)> = Vec::new();
 
-    // Accounts with fields get their own file
-    let accounts_with_fields: Vec<_> = parsed
-        .state_accounts
-        .iter()
-        .filter(|acc| !acc.fields.is_empty())
-        .collect();
-    let accounts_without_fields: Vec<_> = parsed
-        .state_accounts
-        .iter()
-        .filter(|acc| acc.fields.is_empty())
-        .collect();
+    let has_fields = |item: &T| type_map.get(item.name()).is_some_and(|f| !f.is_empty());
 
-    // mod declarations for accounts with fields
-    for acc in &accounts_with_fields {
-        let snake = pascal_to_snake(&acc.name);
+    let with_fields: Vec<_> = items.iter().filter(|item| has_fields(item)).collect();
+    let without_fields: Vec<_> = items.iter().filter(|item| !has_fields(item)).collect();
+
+    // mod declarations for items with fields
+    for item in &with_fields {
+        let snake = pascal_to_snake(item.name());
         writeln!(mod_rs, "pub mod {};", snake).expect("write to String");
     }
-    if !accounts_with_fields.is_empty() {
+    if !with_fields.is_empty() {
         mod_rs.push('\n');
-        for acc in &accounts_with_fields {
-            let snake = pascal_to_snake(&acc.name);
+        for item in &with_fields {
+            let snake = pascal_to_snake(item.name());
             writeln!(mod_rs, "pub use {}::*;", snake).expect("write to String");
         }
         mod_rs.push('\n');
     }
 
-    // Discriminator constants for fieldless accounts (in mod.rs)
-    for acc in &accounts_without_fields {
-        let const_name = pascal_to_screaming_snake(&acc.name);
-        let disc_str = format_disc_list(&acc.discriminator);
+    // Discriminator constants for fieldless items (in mod.rs)
+    let kind_upper = kind.to_ascii_uppercase();
+    for item in &without_fields {
+        let base = disc_base_name(item.name(), kind);
+        let const_name = pascal_to_screaming_snake(base);
+        let disc_str = format_disc_list(item.discriminator());
         writeln!(
             mod_rs,
-            "pub const {}_ACCOUNT_DISCRIMINATOR: &[u8] = &[{}];",
-            const_name, disc_str
+            "pub const {}_{}_DISCRIMINATOR: &[u8] = &[{}];",
+            const_name, kind_upper, disc_str
         )
         .expect("write to String");
     }
-    if !accounts_without_fields.is_empty() {
+    if !without_fields.is_empty() {
         mod_rs.push('\n');
     }
 
-    // ProgramAccount enum
-    mod_rs.push_str("pub enum ProgramAccount {\n");
-    for acc in &parsed.state_accounts {
-        if acc.fields.is_empty() {
-            writeln!(mod_rs, "    {},", acc.name).expect("write to String");
+    // Enum
+    writeln!(mod_rs, "pub enum {} {{", enum_name).expect("write to String");
+    for item in items {
+        if has_fields(item) {
+            writeln!(mod_rs, "    {}({}),", item.name(), item.name()).expect("write to String");
         } else {
-            writeln!(mod_rs, "    {}({}),", acc.name, acc.name).expect("write to String");
+            writeln!(mod_rs, "    {},", item.name()).expect("write to String");
         }
     }
     mod_rs.push_str("}\n\n");
 
-    // decode_account function
-    mod_rs.push_str("pub fn decode_account(data: &[u8]) -> Option<ProgramAccount> {\n");
-    for acc in &parsed.state_accounts {
-        let const_name = pascal_to_screaming_snake(&acc.name);
+    // decode function
+    writeln!(
+        mod_rs,
+        "pub fn {}(data: &[u8]) -> Option<{}> {{",
+        decode_fn, enum_name
+    )
+    .expect("write to String");
+    for item in items {
+        let base = disc_base_name(item.name(), kind);
+        let const_name = pascal_to_screaming_snake(base);
         writeln!(
             mod_rs,
-            "    if data.starts_with({}_ACCOUNT_DISCRIMINATOR) {{",
-            const_name
+            "    if data.starts_with({}_{}_DISCRIMINATOR) {{",
+            const_name, kind_upper
         )
         .expect("write to String");
-        if acc.fields.is_empty() {
-            writeln!(mod_rs, "        return Some(ProgramAccount::{});", acc.name)
-                .expect("write to String");
+        if has_fields(item) {
+            writeln!(
+                mod_rs,
+                "        return wincode::deserialize::<{}>(data).ok().map({}::{});",
+                item.name(),
+                enum_name,
+                item.name()
+            )
+            .expect("write to String");
         } else {
             writeln!(
                 mod_rs,
-                "        return wincode::deserialize::<{}>(data).ok().map(ProgramAccount::{});",
-                acc.name, acc.name
+                "        return Some({}::{});",
+                enum_name,
+                item.name()
             )
             .expect("write to String");
         }
@@ -558,19 +582,34 @@ fn emit_state(
     mod_rs.push_str("    None\n");
     mod_rs.push_str("}\n");
 
-    // Individual state files
-    for acc in &accounts_with_fields {
-        let snake = pascal_to_snake(&acc.name);
-        let content = emit_single_state_account(acc, type_map);
-        state_files.push((snake, content));
+    // Individual files
+    for item in &with_fields {
+        let snake = pascal_to_snake(item.name());
+        let fields = type_map.get(item.name()).unwrap();
+        let content =
+            emit_single_state_or_event(item.name(), item.discriminator(), fields, kind, type_map);
+        item_files.push((snake, content));
     }
 
-    (mod_rs, state_files)
+    (mod_rs, item_files)
 }
 
-fn emit_single_state_account(
-    acc: &crate::parser::state::RawStateAccount,
-    type_map: &HashMap<String, Vec<(String, IdlType)>>,
+/// Strip "Event" suffix for event discriminator constant names to avoid stutter
+/// (e.g. MakeEvent → MAKE, not MAKE_EVENT). Accounts keep their full name.
+fn disc_base_name<'a>(name: &'a str, kind: &str) -> &'a str {
+    if kind == "event" {
+        name.strip_suffix("Event").unwrap_or(name)
+    } else {
+        name
+    }
+}
+
+fn emit_single_state_or_event(
+    name: &str,
+    discriminator: &[u8],
+    fields: &[IdlField],
+    kind: &str,
+    type_map: &HashMap<String, Vec<IdlField>>,
 ) -> String {
     let mut out = String::new();
 
@@ -581,196 +620,25 @@ fn emit_single_state_account(
     out.push_str("use wincode::io::{Reader, Writer};\n");
     out.push_str("use std::mem::MaybeUninit;\n");
 
-    // Check for wrapper type needs and Address
-    let mut needs_address = false;
-    let mut needs_dyn_bytes = false;
-    let mut needs_dyn_vec = false;
-    for (_, ty) in &acc.fields {
-        let idl_ty = helpers::map_type_from_syn(ty);
-        collect_wrapper_needs(&idl_ty, &mut needs_dyn_bytes, &mut needs_dyn_vec);
-        if field_needs_address(&idl_ty) {
-            needs_address = true;
-        }
-        emit_type_use_imports(&mut out, &idl_ty, type_map);
-    }
-    if needs_address {
-        out.push_str("use solana_address::Address;\n");
-    }
-    emit_wrapper_imports(&mut out, needs_dyn_bytes, needs_dyn_vec);
+    emit_field_imports(&mut out, fields.iter().map(|f| &f.ty), type_map);
 
     out.push('\n');
 
     // Discriminator constant
-    let const_name = pascal_to_screaming_snake(&acc.name);
-    let disc_str = format_disc_list(&acc.discriminator);
+    let base = disc_base_name(name, kind);
+    let const_name = pascal_to_screaming_snake(base);
+    let kind_upper = kind.to_ascii_uppercase();
+    let disc_str = format_disc_list(discriminator);
     writeln!(
         out,
-        "pub const {}_ACCOUNT_DISCRIMINATOR: &[u8] = &[{}];",
-        const_name, disc_str
+        "pub const {}_{}_DISCRIMINATOR: &[u8] = &[{}];",
+        const_name, kind_upper, disc_str
     )
     .expect("write to String");
     out.push('\n');
 
     // Struct + manual impls
-    emit_manual_impls(
-        &mut out,
-        &acc.name,
-        &acc.discriminator,
-        &acc.fields,
-        "account",
-    );
-
-    out
-}
-
-// ===========================================================================
-// events/
-// ===========================================================================
-
-fn emit_events(
-    parsed: &ParsedProgram,
-    type_map: &HashMap<String, Vec<(String, IdlType)>>,
-) -> (String, Vec<(String, String)>) {
-    let mut mod_rs = String::new();
-    let mut event_files: Vec<(String, String)> = Vec::new();
-
-    let events_with_fields: Vec<_> = parsed
-        .events
-        .iter()
-        .filter(|ev| !ev.fields.is_empty())
-        .collect();
-    let events_without_fields: Vec<_> = parsed
-        .events
-        .iter()
-        .filter(|ev| ev.fields.is_empty())
-        .collect();
-
-    // mod declarations for events with fields
-    for ev in &events_with_fields {
-        let snake = pascal_to_snake(&ev.name);
-        writeln!(mod_rs, "pub mod {};", snake).expect("write to String");
-    }
-    if !events_with_fields.is_empty() {
-        mod_rs.push('\n');
-        for ev in &events_with_fields {
-            let snake = pascal_to_snake(&ev.name);
-            writeln!(mod_rs, "pub use {}::*;", snake).expect("write to String");
-        }
-        mod_rs.push('\n');
-    }
-
-    // Discriminator constants for fieldless events (in mod.rs)
-    for ev in &events_without_fields {
-        let base = ev.name.strip_suffix("Event").unwrap_or(&ev.name);
-        let const_name = pascal_to_screaming_snake(base);
-        let disc_str = format_disc_list(&ev.discriminator);
-        writeln!(
-            mod_rs,
-            "pub const {}_EVENT_DISCRIMINATOR: &[u8] = &[{}];",
-            const_name, disc_str
-        )
-        .expect("write to String");
-    }
-    if !events_without_fields.is_empty() {
-        mod_rs.push('\n');
-    }
-
-    // ProgramEvent enum
-    mod_rs.push_str("pub enum ProgramEvent {\n");
-    for ev in &parsed.events {
-        if ev.fields.is_empty() {
-            writeln!(mod_rs, "    {},", ev.name).expect("write to String");
-        } else {
-            writeln!(mod_rs, "    {}({}),", ev.name, ev.name).expect("write to String");
-        }
-    }
-    mod_rs.push_str("}\n\n");
-
-    // decode_event function
-    mod_rs.push_str("pub fn decode_event(data: &[u8]) -> Option<ProgramEvent> {\n");
-    for ev in &parsed.events {
-        let base = ev.name.strip_suffix("Event").unwrap_or(&ev.name);
-        let const_name = pascal_to_screaming_snake(base);
-        writeln!(
-            mod_rs,
-            "    if data.starts_with({}_EVENT_DISCRIMINATOR) {{",
-            const_name
-        )
-        .expect("write to String");
-        if ev.fields.is_empty() {
-            writeln!(mod_rs, "        return Some(ProgramEvent::{});", ev.name)
-                .expect("write to String");
-        } else {
-            writeln!(
-                mod_rs,
-                "        return wincode::deserialize::<{}>(data).ok().map(ProgramEvent::{});",
-                ev.name, ev.name
-            )
-            .expect("write to String");
-        }
-        mod_rs.push_str("    }\n");
-    }
-    mod_rs.push_str("    None\n");
-    mod_rs.push_str("}\n");
-
-    // Individual event files
-    for ev in &events_with_fields {
-        let snake = pascal_to_snake(&ev.name);
-        let content = emit_single_event(ev, type_map);
-        event_files.push((snake, content));
-    }
-
-    (mod_rs, event_files)
-}
-
-fn emit_single_event(
-    ev: &crate::parser::events::RawEvent,
-    type_map: &HashMap<String, Vec<(String, IdlType)>>,
-) -> String {
-    let mut out = String::new();
-
-    // Imports for manual impls
-    out.push_str("use wincode::{SchemaWrite, SchemaRead};\n");
-    out.push_str("use wincode::config::ConfigCore;\n");
-    out.push_str("use wincode::error::{ReadError, ReadResult, WriteResult};\n");
-    out.push_str("use wincode::io::{Reader, Writer};\n");
-    out.push_str("use std::mem::MaybeUninit;\n");
-
-    // Check for wrapper type needs and Address
-    let mut needs_address = false;
-    let mut needs_dyn_bytes = false;
-    let mut needs_dyn_vec = false;
-    for (_, ty) in &ev.fields {
-        let idl_ty = helpers::map_type_from_syn(ty);
-        collect_wrapper_needs(&idl_ty, &mut needs_dyn_bytes, &mut needs_dyn_vec);
-        if field_needs_address(&idl_ty) {
-            needs_address = true;
-        }
-        emit_type_use_imports(&mut out, &idl_ty, type_map);
-    }
-    if needs_address {
-        out.push_str("use solana_address::Address;\n");
-    }
-    emit_wrapper_imports(&mut out, needs_dyn_bytes, needs_dyn_vec);
-
-    out.push('\n');
-
-    // Discriminator constant — strip trailing "Event" to avoid stutter
-    // (e.g. MakeEvent → MAKE_EVENT_DISCRIMINATOR, not
-    // MAKE_EVENT_EVENT_DISCRIMINATOR)
-    let base_name = ev.name.strip_suffix("Event").unwrap_or(&ev.name);
-    let const_name = pascal_to_screaming_snake(base_name);
-    let disc_str = format_disc_list(&ev.discriminator);
-    writeln!(
-        out,
-        "pub const {}_EVENT_DISCRIMINATOR: &[u8] = &[{}];",
-        const_name, disc_str
-    )
-    .expect("write to String");
-    out.push('\n');
-
-    // Struct + manual impls
-    emit_manual_impls(&mut out, &ev.name, &ev.discriminator, &ev.fields, "event");
+    emit_manual_impls(&mut out, name, discriminator, fields, kind);
 
     out
 }
@@ -779,9 +647,7 @@ fn emit_single_event(
 // types/
 // ===========================================================================
 
-fn emit_types(
-    type_map: &HashMap<String, Vec<(String, IdlType)>>,
-) -> (String, Vec<(String, String)>) {
+fn emit_types(type_map: &HashMap<String, Vec<IdlField>>) -> (String, Vec<(String, String)>) {
     let mut mod_rs = String::new();
     let mut type_files: Vec<(String, String)> = Vec::new();
 
@@ -811,39 +677,25 @@ fn emit_types(
 
 fn emit_single_type(
     type_name: &str,
-    fields: &[(String, IdlType)],
-    type_map: &HashMap<String, Vec<(String, IdlType)>>,
+    fields: &[IdlField],
+    type_map: &HashMap<String, Vec<IdlField>>,
 ) -> String {
     let mut out = String::new();
 
     out.push_str("use wincode::{SchemaWrite, SchemaRead};\n");
 
-    // Check for wrapper type needs and Address
-    let mut needs_address = false;
-    let mut needs_dyn_bytes = false;
-    let mut needs_dyn_vec = false;
-    for (_, fty) in fields {
-        collect_wrapper_needs(fty, &mut needs_dyn_bytes, &mut needs_dyn_vec);
-        if field_needs_address(fty) {
-            needs_address = true;
-        }
-        emit_type_use_imports(&mut out, fty, type_map);
-    }
-    if needs_address {
-        out.push_str("use solana_address::Address;\n");
-    }
-    emit_wrapper_imports(&mut out, needs_dyn_bytes, needs_dyn_vec);
+    emit_field_imports(&mut out, fields.iter().map(|f| &f.ty), type_map);
 
     out.push('\n');
 
     out.push_str("#[derive(SchemaWrite, SchemaRead)]\n");
     writeln!(out, "pub struct {} {{", type_name).expect("write to String");
-    for (field_name, field_ty) in fields {
+    for field in fields {
         writeln!(
             out,
             "    pub {}: {},",
-            field_name,
-            rust_field_type(field_ty)
+            camel_to_snake(&field.name),
+            rust_field_type(&field.ty)
         )
         .expect("write to String");
     }
@@ -856,15 +708,15 @@ fn emit_single_type(
 // errors.rs
 // ===========================================================================
 
-fn emit_errors(parsed: &ParsedProgram) -> String {
+fn emit_errors(idl: &Idl) -> String {
     let mut out = String::new();
 
-    let enum_name = format!("{}Error", snake_to_pascal(&parsed.program_name));
+    let enum_name = format!("{}Error", snake_to_pascal(&idl.metadata.name));
 
     out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n");
     out.push_str("#[repr(u32)]\n");
     writeln!(out, "pub enum {} {{", enum_name).expect("write to String");
-    for err in &parsed.errors {
+    for err in &idl.errors {
         writeln!(out, "    {} = {},", err.name, err.code).expect("write to String");
     }
     out.push_str("}\n\n");
@@ -874,7 +726,7 @@ fn emit_errors(parsed: &ParsedProgram) -> String {
     // from_code
     out.push_str("    pub fn from_code(code: u32) -> Option<Self> {\n");
     out.push_str("        match code {\n");
-    for err in &parsed.errors {
+    for err in &idl.errors {
         writeln!(out, "            {} => Some(Self::{}),", err.code, err.name)
             .expect("write to String");
     }
@@ -885,7 +737,7 @@ fn emit_errors(parsed: &ParsedProgram) -> String {
     // message
     out.push_str("    pub fn message(&self) -> &'static str {\n");
     out.push_str("        match self {\n");
-    for err in &parsed.errors {
+    for err in &idl.errors {
         let msg = err.msg.as_deref().unwrap_or(&err.name);
         let escaped = msg.replace('\\', "\\\\").replace('"', "\\\"");
         writeln!(out, "            Self::{} => \"{}\",", err.name, escaped)
@@ -903,49 +755,34 @@ fn emit_errors(parsed: &ParsedProgram) -> String {
 // pda.rs
 // ===========================================================================
 
-/// A seed element for PDA generation (owned copy of parser's RawSeed).
-enum OwnedSeed {
-    ByteString(Vec<u8>),
-    AccountRef(String),
-    ArgRef(String),
-}
-
 /// A collected PDA with its field name and seeds.
 struct PdaInfo {
     field_name: String,
-    seeds: Vec<OwnedSeed>,
+    seeds: Vec<IdlSeed>,
 }
 
-fn raw_seed_to_owned(seed: &RawSeed) -> OwnedSeed {
-    match seed {
-        RawSeed::ByteString(bytes) => OwnedSeed::ByteString(bytes.clone()),
-        RawSeed::AccountRef(name) => OwnedSeed::AccountRef(name.clone()),
-        RawSeed::ArgRef(name) => OwnedSeed::ArgRef(name.clone()),
-    }
-}
-
-fn collect_pdas(parsed: &ParsedProgram) -> Vec<PdaInfo> {
+fn collect_pdas(idl: &Idl) -> Vec<PdaInfo> {
     let mut pdas: Vec<PdaInfo> = Vec::new();
-    let mut seen_seeds: Vec<Vec<u8>> = Vec::new(); // serialized seeds for dedup
+    let mut seen_seeds: Vec<Vec<IdlSeed>> = Vec::new();
 
-    for acc_struct in &parsed.accounts_structs {
-        for field in &acc_struct.fields {
-            if let Some(pda) = &field.pda {
-                // Only include PDAs with resolvable seeds
+    for ix in &idl.instructions {
+        for account in &ix.accounts {
+            if let Some(pda) = &account.pda {
                 if pda.seeds.is_empty() {
                     continue;
                 }
 
-                // Serialize seeds for dedup
-                let seed_key = serialize_seeds_for_dedup(&pda.seeds);
-                if seen_seeds.contains(&seed_key) {
+                // Dedup by seed identity (PartialEq on IdlSeed). When two
+                // instructions name the same PDA differently, the first
+                // occurrence's field name wins for the generated function name.
+                if seen_seeds.contains(&pda.seeds) {
                     continue;
                 }
-                seen_seeds.push(seed_key);
+                seen_seeds.push(pda.seeds.clone());
 
                 pdas.push(PdaInfo {
-                    field_name: field.name.clone(),
-                    seeds: pda.seeds.iter().map(raw_seed_to_owned).collect(),
+                    field_name: camel_to_snake(&account.name),
+                    seeds: pda.seeds.clone(),
                 });
             }
         }
@@ -954,26 +791,14 @@ fn collect_pdas(parsed: &ParsedProgram) -> Vec<PdaInfo> {
     pdas
 }
 
-fn serialize_seeds_for_dedup(seeds: &[RawSeed]) -> Vec<u8> {
-    let mut buf = Vec::new();
-    for seed in seeds {
-        match seed {
-            RawSeed::ByteString(bytes) => {
-                buf.push(0);
-                buf.extend(bytes);
-            }
-            RawSeed::AccountRef(name) => {
-                buf.push(1);
-                buf.extend(name.as_bytes());
-            }
-            RawSeed::ArgRef(name) => {
-                buf.push(2);
-                buf.extend(name.as_bytes());
-            }
-        }
-        buf.push(0xFF); // separator
+/// Format a const seed value for display (doc comments or code expressions).
+fn format_const_seed_display(value: &[u8]) -> String {
+    if value.iter().all(|b| b.is_ascii_graphic() || *b == b' ') {
+        format!("b\"{}\"", String::from_utf8_lossy(value))
+    } else {
+        let byte_list: Vec<String> = value.iter().map(|b| format!("{}", b)).collect();
+        format!("&[{}]", byte_list.join(", "))
     }
-    buf
 }
 
 fn emit_pda(pdas: &[PdaInfo]) -> String {
@@ -987,35 +812,29 @@ fn emit_pda(pdas: &[PdaInfo]) -> String {
             .seeds
             .iter()
             .map(|s| match s {
-                OwnedSeed::ByteString(bytes) => {
-                    if bytes.iter().all(|b| b.is_ascii_graphic() || *b == b' ') {
-                        format!("b\"{}\"", String::from_utf8_lossy(bytes))
-                    } else {
-                        format!("&{:?}", bytes)
-                    }
-                }
-                OwnedSeed::AccountRef(name) => name.clone(),
-                OwnedSeed::ArgRef(name) => format!("arg:{}", name),
+                IdlSeed::Const { value } => format_const_seed_display(value),
+                IdlSeed::Account { path } => camel_to_snake(path),
+                IdlSeed::Arg { path } => format!("arg:{}", camel_to_snake(path)),
             })
             .collect();
         writeln!(out, "/// Seeds: [{}]", seed_desc.join(", ")).expect("write to String");
 
-        // Function parameters: collect AccountRef seeds as parameters
+        // Function parameters
         let mut params: Vec<String> = Vec::new();
         for seed in &pda.seeds {
             match seed {
-                OwnedSeed::AccountRef(name) => {
-                    params.push(format!("{}: &Address", name));
+                IdlSeed::Account { path } => {
+                    params.push(format!("{}: &Address", camel_to_snake(path)));
                 }
-                OwnedSeed::ArgRef(name) => {
-                    params.push(format!("{}: &[u8]", name));
+                IdlSeed::Arg { path } => {
+                    params.push(format!("{}: &[u8]", camel_to_snake(path)));
                 }
                 _ => {}
             }
         }
         params.push("program_id: &Address".to_string());
 
-        let fn_name = format!("find_{}_address", pascal_to_snake(&pda.field_name));
+        let fn_name = format!("find_{}_address", pda.field_name);
         writeln!(
             out,
             "pub fn {}({}) -> (Address, u8) {{",
@@ -1029,17 +848,9 @@ fn emit_pda(pdas: &[PdaInfo]) -> String {
             .seeds
             .iter()
             .map(|s| match s {
-                OwnedSeed::ByteString(bytes) => {
-                    if bytes.iter().all(|b| b.is_ascii_graphic() || *b == b' ') {
-                        format!("b\"{}\"", String::from_utf8_lossy(bytes))
-                    } else {
-                        let byte_list: Vec<String> =
-                            bytes.iter().map(|b| format!("{}", b)).collect();
-                        format!("&[{}]", byte_list.join(", "))
-                    }
-                }
-                OwnedSeed::AccountRef(name) => format!("{}.as_ref()", name),
-                OwnedSeed::ArgRef(name) => name.clone(),
+                IdlSeed::Const { value } => format_const_seed_display(value),
+                IdlSeed::Account { path } => format!("{}.as_ref()", camel_to_snake(path)),
+                IdlSeed::Arg { path } => camel_to_snake(path),
             })
             .collect();
 
@@ -1059,60 +870,28 @@ fn emit_pda(pdas: &[PdaInfo]) -> String {
 // Shared helpers
 // ===========================================================================
 
-/// Build type map for custom data types referenced anywhere.
-fn build_type_map(parsed: &ParsedProgram) -> HashMap<String, Vec<(String, IdlType)>> {
-    let mut map = HashMap::new();
-
-    let mut referenced = std::collections::BTreeSet::new();
-    for ix in &parsed.instructions {
-        for (_, ty) in &ix.args {
-            let idl_ty = helpers::map_type_from_syn(ty);
-            collect_defined_refs(&idl_ty, &mut referenced);
+/// Scan field types and emit wrapper imports (DynBytes, DynVec), Address
+/// import, and defined type imports. Used by instruction, state/event, and type
+/// emitters.
+fn emit_field_imports<'a>(
+    out: &mut String,
+    types: impl Iterator<Item = &'a IdlType>,
+    type_map: &HashMap<String, Vec<IdlField>>,
+) {
+    let mut needs_address = false;
+    let mut needs_dyn_bytes = false;
+    let mut needs_dyn_vec = false;
+    for ty in types {
+        collect_wrapper_needs(ty, &mut needs_dyn_bytes, &mut needs_dyn_vec);
+        if field_needs_address(ty) {
+            needs_address = true;
         }
+        emit_type_use_imports(out, ty, type_map);
     }
-    for acc in &parsed.state_accounts {
-        for (_, ty) in &acc.fields {
-            let idl_ty = helpers::map_type_from_syn(ty);
-            collect_defined_refs(&idl_ty, &mut referenced);
-        }
+    if needs_address {
+        out.push_str("use solana_address::Address;\n");
     }
-    for ev in &parsed.events {
-        for (_, ty) in &ev.fields {
-            let idl_ty = helpers::map_type_from_syn(ty);
-            collect_defined_refs(&idl_ty, &mut referenced);
-        }
-    }
-
-    let struct_map: HashMap<&str, &[(String, syn::Type)]> = parsed
-        .data_structs
-        .iter()
-        .map(|ds| (ds.name.as_str(), ds.fields.as_slice()))
-        .collect();
-
-    let mut to_resolve: Vec<String> = referenced.into_iter().collect();
-    let mut resolved = std::collections::HashSet::new();
-
-    while let Some(name) = to_resolve.pop() {
-        if resolved.contains(&name) {
-            continue;
-        }
-        if let Some(fields) = struct_map.get(name.as_str()) {
-            let idl_fields: Vec<(String, IdlType)> = fields
-                .iter()
-                .map(|(fname, fty)| (fname.clone(), helpers::map_type_from_syn(fty)))
-                .collect();
-            for (_, fty) in &idl_fields {
-                if let IdlType::Defined { defined } = fty {
-                    if !resolved.contains(defined) {
-                        to_resolve.push(defined.clone());
-                    }
-                }
-            }
-            resolved.insert(name.clone());
-            map.insert(name, idl_fields);
-        }
-    }
-    map
+    emit_wrapper_imports(out, needs_dyn_bytes, needs_dyn_vec);
 }
 
 /// Emit struct definition + manual SchemaWrite/SchemaRead impls with
@@ -1121,15 +900,12 @@ fn emit_manual_impls(
     out: &mut String,
     name: &str,
     discriminator: &[u8],
-    raw_fields: &[(String, syn::Type)],
+    idl_fields: &[IdlField],
     kind: &str,
 ) {
-    let has_dynamic = raw_fields.iter().any(|(_, ty)| {
-        matches!(
-            helpers::map_type_from_syn(ty),
-            IdlType::DynString { .. } | IdlType::DynVec { .. }
-        )
-    });
+    let has_dynamic = idl_fields
+        .iter()
+        .any(|f| matches!(f.ty, IdlType::DynString { .. } | IdlType::DynVec { .. }));
 
     if has_dynamic {
         out.push_str("#[derive(Clone)]\n");
@@ -1137,14 +913,9 @@ fn emit_manual_impls(
         out.push_str("#[derive(Clone, Copy)]\n");
     }
     writeln!(out, "pub struct {} {{", name).expect("write to String");
-    let fields: Vec<(String, String)> = raw_fields
+    let fields: Vec<(String, String)> = idl_fields
         .iter()
-        .map(|(fname, fty)| {
-            (
-                fname.clone(),
-                rust_field_type(&helpers::map_type_from_syn(fty)),
-            )
-        })
+        .map(|f| (camel_to_snake(&f.name), rust_field_type(&f.ty)))
         .collect();
     for (field_name, field_type) in &fields {
         writeln!(out, "    pub {}: {},", field_name, field_type).expect("write to String");
@@ -1158,14 +929,8 @@ fn emit_manual_impls(
         types
     };
 
-    // Strip trailing kind suffix to avoid stutter (e.g. MakeEvent + EVENT →
-    // MAKE_EVENT, not MAKE_EVENT_EVENT)
-    let base_name = if kind == "event" {
-        name.strip_suffix("Event").unwrap_or(name)
-    } else {
-        name
-    };
-    let const_name = pascal_to_screaming_snake(base_name);
+    let base = disc_base_name(name, kind);
+    let const_name = pascal_to_screaming_snake(base);
     let disc_const = format!("{}_{}_DISCRIMINATOR", const_name, kind.to_ascii_uppercase());
 
     // --- SchemaWrite impl ---
@@ -1265,12 +1030,13 @@ fn emit_manual_impls(
     out.push_str("}\n\n");
 }
 
-fn account_meta_expr(field: &RawAccountField) -> String {
-    let signer = field.signer;
-    if field.writable {
-        format!("AccountMeta::new(ix.{}, {})", field.name, signer)
+fn account_meta_expr(account: &IdlAccountItem) -> String {
+    let field_name = camel_to_snake(&account.name);
+    let signer = account.signer;
+    if account.writable {
+        format!("AccountMeta::new(ix.{}, {})", field_name, signer)
     } else {
-        format!("AccountMeta::new_readonly(ix.{}, {})", field.name, signer)
+        format!("AccountMeta::new_readonly(ix.{}, {})", field_name, signer)
     }
 }
 
@@ -1293,7 +1059,6 @@ fn rust_field_type(ty: &IdlType) -> String {
     }
 }
 
-/// Map prefix byte width to a Rust type name or generic type string.
 fn prefix_generic(wrapper: &str, prefix_bytes: usize) -> String {
     match prefix_bytes {
         4 => wrapper.to_string(),
@@ -1310,17 +1075,6 @@ fn prefix_rust_type(prefix_bytes: usize) -> &'static str {
     }
 }
 
-fn collect_defined_refs(ty: &IdlType, out: &mut std::collections::BTreeSet<String>) {
-    match ty {
-        IdlType::Defined { defined } => {
-            out.insert(defined.clone());
-        }
-        IdlType::DynVec { vec } => collect_defined_refs(&vec.items, out),
-        _ => {}
-    }
-}
-
-/// Scan an IdlType for wrapper type usage (DynBytes, DynVec).
 fn collect_wrapper_needs(ty: &IdlType, needs_dyn_bytes: &mut bool, needs_dyn_vec: &mut bool) {
     match ty {
         IdlType::DynString { .. } => *needs_dyn_bytes = true,
@@ -1332,7 +1086,6 @@ fn collect_wrapper_needs(ty: &IdlType, needs_dyn_bytes: &mut bool, needs_dyn_vec
     }
 }
 
-/// Format discriminator bytes as a comma-separated list (no brackets).
 fn format_disc_list(disc: &[u8]) -> String {
     let mut s = String::with_capacity(disc.len() * 4);
     for (i, b) in disc.iter().enumerate() {
@@ -1367,7 +1120,8 @@ fn snake_to_pascal(s: &str) -> String {
         .collect()
 }
 
-/// Convert PascalCase to snake_case.
+/// Convert PascalCase to snake_case. Handles acronyms (e.g. "HTTPServer" →
+/// "http_server") by checking adjacent character case.
 fn pascal_to_snake(s: &str) -> String {
     let mut result = String::with_capacity(s.len() + 4);
     let chars: Vec<char> = s.chars().collect();
@@ -1384,7 +1138,33 @@ fn pascal_to_snake(s: &str) -> String {
     result
 }
 
-/// Check if a field type references Address (publicKey).
+/// Convert camelCase to snake_case (inverse of helpers::to_camel_case).
+///
+/// Safe for all standard Rust snake_case identifiers. Uses the simple rule of
+/// inserting `_` before every uppercase character — this is correct because
+/// `to_camel_case` only produces single uppercase letters at word boundaries
+/// from snake_case input. Not suitable for acronym-heavy input like
+/// "HTTPServer" (use `pascal_to_snake` for PascalCase with acronyms).
+fn camel_to_snake(s: &str) -> String {
+    let mut result = String::with_capacity(s.len() + 4);
+    for (i, c) in s.chars().enumerate() {
+        if c.is_uppercase() && i > 0 {
+            result.push('_');
+        }
+        result.push(c.to_ascii_lowercase());
+    }
+    result
+}
+
+/// Capitalize first character of a camelCase string to get PascalCase.
+fn camel_to_pascal(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+    }
+}
+
 fn field_needs_address(ty: &IdlType) -> bool {
     match ty {
         IdlType::Primitive(p) => p == "publicKey",
@@ -1393,7 +1173,6 @@ fn field_needs_address(ty: &IdlType) -> bool {
     }
 }
 
-/// Emit `use quasar_lang::client::{...};` for wrapper types.
 fn emit_wrapper_imports(out: &mut String, needs_dyn_bytes: bool, needs_dyn_vec: bool) {
     let mut wrappers = Vec::new();
     if needs_dyn_bytes {
@@ -1408,11 +1187,10 @@ fn emit_wrapper_imports(out: &mut String, needs_dyn_bytes: bool, needs_dyn_vec: 
     }
 }
 
-/// Emit `use crate::types::TypeName;` for defined types referenced by a field.
 fn emit_type_use_imports(
     out: &mut String,
     ty: &IdlType,
-    type_map: &HashMap<String, Vec<(String, IdlType)>>,
+    type_map: &HashMap<String, Vec<IdlField>>,
 ) {
     match ty {
         IdlType::Defined { defined } if type_map.contains_key(defined) => {

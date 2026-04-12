@@ -53,12 +53,12 @@ fn is_false(b: &bool) -> bool {
     !b
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct IdlPda {
     pub seeds: Vec<IdlSeed>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind")]
 pub enum IdlSeed {
     #[serde(rename = "const")]
@@ -69,14 +69,14 @@ pub enum IdlSeed {
     Arg { path: String },
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct IdlField {
     pub name: String,
     #[serde(rename = "type")]
     pub ty: IdlType,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct IdlDynString {
     #[serde(rename = "maxLength")]
     pub max_length: usize,
@@ -97,7 +97,7 @@ fn is_default_prefix(v: &usize) -> bool {
     *v == 4
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct IdlDynVec {
     pub items: Box<IdlType>,
     #[serde(rename = "maxLength")]
@@ -111,7 +111,7 @@ pub struct IdlDynVec {
     pub prefix_bytes: usize,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum IdlType {
     Primitive(String),
@@ -132,20 +132,20 @@ pub struct IdlEventDef {
     pub discriminator: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct IdlTypeDef {
     pub name: String,
     #[serde(rename = "type")]
     pub ty: IdlTypeDefType,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct IdlTypeDefType {
     pub kind: String,
     pub fields: Vec<IdlField>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct IdlError {
     pub code: u32,
     pub name: String,
