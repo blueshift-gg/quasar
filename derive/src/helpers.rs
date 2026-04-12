@@ -359,7 +359,8 @@ pub(crate) fn seed_slice_expr_for_parse(
 /// - Bare identifier matching an instruction arg -> type-appropriate conversion
 /// - Dotted field access (`config.namespace`) -> raw byte cast via
 ///   `from_raw_parts`
-/// - Anything else -> emit as-is, let rustc decide
+/// - Anything else -> raw byte cast via `from_raw_parts` (handles constants,
+///   function calls, etc.)
 pub(crate) fn typed_seed_slice_expr(
     expr: &Expr,
     field_names: &[String],
@@ -383,8 +384,17 @@ pub(crate) fn typed_seed_slice_expr(
                 }
             }
 
-            // Unknown — emit as-is, rustc will error
-            quote! { &#ident as &[u8] }
+            // Unknown bare ident (e.g. a constant like SIDE_A: u8) —
+            // reinterpret as LE bytes, same as field access below.
+            quote! {{
+                const _: () = assert!(cfg!(target_endian = "little"), "typed seeds require little-endian");
+                unsafe {
+                    core::slice::from_raw_parts(
+                        &#ident as *const _ as *const u8,
+                        core::mem::size_of_val(&#ident),
+                    )
+                }
+            }}
         }
 
         // Dotted field access: config.namespace
@@ -403,8 +413,19 @@ pub(crate) fn typed_seed_slice_expr(
             }}
         }
 
-        // Byte literal or other expression
-        _ => quote! { #expr as &[u8] },
+        // Other expression (function call, index, etc.) — reinterpret as LE
+        // bytes. This handles constants, arithmetic, and any other expression
+        // that produces a seed-compatible value.
+        _ => quote! {{
+            const _: () = assert!(cfg!(target_endian = "little"), "typed seeds require little-endian");
+            let __val = #expr;
+            unsafe {
+                core::slice::from_raw_parts(
+                    &__val as *const _ as *const u8,
+                    core::mem::size_of_val(&__val),
+                )
+            }
+        }},
     }
 }
 
@@ -434,7 +455,16 @@ pub(crate) fn typed_seed_method_expr(
                 }
             }
 
-            quote! { &#ident as &[u8] }
+            // Unknown bare ident (e.g. a constant) — reinterpret as LE bytes.
+            quote! {{
+                const _: () = assert!(cfg!(target_endian = "little"), "typed seeds require little-endian");
+                unsafe {
+                    core::slice::from_raw_parts(
+                        &#ident as *const _ as *const u8,
+                        core::mem::size_of_val(&#ident),
+                    )
+                }
+            }}
         }
 
         // Dotted field access: config.namespace -> self.config.namespace
@@ -450,7 +480,17 @@ pub(crate) fn typed_seed_method_expr(
             }}
         }
 
-        _ => quote! { #expr as &[u8] },
+        // Other expression — reinterpret as LE bytes.
+        _ => quote! {{
+            const _: () = assert!(cfg!(target_endian = "little"), "typed seeds require little-endian");
+            let __val = #expr;
+            unsafe {
+                core::slice::from_raw_parts(
+                    &__val as *const _ as *const u8,
+                    core::mem::size_of_val(&__val),
+                )
+            }
+        }},
     }
 }
 

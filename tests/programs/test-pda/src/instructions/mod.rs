@@ -42,3 +42,6 @@ pub use init_scoped_item::*;
 
 pub mod verify_scoped_item;
 pub use verify_scoped_item::*;
+
+pub mod init_const_seed;
+pub use init_const_seed::*;

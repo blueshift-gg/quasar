@@ -1,5 +1,8 @@
 use quasar_lang::prelude::*;
 
+pub const SIDE_A: u8 = 0;
+pub const SIDE_B: u8 = 1;
+
 #[account(discriminator = 1, set_inner)]
 #[seeds(b"config")]
 pub struct ConfigAccount {
@@ -69,5 +72,13 @@ pub struct NamespaceConfig {
 pub struct ScopedItem {
     pub namespace: u32,
     pub data: u64,
+    pub bump: u8,
+}
+
+#[account(discriminator = 11, set_inner)]
+#[seeds(b"intake", authority: Address, side: u8)]
+pub struct IntakeQueue {
+    pub authority: Address,
+    pub side: u8,
     pub bump: u8,
 }
