@@ -359,8 +359,7 @@ pub(crate) fn seed_slice_expr_for_parse(
 /// - Bare identifier matching an instruction arg -> type-appropriate conversion
 /// - Dotted field access (`config.namespace`) -> raw byte cast via
 ///   `from_raw_parts`
-/// - Anything else -> raw byte cast via `from_raw_parts` (handles constants,
-///   function calls, etc.)
+/// - Anything else -> emit as-is, let rustc decide
 pub(crate) fn typed_seed_slice_expr(
     expr: &Expr,
     field_names: &[String],
@@ -413,19 +412,8 @@ pub(crate) fn typed_seed_slice_expr(
             }}
         }
 
-        // Other expression (function call, index, etc.) — reinterpret as LE
-        // bytes. This handles constants, arithmetic, and any other expression
-        // that produces a seed-compatible value.
-        _ => quote! {{
-            const _: () = assert!(cfg!(target_endian = "little"), "typed seeds require little-endian");
-            let __val = #expr;
-            unsafe {
-                core::slice::from_raw_parts(
-                    &__val as *const _ as *const u8,
-                    core::mem::size_of_val(&__val),
-                )
-            }
-        }},
+        // Byte literal or other expression — pass through and let rustc decide.
+        _ => quote! { #expr as &[u8] },
     }
 }
 
@@ -480,17 +468,8 @@ pub(crate) fn typed_seed_method_expr(
             }}
         }
 
-        // Other expression — reinterpret as LE bytes.
-        _ => quote! {{
-            const _: () = assert!(cfg!(target_endian = "little"), "typed seeds require little-endian");
-            let __val = #expr;
-            unsafe {
-                core::slice::from_raw_parts(
-                    &__val as *const _ as *const u8,
-                    core::mem::size_of_val(&__val),
-                )
-            }
-        }},
+        // Other expression — pass through and let rustc decide.
+        _ => quote! { #expr as &[u8] },
     }
 }
 
