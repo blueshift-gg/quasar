@@ -43,11 +43,8 @@ extern crate self as quasar_lang;
 /// Breaking changes to this module are not considered semver violations.
 #[doc(hidden)]
 pub mod __internal {
-    pub use {
-        crate::entrypoint::parse_one_account,
-        solana_account_view::{
-            AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED,
-        },
+    pub use solana_account_view::{
+        AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED,
     };
 
     // Header layout (little-endian u32):
