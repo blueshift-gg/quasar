@@ -13,7 +13,6 @@ use syn::Ident;
 
 /// Predicate over the constraint set for a single field.
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)] // Variants exist for rule-table completeness
 enum Pred {
     Init,
     InitIfNeeded,
