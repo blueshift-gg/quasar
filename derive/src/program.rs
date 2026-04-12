@@ -404,7 +404,7 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
             #[inline(always)]
             pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
-                if *view.address() != Self::ADDRESS {
+                if !quasar_lang::keys_eq(view.address(), &Self::ADDRESS) {
                     return Err(ProgramError::InvalidSeeds);
                 }
                 Ok(unsafe { &*(view as *const AccountView as *const Self) })

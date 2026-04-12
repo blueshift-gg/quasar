@@ -92,13 +92,14 @@ impl Rent {
     /// `lamports_per_byte` is within safe bounds.
     #[inline(always)]
     pub fn minimum_balance_unchecked(&self, data_len: usize) -> u64 {
-        self.minimum_balance_inner(data_len, self.lamports_per_byte.get())
+        let lamports_per_byte = self.lamports_per_byte.get();
+        let threshold = self.exemption_threshold_u64();
+        self.minimum_balance_inner(data_len, lamports_per_byte, threshold)
     }
 
     #[inline(always)]
-    fn minimum_balance_inner(&self, data_len: usize, lamports_per_byte: u64) -> u64 {
+    fn minimum_balance_inner(&self, data_len: usize, lamports_per_byte: u64, threshold: u64) -> u64 {
         let total_bytes = ACCOUNT_STORAGE_OVERHEAD + data_len as u64;
-        let threshold = self.exemption_threshold_u64();
 
         if threshold == SIMD0194_EXEMPTION_THRESHOLD {
             total_bytes * lamports_per_byte
@@ -145,7 +146,7 @@ impl Rent {
             }
         }
 
-        Ok(self.minimum_balance_inner(data_len, lamports_per_byte))
+        Ok(self.minimum_balance_inner(data_len, lamports_per_byte, threshold))
     }
 }
 

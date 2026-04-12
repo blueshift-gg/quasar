@@ -121,7 +121,7 @@ fn emit_find_with_check(
             #(#seed_len_checks)*
             let __pda_seeds = [#(#seed_idents),*];
             let (__expected, __bump) = quasar_lang::pda::based_try_find_program_address(&__pda_seeds, __program_id)?;
-            if #addr_access != __expected {
+            if !quasar_lang::keys_eq(&#addr_access, &__expected) {
                 #[cfg(feature = "debug")]
                 quasar_lang::prelude::log(concat!(
                     "Account '", stringify!(#field_name),
@@ -669,6 +669,17 @@ fn gen_raw_pda_seeds(
                 }
                 quote! { let #ident: &[u8] = #seed; }
             }
+            // Address-type seed (account field reference) — the derive macro
+            // emits `.address().as_ref()` which returns `&[u8; 32]`, always
+            // exactly MAX_SEED_LEN. Skip the runtime length check.
+            Expr::Path(ep)
+                if ep.path.segments.len() == 1
+                    && ep.qself.is_none()
+                    && field_name_strings
+                        .contains(&ep.path.segments[0].ident.to_string()) =>
+            {
+                quote! { let #ident: &[u8] = #seed; }
+            }
             _ => quote! {
                 let #ident: &[u8] = #seed;
                 if #ident.len() > 32 {
@@ -788,6 +799,18 @@ fn gen_typed_pda_seeds(
         );
     });
 
+    // SEED_PREFIX is a compile-time constant — check at compile time, not runtime.
+    let prefix_len_msg = format!(
+        "{}::SEED_PREFIX exceeds MAX_SEED_LEN of 32 bytes",
+        type_name_str,
+    );
+    field_checks.push(quote! {
+        const _: () = assert!(
+            <#type_path as quasar_lang::traits::HasSeeds>::SEED_PREFIX.len() <= 32,
+            #prefix_len_msg,
+        );
+    });
+
     if all_seed_slices.len() > 15 {
         return Err(syn::Error::new_spanned(
             field_name,
@@ -811,7 +834,25 @@ fn gen_typed_pda_seeds(
     let seed_len_checks: Vec<proc_macro2::TokenStream> = seed_idents
         .iter()
         .zip(all_seed_slices.iter())
-        .map(|(ident, seed)| {
+        .enumerate()
+        .map(|(idx, (ident, seed))| {
+            // Index 0 is SEED_PREFIX — already checked at compile time above.
+            if idx == 0 {
+                return quote! { let #ident: &[u8] = #seed; };
+            }
+            // Address-type seed args — always exactly 32 bytes.
+            let arg = &typed.args[idx - 1];
+            if let Expr::Path(ep) = arg {
+                if ep.path.segments.len() == 1
+                    && ep.qself.is_none()
+                    && field_name_strings
+                        .contains(&ep.path.segments[0].ident.to_string())
+                {
+                    // Address-type seed — always exactly 32 bytes.
+                    return quote! { let #ident: &[u8] = #seed; };
+                }
+            }
+            // Dynamic seeds — runtime check (only safe option).
             quote! {
                 let #ident: &[u8] = #seed;
                 if #ident.len() > 32 {
