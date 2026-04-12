@@ -347,7 +347,7 @@ fn python_type(ty: &IdlType) -> String {
                 "int".to_string()
             }
             "f32" | "f64" => "float".to_string(),
-            "publicKey" => "Pubkey".to_string(),
+            "pubkey" => "Pubkey".to_string(),
             "string" => "str".to_string(),
             _ if p.starts_with('[') => "bytes".to_string(),
             _ => "bytes".to_string(),
@@ -385,7 +385,7 @@ fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef]) -> Strin
             ),
             "f32" => format!("    data += struct.pack(\"<f\", input.{})\n", name),
             "f64" => format!("    data += struct.pack(\"<d\", input.{})\n", name),
-            "publicKey" => format!("    data += bytes(input.{})\n", name),
+            "pubkey" => format!("    data += bytes(input.{})\n", name),
             _ if p.starts_with('[') => {
                 format!("    data += input.{}\n", name)
             }
@@ -403,7 +403,7 @@ fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef]) -> Strin
         IdlType::DynVec { vec } => {
             let (fmt, _sz) = prefix_fmt(vec.prefix_bytes);
             let item_ser = match &*vec.items {
-                IdlType::Primitive(p) if p == "publicKey" => "bytes(item)".to_string(),
+                IdlType::Primitive(p) if p == "pubkey" => "bytes(item)".to_string(),
                 IdlType::Primitive(p) => {
                     let f = struct_format(p);
                     format!("struct.pack(\"<{}\", item)", f)
@@ -458,7 +458,7 @@ fn decode_field_expr(name: &str, ty: &IdlType, indent: usize, types: &[IdlTypeDe
                 pad = pad,
                 n = name,
             ),
-            "publicKey" => format!(
+            "pubkey" => format!(
                 "{pad}{n} = Pubkey.from_bytes(data[offset:offset + 32])\n{pad}offset += 32\n",
                 pad = pad,
                 n = name,
@@ -512,7 +512,7 @@ fn decode_field_expr(name: &str, ty: &IdlType, indent: usize, types: &[IdlTypeDe
         IdlType::DynVec { vec } => {
             let (fmt, sz) = prefix_fmt(vec.prefix_bytes);
             let item_decode = match &*vec.items {
-                IdlType::Primitive(p) if p == "publicKey" => {
+                IdlType::Primitive(p) if p == "pubkey" => {
                     "Pubkey.from_bytes(data[offset:offset + 32]); offset += 32".to_string()
                 }
                 IdlType::Primitive(p) => {
@@ -619,7 +619,7 @@ fn primitive_size(p: &str) -> usize {
         "u32" | "i32" | "f32" => 4,
         "u64" | "i64" | "f64" => 8,
         "u128" | "i128" => 16,
-        "publicKey" => 32,
+        "pubkey" => 32,
         _ => 0,
     }
 }

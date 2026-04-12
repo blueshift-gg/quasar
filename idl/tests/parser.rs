@@ -259,7 +259,7 @@ fn parse_discriminator_empty_array() {
 fn map_type_primitives() {
     assert!(matches!(
         helpers::map_type("Address"),
-        IdlType::Primitive(s) if s == "publicKey"
+        IdlType::Primitive(s) if s == "pubkey"
     ));
     assert!(matches!(
         helpers::map_type("u64"),

@@ -29,7 +29,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     let has_dyn_vec = used.contains("dynVec");
     let has_tail = used.contains("tail");
     let has_instructions = !idl.instructions.is_empty();
-    let has_public_key = used.contains("publicKey");
+    let has_public_key = used.contains("pubkey");
 
     // Check if any instruction uses PDAs or PDA account seeds
     let has_pdas = idl
@@ -820,7 +820,7 @@ fn ts_type(ty: &IdlType) -> String {
             "u8" | "u16" | "u32" | "i8" | "i16" | "i32" => "number".to_string(),
             "u64" | "u128" | "i64" | "i128" => "bigint".to_string(),
             "bool" => "boolean".to_string(),
-            "publicKey" => "Address".to_string(),
+            "pubkey" => "Address".to_string(),
             other if other.starts_with('[') => "Uint8Array".to_string(),
             other => other.to_string(),
         },
@@ -848,7 +848,7 @@ fn ts_codec(ty: &IdlType, target: TsTarget) -> String {
             "i64" => "getI64Codec()".to_string(),
             "i128" => "getI128Codec()".to_string(),
             "bool" => "getBooleanCodec()".to_string(),
-            "publicKey" => match target {
+            "pubkey" => match target {
                 TsTarget::Web3js => "getPublicKeyCodec()".to_string(),
                 TsTarget::Kit => "getAddressCodec()".to_string(),
             },

@@ -1313,7 +1313,7 @@ fn account_meta_expr(field: &RawAccountField) -> String {
 fn rust_field_type(ty: &IdlType) -> String {
     match ty {
         IdlType::Primitive(p) => match p.as_str() {
-            "publicKey" => "Address".to_string(),
+            "pubkey" => "Address".to_string(),
             other => other.to_string(),
         },
         IdlType::DynString { string } => prefix_generic("DynBytes", string.prefix_bytes),
@@ -1426,10 +1426,10 @@ fn pascal_to_snake(s: &str) -> String {
     result
 }
 
-/// Check if a field type references Address (publicKey).
+/// Check if a field type references Address (pubkey).
 fn field_needs_address(ty: &IdlType) -> bool {
     match ty {
-        IdlType::Primitive(p) => p == "publicKey",
+        IdlType::Primitive(p) => p == "pubkey",
         IdlType::DynVec { vec } => field_needs_address(&vec.items),
         _ => false,
     }

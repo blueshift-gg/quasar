@@ -313,7 +313,7 @@ fn go_type(ty: &IdlType) -> String {
             "i128" => "[16]byte".to_string(),
             "f32" => "float32".to_string(),
             "f64" => "float64".to_string(),
-            "publicKey" => "solana.PublicKey".to_string(),
+            "pubkey" => "solana.PublicKey".to_string(),
             "string" => "string".to_string(),
             other if other.starts_with('[') => {
                 let size = parse_fixed_array_size(other).unwrap_or(0);
@@ -398,7 +398,7 @@ fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef]) -> Strin
                  math.Float64bits(input.{n})); data = append(data, buf[:]...) }}\n",
                 n = name,
             ),
-            "publicKey" => format!("\tdata = append(data, input.{}[:]...)\n", name,),
+            "pubkey" => format!("\tdata = append(data, input.{}[:]...)\n", name,),
             "string" => format!(
                 "\t{{ b := []byte(input.{n}); var buf [4]byte; \
                  binary.LittleEndian.PutUint32(buf[:], uint32(len(b))); data = append(data, \
@@ -534,7 +534,7 @@ fn decode_field_expr(name: &str, ty: &IdlType, depth: usize, types: &[IdlTypeDef
             ),
             "f32" => go_float_decode(&t, name, "Float32frombits", "Uint32", 4),
             "f64" => go_float_decode(&t, name, "Float64frombits", "Uint64", 8),
-            "publicKey" => format!(
+            "pubkey" => format!(
                 "{t}var {n} solana.PublicKey\n{t}copy({n}[:], data[offset:offset+32])\n{t}offset \
                  += 32\n",
                 t = t,
