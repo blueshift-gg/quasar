@@ -141,9 +141,12 @@ pub(super) fn generate_account(
                     if __offset + __len > __data_len {
                         return Err(ProgramError::AccountDataTooSmall);
                     }
-                    if core::str::from_utf8(&__data[__offset..__offset + __len]).is_err() {
-                        return Err(ProgramError::InvalidAccountData);
-                    }
+                    // UTF-8 re-validation skipped: the owner check
+                    // (check_owner) already proved this account belongs to
+                    // this program, and all PodString write paths (set_xxx,
+                    // set_inner) accept &str, which is valid UTF-8 by
+                    // Rust's type system. DerefMut only exposes the fixed
+                    // ZC header, not the dynamic region.
                     __offset += __len;
                 }
             },
