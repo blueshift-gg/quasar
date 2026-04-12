@@ -326,39 +326,8 @@ fn test_execute_transfer_insufficient_signers() {
     println!("  INSUFFICIENT_SIGNERS: correctly rejected");
 }
 
-#[test]
-fn test_invalid_utf8_label_rejected() {
-    let mut svm = setup();
-
-    let system_program = quasar_svm::system_program::ID;
-    let creator = Pubkey::new_unique();
-    let signer1 = Pubkey::new_unique();
-    let depositor = Pubkey::new_unique();
-
-    let (config, config_bump) =
-        Pubkey::find_program_address(&[b"multisig", creator.as_ref()], &crate::ID);
-    let (vault, _) = Pubkey::find_program_address(&[b"vault", config.as_ref()], &crate::ID);
-
-    let instruction: Instruction = DepositInstruction {
-        depositor,
-        config,
-        vault,
-        system_program,
-        amount: 1_000,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer(depositor),
-            config_account(config, creator, 1, config_bump, &[0xFF, 0xFE], &[signer1]),
-            empty(vault),
-        ],
-    );
-
-    assert!(
-        result.is_err(),
-        "invalid UTF-8 label in config account should be rejected"
-    );
-}
+// NOTE: UTF-8 re-validation was removed in Phase 7 (perf/cu-optimizations).
+// The owner check already proves the account was written by this program,
+// and all PodString write paths accept &str (valid UTF-8 by construction).
+// Corrupted data in an owned account means Solana's security model is
+// broken — not something the program needs to defend against.
