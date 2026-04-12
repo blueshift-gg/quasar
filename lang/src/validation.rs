@@ -107,20 +107,8 @@ pub fn check_interface<T: ProgramInterface>(
 // Constraint checks (has_one, address, user constraint)
 // ---------------------------------------------------------------------------
 
-/// Validate that two addresses match (used for `has_one` constraints).
-#[inline(always)]
-pub fn check_has_one(
-    stored: &Address,
-    expected: &Address,
-    error: ProgramError,
-) -> Result<(), ProgramError> {
-    if unlikely(!crate::keys_eq(stored, expected)) {
-        return Err(error);
-    }
-    Ok(())
-}
-
-/// Validate that an account's address matches an expected value.
+/// Validate that two addresses match (used for `has_one` and `address`
+/// constraints — the check is identical).
 #[inline(always)]
 pub fn check_address_match(
     actual: &Address,

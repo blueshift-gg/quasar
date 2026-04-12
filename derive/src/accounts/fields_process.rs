@@ -408,7 +408,7 @@ fn gen_validation_checks(ctx: &FieldContext<'_>) -> Vec<proc_macro2::TokenStream
             None => quote! { QuasarError::HasOneMismatch.into() },
         };
         checks.push(quote! {
-            quasar_lang::validation::check_has_one(
+            quasar_lang::validation::check_address_match(
                 &#field_name.#target,
                 #target.to_account_view().address(),
                 #error,
