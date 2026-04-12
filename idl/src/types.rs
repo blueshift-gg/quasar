@@ -9,15 +9,21 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize)]
 pub struct Idl {
     pub address: String,
+    #[serde(default)]
     pub metadata: IdlMetadata,
+    #[serde(default)]
     pub instructions: Vec<IdlInstruction>,
+    #[serde(default)]
     pub accounts: Vec<IdlAccountDef>,
+    #[serde(default)]
     pub events: Vec<IdlEventDef>,
+    #[serde(default)]
     pub types: Vec<IdlTypeDef>,
+    #[serde(default)]
     pub errors: Vec<IdlError>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct IdlMetadata {
     pub name: String,
     #[serde(skip)]
@@ -43,9 +49,9 @@ pub struct IdlAccountItem {
     pub writable: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub signer: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pda: Option<IdlPda>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub address: Option<String>,
 }
 
