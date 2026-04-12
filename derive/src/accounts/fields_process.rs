@@ -76,6 +76,64 @@ fn is_type_u8(ty: &Type) -> bool {
 ///
 /// Both seed codegen paths share identical bump handling logic:
 /// - `bump = expr`: verify with explicit bump value
+// --- PDA codegen helpers ---
+
+/// Emit seed length checks + verify_program_address with a known bump value.
+fn emit_verify_with_bump(
+    field_name: &Ident,
+    bump_var: &Ident,
+    bump_expr: proc_macro2::TokenStream,
+    seed_idents: &[Ident],
+    seed_len_checks: &[proc_macro2::TokenStream],
+    addr_access: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    quote! {
+        {
+            #(#seed_len_checks)*
+            let __bump_val: u8 = #bump_expr;
+            let __bump_ref: &[u8] = &[__bump_val];
+            let __pda_seeds = [#(#seed_idents,)* __bump_ref];
+            quasar_lang::pda::verify_program_address(&__pda_seeds, __program_id, &#addr_access)
+                .map_err(|__e| {
+                    #[cfg(feature = "debug")]
+                    quasar_lang::prelude::log(concat!(
+                        "Account '", stringify!(#field_name),
+                        "': PDA verification failed"
+                    ));
+                    __e
+                })?;
+            #bump_var = __bump_val;
+        }
+    }
+}
+
+/// Emit based_try_find_program_address with address comparison (for init
+/// paths and non-Account types that need on-curve checks).
+fn emit_find_with_check(
+    field_name: &Ident,
+    bump_var: &Ident,
+    seed_idents: &[Ident],
+    seed_len_checks: &[proc_macro2::TokenStream],
+    addr_access: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    quote! {
+        {
+            #(#seed_len_checks)*
+            let __pda_seeds = [#(#seed_idents),*];
+            let (__expected, __bump) = quasar_lang::pda::based_try_find_program_address(&__pda_seeds, __program_id)?;
+            if #addr_access != __expected {
+                #[cfg(feature = "debug")]
+                quasar_lang::prelude::log(concat!(
+                    "Account '", stringify!(#field_name),
+                    "': PDA verification failed"
+                ));
+                return Err(QuasarError::InvalidPda.into());
+            }
+            #bump_var = __bump;
+        }
+    }
+}
+
 /// - bare `bump`: try ix arg match, then BUMP_OFFSET fast path, then
 ///   find_program_address
 /// - missing bump: compile error
@@ -142,24 +200,9 @@ fn gen_bump_check(
     // --- End precomputation; fall through to runtime paths ---
 
     match bump {
-        Some(Some(bump_expr)) => Ok(quote! {
-            {
-                #(#seed_len_checks)*
-                let __bump_val: u8 = #bump_expr;
-                let __bump_ref: &[u8] = &[__bump_val];
-                let __pda_seeds = [#(#seed_idents,)* __bump_ref];
-                quasar_lang::pda::verify_program_address(&__pda_seeds, __program_id, &#addr_access)
-                    .map_err(|__e| {
-                        #[cfg(feature = "debug")]
-                        quasar_lang::prelude::log(concat!(
-                            "Account '", stringify!(#field_name),
-                            "': PDA verification failed"
-                        ));
-                        __e
-                    })?;
-                #bump_var = __bump_val;
-            }
-        }),
+        Some(Some(bump_expr)) => Ok(emit_verify_with_bump(
+            field_name, bump_var, quote!(#bump_expr), seed_idents, seed_len_checks, addr_access,
+        )),
         Some(None) => {
             let field_bump_name = format!("{}_bump", field_name);
 
@@ -181,24 +224,9 @@ fn gen_bump_check(
 
             let check = if let Some(arg) = ix_arg_match {
                 let arg_ident = &arg.name;
-                quote! {
-                    {
-                        #(#seed_len_checks)*
-                        let __bump_val: u8 = #arg_ident;
-                        let __bump_ref: &[u8] = &[__bump_val];
-                        let __pda_seeds = [#(#seed_idents,)* __bump_ref];
-                        quasar_lang::pda::verify_program_address(&__pda_seeds, __program_id, &#addr_access)
-                            .map_err(|__e| {
-                                #[cfg(feature = "debug")]
-                                quasar_lang::prelude::log(concat!(
-                                    "Account '", stringify!(#field_name),
-                                    "': PDA verification failed"
-                                ));
-                                __e
-                            })?;
-                        #bump_var = __bump_val;
-                    }
-                }
+                emit_verify_with_bump(
+                    field_name, bump_var, quote!(#arg_ident), seed_idents, seed_len_checks, addr_access,
+                )
             } else if !is_init_field {
                 if let FieldKind::Account { inner_ty } = kind {
                     let view_access = quote! { #field_name.to_account_view() };
@@ -245,42 +273,14 @@ fn gen_bump_check(
                 } else {
                     // Non-Account type (UncheckedAccount, Mint, TokenAccount, etc.):
                     // must use based_try_find_program_address with on-curve check.
-                    // We can't skip the on-curve check because we didn't create these
-                    // accounts — only our own program's PDAs are guaranteed off-curve.
-                    quote! {
-                        {
-                            #(#seed_len_checks)*
-                            let __pda_seeds = [#(#seed_idents),*];
-                            let (__expected, __bump) = quasar_lang::pda::based_try_find_program_address(&__pda_seeds, __program_id)?;
-                            if #addr_access != __expected {
-                                #[cfg(feature = "debug")]
-                                quasar_lang::prelude::log(concat!(
-                                    "Account '", stringify!(#field_name),
-                                    "': PDA verification failed"
-                                ));
-                                return Err(QuasarError::InvalidPda.into());
-                            }
-                            #bump_var = __bump;
-                        }
-                    }
+                    emit_find_with_check(
+                        field_name, bump_var, seed_idents, seed_len_checks, addr_access,
+                    )
                 }
             } else {
-                quote! {
-                    {
-                        #(#seed_len_checks)*
-                        let __pda_seeds = [#(#seed_idents),*];
-                        let (__expected, __bump) = quasar_lang::pda::based_try_find_program_address(&__pda_seeds, __program_id)?;
-                        if #addr_access != __expected {
-                            #[cfg(feature = "debug")]
-                            quasar_lang::prelude::log(concat!(
-                                "Account '", stringify!(#field_name),
-                                "': PDA verification failed"
-                            ));
-                            return Err(QuasarError::InvalidPda.into());
-                        }
-                        #bump_var = __bump;
-                    }
-                }
+                emit_find_with_check(
+                    field_name, bump_var, seed_idents, seed_len_checks, addr_access,
+                )
             };
 
             Ok(check)
