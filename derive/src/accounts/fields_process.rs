@@ -5,9 +5,9 @@ use {
             composition::validate_composition,
             constraint::verify_all_directives_mapped,
             evidence::{
-                BumpEvidence, FieldCheckEvidence, FieldEvidence, InitEvidence,
-                LifecycleEvidence, MetaplexInitEvidence, OwnerEvidence, PdaEvidence,
-                ReallocEvidence, TokenValidationEvidence,
+                BumpEvidence, FieldCheckEvidence, FieldEvidence, InitEvidence, LifecycleEvidence,
+                MetaplexInitEvidence, OwnerEvidence, PdaEvidence, ReallocEvidence,
+                TokenValidationEvidence,
             },
             field_kind::{debug_checked, strip_ref, FieldKind},
             init, InstructionArg,
@@ -54,9 +54,7 @@ struct FieldContext<'a> {
 fn contains_ident(expr: &Expr, name: &str) -> bool {
     match expr {
         Expr::Path(ep) => {
-            ep.path.segments.len() == 1
-                && ep.qself.is_none()
-                && ep.path.segments[0].ident == name
+            ep.path.segments.len() == 1 && ep.qself.is_none() && ep.path.segments[0].ident == name
         }
         Expr::MethodCall(mc) => contains_ident(&mc.receiver, name),
         Expr::Field(ef) => contains_ident(&ef.base, name),
@@ -71,11 +69,6 @@ fn is_type_u8(ty: &Type) -> bool {
     matches!(ty, Type::Path(tp) if tp.path.is_ident("u8"))
 }
 
-/// Generate the PDA bump verification code shared by both raw and typed seed
-/// paths. Returns the token stream to push into target_checks.
-///
-/// Both seed codegen paths share identical bump handling logic:
-/// - `bump = expr`: verify with explicit bump value
 // --- PDA codegen helpers ---
 
 /// Emit seed length checks + verify_program_address with a known bump value.
@@ -201,7 +194,12 @@ fn gen_bump_check(
 
     match bump {
         Some(Some(bump_expr)) => Ok(emit_verify_with_bump(
-            field_name, bump_var, quote!(#bump_expr), seed_idents, seed_len_checks, addr_access,
+            field_name,
+            bump_var,
+            quote!(#bump_expr),
+            seed_idents,
+            seed_len_checks,
+            addr_access,
         )),
         Some(None) => {
             let field_bump_name = format!("{}_bump", field_name);
@@ -225,7 +223,12 @@ fn gen_bump_check(
             let check = if let Some(arg) = ix_arg_match {
                 let arg_ident = &arg.name;
                 emit_verify_with_bump(
-                    field_name, bump_var, quote!(#arg_ident), seed_idents, seed_len_checks, addr_access,
+                    field_name,
+                    bump_var,
+                    quote!(#arg_ident),
+                    seed_idents,
+                    seed_len_checks,
+                    addr_access,
                 )
             } else if !is_init_field {
                 if let FieldKind::Account { inner_ty } = kind {
@@ -274,12 +277,20 @@ fn gen_bump_check(
                     // Non-Account type (UncheckedAccount, Mint, TokenAccount, etc.):
                     // must use based_try_find_program_address with on-curve check.
                     emit_find_with_check(
-                        field_name, bump_var, seed_idents, seed_len_checks, addr_access,
+                        field_name,
+                        bump_var,
+                        seed_idents,
+                        seed_len_checks,
+                        addr_access,
                     )
                 }
             } else {
                 emit_find_with_check(
-                    field_name, bump_var, seed_idents, seed_len_checks, addr_access,
+                    field_name,
+                    bump_var,
+                    seed_idents,
+                    seed_len_checks,
+                    addr_access,
                 )
             };
 
@@ -300,10 +311,7 @@ fn gen_bump_check(
 /// Generate owner/discriminator/sysvar/program/interface/system-account type
 /// checks for a single field. Returns the checks to push into
 /// `this_field_checks`.
-fn gen_type_checks(
-    ctx: &FieldContext<'_>,
-    skip_mut_checks: bool,
-) -> Vec<proc_macro2::TokenStream> {
+fn gen_type_checks(ctx: &FieldContext<'_>, skip_mut_checks: bool) -> Vec<proc_macro2::TokenStream> {
     let field_name = ctx.field_name;
     let underlying_ty = ctx.underlying_ty;
     let mut checks: Vec<proc_macro2::TokenStream> = Vec::new();
@@ -422,17 +430,17 @@ fn gen_validation_checks(ctx: &FieldContext<'_>) -> Vec<proc_macro2::TokenStream
     if let Some(ref seed_exprs) = attrs.seeds {
         for (target, _) in &attrs.has_ones {
             let target_str = target.to_string();
-            let is_seed_ref = seed_exprs.iter().any(|expr| {
-                contains_ident(expr, &target_str)
-            });
+            let is_seed_ref = seed_exprs
+                .iter()
+                .any(|expr| contains_ident(expr, &target_str));
             if is_seed_ref {
                 // Emit compile-time deprecation warning. The const decl
                 // triggers the warning; the usage is allow(deprecated) so
                 // #![deny(deprecated)] won't hard-error.
                 let warn_msg = format!(
-                    "has_one = {} may be redundant: '{}' is already a PDA seed for '{}', \
-                     so the derivation validates this relationship. Consider removing \
-                     has_one for ~10 CU savings, or keep for defense-in-depth.",
+                    "has_one = {} may be redundant: '{}' is already a PDA seed for '{}', so the \
+                     derivation validates this relationship. Consider removing has_one for ~10 CU \
+                     savings, or keep for defense-in-depth.",
                     target, target, field_name,
                 );
                 let warn_const = format_ident!(
@@ -505,7 +513,8 @@ fn gen_close_sweep(
                     .to_compile_error()
                     .into()
                 })?;
-            let tp_field: Ident = ctx.token_program_for_token
+            let tp_field: Ident = ctx
+                .token_program_for_token
                 .cloned()
                 .expect("token close requires a resolved token program field");
             Some(CpiCloseInfo {
@@ -579,7 +588,8 @@ fn gen_close_sweep(
             .token_authority
             .clone()
             .expect("token_authority must be set when sweep is configured");
-        let tp_field = ctx.token_program_for_token
+        let tp_field = ctx
+            .token_program_for_token
             .cloned()
             .expect("token_program field must be present when sweep is configured");
 
@@ -630,8 +640,7 @@ fn gen_raw_pda_seeds(
         return Err(syn::Error::new_spanned(
             field_name,
             format!(
-                "`{}` exceeds Solana's PDA seed limit: {} seeds provided, max is 16 \
-                 including bump",
+                "`{}` exceeds Solana's PDA seed limit: {} seeds provided, max is 16 including bump",
                 field_name,
                 seed_slices.len()
             ),
@@ -675,8 +684,7 @@ fn gen_raw_pda_seeds(
             Expr::Path(ep)
                 if ep.path.segments.len() == 1
                     && ep.qself.is_none()
-                    && field_name_strings
-                        .contains(&ep.path.segments[0].ident.to_string()) =>
+                    && field_name_strings.contains(&ep.path.segments[0].ident.to_string()) =>
             {
                 quote! { let #ident: &[u8] = #seed; }
             }
@@ -731,8 +739,7 @@ fn gen_raw_pda_seeds(
         seed_elements.push(quote! { quasar_lang::cpi::Seed::from((#expr) as &[u8]) });
     }
 
-    seed_elements
-        .push(quote! { quasar_lang::cpi::Seed::from(&bumps.#bump_arr_field as &[u8]) });
+    seed_elements.push(quote! { quasar_lang::cpi::Seed::from(&bumps.#bump_arr_field as &[u8]) });
 
     seeds_methods.push(quote! {
         #[inline(always)]
@@ -815,8 +822,7 @@ fn gen_typed_pda_seeds(
         return Err(syn::Error::new_spanned(
             field_name,
             format!(
-                "`{}` exceeds Solana's PDA seed limit: {} seeds provided, max is 16 \
-                 including bump",
+                "`{}` exceeds Solana's PDA seed limit: {} seeds provided, max is 16 including bump",
                 field_name,
                 all_seed_slices.len()
             ),
@@ -845,8 +851,7 @@ fn gen_typed_pda_seeds(
             if let Expr::Path(ep) = arg {
                 if ep.path.segments.len() == 1
                     && ep.qself.is_none()
-                    && field_name_strings
-                        .contains(&ep.path.segments[0].ident.to_string())
+                    && field_name_strings.contains(&ep.path.segments[0].ident.to_string())
                 {
                     // Address-type seed — always exactly 32 bytes.
                     return quote! { let #ident: &[u8] = #seed; };
@@ -919,39 +924,32 @@ fn gen_typed_pda_seeds(
                 if let Some(args) = instruction_args {
                     if let Some(ix_arg) = args.iter().find(|a| a.name == *ident) {
                         // Capture instruction arg as byte array in Bumps struct
-                        let ix_bytes_field =
-                            format_ident!("__seed_{}_{}", field_name, ident);
-                        let capture_var =
-                            format_ident!("__seed_ix_{}_{}", field_name, ident);
+                        let ix_bytes_field = format_ident!("__seed_{}_{}", field_name, ident);
+                        let capture_var = format_ident!("__seed_ix_{}_{}", field_name, ident);
                         let ty = &ix_arg.ty;
                         let type_str = quote!(#ty).to_string().replace(' ', "");
                         match type_str.as_str() {
                             "u8" => {
                                 seed_addr_captures
                                     .push(quote! { let #capture_var: [u8; 1] = [#ident]; });
-                                bump_struct_fields
-                                    .push(quote! { #ix_bytes_field: [u8; 1] });
+                                bump_struct_fields.push(quote! { #ix_bytes_field: [u8; 1] });
                             }
                             "bool" => {
-                                seed_addr_captures.push(
-                                    quote! { let #capture_var: [u8; 1] = [#ident as u8]; },
-                                );
-                                bump_struct_fields
-                                    .push(quote! { #ix_bytes_field: [u8; 1] });
+                                seed_addr_captures
+                                    .push(quote! { let #capture_var: [u8; 1] = [#ident as u8]; });
+                                bump_struct_fields.push(quote! { #ix_bytes_field: [u8; 1] });
                             }
                             "Address" | "Pubkey" => {
-                                seed_addr_captures
-                                    .push(quote! { let #capture_var = #ident; });
-                                bump_struct_fields
-                                    .push(quote! { #ix_bytes_field: Address });
+                                seed_addr_captures.push(quote! { let #capture_var = #ident; });
+                                bump_struct_fields.push(quote! { #ix_bytes_field: Address });
                             }
                             _ => {
                                 // Numeric types — store as le bytes array
-                                seed_addr_captures.push(
-                                    quote! { let #capture_var = #ident.to_le_bytes(); },
+                                seed_addr_captures
+                                    .push(quote! { let #capture_var = #ident.to_le_bytes(); });
+                                bump_struct_fields.push(
+                                    quote! { #ix_bytes_field: [u8; core::mem::size_of::<#ty>()] },
                                 );
-                                bump_struct_fields
-                                    .push(quote! { #ix_bytes_field: [u8; core::mem::size_of::<#ty>()] });
                             }
                         }
                         bump_struct_inits.push(quote! { #ix_bytes_field: #capture_var });
@@ -969,15 +967,13 @@ fn gen_typed_pda_seeds(
             // expressions — reference live via self on the Accounts struct.
             // On sBPF (little-endian), in-memory representation is LE bytes,
             // so this is a zero-cost reference.
-            let seed_expr =
-                typed_seed_method_expr(arg, field_name_strings, instruction_args);
+            let seed_expr = typed_seed_method_expr(arg, field_name_strings, instruction_args);
             seed_elements.push(quote! { quasar_lang::cpi::Seed::from(#seed_expr) });
         }
     }
 
     // Bump seed element — reference via bumps parameter
-    seed_elements
-        .push(quote! { quasar_lang::cpi::Seed::from(&bumps.#bump_arr_field as &[u8]) });
+    seed_elements.push(quote! { quasar_lang::cpi::Seed::from(&bumps.#bump_arr_field as &[u8]) });
 
     seeds_methods.push(quote! {
         #[inline(always)]
@@ -1372,7 +1368,13 @@ pub(crate) fn process_fields(
             evidence.field_check = Some(FieldCheckEvidence::produced());
         }
 
-        gen_close_sweep(&ctx, fields, &field_attrs, &mut close_fields, &mut sweep_fields)?;
+        gen_close_sweep(
+            &ctx,
+            fields,
+            &field_attrs,
+            &mut close_fields,
+            &mut sweep_fields,
+        )?;
         if attrs.close.is_some() || attrs.sweep.is_some() {
             evidence.lifecycle = Some(LifecycleEvidence::produced());
         }

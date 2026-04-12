@@ -108,28 +108,22 @@ impl FieldEvidence {
     ) {
         // --- Existing checks (PDA / bump / init) ---
         if has_seeds && self.pda.is_none() {
-            panic!(
-                "BUG: field '{field_name}' declares seeds but no PDA verification was emitted",
-            );
+            panic!("BUG: field '{field_name}' declares seeds but no PDA verification was emitted",);
         }
         if self.pda.is_some() && self.bump.is_none() {
-            panic!(
-                "BUG: field '{field_name}' has PDA evidence but no bump resolution was emitted",
-            );
+            panic!("BUG: field '{field_name}' has PDA evidence but no bump resolution was emitted",);
         }
         if is_init && self.init.is_none() {
-            panic!(
-                "BUG: field '{field_name}' declares init but no init CPI block was emitted",
-            );
+            panic!("BUG: field '{field_name}' declares init but no init CPI block was emitted",);
         }
 
         // --- NEW: field check evidence (has_one / constraint / address) ---
-        let needs_field_check = !attrs.has_ones.is_empty()
-            || !attrs.constraints.is_empty()
-            || attrs.address.is_some();
+        let needs_field_check =
+            !attrs.has_ones.is_empty() || !attrs.constraints.is_empty() || attrs.address.is_some();
         if needs_field_check && self.field_check.is_none() {
             panic!(
-                "BUG: field '{field_name}' declares has_one/constraint/address but no checks emitted",
+                "BUG: field '{field_name}' declares has_one/constraint/address but no checks \
+                 emitted",
             );
         }
 
@@ -150,16 +144,12 @@ impl FieldEvidence {
             || attrs.mint_decimals.is_some()
             || attrs.mint_init_authority.is_some();
         if !is_init && has_token_attrs && self.token_validation.is_none() {
-            panic!(
-                "BUG: field '{field_name}' declares token::*/mint::* but no validation emitted",
-            );
+            panic!("BUG: field '{field_name}' declares token::*/mint::* but no validation emitted",);
         }
 
         // --- NEW: realloc evidence ---
         if attrs.realloc.is_some() && self.realloc.is_none() {
-            panic!(
-                "BUG: field '{field_name}' declares realloc but no realloc codegen emitted",
-            );
+            panic!("BUG: field '{field_name}' declares realloc but no realloc codegen emitted",);
         }
 
         // --- NEW: Metaplex init evidence ---
@@ -169,7 +159,8 @@ impl FieldEvidence {
             || attrs.master_edition_max_supply.is_some();
         if is_init && has_metaplex && self.metaplex_init.is_none() {
             panic!(
-                "BUG: field '{field_name}' declares metadata/master_edition but no Metaplex init emitted",
+                "BUG: field '{field_name}' declares metadata/master_edition but no Metaplex init \
+                 emitted",
             );
         }
     }

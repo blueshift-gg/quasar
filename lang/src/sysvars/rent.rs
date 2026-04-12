@@ -98,7 +98,12 @@ impl Rent {
     }
 
     #[inline(always)]
-    fn minimum_balance_inner(&self, data_len: usize, lamports_per_byte: u64, threshold: u64) -> u64 {
+    fn minimum_balance_inner(
+        &self,
+        data_len: usize,
+        lamports_per_byte: u64,
+        threshold: u64,
+    ) -> u64 {
         let total_bytes = ACCOUNT_STORAGE_OVERHEAD + data_len as u64;
 
         if threshold == SIMD0194_EXEMPTION_THRESHOLD {
@@ -154,6 +159,7 @@ impl Rent {
 ///
 /// Standalone function for use in codegen where the full `Rent` struct
 /// is destructured into its `u64` components.
+#[allow(clippy::collapsible_if)]
 #[inline(always)]
 pub fn minimum_balance_raw(
     lamports_per_byte: u64,

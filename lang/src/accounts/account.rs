@@ -118,7 +118,13 @@ pub fn realloc_account(
         use crate::sysvars::Sysvar;
         crate::sysvars::rent::Rent::get()?
     };
-    realloc_account_raw(view, new_space, payer, r.lamports_per_byte(), r.exemption_threshold_raw())
+    realloc_account_raw(
+        view,
+        new_space,
+        payer,
+        r.lamports_per_byte(),
+        r.exemption_threshold_raw(),
+    )
 }
 
 /// Realloc an account using pre-extracted rent values.

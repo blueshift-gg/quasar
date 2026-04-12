@@ -285,10 +285,7 @@ fn bloom_hash(addr: &solana_address::Address) -> [(usize, u64); 2] {
     let b = addr.as_array();
     let h0 = (b[0] as usize) ^ (b[16] as usize);
     let h1 = (b[1] as usize) ^ (b[17] as usize);
-    [
-        (h0 >> 6, 1u64 << (h0 & 63)),
-        (h1 >> 6, 1u64 << (h1 & 63)),
-    ]
+    [(h0 >> 6, 1u64 << (h0 & 63)), (h1 >> 6, 1u64 << (h1 & 63))]
 }
 
 impl RemainingIter<'_> {
@@ -362,7 +359,8 @@ fn remaining_dup_error() -> ProgramError {
 
 impl RemainingIter<'_> {
     /// Shared preamble: boundary + overflow check.
-    /// Returns `None` if at end, `Some(Err)` on overflow, `Some(Ok(raw))` to proceed.
+    /// Returns `None` if at end, `Some(Err)` on overflow, `Some(Ok(raw))` to
+    /// proceed.
     #[inline(always)]
     fn preamble(&mut self) -> Option<Result<*mut RuntimeAccount, ProgramError>> {
         if self.ptr as *const u8 >= self.boundary {

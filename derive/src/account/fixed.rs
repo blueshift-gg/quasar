@@ -5,10 +5,10 @@
 //! dynamic sizing, walk-from-header accessors, and a runtime memmove helper for
 //! writes that grow.
 //!
-//! This single function handles both cases: when all fields have `pod_dyn: None`
-//! it produces pure fixed-layout output; when any field has `pod_dyn: Some(...)`
-//! it generates the dynamic parts (MIN_SPACE/MAX_SPACE, accessors, setters, and
-//! modified AccountCheck validation).
+//! This single function handles both cases: when all fields have `pod_dyn:
+//! None` it produces pure fixed-layout output; when any field has `pod_dyn:
+//! Some(...)` it generates the dynamic parts (MIN_SPACE/MAX_SPACE, accessors,
+//! setters, and modified AccountCheck validation).
 
 use {
     crate::helpers::{map_to_pod_type, pascal_to_snake, zc_assign_from_value, PodDynField},
@@ -442,7 +442,10 @@ pub(super) fn generate_account(
                 .iter()
                 .map(|fi| {
                     zc_assign_from_value(
-                        fi.field.ident.as_ref().expect("field must have an identifier"),
+                        fi.field
+                            .ident
+                            .as_ref()
+                            .expect("field must have an identifier"),
                         &fi.field.ty,
                     )
                 })
@@ -472,7 +475,8 @@ pub(super) fn generate_account(
     // =========================================================================
 
     let space_impl = if has_dynamic {
-        // For dynamic accounts, Space::SPACE = MIN_SPACE (disc + ZC header + prefix sizes)
+        // For dynamic accounts, Space::SPACE = MIN_SPACE (disc + ZC header + prefix
+        // sizes)
         quote! {
             impl Space for #name {
                 const SPACE: usize = #disc_len + core::mem::size_of::<#zc_path>() + #prefix_total;

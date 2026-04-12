@@ -439,7 +439,10 @@ pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<ParsedAttrs> 
             for d in &directives {
                 r.apply(d);
             }
-            Ok(ParsedAttrs { attrs: r, directives })
+            Ok(ParsedAttrs {
+                attrs: r,
+                directives,
+            })
         }
         None => Ok(ParsedAttrs {
             attrs: AccountFieldAttrs::default(),

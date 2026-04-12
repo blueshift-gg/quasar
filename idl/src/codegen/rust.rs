@@ -193,11 +193,7 @@ fn emit_instructions(
     for ix in &parsed.instructions {
         for (_, ty) in &ix.args {
             let idl_ty = helpers::map_type_from_syn(ty);
-            collect_wrapper_needs(
-                &idl_ty,
-                &mut needs_dyn_bytes,
-                &mut needs_dyn_vec,
-            );
+            collect_wrapper_needs(&idl_ty, &mut needs_dyn_bytes, &mut needs_dyn_vec);
             if field_needs_address(&idl_ty) {
                 needs_address = true;
             }
@@ -1325,11 +1321,7 @@ fn collect_defined_refs(ty: &IdlType, out: &mut std::collections::BTreeSet<Strin
 }
 
 /// Scan an IdlType for wrapper type usage (DynBytes, DynVec).
-fn collect_wrapper_needs(
-    ty: &IdlType,
-    needs_dyn_bytes: &mut bool,
-    needs_dyn_vec: &mut bool,
-) {
+fn collect_wrapper_needs(ty: &IdlType, needs_dyn_bytes: &mut bool, needs_dyn_vec: &mut bool) {
     match ty {
         IdlType::DynString { .. } => *needs_dyn_bytes = true,
         IdlType::DynVec { vec } => {

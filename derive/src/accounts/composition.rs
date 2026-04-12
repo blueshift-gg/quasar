@@ -4,12 +4,11 @@
 //! as a single, flat specification of which constraints are incompatible,
 //! which require others, and which are restricted to certain field kinds.
 
-use super::{
-    attrs::AccountFieldAttrs,
-    field_kind::FieldKind,
+use {
+    super::{attrs::AccountFieldAttrs, field_kind::FieldKind},
+    crate::helpers::extract_generic_inner_type,
+    syn::Ident,
 };
-use crate::helpers::extract_generic_inner_type;
-use syn::Ident;
 
 /// Predicate over the constraint set for a single field.
 #[derive(Debug, Clone, Copy)]
@@ -95,9 +94,7 @@ impl KindPred {
             KindPred::Account => matches!(kind, FieldKind::Account { .. }),
             KindPred::TokenAccount => kind.is_token_account(),
             KindPred::NotMint => !kind.inner_name_matches(&["Mint", "Mint2022"]),
-            KindPred::NotOptional => {
-                extract_generic_inner_type(&field.ty, "Option").is_none()
-            }
+            KindPred::NotOptional => extract_generic_inner_type(&field.ty, "Option").is_none(),
         }
     }
 }
@@ -106,11 +103,7 @@ impl KindPred {
 #[derive(Debug)]
 enum Rule {
     /// `when` and `other` cannot both be present.
-    Incompatible {
-        a: Pred,
-        b: Pred,
-        msg: &'static str,
-    },
+    Incompatible { a: Pred, b: Pred, msg: &'static str },
     /// If `when` is present, `requires` must also be present.
     Requires {
         when: Pred,
@@ -124,11 +117,7 @@ enum Rule {
         msg: &'static str,
     },
     /// If `when` is present, `other` must also be present (symmetric).
-    Paired {
-        a: Pred,
-        b: Pred,
-        msg: &'static str,
-    },
+    Paired { a: Pred, b: Pred, msg: &'static str },
     /// If `when` is present but `unless` is NOT present, error.
     RequiresAny {
         when: Pred,
@@ -166,7 +155,6 @@ static COMPOSITION_RULES: &[Rule] = &[
         b: Pred::AtaMint,
         msg: "`seeds` and `associated_token::*` cannot be used on the same field",
     },
-
     // --- Co-requirements ---
     Rule::Requires {
         when: Pred::Payer,
@@ -197,9 +185,8 @@ static COMPOSITION_RULES: &[Rule] = &[
         when: Pred::MasterEditionMaxSupply,
         requires: Pred::MetadataName,
         msg: "`master_edition::max_supply` requires `metadata::name`, `metadata::symbol`, and \
-             `metadata::uri`",
+              `metadata::uri`",
     },
-
     // --- Paired attributes (both or neither) ---
     Rule::Paired {
         a: Pred::TokenMint,
@@ -211,26 +198,24 @@ static COMPOSITION_RULES: &[Rule] = &[
         b: Pred::AtaAuthority,
         msg: "`associated_token::mint` and `associated_token::authority` must both be specified",
     },
-
     // --- Context requirements ---
     Rule::Requires {
         when: Pred::AtaTokenProgram,
         requires: Pred::AtaMint,
         msg: "`associated_token::token_program` requires `associated_token::mint` and \
-             `associated_token::authority`",
+              `associated_token::authority`",
     },
     Rule::RequiresAny {
         when: Pred::TokenTokenProgram,
         any_of: &[Pred::TokenMint, Pred::Sweep, Pred::Close],
-        msg: "`token::token_program` requires `token::mint`/`token::authority`, `sweep`, or \
-             token account `close`",
+        msg: "`token::token_program` requires `token::mint`/`token::authority`, `sweep`, or token \
+              account `close`",
     },
     Rule::RequiresAny {
         when: Pred::MintTokenProgram,
         any_of: &[Pred::MintDecimals, Pred::MasterEditionMaxSupply],
         msg: "`mint::token_program` requires `mint::decimals` or `master_edition::max_supply`",
     },
-
     // --- Metadata completeness ---
     Rule::Requires {
         when: Pred::MetadataAny,
@@ -247,7 +232,6 @@ static COMPOSITION_RULES: &[Rule] = &[
         requires: Pred::MetadataUri,
         msg: "`metadata::name`, `metadata::symbol`, and `metadata::uri` must all be specified",
     },
-
     // --- Kind restrictions ---
     Rule::RequiresKind {
         when: Pred::Realloc,
@@ -268,7 +252,7 @@ static COMPOSITION_RULES: &[Rule] = &[
         when: Pred::Close,
         kind: KindPred::NotMint,
         msg: "#[account(close)] cannot be used on mint accounts. Mint closing is not supported \
-             through the token-account close path.",
+              through the token-account close path.",
     },
 ];
 
@@ -286,47 +270,45 @@ pub(super) fn validate_composition(
         match rule {
             Rule::Incompatible { a, b, msg } => {
                 if a.matches(attrs) && b.matches(attrs) {
-                    return Err(
-                        syn::Error::new_spanned(field_name, *msg)
-                            .to_compile_error()
-                            .into(),
-                    );
+                    return Err(syn::Error::new_spanned(field_name, *msg)
+                        .to_compile_error()
+                        .into());
                 }
             }
-            Rule::Requires { when, requires, msg } => {
+            Rule::Requires {
+                when,
+                requires,
+                msg,
+            } => {
                 if when.matches(attrs) && !requires.matches(attrs) {
-                    return Err(
-                        syn::Error::new_spanned(field_name, *msg)
-                            .to_compile_error()
-                            .into(),
-                    );
+                    return Err(syn::Error::new_spanned(field_name, *msg)
+                        .to_compile_error()
+                        .into());
                 }
             }
-            Rule::RequiresKind { when, kind: kp, msg } => {
+            Rule::RequiresKind {
+                when,
+                kind: kp,
+                msg,
+            } => {
                 if when.matches(attrs) && !kp.matches(kind, field) {
-                    return Err(
-                        syn::Error::new_spanned(field_name, *msg)
-                            .to_compile_error()
-                            .into(),
-                    );
+                    return Err(syn::Error::new_spanned(field_name, *msg)
+                        .to_compile_error()
+                        .into());
                 }
             }
             Rule::Paired { a, b, msg } => {
                 if a.matches(attrs) != b.matches(attrs) {
-                    return Err(
-                        syn::Error::new_spanned(field_name, *msg)
-                            .to_compile_error()
-                            .into(),
-                    );
+                    return Err(syn::Error::new_spanned(field_name, *msg)
+                        .to_compile_error()
+                        .into());
                 }
             }
             Rule::RequiresAny { when, any_of, msg } => {
                 if when.matches(attrs) && !any_of.iter().any(|p| p.matches(attrs)) {
-                    return Err(
-                        syn::Error::new_spanned(field_name, *msg)
-                            .to_compile_error()
-                            .into(),
-                    );
+                    return Err(syn::Error::new_spanned(field_name, *msg)
+                        .to_compile_error()
+                        .into());
                 }
             }
         }
@@ -339,8 +321,8 @@ pub(super) fn validate_composition(
         if !has_doc {
             return Err(syn::Error::new_spanned(
                 field_name,
-                "#[account(dup)] requires a /// CHECK: <reason> doc comment explaining why \
-                 this account is safe to use as a duplicate.",
+                "#[account(dup)] requires a /// CHECK: <reason> doc comment explaining why this \
+                 account is safe to use as a duplicate.",
             )
             .to_compile_error()
             .into());
@@ -352,8 +334,8 @@ pub(super) fn validate_composition(
     if attrs.realloc.is_some() && kind.is_token_or_mint() {
         return Err(syn::Error::new_spanned(
             field_name,
-            "#[account(realloc)] cannot be used on token or mint accounts — their size is \
-             fixed by the token program",
+            "#[account(realloc)] cannot be used on token or mint accounts — their size is fixed \
+             by the token program",
         )
         .to_compile_error()
         .into());

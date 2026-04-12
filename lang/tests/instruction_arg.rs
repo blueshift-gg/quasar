@@ -1,5 +1,7 @@
-use quasar_lang::instruction_arg::{InstructionArg, OptionZc};
-use quasar_lang::pod::{PodBool, PodU64};
+use quasar_lang::{
+    instruction_arg::{InstructionArg, OptionZc},
+    pod::{PodBool, PodU64},
+};
 
 #[test]
 fn option_u64_some_round_trip() {
@@ -116,10 +118,7 @@ fn option_nested_round_trip() {
 #[test]
 fn option_nested_size() {
     // OptionZc<OptionZc<PodU64>> = 1 (outer tag) + 1 (inner tag) + 8 (PodU64) = 10
-    assert_eq!(
-        core::mem::size_of::<OptionZc<OptionZc<PodU64>>>(),
-        10,
-    );
+    assert_eq!(core::mem::size_of::<OptionZc<OptionZc<PodU64>>>(), 10,);
 }
 
 #[test]

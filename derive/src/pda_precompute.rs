@@ -130,8 +130,11 @@ mod tests {
         let (bump2, addr2) = precompute_pda(&seeds, &program_id);
         assert_eq!(bump, bump2);
         assert_eq!(addr, addr2);
-        // Bump should be in valid range.
-        assert!(bump <= 255);
+        // Bump is u8 — this assert documents the intent (always true).
+        #[allow(unused_comparisons, clippy::absurd_extreme_comparisons)]
+        {
+            assert!(bump <= 255);
+        }
         // Address should not be all zeros.
         assert!(addr.iter().any(|b| *b != 0));
     }

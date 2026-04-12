@@ -449,9 +449,7 @@ pub(crate) fn classify_pod_string(ty: &Type) -> Option<usize> {
 pub(crate) fn classify_pod_vec(ty: &Type) -> Option<(Type, usize)> {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
-            if (seg.ident == "PodVec" || seg.ident == "Vec")
-                && type_path.path.segments.len() == 1
-            {
+            if (seg.ident == "PodVec" || seg.ident == "Vec") && type_path.path.segments.len() == 1 {
                 if let PathArguments::AngleBracketed(args) = &seg.arguments {
                     let mut iter = args.args.iter();
                     let elem = match iter.next()? {

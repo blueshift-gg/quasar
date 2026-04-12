@@ -192,9 +192,7 @@ fn dyn_vec_u8_prefix_u64_roundtrip() {
 #[test]
 fn dyn_vec_u8_prefix_addr_roundtrip() {
     let original =
-        DynVec::<solana_address::Address, u8>::new(vec![solana_address::Address::from(
-            [1u8; 32],
-        )]);
+        DynVec::<solana_address::Address, u8>::new(vec![solana_address::Address::from([1u8; 32])]);
     let wire = wincode::serialize(&original).unwrap();
     let decoded: DynVec<solana_address::Address, u8> = wincode::deserialize(&wire).unwrap();
     assert_eq!(decoded.0, original.0);

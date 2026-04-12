@@ -35,7 +35,8 @@ pub(super) struct InitContext<'a> {
 /// Result of generating an init block.
 pub(super) struct InitBlockResult {
     pub tokens: proc_macro2::TokenStream,
-    /// True if this init path uses `__rent_lpb` / `__rent_threshold` (false for ATA).
+    /// True if this init path uses `__rent_lpb` / `__rent_threshold` (false for
+    /// ATA).
     pub uses_rent: bool,
 }
 

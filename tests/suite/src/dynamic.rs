@@ -1302,8 +1302,11 @@ fn test_dynamic_mutate_preserves_trailing_vec() {
     assert_eq!(&result_data[2..8], b"abcdef");
     // Verify tags were shifted correctly (u16 prefix)
     let tags_offset = 8;
-    let tags_count =
-        u16::from_le_bytes(result_data[tags_offset..tags_offset + 2].try_into().unwrap()) as usize;
+    let tags_count = u16::from_le_bytes(
+        result_data[tags_offset..tags_offset + 2]
+            .try_into()
+            .unwrap(),
+    ) as usize;
     assert_eq!(tags_count, 2);
     assert_eq!(
         &result_data[tags_offset + 2..tags_offset + 34],
@@ -1353,7 +1356,8 @@ fn test_dynamic_mutate_exceeds_max_rejected() {
 // ADVERSARIAL TESTS: Crafted Prefix Attacks
 // ============================================================================
 
-/// u8 prefix claiming 255 bytes — validation must reject (max=8), not wrap/panic
+/// u8 prefix claiming 255 bytes — validation must reject (max=8), not
+/// wrap/panic
 #[test]
 fn test_adversarial_prefix_u8_max_name_len() {
     let mollusk = setup();
@@ -1525,7 +1529,7 @@ fn test_adversarial_vec_data_truncated_mid_element() {
     data[0] = DYNAMIC_ACCOUNT_DISC;
     data[1] = 0; // empty name
     data[2..4].copy_from_slice(&1u16.to_le_bytes()); // 1 tag
-                                                      // data[4..20] = 16 zero bytes (need 32 for Address)
+                                                     // data[4..20] = 16 zero bytes (need 32 for Address)
 
     let account_data = Account {
         lamports: 1_000_000,

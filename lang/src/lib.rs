@@ -97,10 +97,6 @@ pub mod client;
 pub mod context;
 /// Const-generic cross-program invocation with stack-allocated account arrays.
 pub mod cpi;
-/// Marker types for dynamic fields (`String<N>`, `Vec<T, N>`) and codec
-/// helpers.
-/// Runtime helpers for Pod-based dynamic account fields (`PodString`, `PodVec`).
-pub mod pod_dynamic;
 /// Program entrypoint macros (`dispatch!`, `no_alloc!`, `panic_handler!`).
 pub mod entrypoint;
 /// Framework error types.
@@ -118,6 +114,11 @@ pub mod log;
 pub mod pda;
 /// Alignment-1 Pod integer types (re-exported from `quasar-pod`).
 pub mod pod;
+/// Marker types for dynamic fields (`String<N>`, `Vec<T, N>`) and codec
+/// helpers.
+/// Runtime helpers for Pod-based dynamic account fields (`PodString`,
+/// `PodVec`).
+pub mod pod_dynamic;
 /// Convenience re-exports for program code.
 pub mod prelude;
 /// Zero-allocation remaining accounts iterator.
@@ -248,4 +249,3 @@ pub fn abort_program() -> ! {
     #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
     panic!("program aborted");
 }
-

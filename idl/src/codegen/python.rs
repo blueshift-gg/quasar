@@ -26,19 +26,13 @@ pub fn generate_python_client(idl: &Idl) -> String {
     let has_events = !idl.events.is_empty();
     let has_args = idl.instructions.iter().any(|ix| !ix.args.is_empty());
     let has_dynamic = idl.instructions.iter().any(|ix| {
-        ix.args.iter().any(|a| {
-            matches!(
-                a.ty,
-                IdlType::DynString { .. } | IdlType::DynVec { .. }
-            )
-        })
+        ix.args
+            .iter()
+            .any(|a| matches!(a.ty, IdlType::DynString { .. } | IdlType::DynVec { .. }))
     }) || idl.types.iter().any(|t| {
-        t.ty.fields.iter().any(|f| {
-            matches!(
-                f.ty,
-                IdlType::DynString { .. } | IdlType::DynVec { .. }
-            )
-        })
+        t.ty.fields
+            .iter()
+            .any(|f| matches!(f.ty, IdlType::DynString { .. } | IdlType::DynVec { .. }))
     });
 
     if has_events || has_args || has_dynamic {

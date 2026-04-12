@@ -30,18 +30,19 @@ pub fn check_account<T: CheckOwner + AccountCheck>(
     view: &AccountView,
     _field: &str,
 ) -> Result<(), ProgramError> {
-    T::check_owner(view).map_err(|__e| {
+    T::check_owner(view).inspect_err(|_e| {
         #[cfg(feature = "debug")]
-        crate::prelude::log(&::alloc::format!("Owner check failed for account '{}'", _field));
-        __e
+        crate::prelude::log(&::alloc::format!(
+            "Owner check failed for account '{}'",
+            _field
+        ));
     })?;
-    T::check(view).map_err(|__e| {
+    T::check(view).inspect_err(|_e| {
         #[cfg(feature = "debug")]
         crate::prelude::log(&::alloc::format!(
             "Discriminator check failed for account '{}': data may be uninitialized or corrupted",
             _field
         ));
-        __e
     })?;
     Ok(())
 }
@@ -94,7 +95,8 @@ pub fn check_interface<T: ProgramInterface>(
     if unlikely(!T::matches(view.address())) {
         #[cfg(feature = "debug")]
         crate::prelude::log(&::alloc::format!(
-            "Program interface mismatch for account '{}': address {} does not match any allowed programs",
+            "Program interface mismatch for account '{}': address {} does not match any allowed \
+             programs",
             _field,
             view.address()
         ));
@@ -123,10 +125,7 @@ pub fn check_address_match(
 
 /// Validate a user-defined boolean constraint.
 #[inline(always)]
-pub fn check_constraint(
-    condition: bool,
-    error: ProgramError,
-) -> Result<(), ProgramError> {
+pub fn check_constraint(condition: bool, error: ProgramError) -> Result<(), ProgramError> {
     if unlikely(!condition) {
         return Err(error);
     }

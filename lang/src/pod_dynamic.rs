@@ -6,10 +6,7 @@
 //!
 //! Generated code calls these helpers to keep codegen thin.
 
-use {
-    crate::prelude::ProgramError,
-    solana_account_view::AccountView,
-};
+use {crate::prelude::ProgramError, solana_account_view::AccountView};
 
 /// Rewrite a variable-length field in-place, shifting trailing data if the
 /// content length changes.
@@ -27,6 +24,7 @@ use {
 /// On grow: reallocs first, then shifts tail right.
 /// On shrink: shifts tail left, then reallocs.
 /// On same size: just overwrites data.
+#[allow(clippy::too_many_arguments)]
 #[inline(always)]
 pub fn pod_field_rewrite(
     view: &mut AccountView,
@@ -51,7 +49,11 @@ pub fn pod_field_rewrite(
         if delta > 0 {
             // Growing — realloc first to make room, then shift tail right.
             crate::accounts::account::realloc_account_raw(
-                view, new_total, payer, rent_lpb, rent_threshold,
+                view,
+                new_total,
+                payer,
+                rent_lpb,
+                rent_threshold,
             )?;
         }
 
@@ -73,7 +75,11 @@ pub fn pod_field_rewrite(
         if delta < 0 {
             // Shrinking — tail already shifted left, now shrink the account.
             crate::accounts::account::realloc_account_raw(
-                view, new_total, payer, rent_lpb, rent_threshold,
+                view,
+                new_total,
+                payer,
+                rent_lpb,
+                rent_threshold,
             )?;
         }
     }

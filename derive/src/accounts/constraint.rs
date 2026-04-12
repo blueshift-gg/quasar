@@ -37,14 +37,10 @@ fn assert_directive_handled(constraint: &Constraint) {
         | Constraint::Space(_) => {}
 
         // Field-level validation checks
-        Constraint::HasOne(_, _)
-        | Constraint::Constraint(_, _)
-        | Constraint::Address(_, _) => {}
+        Constraint::HasOne(_, _) | Constraint::Constraint(_, _) | Constraint::Address(_, _) => {}
 
         // PDA seed verification
-        Constraint::Seeds(_)
-        | Constraint::TypedSeeds(_)
-        | Constraint::Bump(_) => {}
+        Constraint::Seeds(_) | Constraint::TypedSeeds(_) | Constraint::Bump(_) => {}
 
         // Token account / ATA / mint validation
         Constraint::TokenMint(_)
@@ -59,8 +55,7 @@ fn assert_directive_handled(constraint: &Constraint) {
         | Constraint::MintTokenProgram(_) => {}
 
         // Realloc
-        Constraint::Realloc(_)
-        | Constraint::ReallocPayer(_) => {}
+        Constraint::Realloc(_) | Constraint::ReallocPayer(_) => {}
 
         // Metaplex metadata / master edition init
         Constraint::MetadataName(_)
@@ -79,8 +74,9 @@ fn assert_directive_handled(constraint: &Constraint) {
 ///
 /// This is called at the end of `process_fields` for each field as a
 /// runtime (macro-expansion-time) assertion. It is deliberately cheap —
-/// the real safety comes from the exhaustive match in [`assert_directive_handled`]
-/// which the compiler enforces at framework compile time.
+/// the real safety comes from the exhaustive match in
+/// [`assert_directive_handled`] which the compiler enforces at framework
+/// compile time.
 pub(crate) fn verify_all_directives_mapped(directives: &[Constraint]) {
     for d in directives {
         assert_directive_handled(d);

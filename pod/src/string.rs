@@ -2,7 +2,8 @@
 //!
 //! `PodString<N>` stores up to `N` bytes (max 255) with a `u8` length prefix.
 //! Unlike the dynamic `String<P, N>` type, writes never trigger `realloc` or
-//! `memmove` — they are a simple `memcpy` + length update (~5 CU vs ~300-500 CU).
+//! `memmove` — they are a simple `memcpy` + length update (~5 CU vs ~300-500
+//! CU).
 //!
 //! The tradeoff is rent: the full `N` bytes are always allocated in the account
 //! even if the string is shorter or empty. Use `PodString` for small,
@@ -53,7 +54,10 @@ pub struct PodString<const N: usize> {
 
 // Compile-time: N must fit in u8 length prefix.
 impl<const N: usize> PodString<N> {
-    const _CAP_CHECK: () = assert!(N <= 255, "PodString<N>: N cannot exceed 255 (u8 length prefix)");
+    const _CAP_CHECK: () = assert!(
+        N <= 255,
+        "PodString<N>: N cannot exceed 255 (u8 length prefix)"
+    );
 }
 
 // Compile-time layout invariants.
@@ -122,11 +126,7 @@ impl<const N: usize> PodString<N> {
         // SAFETY: `vlen <= N` checked above. The source is valid UTF-8
         // (Rust `&str` invariant). Writing to MaybeUninit is always safe.
         unsafe {
-            core::ptr::copy_nonoverlapping(
-                value.as_ptr(),
-                self.data.as_mut_ptr() as *mut u8,
-                vlen,
-            );
+            core::ptr::copy_nonoverlapping(value.as_ptr(), self.data.as_mut_ptr() as *mut u8, vlen);
         }
         self.len = vlen as u8;
         true
@@ -294,7 +294,7 @@ mod tests {
     fn deref_to_str() {
         let mut s = PodString::<32>::default();
         assert!(s.set("hello"));
-        let r: &str = &*s;
+        let r: &str = &s;
         assert_eq!(r, "hello");
         // str methods via Deref
         assert!(s.starts_with("hel"));

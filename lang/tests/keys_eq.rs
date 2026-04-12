@@ -1,5 +1,7 @@
-use quasar_lang::{is_system_program, keys_eq};
-use solana_address::Address;
+use {
+    quasar_lang::{is_system_program, keys_eq},
+    solana_address::Address,
+};
 
 #[test]
 fn keys_eq_identical() {

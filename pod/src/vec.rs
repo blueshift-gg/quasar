@@ -36,10 +36,7 @@
 //! ctx.accounts.multisig.signers[0] = replacement;
 //! ```
 
-use {
-    super::PodU16,
-    core::mem::MaybeUninit,
-};
+use {super::PodU16, core::mem::MaybeUninit};
 
 /// Fixed-capacity inline vector stored in account data.
 ///
@@ -65,7 +62,8 @@ const _: () = assert!(core::mem::align_of::<PodVec<[u8; 32], 10>>() == 1);
 impl<T: Copy, const N: usize> PodVec<T, N> {
     const _ALIGN_CHECK: () = assert!(
         core::mem::align_of::<T>() == 1,
-        "PodVec<T, N>: T must have alignment 1. Use Pod types (PodU64, etc.) instead of native integers."
+        "PodVec<T, N>: T must have alignment 1. Use Pod types (PodU64, etc.) instead of native \
+         integers."
     );
 
     const _CAP_CHECK: () = assert!(
@@ -150,11 +148,7 @@ impl<T: Copy, const N: usize> PodVec<T, N> {
         }
         // SAFETY: `vlen <= N` checked. T is Copy so bitwise copy is valid.
         unsafe {
-            core::ptr::copy_nonoverlapping(
-                values.as_ptr(),
-                self.data.as_mut_ptr() as *mut T,
-                vlen,
-            );
+            core::ptr::copy_nonoverlapping(values.as_ptr(), self.data.as_mut_ptr() as *mut T, vlen);
         }
         self.len = PodU16::from(vlen as u16);
         true
