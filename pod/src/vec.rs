@@ -104,8 +104,8 @@ impl<T: Copy, const N: usize, const PFX: usize> PodVec<T, N, PFX> {
     /// const _: () = PodVec::<u8, 300, 1>::VALID; // compile error: N exceeds prefix range
     /// ```
     pub const VALID: () = {
-        let _ = Self::_ALIGN_CHECK;
-        let _ = Self::_CAP_CHECK;
+        Self::_ALIGN_CHECK;
+        Self::_CAP_CHECK;
     };
 
     /// Decode the on-disk length prefix into a `usize`.
