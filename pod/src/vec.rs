@@ -140,6 +140,7 @@ impl<T: Copy, const N: usize> PodVec<T, N> {
     }
 
     /// Set all elements from a slice. Returns `false` if `values.len() > N`.
+    #[must_use = "returns false if values.len() exceeds capacity — unhandled means the write was silently skipped"]
     #[inline(always)]
     pub fn set_from_slice(&mut self, values: &[T]) -> bool {
         #[allow(clippy::let_unit_value)]
@@ -157,6 +158,7 @@ impl<T: Copy, const N: usize> PodVec<T, N> {
     }
 
     /// Push an element to the end. Returns `false` if the vector is full.
+    #[must_use = "returns false if capacity is exceeded — unhandled means the push was silently skipped"]
     #[inline(always)]
     pub fn push(&mut self, value: T) -> bool {
         let cur = self.len();
@@ -169,6 +171,7 @@ impl<T: Copy, const N: usize> PodVec<T, N> {
     }
 
     /// Remove and return the last element, or `None` if empty.
+    #[must_use = "returns None if the vector is empty"]
     #[inline(always)]
     pub fn pop(&mut self) -> Option<T> {
         let cur = self.len();
@@ -185,6 +188,7 @@ impl<T: Copy, const N: usize> PodVec<T, N> {
     /// Remove element at `index` by swapping with the last element.
     /// O(1) but does not preserve order. Returns the removed element,
     /// or `None` if `index >= len`.
+    #[must_use = "returns None if index is out of bounds"]
     #[inline(always)]
     pub fn swap_remove(&mut self, index: usize) -> Option<T> {
         let cur = self.len();
@@ -204,6 +208,7 @@ impl<T: Copy, const N: usize> PodVec<T, N> {
     /// Remove element at `index`, shifting subsequent elements left.
     /// O(n) but preserves order. Returns the removed element,
     /// or `None` if `index >= len`.
+    #[must_use = "returns None if index is out of bounds"]
     #[inline(always)]
     pub fn remove(&mut self, index: usize) -> Option<T> {
         let cur = self.len();
@@ -232,6 +237,7 @@ impl<T: Copy, const N: usize> PodVec<T, N> {
 
     /// Append elements from a slice. Returns `false` if there isn't
     /// enough remaining capacity.
+    #[must_use = "returns false if there is insufficient remaining capacity — unhandled means the append was silently skipped"]
     #[inline(always)]
     pub fn extend_from_slice(&mut self, values: &[T]) -> bool {
         let cur = self.len();
@@ -285,13 +291,24 @@ impl<T: Copy, const N: usize> PodVec<T, N> {
     ///
     /// Copies `min(len, N)` elements into self. Returns the number of
     /// bytes consumed from the source slice (prefix + data).
+    ///
+    /// The caller must ensure `bytes.len() >= 2 + min(len, N) * size_of::<T>()`.
+    ///
+    /// # Panics
+    ///
+    /// Panics in debug builds if the slice is shorter than the encoded length.
     #[inline(always)]
     pub fn load_from_bytes(&mut self, bytes: &[u8]) -> usize {
         #[allow(clippy::let_unit_value)]
         let _ = Self::_ALIGN_CHECK;
+        debug_assert!(bytes.len() >= 2, "load_from_bytes: slice must have at least 2 bytes");
         let count = u16::from_le_bytes([bytes[0], bytes[1]]) as usize;
         let count = count.min(N);
         let data_bytes = count * core::mem::size_of::<T>();
+        debug_assert!(
+            bytes.len() >= 2 + data_bytes,
+            "load_from_bytes: slice too short for encoded length"
+        );
         // SAFETY: T has alignment 1 (compile-time assertion). `count` is
         // clamped to N, so we write at most `N * size_of::<T>()` bytes
         // into `self.data`, which has exactly that capacity. Source and
@@ -311,10 +328,20 @@ impl<T: Copy, const N: usize> PodVec<T, N> {
     /// Write `[len: u16 LE][elements...]` to a byte slice.
     ///
     /// Returns the number of bytes written (prefix + data).
+    ///
+    /// The caller must ensure `dest.len() >= 2 + self.len() * size_of::<T>()`.
+    ///
+    /// # Panics
+    ///
+    /// Panics in debug builds if `dest` is shorter than the encoded length.
     #[inline(always)]
     pub fn write_to_bytes(&self, dest: &mut [u8]) -> usize {
         let count = self.len();
         let data_bytes = count * core::mem::size_of::<T>();
+        debug_assert!(
+            dest.len() >= 2 + data_bytes,
+            "write_to_bytes: dest too short for encoded length"
+        );
         dest[0..2].copy_from_slice(&(count as u16).to_le_bytes());
         // SAFETY: T has alignment 1 (compile-time assertion). `count` is
         // clamped to N via `len()`, so we read at most `N * size_of::<T>()`
@@ -374,6 +401,20 @@ impl<T: Copy + PartialEq, const N: usize> PartialEq for PodVec<T, N> {
     #[inline(always)]
     fn eq(&self, other: &Self) -> bool {
         self.as_slice() == other.as_slice()
+    }
+}
+
+impl<T: Copy + PartialEq, const N: usize> PartialEq<[T]> for PodVec<T, N> {
+    #[inline(always)]
+    fn eq(&self, other: &[T]) -> bool {
+        self.as_slice() == other
+    }
+}
+
+impl<T: Copy + PartialEq, const N: usize> PartialEq<&[T]> for PodVec<T, N> {
+    #[inline(always)]
+    fn eq(&self, other: &&[T]) -> bool {
+        self.as_slice() == *other
     }
 }
 
@@ -468,10 +509,11 @@ mod tests {
     #[test]
     fn corrupted_len_clamped() {
         let mut v = PodVec::<u8, 4>::default();
-        assert!(v.set_from_slice(&[1, 2]));
+        assert!(v.set_from_slice(&[1, 2, 3, 4])); // initialize all 4 elements so no MaybeUninit read after corruption
         // Simulate corrupted len > N
         v.len = PodU16::from(u16::MAX);
         assert_eq!(v.len(), 4); // clamped
+        // as_slice() is over fully-initialized data — no UB
         assert_eq!(v.as_slice().len(), 4);
     }
 
@@ -541,6 +583,14 @@ mod tests {
         assert_eq!(a, b);
         assert!(b.push(3));
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn partial_eq_slice() {
+        let mut v = PodVec::<u8, 4>::default();
+        assert!(v.set_from_slice(&[1, 2, 3]));
+        assert_eq!(v, [1u8, 2, 3].as_slice());
+        assert_eq!(v, &[1u8, 2, 3][..]);
     }
 
     #[test]

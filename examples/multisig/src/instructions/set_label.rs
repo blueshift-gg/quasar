@@ -26,7 +26,9 @@ impl SetLabel {
             rent.lamports_per_byte(),
             rent.exemption_threshold_raw(),
         );
-        guard.label.set(label);
+        if !guard.label.set(label) {
+            return Err(ProgramError::InvalidInstructionData);
+        }
         // guard drops → auto-save
         Ok(())
     }
