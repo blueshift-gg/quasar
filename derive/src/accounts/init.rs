@@ -105,8 +105,8 @@ fn gen_init_cpi_body(
     post_init: proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
     quote! {
-        let __init_lamports = quasar_lang::sysvars::rent::minimum_balance_raw(
-            __rent_lpb, __rent_threshold, #space_expr as u64,
+        let __init_lamports = __shared_rent.try_minimum_balance(
+            #space_expr as u64 as usize,
         )?;
         #signers_setup
         quasar_lang::cpi::system::init_account(

@@ -1574,8 +1574,8 @@ pub(crate) fn process_fields(
             init_blocks.push(quote! {
                 {
                     let __realloc_space = (#realloc_expr) as usize;
-                    quasar_lang::accounts::realloc_account_raw(
-                        #field_name, __realloc_space, #realloc_pay, __rent_lpb, __rent_threshold
+                    quasar_lang::accounts::realloc_account(
+                        #field_name, __realloc_space, #realloc_pay, Some(&__shared_rent)
                     )?;
                 }
             });
