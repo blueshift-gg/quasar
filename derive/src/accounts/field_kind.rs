@@ -228,11 +228,15 @@ impl FieldFlags {
 ///
 /// This replaces the 8-line debug/non-debug pattern repeated ~20 times.
 pub(super) fn debug_checked(
-    _field_name_str: &str,
+    field_name_str: &str,
     check_expr: proc_macro2::TokenStream,
-    _msg: &str,
+    msg: &str,
 ) -> proc_macro2::TokenStream {
     quote::quote! {
-        #check_expr?;
+        #check_expr.map_err(|__e| {
+            #[cfg(feature = "debug")]
+            quasar_lang::prelude::log(&::alloc::format!(#msg, #field_name_str));
+            __e
+        })?;
     }
 }
