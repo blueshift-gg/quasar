@@ -1075,7 +1075,8 @@ fn prefix_rust_type(prefix_bytes: usize) -> &'static str {
     match prefix_bytes {
         1 => "u8",
         2 => "u16",
-        _ => "u32",
+        4 => "u32",
+        _ => "u64",
     }
 }
 

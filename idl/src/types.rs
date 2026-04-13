@@ -86,7 +86,8 @@ pub struct IdlField {
 pub struct IdlDynString {
     #[serde(rename = "maxLength")]
     pub max_length: usize,
-    /// Byte width of the length prefix. Always 1 (u8) for PodString.
+    /// Byte width of the length prefix: 1 (u8, default), 2 (u16), 4 (u32), or 8
+    /// (u64).
     #[serde(rename = "prefixBytes")]
     pub prefix_bytes: usize,
 }
@@ -96,7 +97,8 @@ pub struct IdlDynVec {
     pub items: Box<IdlType>,
     #[serde(rename = "maxLength")]
     pub max_length: usize,
-    /// Byte width of the count prefix. Always 2 (u16) for PodVec.
+    /// Byte width of the count prefix: 1 (u8), 2 (u16, default), 4 (u32), or 8
+    /// (u64).
     #[serde(rename = "prefixBytes")]
     pub prefix_bytes: usize,
 }

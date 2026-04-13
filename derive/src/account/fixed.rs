@@ -108,8 +108,8 @@ pub(super) fn generate_account(
     let prefix_total: usize = dyn_fields
         .iter()
         .map(|(_, pd)| match pd {
-            PodDynField::Str { .. } => 1usize,
-            PodDynField::Vec { .. } => 2usize,
+            PodDynField::Str { prefix_bytes, .. } => *prefix_bytes,
+            PodDynField::Vec { prefix_bytes, .. } => *prefix_bytes,
         })
         .sum();
 
@@ -117,8 +117,8 @@ pub(super) fn generate_account(
     let max_space_terms: Vec<proc_macro2::TokenStream> = dyn_fields
         .iter()
         .map(|(_, pd)| match pd {
-            PodDynField::Str { max } => quote! { + #max },
-            PodDynField::Vec { elem, max } => {
+            PodDynField::Str { max, .. } => quote! { + #max },
+            PodDynField::Vec { elem, max, .. } => {
                 quote! { + #max * core::mem::size_of::<#elem>() }
             }
         })
@@ -128,45 +128,63 @@ pub(super) fn generate_account(
     let validation_stmts: Vec<proc_macro2::TokenStream> = dyn_fields
         .iter()
         .map(|(_f, pd)| match pd {
-            PodDynField::Str { max } => quote! {
-                {
-                    if __offset + 1 > __data_len {
-                        return Err(ProgramError::AccountDataTooSmall);
+            PodDynField::Str { max, prefix_bytes } => {
+                let pfx = *prefix_bytes;
+                quote! {
+                    {
+                        if __offset + #pfx > __data_len {
+                            return Err(ProgramError::AccountDataTooSmall);
+                        }
+                        let __len = {
+                            let mut __buf = [0u8; 8];
+                            __buf[..#pfx].copy_from_slice(&__data[__offset..__offset + #pfx]);
+                            u64::from_le_bytes(__buf) as usize
+                        };
+                        __offset += #pfx;
+                        if __len > #max {
+                            return Err(ProgramError::InvalidAccountData);
+                        }
+                        if __offset + __len > __data_len {
+                            return Err(ProgramError::AccountDataTooSmall);
+                        }
+                        // UTF-8 re-validation skipped: the owner check
+                        // (check_owner) already proved this account belongs to
+                        // this program, and all PodString write paths (set_xxx,
+                        // set_inner) accept &str, which is valid UTF-8 by
+                        // Rust's type system. DerefMut only exposes the fixed
+                        // ZC header, not the dynamic region.
+                        __offset += __len;
                     }
-                    let __len = __data[__offset] as usize;
-                    __offset += 1;
-                    if __len > #max {
-                        return Err(ProgramError::InvalidAccountData);
-                    }
-                    if __offset + __len > __data_len {
-                        return Err(ProgramError::AccountDataTooSmall);
-                    }
-                    // UTF-8 re-validation skipped: the owner check
-                    // (check_owner) already proved this account belongs to
-                    // this program, and all PodString write paths (set_xxx,
-                    // set_inner) accept &str, which is valid UTF-8 by
-                    // Rust's type system. DerefMut only exposes the fixed
-                    // ZC header, not the dynamic region.
-                    __offset += __len;
                 }
-            },
-            PodDynField::Vec { elem, max } => quote! {
-                {
-                    if __offset + 2 > __data_len {
-                        return Err(ProgramError::AccountDataTooSmall);
+            }
+            PodDynField::Vec {
+                elem,
+                max,
+                prefix_bytes,
+            } => {
+                let pfx = *prefix_bytes;
+                quote! {
+                    {
+                        if __offset + #pfx > __data_len {
+                            return Err(ProgramError::AccountDataTooSmall);
+                        }
+                        let __count = {
+                            let mut __buf = [0u8; 8];
+                            __buf[..#pfx].copy_from_slice(&__data[__offset..__offset + #pfx]);
+                            u64::from_le_bytes(__buf) as usize
+                        };
+                        __offset += #pfx;
+                        if __count > #max {
+                            return Err(ProgramError::InvalidAccountData);
+                        }
+                        let __byte_len = __count * core::mem::size_of::<#elem>();
+                        if __offset + __byte_len > __data_len {
+                            return Err(ProgramError::AccountDataTooSmall);
+                        }
+                        __offset += __byte_len;
                     }
-                    let __count = u16::from_le_bytes([__data[__offset], __data[__offset + 1]]) as usize;
-                    __offset += 2;
-                    if __count > #max {
-                        return Err(ProgramError::InvalidAccountData);
-                    }
-                    let __byte_len = __count * core::mem::size_of::<#elem>();
-                    if __offset + __byte_len > __data_len {
-                        return Err(ProgramError::AccountDataTooSmall);
-                    }
-                    __offset += __byte_len;
                 }
-            },
+            }
         })
         .collect();
 
@@ -181,46 +199,75 @@ pub(super) fn generate_account(
             let walk_stmts: Vec<proc_macro2::TokenStream> = dyn_fields[..dyn_idx]
                 .iter()
                 .map(|(_, prev_pd)| match prev_pd {
-                    PodDynField::Str { .. } => quote! {
-                        __off += 1 + __data[__off] as usize;
+                    PodDynField::Str { prefix_bytes, .. } => {
+                        let pfx = *prefix_bytes;
+                        quote! {
+                            {
+                                let mut __buf = [0u8; 8];
+                                __buf[..#pfx].copy_from_slice(&__data[__off..__off + #pfx]);
+                                let __field_len = u64::from_le_bytes(__buf) as usize;
+                                __off += #pfx + __field_len;
+                            }
+                        }
                     },
-                    PodDynField::Vec { elem, .. } => quote! {
-                        __off += 2 + u16::from_le_bytes([__data[__off], __data[__off + 1]]) as usize
-                            * core::mem::size_of::<#elem>();
+                    PodDynField::Vec { elem, prefix_bytes, .. } => {
+                        let pfx = *prefix_bytes;
+                        quote! {
+                            {
+                                let mut __buf = [0u8; 8];
+                                __buf[..#pfx].copy_from_slice(&__data[__off..__off + #pfx]);
+                                let __field_count = u64::from_le_bytes(__buf) as usize;
+                                __off += #pfx + __field_count * core::mem::size_of::<#elem>();
+                            }
+                        }
                     },
                 })
                 .collect();
 
             match pd {
-                PodDynField::Str { .. } => quote! {
-                    #[inline(always)]
-                    pub fn #fname(&self) -> &str {
-                        // SAFETY: self.__view is a valid AccountView for this program's
-                        // account. borrow_unchecked returns the raw data slice.
-                        let __data = unsafe { self.__view.borrow_unchecked() };
-                        let mut __off = #dyn_start;
-                        #(#walk_stmts)*
-                        let __len = __data[__off] as usize;
-                        // SAFETY: data[off+1..off+1+len] was written by this program's
-                        // set()/set_inner() which accept &str (valid UTF-8). The owner
-                        // check in AccountCheck::check proves this program owns the data.
-                        // SVM zeros uninitialized account memory.
-                        unsafe { core::str::from_utf8_unchecked(&__data[__off + 1..__off + 1 + __len]) }
+                PodDynField::Str { prefix_bytes, .. } => {
+                    let pfx = *prefix_bytes;
+                    quote! {
+                        #[inline(always)]
+                        pub fn #fname(&self) -> &str {
+                            // SAFETY: self.__view is a valid AccountView for this program's
+                            // account. borrow_unchecked returns the raw data slice.
+                            let __data = unsafe { self.__view.borrow_unchecked() };
+                            let mut __off = #dyn_start;
+                            #(#walk_stmts)*
+                            let __len = {
+                                let mut __buf = [0u8; 8];
+                                __buf[..#pfx].copy_from_slice(&__data[__off..__off + #pfx]);
+                                u64::from_le_bytes(__buf) as usize
+                            };
+                            // SAFETY: data[off+pfx..off+pfx+len] was written by this program's
+                            // set()/set_inner() which accept &str (valid UTF-8). The owner
+                            // check in AccountCheck::check proves this program owns the data.
+                            // SVM zeros uninitialized account memory.
+                            unsafe { core::str::from_utf8_unchecked(&__data[__off + #pfx..__off + #pfx + __len]) }
+                        }
                     }
                 },
-                PodDynField::Vec { elem, .. } => quote! {
-                    #[inline(always)]
-                    pub fn #fname(&self) -> &[#elem] {
-                        // SAFETY: see PodDynField::Str case above.
-                        let __data = unsafe { self.__view.borrow_unchecked() };
-                        let mut __off = #dyn_start;
-                        #(#walk_stmts)*
-                        let __count = u16::from_le_bytes([__data[__off], __data[__off + 1]]) as usize;
-                        // SAFETY: T has alignment 1 (enforced by PodVec compile-time
-                        // assertion). count was validated by AccountCheck::check.
-                        // Pointer is into the account data buffer which is valid for
-                        // the instruction's lifetime.
-                        unsafe { core::slice::from_raw_parts(__data[__off + 2..].as_ptr() as *const #elem, __count) }
+                PodDynField::Vec { elem, prefix_bytes, .. } => {
+                    let pfx = *prefix_bytes;
+                    quote! {
+                        #[inline(always)]
+                        pub fn #fname(&self) -> &[#elem] {
+                            // SAFETY: see PodDynField::Str case above.
+                            let __data = unsafe { self.__view.borrow_unchecked() };
+                            let mut __off = #dyn_start;
+                            #(#walk_stmts)*
+                            let __count = {
+                                let mut __buf = [0u8; 8];
+                                __buf[..#pfx].copy_from_slice(&__data[__off..__off + #pfx]);
+                                u64::from_le_bytes(__buf) as usize
+                            };
+                            // SAFETY: T has alignment 1 (enforced by PodVec compile-time
+                            // assertion). count was validated by AccountCheck::check.
+                            // Pointer is into the account data buffer which is valid for
+                            // the instruction's lifetime.
+                            unsafe { core::slice::from_raw_parts(__data[__off + #pfx..].as_ptr() as *const #elem, __count) }
+                        }
                     }
                 },
             }
@@ -256,7 +303,7 @@ pub(super) fn generate_account(
                 .filter_map(|fi| {
                     let fname = fi.field.ident.as_ref().unwrap();
                     match &fi.pod_dyn {
-                        Some(PodDynField::Str { max }) => Some(quote! {
+                        Some(PodDynField::Str { max, .. }) => Some(quote! {
                             if #fname.len() > #max { return Err(QuasarError::DynamicFieldTooLong.into()); }
                         }),
                         Some(PodDynField::Vec { max, .. }) => Some(quote! {
@@ -292,33 +339,39 @@ pub(super) fn generate_account(
                 .filter_map(|fi| {
                     let fname = fi.field.ident.as_ref().unwrap();
                     match &fi.pod_dyn {
-                        Some(PodDynField::Str { .. }) => Some(quote! {
-                            {
-                                __data[__offset] = #fname.len() as u8;
-                                __offset += 1;
-                                __data[__offset..__offset + #fname.len()].copy_from_slice(#fname.as_bytes());
-                                __offset += #fname.len();
-                            }
-                        }),
-                        Some(PodDynField::Vec { elem, .. }) => Some(quote! {
-                            {
-                                let __count_bytes = (#fname.len() as u16).to_le_bytes();
-                                __data[__offset] = __count_bytes[0];
-                                __data[__offset + 1] = __count_bytes[1];
-                                __offset += 2;
-                                let __bytes = #fname.len() * core::mem::size_of::<#elem>();
-                                if __bytes > 0 {
-                                    unsafe {
-                                        core::ptr::copy_nonoverlapping(
-                                            #fname.as_ptr() as *const u8,
-                                            __data[__offset..].as_mut_ptr(),
-                                            __bytes,
-                                        );
-                                    }
+                        Some(PodDynField::Str { prefix_bytes, .. }) => {
+                            let pfx = *prefix_bytes;
+                            Some(quote! {
+                                {
+                                    let __len_bytes = (#fname.len() as u64).to_le_bytes();
+                                    __data[__offset..__offset + #pfx].copy_from_slice(&__len_bytes[..#pfx]);
+                                    __offset += #pfx;
+                                    __data[__offset..__offset + #fname.len()].copy_from_slice(#fname.as_bytes());
+                                    __offset += #fname.len();
                                 }
-                                __offset += __bytes;
-                            }
-                        }),
+                            })
+                        },
+                        Some(PodDynField::Vec { elem, prefix_bytes, .. }) => {
+                            let pfx = *prefix_bytes;
+                            Some(quote! {
+                                {
+                                    let __count_bytes = (#fname.len() as u64).to_le_bytes();
+                                    __data[__offset..__offset + #pfx].copy_from_slice(&__count_bytes[..#pfx]);
+                                    __offset += #pfx;
+                                    let __bytes = #fname.len() * core::mem::size_of::<#elem>();
+                                    if __bytes > 0 {
+                                        unsafe {
+                                            core::ptr::copy_nonoverlapping(
+                                                #fname.as_ptr() as *const u8,
+                                                __data[__offset..].as_mut_ptr(),
+                                                __bytes,
+                                            );
+                                        }
+                                    }
+                                    __offset += __bytes;
+                                }
+                            })
+                        },
                         None => None,
                     }
                 })
@@ -530,11 +583,15 @@ pub(super) fn generate_account(
             .map(|(f, pd)| {
                 let fname = f.ident.as_ref().unwrap();
                 match pd {
-                    PodDynField::Str { max } => quote! {
-                        pub #fname: quasar_lang::pod::PodString<#max>
+                    PodDynField::Str { max, prefix_bytes } => quote! {
+                        pub #fname: quasar_lang::pod::PodString<#max, #prefix_bytes>
                     },
-                    PodDynField::Vec { elem, max } => quote! {
-                        pub #fname: quasar_lang::pod::PodVec<#elem, #max>
+                    PodDynField::Vec {
+                        elem,
+                        max,
+                        prefix_bytes,
+                    } => quote! {
+                        pub #fname: quasar_lang::pod::PodVec<#elem, #max, #prefix_bytes>
                     },
                 }
             })
@@ -545,12 +602,18 @@ pub(super) fn generate_account(
             .map(|(f, pd)| {
                 let fname = f.ident.as_ref().unwrap();
                 match pd {
-                    PodDynField::Str { max } => quote! {
-                        let mut #fname = quasar_lang::pod::PodString::<#max>::default();
+                    PodDynField::Str { max, prefix_bytes } => quote! {
+                        let mut #fname =
+                            quasar_lang::pod::PodString::<#max, #prefix_bytes>::default();
                         __off += #fname.load_from_bytes(&__data[__off..]);
                     },
-                    PodDynField::Vec { elem, max } => quote! {
-                        let mut #fname = quasar_lang::pod::PodVec::<#elem, #max>::default();
+                    PodDynField::Vec {
+                        elem,
+                        max,
+                        prefix_bytes,
+                    } => quote! {
+                        let mut #fname =
+                            quasar_lang::pod::PodVec::<#elem, #max, #prefix_bytes>::default();
                         __off += #fname.load_from_bytes(&__data[__off..]);
                     },
                 }

@@ -8,7 +8,6 @@ pub mod seeds;
 use {
     crate::helpers::{
         classify_pod_string, classify_pod_vec, validate_discriminator_not_zero, AccountAttr,
-        PodDynField,
     },
     proc_macro::TokenStream,
     syn::{parse_macro_input, Data, DeriveInput, Fields},
@@ -76,13 +75,10 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
         .map(|f| {
             let pod_dyn = if args.fixed_capacity {
                 None // fixed_capacity: everything goes in the ZC struct
-            } else if let Some(max) = classify_pod_string(&f.ty) {
-                Some(PodDynField::Str { max })
-            } else if let Some((elem, max)) = classify_pod_vec(&f.ty) {
-                Some(PodDynField::Vec {
-                    elem: Box::new(elem),
-                    max,
-                })
+            } else if let Some(pd) = classify_pod_string(&f.ty) {
+                Some(pd)
+            } else if let Some(pd) = classify_pod_vec(&f.ty) {
+                Some(pd)
             } else {
                 None
             };

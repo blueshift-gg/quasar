@@ -46,13 +46,10 @@ pub(super) fn generate_instruction_arg_extraction(
 
     let mut pod_dyns: Vec<Option<PodDynField>> = Vec::with_capacity(ix_args.len());
     for arg in ix_args {
-        let pd = if let Some(max) = classify_pod_string(&arg.ty) {
-            Some(PodDynField::Str { max })
-        } else if let Some((elem, max)) = classify_pod_vec(&arg.ty) {
-            Some(PodDynField::Vec {
-                elem: Box::new(elem),
-                max,
-            })
+        let pd = if let Some(pd) = classify_pod_string(&arg.ty) {
+            Some(pd)
+        } else if let Some(pd) = classify_pod_vec(&arg.ty) {
+            Some(pd)
         } else {
             None
         };
@@ -148,20 +145,24 @@ pub(super) fn generate_instruction_arg_extraction(
             let name = &ix_args[i].name;
             match pd {
                 None => {}
-                Some(PodDynField::Str { max }) => {
+                Some(PodDynField::Str { max, prefix_bytes }) => {
                     dyn_idx += 1;
                     let max_lit = *max;
-                    // String<N> uses u8 prefix (1 byte)
+                    let pfx = *prefix_bytes;
                     stmts.push(quote! {
-                        if __data.len() < __offset + 1 {
+                        if __data.len() < __offset + #pfx {
                             return Err(ProgramError::InvalidInstructionData);
                         }
                     });
                     stmts.push(quote! {
-                        let __ix_dyn_len = __data[__offset] as usize;
+                        let __ix_dyn_len = {
+                            let mut __buf = [0u8; 8];
+                            __buf[..#pfx].copy_from_slice(&__data[__offset..__offset + #pfx]);
+                            u64::from_le_bytes(__buf) as usize
+                        };
                     });
                     stmts.push(quote! {
-                        __offset += 1;
+                        __offset += #pfx;
                     });
                     stmts.push(quote! {
                         if __ix_dyn_len > #max_lit {
@@ -182,20 +183,28 @@ pub(super) fn generate_instruction_arg_extraction(
                         });
                     }
                 }
-                Some(PodDynField::Vec { elem, max }) => {
+                Some(PodDynField::Vec {
+                    elem,
+                    max,
+                    prefix_bytes,
+                }) => {
                     dyn_idx += 1;
                     let max_lit = *max;
-                    // Vec<T, N> uses u16 prefix (2 bytes)
+                    let pfx = *prefix_bytes;
                     stmts.push(quote! {
-                        if __data.len() < __offset + 2 {
+                        if __data.len() < __offset + #pfx {
                             return Err(ProgramError::InvalidInstructionData);
                         }
                     });
                     stmts.push(quote! {
-                        let __ix_dyn_count = u16::from_le_bytes([__data[__offset], __data[__offset + 1]]) as usize;
+                        let __ix_dyn_count = {
+                            let mut __buf = [0u8; 8];
+                            __buf[..#pfx].copy_from_slice(&__data[__offset..__offset + #pfx]);
+                            u64::from_le_bytes(__buf) as usize
+                        };
                     });
                     stmts.push(quote! {
-                        __offset += 2;
+                        __offset += #pfx;
                     });
                     stmts.push(quote! {
                         if __ix_dyn_count > #max_lit {

@@ -38,9 +38,12 @@ pub fn map_type(rust_type: &str) -> IdlType {
 
 /// Map a `syn::Type` to an `IdlType`, detecting dynamic fields:
 ///
-/// - `String<N>` / `String<'a, N>` / `PodString<N>` → `IdlType::DynString`
-/// - `Vec<T, N>` / `Vec<'a, T, N>` / `PodVec<T, N>` → `IdlType::DynVec`
+/// - `String<N>` / `String<N, u16>` / `PodString<N, u32>` →
+///   `IdlType::DynString`
+/// - `Vec<T, N>` / `Vec<T, N, u8>` / `PodVec<T, N, u64>` → `IdlType::DynVec`
 ///
+/// The optional third argument for String (or fourth for Vec) sets the prefix
+/// width: `u8`=1, `u16`=2, `u32`=4, `u64`=8 bytes. Defaults: String→1, Vec→2.
 /// Leading lifetime parameters (e.g. `'a`) are skipped transparently.
 /// Falls back to `simple_type_name + map_type` for everything else.
 pub fn map_type_from_syn(ty: &syn::Type) -> IdlType {
@@ -70,7 +73,7 @@ pub fn map_type_from_syn(ty: &syn::Type) -> IdlType {
                 let mut iter = args.args.iter();
 
                 if ident == "String" || ident == "PodString" {
-                    // String<N> / String<'a, N> → u8 prefix (1 byte)
+                    // String<N[, PFX]> / String<'a, N[, PFX]>
                     // Skip an optional leading lifetime parameter.
                     let first = iter.next();
                     let first = if matches!(first, Some(syn::GenericArgument::Lifetime(_))) {
@@ -79,15 +82,16 @@ pub fn map_type_from_syn(ty: &syn::Type) -> IdlType {
                         first
                     };
                     if let Some(max_length) = first.and_then(extract_const_usize) {
+                        let prefix_bytes = iter.next().and_then(extract_prefix_bytes).unwrap_or(1);
                         return IdlType::DynString {
                             string: IdlDynString {
                                 max_length,
-                                prefix_bytes: 1,
+                                prefix_bytes,
                             },
                         };
                     }
                 } else if ident == "Vec" || ident == "PodVec" {
-                    // Vec<T, N> / Vec<'a, T, N> → u16 prefix (2 bytes)
+                    // Vec<T, N[, PFX]> / Vec<'a, T, N[, PFX]>
                     let first = iter.next();
                     if let Some(result) = parse_pod_vec_args(first, &mut iter) {
                         return result;
@@ -206,8 +210,9 @@ fn extract_const_usize(arg: &syn::GenericArgument) -> Option<usize> {
     }
 }
 
-/// Parse Vec/PodVec generic args: `<T, N>` (where `first` is already consumed).
-/// Always uses u16 prefix (2 bytes).
+/// Parse Vec/PodVec generic args: `<T, N[, PFX]>` (where `first` is already
+/// consumed). Default prefix is 2 bytes (u16). Optional third arg sets the
+/// prefix width.
 fn parse_pod_vec_args<'a>(
     first: Option<&'a syn::GenericArgument>,
     rest: &mut impl Iterator<Item = &'a syn::GenericArgument>,
@@ -223,11 +228,34 @@ fn parse_pod_vec_args<'a>(
     };
     let second = rest.next()?;
     let max_length = extract_const_usize(second)?;
+    let prefix_bytes = rest.next().and_then(extract_prefix_bytes).unwrap_or(2);
     Some(IdlType::DynVec {
         vec: IdlDynVec {
             items: Box::new(map_type_from_syn(elem_ty)),
             max_length,
-            prefix_bytes: 2,
+            prefix_bytes,
         },
     })
+}
+
+/// Extract prefix byte count from a generic argument.
+/// Accepts type-path form (`u8`→1, `u16`→2, `u32`→4, `u64`→8) and
+/// const-integer form (`1`, `2`, `4`, `8`).
+fn extract_prefix_bytes(arg: &syn::GenericArgument) -> Option<usize> {
+    match arg {
+        syn::GenericArgument::Type(syn::Type::Path(tp)) => {
+            match tp.path.segments.last()?.ident.to_string().as_str() {
+                "u8" => Some(1),
+                "u16" => Some(2),
+                "u32" => Some(4),
+                "u64" => Some(8),
+                _ => None,
+            }
+        }
+        syn::GenericArgument::Const(syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Int(n),
+            ..
+        })) => n.base10_parse().ok(),
+        _ => None,
+    }
 }

@@ -425,15 +425,47 @@ fn extract_const_usize(arg: &GenericArgument) -> Option<usize> {
 
 /// Classification of a Pod dynamic field.
 pub(crate) enum PodDynField {
-    /// `PodString<N>` / `String<N>`: u8 prefix, max N bytes.
-    Str { max: usize },
-    /// `PodVec<T, N>` / `Vec<T, N>`: PodU16 prefix, max N elements.
-    Vec { elem: Box<Type>, max: usize },
+    /// `PodString<N, PFX>` / `String<N, pfx_type>`: PFX-byte prefix, max N
+    /// bytes.
+    Str { max: usize, prefix_bytes: usize },
+    /// `PodVec<T, N, PFX>` / `Vec<T, N, pfx_type>`: PFX-byte prefix, max N
+    /// elements.
+    Vec {
+        elem: Box<Type>,
+        max: usize,
+        prefix_bytes: usize,
+    },
 }
 
-/// Classifies a type as `PodString<N>` or `String<N>` (type alias).
-/// Returns `Some(max)`.
-pub(crate) fn classify_pod_string(ty: &Type) -> Option<usize> {
+/// Converts a prefix generic argument to its byte count.
+///
+/// Accepts the user-facing type-path form (`u8`→1, `u16`→2, `u32`→4, `u64`→8)
+/// and the Pod/codegen const-integer form (literal `1`, `2`, `4`, `8`).
+fn parse_prefix_arg(arg: &GenericArgument) -> Option<usize> {
+    match arg {
+        GenericArgument::Type(Type::Path(type_path)) => {
+            if let Some(seg) = type_path.path.segments.last() {
+                match seg.ident.to_string().as_str() {
+                    "u8" => Some(1),
+                    "u16" => Some(2),
+                    "u32" => Some(4),
+                    "u64" => Some(8),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        }
+        GenericArgument::Const(Expr::Lit(ExprLit {
+            lit: Lit::Int(n), ..
+        })) => n.base10_parse::<usize>().ok(),
+        _ => None,
+    }
+}
+
+/// Classifies a type as `PodString<N[, pfx]>` or `String<N[, pfx]>`.
+/// Returns `Some(PodDynField::Str { max, prefix_bytes })`.
+pub(crate) fn classify_pod_string(ty: &Type) -> Option<PodDynField> {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
             if (seg.ident == "PodString" || seg.ident == "String")
@@ -441,7 +473,9 @@ pub(crate) fn classify_pod_string(ty: &Type) -> Option<usize> {
             {
                 if let PathArguments::AngleBracketed(args) = &seg.arguments {
                     let mut iter = args.args.iter();
-                    return extract_const_usize(iter.next()?);
+                    let max = extract_const_usize(iter.next()?)?;
+                    let prefix_bytes = iter.next().and_then(parse_prefix_arg).unwrap_or(1);
+                    return Some(PodDynField::Str { max, prefix_bytes });
                 }
             }
         }
@@ -449,9 +483,9 @@ pub(crate) fn classify_pod_string(ty: &Type) -> Option<usize> {
     None
 }
 
-/// Classifies a type as `PodVec<T, N>` or `Vec<T, N>` (type alias).
-/// Returns `Some((elem, max))`.
-pub(crate) fn classify_pod_vec(ty: &Type) -> Option<(Type, usize)> {
+/// Classifies a type as `PodVec<T, N[, pfx]>` or `Vec<T, N[, pfx]>`.
+/// Returns `Some(PodDynField::Vec { elem, max, prefix_bytes })`.
+pub(crate) fn classify_pod_vec(ty: &Type) -> Option<PodDynField> {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
             if (seg.ident == "PodVec" || seg.ident == "Vec") && type_path.path.segments.len() == 1 {
@@ -462,12 +496,29 @@ pub(crate) fn classify_pod_vec(ty: &Type) -> Option<(Type, usize)> {
                         _ => return None,
                     };
                     let max = extract_const_usize(iter.next()?)?;
-                    return Some((elem, max));
+                    let prefix_bytes = iter.next().and_then(parse_prefix_arg).unwrap_or(2);
+                    return Some(PodDynField::Vec {
+                        elem: Box::new(elem),
+                        max,
+                        prefix_bytes,
+                    });
                 }
             }
         }
     }
     None
+}
+
+/// Converts a `prefix_bytes` count to the corresponding Rust integer type
+/// token. Used when generating client-side instruction argument types.
+pub(crate) fn prefix_bytes_to_rust_type(prefix_bytes: usize) -> proc_macro2::TokenStream {
+    match prefix_bytes {
+        1 => quote! { u8 },
+        2 => quote! { u16 },
+        4 => quote! { u32 },
+        8 => quote! { u64 },
+        _ => quote! { u16 },
+    }
 }
 
 // --- Zc (zero-copy) companion struct helpers ---
@@ -488,15 +539,29 @@ pub(crate) fn map_to_pod_type(ty: &Type) -> proc_macro2::TokenStream {
                 "i32" => quote! { quasar_lang::pod::PodI32 },
                 "i16" => quote! { quasar_lang::pod::PodI16 },
                 "bool" => quote! { quasar_lang::pod::PodBool },
-                // String<N> → PodString<N>, Vec<T, N> → PodVec<T, N>
-                // (for fixed_capacity accounts where these are in the ZC struct)
+                // String<N[, pfx_type]> → PodString<N, PFX>
+                // Vec<T, N[, pfx_type]> → PodVec<T, N, PFX>
+                // The optional prefix arg is a Rust type (u8/u16/u32/u64) in
+                // user syntax; convert it to a usize const for the Pod type.
                 "String" | "PodString" => {
-                    let args = &seg.arguments;
-                    return quote! { quasar_lang::pod::PodString #args };
+                    if let PathArguments::AngleBracketed(ab) = &seg.arguments {
+                        let mut it = ab.args.iter();
+                        if let Some(n_arg) = it.next() {
+                            let pfx: usize = it.next().and_then(parse_prefix_arg).unwrap_or(1);
+                            return quote! { quasar_lang::pod::PodString<#n_arg, #pfx> };
+                        }
+                    }
+                    return quote! { quasar_lang::pod::PodString };
                 }
                 "Vec" | "PodVec" => {
-                    let args = &seg.arguments;
-                    return quote! { quasar_lang::pod::PodVec #args };
+                    if let PathArguments::AngleBracketed(ab) = &seg.arguments {
+                        let mut it = ab.args.iter();
+                        if let (Some(t_arg), Some(n_arg)) = (it.next(), it.next()) {
+                            let pfx: usize = it.next().and_then(parse_prefix_arg).unwrap_or(2);
+                            return quote! { quasar_lang::pod::PodVec<#t_arg, #n_arg, #pfx> };
+                        }
+                    }
+                    return quote! { quasar_lang::pod::PodVec };
                 }
                 _ => quote! { #ty },
             };

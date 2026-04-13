@@ -5,7 +5,8 @@
 use {
     crate::helpers::{
         classify_pod_string, classify_pod_vec, extract_generic_inner_type,
-        parse_discriminator_bytes, pascal_to_snake, snake_to_pascal, InstructionArgs,
+        parse_discriminator_bytes, pascal_to_snake, prefix_bytes_to_rust_type, snake_to_pascal,
+        InstructionArgs, PodDynField,
     },
     proc_macro::TokenStream,
     quote::{format_ident, quote},
@@ -175,12 +176,17 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
                             Pat::Ident(pi) => pi.ident.clone(),
                             _ => continue,
                         };
-                        let ty = if classify_pod_string(&pt.ty).is_some() {
-                            // String<N> / PodString<N> → DynBytes<u8> (u8 prefix)
-                            syn::parse_quote!(quasar_lang::client::DynBytes<u8>)
-                        } else if let Some((elem, _max)) = classify_pod_vec(&pt.ty) {
-                            // Vec<T, N> / PodVec<T, N> → DynVec<T, u16> (u16 prefix)
-                            syn::parse_quote!(quasar_lang::client::DynVec<#elem, u16>)
+                        let ty = if let Some(PodDynField::Str { prefix_bytes, .. }) =
+                            classify_pod_string(&pt.ty)
+                        {
+                            let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
+                            syn::parse_quote!(quasar_lang::client::DynBytes<#pfx_ty>)
+                        } else if let Some(PodDynField::Vec {
+                            elem, prefix_bytes, ..
+                        }) = classify_pod_vec(&pt.ty)
+                        {
+                            let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
+                            syn::parse_quote!(quasar_lang::client::DynVec<#elem, #pfx_ty>)
                         } else {
                             (*pt.ty).clone()
                         };

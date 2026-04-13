@@ -1,29 +1,33 @@
 //! Fixed-capacity inline string for zero-copy account data.
 //!
-//! `PodString<N>` stores up to `N` bytes (max 255) with a `u8` length prefix.
-//! It is a fixed-size Pod type: the struct always occupies `1 + N` bytes in
-//! memory and on-disk, regardless of the active string length.
+//! `PodString<N, PFX>` stores up to `N` bytes with a `PFX`-byte little-endian
+//! length prefix. It is a fixed-size Pod type: the struct always occupies
+//! `PFX + N` bytes in memory and on-disk, regardless of the active string
+//! length.
+//!
+//! `PFX` must be `1`, `2`, `4`, or `8`, and defaults to `1` (matching the
+//! previous `PodString<N>` signature — no breaking change).
 //!
 //! # Layout
 //!
 //! ```text
-//! [len: u8][data: [MaybeUninit<u8>; N]]
+//! [len: [u8; PFX] LE][data: [MaybeUninit<u8>; N]]
 //! ```
 //!
-//! - Total size: `1 + N` bytes, alignment 1.
+//! - Total size: `PFX + N` bytes, alignment 1.
 //! - `data[..len]` contains valid UTF-8 bytes.
 //! - `data[len..N]` is uninitialized (MaybeUninit).
 //!
 //! # Usage in account structs
 //!
 //! **As `PodString<N>` directly (or via `fixed_capacity`):**
-//! The full `1 + N` bytes are always in account data — no realloc ever. Best
+//! The full `PFX + N` bytes are always in account data — no realloc ever. Best
 //! when the worst-case rent cost is acceptable.
 //!
 //! ```ignore
 //! #[account(discriminator = 1)]
 //! pub struct Config {
-//!     pub label: PodString<32>,   // always 33 bytes on-chain
+//!     pub label: PodString<32>,   // always 33 bytes on-chain (PFX=1 default)
 //!     pub owner: Address,
 //! }
 //!
@@ -31,15 +35,34 @@
 //! let ok = ctx.accounts.config.label.set("my-label");
 //! ```
 //!
-//! **As `String<N>` in `#[account]` structs (dynamic sizing):**
-//! The derive macro generates a `DynGuard` RAII wrapper. Account data stores
-//! only the active bytes (`[len: u8][active bytes]`), so rent scales with
-//! content. `PodString` is used as the stack-local copy — loaded on guard
-//! creation, flushed back (with one realloc CPI if size changes) on drop.
+//! **As `String<N>` or `String<N, u16>` in `#[account]` structs (dynamic
+//! sizing):** The derive macro generates a `DynGuard` RAII wrapper. Account
+//! data stores only the active bytes (`[len: PFX bytes LE][active bytes]`), so
+//! rent scales with content. `PodString` is used as the stack-local copy —
+//! loaded on guard creation, flushed back (with one realloc CPI if size
+//! changes) on drop.
 
 use core::mem::MaybeUninit;
 
+/// Returns the maximum `N` value representable by a `PFX`-byte length prefix.
+///
+/// Returns `0` for invalid `PFX` values, which causes `_CAP_CHECK` to fire.
+pub(crate) const fn max_n_for_pfx(pfx: usize) -> usize {
+    match pfx {
+        1 => u8::MAX as usize,
+        2 => u16::MAX as usize,
+        4 => u32::MAX as usize,
+        8 => usize::MAX,
+        _ => 0,
+    }
+}
+
 /// Fixed-capacity inline string stored in account data.
+///
+/// `PFX` is the byte width of the on-disk length prefix (`1`, `2`, `4`, or
+/// `8`). It defaults to `1`, preserving backward compatibility with existing
+/// `PodString<N>` usage. Use `PodString<N, 2>` for strings up to 65 535 bytes,
+/// or `PodString<N, 4>` for up to 4 GiB.
 ///
 /// # Safety invariants
 ///
@@ -49,20 +72,35 @@ use core::mem::MaybeUninit;
 /// - Reads clamp `len` to `min(len, N)` to prevent panics on corrupted data.
 #[repr(C)]
 #[derive(Copy, Clone)]
-pub struct PodString<const N: usize> {
-    len: u8,
+pub struct PodString<const N: usize, const PFX: usize = 1> {
+    len: [u8; PFX],
     data: [MaybeUninit<u8>; N],
 }
 
-// Compile-time: N must fit in u8 length prefix.
-impl<const N: usize> PodString<N> {
-    const _CAP_CHECK: () = assert!(
-        N <= 255,
-        "PodString<N>: N cannot exceed 255 (u8 length prefix)"
-    );
+// Compile-time: PFX must be in {1,2,4,8} and N must fit in the prefix.
+impl<const N: usize, const PFX: usize> PodString<N, PFX> {
+    const _CAP_CHECK: () = {
+        assert!(
+            PFX == 1 || PFX == 2 || PFX == 4 || PFX == 8,
+            "PodString<N, PFX>: PFX must be 1, 2, 4, or 8"
+        );
+        assert!(
+            N <= max_n_for_pfx(PFX),
+            "PodString<N, PFX>: N exceeds the maximum value representable by the PFX-byte length \
+             prefix"
+        );
+    };
+
+    /// Compile-time validity check. Reference this in a `const` context to
+    /// verify that `N` and `PFX` are in range at the call site.
+    ///
+    /// ```ignore
+    /// const _: () = PodString::<256, 1>::VALID; // compile error: N exceeds prefix range
+    /// ```
+    pub const VALID: () = Self::_CAP_CHECK;
 }
 
-// Compile-time layout invariants.
+// Compile-time layout invariants — PFX=1 (default, backward-compat).
 const _: () = assert!(core::mem::size_of::<PodString<0>>() == 1);
 const _: () = assert!(core::mem::size_of::<PodString<1>>() == 2);
 const _: () = assert!(core::mem::size_of::<PodString<32>>() == 33);
@@ -70,21 +108,54 @@ const _: () = assert!(core::mem::size_of::<PodString<255>>() == 256);
 const _: () = assert!(core::mem::align_of::<PodString<0>>() == 1);
 const _: () = assert!(core::mem::align_of::<PodString<32>>() == 1);
 const _: () = assert!(core::mem::align_of::<PodString<255>>() == 1);
+// Compile-time layout invariants — PFX=2.
+const _: () = assert!(core::mem::size_of::<PodString<0, 2>>() == 2);
+const _: () = assert!(core::mem::size_of::<PodString<100, 2>>() == 102);
+const _: () = assert!(core::mem::align_of::<PodString<0, 2>>() == 1);
+// Compile-time layout invariants — PFX=4.
+const _: () = assert!(core::mem::size_of::<PodString<0, 4>>() == 4);
+const _: () = assert!(core::mem::size_of::<PodString<100, 4>>() == 104);
+const _: () = assert!(core::mem::align_of::<PodString<0, 4>>() == 1);
+// Compile-time layout invariants — PFX=8.
+const _: () = assert!(core::mem::size_of::<PodString<0, 8>>() == 8);
+const _: () = assert!(core::mem::align_of::<PodString<0, 8>>() == 1);
 
-impl<const N: usize> PodString<N> {
+impl<const N: usize, const PFX: usize> PodString<N, PFX> {
+    /// Decode the on-disk length prefix into a `usize`.
+    ///
+    /// LLVM constant-folds this per monomorphization (e.g., for PFX=1 it
+    /// compiles to a single byte load).
+    #[inline(always)]
+    fn decode_len(&self) -> usize {
+        #[allow(clippy::let_unit_value)]
+        let _ = Self::_CAP_CHECK;
+        let mut buf = [0u8; 8];
+        buf[..PFX].copy_from_slice(&self.len);
+        u64::from_le_bytes(buf) as usize
+    }
+
+    /// Encode `n` as a `PFX`-byte little-endian prefix into `self.len`.
+    #[inline(always)]
+    fn encode_len(&mut self, n: usize) {
+        #[allow(clippy::let_unit_value)]
+        let _ = Self::_CAP_CHECK;
+        let bytes = (n as u64).to_le_bytes();
+        self.len.copy_from_slice(&bytes[..PFX]);
+    }
+
     /// Number of active bytes in the string.
     #[inline(always)]
     pub fn len(&self) -> usize {
         #[allow(clippy::let_unit_value)]
         let _ = Self::_CAP_CHECK;
         // Clamp to N to prevent out-of-bounds on corrupted account data.
-        (self.len as usize).min(N)
+        self.decode_len().min(N)
     }
 
     /// Returns `true` if the string is empty.
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
-        self.len == 0
+        self.decode_len() == 0
     }
 
     /// Maximum number of bytes this string can hold.
@@ -132,7 +203,7 @@ impl<const N: usize> PodString<N> {
         unsafe {
             core::ptr::copy_nonoverlapping(value.as_ptr(), self.data.as_mut_ptr() as *mut u8, vlen);
         }
-        self.len = vlen as u8;
+        self.encode_len(vlen);
         true
     }
 
@@ -161,7 +232,7 @@ impl<const N: usize> PodString<N> {
                 vlen,
             );
         }
-        self.len = new_len as u8;
+        self.encode_len(new_len);
         true
     }
 
@@ -178,22 +249,22 @@ impl<const N: usize> PodString<N> {
                 self.as_str().is_char_boundary(new_len),
                 "truncate: new_len is not on a UTF-8 character boundary"
             );
-            self.len = new_len as u8;
+            self.encode_len(new_len);
         }
     }
 
     /// Clear the string (set length to 0).
     #[inline(always)]
     pub fn clear(&mut self) {
-        self.len = 0;
+        self.len = [0u8; PFX];
     }
 
-    /// Load from a byte slice containing `[len: u8][utf8 bytes...]`.
+    /// Load from a byte slice containing `[len: PFX bytes LE][utf8 bytes...]`.
     ///
-    /// Copies `min(len, N)` bytes into self. Returns the number of
-    /// bytes consumed from the source slice (prefix + data).
+    /// Copies `min(len, N)` bytes into self. Returns the number of bytes
+    /// consumed from the source slice (prefix + data).
     ///
-    /// The caller must ensure `bytes.len() >= 1 + min(bytes[0], N)`.
+    /// The caller must ensure `bytes.len() >= PFX + min(encoded_len, N)`.
     ///
     /// # Panics
     ///
@@ -203,12 +274,14 @@ impl<const N: usize> PodString<N> {
         #[allow(clippy::let_unit_value)]
         let _ = Self::_CAP_CHECK;
         debug_assert!(
-            !bytes.is_empty(),
-            "load_from_bytes: slice must have at least 1 byte"
+            bytes.len() >= PFX,
+            "load_from_bytes: slice must have at least PFX bytes"
         );
-        let slen = (bytes[0] as usize).min(N);
+        let mut buf = [0u8; 8];
+        buf[..PFX].copy_from_slice(&bytes[..PFX]);
+        let slen = (u64::from_le_bytes(buf) as usize).min(N);
         debug_assert!(
-            bytes.len() > slen, // need 1 prefix byte + slen data bytes
+            bytes.len() >= PFX + slen,
             "load_from_bytes: slice too short for encoded length"
         );
         // SAFETY: `slen` is clamped to N, so we write at most N bytes
@@ -217,21 +290,20 @@ impl<const N: usize> PodString<N> {
         // they cannot overlap.
         unsafe {
             core::ptr::copy_nonoverlapping(
-                bytes[1..].as_ptr(),
+                bytes[PFX..].as_ptr(),
                 self.data.as_mut_ptr() as *mut u8,
                 slen,
             );
         }
-        self.len = slen as u8;
-        1 + slen
+        self.encode_len(slen);
+        PFX + slen
     }
 
-    /// Write `[len: u8][utf8 bytes...]` to a byte slice.
+    /// Write `[len: PFX bytes LE][utf8 bytes...]` to a byte slice.
     ///
     /// Returns the number of bytes written (prefix + data).
     ///
-    /// The caller must ensure `dest.len() > self.len()` (i.e. at least 1 prefix
-    /// byte + `len` data bytes).
+    /// The caller must ensure `dest.len() >= PFX + self.len()`.
     ///
     /// # Panics
     ///
@@ -240,40 +312,41 @@ impl<const N: usize> PodString<N> {
     pub fn write_to_bytes(&self, dest: &mut [u8]) -> usize {
         let slen = self.len();
         debug_assert!(
-            dest.len() > slen, // need 1 prefix byte + slen data bytes
+            dest.len() >= PFX + slen,
             "write_to_bytes: dest too short for encoded length"
         );
-        dest[0] = slen as u8;
+        // Write the (possibly clamped) length as PFX LE bytes.
+        dest[..PFX].copy_from_slice(&(slen as u64).to_le_bytes()[..PFX]);
         // SAFETY: `slen` is clamped to N via `len()`, so we read at
         // most N bytes from `self.data`. Source (stack) and destination
         // (account data) are different allocations, so they cannot overlap.
         unsafe {
             core::ptr::copy_nonoverlapping(
                 self.data.as_ptr() as *const u8,
-                dest[1..].as_mut_ptr(),
+                dest[PFX..].as_mut_ptr(),
                 slen,
             );
         }
-        1 + slen
+        PFX + slen
     }
 
-    /// Total bytes this field occupies when serialized: `1 + len`.
+    /// Total bytes this field occupies when serialized: `PFX + len`.
     #[inline(always)]
     pub fn serialized_len(&self) -> usize {
-        1 + self.len()
+        PFX + self.len()
     }
 }
 
-impl<const N: usize> Default for PodString<N> {
+impl<const N: usize, const PFX: usize> Default for PodString<N, PFX> {
     fn default() -> Self {
         Self {
-            len: 0,
+            len: [0u8; PFX],
             data: [MaybeUninit::uninit(); N],
         }
     }
 }
 
-impl<const N: usize> core::ops::Deref for PodString<N> {
+impl<const N: usize, const PFX: usize> core::ops::Deref for PodString<N, PFX> {
     type Target = str;
 
     #[inline(always)]
@@ -282,50 +355,50 @@ impl<const N: usize> core::ops::Deref for PodString<N> {
     }
 }
 
-impl<const N: usize> AsRef<str> for PodString<N> {
+impl<const N: usize, const PFX: usize> AsRef<str> for PodString<N, PFX> {
     #[inline(always)]
     fn as_ref(&self) -> &str {
         self.as_str()
     }
 }
 
-impl<const N: usize> AsRef<[u8]> for PodString<N> {
+impl<const N: usize, const PFX: usize> AsRef<[u8]> for PodString<N, PFX> {
     #[inline(always)]
     fn as_ref(&self) -> &[u8] {
         self.as_bytes()
     }
 }
 
-impl<const N: usize> PartialEq for PodString<N> {
+impl<const N: usize, const PFX: usize> PartialEq for PodString<N, PFX> {
     #[inline(always)]
     fn eq(&self, other: &Self) -> bool {
         self.as_bytes() == other.as_bytes()
     }
 }
 
-impl<const N: usize> Eq for PodString<N> {}
+impl<const N: usize, const PFX: usize> Eq for PodString<N, PFX> {}
 
-impl<const N: usize> PartialEq<str> for PodString<N> {
+impl<const N: usize, const PFX: usize> PartialEq<str> for PodString<N, PFX> {
     #[inline(always)]
     fn eq(&self, other: &str) -> bool {
         self.as_str() == other
     }
 }
 
-impl<const N: usize> PartialEq<&str> for PodString<N> {
+impl<const N: usize, const PFX: usize> PartialEq<&str> for PodString<N, PFX> {
     #[inline(always)]
     fn eq(&self, other: &&str) -> bool {
         self.as_str() == *other
     }
 }
 
-impl<const N: usize> core::fmt::Debug for PodString<N> {
+impl<const N: usize, const PFX: usize> core::fmt::Debug for PodString<N, PFX> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "PodString<{}>(\"{}\")", N, self.as_str())
+        write!(f, "PodString<{}, {}>(\"{}\")", N, PFX, self.as_str())
     }
 }
 
-impl<const N: usize> core::fmt::Display for PodString<N> {
+impl<const N: usize, const PFX: usize> core::fmt::Display for PodString<N, PFX> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(self.as_str())
     }
@@ -392,8 +465,8 @@ mod tests {
     fn corrupted_len_clamped() {
         let mut s = PodString::<4>::default();
         assert!(s.set("abcd")); // initialize all 4 bytes so no MaybeUninit read after corruption
-                                // Simulate corrupted len > N
-        s.len = 255;
+                                // Simulate corrupted len > N (PFX=1, so [u8; 1])
+        s.len = [255];
         // Should NOT panic — len is clamped to N
         assert_eq!(s.len(), 4);
         // as_bytes() is over fully-initialized data — no UB
@@ -410,10 +483,17 @@ mod tests {
 
     #[test]
     fn size_and_alignment() {
+        // PFX=1 (default)
         assert_eq!(core::mem::size_of::<PodString<32>>(), 33);
         assert_eq!(core::mem::align_of::<PodString<32>>(), 1);
         assert_eq!(core::mem::size_of::<PodString<0>>(), 1);
         assert_eq!(core::mem::align_of::<PodString<0>>(), 1);
+        // PFX=2
+        assert_eq!(core::mem::size_of::<PodString<32, 2>>(), 34);
+        assert_eq!(core::mem::align_of::<PodString<32, 2>>(), 1);
+        // PFX=4
+        assert_eq!(core::mem::size_of::<PodString<32, 4>>(), 36);
+        assert_eq!(core::mem::align_of::<PodString<32, 4>>(), 1);
     }
 
     #[test]
@@ -612,5 +692,73 @@ mod tests {
         assert!(s.set("hello"));
         s.truncate(0);
         assert!(s.is_empty());
+    }
+
+    // --- PFX=2 tests ---
+
+    #[test]
+    fn pfx2_empty() {
+        let s = PodString::<100, 2>::default();
+        assert!(s.is_empty());
+        assert_eq!(s.serialized_len(), 2); // just the 2-byte prefix
+    }
+
+    #[test]
+    fn pfx2_roundtrip() {
+        let mut s = PodString::<200, 2>::default();
+        assert!(s.set("hello world"));
+
+        let mut buf = [0u8; 213]; // 2 + 200 + 1 slack
+        let written = s.write_to_bytes(&mut buf);
+        assert_eq!(written, 13); // 2 + 11
+        assert_eq!(&buf[..2], &[11u8, 0]); // len=11 in LE u16
+
+        let mut s2 = PodString::<200, 2>::default();
+        let consumed = s2.load_from_bytes(&buf);
+        assert_eq!(consumed, 13);
+        assert_eq!(s2.as_str(), "hello world");
+    }
+
+    #[test]
+    fn pfx2_corrupted_len_clamped() {
+        let mut s = PodString::<4, 2>::default();
+        assert!(s.set("abcd"));
+        // Simulate corrupted len > N (PFX=2 → [u8; 2])
+        s.len = [0xFF, 0xFF]; // 65535
+        assert_eq!(s.len(), 4); // clamped to N
+    }
+
+    #[test]
+    fn pfx2_serialized_len() {
+        let mut s = PodString::<100, 2>::default();
+        assert_eq!(s.serialized_len(), 2);
+        assert!(s.set("hi"));
+        assert_eq!(s.serialized_len(), 4); // 2 + 2
+    }
+
+    // --- PFX=4 tests ---
+
+    #[test]
+    fn pfx4_roundtrip() {
+        let mut s = PodString::<200, 4>::default();
+        assert!(s.set("hello world"));
+
+        let mut buf = [0u8; 215]; // 4 + 200 + 1 slack
+        let written = s.write_to_bytes(&mut buf);
+        assert_eq!(written, 15); // 4 + 11
+        assert_eq!(&buf[..4], &[11u8, 0, 0, 0]); // 11 in LE u32
+
+        let mut s2 = PodString::<200, 4>::default();
+        let consumed = s2.load_from_bytes(&buf);
+        assert_eq!(consumed, 15);
+        assert_eq!(s2.as_str(), "hello world");
+    }
+
+    #[test]
+    fn pfx4_serialized_len() {
+        let mut s = PodString::<100, 4>::default();
+        assert_eq!(s.serialized_len(), 4);
+        assert!(s.set("hi"));
+        assert_eq!(s.serialized_len(), 6); // 4 + 2
     }
 }
