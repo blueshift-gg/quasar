@@ -651,3 +651,624 @@ impl fmt::Debug for PodBool {
         write!(f, "PodBool({})", self.get())
     }
 }
+
+// ---------------------------------------------------------------------------
+// Kani model-checking proof harnesses
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    // Core Pod proofs: roundtrip (byte encoding ↔ native), Ord consistency,
+    // and is_zero. Every numeric Pod type gets these via kani_pod_core!.
+    macro_rules! kani_pod_core {
+        ($pod:ident, $native:ty, $mod_name:ident) => {
+            mod $mod_name {
+                use super::super::*;
+
+                #[kani::proof]
+                fn roundtrip() {
+                    let v: $native = kani::any();
+                    let pod = $pod::from(v);
+                    assert!(pod.get() == v, "roundtrip must preserve value");
+                }
+
+                #[kani::proof]
+                fn cmp_consistency() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    let pa = $pod::from(a);
+                    let pb = $pod::from(b);
+                    assert!((pa < pb) == (a < b), "ordering must match native");
+                    assert!((pa == pb) == (a == b), "equality must match native");
+                    assert!((pa > pb) == (a > b), "ordering must match native");
+                }
+
+                #[kani::proof]
+                fn is_zero_correctness() {
+                    let v: $native = kani::any();
+                    assert!(
+                        $pod::from(v).is_zero() == (v == 0),
+                        "is_zero must match native zero check"
+                    );
+                }
+            }
+        };
+    }
+
+    kani_pod_core!(PodU16, u16, pod_u16);
+    kani_pod_core!(PodU32, u32, pod_u32);
+    kani_pod_core!(PodU64, u64, pod_u64);
+    kani_pod_core!(PodI16, i16, pod_i16);
+    kani_pod_core!(PodI32, i32, pod_i32);
+    kani_pod_core!(PodI64, i64, pod_i64);
+
+    // 128-bit core proofs use z3 for cmp/is_zero (CaDiCaL is slow on
+    // wide comparisons).
+    mod pod_u128 {
+        use super::super::*;
+
+        #[kani::proof]
+        fn roundtrip() {
+            let v: u128 = kani::any();
+            let pod = PodU128::from(v);
+            assert!(pod.get() == v, "roundtrip must preserve value");
+        }
+
+        #[kani::proof]
+        #[kani::solver(z3)]
+        fn cmp_consistency() {
+            let a: u128 = kani::any();
+            let b: u128 = kani::any();
+            let pa = PodU128::from(a);
+            let pb = PodU128::from(b);
+            assert!((pa < pb) == (a < b), "ordering must match native");
+            assert!((pa == pb) == (a == b), "equality must match native");
+            assert!((pa > pb) == (a > b), "ordering must match native");
+        }
+
+        #[kani::proof]
+        #[kani::solver(z3)]
+        fn is_zero_correctness() {
+            let v: u128 = kani::any();
+            assert!(
+                PodU128::from(v).is_zero() == (v == 0),
+                "is_zero must match native zero check"
+            );
+        }
+    }
+
+    mod pod_i128 {
+        use super::super::*;
+
+        #[kani::proof]
+        fn roundtrip() {
+            let v: i128 = kani::any();
+            let pod = PodI128::from(v);
+            assert!(pod.get() == v, "roundtrip must preserve value");
+        }
+
+        #[kani::proof]
+        #[kani::solver(z3)]
+        fn cmp_consistency() {
+            let a: i128 = kani::any();
+            let b: i128 = kani::any();
+            let pa = PodI128::from(a);
+            let pb = PodI128::from(b);
+            assert!((pa < pb) == (a < b), "ordering must match native");
+            assert!((pa == pb) == (a == b), "equality must match native");
+            assert!((pa > pb) == (a > b), "ordering must match native");
+        }
+
+        #[kani::proof]
+        #[kani::solver(z3)]
+        fn is_zero_correctness() {
+            let v: i128 = kani::any();
+            assert!(
+                PodI128::from(v).is_zero() == (v == 0),
+                "is_zero must match native zero check"
+            );
+        }
+    }
+
+    // Operator proofs (arithmetic, bitwise, assign) for unsigned types.
+    // Kani compiles with debug_assertions, so +/-/* panic on overflow.
+    macro_rules! kani_operator_proofs_for {
+        ($pod:ident, $native:ty, $mod_name:ident) => {
+            mod $mod_name {
+                use super::super::*;
+
+                // --- Arithmetic operators ---
+                //
+                // Kani compiles with debug_assertions, so +/-/* panic on
+                // overflow (matching Rust's default debug behavior). We
+                // constrain inputs to the non-overflowing domain. This still
+                // verifies the Pod→native→Pod roundtrip through each operator.
+
+                #[kani::proof]
+                fn add_no_overflow() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    kani::assume(a.checked_add(b).is_some());
+                    let result = ($pod::from(a) + $pod::from(b)).get();
+                    assert!(result == a + b);
+                }
+
+                #[kani::proof]
+                fn sub_no_overflow() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    kani::assume(a.checked_sub(b).is_some());
+                    let result = ($pod::from(a) - $pod::from(b)).get();
+                    assert!(result == a - b);
+                }
+
+                // mul/div/rem omitted from macro — CaDiCaL is slow on
+                // multiplication and division even at 32 bits. These are
+                // proven per-width with z3 below.
+
+                // --- Bitwise ---
+
+                #[kani::proof]
+                fn bitand_matches_native() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    assert!(($pod::from(a) & $pod::from(b)).get() == (a & b));
+                }
+
+                #[kani::proof]
+                fn bitor_matches_native() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    assert!(($pod::from(a) | $pod::from(b)).get() == (a | b));
+                }
+
+                #[kani::proof]
+                fn bitxor_matches_native() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    assert!(($pod::from(a) ^ $pod::from(b)).get() == (a ^ b));
+                }
+
+                #[kani::proof]
+                fn not_matches_native() {
+                    let a: $native = kani::any();
+                    assert!((!$pod::from(a)).get() == !a);
+                }
+
+                #[kani::proof]
+                fn shl_matches_native() {
+                    let a: $native = kani::any();
+                    let rhs: u32 = kani::any();
+                    kani::assume(rhs < <$native>::BITS);
+                    assert!(($pod::from(a) << rhs).get() == (a << rhs));
+                }
+
+                #[kani::proof]
+                fn shr_matches_native() {
+                    let a: $native = kani::any();
+                    let rhs: u32 = kani::any();
+                    kani::assume(rhs < <$native>::BITS);
+                    assert!(($pod::from(a) >> rhs).get() == (a >> rhs));
+                }
+
+                // --- Assign operators (verify delegation is correct) ---
+
+                // Assign operators: Kani compiles with debug_assertions, so
+                // Add/Sub panic on overflow via checked_add().expect().
+                // Constrain inputs to avoid the debug-mode overflow path.
+
+                #[kani::proof]
+                fn add_assign_matches_add() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    kani::assume(a.checked_add(b).is_some());
+                    let expected = $pod::from(a) + $pod::from(b);
+                    let mut pod = $pod::from(a);
+                    pod += $pod::from(b);
+                    assert!(pod == expected);
+                }
+
+                #[kani::proof]
+                fn sub_assign_matches_sub() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    kani::assume(a.checked_sub(b).is_some());
+                    let expected = $pod::from(a) - $pod::from(b);
+                    let mut pod = $pod::from(a);
+                    pod -= $pod::from(b);
+                    assert!(pod == expected);
+                }
+
+                #[kani::proof]
+                fn bitand_assign_matches_bitand() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    let expected = $pod::from(a) & $pod::from(b);
+                    let mut pod = $pod::from(a);
+                    pod &= $pod::from(b);
+                    assert!(pod == expected);
+                }
+            }
+        };
+    }
+
+    kani_operator_proofs_for!(PodU16, u16, ops_u16);
+    kani_operator_proofs_for!(PodU32, u32, ops_u32);
+
+    // Full u64 operator proofs. Multiplication, division, and remainder are
+    // covered by checked_u64 below (all use z3). This module covers add, sub,
+    // bitwise, shift, and assign operators (all fast on CaDiCaL).
+    mod ops_u64 {
+        use super::super::*;
+
+        #[kani::proof]
+        fn add_no_overflow() {
+            let a: u64 = kani::any();
+            let b: u64 = kani::any();
+            kani::assume(a.checked_add(b).is_some());
+            let result = (PodU64::from(a) + PodU64::from(b)).get();
+            assert!(result == a + b);
+        }
+
+        #[kani::proof]
+        fn sub_no_overflow() {
+            let a: u64 = kani::any();
+            let b: u64 = kani::any();
+            kani::assume(a.checked_sub(b).is_some());
+            let result = (PodU64::from(a) - PodU64::from(b)).get();
+            assert!(result == a - b);
+        }
+
+        #[kani::proof]
+        fn bitand_matches_native() {
+            let a: u64 = kani::any();
+            let b: u64 = kani::any();
+            assert!((PodU64::from(a) & PodU64::from(b)).get() == (a & b));
+        }
+
+        #[kani::proof]
+        fn bitor_matches_native() {
+            let a: u64 = kani::any();
+            let b: u64 = kani::any();
+            assert!((PodU64::from(a) | PodU64::from(b)).get() == (a | b));
+        }
+
+        #[kani::proof]
+        fn bitxor_matches_native() {
+            let a: u64 = kani::any();
+            let b: u64 = kani::any();
+            assert!((PodU64::from(a) ^ PodU64::from(b)).get() == (a ^ b));
+        }
+
+        #[kani::proof]
+        fn not_matches_native() {
+            let a: u64 = kani::any();
+            assert!((!PodU64::from(a)).get() == !a);
+        }
+
+        #[kani::proof]
+        fn shl_matches_native() {
+            let a: u64 = kani::any();
+            let shift: u32 = kani::any();
+            kani::assume(shift < 64);
+            assert!((PodU64::from(a) << shift).get() == (a << shift));
+        }
+
+        #[kani::proof]
+        fn shr_matches_native() {
+            let a: u64 = kani::any();
+            let shift: u32 = kani::any();
+            kani::assume(shift < 64);
+            assert!((PodU64::from(a) >> shift).get() == (a >> shift));
+        }
+
+        #[kani::proof]
+        fn add_assign_matches_add() {
+            let a: u64 = kani::any();
+            let b: u64 = kani::any();
+            kani::assume(a.checked_add(b).is_some());
+            let expected = PodU64::from(a) + PodU64::from(b);
+            let mut pod = PodU64::from(a);
+            pod += PodU64::from(b);
+            assert!(pod == expected);
+        }
+
+        #[kani::proof]
+        fn sub_assign_matches_sub() {
+            let a: u64 = kani::any();
+            let b: u64 = kani::any();
+            kani::assume(a.checked_sub(b).is_some());
+            let expected = PodU64::from(a) - PodU64::from(b);
+            let mut pod = PodU64::from(a);
+            pod -= PodU64::from(b);
+            assert!(pod == expected);
+        }
+
+        #[kani::proof]
+        fn bitand_assign_matches_bitand() {
+            let a: u64 = kani::any();
+            let b: u64 = kani::any();
+            let expected = PodU64::from(a) & PodU64::from(b);
+            let mut pod = PodU64::from(a);
+            pod &= PodU64::from(b);
+            assert!(pod == expected);
+        }
+    }
+
+    // 128-bit operator proofs: all use z3 since CaDiCaL's SAT encoding is
+    // exponentially slow for wide arithmetic. Multiplication, division, and
+    // remainder are covered by checked_u128 below.
+    mod ops_u128 {
+        use super::super::*;
+
+        #[kani::proof]
+        #[kani::solver(z3)]
+        fn add_no_overflow() {
+            let a: u128 = kani::any();
+            let b: u128 = kani::any();
+            kani::assume(a.checked_add(b).is_some());
+            let result = (PodU128::from(a) + PodU128::from(b)).get();
+            assert!(result == a + b);
+        }
+
+        #[kani::proof]
+        #[kani::solver(z3)]
+        fn sub_no_overflow() {
+            let a: u128 = kani::any();
+            let b: u128 = kani::any();
+            kani::assume(a.checked_sub(b).is_some());
+            let result = (PodU128::from(a) - PodU128::from(b)).get();
+            assert!(result == a - b);
+        }
+
+        #[kani::proof]
+        #[kani::solver(z3)]
+        fn bitand_matches_native() {
+            let a: u128 = kani::any();
+            let b: u128 = kani::any();
+            assert!((PodU128::from(a) & PodU128::from(b)).get() == (a & b));
+        }
+
+        #[kani::proof]
+        #[kani::solver(z3)]
+        fn bitor_matches_native() {
+            let a: u128 = kani::any();
+            let b: u128 = kani::any();
+            assert!((PodU128::from(a) | PodU128::from(b)).get() == (a | b));
+        }
+
+        #[kani::proof]
+        #[kani::solver(z3)]
+        fn bitxor_matches_native() {
+            let a: u128 = kani::any();
+            let b: u128 = kani::any();
+            assert!((PodU128::from(a) ^ PodU128::from(b)).get() == (a ^ b));
+        }
+
+        #[kani::proof]
+        #[kani::solver(z3)]
+        fn not_matches_native() {
+            let a: u128 = kani::any();
+            assert!((!PodU128::from(a)).get() == !a);
+        }
+
+        #[kani::proof]
+        #[kani::solver(z3)]
+        fn shl_matches_native() {
+            let a: u128 = kani::any();
+            let shift: u32 = kani::any();
+            kani::assume(shift < 128);
+            assert!((PodU128::from(a) << shift).get() == (a << shift));
+        }
+
+        #[kani::proof]
+        #[kani::solver(z3)]
+        fn shr_matches_native() {
+            let a: u128 = kani::any();
+            let shift: u32 = kani::any();
+            kani::assume(shift < 128);
+            assert!((PodU128::from(a) >> shift).get() == (a >> shift));
+        }
+
+        #[kani::proof]
+        #[kani::solver(z3)]
+        fn add_assign_matches_add() {
+            let a: u128 = kani::any();
+            let b: u128 = kani::any();
+            kani::assume(a.checked_add(b).is_some());
+            let expected = PodU128::from(a) + PodU128::from(b);
+            let mut pod = PodU128::from(a);
+            pod += PodU128::from(b);
+            assert!(pod == expected);
+        }
+
+        #[kani::proof]
+        #[kani::solver(z3)]
+        fn sub_assign_matches_sub() {
+            let a: u128 = kani::any();
+            let b: u128 = kani::any();
+            kani::assume(a.checked_sub(b).is_some());
+            let expected = PodU128::from(a) - PodU128::from(b);
+            let mut pod = PodU128::from(a);
+            pod -= PodU128::from(b);
+            assert!(pod == expected);
+        }
+
+        #[kani::proof]
+        #[kani::solver(z3)]
+        fn bitand_assign_matches_bitand() {
+            let a: u128 = kani::any();
+            let b: u128 = kani::any();
+            let expected = PodU128::from(a) & PodU128::from(b);
+            let mut pod = PodU128::from(a);
+            pod &= PodU128::from(b);
+            assert!(pod == expected);
+        }
+    }
+
+    // Checked arithmetic, saturating arithmetic, and division/remainder proofs.
+    // All use z3 because CaDiCaL's SAT encoding is slow for multiplication and
+    // division even at 32-bit width. z3's bit-vector theory handles all widths
+    // up to 128 bits in seconds.
+    macro_rules! kani_checked_sat_div_proofs {
+        ($pod:ident, $native:ty, $mod_name:ident) => {
+            mod $mod_name {
+                use super::super::*;
+
+                #[kani::proof]
+                #[kani::solver(z3)]
+                fn checked_add_matches_native() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    let pod_result = $pod::from(a).checked_add($pod::from(b));
+                    let native_result = a.checked_add(b);
+                    match (pod_result, native_result) {
+                        (Some(p), Some(n)) => assert!(p.get() == n),
+                        (None, None) => {}
+                        _ => panic!("checked_add mismatch"),
+                    }
+                }
+
+                #[kani::proof]
+                #[kani::solver(z3)]
+                fn checked_sub_matches_native() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    let pod_result = $pod::from(a).checked_sub($pod::from(b));
+                    let native_result = a.checked_sub(b);
+                    match (pod_result, native_result) {
+                        (Some(p), Some(n)) => assert!(p.get() == n),
+                        (None, None) => {}
+                        _ => panic!("checked_sub mismatch"),
+                    }
+                }
+
+                #[kani::proof]
+                #[kani::solver(z3)]
+                fn checked_mul_matches_native() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    let pod_result = $pod::from(a).checked_mul($pod::from(b));
+                    let native_result = a.checked_mul(b);
+                    match (pod_result, native_result) {
+                        (Some(p), Some(n)) => assert!(p.get() == n),
+                        (None, None) => {}
+                        _ => panic!("checked_mul mismatch"),
+                    }
+                }
+
+                #[kani::proof]
+                #[kani::solver(z3)]
+                fn checked_div_matches_native() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    let pod_result = $pod::from(a).checked_div($pod::from(b));
+                    let native_result = a.checked_div(b);
+                    match (pod_result, native_result) {
+                        (Some(p), Some(n)) => assert!(p.get() == n),
+                        (None, None) => {}
+                        _ => panic!("checked_div mismatch"),
+                    }
+                }
+
+                #[kani::proof]
+                #[kani::solver(z3)]
+                fn saturating_add_matches_native() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    let result = $pod::from(a).saturating_add($pod::from(b)).get();
+                    assert!(result == a.saturating_add(b));
+                }
+
+                #[kani::proof]
+                #[kani::solver(z3)]
+                fn saturating_sub_matches_native() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    let result = $pod::from(a).saturating_sub($pod::from(b)).get();
+                    assert!(result == a.saturating_sub(b));
+                }
+
+                #[kani::proof]
+                #[kani::solver(z3)]
+                fn saturating_mul_matches_native() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    let result = $pod::from(a).saturating_mul($pod::from(b)).get();
+                    assert!(result == a.saturating_mul(b));
+                }
+
+                #[kani::proof]
+                #[kani::solver(z3)]
+                fn mul_no_overflow() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    kani::assume(a.checked_mul(b).is_some());
+                    let result = ($pod::from(a) * $pod::from(b)).get();
+                    assert!(result == a * b);
+                }
+
+                #[kani::proof]
+                #[kani::solver(z3)]
+                fn div_matches_native() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    kani::assume(b != 0);
+                    let result = ($pod::from(a) / $pod::from(b)).get();
+                    assert!(result == a / b);
+                }
+
+                #[kani::proof]
+                #[kani::solver(z3)]
+                fn rem_matches_native() {
+                    let a: $native = kani::any();
+                    let b: $native = kani::any();
+                    kani::assume(b != 0);
+                    let result = ($pod::from(a) % $pod::from(b)).get();
+                    assert!(result == a % b);
+                }
+            }
+        };
+    }
+
+    kani_checked_sat_div_proofs!(PodU16, u16, checked_u16);
+    kani_checked_sat_div_proofs!(PodU32, u32, checked_u32);
+    kani_checked_sat_div_proofs!(PodU64, u64, checked_u64);
+    kani_checked_sat_div_proofs!(PodU128, u128, checked_u128);
+
+    // Signed operator proofs omitted: PodI16/PodI32/PodI64 are only used as
+    // passive data containers in the codebase (clock timestamps, instruction
+    // args that pass through). No arithmetic is performed on them. The
+    // unsigned operator proofs above cover the same macro-generated code paths.
+    // Signed roundtrip, cmp, and is_zero are verified via kani_pod_core! above.
+
+    // PodBool-specific proofs.
+    mod pod_bool {
+        use super::super::*;
+
+        #[kani::proof]
+        fn bool_roundtrip() {
+            let v: bool = kani::any();
+            let pod = PodBool::from(v);
+            assert!(pod.get() == v, "bool roundtrip must preserve value");
+        }
+
+        #[kani::proof]
+        fn any_nonzero_is_true() {
+            let byte: u8 = kani::any();
+            // Construct PodBool from a raw byte. PodBool is #[repr(transparent)]
+            // over [u8; 1], so this transmute is sound for any bit pattern.
+            let pod: PodBool = unsafe { core::mem::transmute([byte]) };
+            assert!(pod.get() == (byte != 0), "any nonzero byte must be true");
+        }
+
+        #[kani::proof]
+        fn not_involution() {
+            let v: bool = kani::any();
+            let pod = PodBool::from(v);
+            assert!(!!pod == pod, "double negation must be identity");
+        }
+    }
+}

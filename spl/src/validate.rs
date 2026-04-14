@@ -212,3 +212,50 @@ pub fn validate_ata(
     // validate_token_program check inside validate_token_account.
     validate_token_account_inner(view, mint, wallet, token_program, false)
 }
+
+// ---------------------------------------------------------------------------
+// Kani model-checking proof harnesses
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Prove TokenAccountState::LEN equals the actual struct size.
+    /// This is the constant used in the `data_len < LEN` guard (line 68)
+    /// before the pointer cast at line 75.
+    #[kani::proof]
+    fn token_account_len_matches_sizeof() {
+        assert!(TokenAccountState::LEN == core::mem::size_of::<TokenAccountState>());
+    }
+
+    /// Prove MintAccountState::LEN equals the actual struct size.
+    /// This is the constant used in the `data_len < LEN` guard (line 128)
+    /// before the pointer cast at line 135.
+    #[kani::proof]
+    fn mint_account_len_matches_sizeof() {
+        assert!(MintAccountState::LEN == core::mem::size_of::<MintAccountState>());
+    }
+
+    /// Prove: for any `data_len >= TokenAccountState::LEN`, the data
+    /// covers the full struct — i.e. `data_len >=
+    /// size_of::<TokenAccountState>()`. This verifies the runtime guard is
+    /// sufficient for a safe pointer cast.
+    #[kani::proof]
+    fn token_account_data_len_guard_sufficient() {
+        let data_len: usize = kani::any();
+        kani::assume(data_len >= TokenAccountState::LEN);
+        assert!(data_len >= core::mem::size_of::<TokenAccountState>());
+    }
+
+    /// Prove: for any `data_len >= MintAccountState::LEN`, the data
+    /// covers the full struct — i.e. `data_len >=
+    /// size_of::<MintAccountState>()`. This verifies the runtime guard is
+    /// sufficient for a safe pointer cast.
+    #[kani::proof]
+    fn mint_account_data_len_guard_sufficient() {
+        let data_len: usize = kani::any();
+        kani::assume(data_len >= MintAccountState::LEN);
+        assert!(data_len >= core::mem::size_of::<MintAccountState>());
+    }
+}

@@ -109,3 +109,83 @@ fn read_prefix<const PREFIX: usize>(data: &[u8], offset: usize) -> usize {
         _ => unsafe { core::hint::unreachable_unchecked() },
     }
 }
+
+// ---------------------------------------------------------------------------
+// Kani model-checking proof harnesses
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Prove `read_prefix::<1>` returns `data[offset] as usize`.
+    #[kani::proof]
+    fn read_prefix_u8_correctness() {
+        let data: [u8; 4] = kani::any();
+        let offset: usize = kani::any();
+        kani::assume(offset < 4);
+        let result = read_prefix::<1>(&data, offset);
+        assert!(result == data[offset] as usize);
+    }
+
+    /// Prove `read_prefix::<2>` returns the little-endian u16 at offset.
+    #[kani::proof]
+    fn read_prefix_u16_correctness() {
+        let data: [u8; 4] = kani::any();
+        let offset: usize = kani::any();
+        kani::assume(offset <= 2);
+        let result = read_prefix::<2>(&data, offset);
+        let expected = u16::from_le_bytes([data[offset], data[offset + 1]]) as usize;
+        assert!(result == expected);
+    }
+
+    /// Prove `read_prefix::<4>` returns the little-endian u32 at offset.
+    #[kani::proof]
+    fn read_prefix_u32_correctness() {
+        let data: [u8; 8] = kani::any();
+        let offset: usize = kani::any();
+        kani::assume(offset <= 4);
+        let result = read_prefix::<4>(&data, offset);
+        let expected = u32::from_le_bytes([
+            data[offset],
+            data[offset + 1],
+            data[offset + 2],
+            data[offset + 3],
+        ]) as usize;
+        assert!(result == expected);
+    }
+
+    /// Prove `read_dynamic_str` never returns an offset beyond the buffer.
+    /// Buffer reduced to 8 bytes (from 16) to keep UTF-8 validation tractable
+    /// for CBMC's SAT solver — `core::str::from_utf8` creates a complex
+    /// branching state machine that scales poorly with buffer size.
+    #[kani::proof]
+    #[kani::unwind(10)]
+    fn read_dynamic_str_bounds() {
+        let data: [u8; 8] = kani::any();
+        let offset: usize = kani::any();
+        kani::assume(offset <= 8);
+        let max_len: usize = kani::any();
+        kani::assume(max_len <= 8);
+
+        if let Ok((_, new_offset)) = read_dynamic_str::<1>(&data, offset, max_len) {
+            assert!(new_offset <= data.len(), "new_offset must be within buffer");
+        }
+    }
+
+    /// Prove `read_dynamic_vec::<u8>` never returns an offset beyond the
+    /// buffer.
+    #[kani::proof]
+    #[kani::unwind(18)]
+    fn read_dynamic_vec_bounds() {
+        let data: [u8; 16] = kani::any();
+        let offset: usize = kani::any();
+        kani::assume(offset <= 16);
+        let max_count: usize = kani::any();
+        kani::assume(max_count <= 16);
+
+        if let Ok((_, new_offset)) = read_dynamic_vec::<u8, 1>(&data, offset, max_count) {
+            assert!(new_offset <= data.len(), "new_offset must be within buffer");
+        }
+    }
+}

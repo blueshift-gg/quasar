@@ -41,10 +41,37 @@ jobs:
       - name: Run Miri tests
         run: make test-miri
 
+  # ── Kani: formal verification of proof harnesses ──
+  kani:
+    name: Kani (${{ matrix.crate }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [quasar-pod, quasar-lang, quasar-spl]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-kani-${{ matrix.crate }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-kani-${{ matrix.crate }}-
+      - name: Install z3 (SMT solver for wide-type proofs)
+        run: sudo apt-get install -y z3
+      - name: Verify ${{ matrix.crate }}
+        uses: model-checking/kani-github-action@v1
+        with:
+          command: cargo kani -p ${{ matrix.crate }}
+
   # ── Publish crates to crates.io in dependency order ──
   publish:
     name: Publish to crates.io
-    needs: [ci, miri]
+    needs: [ci, miri, kani]
     runs-on: ubuntu-latest
     environment: crates-io
     steps:
@@ -102,7 +129,7 @@ jobs:
   # ── GitHub Release with auto-generated notes ──
   github-release:
     name: GitHub Release
-    needs: [ci, miri]
+    needs: [ci, miri, kani]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

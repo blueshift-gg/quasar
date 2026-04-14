@@ -404,6 +404,128 @@ impl<const N: usize, const PFX: usize> core::fmt::Display for PodString<N, PFX> 
     }
 }
 
+// ---------------------------------------------------------------------------
+// Kani model-checking proof harnesses
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Prove encode_len/decode_len are inverses for PFX=1.
+    #[kani::proof]
+    fn encode_decode_roundtrip_pfx1() {
+        let n: usize = kani::any();
+        kani::assume(n <= u8::MAX as usize);
+        let mut s = PodString::<255, 1>::default();
+        s.encode_len(n);
+        assert!(s.decode_len() == n);
+    }
+
+    /// Prove encode_len/decode_len are inverses for PFX=2.
+    #[kani::proof]
+    fn encode_decode_roundtrip_pfx2() {
+        let n: usize = kani::any();
+        kani::assume(n <= u16::MAX as usize);
+        let mut s = PodString::<255, 2>::default();
+        s.encode_len(n);
+        assert!(s.decode_len() == n);
+    }
+
+    /// Prove encode_len/decode_len are inverses for PFX=4.
+    #[kani::proof]
+    fn encode_decode_roundtrip_pfx4() {
+        let n: usize = kani::any();
+        kani::assume(n <= u32::MAX as usize);
+        let mut s = PodString::<255, 4>::default();
+        s.encode_len(n);
+        assert!(s.decode_len() == n);
+    }
+
+    /// Prove len() never exceeds N regardless of raw prefix bytes.
+    #[kani::proof]
+    fn len_clamp_pfx1() {
+        let raw: [u8; 1] = kani::any();
+        let s = PodString::<8, 1> {
+            len: raw,
+            data: [MaybeUninit::uninit(); 8],
+        };
+        assert!(s.len() <= 8);
+    }
+
+    /// Prove len() never exceeds N regardless of raw prefix bytes (PFX=2).
+    #[kani::proof]
+    fn len_clamp_pfx2() {
+        let raw: [u8; 2] = kani::any();
+        let s = PodString::<8, 2> {
+            len: raw,
+            data: [MaybeUninit::uninit(); 8],
+        };
+        assert!(s.len() <= 8);
+    }
+
+    /// Prove set() then as_bytes() returns content with correct length.
+    #[kani::proof]
+    #[kani::unwind(10)]
+    fn set_then_as_bytes_len() {
+        let vlen: usize = kani::any();
+        kani::assume(vlen <= 8);
+        let content = [0x41u8; 8];
+        let mut s = PodString::<8>::default();
+        let ok = s.set(unsafe { core::str::from_utf8_unchecked(&content[..vlen]) });
+        assert!(ok);
+        assert!(s.len() == vlen);
+        assert!(s.as_bytes().len() == vlen);
+    }
+
+    /// Prove set() rejects strings longer than N.
+    #[kani::proof]
+    fn set_rejects_over_capacity() {
+        let vlen: usize = kani::any();
+        kani::assume(vlen > 4);
+        kani::assume(vlen <= 8);
+        let content = [0x41u8; 8];
+        let mut s = PodString::<4>::default();
+        let ok = s.set(unsafe { core::str::from_utf8_unchecked(&content[..vlen]) });
+        assert!(!ok);
+    }
+
+    /// Prove push_str length accounting is correct.
+    #[kani::proof]
+    #[kani::unwind(10)]
+    fn push_str_len_accounting() {
+        let a_len: usize = kani::any();
+        let b_len: usize = kani::any();
+        kani::assume(a_len <= 4);
+        kani::assume(b_len <= 4);
+        kani::assume(a_len + b_len <= 8);
+
+        let buf = [0x41u8; 8];
+        let mut s = PodString::<8>::default();
+        assert!(s.set(unsafe { core::str::from_utf8_unchecked(&buf[..a_len]) }));
+        assert!(s.push_str(unsafe { core::str::from_utf8_unchecked(&buf[..b_len]) }));
+        assert!(s.len() == a_len + b_len);
+    }
+
+    /// Prove push_str rejects appends that would exceed capacity.
+    #[kani::proof]
+    fn push_str_rejects_overflow() {
+        let a_len: usize = kani::any();
+        let b_len: usize = kani::any();
+        kani::assume(a_len <= 4);
+        kani::assume(b_len <= 8);
+        kani::assume(a_len + b_len > 4);
+
+        let buf = [0x41u8; 8];
+        let mut s = PodString::<4>::default();
+        assert!(s.set(unsafe { core::str::from_utf8_unchecked(&buf[..a_len]) }));
+        let ok = s.push_str(unsafe { core::str::from_utf8_unchecked(&buf[..b_len]) });
+        assert!(!ok);
+        // Original length preserved on failure.
+        assert!(s.len() == a_len);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

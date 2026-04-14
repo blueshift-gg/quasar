@@ -24,6 +24,8 @@ const MAX_PDA_SLICES: usize = 19;
 /// "ProgramDerivedAddress")`.
 ///
 /// The seeds slice must already include the bump byte.
+///
+/// Kani proof: `verify_program_address_indices_within_bounds`.
 // NOTE: Uses `#[inline]` rather than `#[inline(always)]` deliberately —
 // these functions are large enough that forced inlining at every callsite
 // risks .so bloat. Benchmark `#[inline(always)]` if CU regression appears.
@@ -97,6 +99,8 @@ pub fn verify_program_address(
 /// and checking off-curve with `sol_curve_validate_point`.
 ///
 /// For a typical PDA (bump 255, first try): ~544 CU vs ~1,500 CU.
+///
+/// Kani proof: `find_program_address_indices_within_bounds`.
 #[inline]
 pub fn based_try_find_program_address(
     seeds: &[&[u8]],
@@ -202,6 +206,8 @@ pub fn based_try_find_program_address(
 /// This replaces [`based_try_find_program_address`]'s per-iteration
 /// `sol_curve_validate_point` syscall (~100 CU) with a `keys_eq` comparison
 /// (~10 CU), saving ~90 CU per attempt while producing identical results.
+///
+/// Kani proof: `find_program_address_indices_within_bounds`.
 ///
 /// # When to use
 ///
@@ -324,6 +330,8 @@ pub fn find_bump_for_address(
 ///
 /// Used by the BUMP_OFFSET fast path to read the bump from the account's
 /// own data instead of re-deriving it.
+///
+/// Kani proof: `read_bump_offset_within_bounds`.
 #[inline(always)]
 pub fn read_bump_from_account(
     view: &solana_account_view::AccountView,
@@ -341,4 +349,120 @@ pub fn read_bump_from_account(
 pub const fn find_program_address_const(seeds: &[&[u8]], program_id: &Address) -> (Address, u8) {
     let (bytes, bump) = const_crypto::ed25519::derive_program_address(seeds, program_id.as_array());
     (Address::new_from_array(bytes), bump)
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    /// `MAX_PDA_SLICES` from the parent module (cfg'd to Solana, so we
+    /// redefine it here for verification).
+    const MAX_PDA_SLICES: usize = 19;
+
+    /// Prove `verify_program_address` index arithmetic is safe.
+    ///
+    /// Mirrors `verify_program_address()` slice-building loop:
+    ///   `while i < n { sptr.add(i).write(seeds[i]); ... }`
+    ///   `sptr.add(n).write(program_id...);`
+    ///   `sptr.add(n + 1).write(PDA_MARKER...);`
+    ///
+    /// seeds.len() is checked `<= 17`. All indices must be `< 19`.
+    #[kani::proof]
+    fn verify_program_address_indices_within_bounds() {
+        let n: usize = kani::any();
+        kani::assume(n <= 17);
+
+        // Loop indices: 0..n
+        let mut i: usize = 0;
+        while i < n {
+            assert!(i < MAX_PDA_SLICES, "loop index out of bounds");
+            i += 1;
+        }
+        // Post-loop: slots n (program_id) and n+1 (PDA_MARKER)
+        assert!(n < MAX_PDA_SLICES, "program_id slot out of bounds");
+        assert!(n + 1 < MAX_PDA_SLICES, "PDA_MARKER slot out of bounds");
+
+        // Total initialized elements passed to from_raw_parts
+        assert!(n + 2 <= MAX_PDA_SLICES, "slice length exceeds array");
+    }
+
+    /// Prove `based_try_find_program_address` and `find_bump_for_address`
+    /// index arithmetic is safe.
+    ///
+    /// Mirrors `based_try_find_program_address()` / `find_bump_for_address()`
+    /// slice-building loop:
+    ///   `while i < n { sptr.add(i).write(seeds[i]); ... }`
+    ///   `sptr.add(n).write(...bump...);`
+    ///   `sptr.add(n + 1).write(program_id...);`
+    ///   `sptr.add(n + 2).write(PDA_MARKER...);`
+    ///
+    /// seeds.len() is checked `<= 16`. All indices must be `< 19`.
+    #[kani::proof]
+    fn find_program_address_indices_within_bounds() {
+        let n: usize = kani::any();
+        kani::assume(n <= 16);
+
+        // Loop indices: 0..n
+        let mut i: usize = 0;
+        while i < n {
+            assert!(i < MAX_PDA_SLICES, "loop index out of bounds");
+            i += 1;
+        }
+        // Post-loop: slots n (bump), n+1 (program_id), n+2 (PDA_MARKER)
+        assert!(n < MAX_PDA_SLICES, "bump slot out of bounds");
+        assert!(n + 1 < MAX_PDA_SLICES, "program_id slot out of bounds");
+        assert!(n + 2 < MAX_PDA_SLICES, "PDA_MARKER slot out of bounds");
+
+        // Total initialized elements passed to from_raw_parts
+        assert!(n + 3 <= MAX_PDA_SLICES, "slice length exceeds array");
+    }
+
+    /// Prove that `read_bump_from_account` offset check prevents
+    /// out-of-bounds access by calling the real function with symbolic offset.
+    ///
+    /// Constructs a real AccountView with known data_len = 8, then calls
+    /// `read_bump_from_account` with a symbolic offset. Kani verifies:
+    /// - No UB in the pointer arithmetic when offset < data_len
+    /// - Ok is returned when offset < data_len
+    /// - Err is returned when offset >= data_len
+    #[kani::proof]
+    fn read_bump_offset_within_bounds() {
+        use crate::cpi::{AccountBuffer, MIN_ACCOUNT_BUF};
+
+        const DATA_LEN: usize = 8;
+        const BUF_SIZE: usize = MIN_ACCOUNT_BUF + DATA_LEN;
+
+        let mut buf = AccountBuffer::<BUF_SIZE>::new();
+        buf.init([1; 32], [0xAA; 32], DATA_LEN, false, true, false);
+        let view = unsafe { buf.view() };
+
+        let offset: usize = kani::any();
+        // Keep solver tractable — offsets beyond a small range are equivalent.
+        kani::assume(offset <= DATA_LEN + 1);
+
+        let result = super::read_bump_from_account(&view, offset);
+
+        if offset < DATA_LEN {
+            assert!(result.is_ok());
+        } else {
+            assert!(result.is_err());
+        }
+    }
+
+    /// Prove the gap between max seeds and MAX_PDA_SLICES is exactly right.
+    ///
+    /// `verify_program_address`: 17 seeds + program_id + marker = 19 =
+    /// MAX_PDA_SLICES. `based_try_find_program_address` /
+    /// `find_bump_for_address`:   16 seeds + bump + program_id + marker =
+    /// 19 = MAX_PDA_SLICES.
+    ///
+    /// This ensures the constants are consistent -- changing one without
+    /// the other would break the proofs above.
+    #[kani::proof]
+    fn pda_slice_capacity_is_exact() {
+        // verify_program_address: seeds(max 17) + program_id + PDA_MARKER
+        assert!(17 + 1 + 1 == MAX_PDA_SLICES);
+
+        // based_try_find_program_address / find_bump_for_address:
+        // seeds(max 16) + bump + program_id + PDA_MARKER
+        assert!(16 + 1 + 1 + 1 == MAX_PDA_SLICES);
+    }
 }

@@ -28,6 +28,8 @@ const IX_ALLOCATE: u8 = 8;
 /// [12..20] space          (u64 LE)
 /// [20..52] owner          (32-byte address)
 /// ```
+///
+/// Kani proof: `create_account_data_layout`.
 #[inline(always)]
 pub fn create_account<'a>(
     from: &'a AccountView,
@@ -69,6 +71,8 @@ pub fn create_account<'a>(
 /// [0..4 ] discriminator (2)
 /// [4..12] lamports      (u64 LE)
 /// ```
+///
+/// Kani proof: `transfer_data_layout`.
 #[inline(always)]
 pub fn transfer<'a>(
     from: &'a AccountView,
@@ -105,6 +109,8 @@ pub fn transfer<'a>(
 /// [0..4 ] discriminator (1)
 /// [4..36] owner          (32-byte address)
 /// ```
+///
+/// Kani proof: `assign_data_layout`.
 #[inline(always)]
 pub fn assign<'a>(account: &'a AccountView, owner: &'a Address) -> CpiCall<'a, 1, 36> {
     // SAFETY: All 36 bytes written before `assume_init`.
@@ -136,6 +142,8 @@ pub fn assign<'a>(account: &'a AccountView, owner: &'a Address) -> CpiCall<'a, 1
 /// [0..4 ] discriminator (8)
 /// [4..12] space          (u64, little-endian)
 /// ```
+///
+/// Kani proof: `allocate_data_layout`.
 #[inline(always)]
 pub fn allocate<'a>(account: &'a AccountView, space: u64) -> CpiCall<'a, 1, 12> {
     // SAFETY: All 12 bytes written before `assume_init`.
@@ -285,5 +293,126 @@ impl crate::accounts::Program<System> {
             owner,
             signers,
         )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani model-checking proof harnesses
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_proofs {
+    use crate::cpi::{AccountBuffer, MIN_ACCOUNT_BUF};
+
+    /// Prove `transfer` instruction data layout by calling the real function
+    /// and verifying the serialized bytes.
+    #[kani::proof]
+    fn transfer_data_layout() {
+        let lamports: u64 = kani::any();
+
+        let mut buf_from = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
+        buf_from.init([1; 32], [0; 32], 0, true, true, false);
+        let from = unsafe { buf_from.view() };
+
+        let mut buf_to = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
+        buf_to.init([2; 32], [0; 32], 0, false, true, false);
+        let to = unsafe { buf_to.view() };
+
+        let cpi = super::transfer(&from, &to, lamports);
+        let data = cpi.instruction_data();
+
+        let disc = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+        assert!(disc == super::IX_TRANSFER as u32);
+        let decoded = u64::from_le_bytes([
+            data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
+        ]);
+        assert!(decoded == lamports);
+    }
+
+    /// Prove `assign` instruction data layout by calling the real function
+    /// and verifying the serialized bytes.
+    #[kani::proof]
+    #[kani::unwind(33)]
+    fn assign_data_layout() {
+        let owner_bytes: [u8; 32] = kani::any();
+        let owner = solana_address::Address::new_from_array(owner_bytes);
+
+        let mut buf = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
+        buf.init([1; 32], [0; 32], 0, true, true, false);
+        let acct = unsafe { buf.view() };
+
+        let cpi = super::assign(&acct, &owner);
+        let data = cpi.instruction_data();
+
+        let disc = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+        assert!(disc == super::IX_ASSIGN as u32);
+        let mut i = 0;
+        while i < 32 {
+            assert!(data[4 + i] == owner_bytes[i]);
+            i += 1;
+        }
+    }
+
+    /// Prove `allocate` instruction data layout by calling the real function
+    /// and verifying the serialized bytes.
+    #[kani::proof]
+    fn allocate_data_layout() {
+        let space: u64 = kani::any();
+
+        let mut buf = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
+        buf.init([1; 32], [0; 32], 0, true, true, false);
+        let acct = unsafe { buf.view() };
+
+        let cpi = super::allocate(&acct, space);
+        let data = cpi.instruction_data();
+
+        let disc = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+        assert!(disc == super::IX_ALLOCATE as u32);
+        let decoded = u64::from_le_bytes([
+            data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
+        ]);
+        assert!(decoded == space);
+    }
+
+    /// Prove `create_account` instruction data layout by calling the real
+    /// function and verifying the serialized bytes.
+    #[kani::proof]
+    #[kani::unwind(33)]
+    fn create_account_data_layout() {
+        let lamports: u64 = kani::any();
+        let space: u64 = kani::any();
+        let owner_bytes: [u8; 32] = kani::any();
+        let owner = solana_address::Address::new_from_array(owner_bytes);
+
+        let mut buf_from = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
+        buf_from.init([1; 32], [0; 32], 0, true, true, false);
+        let from = unsafe { buf_from.view() };
+
+        let mut buf_to = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
+        buf_to.init([2; 32], [0; 32], 0, true, true, false);
+        let to = unsafe { buf_to.view() };
+
+        let cpi = super::create_account(&from, &to, lamports, space, &owner);
+        let data = cpi.instruction_data();
+
+        // Discriminator
+        let disc = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+        assert!(disc == super::IX_CREATE_ACCOUNT as u32);
+        // Lamports
+        let decoded_lamports = u64::from_le_bytes([
+            data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
+        ]);
+        assert!(decoded_lamports == lamports);
+        // Space
+        let decoded_space = u64::from_le_bytes([
+            data[12], data[13], data[14], data[15], data[16], data[17], data[18], data[19],
+        ]);
+        assert!(decoded_space == space);
+        // Owner
+        let mut i = 0;
+        while i < 32 {
+            assert!(data[20 + i] == owner_bytes[i]);
+            i += 1;
+        }
     }
 }

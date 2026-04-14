@@ -141,6 +141,32 @@ jobs:
       - name: Run Miri tests
         run: make test-miri
 
+  kani:
+    name: Kani (${{ matrix.crate }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [quasar-pod, quasar-lang, quasar-spl]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-kani-${{ matrix.crate }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-kani-${{ matrix.crate }}-
+      - name: Install z3 (SMT solver for wide-type proofs)
+        run: sudo apt-get install -y z3
+      - name: Verify ${{ matrix.crate }}
+        uses: model-checking/kani-github-action@v1
+        with:
+          command: cargo kani -p ${{ matrix.crate }}
+
   cu_benchmark_pr:
     name: CU Benchmark Guard (PR)
     if: github.event_name == 'pull_request'

@@ -1,5 +1,6 @@
 SHELL := /usr/bin/env bash
 NIGHTLY_TOOLCHAIN := nightly
+KANI_VERSION := 0.67.0
 # platform-tools v1.52 ships Cargo 1.89 which supports Cargo.lock v4.
 # v1.51 ships Cargo 1.84 which does not, causing "duplicate lang item" errors.
 PLATFORM_TOOLS := v1.52
@@ -18,11 +19,37 @@ SBF_ALL := $(SBF_EXAMPLES) $(SBF_TEST_PROGRAMS)
 
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
 	check-runtime-panics check-workspace-invariants build build-sbf test bench-cu \
-	bench-tracked compare-tracked test-miri test-miri-strict test-all nightly-version
+	bench-tracked compare-tracked test-miri test-miri-strict test-all nightly-version \
+	kani help-kani check-kani kani-pod kani-lang kani-spl
 
 # Print the nightly toolchain version for CI
 nightly-version:
 	@echo $(NIGHTLY_TOOLCHAIN)
+
+help-kani:
+	@echo "Local Kani verification is optional."
+	@echo "CI installs and runs Kani automatically."
+	@echo ""
+	@echo "Expected local version: kani $(KANI_VERSION)"
+	@echo "Check version:         kani --version"
+	@echo "Run all proofs:        make kani"
+	@echo "Run one crate:         make kani-pod | make kani-lang | make kani-spl"
+
+check-kani:
+	@command -v kani >/dev/null 2>&1 || { \
+		echo "kani is not installed."; \
+		echo "Normal builds/tests do not require Kani."; \
+		echo "To run proof harnesses locally, install kani $(KANI_VERSION) and re-run."; \
+		echo "Then verify with: kani --version"; \
+		exit 1; \
+	}
+	@version="$$(kani --version 2>/dev/null | awk '{print $$2}')"; \
+	if [[ "$$version" != "$(KANI_VERSION)" ]]; then \
+		echo "unexpected kani version: $$version"; \
+		echo "expected: $(KANI_VERSION)"; \
+		echo "CI uses Kani $(KANI_VERSION); local verification should match."; \
+		exit 1; \
+	fi
 
 format:
 	@cargo +$(NIGHTLY_TOOLCHAIN) fmt --all -- --check
@@ -158,6 +185,17 @@ test-miri-strict:
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri -- --skip remaining
 	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri
+
+kani-pod: check-kani
+	@cargo kani -p quasar-pod
+
+kani-lang: check-kani
+	@cargo kani -p quasar-lang
+
+kani-spl: check-kani
+	@cargo kani -p quasar-spl
+
+kani: kani-pod kani-lang kani-spl
 
 # Run all checks in sequence
 test-all:

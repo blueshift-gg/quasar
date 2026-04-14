@@ -202,3 +202,75 @@ impl ZeroCopyDeref for MasterEditionAccount {
         &mut *(view.data_mut_ptr() as *mut MasterEditionPrefix)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Kani model-checking proof harnesses
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    // --- MetadataPrefix ---
+
+    /// Prove MetadataPrefix::LEN matches the actual struct size.
+    #[kani::proof]
+    fn metadata_prefix_len_matches_sizeof() {
+        assert!(MetadataPrefix::LEN == core::mem::size_of::<MetadataPrefix>());
+    }
+
+    /// Prove MetadataPrefix has alignment 1 (safe for pointer cast from
+    /// arbitrary account data).
+    #[kani::proof]
+    fn metadata_prefix_align_one() {
+        assert!(core::mem::align_of::<MetadataPrefix>() == 1);
+    }
+
+    /// Prove MetadataPrefix is exactly 65 bytes.
+    #[kani::proof]
+    fn metadata_prefix_size_65() {
+        assert!(core::mem::size_of::<MetadataPrefix>() == 65);
+    }
+
+    /// Prove: for any `data_len >= MetadataPrefix::LEN`, the data covers
+    /// the full struct — verifies the runtime guard in `MetadataAccount::check`
+    /// is sufficient for the pointer cast in `deref_from`.
+    #[kani::proof]
+    fn metadata_prefix_data_len_guard_sufficient() {
+        let data_len: usize = kani::any();
+        kani::assume(data_len >= MetadataPrefix::LEN);
+        assert!(data_len >= core::mem::size_of::<MetadataPrefix>());
+    }
+
+    // --- MasterEditionPrefix ---
+
+    /// Prove MasterEditionPrefix::LEN matches the actual struct size.
+    #[kani::proof]
+    fn master_edition_prefix_len_matches_sizeof() {
+        assert!(MasterEditionPrefix::LEN == core::mem::size_of::<MasterEditionPrefix>());
+    }
+
+    /// Prove MasterEditionPrefix has alignment 1 (safe for pointer cast from
+    /// arbitrary account data).
+    #[kani::proof]
+    fn master_edition_prefix_align_one() {
+        assert!(core::mem::align_of::<MasterEditionPrefix>() == 1);
+    }
+
+    /// Prove MasterEditionPrefix is exactly 18 bytes.
+    #[kani::proof]
+    fn master_edition_prefix_size_18() {
+        assert!(core::mem::size_of::<MasterEditionPrefix>() == 18);
+    }
+
+    /// Prove: for any `data_len >= MasterEditionPrefix::LEN`, the data covers
+    /// the full struct — verifies the runtime guard in
+    /// `MasterEditionAccount::check` is sufficient for the pointer cast in
+    /// `deref_from`.
+    #[kani::proof]
+    fn master_edition_prefix_data_len_guard_sufficient() {
+        let data_len: usize = kani::any();
+        kani::assume(data_len >= MasterEditionPrefix::LEN);
+        assert!(data_len >= core::mem::size_of::<MasterEditionPrefix>());
+    }
+}

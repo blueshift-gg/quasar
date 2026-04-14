@@ -11,7 +11,10 @@ repository = "https://github.com/blueshift-gg/quasar"
 authors = ["Leonardo Donatacci <leo@blueshift.gg>", "Dean Little <dean@blueshift.gg>"]
 
 [workspace.lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))', 'cfg(kani)', 'cfg(kani_ra)'] }
+
+[workspace.metadata.kani.flags]
+tests = true
 
 [profile.release]
 overflow-checks = true

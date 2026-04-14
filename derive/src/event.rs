@@ -81,15 +81,16 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
             pub fn emit_log(&self) {
                 let mut buf = core::mem::MaybeUninit::<[u8; #total_buf_size]>::uninit();
                 let ptr = buf.as_mut_ptr() as *mut u8;
-                unsafe {
-                    core::ptr::copy_nonoverlapping(
-                        <Self as quasar_lang::traits::Event>::DISCRIMINATOR.as_ptr(),
+                // Use the extracted helper so the code path is covered by Kani
+                // proof harnesses (see lang/src/event.rs kani_proofs).
+                let data_offset = unsafe {
+                    quasar_lang::event::write_log_disc(
                         ptr,
-                        #disc_len,
-                    );
-                }
+                        <Self as quasar_lang::traits::Event>::DISCRIMINATOR,
+                    )
+                };
                 <Self as quasar_lang::traits::Event>::write_data(self, unsafe {
-                    core::slice::from_raw_parts_mut(ptr.add(#disc_len), #data_size)
+                    core::slice::from_raw_parts_mut(ptr.add(data_offset), #data_size)
                 });
                 quasar_lang::log::log_data(&[unsafe { buf.assume_init_ref() }]);
             }
@@ -124,25 +125,21 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             #[inline(always)]
             fn emit(&self, f: impl FnOnce(&[u8]) -> Result<(), ProgramError>) -> Result<(), ProgramError> {
-                const __EVENT_DISC_LEN: usize = #disc_len;
                 const __DATA_SIZE: usize = #data_size;
-                const __BUF_SIZE: usize = 1 + __EVENT_DISC_LEN + __DATA_SIZE;
+                const __BUF_SIZE: usize = 1 + #disc_len + __DATA_SIZE;
 
                 let mut buf = core::mem::MaybeUninit::<[u8; __BUF_SIZE]>::uninit();
                 let ptr = buf.as_mut_ptr() as *mut u8;
 
-                unsafe {
-                    core::ptr::write(ptr, 0xFF);
-                    core::ptr::copy_nonoverlapping(
-                        Self::DISCRIMINATOR.as_ptr(),
-                        ptr.add(1),
-                        __EVENT_DISC_LEN,
-                    );
-                }
+                // Use the extracted helper so the code path is covered by Kani
+                // proof harnesses (see lang/src/event.rs kani_proofs).
+                let data_offset = unsafe {
+                    quasar_lang::event::write_cpi_disc(ptr, Self::DISCRIMINATOR)
+                };
 
                 self.write_data(unsafe {
                     core::slice::from_raw_parts_mut(
-                        ptr.add(1 + __EVENT_DISC_LEN),
+                        ptr.add(data_offset),
                         __DATA_SIZE,
                     )
                 });

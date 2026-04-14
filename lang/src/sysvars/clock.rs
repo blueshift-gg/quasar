@@ -31,3 +31,25 @@ const _: () = assert!(align_of::<Clock>() == 1);
 impl Sysvar for Clock {
     impl_sysvar_get!(CLOCK_ID, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Kani model-checking proof harnesses
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Prove Clock has alignment 1 — required for the pointer cast in
+    /// `from_bytes_unchecked` (`bytes.as_ptr() as *const Self`).
+    #[kani::proof]
+    fn clock_align_one() {
+        assert!(align_of::<Clock>() == 1);
+    }
+
+    /// Prove Clock is exactly 40 bytes.
+    #[kani::proof]
+    fn clock_size_40() {
+        assert!(size_of::<Clock>() == 40);
+    }
+}

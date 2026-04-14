@@ -297,3 +297,83 @@ impl MintAccountState {
 
 const _: () = assert!(MintAccountState::LEN == 82);
 const _: () = assert!(core::mem::align_of::<MintAccountState>() == 1);
+
+// ---------------------------------------------------------------------------
+// Kani model-checking proof harnesses
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Prove TokenAccountState has alignment 1 (safe for pointer cast from
+    /// arbitrary account data).
+    #[kani::proof]
+    fn token_account_state_align_one() {
+        assert!(core::mem::align_of::<TokenAccountState>() == 1);
+    }
+
+    /// Prove TokenAccountState is exactly 165 bytes (SPL Token spec).
+    #[kani::proof]
+    fn token_account_state_size_165() {
+        assert!(core::mem::size_of::<TokenAccountState>() == 165);
+    }
+
+    /// Prove TokenAccountState field offsets match the SPL Token layout.
+    /// This ensures the pointer cast from raw account data produces correct
+    /// field references.
+    #[kani::proof]
+    fn token_account_state_field_offsets() {
+        assert!(core::mem::offset_of!(TokenAccountState, mint) == 0);
+        assert!(core::mem::offset_of!(TokenAccountState, owner) == 32);
+        assert!(core::mem::offset_of!(TokenAccountState, amount) == 64);
+        assert!(core::mem::offset_of!(TokenAccountState, delegate) == 72);
+        assert!(core::mem::offset_of!(TokenAccountState, state) == 108);
+        assert!(core::mem::offset_of!(TokenAccountState, native) == 109);
+        assert!(core::mem::offset_of!(TokenAccountState, delegated_amount) == 121);
+        assert!(core::mem::offset_of!(TokenAccountState, close_authority) == 129);
+    }
+
+    /// Prove MintAccountState has alignment 1 (safe for pointer cast).
+    #[kani::proof]
+    fn mint_account_state_align_one() {
+        assert!(core::mem::align_of::<MintAccountState>() == 1);
+    }
+
+    /// Prove MintAccountState is exactly 82 bytes (SPL Token spec).
+    #[kani::proof]
+    fn mint_account_state_size_82() {
+        assert!(core::mem::size_of::<MintAccountState>() == 82);
+    }
+
+    /// Prove MintAccountState field offsets match the SPL Token layout.
+    #[kani::proof]
+    fn mint_account_state_field_offsets() {
+        assert!(core::mem::offset_of!(MintAccountState, mint_authority) == 0);
+        assert!(core::mem::offset_of!(MintAccountState, supply) == 36);
+        assert!(core::mem::offset_of!(MintAccountState, decimals) == 44);
+        assert!(core::mem::offset_of!(MintAccountState, is_initialized) == 45);
+        assert!(core::mem::offset_of!(MintAccountState, freeze_authority) == 46);
+    }
+
+    /// Prove COption<Address> is exactly 36 bytes (4-byte tag + 32-byte value).
+    #[kani::proof]
+    fn coption_address_size() {
+        assert!(core::mem::size_of::<COption<Address>>() == 36);
+        assert!(core::mem::align_of::<COption<Address>>() == 1);
+    }
+
+    /// Prove COption tag interpretation: tag[0]==1 is Some, anything else is
+    /// None.
+    #[kani::proof]
+    fn coption_tag_semantics() {
+        let tag_byte: u8 = kani::any();
+        let tag = [tag_byte, 0, 0, 0];
+        let value = Address::new_from_array([0u8; 32]);
+        // SAFETY: COption is repr(C) with tag + value, alignment 1.
+        // Construct via raw bytes to test tag interpretation.
+        let opt = COption { tag, value };
+        assert!(opt.is_some() == (tag_byte == 1));
+        assert!(opt.is_none() == (tag_byte != 1));
+    }
+}

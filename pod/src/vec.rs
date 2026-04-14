@@ -508,6 +508,145 @@ impl<T: Copy + core::fmt::Debug, const N: usize, const PFX: usize> core::fmt::De
     }
 }
 
+// ---------------------------------------------------------------------------
+// Kani model-checking proof harnesses
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Prove encode_len/decode_len are inverses for PFX=1.
+    #[kani::proof]
+    fn encode_decode_roundtrip_pfx1() {
+        let n: usize = kani::any();
+        kani::assume(n <= u8::MAX as usize);
+        let mut v = PodVec::<u8, 255, 1>::default();
+        v.encode_len(n);
+        assert!(v.decode_len() == n);
+    }
+
+    /// Prove encode_len/decode_len are inverses for PFX=2.
+    #[kani::proof]
+    fn encode_decode_roundtrip_pfx2() {
+        let n: usize = kani::any();
+        kani::assume(n <= u16::MAX as usize);
+        let mut v = PodVec::<u8, 255, 2>::default();
+        v.encode_len(n);
+        assert!(v.decode_len() == n);
+    }
+
+    /// Prove encode_len/decode_len are inverses for PFX=4.
+    #[kani::proof]
+    fn encode_decode_roundtrip_pfx4() {
+        let n: usize = kani::any();
+        kani::assume(n <= u32::MAX as usize);
+        let mut v = PodVec::<u8, 255, 4>::default();
+        v.encode_len(n);
+        assert!(v.decode_len() == n);
+    }
+
+    /// Prove len() never exceeds N regardless of raw prefix bytes.
+    #[kani::proof]
+    fn len_clamp_pfx2() {
+        let raw: [u8; 2] = kani::any();
+        let v = PodVec::<u8, 8, 2> {
+            len: raw,
+            data: [MaybeUninit::uninit(); 8],
+        };
+        assert!(v.len() <= 8);
+    }
+
+    /// Prove len() never exceeds N regardless of raw prefix bytes (PFX=1).
+    #[kani::proof]
+    fn len_clamp_pfx1() {
+        let raw: [u8; 1] = kani::any();
+        let v = PodVec::<u8, 8, 1> {
+            len: raw,
+            data: [MaybeUninit::uninit(); 8],
+        };
+        assert!(v.len() <= 8);
+    }
+
+    /// Prove push then pop returns the pushed value.
+    #[kani::proof]
+    fn push_pop_roundtrip() {
+        let val: u8 = kani::any();
+        let mut v = PodVec::<u8, 4, 1>::default();
+        assert!(v.push(val));
+        assert!(v.len() == 1);
+        let popped = v.pop();
+        assert!(popped == Some(val));
+        assert!(v.is_empty());
+    }
+
+    /// Prove push rejects when full and doesn't corrupt state.
+    #[kani::proof]
+    fn push_full_rejects() {
+        let mut v = PodVec::<u8, 2, 1>::default();
+        assert!(v.push(1));
+        assert!(v.push(2));
+        assert!(!v.push(3));
+        assert!(v.len() == 2);
+    }
+
+    /// Prove push/pop sequence preserves LIFO ordering.
+    #[kani::proof]
+    fn push_pop_lifo() {
+        let a: u8 = kani::any();
+        let b: u8 = kani::any();
+        let mut v = PodVec::<u8, 4, 1>::default();
+        assert!(v.push(a));
+        assert!(v.push(b));
+        assert!(v.pop() == Some(b));
+        assert!(v.pop() == Some(a));
+    }
+
+    /// Prove swap_remove returns the correct element and decrements len.
+    #[kani::proof]
+    fn swap_remove_correctness() {
+        let a: u8 = kani::any();
+        let b: u8 = kani::any();
+        let c: u8 = kani::any();
+        let mut v = PodVec::<u8, 4, 1>::default();
+        assert!(v.push(a));
+        assert!(v.push(b));
+        assert!(v.push(c));
+        // Remove index 0 — last element (c) fills the gap.
+        let removed = v.swap_remove(0);
+        assert!(removed == Some(a));
+        assert!(v.len() == 2);
+        // First element is now c (swapped from last).
+        assert!(v.as_slice()[0] == c);
+        assert!(v.as_slice()[1] == b);
+    }
+
+    /// Prove swap_remove returns None for out-of-bounds index.
+    #[kani::proof]
+    fn swap_remove_oob() {
+        let idx: usize = kani::any();
+        let mut v = PodVec::<u8, 4, 1>::default();
+        assert!(v.push(1));
+        assert!(v.push(2));
+        kani::assume(idx >= 2);
+        kani::assume(idx <= 8);
+        assert!(v.swap_remove(idx).is_none());
+        assert!(v.len() == 2);
+    }
+
+    /// Prove set_from_slice rejects slices longer than N.
+    #[kani::proof]
+    fn set_from_slice_rejects_over_capacity() {
+        let count: usize = kani::any();
+        kani::assume(count > 4);
+        kani::assume(count <= 8);
+        let data = [0u8; 8];
+        let mut v = PodVec::<u8, 4, 1>::default();
+        assert!(!v.set_from_slice(&data[..count]));
+        assert!(v.is_empty());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
