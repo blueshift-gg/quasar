@@ -1,0 +1,42 @@
+[package]
+name = "anchor-v2-vault"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint", "dep:borsh"]
+default = ["no-log-ix-name"]
+idl-build = ["anchor-lang-v2/idl-build"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(target_os, values("solana"))',
+] }
+
+[dependencies]
+anchor-lang-v2 = { git = "https://github.com/solana-foundation/anchor.git", rev = "01126a79", default-features = false, features = ["alloc"] }
+borsh = { version = "1", optional = true }
+bytemuck = { version = "1", features = ["derive"] }
+pinocchio = { version = "0.11", default-features = false, features = ["copy"] }
+pinocchio-system = "0.6"
+wincode = { version = "0.4", features = ["derive"] }
+
+[dev-dependencies]
+mollusk-svm = "0.10.3"
+solana-account = { version = "3.4.0" }
+solana-address = { version = "2.2.0", features = ["decode"] }
+solana-instruction = { version = "3.2.0", features = ["bincode"] }
+
+# Matches upstream anchor bench/Cargo.toml so CU numbers are directly
+# comparable with solana-foundation/anchor's own v2 bench.
+[profile.release]
+overflow-checks = false
+lto = "fat"
+codegen-units = 1
+opt-level = 3
