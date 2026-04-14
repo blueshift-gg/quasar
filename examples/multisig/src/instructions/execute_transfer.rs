@@ -4,13 +4,13 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct ExecuteTransfer<'config> {
+pub struct ExecuteTransfer {
     #[account(
         has_one = creator,
         seeds = MultisigConfig::seeds(creator),
         bump = config.bump
     )]
-    pub config: Account<MultisigConfig<'config>>,
+    pub config: Account<MultisigConfig>,
     pub creator: UncheckedAccount,
     #[account(mut, seeds = [b"vault", config], bump)]
     pub vault: UncheckedAccount,
@@ -19,7 +19,7 @@ pub struct ExecuteTransfer<'config> {
     pub system_program: Program<System>,
 }
 
-impl ExecuteTransfer<'_> {
+impl ExecuteTransfer {
     #[inline(always)]
     pub fn verify_and_transfer(
         &self,

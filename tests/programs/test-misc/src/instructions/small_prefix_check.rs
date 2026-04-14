@@ -1,11 +1,11 @@
 use {crate::state::SmallPrefixAccount, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
-pub struct SmallPrefixCheck<'info> {
-    pub account: Account<SmallPrefixAccount<'info>>,
+pub struct SmallPrefixCheck {
+    pub account: Account<SmallPrefixAccount>,
 }
 
-impl<'info> SmallPrefixCheck<'info> {
+impl SmallPrefixCheck {
     #[inline(always)]
     pub fn handler(&self) -> Result<(), ProgramError> {
         Ok(())

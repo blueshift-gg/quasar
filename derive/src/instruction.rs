@@ -3,8 +3,8 @@
 
 use {
     crate::helpers::{
-        classify_dynamic_string, classify_dynamic_vec, classify_tail, extract_generic_inner_type,
-        is_unit_type, validate_prefix_capacity, DynKind, InstructionArgs, TailElement,
+        classify_pod_string, classify_pod_vec, extract_generic_inner_type, is_unit_type,
+        InstructionArgs, PodDynField,
     },
     proc_macro::TokenStream,
     quote::quote,
@@ -135,32 +135,14 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         }
 
-        let mut kinds = Vec::with_capacity(remaining.len());
+        // Classify each arg as Pod-dynamic or fixed
+        let mut pod_dyns: Vec<Option<PodDynField>> = Vec::with_capacity(remaining.len());
         for pt in &remaining {
-            let kind = if let Some((prefix, max)) = classify_dynamic_string(&pt.ty) {
-                if let Err(e) = validate_prefix_capacity(&pt.ty, prefix, max, "String") {
-                    return e.to_compile_error().into();
-                }
-                DynKind::Str { prefix, max }
-            } else if let Some(tail_elem) = classify_tail(&pt.ty) {
-                DynKind::Tail { element: tail_elem }
-            } else if let Some((elem, prefix, max)) = classify_dynamic_vec(&pt.ty) {
-                if let Err(e) = validate_prefix_capacity(&pt.ty, prefix, max, "Vec") {
-                    return e.to_compile_error().into();
-                }
-                DynKind::Vec {
-                    elem: Box::new(elem),
-                    prefix,
-                    max,
-                }
-            } else {
-                DynKind::Fixed
-            };
-            kinds.push(kind);
+            pod_dyns.push(classify_pod_string(&pt.ty).or_else(|| classify_pod_vec(&pt.ty)));
         }
 
-        let has_dynamic = kinds.iter().any(|k| !matches!(k, DynKind::Fixed));
-        let has_fixed = kinds.iter().any(|k| matches!(k, DynKind::Fixed));
+        let has_dynamic = pod_dyns.iter().any(|pd| pd.is_some());
+        let has_fixed = pod_dyns.iter().any(|pd| pd.is_none());
 
         // Build ZC struct with ONLY fixed fields, using InstructionArg::Zc
         // for each field type to guarantee alignment 1.
@@ -168,8 +150,8 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
         let mut zc_field_types: Vec<proc_macro2::TokenStream> = Vec::new();
         let mut zc_field_orig_types: Vec<syn::Type> = Vec::new();
 
-        for (i, kind) in kinds.iter().enumerate() {
-            if matches!(kind, DynKind::Fixed) {
+        for (i, pd) in pod_dyns.iter().enumerate() {
+            if pd.is_none() {
                 zc_field_names.push(field_names[i].clone());
                 let ty = &remaining[i].ty;
                 zc_field_types
@@ -178,10 +160,10 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         }
 
-        let vec_align_asserts: Vec<proc_macro2::TokenStream> = kinds
+        let vec_align_asserts: Vec<proc_macro2::TokenStream> = pod_dyns
             .iter()
-            .filter_map(|kind| match kind {
-                DynKind::Vec { elem, .. } => Some(quote! {
+            .filter_map(|pd| match pd {
+                Some(PodDynField::Vec { elem, .. }) => Some(quote! {
                     const _: () = assert!(
                         core::mem::align_of::<#elem>() == 1,
                         "instruction Vec element type must have alignment 1"
@@ -227,8 +209,8 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
             // Validate and extract fixed fields via InstructionArg
             {
                 let mut zc_idx = 0usize;
-                for (i, kind) in kinds.iter().enumerate() {
-                    if matches!(kind, DynKind::Fixed) {
+                for (i, pd) in pod_dyns.iter().enumerate() {
+                    if pd.is_none() {
                         let name = &field_names[i];
                         let ty = &zc_field_orig_types[zc_idx];
                         zc_idx += 1;
@@ -244,6 +226,7 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         // Extract dynamic fields with inline prefix reads
+        // String<N> → u8 prefix (1 byte), Vec<T, N> → u16 prefix (2 bytes)
         if has_dynamic {
             new_stmts.push(syn::parse_quote!(
                 let __data = #param_ident.data;
@@ -258,73 +241,38 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                 ));
             }
 
-            let dyn_count = kinds
-                .iter()
-                .filter(|k| !matches!(k, DynKind::Fixed))
-                .count();
+            let dyn_count = pod_dyns.iter().filter(|pd| pd.is_some()).count();
             let mut dyn_idx = 0usize;
 
-            for (i, kind) in kinds.iter().enumerate() {
+            for (i, pd) in pod_dyns.iter().enumerate() {
                 let name = &field_names[i];
-                match kind {
-                    DynKind::Fixed => {}
-                    DynKind::Str { prefix, max } => {
-                        dyn_idx += 1;
-                        let pb = prefix.bytes();
-                        let max_lit = *max;
-                        if dyn_idx < dyn_count {
-                            new_stmts.push(syn::parse_quote!(
-                                let (#name, __new_offset) = quasar_lang::instruction_data::read_dynamic_str::<#pb>(
-                                    __data, __offset, #max_lit,
-                                )?;
-                            ));
-                            new_stmts.push(syn::parse_quote!(
-                                __offset = __new_offset;
-                            ));
-                        } else {
-                            new_stmts.push(syn::parse_quote!(
-                                let (#name, _) = quasar_lang::instruction_data::read_dynamic_str::<#pb>(
-                                    __data, __offset, #max_lit,
-                                )?;
-                            ));
-                        }
-                    }
-                    DynKind::Tail { element } => {
-                        dyn_idx += 1;
-                        match element {
-                            TailElement::Str => {
-                                new_stmts.push(syn::parse_quote!(
-                                    let #name: &str = quasar_lang::instruction_data::read_tail_str(__data, __offset)?;
-                                ));
-                            }
-                            TailElement::Bytes => {
-                                new_stmts.push(syn::parse_quote!(
-                                    let #name: &[u8] = quasar_lang::instruction_data::read_tail_bytes(__data, __offset);
-                                ));
-                            }
-                        }
-                    }
-                    DynKind::Vec { elem, prefix, max } => {
-                        dyn_idx += 1;
-                        let pb = prefix.bytes();
-                        let max_lit = *max;
-                        if dyn_idx < dyn_count {
-                            new_stmts.push(syn::parse_quote!(
-                                let (#name, __new_offset) = quasar_lang::instruction_data::read_dynamic_vec::<#elem, #pb>(
-                                    __data, __offset, #max_lit,
-                                )?;
-                            ));
-                            new_stmts.push(syn::parse_quote!(
-                                __offset = __new_offset;
-                            ));
-                        } else {
-                            new_stmts.push(syn::parse_quote!(
-                                let (#name, _) = quasar_lang::instruction_data::read_dynamic_vec::<#elem, #pb>(
-                                    __data, __offset, #max_lit,
-                                )?;
-                            ));
-                        }
-                    }
+                let (read_call, max_lit) = match pd {
+                    None => continue,
+                    Some(PodDynField::Str { max, prefix_bytes }) => (
+                        quote!(quasar_lang::instruction_data::read_dynamic_str::<#prefix_bytes>),
+                        *max,
+                    ),
+                    Some(PodDynField::Vec {
+                        elem,
+                        max,
+                        prefix_bytes,
+                    }) => (
+                        quote!(quasar_lang::instruction_data::read_dynamic_vec::<#elem, #prefix_bytes>),
+                        *max,
+                    ),
+                };
+                dyn_idx += 1;
+                if dyn_idx < dyn_count {
+                    new_stmts.push(syn::parse_quote!(
+                        let (#name, __new_offset) = #read_call(__data, __offset, #max_lit)?;
+                    ));
+                    new_stmts.push(syn::parse_quote!(
+                        __offset = __new_offset;
+                    ));
+                } else {
+                    new_stmts.push(syn::parse_quote!(
+                        let (#name, _) = #read_call(__data, __offset, #max_lit)?;
+                    ));
                 }
             }
 

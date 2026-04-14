@@ -66,7 +66,7 @@ check-runtime-panics:
 	  if [[ "$$code" =~ ^[[:space:]]*// ]]; then continue; fi; \
 	  case "$$entry" in \
 	    *'lang/src/lib.rs:'*'panic!("program aborted")'*) continue ;; \
-	    *'lang/src/dynamic.rs:'*'panic!("dynamic account field contains invalid UTF-8")'*) continue ;; \
+	    *'derive/src/accounts/evidence.rs:'*) continue ;; \
 	  esac; \
 	  violations+=("$$entry"); \
 	done <<<"$$matches"; \
@@ -136,17 +136,16 @@ test:
 bench-cu:
 	@$(MAKE) build-sbf
 	@echo "Running vault CU benchmark..."
-	@cargo test -p quasar-vault -- --nocapture 2>&1 | grep -E '(DEPOSIT|WITHDRAW) CU:'
+	@cargo test -p quasar-vault -- --nocapture --test-threads=1 2>&1 | grep -E '(DEPOSIT|WITHDRAW) CU:'
 	@echo "Running escrow CU benchmark..."
-	@cargo test -p quasar-escrow -- --nocapture 2>&1 | grep -E '(MAKE|TAKE|REFUND) CU:'
+	@cargo test -p quasar-escrow -- --nocapture --test-threads=1 2>&1 | grep -E '(MAKE|TAKE|REFUND) CU:'
 
 bench-tracked:
 	@bash scripts/bench-tracked-programs.sh capture target/tracked-metrics.env
 	@cat target/tracked-metrics.env
 
 compare-tracked:
-	@bash scripts/bench-tracked-programs.sh capture target/tracked-metrics.env
-	@bash scripts/bench-tracked-programs.sh compare scripts/perf-baselines.env target/tracked-metrics.env
+	@bash scripts/bench-tracked-programs.sh compare
 
 test-miri:
 	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \

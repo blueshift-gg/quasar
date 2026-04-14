@@ -115,16 +115,16 @@ pub fn parse_program(crate_root: &Path) -> ParsedProgram {
 ///
 /// Returns an error if discriminator collisions or input name collisions are
 /// detected.
-pub fn build_idl(parsed: ParsedProgram) -> Result<Idl, Vec<String>> {
+pub fn build_idl(parsed: &ParsedProgram) -> Result<Idl, Vec<String>> {
     let mut errors = Vec::new();
 
-    let collisions = find_discriminator_collisions(&parsed);
+    let collisions = find_discriminator_collisions(parsed);
     if !collisions.is_empty() {
         errors.push("discriminator collisions detected:".to_string());
         errors.extend(collisions);
     }
 
-    let name_issues = find_instruction_input_name_collisions(&parsed);
+    let name_issues = find_instruction_input_name_collisions(parsed);
     if !name_issues.is_empty() {
         errors.push("duplicate instruction input field names detected:".to_string());
         errors.extend(name_issues);
@@ -134,27 +134,15 @@ pub fn build_idl(parsed: ParsedProgram) -> Result<Idl, Vec<String>> {
         return Err(errors);
     }
 
-    let ParsedProgram {
-        program_id,
-        program_name,
-        crate_name,
-        version,
-        instructions: raw_instructions,
-        accounts_structs,
-        state_accounts,
-        events: raw_events,
-        errors: parsed_errors,
-        data_structs,
-    } = parsed;
-
-    let instructions: Vec<IdlInstruction> = raw_instructions
-        .into_iter()
+    let instructions: Vec<IdlInstruction> = parsed
+        .instructions
+        .iter()
         .map(|ix| {
-            // Look up the accounts struct by name (borrows, not consumed)
-            let accounts_items = accounts_structs
+            let accounts_items = parsed
+                .accounts_structs
                 .iter()
                 .find(|s| s.name == ix.accounts_type_name)
-                .map(|s| accounts::to_idl_accounts(s, &state_accounts))
+                .map(|s| accounts::to_idl_accounts(s, &parsed.state_accounts))
                 .unwrap_or_default();
 
             let args: Vec<IdlField> = ix
@@ -168,7 +156,7 @@ pub fn build_idl(parsed: ParsedProgram) -> Result<Idl, Vec<String>> {
 
             IdlInstruction {
                 name: helpers::to_camel_case(&ix.name),
-                discriminator: ix.discriminator,
+                discriminator: ix.discriminator.clone(),
                 accounts: accounts_items,
                 args,
                 has_remaining: ix.has_remaining,
@@ -176,8 +164,9 @@ pub fn build_idl(parsed: ParsedProgram) -> Result<Idl, Vec<String>> {
         })
         .collect();
 
-    let (account_defs, mut type_defs): (Vec<IdlAccountDef>, Vec<IdlTypeDef>) = state_accounts
-        .into_iter()
+    let (account_defs, mut type_defs): (Vec<IdlAccountDef>, Vec<IdlTypeDef>) = parsed
+        .state_accounts
+        .iter()
         .map(|sa| {
             let fields = sa
                 .fields
@@ -189,10 +178,10 @@ pub fn build_idl(parsed: ParsedProgram) -> Result<Idl, Vec<String>> {
                 .collect();
             let account_def = IdlAccountDef {
                 name: sa.name.clone(),
-                discriminator: sa.discriminator,
+                discriminator: sa.discriminator.clone(),
             };
             let type_def = IdlTypeDef {
-                name: sa.name,
+                name: sa.name.clone(),
                 ty: IdlTypeDefType {
                     kind: "struct".to_string(),
                     fields,
@@ -202,8 +191,9 @@ pub fn build_idl(parsed: ParsedProgram) -> Result<Idl, Vec<String>> {
         })
         .unzip();
 
-    let (event_defs, event_type_defs): (Vec<IdlEventDef>, Vec<IdlTypeDef>) = raw_events
-        .into_iter()
+    let (event_defs, event_type_defs): (Vec<IdlEventDef>, Vec<IdlTypeDef>) = parsed
+        .events
+        .iter()
         .map(|ev| {
             let fields = ev
                 .fields
@@ -215,10 +205,10 @@ pub fn build_idl(parsed: ParsedProgram) -> Result<Idl, Vec<String>> {
                 .collect();
             let event_def = IdlEventDef {
                 name: ev.name.clone(),
-                discriminator: ev.discriminator,
+                discriminator: ev.discriminator.clone(),
             };
             let type_def = IdlTypeDef {
-                name: ev.name,
+                name: ev.name.clone(),
                 ty: IdlTypeDefType {
                     kind: "struct".to_string(),
                     fields,
@@ -230,16 +220,23 @@ pub fn build_idl(parsed: ParsedProgram) -> Result<Idl, Vec<String>> {
 
     type_defs.extend(event_type_defs);
 
-    // Resolve custom struct types referenced in instruction args
+    // Resolve custom struct types referenced anywhere: instruction args,
+    // state account fields, and event fields.
     let mut referenced: BTreeSet<String> = BTreeSet::new();
     for ix in &instructions {
         for arg in &ix.args {
             collect_defined_refs(&arg.ty, &mut referenced);
         }
     }
+    for td in &type_defs {
+        for field in &td.ty.fields {
+            collect_defined_refs(&field.ty, &mut referenced);
+        }
+    }
 
     let existing_names: HashSet<String> = type_defs.iter().map(|t| t.name.clone()).collect();
-    let data_struct_map: BTreeMap<&str, &[(String, syn::Type)]> = data_structs
+    let data_struct_map: BTreeMap<&str, &[(String, syn::Type)]> = parsed
+        .data_structs
         .iter()
         .map(|ds| (ds.name.as_str(), ds.fields.as_slice()))
         .collect();
@@ -284,18 +281,18 @@ pub fn build_idl(parsed: ParsedProgram) -> Result<Idl, Vec<String>> {
     }
 
     Ok(Idl {
-        address: program_id,
+        address: parsed.program_id.clone(),
         metadata: IdlMetadata {
-            name: program_name,
-            crate_name,
-            version,
+            name: parsed.program_name.clone(),
+            crate_name: parsed.crate_name.clone(),
+            version: parsed.version.clone(),
             spec: "0.1.0".to_string(),
         },
         instructions,
         accounts: account_defs,
         events: event_defs,
         types: type_defs,
-        errors: parsed_errors,
+        errors: parsed.errors.clone(),
     })
 }
 

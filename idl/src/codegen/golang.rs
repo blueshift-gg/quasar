@@ -324,7 +324,6 @@ fn go_type(ty: &IdlType) -> String {
         IdlType::DynString { .. } => "string".to_string(),
         IdlType::DynVec { .. } => "[]byte".to_string(),
         IdlType::Defined { defined } => defined.clone(),
-        IdlType::Tail { .. } => "[]byte".to_string(),
     }
 }
 
@@ -422,9 +421,15 @@ fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef]) -> Strin
                  buf[:]...); data = append(data, b...) }}\n",
                 n = name,
             ),
-            _ => format!(
+            4 => format!(
                 "\t{{ b := []byte(input.{n}); var buf [4]byte; \
                  binary.LittleEndian.PutUint32(buf[:], uint32(len(b))); data = append(data, \
+                 buf[:]...); data = append(data, b...) }}\n",
+                n = name,
+            ),
+            _ => format!(
+                "\t{{ b := []byte(input.{n}); var buf [8]byte; \
+                 binary.LittleEndian.PutUint64(buf[:], uint64(len(b))); data = append(data, \
                  buf[:]...); data = append(data, b...) }}\n",
                 n = name,
             ),
@@ -456,16 +461,19 @@ fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef]) -> Strin
                  input.{n}...) }}\n",
                 n = name,
             ),
-            _ => format!(
+            4 => format!(
                 "\t{{ var buf [4]byte; binary.LittleEndian.PutUint32(buf[:], \
                  uint32(len(input.{n}))); data = append(data, buf[:]...); data = append(data, \
                  input.{n}...) }}\n",
                 n = name,
             ),
+            _ => format!(
+                "\t{{ var buf [8]byte; binary.LittleEndian.PutUint64(buf[:], \
+                 uint64(len(input.{n}))); data = append(data, buf[:]...); data = append(data, \
+                 input.{n}...) }}\n",
+                n = name,
+            ),
         },
-        IdlType::Tail { .. } => {
-            format!("\tdata = append(data, input.{}...)\n", name,)
-        }
     }
 }
 
@@ -569,9 +577,15 @@ fn decode_field_expr(name: &str, ty: &IdlType, depth: usize, types: &[IdlTypeDef
                 t = t,
                 n = name,
             ),
-            _ => format!(
+            4 => format!(
                 "{t}{n}Len := int(binary.LittleEndian.Uint32(data[offset:]))\n{t}offset += \
                  4\n{t}{n} := string(data[offset:offset+{n}Len])\n{t}offset += {n}Len\n",
+                t = t,
+                n = name,
+            ),
+            _ => format!(
+                "{t}{n}Len := int(binary.LittleEndian.Uint64(data[offset:]))\n{t}offset += \
+                 8\n{t}{n} := string(data[offset:offset+{n}Len])\n{t}offset += {n}Len\n",
                 t = t,
                 n = name,
             ),
@@ -625,18 +639,19 @@ fn decode_field_expr(name: &str, ty: &IdlType, depth: usize, types: &[IdlTypeDef
                 t = t,
                 n = name,
             ),
-            _ => format!(
+            4 => format!(
                 "{t}{n}Len := int(binary.LittleEndian.Uint32(data[offset:]))\n{t}offset += \
                  4\n{t}{n} := data[offset:offset+{n}Len]\n{t}offset += {n}Len\n",
                 t = t,
                 n = name,
             ),
+            _ => format!(
+                "{t}{n}Len := int(binary.LittleEndian.Uint64(data[offset:]))\n{t}offset += \
+                 8\n{t}{n} := data[offset:offset+{n}Len]\n{t}offset += {n}Len\n",
+                t = t,
+                n = name,
+            ),
         },
-        IdlType::Tail { .. } => format!(
-            "{t}{n} := data[offset:] // remaining bytes\n{t}_ = {n}\n",
-            t = t,
-            n = name,
-        ),
     }
 }
 

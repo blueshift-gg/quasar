@@ -178,15 +178,6 @@ impl<'a> RemainingAccounts<'a> {
     /// `MAX_REMAINING_ACCOUNTS` are accessed via the iterator.
     #[inline(always)]
     pub fn iter(&self) -> RemainingIter<'a> {
-        // Seed the bloom filter with declared account addresses for O(1)
-        // fast-reject in strict-mode duplicate detection.
-        let mut bloom = [0u64; 4];
-        if self.mode == RemainingMode::Strict {
-            for view in self.declared.iter() {
-                let (idx, bit) = bloom_hash(view.address());
-                bloom[idx] |= bit;
-            }
-        }
         RemainingIter {
             ptr: self.ptr,
             boundary: self.boundary,
@@ -194,7 +185,6 @@ impl<'a> RemainingAccounts<'a> {
             mode: self.mode,
             index: 0,
             cache: core::mem::MaybeUninit::uninit(),
-            bloom,
         }
     }
 }
@@ -265,21 +255,6 @@ pub struct RemainingIter<'a> {
     index: usize,
     /// Cache of yielded views. Elements `0..index` are initialized.
     cache: core::mem::MaybeUninit<[AccountView; MAX_REMAINING_ACCOUNTS]>,
-    /// 256-bit bloom filter for fast-reject in `has_seen_address`. Seeded
-    /// with declared account addresses at construction; updated on each yield.
-    /// False positives fall through to the exact `keys_eq` scan; false
-    /// negatives are impossible (all inserted addresses set their bit).
-    bloom: [u64; 4],
-}
-
-/// Hash an address into a (bucket, bit) pair for the 256-bit bloom filter.
-/// Uses XOR of the first two bytes for the 8-bit hash — high entropy for
-/// Solana pubkeys which are uniformly distributed.
-#[inline(always)]
-fn bloom_hash(addr: &solana_address::Address) -> (usize, u64) {
-    let b = addr.as_array();
-    let h = (b[0] as usize) ^ (b[16] as usize);
-    (h >> 6, 1u64 << (h & 63))
 }
 
 impl RemainingIter<'_> {
@@ -293,16 +268,13 @@ impl RemainingIter<'_> {
         self.cache.as_mut_ptr() as *mut AccountView
     }
 
+    /// Linear scan for duplicate address detection.
+    ///
+    /// Checks declared accounts and previously yielded remaining accounts.
+    /// For typical remaining account counts (<10), this is cheaper than a
+    /// bloom filter which adds per-iteration hash + check + update overhead.
     #[inline(always)]
     fn has_seen_address(&self, address: &solana_address::Address) -> bool {
-        // Fast-reject via bloom filter: if the bit is not set, the address
-        // has definitely not been seen — skip the O(n) linear scan.
-        let (idx, bit) = bloom_hash(address);
-        if self.bloom[idx] & bit == 0 {
-            return false;
-        }
-
-        // Bloom hit — could be a false positive. Do the exact scan.
         if self
             .declared
             .iter()
@@ -375,12 +347,6 @@ impl Iterator for RemainingIter<'_> {
         if self.mode == RemainingMode::Strict && self.has_seen_address(view.address()) {
             self.ptr = self.boundary as *mut u8;
             return Some(Err(QuasarError::RemainingAccountDuplicate.into()));
-        }
-
-        // Update bloom filter for strict-mode duplicate detection.
-        if self.mode == RemainingMode::Strict {
-            let (bidx, bit) = bloom_hash(view.address());
-            self.bloom[bidx] |= bit;
         }
 
         // SAFETY: `self.index < MAX_REMAINING_ACCOUNTS` (checked above),

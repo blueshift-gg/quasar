@@ -112,12 +112,35 @@ pub fn realloc_account(
     payer: &AccountView,
     rent: Option<&crate::sysvars::rent::Rent>,
 ) -> Result<(), ProgramError> {
-    let rent_exempt_lamports = if let Some(r) = rent {
-        r.try_minimum_balance(new_space)?
+    let r = if let Some(r) = rent {
+        r.clone()
     } else {
         use crate::sysvars::Sysvar;
-        crate::sysvars::rent::Rent::get()?.try_minimum_balance(new_space)?
+        crate::sysvars::rent::Rent::get()?
     };
+    realloc_account_raw(
+        view,
+        new_space,
+        payer,
+        r.lamports_per_byte(),
+        r.exemption_threshold_raw(),
+    )
+}
+
+/// Realloc an account using pre-extracted rent values.
+///
+/// Takes `(lamports_per_byte, threshold)` directly instead of a `Rent` struct.
+/// This is the canonical implementation — [`realloc_account`] delegates here.
+#[inline(always)]
+pub fn realloc_account_raw(
+    view: &mut AccountView,
+    new_space: usize,
+    payer: &AccountView,
+    rent_lpb: u64,
+    rent_threshold: u64,
+) -> Result<(), ProgramError> {
+    let rent_exempt_lamports =
+        crate::sysvars::rent::minimum_balance_raw(rent_lpb, rent_threshold, new_space as u64)?;
 
     let current_lamports = view.lamports();
 
@@ -180,7 +203,7 @@ impl<T> Account<T> {
     }
 }
 
-impl<T: AsAccountView> Account<T> {
+impl<T: AsAccountView + crate::traits::StaticView> Account<T> {
     /// Resize this account's data region, adjusting lamports for
     /// rent-exemption.
     ///
@@ -193,8 +216,8 @@ impl<T: AsAccountView> Account<T> {
         rent: Option<&crate::sysvars::rent::Rent>,
     ) -> Result<(), ProgramError> {
         // SAFETY: `Account<T>` is `#[repr(transparent)]` over `T`, and `T`
-        // is `#[repr(transparent)]` over `AccountView`. The cast preserves
-        // the pointer to the underlying `AccountView`.
+        // implements `StaticView` which guarantees `#[repr(transparent)]`
+        // over `AccountView`. The cast preserves the pointer.
         let view = unsafe { &mut *(self as *mut Account<T> as *mut AccountView) };
         realloc_account(view, new_space, payer, rent)
     }

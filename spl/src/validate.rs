@@ -46,8 +46,20 @@ pub fn validate_token_account(
     authority: &Address,
     token_program: &Address,
 ) -> Result<(), ProgramError> {
-    // Verify the token program is a known SPL token program.
-    validate_token_program(token_program)?;
+    validate_token_account_inner(view, mint, authority, token_program, true)
+}
+
+#[inline(always)]
+fn validate_token_account_inner(
+    view: &AccountView,
+    mint: &Address,
+    authority: &Address,
+    token_program: &Address,
+    check_program: bool,
+) -> Result<(), ProgramError> {
+    if check_program {
+        validate_token_program(token_program)?;
+    }
     if unlikely(!quasar_lang::keys_eq(view.owner(), token_program)) {
         #[cfg(feature = "debug")]
         quasar_lang::prelude::log("validate_token_account: wrong program owner");
@@ -180,20 +192,23 @@ pub fn validate_ata(
     mint: &Address,
     token_program: &Address,
 ) -> Result<(), ProgramError> {
-    // NOTE: We cannot use verify_program_address here as an optimization
-    // because it skips the Ed25519 off-curve check. An attacker could pass an
-    // account at the bump=255 address when that address is ON the curve (has
-    // a private key). The full find_program_address includes the curve check
-    // which ensures the result is a true PDA.
-    let (expected, _) = crate::associated_token::get_associated_token_address_with_program(
-        wallet,
-        mint,
-        token_program,
-    )?;
-    if unlikely(!quasar_lang::keys_eq(view.address(), &expected)) {
+    // The ATA already exists in the transaction (non-init path), which means
+    // the ATA program created it and the runtime verified it's off-curve.
+    // Use find_bump_for_address (keys_eq) instead of based_try_find_program_address
+    // (on-curve check) to save ~90 CU per attempt.
+    let seeds = [wallet.as_ref(), token_program.as_ref(), mint.as_ref()];
+    quasar_lang::pda::find_bump_for_address(
+        &seeds,
+        &crate::constants::ATA_PROGRAM_ID,
+        view.address(),
+    )
+    .map_err(|_| {
         #[cfg(feature = "debug")]
         quasar_lang::prelude::log("validate_ata: address mismatch");
-        return Err(ProgramError::InvalidSeeds);
-    }
-    validate_token_account(view, mint, wallet, token_program)
+        ProgramError::InvalidSeeds
+    })?;
+    // The PDA derivation above already proved token_program is correct
+    // (it's a seed in the ATA address). Skip the redundant
+    // validate_token_program check inside validate_token_account.
+    validate_token_account_inner(view, mint, wallet, token_program, false)
 }

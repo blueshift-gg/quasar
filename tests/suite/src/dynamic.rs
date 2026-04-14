@@ -12,32 +12,32 @@ const DYNAMIC_HEADER_SIZE: usize = 1; // disc only (no fixed ZC fields)
 const MIXED_ACCOUNT_DISC: u8 = 6;
 const MIXED_FIXED_SIZE: usize = 32 + 8; // Address + u64
 const SMALL_PREFIX_DISC: u8 = 7;
-const TAIL_STR_DISC: u8 = 8;
-const TAIL_BYTES_DISC: u8 = 9;
-const TAIL_FIXED_SIZE: usize = 32; // Address
+const DYN_STR_DISC: u8 = 8;
+const DYN_BYTES_DISC: u8 = 9;
+const DYN_FIXED_SIZE: usize = 32; // Address
 
 fn build_dynamic_account_data(name: &[u8], tags: &[Address]) -> Vec<u8> {
-    // Inline prefix layout:
-    // [disc][u32:name_len][name_bytes][u32:tags_count][tag_elements]
+    // Layout: [disc(1)][u8:name_len(1)][name_bytes][u16:
+    // tags_count(2)][tag_elements]
     let name_len = name.len();
     let tags_count = tags.len();
     let tags_bytes = tags_count * 32;
-    let total = DYNAMIC_HEADER_SIZE + 4 + name_len + 4 + tags_bytes;
+    let total = DYNAMIC_HEADER_SIZE + 1 + name_len + 2 + tags_bytes;
     let mut data = vec![0u8; total];
 
     let mut offset = 0;
     data[offset] = DYNAMIC_ACCOUNT_DISC;
     offset += 1;
 
-    // name: u32 prefix (byte length) + data
-    data[offset..offset + 4].copy_from_slice(&(name_len as u32).to_le_bytes());
-    offset += 4;
+    // name: u8 prefix (byte length) + data
+    data[offset] = name_len as u8;
+    offset += 1;
     data[offset..offset + name_len].copy_from_slice(name);
     offset += name_len;
 
-    // tags: u32 prefix (element count) + elements
-    data[offset..offset + 4].copy_from_slice(&(tags_count as u32).to_le_bytes());
-    offset += 4;
+    // tags: u16 prefix (element count) + elements
+    data[offset..offset + 2].copy_from_slice(&(tags_count as u16).to_le_bytes());
+    offset += 2;
     for (i, tag) in tags.iter().enumerate() {
         data[offset + i * 32..offset + (i + 1) * 32].copy_from_slice(tag.as_ref());
     }
@@ -46,9 +46,9 @@ fn build_dynamic_account_data(name: &[u8], tags: &[Address]) -> Vec<u8> {
 }
 
 fn build_mixed_account_data(authority: Address, value: u64, label: &[u8]) -> Vec<u8> {
-    // Layout: [disc(1)][authority(32)][value(8)][u32:label_len][label_bytes]
+    // Layout: [disc(1)][authority(32)][value(8)][u8:label_len(1)][label_bytes]
     let label_len = label.len();
-    let total = 1 + MIXED_FIXED_SIZE + 4 + label_len;
+    let total = 1 + MIXED_FIXED_SIZE + 1 + label_len;
     let mut data = vec![0u8; total];
 
     let mut offset = 0;
@@ -61,8 +61,8 @@ fn build_mixed_account_data(authority: Address, value: u64, label: &[u8]) -> Vec
     data[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
     offset += 8;
 
-    data[offset..offset + 4].copy_from_slice(&(label_len as u32).to_le_bytes());
-    offset += 4;
+    data[offset] = label_len as u8;
+    offset += 1;
 
     data[offset..offset + label_len].copy_from_slice(label);
 
@@ -70,10 +70,11 @@ fn build_mixed_account_data(authority: Address, value: u64, label: &[u8]) -> Vec
 }
 
 fn build_small_prefix_account_data(tag: &[u8], scores: &[u8]) -> Vec<u8> {
-    // Layout: [disc(1)][u8:tag_len][tag_bytes][u8:scores_count][score_elements]
+    // Layout: [disc(1)][u8:tag_len(1)][tag_bytes][u16:
+    // scores_count(2)][score_elements]
     let tag_len = tag.len();
     let scores_count = scores.len();
-    let total = 1 + 1 + tag_len + 1 + scores_count;
+    let total = 1 + 1 + tag_len + 2 + scores_count;
     let mut data = vec![0u8; total];
 
     let mut offset = 0;
@@ -85,8 +86,8 @@ fn build_small_prefix_account_data(tag: &[u8], scores: &[u8]) -> Vec<u8> {
     data[offset..offset + tag_len].copy_from_slice(tag);
     offset += tag_len;
 
-    data[offset] = scores_count as u8;
-    offset += 1;
+    data[offset..offset + 2].copy_from_slice(&(scores_count as u16).to_le_bytes());
+    offset += 2;
     data[offset..offset + scores_count].copy_from_slice(scores);
 
     data
@@ -114,9 +115,10 @@ fn build_mutate_instruction(
     system_program: Address,
     new_name: &[u8],
 ) -> Instruction {
-    // Instruction data: [disc(26)][u32:name_len][name_bytes]
+    // Instruction data: [disc(26)][u8:name_len][name_bytes]
+    // String<N> instruction args use u8 prefix on the wire.
     let mut data = vec![26];
-    data.extend_from_slice(&(new_name.len() as u32).to_le_bytes());
+    data.push(new_name.len() as u8);
     data.extend_from_slice(new_name);
     Instruction {
         program_id: quasar_test_misc::ID,
@@ -137,10 +139,11 @@ fn build_mutate_then_readback_instruction(
     expected_tags_count: u8,
 ) -> Instruction {
     // Fixed args come first in ZC struct, then dynamic fields with inline prefixes.
-    // Layout: [disc(27)][expected_tags_count(u8)][u32:name_len][name_bytes]
+    // Layout: [disc(27)][expected_tags_count(u8)][u8:name_len][name_bytes]
+    // String<N> instruction args use u8 prefix on the wire.
     let mut data = vec![27];
     data.push(expected_tags_count);
-    data.extend_from_slice(&(new_name.len() as u32).to_le_bytes());
+    data.push(new_name.len() as u8);
     data.extend_from_slice(new_name);
     Instruction {
         program_id: quasar_test_misc::ID,
@@ -153,25 +156,33 @@ fn build_mutate_then_readback_instruction(
     }
 }
 
-fn build_tail_str_account_data(authority: Address, label: &[u8]) -> Vec<u8> {
-    // Layout: [disc(1)][authority(32)][label_bytes...]
-    let mut data = vec![0u8; 1 + TAIL_FIXED_SIZE + label.len()];
-    data[0] = TAIL_STR_DISC;
+fn build_dyn_str_account_data(authority: Address, label: &[u8]) -> Vec<u8> {
+    // Layout: [disc(1)][authority(32)][u8_len(1)][label_bytes...]
+    assert!(label.len() <= 255, "label exceeds String<255> capacity");
+    let mut data = vec![0u8; 1 + DYN_FIXED_SIZE + 1 + label.len()];
+    data[0] = DYN_STR_DISC;
     data[1..33].copy_from_slice(authority.as_ref());
-    data[33..].copy_from_slice(label);
+    data[33] = label.len() as u8;
+    data[34..].copy_from_slice(label);
     data
 }
 
-fn build_tail_bytes_account_data(authority: Address, payload: &[u8]) -> Vec<u8> {
-    // Layout: [disc(1)][authority(32)][data_bytes...]
-    let mut data = vec![0u8; 1 + TAIL_FIXED_SIZE + payload.len()];
-    data[0] = TAIL_BYTES_DISC;
+fn build_dyn_bytes_account_data(authority: Address, payload: &[u8]) -> Vec<u8> {
+    // Layout: [disc(1)][authority(32)][u16_count_le(2)][data_bytes...]
+    assert!(
+        payload.len() <= 1024,
+        "payload exceeds Vec<u8, 1024> capacity"
+    );
+    let count = payload.len() as u16;
+    let mut data = vec![0u8; 1 + DYN_FIXED_SIZE + 2 + payload.len()];
+    data[0] = DYN_BYTES_DISC;
     data[1..33].copy_from_slice(authority.as_ref());
-    data[33..].copy_from_slice(payload);
+    data[33..35].copy_from_slice(&count.to_le_bytes());
+    data[35..].copy_from_slice(payload);
     data
 }
 
-fn build_tail_str_check_instruction(account: Address, expected_len: u8) -> Instruction {
+fn build_dyn_str_check_instruction(account: Address, expected_len: u8) -> Instruction {
     Instruction {
         program_id: quasar_test_misc::ID,
         accounts: vec![solana_instruction::AccountMeta::new_readonly(
@@ -181,7 +192,7 @@ fn build_tail_str_check_instruction(account: Address, expected_len: u8) -> Instr
     }
 }
 
-fn build_tail_bytes_check_instruction(account: Address, expected_len: u8) -> Instruction {
+fn build_dyn_bytes_check_instruction(account: Address, expected_len: u8) -> Instruction {
     Instruction {
         program_id: quasar_test_misc::ID,
         accounts: vec![solana_instruction::AccountMeta::new_readonly(
@@ -201,29 +212,6 @@ fn setup() -> Mollusk {
 // ============================================================================
 // Dynamic Account — Basic Validation
 // ============================================================================
-
-#[test]
-fn test_dynamic_account_invalid_utf8_rejected() {
-    let mollusk = setup();
-    let account = Address::new_unique();
-
-    let data = build_dynamic_account_data(&[0xFF], &[]);
-    let account_data = Account {
-        lamports: 1_000_000,
-        data,
-        owner: quasar_test_misc::ID,
-        executable: false,
-        rent_epoch: 0,
-    };
-
-    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
-    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
-
-    assert_eq!(
-        result.program_result,
-        ProgramResult::Failure(ProgramError::InvalidAccountData)
-    );
-}
 
 #[test]
 fn test_dynamic_instruction_invalid_utf8_rejected() {
@@ -253,8 +241,8 @@ fn test_dynamic_account_name_exceeds_max_rejected() {
     // Build valid account, then corrupt: set name length prefix > max (8)
     let mut data = build_dynamic_account_data(b"hi", &[]);
 
-    // Corrupt name length prefix (at offset 1..5) to exceed max of 8
-    data[1..5].copy_from_slice(&100u32.to_le_bytes());
+    // Corrupt name length prefix (at offset 1) to exceed max of 8
+    data[1] = 100;
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -283,7 +271,7 @@ fn test_dynamic_account_truncated_data_rejected() {
     let mut data = build_dynamic_account_data(b"hello", &[]);
 
     // Truncate: keep disc + name prefix but remove the name data
-    data.truncate(DYNAMIC_HEADER_SIZE + 4); // just disc + u32 prefix, no bytes
+    data.truncate(DYNAMIC_HEADER_SIZE + 1); // just disc + u8 prefix, no bytes
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -506,12 +494,12 @@ fn test_dynamic_account_minimum_size_empty_fields() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    // Minimum valid data: disc(1) + u32 name_len=0(4) + u32 tags_count=0(4) = 9
+    // Minimum valid data: disc(1) + u8 name_len=0(1) + u16 tags_count=0(2) = 4
     // bytes
     let data = build_dynamic_account_data(b"", &[]);
     assert_eq!(
         data.len(),
-        9,
+        4,
         "minimum data size for DynamicAccount with empty fields"
     );
     let account_data = Account {
@@ -719,7 +707,7 @@ fn test_mixed_account_truncated_in_dynamic_section() {
     let mut data = build_mixed_account_data(authority, 42, b"hello");
     // Corrupt: set label prefix to claim 100 bytes but data only has 5
     let label_offset = 1 + MIXED_FIXED_SIZE;
-    data[label_offset..label_offset + 4].copy_from_slice(&100u32.to_le_bytes());
+    data[label_offset] = 100;
     let account_data = Account {
         lamports: 1_000_000,
         data,
@@ -734,30 +722,6 @@ fn test_mixed_account_truncated_in_dynamic_section() {
     assert!(
         result.program_result.is_err(),
         "data truncated in dynamic section must be rejected"
-    );
-}
-
-#[test]
-fn test_mixed_account_invalid_utf8_label() {
-    let mollusk = setup();
-    let account = Address::new_unique();
-    let authority = Address::new_unique();
-
-    let data = build_mixed_account_data(authority, 42, &[0xFF, 0xFE]);
-    let account_data = Account {
-        lamports: 1_000_000,
-        data,
-        owner: quasar_test_misc::ID,
-        executable: false,
-        rent_epoch: 0,
-    };
-
-    let instruction: Instruction = MixedAccountCheckInstruction { account }.into();
-    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
-
-    assert!(
-        result.program_result.is_err(),
-        "invalid UTF-8 in label must be rejected"
     );
 }
 
@@ -908,29 +872,6 @@ fn test_small_prefix_scores_exceeds_max() {
     assert!(
         result.program_result.is_err(),
         "scores exceeding max must be rejected"
-    );
-}
-
-#[test]
-fn test_small_prefix_invalid_utf8_tag() {
-    let mollusk = setup();
-    let account = Address::new_unique();
-
-    let data = build_small_prefix_account_data(&[0x80, 0x81], &[1]);
-    let account_data = Account {
-        lamports: 1_000_000,
-        data,
-        owner: quasar_test_misc::ID,
-        executable: false,
-        rent_epoch: 0,
-    };
-
-    let instruction: Instruction = SmallPrefixCheckInstruction { account }.into();
-    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
-
-    assert!(
-        result.program_result.is_err(),
-        "invalid UTF-8 in tag must be rejected"
     );
 }
 
@@ -1128,14 +1069,14 @@ fn test_dynamic_mutate_same_length_name() {
     // Verify the account data was updated
     let result_data = &result.resulting_accounts[0].1.data;
     assert_eq!(result_data[0], DYNAMIC_ACCOUNT_DISC);
-    // Read name prefix (u32 at offset 1)
-    let name_len = u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
+    // Read name prefix (u8 at offset 1)
+    let name_len = result_data[1] as usize;
     assert_eq!(name_len, 5);
-    assert_eq!(&result_data[5..10], b"world");
-    // Verify tags were preserved
-    let tags_count = u32::from_le_bytes(result_data[10..14].try_into().unwrap()) as usize;
+    assert_eq!(&result_data[2..7], b"world");
+    // Verify tags were preserved (u16 at offset 7)
+    let tags_count = u16::from_le_bytes(result_data[7..9].try_into().unwrap()) as usize;
     assert_eq!(tags_count, 1);
-    assert_eq!(&result_data[14..46], tag.as_ref());
+    assert_eq!(&result_data[9..41], tag.as_ref());
 }
 
 #[test]
@@ -1172,9 +1113,9 @@ fn test_dynamic_mutate_shorter_name() {
     );
 
     let result_data = &result.resulting_accounts[0].1.data;
-    let name_len = u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
+    let name_len = result_data[1] as usize;
     assert_eq!(name_len, 2);
-    assert_eq!(&result_data[5..7], b"hi");
+    assert_eq!(&result_data[2..4], b"hi");
 }
 
 #[test]
@@ -1211,9 +1152,9 @@ fn test_dynamic_mutate_longer_name() {
     );
 
     let result_data = &result.resulting_accounts[0].1.data;
-    let name_len = u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
+    let name_len = result_data[1] as usize;
     assert_eq!(name_len, 8);
-    assert_eq!(&result_data[5..13], b"12345678");
+    assert_eq!(&result_data[2..10], b"12345678");
 }
 
 #[test]
@@ -1250,7 +1191,7 @@ fn test_dynamic_mutate_to_empty() {
     );
 
     let result_data = &result.resulting_accounts[0].1.data;
-    let name_len = u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
+    let name_len = result_data[1] as usize;
     assert_eq!(name_len, 0);
 }
 
@@ -1291,25 +1232,14 @@ fn test_dynamic_mutate_preserves_trailing_vec() {
     );
 
     let result_data = &result.resulting_accounts[0].1.data;
-    let name_len = u32::from_le_bytes(result_data[1..5].try_into().unwrap()) as usize;
+    let name_len = result_data[1] as usize;
     assert_eq!(name_len, 6);
-    assert_eq!(&result_data[5..11], b"abcdef");
-    // Verify tags were shifted correctly
-    let tags_offset = 11;
-    let tags_count = u32::from_le_bytes(
-        result_data[tags_offset..tags_offset + 4]
-            .try_into()
-            .unwrap(),
-    ) as usize;
+    assert_eq!(&result_data[2..8], b"abcdef");
+    // Verify tags were shifted correctly (u16 tags_count at offset 8)
+    let tags_count = u16::from_le_bytes(result_data[8..10].try_into().unwrap()) as usize;
     assert_eq!(tags_count, 2);
-    assert_eq!(
-        &result_data[tags_offset + 4..tags_offset + 36],
-        tag1.as_ref()
-    );
-    assert_eq!(
-        &result_data[tags_offset + 36..tags_offset + 68],
-        tag2.as_ref()
-    );
+    assert_eq!(&result_data[10..42], tag1.as_ref());
+    assert_eq!(&result_data[42..74], tag2.as_ref());
 }
 
 #[test]
@@ -1350,17 +1280,18 @@ fn test_dynamic_mutate_exceeds_max_rejected() {
 // ADVERSARIAL TESTS: Crafted Prefix Attacks
 // ============================================================================
 
-/// u32 prefix claiming u32::MAX bytes — validation must reject, not wrap/panic
+/// u8 prefix claiming 255 bytes — validation must reject (max=8), not
+/// wrap/panic
 #[test]
-fn test_adversarial_prefix_u32_max_name_len() {
+fn test_adversarial_prefix_u8_max_name_len() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    let mut data = vec![0u8; 1 + 4 + 4]; // disc + name prefix + tags prefix
+    // disc + u8 name prefix(255) + u16 tags prefix(0)
+    let mut data = vec![0u8; 1 + 1 + 2];
     data[0] = DYNAMIC_ACCOUNT_DISC;
-    data[1..5].copy_from_slice(&u32::MAX.to_le_bytes()); // name len = 4 billion
-                                                         // tags prefix = 0 (starts right after, but name data is "missing")
-    data[5..9].copy_from_slice(&0u32.to_le_bytes());
+    data[1] = 255; // name len = 255 (max=8)
+    data[2..4].copy_from_slice(&0u16.to_le_bytes()); // tags count = 0
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -1376,22 +1307,22 @@ fn test_adversarial_prefix_u32_max_name_len() {
     assert_eq!(
         result.program_result,
         ProgramResult::Failure(ProgramError::InvalidAccountData),
-        "u32::MAX name prefix must be rejected (exceeds max=8)"
+        "u8 name prefix=255 must be rejected (exceeds max=8)"
     );
 }
 
-/// u32 prefix just above max (9 when max=8) — off-by-one test
+/// u8 prefix just above max (9 when max=8) — off-by-one test
 #[test]
 fn test_adversarial_prefix_one_past_max() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    // Build account with 9 valid ASCII bytes but prefix says 9 (max=8)
-    let mut data = vec![0u8; 1 + 4 + 9 + 4]; // disc + prefix + "aaaaaaaaa" + tags prefix
+    // disc + u8 prefix(9) + "aaaaaaaaa" + u16 tags prefix(0)
+    let mut data = vec![0u8; 1 + 1 + 9 + 2];
     data[0] = DYNAMIC_ACCOUNT_DISC;
-    data[1..5].copy_from_slice(&9u32.to_le_bytes());
-    data[5..14].copy_from_slice(b"aaaaaaaaa");
-    data[14..18].copy_from_slice(&0u32.to_le_bytes());
+    data[1] = 9; // name len = 9 (max=8)
+    data[2..11].copy_from_slice(b"aaaaaaaaa");
+    data[11..13].copy_from_slice(&0u16.to_le_bytes());
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -1411,18 +1342,18 @@ fn test_adversarial_prefix_one_past_max() {
     );
 }
 
-/// Vec prefix claiming u32::MAX element count — tests count*elem_size overflow
+/// Vec prefix claiming u16::MAX element count — tests count*elem_size overflow
 /// path
 #[test]
 fn test_adversarial_vec_count_u32_max() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    // DynamicAccount: name="" (prefix=0), tags count=u32::MAX
-    let mut data = vec![0u8; 1 + 4 + 4]; // disc + name prefix(0) + tags prefix
+    // DynamicAccount: name="" (u8=0), tags count=u16::MAX
+    let mut data = vec![0u8; 1 + 1 + 2]; // disc + u8 name prefix(0) + u16 tags prefix
     data[0] = DYNAMIC_ACCOUNT_DISC;
-    data[1..5].copy_from_slice(&0u32.to_le_bytes()); // empty name
-    data[5..9].copy_from_slice(&u32::MAX.to_le_bytes()); // 4 billion tags
+    data[1] = 0; // empty name
+    data[2..4].copy_from_slice(&u16::MAX.to_le_bytes()); // 65535 tags
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -1438,7 +1369,7 @@ fn test_adversarial_vec_count_u32_max() {
     assert_eq!(
         result.program_result,
         ProgramResult::Failure(ProgramError::InvalidAccountData),
-        "u32::MAX vec count must be rejected (exceeds max=2)"
+        "u16::MAX vec count must be rejected (exceeds max=2)"
     );
 }
 
@@ -1452,14 +1383,14 @@ fn test_adversarial_vec_count_one_past_max() {
     let tag2 = Address::new_unique();
     let tag3 = Address::new_unique();
 
-    // Build with 3 tags (max=2): name="" prefix=0, tags count=3
-    let mut data = vec![0u8; 1 + 4 + 4 + 32 * 3];
+    // Build with 3 tags (max=2): name="" u8=0, tags u16=3
+    let mut data = vec![0u8; 1 + 1 + 2 + 32 * 3];
     data[0] = DYNAMIC_ACCOUNT_DISC;
-    data[1..5].copy_from_slice(&0u32.to_le_bytes());
-    data[5..9].copy_from_slice(&3u32.to_le_bytes());
-    data[9..41].copy_from_slice(tag1.as_ref());
-    data[41..73].copy_from_slice(tag2.as_ref());
-    data[73..105].copy_from_slice(tag3.as_ref());
+    data[1] = 0; // empty name
+    data[2..4].copy_from_slice(&3u16.to_le_bytes()); // 3 tags (max=2)
+    data[4..36].copy_from_slice(tag1.as_ref());
+    data[36..68].copy_from_slice(tag2.as_ref());
+    data[68..100].copy_from_slice(tag3.as_ref());
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -1480,18 +1411,18 @@ fn test_adversarial_vec_count_one_past_max() {
 }
 
 /// Name prefix says valid length but data crosses into tags prefix bytes.
-/// Specifically: name len=8 but account only has disc(1)+prefix(4)+5 bytes.
+/// Specifically: name len=8 but account only has disc(1)+prefix(1)+5 bytes.
 /// The name "reads into" where tags prefix would be.
 #[test]
 fn test_adversarial_name_data_overlaps_tags_prefix_region() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    // 1 + 4 + 5 = 10 bytes. Prefix says len=8 but only 5 bytes of data exist.
-    let mut data = vec![0u8; 10];
+    // 1 + 1 + 5 = 7 bytes. Prefix says len=8 but only 5 bytes of data exist.
+    let mut data = vec![0u8; 7];
     data[0] = DYNAMIC_ACCOUNT_DISC;
-    data[1..5].copy_from_slice(&8u32.to_le_bytes()); // claims 8 bytes
-    data[5..10].copy_from_slice(b"abcde"); // only 5 bytes present
+    data[1] = 8; // u8 prefix claims 8 bytes
+    data[2..7].copy_from_slice(b"abcde"); // only 5 bytes present
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -1518,12 +1449,12 @@ fn test_adversarial_vec_data_truncated_mid_element() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    // name="" (prefix=0) + tags count=1 but only 16 bytes (Address is 32)
-    let mut data = vec![0u8; 1 + 4 + 4 + 16];
+    // name="" (u8=0) + tags count=1 but only 16 bytes (Address is 32)
+    let mut data = vec![0u8; 1 + 1 + 2 + 16];
     data[0] = DYNAMIC_ACCOUNT_DISC;
-    data[1..5].copy_from_slice(&0u32.to_le_bytes()); // empty name
-    data[5..9].copy_from_slice(&1u32.to_le_bytes()); // 1 tag
-                                                     // data[9..25] = 16 zero bytes (need 32 for Address)
+    data[1] = 0; // empty name
+    data[2..4].copy_from_slice(&1u16.to_le_bytes()); // 1 tag
+                                                     // data[4..20] = 16 zero bytes (need 32 for Address)
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -1546,82 +1477,6 @@ fn test_adversarial_vec_data_truncated_mid_element() {
 // ============================================================================
 // ADVERSARIAL TESTS: Multi-byte UTF-8 Edge Cases
 // ============================================================================
-
-/// Truncated 2-byte UTF-8 sequence: 0xC3 without continuation byte
-#[test]
-fn test_adversarial_utf8_truncated_2byte_sequence() {
-    let mollusk = setup();
-    let account = Address::new_unique();
-
-    // 0xC3 starts a 2-byte UTF-8 char (e.g. é = C3 A9), but we only give 1 byte
-    let data = build_dynamic_account_data(&[0xC3], &[]);
-    let account_data = Account {
-        lamports: 1_000_000,
-        data,
-        owner: quasar_test_misc::ID,
-        executable: false,
-        rent_epoch: 0,
-    };
-
-    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
-    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
-
-    assert_eq!(
-        result.program_result,
-        ProgramResult::Failure(ProgramError::InvalidAccountData),
-        "truncated 2-byte UTF-8 must be rejected"
-    );
-}
-
-/// Truncated 3-byte UTF-8 sequence: euro sign is E2 82 AC, give only E2 82
-#[test]
-fn test_adversarial_utf8_truncated_3byte_sequence() {
-    let mollusk = setup();
-    let account = Address::new_unique();
-
-    let data = build_dynamic_account_data(&[0xE2, 0x82], &[]);
-    let account_data = Account {
-        lamports: 1_000_000,
-        data,
-        owner: quasar_test_misc::ID,
-        executable: false,
-        rent_epoch: 0,
-    };
-
-    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
-    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
-
-    assert_eq!(
-        result.program_result,
-        ProgramResult::Failure(ProgramError::InvalidAccountData),
-        "truncated 3-byte UTF-8 must be rejected"
-    );
-}
-
-/// Overlong encoding: C0 80 is an overlong encoding of NUL (invalid UTF-8)
-#[test]
-fn test_adversarial_utf8_overlong_nul() {
-    let mollusk = setup();
-    let account = Address::new_unique();
-
-    let data = build_dynamic_account_data(&[0xC0, 0x80], &[]);
-    let account_data = Account {
-        lamports: 1_000_000,
-        data,
-        owner: quasar_test_misc::ID,
-        executable: false,
-        rent_epoch: 0,
-    };
-
-    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
-    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
-
-    assert_eq!(
-        result.program_result,
-        ProgramResult::Failure(ProgramError::InvalidAccountData),
-        "overlong UTF-8 encoding must be rejected"
-    );
-}
 
 /// Valid 2-byte UTF-8 at field boundary: name = "é" (C3 A9) = 2 bytes
 /// Ensures multi-byte chars at exact max boundary work (2 < max=8)
@@ -1675,31 +1530,6 @@ fn test_adversarial_utf8_4byte_chars_at_max() {
     );
 }
 
-/// Surrogate half (ED A0 80 = U+D800) — invalid in UTF-8
-#[test]
-fn test_adversarial_utf8_surrogate_half() {
-    let mollusk = setup();
-    let account = Address::new_unique();
-
-    let data = build_dynamic_account_data(&[0xED, 0xA0, 0x80], &[]);
-    let account_data = Account {
-        lamports: 1_000_000,
-        data,
-        owner: quasar_test_misc::ID,
-        executable: false,
-        rent_epoch: 0,
-    };
-
-    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
-    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
-
-    assert_eq!(
-        result.program_result,
-        ProgramResult::Failure(ProgramError::InvalidAccountData),
-        "UTF-8 surrogate half must be rejected"
-    );
-}
-
 // ============================================================================
 // ADVERSARIAL TESTS: SmallPrefix (u8) Attack Surface
 // ============================================================================
@@ -1710,10 +1540,10 @@ fn test_adversarial_small_prefix_u8_max_value() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    // disc + tag prefix(255) + 0 bytes of data + scores prefix
+    // disc + u8 tag prefix(255) + 0 bytes of tag data + u16 scores prefix(0)
     let mut data = vec![SMALL_PREFIX_DISC, 255];
     // No actual tag data — prefix claims 255 bytes but max=100
-    data.push(0); // scores count = 0
+    data.extend_from_slice(&0u16.to_le_bytes()); // scores count = 0
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -1739,14 +1569,14 @@ fn test_adversarial_small_prefix_u8_max_value() {
     );
 }
 
-/// u8 scores count = 255 (max=10) — vec u8 prefix overflow
+/// u16 scores count = 255 (max=10) — vec prefix overflow
 #[test]
 fn test_adversarial_small_prefix_vec_u8_overflow() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    // disc + tag(prefix=0, empty) + scores(prefix=255, max=10)
-    let data = vec![SMALL_PREFIX_DISC, 0, 255];
+    // disc + u8 tag(prefix=0, empty) + u16 scores(prefix=255, max=10)
+    let data = vec![SMALL_PREFIX_DISC, 0, 255, 0];
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -1818,13 +1648,13 @@ fn test_adversarial_mutate_grow_then_readback_tags() {
     // Also verify the raw bytes to be extra paranoid
     let rd = &result.resulting_accounts[0].1.data;
     assert_eq!(rd[0], DYNAMIC_ACCOUNT_DISC);
-    let name_len = u32::from_le_bytes(rd[1..5].try_into().unwrap()) as usize;
+    let name_len = rd[1] as usize;
     assert_eq!(name_len, 8);
-    assert_eq!(&rd[5..13], b"12345678");
-    let tags_count = u32::from_le_bytes(rd[13..17].try_into().unwrap()) as usize;
+    assert_eq!(&rd[2..10], b"12345678");
+    let tags_count = u16::from_le_bytes(rd[10..12].try_into().unwrap()) as usize;
     assert_eq!(tags_count, 2);
-    assert_eq!(&rd[17..49], tag1.as_ref());
-    assert_eq!(&rd[49..81], tag2.as_ref());
+    assert_eq!(&rd[12..44], tag1.as_ref());
+    assert_eq!(&rd[44..76], tag2.as_ref());
 }
 
 /// Shrink name with trailing tags: verifies memmove on shrink
@@ -1866,13 +1696,13 @@ fn test_adversarial_mutate_shrink_then_readback_tags() {
     );
 
     let rd = &result.resulting_accounts[0].1.data;
-    let name_len = u32::from_le_bytes(rd[1..5].try_into().unwrap()) as usize;
+    let name_len = rd[1] as usize;
     assert_eq!(name_len, 1);
-    assert_eq!(&rd[5..6], b"x");
-    let tags_count = u32::from_le_bytes(rd[6..10].try_into().unwrap()) as usize;
+    assert_eq!(&rd[2..3], b"x");
+    let tags_count = u16::from_le_bytes(rd[3..5].try_into().unwrap()) as usize;
     assert_eq!(tags_count, 2);
-    assert_eq!(&rd[10..42], tag1.as_ref());
-    assert_eq!(&rd[42..74], tag2.as_ref());
+    assert_eq!(&rd[5..37], tag1.as_ref());
+    assert_eq!(&rd[37..69], tag2.as_ref());
 }
 
 /// Mutate name to empty with trailing tags: edge case for zero-length memmove
@@ -1913,11 +1743,11 @@ fn test_adversarial_mutate_to_empty_then_readback_tags() {
     );
 
     let rd = &result.resulting_accounts[0].1.data;
-    let name_len = u32::from_le_bytes(rd[1..5].try_into().unwrap()) as usize;
+    let name_len = rd[1] as usize;
     assert_eq!(name_len, 0);
-    let tags_count = u32::from_le_bytes(rd[5..9].try_into().unwrap()) as usize;
+    let tags_count = u16::from_le_bytes(rd[2..4].try_into().unwrap()) as usize;
     assert_eq!(tags_count, 1);
-    assert_eq!(&rd[9..41], tag.as_ref());
+    assert_eq!(&rd[4..36], tag.as_ref());
 }
 
 /// Grow from empty to max: maximum realloc + memmove distance
@@ -1958,12 +1788,12 @@ fn test_adversarial_mutate_empty_to_max_then_readback() {
     );
 
     let rd = &result.resulting_accounts[0].1.data;
-    let name_len = u32::from_le_bytes(rd[1..5].try_into().unwrap()) as usize;
+    let name_len = rd[1] as usize;
     assert_eq!(name_len, 8);
-    assert_eq!(&rd[5..13], b"12345678");
-    let tags_count = u32::from_le_bytes(rd[13..17].try_into().unwrap()) as usize;
+    assert_eq!(&rd[2..10], b"12345678");
+    let tags_count = u16::from_le_bytes(rd[10..12].try_into().unwrap()) as usize;
     assert_eq!(tags_count, 1);
-    assert_eq!(&rd[17..49], tag.as_ref());
+    assert_eq!(&rd[12..44], tag.as_ref());
 }
 
 // ============================================================================
@@ -2049,18 +1879,18 @@ fn test_adversarial_sequential_mutations_grow_shrink_grow() {
 
     // Final byte-level verification
     let rd = &result.resulting_accounts[0].1.data;
-    let name_len = u32::from_le_bytes(rd[1..5].try_into().unwrap()) as usize;
+    let name_len = rd[1] as usize;
     assert_eq!(name_len, 6);
-    assert_eq!(&rd[5..11], b"abcdef");
-    let tags_count = u32::from_le_bytes(rd[11..15].try_into().unwrap()) as usize;
+    assert_eq!(&rd[2..8], b"abcdef");
+    let tags_count = u16::from_le_bytes(rd[8..10].try_into().unwrap()) as usize;
     assert_eq!(tags_count, 2);
     assert_eq!(
-        &rd[15..47],
+        &rd[10..42],
         tag1.as_ref(),
         "tag1 corrupted after 3 mutations"
     );
     assert_eq!(
-        &rd[47..79],
+        &rd[42..74],
         tag2.as_ref(),
         "tag2 corrupted after 3 mutations"
     );
@@ -2145,10 +1975,8 @@ fn test_adversarial_missing_second_prefix() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    // disc + name prefix(0) = valid empty name, but no tags prefix follows
-    let mut data = vec![0u8; 5];
-    data[0] = DYNAMIC_ACCOUNT_DISC;
-    data[1..5].copy_from_slice(&0u32.to_le_bytes());
+    // disc + u8 name prefix(0) = valid empty name, but no u16 tags prefix follows
+    let data = vec![DYNAMIC_ACCOUNT_DISC, 0];
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -2168,13 +1996,14 @@ fn test_adversarial_missing_second_prefix() {
     );
 }
 
-/// Partial name prefix: only 2 of 4 bytes for u32 prefix
+/// Partial u16 tags prefix: name is empty (u8=0) but only 1 of 2 tag prefix
+/// bytes present
 #[test]
 fn test_adversarial_partial_u32_prefix() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    // disc + 2 bytes of what should be a 4-byte prefix
+    // disc + u8 name(0) + 1 byte of u16 tags prefix (need 2)
     let data = vec![DYNAMIC_ACCOUNT_DISC, 0x00, 0x00];
 
     let account_data = Account {
@@ -2191,7 +2020,7 @@ fn test_adversarial_partial_u32_prefix() {
     assert_eq!(
         result.program_result,
         ProgramResult::Failure(ProgramError::AccountDataTooSmall),
-        "partial u32 prefix must fail"
+        "partial u16 tags prefix must fail"
     );
 }
 
@@ -2203,13 +2032,13 @@ fn test_adversarial_mixed_fixed_valid_dynamic_truncated() {
 
     let authority = Address::new_unique();
     // disc(1) + authority(32) + value(8) = 41 bytes of fixed data
-    // Then u32 label prefix claims 10 bytes but only 2 are present
-    let mut data = vec![0u8; 41 + 4 + 2]; // 47 bytes total
+    // Then u8 label prefix claims 10 bytes but only 2 are present
+    let mut data = vec![0u8; 41 + 1 + 2]; // 44 bytes total
     data[0] = MIXED_ACCOUNT_DISC;
     data[1..33].copy_from_slice(authority.as_ref());
     data[33..41].copy_from_slice(&42u64.to_le_bytes());
-    data[41..45].copy_from_slice(&10u32.to_le_bytes()); // claims 10 bytes
-    data[45..47].copy_from_slice(b"ab"); // only 2 present
+    data[41] = 10; // u8 prefix claims 10 bytes
+    data[42..44].copy_from_slice(b"ab"); // only 2 present
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -2375,9 +2204,9 @@ fn test_adversarial_minimum_valid_account() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    // disc(1) + name_prefix(4, len=0) + tags_prefix(4, count=0) = 9 bytes
+    // disc(1) + u8 name_prefix(1, len=0) + u16 tags_prefix(2, count=0) = 4 bytes
     let data = build_dynamic_account_data(b"", &[]);
-    assert_eq!(data.len(), 9, "minimum valid account should be 9 bytes");
+    assert_eq!(data.len(), 4, "minimum valid account should be 4 bytes");
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -2402,12 +2231,12 @@ fn test_adversarial_minimum_valid_account() {
 // ============================================================================
 
 #[test]
-fn test_tail_str_valid_utf8_accepted() {
+fn test_dyn_str_valid_utf8_accepted() {
     let mollusk = setup();
     let account = Address::new_unique();
     let authority = Address::new_unique();
 
-    let data = build_tail_str_account_data(authority, b"hello");
+    let data = build_dyn_str_account_data(authority, b"hello");
     let account_data = Account {
         lamports: 1_000_000,
         data,
@@ -2416,7 +2245,7 @@ fn test_tail_str_valid_utf8_accepted() {
         rent_epoch: 0,
     };
 
-    let instruction = build_tail_str_check_instruction(account, 5);
+    let instruction = build_dyn_str_check_instruction(account, 5);
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
     assert!(
@@ -2427,12 +2256,12 @@ fn test_tail_str_valid_utf8_accepted() {
 }
 
 #[test]
-fn test_tail_str_empty_accepted() {
+fn test_dyn_str_empty_accepted() {
     let mollusk = setup();
     let account = Address::new_unique();
     let authority = Address::new_unique();
 
-    let data = build_tail_str_account_data(authority, b"");
+    let data = build_dyn_str_account_data(authority, b"");
     let account_data = Account {
         lamports: 1_000_000,
         data,
@@ -2441,7 +2270,7 @@ fn test_tail_str_empty_accepted() {
         rent_epoch: 0,
     };
 
-    let instruction = build_tail_str_check_instruction(account, 0);
+    let instruction = build_dyn_str_check_instruction(account, 0);
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
     assert!(
@@ -2452,64 +2281,13 @@ fn test_tail_str_empty_accepted() {
 }
 
 #[test]
-fn test_tail_str_invalid_utf8_rejected() {
-    let mollusk = setup();
-    let account = Address::new_unique();
-    let authority = Address::new_unique();
-
-    let data = build_tail_str_account_data(authority, &[0xFF, 0xFE]);
-    let account_data = Account {
-        lamports: 1_000_000,
-        data,
-        owner: quasar_test_misc::ID,
-        executable: false,
-        rent_epoch: 0,
-    };
-
-    let instruction = build_tail_str_check_instruction(account, 2);
-    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
-
-    assert_eq!(
-        result.program_result,
-        ProgramResult::Failure(ProgramError::InvalidAccountData),
-        "invalid UTF-8 in tail str must be rejected"
-    );
-}
-
-#[test]
-fn test_tail_str_truncated_multibyte_rejected() {
-    let mollusk = setup();
-    let account = Address::new_unique();
-    let authority = Address::new_unique();
-
-    // Truncated 3-byte UTF-8: euro sign is E2 82 AC, give only E2 82
-    let data = build_tail_str_account_data(authority, &[0xE2, 0x82]);
-    let account_data = Account {
-        lamports: 1_000_000,
-        data,
-        owner: quasar_test_misc::ID,
-        executable: false,
-        rent_epoch: 0,
-    };
-
-    let instruction = build_tail_str_check_instruction(account, 2);
-    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
-
-    assert_eq!(
-        result.program_result,
-        ProgramResult::Failure(ProgramError::InvalidAccountData),
-        "truncated multi-byte UTF-8 in tail str must be rejected"
-    );
-}
-
-#[test]
-fn test_tail_str_multibyte_utf8_accepted() {
+fn test_dyn_str_multibyte_utf8_accepted() {
     let mollusk = setup();
     let account = Address::new_unique();
     let authority = Address::new_unique();
 
     // "café" = 63 61 66 C3 A9 = 5 bytes
-    let data = build_tail_str_account_data(authority, "café".as_bytes());
+    let data = build_dyn_str_account_data(authority, "café".as_bytes());
     let account_data = Account {
         lamports: 1_000_000,
         data,
@@ -2518,7 +2296,7 @@ fn test_tail_str_multibyte_utf8_accepted() {
         rent_epoch: 0,
     };
 
-    let instruction = build_tail_str_check_instruction(account, 5);
+    let instruction = build_dyn_str_check_instruction(account, 5);
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
     assert!(
@@ -2529,12 +2307,12 @@ fn test_tail_str_multibyte_utf8_accepted() {
 }
 
 #[test]
-fn test_tail_bytes_valid_data_accepted() {
+fn test_dyn_bytes_valid_data_accepted() {
     let mollusk = setup();
     let account = Address::new_unique();
     let authority = Address::new_unique();
 
-    let data = build_tail_bytes_account_data(authority, &[0xFF, 0x00, 0xAB, 0xCD]);
+    let data = build_dyn_bytes_account_data(authority, &[0xFF, 0x00, 0xAB, 0xCD]);
     let account_data = Account {
         lamports: 1_000_000,
         data,
@@ -2543,7 +2321,7 @@ fn test_tail_bytes_valid_data_accepted() {
         rent_epoch: 0,
     };
 
-    let instruction = build_tail_bytes_check_instruction(account, 4);
+    let instruction = build_dyn_bytes_check_instruction(account, 4);
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
     assert!(
@@ -2554,12 +2332,12 @@ fn test_tail_bytes_valid_data_accepted() {
 }
 
 #[test]
-fn test_tail_bytes_empty_accepted() {
+fn test_dyn_bytes_empty_accepted() {
     let mollusk = setup();
     let account = Address::new_unique();
     let authority = Address::new_unique();
 
-    let data = build_tail_bytes_account_data(authority, &[]);
+    let data = build_dyn_bytes_account_data(authority, &[]);
     let account_data = Account {
         lamports: 1_000_000,
         data,
@@ -2568,7 +2346,7 @@ fn test_tail_bytes_empty_accepted() {
         rent_epoch: 0,
     };
 
-    let instruction = build_tail_bytes_check_instruction(account, 0);
+    let instruction = build_dyn_bytes_check_instruction(account, 0);
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
     assert!(
@@ -2579,12 +2357,12 @@ fn test_tail_bytes_empty_accepted() {
 }
 
 #[test]
-fn test_tail_str_wrong_discriminator_rejected() {
+fn test_dyn_str_wrong_discriminator_rejected() {
     let mollusk = setup();
     let account = Address::new_unique();
     let authority = Address::new_unique();
 
-    let mut data = build_tail_str_account_data(authority, b"hello");
+    let mut data = build_dyn_str_account_data(authority, b"hello");
     data[0] = 99; // wrong discriminator
 
     let account_data = Account {
@@ -2595,7 +2373,7 @@ fn test_tail_str_wrong_discriminator_rejected() {
         rent_epoch: 0,
     };
 
-    let instruction = build_tail_str_check_instruction(account, 5);
+    let instruction = build_dyn_str_check_instruction(account, 5);
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
     assert_eq!(
@@ -2606,13 +2384,13 @@ fn test_tail_str_wrong_discriminator_rejected() {
 }
 
 #[test]
-fn test_tail_str_truncated_fixed_section_rejected() {
+fn test_dyn_str_truncated_fixed_section_rejected() {
     let mollusk = setup();
     let account = Address::new_unique();
 
     // disc(1) + only 16 bytes (need 32 for Address)
     let mut data = vec![0u8; 17];
-    data[0] = TAIL_STR_DISC;
+    data[0] = DYN_STR_DISC;
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -2622,7 +2400,7 @@ fn test_tail_str_truncated_fixed_section_rejected() {
         rent_epoch: 0,
     };
 
-    let instruction = build_tail_str_check_instruction(account, 0);
+    let instruction = build_dyn_str_check_instruction(account, 0);
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
     assert!(
@@ -2680,15 +2458,16 @@ fn test_adversarial_ix_data_one_byte_unknown_disc() {
 }
 
 /// Instruction discriminator=21 (dynamic_instruction_check) takes a String<8>.
-/// Craft raw data where the u32 string prefix claims u32::MAX bytes but only 3
+/// Craft raw data where the u8 string prefix claims 255 bytes but only 3
 /// bytes of actual data follow. The framework must reject this, not read OOB.
+/// (String<N> instruction args use u8 prefix on the wire.)
 #[test]
 fn test_adversarial_ix_dynamic_string_prefix_overflow_u32_max() {
     let mollusk = setup();
     let signer = Address::new_unique();
 
     let mut data = vec![21u8]; // discriminator for dynamic_instruction_check
-    data.extend_from_slice(&u32::MAX.to_le_bytes());
+    data.push(u8::MAX); // u8 prefix claiming 255 bytes
     data.extend_from_slice(b"abc");
 
     let instruction = Instruction {
@@ -2703,19 +2482,20 @@ fn test_adversarial_ix_dynamic_string_prefix_overflow_u32_max() {
     );
     assert!(
         result.program_result.is_err(),
-        "string prefix claiming u32::MAX bytes with only 3 bytes present must be rejected"
+        "string prefix claiming 255 bytes with only 3 bytes present must be rejected"
     );
 }
 
-/// Instruction discriminator=21: string prefix=1024 but only 10 bytes of data
-/// follow. Slightly above actual data — subtler than u32::MAX.
+/// Instruction discriminator=21: string prefix=200 but only 10 bytes of data
+/// follow. Slightly above actual data — subtler than u8::MAX.
+/// (String<N> instruction args use u8 prefix on the wire.)
 #[test]
 fn test_adversarial_ix_dynamic_string_prefix_overflow_1024() {
     let mollusk = setup();
     let signer = Address::new_unique();
 
     let mut data = vec![21u8];
-    data.extend_from_slice(&1024u32.to_le_bytes());
+    data.push(200u8); // u8 prefix claiming 200 bytes
     data.extend_from_slice(b"0123456789");
 
     let instruction = Instruction {
@@ -2730,19 +2510,20 @@ fn test_adversarial_ix_dynamic_string_prefix_overflow_1024() {
     );
     assert!(
         result.program_result.is_err(),
-        "string prefix=1024 with only 10 bytes present must be rejected"
+        "string prefix=200 with only 10 bytes present must be rejected"
     );
 }
 
 /// Instruction discriminator=21: string prefix=0 (empty string).
 /// This is technically valid — the handler receives an empty &str.
+/// (String<N> instruction args use u8 prefix on the wire.)
 #[test]
 fn test_adversarial_ix_dynamic_string_prefix_zero() {
     let mollusk = setup();
     let signer = Address::new_unique();
 
     let mut data = vec![21u8];
-    data.extend_from_slice(&0u32.to_le_bytes());
+    data.push(0u8); // u8 prefix: empty string
 
     let instruction = Instruction {
         program_id: quasar_test_misc::ID,
@@ -2763,13 +2544,14 @@ fn test_adversarial_ix_dynamic_string_prefix_zero() {
 
 /// Send a valid instruction (discriminator=21, valid String<8>) but append 100
 /// bytes of random garbage at the end. Does the program ignore them or reject?
+/// (String<N> instruction args use u8 prefix on the wire.)
 #[test]
 fn test_adversarial_ix_data_with_extra_trailing_garbage() {
     let mollusk = setup();
     let signer = Address::new_unique();
 
     let mut data = vec![21u8]; // dynamic_instruction_check
-    data.extend_from_slice(&5u32.to_le_bytes()); // name len = 5
+    data.push(5u8); // u8 prefix: name len = 5
     data.extend_from_slice(b"hello");
     data.extend_from_slice(&[0xDE; 100]);
 
@@ -2814,13 +2596,14 @@ fn test_adversarial_ix_disc_only_missing_args() {
 
 /// Instruction discriminator=21: string prefix claims length > max (8).
 /// prefix=9, data has 9 valid UTF-8 bytes. Should be rejected by max check.
+/// (String<N> instruction args use u8 prefix on the wire.)
 #[test]
 fn test_adversarial_ix_string_exceeds_max() {
     let mollusk = setup();
     let signer = Address::new_unique();
 
     let mut data = vec![21u8];
-    data.extend_from_slice(&9u32.to_le_bytes());
+    data.push(9u8); // u8 prefix: 9 bytes exceeds max of 8
     data.extend_from_slice(b"123456789");
 
     let instruction = Instruction {

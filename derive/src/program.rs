@@ -4,9 +4,9 @@
 
 use {
     crate::helpers::{
-        classify_dynamic_string, classify_dynamic_vec, classify_tail, extract_generic_inner_type,
-        parse_discriminator_bytes, pascal_to_snake, snake_to_pascal, validate_prefix_capacity,
-        InstructionArgs,
+        classify_pod_string, classify_pod_vec, extract_generic_inner_type,
+        parse_discriminator_bytes, pascal_to_snake, prefix_bytes_to_rust_type, snake_to_pascal,
+        InstructionArgs, PodDynField,
     },
     proc_macro::TokenStream,
     quote::{format_ident, quote},
@@ -176,21 +176,17 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
                             Pat::Ident(pi) => pi.ident.clone(),
                             _ => continue,
                         };
-                        let ty = if let Some((prefix, max)) = classify_dynamic_string(&pt.ty) {
-                            if let Err(e) = validate_prefix_capacity(&pt.ty, prefix, max, "String")
-                            {
-                                return e.to_compile_error().into();
-                            }
-                            let prefix_ty = prefix.to_type();
-                            syn::parse_quote!(quasar_lang::client::DynBytes<#prefix_ty>)
-                        } else if let Some((elem, prefix, max)) = classify_dynamic_vec(&pt.ty) {
-                            if let Err(e) = validate_prefix_capacity(&pt.ty, prefix, max, "Vec") {
-                                return e.to_compile_error().into();
-                            }
-                            let prefix_ty = prefix.to_type();
-                            syn::parse_quote!(quasar_lang::client::DynVec<#elem, #prefix_ty>)
-                        } else if classify_tail(&pt.ty).is_some() {
-                            syn::parse_quote!(quasar_lang::client::TailBytes)
+                        let ty = if let Some(PodDynField::Str { prefix_bytes, .. }) =
+                            classify_pod_string(&pt.ty)
+                        {
+                            let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
+                            syn::parse_quote!(quasar_lang::client::DynBytes<#pfx_ty>)
+                        } else if let Some(PodDynField::Vec {
+                            elem, prefix_bytes, ..
+                        }) = classify_pod_vec(&pt.ty)
+                        {
+                            let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
+                            syn::parse_quote!(quasar_lang::client::DynVec<#elem, #pfx_ty>)
                         } else {
                             (*pt.ty).clone()
                         };
@@ -200,16 +196,14 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     let arg_names: Vec<&Ident> = remaining_args.iter().map(|(n, _)| n).collect();
                     let arg_types: Vec<&Type> = remaining_args.iter().map(|(_, t)| t).collect();
 
-                    let has_remaining = ctx_kind.has_remaining();
-                    if has_remaining {
-                        client_items.push(quote! {
-                            #macro_ident!(#struct_name, [#(#disc_values),*], {#(#arg_names : #arg_types),*}, remaining);
-                        });
+                    let remaining_arg = if ctx_kind.has_remaining() {
+                        quote!(, remaining)
                     } else {
-                        client_items.push(quote! {
-                            #macro_ident!(#struct_name, [#(#disc_values),*], {#(#arg_names : #arg_types),*});
-                        });
-                    }
+                        quote!()
+                    };
+                    client_items.push(quote! {
+                        #macro_ident!(#struct_name, [#(#disc_values),*], {#(#arg_names : #arg_types),*} #remaining_arg);
+                    });
 
                     break;
                 }
@@ -338,63 +332,39 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
             });
         }
 
-        if any_heap {
-            // When per-endpoint heap is used, cursor init is in the dispatch
-            // arms — the entrypoint does NOT init the cursor.
-            items.push(syn::parse_quote! {
-                #[unsafe(no_mangle)]
-                #[cfg(any(target_os = "solana", target_arch = "bpf"))]
-                #[allow(unexpected_cfgs)]
-                pub unsafe extern "C" fn entrypoint(ptr: *mut u8, instruction_data: *const u8) -> u64 {
-                    // SAFETY: SVM places instruction data length as u64 at offset -8 from the data
-                    // pointer. The read is technically misaligned in the abstract machine, but the SVM
-                    // buffer is 8-byte aligned and SBF handles unaligned access natively.
-                    let instruction_data = unsafe {
-                        core::slice::from_raw_parts(
-                            instruction_data,
-                            *(instruction_data.sub(8) as *const u64) as usize,
-                        )
-                    };
-                    match __dispatch(ptr, instruction_data) {
-                        Ok(_) => 0,
-                        Err(e) => e.into(),
-                    }
-                }
-            });
+        // When per-endpoint heap is used, cursor init is in the dispatch
+        // arms — the entrypoint does NOT init the cursor. Otherwise, init
+        // the cursor once in the entrypoint.
+        let cursor_init = if any_heap {
+            quote! {}
         } else {
-            // No per-endpoint heap — keep cursor init in entrypoint as before
-            items.push(syn::parse_quote! {
-                #[unsafe(no_mangle)]
-                #[cfg(any(target_os = "solana", target_arch = "bpf"))]
-                #[allow(unexpected_cfgs)]
-                pub unsafe extern "C" fn entrypoint(ptr: *mut u8, instruction_data: *const u8) -> u64 {
-                    // SAFETY: Initialize bump allocator cursor. The SVM maps and zero-inits the heap
-                    // region before execution. This write sets the cursor past the 8-byte cursor slot
-                    // itself, eliminating the per-allocation zero-check branch in BumpAllocator::alloc.
-                    // Assumes re-entrancy is forbidden by the SVM — cursor reset on re-entry would
-                    // alias previous allocations.
-                    #[cfg(feature = "alloc")]
-                    {
-                        let heap_start = super::allocator::HEAP_START_ADDRESS as usize;
-                        *(heap_start as *mut usize) = heap_start + core::mem::size_of::<usize>();
-                    }
-
-                    // SAFETY: SVM places instruction data length as u64 at offset -8 from the data
-                    // pointer. The read is technically misaligned in the abstract machine, but the SVM
-                    // buffer is 8-byte aligned and SBF handles unaligned access natively.
-                    let instruction_data = unsafe {
-                        core::slice::from_raw_parts(
-                            instruction_data,
-                            *(instruction_data.sub(8) as *const u64) as usize,
-                        )
-                    };
-                    match __dispatch(ptr, instruction_data) {
-                        Ok(_) => 0,
-                        Err(e) => e.into(),
-                    }
+            quote! {
+                #[cfg(feature = "alloc")]
+                {
+                    let heap_start = super::allocator::HEAP_START_ADDRESS as usize;
+                    *(heap_start as *mut usize) = heap_start + core::mem::size_of::<usize>();
                 }
-            });
-        }
+            }
+        };
+
+        items.push(syn::parse_quote! {
+            #[unsafe(no_mangle)]
+            #[cfg(any(target_os = "solana", target_arch = "bpf"))]
+            #[allow(unexpected_cfgs)]
+            pub unsafe extern "C" fn entrypoint(ptr: *mut u8, instruction_data: *const u8) -> u64 {
+                #cursor_init
+                let instruction_data = unsafe {
+                    core::slice::from_raw_parts(
+                        instruction_data,
+                        *(instruction_data.sub(8) as *const u64) as usize,
+                    )
+                };
+                match __dispatch(ptr, instruction_data) {
+                    Ok(_) => 0,
+                    Err(e) => e.into(),
+                }
+            }
+        });
 
         // Add CPI module inside the program module (instruction builders only —
         // the full client with account/event types is generated by the IDL).
@@ -440,7 +410,7 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
             #[inline(always)]
             pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
-                if *view.address() != Self::ADDRESS {
+                if !quasar_lang::keys_eq(view.address(), &Self::ADDRESS) {
                     return Err(ProgramError::InvalidSeeds);
                 }
                 Ok(unsafe { &*(view as *const AccountView as *const Self) })

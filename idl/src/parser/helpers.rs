@@ -1,7 +1,7 @@
 //! Shared helpers for IDL parsing: type mapping, name conversion, and
 //! dynamic field classification.
 
-use crate::types::{IdlDynString, IdlDynVec, IdlTail, IdlType};
+use crate::types::{IdlDynString, IdlDynVec, IdlType};
 
 /// Convert `snake_case` to `camelCase`.
 pub fn to_camel_case(s: &str) -> String {
@@ -38,42 +38,15 @@ pub fn map_type(rust_type: &str) -> IdlType {
 
 /// Map a `syn::Type` to an `IdlType`, detecting dynamic fields:
 ///
-/// - `String<'a, N>` / `String<N>` → `IdlType::DynString { maxLength: N }`
-/// - `Vec<'a, T, N>` / `Vec<T, N>` → `IdlType::DynVec { items: T, maxLength: N
-///   }`
+/// - `String<N>` / `String<N, u16>` / `PodString<N, u32>` →
+///   `IdlType::DynString`
+/// - `Vec<T, N>` / `Vec<T, N, u8>` / `PodVec<T, N, u64>` → `IdlType::DynVec`
 ///
+/// The optional third argument for String (or fourth for Vec) sets the prefix
+/// width: `u8`=1, `u16`=2, `u32`=4, `u64`=8 bytes. Defaults: String→1, Vec→2.
+/// Leading lifetime parameters (e.g. `'a`) are skipped transparently.
 /// Falls back to `simple_type_name + map_type` for everything else.
 pub fn map_type_from_syn(ty: &syn::Type) -> IdlType {
-    if let syn::Type::Reference(ref_ty) = ty {
-        match &*ref_ty.elem {
-            syn::Type::Path(type_path) => {
-                if let Some(seg) = type_path.path.segments.last() {
-                    if seg.ident == "str" && type_path.path.segments.len() == 1 {
-                        return IdlType::Tail {
-                            tail: IdlTail {
-                                element: "string".to_string(),
-                            },
-                        };
-                    }
-                }
-            }
-            syn::Type::Slice(slice_ty) => {
-                if let syn::Type::Path(type_path) = &*slice_ty.elem {
-                    if let Some(seg) = type_path.path.segments.last() {
-                        if seg.ident == "u8" && type_path.path.segments.len() == 1 {
-                            return IdlType::Tail {
-                                tail: IdlTail {
-                                    element: "bytes".to_string(),
-                                },
-                            };
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
     let inner = match ty {
         syn::Type::Reference(r) => &*r.elem,
         other => other,
@@ -99,20 +72,28 @@ pub fn map_type_from_syn(ty: &syn::Type) -> IdlType {
                 let ident = seg.ident.to_string();
                 let mut iter = args.args.iter();
 
-                // Skip leading lifetime if present
-                let first = iter.next();
-                let has_lifetime = matches!(first, Some(syn::GenericArgument::Lifetime(_)));
-
-                if ident == "String" {
-                    // String<N> | String<P, N> | String<'a, N>
-                    let after_lifetime = if has_lifetime { iter.next() } else { first };
-                    if let Some(result) = parse_dyn_string_args(after_lifetime, &mut iter) {
-                        return result;
+                if ident == "String" || ident == "PodString" {
+                    // String<N[, PFX]> / String<'a, N[, PFX]>
+                    // Skip an optional leading lifetime parameter.
+                    let first = iter.next();
+                    let first = if matches!(first, Some(syn::GenericArgument::Lifetime(_))) {
+                        iter.next()
+                    } else {
+                        first
+                    };
+                    if let Some(max_length) = first.and_then(extract_const_usize) {
+                        let prefix_bytes = iter.next().and_then(extract_prefix_bytes).unwrap_or(1);
+                        return IdlType::DynString {
+                            string: IdlDynString {
+                                max_length,
+                                prefix_bytes,
+                            },
+                        };
                     }
-                } else if ident == "Vec" {
-                    // Vec<T, N> | Vec<T, P, N> | Vec<'a, T, N>
-                    let after_lifetime = if has_lifetime { iter.next() } else { first };
-                    if let Some(result) = parse_dyn_vec_args(after_lifetime, &mut iter) {
+                } else if ident == "Vec" || ident == "PodVec" {
+                    // Vec<T, N[, PFX]> / Vec<'a, T, N[, PFX]>
+                    let first = iter.next();
+                    if let Some(result) = parse_pod_vec_args(first, &mut iter) {
                         return result;
                     }
                 }
@@ -217,21 +198,6 @@ pub fn simple_type_name(ty: &syn::Type) -> String {
 // Internal helpers for parsing dynamic type generic arguments
 // ---------------------------------------------------------------------------
 
-/// Returns the byte-width for a prefix type identifier (u8→1, u16→2, u32→4).
-fn prefix_bytes_from_type(ty: &syn::Type) -> Option<usize> {
-    if let syn::Type::Path(tp) = ty {
-        if let Some(seg) = tp.path.segments.last() {
-            return match seg.ident.to_string().as_str() {
-                "u8" => Some(1),
-                "u16" => Some(2),
-                "u32" => Some(4),
-                _ => None,
-            };
-        }
-    }
-    None
-}
-
 fn extract_const_usize(arg: &syn::GenericArgument) -> Option<usize> {
     if let syn::GenericArgument::Const(syn::Expr::Lit(syn::ExprLit {
         lit: syn::Lit::Int(lit_int),
@@ -244,67 +210,52 @@ fn extract_const_usize(arg: &syn::GenericArgument) -> Option<usize> {
     }
 }
 
-/// Parse String generic args: `<N>` | `<P, N>` (where `first` is already
-/// consumed).
-fn parse_dyn_string_args<'a>(
+/// Parse Vec/PodVec generic args: `<T, N[, PFX]>` (where `first` is already
+/// consumed). Default prefix is 2 bytes (u16). Optional third arg sets the
+/// prefix width.
+fn parse_pod_vec_args<'a>(
     first: Option<&'a syn::GenericArgument>,
     rest: &mut impl Iterator<Item = &'a syn::GenericArgument>,
 ) -> Option<IdlType> {
-    let first = first?;
-    // Try as a const (String<N>) — default u32 prefix
-    if let Some(max_length) = extract_const_usize(first) {
-        return Some(IdlType::DynString {
-            string: IdlDynString {
-                max_length,
-                prefix_bytes: 4,
-            },
-        });
-    }
-    // Try as a prefix type (String<P, N>)
-    if let syn::GenericArgument::Type(prefix_ty) = first {
-        let prefix_bytes = prefix_bytes_from_type(prefix_ty)?;
-        let max_length = extract_const_usize(rest.next()?)?;
-        return Some(IdlType::DynString {
-            string: IdlDynString {
-                max_length,
-                prefix_bytes,
-            },
-        });
-    }
-    None
-}
-
-/// Parse Vec generic args: `<T, N>` | `<T, P, N>` (where `first` is already
-/// consumed).
-fn parse_dyn_vec_args<'a>(
-    first: Option<&'a syn::GenericArgument>,
-    rest: &mut impl Iterator<Item = &'a syn::GenericArgument>,
-) -> Option<IdlType> {
+    // Skip an optional leading lifetime parameter (e.g. Vec<'a, T, N>).
+    let first = if matches!(first, Some(syn::GenericArgument::Lifetime(_))) {
+        rest.next()
+    } else {
+        first
+    };
     let syn::GenericArgument::Type(elem_ty) = first? else {
         return None;
     };
     let second = rest.next()?;
-    // Try second as const (Vec<T, N>) — default u32 prefix
-    if let Some(max_length) = extract_const_usize(second) {
-        return Some(IdlType::DynVec {
-            vec: IdlDynVec {
-                items: Box::new(map_type_from_syn(elem_ty)),
-                max_length,
-                prefix_bytes: 4,
-            },
-        });
+    let max_length = extract_const_usize(second)?;
+    let prefix_bytes = rest.next().and_then(extract_prefix_bytes).unwrap_or(2);
+    Some(IdlType::DynVec {
+        vec: IdlDynVec {
+            items: Box::new(map_type_from_syn(elem_ty)),
+            max_length,
+            prefix_bytes,
+        },
+    })
+}
+
+/// Extract prefix byte count from a generic argument.
+/// Accepts type-path form (`u8`→1, `u16`→2, `u32`→4, `u64`→8) and
+/// const-integer form (`1`, `2`, `4`, `8`).
+fn extract_prefix_bytes(arg: &syn::GenericArgument) -> Option<usize> {
+    match arg {
+        syn::GenericArgument::Type(syn::Type::Path(tp)) => {
+            match tp.path.segments.last()?.ident.to_string().as_str() {
+                "u8" => Some(1),
+                "u16" => Some(2),
+                "u32" => Some(4),
+                "u64" => Some(8),
+                _ => None,
+            }
+        }
+        syn::GenericArgument::Const(syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Int(n),
+            ..
+        })) => n.base10_parse().ok(),
+        _ => None,
     }
-    // Second is prefix type (Vec<T, P, N>)
-    if let syn::GenericArgument::Type(prefix_ty) = second {
-        let prefix_bytes = prefix_bytes_from_type(prefix_ty)?;
-        let max_length = extract_const_usize(rest.next()?)?;
-        return Some(IdlType::DynVec {
-            vec: IdlDynVec {
-                items: Box::new(map_type_from_syn(elem_ty)),
-                max_length,
-                prefix_bytes,
-            },
-        });
-    }
-    None
 }

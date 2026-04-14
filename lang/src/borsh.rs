@@ -8,8 +8,6 @@
 // Codec-aware CPI encoding
 // ---------------------------------------------------------------------------
 
-use crate::dynamic::{RawEncoded, TailEncoded};
-
 /// Write a value into a CPI buffer with a specific prefix size.
 ///
 /// The `TARGET_PREFIX` const generic determines the wire format:
@@ -19,8 +17,6 @@ use crate::dynamic::{RawEncoded, TailEncoded};
 ///
 /// Implementations exist for:
 /// - `&str` / `&[u8]` → always encode from scratch
-/// - `RawEncoded<N>` → memcpy if `N == TARGET_PREFIX`, re-encode otherwise
-/// - `TailEncoded` → always writes the target prefix then memcpy tail bytes
 pub trait CpiEncode<const TARGET_PREFIX: usize> {
     /// Bytes needed in the CPI buffer for this value.
     fn encoded_len(&self) -> usize;
@@ -101,40 +97,5 @@ impl<const T: usize> CpiEncode<T> for &[u8] {
         write_prefix::<T>(ptr, offset, self.len() as u32);
         core::ptr::copy_nonoverlapping(self.as_ptr(), ptr.add(offset + T), self.len());
         offset + T + self.len()
-    }
-}
-
-// RawEncoded<N> → same prefix size N: zero-copy memcpy
-impl<'a, const N: usize> CpiEncode<N> for RawEncoded<'a, N> {
-    #[inline(always)]
-    fn encoded_len(&self) -> usize {
-        const {
-            assert!(N == 1 || N == 2 || N == 4);
-        }
-        self.bytes.len()
-    }
-
-    #[inline(always)]
-    unsafe fn write_to(&self, ptr: *mut u8, offset: usize) -> usize {
-        core::ptr::copy_nonoverlapping(self.bytes.as_ptr(), ptr.add(offset), self.bytes.len());
-        offset + self.bytes.len()
-    }
-}
-
-// TailEncoded → any target prefix (writes a fresh prefix).
-impl<const T: usize> CpiEncode<T> for TailEncoded<'_> {
-    #[inline(always)]
-    fn encoded_len(&self) -> usize {
-        const {
-            assert!(T == 1 || T == 2 || T == 4);
-        }
-        T + self.bytes.len()
-    }
-
-    #[inline(always)]
-    unsafe fn write_to(&self, ptr: *mut u8, offset: usize) -> usize {
-        write_prefix::<T>(ptr, offset, self.bytes.len() as u32);
-        core::ptr::copy_nonoverlapping(self.bytes.as_ptr(), ptr.add(offset + T), self.bytes.len());
-        offset + T + self.bytes.len()
     }
 }

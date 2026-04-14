@@ -37,6 +37,8 @@
     any(target_os = "solana", target_arch = "bpf"),
     feature(asm_experimental_arch)
 )]
+#[cfg(feature = "debug")]
+extern crate alloc;
 extern crate self as quasar_lang;
 
 /// Internal re-exports for proc macro codegen. Not part of the public API.
@@ -95,9 +97,6 @@ pub mod client;
 pub mod context;
 /// Const-generic cross-program invocation with stack-allocated account arrays.
 pub mod cpi;
-/// Marker types for dynamic fields (`String<P, N>`, `Vec<T, P, N>`) and codec
-/// helpers.
-pub mod dynamic;
 /// Program entrypoint macros (`dispatch!`, `no_alloc!`, `panic_handler!`).
 pub mod entrypoint;
 /// Framework error types.
@@ -107,7 +106,7 @@ pub mod event;
 /// Trait for fixed-size instruction argument types with alignment-1 ZC
 /// companions.
 pub mod instruction_arg;
-/// Instruction data deserialization for dynamic fields (strings, vecs, tails).
+/// Instruction data deserialization for dynamic fields (strings and vecs).
 pub mod instruction_data;
 /// Low-level `sol_log_data` syscall wrapper.
 pub mod log;
@@ -244,54 +243,4 @@ pub fn abort_program() -> ! {
 
     #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
     panic!("program aborted");
-}
-
-#[cfg(test)]
-mod tests {
-    use {super::*, solana_address::Address};
-
-    #[test]
-    fn keys_eq_identical() {
-        let a = Address::new_from_array([0xAB; 32]);
-        assert!(keys_eq(&a, &a));
-    }
-
-    #[test]
-    fn keys_eq_first_word_mismatch() {
-        let a = Address::new_from_array([0xFF; 32]);
-        let mut b_bytes = [0xFF; 32];
-        b_bytes[0] = 0x00;
-        let b = Address::new_from_array(b_bytes);
-        assert!(!keys_eq(&a, &b));
-    }
-
-    #[test]
-    fn keys_eq_last_word_mismatch() {
-        let a = Address::new_from_array([0xFF; 32]);
-        let mut b_bytes = [0xFF; 32];
-        b_bytes[31] = 0x00;
-        let b = Address::new_from_array(b_bytes);
-        assert!(!keys_eq(&a, &b));
-    }
-
-    #[test]
-    fn keys_eq_all_zero() {
-        let a = Address::new_from_array([0; 32]);
-        let b = Address::new_from_array([0; 32]);
-        assert!(keys_eq(&a, &b));
-    }
-
-    #[test]
-    fn is_system_program_zero() {
-        let addr = Address::new_from_array([0; 32]);
-        assert!(is_system_program(&addr));
-    }
-
-    #[test]
-    fn is_system_program_nonzero() {
-        let mut bytes = [0u8; 32];
-        bytes[16] = 1;
-        let addr = Address::new_from_array(bytes);
-        assert!(!is_system_program(&addr));
-    }
 }

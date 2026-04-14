@@ -4,16 +4,16 @@ use {
 };
 
 #[derive(Accounts)]
-pub struct Create<'config> {
+pub struct Create {
     #[account(mut)]
     pub creator: Signer,
     #[account(init, payer = creator, seeds = MultisigConfig::seeds(creator), bump)]
-    pub config: Account<MultisigConfig<'config>>,
+    pub config: Account<MultisigConfig>,
     pub rent: Sysvar<Rent>,
     pub system_program: Program<System>,
 }
 
-impl Create<'_> {
+impl Create {
     #[inline(always)]
     pub fn create_multisig(
         &mut self,
@@ -54,7 +54,8 @@ impl Create<'_> {
                 signers,
             },
             self.creator.to_account_view(),
-            Some(&self.rent),
+            self.rent.lamports_per_byte(),
+            self.rent.exemption_threshold_raw(),
         )
     }
 }

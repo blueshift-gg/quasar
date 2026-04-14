@@ -177,11 +177,7 @@ jobs:
       - name: Capture base metrics
         run: |
           git checkout -f ${{ github.event.pull_request.base.sha }}
-          if [ -f scripts/bench-tracked-programs.sh ]; then
-            bash scripts/bench-tracked-programs.sh capture /tmp/base_metrics.env
-          else
-            git show ${{ github.event.pull_request.head.sha }}:scripts/perf-baselines.env >/tmp/base_metrics.env
-          fi
+          bash scripts/bench-tracked-programs.sh capture /tmp/base_metrics.env
 
       - name: Capture PR metrics
         run: |
@@ -191,7 +187,7 @@ jobs:
       - name: Fail on CU regression
         id: perf_guard
         run: |
-          bash scripts/bench-tracked-programs.sh compare /tmp/base_metrics.env /tmp/pr_metrics.env
+          bash scripts/bench-tracked-programs.sh compare-files /tmp/base_metrics.env /tmp/pr_metrics.env
 
       - name: Post benchmark comment
         if: always()
@@ -326,9 +322,10 @@ jobs:
             ${{ runner.os }}-cargo-bench-
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Capture baseline metrics
+      - name: Capture base metrics
         run: |
-          cp scripts/perf-baselines.env /tmp/push_base_metrics.env
+          git checkout -f ${{ github.sha }}~1
+          bash scripts/bench-tracked-programs.sh capture /tmp/push_base_metrics.env
 
       - name: Capture push head metrics
         run: |
@@ -337,4 +334,4 @@ jobs:
 
       - name: Fail on CU regression
         run: |
-          bash scripts/bench-tracked-programs.sh compare /tmp/push_base_metrics.env /tmp/push_head_metrics.env
+          bash scripts/bench-tracked-programs.sh compare-files /tmp/push_base_metrics.env /tmp/push_head_metrics.env

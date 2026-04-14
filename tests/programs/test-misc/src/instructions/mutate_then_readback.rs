@@ -1,19 +1,35 @@
-use {crate::state::DynamicAccount, quasar_lang::prelude::*};
+use {
+    crate::state::DynamicAccount,
+    quasar_lang::{prelude::*, sysvars::Sysvar as _},
+};
 
 #[derive(Accounts)]
-pub struct MutateThenReadback<'account> {
+pub struct MutateThenReadback {
     #[account(mut)]
-    pub account: Account<DynamicAccount<'account>>,
+    pub account: Account<DynamicAccount>,
     #[account(mut)]
     pub payer: Signer,
     pub system_program: Program<System>,
 }
 
-impl MutateThenReadback<'_> {
+impl MutateThenReadback {
     #[inline(always)]
     pub fn handler(&mut self, new_name: &str, expected_tags_count: u8) -> Result<(), ProgramError> {
-        self.account.set_name(&self.payer, new_name)?;
+        let rent = Rent::get()?;
 
+        // Mutate via guard — auto-saves on drop
+        {
+            let mut guard = self.account.as_dynamic_mut(
+                self.payer.to_account_view(),
+                rent.lamports_per_byte(),
+                rent.exemption_threshold_raw(),
+            );
+            if !guard.name.set(new_name) {
+                return Err(ProgramError::InvalidInstructionData);
+            }
+        } // guard dropped here → flushed to account data
+
+        // Read back from account data to verify the save worked
         let name = self.account.name();
         if name.len() != new_name.len() {
             return Err(ProgramError::Custom(10));

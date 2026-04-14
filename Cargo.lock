@@ -2143,7 +2143,10 @@ dependencies = [
 name = "quasar-derive"
 version = "0.0.0"
 dependencies = [
+ "bs58",
+ "const-crypto",
  "proc-macro2",
+ "quasar-idl",
  "quote",
  "serde",
  "serde_json",

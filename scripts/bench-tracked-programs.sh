@@ -5,26 +5,15 @@ usage() {
   cat <<'EOF'
 Usage:
   scripts/bench-tracked-programs.sh capture <output-env-file>
-  scripts/bench-tracked-programs.sh compare <baseline-env-file> <candidate-env-file>
+  scripts/bench-tracked-programs.sh compare [<base-ref>]
+  scripts/bench-tracked-programs.sh compare-files <baseline-env> <candidate-env>
 
 Commands:
-  capture  Build tracked example programs, run their CU tests, and write metrics.
-  compare  Compare two metric env files. CU regressions fail; size regressions are reported.
+  capture        Build tracked programs, run CU tests, write metrics to file.
+  compare        JIT: build base-ref (default: master) in a worktree, build HEAD,
+                 and compare. Working tree stays untouched.
+  compare-files  Compare two previously captured metric files.
 EOF
-}
-
-load_metrics() {
-  local file="$1"
-  set -a
-  # shellcheck disable=SC1090
-  source "$file"
-  set +a
-}
-
-metric_value() {
-  local key="$1"
-  local value="${!key-}"
-  printf '%s' "$value"
 }
 
 capture_metric() {
@@ -64,7 +53,7 @@ capture_program_metrics() {
   log_file="$(mktemp)"
 
   cargo build-sbf --tools-version v1.52 --manifest-path "$manifest_path"
-  cargo test -p "$package_name" -- --nocapture 2>&1 | tee "$log_file"
+  cargo test -p "$package_name" -- --nocapture --test-threads=1 2>&1 | tee "$log_file"
 
   while (($#)); do
     local key="$1"
@@ -75,28 +64,6 @@ capture_program_metrics() {
 
   capture_metric "$output_file" "$size_key" "$(binary_size "$binary_name")"
   rm -f "$log_file"
-}
-
-compare_metric() {
-  local key="$1"
-  local kind="$2"
-  local base candidate
-  base="$(metric_value "$key")"
-  candidate="$(metric_value "CANDIDATE_$key")"
-
-  if [[ -z "$base" || -z "$candidate" ]]; then
-    return 0
-  fi
-
-  local delta=$((candidate - base))
-  printf '%-20s base=%-8s candidate=%-8s delta=%+d\n' "$key" "$base" "$candidate" "$delta"
-
-  # Allow up to 1500 CU variance per PDA — a single find_program_address
-  # iteration costs ~1500 CU, and different seed values produce different
-  # canonical bumps.
-  if [[ "$kind" == "cu" && "$delta" -gt 1500 ]]; then
-    return 1
-  fi
 }
 
 capture() {
@@ -124,12 +91,41 @@ capture() {
     "ESCROW_REFUND_CU" "REFUND CU:"
 }
 
-compare() {
+metric_value() {
+  local key="$1"
+  local value="${!key-}"
+  printf '%s' "$value"
+}
+
+compare_metric() {
+  local key="$1"
+  local kind="$2"
+  local base candidate
+  base="$(metric_value "$key")"
+  candidate="$(metric_value "CANDIDATE_$key")"
+
+  if [[ -z "$base" || -z "$candidate" ]]; then
+    return 0
+  fi
+
+  local delta=$((candidate - base))
+  printf '%-20s base=%-8s candidate=%-8s delta=%+d\n' "$key" "$base" "$candidate" "$delta"
+
+  if [[ "$kind" == "cu" && "$delta" -gt 0 ]]; then
+    return 1
+  fi
+}
+
+compare_files() {
   local baseline_file="$1"
   local candidate_file="$2"
   local failed=0
 
-  load_metrics "$baseline_file"
+  set -a
+  # shellcheck disable=SC1090
+  source "$baseline_file"
+  set +a
+
   while IFS='=' read -r key value; do
     [[ -z "$key" ]] && continue
     [[ "$key" =~ ^# ]] && continue
@@ -162,8 +158,30 @@ compare() {
   fi
 }
 
+compare() {
+  local base_ref="${1:-master}"
+  local base_env candidate_env worktree_dir
+
+  base_env="$(mktemp)"
+  candidate_env="$(mktemp)"
+  worktree_dir="$(mktemp -d)"
+
+  trap 'rm -f "$base_env" "$candidate_env"; git worktree remove --force "$worktree_dir" 2>/dev/null || true' EXIT
+
+  echo "=== Capturing candidate (HEAD) ==="
+  capture "$candidate_env"
+
+  echo ""
+  echo "=== Capturing base ($base_ref) in worktree ==="
+  git worktree add --quiet "$worktree_dir" "$base_ref"
+  (cd "$worktree_dir" && capture "$base_env")
+
+  echo ""
+  compare_files "$base_env" "$candidate_env"
+}
+
 main() {
-  if (($# < 2)); then
+  if (($# < 1)); then
     usage >&2
     exit 1
   fi
@@ -177,11 +195,14 @@ main() {
       capture "$2"
       ;;
     compare)
+      compare "${2:-master}"
+      ;;
+    compare-files)
       if (($# != 3)); then
         usage >&2
         exit 1
       fi
-      compare "$2" "$3"
+      compare_files "$2" "$3"
       ;;
     *)
       usage >&2

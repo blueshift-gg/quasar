@@ -5,6 +5,8 @@ use {
     std::{println, vec},
 };
 
+const USER: Pubkey = Pubkey::new_from_array([1; 32]);
+
 fn setup() -> QuasarSvm {
     let elf = std::fs::read("../../target/deploy/quasar_vault.so").unwrap();
     QuasarSvm::new().with_program(&crate::ID, &elf)
@@ -28,7 +30,7 @@ fn empty(address: Pubkey) -> Account {
 fn test_deposit() {
     let mut svm = setup();
 
-    let user = Pubkey::new_unique();
+    let user = USER;
     let system_program = quasar_svm::system_program::ID;
     let (vault, _) = Pubkey::find_program_address(&[b"vault", user.as_ref()], &crate::ID);
 
@@ -63,7 +65,7 @@ fn test_deposit() {
 fn test_withdraw() {
     let mut svm = setup();
 
-    let user = Pubkey::new_unique();
+    let user = USER;
     let (vault, _) = Pubkey::find_program_address(&[b"vault", user.as_ref()], &crate::ID);
 
     // Pre-fund vault as program-owned (withdraw uses direct lamport

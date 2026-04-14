@@ -1,11 +1,11 @@
-use {crate::state::TailStrAccount, quasar_lang::prelude::*};
+use {crate::state::DynStrAccount, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
-pub struct TailStrCheck<'info> {
-    pub account: Account<TailStrAccount<'info>>,
+pub struct DynStrCheck {
+    pub account: Account<DynStrAccount>,
 }
 
-impl<'info> TailStrCheck<'info> {
+impl DynStrCheck {
     #[inline(always)]
     pub fn handler(&self, expected_len: u8) -> Result<(), ProgramError> {
         let label = self.account.label();

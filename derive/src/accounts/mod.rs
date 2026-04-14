@@ -4,6 +4,9 @@
 
 mod attrs;
 mod client;
+mod composition;
+mod constraint;
+mod evidence;
 mod field_kind;
 mod fields;
 mod init;
@@ -491,7 +494,9 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                 };
             }
         } else {
-            quote! { let __shared_rent = <quasar_lang::sysvars::rent::Rent as quasar_lang::sysvars::Sysvar>::get()?; }
+            quote! {
+                let __shared_rent = <quasar_lang::sysvars::rent::Rent as quasar_lang::sysvars::Sysvar>::get()?;
+            }
         }
     } else {
         quote! {}

@@ -1,9 +1,8 @@
 use {
     super::super::{
         attrs::AccountFieldAttrs,
-        field_kind::{strip_ref, type_base_name, FieldFlags, FieldKind},
+        field_kind::{strip_ref, type_base_name, FieldKind},
     },
-    crate::helpers::extract_generic_inner_type,
     quote::quote,
     syn::{Ident, Type},
 };
@@ -15,11 +14,7 @@ pub(super) enum TokenProgramResolution {
 }
 
 impl TokenProgramResolution {
-    pub(super) fn fallback_to_single_field(self) -> bool {
-        matches!(self, TokenProgramResolution::FallbackRequired)
-    }
-
-    pub(super) fn require_account_field(self) -> bool {
+    pub(super) fn needs_fallback(self) -> bool {
         matches!(self, TokenProgramResolution::FallbackRequired)
     }
 }
@@ -269,20 +264,7 @@ pub(super) fn resolve_token_program_field<'a>(
         .into());
     }
 
-    if resolution.fallback_to_single_field() {
-        if resolution.require_account_field() {
-            return Ok(Some(DetectedFields::require(
-                detected.token_program,
-                &format!(
-                    "{consumer_desc} requires a token program field (Program<Token>, \
-                     Program<Token2022>, or Interface<TokenInterface>)"
-                ),
-            )?));
-        }
-        return Ok(detected.token_program);
-    }
-
-    if resolution.require_account_field() {
+    if resolution.needs_fallback() {
         return Ok(Some(DetectedFields::require(
             detected.token_program,
             &format!(
@@ -316,162 +298,8 @@ pub(super) fn resolve_token_program_addr(
         }
     }
 
-    let tp = token_program_field
-        .expect("InterfaceAccount with token/ata attrs requires a token program field");
-    quote! { #tp.to_account_view().address() }
-}
-
-/// Validate attribute combinations on a single field. Returns a compile error
-/// on conflict.
-pub(super) fn validate_field_attrs(
-    field: &syn::Field,
-    field_name: &Ident,
-    attrs: &AccountFieldAttrs,
-    kind: &FieldKind,
-    _flags: &FieldFlags,
-) -> Result<(), proc_macro::TokenStream> {
-    macro_rules! reject {
-        ($cond:expr, $msg:expr) => {
-            if $cond {
-                return Err(syn::Error::new_spanned(field_name, $msg)
-                    .to_compile_error()
-                    .into());
-            }
-        };
-    }
-
-    let is_init = attrs.is_init || attrs.init_if_needed;
-    let is_optional = extract_generic_inner_type(&field.ty, "Option").is_some();
-
-    reject!(
-        is_init && attrs.close.is_some(),
-        "#[account(init)] and #[account(close)] cannot be used on the same field"
-    );
-    reject!(
-        attrs.is_init && attrs.init_if_needed,
-        "#[account(init)] and #[account(init_if_needed)] are mutually exclusive"
-    );
-    reject!(
-        attrs.realloc.is_some() && is_init,
-        "#[account(realloc)] and #[account(init)] cannot be used on the same field"
-    );
-    reject!(
-        attrs.realloc.is_some() && kind.is_token_or_mint(),
-        "#[account(realloc)] cannot be used on token or mint accounts — their size is fixed by \
-         the token program"
-    );
-    reject!(
-        attrs.realloc.is_some() && !matches!(kind, FieldKind::Account { .. }),
-        "#[account(realloc)] is only valid on Account<T> fields"
-    );
-    reject!(
-        attrs.realloc.is_some() && is_optional,
-        "#[account(realloc)] cannot be used on Option<Account<T>> fields"
-    );
-    reject!(
-        attrs.close.is_some() && kind.inner_name_matches(&["Mint", "Mint2022"]),
-        "#[account(close)] cannot be used on mint accounts. Mint closing is not supported through \
-         the token-account close path."
-    );
-
-    reject!(
-        attrs.sweep.is_some() && !kind.is_token_account(),
-        "#[account(sweep)] is only valid on token accounts, not mint accounts"
-    );
-    reject!(
-        attrs.sweep.is_some() && attrs.token_mint.is_none(),
-        "#[account(sweep)] requires `token::mint` (needed for transfer_checked decimals)"
-    );
-    reject!(
-        attrs.sweep.is_some() && attrs.token_authority.is_none(),
-        "#[account(sweep)] requires `token::authority` (needed for transfer signer)"
-    );
-
-    reject!(
-        attrs.token_mint.is_some() && attrs.associated_token_mint.is_some(),
-        "`token::*` and `associated_token::*` cannot be used on the same field"
-    );
-    reject!(
-        attrs.seeds.is_some() && attrs.associated_token_mint.is_some(),
-        "`seeds` and `associated_token::*` cannot be used on the same field"
-    );
-
-    reject!(
-        attrs.payer.is_some() && !is_init,
-        "`payer` requires `init` or `init_if_needed`"
-    );
-    reject!(
-        attrs.space.is_some() && !is_init,
-        "`space` requires `init` or `init_if_needed`"
-    );
-
-    reject!(
-        attrs.token_mint.is_some() != attrs.token_authority.is_some(),
-        "`token::mint` and `token::authority` must both be specified"
-    );
-    reject!(
-        attrs.associated_token_mint.is_some() != attrs.associated_token_authority.is_some(),
-        "`associated_token::mint` and `associated_token::authority` must both be specified"
-    );
-    reject!(
-        attrs.associated_token_token_program.is_some() && attrs.associated_token_mint.is_none(),
-        "`associated_token::token_program` requires `associated_token::mint` and \
-         `associated_token::authority`"
-    );
-    reject!(
-        attrs.token_token_program.is_some()
-            && attrs.token_mint.is_none()
-            && attrs.sweep.is_none()
-            && attrs.close.is_none(),
-        "`token::token_program` requires `token::mint`/`token::authority`, `sweep`, or token \
-         account `close`"
-    );
-    reject!(
-        attrs.mint_token_program.is_some()
-            && attrs.mint_decimals.is_none()
-            && attrs.master_edition_max_supply.is_none(),
-        "`mint::token_program` requires `mint::decimals` or `master_edition::max_supply`"
-    );
-    reject!(
-        attrs.realloc_payer.is_some() && attrs.realloc.is_none(),
-        "`realloc::payer` requires `realloc`"
-    );
-
-    let has_metadata = attrs.metadata_name.is_some()
-        || attrs.metadata_symbol.is_some()
-        || attrs.metadata_uri.is_some()
-        || attrs.metadata_seller_fee_basis_points.is_some()
-        || attrs.metadata_is_mutable.is_some();
-    reject!(
-        has_metadata && !is_init,
-        "`metadata::*` attributes require `init` or `init_if_needed`"
-    );
-    reject!(
-        has_metadata
-            && (attrs.metadata_name.is_none()
-                || attrs.metadata_symbol.is_none()
-                || attrs.metadata_uri.is_none()),
-        "`metadata::name`, `metadata::symbol`, and `metadata::uri` must all be specified"
-    );
-
-    reject!(
-        attrs.master_edition_max_supply.is_some() && !is_init,
-        "`master_edition::max_supply` requires `init` or `init_if_needed`"
-    );
-    reject!(
-        attrs.master_edition_max_supply.is_some() && attrs.metadata_name.is_none(),
-        "`master_edition::max_supply` requires `metadata::name`, `metadata::symbol`, and \
-         `metadata::uri`"
-    );
-
-    if attrs.dup {
-        let has_doc = field.attrs.iter().any(|a| a.path().is_ident("doc"));
-        reject!(
-            !has_doc,
-            "#[account(dup)] requires a /// CHECK: <reason> doc comment explaining why this \
-             account is safe to use as a duplicate."
-        );
-    }
-
-    Ok(())
+    // Composition rules and validate_composition guarantee that every
+    // InterfaceAccount with token/ata attrs has a resolved token program field.
+    // Reaching here means a handler bypassed that check — this is a framework bug.
+    unreachable!("BUG: InterfaceAccount with token/ata attrs requires a token program field")
 }

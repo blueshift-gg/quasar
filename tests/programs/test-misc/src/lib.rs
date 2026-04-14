@@ -179,15 +179,12 @@ mod quasar_test_misc {
     }
 
     #[instruction(discriminator = 28)]
-    pub fn tail_str_check(ctx: Ctx<TailStrCheck>, expected_len: u8) -> Result<(), ProgramError> {
+    pub fn dyn_str_check(ctx: Ctx<DynStrCheck>, expected_len: u8) -> Result<(), ProgramError> {
         ctx.accounts.handler(expected_len)
     }
 
     #[instruction(discriminator = 29)]
-    pub fn tail_bytes_check(
-        ctx: Ctx<TailBytesCheck>,
-        expected_len: u8,
-    ) -> Result<(), ProgramError> {
+    pub fn dyn_bytes_check(ctx: Ctx<DynBytesCheck>, expected_len: u8) -> Result<(), ProgramError> {
         ctx.accounts.handler(expected_len)
     }
 
@@ -298,5 +295,13 @@ mod quasar_test_misc {
         ctx: Ctx<InterfaceMigrationCheck>,
     ) -> Result<(), ProgramError> {
         ctx.accounts.handler()
+    }
+
+    #[instruction(discriminator = 57)]
+    pub fn dynamic_stack_cache(
+        ctx: Ctx<DynamicStackCache>,
+        new_name: String<8>,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler(new_name)
     }
 }

@@ -1,7 +1,7 @@
 //! Instruction data deserialization helpers for dynamic fields.
 //!
-//! These functions extract variable-length instruction arguments (strings,
-//! byte vectors, tail data) from raw instruction bytes. They are called by
+//! These functions extract variable-length instruction arguments (strings and
+//! byte vectors) from raw instruction bytes. They are called by
 //! proc-macro-generated `#[instruction]` code.
 //!
 //! Each function uses const generics for the prefix byte width, enabling
@@ -87,19 +87,6 @@ pub fn read_dynamic_vec<T, const PREFIX: usize>(
         unsafe { core::slice::from_raw_parts(data.as_ptr().add(offset) as *const T, count) };
 
     Ok((slice, offset + byte_len))
-}
-
-/// Read a tail UTF-8 string (all remaining instruction data from `offset`).
-#[inline(always)]
-pub fn read_tail_str(data: &[u8], offset: usize) -> Result<&str, ProgramError> {
-    let bytes = &data[offset..];
-    core::str::from_utf8(bytes).map_err(|_| ProgramError::InvalidInstructionData)
-}
-
-/// Read tail bytes (all remaining instruction data from `offset`).
-#[inline(always)]
-pub fn read_tail_bytes(data: &[u8], offset: usize) -> &[u8] {
-    &data[offset..]
 }
 
 /// Read a length prefix from instruction data. The `PREFIX` const generic

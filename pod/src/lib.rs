@@ -21,9 +21,13 @@
 
 #![no_std]
 
+pub mod string;
+pub mod vec;
+
 use core::fmt;
 #[cfg(feature = "wincode")]
 use wincode::{SchemaRead, SchemaWrite};
+pub use {string::PodString, vec::PodVec};
 
 macro_rules! define_pod_unsigned {
     ($name:ident, $native:ty, $size:expr) => {

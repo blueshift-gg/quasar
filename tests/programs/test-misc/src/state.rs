@@ -58,35 +58,53 @@ pub struct MultiDiscAccount {
     pub data: u64,
 }
 
-#[account(discriminator = 5)]
-pub struct DynamicAccount<'a> {
-    pub name: String<u32, 8>,
-    pub tags: Vec<Address, u32, 2>,
+#[account(discriminator = 5, set_inner)]
+pub struct DynamicAccount {
+    pub name: String<8>,
+    pub tags: Vec<Address, 2>,
 }
 
 #[account(discriminator = 6)]
-pub struct MixedAccount<'a> {
+pub struct MixedAccount {
     pub authority: Address,
     pub value: u64,
-    pub label: String<u32, 32>,
+    pub label: String<32>,
 }
 
 #[account(discriminator = 7)]
-pub struct SmallPrefixAccount<'a> {
-    pub tag: String<u8, 100>,
-    pub scores: Vec<u8, u8, 10>,
+pub struct SmallPrefixAccount {
+    pub tag: String<100>,
+    pub scores: Vec<u8, 10>,
 }
 
 #[account(discriminator = 8)]
-pub struct TailStrAccount<'a> {
+pub struct DynStrAccount {
     pub authority: Address,
-    pub label: &'a str,
+    pub label: String<255>,
 }
 
 #[account(discriminator = 9)]
-pub struct TailBytesAccount<'a> {
+pub struct DynBytesAccount {
     pub authority: Address,
-    pub data: &'a [u8],
+    pub data: Vec<u8, 1024>,
+}
+
+/// Pod-dynamic account test — uses PodString/PodVec with dynamic sizing.
+#[account(discriminator = 10, set_inner)]
+pub struct PodDynamicAccount {
+    pub authority: Address,
+    pub bump: u8,
+    pub label: PodString<32>,
+    pub members: PodVec<Address, 10>,
+}
+
+/// Fixed-capacity account — PodString/PodVec are inlined in the ZC struct
+/// at full capacity. Zero-copy reads AND writes. No DynGuard needed.
+#[account(discriminator = 11, fixed_capacity)]
+pub struct FixedCapacityAccount {
+    pub authority: Address,
+    pub label: String<32>,
+    pub scores: Vec<u8, 10>,
 }
 
 /// Same shape as SimpleAccount but with a different seed prefix — for

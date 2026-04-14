@@ -7,6 +7,19 @@ use {
     std::println,
 };
 
+// Deterministic addresses — avoids Pubkey::new_unique() whose global counter
+// produces different values depending on test binary layout / discovery order.
+const MAKER: Pubkey = Pubkey::new_from_array([1; 32]);
+const TAKER: Pubkey = Pubkey::new_from_array([2; 32]);
+const MINT_A: Pubkey = Pubkey::new_from_array([3; 32]);
+const MINT_B: Pubkey = Pubkey::new_from_array([4; 32]);
+const MAKER_TA_A: Pubkey = Pubkey::new_from_array([5; 32]);
+const MAKER_TA_B: Pubkey = Pubkey::new_from_array([6; 32]);
+const VAULT_TA_A: Pubkey = Pubkey::new_from_array([7; 32]);
+const TAKER_TA_A: Pubkey = Pubkey::new_from_array([8; 32]);
+const TAKER_TA_B: Pubkey = Pubkey::new_from_array([9; 32]);
+const WRONG_OWNER: Pubkey = Pubkey::new_from_array([10; 32]);
+
 fn setup() -> QuasarSvm {
     let elf = std::fs::read("../../target/deploy/quasar_escrow.so").unwrap();
     QuasarSvm::new()
@@ -94,25 +107,19 @@ fn test_make_cu() {
 
     let token_program = quasar_svm::SPL_TOKEN_PROGRAM_ID;
     let system_program = quasar_svm::system_program::ID;
-    let maker = Pubkey::new_unique();
-    let mint_a = Pubkey::new_unique();
-    let mint_b = Pubkey::new_unique();
-    let maker_ta_a = Pubkey::new_unique();
-    let maker_ta_b = Pubkey::new_unique();
-    let vault_ta_a = Pubkey::new_unique();
     let (escrow, escrow_bump) =
-        Pubkey::find_program_address(&[b"escrow", maker.as_ref()], &crate::ID);
+        Pubkey::find_program_address(&[b"escrow", MAKER.as_ref()], &crate::ID);
     let rent = quasar_svm::solana_sdk_ids::sysvar::rent::ID;
 
     let instruction = with_signers(
         MakeInstruction {
-            maker,
+            maker: MAKER,
             escrow,
-            mint_a,
-            mint_b,
-            maker_ta_a,
-            maker_ta_b,
-            vault_ta_a,
+            mint_a: MINT_A,
+            mint_b: MINT_B,
+            maker_ta_a: MAKER_TA_A,
+            maker_ta_b: MAKER_TA_B,
+            vault_ta_a: VAULT_TA_A,
             rent,
             token_program,
             system_program,
@@ -120,28 +127,27 @@ fn test_make_cu() {
             receive: 1337,
         }
         .into(),
-        &[5, 6], // maker_ta_b, vault_ta_a as signers for create_account CPI
+        &[5, 6],
     );
 
     let result = svm.process_instruction(
         &instruction,
         &[
-            signer(maker),
+            signer(MAKER),
             empty(escrow),
-            mint(mint_a, maker),
-            mint(mint_b, maker),
-            token(maker_ta_a, mint_a, maker, 1_000_000),
-            empty(maker_ta_b),
-            empty(vault_ta_a),
+            mint(MINT_A, MAKER),
+            mint(MINT_B, MAKER),
+            token(MAKER_TA_A, MINT_A, MAKER, 1_000_000),
+            empty(MAKER_TA_B),
+            empty(VAULT_TA_A),
         ],
     );
 
     assert!(result.is_ok(), "make failed: {:?}", result.raw_result);
 
-    // Verify escrow state
     let escrow_data = &result.account(&escrow).unwrap().data;
     assert_eq!(escrow_data[0], 1, "discriminator");
-    assert_eq!(&escrow_data[1..33], maker.as_ref(), "maker");
+    assert_eq!(&escrow_data[1..33], MAKER.as_ref(), "maker");
     assert_eq!(&escrow_data[129..137], &1337u64.to_le_bytes(), "receive");
     assert_eq!(escrow_data[137], escrow_bump, "bump");
 
@@ -154,49 +160,41 @@ fn test_take_cu() {
 
     let token_program = quasar_svm::SPL_TOKEN_PROGRAM_ID;
     let system_program = quasar_svm::system_program::ID;
-    let maker = Pubkey::new_unique();
-    let taker = Pubkey::new_unique();
-    let mint_a = Pubkey::new_unique();
-    let mint_b = Pubkey::new_unique();
-    let taker_ta_a = Pubkey::new_unique();
-    let taker_ta_b = Pubkey::new_unique();
-    let maker_ta_b = Pubkey::new_unique();
-    let vault_ta_a = Pubkey::new_unique();
     let (escrow, escrow_bump) =
-        Pubkey::find_program_address(&[b"escrow", maker.as_ref()], &crate::ID);
+        Pubkey::find_program_address(&[b"escrow", MAKER.as_ref()], &crate::ID);
     let rent = quasar_svm::solana_sdk_ids::sysvar::rent::ID;
 
     let instruction = with_signers(
         TakeInstruction {
-            taker,
+            taker: TAKER,
             escrow,
-            maker,
-            mint_a,
-            mint_b,
-            taker_ta_a,
-            taker_ta_b,
-            maker_ta_b,
-            vault_ta_a,
+            maker: MAKER,
+            mint_a: MINT_A,
+            mint_b: MINT_B,
+            taker_ta_a: TAKER_TA_A,
+            taker_ta_b: TAKER_TA_B,
+            maker_ta_b: MAKER_TA_B,
+            vault_ta_a: VAULT_TA_A,
             rent,
             token_program,
             system_program,
         }
         .into(),
-        &[5, 7], // taker_ta_a, maker_ta_b as signers for create_account CPI
+        &[5, 7],
     );
 
     let result = svm.process_instruction(
         &instruction,
         &[
-            signer(taker),
-            escrow_account(escrow, maker, mint_a, mint_b, maker_ta_b, 1337, escrow_bump),
-            signer(maker),
-            mint(mint_a, maker),
-            mint(mint_b, maker),
-            empty(taker_ta_a),
-            token(taker_ta_b, mint_b, taker, 10_000),
-            empty(maker_ta_b),
-            token(vault_ta_a, mint_a, escrow, 1337),
+            signer(TAKER),
+            escrow_account(escrow, MAKER, MINT_A, MINT_B, MAKER_TA_B, 1337, escrow_bump),
+            signer(MAKER),
+            mint(MINT_A, MAKER),
+            mint(MINT_B, MAKER),
+            empty(TAKER_TA_A),
+            token(TAKER_TA_B, MINT_B, TAKER, 10_000),
+            empty(MAKER_TA_B),
+            token(VAULT_TA_A, MINT_A, escrow, 1337),
         ],
     );
 
@@ -210,39 +208,33 @@ fn test_refund_cu() {
 
     let token_program = quasar_svm::SPL_TOKEN_PROGRAM_ID;
     let system_program = quasar_svm::system_program::ID;
-    let maker = Pubkey::new_unique();
-    let mint_a = Pubkey::new_unique();
-    let mint_b = Pubkey::new_unique();
-    let maker_ta_a = Pubkey::new_unique();
-    let maker_ta_b = Pubkey::new_unique();
-    let vault_ta_a = Pubkey::new_unique();
     let (escrow, escrow_bump) =
-        Pubkey::find_program_address(&[b"escrow", maker.as_ref()], &crate::ID);
+        Pubkey::find_program_address(&[b"escrow", MAKER.as_ref()], &crate::ID);
     let rent = quasar_svm::solana_sdk_ids::sysvar::rent::ID;
 
     let instruction = with_signers(
         RefundInstruction {
-            maker,
+            maker: MAKER,
             escrow,
-            mint_a,
-            maker_ta_a,
-            vault_ta_a,
+            mint_a: MINT_A,
+            maker_ta_a: MAKER_TA_A,
+            vault_ta_a: VAULT_TA_A,
             rent,
             token_program,
             system_program,
         }
         .into(),
-        &[3], // maker_ta_a as signer for create_account CPI
+        &[3],
     );
 
     let result = svm.process_instruction(
         &instruction,
         &[
-            signer(maker),
-            escrow_account(escrow, maker, mint_a, mint_b, maker_ta_b, 1337, escrow_bump),
-            mint(mint_a, maker),
-            empty(maker_ta_a),
-            token(vault_ta_a, mint_a, escrow, 1337),
+            signer(MAKER),
+            escrow_account(escrow, MAKER, MINT_A, MINT_B, MAKER_TA_B, 1337, escrow_bump),
+            mint(MINT_A, MAKER),
+            empty(MAKER_TA_A),
+            token(VAULT_TA_A, MINT_A, escrow, 1337),
         ],
     );
 
@@ -260,23 +252,17 @@ fn test_make_existing_token_accounts() {
 
     let token_program = quasar_svm::SPL_TOKEN_PROGRAM_ID;
     let system_program = quasar_svm::system_program::ID;
-    let maker = Pubkey::new_unique();
-    let mint_a = Pubkey::new_unique();
-    let mint_b = Pubkey::new_unique();
-    let maker_ta_a = Pubkey::new_unique();
-    let maker_ta_b = Pubkey::new_unique();
-    let vault_ta_a = Pubkey::new_unique();
-    let (escrow, _) = Pubkey::find_program_address(&[b"escrow", maker.as_ref()], &crate::ID);
+    let (escrow, _) = Pubkey::find_program_address(&[b"escrow", MAKER.as_ref()], &crate::ID);
     let rent = quasar_svm::solana_sdk_ids::sysvar::rent::ID;
 
     let instruction: Instruction = MakeInstruction {
-        maker,
+        maker: MAKER,
         escrow,
-        mint_a,
-        mint_b,
-        maker_ta_a,
-        maker_ta_b,
-        vault_ta_a,
+        mint_a: MINT_A,
+        mint_b: MINT_B,
+        maker_ta_a: MAKER_TA_A,
+        maker_ta_b: MAKER_TA_B,
+        vault_ta_a: VAULT_TA_A,
         rent,
         token_program,
         system_program,
@@ -288,13 +274,13 @@ fn test_make_existing_token_accounts() {
     let result = svm.process_instruction(
         &instruction,
         &[
-            signer(maker),
+            signer(MAKER),
             empty(escrow),
-            mint(mint_a, maker),
-            mint(mint_b, maker),
-            token(maker_ta_a, mint_a, maker, 1_000_000),
-            token(maker_ta_b, mint_b, maker, 0),
-            token(vault_ta_a, mint_a, escrow, 0),
+            mint(MINT_A, MAKER),
+            mint(MINT_B, MAKER),
+            token(MAKER_TA_A, MINT_A, MAKER, 1_000_000),
+            token(MAKER_TA_B, MINT_B, MAKER, 0),
+            token(VAULT_TA_A, MINT_A, escrow, 0),
         ],
     );
 
@@ -315,23 +301,17 @@ fn test_make_existing_maker_ta_b_wrong_mint() {
 
     let token_program = quasar_svm::SPL_TOKEN_PROGRAM_ID;
     let system_program = quasar_svm::system_program::ID;
-    let maker = Pubkey::new_unique();
-    let mint_a = Pubkey::new_unique();
-    let mint_b = Pubkey::new_unique();
-    let maker_ta_a = Pubkey::new_unique();
-    let maker_ta_b = Pubkey::new_unique();
-    let vault_ta_a = Pubkey::new_unique();
-    let (escrow, _) = Pubkey::find_program_address(&[b"escrow", maker.as_ref()], &crate::ID);
+    let (escrow, _) = Pubkey::find_program_address(&[b"escrow", MAKER.as_ref()], &crate::ID);
     let rent = quasar_svm::solana_sdk_ids::sysvar::rent::ID;
 
     let instruction: Instruction = MakeInstruction {
-        maker,
+        maker: MAKER,
         escrow,
-        mint_a,
-        mint_b,
-        maker_ta_a,
-        maker_ta_b,
-        vault_ta_a,
+        mint_a: MINT_A,
+        mint_b: MINT_B,
+        maker_ta_a: MAKER_TA_A,
+        maker_ta_b: MAKER_TA_B,
+        vault_ta_a: VAULT_TA_A,
         rent,
         token_program,
         system_program,
@@ -343,13 +323,13 @@ fn test_make_existing_maker_ta_b_wrong_mint() {
     let result = svm.process_instruction(
         &instruction,
         &[
-            signer(maker),
+            signer(MAKER),
             empty(escrow),
-            mint(mint_a, maker),
-            mint(mint_b, maker),
-            token(maker_ta_a, mint_a, maker, 1_000_000),
-            token(maker_ta_b, mint_a, maker, 0), // wrong mint
-            token(vault_ta_a, mint_a, escrow, 0),
+            mint(MINT_A, MAKER),
+            mint(MINT_B, MAKER),
+            token(MAKER_TA_A, MINT_A, MAKER, 1_000_000),
+            token(MAKER_TA_B, MINT_A, MAKER, 0), // wrong mint
+            token(VAULT_TA_A, MINT_A, escrow, 0),
         ],
     );
 
@@ -365,24 +345,17 @@ fn test_make_existing_maker_ta_b_wrong_owner() {
 
     let token_program = quasar_svm::SPL_TOKEN_PROGRAM_ID;
     let system_program = quasar_svm::system_program::ID;
-    let maker = Pubkey::new_unique();
-    let mint_a = Pubkey::new_unique();
-    let mint_b = Pubkey::new_unique();
-    let maker_ta_a = Pubkey::new_unique();
-    let maker_ta_b = Pubkey::new_unique();
-    let vault_ta_a = Pubkey::new_unique();
-    let wrong_owner = Pubkey::new_unique();
-    let (escrow, _) = Pubkey::find_program_address(&[b"escrow", maker.as_ref()], &crate::ID);
+    let (escrow, _) = Pubkey::find_program_address(&[b"escrow", MAKER.as_ref()], &crate::ID);
     let rent = quasar_svm::solana_sdk_ids::sysvar::rent::ID;
 
     let instruction: Instruction = MakeInstruction {
-        maker,
+        maker: MAKER,
         escrow,
-        mint_a,
-        mint_b,
-        maker_ta_a,
-        maker_ta_b,
-        vault_ta_a,
+        mint_a: MINT_A,
+        mint_b: MINT_B,
+        maker_ta_a: MAKER_TA_A,
+        maker_ta_b: MAKER_TA_B,
+        vault_ta_a: VAULT_TA_A,
         rent,
         token_program,
         system_program,
@@ -394,13 +367,13 @@ fn test_make_existing_maker_ta_b_wrong_owner() {
     let result = svm.process_instruction(
         &instruction,
         &[
-            signer(maker),
+            signer(MAKER),
             empty(escrow),
-            mint(mint_a, maker),
-            mint(mint_b, maker),
-            token(maker_ta_a, mint_a, maker, 1_000_000),
-            token(maker_ta_b, mint_b, wrong_owner, 0), // wrong owner
-            token(vault_ta_a, mint_a, escrow, 0),
+            mint(MINT_A, MAKER),
+            mint(MINT_B, MAKER),
+            token(MAKER_TA_A, MINT_A, MAKER, 1_000_000),
+            token(MAKER_TA_B, MINT_B, WRONG_OWNER, 0), // wrong owner
+            token(VAULT_TA_A, MINT_A, escrow, 0),
         ],
     );
 
@@ -416,28 +389,20 @@ fn test_take_existing_token_accounts() {
 
     let token_program = quasar_svm::SPL_TOKEN_PROGRAM_ID;
     let system_program = quasar_svm::system_program::ID;
-    let maker = Pubkey::new_unique();
-    let taker = Pubkey::new_unique();
-    let mint_a = Pubkey::new_unique();
-    let mint_b = Pubkey::new_unique();
-    let taker_ta_a = Pubkey::new_unique();
-    let taker_ta_b = Pubkey::new_unique();
-    let maker_ta_b = Pubkey::new_unique();
-    let vault_ta_a = Pubkey::new_unique();
     let (escrow, escrow_bump) =
-        Pubkey::find_program_address(&[b"escrow", maker.as_ref()], &crate::ID);
+        Pubkey::find_program_address(&[b"escrow", MAKER.as_ref()], &crate::ID);
     let rent = quasar_svm::solana_sdk_ids::sysvar::rent::ID;
 
     let instruction: Instruction = TakeInstruction {
-        taker,
+        taker: TAKER,
         escrow,
-        maker,
-        mint_a,
-        mint_b,
-        taker_ta_a,
-        taker_ta_b,
-        maker_ta_b,
-        vault_ta_a,
+        maker: MAKER,
+        mint_a: MINT_A,
+        mint_b: MINT_B,
+        taker_ta_a: TAKER_TA_A,
+        taker_ta_b: TAKER_TA_B,
+        maker_ta_b: MAKER_TA_B,
+        vault_ta_a: VAULT_TA_A,
         rent,
         token_program,
         system_program,
@@ -447,15 +412,15 @@ fn test_take_existing_token_accounts() {
     let result = svm.process_instruction(
         &instruction,
         &[
-            signer(taker),
-            escrow_account(escrow, maker, mint_a, mint_b, maker_ta_b, 1337, escrow_bump),
-            signer(maker),
-            mint(mint_a, maker),
-            mint(mint_b, maker),
-            token(taker_ta_a, mint_a, taker, 0),
-            token(taker_ta_b, mint_b, taker, 10_000),
-            token(maker_ta_b, mint_b, maker, 500),
-            token(vault_ta_a, mint_a, escrow, 1337),
+            signer(TAKER),
+            escrow_account(escrow, MAKER, MINT_A, MINT_B, MAKER_TA_B, 1337, escrow_bump),
+            signer(MAKER),
+            mint(MINT_A, MAKER),
+            mint(MINT_B, MAKER),
+            token(TAKER_TA_A, MINT_A, TAKER, 0),
+            token(TAKER_TA_B, MINT_B, TAKER, 10_000),
+            token(MAKER_TA_B, MINT_B, MAKER, 500),
+            token(VAULT_TA_A, MINT_A, escrow, 1337),
         ],
     );
 
@@ -476,22 +441,16 @@ fn test_refund_existing_maker_ta_a() {
 
     let token_program = quasar_svm::SPL_TOKEN_PROGRAM_ID;
     let system_program = quasar_svm::system_program::ID;
-    let maker = Pubkey::new_unique();
-    let mint_a = Pubkey::new_unique();
-    let mint_b = Pubkey::new_unique();
-    let maker_ta_a = Pubkey::new_unique();
-    let maker_ta_b = Pubkey::new_unique();
-    let vault_ta_a = Pubkey::new_unique();
     let (escrow, escrow_bump) =
-        Pubkey::find_program_address(&[b"escrow", maker.as_ref()], &crate::ID);
+        Pubkey::find_program_address(&[b"escrow", MAKER.as_ref()], &crate::ID);
     let rent = quasar_svm::solana_sdk_ids::sysvar::rent::ID;
 
     let instruction: Instruction = RefundInstruction {
-        maker,
+        maker: MAKER,
         escrow,
-        mint_a,
-        maker_ta_a,
-        vault_ta_a,
+        mint_a: MINT_A,
+        maker_ta_a: MAKER_TA_A,
+        vault_ta_a: VAULT_TA_A,
         rent,
         token_program,
         system_program,
@@ -501,11 +460,11 @@ fn test_refund_existing_maker_ta_a() {
     let result = svm.process_instruction(
         &instruction,
         &[
-            signer(maker),
-            escrow_account(escrow, maker, mint_a, mint_b, maker_ta_b, 1337, escrow_bump),
-            mint(mint_a, maker),
-            token(maker_ta_a, mint_a, maker, 5_000),
-            token(vault_ta_a, mint_a, escrow, 1337),
+            signer(MAKER),
+            escrow_account(escrow, MAKER, MINT_A, MINT_B, MAKER_TA_B, 1337, escrow_bump),
+            mint(MINT_A, MAKER),
+            token(MAKER_TA_A, MINT_A, MAKER, 5_000),
+            token(VAULT_TA_A, MINT_A, escrow, 1337),
         ],
     );
 

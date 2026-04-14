@@ -221,26 +221,6 @@ impl FieldFlags {
     }
 }
 
-/// DRY codegen helper: emit a boolean-condition guard with debug logging.
-///
-/// Generates `if unlikely(condition) { [debug: log msg]; return Err(error); }`.
-/// Use for checks where the condition and error are explicit (address
-/// mismatches, interface checks, etc.) rather than wrapping a Result-returning
-/// expression.
-pub(super) fn debug_guard(
-    condition: proc_macro2::TokenStream,
-    debug_msg: proc_macro2::TokenStream,
-    error: proc_macro2::TokenStream,
-) -> proc_macro2::TokenStream {
-    quote::quote! {
-        if quasar_lang::utils::hint::unlikely(#condition) {
-            #[cfg(feature = "debug")]
-            quasar_lang::prelude::log(&#debug_msg);
-            return Err(#error);
-        }
-    }
-}
-
 /// DRY codegen helper: emit a check with debug logging on failure.
 ///
 /// In `#[cfg(feature = "debug")]`: logs `msg` with field name, returns Err.
