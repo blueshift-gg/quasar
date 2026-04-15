@@ -11,17 +11,27 @@ pub(super) fn print_banner() {
         return;
     }
 
-    use std::{thread, time::Duration};
+    // Terminal animation — if writes fail the banner is non-essential, so we
+    // just skip it rather than propagating the error to the caller.
+    if animate_banner(&stdout).is_err() {
+        // Ensure cursor is visible even if the animation failed partway through
+        let _ = write!(stdout.lock(), "\x1b[?25h");
+        let _ = stdout.lock().flush();
+    }
+}
+
+fn animate_banner(stdout: &std::io::Stdout) -> std::io::Result<()> {
+    use std::{io::Write, thread, time::Duration};
 
     // Restore cursor if interrupted during animation
     ctrlc::set_handler(move || {
         print!("\x1b[?25h");
         std::process::exit(130);
     })
-    .ok();
+    .ok(); // ctrlc handler registration is best-effort (may already be set)
 
     let mut out = stdout.lock();
-    write!(out, "\x1b[?25l").ok();
+    write!(out, "\x1b[?25l")?;
 
     let w: usize = 70;
     let h: usize = 11; // 1 blank + 7 figlet + 1 blank + 1 tagline + 1 byline
@@ -52,14 +62,14 @@ pub(super) fn print_banner() {
     let by_off = w.saturating_sub(by_chars.len()) / 2;
 
     // Reserve space
-    writeln!(out).ok();
+    writeln!(out)?;
     for _ in 0..h {
-        writeln!(out).ok();
+        writeln!(out)?;
     }
-    out.flush().ok();
+    out.flush()?;
 
     for frame in 0..n_frames {
-        write!(out, "\x1b[{h}A").ok();
+        write!(out, "\x1b[{h}A")?;
         let is_final = frame == n_frames - 1;
 
         // Leading edge sweeps left → right, revealing text in its wake
@@ -68,7 +78,7 @@ pub(super) fn print_banner() {
 
         #[allow(clippy::needless_range_loop)]
         for li in 0..h {
-            write!(out, "\x1b[2K  ").ok();
+            write!(out, "\x1b[2K  ")?;
 
             if is_final {
                 // ── Final clean frame ──
@@ -76,27 +86,27 @@ pub(super) fn print_banner() {
                     1..=7 => {
                         let row = &fig[li - 1];
                         for _ in 0..fig_off {
-                            write!(out, " ").ok();
+                            write!(out, " ")?;
                         }
                         for &ch in row.iter() {
                             if ch != ' ' {
-                                write!(out, "\x1b[36m{ch}\x1b[0m").ok();
+                                write!(out, "\x1b[36m{ch}\x1b[0m")?;
                             } else {
-                                write!(out, " ").ok();
+                                write!(out, " ")?;
                             }
                         }
                     }
                     9 => {
                         for _ in 0..tag_off {
-                            write!(out, " ").ok();
+                            write!(out, " ")?;
                         }
-                        write!(out, "\x1b[1m{tagline}\x1b[0m").ok();
+                        write!(out, "\x1b[1m{tagline}\x1b[0m")?;
                     }
                     10 => {
                         for _ in 0..by_off {
-                            write!(out, " ").ok();
+                            write!(out, " ")?;
                         }
-                        write!(out, "\x1b[90mby \x1b[36mblueshift.gg\x1b[0m").ok();
+                        write!(out, "\x1b[90mby \x1b[36mblueshift.gg\x1b[0m")?;
                     }
                     _ => {}
                 }
@@ -119,7 +129,7 @@ pub(super) fn print_banner() {
 
                     if dist < -nebula_w {
                         // Behind the nebula: text fully revealed
-                        write_text_char(&mut out, text_ch, li, ci, by_off);
+                        write_text_char(&mut out, text_ch, li, ci, by_off)?;
                     } else if dist < nebula_w {
                         // Inside the nebula band
                         let blend = (dist + nebula_w) / (nebula_w * 2.0);
@@ -128,28 +138,29 @@ pub(super) fn print_banner() {
 
                         if blend < 0.3 && text_ch != ' ' {
                             // Trailing edge: text bleeds through
-                            write_text_char(&mut out, text_ch, li, ci, by_off);
+                            write_text_char(&mut out, text_ch, li, ci, by_off)?;
                         } else {
-                            write_nebula_char(&mut out, d);
+                            write_nebula_char(&mut out, d)?;
                         }
                     } else {
                         // Ahead of nebula: dark
-                        write!(out, " ").ok();
+                        write!(out, " ")?;
                     }
                 }
             }
-            writeln!(out).ok();
+            writeln!(out)?;
         }
-        out.flush().ok();
+        out.flush()?;
 
         if !is_final {
             thread::sleep(Duration::from_millis(55));
         }
     }
 
-    write!(out, "\x1b[?25h").ok();
-    writeln!(out).ok();
-    out.flush().ok();
+    write!(out, "\x1b[?25h")?;
+    writeln!(out)?;
+    out.flush()?;
+    Ok(())
 }
 
 fn write_text_char(
@@ -158,45 +169,47 @@ fn write_text_char(
     line: usize,
     col: usize,
     by_off: usize,
-) {
+) -> std::io::Result<()> {
     if ch == ' ' {
-        write!(out, " ").ok();
+        write!(out, " ")?;
     } else {
         match line {
             1..=7 => {
-                write!(out, "\x1b[36m{ch}\x1b[0m").ok();
+                write!(out, "\x1b[36m{ch}\x1b[0m")?;
             }
             9 => {
-                write!(out, "\x1b[1m{ch}\x1b[0m").ok();
+                write!(out, "\x1b[1m{ch}\x1b[0m")?;
             }
             10 => {
                 if col - by_off < 3 {
-                    write!(out, "\x1b[90m{ch}\x1b[0m").ok();
+                    write!(out, "\x1b[90m{ch}\x1b[0m")?;
                 } else {
-                    write!(out, "\x1b[36m{ch}\x1b[0m").ok();
+                    write!(out, "\x1b[36m{ch}\x1b[0m")?;
                 }
             }
             _ => {
-                write!(out, " ").ok();
+                write!(out, " ")?;
             }
         };
     }
+    Ok(())
 }
 
-fn write_nebula_char(out: &mut impl std::io::Write, d: f32) {
+fn write_nebula_char(out: &mut impl std::io::Write, d: f32) -> std::io::Result<()> {
     if d < 0.10 {
-        write!(out, " ").ok();
+        write!(out, " ")?;
     } else if d < 0.25 {
-        write!(out, "\x1b[38;2;15;25;85m░\x1b[0m").ok();
+        write!(out, "\x1b[38;2;15;25;85m░\x1b[0m")?;
     } else if d < 0.42 {
-        write!(out, "\x1b[38;2;30;55;145m░\x1b[0m").ok();
+        write!(out, "\x1b[38;2;30;55;145m░\x1b[0m")?;
     } else if d < 0.60 {
-        write!(out, "\x1b[38;2;50;95;200m▒\x1b[0m").ok();
+        write!(out, "\x1b[38;2;50;95;200m▒\x1b[0m")?;
     } else if d < 0.78 {
-        write!(out, "\x1b[38;2;75;140;235m▓\x1b[0m").ok();
+        write!(out, "\x1b[38;2;75;140;235m▓\x1b[0m")?;
     } else {
-        write!(out, "\x1b[38;2;100;170;255m█\x1b[0m").ok();
+        write!(out, "\x1b[38;2;100;170;255m█\x1b[0m")?;
     }
+    Ok(())
 }
 
 /// Aurora density — sine waves flowing rightward, tuned for sparse output.
