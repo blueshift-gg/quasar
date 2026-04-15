@@ -346,6 +346,7 @@ fn python_type(ty: &IdlType) -> String {
             _ if p.starts_with('[') => "bytes".to_string(),
             _ => "bytes".to_string(),
         },
+        IdlType::Option { option } => format!("Optional[{}]", python_type(option)),
         IdlType::DynString { .. } => "str".to_string(),
         IdlType::DynVec { .. } => "list".to_string(),
         IdlType::Defined { defined } => defined.clone(),
@@ -409,6 +410,14 @@ fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef]) -> Strin
                 n = name,
                 fmt = fmt,
                 ser = item_ser,
+            )
+        }
+        IdlType::Option { option } => {
+            let inner = serialize_field_expr(&format!("{}_val", name), option, types);
+            format!(
+                "    if input.{n} is None:\n        data += b'\\x00'\n    else:\n        data += b'\\x01'\n        {n}_val = input.{n}\n{inner}",
+                n = name,
+                inner = inner.replace("    data", "        data"),
             )
         }
         IdlType::Defined { defined } => {
@@ -561,6 +570,15 @@ fn decode_field_expr(name: &str, ty: &IdlType, indent: usize, types: &[IdlTypeDe
                     n = name,
                 )
             }
+        }
+        IdlType::Option { option } => {
+            let inner = decode_field_expr(&format!("{}_inner", name), option, indent + 4, types);
+            format!(
+                "{pad}if data[offset] == 0:\n{pad}    {n} = None\n{pad}    offset += 1\n{pad}else:\n{pad}    offset += 1\n{inner}{pad}    {n} = {n}_inner\n",
+                pad = pad,
+                n = name,
+                inner = inner,
+            )
         }
     }
 }

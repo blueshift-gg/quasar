@@ -321,6 +321,7 @@ fn go_type(ty: &IdlType) -> String {
             }
             _ => "[]byte".to_string(),
         },
+        IdlType::Option { option } => format!("*{}", go_type(option)),
         IdlType::DynString { .. } => "string".to_string(),
         IdlType::DynVec { .. } => "[]byte".to_string(),
         IdlType::Defined { defined } => defined.clone(),
@@ -434,6 +435,14 @@ fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef]) -> Strin
                 n = name,
             ),
         },
+        IdlType::Option { option } => {
+            let inner = serialize_field_expr(&format!("(*input.{})", name), option, types);
+            format!(
+                "\tif input.{n} == nil {{\n\t\tdata = append(data, 0)\n\t}} else {{\n\t\tdata = append(data, 1)\n{inner}\t}}\n",
+                n = name,
+                inner = inner,
+            )
+        }
         IdlType::Defined { defined } => {
             if let Some(td) = types.iter().find(|t| t.name == *defined) {
                 let mut result = String::new();
@@ -652,6 +661,16 @@ fn decode_field_expr(name: &str, ty: &IdlType, depth: usize, types: &[IdlTypeDef
                 n = name,
             ),
         },
+        IdlType::Option { option } => {
+            let inner = decode_field_expr(&format!("{}_val", name), option, depth, types);
+            format!(
+                "{t}var {n} *{ty}\n{t}if data[offset] != 0 {{\n{t}\toffset += 1\n{inner}{t}\t{n} = &{n}_val\n{t}}} else {{\n{t}\toffset += 1\n{t}}}\n",
+                t = t,
+                n = name,
+                ty = go_type(option),
+                inner = inner,
+            )
+        }
     }
 }
 

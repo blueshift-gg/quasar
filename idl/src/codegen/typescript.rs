@@ -819,6 +819,7 @@ fn ts_type(ty: &IdlType) -> String {
             other if other.starts_with('[') => "Uint8Array".to_string(),
             other => other.to_string(),
         },
+        IdlType::Option { option } => format!("{} | null", ts_type(option)),
         IdlType::Defined { defined } => defined.clone(),
         IdlType::DynString { .. } => "string".to_string(),
         IdlType::DynVec { vec } => format!("Array<{}>", ts_type(&vec.items)),
@@ -849,6 +850,7 @@ fn ts_codec(ty: &IdlType, target: TsTarget) -> String {
             }
             other => format!("/* unknown: {} */", other),
         },
+        IdlType::Option { option } => format!("getOptionCodec({})", ts_codec(option, target)),
         IdlType::Defined { defined } => format!("{}Codec", defined),
         IdlType::DynString { string } => {
             format!(
@@ -893,6 +895,7 @@ fn collect_used_codecs(idl: &Idl) -> HashSet<String> {
         IdlType::Primitive(p) => {
             used.insert(p.clone());
         }
+        IdlType::Option { .. } => {}
         IdlType::Defined { .. } => {}
         IdlType::DynString { string } => {
             used.insert("dynString".to_string());

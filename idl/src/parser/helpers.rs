@@ -72,7 +72,14 @@ pub fn map_type_from_syn(ty: &syn::Type) -> IdlType {
                 let ident = seg.ident.to_string();
                 let mut iter = args.args.iter();
 
-                if ident == "String" || ident == "PodString" {
+                if ident == "Option" {
+                    let first = iter.next();
+                    if let Some(syn::GenericArgument::Type(inner_ty)) = first {
+                        return IdlType::Option {
+                            option: Box::new(map_type_from_syn(inner_ty)),
+                        };
+                    }
+                } else if ident == "String" || ident == "PodString" {
                     // String<N[, PFX]> / String<'a, N[, PFX]>
                     // Skip an optional leading lifetime parameter.
                     let first = iter.next();
