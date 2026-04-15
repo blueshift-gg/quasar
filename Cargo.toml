@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["lang", "derive", "pod", "spl", "idl", "profile", "examples/*", "examples/*/client", "tests/programs/*", "tests/suite", "cli"]
-exclude = ["examples/anchor-vault"]
+exclude = ["examples/anchor-vault", "examples/anchor-v2-vault"]
 
 [workspace.package]
 version = "0.0.0"
