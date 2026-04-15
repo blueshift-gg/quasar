@@ -6,9 +6,8 @@ mod lockfile;
 mod watch;
 
 pub(crate) use watch::watch_loop;
-/// platform-tools v1.52 ships Cargo 1.89 which supports Cargo.lock v4.
-/// v1.51 ships Cargo 1.84 which does not, causing "duplicate lang item" errors
-/// when its stale host-target artifacts conflict with the system toolchain.
+/// platform-tools v1.52 ships Cargo 1.89 which supports Cargo.lock v4
+/// and handles edition-2024 crate manifests in the Solana dep tree.
 const PLATFORM_TOOLS_VERSION: &str = "v1.52";
 
 use {
@@ -50,6 +49,10 @@ fn run_once(debug: bool, features: Option<&str>, lint_flag: bool) -> CliResult {
     let sp = style::spinner("Building...");
 
     if config.is_solana_toolchain() {
+        toolchain::check_build_sbf_supports(PLATFORM_TOOLS_VERSION).map_err(|e| {
+            sp.finish_and_clear();
+            CliError::message(e)
+        })?;
         ensure_lockfile(&sp)?;
     }
 
@@ -175,6 +178,10 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
     let sp = style::spinner("Profile build...");
 
     if config.is_solana_toolchain() {
+        toolchain::check_build_sbf_supports(PLATFORM_TOOLS_VERSION).map_err(|e| {
+            sp.finish_and_clear();
+            CliError::message(e)
+        })?;
         ensure_lockfile(&sp)?;
     }
 
@@ -183,8 +190,12 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
 
     let output = if config.is_solana_toolchain() {
         let mut cmd = Command::new("cargo");
-        cmd.args(["build-sbf", "--tools-version", PLATFORM_TOOLS_VERSION]);
-        cmd.arg("--debug");
+        cmd.args([
+            "build-sbf",
+            "--tools-version",
+            PLATFORM_TOOLS_VERSION,
+            "--debug",
+        ]);
         if scoped {
             cmd.args(["--manifest-path", &manifest.to_string_lossy()]);
         }
