@@ -178,6 +178,8 @@ impl quasar_lang::traits::Owners for VaultInterface {
 }
 
 impl quasar_lang::traits::AccountCheck for VaultInterface {
+    type Params = ();
+
     fn check(view: &AccountView) -> Result<(), ProgramError> {
         let data = unsafe { view.borrow_unchecked() };
         if data.is_empty() {
@@ -201,8 +203,4 @@ impl quasar_lang::traits::AccountCheck for VaultInterface {
             _ => Err(ProgramError::InvalidAccountData),
         }
     }
-}
-
-impl AccountInner for VaultInterface {
-    type Params = ();
 }

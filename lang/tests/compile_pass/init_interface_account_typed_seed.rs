@@ -27,13 +27,11 @@ impl Owners for ExternalConfig {
 }
 
 impl AccountCheck for ExternalConfig {
+    type Params = ();
+
     fn check(_view: &AccountView) -> Result<(), ProgramError> {
         Ok(())
     }
-}
-
-impl AccountInner for ExternalConfig {
-    type Params = ();
 }
 
 impl ZeroCopyDeref for ExternalConfig {

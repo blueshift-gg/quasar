@@ -202,11 +202,10 @@ impl<T: CheckOwner + AccountCheck> Account<T> {
     }
 }
 
-impl<
-        T: AsAccountView + CheckOwner + AccountCheck + StaticView + crate::account_inner::AccountInner,
-    > crate::account_load::AccountLoad for Account<T>
+impl<T: AsAccountView + CheckOwner + AccountCheck + StaticView> crate::account_load::AccountLoad
+    for Account<T>
 {
-    type Params = <T as crate::account_inner::AccountInner>::Params;
+    type Params = <T as AccountCheck>::Params;
 
     #[inline(always)]
     fn check(
@@ -218,7 +217,7 @@ impl<
 
     #[inline(always)]
     fn validate(&self, params: &Self::Params) -> Result<(), solana_program_error::ProgramError> {
-        T::validate(self.inner.to_account_view(), params)
+        <T as AccountCheck>::validate(self.inner.to_account_view(), params)
     }
 }
 

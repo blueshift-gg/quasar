@@ -520,6 +520,8 @@ pub(super) fn generate_account(
     let account_check_impl = if has_dynamic {
         quote! {
             impl AccountCheck for #name {
+                type Params = ();
+
                 #[inline(always)]
                 fn check(view: &AccountView) -> Result<(), ProgramError> {
                     let __data = unsafe { view.borrow_unchecked() };
@@ -543,6 +545,8 @@ pub(super) fn generate_account(
     } else {
         quote! {
             impl AccountCheck for #name {
+                type Params = ();
+
                 #[inline(always)]
                 fn check(view: &AccountView) -> Result<(), ProgramError> {
                     let __data = unsafe { view.borrow_unchecked() };
@@ -830,10 +834,6 @@ pub(super) fn generate_account(
 
         impl Owner for #name {
             const OWNER: Address = crate::ID;
-        }
-
-        impl AccountInner for #name {
-            type Params = ();
         }
 
         #space_impl

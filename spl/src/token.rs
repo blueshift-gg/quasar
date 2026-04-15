@@ -119,10 +119,10 @@ pub(crate) fn validate_mint_inner(
 }
 
 // ---------------------------------------------------------------------------
-// AccountInner impls — Token / Mint
+// AccountCheck validation params — Token / Mint
 // ---------------------------------------------------------------------------
 
-impl AccountInner for Token {
+impl AccountCheck for Token {
     type Params = TokenParams;
 
     #[inline(always)]
@@ -131,7 +131,7 @@ impl AccountInner for Token {
     }
 }
 
-impl AccountInner for Mint {
+impl AccountCheck for Mint {
     type Params = MintParams;
 
     #[inline(always)]

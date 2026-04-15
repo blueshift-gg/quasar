@@ -244,8 +244,6 @@ pub mod sysvars;
 pub mod account_exit;
 /// Runtime init functions for program-owned accounts.
 pub mod account_init;
-/// Inner-type trait for `Account<T>` / `InterfaceAccount<T>` validation params.
-pub mod account_inner;
 /// Trait-based account loading and validation (`AccountLoad`).
 pub mod account_load;
 /// Zero-copy account wrapper types for instruction handlers.

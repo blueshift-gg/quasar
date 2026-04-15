@@ -77,6 +77,8 @@ macro_rules! impl_program_account {
         }
 
         impl AccountCheck for $ty {
+            type Params = ();
+
             #[inline(always)]
             fn check(view: &AccountView) -> Result<(), ProgramError> {
                 if quasar_lang::utils::hint::unlikely(view.data_len() < <$target>::LEN) {

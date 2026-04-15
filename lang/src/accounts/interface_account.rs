@@ -61,10 +61,8 @@ impl<T: Owners + AccountCheck> InterfaceAccount<T> {
     }
 }
 
-impl<T: Owners + AccountCheck + crate::account_inner::AccountInner> crate::account_load::AccountLoad
-    for InterfaceAccount<T>
-{
-    type Params = <T as crate::account_inner::AccountInner>::Params;
+impl<T: Owners + AccountCheck> crate::account_load::AccountLoad for InterfaceAccount<T> {
+    type Params = <T as AccountCheck>::Params;
 
     #[inline(always)]
     fn check(view: &AccountView, _field_name: &str) -> Result<(), ProgramError> {
@@ -74,7 +72,7 @@ impl<T: Owners + AccountCheck + crate::account_inner::AccountInner> crate::accou
 
     #[inline(always)]
     fn validate(&self, params: &Self::Params) -> Result<(), ProgramError> {
-        T::validate(&self.view, params)
+        <T as AccountCheck>::validate(&self.view, params)
     }
 }
 

@@ -32,10 +32,10 @@ impl_program_account!(Mint2022, TOKEN_2022_ID, MintAccountState);
 impl TokenCpi for Program<Token2022> {}
 
 // ---------------------------------------------------------------------------
-// AccountInner impls — Token2022 / Mint2022
+// AccountCheck validation params — Token2022 / Mint2022
 // ---------------------------------------------------------------------------
 
-impl AccountInner for Token2022 {
+impl AccountCheck for Token2022 {
     type Params = TokenParams;
 
     #[inline(always)]
@@ -44,7 +44,7 @@ impl AccountInner for Token2022 {
     }
 }
 
-impl AccountInner for Mint2022 {
+impl AccountCheck for Mint2022 {
     type Params = MintParams;
 
     #[inline(always)]
