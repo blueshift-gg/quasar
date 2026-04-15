@@ -1,4 +1,5 @@
 use {
+    super::format_disc_hex,
     crate::types::{Idl, IdlType, IdlTypeDef},
     std::fmt::Write,
 };
@@ -59,7 +60,7 @@ pub fn generate_go_client(idl: &Idl) -> String {
             "var {}Discriminator = [{}]byte{{{}}}",
             name,
             ix.discriminator.len(),
-            format_disc(&ix.discriminator),
+            format_disc_hex(&ix.discriminator),
         )
         .unwrap();
     }
@@ -74,7 +75,7 @@ pub fn generate_go_client(idl: &Idl) -> String {
             "var {}AccountDiscriminator = [{}]byte{{{}}}",
             name,
             acc.discriminator.len(),
-            format_disc(&acc.discriminator),
+            format_disc_hex(&acc.discriminator),
         )
         .unwrap();
     }
@@ -89,7 +90,7 @@ pub fn generate_go_client(idl: &Idl) -> String {
             "var {}EventDiscriminator = [{}]byte{{{}}}",
             name,
             ev.discriminator.len(),
-            format_disc(&ev.discriminator),
+            format_disc_hex(&ev.discriminator),
         )
         .unwrap();
     }
@@ -179,7 +180,7 @@ pub fn generate_go_client(idl: &Idl) -> String {
                 for seed in &pda.seeds {
                     match seed {
                         crate::types::IdlSeed::Const { value } => {
-                            seeds.push(format!("[]byte{{{}}}", format_disc(value)));
+                            seeds.push(format!("[]byte{{{}}}", format_disc_hex(value)));
                         }
                         crate::types::IdlSeed::Account { path } => {
                             seeds.push(format!("input.{}[:]", to_pascal(path)));
@@ -316,7 +317,7 @@ fn go_type(ty: &IdlType) -> String {
             "publicKey" => "solana.PublicKey".to_string(),
             "string" => "string".to_string(),
             other if other.starts_with('[') => {
-                let size = parse_fixed_array_size(other).unwrap_or(0);
+                let size = parse_fixed_array_size(other).expect("invalid fixed array size in IDL");
                 format!("[{}]byte", size)
             }
             _ => "[]byte".to_string(),
@@ -549,7 +550,7 @@ fn decode_field_expr(name: &str, ty: &IdlType, depth: usize, types: &[IdlTypeDef
                 n = name,
             ),
             _ if p.starts_with('[') => {
-                let size = parse_fixed_array_size(p).unwrap_or(0);
+                let size = parse_fixed_array_size(p).expect("invalid fixed array size in IDL");
                 format!(
                     "{t}var {n} [{sz}]byte\n{t}copy({n}[:], data[offset:offset+{sz}])\n{t}offset \
                      += {sz}\n",
@@ -664,13 +665,6 @@ fn parse_fixed_array_size(p: &str) -> Option<usize> {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-fn format_disc(disc: &[u8]) -> String {
-    disc.iter()
-        .map(|b| format!("0x{:02x}", b))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
 
 /// camelCase or snake_case → PascalCase (exported in Go)
 fn to_pascal(s: &str) -> String {

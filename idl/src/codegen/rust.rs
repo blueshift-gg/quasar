@@ -1,4 +1,5 @@
 use {
+    super::format_disc_decimal,
     crate::types::{Idl, IdlAccountItem, IdlField, IdlSeed, IdlType},
     std::{
         collections::{HashMap, HashSet},
@@ -287,7 +288,7 @@ fn emit_instructions(
 
     for ix in &idl.instructions {
         let pascal = camel_to_pascal(&ix.name);
-        let disc_str = format_disc_list(&ix.discriminator);
+        let disc_str = format_disc_decimal(&ix.discriminator);
 
         if disc_len == 1 {
             write!(mod_rs, "        {} => ", disc_str).expect("write to String");
@@ -436,7 +437,7 @@ fn emit_single_instruction(
     }
 
     // Instruction data
-    let disc_str = format_disc_list(&ix.discriminator);
+    let disc_str = format_disc_decimal(&ix.discriminator);
 
     if ix.args.is_empty() {
         writeln!(out, "        let data = vec![{}];", disc_str).expect("write to String");
@@ -531,7 +532,7 @@ fn emit_discriminated_module<T: DiscriminatedItem>(
     for item in &without_fields {
         let base = disc_base_name(item.name(), kind);
         let const_name = pascal_to_screaming_snake(base);
-        let disc_str = format_disc_list(item.discriminator());
+        let disc_str = format_disc_decimal(item.discriminator());
         writeln!(
             mod_rs,
             "pub const {}_{}_DISCRIMINATOR: &[u8] = &[{}];",
@@ -641,7 +642,7 @@ fn emit_single_state_or_event(
     let base = disc_base_name(name, kind);
     let const_name = pascal_to_screaming_snake(base);
     let kind_upper = kind.to_ascii_uppercase();
-    let disc_str = format_disc_list(discriminator);
+    let disc_str = format_disc_decimal(discriminator);
     writeln!(
         out,
         "pub const {}_{}_DISCRIMINATOR: &[u8] = &[{}];",
@@ -1011,7 +1012,7 @@ fn emit_manual_impls(
             discriminator.len()
         )
         .expect("write to String");
-        let disc_str = format_disc_list(discriminator);
+        let disc_str = format_disc_decimal(discriminator);
         writeln!(out, "        if disc != [{disc_str}] {{").expect("write to String");
     }
     let disc_kind = if kind == "account" {
@@ -1089,17 +1090,6 @@ fn collect_wrapper_needs(ty: &IdlType, needs_dyn_bytes: &mut bool, needs_dyn_vec
         }
         _ => {}
     }
-}
-
-fn format_disc_list(disc: &[u8]) -> String {
-    let mut s = String::with_capacity(disc.len() * 4);
-    for (i, b) in disc.iter().enumerate() {
-        if i > 0 {
-            s.push_str(", ");
-        }
-        write!(s, "{}", b).expect("write to String");
-    }
-    s
 }
 
 fn pascal_to_screaming_snake(s: &str) -> String {

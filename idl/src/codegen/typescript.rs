@@ -1,4 +1,5 @@
 use {
+    super::{format_disc_array_decimal, format_disc_decimal},
     crate::types::{Idl, IdlSeed, IdlType},
     std::{collections::HashSet, fmt::Write},
 };
@@ -167,7 +168,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     // Account discriminators
     for account in &idl.accounts {
         let const_name = pascal_to_screaming_snake(&account.name);
-        let disc_str = format_disc_array(&account.discriminator);
+        let disc_str = format_disc_array_decimal(&account.discriminator);
         writeln!(
             out,
             "export const {}_DISCRIMINATOR = new Uint8Array({});",
@@ -179,7 +180,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     // Event discriminators
     for event in &idl.events {
         let const_name = pascal_to_screaming_snake(&event.name);
-        let disc_str = format_disc_array(&event.discriminator);
+        let disc_str = format_disc_array_decimal(&event.discriminator);
         writeln!(
             out,
             "export const {}_DISCRIMINATOR = new Uint8Array({});",
@@ -192,7 +193,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     for ix in &idl.instructions {
         let pascal = snake_to_pascal(&ix.name);
         let const_name = pascal_to_screaming_snake(&pascal);
-        let disc_str = format_disc_array(&ix.discriminator);
+        let disc_str = format_disc_array_decimal(&ix.discriminator);
         writeln!(
             out,
             "export const {}_INSTRUCTION_DISCRIMINATOR = new Uint8Array({});",
@@ -588,7 +589,7 @@ fn generate_instruction_builders_web3js(out: &mut String, idl: &Idl) {
         }
 
         // Encode instruction data
-        let disc_str = format_disc_list(&ix.discriminator);
+        let disc_str = format_disc_decimal(&ix.discriminator);
         if ix.args.is_empty() {
             writeln!(out, "    const data = Buffer.from([{}]);", disc_str)
                 .expect("write to String");
@@ -744,7 +745,7 @@ fn generate_instruction_builders_kit(out: &mut String, idl: &Idl) {
         }
 
         // Encode instruction data
-        let disc_str = format_disc_list(&ix.discriminator);
+        let disc_str = format_disc_decimal(&ix.discriminator);
         if ix.args.is_empty() {
             writeln!(out, "    const data = Uint8Array.from([{}]);", disc_str)
                 .expect("write to String");
@@ -844,7 +845,7 @@ fn ts_codec(ty: &IdlType, target: TsTarget) -> String {
                 TsTarget::Kit => "getAddressCodec()".to_string(),
             },
             other if other.starts_with('[') => {
-                let size = parse_fixed_array_size(other).unwrap_or(0);
+                let size = parse_fixed_array_size(other).expect("invalid fixed array size in IDL");
                 format!("fixCodecSize(getBytesCodec(), {})", size)
             }
             other => format!("/* unknown: {} */", other),
@@ -953,31 +954,6 @@ fn pascal_to_screaming_snake(s: &str) -> String {
         result.push(c.to_ascii_uppercase());
     }
     result
-}
-
-fn format_disc_array(disc: &[u8]) -> String {
-    let mut s = String::with_capacity(disc.len() * 4 + 2);
-    s.push('[');
-    for (i, b) in disc.iter().enumerate() {
-        if i > 0 {
-            s.push_str(", ");
-        }
-        write!(s, "{}", b).expect("write to String");
-    }
-    s.push(']');
-    s
-}
-
-/// Format discriminator bytes as a comma-separated list (no brackets).
-fn format_disc_list(disc: &[u8]) -> String {
-    let mut s = String::with_capacity(disc.len() * 4);
-    for (i, b) in disc.iter().enumerate() {
-        if i > 0 {
-            s.push_str(", ");
-        }
-        write!(s, "{}", b).expect("write to String");
-    }
-    s
 }
 
 /// Write a `new Uint8Array([...])` seed line directly to the output.

@@ -1,4 +1,5 @@
 use {
+    super::format_disc_decimal,
     crate::types::{Idl, IdlType, IdlTypeDef},
     std::fmt::Write,
 };
@@ -57,7 +58,7 @@ pub fn generate_python_client(idl: &Idl) -> String {
             out,
             "{}_DISCRIMINATOR = bytes([{}])",
             const_name,
-            format_disc(&ix.discriminator)
+            format_disc_decimal(&ix.discriminator)
         )
         .unwrap();
     }
@@ -72,7 +73,7 @@ pub fn generate_python_client(idl: &Idl) -> String {
             out,
             "{}_ACCOUNT_DISCRIMINATOR = bytes([{}])",
             const_name,
-            format_disc(&acc.discriminator)
+            format_disc_decimal(&acc.discriminator)
         )
         .unwrap();
     }
@@ -87,7 +88,7 @@ pub fn generate_python_client(idl: &Idl) -> String {
             out,
             "{}_EVENT_DISCRIMINATOR = bytes([{}])",
             const_name,
-            format_disc(&ev.discriminator)
+            format_disc_decimal(&ev.discriminator)
         )
         .unwrap();
     }
@@ -203,7 +204,7 @@ pub fn generate_python_client(idl: &Idl) -> String {
                 for seed in &pda.seeds {
                     match seed {
                         crate::types::IdlSeed::Const { value } => {
-                            seeds.push(format!("bytes([{}])", format_disc(value)));
+                            seeds.push(format!("bytes([{}])", format_disc_decimal(value)));
                         }
                         crate::types::IdlSeed::Account { path } => {
                             seeds.push(format!("bytes(input.{})", to_snake(path)));
@@ -466,7 +467,7 @@ fn decode_field_expr(name: &str, ty: &IdlType, indent: usize, types: &[IdlTypeDe
                 n = name,
             ),
             other if other.starts_with('[') => {
-                let size = parse_fixed_array_size(other).unwrap_or(0);
+                let size = parse_fixed_array_size(other).expect("invalid fixed array size in IDL");
                 format!(
                     "{pad}{n} = data[offset:offset + {sz}]\n{pad}offset += {sz}\n",
                     pad = pad,
@@ -607,13 +608,6 @@ fn primitive_size(p: &str) -> usize {
         "publicKey" => 32,
         _ => 0,
     }
-}
-
-fn format_disc(disc: &[u8]) -> String {
-    disc.iter()
-        .map(|b| b.to_string())
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 fn py_bool(b: bool) -> &'static str {
