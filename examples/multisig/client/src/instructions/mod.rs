@@ -1,4 +1,4 @@
-use quasar_lang::client::DynBytes;
+use quasar_lang::client::DynString;
 pub mod create;
 pub mod deposit;
 pub mod execute_transfer;
@@ -9,7 +9,7 @@ pub use {create::*, deposit::*, execute_transfer::*, set_label::*};
 pub enum ProgramInstruction {
     Create { threshold: u8 },
     Deposit { amount: u64 },
-    SetLabel { label: DynBytes<u8> },
+    SetLabel { label: DynString<u8> },
     ExecuteTransfer { amount: u64 },
 }
 
@@ -28,7 +28,7 @@ pub fn decode_instruction(data: &[u8]) -> Option<ProgramInstruction> {
         }
         2 => {
             let payload = &data[1..];
-            let label: DynBytes<u8> = wincode::deserialize(payload).ok()?;
+            let label: DynString<u8> = wincode::deserialize(payload).ok()?;
             Some(ProgramInstruction::SetLabel { label })
         }
         3 => {

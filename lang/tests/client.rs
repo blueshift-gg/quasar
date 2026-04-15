@@ -1,4 +1,4 @@
-use quasar_lang::client::{wincode, DynBytes, DynVec};
+use quasar_lang::client::{wincode, DynBytes, DynString, DynVec};
 
 // ===================================================================
 // Wire format oracle tests — u32 prefix (default)
@@ -439,4 +439,50 @@ fn dyn_vec_prefix_sizes() {
     assert_eq!(wire_u8.len(), 1 + 24);
     assert_eq!(wire_u16.len(), 2 + 24);
     assert_eq!(wire_u32.len(), 4 + 24);
+}
+
+// ===================================================================
+// DynString<P> — wire-compatible with DynBytes<P> for UTF-8 payloads
+// ===================================================================
+
+#[test]
+fn dyn_string_u8_wire_matches_dyn_bytes() {
+    let s: DynString<u8> = "abc".into();
+    let b: DynBytes<u8> = b"abc".to_vec().into();
+    assert_eq!(
+        wincode::serialize(&s).unwrap(),
+        wincode::serialize(&b).unwrap()
+    );
+}
+
+#[test]
+fn dyn_string_u8_from_string() {
+    let s: DynString<u8> = String::from("hello").into();
+    let wire = wincode::serialize(&s).unwrap();
+    assert_eq!(wire, [5, b'h', b'e', b'l', b'l', b'o']);
+}
+
+#[test]
+fn dyn_string_u32_roundtrip() {
+    let original: DynString<u32> = "round trip ✓".into();
+    let wire = wincode::serialize(&original).unwrap();
+    let decoded: DynString<u32> = wincode::deserialize(&wire).unwrap();
+    assert_eq!(decoded.as_str(), original.as_str());
+}
+
+#[test]
+fn dyn_string_u8_roundtrip_empty() {
+    let original: DynString<u8> = "".into();
+    let wire = wincode::serialize(&original).unwrap();
+    assert_eq!(wire, [0u8]);
+    let decoded: DynString<u8> = wincode::deserialize(&wire).unwrap();
+    assert_eq!(decoded.as_str(), "");
+}
+
+#[test]
+fn dyn_string_rejects_invalid_utf8() {
+    // u8 prefix = 2, followed by invalid UTF-8 bytes
+    let wire = vec![2u8, 0xFF, 0xFE];
+    let result = wincode::deserialize::<DynString<u8>>(&wire);
+    assert!(result.is_err(), "invalid UTF-8 must be rejected");
 }

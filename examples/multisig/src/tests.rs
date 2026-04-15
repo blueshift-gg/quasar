@@ -1,7 +1,7 @@
 extern crate std;
 use {
     alloc::vec,
-    quasar_lang::client::{DynBytes, DynVec},
+    quasar_lang::client::{DynString, DynVec},
     quasar_multisig_client::*,
     quasar_svm::{Account, Instruction, Pubkey, QuasarSvm},
     solana_instruction::AccountMeta,
@@ -39,7 +39,7 @@ fn config_account(
         creator,
         threshold,
         bump,
-        label: DynBytes::<u8>::new(label.to_vec()),
+        label: DynString::<u8>::new(String::from_utf8(label.to_vec()).unwrap()),
         signers: DynVec::<Pubkey, u16>::new(signers.to_vec()),
     };
     Account {
@@ -165,7 +165,7 @@ fn test_set_label() {
         creator,
         config,
         system_program,
-        label: DynBytes::<u8>::new(label.as_bytes().to_vec()),
+        label: label.into(),
     }
     .into();
 

@@ -208,18 +208,17 @@ fn emit_instructions(
     let mut ix_files: Vec<(String, String)> = Vec::new();
 
     // Scan all instruction arg types for imports needed by mod.rs
-    let mut needs_dyn_bytes = false;
-    let mut needs_dyn_vec = false;
+    let mut needs = WrapperNeeds::default();
     let mut needs_address = false;
     for ix in &idl.instructions {
         for arg in &ix.args {
-            collect_wrapper_needs(&arg.ty, &mut needs_dyn_bytes, &mut needs_dyn_vec);
+            collect_wrapper_needs(&arg.ty, &mut needs);
             if field_needs_address(&arg.ty) {
                 needs_address = true;
             }
         }
     }
-    emit_wrapper_imports(&mut mod_rs, needs_dyn_bytes, needs_dyn_vec);
+    emit_wrapper_imports(&mut mod_rs, &needs);
     if needs_address {
         mod_rs.push_str("use solana_address::Address;\n");
     }
@@ -890,10 +889,9 @@ fn emit_field_imports<'a>(
     type_map: &HashMap<String, Vec<IdlField>>,
 ) {
     let mut needs_address = false;
-    let mut needs_dyn_bytes = false;
-    let mut needs_dyn_vec = false;
+    let mut needs = WrapperNeeds::default();
     for ty in types {
-        collect_wrapper_needs(ty, &mut needs_dyn_bytes, &mut needs_dyn_vec);
+        collect_wrapper_needs(ty, &mut needs);
         if field_needs_address(ty) {
             needs_address = true;
         }
@@ -902,7 +900,7 @@ fn emit_field_imports<'a>(
     if needs_address {
         out.push_str("use solana_address::Address;\n");
     }
-    emit_wrapper_imports(out, needs_dyn_bytes, needs_dyn_vec);
+    emit_wrapper_imports(out, &needs);
 }
 
 /// Emit struct definition + manual SchemaWrite/SchemaRead impls with
@@ -1058,7 +1056,7 @@ fn rust_field_type(ty: &IdlType) -> String {
             "publicKey" => "Address".to_string(),
             other => other.to_string(),
         },
-        IdlType::DynString { string } => prefix_generic("DynBytes", string.prefix_bytes),
+        IdlType::DynString { string } => prefix_generic("DynString", string.prefix_bytes),
         IdlType::DynVec { vec } => {
             let inner = rust_field_type(&vec.items);
             format!("DynVec<{}, {}>", inner, prefix_rust_type(vec.prefix_bytes))
@@ -1080,15 +1078,22 @@ fn prefix_rust_type(prefix_bytes: usize) -> &'static str {
     }
 }
 
-fn collect_wrapper_needs(ty: &IdlType, needs_dyn_bytes: &mut bool, needs_dyn_vec: &mut bool) {
+fn collect_wrapper_needs(ty: &IdlType, needs: &mut WrapperNeeds) {
     match ty {
-        IdlType::DynString { .. } => *needs_dyn_bytes = true,
+        IdlType::DynString { .. } => needs.dyn_string = true,
         IdlType::DynVec { vec } => {
-            *needs_dyn_vec = true;
-            collect_wrapper_needs(&vec.items, needs_dyn_bytes, needs_dyn_vec);
+            needs.dyn_vec = true;
+            collect_wrapper_needs(&vec.items, needs);
         }
         _ => {}
     }
+}
+
+#[derive(Default)]
+struct WrapperNeeds {
+    dyn_bytes: bool,
+    dyn_string: bool,
+    dyn_vec: bool,
 }
 
 fn format_disc_list(disc: &[u8]) -> String {
@@ -1180,12 +1185,15 @@ fn field_needs_address(ty: &IdlType) -> bool {
     }
 }
 
-fn emit_wrapper_imports(out: &mut String, needs_dyn_bytes: bool, needs_dyn_vec: bool) {
+fn emit_wrapper_imports(out: &mut String, needs: &WrapperNeeds) {
     let mut wrappers = Vec::new();
-    if needs_dyn_bytes {
+    if needs.dyn_bytes {
         wrappers.push("DynBytes");
     }
-    if needs_dyn_vec {
+    if needs.dyn_string {
+        wrappers.push("DynString");
+    }
+    if needs.dyn_vec {
         wrappers.push("DynVec");
     }
     if !wrappers.is_empty() {

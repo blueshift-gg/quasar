@@ -6,10 +6,13 @@
 //! | Type | Wire format |
 //! |------|-------------|
 //! | [`DynBytes<P>`] | `P` LE length prefix + raw bytes (`P` defaults to `u32`) |
+//! | [`DynString<P>`] | `P` LE length prefix + UTF-8 bytes (wire-identical to `DynBytes<P>`) |
 //! | [`DynVec<T, P>`] | `P` LE count prefix + each item serialized |
 //!
 //! The prefix type `P` (u8, u16, or u32) must match the on-chain declaration.
-//! For example, `String<u8, 100>` on-chain requires `DynBytes<u8>` off-chain.
+//! For example, `String<u8, 100>` on-chain maps to `DynString<u8>` off-chain
+//! (accepts `String`/`&str` directly), while `Vec<u8, u8, 100>` maps to
+//! `DynBytes<u8>`.
 //!
 //! **This is the only module in `quasar-lang` that allocates** — it uses
 //! `alloc::vec::Vec` for instruction data buffers since off-chain code runs
@@ -22,11 +25,11 @@ pub use solana_instruction::{AccountMeta, Instruction};
 // Re-export wincode for downstream derive macro codegen.
 pub use wincode;
 use {
-    alloc::vec::Vec,
+    alloc::{string::String, vec::Vec},
     core::{marker::PhantomData, mem::MaybeUninit},
     wincode::{
         config::ConfigCore,
-        error::{ReadResult, WriteResult},
+        error::{ReadError, ReadResult, WriteResult},
         io::{Reader, Writer},
         len::{SeqLen, UseIntLen},
         SchemaRead, SchemaWrite,
@@ -115,6 +118,74 @@ where
 }
 
 // ---------------------------------------------------------------------------
+// DynString<P> — length-prefixed UTF-8 string
+// ---------------------------------------------------------------------------
+
+/// A dynamically-sized UTF-8 string with a little-endian length prefix.
+///
+/// Wire format is identical to [`DynBytes<P>`] — a length prefix followed by
+/// raw UTF-8 bytes. The distinct type exists so generated clients can accept
+/// `String`/`&str` directly for on-chain `String<N>` / `String<P, N>` fields
+/// instead of forcing callers to go through `Vec<u8>`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DynString<P = u32>(pub String, PhantomData<P>);
+
+impl<P> DynString<P> {
+    pub fn new(s: String) -> Self {
+        Self(s, PhantomData)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl<P> From<String> for DynString<P> {
+    fn from(s: String) -> Self {
+        Self::new(s)
+    }
+}
+
+impl<P> From<&str> for DynString<P> {
+    fn from(s: &str) -> Self {
+        Self::new(String::from(s))
+    }
+}
+
+unsafe impl<P, C: ConfigCore> SchemaWrite<C> for DynString<P>
+where
+    UseIntLen<P>: SeqLen<C>,
+{
+    type Src = Self;
+
+    fn size_of(src: &Self) -> WriteResult<usize> {
+        Ok(<UseIntLen<P>>::write_bytes_needed(src.0.len())? + src.0.len())
+    }
+
+    fn write(mut writer: impl Writer, src: &Self) -> WriteResult<()> {
+        <UseIntLen<P>>::write(writer.by_ref(), src.0.len())?;
+        writer.write(src.0.as_bytes())?;
+        Ok(())
+    }
+}
+
+unsafe impl<'de, P, C: ConfigCore> SchemaRead<'de, C> for DynString<P>
+where
+    UseIntLen<P>: SeqLen<C>,
+{
+    type Dst = Self;
+
+    fn read(mut reader: impl Reader<'de>, dst: &mut MaybeUninit<Self>) -> ReadResult<()> {
+        let len = <UseIntLen<P>>::read(reader.by_ref())?;
+        let bytes = reader.take_scoped(len)?;
+        let s = core::str::from_utf8(bytes)
+            .map_err(|_| ReadError::InvalidValue("DynString: invalid UTF-8"))?;
+        dst.write(DynString(String::from(s), PhantomData));
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // DynVec<T, P> — length-prefixed sequence of T
 // ---------------------------------------------------------------------------
 
@@ -193,6 +264,15 @@ where
 {
     fn serialize_arg(&self) -> Vec<u8> {
         wincode::serialize(self).expect("DynBytes serialization")
+    }
+}
+
+impl<P> SerializeArg for DynString<P>
+where
+    UseIntLen<P>: SeqLen<wincode::config::DefaultConfig>,
+{
+    fn serialize_arg(&self) -> Vec<u8> {
+        wincode::serialize(self).expect("DynString serialization")
     }
 }
 

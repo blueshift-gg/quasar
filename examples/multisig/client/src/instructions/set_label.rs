@@ -1,6 +1,6 @@
 use {
     crate::ID,
-    quasar_lang::client::DynBytes,
+    quasar_lang::client::DynString,
     solana_address::Address,
     solana_instruction::{AccountMeta, Instruction},
 };
@@ -9,7 +9,7 @@ pub struct SetLabelInstruction {
     pub creator: Address,
     pub config: Address,
     pub system_program: Address,
-    pub label: DynBytes<u8>,
+    pub label: DynString<u8>,
 }
 
 impl From<SetLabelInstruction> for Instruction {
