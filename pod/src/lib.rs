@@ -21,6 +21,7 @@
 
 #![no_std]
 
+pub(crate) mod prefix;
 pub mod string;
 pub mod vec;
 

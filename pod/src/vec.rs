@@ -44,7 +44,10 @@
 //! stack-local copy — loaded on guard creation, flushed back (with one realloc
 //! CPI if size changes) on drop.
 
-use {super::string::max_n_for_pfx, core::mem::MaybeUninit};
+use {
+    crate::prefix::{cap_check, decode_prefix_len, encode_prefix_len},
+    core::mem::MaybeUninit,
+};
 
 /// Fixed-capacity inline vector stored in account data.
 ///
@@ -85,17 +88,7 @@ impl<T: Copy, const N: usize, const PFX: usize> PodVec<T, N, PFX> {
          native integers."
     );
 
-    const _CAP_CHECK: () = {
-        assert!(
-            PFX == 1 || PFX == 2 || PFX == 4 || PFX == 8,
-            "PodVec<T, N, PFX>: PFX must be 1, 2, 4, or 8"
-        );
-        assert!(
-            N <= max_n_for_pfx(PFX),
-            "PodVec<T, N, PFX>: N exceeds the maximum value representable by the PFX-byte length \
-             prefix"
-        );
-    };
+    const _CAP_CHECK: () = cap_check!("PodVec<T, N, PFX>", N, PFX);
 
     /// Compile-time validity check. Reference this in a `const` context to
     /// verify that `T`, `N`, and `PFX` are valid at the call site.
@@ -110,16 +103,11 @@ impl<T: Copy, const N: usize, const PFX: usize> PodVec<T, N, PFX> {
     };
 
     /// Decode the on-disk length prefix into a `usize`.
-    ///
-    /// LLVM constant-folds this per monomorphization (e.g., for PFX=2 it
-    /// compiles to a 16-bit load).
     #[inline(always)]
     fn decode_len(&self) -> usize {
         #[allow(clippy::let_unit_value)]
         let _ = Self::_CAP_CHECK;
-        let mut buf = [0u8; 8];
-        buf[..PFX].copy_from_slice(&self.len);
-        u64::from_le_bytes(buf) as usize
+        decode_prefix_len(&self.len)
     }
 
     /// Encode `n` as a `PFX`-byte little-endian prefix into `self.len`.
@@ -127,8 +115,7 @@ impl<T: Copy, const N: usize, const PFX: usize> PodVec<T, N, PFX> {
     fn encode_len(&mut self, n: usize) {
         #[allow(clippy::let_unit_value)]
         let _ = Self::_CAP_CHECK;
-        let bytes = (n as u64).to_le_bytes();
-        self.len.copy_from_slice(&bytes[..PFX]);
+        encode_prefix_len(&mut self.len, n);
     }
 
     /// Number of active elements.
@@ -367,9 +354,8 @@ impl<T: Copy, const N: usize, const PFX: usize> PodVec<T, N, PFX> {
             bytes.len() >= PFX,
             "load_from_bytes: slice must have at least PFX bytes"
         );
-        let mut buf = [0u8; 8];
-        buf[..PFX].copy_from_slice(&bytes[..PFX]);
-        let count = (u64::from_le_bytes(buf) as usize).min(N);
+        let pfx_bytes: &[u8; PFX] = bytes[..PFX].try_into().unwrap();
+        let count = decode_prefix_len(pfx_bytes).min(N);
         let data_bytes = count * core::mem::size_of::<T>();
         debug_assert!(
             bytes.len() >= PFX + data_bytes,
