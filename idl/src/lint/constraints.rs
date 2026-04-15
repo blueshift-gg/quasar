@@ -3,6 +3,40 @@
 //! Classifies account field wrapper types (`Account<T>`, `Signer`, etc.) and
 //! extracts constraint directives from `#[account(...)]` attributes.
 
+/// Recognized account wrapper type identifiers from the source code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WrapperType {
+    Account,
+    InterfaceAccount,
+    TokenAccount,
+    Mint,
+    Signer,
+    Program,
+    Sysvar,
+    SystemAccount,
+    UncheckedAccount,
+    AccountInfo,
+}
+
+impl WrapperType {
+    /// Classify an identifier string into a known wrapper type, if any.
+    pub fn from_ident(ident: &str) -> Option<Self> {
+        match ident {
+            "Account" => Some(Self::Account),
+            "InterfaceAccount" => Some(Self::InterfaceAccount),
+            "TokenAccount" => Some(Self::TokenAccount),
+            "Mint" => Some(Self::Mint),
+            "Signer" => Some(Self::Signer),
+            "Program" => Some(Self::Program),
+            "Sysvar" => Some(Self::Sysvar),
+            "SystemAccount" => Some(Self::SystemAccount),
+            "UncheckedAccount" => Some(Self::UncheckedAccount),
+            "AccountInfo" => Some(Self::AccountInfo),
+            _ => None,
+        }
+    }
+}
+
 /// Classification of an account field's wrapper type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FieldClass {
@@ -61,17 +95,26 @@ pub fn classify_field_type(ty: &syn::Type) -> (FieldClass, Option<String>) {
     let ident = last_seg.ident.to_string();
     let inner_name = extract_inner_type_name(last_seg);
 
-    match ident.as_str() {
-        "Account" => {
-            let inner = inner_name.clone().unwrap_or_else(|| "Unknown".to_string());
-            (
-                FieldClass::Account {
-                    inner_type: inner.clone(),
-                },
-                Some(inner),
-            )
+    let wrapper = match WrapperType::from_ident(&ident) {
+        Some(w) => w,
+        None => return (FieldClass::Unchecked, None),
+    };
+
+    match wrapper {
+        WrapperType::Account => {
+            // If there's no inner type, classify as Unchecked rather than
+            // injecting a fake "Unknown" name into the IDL.
+            match inner_name {
+                Some(inner) => (
+                    FieldClass::Account {
+                        inner_type: inner.clone(),
+                    },
+                    Some(inner),
+                ),
+                None => (FieldClass::Unchecked, None),
+            }
         }
-        "InterfaceAccount" => {
+        WrapperType::InterfaceAccount => {
             // Distinguish TokenAccount vs Mint by inner type name
             let inner = inner_name.clone().unwrap_or_default();
             if inner == "Mint" {
@@ -81,17 +124,13 @@ pub fn classify_field_type(ty: &syn::Type) -> (FieldClass, Option<String>) {
                 (FieldClass::TokenAccount, inner_name)
             }
         }
-        "TokenAccount" => (FieldClass::TokenAccount, inner_name),
-        "Mint" => (FieldClass::Mint, inner_name),
-        "Signer" => (FieldClass::Signer, None),
-        "Program" => (FieldClass::Program, inner_name),
-        "Sysvar" => (FieldClass::Sysvar, inner_name),
-        "SystemAccount" => (FieldClass::SystemAccount, None),
-        "UncheckedAccount" | "AccountInfo" => (FieldClass::Unchecked, None),
-        _ => {
-            // Unknown wrapper — default to Unchecked
-            (FieldClass::Unchecked, None)
-        }
+        WrapperType::TokenAccount => (FieldClass::TokenAccount, inner_name),
+        WrapperType::Mint => (FieldClass::Mint, inner_name),
+        WrapperType::Signer => (FieldClass::Signer, None),
+        WrapperType::Program => (FieldClass::Program, inner_name),
+        WrapperType::Sysvar => (FieldClass::Sysvar, inner_name),
+        WrapperType::SystemAccount => (FieldClass::SystemAccount, None),
+        WrapperType::UncheckedAccount | WrapperType::AccountInfo => (FieldClass::Unchecked, None),
     }
 }
 
