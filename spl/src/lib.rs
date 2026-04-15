@@ -45,11 +45,13 @@
 
 #![no_std]
 
-/// Implements the full account type contract for a type owned by a single
-/// program.
+/// Defines a `#[repr(transparent)]` SPL account wrapper type and implements
+/// the full account type contract for it.
 ///
-/// Generates five trait implementations:
+/// This is the single source of truth for all SPL account wrapper types
+/// (`Token`, `Mint`, `Token2022`, `Mint2022`). Each invocation generates:
 ///
+/// - The struct itself (with a single `__view: AccountView` field)
 /// - `StaticView` — marks the type as having a fixed layout
 /// - `AsAccountView` — provides access to the underlying `AccountView`
 /// - `AccountCheck` — validates `data_len >= T::LEN`
@@ -65,73 +67,82 @@
 /// 1. `AccountCheck::check` validated `data_len >= $target::LEN`
 /// 2. `$target` is `#[repr(C)]` with alignment 1 (any pointer is valid)
 /// 3. The owner check guarantees the data was written by the expected program
-macro_rules! impl_program_account {
-    ($ty:ty, $id:expr, $target:ty) => {
-        unsafe impl StaticView for $ty {}
+macro_rules! define_spl_account {
+    (
+        $(#[$meta:meta])*
+        $name:ident, $owner_id:expr, $state:ty
+    ) => {
+        $(#[$meta])*
+        #[repr(transparent)]
+        pub struct $name {
+            __view: AccountView,
+        }
 
-        impl AsAccountView for $ty {
+        unsafe impl StaticView for $name {}
+
+        impl AsAccountView for $name {
             #[inline(always)]
             fn to_account_view(&self) -> &AccountView {
                 &self.__view
             }
         }
 
-        impl AccountCheck for $ty {
+        impl AccountCheck for $name {
             #[inline(always)]
             fn check(view: &AccountView) -> Result<(), ProgramError> {
-                if quasar_lang::utils::hint::unlikely(view.data_len() < <$target>::LEN) {
+                if quasar_lang::utils::hint::unlikely(view.data_len() < <$state>::LEN) {
                     return Err(ProgramError::AccountDataTooSmall);
                 }
                 Ok(())
             }
         }
 
-        impl CheckOwner for $ty {
+        impl CheckOwner for $name {
             #[inline(always)]
             fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
-                if quasar_lang::utils::hint::unlikely(!quasar_lang::keys_eq(view.owner(), &$id)) {
+                if quasar_lang::utils::hint::unlikely(!quasar_lang::keys_eq(view.owner(), &$owner_id)) {
                     return Err(ProgramError::IllegalOwner);
                 }
                 Ok(())
             }
         }
 
-        impl core::ops::Deref for $ty {
-            type Target = $target;
+        impl core::ops::Deref for $name {
+            type Target = $state;
 
             #[inline(always)]
             fn deref(&self) -> &Self::Target {
                 // SAFETY: `AccountCheck::check` validated `data_len >= LEN`.
-                // `$target` is `#[repr(C)]` with alignment 1 — any data
+                // `$state` is `#[repr(C)]` with alignment 1 — any data
                 // pointer is valid.
-                unsafe { &*(self.__view.data_ptr() as *const $target) }
+                unsafe { &*(self.__view.data_ptr() as *const $state) }
             }
         }
 
-        impl core::ops::DerefMut for $ty {
+        impl core::ops::DerefMut for $name {
             #[inline(always)]
             fn deref_mut(&mut self) -> &mut Self::Target {
                 // SAFETY: Same as Deref — length validated, alignment 1.
                 // Mutability checked by the writable constraint.
-                unsafe { &mut *(self.__view.data_mut_ptr() as *mut $target) }
+                unsafe { &mut *(self.__view.data_mut_ptr() as *mut $state) }
             }
         }
 
-        impl ZeroCopyDeref for $ty {
-            type Target = $target;
+        impl ZeroCopyDeref for $name {
+            type Target = $state;
 
             #[inline(always)]
             unsafe fn deref_from(view: &AccountView) -> &Self::Target {
                 // SAFETY: Caller ensures `view.data_len() >= LEN`.
-                // `$target` is `#[repr(C)]` with alignment 1.
-                &*(view.data_ptr() as *const $target)
+                // `$state` is `#[repr(C)]` with alignment 1.
+                &*(view.data_ptr() as *const $state)
             }
 
             #[inline(always)]
             unsafe fn deref_from_mut(view: &mut AccountView) -> &mut Self::Target {
                 // SAFETY: Same as `deref_from` — caller ensures length
                 // and writable.
-                &mut *(view.data_mut_ptr() as *mut $target)
+                &mut *(view.data_mut_ptr() as *mut $state)
             }
         }
     };
