@@ -131,9 +131,16 @@ pub struct IdlTypeDef {
     pub ty: IdlTypeDefType,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TypeDefKind {
+    Struct,
+    Enum,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct IdlTypeDefType {
-    pub kind: String,
+    pub kind: TypeDefKind,
     pub fields: Vec<IdlField>,
 }
 

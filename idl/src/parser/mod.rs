@@ -138,10 +138,17 @@ pub fn build_idl(parsed: &ParsedProgram) -> Result<Idl, Vec<String>> {
         .instructions
         .iter()
         .map(|ix| {
-            let accounts_items = parsed
+            let accounts_struct = parsed
                 .accounts_structs
                 .iter()
-                .find(|s| s.name == ix.accounts_type_name)
+                .find(|s| s.name == ix.accounts_type_name);
+            if accounts_struct.is_none() {
+                errors.push(format!(
+                    "  instruction '{}' references accounts struct '{}' which was not found",
+                    ix.name, ix.accounts_type_name,
+                ));
+            }
+            let accounts_items = accounts_struct
                 .map(|s| accounts::to_idl_accounts(s, &parsed.state_accounts))
                 .unwrap_or_default();
 
@@ -183,7 +190,7 @@ pub fn build_idl(parsed: &ParsedProgram) -> Result<Idl, Vec<String>> {
             let type_def = IdlTypeDef {
                 name: sa.name.clone(),
                 ty: IdlTypeDefType {
-                    kind: "struct".to_string(),
+                    kind: TypeDefKind::Struct,
                     fields,
                 },
             };
@@ -210,7 +217,7 @@ pub fn build_idl(parsed: &ParsedProgram) -> Result<Idl, Vec<String>> {
             let type_def = IdlTypeDef {
                 name: ev.name.clone(),
                 ty: IdlTypeDefType {
-                    kind: "struct".to_string(),
+                    kind: TypeDefKind::Struct,
                     fields,
                 },
             };
@@ -273,7 +280,7 @@ pub fn build_idl(parsed: &ParsedProgram) -> Result<Idl, Vec<String>> {
             type_defs.push(IdlTypeDef {
                 name: type_name,
                 ty: IdlTypeDefType {
-                    kind: "struct".to_string(),
+                    kind: TypeDefKind::Struct,
                     fields: idl_fields,
                 },
             });
@@ -444,9 +451,10 @@ fn extract_plain_structs(file: &syn::File) -> Vec<RawDataStruct> {
 pub fn parse_program_from_source(src: &str) -> ParsedProgram {
     let file = syn::parse_file(src).expect("failed to parse source");
 
-    let program_id = program::extract_program_id(&file).unwrap_or_default();
-    let (program_name, instructions) =
-        program::extract_program_module(&file).unwrap_or_else(|| ("test".to_string(), vec![]));
+    let program_id =
+        program::extract_program_id(&file).expect("test source must contain declare_id!(...)");
+    let (program_name, instructions) = program::extract_program_module(&file)
+        .expect("test source must contain a #[program] module");
     let accounts_structs = accounts::extract_accounts_structs(&file);
     let state_accounts = state::extract_state_accounts(&file);
     let all_events = events::extract_events(&file);

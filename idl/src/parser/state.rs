@@ -3,7 +3,7 @@
 
 use {
     super::helpers,
-    crate::types::{IdlAccountDef, IdlField, IdlTypeDef, IdlTypeDefType},
+    crate::types::{IdlAccountDef, IdlField, IdlTypeDef, IdlTypeDefType, TypeDefKind},
     syn::{Fields, Item},
 };
 
@@ -65,7 +65,10 @@ fn get_account_discriminator(attrs: &[syn::Attribute]) -> Option<Vec<u8>> {
 
         let tokens = match attr.meta.require_list() {
             Ok(list) => list.tokens.to_string(),
-            Err(_) => continue,
+            Err(e) => {
+                eprintln!("warning: skipping malformed #[account] attribute: {e}");
+                continue;
+            }
         };
 
         if !tokens.contains("discriminator") {
@@ -87,12 +90,18 @@ fn parse_seeds_attr(attrs: &[syn::Attribute]) -> Option<RawTypedSeeds> {
 
         let tokens = match attr.meta.require_list() {
             Ok(list) => list.tokens.clone(),
-            Err(_) => continue,
+            Err(e) => {
+                eprintln!("warning: skipping malformed #[seeds] attribute: {e}");
+                continue;
+            }
         };
 
         let parsed: SeedsTokens = match syn::parse2(tokens) {
             Ok(p) => p,
-            Err(_) => continue,
+            Err(e) => {
+                eprintln!("warning: skipping unparseable #[seeds] attribute: {e}");
+                continue;
+            }
         };
 
         return Some(RawTypedSeeds {
@@ -188,7 +197,7 @@ pub fn to_idl_type_def(raw: &RawStateAccount) -> IdlTypeDef {
     IdlTypeDef {
         name: raw.name.clone(),
         ty: IdlTypeDefType {
-            kind: "struct".to_string(),
+            kind: TypeDefKind::Struct,
             fields,
         },
     }

@@ -31,9 +31,9 @@ fn build_type_sizes(types: &[IdlTypeDef]) -> Result<HashMap<String, usize>, Stri
 
     // Validate all types are structs (enum kind would produce wrong sizes).
     for td in types {
-        if td.ty.kind != "struct" {
+        if !matches!(td.ty.kind, quasar_idl::types::TypeDefKind::Struct) {
             return Err(format!(
-                "type '{}' has kind '{}' — only structs are supported in CPI",
+                "type '{}' has kind '{:?}' — only structs are supported in CPI",
                 td.name, td.ty.kind
             ));
         }

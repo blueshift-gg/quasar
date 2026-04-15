@@ -3,7 +3,7 @@
 use {
     crate::{
         parser::helpers,
-        types::{IdlEventDef, IdlField, IdlTypeDef, IdlTypeDefType},
+        types::{IdlEventDef, IdlField, IdlTypeDef, IdlTypeDefType, TypeDefKind},
     },
     syn::{Fields, Item},
 };
@@ -53,7 +53,10 @@ fn get_event_discriminator(attrs: &[syn::Attribute]) -> Option<Vec<u8>> {
 
         let tokens = match attr.meta.require_list() {
             Ok(list) => list.tokens.to_string(),
-            Err(_) => continue,
+            Err(e) => {
+                eprintln!("warning: skipping malformed #[event] attribute: {e}");
+                continue;
+            }
         };
 
         if !tokens.contains("discriminator") {
@@ -85,7 +88,7 @@ pub fn to_idl_type_def(raw: &RawEvent) -> IdlTypeDef {
     IdlTypeDef {
         name: raw.name.clone(),
         ty: IdlTypeDefType {
-            kind: "struct".to_string(),
+            kind: TypeDefKind::Struct,
             fields,
         },
     }

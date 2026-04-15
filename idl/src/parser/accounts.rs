@@ -87,7 +87,10 @@ fn has_writable_directive(attrs: &[syn::Attribute]) -> bool {
         }
         let tokens_str = match attr.meta.require_list() {
             Ok(list) => list.tokens.to_string(),
-            Err(_) => continue,
+            Err(e) => {
+                eprintln!("warning: skipping malformed #[account] attribute: {e}");
+                continue;
+            }
         };
         for directive in tokens_str.split(',') {
             let d = directive.trim();
@@ -185,7 +188,10 @@ fn parse_pda_from_attrs(
 
         let tokens = match attr.meta.require_list() {
             Ok(list) => list.tokens.clone(),
-            Err(_) => continue,
+            Err(e) => {
+                eprintln!("warning: skipping malformed #[account] attribute: {e}");
+                continue;
+            }
         };
 
         let tokens_str = tokens.to_string();
