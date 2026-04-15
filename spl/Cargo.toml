@@ -12,7 +12,6 @@ workspace = true
 
 [features]
 debug = []
-metadata = []
 
 [dependencies]
 quasar-lang = { version = "0.0", path = "../lang" }

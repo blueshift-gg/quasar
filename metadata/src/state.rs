@@ -1,7 +1,4 @@
-use {
-    crate::metadata::constants::METADATA_PROGRAM_ID, quasar_lang::prelude::*,
-    solana_address::Address,
-};
+use {crate::constants::METADATA_PROGRAM_ID, quasar_lang::prelude::*, solana_address::Address};
 
 /// Metaplex Key enum discriminant for MetadataV1 accounts.
 const KEY_METADATA_V1: u8 = 4;

@@ -85,8 +85,6 @@ pub mod macros;
 pub mod sysvars;
 /// Zero-copy account wrapper types for instruction handlers.
 pub mod accounts;
-/// Borsh-compatible serialization primitives for CPI instruction data.
-pub mod borsh;
 /// Compile-time account validation traits (`Address`, `Owner`, `Executable`,
 /// `Mutable`, `Signer`).
 pub mod checks;

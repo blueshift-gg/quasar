@@ -1,4 +1,7 @@
-use quasar_lang::{borsh::CpiEncode, cpi::DynCpiCall, prelude::*};
+use {
+    crate::codec::CpiEncode,
+    quasar_lang::{cpi::DynCpiCall, prelude::*},
+};
 
 const UPDATE_METADATA_ACCOUNTS_V2: u8 = 15;
 

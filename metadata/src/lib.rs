@@ -5,6 +5,9 @@
 //! helpers ([`InitMetadata`], [`InitMasterEdition`]) for the Metaplex Token
 //! Metadata program.
 
+#![no_std]
+
+mod codec;
 mod constants;
 mod init;
 pub mod instructions;

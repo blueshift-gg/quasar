@@ -1,5 +1,5 @@
 use {
-    crate::metadata::constants::METADATA_PROGRAM_BYTES,
+    crate::constants::METADATA_PROGRAM_BYTES,
     quasar_lang::{prelude::*, traits::Id},
 };
 

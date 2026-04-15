@@ -1,0 +1,15 @@
+[package]
+name = "quasar-metadata"
+description = "Metaplex Token Metadata integration for the Quasar Solana framework"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+quasar-lang = { path = "../lang" }
+solana-address = { version = "2.2.0", features = ["copy"] }

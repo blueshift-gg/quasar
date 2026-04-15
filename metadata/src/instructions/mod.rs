@@ -16,10 +16,12 @@ mod update_primary_sale;
 mod utilize;
 mod verify_collection;
 
-use quasar_lang::{
-    borsh::BorshCpiEncode,
-    cpi::{CpiCall, DynCpiCall},
-    prelude::*,
+use {
+    crate::codec::BorshCpiEncode,
+    quasar_lang::{
+        cpi::{CpiCall, DynCpiCall},
+        prelude::*,
+    },
 };
 
 // Metaplex-enforced maximum field lengths.
@@ -29,7 +31,7 @@ const MAX_URI_LEN: usize = 200;
 
 /// Trait for types that can execute Metaplex Token Metadata CPI calls.
 ///
-/// Implemented by [`super::MetadataProgram`].
+/// Implemented by [`crate::MetadataProgram`].
 pub trait MetadataCpi: AsAccountView {
     // -----------------------------------------------------------------------
     // Variable-length instructions (DynCpiCall)
@@ -630,10 +632,6 @@ pub trait MetadataCpi: AsAccountView {
     }
 }
 
-impl MetadataCpi for super::MetadataProgram {}
+impl MetadataCpi for crate::MetadataProgram {}
 
-/// Blanket impl for raw `AccountView` — used by generated macro code during
-/// `#[account(init, metadata::*)]` where typed wrappers aren't constructed yet.
-/// The SVM validates the program ID at CPI time, so passing a non-metadata
-/// program will fail at runtime.
 impl MetadataCpi for AccountView {}

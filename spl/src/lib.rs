@@ -141,8 +141,6 @@ mod associated_token;
 mod constants;
 mod instructions;
 mod interface;
-#[cfg(feature = "metadata")]
-pub mod metadata;
 mod state;
 mod token;
 mod token_2022;
