@@ -119,6 +119,10 @@ fn extract_state_account() {
     assert_eq!(accounts[0].fields[1].0, "amount");
 }
 
+// ---------------------------------------------------------------------------
+// Accounts extraction
+// ---------------------------------------------------------------------------
+
 #[test]
 fn extract_state_account_no_fields() {
     let file = parse_file(

@@ -7,6 +7,7 @@ use {
         parser::helpers,
         types::{IdlAccountItem, IdlPda, IdlSeed},
     },
+    quasar_schema::known_address_for_type,
     syn::{Fields, Item},
 };
 
@@ -144,31 +145,8 @@ fn parse_account_field(field: &syn::Field, parent: &syn::ItemStruct) -> RawAccou
 /// Returns a base58 address string for known types.
 fn detect_known_address(ty: &syn::Type) -> Option<String> {
     let base = helpers::type_base_name(ty)?;
-
-    match base.as_str() {
-        "SystemProgram" => Some("11111111111111111111111111111111".to_string()),
-        "Program" => {
-            let inner = helpers::type_inner_name(ty)?;
-            match inner.as_str() {
-                "System" => Some("11111111111111111111111111111111".to_string()),
-                "Token" => Some("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()),
-                "Token2022" => Some("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb".to_string()),
-                "AssociatedTokenProgram" => {
-                    Some("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL".to_string())
-                }
-                _ => None,
-            }
-        }
-        "Sysvar" => {
-            let inner = helpers::type_inner_name(ty)?;
-            match inner.as_str() {
-                "Rent" => Some("SysvarRent111111111111111111111111111111111".to_string()),
-                "Clock" => Some("SysvarC1ock11111111111111111111111111111111".to_string()),
-                _ => None,
-            }
-        }
-        _ => None,
-    }
+    let inner = helpers::type_inner_name(ty);
+    known_address_for_type(&base, inner.as_deref()).map(str::to_owned)
 }
 
 /// Parse `#[account(seeds = [...], bump)]` or `#[account(seeds =

@@ -1,0 +1,18 @@
+[package]
+name = "quasar-schema"
+description = "Shared schema types for Quasar interfaces"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "quasar_schema"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
