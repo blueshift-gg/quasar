@@ -21,10 +21,8 @@ pub fn run(command: ClientCommand) -> CliResult {
         )));
     }
 
-    let json = std::fs::read_to_string(idl_path)
-        .map_err(|e| anyhow::anyhow!("failed to read IDL: {e}"))?;
-    let idl: quasar_idl::types::Idl =
-        serde_json::from_str(&json).map_err(|e| anyhow::anyhow!("failed to parse IDL: {e}"))?;
+    let json = std::fs::read_to_string(idl_path)?;
+    let idl: quasar_idl::types::Idl = serde_json::from_str(&json)?;
 
     let languages: Vec<&str> = if command.lang.is_empty() {
         ALL_LANGUAGES.to_vec()

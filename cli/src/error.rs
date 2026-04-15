@@ -4,13 +4,17 @@ pub type CliResult = Result<(), CliError>;
 
 #[derive(Debug, Error)]
 pub enum CliError {
-    #[error("Io error")]
+    #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
-    #[error("Toml parse error")]
+    #[error("TOML parse error: {0}")]
     TomlParseError(#[from] toml::de::Error),
-    #[error("Toml serialize error")]
+    #[error("TOML serialize error: {0}")]
     TomlSerError(#[from] toml::ser::Error),
-    #[error("Anyhow error")]
+    #[error("JSON error: {0}")]
+    JsonError(#[from] serde_json::Error),
+    #[error("prompt error: {0}")]
+    Dialoguer(#[from] dialoguer::Error),
+    #[error("{0}")]
     Anyhow(#[from] anyhow::Error),
     #[error("{0}")]
     Message(String),

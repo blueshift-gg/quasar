@@ -66,7 +66,7 @@ pub(super) fn scaffold(
     let root = Path::new(dir);
 
     let src = root.join("src");
-    fs::create_dir_all(&src).map_err(anyhow::Error::from)?;
+    fs::create_dir_all(&src)?;
 
     // Quasar.toml
     let config = QuasarToml {
@@ -102,29 +102,28 @@ pub(super) fn scaffold(
             languages: client_languages.to_vec(),
         },
     };
-    let toml_str = toml::to_string_pretty(&config).map_err(anyhow::Error::from)?;
-    fs::write(root.join("Quasar.toml"), toml_str).map_err(anyhow::Error::from)?;
+    let toml_str = toml::to_string_pretty(&config)?;
+    fs::write(root.join("Quasar.toml"), toml_str)?;
 
     // Cargo.toml
     fs::write(
         root.join("Cargo.toml"),
         generate_cargo_toml(name, toolchain, test_language, rust_framework),
-    )
-    .map_err(anyhow::Error::from)?;
+    )?;
 
     // .cargo/config.toml (upstream only)
     if matches!(toolchain, Toolchain::Upstream) {
         let cargo_dir = root.join(".cargo");
-        fs::create_dir_all(&cargo_dir).map_err(anyhow::Error::from)?;
-        fs::write(cargo_dir.join("config.toml"), CARGO_CONFIG).map_err(anyhow::Error::from)?;
+        fs::create_dir_all(&cargo_dir)?;
+        fs::write(cargo_dir.join("config.toml"), CARGO_CONFIG)?;
     }
 
     // .gitignore
-    fs::write(root.join(".gitignore"), GITIGNORE).map_err(anyhow::Error::from)?;
+    fs::write(root.join(".gitignore"), GITIGNORE)?;
 
     // Generate program keypair
     let deploy_dir = root.join("target").join("deploy");
-    fs::create_dir_all(&deploy_dir).map_err(anyhow::Error::from)?;
+    fs::create_dir_all(&deploy_dir)?;
 
     let signing_key = ed25519_dalek::SigningKey::generate(&mut rand::thread_rng());
     let program_id = bs58::encode(signing_key.verifying_key().as_bytes()).into_string();
@@ -133,12 +132,11 @@ pub(super) fn scaffold(
     let mut keypair_bytes = Vec::with_capacity(64);
     keypair_bytes.extend_from_slice(signing_key.as_bytes());
     keypair_bytes.extend_from_slice(signing_key.verifying_key().as_bytes());
-    let keypair_json = serde_json::to_string(&keypair_bytes).map_err(anyhow::Error::from)?;
+    let keypair_json = serde_json::to_string(&keypair_bytes)?;
     fs::write(
         deploy_dir.join(format!("{name}-keypair.json")),
         &keypair_json,
-    )
-    .map_err(anyhow::Error::from)?;
+    )?;
 
     // src/lib.rs
     let module_name = name.replace('-', "_");
@@ -146,8 +144,7 @@ pub(super) fn scaffold(
     fs::write(
         src.join("lib.rs"),
         generate_lib_rs(&module_name, &program_id, template, has_rust_tests),
-    )
-    .map_err(anyhow::Error::from)?;
+    )?;
 
     // Template-specific files
     match template {
@@ -156,16 +153,14 @@ pub(super) fn scaffold(
         }
         Template::Full => {
             let instructions_dir = src.join("instructions");
-            fs::create_dir_all(&instructions_dir).map_err(anyhow::Error::from)?;
-            fs::write(instructions_dir.join("mod.rs"), INSTRUCTIONS_MOD)
-                .map_err(anyhow::Error::from)?;
+            fs::create_dir_all(&instructions_dir)?;
+            fs::write(instructions_dir.join("mod.rs"), INSTRUCTIONS_MOD)?;
             fs::write(
                 instructions_dir.join("initialize.rs"),
                 INSTRUCTION_INITIALIZE,
-            )
-            .map_err(anyhow::Error::from)?;
-            fs::write(src.join("state.rs"), STATE_RS).map_err(anyhow::Error::from)?;
-            fs::write(src.join("errors.rs"), ERRORS_RS).map_err(anyhow::Error::from)?;
+            )?;
+            fs::write(src.join("state.rs"), STATE_RS)?;
+            fs::write(src.join("errors.rs"), ERRORS_RS)?;
         }
     }
 
@@ -174,24 +169,21 @@ pub(super) fn scaffold(
         fs::write(
             src.join("tests.rs"),
             generate_tests_rs(&module_name, fw, template, toolchain),
-        )
-        .map_err(anyhow::Error::from)?;
+        )?;
     }
 
     // TypeScript test scaffold
     if let Some(sdk) = ts_sdk {
         let tests_dir = root.join("tests");
-        fs::create_dir_all(&tests_dir).map_err(anyhow::Error::from)?;
+        fs::create_dir_all(&tests_dir)?;
 
-        fs::write(root.join("package.json"), generate_package_json(name, sdk))
-            .map_err(anyhow::Error::from)?;
-        fs::write(root.join("tsconfig.json"), TS_TEST_TSCONFIG).map_err(anyhow::Error::from)?;
+        fs::write(root.join("package.json"), generate_package_json(name, sdk))?;
+        fs::write(root.join("tsconfig.json"), TS_TEST_TSCONFIG)?;
 
         fs::write(
             tests_dir.join(format!("{}.test.ts", name)),
             generate_test_ts(name, sdk, toolchain),
-        )
-        .map_err(anyhow::Error::from)?;
+        )?;
     }
 
     // Generate Cargo.lock with the system cargo.  The Solana toolchain

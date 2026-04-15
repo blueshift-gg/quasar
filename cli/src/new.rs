@@ -32,10 +32,10 @@ pub fn run_instruction(name: &str) -> CliResult {
 
     // Create instructions directory if it doesn't exist (minimal template)
     if !instructions_dir.exists() {
-        fs::create_dir_all(&instructions_dir).map_err(anyhow::Error::from)?;
+        fs::create_dir_all(&instructions_dir)?;
 
         // Wire up `mod instructions;` and `use instructions::*;` in lib.rs
-        let lib_content = fs::read_to_string(&lib_path).map_err(anyhow::Error::from)?;
+        let lib_content = fs::read_to_string(&lib_path)?;
         if !lib_content.contains("mod instructions;") {
             // Insert after the last `use` or `mod` line at the top
             let insert = "mod instructions;\nuse instructions::*;\n";
@@ -49,7 +49,7 @@ pub fn run_instruction(name: &str) -> CliResult {
             } else {
                 format!("{insert}\n{lib_content}")
             };
-            fs::write(&lib_path, updated).map_err(anyhow::Error::from)?;
+            fs::write(&lib_path, updated)?;
             println!("  {} src/instructions/", style::success("created"));
         }
     }
@@ -80,7 +80,7 @@ impl<'info> {pascal}<'info> {{
 }}
 "#
     );
-    fs::write(&file_path, content).map_err(anyhow::Error::from)?;
+    fs::write(&file_path, content)?;
 
     // Update mod.rs
     let mod_path = instructions_dir.join("mod.rs");
@@ -89,14 +89,14 @@ impl<'info> {pascal}<'info> {{
     if !existing_mod.contains(&format!("mod {snake};")) {
         let new_line = format!("mod {snake};\npub use {snake}::*;\n");
         let updated = format!("{existing_mod}{new_line}");
-        fs::write(&mod_path, updated).map_err(anyhow::Error::from)?;
+        fs::write(&mod_path, updated)?;
     }
 
     // Update lib.rs — add instruction to #[program] block
     if lib_path.exists() {
-        let lib_content = fs::read_to_string(&lib_path).map_err(anyhow::Error::from)?;
+        let lib_content = fs::read_to_string(&lib_path)?;
         if let Some(updated) = add_instruction_to_entrypoint(&lib_content, &snake, &pascal) {
-            fs::write(&lib_path, updated).map_err(anyhow::Error::from)?;
+            fs::write(&lib_path, updated)?;
             println!("  {} src/lib.rs", style::success("updated"));
         }
     }
@@ -203,7 +203,7 @@ pub fn run_state(name: &str) -> CliResult {
     let already_exists = state_path.exists();
 
     if already_exists {
-        let existing = fs::read_to_string(&state_path).map_err(anyhow::Error::from)?;
+        let existing = fs::read_to_string(&state_path)?;
 
         // Find the highest existing discriminator in state.rs
         let mut max_disc: i64 = 0;
@@ -229,7 +229,7 @@ pub fn run_state(name: &str) -> CliResult {
         );
 
         let updated = format!("{existing}{new_struct}");
-        fs::write(&state_path, updated).map_err(anyhow::Error::from)?;
+        fs::write(&state_path, updated)?;
     } else {
         let content = format!(
             r#"use quasar_lang::prelude::*;
@@ -240,7 +240,7 @@ pub struct {pascal} {{
 }}
 "#
         );
-        fs::write(&state_path, content).map_err(anyhow::Error::from)?;
+        fs::write(&state_path, content)?;
     }
 
     println!(
@@ -270,12 +270,12 @@ pub fn run_error(name: &str) -> CliResult {
     let already_exists = errors_path.exists();
 
     if already_exists {
-        let existing = fs::read_to_string(&errors_path).map_err(anyhow::Error::from)?;
+        let existing = fs::read_to_string(&errors_path)?;
 
         let new_enum = format!("\n#[error_code]\npub enum {pascal} {{\n    Unknown,\n}}\n");
 
         let updated = format!("{existing}{new_enum}");
-        fs::write(&errors_path, updated).map_err(anyhow::Error::from)?;
+        fs::write(&errors_path, updated)?;
     } else {
         let content = format!(
             r#"use quasar_lang::prelude::*;
@@ -286,7 +286,7 @@ pub enum {pascal} {{
 }}
 "#
         );
-        fs::write(&errors_path, content).map_err(anyhow::Error::from)?;
+        fs::write(&errors_path, content)?;
     }
 
     println!(

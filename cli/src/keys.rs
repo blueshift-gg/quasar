@@ -33,8 +33,8 @@ fn keypair_path(config: &QuasarConfig) -> PathBuf {
 /// Read the public key (program ID) from a Solana CLI-compatible keypair file.
 /// The file contains a 64-byte JSON array: [secret(32) | public(32)].
 fn read_program_id(path: &Path) -> Result<String, crate::error::CliError> {
-    let json = fs::read_to_string(path).map_err(anyhow::Error::from)?;
-    let bytes: Vec<u8> = serde_json::from_str(&json).map_err(anyhow::Error::from)?;
+    let json = fs::read_to_string(path)?;
+    let bytes: Vec<u8> = serde_json::from_str(&json)?;
     Ok(bs58::encode(&bytes[32..64]).into_string())
 }
 
@@ -48,12 +48,12 @@ fn current_program_id() -> Option<String> {
 
 /// Replace the address inside `declare_id!("...")` in src/lib.rs.
 fn replace_program_id(old_id: &str, new_id: &str) -> Result<(), crate::error::CliError> {
-    let source = fs::read_to_string("src/lib.rs").map_err(anyhow::Error::from)?;
+    let source = fs::read_to_string("src/lib.rs")?;
     let updated = source.replace(
         &format!("declare_id!(\"{old_id}\")"),
         &format!("declare_id!(\"{new_id}\")"),
     );
-    fs::write("src/lib.rs", updated).map_err(anyhow::Error::from)?;
+    fs::write("src/lib.rs", updated)?;
     Ok(())
 }
 
@@ -130,16 +130,16 @@ pub fn new(force: bool) -> CliResult {
     }
 
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(anyhow::Error::from)?;
+        fs::create_dir_all(parent)?;
     }
 
     let signing_key = ed25519_dalek::SigningKey::generate(&mut rand::thread_rng());
     let mut keypair_bytes = Vec::with_capacity(64);
     keypair_bytes.extend_from_slice(signing_key.as_bytes());
     keypair_bytes.extend_from_slice(signing_key.verifying_key().as_bytes());
-    let keypair_json = serde_json::to_string(&keypair_bytes).map_err(anyhow::Error::from)?;
+    let keypair_json = serde_json::to_string(&keypair_bytes)?;
 
-    fs::write(&path, &keypair_json).map_err(anyhow::Error::from)?;
+    fs::write(&path, &keypair_json)?;
 
     let id = bs58::encode(signing_key.verifying_key().as_bytes()).into_string();
     println!(

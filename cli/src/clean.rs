@@ -35,10 +35,7 @@ pub fn run(all: bool) -> CliResult {
     }
 
     if all {
-        let output = Command::new("cargo")
-            .arg("clean")
-            .output()
-            .map_err(anyhow::Error::from)?;
+        let output = Command::new("cargo").arg("clean").output()?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(CliError::process_failure(

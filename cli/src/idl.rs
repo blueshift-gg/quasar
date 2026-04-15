@@ -28,8 +28,7 @@ fn generate_idl(crate_path: &Path) -> Result<(Idl, ParsedProgram), anyhow::Error
     let idl_dir = PathBuf::from("target").join("idl");
     std::fs::create_dir_all(&idl_dir)?;
     let idl_path = idl_dir.join(format!("{}.json", idl.metadata.name));
-    let json = serde_json::to_string_pretty(&idl)
-        .map_err(|e| anyhow::anyhow!("failed to serialize IDL: {e}"))?;
+    let json = serde_json::to_string_pretty(&idl)?;
     std::fs::write(&idl_path, &json)?;
 
     // Write Rust client

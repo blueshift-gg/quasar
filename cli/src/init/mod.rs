@@ -108,7 +108,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
         if let Some(default) = name {
             prompt = prompt.default(default);
         }
-        prompt.interact_text().map_err(anyhow::Error::from)?
+        prompt.interact_text()?
     };
 
     // Validate the target directory before prompting for remaining options
@@ -143,8 +143,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
             .with_prompt("Toolchain")
             .items(toolchain_items)
             .default(toolchain_default)
-            .interact()
-            .map_err(anyhow::Error::from)?
+            .interact()?
     };
     let toolchain = match toolchain_idx {
         0 => Toolchain::Solana,
@@ -190,8 +189,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
             .with_prompt("Test language")
             .items(lang_items)
             .default(lang_default)
-            .interact()
-            .map_err(anyhow::Error::from)?
+            .interact()?
     };
     let test_language = match test_lang_idx {
         1 => TestLanguage::Rust,
@@ -209,8 +207,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
                 .with_prompt("Rust test framework")
                 .items(items)
                 .default(rust_fw_default)
-                .interact()
-                .map_err(anyhow::Error::from)?
+                .interact()?
         };
         Some(match idx {
             1 => RustFramework::Mollusk,
@@ -230,8 +227,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
                 .with_prompt("TypeScript SDK")
                 .items(items)
                 .default(ts_sdk_default)
-                .interact()
-                .map_err(anyhow::Error::from)?
+                .interact()?
         };
         Some(match idx {
             1 => TypeScriptSdk::Web3js,
@@ -252,8 +248,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
                 .with_prompt("Package manager")
                 .items(pm_items)
                 .default(pm_default)
-                .interact()
-                .map_err(anyhow::Error::from)?
+                .interact()?
         };
         Some(match pm_idx {
             0 => PackageManager::Pnpm,
@@ -264,13 +259,11 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
                 let install: String = Input::with_theme(&theme)
                     .with_prompt("Install command")
                     .default("pnpm install".into())
-                    .interact_text()
-                    .map_err(anyhow::Error::from)?;
+                    .interact_text()?;
                 let test: String = Input::with_theme(&theme)
                     .with_prompt("Test command")
                     .default("pnpm test".into())
-                    .interact_text()
-                    .map_err(anyhow::Error::from)?;
+                    .interact_text()?;
                 PackageManager::Other { install, test }
             }
         })
@@ -313,8 +306,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
         let selected = MultiSelect::with_theme(&theme)
             .with_prompt(&prompt)
             .items(&display_items)
-            .interact()
-            .map_err(anyhow::Error::from)?;
+            .interact()?;
 
         let mut langs: Vec<String> = vec!["rust".to_string()];
         if ts_tests {
@@ -345,8 +337,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
             .with_prompt("Template")
             .items(template_items)
             .default(template_default)
-            .interact()
-            .map_err(anyhow::Error::from)?
+            .interact()?
     };
     let template = match template_idx {
         0 => Template::Minimal,
@@ -369,8 +360,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
             .with_prompt("Initialize a new git repo?")
             .items(git_items)
             .default(git_default.index())
-            .interact()
-            .map_err(anyhow::Error::from)?;
+            .interact()?;
         GitSetup::from_index(git_idx)
     };
 
