@@ -112,7 +112,7 @@ pub fn generate_clients(
         let c_code = codegen::c::generate_c_client(idl);
         let c_dir = PathBuf::from(clients_path)
             .join("c")
-            .join(&idl.metadata.name);
+            .join(&model.identity.client_name);
         std::fs::create_dir_all(&c_dir)?;
         std::fs::write(c_dir.join("client.h"), &c_code)?;
     }
