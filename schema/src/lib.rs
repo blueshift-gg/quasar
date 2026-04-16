@@ -159,6 +159,8 @@ pub struct IdlAccountItem {
     pub writable: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub signer: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub optional: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pda: Option<IdlPda>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
