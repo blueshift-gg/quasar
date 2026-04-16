@@ -3,12 +3,12 @@ use quasar_lang::prelude::*;
 
 solana_address::declare_id!("11111111111111111111111111111112");
 
-/// Composite struct containing PodString and PodVec fields.
-/// QuasarSerialize generates ZC companion with PodString/PodVec (Zc = Self).
+/// Composite struct containing user-facing String and Vec aliases.
+/// QuasarSerialize normalizes them to pod-backed fixed fields internally.
 #[derive(Copy, Clone, QuasarSerialize)]
 pub struct Metadata {
-    pub label: PodString<16>,
-    pub values: PodVec<u8, 4>,
+    pub label: String<16>,
+    pub values: Vec<u8, 4>,
     pub version: u32,
 }
 
@@ -20,7 +20,7 @@ pub struct Registry {
     pub bump: u8,
 }
 
-/// Instruction arg with composite containing PodString/PodVec.
+/// Instruction arg with composite containing aliased String/Vec.
 #[derive(Copy, Clone, QuasarSerialize)]
 pub struct UpdateArgs {
     pub meta: Metadata,

@@ -28,6 +28,7 @@ pub use {
             AccountCheck, AccountCount, AsAccountView, CheckOwner, Discriminator, Event, HasSeeds,
             Id, Owner, Owners, ParseAccounts, ProgramInterface, Space, StaticView, ZeroCopyDeref,
         },
+        String, Vec,
     },
     core::ops::{Deref, DerefMut},
     quasar_derive::{

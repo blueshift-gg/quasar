@@ -3,6 +3,14 @@ use quasar_lang::{
     pod::{PodBool, PodString, PodU64, PodVec},
 };
 
+#[repr(u8)]
+#[derive(Debug, PartialEq, Eq, quasar_lang::prelude::QuasarSerialize)]
+enum Status {
+    Pending = 1,
+    Ready = 2,
+    Failed = 9,
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, quasar_lang::prelude::QuasarSerialize)]
 struct NestedInner {
     maybe_amount: Option<u64>,
@@ -327,4 +335,26 @@ fn podvec_zc_is_self() {
         core::mem::align_of::<<PodVec<u8, 8> as InstructionArg>::Zc>(),
         1
     );
+}
+
+// --- repr-backed enums as InstructionArg ---
+
+#[test]
+fn repr_enum_round_trip() {
+    let zc = Status::Ready.to_zc();
+    assert_eq!(Status::from_zc(&zc), Status::Ready);
+}
+
+#[test]
+fn repr_enum_validate_accepts_known_discriminants() {
+    for status in [Status::Pending, Status::Ready, Status::Failed] {
+        let zc = status.to_zc();
+        assert!(Status::validate_zc(&zc).is_ok());
+    }
+}
+
+#[test]
+fn repr_enum_validate_rejects_invalid_discriminant() {
+    let zc = 3u8;
+    assert!(Status::validate_zc(&zc).is_err());
 }

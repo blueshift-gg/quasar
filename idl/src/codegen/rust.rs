@@ -1,4 +1,5 @@
 use {
+    super::model::ProgramModel,
     crate::types::{Idl, IdlAccountItem, IdlField, IdlSeed, IdlType},
     quasar_schema::{
         camel_to_pascal, camel_to_snake, pascal_to_snake, snake_to_pascal,
@@ -39,12 +40,18 @@ solana-instruction = "3"
     )
 }
 
+pub fn generate_cargo_toml_for_program(model: &ProgramModel<'_>) -> String {
+    generate_cargo_toml(
+        &model.identity.client_name,
+        &model.idl.metadata.version,
+        model.features.has_pdas,
+    )
+}
+
 /// Check whether the IDL has any resolvable PDA annotations.
 /// Used by the CLI to decide whether `generate_cargo_toml` needs PDA deps.
 pub fn has_pdas(idl: &Idl) -> bool {
-    idl.instructions
-        .iter()
-        .any(|ix| ix.accounts.iter().any(|a| a.pda.is_some()))
+    ProgramModel::new(idl).features.has_pdas
 }
 
 /// Generate a standalone Rust client crate from the IDL.
@@ -53,6 +60,7 @@ pub fn has_pdas(idl: &Idl) -> bool {
 /// the client crate `src/` directory (e.g. `"lib.rs"`,
 /// `"instructions/mod.rs"`).
 pub fn generate_client(idl: &Idl) -> Vec<(String, String)> {
+    let model = ProgramModel::new(idl);
     let mut files: Vec<(String, String)> = Vec::new();
 
     // Build type map for custom data types. The IDL already resolved these
@@ -63,15 +71,15 @@ pub fn generate_client(idl: &Idl) -> Vec<(String, String)> {
         .map(|td| (td.name.clone(), td.ty.fields.clone()))
         .collect();
 
-    let has_instructions = !idl.instructions.is_empty();
-    let has_state = !idl.accounts.is_empty();
-    let has_events = !idl.events.is_empty();
-    let has_types = !type_map.is_empty();
-    let has_errors = !idl.errors.is_empty();
+    let has_instructions = model.features.has_instructions;
+    let has_state = model.features.has_accounts;
+    let has_events = model.features.has_events;
+    let has_types = model.features.has_types;
+    let has_errors = model.features.has_errors;
 
     // Collect PDA info for pda.rs generation
     let pdas = collect_pdas(idl);
-    let has_pdas = !pdas.is_empty();
+    let has_pdas = model.features.has_pdas;
 
     // --- lib.rs ---
     files.push((
@@ -212,18 +220,18 @@ fn emit_instructions(
     let mut ix_files: Vec<(String, String)> = Vec::new();
 
     // Scan all instruction arg types for imports needed by mod.rs
-    let mut needs_dyn_bytes = false;
+    let mut needs_dyn_string = false;
     let mut needs_dyn_vec = false;
     let mut needs_address = false;
     for ix in &idl.instructions {
         for arg in &ix.args {
-            collect_wrapper_needs(&arg.ty, &mut needs_dyn_bytes, &mut needs_dyn_vec);
+            collect_wrapper_needs(&arg.ty, &mut needs_dyn_string, &mut needs_dyn_vec);
             if field_needs_address(&arg.ty) {
                 needs_address = true;
             }
         }
     }
-    emit_wrapper_imports(&mut mod_rs, needs_dyn_bytes, needs_dyn_vec);
+    emit_wrapper_imports(&mut mod_rs, needs_dyn_string, needs_dyn_vec);
     if needs_address {
         mod_rs.push_str("use solana_address::Address;\n");
     }
@@ -726,9 +734,10 @@ fn emit_single_type(
 // ===========================================================================
 
 fn emit_errors(idl: &Idl) -> String {
+    let model = ProgramModel::new(idl);
     let mut out = String::new();
 
-    let enum_name = format!("{}Error", snake_to_pascal(&idl.metadata.name));
+    let enum_name = format!("{}Error", snake_to_pascal(&model.identity.program_name));
 
     out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n");
     out.push_str("#[repr(u32)]\n");
@@ -885,7 +894,7 @@ fn emit_pda(pdas: &[PdaInfo]) -> String {
 // Shared helpers
 // ===========================================================================
 
-/// Scan field types and emit wrapper imports (DynBytes, DynVec), Address
+/// Scan field types and emit wrapper imports (DynString, DynVec), Address
 /// import, and defined type imports. Used by instruction, state/event, and type
 /// emitters.
 fn emit_field_imports<'a>(
@@ -894,10 +903,10 @@ fn emit_field_imports<'a>(
     type_map: &HashMap<String, Vec<IdlField>>,
 ) {
     let mut needs_address = false;
-    let mut needs_dyn_bytes = false;
+    let mut needs_dyn_string = false;
     let mut needs_dyn_vec = false;
     for ty in types {
-        collect_wrapper_needs(ty, &mut needs_dyn_bytes, &mut needs_dyn_vec);
+        collect_wrapper_needs(ty, &mut needs_dyn_string, &mut needs_dyn_vec);
         if field_needs_address(ty) {
             needs_address = true;
         }
@@ -906,7 +915,7 @@ fn emit_field_imports<'a>(
     if needs_address {
         out.push_str("use solana_address::Address;\n");
     }
-    emit_wrapper_imports(out, needs_dyn_bytes, needs_dyn_vec);
+    emit_wrapper_imports(out, needs_dyn_string, needs_dyn_vec);
 }
 
 /// Emit struct definition + manual SchemaWrite/SchemaRead impls with
@@ -1063,7 +1072,7 @@ fn rust_field_type(ty: &IdlType) -> String {
             other => other.to_string(),
         },
         IdlType::Option { option } => format!("Option<{}>", rust_field_type(option)),
-        IdlType::DynString { string } => prefix_generic("DynBytes", string.prefix_bytes),
+        IdlType::DynString { string } => prefix_generic("DynString", string.prefix_bytes),
         IdlType::DynVec { vec } => {
             let inner = rust_field_type(&vec.items);
             format!("DynVec<{}, {}>", inner, prefix_rust_type(vec.prefix_bytes))
@@ -1085,13 +1094,15 @@ fn prefix_rust_type(prefix_bytes: usize) -> &'static str {
     }
 }
 
-fn collect_wrapper_needs(ty: &IdlType, needs_dyn_bytes: &mut bool, needs_dyn_vec: &mut bool) {
+fn collect_wrapper_needs(ty: &IdlType, needs_dyn_string: &mut bool, needs_dyn_vec: &mut bool) {
     match ty {
-        IdlType::Option { option } => collect_wrapper_needs(option, needs_dyn_bytes, needs_dyn_vec),
-        IdlType::DynString { .. } => *needs_dyn_bytes = true,
+        IdlType::Option { option } => {
+            collect_wrapper_needs(option, needs_dyn_string, needs_dyn_vec)
+        }
+        IdlType::DynString { .. } => *needs_dyn_string = true,
         IdlType::DynVec { vec } => {
             *needs_dyn_vec = true;
-            collect_wrapper_needs(&vec.items, needs_dyn_bytes, needs_dyn_vec);
+            collect_wrapper_needs(&vec.items, needs_dyn_string, needs_dyn_vec);
         }
         _ => {}
     }
@@ -1106,10 +1117,10 @@ fn field_needs_address(ty: &IdlType) -> bool {
     }
 }
 
-fn emit_wrapper_imports(out: &mut String, needs_dyn_bytes: bool, needs_dyn_vec: bool) {
+fn emit_wrapper_imports(out: &mut String, needs_dyn_string: bool, needs_dyn_vec: bool) {
     let mut wrappers = Vec::new();
-    if needs_dyn_bytes {
-        wrappers.push("DynBytes");
+    if needs_dyn_string {
+        wrappers.push("DynString");
     }
     if needs_dyn_vec {
         wrappers.push("DynVec");

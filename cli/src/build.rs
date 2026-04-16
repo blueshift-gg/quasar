@@ -20,20 +20,31 @@ use {
     std::{
         fs,
         path::{Path, PathBuf},
-        process::{Command, Stdio},
+        process::{Command, ExitStatus, Output, Stdio},
         time::Instant,
     },
 };
 
-pub fn run(debug: bool, watch: bool, features: Option<String>, lint: bool) -> CliResult {
-    if watch {
-        run_watch(debug, features);
-    }
-
-    run_once(debug, features.as_deref(), lint)
+enum BuildResult {
+    Captured(Output),
+    Streamed(ExitStatus),
 }
 
-fn run_once(debug: bool, features: Option<&str>, lint_flag: bool) -> CliResult {
+pub fn run(
+    debug: bool,
+    verbose: bool,
+    watch: bool,
+    features: Option<String>,
+    lint: bool,
+) -> CliResult {
+    if watch {
+        run_watch(debug, verbose, features);
+    }
+
+    run_once(debug, verbose, features.as_deref(), lint)
+}
+
+fn run_once(debug: bool, verbose: bool, features: Option<&str>, lint_flag: bool) -> CliResult {
     let config = QuasarConfig::load()?;
     let clients_path = config.client_path();
     let start = Instant::now();
@@ -46,7 +57,11 @@ fn run_once(debug: bool, features: Option<&str>, lint_flag: bool) -> CliResult {
         crate::lint::run_lint_on_parsed(&parsed, &quasar_idl::lint::LintConfig::default())?;
     }
 
-    let sp = style::spinner("Building...");
+    let sp = if verbose {
+        indicatif::ProgressBar::hidden()
+    } else {
+        style::spinner("Building...")
+    };
 
     if config.is_solana_toolchain() {
         toolchain::check_build_sbf_supports(PLATFORM_TOOLS_VERSION).map_err(|e| {
@@ -73,7 +88,7 @@ fn run_once(debug: bool, features: Option<&str>, lint_flag: bool) -> CliResult {
         if let Some(f) = features {
             cmd.args(["--features", f]);
         }
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output()
+        run_build_command(&mut cmd, verbose)
     } else {
         if !toolchain::has_sbpf_linker() {
             sp.finish_and_clear();
@@ -91,13 +106,13 @@ fn run_once(debug: bool, features: Option<&str>, lint_flag: bool) -> CliResult {
         if let Some(f) = features {
             cmd.args(["--features", f]);
         }
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output()
+        run_build_command(&mut cmd, verbose)
     };
 
     sp.finish_and_clear();
 
     match output {
-        Ok(o) if o.status.success() => {
+        Ok(BuildResult::Captured(o)) if o.status.success() => {
             let elapsed = start.elapsed();
 
             if !config.is_solana_toolchain() {
@@ -151,7 +166,7 @@ fn run_once(debug: bool, features: Option<&str>, lint_flag: bool) -> CliResult {
             );
             Ok(())
         }
-        Ok(o) => {
+        Ok(BuildResult::Captured(o)) => {
             let elapsed = start.elapsed();
             let stderr = String::from_utf8_lossy(&o.stderr);
             Err(CliError::process_failure(
@@ -159,6 +174,57 @@ fn run_once(debug: bool, features: Option<&str>, lint_flag: bool) -> CliResult {
                 o.status.code().unwrap_or(1),
             ))
         }
+        Ok(BuildResult::Streamed(status)) if status.success() => {
+            let elapsed = start.elapsed();
+
+            if !config.is_solana_toolchain() {
+                let program = config.module_name();
+                let src = PathBuf::from("target")
+                    .join("bpfel-unknown-none")
+                    .join("release")
+                    .join(format!("lib{}.so", program));
+                let dest_dir = PathBuf::from("target").join("deploy");
+                fs::create_dir_all(&dest_dir)?;
+                let dest = dest_dir.join(format!("lib{}.so", program));
+                fs::copy(&src, &dest).map_err(|e| {
+                    eprintln!(
+                        "  {}",
+                        style::fail(&format!("failed to copy {}: {e}", src.display()))
+                    );
+                    e
+                })?;
+            }
+
+            let so_path = utils::find_so(&config, false);
+            let size_info = so_path
+                .and_then(|p| {
+                    let meta = fs::metadata(&p).ok()?;
+                    let new_size = meta.len();
+                    let delta = size_delta(&p, new_size);
+                    save_last_size(&p, new_size);
+                    Some(format!(
+                        " ({}{delta})",
+                        style::dim(&style::human_size(new_size))
+                    ))
+                })
+                .unwrap_or_default();
+
+            println!(
+                "  {}",
+                style::success(&format!(
+                    "Build complete in {}{size_info}",
+                    style::bold(&style::human_duration(elapsed))
+                ))
+            );
+            Ok(())
+        }
+        Ok(BuildResult::Streamed(status)) => Err(CliError::process_failure(
+            format!(
+                "build failed after {}",
+                style::human_duration(start.elapsed())
+            ),
+            status.code().unwrap_or(1),
+        )),
         Err(e) => Err(CliError::message(format!(
             "failed to run build command: {e}"
         ))),
@@ -289,8 +355,21 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
     }
 }
 
-fn run_watch(debug: bool, features: Option<String>) -> ! {
-    watch_loop(|| run_once(debug, features.as_deref(), false))
+fn run_watch(debug: bool, verbose: bool, features: Option<String>) -> ! {
+    watch_loop(|| run_once(debug, verbose, features.as_deref(), false))
+}
+
+fn run_build_command(cmd: &mut Command, verbose: bool) -> std::io::Result<BuildResult> {
+    if verbose {
+        let status = cmd
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()?;
+        Ok(BuildResult::Streamed(status))
+    } else {
+        let output = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output()?;
+        Ok(BuildResult::Captured(output))
+    }
 }
 
 // ---------------------------------------------------------------------------

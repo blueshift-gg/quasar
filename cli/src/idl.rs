@@ -5,7 +5,7 @@ use {
         IdlCommand,
     },
     quasar_idl::{
-        codegen,
+        codegen::{self, model::ProgramModel},
         parser::{self, ParsedProgram},
         types::Idl,
     },
@@ -23,10 +23,9 @@ fn generate_idl(
         parser::build_idl(&parsed).map_err(|errors| anyhow::anyhow!("{}", errors.join("\n")))?;
 
     // All codegens now work from the IDL — single source of truth.
-    let pdas = codegen::rust::has_pdas(&idl);
+    let model = ProgramModel::new(&idl);
     let client_code = codegen::rust::generate_client(&idl);
-    let client_cargo_toml =
-        codegen::rust::generate_cargo_toml(&idl.metadata.crate_name, &idl.metadata.version, pdas);
+    let client_cargo_toml = codegen::rust::generate_cargo_toml_for_program(&model);
 
     // Write IDL JSON
     let idl_dir = PathBuf::from("target").join("idl");
@@ -39,7 +38,7 @@ fn generate_idl(
     // Write Rust client
     let client_dir = clients_path
         .join("rust")
-        .join(format!("{}-client", idl.metadata.crate_name));
+        .join(&model.identity.rust_client_crate);
     std::fs::create_dir_all(&client_dir)?;
     std::fs::write(client_dir.join("Cargo.toml"), &client_cargo_toml)?;
 

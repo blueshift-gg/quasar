@@ -1,4 +1,5 @@
 use {
+    super::model::{python_field_path, ProgramModel},
     crate::types::{Idl, IdlType, IdlTypeDef},
     quasar_schema::{camel_to_snake, snake_to_pascal, to_screaming_snake},
     std::fmt::Write,
@@ -9,13 +10,14 @@ use {
 /// Uses `solders` for Solana types (Pubkey, Instruction, AccountMeta)
 /// and `struct` for binary serialization.
 pub fn generate_python_client(idl: &Idl) -> String {
+    let model = ProgramModel::new(idl);
     let mut out = String::new();
 
     // Module docstring
     writeln!(
         out,
         r#""""Generated client for the {} program.""""#,
-        idl.metadata.name
+        model.identity.program_name
     )
     .unwrap();
     out.push_str("from __future__ import annotations\n\n");
@@ -24,24 +26,10 @@ pub fn generate_python_client(idl: &Idl) -> String {
     out.push_str("import struct\n");
     out.push_str("from dataclasses import dataclass\n");
 
-    let has_events = !idl.events.is_empty();
-    let has_args = idl.instructions.iter().any(|ix| !ix.args.is_empty());
-    let has_optional = idl
-        .instructions
-        .iter()
-        .any(|ix| ix.args.iter().any(|a| type_has_option(&a.ty)))
-        || idl
-            .types
-            .iter()
-            .any(|t| t.ty.fields.iter().any(|f| type_has_option(&f.ty)));
-    let has_dynamic = idl
-        .instructions
-        .iter()
-        .any(|ix| ix.args.iter().any(|a| type_has_dynamic(&a.ty)))
-        || idl
-            .types
-            .iter()
-            .any(|t| t.ty.fields.iter().any(|f| type_has_dynamic(&f.ty)));
+    let has_events = model.features.has_events;
+    let has_args = model.features.has_args;
+    let has_optional = model.features.has_option;
+    let has_dynamic = model.features.has_dynamic;
 
     if has_events || has_args || has_dynamic || has_optional {
         out.push_str("from typing import Optional\n");
@@ -207,8 +195,10 @@ pub fn generate_python_client(idl: &Idl) -> String {
         )
         .unwrap();
 
+        out.push_str("    accounts_map = {}\n");
+
         // Build accounts list
-        out.push_str("    accounts = [\n");
+        out.push_str("    accounts = []\n");
         for acc in &ix.accounts {
             let key_expr = if let Some(ref addr) = acc.address {
                 format!("Pubkey.from_string(\"{}\")", addr)
@@ -220,10 +210,10 @@ pub fn generate_python_client(idl: &Idl) -> String {
                             seeds.push(format!("bytes([{}])", super::format_disc_decimal(value)));
                         }
                         crate::types::IdlSeed::Account { path } => {
-                            seeds.push(format!("bytes(input.{})", camel_to_snake(path)));
+                            seeds.push(format!("bytes(accounts_map[\"{}\"])", path));
                         }
                         crate::types::IdlSeed::Arg { path } => {
-                            seeds.push(format!("input.{}", camel_to_snake(path)));
+                            seeds.push(format!("input.{}", python_field_path(path)));
                         }
                     }
                 }
@@ -235,16 +225,17 @@ pub fn generate_python_client(idl: &Idl) -> String {
                 format!("input.{}", camel_to_snake(&acc.name))
             };
 
+            writeln!(out, "    accounts_map[\"{}\"] = {}", acc.name, key_expr).unwrap();
             writeln!(
                 out,
-                "        AccountMeta({}, is_signer={}, is_writable={}),",
-                key_expr,
+                "    accounts.append(AccountMeta(accounts_map[\"{}\"], is_signer={}, \
+                 is_writable={}))",
+                acc.name,
                 py_bool(acc.signer),
                 py_bool(acc.writable),
             )
             .unwrap();
         }
-        out.push_str("    ]\n");
 
         if ix.has_remaining {
             out.push_str(
@@ -312,7 +303,7 @@ pub fn generate_python_client(idl: &Idl) -> String {
     }
 
     // Client class (convenience wrapper)
-    let pascal_name = snake_to_pascal(&idl.metadata.name);
+    let pascal_name = snake_to_pascal(&model.identity.program_name);
     writeln!(out, "\nclass {}Client:", pascal_name).unwrap();
     writeln!(out, "    program_id = PROGRAM_ID\n").unwrap();
 
@@ -634,22 +625,6 @@ fn primitive_size(p: &str) -> usize {
         "u128" | "i128" => 16,
         "pubkey" => 32,
         _ => 0,
-    }
-}
-
-fn type_has_dynamic(ty: &IdlType) -> bool {
-    match ty {
-        IdlType::Option { option } => type_has_dynamic(option),
-        IdlType::DynString { .. } | IdlType::DynVec { .. } => true,
-        _ => false,
-    }
-}
-
-fn type_has_option(ty: &IdlType) -> bool {
-    match ty {
-        IdlType::Option { .. } => true,
-        IdlType::DynVec { vec } => type_has_option(&vec.items),
-        _ => false,
     }
 }
 

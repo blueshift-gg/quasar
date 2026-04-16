@@ -3,14 +3,14 @@ use quasar_lang::prelude::*;
 
 solana_address::declare_id!("11111111111111111111111111111112");
 
-/// Grouped instruction arg struct with PodString and PodVec fields.
-/// Derives QuasarSerialize → InstructionArg: Zc uses PodString/PodVec directly
-/// (they are their own Zc). Wire format: fixed PFX+N bytes per field.
+/// Grouped instruction arg struct with user-facing String and Vec fields.
+/// Derives QuasarSerialize → InstructionArg and normalizes them to pod-backed
+/// fixed fields internally.
 #[derive(Copy, Clone, QuasarSerialize)]
 pub struct MintArgs {
     pub amount: u64,
-    pub name: PodString<32>,
-    pub recipients: PodVec<Address, 8>,
+    pub name: String<32>,
+    pub recipients: Vec<Address, 8>,
 }
 
 #[derive(Accounts)]

@@ -12,7 +12,7 @@ cargo install --path cli
 
 ### `quasar init [name] [--yes] [--no-git]`
 
-Scaffold a new Quasar project. When a name is provided, uses saved defaults and skips prompts. Without a name, launches an interactive wizard that prompts for:
+Scaffold a new Quasar project. Without `--yes`, this launches an interactive wizard. If a name is provided, it pre-fills the project name prompt. With `--yes`, the command uses saved defaults or explicit flags and requires a project name.
 
 - **Project name** — becomes the crate name and `Quasar.toml` project name
 - **Toolchain** — `solana` (cargo build-sbf) or `upstream` (cargo +nightly build-bpf)
@@ -24,24 +24,32 @@ The wizard generates a complete project directory with `Cargo.toml`, `Quasar.tom
 
 | Flag | Effect |
 |------|--------|
-| `-y, --yes` | Explicitly skip prompts (same as providing a name) |
+| `-y, --yes` | Explicitly skip prompts and use saved defaults |
 | `--no-git` | Skip git repo setup |
+| `--test-language` | Set `none`, `rust`, or `typescript` |
+| `--rust-framework` | Set `quasar-svm` or `mollusk` for Rust tests |
+| `--ts-sdk` | Set `kit` or `web3.js` for TypeScript tests |
+| `--template` | Set `minimal` or `full` |
+| `--toolchain` | Set `solana` or `upstream` |
 
 ```bash
 quasar init                  # Interactive wizard
-quasar init my-program       # Use saved defaults, no prompts
+quasar init my-program       # Interactive, with the name pre-filled
+quasar init my-program -y    # Use saved defaults, no prompts
 quasar init .                # Scaffold into current directory
 ```
 
-### `quasar build [--debug] [--watch] [--features FEATURES]`
+### `quasar build [--debug] [--verbose] [--watch] [--features FEATURES] [--lint]`
 
 Compile the on-chain program. Reads `Quasar.toml` to determine which toolchain to use and automatically generates the IDL before building.
 
 | Flag | Effect |
 |------|--------|
 | `--debug` | Emit debug symbols (required for profiling and source-interleaved dump) |
+| `--verbose` | Stream the underlying build command output directly |
 | `--watch` | Watch `src/` for changes and rebuild automatically |
 | `--features FEATURES` | Cargo features to enable (passed through to the build command) |
+| `--lint` | Run the account relationship linter after IDL generation |
 
 On success, prints the binary size and delta from the previous build:
 
@@ -49,18 +57,20 @@ On success, prints the binary size and delta from the previous build:
   ✔ Build complete in 1.2s (56.6 KB, -1.2 KB)
 ```
 
-### `quasar test [--debug] [--filter PATTERN] [--watch]`
+### `quasar test [--debug] [--show-output] [--filter PATTERN] [--watch] [--no-build] [--features FEATURES]`
 
-Run the test suite. Builds first, then runs either Rust tests (Mollusk/QuasarSVM) or TypeScript tests (Mocha) based on the `Quasar.toml` testing framework.
+Run the test suite. Builds first, then runs either Rust tests or TypeScript tests based on `Quasar.toml`.
 
 | Flag | Effect |
 |------|--------|
 | `--debug` | Build with debug symbols before testing |
+| `--show-output` | Forward `--show-output` to `cargo test` |
 | `-f, --filter PATTERN` | Only run tests matching the pattern |
 | `-w, --watch` | Watch `src/` for changes and re-run tests automatically |
 | `--no-build` | Skip the build step (use existing binary) |
+| `--features FEATURES` | Cargo features to enable for the build step |
 
-TypeScript tests are parsed from Mocha's JSON reporter for structured pass/fail output. Rust tests are parsed from `cargo test` output.
+TypeScript tests run through the configured command, which defaults to `npx vitest run`. Rust tests run through the configured command, which defaults to `cargo test tests::`.
 
 ### `quasar profile [elf] [--expand] [--diff PROGRAM] [--share] [--watch]`
 
@@ -123,7 +133,7 @@ quasar deploy --program-keypair ./my-key.json
 
 ### `quasar clean`
 
-Remove build artifacts from `target/deploy/`, `target/profile/`, `target/idl/`, and `target/client/`.
+Remove build artifacts from `target/deploy/`, `target/profile/`, `target/idl/`, and the configured `clients.path` directory from `Quasar.toml`.
 
 ### `quasar idl <path>`
 
@@ -166,10 +176,18 @@ Every project has a `Quasar.toml` at the root:
 name = "my-program"
 
 [toolchain]
-type = "solana"        # "solana" or "upstream"
+type = "solana"
 
 [testing]
-framework = "mollusk"  # "none", "mollusk", "quasarsvm-rust", "quasarsvm-web3js", or "quasarsvm-kit"
+language = "rust"
+
+[testing.rust]
+framework = "quasar-svm"
+test = { program = "cargo", args = ["test", "tests::"] }
+
+[clients]
+path = "target/client"
+languages = ["rust"]
 ```
 
 ### Global config (`~/.quasar/config.toml`)
@@ -179,9 +197,12 @@ Preferences that apply across all projects:
 ```toml
 [defaults]
 toolchain = "solana"
-framework = "mollusk"
+test_language = "rust"
+rust_framework = "mollusk"
+ts_sdk = "kit"
 template = "minimal"
 git = "commit"      # "commit", "init", or "skip"
+package_manager = "pnpm"
 
 [ui]
 animation = true   # Animated banner on `quasar init`

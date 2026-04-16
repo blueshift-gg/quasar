@@ -56,6 +56,8 @@ pub(super) fn generate_account(
         super::dynamic::emit_dynamic_impl_block(name, has_dynamic, disc_len, &zc.zc_path, &dynamic);
     let dyn_guard =
         super::dynamic::emit_dyn_guard(name, has_dynamic, disc_len, &zc.zc_name, &dynamic);
+    let dyn_writer =
+        super::dynamic::emit_dyn_writer(name, has_dynamic, disc_len, &zc.zc_name, &dynamic);
     let set_inner_impl = super::methods::emit_set_inner_impl(super::methods::SetInnerSpec {
         name,
         vis,
@@ -83,6 +85,8 @@ pub(super) fn generate_account(
         #dynamic_impl_block
 
         #dyn_guard
+
+        #dyn_writer
 
         #set_inner_impl
     }

@@ -14,6 +14,67 @@ use solana_program_error::ProgramError;
 // (SBF, x86-64, aarch64) but would silently produce wrong results on BE.
 const _: () = assert!(cfg!(target_endian = "little"));
 
+/// Sequential cursor over raw instruction data.
+///
+/// This is the canonical low-level decode primitive for instruction-wire
+/// parsing. It intentionally models the wire as declaration-ordered bytes,
+/// not as a split fixed-header + dynamic-tail layout.
+pub struct InstructionCursor<'a> {
+    data: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> InstructionCursor<'a> {
+    #[inline(always)]
+    pub const fn new(data: &'a [u8]) -> Self {
+        Self { data, offset: 0 }
+    }
+
+    #[inline(always)]
+    pub const fn with_offset(data: &'a [u8], offset: usize) -> Self {
+        Self { data, offset }
+    }
+
+    #[inline(always)]
+    pub const fn offset(&self) -> usize {
+        self.offset
+    }
+
+    #[inline(always)]
+    pub fn read_arg<T: crate::instruction_arg::InstructionArg>(
+        &mut self,
+    ) -> Result<T, ProgramError> {
+        let size = core::mem::size_of::<T::Zc>();
+        if self.data.len() < self.offset + size {
+            return Err(ProgramError::InvalidInstructionData);
+        }
+        let zc = unsafe { &*(self.data.as_ptr().add(self.offset) as *const T::Zc) };
+        T::validate_zc(zc)?;
+        self.offset += size;
+        Ok(T::from_zc(zc))
+    }
+
+    #[inline(always)]
+    pub fn read_dynamic_str<const PREFIX: usize>(
+        &mut self,
+        max_len: usize,
+    ) -> Result<&'a str, ProgramError> {
+        let (value, new_offset) = read_dynamic_str::<PREFIX>(self.data, self.offset, max_len)?;
+        self.offset = new_offset;
+        Ok(value)
+    }
+
+    #[inline(always)]
+    pub fn read_dynamic_vec<T, const PREFIX: usize>(
+        &mut self,
+        max_count: usize,
+    ) -> Result<&'a [T], ProgramError> {
+        let (value, new_offset) = read_dynamic_vec::<T, PREFIX>(self.data, self.offset, max_count)?;
+        self.offset = new_offset;
+        Ok(value)
+    }
+}
+
 /// Read a length-prefixed UTF-8 string from instruction data.
 ///
 /// Returns `(parsed_str, new_offset)`. The `PREFIX` const generic (1, 2, or 4)

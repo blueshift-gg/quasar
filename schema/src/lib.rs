@@ -142,6 +142,16 @@ pub struct IdlMetadata {
     pub spec: String,
 }
 
+impl IdlMetadata {
+    pub fn client_name(&self) -> &str {
+        if self.crate_name.is_empty() {
+            &self.name
+        } else {
+            &self.crate_name
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct IdlInstruction {
     pub name: String,

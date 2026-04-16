@@ -14,7 +14,7 @@ pub struct MutateThenReadback {
 
 impl MutateThenReadback {
     #[inline(always)]
-    pub fn handler(&mut self, new_name: &str, expected_tags_count: u8) -> Result<(), ProgramError> {
+    pub fn handler(&mut self, expected_tags_count: u8, new_name: &str) -> Result<(), ProgramError> {
         let rent = Rent::get()?;
 
         // Mutate via guard — auto-saves on drop

@@ -34,3 +34,6 @@ clap_complete = "4.6.0"
 ctrlc = "3.4"
 syn = { version = "2", features = ["full", "parsing"] }
 shlex = "1"
+
+[dev-dependencies]
+tempfile = "3"

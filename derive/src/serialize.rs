@@ -6,22 +6,31 @@
 //! 3. Off-chain `SchemaWrite` / `SchemaRead` impls (cfg not-solana).
 //!
 //! **Borrowed structs** (has lifetime params, fields include `&'a` refs):
-//! 1. An `InstructionArgDecode<'a>` impl with a fixed-header batch + sequential
-//!    variable-length reads. Reference fields require `#[max(N)]`.
+//! 1. An `InstructionArgDecode<'a>` impl with declaration-ordered sequential
+//!    reads from an instruction cursor. Reference fields require `#[max(N)]`.
 //! 2. No ZC companion or `InstructionArg` impl (not `Copy`).
 
 use {
+    crate::helpers::{canonical_instruction_arg_type, map_to_pod_type},
     proc_macro::TokenStream,
     proc_macro2::TokenStream as TokenStream2,
     quote::{format_ident, quote},
     syn::{
-        parse::ParseStream, parse_macro_input, parse_quote, Data, DeriveInput, Field, Fields,
-        Ident, LitInt, Token, Type,
+        parse::ParseStream, parse_macro_input, parse_quote, spanned::Spanned, Data, DeriveInput,
+        Field, Fields, Ident, LitInt, Token, Type,
     },
 };
 
 pub(crate) fn derive_quasar_serialize(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+
+    let enum_variants = match &input.data {
+        Data::Enum(data) => Some(data.variants.iter().cloned().collect::<Vec<_>>()),
+        _ => None,
+    };
+    if let Some(variants) = enum_variants {
+        return derive_enum(input, variants);
+    }
 
     let fields = match &input.data {
         Data::Struct(data) => match &data.fields {
@@ -38,7 +47,7 @@ pub(crate) fn derive_quasar_serialize(input: TokenStream) -> TokenStream {
         _ => {
             return syn::Error::new_spanned(
                 &input.ident,
-                "QuasarSerialize can only be derived for structs",
+                "QuasarSerialize can only be derived for structs or repr-backed unit enums",
             )
             .to_compile_error()
             .into();
@@ -66,17 +75,16 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
 
     let field_names: Vec<_> = fields.iter().map(|f| f.ident.as_ref()).collect();
     let field_types: Vec<_> = fields.iter().map(|f| &f.ty).collect();
-
-    let zc_field_types: Vec<_> = field_types
+    let canonical_field_types: Vec<_> = field_types
         .iter()
-        .map(|ty| {
-            quote! { <#ty as quasar_lang::instruction_arg::InstructionArg>::Zc }
-        })
+        .map(|ty| canonical_instruction_arg_type(ty))
         .collect();
+
+    let zc_field_types: Vec<_> = field_types.iter().map(|ty| map_to_pod_type(ty)).collect();
 
     let from_zc_fields: Vec<_> = field_names
         .iter()
-        .zip(field_types.iter())
+        .zip(canonical_field_types.iter())
         .map(|(name, ty)| {
             quote! {
                 #name: <#ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(&zc.#name)
@@ -86,7 +94,7 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
 
     let to_zc_fields: Vec<_> = field_names
         .iter()
-        .zip(field_types.iter())
+        .zip(canonical_field_types.iter())
         .map(|(name, ty)| {
             quote! {
                 #name: <#ty as quasar_lang::instruction_arg::InstructionArg>::to_zc(&self.#name)
@@ -96,7 +104,7 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
 
     let validate_zc_fields: Vec<_> = field_names
         .iter()
-        .zip(field_types.iter())
+        .zip(canonical_field_types.iter())
         .map(|(name, ty)| {
             quote! {
                 <#ty as quasar_lang::instruction_arg::InstructionArg>::validate_zc(&zc.#name)?;
@@ -250,6 +258,187 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
 }
 
 // ---------------------------------------------------------------------------
+// repr-backed unit enum path
+// ---------------------------------------------------------------------------
+
+fn parse_repr_type(input: &DeriveInput) -> Result<Type, syn::Error> {
+    for attr in &input.attrs {
+        if !attr.path().is_ident("repr") {
+            continue;
+        }
+        let mut repr_ty: Option<Type> = None;
+        attr.parse_nested_meta(|meta| {
+            let ident = meta
+                .path
+                .get_ident()
+                .ok_or_else(|| syn::Error::new(meta.path.span(), "unsupported #[repr(...)]"))?;
+            let supported = matches!(
+                ident.to_string().as_str(),
+                "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64"
+            );
+            if supported {
+                repr_ty = Some(Type::Path(syn::TypePath {
+                    qself: None,
+                    path: ident.clone().into(),
+                }));
+            }
+            Ok(())
+        })?;
+        if let Some(repr_ty) = repr_ty {
+            return Ok(repr_ty);
+        }
+    }
+
+    Err(syn::Error::new_spanned(
+        &input.ident,
+        "QuasarSerialize enums require #[repr(u8|u16|u32|u64|i8|i16|i32|i64)]",
+    ))
+}
+
+fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream {
+    if input.generics.lifetimes().next().is_some() {
+        return syn::Error::new_spanned(
+            &input.ident,
+            "QuasarSerialize enums cannot have lifetime parameters",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let repr_ty = match parse_repr_type(&input) {
+        Ok(repr_ty) => repr_ty,
+        Err(err) => return err.to_compile_error().into(),
+    };
+
+    let name = &input.ident;
+    let generics = &input.generics;
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
+    let mut match_from_zc = Vec::with_capacity(variants.len());
+    let mut match_to_zc = Vec::with_capacity(variants.len());
+    let mut validate_arms = Vec::with_capacity(variants.len());
+
+    for variant in &variants {
+        if !matches!(variant.fields, Fields::Unit) {
+            return syn::Error::new_spanned(
+                &variant.ident,
+                "QuasarSerialize enums must contain only unit variants",
+            )
+            .to_compile_error()
+            .into();
+        }
+
+        let discriminant = match &variant.discriminant {
+            Some((_, expr)) => expr,
+            None => {
+                return syn::Error::new_spanned(
+                    &variant.ident,
+                    "QuasarSerialize enums require explicit discriminants on every variant",
+                )
+                .to_compile_error()
+                .into();
+            }
+        };
+
+        let ident = &variant.ident;
+        match_from_zc.push(quote! { #discriminant => Self::#ident });
+        match_to_zc.push(quote! { Self::#ident => #discriminant });
+        validate_arms.push(quote! { #discriminant => Ok(()) });
+    }
+
+    let mut schema_write_generics = input.generics.clone();
+    schema_write_generics
+        .params
+        .push(parse_quote!(__C: wincode::config::ConfigCore));
+    let (schema_write_impl_generics, _, _) = schema_write_generics.split_for_impl();
+
+    let mut schema_read_generics = input.generics.clone();
+    schema_read_generics.params.insert(0, parse_quote!('__de));
+    schema_read_generics
+        .params
+        .push(parse_quote!(__C: wincode::config::ConfigCore));
+    let (schema_read_impl_generics, _, _) = schema_read_generics.split_for_impl();
+
+    let expanded = quote! {
+        impl #impl_generics quasar_lang::instruction_arg::InstructionArg
+            for #name #ty_generics #where_clause
+        {
+            type Zc = <#repr_ty as quasar_lang::instruction_arg::InstructionArg>::Zc;
+
+            #[inline(always)]
+            fn from_zc(zc: &Self::Zc) -> Self {
+                match <#repr_ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(zc) {
+                    #(#match_from_zc,)*
+                    _ => unreachable!("invalid enum discriminant; validate_zc must run first"),
+                }
+            }
+
+            #[inline(always)]
+            fn to_zc(&self) -> Self::Zc {
+                let raw: #repr_ty = match self {
+                    #(#match_to_zc,)*
+                };
+                <#repr_ty as quasar_lang::instruction_arg::InstructionArg>::to_zc(&raw)
+            }
+
+            #[inline(always)]
+            fn validate_zc(
+                zc: &Self::Zc,
+            ) -> Result<(), quasar_lang::prelude::ProgramError> {
+                <#repr_ty as quasar_lang::instruction_arg::InstructionArg>::validate_zc(zc)?;
+                match <#repr_ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(zc) {
+                    #(#validate_arms,)*
+                    _ => Err(quasar_lang::prelude::ProgramError::InvalidInstructionData),
+                }
+            }
+        }
+
+        #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
+        unsafe impl #schema_write_impl_generics wincode::SchemaWrite<__C>
+            for #name #ty_generics #where_clause
+        {
+            type Src = Self;
+
+            fn size_of(_src: &Self) -> wincode::error::WriteResult<usize> {
+                Ok(core::mem::size_of::<<Self as quasar_lang::instruction_arg::InstructionArg>::Zc>())
+            }
+
+            fn write(mut __writer: impl wincode::io::Writer, src: &Self) -> wincode::error::WriteResult<()> {
+                let __zc = <Self as quasar_lang::instruction_arg::InstructionArg>::to_zc(src);
+                let __bytes = unsafe {
+                    core::slice::from_raw_parts(
+                        &__zc as *const <Self as quasar_lang::instruction_arg::InstructionArg>::Zc as *const u8,
+                        core::mem::size_of::<<Self as quasar_lang::instruction_arg::InstructionArg>::Zc>(),
+                    )
+                };
+                __writer.write(__bytes)?;
+                Ok(())
+            }
+        }
+
+        #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
+        unsafe impl #schema_read_impl_generics wincode::SchemaRead<'__de, __C>
+            for #name #ty_generics #where_clause
+        {
+            type Dst = Self;
+
+            fn read(
+                mut __reader: impl wincode::io::Reader<'__de>,
+                __dst: &mut core::mem::MaybeUninit<Self>,
+            ) -> wincode::error::ReadResult<()> {
+                let __bytes = __reader.take_scoped(core::mem::size_of::<<Self as quasar_lang::instruction_arg::InstructionArg>::Zc>())?;
+                let __zc =
+                    unsafe { &*(__bytes.as_ptr() as *const <Self as quasar_lang::instruction_arg::InstructionArg>::Zc) };
+                __dst.write(<Self as quasar_lang::instruction_arg::InstructionArg>::from_zc(__zc));
+                Ok(())
+            }
+        }
+    };
+
+    expanded.into()
+}
+
+// ---------------------------------------------------------------------------
 // Borrowed struct path (has lifetime params)
 // ---------------------------------------------------------------------------
 
@@ -268,12 +457,6 @@ enum FieldKind {
         max_n: usize,
         pfx: usize,
     },
-}
-
-impl FieldKind {
-    fn is_fixed(&self) -> bool {
-        matches!(self, FieldKind::Fixed)
-    }
 }
 
 /// Parse `#[max(N)]` or `#[max(N, pfx = P)]` from a field's attributes.
@@ -367,6 +550,7 @@ fn derive_borrowed(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
     let name = &input.ident;
     let generics = &input.generics;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    let first_lt = generics.lifetimes().next().map(|ld| &ld.lifetime).unwrap();
 
     // Classify each field.
     let mut kinds: Vec<FieldKind> = Vec::with_capacity(fields.len());
@@ -377,99 +561,27 @@ fn derive_borrowed(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
         }
     }
 
-    // Fixed fields → batch ZC header.
-    let fixed_fields: Vec<_> = fields
-        .iter()
-        .zip(kinds.iter())
-        .filter(|(_, k)| k.is_fixed())
-        .map(|(f, _)| f)
-        .collect();
-
-    let fixed_names: Vec<_> = fixed_fields
-        .iter()
-        .map(|f| f.ident.as_ref().unwrap())
-        .collect();
-    let fixed_types: Vec<_> = fixed_fields.iter().map(|f| &f.ty).collect();
-
-    // Build batch header struct + decode block (empty if no fixed fields).
-    let header_struct: TokenStream2 = if !fixed_fields.is_empty() {
-        let fixed_zc_types: Vec<_> = fixed_types
-            .iter()
-            .map(|ty| quote! { <#ty as quasar_lang::instruction_arg::InstructionArg>::Zc })
-            .collect();
-        quote! {
-            #[repr(C)]
-            struct __FixedHeader {
-                #(#fixed_names: #fixed_zc_types,)*
-            }
-            const _: () = assert!(
-                core::mem::align_of::<__FixedHeader>() == 1,
-                "QuasarSerialize borrowed: all fixed fields must have alignment-1 Zc types"
-            );
-        }
-    } else {
-        quote! {}
-    };
-
-    let header_decode: TokenStream2 = if !fixed_fields.is_empty() {
-        let validate_stmts: Vec<_> = fixed_names
-            .iter()
-            .zip(fixed_types.iter())
-            .map(|(fname, ty)| {
-                quote! {
-                    <#ty as quasar_lang::instruction_arg::InstructionArg>::validate_zc(
-                        &__hdr.#fname
-                    )?;
-                }
-            })
-            .collect();
-        let from_zc_stmts: Vec<_> = fixed_names
-            .iter()
-            .zip(fixed_types.iter())
-            .map(|(fname, ty)| {
-                quote! {
-                    let #fname =
-                        <#ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(
-                            &__hdr.#fname
-                        );
-                }
-            })
-            .collect();
-        quote! {
-            if data.len() < offset + core::mem::size_of::<__FixedHeader>() {
-                return Err(quasar_lang::prelude::ProgramError::InvalidInstructionData);
-            }
-            let __hdr = unsafe { &*(data.as_ptr().add(offset) as *const __FixedHeader) };
-            #(#validate_stmts)*
-            #(#from_zc_stmts)*
-            let mut __offset = offset + core::mem::size_of::<__FixedHeader>();
-        }
-    } else {
-        quote! { let mut __offset = offset; }
-    };
-
-    // Variable-field decode statements (in struct field order).
-    let mut var_stmts: Vec<TokenStream2> = Vec::new();
+    let mut decode_stmts: Vec<TokenStream2> = Vec::new();
     for (field, kind) in fields.iter().zip(kinds.iter()) {
         let fname = field.ident.as_ref().unwrap();
         match kind {
-            FieldKind::Fixed => {} // already decoded in header_decode
-            FieldKind::Str { max_n, pfx } => {
-                var_stmts.push(quote! {
-                    let (#fname, __new_offset) =
-                        quasar_lang::instruction_data::read_dynamic_str::<#pfx>(
-                            data, __offset, #max_n
+            FieldKind::Fixed => {
+                let ty = &field.ty;
+                decode_stmts.push(quote! {
+                    let #fname =
+                        <#ty as quasar_lang::instruction_arg::InstructionArgDecode<#first_lt>>::decode_from_cursor(
+                            __cursor
                         )?;
-                    __offset = __new_offset;
+                });
+            }
+            FieldKind::Str { max_n, pfx } => {
+                decode_stmts.push(quote! {
+                    let #fname = __cursor.read_dynamic_str::<#pfx>(#max_n)?;
                 });
             }
             FieldKind::Slice { elem, max_n, pfx } => {
-                var_stmts.push(quote! {
-                    let (#fname, __new_offset) =
-                        quasar_lang::instruction_data::read_dynamic_vec::<#elem, #pfx>(
-                            data, __offset, #max_n
-                        )?;
-                    __offset = __new_offset;
+                decode_stmts.push(quote! {
+                    let #fname = __cursor.read_dynamic_vec::<#elem, #pfx>(#max_n)?;
                 });
             }
         }
@@ -477,10 +589,6 @@ fn derive_borrowed(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
 
     // Collect all field names for struct construction.
     let all_field_names: Vec<_> = fields.iter().map(|f| f.ident.as_ref().unwrap()).collect();
-
-    // Use the first lifetime param as the trait's 'a.
-    let first_lt = generics.lifetimes().next().map(|ld| &ld.lifetime).unwrap(); // guaranteed: has_lifetime check in caller
-
     let expanded = quote! {
         impl #impl_generics quasar_lang::instruction_arg::InstructionArgDecode<#first_lt>
             for #name #ty_generics #where_clause
@@ -488,14 +596,11 @@ fn derive_borrowed(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
             type Output = Self;
 
             #[inline(always)]
-            fn decode(
-                data: &#first_lt [u8],
-                offset: usize,
-            ) -> Result<(Self, usize), quasar_lang::prelude::ProgramError> {
-                #header_struct
-                #header_decode
-                #(#var_stmts)*
-                Ok((Self { #(#all_field_names,)* }, __offset))
+            fn decode_from_cursor(
+                __cursor: &mut quasar_lang::instruction_data::InstructionCursor<#first_lt>,
+            ) -> Result<Self, quasar_lang::prelude::ProgramError> {
+                #(#decode_stmts)*
+                Ok(Self { #(#all_field_names,)* })
             }
         }
     };

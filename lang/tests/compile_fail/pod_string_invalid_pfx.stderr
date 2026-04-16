@@ -1,7 +1,7 @@
 error[E0080]: evaluation panicked: PodString<N, PFX>: PFX must be 1, 2, 4, or 8
  --> $RUST/core/src/panic.rs
   |
-  = note: evaluation of `quasar_lang::pod::PodString::<10, 3>::_CAP_CHECK` failed here
+  = note: evaluation of `quasar_lang::String::<10, 3>::_CAP_CHECK` failed here
   |
  ::: $WORKSPACE/pod/src/string.rs
   |

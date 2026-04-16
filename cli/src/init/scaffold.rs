@@ -64,6 +64,7 @@ pub(super) fn scaffold(
     client_languages: &[String],
 ) -> CliResult {
     let root = Path::new(dir);
+    let clients_path = "target/client";
 
     let src = root.join("src");
     fs::create_dir_all(&src).map_err(anyhow::Error::from)?;
@@ -99,7 +100,7 @@ pub(super) fn scaffold(
             },
         },
         clients: QuasarClients {
-            path: "target/client".to_string(),
+            path: clients_path.to_string(),
             languages: client_languages.to_vec(),
         },
     };
@@ -230,6 +231,7 @@ fn generate_cargo_toml(
     test_language: TestLanguage,
     rust_framework: Option<RustFramework>,
 ) -> String {
+    let quasar_lang_dep = quasar_lang_dependency();
     let mut out = format!(
         r#"[package]
 name = "{name}"
@@ -251,7 +253,7 @@ client = []
 debug = []
 
 [dependencies]
-quasar-lang = "0.0"
+quasar-lang = {quasar_lang_dep}
 "#,
     );
 
@@ -259,44 +261,32 @@ quasar-lang = "0.0"
         out.push_str("solana-instruction = { version = \"3.2.0\" }\n");
     }
 
-    // Dev dependencies based on testing framework
-    let client_dep = format!("{name}-client = {{ path = \"target/client/rust/{name}-client\" }}\n");
-
     match (test_language, rust_framework) {
         (TestLanguage::None, _) => {}
         (TestLanguage::Rust, Some(RustFramework::Mollusk)) => {
-            out.push_str(&format!(
+            out.push_str(
                 r#"
 [dev-dependencies]
-{client_dep}mollusk-svm = "0.10.3"
+mollusk-svm = "0.10.3"
 solana-account = {{ version = "3.4.0" }}
 solana-address = {{ version = "2.2.0", features = ["decode"] }}
 solana-instruction = {{ version = "3.2.0", features = ["bincode"] }}
 "#,
-            ));
+            );
         }
         (TestLanguage::Rust, _) => {
-            out.push_str(&format!(
+            out.push_str(
                 r#"
 [dev-dependencies]
-{client_dep}quasar-svm = {{ version = "0.1" }}
+quasar-svm = {{ version = "0.1" }}
 solana-account = {{ version = "3.4.0" }}
 solana-address = {{ version = "2.2.0", features = ["decode"] }}
 solana-instruction = {{ version = "3.2.0", features = ["bincode"] }}
 solana-pubkey = {{ version = "4.1.0" }}
 "#,
-            ));
+            );
         }
-        (TestLanguage::TypeScript, _) => {
-            out.push_str(&format!(
-                r#"
-[dev-dependencies]
-{client_dep}solana-account = {{ version = "3.4.0" }}
-solana-address = {{ version = "2.2.0", features = ["decode"] }}
-solana-instruction = {{ version = "3.2.0", features = ["bincode"] }}
-"#,
-            ));
-        }
+        (TestLanguage::TypeScript, _) => {}
     }
 
     out
@@ -324,12 +314,12 @@ use quasar_lang::prelude::*;
 declare_id!("{program_id}");
 
 #[derive(Accounts)]
-pub struct Initialize<'info> {{
-    pub payer: &'info mut Signer,
-    pub system_program: &'info Program<System>,
+pub struct Initialize {{
+    pub payer: Signer,
+    pub system_program: Program<System>,
 }}
 
-impl<'info> Initialize<'info> {{
+impl Initialize {{
     #[inline(always)]
     pub fn initialize(&self) -> Result<(), ProgramError> {{
         Ok(())
@@ -376,6 +366,16 @@ mod {module_name} {{
     }
 }
 
+fn quasar_lang_dependency() -> String {
+    let version = env!("CARGO_PKG_VERSION");
+
+    if version == "0.0.0" {
+        r#"{ git = "https://github.com/blueshift-gg/quasar", branch = "master" }"#.to_string()
+    } else {
+        format!(r#""={version}""#)
+    }
+}
+
 fn generate_package_json(name: &str, ts_sdk: TypeScriptSdk) -> String {
     let solana_dep = if matches!(ts_sdk, TypeScriptSdk::Kit) {
         "\"@solana/kit\": \"^6.0.0\""
@@ -409,7 +409,6 @@ fn generate_package_json(name: &str, ts_sdk: TypeScriptSdk) -> String {
 
 fn generate_test_ts(name: &str, ts_sdk: TypeScriptSdk, toolchain: Toolchain) -> String {
     let module_name = name.replace('-', "_");
-    let class_name = crate::utils::snake_to_pascal(&module_name);
     let so_name = match toolchain {
         Toolchain::Upstream => format!("lib{module_name}"),
         Toolchain::Solana => module_name.clone(),
@@ -418,52 +417,63 @@ fn generate_test_ts(name: &str, ts_sdk: TypeScriptSdk, toolchain: Toolchain) -> 
     if matches!(ts_sdk, TypeScriptSdk::Kit) {
         format!(
             r#"import {{ generateKeyPairSigner }} from "@solana/kit";
-import {{ {class_name}Client, PROGRAM_ADDRESS }} from "../target/client/typescript/{module_name}/kit";
+import {{ AccountRole, address }} from "@solana/kit";
 import {{ describe, it, expect }} from "vitest";
 import {{ QuasarSvm, createKeyedSystemAccount }} from "@blueshift-gg/quasar-svm/kit";
 import {{ readFile }} from "node:fs/promises";
 
-const {class_name}Program = new {class_name}Client();
-
 describe.concurrent("{class_name} Program", async () => {{
   it("initializes", async () => {{
+    const idl = JSON.parse(await readFile("target/idl/{module_name}.json", "utf8")) as {{ address: string }};
+    const programAddress = address(idl.address);
     const vm = new QuasarSvm();
-    vm.addProgram(PROGRAM_ADDRESS, await readFile("target/deploy/{so_name}.so"));
+    vm.addProgram(programAddress, await readFile("target/deploy/{so_name}.so"));
 
     const payer = await generateKeyPairSigner();
 
-    const initializeInstruction = {class_name}Program.createInitializeInstruction({{
-      payer: payer.address,
-    }});
+    const initializeInstruction = {{
+      programAddress,
+      accounts: [
+        {{ address: payer.address, role: AccountRole.WRITABLE_SIGNER }},
+        {{ address: address("11111111111111111111111111111111"), role: AccountRole.READONLY }},
+      ],
+      data: Uint8Array.from([0]),
+    }};
 
     const result = vm.processInstruction(initializeInstruction, [
       createKeyedSystemAccount(payer.address),
     ]);
 
     expect(result.status.ok, `initialize failed:\n${{result.logs.join("\n")}}`).toBe(true);
-  }});
+    }});
 }});
-"#
+"#,
+            class_name = crate::utils::snake_to_pascal(&module_name)
         )
     } else {
         format!(
-            r#"import {{ Keypair }} from "@solana/web3.js";
-import {{ {class_name}Client }} from "../target/client/typescript/{module_name}/web3.js";
+            r#"import {{ Buffer }} from "buffer";
+import {{ Address, Keypair, TransactionInstruction }} from "@solana/web3.js";
 import {{ readFile }} from "node:fs/promises";
 import {{ describe, it, expect }} from "vitest";
 import {{ QuasarSvm, createKeyedSystemAccount }} from "@blueshift-gg/quasar-svm/web3.js";
 
-const {class_name}Program = new {class_name}Client();
-
 describe.concurrent("{class_name} Program", async () => {{
   it("initializes", async () => {{
+    const idl = JSON.parse(await readFile("target/idl/{module_name}.json", "utf8")) as {{ address: string }};
+    const programAddress = new Address(idl.address);
     const vm = new QuasarSvm();
-    vm.addProgram({class_name}Client.programId, await readFile("target/deploy/{so_name}.so"));
+    vm.addProgram(programAddress, await readFile("target/deploy/{so_name}.so"));
 
     const {{ publicKey: payer }} = await Keypair.generate();
 
-    const initializeInstruction = {class_name}Program.createInitializeInstruction({{
-      payer,
+    const initializeInstruction = new TransactionInstruction({{
+      programId: programAddress,
+      keys: [
+        {{ pubkey: payer, isSigner: true, isWritable: true }},
+        {{ pubkey: new Address("11111111111111111111111111111111"), isSigner: false, isWritable: false }},
+      ],
+      data: Buffer.from([0]),
     }});
 
     const result = vm.processInstruction(initializeInstruction, [
@@ -471,9 +481,10 @@ describe.concurrent("{class_name} Program", async () => {{
     ]);
 
     expect(result.status.ok, `initialize failed:\n${{result.logs.join("\n")}}`).toBe(true);
-  }});
+    }});
 }});
-"#
+"#,
+            class_name = crate::utils::snake_to_pascal(&module_name)
         )
     }
 }
@@ -488,20 +499,27 @@ fn generate_tests_rs(
     if matches!(toolchain, Toolchain::Upstream) {
         libname = format!("lib{libname}");
     };
-    let client_crate = format!("{module_name}_client");
-
     match (rust_framework, template) {
         (RustFramework::Mollusk, Template::Minimal | Template::Full) => {
             format!(
                 r#"use mollusk_svm::{{program::keyed_account_for_system_program, Mollusk}};
 use solana_account::Account;
 use solana_address::Address;
-use solana_instruction::Instruction;
-
-use {client_crate}::InitializeInstruction;
+use solana_instruction::{{AccountMeta, Instruction}};
 
 fn setup() -> Mollusk {{
     Mollusk::new(&crate::ID, "target/deploy/{libname}")
+}}
+
+fn initialize_instruction(payer: Address, system_program: Address) -> Instruction {{
+    Instruction {{
+        program_id: Address::from(crate::ID.to_bytes()),
+        accounts: vec![
+            AccountMeta::new(payer, true),
+            AccountMeta::new_readonly(system_program, false),
+        ],
+        data: vec![0],
+    }}
 }}
 
 #[test]
@@ -512,11 +530,7 @@ fn test_initialize() {{
     let payer = Address::new_unique();
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
-    let instruction: Instruction = InitializeInstruction {{
-        payer,
-        system_program,
-    }}
-    .into();
+    let instruction = initialize_instruction(payer, system_program);
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -537,15 +551,25 @@ fn test_initialize() {{
         }
         (RustFramework::QuasarSVM, Template::Minimal | Template::Full) => {
             format!(
-                r#"use quasar_svm::{{Account, Instruction, Pubkey, QuasarSvm}};
+                r#"use quasar_svm::{{Account, Pubkey, QuasarSvm}};
 use solana_address::Address;
-
-use {client_crate}::InitializeInstruction;
+use solana_instruction::{{AccountMeta, Instruction}};
 
 fn setup() -> QuasarSvm {{
-    let elf = include_bytes!("../target/deploy/{libname}.so");
+    let elf = std::fs::read("../target/deploy/{libname}.so").unwrap();
     QuasarSvm::new()
-        .with_program(&Pubkey::from(crate::ID), elf)
+        .with_program(&Pubkey::from(crate::ID), &elf)
+}}
+
+fn initialize_instruction(payer: Address, system_program: Address) -> Instruction {{
+    Instruction {{
+        program_id: Address::from(crate::ID.to_bytes()),
+        accounts: vec![
+            AccountMeta::new(payer, true),
+            AccountMeta::new_readonly(system_program, false),
+        ],
+        data: vec![0],
+    }}
 }}
 
 #[test]
@@ -554,11 +578,10 @@ fn test_initialize() {{
 
     let payer = Pubkey::new_unique();
 
-    let instruction: Instruction = InitializeInstruction {{
-        payer: Address::from(payer.to_bytes()),
-        system_program: Address::from(quasar_svm::system_program::ID.to_bytes()),
-    }}
-    .into();
+    let instruction = initialize_instruction(
+        Address::from(payer.to_bytes()),
+        Address::from(quasar_svm::system_program::ID.to_bytes()),
+    );
 
     let result = svm.process_instruction(
         &instruction,

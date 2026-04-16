@@ -823,11 +823,11 @@ fn rust_codegen_account_metas() {
 // Instruction codegen: dynamic types use wrapper types
 //
 // This is the critical wire compatibility test. String<N> maps to
-// DynBytes<u8> (u8 prefix) and Vec<T, N> maps to DynVec<T, u16> (u16 prefix).
+// DynString<u8> (u8 prefix) and Vec<T, N> maps to DynVec<T, u16> (u16 prefix).
 // ---------------------------------------------------------------------------
 
 #[test]
-fn rust_codegen_dynamic_string_uses_dyn_bytes() {
+fn rust_codegen_dynamic_string_uses_dyn_string() {
     let file = parse_file(
         r#"
         #[program]
@@ -846,8 +846,8 @@ fn rust_codegen_dynamic_string_uses_dyn_bytes() {
     let code = all_content(&files);
 
     assert!(
-        code.contains("pub name: DynBytes<u8>,"),
-        "String<N> must map to DynBytes<u8>, got:\n{code}"
+        code.contains("pub name: DynString<u8>,"),
+        "String<N> must map to DynString<u8>, got:\n{code}"
     );
     assert!(
         !code.contains("pub name: Vec<u8>"),
@@ -876,8 +876,8 @@ fn rust_codegen_dynamic_types_import() {
 
     // Only the actually-used wrapper type is imported
     assert!(
-        code.contains("DynBytes"),
-        "DynBytes must be imported: {code}"
+        code.contains("DynString"),
+        "DynString must be imported: {code}"
     );
     assert!(
         !code.contains("DynVec"),
@@ -897,7 +897,7 @@ fn rust_codegen_dynamic_types_import() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn rust_codegen_dyn_bytes_u8_prefix() {
+fn rust_codegen_dyn_string_u8_prefix() {
     let file = parse_file(
         r#"
         #[program]
@@ -916,8 +916,8 @@ fn rust_codegen_dyn_bytes_u8_prefix() {
     let code = all_content(&files);
 
     assert!(
-        code.contains("pub name: DynBytes<u8>,"),
-        "String<N> must map to DynBytes<u8>, got:\n{code}"
+        code.contains("pub name: DynString<u8>,"),
+        "String<N> must map to DynString<u8>, got:\n{code}"
     );
 }
 
@@ -1551,6 +1551,372 @@ fn ts_codegen_prefix_aware_codecs() {
     assert!(
         !code.contains("function getDynVecCodec"),
         "should not emit helper functions: {code}"
+    );
+}
+
+#[test]
+fn ts_codegen_pda_helpers_are_exported_and_reused() {
+    use quasar_idl::{
+        codegen::typescript::{generate_ts_client, generate_ts_client_kit},
+        parser::build_idl,
+    };
+
+    let mut parsed = test_program();
+    parsed.instructions.push(program::RawInstruction {
+        name: "deposit".to_string(),
+        discriminator: vec![1],
+        accounts_type_name: "Deposit".to_string(),
+        args: vec![],
+        has_remaining: false,
+    });
+    parsed.accounts_structs = vec![RawAccountsStruct {
+        name: "Deposit".to_string(),
+        fields: vec![
+            RawAccountField {
+                name: "vault".to_string(),
+                writable: true,
+                signer: false,
+                pda: Some(RawPda {
+                    seeds: vec![
+                        RawSeed::ByteString(b"vault".to_vec()),
+                        RawSeed::AccountRef("user".to_string()),
+                    ],
+                }),
+                address: None,
+                field_class: FieldClass::Unchecked,
+                inner_type_name: None,
+                constraints: FieldConstraints::default(),
+                seed_type: None,
+            },
+            RawAccountField {
+                name: "user".to_string(),
+                writable: false,
+                signer: true,
+                pda: None,
+                address: None,
+                field_class: FieldClass::Unchecked,
+                inner_type_name: None,
+                constraints: FieldConstraints::default(),
+                seed_type: None,
+            },
+        ],
+    }];
+
+    let idl = build_idl(&parsed).unwrap();
+
+    let web3 = generate_ts_client(&idl);
+    assert!(
+        web3.contains("export function findVaultAddress(user: Address): Address {"),
+        "{web3}"
+    );
+    assert!(
+        web3.contains("return Address.findProgramAddressSync("),
+        "{web3}"
+    );
+    assert!(
+        web3.contains("accountsMap[\"vault\"] = findVaultAddress(input.user);"),
+        "{web3}"
+    );
+
+    let kit = generate_ts_client_kit(&idl);
+    assert!(
+        kit.contains("export async function findVaultAddress(user: Address): Promise<Address> {"),
+        "{kit}"
+    );
+    assert!(kit.contains("getAddressCodec().encode(user)"), "{kit}");
+    assert!(
+        kit.contains("accountsMap[\"vault\"] = await findVaultAddress(input.user);"),
+        "{kit}"
+    );
+}
+
+#[test]
+fn ts_codegen_pda_arg_seeds_are_encoded_by_type() {
+    use quasar_idl::{
+        codegen::typescript::{generate_ts_client, generate_ts_client_kit},
+        parser::build_idl,
+    };
+
+    let mut parsed = test_program();
+    parsed.instructions.push(program::RawInstruction {
+        name: "deposit".to_string(),
+        discriminator: vec![1],
+        accounts_type_name: "Deposit".to_string(),
+        args: vec![
+            ("authority".to_string(), syn::parse_str("Address").unwrap()),
+            ("index".to_string(), syn::parse_str("u64").unwrap()),
+        ],
+        has_remaining: false,
+    });
+    parsed.accounts_structs = vec![RawAccountsStruct {
+        name: "Deposit".to_string(),
+        fields: vec![RawAccountField {
+            name: "vault".to_string(),
+            writable: true,
+            signer: false,
+            pda: Some(RawPda {
+                seeds: vec![
+                    RawSeed::ByteString(b"vault".to_vec()),
+                    RawSeed::ArgRef("authority".to_string()),
+                    RawSeed::ArgRef("index".to_string()),
+                ],
+            }),
+            address: None,
+            field_class: FieldClass::Unchecked,
+            inner_type_name: None,
+            constraints: FieldConstraints::default(),
+            seed_type: None,
+        }],
+    }];
+
+    let idl = build_idl(&parsed).unwrap();
+
+    let web3 = generate_ts_client(&idl);
+    assert!(
+        web3.contains(
+            "export function findVaultAddress(authority: Address, index: bigint): Address {"
+        ),
+        "{web3}"
+    );
+    assert!(web3.contains("authority.toBytes()"), "{web3}");
+    assert!(web3.contains("getU64Codec().encode(index)"), "{web3}");
+    assert!(
+        web3.contains("accountsMap[\"vault\"] = findVaultAddress(input.authority, input.index);"),
+        "{web3}"
+    );
+
+    let kit = generate_ts_client_kit(&idl);
+    assert!(
+        kit.contains(
+            "export async function findVaultAddress(authority: Address, index: bigint): \
+             Promise<Address> {"
+        ),
+        "{kit}"
+    );
+    assert!(kit.contains("getAddressCodec().encode(authority)"), "{kit}");
+    assert!(kit.contains("getU64Codec().encode(index)"), "{kit}");
+    assert!(
+        kit.contains(
+            "accountsMap[\"vault\"] = await findVaultAddress(input.authority, input.index);"
+        ),
+        "{kit}"
+    );
+}
+
+#[test]
+fn ts_codegen_duplicate_seed_sets_reuse_one_helper_name() {
+    use quasar_idl::{codegen::typescript::generate_ts_client_kit, parser::build_idl};
+
+    let mut parsed = test_program();
+    parsed.instructions.extend([
+        program::RawInstruction {
+            name: "deposit".to_string(),
+            discriminator: vec![1],
+            accounts_type_name: "Deposit".to_string(),
+            args: vec![],
+            has_remaining: false,
+        },
+        program::RawInstruction {
+            name: "withdraw".to_string(),
+            discriminator: vec![2],
+            accounts_type_name: "Withdraw".to_string(),
+            args: vec![],
+            has_remaining: false,
+        },
+    ]);
+    parsed.accounts_structs = vec![
+        RawAccountsStruct {
+            name: "Deposit".to_string(),
+            fields: vec![
+                RawAccountField {
+                    name: "vault".to_string(),
+                    writable: true,
+                    signer: false,
+                    pda: Some(RawPda {
+                        seeds: vec![
+                            RawSeed::ByteString(b"vault".to_vec()),
+                            RawSeed::AccountRef("user".to_string()),
+                        ],
+                    }),
+                    address: None,
+                    field_class: FieldClass::Unchecked,
+                    inner_type_name: None,
+                    constraints: FieldConstraints::default(),
+                    seed_type: None,
+                },
+                RawAccountField {
+                    name: "user".to_string(),
+                    writable: false,
+                    signer: true,
+                    pda: None,
+                    address: None,
+                    field_class: FieldClass::Unchecked,
+                    inner_type_name: None,
+                    constraints: FieldConstraints::default(),
+                    seed_type: None,
+                },
+            ],
+        },
+        RawAccountsStruct {
+            name: "Withdraw".to_string(),
+            fields: vec![
+                RawAccountField {
+                    name: "escrow".to_string(),
+                    writable: true,
+                    signer: false,
+                    pda: Some(RawPda {
+                        seeds: vec![
+                            RawSeed::ByteString(b"vault".to_vec()),
+                            RawSeed::AccountRef("user".to_string()),
+                        ],
+                    }),
+                    address: None,
+                    field_class: FieldClass::Unchecked,
+                    inner_type_name: None,
+                    constraints: FieldConstraints::default(),
+                    seed_type: None,
+                },
+                RawAccountField {
+                    name: "user".to_string(),
+                    writable: false,
+                    signer: true,
+                    pda: None,
+                    address: None,
+                    field_class: FieldClass::Unchecked,
+                    inner_type_name: None,
+                    constraints: FieldConstraints::default(),
+                    seed_type: None,
+                },
+            ],
+        },
+    ];
+
+    let idl = build_idl(&parsed).unwrap();
+    let kit = generate_ts_client_kit(&idl);
+
+    assert_eq!(
+        kit.matches("export async function findVaultAddress")
+            .count(),
+        1,
+        "{kit}"
+    );
+    assert!(
+        kit.contains("accountsMap[\"vault\"] = await findVaultAddress(input.user);"),
+        "{kit}"
+    );
+    assert!(
+        kit.contains("accountsMap[\"escrow\"] = await findVaultAddress(input.user);"),
+        "{kit}"
+    );
+    assert!(!kit.contains("findEscrowAddress"), "{kit}");
+}
+
+#[test]
+fn ts_codegen_helper_name_collisions_are_disambiguated() {
+    use quasar_idl::{codegen::typescript::generate_ts_client_kit, parser::build_idl};
+
+    let mut parsed = test_program();
+    parsed.instructions.extend([
+        program::RawInstruction {
+            name: "deposit".to_string(),
+            discriminator: vec![1],
+            accounts_type_name: "Deposit".to_string(),
+            args: vec![],
+            has_remaining: false,
+        },
+        program::RawInstruction {
+            name: "settle".to_string(),
+            discriminator: vec![2],
+            accounts_type_name: "Settle".to_string(),
+            args: vec![],
+            has_remaining: false,
+        },
+    ]);
+    parsed.accounts_structs = vec![
+        RawAccountsStruct {
+            name: "Deposit".to_string(),
+            fields: vec![
+                RawAccountField {
+                    name: "vault".to_string(),
+                    writable: true,
+                    signer: false,
+                    pda: Some(RawPda {
+                        seeds: vec![
+                            RawSeed::ByteString(b"vault".to_vec()),
+                            RawSeed::AccountRef("user".to_string()),
+                        ],
+                    }),
+                    address: None,
+                    field_class: FieldClass::Unchecked,
+                    inner_type_name: None,
+                    constraints: FieldConstraints::default(),
+                    seed_type: None,
+                },
+                RawAccountField {
+                    name: "user".to_string(),
+                    writable: false,
+                    signer: true,
+                    pda: None,
+                    address: None,
+                    field_class: FieldClass::Unchecked,
+                    inner_type_name: None,
+                    constraints: FieldConstraints::default(),
+                    seed_type: None,
+                },
+            ],
+        },
+        RawAccountsStruct {
+            name: "Settle".to_string(),
+            fields: vec![
+                RawAccountField {
+                    name: "vault".to_string(),
+                    writable: true,
+                    signer: false,
+                    pda: Some(RawPda {
+                        seeds: vec![
+                            RawSeed::ByteString(b"vault-secondary".to_vec()),
+                            RawSeed::AccountRef("user".to_string()),
+                        ],
+                    }),
+                    address: None,
+                    field_class: FieldClass::Unchecked,
+                    inner_type_name: None,
+                    constraints: FieldConstraints::default(),
+                    seed_type: None,
+                },
+                RawAccountField {
+                    name: "user".to_string(),
+                    writable: false,
+                    signer: true,
+                    pda: None,
+                    address: None,
+                    field_class: FieldClass::Unchecked,
+                    inner_type_name: None,
+                    constraints: FieldConstraints::default(),
+                    seed_type: None,
+                },
+            ],
+        },
+    ];
+
+    let idl = build_idl(&parsed).unwrap();
+    let kit = generate_ts_client_kit(&idl);
+
+    assert!(
+        kit.contains("export async function findVaultAddress(user: Address): Promise<Address> {"),
+        "{kit}"
+    );
+    assert!(
+        kit.contains("export async function findVaultAddress2(user: Address): Promise<Address> {"),
+        "{kit}"
+    );
+    assert!(
+        kit.contains("accountsMap[\"vault\"] = await findVaultAddress(input.user);"),
+        "{kit}"
+    );
+    assert!(
+        kit.contains("accountsMap[\"vault\"] = await findVaultAddress2(input.user);"),
+        "{kit}"
     );
 }
 

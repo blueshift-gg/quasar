@@ -288,6 +288,8 @@ pub mod utils;
 /// Runtime validation helpers for account constraints.
 pub mod validation;
 
+pub use crate::pod::{PodString as String, PodVec as Vec};
+
 /// 32-byte address comparison via four `read_unaligned` u64 words.
 ///
 /// Short-circuits on first mismatch. Uses `read_unaligned` to avoid

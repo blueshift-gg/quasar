@@ -311,8 +311,12 @@ pub(crate) fn map_to_pod_type(ty: &Type) -> proc_macro2::TokenStream {
         .unwrap_or_else(|| quote! { <#ty as quasar_lang::instruction_arg::InstructionArg>::Zc })
 }
 
+pub(crate) fn canonical_instruction_arg_type(ty: &Type) -> proc_macro2::TokenStream {
+    pod_alias_type(ty, false).unwrap_or_else(|| quote! { #ty })
+}
+
 pub(crate) fn zc_assign_from_value(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
-    let canonical = pod_alias_type(ty, false).unwrap_or_else(|| quote! { #ty });
+    let canonical = canonical_instruction_arg_type(ty);
     quote! {
         __zc.#field_name =
             <#canonical as quasar_lang::instruction_arg::InstructionArg>::to_zc(&#field_name);

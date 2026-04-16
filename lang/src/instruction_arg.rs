@@ -191,10 +191,19 @@ impl<T: Copy, const N: usize, const PFX: usize> InstructionArg for crate::pod::P
 /// type: fixed types decode to `Self`, borrowed structs decode to `Self<'a>`.
 pub trait InstructionArgDecode<'a>: Sized {
     type Output: 'a;
+    fn decode_from_cursor(
+        cursor: &mut crate::instruction_data::InstructionCursor<'a>,
+    ) -> Result<Self::Output, crate::prelude::ProgramError>;
+
+    #[inline(always)]
     fn decode(
         data: &'a [u8],
         offset: usize,
-    ) -> Result<(Self::Output, usize), crate::prelude::ProgramError>;
+    ) -> Result<(Self::Output, usize), crate::prelude::ProgramError> {
+        let mut cursor = crate::instruction_data::InstructionCursor::with_offset(data, offset);
+        let value = Self::decode_from_cursor(&mut cursor)?;
+        Ok((value, cursor.offset()))
+    }
 }
 
 /// Blanket impl: all fixed-size `InstructionArg` types decode via ZC
@@ -202,15 +211,10 @@ pub trait InstructionArgDecode<'a>: Sized {
 impl<'a, T: InstructionArg + 'a> InstructionArgDecode<'a> for T {
     type Output = T;
     #[inline(always)]
-    fn decode(data: &'a [u8], offset: usize) -> Result<(T, usize), crate::prelude::ProgramError> {
-        let size = core::mem::size_of::<T::Zc>();
-        if data.len() < offset + size {
-            return Err(crate::prelude::ProgramError::InvalidInstructionData);
-        }
-        // SAFETY: bounds-checked above; T::Zc is repr(C) alignment-1.
-        let zc = unsafe { &*(data.as_ptr().add(offset) as *const T::Zc) };
-        T::validate_zc(zc)?;
-        Ok((T::from_zc(zc), offset + size))
+    fn decode_from_cursor(
+        cursor: &mut crate::instruction_data::InstructionCursor<'a>,
+    ) -> Result<T, crate::prelude::ProgramError> {
+        cursor.read_arg::<T>()
     }
 }
 

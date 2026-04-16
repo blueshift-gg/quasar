@@ -1,0 +1,5 @@
+error: fixed instruction args must precede all dynamic or borrowed args
+  --> tests/compile_fail/instruction_dynamic_not_suffix.rs:20:9
+   |
+20 |         flag: u8,
+   |         ^^^^^^^^

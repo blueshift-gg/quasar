@@ -1,7 +1,7 @@
 error[E0080]: evaluation panicked: PodString<N, PFX>: N exceeds the maximum value representable by the PFX-byte length prefix
  --> $RUST/core/src/panic.rs
   |
-  = note: evaluation of `quasar_lang::pod::PodString::<256>::_CAP_CHECK` failed here
+  = note: evaluation of `quasar_lang::String::<256>::_CAP_CHECK` failed here
   |
  ::: $WORKSPACE/pod/src/string.rs
   |
