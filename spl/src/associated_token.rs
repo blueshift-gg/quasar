@@ -29,6 +29,40 @@ impl Id for AssociatedTokenProgram {
 // Address derivation
 // ---------------------------------------------------------------------------
 
+impl AssociatedTokenProgram {
+    /// Create an associated token account.
+    ///
+    /// Fails if the associated token account already exists. Use
+    /// [`create_idempotent`](Self::create_idempotent) if you want a no-op on
+    /// an existing account.
+    #[inline(always)]
+    pub fn create<'a>(
+        &'a self,
+        payer: &'a impl AsAccountView,
+        ata: &'a AccountView,
+        wallet: &'a impl AsAccountView,
+        mint: &'a impl AsAccountView,
+        system_program: &'a Program<System>,
+        token_program: &'a impl TokenCpi,
+    ) -> CpiCall<'a, 6, 1> {
+        create(self, payer, ata, wallet, mint, system_program, token_program)
+    }
+
+    /// Create an associated token account, no-op if it already exists.
+    #[inline(always)]
+    pub fn create_idempotent<'a>(
+        &'a self,
+        payer: &'a impl AsAccountView,
+        ata: &'a AccountView,
+        wallet: &'a impl AsAccountView,
+        mint: &'a impl AsAccountView,
+        system_program: &'a Program<System>,
+        token_program: &'a impl TokenCpi,
+    ) -> CpiCall<'a, 6, 1> {
+        create_idempotent(self, payer, ata, wallet, mint, system_program, token_program)
+    }
+}
+
 /// Const-compatible ATA address derivation (works off-chain and in const
 /// contexts).
 ///
