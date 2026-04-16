@@ -6,8 +6,12 @@ use {
 
 /// Generate a C client header from the IDL.
 ///
-/// Produces a single `#include`-able header that depends on `caravel.h` for
-/// Solana primitives (`Pubkey`, `AccountMeta`, `Instruction`).
+/// Produces a single header depending on `caravel.h` for Pubkey, AccountMeta,
+/// and Instruction.
+///
+/// Note: A current limitation is that `DynVec` and `DynString` are not
+/// supported, due to them not being directly serializable in C without length
+/// info
 pub fn generate_c_client(idl: &Idl) -> String {
     let raw = if idl.metadata.crate_name.is_empty() {
         &idl.metadata.name
@@ -23,14 +27,11 @@ pub fn generate_c_client(idl: &Idl) -> String {
     writeln!(out, "#define {guard}\n").unwrap();
     writeln!(out, "#include <caravel.h>\n").unwrap();
 
-    let fixed_addrs = collect_fixed_addresses(&prefix, idl);
-
     emit_program_id(&mut out, &prefix, &idl.address);
     emit_discriminators(&mut out, &prefix, idl);
-    emit_fixed_addresses(&mut out, &fixed_addrs);
     emit_type_defs(&mut out, &prefix, &idl.types);
     emit_decode_fns(&mut out, &prefix, &idl.types);
-    emit_instructions(&mut out, &prefix, idl, &fixed_addrs);
+    emit_instructions(&mut out, &prefix, idl);
     emit_error_codes(&mut out, &prefix, &idl.errors);
 
     writeln!(out, "#endif /* {guard} */").unwrap();
@@ -51,108 +52,6 @@ fn emit_program_id(out: &mut String, prefix: &str, address: &str) {
         write!(out, "0x{b:02x}").unwrap();
     }
     out.push_str("\n}};\n\n");
-}
-
-const WELL_KNOWN: &[(&str, &str)] = &[
-    ("11111111111111111111111111111111", "SYSTEM_PROGRAM_ID"),
-    (
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TOKEN_PROGRAM_ID",
-    ),
-    (
-        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-        "ASSOCIATED_TOKEN_PROGRAM_ID",
-    ),
-    (
-        "SysvarRent111111111111111111111111111111111",
-        "RENT_SYSVAR_ID",
-    ),
-    (
-        "SysvarC1ock11111111111111111111111111111111",
-        "CLOCK_SYSVAR_ID",
-    ),
-    (
-        "Sysvar1nstructions1111111111111111111111111",
-        "INSTRUCTIONS_SYSVAR_ID",
-    ),
-    (
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-        "TOKEN_2022_PROGRAM_ID",
-    ),
-];
-
-fn well_known_constant(addr: &str) -> Option<&'static str> {
-    WELL_KNOWN
-        .iter()
-        .find(|(a, _)| *a == addr)
-        .map(|(_, c)| *c)
-}
-
-struct FixedAddr {
-    c_expr: String,
-    needs_decl: bool,
-    decl_name: String,
-    bytes: Vec<u8>,
-}
-
-fn collect_fixed_addresses(prefix: &str, idl: &Idl) -> HashMap<String, FixedAddr> {
-    let upper = prefix.to_ascii_uppercase();
-    let mut map: HashMap<String, FixedAddr> = HashMap::new();
-
-    for ix in &idl.instructions {
-        for acc in &ix.accounts {
-            if let Some(ref addr) = acc.address {
-                if map.contains_key(addr.as_str()) {
-                    continue;
-                }
-                if let Some(caravel_const) = well_known_constant(addr) {
-                    map.insert(
-                        addr.clone(),
-                        FixedAddr {
-                            c_expr: format!("{caravel_const}.bytes"),
-                            needs_decl: false,
-                            decl_name: String::new(),
-                            bytes: Vec::new(),
-                        },
-                    );
-                } else {
-                    let name = format!(
-                        "{upper}_{name}",
-                        name = pascal_to_snake(&acc.name).to_ascii_uppercase(),
-                    );
-                    let bytes = bs58::decode(addr).into_vec().unwrap_or_default();
-                    map.insert(
-                        addr.clone(),
-                        FixedAddr {
-                            c_expr: format!("{name}.bytes"),
-                            needs_decl: true,
-                            decl_name: name,
-                            bytes,
-                        },
-                    );
-                }
-            }
-        }
-    }
-    map
-}
-
-fn emit_fixed_addresses(out: &mut String, addrs: &HashMap<String, FixedAddr>) {
-    let mut decls: Vec<_> = addrs.values().filter(|a| a.needs_decl).collect();
-    decls.sort_by_key(|a| &a.decl_name);
-    for fa in &decls {
-        write!(out, "static const Pubkey {} = {{{{", fa.decl_name).unwrap();
-        for (i, b) in fa.bytes.iter().enumerate() {
-            if i > 0 {
-                out.push_str(", ");
-            }
-            if i % 8 == 0 {
-                out.push_str("\n    ");
-            }
-            write!(out, "0x{b:02x}").unwrap();
-        }
-        out.push_str("\n}};\n\n");
-    }
 }
 
 fn emit_discriminators(out: &mut String, prefix: &str, idl: &Idl) {
@@ -240,33 +139,22 @@ fn emit_decode_fns(out: &mut String, prefix: &str, types: &[IdlTypeDef]) {
     }
 }
 
-fn emit_instructions(
-    out: &mut String,
-    prefix: &str,
-    idl: &Idl,
-    fixed_addrs: &HashMap<String, FixedAddr>,
-) {
+fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
     let upper = prefix.to_ascii_uppercase();
 
     for ix in &idl.instructions {
         let ix_snake = pascal_to_snake(&ix.name);
-        let user_accounts: Vec<_> = ix
-            .accounts
-            .iter()
-            .filter(|a| a.address.is_none() && a.pda.is_none())
-            .collect();
+        let user_accounts: Vec<_> = ix.accounts.iter().filter(|a| a.pda.is_none()).collect();
 
-        // Accounts struct
         writeln!(out, "typedef struct {{").unwrap();
         for acc in &user_accounts {
-            writeln!(out, "    Pubkey {};", acc.name).unwrap();
+            writeln!(out, "    Pubkey *{};", acc.name).unwrap();
         }
         if user_accounts.is_empty() {
             writeln!(out, "    uint8_t _pad;").unwrap();
         }
         writeln!(out, "}} {prefix}_{ix_snake}_accounts_t;\n").unwrap();
 
-        // Args struct
         let has_args = !ix.args.is_empty();
         writeln!(out, "typedef struct {{").unwrap();
         if !has_args {
@@ -284,20 +172,28 @@ fn emit_instructions(
         }
         writeln!(out, "}} {prefix}_{ix_snake}_args_t;\n").unwrap();
 
-        // Builder function
         let disc_len = ix.discriminator.len();
         let num_accounts = ix.accounts.len();
-        writeln!(
-            out,
-            "static inline uint64_t {prefix}_{ix_snake}_ix(\n    \
-             {prefix}_{ix_snake}_accounts_t *accounts,\n    \
-             {prefix}_{ix_snake}_args_t *args,\n    \
-             Instruction *ix_out,\n    \
-             AccountMeta *meta_buf,\n    \
-             uint8_t *data_buf,\n    \
-             uint64_t data_buf_len\n) {{",
-        )
-        .unwrap();
+        if ix.has_remaining {
+            writeln!(
+                out,
+                "static inline uint64_t {prefix}_{ix_snake}_ix(\n    \
+                 {prefix}_{ix_snake}_accounts_t *accounts,\n    {prefix}_{ix_snake}_args_t \
+                 *args,\n    const AccountMeta *remaining,\n    uint64_t remaining_len,\n    \
+                 Instruction *ix_out,\n    AccountMeta *meta_buf,\n    uint8_t *data_buf,\n    \
+                 uint64_t data_buf_len\n) {{",
+            )
+            .unwrap();
+        } else {
+            writeln!(
+                out,
+                "static inline uint64_t {prefix}_{ix_snake}_ix(\n    \
+                 {prefix}_{ix_snake}_accounts_t *accounts,\n    {prefix}_{ix_snake}_args_t \
+                 *args,\n    Instruction *ix_out,\n    AccountMeta *meta_buf,\n    uint8_t \
+                 *data_buf,\n    uint64_t data_buf_len\n) {{",
+            )
+            .unwrap();
+        }
 
         let pda_count = ix.accounts.iter().filter(|a| a.pda.is_some()).count();
         if pda_count > 0 {
@@ -315,7 +211,7 @@ fn emit_instructions(
             }
         }
 
-        // Derive PDAs
+        // derive pdas
         let mut pda_idx = 0usize;
         for acc in &ix.accounts {
             if let Some(ref pda) = acc.pda {
@@ -324,24 +220,22 @@ fn emit_instructions(
             }
         }
 
-        // Build account metas using caravel helpers
+        // build account metas
         pda_idx = 0;
         for (i, acc) in ix.accounts.iter().enumerate() {
-            let key_expr = if let Some(ref addr) = acc.address {
-                fixed_addrs[addr.as_str()].c_expr.clone()
-            } else if acc.pda.is_some() {
-                let expr = format!("pda_keys[{pda_idx}].bytes");
+            let key_expr = if acc.pda.is_some() {
+                let expr = format!("&pda_keys[{pda_idx}]");
                 pda_idx += 1;
                 expr
             } else {
-                format!("accounts->{}.bytes", acc.name)
+                format!("accounts->{}", acc.name)
             };
 
             let helper = meta_helper(acc.writable, acc.signer);
             writeln!(out, "    meta_buf[{i}] = {helper}({key_expr});").unwrap();
         }
 
-        // Serialize data: discriminator + args
+        // serialize data
         writeln!(out, "    uint64_t off = 0;").unwrap();
         writeln!(out, "    if (data_buf_len < {disc_len}) return 0;").unwrap();
         writeln!(
@@ -362,10 +256,32 @@ fn emit_instructions(
             }
         }
 
-        // Assemble Instruction
-        writeln!(out, "    ix_out->program_id = (Pubkey *)&{upper}_PROGRAM_ID;").unwrap();
+        // append remaining accounts
+        if ix.has_remaining {
+            writeln!(
+                out,
+                "    for (uint64_t i = 0; i < remaining_len; i++) meta_buf[{num_accounts} + i] = \
+                 remaining[i];"
+            )
+            .unwrap();
+        }
+
+        // assemble instruction
+        writeln!(
+            out,
+            "    ix_out->program_id = (Pubkey *)&{upper}_PROGRAM_ID;"
+        )
+        .unwrap();
         writeln!(out, "    ix_out->accounts = meta_buf;").unwrap();
-        writeln!(out, "    ix_out->accounts_len = {num_accounts};").unwrap();
+        if ix.has_remaining {
+            writeln!(
+                out,
+                "    ix_out->accounts_len = {num_accounts} + remaining_len;"
+            )
+            .unwrap();
+        } else {
+            writeln!(out, "    ix_out->accounts_len = {num_accounts};").unwrap();
+        }
         writeln!(out, "    ix_out->data = data_buf;").unwrap();
         writeln!(out, "    ix_out->data_len = off;").unwrap();
         writeln!(out, "    return off;").unwrap();
@@ -399,8 +315,8 @@ fn emit_pda_derivation(
                 let len = value.len();
                 writeln!(
                     out,
-                    "        {{ static const uint8_t s[] = {{{hex}}}; \
-                     seeds[{i}].addr = s; seeds[{i}].len = {len}; }}"
+                    "        {{ static const uint8_t s[] = {{{hex}}}; seeds[{i}].addr = s; \
+                     seeds[{i}].len = {len}; }}"
                 )
                 .unwrap();
             }
@@ -414,7 +330,7 @@ fn emit_pda_derivation(
                 } else {
                     writeln!(
                         out,
-                        "        seeds[{i}].addr = accounts->{path}.bytes; seeds[{i}].len = 32;"
+                        "        seeds[{i}].addr = accounts->{path}->bytes; seeds[{i}].len = 32;"
                     )
                     .unwrap();
                 }
@@ -422,8 +338,8 @@ fn emit_pda_derivation(
             IdlSeed::Arg { path } => {
                 writeln!(
                     out,
-                    "        seeds[{i}].addr = (const uint8_t *)&args->{path}; \
-                     seeds[{i}].len = sizeof(args->{path});"
+                    "        seeds[{i}].addr = (const uint8_t *)&args->{path}; seeds[{i}].len = \
+                     sizeof(args->{path});"
                 )
                 .unwrap();
             }
@@ -432,8 +348,8 @@ fn emit_pda_derivation(
     writeln!(out, "        uint8_t bump;").unwrap();
     writeln!(
         out,
-        "        find_program_address(seeds, {seed_count}, \
-         (Pubkey *)&{upper_prefix}_PROGRAM_ID, &pda_keys[{pda_idx}], &bump);"
+        "        find_program_address(seeds, {seed_count}, (Pubkey *)&{upper_prefix}_PROGRAM_ID, \
+         &pda_keys[{pda_idx}], &bump);"
     )
     .unwrap();
     writeln!(out, "    }}").unwrap();
@@ -578,16 +494,12 @@ fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef], indent: 
         IdlType::DynString { ref string } => {
             let prefix_size = string.prefix_bytes;
             match prefix_size {
-                1 => format!(
-                    "{t}/* DynString not directly serializable in C without length info */\n"
-                ),
-                _ => format!(
-                    "{t}/* DynString not directly serializable in C without length info */\n"
-                ),
+                1 => format!("{t}/* DynString not directly serializable without length info */\n"),
+                _ => format!("{t}/* DynString not directly serializable without length info */\n"),
             }
         }
         IdlType::DynVec { .. } => {
-            format!("{t}/* DynVec not directly serializable in C without length info */\n")
+            format!("{t}/* DynVec not directly serializable without length info */\n")
         }
     }
 }
