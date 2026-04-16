@@ -1,0 +1,5 @@
+error: QuasarSerialize: enums must be declared `#[repr(u8)]`
+ --> tests/compile_fail/enum_without_repr_u8.rs:8:10
+  |
+8 | pub enum Side {
+  |          ^^^^

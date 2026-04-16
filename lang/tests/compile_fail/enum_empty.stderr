@@ -1,0 +1,14 @@
+error: QuasarSerialize: enums must have at least one variant
+  --> tests/compile_fail/enum_empty.rs:10:10
+   |
+10 | pub enum Empty {}
+   |          ^^^^^
+
+error[E0084]: unsupported representation for zero-variant enum
+  --> tests/compile_fail/enum_empty.rs:8:8
+   |
+ 8 | #[repr(u8)]
+   |        ^^
+ 9 | #[derive(QuasarSerialize)]
+10 | pub enum Empty {}
+   | -------------- zero-variant enum

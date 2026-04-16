@@ -33,6 +33,26 @@ impl InstructionArg for ReturnPayload {
     }
 }
 
+/// Unit enum with explicit, non-contiguous discriminants. Exercises the
+/// `QuasarSerialize` enum derive on a layout where a raw byte not equal
+/// to 7 or 42 must be rejected by `validate_zc`.
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, QuasarSerialize)]
+pub enum Side {
+    Bid = 7,
+    Ask = 42,
+}
+
+/// Unit enum with implicit discriminants — exercises the common
+/// `0, 1, 2, ...` layout on the same derive path.
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, QuasarSerialize)]
+pub enum Priority {
+    Low,
+    Normal,
+    High,
+}
+
 pub const RETURN_U64_VALUE: u64 = 777;
 pub const RETURN_PAYLOAD_VALUE: ReturnPayload = ReturnPayload {
     amount: 55,

@@ -304,4 +304,13 @@ mod quasar_test_misc {
     ) -> Result<(), ProgramError> {
         ctx.accounts.handler(new_name)
     }
+
+    #[instruction(discriminator = 58)]
+    pub fn enum_arg_check(
+        ctx: Ctx<EnumCheck>,
+        side: state::Side,
+        priority: state::Priority,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler(side, priority)
+    }
 }

@@ -88,6 +88,10 @@ mod test_validate_token;
 #[cfg(test)]
 mod optional_args;
 
+// #[repr(u8)] unit enum instruction args
+#[cfg(test)]
+mod enum_args;
+
 // InterfaceAccount custom Owners
 #[cfg(test)]
 mod test_interface_migration;

@@ -135,3 +135,6 @@ pub use interface_migration_check::*;
 
 pub mod dynamic_stack_cache;
 pub use dynamic_stack_cache::*;
+
+pub mod enum_check;
+pub use enum_check::*;

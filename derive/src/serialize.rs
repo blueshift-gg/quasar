@@ -9,6 +9,15 @@
 //! 1. An `InstructionArgDecode<'a>` impl with a fixed-header batch + sequential
 //!    variable-length reads. Reference fields require `#[max(N)]`.
 //! 2. No ZC companion or `InstructionArg` impl (not `Copy`).
+//!
+//! **Unit enums** (`#[repr(u8)]` with all-unit variants):
+//! 1. An `InstructionArg` impl with `Zc = u8`. `validate_zc` rejects tag bytes
+//!    that don't correspond to a declared variant; `from_zc` matches the tag
+//!    back to the variant (using `unreachable_unchecked` on the default arm,
+//!    since `validate_zc` gates it).
+//! 2. Off-chain `SchemaWrite` / `SchemaRead` impls that pass the single
+//!    discriminant byte through, rejecting unknown tags with
+//!    `wincode::error::ReadError::InvalidTagEncoding`.
 
 use {
     proc_macro::TokenStream,
@@ -35,10 +44,11 @@ pub(crate) fn derive_quasar_serialize(input: TokenStream) -> TokenStream {
                 .into();
             }
         },
-        _ => {
+        Data::Enum(_) => return derive_unit_enum(input),
+        Data::Union(_) => {
             return syn::Error::new_spanned(
                 &input.ident,
-                "QuasarSerialize can only be derived for structs",
+                "QuasarSerialize cannot be derived for unions",
             )
             .to_compile_error()
             .into();
@@ -501,4 +511,198 @@ fn derive_borrowed(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
     };
 
     expanded.into()
+}
+
+// ---------------------------------------------------------------------------
+// Unit-enum path (`#[repr(u8)]` with all-unit variants)
+// ---------------------------------------------------------------------------
+
+fn derive_unit_enum(input: DeriveInput) -> TokenStream {
+    let name = &input.ident;
+
+    // Unit enums cannot take generic parameters — the `Zc = u8` mapping
+    // relies on a stable, parameter-free discriminant layout.
+    if !input.generics.params.is_empty() {
+        return syn::Error::new_spanned(
+            &input.generics,
+            "QuasarSerialize: enums with generic parameters are not supported",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    // Require `#[repr(u8)]`. The implementation emits `*self as u8`, which
+    // only produces a well-defined discriminant when the enum's layout is
+    // fixed to a 1-byte primitive.
+    if !has_repr_u8(&input.attrs) {
+        return syn::Error::new_spanned(
+            &input.ident,
+            "QuasarSerialize: enums must be declared `#[repr(u8)]`",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let data_enum = match &input.data {
+        Data::Enum(e) => e,
+        // Unreachable: caller checked `Data::Enum` before dispatching here.
+        _ => unreachable!("derive_unit_enum only called on Data::Enum"),
+    };
+
+    if data_enum.variants.is_empty() {
+        return syn::Error::new_spanned(
+            &input.ident,
+            "QuasarSerialize: enums must have at least one variant",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    // Collect variant idents, enforcing unit-only. Variants with fields
+    // cannot be represented by a single discriminant byte.
+    let mut variant_idents: Vec<&Ident> = Vec::with_capacity(data_enum.variants.len());
+    for v in &data_enum.variants {
+        match &v.fields {
+            Fields::Unit => variant_idents.push(&v.ident),
+            _ => {
+                return syn::Error::new_spanned(
+                    &v.ident,
+                    "QuasarSerialize: only unit variants are supported on `#[repr(u8)]` enums",
+                )
+                .to_compile_error()
+                .into();
+            }
+        }
+    }
+
+    // `from_zc` arms pair each variant with `*self as u8`. Building the
+    // match as `x if x == Self::Variant as u8 => Self::Variant` keeps the
+    // match driven by the declared discriminants — explicit (`Buy = 7`) or
+    // implicit (0, 1, 2, …) — without the macro having to read them.
+    let from_zc_arms: Vec<TokenStream2> = variant_idents
+        .iter()
+        .map(|v| {
+            quote! { __tag if __tag == Self::#v as u8 => Self::#v, }
+        })
+        .collect();
+    let validate_arms: Vec<TokenStream2> = variant_idents
+        .iter()
+        .map(|v| {
+            quote! { __tag if __tag == Self::#v as u8 => Ok(()), }
+        })
+        .collect();
+    let schema_read_arms: Vec<TokenStream2> = variant_idents
+        .iter()
+        .map(|v| {
+            quote! { __tag if __tag == Self::#v as u8 => Self::#v, }
+        })
+        .collect();
+
+    let expanded = quote! {
+        impl quasar_lang::instruction_arg::InstructionArg for #name {
+            type Zc = u8;
+
+            #[inline(always)]
+            fn from_zc(zc: &u8) -> Self {
+                match *zc {
+                    #(#from_zc_arms)*
+                    // SAFETY: `validate_zc` is called by `#[instruction]`
+                    // codegen before `from_zc` on every untrusted decode
+                    // path, and it rejects every tag that does not map to
+                    // a declared variant.
+                    _ => unsafe { core::hint::unreachable_unchecked() },
+                }
+            }
+
+            #[inline(always)]
+            fn to_zc(&self) -> u8 {
+                *self as u8
+            }
+
+            #[inline(always)]
+            fn validate_zc(zc: &u8) -> Result<(), quasar_lang::prelude::ProgramError> {
+                match *zc {
+                    #(#validate_arms)*
+                    _ => Err(quasar_lang::prelude::ProgramError::InvalidInstructionData),
+                }
+            }
+        }
+
+        // Off-chain wincode codec — write the single discriminant byte and
+        // read it back, rejecting unknown tags with the canonical
+        // `InvalidTagEncoding` error.
+        //
+        // Paths are routed through the `quasar_lang::client::wincode`
+        // re-export so downstream crates that derive `QuasarSerialize`
+        // on an enum only need `quasar-lang` as a dependency.
+        #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
+        unsafe impl<__C: quasar_lang::client::wincode::config::ConfigCore>
+            quasar_lang::client::wincode::SchemaWrite<__C> for #name
+        {
+            type Src = Self;
+
+            fn size_of(
+                _src: &Self,
+            ) -> quasar_lang::client::wincode::error::WriteResult<usize> {
+                Ok(1)
+            }
+
+            fn write(
+                mut __writer: impl quasar_lang::client::wincode::io::Writer,
+                src: &Self,
+            ) -> quasar_lang::client::wincode::error::WriteResult<()> {
+                __writer.write(&[*src as u8])?;
+                Ok(())
+            }
+        }
+
+        #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
+        unsafe impl<'__de, __C: quasar_lang::client::wincode::config::ConfigCore>
+            quasar_lang::client::wincode::SchemaRead<'__de, __C> for #name
+        {
+            type Dst = Self;
+
+            fn read(
+                mut __reader: impl quasar_lang::client::wincode::io::Reader<'__de>,
+                __dst: &mut core::mem::MaybeUninit<Self>,
+            ) -> quasar_lang::client::wincode::error::ReadResult<()> {
+                let __bytes = __reader.take_scoped(1)?;
+                let __variant = match __bytes[0] {
+                    #(#schema_read_arms)*
+                    __tag => {
+                        return Err(
+                            quasar_lang::client::wincode::error::invalid_tag_encoding(
+                                __tag as usize,
+                            ),
+                        );
+                    }
+                };
+                __dst.write(__variant);
+                Ok(())
+            }
+        }
+    };
+
+    expanded.into()
+}
+
+/// Return `true` if the attributes contain a `#[repr(u8)]` (possibly among
+/// other repr hints, e.g. `#[repr(C, u8)]`).
+fn has_repr_u8(attrs: &[syn::Attribute]) -> bool {
+    for attr in attrs {
+        if !attr.path().is_ident("repr") {
+            continue;
+        }
+        let mut found = false;
+        let _ = attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("u8") {
+                found = true;
+            }
+            Ok(())
+        });
+        if found {
+            return true;
+        }
+    }
+    false
 }

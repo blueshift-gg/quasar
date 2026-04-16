@@ -1,0 +1,5 @@
+error: QuasarSerialize: enums with generic parameters are not supported
+ --> tests/compile_fail/enum_with_generic.rs:9:17
+  |
+9 | pub enum Wrapper<T> {
+  |                 ^^^

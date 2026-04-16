@@ -328,3 +328,144 @@ fn podvec_zc_is_self() {
         1
     );
 }
+
+// ---------------------------------------------------------------------------
+// `#[repr(u8)]` unit enum as InstructionArg
+//
+// Two shapes are covered:
+// * `Side` uses explicit, non-contiguous discriminants (`Bid=7`, `Ask=42`),
+//   which exercises the `*self as u8` / tag-equality generation without relying
+//   on an implicit 0, 1 layout.
+// * `Priority` uses the implicit `0, 1, 2, ...` layout, which is the most
+//   common form users will write.
+// ---------------------------------------------------------------------------
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, quasar_lang::prelude::QuasarSerialize)]
+enum Side {
+    Bid = 7,
+    Ask = 42,
+}
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, quasar_lang::prelude::QuasarSerialize)]
+enum Priority {
+    Low,
+    Normal,
+    High,
+}
+
+#[test]
+fn unit_enum_zc_is_u8() {
+    assert_eq!(core::mem::size_of::<<Side as InstructionArg>::Zc>(), 1);
+    assert_eq!(core::mem::align_of::<<Side as InstructionArg>::Zc>(), 1);
+    assert_eq!(core::mem::size_of::<<Priority as InstructionArg>::Zc>(), 1);
+}
+
+#[test]
+fn unit_enum_explicit_disc_round_trip() {
+    for &v in &[Side::Bid, Side::Ask] {
+        let zc = v.to_zc();
+        assert_eq!(zc, v as u8);
+        assert_eq!(Side::from_zc(&zc), v);
+    }
+}
+
+#[test]
+fn unit_enum_implicit_disc_round_trip() {
+    let cases = [
+        (Priority::Low, 0u8),
+        (Priority::Normal, 1),
+        (Priority::High, 2),
+    ];
+    for &(v, raw) in &cases {
+        let zc = v.to_zc();
+        assert_eq!(zc, raw, "to_zc must match implicit discriminant");
+        assert_eq!(Priority::from_zc(&zc), v);
+    }
+}
+
+#[test]
+fn unit_enum_validate_accepts_declared_tags() {
+    assert!(Side::validate_zc(&7).is_ok());
+    assert!(Side::validate_zc(&42).is_ok());
+    for tag in [0u8, 1, 2, 3] {
+        assert!(Priority::validate_zc(&tag).is_ok() == (tag <= 2));
+    }
+}
+
+#[test]
+fn unit_enum_validate_rejects_undeclared_tags() {
+    // Side only declares 7 and 42; every other byte must be rejected, and
+    // the error must be InvalidInstructionData so that on-chain decoding
+    // fails deterministically before `from_zc` runs.
+    for tag in 0u8..=255u8 {
+        let declared = matches!(tag, 7 | 42);
+        let res = Side::validate_zc(&tag);
+        assert_eq!(
+            res.is_ok(),
+            declared,
+            "tag={tag} declared={declared} res={res:?}"
+        );
+        if !declared {
+            assert!(matches!(
+                res,
+                Err(quasar_lang::prelude::ProgramError::InvalidInstructionData)
+            ));
+        }
+    }
+}
+
+#[test]
+fn unit_enum_wincode_wire_is_single_byte() {
+    use quasar_lang::client::wincode;
+
+    let bid = wincode::serialize(&Side::Bid).unwrap();
+    assert_eq!(bid, [7u8]);
+
+    let ask = wincode::serialize(&Side::Ask).unwrap();
+    assert_eq!(ask, [42u8]);
+
+    let high = wincode::serialize(&Priority::High).unwrap();
+    assert_eq!(high, [2u8]);
+}
+
+#[test]
+fn unit_enum_wincode_round_trip() {
+    use quasar_lang::client::wincode;
+
+    for &v in &[Side::Bid, Side::Ask] {
+        let wire = wincode::serialize(&v).unwrap();
+        let back: Side = wincode::deserialize(&wire).unwrap();
+        assert_eq!(back, v);
+    }
+    for &v in &[Priority::Low, Priority::Normal, Priority::High] {
+        let wire = wincode::serialize(&v).unwrap();
+        let back: Priority = wincode::deserialize(&wire).unwrap();
+        assert_eq!(back, v);
+    }
+}
+
+#[test]
+fn unit_enum_wincode_rejects_unknown_tag() {
+    use quasar_lang::client::wincode;
+
+    // Side accepts only 7 and 42 — every other byte must surface as
+    // `InvalidTagEncoding`, matching the error wincode uses for its own
+    // derived enums and untagged unions.
+    for tag in [0u8, 1, 6, 8, 41, 43, 0xFF] {
+        let err = wincode::deserialize::<Side>(&[tag]).unwrap_err();
+        assert!(
+            matches!(err, wincode::error::ReadError::InvalidTagEncoding(t) if t == tag as usize),
+            "tag={tag} err={err:?}"
+        );
+    }
+}
+
+#[test]
+fn unit_enum_wincode_rejects_truncated_input() {
+    use quasar_lang::client::wincode;
+
+    // An empty buffer cannot contain even the 1-byte tag.
+    assert!(wincode::deserialize::<Side>(&[]).is_err());
+}

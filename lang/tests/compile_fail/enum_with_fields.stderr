@@ -1,0 +1,5 @@
+error: QuasarSerialize: only unit variants are supported on `#[repr(u8)]` enums
+  --> tests/compile_fail/enum_with_fields.rs:12:5
+   |
+12 |     Transfer { amount: u64 },
+   |     ^^^^^^^^
