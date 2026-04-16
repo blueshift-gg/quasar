@@ -93,7 +93,7 @@ pub fn generate_clients(
   }}
 }}
 "#,
-            crate_name = idl.metadata.crate_name,
+            crate_name = idl.metadata.name,
             version = idl.metadata.version,
         );
         std::fs::write(ts_dir.join("package.json"), &ts_package_json)?;
@@ -104,7 +104,7 @@ pub fn generate_clients(
         let py_code = codegen::python::generate_python_client(idl);
         let py_dir = PathBuf::from(clients_path)
             .join("python")
-            .join(&idl.metadata.crate_name);
+            .join(&idl.metadata.name);
         std::fs::create_dir_all(&py_dir)?;
         std::fs::write(py_dir.join("client.py"), &py_code)?;
         std::fs::write(
@@ -116,7 +116,7 @@ pub fn generate_clients(
     // Go
     if languages.contains(&"golang") {
         let go_code = codegen::golang::generate_go_client(idl);
-        let go_pkg = idl.metadata.crate_name.replace('-', "_");
+        let go_pkg = idl.metadata.name.replace('-', "_");
         let go_dir = PathBuf::from(clients_path).join("golang").join(&go_pkg);
         std::fs::create_dir_all(&go_dir)?;
         std::fs::write(go_dir.join("client.go"), &go_code)?;
