@@ -26,17 +26,24 @@ pub fn generate_python_client(idl: &Idl) -> String {
 
     let has_events = !idl.events.is_empty();
     let has_args = idl.instructions.iter().any(|ix| !ix.args.is_empty());
-    let has_dynamic = idl.instructions.iter().any(|ix| {
-        ix.args
+    let has_optional = idl
+        .instructions
+        .iter()
+        .any(|ix| ix.args.iter().any(|a| type_has_option(&a.ty)))
+        || idl
+            .types
             .iter()
-            .any(|a| matches!(a.ty, IdlType::DynString { .. } | IdlType::DynVec { .. }))
-    }) || idl.types.iter().any(|t| {
-        t.ty.fields
+            .any(|t| t.ty.fields.iter().any(|f| type_has_option(&f.ty)));
+    let has_dynamic = idl
+        .instructions
+        .iter()
+        .any(|ix| ix.args.iter().any(|a| type_has_dynamic(&a.ty)))
+        || idl
+            .types
             .iter()
-            .any(|f| matches!(f.ty, IdlType::DynString { .. } | IdlType::DynVec { .. }))
-    });
+            .any(|t| t.ty.fields.iter().any(|f| type_has_dynamic(&f.ty)));
 
-    if has_events || has_args || has_dynamic {
+    if has_events || has_args || has_dynamic || has_optional {
         out.push_str("from typing import Optional\n");
     }
 
@@ -348,11 +355,12 @@ fn python_type(ty: &IdlType) -> String {
                 "int".to_string()
             }
             "f32" | "f64" => "float".to_string(),
-            "publicKey" => "Pubkey".to_string(),
+            "pubkey" => "Pubkey".to_string(),
             "string" => "str".to_string(),
             _ if p.starts_with('[') => "bytes".to_string(),
             _ => "bytes".to_string(),
         },
+        IdlType::Option { option } => format!("Optional[{}]", python_type(option)),
         IdlType::DynString { .. } => "str".to_string(),
         IdlType::DynVec { .. } => "list".to_string(),
         IdlType::Defined { defined } => defined.clone(),
@@ -385,12 +393,21 @@ fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef]) -> Strin
             ),
             "f32" => format!("    data += struct.pack(\"<f\", input.{})\n", name),
             "f64" => format!("    data += struct.pack(\"<d\", input.{})\n", name),
-            "publicKey" => format!("    data += bytes(input.{})\n", name),
+            "pubkey" => format!("    data += bytes(input.{})\n", name),
             _ if p.starts_with('[') => {
                 format!("    data += input.{}\n", name)
             }
             _ => format!("    data += input.{}  # unsupported\n", name),
         },
+        IdlType::Option { option } => {
+            let inner = serialize_field_expr(&format!("{}_val", name), option, types);
+            format!(
+                "    if input.{n} is None:\n        data += b'\\x00'\n    else:\n        data += \
+                 b'\\x01'\n        {n}_val = input.{n}\n{inner}",
+                n = name,
+                inner = inner.replace("    data", "        data"),
+            )
+        }
         IdlType::DynString { string } => {
             let (fmt, _sz) = prefix_fmt(string.prefix_bytes);
             format!(
@@ -403,7 +420,7 @@ fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef]) -> Strin
         IdlType::DynVec { vec } => {
             let (fmt, _sz) = prefix_fmt(vec.prefix_bytes);
             let item_ser = match &*vec.items {
-                IdlType::Primitive(p) if p == "publicKey" => "bytes(item)".to_string(),
+                IdlType::Primitive(p) if p == "pubkey" => "bytes(item)".to_string(),
                 IdlType::Primitive(p) => {
                     let f = struct_format(p);
                     format!("struct.pack(\"<{}\", item)", f)
@@ -455,7 +472,7 @@ fn decode_field_expr(name: &str, ty: &IdlType, indent: usize, types: &[IdlTypeDe
                 pad = pad,
                 n = name,
             ),
-            "publicKey" => format!(
+            "pubkey" => format!(
                 "{pad}{n} = Pubkey.from_bytes(data[offset:offset + 32])\n{pad}offset += 32\n",
                 pad = pad,
                 n = name,
@@ -509,7 +526,7 @@ fn decode_field_expr(name: &str, ty: &IdlType, indent: usize, types: &[IdlTypeDe
         IdlType::DynVec { vec } => {
             let (fmt, sz) = prefix_fmt(vec.prefix_bytes);
             let item_decode = match &*vec.items {
-                IdlType::Primitive(p) if p == "publicKey" => {
+                IdlType::Primitive(p) if p == "pubkey" => {
                     "Pubkey.from_bytes(data[offset:offset + 32]); offset += 32".to_string()
                 }
                 IdlType::Primitive(p) => {
@@ -531,6 +548,16 @@ fn decode_field_expr(name: &str, ty: &IdlType, indent: usize, types: &[IdlTypeDe
                 fmt = fmt,
                 sz = sz,
                 decode = item_decode,
+            )
+        }
+        IdlType::Option { option } => {
+            let inner = decode_field_expr(&format!("{}_inner", name), option, indent + 4, types);
+            format!(
+                "{pad}if data[offset] == 0:\n{pad}    {n} = None\n{pad}    offset += \
+                 1\n{pad}else:\n{pad}    offset += 1\n{inner}{pad}    {n} = {n}_inner\n",
+                pad = pad,
+                n = name,
+                inner = inner,
             )
         }
         IdlType::Defined { defined } => {
@@ -605,8 +632,24 @@ fn primitive_size(p: &str) -> usize {
         "u32" | "i32" | "f32" => 4,
         "u64" | "i64" | "f64" => 8,
         "u128" | "i128" => 16,
-        "publicKey" => 32,
+        "pubkey" => 32,
         _ => 0,
+    }
+}
+
+fn type_has_dynamic(ty: &IdlType) -> bool {
+    match ty {
+        IdlType::Option { option } => type_has_dynamic(option),
+        IdlType::DynString { .. } | IdlType::DynVec { .. } => true,
+        _ => false,
+    }
+}
+
+fn type_has_option(ty: &IdlType) -> bool {
+    match ty {
+        IdlType::Option { .. } => true,
+        IdlType::DynVec { vec } => type_has_option(&vec.items),
+        _ => false,
     }
 }
 

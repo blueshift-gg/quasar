@@ -20,15 +20,14 @@ pub fn generate_go_client(idl: &Idl) -> String {
     let has_args = idl.instructions.iter().any(|ix| !ix.args.is_empty());
     let has_types_with_fields = idl.types.iter().any(|t| !t.ty.fields.is_empty());
     let needs_binary = has_args || has_events || has_types_with_fields;
-    let has_floats = idl.instructions.iter().any(|ix| {
-        ix.args
+    let has_floats = idl
+        .instructions
+        .iter()
+        .any(|ix| ix.args.iter().any(|a| type_has_float(&a.ty)))
+        || idl
+            .types
             .iter()
-            .any(|a| matches!(&a.ty, IdlType::Primitive(p) if p == "f32" || p == "f64"))
-    }) || idl.types.iter().any(|t| {
-        t.ty.fields
-            .iter()
-            .any(|f| matches!(&f.ty, IdlType::Primitive(p) if p == "f32" || p == "f64"))
-    });
+            .any(|t| t.ty.fields.iter().any(|f| type_has_float(&f.ty)));
 
     out.push_str("import (\n");
     if needs_binary {
@@ -320,7 +319,7 @@ fn go_type(ty: &IdlType) -> String {
             "i128" => "[16]byte".to_string(),
             "f32" => "float32".to_string(),
             "f64" => "float64".to_string(),
-            "publicKey" => "solana.PublicKey".to_string(),
+            "pubkey" => "solana.PublicKey".to_string(),
             "string" => "string".to_string(),
             other if other.starts_with('[') => {
                 let size = super::parse_fixed_array_size(other).unwrap_or(1);
@@ -328,6 +327,7 @@ fn go_type(ty: &IdlType) -> String {
             }
             _ => "[]byte".to_string(),
         },
+        IdlType::Option { option } => format!("*{}", go_type(option)),
         IdlType::DynString { .. } => "string".to_string(),
         IdlType::DynVec { .. } => "[]byte".to_string(),
         IdlType::Defined { defined } => defined.clone(),
@@ -404,7 +404,7 @@ fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef]) -> Strin
                  math.Float64bits(input.{n})); data = append(data, buf[:]...) }}\n",
                 n = name,
             ),
-            "publicKey" => format!("\tdata = append(data, input.{}[:]...)\n", name,),
+            "pubkey" => format!("\tdata = append(data, input.{}[:]...)\n", name,),
             "string" => format!(
                 "\t{{ b := []byte(input.{n}); var buf [4]byte; \
                  binary.LittleEndian.PutUint32(buf[:], uint32(len(b))); data = append(data, \
@@ -441,6 +441,15 @@ fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef]) -> Strin
                 n = name,
             ),
         },
+        IdlType::Option { option } => {
+            let inner = serialize_field_expr(&format!("(*input.{})", name), option, types);
+            format!(
+                "\tif input.{n} == nil {{\n\t\tdata = append(data, 0)\n\t}} else {{\n\t\tdata = \
+                 append(data, 1)\n{inner}\t}}\n",
+                n = name,
+                inner = inner,
+            )
+        }
         IdlType::Defined { defined } => {
             if let Some(td) = types.iter().find(|t| t.name == *defined) {
                 let mut result = String::new();
@@ -549,7 +558,7 @@ fn decode_field_expr(name: &str, ty: &IdlType, depth: usize, types: &[IdlTypeDef
             ),
             "f32" => go_float_decode(&t, name, "Float32frombits", "Uint32", 4),
             "f64" => go_float_decode(&t, name, "Float64frombits", "Uint64", 8),
-            "publicKey" => format!(
+            "pubkey" => format!(
                 "{t}var {n} solana.PublicKey\n{t}copy({n}[:], data[offset:offset+32])\n{t}offset \
                  += 32\n",
                 t = t,
@@ -597,6 +606,17 @@ fn decode_field_expr(name: &str, ty: &IdlType, depth: usize, types: &[IdlTypeDef
                 n = name,
             ),
         },
+        IdlType::Option { option } => {
+            let inner = decode_field_expr(&format!("{}_val", name), option, depth, types);
+            format!(
+                "{t}var {n} *{ty}\n{t}if data[offset] != 0 {{\n{t}\toffset += 1\n{inner}{t}\t{n} \
+                 = &{n}_val\n{t}}} else {{\n{t}\toffset += 1\n{t}}}\n",
+                t = t,
+                n = name,
+                ty = go_type(option),
+                inner = inner,
+            )
+        }
         IdlType::Defined { defined } => {
             if let Some(td) = types.iter().find(|t| t.name == *defined) {
                 let mut result = String::new();
@@ -659,5 +679,14 @@ fn decode_field_expr(name: &str, ty: &IdlType, depth: usize, types: &[IdlTypeDef
                 n = name,
             ),
         },
+    }
+}
+
+fn type_has_float(ty: &IdlType) -> bool {
+    match ty {
+        IdlType::Primitive(p) => p == "f32" || p == "f64",
+        IdlType::Option { option } => type_has_float(option),
+        IdlType::DynVec { vec } => type_has_float(&vec.items),
+        _ => false,
     }
 }

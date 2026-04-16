@@ -263,7 +263,7 @@ fn parse_discriminator_empty_array() {
 fn map_type_primitives() {
     assert!(matches!(
         helpers::map_type("Address"),
-        IdlType::Primitive(s) if s == "publicKey"
+        IdlType::Primitive(s) if s == "pubkey"
     ));
     assert!(matches!(
         helpers::map_type("u64"),
@@ -313,6 +313,16 @@ fn map_type_from_syn_vec_with_lifetime() {
         ),
         "Vec<'a, T, N> must be DynVec with u16 prefix"
     );
+}
+
+#[test]
+fn map_type_from_syn_option() {
+    let ty: syn::Type = syn::parse_str("Option<Address>").expect("parse type");
+    assert!(matches!(
+        helpers::map_type_from_syn(&ty),
+        IdlType::Option { option }
+            if matches!(*option, IdlType::Primitive(ref s) if s == "pubkey")
+    ));
 }
 
 // ---------------------------------------------------------------------------

@@ -80,6 +80,7 @@ fn field_byte_size(
 ) -> Result<usize, String> {
     match ty {
         IdlType::Primitive(p) => primitive_size(p),
+        IdlType::Option { option } => Ok(1 + field_byte_size(option, type_map, sizes, resolving)?),
         IdlType::Defined { defined } => resolve_size(defined, type_map, sizes, resolving),
         IdlType::DynString { .. } => {
             Err("dynamic string not supported in CPI — only fixed-size types allowed".into())
@@ -97,7 +98,7 @@ fn primitive_size(name: &str) -> Result<usize, String> {
         "u32" | "i32" => Ok(4),
         "u64" | "i64" => Ok(8),
         "u128" | "i128" => Ok(16),
-        "publicKey" => Ok(32),
+        "pubkey" => Ok(32),
         other => Err(format!("unsupported primitive type '{other}'")),
     }
 }
@@ -128,7 +129,7 @@ fn map_idl_type(ty: &IdlType, type_sizes: &HashMap<String, usize>) -> Result<Typ
                 "i64" => quote! { i64 },
                 "u128" => quote! { u128 },
                 "i128" => quote! { i128 },
-                "publicKey" => {
+                "pubkey" => {
                     return Ok(TypeInfo {
                         param_type: quote! { &quasar_lang::prelude::Address },
                         field_type: quote! { quasar_lang::prelude::Address },
@@ -150,6 +151,9 @@ fn map_idl_type(ty: &IdlType, type_sizes: &HashMap<String, usize>) -> Result<Typ
                 param_type: quote! { #ident },
                 field_type: quote! { #ident },
             })
+        }
+        IdlType::Option { .. } => {
+            Err("option not supported in CPI — only fixed-size types allowed".into())
         }
         IdlType::DynString { .. } => {
             Err("dynamic string not supported in CPI — only fixed-size types allowed".into())
@@ -217,7 +221,7 @@ fn emit_field_write(
     match ty {
         IdlType::Primitive(p) => {
             let size = primitive_size(p)?;
-            if p == "publicKey" {
+            if p == "pubkey" {
                 stmts.push(quote! {
                     core::ptr::copy_nonoverlapping(
                         #access.as_ref().as_ptr(),
@@ -252,7 +256,7 @@ fn emit_field_write(
                 emit_field_write(stmts, offset, &sub_access, &sub_field.ty, idl_types)?;
             }
         }
-        IdlType::DynString { .. } | IdlType::DynVec { .. } => {
+        IdlType::Option { .. } | IdlType::DynString { .. } | IdlType::DynVec { .. } => {
             return Err("dynamic types not supported in CPI".into());
         }
     }
@@ -331,6 +335,7 @@ fn collect_type_refs(ty: &IdlType, idl_types: &[IdlTypeDef], out: &mut HashSet<S
             }
         }
         IdlType::Defined { .. } => {}
+        IdlType::Option { option } => collect_type_refs(option, idl_types, out),
         IdlType::DynVec { vec } => collect_type_refs(&vec.items, idl_types, out),
         IdlType::Primitive(_) | IdlType::DynString { .. } => {}
     }

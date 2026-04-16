@@ -217,6 +217,7 @@ pub struct IdlDynVec {
 #[serde(untagged)]
 pub enum IdlType {
     Primitive(String),
+    Option { option: Box<IdlType> },
     Defined { defined: String },
     DynString { string: IdlDynString },
     DynVec { vec: IdlDynVec },

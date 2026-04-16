@@ -1059,9 +1059,10 @@ fn account_meta_expr(account: &IdlAccountItem) -> String {
 fn rust_field_type(ty: &IdlType) -> String {
     match ty {
         IdlType::Primitive(p) => match p.as_str() {
-            "publicKey" => "Address".to_string(),
+            "pubkey" => "Address".to_string(),
             other => other.to_string(),
         },
+        IdlType::Option { option } => format!("Option<{}>", rust_field_type(option)),
         IdlType::DynString { string } => prefix_generic("DynBytes", string.prefix_bytes),
         IdlType::DynVec { vec } => {
             let inner = rust_field_type(&vec.items);
@@ -1086,6 +1087,7 @@ fn prefix_rust_type(prefix_bytes: usize) -> &'static str {
 
 fn collect_wrapper_needs(ty: &IdlType, needs_dyn_bytes: &mut bool, needs_dyn_vec: &mut bool) {
     match ty {
+        IdlType::Option { option } => collect_wrapper_needs(option, needs_dyn_bytes, needs_dyn_vec),
         IdlType::DynString { .. } => *needs_dyn_bytes = true,
         IdlType::DynVec { vec } => {
             *needs_dyn_vec = true;
@@ -1097,7 +1099,8 @@ fn collect_wrapper_needs(ty: &IdlType, needs_dyn_bytes: &mut bool, needs_dyn_vec
 
 fn field_needs_address(ty: &IdlType) -> bool {
     match ty {
-        IdlType::Primitive(p) => p == "publicKey",
+        IdlType::Primitive(p) => p == "pubkey",
+        IdlType::Option { option } => field_needs_address(option),
         IdlType::DynVec { vec } => field_needs_address(&vec.items),
         _ => false,
     }
@@ -1129,6 +1132,7 @@ fn emit_type_use_imports(
                 out.push_str(&import);
             }
         }
+        IdlType::Option { option } => emit_type_use_imports(out, option, type_map),
         IdlType::DynVec { vec } => emit_type_use_imports(out, &vec.items, type_map),
         _ => {}
     }

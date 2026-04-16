@@ -417,6 +417,7 @@ fn collect_defined_refs(ty: &IdlType, out: &mut BTreeSet<String>) {
         IdlType::Defined { defined } => {
             out.insert(defined.clone());
         }
+        IdlType::Option { option } => collect_defined_refs(option, out),
         IdlType::DynVec { vec } => collect_defined_refs(&vec.items, out),
         _ => {}
     }

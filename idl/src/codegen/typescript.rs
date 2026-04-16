@@ -29,7 +29,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     let has_dyn_string = used.contains("dynString");
     let has_dyn_vec = used.contains("dynVec");
     let has_instructions = !idl.instructions.is_empty();
-    let has_public_key = used.contains("publicKey");
+    let has_public_key = used.contains("pubkey");
 
     // Check if any instruction uses PDAs or PDA account seeds
     let has_pdas = idl
@@ -102,7 +102,9 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     if used.contains("bool") {
         codec_imports.push("getBooleanCodec");
     }
-
+    if used.contains("option") {
+        codec_imports.push("getOptionCodec");
+    }
     // PublicKey codec imports: web3.js uses custom helper, kit uses getAddressCodec
     // from @solana/kit
     if target == TsTarget::Web3js && has_public_key {
@@ -816,10 +818,11 @@ fn ts_type(ty: &IdlType) -> String {
             "u8" | "u16" | "u32" | "i8" | "i16" | "i32" => "number".to_string(),
             "u64" | "u128" | "i64" | "i128" => "bigint".to_string(),
             "bool" => "boolean".to_string(),
-            "publicKey" => "Address".to_string(),
+            "pubkey" => "Address".to_string(),
             other if other.starts_with('[') => "Uint8Array".to_string(),
             other => other.to_string(),
         },
+        IdlType::Option { option } => format!("{} | null", ts_type(option)),
         IdlType::Defined { defined } => defined.clone(),
         IdlType::DynString { .. } => "string".to_string(),
         IdlType::DynVec { vec } => format!("Array<{}>", ts_type(&vec.items)),
@@ -840,7 +843,7 @@ fn ts_codec(ty: &IdlType, target: TsTarget) -> String {
             "i64" => "getI64Codec()".to_string(),
             "i128" => "getI128Codec()".to_string(),
             "bool" => "getBooleanCodec()".to_string(),
-            "publicKey" => match target {
+            "pubkey" => match target {
                 TsTarget::Web3js => "getPublicKeyCodec()".to_string(),
                 TsTarget::Kit => "getAddressCodec()".to_string(),
             },
@@ -850,6 +853,7 @@ fn ts_codec(ty: &IdlType, target: TsTarget) -> String {
             }
             other => format!("/* unknown: {} */", other),
         },
+        IdlType::Option { option } => format!("getOptionCodec({})", ts_codec(option, target)),
         IdlType::Defined { defined } => format!("{}Codec", defined),
         IdlType::DynString { string } => {
             format!(
@@ -894,6 +898,9 @@ fn collect_used_codecs(idl: &Idl) -> HashSet<String> {
         IdlType::Primitive(p) => {
             used.insert(p.clone());
         }
+        IdlType::Option { .. } => {
+            used.insert("option".to_string());
+        }
         IdlType::Defined { .. } => {}
         IdlType::DynString { string } => {
             used.insert("dynString".to_string());
@@ -921,8 +928,10 @@ fn collect_used_codecs(idl: &Idl) -> HashSet<String> {
 
 fn visit_type(ty: &IdlType, visit: &mut impl FnMut(&IdlType)) {
     visit(ty);
-    if let IdlType::DynVec { vec } = ty {
-        visit_type(&vec.items, visit);
+    match ty {
+        IdlType::Option { option } => visit_type(option, visit),
+        IdlType::DynVec { vec } => visit_type(&vec.items, visit),
+        _ => {}
     }
 }
 
