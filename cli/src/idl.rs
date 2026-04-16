@@ -1,5 +1,6 @@
 use {
     crate::{
+        config::resolve_client_path,
         error::{CliError, CliResult},
         IdlCommand,
     },
@@ -13,7 +14,10 @@ use {
 
 /// Parse program source, write IDL JSON and Rust client.
 /// Returns the IDL for optional downstream client generation.
-fn generate_idl(crate_path: &Path) -> Result<(Idl, ParsedProgram), anyhow::Error> {
+fn generate_idl(
+    crate_path: &Path,
+    clients_path: &Path,
+) -> Result<(Idl, ParsedProgram), anyhow::Error> {
     let parsed = parser::parse_program(crate_path);
     let idl =
         parser::build_idl(&parsed).map_err(|errors| anyhow::anyhow!("{}", errors.join("\n")))?;
@@ -33,8 +37,7 @@ fn generate_idl(crate_path: &Path) -> Result<(Idl, ParsedProgram), anyhow::Error
     std::fs::write(&idl_path, &json)?;
 
     // Write Rust client
-    let client_dir = PathBuf::from("target")
-        .join("client")
+    let client_dir = clients_path
         .join("rust")
         .join(format!("{}-client", idl.metadata.crate_name));
     std::fs::create_dir_all(&client_dir)?;
@@ -58,6 +61,7 @@ fn generate_idl(crate_path: &Path) -> Result<(Idl, ParsedProgram), anyhow::Error
 
 /// Called by `quasar idl <path>` — generates IDL JSON + Rust client only.
 pub fn run(command: IdlCommand) -> CliResult {
+    let clients_path = resolve_client_path()?;
     let crate_path = &command.crate_path;
     if !crate_path.exists() {
         return Err(CliError::message(format!(
@@ -66,15 +70,19 @@ pub fn run(command: IdlCommand) -> CliResult {
         )));
     }
 
-    generate_idl(crate_path)?;
+    generate_idl(crate_path, &clients_path)?;
     println!("  {}", crate::style::success("IDL generated"));
     Ok(())
 }
 
 /// Called by `quasar build` — generates IDL + Rust client + configured language
 /// clients. Returns the ParsedProgram for downstream lint use.
-pub fn generate(crate_path: &Path, languages: &[&str]) -> Result<ParsedProgram, CliError> {
-    let (idl, parsed) = generate_idl(crate_path)?;
-    crate::client::generate_clients(&idl, languages)?;
+pub fn generate(
+    crate_path: &Path,
+    languages: &[&str],
+    clients_path: &Path,
+) -> Result<ParsedProgram, CliError> {
+    let (idl, parsed) = generate_idl(crate_path, clients_path)?;
+    crate::client::generate_clients(&idl, languages, clients_path)?;
     Ok(parsed)
 }

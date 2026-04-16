@@ -1,10 +1,11 @@
 use {
     crate::{
+        config::resolve_client_path,
         error::{CliError, CliResult},
         style, ClientCommand,
     },
     quasar_idl::codegen,
-    std::path::PathBuf,
+    std::path::{Path, PathBuf},
 };
 
 /// Languages that can be generated from an IDL JSON file.
@@ -12,6 +13,7 @@ use {
 const ALL_LANGUAGES: &[&str] = &["typescript", "python", "golang"];
 
 pub fn run(command: ClientCommand) -> CliResult {
+    let clients_path = resolve_client_path()?;
     let idl_path = &command.idl_path;
 
     if !idl_path.exists() {
@@ -43,7 +45,7 @@ pub fn run(command: ClientCommand) -> CliResult {
             .collect::<Result<Vec<_>, _>>()?
     };
 
-    generate_clients(&idl, &languages)?;
+    generate_clients(&idl, &languages, &clients_path)?;
 
     println!(
         "  {}",
@@ -52,14 +54,17 @@ pub fn run(command: ClientCommand) -> CliResult {
     Ok(())
 }
 
-pub fn generate_clients(idl: &quasar_idl::types::Idl, languages: &[&str]) -> CliResult {
+pub fn generate_clients(
+    idl: &quasar_idl::types::Idl,
+    languages: &[&str],
+    clients_path: &Path,
+) -> CliResult {
     // TypeScript
     if languages.contains(&"typescript") {
         let ts_code = codegen::typescript::generate_ts_client(idl);
         let ts_kit_code = codegen::typescript::generate_ts_client_kit(idl);
 
-        let ts_dir = PathBuf::from("target")
-            .join("client")
+        let ts_dir = PathBuf::from(clients_path)
             .join("typescript")
             .join(&idl.metadata.name);
         std::fs::create_dir_all(&ts_dir)?;
@@ -97,8 +102,7 @@ pub fn generate_clients(idl: &quasar_idl::types::Idl, languages: &[&str]) -> Cli
     // Python
     if languages.contains(&"python") {
         let py_code = codegen::python::generate_python_client(idl);
-        let py_dir = PathBuf::from("target")
-            .join("client")
+        let py_dir = PathBuf::from(clients_path)
             .join("python")
             .join(&idl.metadata.crate_name);
         std::fs::create_dir_all(&py_dir)?;
@@ -113,10 +117,7 @@ pub fn generate_clients(idl: &quasar_idl::types::Idl, languages: &[&str]) -> Cli
     if languages.contains(&"golang") {
         let go_code = codegen::golang::generate_go_client(idl);
         let go_pkg = idl.metadata.crate_name.replace('-', "_");
-        let go_dir = PathBuf::from("target")
-            .join("client")
-            .join("golang")
-            .join(&go_pkg);
+        let go_dir = PathBuf::from(clients_path).join("golang").join(&go_pkg);
         std::fs::create_dir_all(&go_dir)?;
         std::fs::write(go_dir.join("client.go"), &go_code)?;
         std::fs::write(

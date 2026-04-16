@@ -99,6 +99,7 @@ pub(super) fn scaffold(
             },
         },
         clients: QuasarClients {
+            path: "target/client".to_string(),
             languages: client_languages.to_vec(),
         },
     };
