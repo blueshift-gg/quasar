@@ -203,6 +203,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+          cache: false
       - uses: dtolnay/rust-toolchain@stable
       - name: Run generated client smoke test
         run: cargo test -p quasar-cli --test generated_clients_smoke -- --nocapture
