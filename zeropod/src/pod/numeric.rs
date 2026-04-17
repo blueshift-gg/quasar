@@ -101,6 +101,54 @@ macro_rules! define_pod_common {
             pub fn saturating_mul(self, rhs: impl Into<$name>) -> Self {
                 Self::from(self.get().saturating_mul(rhs.into().get()))
             }
+
+            /// Sets the value in place.
+            #[inline(always)]
+            pub fn set(&mut self, value: $native) {
+                self.0 = value.to_le_bytes();
+            }
+
+            /// Wrapping addition. Wraps around on overflow.
+            #[inline(always)]
+            pub fn wrapping_add(self, rhs: impl Into<Self>) -> Self {
+                Self::from(self.get().wrapping_add(rhs.into().get()))
+            }
+
+            /// Wrapping subtraction. Wraps around on underflow.
+            #[inline(always)]
+            pub fn wrapping_sub(self, rhs: impl Into<Self>) -> Self {
+                Self::from(self.get().wrapping_sub(rhs.into().get()))
+            }
+
+            /// Wrapping multiplication. Wraps around on overflow.
+            #[inline(always)]
+            pub fn wrapping_mul(self, rhs: impl Into<Self>) -> Self {
+                Self::from(self.get().wrapping_mul(rhs.into().get()))
+            }
+        }
+
+        impl core::hash::Hash for $name {
+            fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+                self.0.hash(state);
+            }
+        }
+
+        impl fmt::Binary for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                fmt::Binary::fmt(&self.get(), f)
+            }
+        }
+
+        impl fmt::LowerHex for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                fmt::LowerHex::fmt(&self.get(), f)
+            }
+        }
+
+        impl fmt::UpperHex for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                fmt::UpperHex::fmt(&self.get(), f)
+            }
         }
 
         impl From<$native> for $name {

@@ -268,3 +268,54 @@ fn reverse_arithmetic_signed() {
     assert_eq!((100i32 - v).get(), 90);
     assert_eq!((5i32 * v).get(), 50);
 }
+
+use core::hash::{Hash, Hasher};
+
+// A minimal hasher for testing
+struct TestHasher(u64);
+impl Hasher for TestHasher {
+    fn finish(&self) -> u64 { self.0 }
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes { self.0 = self.0.wrapping_mul(31).wrapping_add(b as u64); }
+    }
+}
+
+#[test]
+fn pod_u64_hash() {
+    let a = PodU64::from(42u64);
+    let b = PodU64::from(42u64);
+    let mut ha = TestHasher(0);
+    let mut hb = TestHasher(0);
+    a.hash(&mut ha);
+    b.hash(&mut hb);
+    assert_eq!(ha.finish(), hb.finish());
+}
+
+#[test]
+fn pod_u64_formatting() {
+    let v = PodU64::from(255u64);
+    assert_eq!(format!("{:b}", v), format!("{:b}", 255u64));
+    assert_eq!(format!("{:x}", v), format!("{:x}", 255u64));
+    assert_eq!(format!("{:X}", v), format!("{:X}", 255u64));
+}
+
+#[test]
+fn pod_u64_wrapping() {
+    let v = PodU64::from(u64::MAX);
+    assert_eq!(v.wrapping_add(1u64).get(), 0u64);
+    assert_eq!(PodU64::from(0u64).wrapping_sub(1u64).get(), u64::MAX);
+    assert_eq!(PodU64::from(u64::MAX).wrapping_mul(2u64).get(), u64::MAX.wrapping_mul(2));
+}
+
+#[test]
+fn pod_u64_set() {
+    let mut v = PodU64::from(0u64);
+    v.set(42u64);
+    assert_eq!(v.get(), 42u64);
+}
+
+#[test]
+fn pod_i64_wrapping() {
+    let v = PodI64::from(i64::MAX);
+    assert_eq!(v.wrapping_add(1i64).get(), i64::MIN);
+}
