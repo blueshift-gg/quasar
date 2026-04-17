@@ -151,7 +151,7 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
 
     quote! {
         #[repr(transparent)]
-        #[derive(Clone, Copy, Debug, PartialEq)]
+        #[derive(Clone, Copy)]
         pub struct #zc_name([u8; #repr_size]);
 
         impl #zc_name {
@@ -242,6 +242,41 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
                     #( #valid_arms => Ok(#enum_name::#variant_names), )*
                     _ => Err(zeropod::ZeroPodError::InvalidData),
                 }
+            }
+
+            pub fn is(&self, variant: #enum_name) -> bool {
+                let other: #zc_name = variant.into();
+                self.get() == other.get()
+            }
+        }
+
+        impl core::fmt::Display for #zc_name {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                match self.get() {
+                    #( #discriminant_values => write!(f, stringify!(#variant_names)), )*
+                    other => write!(f, "{}(invalid: {})", stringify!(#enum_name), other),
+                }
+            }
+        }
+
+        impl core::fmt::Debug for #zc_name {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                match self.get() {
+                    #( #discriminant_values => write!(f, "{}Zc({})", stringify!(#enum_name), stringify!(#variant_names)), )*
+                    other => write!(f, "{}Zc(invalid: {})", stringify!(#enum_name), other),
+                }
+            }
+        }
+
+        impl PartialEq for #zc_name {
+            fn eq(&self, other: &Self) -> bool {
+                self.0 == other.0
+            }
+        }
+
+        impl PartialEq<#native_ty> for #zc_name {
+            fn eq(&self, other: &#native_ty) -> bool {
+                self.get() == *other
             }
         }
     }

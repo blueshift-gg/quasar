@@ -58,3 +58,34 @@ fn enum_u16_rejects_invalid() {
     let buf = 999u16.to_le_bytes();
     assert!(LargeEnum::from_bytes(&buf).is_err());
 }
+
+#[test]
+fn enum_zc_is() {
+    let buf = [1u8]; // Paused
+    let zc = Status::from_bytes(&buf).unwrap();
+    assert!(zc.is(Status::Paused));
+    assert!(!zc.is(Status::Active));
+}
+
+#[test]
+fn enum_zc_display() {
+    let buf = [0u8]; // Active
+    let zc = Status::from_bytes(&buf).unwrap();
+    let s = format!("{}", zc);
+    assert_eq!(s, "Active");
+}
+
+#[test]
+fn enum_zc_debug() {
+    let buf = [2u8]; // Closed
+    let zc = Status::from_bytes(&buf).unwrap();
+    let s = format!("{:?}", zc);
+    assert!(s.contains("Closed"));
+}
+
+#[test]
+fn enum_zc_eq_repr() {
+    let buf = [1u8];
+    let zc = Status::from_bytes(&buf).unwrap();
+    assert!(*zc == 1u8); // PartialEq with repr type
+}
