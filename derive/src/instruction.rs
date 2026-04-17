@@ -11,6 +11,43 @@ use {
     syn::{parse_macro_input, FnArg, Ident, ItemFn, Pat, ReturnType},
 };
 
+/// Emit the ZeroPodFixed schema codegen block: derive struct, size check,
+/// validate, cast, and per-field `from_zc` extraction.
+fn emit_fixed_schema_stmts(
+    param_ident: &Ident,
+    field_names: &[Ident],
+    field_types: &[syn::Type],
+) -> Vec<syn::Stmt> {
+    let mut stmts: Vec<syn::Stmt> = Vec::new();
+    stmts.push(syn::parse_quote!(
+        #[derive(zeropod::ZeroPod)]
+        struct __InstructionDataSchema {
+            #(#field_names: #field_types,)*
+        }
+    ));
+    stmts.push(syn::parse_quote!(
+        if #param_ident.data.len() < <__InstructionDataSchema as quasar_lang::ZeroPodFixed>::SIZE {
+            return Err(ProgramError::InvalidInstructionData);
+        }
+    ));
+    stmts.push(syn::parse_quote!(
+        <__InstructionDataSchema as quasar_lang::ZeroPodFixed>::validate(
+            &#param_ident.data[..<__InstructionDataSchema as quasar_lang::ZeroPodFixed>::SIZE]
+        ).map_err(|_| ProgramError::InvalidInstructionData)?;
+    ));
+    stmts.push(syn::parse_quote!(
+        let __zc = unsafe {
+            <__InstructionDataSchema as quasar_lang::ZeroPodFixed>::from_bytes_unchecked(&#param_ident.data)
+        };
+    ));
+    for (name, ty) in field_names.iter().zip(field_types.iter()) {
+        stmts.push(syn::parse_quote!(
+            let #name = <#ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(&__zc.#name);
+        ));
+    }
+    stmts
+}
+
 pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as InstructionArgs);
     let mut func = parse_macro_input!(item as ItemFn);
@@ -299,32 +336,11 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                 .collect();
 
             if has_fixed {
-                new_stmts.push(syn::parse_quote!(
-                    #[derive(zeropod::ZeroPod)]
-                    struct __InstructionDataSchema {
-                        #(#zc_field_names: #zc_field_orig_types,)*
-                    }
+                new_stmts.extend(emit_fixed_schema_stmts(
+                    &param_ident,
+                    &zc_field_names,
+                    &zc_field_orig_types,
                 ));
-                new_stmts.push(syn::parse_quote!(
-                    if #param_ident.data.len() < <__InstructionDataSchema as quasar_lang::ZeroPodFixed>::SIZE {
-                        return Err(ProgramError::InvalidInstructionData);
-                    }
-                ));
-                new_stmts.push(syn::parse_quote!(
-                    <__InstructionDataSchema as quasar_lang::ZeroPodFixed>::validate(
-                        &#param_ident.data[..<__InstructionDataSchema as quasar_lang::ZeroPodFixed>::SIZE]
-                    ).map_err(|_| ProgramError::InvalidInstructionData)?;
-                ));
-                new_stmts.push(syn::parse_quote!(
-                    let __zc = unsafe {
-                        <__InstructionDataSchema as quasar_lang::ZeroPodFixed>::from_bytes_unchecked(&#param_ident.data)
-                    };
-                ));
-                for (name, ty) in zc_field_names.iter().zip(zc_field_orig_types.iter()) {
-                    new_stmts.push(syn::parse_quote!(
-                        let #name = <#ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(&__zc.#name);
-                    ));
-                }
             }
 
             // Dynamic cursor decode for PodDyn + Lifetime args
@@ -392,36 +408,11 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                 .map(|pt| (*pt.ty).clone())
                 .collect();
 
-            new_stmts.push(syn::parse_quote!(
-                #[derive(zeropod::ZeroPod)]
-                struct __InstructionDataSchema {
-                    #(#zc_field_names: #zc_field_orig_types,)*
-                }
+            new_stmts.extend(emit_fixed_schema_stmts(
+                &param_ident,
+                &zc_field_names,
+                &zc_field_orig_types,
             ));
-
-            new_stmts.push(syn::parse_quote!(
-                if #param_ident.data.len() < <__InstructionDataSchema as quasar_lang::ZeroPodFixed>::SIZE {
-                    return Err(ProgramError::InvalidInstructionData);
-                }
-            ));
-
-            new_stmts.push(syn::parse_quote!(
-                <__InstructionDataSchema as quasar_lang::ZeroPodFixed>::validate(
-                    &#param_ident.data[..<__InstructionDataSchema as quasar_lang::ZeroPodFixed>::SIZE]
-                ).map_err(|_| ProgramError::InvalidInstructionData)?;
-            ));
-
-            new_stmts.push(syn::parse_quote!(
-                let __zc = unsafe {
-                    <__InstructionDataSchema as quasar_lang::ZeroPodFixed>::from_bytes_unchecked(&#param_ident.data)
-                };
-            ));
-
-            for (name, ty) in zc_field_names.iter().zip(zc_field_orig_types.iter()) {
-                new_stmts.push(syn::parse_quote!(
-                    let #name = <#ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(&__zc.#name);
-                ));
-            }
         }
 
         // Clear ctx.data after extraction
