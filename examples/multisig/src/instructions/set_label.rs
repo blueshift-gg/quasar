@@ -21,15 +21,13 @@ impl SetLabel {
     #[inline(always)]
     pub fn update_label(&mut self, label: &str) -> Result<(), ProgramError> {
         let rent = Rent::get()?;
-        let mut guard = self.config.as_dynamic_mut(
+        let mut writer = self.config.compact_mut(
             self.creator.to_account_view(),
             rent.lamports_per_byte(),
             rent.exemption_threshold_raw(),
         );
-        if !guard.label.set(label) {
-            return Err(ProgramError::InvalidInstructionData);
-        }
-        // guard drops → auto-save
+        writer.set_label(label)?;
+        writer.commit()?;
         Ok(())
     }
 }

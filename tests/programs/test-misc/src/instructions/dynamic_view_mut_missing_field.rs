@@ -16,7 +16,7 @@ impl DynamicViewMutMissingField {
     #[inline(always)]
     pub fn handler(&mut self, new_name: &str) -> Result<(), ProgramError> {
         let rent = Rent::get()?;
-        let mut view = self.account.as_dynamic_writer(
+        let mut view = self.account.compact_mut(
             self.payer.to_account_view(),
             rent.lamports_per_byte(),
             rent.exemption_threshold_raw(),
@@ -24,7 +24,7 @@ impl DynamicViewMutMissingField {
         view.set_name(new_name)?;
 
         match view.commit() {
-            Err(err) if err == QuasarError::DynWriterFieldNotSet.into() => Ok(()),
+            Err(err) if err == QuasarError::CompactWriterFieldNotSet.into() => Ok(()),
             Err(err) => Err(err),
             Ok(()) => Err(ProgramError::InvalidInstructionData),
         }

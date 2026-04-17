@@ -71,7 +71,7 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     //     Vec<T,N>/PodVec<T,N> -> PodDynField::Vec, everything else -> fixed ---
     // When `fixed_capacity` is set, ALL fields are treated as fixed — PodVec and
     // PodString go directly into the ZC struct at full capacity. No dynamic
-    // region, no DynGuard, no walk-from-header.
+    // region, no CompactWriter, no walk-from-header.
     let pod_field_infos: Vec<fixed::PodFieldInfo<'_>> = fields_data
         .iter()
         .map(|f| {

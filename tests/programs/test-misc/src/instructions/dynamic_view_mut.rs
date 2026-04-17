@@ -16,7 +16,7 @@ impl DynamicViewMut {
     #[inline(always)]
     pub fn handler(&mut self, new_name: &str, new_tags: &[Address]) -> Result<(), ProgramError> {
         let rent = Rent::get()?;
-        let mut view = self.account.as_dynamic_writer(
+        let mut view = self.account.compact_mut(
             self.payer.to_account_view(),
             rent.lamports_per_byte(),
             rent.exemption_threshold_raw(),

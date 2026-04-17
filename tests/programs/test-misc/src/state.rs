@@ -99,7 +99,7 @@ pub struct PodDynamicAccount {
 }
 
 /// Fixed-capacity account — PodString/PodVec are inlined in the ZC struct
-/// at full capacity. Zero-copy reads AND writes. No DynGuard needed.
+/// at full capacity. Zero-copy reads AND writes. No CompactWriter needed.
 #[account(discriminator = 11, fixed_capacity)]
 pub struct FixedCapacityAccount {
     pub authority: Address,

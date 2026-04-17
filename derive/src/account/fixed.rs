@@ -53,14 +53,6 @@ pub(super) fn generate_account(
         });
     let dynamic_impl_block =
         super::dynamic::emit_dynamic_impl_block(name, has_dynamic, disc_len, &zc.zc_mod, &dynamic);
-    let dyn_guard = super::dynamic::emit_dyn_guard(
-        name,
-        has_dynamic,
-        disc_len,
-        &zc.zc_mod,
-        &zc.zc_path,
-        &dynamic,
-    );
     let dyn_writer = super::dynamic::emit_dyn_writer(
         name,
         has_dynamic,
@@ -94,8 +86,6 @@ pub(super) fn generate_account(
         #account_check_impl
 
         #dynamic_impl_block
-
-        #dyn_guard
 
         #dyn_writer
 
