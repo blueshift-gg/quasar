@@ -3,3 +3,9 @@ error: fixed instruction args must precede all dynamic or borrowed args
    |
 20 |         flag: u8,
    |         ^^^^^^^^
+
+error[E0425]: cannot find function `update` in this scope
+  --> tests/compile_fail/instruction_dynamic_not_suffix.rs:16:12
+   |
+16 |     pub fn update(
+   |            ^^^^^^ not found in this scope

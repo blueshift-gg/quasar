@@ -12,7 +12,7 @@
 //! | [`accounts`] | Zero-copy account wrapper types (`Account`, `Signer`, `UncheckedAccount`) |
 //! | [`checks`] | Compile-time account validation traits |
 //! | [`cpi`] | Const-generic cross-program invocation builder |
-//! | [`pod`] | Alignment-1 integer types (re-exported from `quasar-pod`) |
+//! | [`pod`] | Alignment-1 integer types (re-exported from `zeropod`) |
 //! | [`traits`] | Core framework traits (`Owner`, `Discriminator`, `Space`, etc.) |
 //! | [`prelude`] | Convenience re-exports for program code |
 //!
@@ -273,7 +273,7 @@ pub mod instruction_data;
 pub mod log;
 /// Program Derived Address creation and lookup.
 pub mod pda;
-/// Alignment-1 Pod integer types (re-exported from `quasar-pod`).
+/// Alignment-1 Pod integer types (re-exported from `zeropod`).
 pub mod pod;
 /// Convenience re-exports for program code.
 pub mod prelude;

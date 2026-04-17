@@ -160,7 +160,7 @@ impl<const N: usize, const PFX: usize> InstructionArg for crate::pod::PodString<
     }
 }
 
-impl<T: Copy, const N: usize, const PFX: usize> InstructionArg for crate::pod::PodVec<T, N, PFX> {
+impl<T: zeropod::ZcElem, const N: usize, const PFX: usize> InstructionArg for crate::pod::PodVec<T, N, PFX> {
     type Zc = Self;
     #[inline(always)]
     fn from_zc(zc: &Self) -> Self {

@@ -2180,7 +2180,6 @@ version = "0.0.0"
 dependencies = [
  "const-crypto",
  "quasar-derive",
- "quasar-pod",
  "solana-account-view 2.0.0",
  "solana-address 2.2.0",
  "solana-define-syscall 5.0.0",
@@ -2190,6 +2189,7 @@ dependencies = [
  "solana-program-log",
  "trybuild",
  "wincode 0.4.9",
+ "zeropod",
 ]
 
 [[package]]
@@ -4681,6 +4681,8 @@ dependencies = [
 name = "zeropod"
 version = "0.1.0"
 dependencies = [
+ "solana-address 2.2.0",
+ "wincode 0.4.9",
  "zeropod-derive",
 ]
 

@@ -128,6 +128,25 @@ unsafe impl<const N: usize> ZcElem for [u8; N] {}
 // T: ZcElem guarantees T is align 1, so PodOption<T> is also align 1.
 unsafe impl<T: ZcElem> ZcElem for PodOption<T> {}
 
+// --- Feature-gated impls for external types ---
+
+#[cfg(feature = "solana-address")]
+mod solana_address_impls {
+    use super::*;
+
+    // SAFETY: solana_address::Address is #[repr(transparent)] over [u8; 32],
+    // align 1, all bit patterns valid.
+    impl ZcValidate for solana_address::Address {
+        #[inline(always)]
+        fn validate_ref(_: &Self) -> Result<(), ZeroPodError> {
+            Ok(())
+        }
+    }
+
+    // SAFETY: Address is Copy, align 1, all bit patterns valid.
+    unsafe impl ZcElem for solana_address::Address {}
+}
+
 pub trait ZeroPodSchema: Sized {
     const LAYOUT: LayoutKind;
 }

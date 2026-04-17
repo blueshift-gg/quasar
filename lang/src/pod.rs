@@ -1,5 +1,5 @@
 //! Alignment-1 Pod types for zero-copy account access.
 //!
-//! Re-exported from [`quasar_pod`]. See that crate for full documentation.
+//! Re-exported from [`zeropod`]. See that crate for full documentation.
 
-pub use quasar_pod::*;
+pub use zeropod::pod::*;

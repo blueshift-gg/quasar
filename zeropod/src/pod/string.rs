@@ -183,7 +183,7 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
 
     #[inline(always)]
     #[allow(dead_code)]
-    pub(crate) fn load_from_bytes(&mut self, bytes: &[u8]) -> usize {
+    pub fn load_from_bytes(&mut self, bytes: &[u8]) -> usize {
         #[allow(clippy::let_unit_value)]
         let _ = Self::_CAP_CHECK;
         debug_assert!(
