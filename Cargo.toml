@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["lang", "derive", "spl", "metadata", "idl", "schema", "profile", "examples/*", "examples/*/client", "tests/programs/*", "tests/suite", "cli", "zeropod", "zeropod-derive"]
+members = ["lang", "derive", "spl", "metadata", "idl", "schema", "schema-canonical", "profile", "examples/*", "examples/*/client", "tests/programs/*", "tests/suite", "cli", "zeropod", "zeropod-derive"]
 exclude = ["examples/anchor-vault"]
 
 [workspace.package]
