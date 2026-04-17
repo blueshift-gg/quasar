@@ -335,3 +335,44 @@ mod wincode_option_validation {
         assert!(result.is_ok());
     }
 }
+
+// --- Compact: tail Vec element validation ---
+
+#[allow(dead_code)]
+#[derive(ZeroPod)]
+#[zeropod(compact)]
+struct CompactWithVecBool {
+    pub score: u64,
+    pub flags: zeropod::Vec<PodBool, 4>,
+}
+
+// Compact header: score(PodU64=8) + flags_len([u8;2]=2) = 10
+// On-chain: [header(10)][tail: flags data]
+
+#[test]
+fn compact_validate_rejects_invalid_vec_bool_element() {
+    let mut buf = vec![0u8; 13]; // 10 header + 3 tail
+    // flags_len at offset 8, PFX=2 (LE u16)
+    buf[8] = 3; // count = 3
+    buf[9] = 0;
+    // Tail data at offset 10
+    buf[10] = 0; // valid PodBool
+    buf[11] = 1; // valid PodBool
+    buf[12] = 5; // INVALID PodBool (byte > 1)
+
+    assert!(
+        CompactWithVecBool::validate(&buf).is_err(),
+        "compact validate must reject Vec tail with invalid PodBool element"
+    );
+}
+
+#[test]
+fn compact_validate_accepts_valid_vec_bool_elements() {
+    let mut buf = vec![0u8; 12]; // 10 header + 2 tail
+    buf[8] = 2; // count = 2
+    buf[9] = 0;
+    buf[10] = 0; // valid
+    buf[11] = 1; // valid
+
+    assert!(CompactWithVecBool::validate(&buf).is_ok());
+}

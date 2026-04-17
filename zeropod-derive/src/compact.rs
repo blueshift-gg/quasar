@@ -154,6 +154,28 @@ fn generate_trait_impl(schema: &Schema, header_name: &syn::Ident) -> TokenStream
         }
     }
 
+    // Build element validation for Vec tail fields (after buffer size check).
+    let mut vec_elem_checks = Vec::new();
+    for (i, f) in tail_fields.iter().enumerate() {
+        if let FieldKind::Tail(TailField::Vec { elem, .. }) = &f.kind {
+            let len_name = format_ident!("__{}_len", f.name);
+            let mapped_elem = map_to_pod_type(elem);
+            let preceding_exprs: Vec<TokenStream> = tail_size_exprs[..i].to_vec();
+            vec_elem_checks.push(quote! {
+                {
+                    let __vec_offset = core::mem::size_of::<#header_name>() #( + #preceding_exprs )*;
+                    let __elem_size = core::mem::size_of::<#mapped_elem>();
+                    for __i in 0..#len_name {
+                        let __elem_ptr = unsafe {
+                            &*(data.as_ptr().add(__vec_offset + __i * __elem_size) as *const #mapped_elem)
+                        };
+                        <#mapped_elem as zeropod::ZcValidate>::validate_ref(__elem_ptr)?;
+                    }
+                }
+            });
+        }
+    }
+
     quote! {
         impl zeropod::ZeroPodSchema for #struct_name {
             const LAYOUT: zeropod::LayoutKind = zeropod::LayoutKind::Compact;
@@ -181,6 +203,7 @@ fn generate_trait_impl(schema: &Schema, header_name: &syn::Ident) -> TokenStream
                 #( #validations )*
                 #total_check
                 #( #utf8_checks )*
+                #( #vec_elem_checks )*
                 Ok(())
             }
         }
