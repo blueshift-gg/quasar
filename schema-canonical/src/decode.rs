@@ -142,7 +142,12 @@ fn read_vec<T>(
     mut read_item: impl FnMut(&mut Reader) -> Result<T, DecodeError>,
 ) -> Result<Vec<T>, DecodeError> {
     let n = r.read_len()?;
-    let mut out = Vec::with_capacity(n);
+    // Deliberately avoid `Vec::with_capacity(n)` here. `read_len` only bounds
+    // `n` by remaining *bytes*, but `T` can be larger than one byte on the
+    // heap, so an adversarial length prefix could force a multi-GiB reserve
+    // even on a small body. Amortised `push` growth is O(1) and caps waste
+    // at 2× the real size.
+    let mut out = Vec::new();
     for _ in 0..n {
         out.push(read_item(r)?);
     }

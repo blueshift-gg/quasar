@@ -135,6 +135,12 @@ version              : String
 spec                 : String
 ```
 
+Note: `crate_name` has `#[serde(skip)]` in the JSON representation (it is
+recovered from `Cargo.toml` at build time). The canonical binary encoding
+**does** preserve `crate_name` — the format is strictly more
+information-preserving than the JSON, so `decode(encode(idl))` round-trips
+`crate_name` exactly, whereas a JSON round-trip erases it.
+
 ### 4.3 `IdlInstruction`
 
 ```
