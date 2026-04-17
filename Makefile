@@ -155,7 +155,7 @@ build-sbf:
 test:
 	@$(MAKE) build
 	@$(MAKE) build-sbf
-	@cargo test -p quasar-lang -p quasar-derive -p quasar-spl -p quasar-pod \
+	@cargo test -p quasar-lang -p quasar-derive -p quasar-spl \
 		-p quasar-vault -p quasar-escrow -p quasar-multisig \
 		-p quasar-test-suite \
 		--all-features
@@ -186,16 +186,13 @@ test-miri-strict:
 	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri
 
-kani-pod: check-kani
-	@cargo kani -p quasar-pod
-
 kani-lang: check-kani
 	@cargo kani -p quasar-lang
 
 kani-spl: check-kani
 	@cargo kani -p quasar-spl
 
-kani: kani-pod kani-lang kani-spl
+kani: kani-lang kani-spl
 
 # Run all checks in sequence
 test-all:

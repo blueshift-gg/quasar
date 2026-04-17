@@ -3,7 +3,7 @@
 # Usage: bash run_kani_audit.sh
 set -euo pipefail
 
-CRATES="quasar-pod quasar-lang quasar-spl"
+CRATES="quasar-lang quasar-spl"
 TMPDIR=$(mktemp -d)
 OUTFILE="KANI_HARNESS_AUDIT.md"
 
@@ -57,7 +57,7 @@ done
   echo "Verification of all \`#[cfg(kani)]\` proof harnesses via \`cargo kani\`."
   echo ""
   echo "**Kani version:** $(kani --version 2>/dev/null | awk '{print $2}' || echo 'unknown')"
-  echo "**Total:** $((total_pass + total_fail)) harnesses across 3 crates — $total_pass passed, $total_fail failed"
+  echo "**Total:** $((total_pass + total_fail)) harnesses across 2 crates — $total_pass passed, $total_fail failed"
   echo ""
   echo "## Summary"
   echo ""

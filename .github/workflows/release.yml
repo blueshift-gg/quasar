@@ -48,7 +48,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        crate: [quasar-pod, quasar-lang, quasar-spl]
+        crate: [quasar-lang, quasar-spl]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/cache@v5
@@ -79,11 +79,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       # Tier 1: no workspace deps (parallel-safe)
-      - name: Publish quasar-pod
-        run: cargo publish -p quasar-pod
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
       - name: Publish quasar-derive
         run: cargo publish -p quasar-derive
         env:
