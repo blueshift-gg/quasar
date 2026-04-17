@@ -1,6 +1,7 @@
 use zeropod::ZeroPod;
 use zeropod::ZeroPodFixed;
 use zeropod::ZeroPodCompact;
+use zeropod::pod::PodBool;
 
 #[allow(dead_code)]
 #[derive(ZeroPod)]
@@ -202,17 +203,15 @@ fn compact_validate_inline_bad_bool() {
 }
 
 // --- ZcValidate: PodVec element validation ---
-
-#[allow(dead_code)]
-#[derive(ZeroPod)]
-struct WithVecBool {
-    pub flags: zeropod::Vec<bool, 5>,
-}
-
-// Layout: PodVec<PodBool, 5, 2>: len(2) + data(5) = 7
+//
+// Tests validate that PodVec<PodBool, N> correctly validates each element.
+// We test at the storage level directly (no derive) since the derive lowers
+// bool → PodBool automatically, and PodVec<bool> is intentionally not valid
+// (bool is not ZcElem because &bool from arbitrary bytes is UB).
 
 #[test]
 fn validate_vec_bool_all_valid() {
+    // Layout: PodVec<PodBool, 5, 2>: len(2) + data(5) = 7
     let mut buf = [0u8; 7];
     // len = 3 (LE u16)
     buf[0] = 3;
@@ -221,7 +220,8 @@ fn validate_vec_bool_all_valid() {
     buf[2] = 0;
     buf[3] = 1;
     buf[4] = 0;
-    assert!(WithVecBool::from_bytes(&buf).is_ok());
+    let v = unsafe { &*(buf.as_ptr() as *const zeropod::pod::PodVec<PodBool, 5>) };
+    assert!(zeropod::ZcValidate::validate_ref(v).is_ok());
 }
 
 #[test]
@@ -234,7 +234,8 @@ fn validate_vec_bool_rejects_invalid_element() {
     buf[2] = 0;
     buf[3] = 1;
     buf[4] = 5;
-    assert!(WithVecBool::from_bytes(&buf).is_err());
+    let v = unsafe { &*(buf.as_ptr() as *const zeropod::pod::PodVec<PodBool, 5>) };
+    assert!(zeropod::ZcValidate::validate_ref(v).is_err());
 }
 
 // --- ZcValidate: PodVec element validation works at the pod level ---

@@ -13,7 +13,8 @@ fn zc_elem_for_all_pod_types() {
     fn assert_elem<T: zeropod::ZcElem>() {}
     assert_elem::<u8>();
     assert_elem::<i8>();
-    assert_elem::<bool>();
+    // bool is NOT ZcElem — constructing &bool from arbitrary bytes is UB.
+    // The derive path correctly lowers bool → PodBool.
     assert_elem::<PodU16>();
     assert_elem::<PodU32>();
     assert_elem::<PodU64>();
