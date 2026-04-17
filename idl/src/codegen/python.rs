@@ -244,11 +244,14 @@ pub fn generate_python_client(idl: &Idl) -> String {
             );
         }
 
-        // Build instruction data
+        // Build instruction data — compact wire format:
+        //   [disc][fixed fields][all dynamic prefixes][all dynamic data]
         let const_name = to_screaming_snake(&ix.name);
+        let has_dyn = ix.args.iter().any(|a| is_direct_dynamic(&a.ty));
         if ix.args.is_empty() {
             writeln!(out, "    data = {}_DISCRIMINATOR", const_name).unwrap();
-        } else {
+        } else if !has_dyn {
+            // Fixed-only path: simple inline serialisation.
             writeln!(out, "    data = bytearray({}_DISCRIMINATOR)", const_name).unwrap();
             for arg in &ix.args {
                 out.push_str(&serialize_field_expr(
@@ -257,6 +260,94 @@ pub fn generate_python_client(idl: &Idl) -> String {
                     &idl.types,
                 ));
             }
+            out.push_str("    data = bytes(data)\n");
+        } else {
+            // Compact 3-phase encoding.
+            let fixed_args: Vec<_> = ix
+                .args
+                .iter()
+                .filter(|a| !is_direct_dynamic(&a.ty))
+                .collect();
+            let dyn_args: Vec<_> = ix
+                .args
+                .iter()
+                .filter(|a| is_direct_dynamic(&a.ty))
+                .collect();
+
+            writeln!(out, "    data = bytearray({}_DISCRIMINATOR)", const_name).unwrap();
+
+            // Phase 1: fixed fields
+            for arg in &fixed_args {
+                out.push_str(&serialize_field_expr(
+                    &camel_to_snake(&arg.name),
+                    &arg.ty,
+                    &idl.types,
+                ));
+            }
+
+            // Phase 2: length table — pre-encode dynamic bytes and emit all
+            // length prefixes grouped together.
+            for arg in &dyn_args {
+                let name = camel_to_snake(&arg.name);
+                match &arg.ty {
+                    IdlType::DynString { string } => {
+                        let (fmt, _sz) = prefix_fmt(string.prefix_bytes);
+                        writeln!(
+                            out,
+                            "    _{name}_b = input.{name}.encode(\"utf-8\")",
+                            name = name,
+                        )
+                        .unwrap();
+                        writeln!(
+                            out,
+                            "    data += struct.pack(\"<{fmt}\", len(_{name}_b))",
+                            name = name,
+                            fmt = fmt,
+                        )
+                        .unwrap();
+                    }
+                    IdlType::DynVec { vec } => {
+                        let (fmt, _sz) = prefix_fmt(vec.prefix_bytes);
+                        writeln!(
+                            out,
+                            "    data += struct.pack(\"<{fmt}\", len(input.{name}))",
+                            name = name,
+                            fmt = fmt,
+                        )
+                        .unwrap();
+                    }
+                    _ => unreachable!(),
+                }
+            }
+
+            // Phase 3: tail data
+            for arg in &dyn_args {
+                let name = camel_to_snake(&arg.name);
+                match &arg.ty {
+                    IdlType::DynString { .. } => {
+                        writeln!(out, "    data += _{name}_b", name = name).unwrap();
+                    }
+                    IdlType::DynVec { vec } => {
+                        let item_ser = match &*vec.items {
+                            IdlType::Primitive(p) if p == "pubkey" => "bytes(item)".to_string(),
+                            IdlType::Primitive(p) => {
+                                let f = struct_format(p);
+                                format!("struct.pack(\"<{}\", item)", f)
+                            }
+                            _ => "item".to_string(),
+                        };
+                        writeln!(
+                            out,
+                            "    for item in input.{name}:\n        data += {ser}",
+                            name = name,
+                            ser = item_ser,
+                        )
+                        .unwrap();
+                    }
+                    _ => unreachable!(),
+                }
+            }
+
             out.push_str("    data = bytes(data)\n");
         }
 
@@ -361,6 +452,12 @@ fn python_type(ty: &IdlType) -> String {
 // ---------------------------------------------------------------------------
 // Serialization helpers
 // ---------------------------------------------------------------------------
+
+/// Returns `true` if the type is a top-level dynamic type (`DynString` or
+/// `DynVec`). These require compact 3-phase encoding at the instruction level.
+fn is_direct_dynamic(ty: &IdlType) -> bool {
+    matches!(ty, IdlType::DynString { .. } | IdlType::DynVec { .. })
+}
 
 fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef]) -> String {
     match ty {

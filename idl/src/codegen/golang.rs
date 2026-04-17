@@ -219,11 +219,14 @@ pub fn generate_go_client(idl: &Idl) -> String {
             out.push_str("\taccounts = append(accounts, input.RemainingAccounts...)\n");
         }
 
-        // Data
+        // Data — compact wire format:
+        //   [disc][fixed fields][all dynamic prefixes][all dynamic data]
         let disc_var = format!("{}Discriminator", pascal_name);
+        let has_dyn = ix.args.iter().any(|a| is_direct_dynamic(&a.ty));
         if ix.args.is_empty() {
             writeln!(out, "\tdata := {}[:]", disc_var).unwrap();
-        } else {
+        } else if !has_dyn {
+            // Fixed-only path: simple inline serialisation.
             writeln!(out, "\tdata := make([]byte, 0, 256)").unwrap();
             writeln!(out, "\tdata = append(data, {}[:]...)", disc_var).unwrap();
             for arg in &ix.args {
@@ -232,6 +235,130 @@ pub fn generate_go_client(idl: &Idl) -> String {
                     &arg.ty,
                     &idl.types,
                 ));
+            }
+        } else {
+            // Compact 3-phase encoding.
+            let fixed_args: Vec<_> = ix
+                .args
+                .iter()
+                .filter(|a| !is_direct_dynamic(&a.ty))
+                .collect();
+            let dyn_args: Vec<_> = ix
+                .args
+                .iter()
+                .filter(|a| is_direct_dynamic(&a.ty))
+                .collect();
+
+            writeln!(out, "\tdata := make([]byte, 0, 256)").unwrap();
+            writeln!(out, "\tdata = append(data, {}[:]...)", disc_var).unwrap();
+
+            // Phase 1: fixed fields
+            for arg in &fixed_args {
+                out.push_str(&serialize_field_expr(
+                    &snake_to_pascal(&arg.name),
+                    &arg.ty,
+                    &idl.types,
+                ));
+            }
+
+            // Phase 2: length table — pre-encode dynamic slices and emit all
+            // length prefixes grouped together.
+            for arg in &dyn_args {
+                let name = snake_to_pascal(&arg.name);
+                match &arg.ty {
+                    IdlType::DynString { ref string } => {
+                        // Pre-encode string bytes so we know the length.
+                        writeln!(
+                            out,
+                            "\t_{n}Bytes := []byte(input.{n})",
+                            n = name,
+                        )
+                        .unwrap();
+                        match string.prefix_bytes {
+                            1 => writeln!(
+                                out,
+                                "\tdata = append(data, byte(len(_{n}Bytes)))",
+                                n = name,
+                            )
+                            .unwrap(),
+                            2 => writeln!(
+                                out,
+                                "\t{{ var _buf [2]byte; binary.LittleEndian.PutUint16(_buf[:], \
+                                 uint16(len(_{n}Bytes))); data = append(data, _buf[:]...) }}",
+                                n = name,
+                            )
+                            .unwrap(),
+                            4 => writeln!(
+                                out,
+                                "\t{{ var _buf [4]byte; binary.LittleEndian.PutUint32(_buf[:], \
+                                 uint32(len(_{n}Bytes))); data = append(data, _buf[:]...) }}",
+                                n = name,
+                            )
+                            .unwrap(),
+                            _ => writeln!(
+                                out,
+                                "\t{{ var _buf [8]byte; binary.LittleEndian.PutUint64(_buf[:], \
+                                 uint64(len(_{n}Bytes))); data = append(data, _buf[:]...) }}",
+                                n = name,
+                            )
+                            .unwrap(),
+                        }
+                    }
+                    IdlType::DynVec { ref vec } => match vec.prefix_bytes {
+                        1 => writeln!(
+                            out,
+                            "\tdata = append(data, byte(len(input.{n})))",
+                            n = name,
+                        )
+                        .unwrap(),
+                        2 => writeln!(
+                            out,
+                            "\t{{ var _buf [2]byte; binary.LittleEndian.PutUint16(_buf[:], \
+                             uint16(len(input.{n}))); data = append(data, _buf[:]...) }}",
+                            n = name,
+                        )
+                        .unwrap(),
+                        4 => writeln!(
+                            out,
+                            "\t{{ var _buf [4]byte; binary.LittleEndian.PutUint32(_buf[:], \
+                             uint32(len(input.{n}))); data = append(data, _buf[:]...) }}",
+                            n = name,
+                        )
+                        .unwrap(),
+                        _ => writeln!(
+                            out,
+                            "\t{{ var _buf [8]byte; binary.LittleEndian.PutUint64(_buf[:], \
+                             uint64(len(input.{n}))); data = append(data, _buf[:]...) }}",
+                            n = name,
+                        )
+                        .unwrap(),
+                    },
+                    _ => unreachable!(),
+                }
+            }
+
+            // Phase 3: tail data
+            for arg in &dyn_args {
+                let name = snake_to_pascal(&arg.name);
+                match &arg.ty {
+                    IdlType::DynString { .. } => {
+                        writeln!(
+                            out,
+                            "\tdata = append(data, _{n}Bytes...)",
+                            n = name,
+                        )
+                        .unwrap();
+                    }
+                    IdlType::DynVec { .. } => {
+                        writeln!(
+                            out,
+                            "\tdata = append(data, input.{n}...)",
+                            n = name,
+                        )
+                        .unwrap();
+                    }
+                    _ => unreachable!(),
+                }
             }
         }
 
@@ -360,6 +487,12 @@ fn account_meta_expr(key_expr: &str, signer: bool, writable: bool) -> String {
 // ---------------------------------------------------------------------------
 // Serialization
 // ---------------------------------------------------------------------------
+
+/// Returns `true` if the type is a top-level dynamic type (`DynString` or
+/// `DynVec`). These require compact 3-phase encoding at the instruction level.
+fn is_direct_dynamic(ty: &IdlType) -> bool {
+    matches!(ty, IdlType::DynString { .. } | IdlType::DynVec { .. })
+}
 
 fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef]) -> String {
     match ty {
