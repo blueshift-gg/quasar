@@ -181,6 +181,7 @@ fn test_set_label() {
 
     // Verify label was stored
     // Layout: disc(1) + ZC(34) + u8_label_prefix(1) + label_bytes
+    // TODO: update offsets to compact layout after multisig .so rebuild
     let config_data = &result.account(&config).unwrap().data;
     let label_len = config_data[35] as usize;
     assert_eq!(label_len, label.len(), "label length mismatch");
