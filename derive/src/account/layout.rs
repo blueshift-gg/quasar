@@ -17,11 +17,6 @@ pub(super) fn build_zc_spec(
     field_infos: &[PodFieldInfo<'_>],
     has_dynamic: bool,
 ) -> ZcSpec {
-    let static_fields: Vec<_> = field_infos
-        .iter()
-        .filter(|fi| fi.pod_dyn.is_none())
-        .collect();
-
     // For dynamic accounts, schema_fields includes ALL fields (fixed with
     // native types + dynamic with zeropod compact types). For fixed accounts,
     // only the fixed fields with native types.
@@ -52,6 +47,10 @@ pub(super) fn build_zc_spec(
             })
             .collect()
     } else {
+        let static_fields: Vec<_> = field_infos
+            .iter()
+            .filter(|fi| fi.pod_dyn.is_none())
+            .collect();
         static_fields
             .iter()
             .map(|fi| {
@@ -104,7 +103,6 @@ pub(super) fn emit_zc_definition(
     name: &syn::Ident,
     has_dynamic: bool,
     zc: &ZcSpec,
-    _align_asserts: &[proc_macro2::TokenStream],
 ) -> proc_macro2::TokenStream {
     let zc_name = &zc.zc_name;
     let zc_mod = &zc.zc_mod;

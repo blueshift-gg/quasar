@@ -37,7 +37,6 @@ pub(super) fn emit_space_impl(
     has_dynamic: bool,
     disc_len: usize,
     zc_mod: &syn::Ident,
-    _zc_path: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
     if has_dynamic {
         // Space = discriminator + compact header size (includes length prefixes).

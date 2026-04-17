@@ -356,15 +356,13 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
             .iter()
             .any(|cls| matches!(cls, ArgClass::PodDyn(_)));
 
-        let use_compact = has_pod_dyn;
-
         // Alias quasar_lang's re-export so `zeropod::*` paths emitted by
         // the ZeroPod derive resolve without a direct crate dependency.
         new_stmts.push(syn::parse_quote!(
             use quasar_lang::__zeropod as zeropod;
         ));
 
-        if use_compact {
+        if has_pod_dyn {
             // Compact path: a single zeropod compact schema with ALL fields
             // (fixed + dynamic). The header contains fixed fields and length
             // prefixes; tail data follows immediately after the header.

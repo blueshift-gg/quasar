@@ -1,10 +1,12 @@
 //! Compact account mutation codegen.
 //!
 //! Two mutation paths:
-//! - `compact_mut()` returns a `{Name}CompactMut` guard with load-mutate-save
+//! - `as_mut()` returns a `{Name}CompactMut` guard with load-mutate-save
 //!   semantics: all dynamic fields are loaded on construction, the user mutates
 //!   whichever fields they want via the public `PodString`/`PodVec` fields,
-//!   then calls `.save()` to write everything back.
+//!   then the guard auto-saves on drop. `.save()` remains available for
+//!   mid-flight flushes (e.g. before a CPI), and `.reload()` refreshes the
+//!   cached fields from account data after external mutation.
 //! - `compact_writer()` returns a `{Name}CompactWriter` (builder pattern) with
 //!   explicit `.set_field()` + `.commit()` semantics — used by `set_inner()`
 //!   for account initialization.
@@ -21,7 +23,6 @@ pub(super) type DynFieldRef<'a> = (&'a syn::Field, &'a PodDynField);
 
 pub(super) struct DynamicPieces<'a> {
     pub dyn_fields: Vec<DynFieldRef<'a>>,
-    pub align_asserts: Vec<proc_macro2::TokenStream>,
     pub max_space_terms: Vec<proc_macro2::TokenStream>,
     pub read_accessors: Vec<proc_macro2::TokenStream>,
 }
@@ -34,10 +35,6 @@ pub(super) fn build_dynamic_pieces<'a>(
     let dyn_fields: Vec<DynFieldRef<'a>> = field_infos
         .iter()
         .filter_map(|fi| fi.pod_dyn.as_ref().map(|pd| (fi.field, pd)))
-        .collect();
-    let align_asserts = dyn_fields
-        .iter()
-        .filter_map(|(_, pd)| dyn_align_assert(pd))
         .collect();
     let max_space_terms = dyn_fields
         .iter()
@@ -53,7 +50,6 @@ pub(super) fn build_dynamic_pieces<'a>(
 
     DynamicPieces {
         dyn_fields,
-        align_asserts,
         max_space_terms,
         read_accessors,
     }
@@ -291,7 +287,6 @@ pub(super) fn emit_compact_mut(
             compact_mut_load(
                 field.ident.as_ref().expect("field must be named"),
                 pd,
-                zc_mod,
             )
         })
         .collect();
@@ -317,12 +312,10 @@ pub(super) fn emit_compact_mut(
         })
         .collect();
     quote! {
-        #[must_use = "call .save() to write changes to the account"]
+        #[must_use = "bind the as_mut() guard to mutate cached fields; changes auto-save on drop"]
         pub struct #guard_name<'a> {
             __view: &'a mut AccountView,
             __payer: &'a AccountView,
-            __rent_lpb: u64,
-            __rent_threshold: u64,
             #(#guard_fields,)*
         }
 
@@ -344,9 +337,9 @@ pub(super) fn emit_compact_mut(
 
                 let __old_total = self.__view.data_len();
                 if __new_total != __old_total {
-                    quasar_lang::accounts::account::realloc_account_raw(
+                    quasar_lang::accounts::account::realloc_account(
                         self.__view, __new_total, self.__payer,
-                        self.__rent_lpb, self.__rent_threshold,
+                        None,
                     )?;
                 }
 
@@ -361,15 +354,29 @@ pub(super) fn emit_compact_mut(
                 __compact.commit().map_err(|_| ProgramError::InvalidAccountData)?;
                 Ok(())
             }
+
+            pub fn reload(&mut self) {
+                let (#(#field_names,)*) = {
+                    let __data = unsafe { self.__view.borrow_unchecked() };
+                    let __r = unsafe { #zc_mod::__SchemaRef::new_unchecked(&__data[#disc_len..]) };
+                    #(#load_stmts)*
+                    (#(#field_names,)*)
+                };
+                #(self.#field_names = #field_names;)*
+            }
+        }
+
+        impl<'a> Drop for #guard_name<'a> {
+            fn drop(&mut self) {
+                self.save().expect("as_mut auto-save failed");
+            }
         }
 
         impl #name {
             #[inline(always)]
-            pub fn compact_mut<'a>(
+            pub fn as_mut<'a>(
                 &'a mut self,
                 payer: &'a AccountView,
-                rent_lpb: u64,
-                rent_threshold: u64,
             ) -> #guard_name<'a> {
                 let (#(#field_names,)*) = {
                     let __data = unsafe { self.__view.borrow_unchecked() };
@@ -385,8 +392,6 @@ pub(super) fn emit_compact_mut(
                 #guard_name {
                     __view,
                     __payer: payer,
-                    __rent_lpb: rent_lpb,
-                    __rent_threshold: rent_threshold,
                     #(#field_names,)*
                 }
             }
@@ -397,21 +402,6 @@ pub(super) fn emit_compact_mut(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-fn dyn_align_assert(dyn_field: &PodDynField) -> Option<proc_macro2::TokenStream> {
-    match dyn_field {
-        PodDynField::Vec { elem, .. } => {
-            let mapped = map_to_pod_type(elem);
-            Some(quote! {
-                const _: () = assert!(
-                    core::mem::align_of::<#mapped>() == 1,
-                    "PodVec element type must have alignment 1"
-                );
-            })
-        }
-        PodDynField::Str { .. } => None,
-    }
-}
 
 fn dyn_max_space_term(dyn_field: &PodDynField) -> proc_macro2::TokenStream {
     match dyn_field {
@@ -547,7 +537,6 @@ fn compact_mut_field(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2:
 fn compact_mut_load(
     name: &syn::Ident,
     dyn_field: &PodDynField,
-    _zc_mod: &syn::Ident,
 ) -> proc_macro2::TokenStream {
     match dyn_field {
         PodDynField::Str { max, prefix_bytes } => quote! {
