@@ -1,4 +1,4 @@
-use {super::string::max_n_for_pfx, core::mem::MaybeUninit};
+use {super::string::max_n_for_pfx, core::mem::MaybeUninit, crate::error::ZeroPodError};
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -112,34 +112,59 @@ impl<T: Copy, const N: usize, const PFX: usize> PodVec<T, N, PFX> {
         self.as_slice_mut().iter_mut()
     }
 
-    #[must_use = "returns false if values.len() exceeds capacity — unhandled means the write was \
-                  silently skipped"]
-    #[inline(always)]
-    pub fn set_from_slice(&mut self, values: &[T]) -> bool {
+    pub fn try_push(&mut self, value: T) -> Result<(), ZeroPodError> {
+        let cur = self.len();
+        if cur >= N {
+            return Err(ZeroPodError::Overflow);
+        }
+        self.data[cur] = MaybeUninit::new(value);
+        self.encode_len(cur + 1);
+        Ok(())
+    }
+
+    pub fn try_set_from_slice(&mut self, values: &[T]) -> Result<(), ZeroPodError> {
         #[allow(clippy::let_unit_value)]
         let _ = Self::_ALIGN_CHECK;
         let vlen = values.len();
         if vlen > N {
-            return false;
+            return Err(ZeroPodError::Overflow);
         }
         unsafe {
             core::ptr::copy_nonoverlapping(values.as_ptr(), self.data.as_mut_ptr() as *mut T, vlen);
         }
         self.encode_len(vlen);
-        true
+        Ok(())
+    }
+
+    pub fn try_extend_from_slice(&mut self, values: &[T]) -> Result<(), ZeroPodError> {
+        let cur = self.len();
+        let new_len = cur + values.len();
+        if new_len > N {
+            return Err(ZeroPodError::Overflow);
+        }
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                values.as_ptr(),
+                (self.data.as_mut_ptr() as *mut T).add(cur),
+                values.len(),
+            );
+        }
+        self.encode_len(new_len);
+        Ok(())
+    }
+
+    #[must_use = "returns false if values.len() exceeds capacity — unhandled means the write was \
+                  silently skipped"]
+    #[inline(always)]
+    pub fn set_from_slice(&mut self, values: &[T]) -> bool {
+        self.try_set_from_slice(values).is_ok()
     }
 
     #[must_use = "returns false if capacity is exceeded — unhandled means the push was silently \
                   skipped"]
     #[inline(always)]
     pub fn push(&mut self, value: T) -> bool {
-        let cur = self.len();
-        if cur >= N {
-            return false;
-        }
-        self.data[cur] = MaybeUninit::new(value);
-        self.encode_len(cur + 1);
-        true
+        self.try_push(value).is_ok()
     }
 
     #[must_use = "returns None if the vector is empty"]
@@ -197,20 +222,7 @@ impl<T: Copy, const N: usize, const PFX: usize> PodVec<T, N, PFX> {
                   append was silently skipped"]
     #[inline(always)]
     pub fn extend_from_slice(&mut self, values: &[T]) -> bool {
-        let cur = self.len();
-        let new_len = cur + values.len();
-        if new_len > N {
-            return false;
-        }
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                values.as_ptr(),
-                (self.data.as_mut_ptr() as *mut T).add(cur),
-                values.len(),
-            );
-        }
-        self.encode_len(new_len);
-        true
+        self.try_extend_from_slice(values).is_ok()
     }
 
     #[inline(always)]
@@ -363,5 +375,11 @@ impl<T: Copy + core::fmt::Debug, const N: usize, const PFX: usize> core::fmt::De
             .field("pfx", &PFX)
             .field("data", &self.as_slice())
             .finish()
+    }
+}
+
+impl<T: Copy + core::hash::Hash, const N: usize, const PFX: usize> core::hash::Hash for PodVec<T, N, PFX> {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.as_slice().hash(state);
     }
 }

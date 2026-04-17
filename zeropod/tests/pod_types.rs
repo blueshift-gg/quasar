@@ -414,3 +414,52 @@ fn pod_string_eq_str() {
     s.try_set("hello").unwrap();
     assert!(s == *"hello"); // PartialEq<str>
 }
+
+#[test]
+fn pod_vec_try_push() {
+    let mut v = PodVec::<u8, 3>::default();
+    assert!(v.try_push(1).is_ok());
+    assert!(v.try_push(2).is_ok());
+    assert!(v.try_push(3).is_ok());
+    assert!(v.try_push(4).is_err()); // full
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+}
+
+#[test]
+fn pod_vec_try_set_from_slice() {
+    let mut v = PodVec::<u8, 3>::default();
+    assert!(v.try_set_from_slice(&[1, 2]).is_ok());
+    assert_eq!(v.as_slice(), &[1, 2]);
+    assert!(v.try_set_from_slice(&[1, 2, 3, 4]).is_err());
+    assert_eq!(v.as_slice(), &[1, 2]); // unchanged on error
+}
+
+#[test]
+fn pod_vec_try_extend() {
+    let mut v = PodVec::<u8, 5>::default();
+    assert!(v.try_extend_from_slice(&[1, 2]).is_ok());
+    assert!(v.try_extend_from_slice(&[3, 4]).is_ok());
+    assert!(v.try_extend_from_slice(&[5, 6]).is_err()); // would exceed
+    assert_eq!(v.as_slice(), &[1, 2, 3, 4]);
+}
+
+#[test]
+fn pod_vec_capacity() {
+    let v = PodVec::<u8, 10>::default();
+    assert_eq!(v.capacity(), 10);
+}
+
+#[test]
+fn pod_vec_hash() {
+    let mut a = PodVec::<u8, 10>::default();
+    let mut b = PodVec::<u8, 10>::default();
+    let _ = a.try_push(1);
+    let _ = a.try_push(2);
+    let _ = b.try_push(1);
+    let _ = b.try_push(2);
+    let mut ha = TestHasher(0);
+    let mut hb = TestHasher(0);
+    a.hash(&mut ha);
+    b.hash(&mut hb);
+    assert_eq!(ha.finish(), hb.finish());
+}
