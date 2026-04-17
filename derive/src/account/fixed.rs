@@ -53,6 +53,14 @@ pub(super) fn generate_account(
         });
     let dynamic_impl_block =
         super::dynamic::emit_dynamic_impl_block(name, has_dynamic, disc_len, &zc.zc_mod, &dynamic);
+    let compact_mut = super::dynamic::emit_compact_mut(
+        name,
+        has_dynamic,
+        disc_len,
+        &zc.zc_mod,
+        &zc.zc_path,
+        &dynamic,
+    );
     let dyn_writer = super::dynamic::emit_dyn_writer(
         name,
         has_dynamic,
@@ -86,6 +94,8 @@ pub(super) fn generate_account(
         #account_check_impl
 
         #dynamic_impl_block
+
+        #compact_mut
 
         #dyn_writer
 

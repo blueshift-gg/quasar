@@ -17,22 +17,17 @@ impl MutateThenReadback {
     pub fn handler(&mut self, expected_tags_count: u8, new_name: &str) -> Result<(), ProgramError> {
         let rent = Rent::get()?;
 
-        // Snapshot current tags before taking &mut (CompactWriter requires all
-        // dynamic fields to be set before commit).
-        let mut tags_buf = [Address::default(); 2];
-        let tags_len = self.account.tags().len();
-        tags_buf[..tags_len].copy_from_slice(self.account.tags());
-
-        // Mutate via compact writer — explicit commit
+        // Mutate via compact_mut guard — only change name, tags preserved automatically
         {
-            let mut writer = self.account.compact_mut(
+            let mut guard = self.account.compact_mut(
                 self.payer.to_account_view(),
                 rent.lamports_per_byte(),
                 rent.exemption_threshold_raw(),
             );
-            writer.set_name(new_name)?;
-            writer.set_tags(&tags_buf[..tags_len])?;
-            writer.commit()?;
+            if !guard.name.set(new_name) {
+                return Err(ProgramError::InvalidInstructionData);
+            }
+            guard.save()?;
         }
 
         // Read back from account data to verify the save worked

@@ -1,8 +1,15 @@
 //! Compact account mutation codegen.
 //!
-//! Generates `compact_mut()` which returns a `CompactWriter` with explicit
-//! `.set_field()` + `.commit()` semantics. Read accessors use zeropod's
-//! compact `Ref` for zero-copy borrowed views.
+//! Two mutation paths:
+//! - `compact_mut()` returns a `{Name}CompactMut` guard with load-mutate-save
+//!   semantics: all dynamic fields are loaded on construction, the user mutates
+//!   whichever fields they want via the public `PodString`/`PodVec` fields,
+//!   then calls `.save()` to write everything back.
+//! - `compact_writer()` returns a `{Name}CompactWriter` (builder pattern) with
+//!   explicit `.set_field()` + `.commit()` semantics — used by `set_inner()`
+//!   for account initialization.
+//!
+//! Read accessors use zeropod's compact `Ref` for zero-copy borrowed views.
 
 use {
     super::fixed::PodFieldInfo,
@@ -234,7 +241,7 @@ pub(super) fn emit_dyn_writer(
 
         impl #name {
             #[inline(always)]
-            pub fn compact_mut<'a>(
+            pub fn compact_writer<'a>(
                 &'a mut self,
                 payer: &'a AccountView,
                 rent_lpb: u64,
@@ -251,6 +258,136 @@ pub(super) fn emit_dyn_writer(
                     __rent_lpb: rent_lpb,
                     __rent_threshold: rent_threshold,
                     #(#setter_inits,)*
+                }
+            }
+        }
+    }
+}
+
+pub(super) fn emit_compact_mut(
+    name: &syn::Ident,
+    has_dynamic: bool,
+    disc_len: usize,
+    zc_mod: &syn::Ident,
+    zc_path: &proc_macro2::TokenStream,
+    pieces: &DynamicPieces<'_>,
+) -> proc_macro2::TokenStream {
+    if !has_dynamic {
+        return quote! {};
+    }
+
+    let guard_name = format_ident!("{}CompactMut", name);
+    let guard_fields: Vec<proc_macro2::TokenStream> = pieces
+        .dyn_fields
+        .iter()
+        .map(|(field, pd)| {
+            compact_mut_field(field.ident.as_ref().expect("field must be named"), pd)
+        })
+        .collect();
+    let load_stmts: Vec<proc_macro2::TokenStream> = pieces
+        .dyn_fields
+        .iter()
+        .map(|(field, pd)| {
+            compact_mut_load(
+                field.ident.as_ref().expect("field must be named"),
+                pd,
+                zc_mod,
+            )
+        })
+        .collect();
+    let field_names: Vec<&syn::Ident> = pieces
+        .dyn_fields
+        .iter()
+        .map(|(field, _)| field.ident.as_ref().expect("field must be named"))
+        .collect();
+    let save_size_terms: Vec<proc_macro2::TokenStream> = pieces
+        .dyn_fields
+        .iter()
+        .map(|(field, pd)| {
+            let fname = field.ident.as_ref().expect("field must be named");
+            compact_mut_size_term(fname, pd)
+        })
+        .collect();
+    let compact_set_stmts: Vec<proc_macro2::TokenStream> = pieces
+        .dyn_fields
+        .iter()
+        .map(|(field, pd)| {
+            let fname = field.ident.as_ref().expect("field must be named");
+            compact_mut_set_stmt(fname, pd)
+        })
+        .collect();
+    quote! {
+        #[must_use = "call .save() to write changes to the account"]
+        pub struct #guard_name<'a> {
+            __view: &'a mut AccountView,
+            __payer: &'a AccountView,
+            __rent_lpb: u64,
+            __rent_threshold: u64,
+            #(#guard_fields,)*
+        }
+
+        impl<'a> core::ops::Deref for #guard_name<'a> {
+            type Target = #zc_path;
+
+            #[inline(always)]
+            fn deref(&self) -> &Self::Target {
+                unsafe { &*(self.__view.data_ptr().add(#disc_len) as *const #zc_path) }
+            }
+        }
+
+        impl<'a> #guard_name<'a> {
+            pub fn save(&mut self) -> Result<(), ProgramError> {
+                let __tail_size: usize = 0 #(#save_size_terms)*;
+                let __new_total = #disc_len
+                    + <#zc_mod::__Schema as quasar_lang::ZeroPodCompact>::HEADER_SIZE
+                    + __tail_size;
+
+                let __old_total = self.__view.data_len();
+                if __new_total != __old_total {
+                    quasar_lang::accounts::account::realloc_account_raw(
+                        self.__view, __new_total, self.__payer,
+                        self.__rent_lpb, self.__rent_threshold,
+                    )?;
+                }
+
+                let __compact_data = unsafe {
+                    core::slice::from_raw_parts_mut(
+                        self.__view.data_mut_ptr().add(#disc_len),
+                        __new_total - #disc_len,
+                    )
+                };
+                let mut __compact = unsafe { #zc_mod::__SchemaMut::new_unchecked(__compact_data) };
+                #(#compact_set_stmts)*
+                __compact.commit().map_err(|_| ProgramError::InvalidAccountData)?;
+                Ok(())
+            }
+        }
+
+        impl #name {
+            #[inline(always)]
+            pub fn compact_mut<'a>(
+                &'a mut self,
+                payer: &'a AccountView,
+                rent_lpb: u64,
+                rent_threshold: u64,
+            ) -> #guard_name<'a> {
+                let (#(#field_names,)*) = {
+                    let __data = unsafe { self.__view.borrow_unchecked() };
+                    let __r = unsafe { #zc_mod::__SchemaRef::new_unchecked(&__data[#disc_len..]) };
+                    #(#load_stmts)*
+                    (#(#field_names,)*)
+                };
+                // SAFETY: `self.__view` is the transparent account backing store for this
+                // wrapper. Reborrowing it as `&mut AccountView` is sound here because the
+                // guard exclusively owns `&'a mut self` for its full lifetime and does not
+                // create any competing mutable references.
+                let __view = unsafe { &mut *(&mut self.__view as *mut AccountView) };
+                #guard_name {
+                    __view,
+                    __payer: payer,
+                    __rent_lpb: rent_lpb,
+                    __rent_threshold: rent_threshold,
+                    #(#field_names,)*
                 }
             }
         }
@@ -379,6 +516,78 @@ fn writer_compact_set_stmt(name: &syn::Ident, dyn_field: &PodDynField) -> proc_m
         },
         PodDynField::Vec { .. } => quote! {
             __compact.#setter(#name).map_err(|_| ProgramError::InvalidAccountData)?;
+        },
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CompactMut guard helpers
+// ---------------------------------------------------------------------------
+
+fn compact_mut_field(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::TokenStream {
+    match dyn_field {
+        PodDynField::Str { max, prefix_bytes } => quote! {
+            pub #name: quasar_lang::pod::PodString<#max, #prefix_bytes>
+        },
+        PodDynField::Vec {
+            elem,
+            max,
+            prefix_bytes,
+        } => {
+            let mapped = map_to_pod_type(elem);
+            quote! {
+                pub #name: quasar_lang::pod::PodVec<#mapped, #max, #prefix_bytes>
+            }
+        }
+    }
+}
+
+/// Load a dynamic field from a CompactRef into a PodString/PodVec.
+/// Assumes `__r` (a `__SchemaRef`) is in scope.
+fn compact_mut_load(
+    name: &syn::Ident,
+    dyn_field: &PodDynField,
+    _zc_mod: &syn::Ident,
+) -> proc_macro2::TokenStream {
+    match dyn_field {
+        PodDynField::Str { max, prefix_bytes } => quote! {
+            let mut #name = quasar_lang::pod::PodString::<#max, #prefix_bytes>::default();
+            let _ = #name.set(__r.#name());
+        },
+        PodDynField::Vec {
+            elem,
+            max,
+            prefix_bytes,
+        } => {
+            let mapped = map_to_pod_type(elem);
+            quote! {
+                let mut #name = quasar_lang::pod::PodVec::<#mapped, #max, #prefix_bytes>::default();
+                let _ = #name.set_from_slice(__r.#name());
+            }
+        }
+    }
+}
+
+/// Size contribution of a guard field's current content (for tail region).
+fn compact_mut_size_term(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::TokenStream {
+    match dyn_field {
+        PodDynField::Str { .. } => quote! { + self.#name.len() },
+        PodDynField::Vec { elem, .. } => {
+            let mapped = map_to_pod_type(elem);
+            quote! { + self.#name.len() * core::mem::size_of::<#mapped>() }
+        }
+    }
+}
+
+/// Set a dynamic field on a CompactMut from the guard's PodString/PodVec.
+fn compact_mut_set_stmt(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::TokenStream {
+    let setter = format_ident!("set_{}", name);
+    match dyn_field {
+        PodDynField::Str { .. } => quote! {
+            __compact.#setter(self.#name.as_str()).map_err(|_| ProgramError::InvalidAccountData)?;
+        },
+        PodDynField::Vec { .. } => quote! {
+            __compact.#setter(self.#name.as_slice()).map_err(|_| ProgramError::InvalidAccountData)?;
         },
     }
 }

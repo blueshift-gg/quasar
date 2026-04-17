@@ -2055,7 +2055,7 @@ fn test_dynamic_view_mut_replaces_name_and_tags() {
 }
 
 #[test]
-fn test_dynamic_view_mut_missing_field_returns_specific_error() {
+fn test_compact_mut_preserves_untouched_fields() {
     let mollusk = setup();
     let (system_program, system_program_account) = keyed_account_for_system_program();
     let account = Address::new_unique();
@@ -2085,12 +2085,15 @@ fn test_dynamic_view_mut_missing_field_returns_specific_error() {
 
     assert!(
         result.program_result.is_ok(),
-        "missing dynamic writer field should be handled as expected: {:?}",
+        "compact_mut partial mutation should succeed: {:?}",
         result.program_result
     );
+
+    // Verify: name changed to "rename", tags preserved (1 tag = old_tag)
+    let expected = build_dynamic_account_data(b"rename", &[old_tag]);
     assert_eq!(
-        result.resulting_accounts[0].1.data, account_bytes,
-        "failed writer commit must not mutate account data"
+        result.resulting_accounts[0].1.data, expected,
+        "compact_mut must update name and preserve untouched tags"
     );
 }
 
