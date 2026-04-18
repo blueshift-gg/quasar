@@ -92,12 +92,13 @@ fn compile_typescript_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
         client_dir.join("tsconfig.json"),
         r#"{
   "compilerOptions": {
-    "target": "ES2022",
+    "erasableSyntaxOnly": true,
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "strict": true,
+    "noEmit": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "strict": true,
+    "target": "ES2022"
   },
   "include": ["web3.ts", "kit.ts"]
 }

@@ -1567,6 +1567,70 @@ fn ts_codegen_prefix_aware_codecs() {
 }
 
 #[test]
+fn ts_codegen_uses_erasable_enum_objects() {
+    use quasar_idl::{codegen::typescript::generate_ts_client, parser::build_idl};
+
+    let mut parsed = test_program();
+    parsed.instructions.extend([
+        program::RawInstruction {
+            name: "initialize".to_string(),
+            discriminator: vec![0],
+            accounts_type_name: "Initialize".to_string(),
+            args: vec![],
+            has_remaining: false,
+        },
+        program::RawInstruction {
+            name: "deposit".to_string(),
+            discriminator: vec![1],
+            accounts_type_name: "Deposit".to_string(),
+            args: vec![("amount".to_string(), syn::parse_str("u64").unwrap())],
+            has_remaining: false,
+        },
+    ]);
+    parsed.accounts_structs = vec![
+        RawAccountsStruct {
+            name: "Initialize".to_string(),
+            fields: vec![],
+        },
+        RawAccountsStruct {
+            name: "Deposit".to_string(),
+            fields: vec![],
+        },
+    ];
+    parsed.events.push(events::RawEvent {
+        name: "Made".to_string(),
+        discriminator: vec![2],
+        fields: vec![("amount".to_string(), syn::parse_str("u64").unwrap())],
+    });
+
+    let idl = build_idl(&parsed).unwrap();
+    let code = generate_ts_client(&idl);
+
+    assert!(
+        code.contains("export const ProgramInstruction = {"),
+        "{code}"
+    );
+    assert!(code.contains("export type ProgramInstruction ="), "{code}");
+    assert!(
+        code.contains("typeof ProgramInstruction.Initialize"),
+        "{code}"
+    );
+    assert!(
+        code.contains("typeof ProgramInstruction.Deposit; args: DepositInstructionArgs"),
+        "{code}"
+    );
+    assert!(!code.contains("export enum ProgramInstruction"), "{code}");
+    assert!(code.contains("export const ProgramEvent = {"), "{code}");
+    assert!(code.contains("export type ProgramEvent ="), "{code}");
+    assert!(code.contains("typeof ProgramEvent.Made"), "{code}");
+    assert!(
+        code.contains("| { type: typeof ProgramEvent.Made; data: Made }"),
+        "{code}"
+    );
+    assert!(!code.contains("export enum ProgramEvent"), "{code}");
+}
+
+#[test]
 fn ts_codegen_pda_helpers_are_exported_and_reused() {
     use quasar_idl::{
         codegen::typescript::{generate_ts_client, generate_ts_client_kit},

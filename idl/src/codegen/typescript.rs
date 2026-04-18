@@ -338,11 +338,15 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     out.push_str("/* Enums */\n");
 
     if !idl.events.is_empty() {
-        out.push_str("export enum ProgramEvent {\n");
+        out.push_str("export const ProgramEvent = {\n");
         for event in &idl.events {
-            writeln!(out, "  {} = \"{}\",", event.name, event.name).expect("write to String");
+            writeln!(out, "  {}: \"{}\",", event.name, event.name).expect("write to String");
         }
-        out.push_str("}\n\n");
+        out.push_str("} as const;\n\n");
+
+        out.push_str(
+            "export type ProgramEvent =\n  (typeof ProgramEvent)[keyof typeof ProgramEvent];\n\n",
+        );
 
         out.push_str("export type DecodedEvent =\n");
         for (i, event) in idl.events.iter().enumerate() {
@@ -350,12 +354,12 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
             if has_type {
                 write!(
                     out,
-                    "  | {{ type: ProgramEvent.{}; data: {} }}",
+                    "  | {{ type: typeof ProgramEvent.{}; data: {} }}",
                     event.name, event.name
                 )
                 .expect("write to String");
             } else {
-                write!(out, "  | {{ type: ProgramEvent.{} }}", event.name)
+                write!(out, "  | {{ type: typeof ProgramEvent.{} }}", event.name)
                     .expect("write to String");
             }
             if i < idl.events.len() - 1 {
@@ -366,23 +370,28 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     }
 
     if !idl.instructions.is_empty() {
-        out.push_str("export enum ProgramInstruction {\n");
+        out.push_str("export const ProgramInstruction = {\n");
         for ix in &idl.instructions {
             let pascal = snake_to_pascal(&ix.name);
-            writeln!(out, "  {} = \"{}\",", pascal, pascal).expect("write to String");
+            writeln!(out, "  {}: \"{}\",", pascal, pascal).expect("write to String");
         }
-        out.push_str("}\n\n");
+        out.push_str("} as const;\n\n");
+
+        out.push_str(
+            "export type ProgramInstruction =\n  (typeof ProgramInstruction)[keyof typeof \
+             ProgramInstruction];\n\n",
+        );
 
         out.push_str("export type DecodedInstruction =\n");
         for (i, ix) in idl.instructions.iter().enumerate() {
             let pascal = snake_to_pascal(&ix.name);
             if ix.args.is_empty() {
-                write!(out, "  | {{ type: ProgramInstruction.{} }}", pascal)
+                write!(out, "  | {{ type: typeof ProgramInstruction.{} }}", pascal)
                     .expect("write to String");
             } else {
                 write!(
                     out,
-                    "  | {{ type: ProgramInstruction.{}; args: {}InstructionArgs }}",
+                    "  | {{ type: typeof ProgramInstruction.{}; args: {}InstructionArgs }}",
                     pascal, pascal
                 )
                 .expect("write to String");
