@@ -1,0 +1,23 @@
+[package]
+name = "quasar-schema-canonical"
+description = "Canonical, hash-verified binary encoding of the Quasar IDL"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "quasar_schema_canonical"
+path = "src/lib.rs"
+
+[dependencies]
+quasar-schema = { path = "../schema" }
+sha2 = "0.10"
+
+[dev-dependencies]
+quasar-idl = { path = "../idl" }
+sha2 = "0.10"

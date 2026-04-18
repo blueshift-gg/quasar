@@ -2248,6 +2248,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "quasar-schema-canonical"
+version = "0.0.0"
+dependencies = [
+ "quasar-idl",
+ "quasar-schema",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "quasar-spl"
 version = "0.0.0"
 dependencies = [
