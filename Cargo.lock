@@ -1748,21 +1748,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mollusk-svm-programs-token"
-version = "0.10.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adab73bb07b35d3c01e3175d34a9b0fcacb067484ce6f1ca53696ba916893d2d"
-dependencies = [
- "mollusk-svm",
- "solana-account",
- "solana-program-pack",
- "solana-pubkey 4.2.0",
- "solana-rent",
- "spl-associated-token-account-interface",
- "spl-token-interface",
-]
-
-[[package]]
 name = "mollusk-svm-result"
 version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2130,11 +2115,13 @@ dependencies = [
  "indicatif",
  "quasar-idl",
  "quasar-profile",
+ "quasar-schema",
  "rand 0.8.5",
  "serde",
  "serde_json",
  "shlex",
  "syn 2.0.117",
+ "tempfile",
  "thiserror 2.0.18",
  "toml 0.8.23",
 ]
@@ -2143,10 +2130,8 @@ dependencies = [
 name = "quasar-derive"
 version = "0.0.0"
 dependencies = [
- "bs58",
- "const-crypto",
  "proc-macro2",
- "quasar-idl",
+ "quasar-schema",
  "quote",
  "serde",
  "serde_json",
@@ -2172,7 +2157,6 @@ dependencies = [
 name = "quasar-escrow-client"
 version = "0.1.0"
 dependencies = [
- "quasar-lang",
  "solana-address 2.2.0",
  "solana-instruction",
  "wincode 0.4.9",
@@ -2183,6 +2167,7 @@ name = "quasar-idl"
 version = "0.0.0"
 dependencies = [
  "proc-macro2",
+ "quasar-schema",
  "serde",
  "serde_json",
  "syn 2.0.117",
@@ -2195,17 +2180,24 @@ version = "0.0.0"
 dependencies = [
  "const-crypto",
  "quasar-derive",
- "quasar-pod",
- "quasar-spl",
  "solana-account-view 2.0.0",
  "solana-address 2.2.0",
  "solana-define-syscall 5.0.0",
  "solana-instruction",
- "solana-instruction-view 2.1.0",
+ "solana-instruction-view 2.0.0",
  "solana-program-error",
  "solana-program-log",
  "trybuild",
  "wincode 0.4.9",
+ "zeropod",
+]
+
+[[package]]
+name = "quasar-metadata"
+version = "0.0.0"
+dependencies = [
+ "quasar-lang",
+ "solana-address 2.2.0",
 ]
 
 [[package]]
@@ -2231,13 +2223,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "quasar-pod"
-version = "0.0.0"
-dependencies = [
- "wincode 0.4.9",
-]
-
-[[package]]
 name = "quasar-profile"
 version = "0.0.0"
 dependencies = [
@@ -2256,12 +2241,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "quasar-schema"
+version = "0.0.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "quasar-spl"
 version = "0.0.0"
 dependencies = [
  "quasar-lang",
  "solana-address 2.2.0",
  "solana-program-error",
+ "trybuild",
 ]
 
 [[package]]
@@ -2344,7 +2337,6 @@ name = "quasar-test-suite"
 version = "0.1.0"
 dependencies = [
  "mollusk-svm",
- "mollusk-svm-programs-token",
  "quasar-lang",
  "quasar-spl",
  "quasar-svm",
@@ -2408,7 +2400,6 @@ dependencies = [
 name = "quasar-vault-client"
 version = "0.1.0"
 dependencies = [
- "quasar-lang",
  "solana-address 2.2.0",
  "solana-instruction",
  "wincode 0.4.9",
@@ -3166,9 +3157,9 @@ dependencies = [
 
 [[package]]
 name = "solana-instruction-view"
-version = "2.1.0"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ab7a27d0c4214b9f7389c3dd00b68c93093a67f1dcc5b7893aebe299bbcbb47"
+checksum = "7c35d02cd27575b1fd05938d3624e476b0173208139053b51aa48dd9bec149f1"
 dependencies = [
  "solana-account-view 2.0.0",
  "solana-address 2.2.0",
@@ -3829,16 +3820,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spl-associated-token-account-interface"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6433917b60441d68d99a17e121d9db0ea15a9a69c0e5afa34649cf5ba12612f"
-dependencies = [
- "solana-instruction",
- "solana-pubkey 3.0.0",
-]
-
-[[package]]
 name = "spl-token"
 version = "9.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4191,7 +4172,6 @@ dependencies = [
 name = "upstream-vault-client"
 version = "0.1.0"
 dependencies = [
- "quasar-lang",
  "solana-address 2.2.0",
  "solana-instruction",
  "wincode 0.4.9",
@@ -4684,6 +4664,25 @@ name = "zeroize_derive"
 version = "1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85a5b4158499876c763cb03bc4e49185d3cccbabb15b33c627f7884f43db852e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "zeropod"
+version = "0.1.0"
+dependencies = [
+ "solana-address 2.2.0",
+ "solana-program-error",
+ "wincode 0.4.9",
+ "zeropod-derive",
+]
+
+[[package]]
+name = "zeropod-derive"
+version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "quote",

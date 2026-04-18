@@ -126,6 +126,10 @@ pub struct BuildCommand {
     #[arg(long, action = ArgAction::SetTrue)]
     pub debug: bool,
 
+    /// Stream the underlying build command output directly
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub verbose: bool,
+
     /// Watch src/ for changes and rebuild automatically
     #[arg(long, short, action = ArgAction::SetTrue)]
     pub watch: bool,
@@ -155,6 +159,10 @@ pub struct TestCommand {
     /// Build with debug symbols before testing
     #[arg(long, action = ArgAction::SetTrue)]
     pub debug: bool,
+
+    /// Forward `--show-output` to `cargo test`
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub show_output: bool,
 
     /// Only run tests whose name matches PATTERN
     #[arg(long, short, value_name = "PATTERN")]
@@ -340,10 +348,17 @@ pub fn run(cli: Cli) -> CliResult {
             }
             Ok(())
         }
-        Command::Build(cmd) => build::run(cmd.debug, cmd.watch, cmd.features, cmd.lint),
-        Command::Test(cmd) => {
-            test::run(cmd.debug, cmd.filter, cmd.watch, cmd.no_build, cmd.features)
+        Command::Build(cmd) => {
+            build::run(cmd.debug, cmd.verbose, cmd.watch, cmd.features, cmd.lint)
         }
+        Command::Test(cmd) => test::run(
+            cmd.debug,
+            cmd.show_output,
+            cmd.filter,
+            cmd.watch,
+            cmd.no_build,
+            cmd.features,
+        ),
         Command::Deploy(cmd) => deploy::run(
             cmd.program_keypair,
             cmd.upgrade_authority,
@@ -429,11 +444,11 @@ pub fn print_help() {
         "Add instructions, state, errors",
     );
     print_cmd(
-        "build   [--debug] [-w] [--features]",
+        "build   [--debug] [--verbose] [-w] [--features]",
         "Compile the on-chain program",
     );
     print_cmd(
-        "test    [--debug] [-f] [-w] [--features]",
+        "test    [--debug] [--show-output] [-f] [-w] [--features]",
         "Run the test suite",
     );
     print_cmd(

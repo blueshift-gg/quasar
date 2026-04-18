@@ -8,17 +8,10 @@ use {
     },
 };
 
-/// A single dynamic seed in the #[seeds] definition.
-#[allow(dead_code)] // Fields used for future type validation
-pub struct SeedDef {
-    pub name: Ident,
-    pub ty: Type,
-}
-
 /// Parsed #[seeds] attribute.
 pub struct SeedsAttr {
     pub prefix: Vec<u8>,
-    pub dynamic_seeds: Vec<SeedDef>,
+    pub dynamic_seed_count: usize,
 }
 
 impl Parse for SeedsAttr {
@@ -50,21 +43,21 @@ impl Parse for SeedsAttr {
             }
         };
 
-        let mut dynamic_seeds = Vec::new();
+        let mut dynamic_seed_count = 0usize;
         while !input.is_empty() {
             let _: Token![,] = input.parse()?;
             if input.is_empty() {
                 break;
             }
-            let name: Ident = input.parse()?;
+            let _name: Ident = input.parse()?;
             let _: Token![:] = input.parse()?;
-            let ty: Type = input.parse()?;
-            dynamic_seeds.push(SeedDef { name, ty });
+            let _ty: Type = input.parse()?;
+            dynamic_seed_count += 1;
         }
 
         Ok(SeedsAttr {
             prefix,
-            dynamic_seeds,
+            dynamic_seed_count,
         })
     }
 }
@@ -87,7 +80,7 @@ pub fn generate_seeds_impl(
     seeds_attr: &SeedsAttr,
 ) -> proc_macro2::TokenStream {
     let prefix_bytes = &seeds_attr.prefix;
-    let dynamic_count = seeds_attr.dynamic_seeds.len();
+    let dynamic_count = seeds_attr.dynamic_seed_count;
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     quote! {

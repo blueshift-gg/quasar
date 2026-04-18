@@ -45,14 +45,17 @@
 
 #![no_std]
 
-/// Implements the full account type contract for a type owned by a single
+/// Implements the shared account wrapper contract for a type owned by a single
 /// program.
 ///
-/// Generates five trait implementations:
+/// Generates the wrapper, owner, and zero-copy deref machinery. Account-data
+/// validation can either use the default fixed-length implementation here or a
+/// custom `AccountCheck` impl when the type needs parameterized validation.
+///
+/// Generates these trait implementations:
 ///
 /// - `StaticView` — marks the type as having a fixed layout
 /// - `AsAccountView` — provides access to the underlying `AccountView`
-/// - `AccountCheck` — validates `data_len >= T::LEN`
 /// - `CheckOwner` — validates `owner == $id`
 /// - `Deref` / `DerefMut` → `$target` — zero-copy access to account data
 /// - `ZeroCopyDeref` — enables `InterfaceAccount<T>` to deref through this type
@@ -62,7 +65,8 @@
 /// The `Deref` / `DerefMut` impls perform `unsafe` pointer casts from the
 /// raw account data to `$target`. This is sound because:
 ///
-/// 1. `AccountCheck::check` validated `data_len >= $target::LEN`
+/// 1. `AccountCheck::check` for the account type validated `data_len >=
+///    $target::LEN`
 /// 2. `$target` is `#[repr(C)]` with alignment 1 (any pointer is valid)
 /// 3. The owner check guarantees the data was written by the expected program
 macro_rules! impl_program_account {
@@ -73,16 +77,6 @@ macro_rules! impl_program_account {
             #[inline(always)]
             fn to_account_view(&self) -> &AccountView {
                 &self.__view
-            }
-        }
-
-        impl AccountCheck for $ty {
-            #[inline(always)]
-            fn check(view: &AccountView) -> Result<(), ProgramError> {
-                if quasar_lang::utils::hint::unlikely(view.data_len() < <$target>::LEN) {
-                    return Err(ProgramError::AccountDataTooSmall);
-                }
-                Ok(())
             }
         }
 
@@ -139,10 +133,10 @@ macro_rules! impl_program_account {
 
 mod associated_token;
 mod constants;
+mod exit;
+mod init;
 mod instructions;
 mod interface;
-#[cfg(feature = "metadata")]
-pub mod metadata;
 mod state;
 mod token;
 mod token_2022;
@@ -155,12 +149,13 @@ pub use {
         AssociatedTokenCpi, AssociatedTokenProgram,
     },
     constants::{ATA_PROGRAM_ID, SPL_TOKEN_ID, TOKEN_2022_ID},
+    exit::{close_token_account, sweep_token_account},
+    init::{init_ata, init_mint_account, init_token_account},
     instructions::{initialize_account3, initialize_mint2, TokenCpi},
     interface::TokenInterface,
-    // Re-export from quasar_lang for backward compatibility.
-    quasar_lang::accounts::interface_account::InterfaceAccount,
+    quasar_lang::prelude::InterfaceAccount,
     state::{COption, MintAccountState, TokenAccountState},
-    token::{Mint, Token},
+    token::{Mint, MintParams, Token, TokenParams},
     token_2022::{Mint2022, Token2022},
     validate::{validate_ata, validate_mint, validate_token_account},
 };

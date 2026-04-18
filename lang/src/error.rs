@@ -36,6 +36,8 @@ pub enum QuasarError {
     AddressMismatch,
     /// A dynamic-length field exceeds its maximum byte length.
     DynamicFieldTooLong,
+    /// A compact writer commit was attempted before setting every field.
+    CompactWriterFieldNotSet,
     /// More remaining accounts than can fit in the buffer.
     RemainingAccountsOverflow,
     /// A remaining account duplicated a declared or prior remaining account in

@@ -18,6 +18,7 @@ path = "src/main.rs"
 clap = { version = "4.0", features = ["derive"] }
 dialoguer = "0.11"
 quasar-idl = { version = "0.0", path = "../idl" }
+quasar-schema = { path = "../schema" }
 quasar-profile = { version = "0.0", path = "../profile" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -33,3 +34,6 @@ clap_complete = "4.6.0"
 ctrlc = "3.4"
 syn = { version = "2", features = ["full", "parsing"] }
 shlex = "1"
+
+[dev-dependencies]
+tempfile = "3"

@@ -4,14 +4,43 @@
 
 use {
     crate::helpers::{
-        classify_pod_string, classify_pod_vec, extract_generic_inner_type,
-        parse_discriminator_bytes, pascal_to_snake, prefix_bytes_to_rust_type, snake_to_pascal,
-        InstructionArgs, PodDynField,
+        classify_borrowed_as_compact, classify_lifetime_arg, classify_pod_dynamic,
+        extract_generic_inner_type, parse_discriminator_bytes, pascal_to_snake,
+        prefix_bytes_to_rust_type, snake_to_pascal, InstructionArgs, PodDynField,
     },
     proc_macro::TokenStream,
+    proc_macro2::TokenStream as TokenStream2,
     quote::{format_ident, quote},
-    syn::{parse_macro_input, FnArg, Ident, Item, ItemMod, Pat, Type},
+    syn::{parse_macro_input, FnArg, Ident, Item, ItemMod, LitInt, Pat, Type},
 };
+
+/// Parse `#[max(N)]` or `#[max(N, pfx = P)]` from a function parameter's
+/// attributes. Used by the `#[program]` macro to map borrowed args to
+/// compact client types.
+fn parse_max_attr_from_program_arg(pt: &syn::PatType) -> Option<(usize, usize)> {
+    for attr in &pt.attrs {
+        if attr.path().is_ident("max") {
+            let parsed = attr.parse_args_with(|stream: syn::parse::ParseStream| {
+                let n: LitInt = stream.parse()?;
+                let max_n: usize = n.base10_parse()?;
+                let mut pfx = 0usize;
+                if !stream.is_empty() {
+                    let _: syn::Token![,] = stream.parse()?;
+                    let key: Ident = stream.parse()?;
+                    if key != "pfx" {
+                        return Err(syn::Error::new(key.span(), "expected `pfx`"));
+                    }
+                    let _: syn::Token![=] = stream.parse()?;
+                    let p: LitInt = stream.parse()?;
+                    pfx = p.base10_parse()?;
+                }
+                Ok((max_n, pfx))
+            });
+            return parsed.ok();
+        }
+    }
+    None
+}
 
 /// Context wrapper kind, classified once per instruction function.
 enum CtxKind<'a> {
@@ -56,6 +85,88 @@ impl<'a> CtxKind<'a> {
     }
 }
 
+struct ClientArgSpec {
+    name: Ident,
+    ty: Type,
+}
+
+struct InstructionSpec {
+    fn_name: Ident,
+    disc_bytes: Vec<LitInt>,
+    disc_values: Vec<u8>,
+    accounts_type: TokenStream2,
+    heap: bool,
+    client_struct_name: Ident,
+    client_macro_ident: Ident,
+    client_args: Vec<ClientArgSpec>,
+    has_remaining: bool,
+}
+
+impl InstructionSpec {
+    fn dispatch_arm(&self) -> TokenStream2 {
+        let fn_name = &self.fn_name;
+        let accounts_type = &self.accounts_type;
+        let disc_bytes = &self.disc_bytes;
+        quote! {
+            [#(#disc_bytes),*] => #fn_name(#accounts_type)
+        }
+    }
+
+    fn heap_dispatch_arm(&self) -> TokenStream2 {
+        let cursor_init = if self.heap {
+            quote! {
+                #[cfg(feature = "alloc")]
+                {
+                    unsafe {
+                        let heap_start = super::allocator::HEAP_START_ADDRESS as usize;
+                        *(heap_start as *mut usize) =
+                            heap_start + core::mem::size_of::<usize>();
+                    }
+                }
+            }
+        } else {
+            quote! {
+                #[cfg(feature = "alloc")]
+                {
+                    #[cfg(feature = "debug")]
+                    unsafe {
+                        let heap_start = super::allocator::HEAP_START_ADDRESS as usize;
+                        *(heap_start as *mut usize) =
+                            heap_start + core::mem::size_of::<usize>();
+                    }
+                    #[cfg(not(feature = "debug"))]
+                    unsafe {
+                        *(super::allocator::HEAP_START_ADDRESS as *mut usize) =
+                            super::allocator::HEAP_CURSOR_POISONED;
+                    }
+                }
+            }
+        };
+        let fn_name = &self.fn_name;
+        let accounts_type = &self.accounts_type;
+        let disc_bytes = &self.disc_bytes;
+        quote! {
+            [#(#disc_bytes),*] => { #cursor_init } => #fn_name(#accounts_type)
+        }
+    }
+
+    fn client_item(&self) -> TokenStream2 {
+        let struct_name = &self.client_struct_name;
+        let macro_ident = &self.client_macro_ident;
+        let disc_values = &self.disc_values;
+        let arg_names: Vec<&Ident> = self.client_args.iter().map(|arg| &arg.name).collect();
+        let arg_types: Vec<&Type> = self.client_args.iter().map(|arg| &arg.ty).collect();
+        let remaining_arg = if self.has_remaining {
+            quote!(, remaining)
+        } else {
+            quote!()
+        };
+        quote! {
+            #macro_ident!(#struct_name, [#(#disc_values),*], {#(#arg_names : #arg_types),*} #remaining_arg);
+        }
+    }
+}
+
 pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut module = parse_macro_input!(item as ItemMod);
     let mod_name = module.ident.clone();
@@ -74,15 +185,9 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     // Scan for #[instruction(discriminator = ...)] functions
-    let mut dispatch_arms: Vec<proc_macro2::TokenStream> = Vec::new();
-    let mut client_items: Vec<proc_macro2::TokenStream> = Vec::new();
+    let mut instruction_specs = Vec::new();
     let mut seen_discriminators: Vec<(Vec<u8>, String)> = Vec::new();
     let mut disc_len: Option<usize> = None;
-    let mut heap_flags: Vec<bool> = Vec::new();
-    // Per-instruction data for inline dispatch generation (used when any_heap)
-    let mut arm_disc_tokens: Vec<Vec<proc_macro2::TokenStream>> = Vec::new();
-    let mut arm_fn_names: Vec<Ident> = Vec::new();
-    let mut arm_accounts_types: Vec<proc_macro2::TokenStream> = Vec::new();
 
     for item in items {
         if let Item::Fn(func) = item {
@@ -151,14 +256,6 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
                     seen_discriminators.push((disc_values.clone(), fn_name.to_string()));
 
-                    dispatch_arms.push(quote! {
-                        [#(#disc_bytes),*] => #fn_name(#accounts_type)
-                    });
-                    heap_flags.push(args.heap);
-                    arm_disc_tokens.push(disc_bytes.iter().map(|b| quote!(#b)).collect());
-                    arm_fn_names.push(fn_name.clone());
-                    arm_accounts_types.push(accounts_type.clone());
-
                     // Collect data for client module generation — invoke the macro_rules
                     // bridge emitted by derive(Accounts)
                     let struct_name =
@@ -176,33 +273,68 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
                             Pat::Ident(pi) => pi.ident.clone(),
                             _ => continue,
                         };
-                        let ty = if let Some(PodDynField::Str { prefix_bytes, .. }) =
-                            classify_pod_string(&pt.ty)
-                        {
-                            let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
-                            syn::parse_quote!(quasar_lang::client::DynBytes<#pfx_ty>)
-                        } else if let Some(PodDynField::Vec {
-                            elem, prefix_bytes, ..
-                        }) = classify_pod_vec(&pt.ty)
-                        {
-                            let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
-                            syn::parse_quote!(quasar_lang::client::DynVec<#elem, #pfx_ty>)
+                        let ty = if classify_lifetime_arg(&pt.ty) {
+                            // Borrowed struct (has lifetime param) — the off-chain client
+                            // takes pre-serialized bytes. The user is responsible for
+                            // encoding the struct into the wire format.
+                            syn::parse_quote!(::alloc::vec::Vec<u8>)
+                        } else if let Some(pod_dyn) = classify_pod_dynamic(&pt.ty) {
+                            match pod_dyn {
+                                PodDynField::Str { prefix_bytes, .. } => {
+                                    let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
+                                    syn::parse_quote!(quasar_lang::client::DynString<#pfx_ty>)
+                                }
+                                PodDynField::Vec {
+                                    elem, prefix_bytes, ..
+                                } => {
+                                    let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
+                                    syn::parse_quote!(quasar_lang::client::DynVec<#elem, #pfx_ty>)
+                                }
+                            }
+                        } else if matches!(&*pt.ty, Type::Reference(_)) {
+                            // Borrowed arg (&str, &[T]) — parse #[max(N)] and map
+                            // to compact client type, same wire format as String<N>/Vec<T,N>.
+                            let (max_n, pfx) =
+                                parse_max_attr_from_program_arg(pt).unwrap_or((0, 0));
+                            if let Some(pd) = classify_borrowed_as_compact(&pt.ty, max_n, pfx) {
+                                match pd {
+                                    PodDynField::Str { prefix_bytes, .. } => {
+                                        let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
+                                        syn::parse_quote!(quasar_lang::client::DynString<#pfx_ty>)
+                                    }
+                                    PodDynField::Vec {
+                                        elem, prefix_bytes, ..
+                                    } => {
+                                        let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
+                                        syn::parse_quote!(quasar_lang::client::DynVec<#elem, #pfx_ty>)
+                                    }
+                                }
+                            } else {
+                                // Unsupported borrowed type — pass through; #[instruction]
+                                // will emit the real error.
+                                (*pt.ty).clone()
+                            }
                         } else {
                             (*pt.ty).clone()
                         };
                         remaining_args.push((name, ty));
                     }
 
-                    let arg_names: Vec<&Ident> = remaining_args.iter().map(|(n, _)| n).collect();
-                    let arg_types: Vec<&Type> = remaining_args.iter().map(|(_, t)| t).collect();
+                    let client_args = remaining_args
+                        .into_iter()
+                        .map(|(name, ty)| ClientArgSpec { name, ty })
+                        .collect();
 
-                    let remaining_arg = if ctx_kind.has_remaining() {
-                        quote!(, remaining)
-                    } else {
-                        quote!()
-                    };
-                    client_items.push(quote! {
-                        #macro_ident!(#struct_name, [#(#disc_values),*], {#(#arg_names : #arg_types),*} #remaining_arg);
+                    instruction_specs.push(InstructionSpec {
+                        fn_name: fn_name.clone(),
+                        disc_bytes: disc_bytes.clone(),
+                        disc_values,
+                        accounts_type,
+                        heap: args.heap,
+                        client_struct_name: struct_name,
+                        client_macro_ident: macro_ident,
+                        client_args,
+                        has_remaining: ctx_kind.has_remaining(),
                     });
 
                     break;
@@ -230,7 +362,17 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
         .into();
     }
 
-    let any_heap = heap_flags.iter().any(|&h| h);
+    let dispatch_arms: Vec<TokenStream2> = instruction_specs
+        .iter()
+        .map(InstructionSpec::dispatch_arm)
+        .collect();
+
+    let client_items: Vec<TokenStream2> = instruction_specs
+        .iter()
+        .map(InstructionSpec::client_item)
+        .collect();
+
+    let any_heap = instruction_specs.iter().any(|spec| spec.heap);
 
     // Append dispatch + entrypoint to the module
     if let Some((_, ref mut items)) = module.content {
@@ -254,45 +396,9 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
             // Heap endpoints get normal cursor init; non-heap endpoints poison
             // the cursor (clean alloc trap). Debug builds exempt non-heap
             // endpoints so alloc::format! works in error paths.
-            let heap_dispatch_arms: Vec<proc_macro2::TokenStream> = arm_disc_tokens
+            let heap_dispatch_arms: Vec<proc_macro2::TokenStream> = instruction_specs
                 .iter()
-                .zip(arm_fn_names.iter())
-                .zip(arm_accounts_types.iter())
-                .zip(heap_flags.iter())
-                .map(|(((disc_toks, fn_name), accounts_type), &is_heap)| {
-                    let cursor_init = if is_heap {
-                        quote! {
-                            #[cfg(feature = "alloc")]
-                            {
-                                unsafe {
-                                    let heap_start = super::allocator::HEAP_START_ADDRESS as usize;
-                                    *(heap_start as *mut usize) =
-                                        heap_start + core::mem::size_of::<usize>();
-                                }
-                            }
-                        }
-                    } else {
-                        quote! {
-                            #[cfg(feature = "alloc")]
-                            {
-                                #[cfg(feature = "debug")]
-                                unsafe {
-                                    let heap_start = super::allocator::HEAP_START_ADDRESS as usize;
-                                    *(heap_start as *mut usize) =
-                                        heap_start + core::mem::size_of::<usize>();
-                                }
-                                #[cfg(not(feature = "debug"))]
-                                unsafe {
-                                    *(super::allocator::HEAP_START_ADDRESS as *mut usize) =
-                                        super::allocator::HEAP_CURSOR_POISONED;
-                                }
-                            }
-                        }
-                    };
-                    quote! {
-                        [#(#disc_toks),*] => { #cursor_init } => #fn_name(#accounts_type)
-                    }
-                })
+                .map(InstructionSpec::heap_dispatch_arm)
                 .collect();
 
             items.push(syn::parse_quote! {
@@ -423,6 +529,21 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
             #[inline(always)]
             pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
                 &*(view as *const AccountView as *const Self)
+            }
+        }
+
+        impl quasar_lang::account_load::AccountLoad for EventAuthority {
+            type Params = ();
+
+            #[inline(always)]
+            fn check(
+                view: &AccountView,
+                _field_name: &str,
+            ) -> Result<(), ProgramError> {
+                if !quasar_lang::keys_eq(view.address(), &Self::ADDRESS) {
+                    return Err(ProgramError::InvalidSeeds);
+                }
+                Ok(())
             }
         }
 

@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(dead_code)]
 
 use pinocchio::{no_allocator, program_entrypoint, AccountView, Address, ProgramResult};
 

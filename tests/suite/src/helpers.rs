@@ -1,8 +1,10 @@
 use {
+    mollusk_svm::Mollusk,
     quasar_svm::{
         token::{Mint, TokenAccount},
-        Account, Pubkey, QuasarSvm,
+        Account, Instruction, Pubkey, QuasarSvm,
     },
+    solana_address::Address,
     solana_program_pack::Pack,
     spl_token_interface::state::AccountState,
 };
@@ -11,18 +13,39 @@ use {
 // SVM factories
 // ---------------------------------------------------------------------------
 
+fn deploy_artifact_so(name: &str) -> String {
+    format!("../../target/deploy/{name}.so")
+}
+
+fn read_deploy_elf(name: &str) -> Vec<u8> {
+    let path = deploy_artifact_so(name);
+    std::fs::read(&path).unwrap_or_else(|error| {
+        panic!("failed to read deploy artifact `{path}`: {error}. Run `make build-sbf` first.")
+    })
+}
+
+pub fn mollusk_for_program(program_id: &Address, name: &str) -> Mollusk {
+    let path = deploy_artifact_so(name);
+    assert!(
+        std::path::Path::new(&path).exists(),
+        "missing deploy artifact `{path}`. Run `make build-sbf` first."
+    );
+    let base = path.trim_end_matches(".so");
+    Mollusk::new(program_id, base)
+}
+
 pub fn svm_validate() -> QuasarSvm {
-    let elf = std::fs::read("../../target/deploy/quasar_test_token_validate.so").unwrap();
+    let elf = read_deploy_elf("quasar_test_token_validate");
     QuasarSvm::new().with_program(&quasar_test_token_validate::ID, &elf)
 }
 
 pub fn svm_init() -> QuasarSvm {
-    let elf = std::fs::read("../../target/deploy/quasar_test_token_init.so").unwrap();
+    let elf = read_deploy_elf("quasar_test_token_init");
     QuasarSvm::new().with_program(&quasar_test_token_init::ID, &elf)
 }
 
 pub fn svm_cpi() -> QuasarSvm {
-    let elf = std::fs::read("../../target/deploy/quasar_test_token_cpi.so").unwrap();
+    let elf = read_deploy_elf("quasar_test_token_cpi");
     QuasarSvm::new().with_program(&quasar_test_token_cpi::ID, &elf)
 }
 
@@ -40,6 +63,13 @@ pub fn token_2022_program_id() -> Pubkey {
 
 pub fn ata_program_id() -> Pubkey {
     quasar_svm::SPL_ASSOCIATED_TOKEN_PROGRAM_ID
+}
+
+pub fn with_signers(mut ix: Instruction, indices: &[usize]) -> Instruction {
+    for &i in indices {
+        ix.accounts[i].is_signer = true;
+    }
+    ix
 }
 
 // ---------------------------------------------------------------------------
@@ -194,12 +224,12 @@ pub fn raw_account(address: Pubkey, lamports: u64, data: Vec<u8>, owner: Pubkey)
 // ---------------------------------------------------------------------------
 
 pub fn svm_misc() -> QuasarSvm {
-    let elf = std::fs::read("../../target/deploy/quasar_test_misc.so").unwrap();
+    let elf = read_deploy_elf("quasar_test_misc");
     QuasarSvm::new().with_program(&quasar_test_misc::ID, &elf)
 }
 
 pub fn svm_errors() -> QuasarSvm {
-    let elf = std::fs::read("../../target/deploy/quasar_test_errors.so").unwrap();
+    let elf = read_deploy_elf("quasar_test_errors");
     QuasarSvm::new().with_program(&quasar_test_errors::ID, &elf)
 }
 
@@ -272,7 +302,7 @@ pub fn error_test_account(address: Pubkey, authority: Pubkey, value: u64) -> Acc
 }
 
 pub fn svm_heap() -> QuasarSvm {
-    let elf = std::fs::read("../../target/deploy/quasar_test_heap.so").unwrap();
+    let elf = read_deploy_elf("quasar_test_heap");
     QuasarSvm::new().with_program(&quasar_test_heap::ID, &elf)
 }
 

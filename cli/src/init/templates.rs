@@ -44,12 +44,12 @@ pub use initialize::*;
 pub(super) const INSTRUCTION_INITIALIZE: &str = r#"use quasar_lang::prelude::*;
 
 #[derive(Accounts)]
-pub struct Initialize<'info> {
-    pub payer: &'info mut Signer,
-    pub system_program: &'info Program<System>,
+pub struct Initialize {
+    pub payer: Signer,
+    pub system_program: Program<System>,
 }
 
-impl<'info> Initialize<'info> {
+impl Initialize {
     #[inline(always)]
     pub fn initialize(&self) -> Result<(), ProgramError> {
         Ok(())

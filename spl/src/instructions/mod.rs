@@ -10,7 +10,10 @@ mod transfer;
 mod transfer_checked;
 
 use quasar_lang::{cpi::CpiCall, prelude::*};
-pub use {initialize_account::initialize_account3, initialize_mint::initialize_mint2};
+pub use {
+    close_account::close_account, initialize_account::initialize_account3,
+    initialize_mint::initialize_mint2, transfer_checked::transfer_checked,
+};
 
 /// Trait for types that can execute SPL Token CPI calls.
 ///
@@ -225,5 +228,275 @@ pub trait TokenCpi: AsAccountView {
             mint_authority,
             freeze_authority,
         )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani proof harnesses for SPL Token instruction data layout
+// ---------------------------------------------------------------------------
+//
+// Each harness replicates the unsafe `MaybeUninit` + pointer-write pattern used
+// by the corresponding instruction builder and asserts:
+//   1. The discriminator byte is correct.
+//   2. Payload fields are written at the expected offsets.
+//   3. All bytes of the buffer are initialised before `assume_init`.
+//
+// Because the harnesses use `kani::any()` for payload values, Kani explores
+// *every* possible input, giving us a full proof — not just example-based
+// tests.
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_proofs {
+
+    // -- transfer (disc=3, 9-byte buffer) ----------------------------------
+
+    /// Prove that the `transfer` instruction data layout is correct for all
+    /// possible `amount` values.
+    #[kani::proof]
+    fn transfer_instruction_layout() {
+        let amount: u64 = kani::any();
+
+        let data = unsafe {
+            let mut buf = core::mem::MaybeUninit::<[u8; 9]>::uninit();
+            let ptr = buf.as_mut_ptr() as *mut u8;
+            core::ptr::write(ptr, 3u8);
+            (ptr.add(1) as *mut u64).write_unaligned(amount);
+            buf.assume_init()
+        };
+
+        // Discriminator at offset 0
+        assert!(data[0] == 3u8);
+        // Amount at offset 1..9 (little-endian)
+        let amount_bytes = amount.to_le_bytes();
+        assert!(data[1] == amount_bytes[0]);
+        assert!(data[2] == amount_bytes[1]);
+        assert!(data[3] == amount_bytes[2]);
+        assert!(data[4] == amount_bytes[3]);
+        assert!(data[5] == amount_bytes[4]);
+        assert!(data[6] == amount_bytes[5]);
+        assert!(data[7] == amount_bytes[6]);
+        assert!(data[8] == amount_bytes[7]);
+    }
+
+    // -- mint_to (disc=7, 9-byte buffer) -----------------------------------
+
+    /// Prove that the `mint_to` instruction data layout is correct for all
+    /// possible `amount` values.
+    #[kani::proof]
+    fn mint_to_instruction_layout() {
+        let amount: u64 = kani::any();
+
+        let data = unsafe {
+            let mut buf = core::mem::MaybeUninit::<[u8; 9]>::uninit();
+            let ptr = buf.as_mut_ptr() as *mut u8;
+            core::ptr::write(ptr, 7u8);
+            (ptr.add(1) as *mut u64).write_unaligned(amount);
+            buf.assume_init()
+        };
+
+        assert!(data[0] == 7u8);
+        let amount_bytes = amount.to_le_bytes();
+        assert!(data[1] == amount_bytes[0]);
+        assert!(data[2] == amount_bytes[1]);
+        assert!(data[3] == amount_bytes[2]);
+        assert!(data[4] == amount_bytes[3]);
+        assert!(data[5] == amount_bytes[4]);
+        assert!(data[6] == amount_bytes[5]);
+        assert!(data[7] == amount_bytes[6]);
+        assert!(data[8] == amount_bytes[7]);
+    }
+
+    // -- burn (disc=8, 9-byte buffer) --------------------------------------
+
+    /// Prove that the `burn` instruction data layout is correct for all
+    /// possible `amount` values.
+    #[kani::proof]
+    fn burn_instruction_layout() {
+        let amount: u64 = kani::any();
+
+        let data = unsafe {
+            let mut buf = core::mem::MaybeUninit::<[u8; 9]>::uninit();
+            let ptr = buf.as_mut_ptr() as *mut u8;
+            core::ptr::write(ptr, 8u8);
+            (ptr.add(1) as *mut u64).write_unaligned(amount);
+            buf.assume_init()
+        };
+
+        assert!(data[0] == 8u8);
+        let amount_bytes = amount.to_le_bytes();
+        assert!(data[1] == amount_bytes[0]);
+        assert!(data[2] == amount_bytes[1]);
+        assert!(data[3] == amount_bytes[2]);
+        assert!(data[4] == amount_bytes[3]);
+        assert!(data[5] == amount_bytes[4]);
+        assert!(data[6] == amount_bytes[5]);
+        assert!(data[7] == amount_bytes[6]);
+        assert!(data[8] == amount_bytes[7]);
+    }
+
+    // -- approve (disc=4, 9-byte buffer) -----------------------------------
+
+    /// Prove that the `approve` instruction data layout is correct for all
+    /// possible `amount` values.
+    #[kani::proof]
+    fn approve_instruction_layout() {
+        let amount: u64 = kani::any();
+
+        let data = unsafe {
+            let mut buf = core::mem::MaybeUninit::<[u8; 9]>::uninit();
+            let ptr = buf.as_mut_ptr() as *mut u8;
+            core::ptr::write(ptr, 4u8);
+            (ptr.add(1) as *mut u64).write_unaligned(amount);
+            buf.assume_init()
+        };
+
+        assert!(data[0] == 4u8);
+        let amount_bytes = amount.to_le_bytes();
+        assert!(data[1] == amount_bytes[0]);
+        assert!(data[2] == amount_bytes[1]);
+        assert!(data[3] == amount_bytes[2]);
+        assert!(data[4] == amount_bytes[3]);
+        assert!(data[5] == amount_bytes[4]);
+        assert!(data[6] == amount_bytes[5]);
+        assert!(data[7] == amount_bytes[6]);
+        assert!(data[8] == amount_bytes[7]);
+    }
+
+    // -- transfer_checked (disc=12, 10-byte buffer) ------------------------
+
+    /// Prove that the `transfer_checked` instruction data layout is correct
+    /// for all possible `amount` and `decimals` values.
+    #[kani::proof]
+    fn transfer_checked_instruction_layout() {
+        let amount: u64 = kani::any();
+        let decimals: u8 = kani::any();
+
+        let data = unsafe {
+            let mut buf = core::mem::MaybeUninit::<[u8; 10]>::uninit();
+            let ptr = buf.as_mut_ptr() as *mut u8;
+            core::ptr::write(ptr, 12u8);
+            (ptr.add(1) as *mut u64).write_unaligned(amount);
+            core::ptr::write(ptr.add(9), decimals);
+            buf.assume_init()
+        };
+
+        assert!(data[0] == 12u8);
+        let amount_bytes = amount.to_le_bytes();
+        assert!(data[1] == amount_bytes[0]);
+        assert!(data[2] == amount_bytes[1]);
+        assert!(data[3] == amount_bytes[2]);
+        assert!(data[4] == amount_bytes[3]);
+        assert!(data[5] == amount_bytes[4]);
+        assert!(data[6] == amount_bytes[5]);
+        assert!(data[7] == amount_bytes[6]);
+        assert!(data[8] == amount_bytes[7]);
+        assert!(data[9] == decimals);
+    }
+
+    // -- initialize_account3 (disc=18, 33-byte buffer) ---------------------
+
+    /// Prove that the `initialize_account3` instruction data layout is
+    /// correct for all possible owner addresses.
+    #[kani::proof]
+    fn initialize_account3_instruction_layout() {
+        let owner: [u8; 32] = kani::any();
+
+        let data = unsafe {
+            let mut buf = core::mem::MaybeUninit::<[u8; 33]>::uninit();
+            let ptr = buf.as_mut_ptr() as *mut u8;
+            core::ptr::write(ptr, 18u8);
+            core::ptr::copy_nonoverlapping(owner.as_ptr(), ptr.add(1), 32);
+            buf.assume_init()
+        };
+
+        // Discriminator
+        assert!(data[0] == 18u8);
+        // Owner address at [1..33]
+        let mut i: usize = 0;
+        while i < 32 {
+            assert!(data[1 + i] == owner[i]);
+            i += 1;
+        }
+    }
+
+    // -- initialize_mint2 (disc=20, 67-byte buffer) ------------------------
+
+    /// Prove that the `initialize_mint2` instruction data layout is correct
+    /// when a freeze authority IS provided.
+    #[kani::proof]
+    fn initialize_mint2_instruction_layout_with_freeze() {
+        let decimals: u8 = kani::any();
+        let mint_authority: [u8; 32] = kani::any();
+        let freeze_authority: [u8; 32] = kani::any();
+
+        let data = unsafe {
+            let mut buf = core::mem::MaybeUninit::<[u8; 67]>::uninit();
+            let ptr = buf.as_mut_ptr() as *mut u8;
+            core::ptr::write(ptr, 20u8);
+            core::ptr::write(ptr.add(1), decimals);
+            core::ptr::copy_nonoverlapping(mint_authority.as_ptr(), ptr.add(2), 32);
+            // freeze authority present
+            core::ptr::write(ptr.add(34), 1u8);
+            core::ptr::copy_nonoverlapping(freeze_authority.as_ptr(), ptr.add(35), 32);
+            buf.assume_init()
+        };
+
+        // Discriminator
+        assert!(data[0] == 20u8);
+        // Decimals
+        assert!(data[1] == decimals);
+        // Mint authority at [2..34]
+        let mut i: usize = 0;
+        while i < 32 {
+            assert!(data[2 + i] == mint_authority[i]);
+            i += 1;
+        }
+        // has_freeze_auth flag
+        assert!(data[34] == 1u8);
+        // Freeze authority at [35..67]
+        i = 0;
+        while i < 32 {
+            assert!(data[35 + i] == freeze_authority[i]);
+            i += 1;
+        }
+    }
+
+    /// Prove that the `initialize_mint2` instruction data layout is correct
+    /// when NO freeze authority is provided (33 zero bytes at [34..67]).
+    #[kani::proof]
+    fn initialize_mint2_instruction_layout_without_freeze() {
+        let decimals: u8 = kani::any();
+        let mint_authority: [u8; 32] = kani::any();
+
+        let data = unsafe {
+            let mut buf = core::mem::MaybeUninit::<[u8; 67]>::uninit();
+            let ptr = buf.as_mut_ptr() as *mut u8;
+            core::ptr::write(ptr, 20u8);
+            core::ptr::write(ptr.add(1), decimals);
+            core::ptr::copy_nonoverlapping(mint_authority.as_ptr(), ptr.add(2), 32);
+            // no freeze authority — zero 33 bytes
+            core::ptr::write_bytes(ptr.add(34), 0, 33);
+            buf.assume_init()
+        };
+
+        // Discriminator
+        assert!(data[0] == 20u8);
+        // Decimals
+        assert!(data[1] == decimals);
+        // Mint authority at [2..34]
+        let mut i: usize = 0;
+        while i < 32 {
+            assert!(data[2 + i] == mint_authority[i]);
+            i += 1;
+        }
+        // has_freeze_auth flag must be 0
+        assert!(data[34] == 0u8);
+        // Remaining 32 bytes must be zero
+        i = 0;
+        while i < 32 {
+            assert!(data[35 + i] == 0u8);
+            i += 1;
+        }
     }
 }

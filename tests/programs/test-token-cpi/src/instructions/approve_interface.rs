@@ -1,6 +1,6 @@
 use {
-    quasar_lang::prelude::*,
-    quasar_spl::{InterfaceAccount, Token, TokenCpi, TokenInterface},
+    quasar_lang::prelude::{InterfaceAccount, *},
+    quasar_spl::{Token, TokenCpi, TokenInterface},
 };
 
 #[derive(Accounts)]

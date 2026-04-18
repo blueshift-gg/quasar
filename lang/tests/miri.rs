@@ -360,6 +360,8 @@ impl Owner for TestAccountType {
 }
 
 impl AccountCheck for TestAccountType {
+    type Params = ();
+
     fn check(_view: &AccountView) -> Result<(), ProgramError> {
         Ok(())
     }
@@ -413,6 +415,8 @@ impl Owner for TestCloseableType {
 }
 
 impl AccountCheck for TestCloseableType {
+    type Params = ();
+
     fn check(_view: &AccountView) -> Result<(), ProgramError> {
         Ok(())
     }

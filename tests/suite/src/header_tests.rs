@@ -1,4 +1,5 @@
 use {
+    crate::helpers::mollusk_for_program,
     mollusk_svm::{result::ProgramResult as MolluskResult, Mollusk},
     quasar_lang::prelude::ProgramError,
     solana_account::Account,
@@ -7,10 +8,7 @@ use {
 };
 
 fn setup() -> Mollusk {
-    Mollusk::new(
-        &quasar_test_errors::ID,
-        "../../target/deploy/quasar_test_errors",
-    )
+    mollusk_for_program(&quasar_test_errors::ID, "quasar_test_errors")
 }
 
 const SYSTEM_PROGRAM_ID: Address = Address::new_from_array([

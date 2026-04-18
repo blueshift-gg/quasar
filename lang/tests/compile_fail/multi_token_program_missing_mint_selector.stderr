@@ -1,5 +1,0 @@
-error: Multiple token program fields detected. `mint::token_program = <field>` is required for `mint::*` / `master_edition::*` on this field when more than one token program field is present.
-  --> tests/compile_fail/multi_token_program_missing_mint_selector.rs:19:9
-   |
-19 |     pub mint: Account<Mint>,
-   |         ^^^^

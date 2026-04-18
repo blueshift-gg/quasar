@@ -7,7 +7,6 @@ edition = "2021"
 workspace = true
 
 [dependencies]
-quasar-lang = { path = "../../../lang" }
-wincode = { version = "0.4", features = ["derive"] }
-solana-address = "2.2"
+wincode = { version = "=0.4.9", features = ["derive"] }
+solana-address = { version = "=2.2.0", features = ["wincode"] }
 solana-instruction = "3"

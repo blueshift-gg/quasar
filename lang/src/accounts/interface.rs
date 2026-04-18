@@ -1,24 +1,7 @@
 use crate::prelude::*;
 
-/// A wrapper for program interface accounts that accept multiple program IDs.
-///
-/// Similar to `Program<T>` but validates against multiple allowed addresses
-/// via the [`ProgramInterface`] trait.
-///
-/// # Example
-/// ```ignore
-/// pub struct TokenProgramInterface;
-/// impl ProgramInterface for TokenProgramInterface {
-///     fn matches(address: &Address) -> bool {
-///         *address == TOKEN_PROGRAM_ID || *address == TOKEN_2022_PROGRAM_ID
-///     }
-/// }
-///
-/// #[derive(Accounts)]
-/// pub struct Transfer<'info> {
-///     pub token_program: &'info Interface<TokenProgramInterface>,
-/// }
-/// ```
+/// Program interface wrapper. Validates against multiple program IDs via
+/// `ProgramInterface`.
 #[repr(transparent)]
 pub struct Interface<T: ProgramInterface> {
     view: AccountView,
@@ -29,6 +12,17 @@ impl<T: ProgramInterface> AsAccountView for Interface<T> {
     #[inline(always)]
     fn to_account_view(&self) -> &AccountView {
         &self.view
+    }
+}
+
+impl<T: ProgramInterface> crate::account_load::AccountLoad for Interface<T> {
+    const IS_EXECUTABLE: bool = true;
+
+    type Params = ();
+
+    #[inline(always)]
+    fn check(view: &AccountView, field_name: &str) -> Result<(), ProgramError> {
+        crate::validation::check_interface::<T>(view, field_name)
     }
 }
 

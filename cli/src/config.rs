@@ -61,6 +61,7 @@ pub struct TypeScriptTestingConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct ClientsConfig {
+    pub path: PathBuf,
     pub languages: Vec<String>,
 }
 
@@ -116,6 +117,13 @@ impl QuasarConfig {
         self.lint.as_ref().is_some_and(|l| l.enabled)
     }
 
+    pub fn client_path(&self) -> PathBuf {
+        self.clients
+            .as_ref()
+            .map(|c| c.path.clone())
+            .unwrap_or(PathBuf::from("target").join("client"))
+    }
+
     pub fn client_languages(&self) -> Vec<&str> {
         match self.clients {
             Some(ref c) => c.languages.iter().map(|s| s.as_str()).collect(),
@@ -129,6 +137,15 @@ impl QuasarConfig {
             }
         }
     }
+}
+
+pub fn resolve_client_path() -> Result<PathBuf, CliError> {
+    let config_path = Path::new("Quasar.toml");
+    if !config_path.exists() {
+        return Ok(PathBuf::from("target").join("client"));
+    }
+
+    QuasarConfig::load_from(config_path).map(|config| config.client_path())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

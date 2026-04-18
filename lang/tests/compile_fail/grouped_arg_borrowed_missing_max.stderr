@@ -1,0 +1,5 @@
+error: borrowed fields in QuasarSerialize require #[max(N)] annotation
+ --> tests/compile_fail/grouped_arg_borrowed_missing_max.rs:9:15
+  |
+9 |     pub name: &'a str,
+  |               ^^^^^^^

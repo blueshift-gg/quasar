@@ -1,4 +1,5 @@
 use {
+    crate::helpers::mollusk_for_program,
     mollusk_svm::{program::keyed_account_for_system_program, Mollusk},
     quasar_test_pda::cpi::*,
     solana_account::Account,
@@ -15,7 +16,7 @@ const MAX_SEED_SIZE: usize = 2;
 const THREE_SEED_SIZE: usize = 66;
 
 fn setup() -> Mollusk {
-    Mollusk::new(&quasar_test_pda::ID, "../../target/deploy/quasar_test_pda")
+    mollusk_for_program(&quasar_test_pda::ID, "quasar_test_pda")
 }
 
 fn build_user_account_data(authority: Address, value: u64, bump: u8) -> Vec<u8> {
@@ -1291,4 +1292,76 @@ fn test_typed_seed_deserialized_field() {
         "verify scoped_item with deserialized field seed failed: {:?}",
         result3.program_result
     );
+}
+
+// ── Init with account field seed ─────────────────────────────────────────────
+
+#[test]
+fn test_init_typed_seed_from_account_field() {
+    // Verifies that `seeds = ScopedItem::seeds(config.namespace)` works when
+    // `item` is an `init` account — i.e. `typed_seed_slice_expr_init` correctly
+    // casts `&mut AccountView` → `&NamespaceConfig` to access `.namespace`.
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let payer = Address::new_unique();
+    let namespace: u32 = 99;
+
+    // Step 1: Create the NamespaceConfig
+    let (config_pda, _) = Address::find_program_address(&[b"ns_config"], &quasar_test_pda::ID);
+
+    let init_config_ix: Instruction = InitNsConfigInstruction {
+        payer,
+        config: config_pda,
+        system_program,
+        namespace,
+    }
+    .into();
+
+    let result = mollusk.process_instruction(
+        &init_config_ix,
+        &[
+            (payer, Account::new(1_000_000_000, 0, &system_program)),
+            (config_pda, Account::default()),
+            (system_program, system_program_account.clone()),
+        ],
+    );
+    assert!(
+        result.program_result.is_ok(),
+        "init ns_config failed: {:?}",
+        result.program_result
+    );
+    let config_account = result.resulting_accounts[1].1.clone();
+
+    // Step 2: Init the ScopedItem using config.namespace (field access seed)
+    let (item_pda, _) =
+        Address::find_program_address(&[b"scoped", &namespace.to_le_bytes()], &quasar_test_pda::ID);
+
+    let init_from_config_ix: Instruction = InitScopedItemFromConfigInstruction {
+        payer,
+        config: config_pda,
+        item: item_pda,
+        system_program,
+    }
+    .into();
+
+    let payer_after_config = result.resulting_accounts[0].1.clone();
+    let result2 = mollusk.process_instruction(
+        &init_from_config_ix,
+        &[
+            (payer, payer_after_config),
+            (config_pda, config_account),
+            (item_pda, Account::default()),
+            (system_program, system_program_account),
+        ],
+    );
+    assert!(
+        result2.program_result.is_ok(),
+        "init scoped_item from config field seed failed: {:?}",
+        result2.program_result
+    );
+    let item_account = &result2.resulting_accounts[2].1;
+    assert_eq!(item_account.data.len(), SCOPED_ITEM_SIZE);
+    assert_eq!(item_account.data[0], 10); // discriminator
+                                          // namespace field is at bytes 1..5 (u32 le)
+    assert_eq!(&item_account.data[1..5], &namespace.to_le_bytes());
 }

@@ -1,5 +1,6 @@
 error: #[account(realloc)] is only valid on Account<T> fields
- --> tests/compile_fail/realloc_bad_unchecked.rs:9:9
+ --> tests/compile_fail/realloc_bad_unchecked.rs:8:5
   |
-9 |     pub account: UncheckedAccount,
-  |         ^^^^^^^
+8 | /     #[account(mut, realloc = 64)]
+9 | |     pub account: UncheckedAccount,
+  | |_________________________________^

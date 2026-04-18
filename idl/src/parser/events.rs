@@ -3,7 +3,7 @@
 use {
     crate::{
         parser::helpers,
-        types::{IdlEventDef, IdlField, IdlTypeDef, IdlTypeDefType},
+        types::{IdlEventDef, IdlField, IdlTypeDef, IdlTypeDefKind, IdlTypeDefType},
     },
     syn::{Fields, Item},
 };
@@ -85,7 +85,7 @@ pub fn to_idl_type_def(raw: &RawEvent) -> IdlTypeDef {
     IdlTypeDef {
         name: raw.name.clone(),
         ty: IdlTypeDefType {
-            kind: "struct".to_string(),
+            kind: IdlTypeDefKind::Struct,
             fields,
         },
     }

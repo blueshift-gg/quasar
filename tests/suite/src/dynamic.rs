@@ -1,4 +1,5 @@
 use {
+    crate::helpers::mollusk_for_program,
     mollusk_svm::{program::keyed_account_for_system_program, result::ProgramResult, Mollusk},
     quasar_lang::prelude::ProgramError,
     quasar_test_misc::cpi::*,
@@ -8,7 +9,7 @@ use {
 };
 
 const DYNAMIC_ACCOUNT_DISC: u8 = 5;
-const DYNAMIC_HEADER_SIZE: usize = 1; // disc only (no fixed ZC fields)
+const DYNAMIC_HEADER_SIZE: usize = 1; // disc byte only (compact header follows)
 const MIXED_ACCOUNT_DISC: u8 = 6;
 const MIXED_FIXED_SIZE: usize = 32 + 8; // Address + u64
 const SMALL_PREFIX_DISC: u8 = 7;
@@ -17,27 +18,28 @@ const DYN_BYTES_DISC: u8 = 9;
 const DYN_FIXED_SIZE: usize = 32; // Address
 
 fn build_dynamic_account_data(name: &[u8], tags: &[Address]) -> Vec<u8> {
-    // Layout: [disc(1)][u8:name_len(1)][name_bytes][u16:
-    // tags_count(2)][tag_elements]
+    // Compact layout: [disc(1)][header: u8 name_len(1) + u16 tags_count(2)][tail:
+    // name_bytes + tag_bytes]
     let name_len = name.len();
     let tags_count = tags.len();
     let tags_bytes = tags_count * 32;
-    let total = DYNAMIC_HEADER_SIZE + 1 + name_len + 2 + tags_bytes;
+    let header_size = 1 + 2; // u8 name_len + u16 tags_count
+    let total = DYNAMIC_HEADER_SIZE + header_size + name_len + tags_bytes;
     let mut data = vec![0u8; total];
 
     let mut offset = 0;
     data[offset] = DYNAMIC_ACCOUNT_DISC;
     offset += 1;
 
-    // name: u8 prefix (byte length) + data
+    // Header: all length prefixes grouped together
     data[offset] = name_len as u8;
     offset += 1;
-    data[offset..offset + name_len].copy_from_slice(name);
-    offset += name_len;
-
-    // tags: u16 prefix (element count) + elements
     data[offset..offset + 2].copy_from_slice(&(tags_count as u16).to_le_bytes());
     offset += 2;
+
+    // Tail: all data grouped together
+    data[offset..offset + name_len].copy_from_slice(name);
+    offset += name_len;
     for (i, tag) in tags.iter().enumerate() {
         data[offset + i * 32..offset + (i + 1) * 32].copy_from_slice(tag.as_ref());
     }
@@ -70,24 +72,27 @@ fn build_mixed_account_data(authority: Address, value: u64, label: &[u8]) -> Vec
 }
 
 fn build_small_prefix_account_data(tag: &[u8], scores: &[u8]) -> Vec<u8> {
-    // Layout: [disc(1)][u8:tag_len(1)][tag_bytes][u16:
-    // scores_count(2)][score_elements]
+    // Compact layout: [disc(1)][header: u8 tag_len(1) + u16 scores_count(2)][tail:
+    // tag_bytes + score_bytes]
     let tag_len = tag.len();
     let scores_count = scores.len();
-    let total = 1 + 1 + tag_len + 2 + scores_count;
+    let header_size = 1 + 2; // u8 tag_len + u16 scores_count
+    let total = 1 + header_size + tag_len + scores_count;
     let mut data = vec![0u8; total];
 
     let mut offset = 0;
     data[offset] = SMALL_PREFIX_DISC;
     offset += 1;
 
+    // Header: all length prefixes grouped together
     data[offset] = tag_len as u8;
     offset += 1;
-    data[offset..offset + tag_len].copy_from_slice(tag);
-    offset += tag_len;
-
     data[offset..offset + 2].copy_from_slice(&(scores_count as u16).to_le_bytes());
     offset += 2;
+
+    // Tail: all data grouped together
+    data[offset..offset + tag_len].copy_from_slice(tag);
+    offset += tag_len;
     data[offset..offset + scores_count].copy_from_slice(scores);
 
     data
@@ -135,14 +140,62 @@ fn build_mutate_then_readback_instruction(
     account: Address,
     payer: Address,
     system_program: Address,
-    new_name: &[u8],
     expected_tags_count: u8,
+    new_name: &[u8],
 ) -> Instruction {
-    // Fixed args come first in ZC struct, then dynamic fields with inline prefixes.
     // Layout: [disc(27)][expected_tags_count(u8)][u8:name_len][name_bytes]
-    // String<N> instruction args use u8 prefix on the wire.
+    // Fixed args occupy the instruction header; dynamic args form a suffix.
     let mut data = vec![27];
     data.push(expected_tags_count);
+    data.push(new_name.len() as u8);
+    data.extend_from_slice(new_name);
+    Instruction {
+        program_id: quasar_test_misc::ID,
+        accounts: vec![
+            solana_instruction::AccountMeta::new(account, false),
+            solana_instruction::AccountMeta::new(payer, true),
+            solana_instruction::AccountMeta::new_readonly(system_program, false),
+        ],
+        data,
+    }
+}
+
+fn build_dynamic_view_mut_instruction(
+    account: Address,
+    payer: Address,
+    system_program: Address,
+    new_name: &[u8],
+    new_tags: &[Address],
+) -> Instruction {
+    // Compact layout: [disc(58)][header: u8 name_len, u16 tags_count][tail:
+    // name_bytes, tag_bytes]
+    let mut data = vec![58];
+    // Header: all length prefixes grouped together
+    data.push(new_name.len() as u8);
+    data.extend_from_slice(&(new_tags.len() as u16).to_le_bytes());
+    // Tail: all data grouped together
+    data.extend_from_slice(new_name);
+    for tag in new_tags {
+        data.extend_from_slice(tag.as_ref());
+    }
+    Instruction {
+        program_id: quasar_test_misc::ID,
+        accounts: vec![
+            solana_instruction::AccountMeta::new(account, false),
+            solana_instruction::AccountMeta::new(payer, true),
+            solana_instruction::AccountMeta::new_readonly(system_program, false),
+        ],
+        data,
+    }
+}
+
+fn build_dynamic_view_mut_missing_field_instruction(
+    account: Address,
+    payer: Address,
+    system_program: Address,
+    new_name: &[u8],
+) -> Instruction {
+    let mut data = vec![59];
     data.push(new_name.len() as u8);
     data.extend_from_slice(new_name);
     Instruction {
@@ -203,10 +256,7 @@ fn build_dyn_bytes_check_instruction(account: Address, expected_len: u8) -> Inst
 }
 
 fn setup() -> Mollusk {
-    Mollusk::new(
-        &quasar_test_misc::ID,
-        "../../target/deploy/quasar_test_misc",
-    )
+    mollusk_for_program(&quasar_test_misc::ID, "quasar_test_misc")
 }
 
 // ============================================================================
@@ -221,7 +271,7 @@ fn test_dynamic_instruction_invalid_utf8_rejected() {
 
     let instruction: Instruction = DynamicInstructionCheckInstruction {
         authority,
-        name: quasar_lang::client::DynBytes::new(vec![0xFF]),
+        name: quasar_lang::client::DynString::from(vec![0xFF]),
     }
     .into();
 
@@ -1066,16 +1116,16 @@ fn test_dynamic_mutate_same_length_name() {
         result.program_result
     );
 
-    // Verify the account data was updated
+    // Verify the account data was updated (compact layout: header then tail)
     let result_data = &result.resulting_accounts[0].1.data;
     assert_eq!(result_data[0], DYNAMIC_ACCOUNT_DISC);
-    // Read name prefix (u8 at offset 1)
+    // Compact header: [name_len(1)][tags_count(2)]
     let name_len = result_data[1] as usize;
     assert_eq!(name_len, 5);
-    assert_eq!(&result_data[2..7], b"world");
-    // Verify tags were preserved (u16 at offset 7)
-    let tags_count = u16::from_le_bytes(result_data[7..9].try_into().unwrap()) as usize;
+    let tags_count = u16::from_le_bytes(result_data[2..4].try_into().unwrap()) as usize;
     assert_eq!(tags_count, 1);
+    // Compact tail: [name_bytes][tag_bytes]
+    assert_eq!(&result_data[4..9], b"world");
     assert_eq!(&result_data[9..41], tag.as_ref());
 }
 
@@ -1115,7 +1165,8 @@ fn test_dynamic_mutate_shorter_name() {
     let result_data = &result.resulting_accounts[0].1.data;
     let name_len = result_data[1] as usize;
     assert_eq!(name_len, 2);
-    assert_eq!(&result_data[2..4], b"hi");
+    // Compact tail starts after header (disc + name_len + tags_count = 4)
+    assert_eq!(&result_data[4..6], b"hi");
 }
 
 #[test]
@@ -1154,7 +1205,8 @@ fn test_dynamic_mutate_longer_name() {
     let result_data = &result.resulting_accounts[0].1.data;
     let name_len = result_data[1] as usize;
     assert_eq!(name_len, 8);
-    assert_eq!(&result_data[2..10], b"12345678");
+    // Compact tail starts after header (disc + name_len + tags_count = 4)
+    assert_eq!(&result_data[4..12], b"12345678");
 }
 
 #[test]
@@ -1232,12 +1284,13 @@ fn test_dynamic_mutate_preserves_trailing_vec() {
     );
 
     let result_data = &result.resulting_accounts[0].1.data;
+    // Compact header: [name_len(1)][tags_count(2)]
     let name_len = result_data[1] as usize;
     assert_eq!(name_len, 6);
-    assert_eq!(&result_data[2..8], b"abcdef");
-    // Verify tags were shifted correctly (u16 tags_count at offset 8)
-    let tags_count = u16::from_le_bytes(result_data[8..10].try_into().unwrap()) as usize;
+    let tags_count = u16::from_le_bytes(result_data[2..4].try_into().unwrap()) as usize;
     assert_eq!(tags_count, 2);
+    // Compact tail: [name_bytes][tag_bytes]
+    assert_eq!(&result_data[4..10], b"abcdef");
     assert_eq!(&result_data[10..42], tag1.as_ref());
     assert_eq!(&result_data[42..74], tag2.as_ref());
 }
@@ -1317,12 +1370,12 @@ fn test_adversarial_prefix_one_past_max() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    // disc + u8 prefix(9) + "aaaaaaaaa" + u16 tags prefix(0)
-    let mut data = vec![0u8; 1 + 1 + 9 + 2];
+    // Compact: disc + header(u8 prefix=9, u16 tags=0) + tail("aaaaaaaaa")
+    let mut data = vec![0u8; 1 + 1 + 2 + 9];
     data[0] = DYNAMIC_ACCOUNT_DISC;
     data[1] = 9; // name len = 9 (max=8)
-    data[2..11].copy_from_slice(b"aaaaaaaaa");
-    data[11..13].copy_from_slice(&0u16.to_le_bytes());
+    data[2..4].copy_from_slice(&0u16.to_le_bytes());
+    data[4..13].copy_from_slice(b"aaaaaaaaa");
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -1410,19 +1463,20 @@ fn test_adversarial_vec_count_one_past_max() {
     );
 }
 
-/// Name prefix says valid length but data crosses into tags prefix bytes.
-/// Specifically: name len=8 but account only has disc(1)+prefix(1)+5 bytes.
-/// The name "reads into" where tags prefix would be.
+/// Name prefix claims more tail bytes than available.
+/// Compact header: [name_len=8][tags_count=0] but only 3 bytes of tail present.
 #[test]
 fn test_adversarial_name_data_overlaps_tags_prefix_region() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    // 1 + 1 + 5 = 7 bytes. Prefix says len=8 but only 5 bytes of data exist.
+    // Compact: disc(1) + header(3) + 3 bytes of tail = 7 bytes total.
+    // Header claims name_len=8, but only 3 tail bytes exist.
     let mut data = vec![0u8; 7];
     data[0] = DYNAMIC_ACCOUNT_DISC;
     data[1] = 8; // u8 prefix claims 8 bytes
-    data[2..7].copy_from_slice(b"abcde"); // only 5 bytes present
+    data[2..4].copy_from_slice(&0u16.to_le_bytes()); // tags_count = 0
+    data[4..7].copy_from_slice(b"abc"); // only 3 bytes of tail present
 
     let account_data = Account {
         lamports: 1_000_000,
@@ -1437,8 +1491,8 @@ fn test_adversarial_name_data_overlaps_tags_prefix_region() {
 
     assert_eq!(
         result.program_result,
-        ProgramResult::Failure(ProgramError::AccountDataTooSmall),
-        "prefix claiming more bytes than available must fail with AccountDataTooSmall"
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
+        "prefix claiming more bytes than available must fail"
     );
 }
 
@@ -1469,7 +1523,7 @@ fn test_adversarial_vec_data_truncated_mid_element() {
 
     assert_eq!(
         result.program_result,
-        ProgramResult::Failure(ProgramError::AccountDataTooSmall),
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
         "truncated vec element data must fail"
     );
 }
@@ -1629,7 +1683,7 @@ fn test_adversarial_mutate_grow_then_readback_tags() {
 
     // Grow name from "ab" (2) to "12345678" (8=max), expect 2 tags preserved
     let instruction =
-        build_mutate_then_readback_instruction(account, payer, system_program, b"12345678", 2);
+        build_mutate_then_readback_instruction(account, payer, system_program, 2, b"12345678");
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -1645,14 +1699,16 @@ fn test_adversarial_mutate_grow_then_readback_tags() {
         result.program_result
     );
 
-    // Also verify the raw bytes to be extra paranoid
+    // Also verify the raw bytes to be extra paranoid (compact layout)
     let rd = &result.resulting_accounts[0].1.data;
     assert_eq!(rd[0], DYNAMIC_ACCOUNT_DISC);
+    // Compact header: [name_len(1)][tags_count(2)]
     let name_len = rd[1] as usize;
     assert_eq!(name_len, 8);
-    assert_eq!(&rd[2..10], b"12345678");
-    let tags_count = u16::from_le_bytes(rd[10..12].try_into().unwrap()) as usize;
+    let tags_count = u16::from_le_bytes(rd[2..4].try_into().unwrap()) as usize;
     assert_eq!(tags_count, 2);
+    // Compact tail: [name_bytes][tag_bytes]
+    assert_eq!(&rd[4..12], b"12345678");
     assert_eq!(&rd[12..44], tag1.as_ref());
     assert_eq!(&rd[44..76], tag2.as_ref());
 }
@@ -1679,7 +1735,7 @@ fn test_adversarial_mutate_shrink_then_readback_tags() {
 
     // Shrink name from "12345678" (8) to "x" (1), expect 2 tags preserved
     let instruction =
-        build_mutate_then_readback_instruction(account, payer, system_program, b"x", 2);
+        build_mutate_then_readback_instruction(account, payer, system_program, 2, b"x");
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -1696,11 +1752,13 @@ fn test_adversarial_mutate_shrink_then_readback_tags() {
     );
 
     let rd = &result.resulting_accounts[0].1.data;
+    // Compact header: [name_len(1)][tags_count(2)]
     let name_len = rd[1] as usize;
     assert_eq!(name_len, 1);
-    assert_eq!(&rd[2..3], b"x");
-    let tags_count = u16::from_le_bytes(rd[3..5].try_into().unwrap()) as usize;
+    let tags_count = u16::from_le_bytes(rd[2..4].try_into().unwrap()) as usize;
     assert_eq!(tags_count, 2);
+    // Compact tail: [name_bytes][tag_bytes]
+    assert_eq!(&rd[4..5], b"x");
     assert_eq!(&rd[5..37], tag1.as_ref());
     assert_eq!(&rd[37..69], tag2.as_ref());
 }
@@ -1726,7 +1784,7 @@ fn test_adversarial_mutate_to_empty_then_readback_tags() {
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
     let instruction =
-        build_mutate_then_readback_instruction(account, payer, system_program, b"", 1);
+        build_mutate_then_readback_instruction(account, payer, system_program, 1, b"");
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -1771,7 +1829,7 @@ fn test_adversarial_mutate_empty_to_max_then_readback() {
 
     // Grow name from "" (0) to "12345678" (8=max)
     let instruction =
-        build_mutate_then_readback_instruction(account, payer, system_program, b"12345678", 1);
+        build_mutate_then_readback_instruction(account, payer, system_program, 1, b"12345678");
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -1790,9 +1848,10 @@ fn test_adversarial_mutate_empty_to_max_then_readback() {
     let rd = &result.resulting_accounts[0].1.data;
     let name_len = rd[1] as usize;
     assert_eq!(name_len, 8);
-    assert_eq!(&rd[2..10], b"12345678");
-    let tags_count = u16::from_le_bytes(rd[10..12].try_into().unwrap()) as usize;
+    let tags_count = u16::from_le_bytes(rd[2..4].try_into().unwrap()) as usize;
     assert_eq!(tags_count, 1);
+    // Compact tail: [name_bytes][tag_bytes]
+    assert_eq!(&rd[4..12], b"12345678");
     assert_eq!(&rd[12..44], tag.as_ref());
 }
 
@@ -1826,7 +1885,7 @@ fn test_adversarial_sequential_mutations_grow_shrink_grow() {
 
     // Step 1: Grow "ab" → "12345678" (max)
     let instruction =
-        build_mutate_then_readback_instruction(account, payer, system_program, b"12345678", 2);
+        build_mutate_then_readback_instruction(account, payer, system_program, 2, b"12345678");
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -1844,7 +1903,7 @@ fn test_adversarial_sequential_mutations_grow_shrink_grow() {
 
     // Step 2: Shrink "12345678" → "x"
     let instruction =
-        build_mutate_then_readback_instruction(account, payer, system_program, b"x", 2);
+        build_mutate_then_readback_instruction(account, payer, system_program, 2, b"x");
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -1862,7 +1921,7 @@ fn test_adversarial_sequential_mutations_grow_shrink_grow() {
 
     // Step 3: Grow again "x" → "abcdef" (6 bytes, not max)
     let instruction =
-        build_mutate_then_readback_instruction(account, payer, system_program, b"abcdef", 2);
+        build_mutate_then_readback_instruction(account, payer, system_program, 2, b"abcdef");
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -1877,13 +1936,15 @@ fn test_adversarial_sequential_mutations_grow_shrink_grow() {
         result.program_result
     );
 
-    // Final byte-level verification
+    // Final byte-level verification (compact layout)
     let rd = &result.resulting_accounts[0].1.data;
+    // Compact header: [name_len(1)][tags_count(2)]
     let name_len = rd[1] as usize;
     assert_eq!(name_len, 6);
-    assert_eq!(&rd[2..8], b"abcdef");
-    let tags_count = u16::from_le_bytes(rd[8..10].try_into().unwrap()) as usize;
+    let tags_count = u16::from_le_bytes(rd[2..4].try_into().unwrap()) as usize;
     assert_eq!(tags_count, 2);
+    // Compact tail: [name_bytes][tag_bytes]
+    assert_eq!(&rd[4..10], b"abcdef");
     assert_eq!(
         &rd[10..42],
         tag1.as_ref(),
@@ -1916,7 +1977,7 @@ fn test_adversarial_mutate_noop_same_name() {
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
     let instruction =
-        build_mutate_then_readback_instruction(account, payer, system_program, b"hello", 1);
+        build_mutate_then_readback_instruction(account, payer, system_program, 1, b"hello");
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -1936,6 +1997,103 @@ fn test_adversarial_mutate_noop_same_name() {
     assert_eq!(
         &result.resulting_accounts[0].1.data, &account_bytes,
         "no-op mutation must not change any bytes"
+    );
+}
+
+#[test]
+fn test_dynamic_view_mut_replaces_name_and_tags() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let account = Address::new_unique();
+    let payer = Address::new_unique();
+
+    let old_tag = Address::new_unique();
+    let new_tag1 = Address::new_unique();
+    let new_tag2 = Address::new_unique();
+
+    let account_bytes = build_dynamic_account_data(b"old", &[old_tag]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: account_bytes,
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+
+    let instruction = build_dynamic_view_mut_instruction(
+        account,
+        payer,
+        system_program,
+        b"replace",
+        &[new_tag1, new_tag2],
+    );
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, account_data),
+            (payer, payer_account),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "dynamic view replacement should succeed: {:?}",
+        result.program_result
+    );
+
+    let rd = &result.resulting_accounts[0].1.data;
+    // Compact header: [name_len(1)][tags_count(2)]
+    assert_eq!(rd[1] as usize, 7);
+    let tags_count = u16::from_le_bytes(rd[2..4].try_into().unwrap()) as usize;
+    assert_eq!(tags_count, 2);
+    // Compact tail: [name_bytes][tag_bytes]
+    assert_eq!(&rd[4..11], b"replace");
+    assert_eq!(&rd[11..43], new_tag1.as_ref());
+    assert_eq!(&rd[43..75], new_tag2.as_ref());
+}
+
+#[test]
+fn test_as_mut_preserves_untouched_fields() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let account = Address::new_unique();
+    let payer = Address::new_unique();
+
+    let old_tag = Address::new_unique();
+    let account_bytes = build_dynamic_account_data(b"old", &[old_tag]);
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: account_bytes.clone(),
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+
+    let instruction =
+        build_dynamic_view_mut_missing_field_instruction(account, payer, system_program, b"rename");
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, account_data),
+            (payer, payer_account),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "as_mut partial mutation should succeed: {:?}",
+        result.program_result
+    );
+
+    // Verify: name changed to "rename", tags preserved (1 tag = old_tag)
+    let expected = build_dynamic_account_data(b"rename", &[old_tag]);
+    assert_eq!(
+        result.resulting_accounts[0].1.data, expected,
+        "as_mut must update name and preserve untouched tags"
     );
 }
 
@@ -2059,7 +2217,7 @@ fn test_adversarial_mixed_fixed_valid_dynamic_truncated() {
 
     assert_eq!(
         result.program_result,
-        ProgramResult::Failure(ProgramError::AccountDataTooSmall),
+        ProgramResult::Failure(ProgramError::InvalidAccountData),
         "truncated dynamic field after valid fixed section must fail"
     );
 }

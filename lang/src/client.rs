@@ -5,8 +5,8 @@
 //!
 //! | Type | Wire format |
 //! |------|-------------|
-//! | [`DynBytes<P>`] | `P` LE length prefix + raw bytes (`P` defaults to `u32`) |
-//! | [`DynVec<T, P>`] | `P` LE count prefix + each item serialized |
+//! | `DynBytes<P>` | `P` LE length prefix + raw bytes (`P` defaults to `u32`) |
+//! | `DynVec<T, P>` | `P` LE count prefix + each item serialized |
 //!
 //! The prefix type `P` (u8, u16, or u32) must match the on-chain declaration.
 //! For example, `String<u8, 100>` on-chain requires `DynBytes<u8>` off-chain.
@@ -75,11 +75,38 @@ impl<P> DynBytes<P> {
     pub fn new(data: Vec<u8>) -> Self {
         Self(data, PhantomData)
     }
+
+    /// Number of bytes in the payload (excludes the prefix).
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns `true` if the payload is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// The raw byte payload.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
 }
 
 impl<P> From<Vec<u8>> for DynBytes<P> {
     fn from(data: Vec<u8>) -> Self {
         Self::new(data)
+    }
+}
+
+impl<P> From<alloc::string::String> for DynBytes<P> {
+    fn from(s: alloc::string::String) -> Self {
+        Self::new(s.into_bytes())
+    }
+}
+
+impl<P> From<&str> for DynBytes<P> {
+    fn from(s: &str) -> Self {
+        Self::new(s.as_bytes().to_vec())
     }
 }
 
@@ -115,6 +142,92 @@ where
 }
 
 // ---------------------------------------------------------------------------
+// DynString<P> — length-prefixed string for client instruction args
+// ---------------------------------------------------------------------------
+
+/// A dynamically-sized UTF-8 string with a little-endian length prefix.
+///
+/// This is the client-side type for `String<N>` instruction arguments.
+/// The wire format is `[prefix][utf8 bytes]` — identical to `DynBytes`,
+/// but with string-native ergonomics.
+///
+/// ```ignore
+/// let ix = MyInstruction {
+///     name: "hello".into(),          // From<&str>
+///     name: my_string.into(),        // From<String>
+/// };
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub struct DynString<P = u8>(DynBytes<P>);
+
+impl<P> DynString<P> {
+    pub fn new(s: &str) -> Self {
+        Self(DynBytes::new(s.as_bytes().to_vec()))
+    }
+
+    /// Number of UTF-8 bytes in the string (excludes the prefix).
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns `true` if the string is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// The raw UTF-8 bytes.
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
+}
+
+impl<P> From<&str> for DynString<P> {
+    fn from(s: &str) -> Self {
+        Self::new(s)
+    }
+}
+
+impl<P> From<alloc::string::String> for DynString<P> {
+    fn from(s: alloc::string::String) -> Self {
+        Self(DynBytes::new(s.into_bytes()))
+    }
+}
+
+impl<P> From<Vec<u8>> for DynString<P> {
+    fn from(bytes: Vec<u8>) -> Self {
+        Self(DynBytes::new(bytes))
+    }
+}
+
+unsafe impl<P, C: ConfigCore> SchemaWrite<C> for DynString<P>
+where
+    UseIntLen<P>: SeqLen<C>,
+{
+    type Src = Self;
+
+    fn size_of(src: &Self) -> WriteResult<usize> {
+        DynBytes::<P>::size_of(&src.0)
+    }
+
+    fn write(writer: impl Writer, src: &Self) -> WriteResult<()> {
+        DynBytes::<P>::write(writer, &src.0)
+    }
+}
+
+unsafe impl<'de, P, C: ConfigCore> SchemaRead<'de, C> for DynString<P>
+where
+    UseIntLen<P>: SeqLen<C>,
+{
+    type Dst = Self;
+
+    fn read(reader: impl Reader<'de>, dst: &mut MaybeUninit<Self>) -> ReadResult<()> {
+        // SAFETY: DynString is repr-compatible with DynBytes (single field).
+        let inner = dst as *mut MaybeUninit<Self> as *mut MaybeUninit<DynBytes<P>>;
+        DynBytes::<P>::read(reader, unsafe { &mut *inner })
+    }
+}
+
+// ---------------------------------------------------------------------------
 // DynVec<T, P> — length-prefixed sequence of T
 // ---------------------------------------------------------------------------
 
@@ -131,11 +244,32 @@ impl<T, P> DynVec<T, P> {
     pub fn new(data: Vec<T>) -> Self {
         Self(data, PhantomData)
     }
+
+    /// Number of elements (excludes the prefix).
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns `true` if the vector is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Iterate over the elements.
+    pub fn iter(&self) -> core::slice::Iter<'_, T> {
+        self.0.iter()
+    }
 }
 
 impl<T, P> From<Vec<T>> for DynVec<T, P> {
     fn from(data: Vec<T>) -> Self {
         Self::new(data)
+    }
+}
+
+impl<T: Clone, P> From<&[T]> for DynVec<T, P> {
+    fn from(data: &[T]) -> Self {
+        Self::new(data.to_vec())
     }
 }
 
@@ -196,6 +330,15 @@ where
     }
 }
 
+impl<P> SerializeArg for DynString<P>
+where
+    UseIntLen<P>: SeqLen<wincode::config::DefaultConfig>,
+{
+    fn serialize_arg(&self) -> Vec<u8> {
+        wincode::serialize(self).expect("DynString serialization")
+    }
+}
+
 impl<T, P> SerializeArg for DynVec<T, P>
 where
     T: SchemaWrite<wincode::config::DefaultConfig, Src = T>,
@@ -206,46 +349,13 @@ where
     }
 }
 
-// ---------------------------------------------------------------------------
-// OptionZc<Z> — fixed-size Option serialization matching on-chain ZC layout
-// ---------------------------------------------------------------------------
-
-use crate::instruction_arg::OptionZc;
-
-unsafe impl<Z, C: ConfigCore> SchemaWrite<C> for OptionZc<Z>
-where
-    Z: Copy,
-{
-    type Src = Self;
-
-    fn size_of(_src: &Self) -> WriteResult<usize> {
-        Ok(core::mem::size_of::<Self>())
-    }
-
-    fn write(mut writer: impl Writer, src: &Self) -> WriteResult<()> {
-        let bytes = unsafe {
-            core::slice::from_raw_parts(
-                src as *const Self as *const u8,
-                core::mem::size_of::<Self>(),
-            )
-        };
-        writer.write(bytes)?;
-        Ok(())
+/// Pass pre-serialized bytes through as-is. Used by borrowed struct args (e.g.
+/// `MintArgs<'_>`) where the off-chain client serializes the struct manually.
+impl SerializeArg for Vec<u8> {
+    fn serialize_arg(&self) -> Vec<u8> {
+        self.clone()
     }
 }
 
-unsafe impl<'de, Z, C: ConfigCore> SchemaRead<'de, C> for OptionZc<Z>
-where
-    Z: Copy,
-{
-    type Dst = Self;
-
-    fn read(mut reader: impl Reader<'de>, dst: &mut MaybeUninit<Self>) -> ReadResult<()> {
-        let bytes = reader.take_scoped(core::mem::size_of::<Self>())?;
-        // SAFETY: OptionZc<Z> is #[repr(C)] with alignment 1 (tag: u8 +
-        // MaybeUninit<Z>). The bytes from the reader are fully initialized.
-        let zc = unsafe { core::ptr::read_unaligned(bytes.as_ptr() as *const Self) };
-        dst.write(zc);
-        Ok(())
-    }
-}
+// OptionZc<Z> is now a type alias for PodOption<Z>, which already has
+// SchemaWrite/SchemaRead impls in zeropod's wincode module.

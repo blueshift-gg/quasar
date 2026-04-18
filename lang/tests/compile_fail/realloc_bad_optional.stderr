@@ -1,5 +1,6 @@
 error: #[account(realloc)] cannot be used on Option<Account<T>> fields
-  --> tests/compile_fail/realloc_bad_optional.rs:14:9
+  --> tests/compile_fail/realloc_bad_optional.rs:13:5
    |
-14 |     pub account: Option<Account<DemoAccount>>,
-   |         ^^^^^^^
+13 | /     #[account(mut, realloc = 64)]
+14 | |     pub account: Option<Account<DemoAccount>>,
+   | |_____________________________________________^

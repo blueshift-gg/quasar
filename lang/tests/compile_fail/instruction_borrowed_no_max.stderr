@@ -1,0 +1,5 @@
+error: borrowed instruction args require #[max(N)] annotation
+  --> tests/compile_fail/instruction_borrowed_no_max.rs:16:47
+   |
+16 |     pub fn bad_handler(ctx: Ctx<Args>, label: &str) -> Result<(), ProgramError> {
+   |                                               ^^^^

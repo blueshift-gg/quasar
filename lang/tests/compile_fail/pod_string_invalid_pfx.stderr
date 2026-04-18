@@ -1,9 +1,9 @@
 error[E0080]: evaluation panicked: PodString<N, PFX>: PFX must be 1, 2, 4, or 8
  --> $RUST/core/src/panic.rs
   |
-  = note: evaluation of `quasar_lang::pod::PodString::<10, 3>::_CAP_CHECK` failed here
+  = note: evaluation of `quasar_lang::String::<10, 3>::_CAP_CHECK` failed here
   |
- ::: $WORKSPACE/pod/src/string.rs
+ ::: $WORKSPACE/zeropod/src/pod/string.rs
   |
   | /         assert!(
   | |             PFX == 1 || PFX == 2 || PFX == 4 || PFX == 8,
@@ -12,7 +12,7 @@ error[E0080]: evaluation panicked: PodString<N, PFX>: PFX must be 1, 2, 4, or 8
   | |_________- in this macro invocation
 
 note: erroneous constant encountered
- --> $WORKSPACE/pod/src/string.rs
+ --> $WORKSPACE/zeropod/src/pod/string.rs
   |
   |     pub const VALID: () = Self::_CAP_CHECK;
   |                           ^^^^^^^^^^^^^^^^

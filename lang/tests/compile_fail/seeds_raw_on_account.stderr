@@ -1,5 +1,6 @@
-error: raw `seeds = [...]` is not allowed on program accounts. Add `#[seeds(...)]` to `Config` and use `Config::seeds(...)` instead.
-  --> tests/compile_fail/seeds_raw_on_account.rs:14:9
+error: Raw `seeds` are not allowed on `Account<T>` fields; use `typed_seeds` instead
+  --> tests/compile_fail/seeds_raw_on_account.rs:13:5
    |
-14 |     pub config: Account<Config>,
-   |         ^^^^^^
+13 | /     #[account(seeds = [b"config"], bump = config.bump)]
+14 | |     pub config: Account<Config>,
+   | |_______________________________^

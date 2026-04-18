@@ -155,14 +155,17 @@ fn init_if_needed_mint_spl_happy_new() {
     let token_program = spl_token_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededMintInstruction {
-        payer,
-        mint: mint_key,
-        mint_authority: authority,
-        token_program,
-        system_program,
-    }
-    .into();
+    let instruction = with_signers(
+        InitIfNeededMintInstruction {
+            payer,
+            mint: mint_key,
+            mint_authority: authority,
+            token_program,
+            system_program,
+        }
+        .into(),
+        &[1],
+    );
 
     let result = svm.process_instruction(
         &instruction,
@@ -363,14 +366,17 @@ fn init_if_needed_mint_t22_happy_new() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededMintT22Instruction {
-        payer,
-        mint: mint_key,
-        mint_authority: authority,
-        token_program,
-        system_program,
-    }
-    .into();
+    let instruction = with_signers(
+        InitIfNeededMintT22Instruction {
+            payer,
+            mint: mint_key,
+            mint_authority: authority,
+            token_program,
+            system_program,
+        }
+        .into(),
+        &[1],
+    );
 
     let result = svm.process_instruction(
         &instruction,
@@ -569,15 +575,18 @@ fn init_if_needed_mint_freeze_spl_happy_new() {
     let token_program = spl_token_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededMintWithFreezeInstruction {
-        payer,
-        mint: mint_key,
-        mint_authority: authority,
-        freeze_authority: freeze_auth,
-        token_program,
-        system_program,
-    }
-    .into();
+    let instruction = with_signers(
+        InitIfNeededMintWithFreezeInstruction {
+            payer,
+            mint: mint_key,
+            mint_authority: authority,
+            freeze_authority: freeze_auth,
+            token_program,
+            system_program,
+        }
+        .into(),
+        &[1],
+    );
 
     let result = svm.process_instruction(
         &instruction,
@@ -717,15 +726,18 @@ fn init_if_needed_mint_freeze_t22_happy_new() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededMintWithFreezeT22Instruction {
-        payer,
-        mint: mint_key,
-        mint_authority: authority,
-        freeze_authority: freeze_auth,
-        token_program,
-        system_program,
-    }
-    .into();
+    let instruction = with_signers(
+        InitIfNeededMintWithFreezeT22Instruction {
+            payer,
+            mint: mint_key,
+            mint_authority: authority,
+            freeze_authority: freeze_auth,
+            token_program,
+            system_program,
+        }
+        .into(),
+        &[1],
+    );
 
     let result = svm.process_instruction(
         &instruction,

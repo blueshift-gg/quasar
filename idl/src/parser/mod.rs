@@ -143,7 +143,13 @@ pub fn build_idl(parsed: &ParsedProgram) -> Result<Idl, Vec<String>> {
                 .iter()
                 .find(|s| s.name == ix.accounts_type_name)
                 .map(|s| accounts::to_idl_accounts(s, &parsed.state_accounts))
-                .unwrap_or_default();
+                .unwrap_or_else(|| {
+                    eprintln!(
+                        "warning: instruction '{}' references unknown accounts type '{}'",
+                        ix.name, ix.accounts_type_name
+                    );
+                    Vec::new()
+                });
 
             let args: Vec<IdlField> = ix
                 .args
@@ -154,12 +160,22 @@ pub fn build_idl(parsed: &ParsedProgram) -> Result<Idl, Vec<String>> {
                 })
                 .collect();
 
+            let args_layout = if args
+                .iter()
+                .any(|a| matches!(a.ty, IdlType::DynString { .. } | IdlType::DynVec { .. }))
+            {
+                Some("compact".to_string())
+            } else {
+                None
+            };
+
             IdlInstruction {
                 name: helpers::to_camel_case(&ix.name),
                 discriminator: ix.discriminator.clone(),
                 accounts: accounts_items,
                 args,
                 has_remaining: ix.has_remaining,
+                args_layout,
             }
         })
         .collect();
@@ -183,7 +199,7 @@ pub fn build_idl(parsed: &ParsedProgram) -> Result<Idl, Vec<String>> {
             let type_def = IdlTypeDef {
                 name: sa.name.clone(),
                 ty: IdlTypeDefType {
-                    kind: "struct".to_string(),
+                    kind: IdlTypeDefKind::Struct,
                     fields,
                 },
             };
@@ -210,7 +226,7 @@ pub fn build_idl(parsed: &ParsedProgram) -> Result<Idl, Vec<String>> {
             let type_def = IdlTypeDef {
                 name: ev.name.clone(),
                 ty: IdlTypeDefType {
-                    kind: "struct".to_string(),
+                    kind: IdlTypeDefKind::Struct,
                     fields,
                 },
             };
@@ -273,7 +289,7 @@ pub fn build_idl(parsed: &ParsedProgram) -> Result<Idl, Vec<String>> {
             type_defs.push(IdlTypeDef {
                 name: type_name,
                 ty: IdlTypeDefType {
-                    kind: "struct".to_string(),
+                    kind: IdlTypeDefKind::Struct,
                     fields: idl_fields,
                 },
             });
@@ -411,6 +427,7 @@ fn collect_defined_refs(ty: &IdlType, out: &mut BTreeSet<String>) {
         IdlType::Defined { defined } => {
             out.insert(defined.clone());
         }
+        IdlType::Option { option } => collect_defined_refs(option, out),
         IdlType::DynVec { vec } => collect_defined_refs(&vec.items, out),
         _ => {}
     }

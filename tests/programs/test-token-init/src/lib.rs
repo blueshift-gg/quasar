@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(dead_code)]
 
 use quasar_lang::prelude::*;
 
@@ -44,11 +45,6 @@ mod quasar_test_token_init {
     pub fn init_if_needed_mint_with_freeze(
         ctx: Ctx<InitIfNeededMintWithFreeze>,
     ) -> Result<(), ProgramError> {
-        ctx.accounts.handler()
-    }
-
-    #[instruction(discriminator = 7)]
-    pub fn init_mint_with_metadata(ctx: Ctx<InitMintWithMetadata>) -> Result<(), ProgramError> {
         ctx.accounts.handler()
     }
 

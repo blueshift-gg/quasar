@@ -1,21 +1,8 @@
 use crate::prelude::*;
 
-/// A wrapper for program accounts that validates executable flag and address.
-///
-/// Similar to `Account<T>` for data accounts and `Sysvar<T>` for sysvars, this
-/// provides a generic way to handle any program account type.
-///
-/// # Example
-/// ```ignore
-/// #[derive(Accounts)]
-/// pub struct MyAccounts<'info> {
-///     pub system_program: &'info Program<system_program::SystemProgramId>,
-///     pub token_program: &'info Program<token::TokenProgramId>,
-/// }
-/// ```
+/// Program account wrapper. Validates executable flag + address match.
 #[repr(transparent)]
 pub struct Program<T: crate::traits::Id> {
-    /// The underlying account view.
     view: AccountView,
     _marker: core::marker::PhantomData<T>,
 }
@@ -27,10 +14,19 @@ impl<T: crate::traits::Id> AsAccountView for Program<T> {
     }
 }
 
-// Transparent Program trait forwarding - allows Program<T> to be used
-// wherever Program trait is expected
 impl<T: crate::traits::Id> crate::traits::Id for Program<T> {
     const ID: Address = T::ID;
+}
+
+impl<T: crate::traits::Id> crate::account_load::AccountLoad for Program<T> {
+    const IS_EXECUTABLE: bool = true;
+
+    type Params = ();
+
+    #[inline(always)]
+    fn check(view: &AccountView, field_name: &str) -> Result<(), ProgramError> {
+        crate::validation::check_program::<T>(view, field_name)
+    }
 }
 
 impl<T: crate::traits::Id> Program<T> {
@@ -41,9 +37,7 @@ impl<T: crate::traits::Id> Program<T> {
         &*(view as *const AccountView as *const Self)
     }
 
-    /// Emit an event via CPI to this program.
-    ///
-    /// This method is used by `emit_cpi!` macro for self-CPI event emission.
+    /// Emit an event via self-CPI.
     #[inline(always)]
     pub fn emit_event<E, EA>(
         &self,

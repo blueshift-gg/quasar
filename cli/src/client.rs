@@ -1,10 +1,11 @@
 use {
     crate::{
+        config::resolve_client_path,
         error::{CliError, CliResult},
         style, ClientCommand,
     },
-    quasar_idl::codegen,
-    std::path::PathBuf,
+    quasar_idl::codegen::{self, model::ProgramModel},
+    std::path::{Path, PathBuf},
 };
 
 /// Languages that can be generated from an IDL JSON file.
@@ -12,6 +13,7 @@ use {
 const ALL_LANGUAGES: &[&str] = &["typescript", "python", "golang"];
 
 pub fn run(command: ClientCommand) -> CliResult {
+    let clients_path = resolve_client_path()?;
     let idl_path = &command.idl_path;
 
     if !idl_path.exists() {
@@ -43,7 +45,7 @@ pub fn run(command: ClientCommand) -> CliResult {
             .collect::<Result<Vec<_>, _>>()?
     };
 
-    generate_clients(&idl, &languages)?;
+    generate_clients(&idl, &languages, &clients_path)?;
 
     println!(
         "  {}",
@@ -52,55 +54,36 @@ pub fn run(command: ClientCommand) -> CliResult {
     Ok(())
 }
 
-pub fn generate_clients(idl: &quasar_idl::types::Idl, languages: &[&str]) -> CliResult {
+pub fn generate_clients(
+    idl: &quasar_idl::types::Idl,
+    languages: &[&str],
+    clients_path: &Path,
+) -> CliResult {
+    let model = ProgramModel::new(idl);
+
     // TypeScript
     if languages.contains(&"typescript") {
         let ts_code = codegen::typescript::generate_ts_client(idl);
         let ts_kit_code = codegen::typescript::generate_ts_client_kit(idl);
 
-        let ts_dir = PathBuf::from("target")
-            .join("client")
+        let ts_dir = PathBuf::from(clients_path)
             .join("typescript")
-            .join(&idl.metadata.name);
+            .join(&model.identity.typescript_dir);
         std::fs::create_dir_all(&ts_dir)?;
         std::fs::write(ts_dir.join("web3.ts"), &ts_code)?;
         std::fs::write(ts_dir.join("kit.ts"), &ts_kit_code)?;
-
-        let needs_codecs =
-            !idl.types.is_empty() || idl.instructions.iter().any(|ix| !ix.args.is_empty());
-        let codecs_dep = if needs_codecs {
-            "\n    \"@solana/codecs\": \"^6.2.0\","
-        } else {
-            ""
-        };
-        let ts_package_json = format!(
-            r#"{{
-  "name": "{crate_name}-client",
-  "version": "{version}",
-  "private": true,
-  "exports": {{
-    "./web3.js": "./web3.ts",
-    "./kit": "./kit.ts"
-  }},
-  "dependencies": {{{codecs_dep}
-    "@solana/kit": "^6.0.0",
-    "@solana/web3.js": "github:blueshift-gg/web3.js#v2"
-  }}
-}}
-"#,
-            crate_name = idl.metadata.crate_name,
-            version = idl.metadata.version,
-        );
-        std::fs::write(ts_dir.join("package.json"), &ts_package_json)?;
+        std::fs::write(
+            ts_dir.join("package.json"),
+            codegen::typescript::generate_package_json(idl),
+        )?;
     }
 
     // Python
     if languages.contains(&"python") {
         let py_code = codegen::python::generate_python_client(idl);
-        let py_dir = PathBuf::from("target")
-            .join("client")
+        let py_dir = PathBuf::from(clients_path)
             .join("python")
-            .join(&idl.metadata.crate_name);
+            .join(&model.identity.python_package);
         std::fs::create_dir_all(&py_dir)?;
         std::fs::write(py_dir.join("client.py"), &py_code)?;
         std::fs::write(
@@ -112,16 +95,14 @@ pub fn generate_clients(idl: &quasar_idl::types::Idl, languages: &[&str]) -> Cli
     // Go
     if languages.contains(&"golang") {
         let go_code = codegen::golang::generate_go_client(idl);
-        let go_pkg = idl.metadata.crate_name.replace('-', "_");
-        let go_dir = PathBuf::from("target")
-            .join("client")
+        let go_dir = PathBuf::from(clients_path)
             .join("golang")
-            .join(&go_pkg);
+            .join(&model.identity.go_package);
         std::fs::create_dir_all(&go_dir)?;
         std::fs::write(go_dir.join("client.go"), &go_code)?;
         std::fs::write(
             go_dir.join("go.mod"),
-            codegen::golang::generate_go_mod(&go_pkg),
+            codegen::golang::generate_go_mod_for_program(&model),
         )?;
     }
 

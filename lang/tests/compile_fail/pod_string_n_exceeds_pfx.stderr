@@ -1,9 +1,9 @@
 error[E0080]: evaluation panicked: PodString<N, PFX>: N exceeds the maximum value representable by the PFX-byte length prefix
  --> $RUST/core/src/panic.rs
   |
-  = note: evaluation of `quasar_lang::pod::PodString::<256>::_CAP_CHECK` failed here
+  = note: evaluation of `quasar_lang::String::<256>::_CAP_CHECK` failed here
   |
- ::: $WORKSPACE/pod/src/string.rs
+ ::: $WORKSPACE/zeropod/src/pod/string.rs
   |
   | /         assert!(
   | |             N <= max_n_for_pfx(PFX),
@@ -13,7 +13,7 @@ error[E0080]: evaluation panicked: PodString<N, PFX>: N exceeds the maximum valu
   | |_________- in this macro invocation
 
 note: erroneous constant encountered
- --> $WORKSPACE/pod/src/string.rs
+ --> $WORKSPACE/zeropod/src/pod/string.rs
   |
   |     pub const VALID: () = Self::_CAP_CHECK;
   |                           ^^^^^^^^^^^^^^^^

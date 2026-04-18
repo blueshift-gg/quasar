@@ -1,4 +1,5 @@
 use {
+    crate::helpers::mollusk_for_program,
     mollusk_svm::{result::ProgramResult, Mollusk},
     quasar_lang::{error::QuasarError, prelude::ProgramError},
     quasar_test_misc::cpi::*,
@@ -8,10 +9,7 @@ use {
 };
 
 fn setup() -> Mollusk {
-    Mollusk::new(
-        &quasar_test_misc::ID,
-        "../../target/deploy/quasar_test_misc",
-    )
+    mollusk_for_program(&quasar_test_misc::ID, "quasar_test_misc")
 }
 
 // ============================================================================

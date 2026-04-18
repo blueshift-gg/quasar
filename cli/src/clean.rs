@@ -1,23 +1,35 @@
 use {
     crate::{
+        config::resolve_client_path,
         error::{CliError, CliResult},
         style,
     },
-    std::{fs, path::Path, process::Command},
+    std::{
+        fs,
+        path::{Path, PathBuf},
+        process::Command,
+    },
 };
 
 pub fn run(all: bool) -> CliResult {
-    let dirs = [
-        "target/deploy",
-        "target/profile",
-        "target/idl",
-        "target/client",
+    let (client_dirs, config_warning) = client_dirs_to_clean(resolve_client_path());
+    let mut dirs = vec![
+        "target/deploy".to_string(),
+        "target/profile".to_string(),
+        "target/idl".to_string(),
     ];
+    for dir in client_dirs {
+        dirs.push(dir.to_string_lossy().into_owned());
+    }
+
+    if let Some(warning) = config_warning {
+        eprintln!("  {}", style::dim(&warning));
+    }
 
     let removed: Vec<&str> = dirs
         .iter()
-        .filter(|d| Path::new(d).exists())
-        .copied()
+        .map(String::as_str)
+        .filter(|dir| Path::new(dir).exists())
         .collect();
 
     if removed.is_empty() && !all {
@@ -52,6 +64,22 @@ pub fn run(all: bool) -> CliResult {
     Ok(())
 }
 
+fn client_dirs_to_clean(clients_dir: Result<PathBuf, CliError>) -> (Vec<PathBuf>, Option<String>) {
+    let legacy_clients_dir = PathBuf::from("target").join("client");
+
+    match clients_dir {
+        Ok(path) if path == legacy_clients_dir => (vec![legacy_clients_dir], None),
+        Ok(path) => (vec![path, legacy_clients_dir], None),
+        Err(err) => (
+            vec![legacy_clients_dir],
+            Some(format!(
+                "note: could not read clients.path from Quasar.toml ({err}); falling back to \
+                 target/client"
+            )),
+        ),
+    }
+}
+
 /// Remove everything in target/deploy/ except keypair files.
 fn clean_deploy_dir() -> Result<(), std::io::Error> {
     let deploy = Path::new("target/deploy");
@@ -71,4 +99,42 @@ fn clean_deploy_dir() -> Result<(), std::io::Error> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uses_only_legacy_dir_when_config_matches_default() {
+        let (dirs, warning) = client_dirs_to_clean(Ok(PathBuf::from("target").join("client")));
+
+        assert_eq!(dirs, vec![PathBuf::from("target").join("client")]);
+        assert!(warning.is_none());
+    }
+
+    #[test]
+    fn cleans_custom_and_legacy_dirs_when_config_moves_clients() {
+        let (dirs, warning) = client_dirs_to_clean(Ok(PathBuf::from("generated").join("clients")));
+
+        assert_eq!(
+            dirs,
+            vec![
+                PathBuf::from("generated").join("clients"),
+                PathBuf::from("target").join("client")
+            ]
+        );
+        assert!(warning.is_none());
+    }
+
+    #[test]
+    fn falls_back_to_legacy_dir_when_config_is_invalid() {
+        let (dirs, warning) = client_dirs_to_clean(Err(CliError::message("invalid Quasar.toml")));
+
+        assert_eq!(dirs, vec![PathBuf::from("target").join("client")]);
+        assert!(
+            warning.is_some_and(|msg| msg.contains("falling back to target/client")),
+            "warning should explain legacy fallback"
+        );
+    }
 }

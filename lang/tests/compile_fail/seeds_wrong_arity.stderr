@@ -1,5 +1,7 @@
-error[E0080]: evaluation panicked: Vault::seeds() argument count mismatch (check #[seeds] definition on Vault)
+error[E0308]: mismatched types
   --> tests/compile_fail/seeds_wrong_arity.rs:14:10
    |
 14 | #[derive(Accounts)]
-   |          ^^^^^^^^ evaluation of `<Bad as quasar_lang::traits::ParseAccountsUnchecked<'input>>::parse_unchecked::_` failed here
+   |          ^^^^^^^^ expected an array with a size of 1, found one with a size of 0
+   |
+   = note: this error originates in the derive macro `Accounts` (in Nightly builds, run with -Z macro-backtrace for more info)

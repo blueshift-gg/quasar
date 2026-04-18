@@ -149,7 +149,7 @@ fn render_ascii_subtree<'a>(
     out: &mut String,
     indent: usize,
 ) {
-    // Safety: we should only visit each node once to avoid cycles.
+    // Cycle prevention: we should only visit each node once to avoid cycles.
     // But we need to handle the case where a node appears as the target of
     // multiple edges — we still print the edge, just don't recurse further.
 

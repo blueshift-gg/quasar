@@ -44,5 +44,6 @@ pub(super) struct QuasarTypeScriptTesting {
 
 #[derive(Serialize)]
 pub(super) struct QuasarClients {
+    pub(super) path: String,
     pub(super) languages: Vec<String>,
 }

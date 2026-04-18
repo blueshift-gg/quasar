@@ -1,9 +1,4 @@
-//! Shared codegen helpers used across all derive macros.
-//!
-//! Contains Pod dynamic field classification (PodString/PodVec), discriminator
-//! parsing and validation, type inspection utilities, and zero-copy companion
-//! struct helpers for mapping native types to Pod types.
-
+pub(crate) use quasar_schema::{pascal_to_snake, snake_to_pascal};
 use {
     quote::quote,
     syn::{
@@ -12,13 +7,6 @@ use {
     },
 };
 
-// --- Discriminator argument parsing (shared by instruction, account, event,
-// program) ---
-
-/// Parsed `#[account(...)]` attribute arguments.
-///
-/// Either `discriminator = <bytes>` (standard) or `unsafe_no_disc` (no
-/// discriminator — size-only validation, like SPL Token accounts).
 pub(crate) struct AccountAttr {
     pub disc_bytes: Vec<LitInt>,
     pub unsafe_no_disc: bool,
@@ -42,29 +30,13 @@ impl Parse for AccountAttr {
             } else if ident == "fixed_capacity" {
                 fixed_capacity = true;
             } else if ident == "discriminator" {
-                let _: Token![=] = input.parse()?;
-                if input.peek(syn::token::Bracket) {
-                    let content;
-                    syn::bracketed!(content in input);
-                    let lits = content.parse_terminated(LitInt::parse, Token![,])?;
-                    disc_bytes = lits.into_iter().collect();
-                    if disc_bytes.is_empty() {
-                        return Err(syn::Error::new(
-                            input.span(),
-                            "discriminator must have at least one byte",
-                        ));
-                    }
-                } else {
-                    let lit: LitInt = input.parse()?;
-                    disc_bytes = vec![lit];
-                }
+                disc_bytes = parse_discriminator_value(input)?;
             } else {
                 return Err(syn::Error::new(
                     ident.span(),
                     "expected `discriminator`, `unsafe_no_disc`, `set_inner`, or `fixed_capacity`",
                 ));
             }
-            // consume optional trailing comma
             let _ = input.parse::<Option<Token![,]>>();
         }
 
@@ -84,13 +56,6 @@ impl Parse for AccountAttr {
     }
 }
 
-/// Parsed `#[instruction(...)]` attribute arguments.
-///
-/// Supports `discriminator = [...]` and/or `heap` in any order:
-/// - `#[instruction(discriminator = [0])]`
-/// - `#[instruction(discriminator = [0], heap)]`
-/// - `#[instruction(heap, discriminator = [0])]`
-/// - `#[instruction(heap)]` (discriminator optional for some contexts)
 pub(crate) struct InstructionArgs {
     pub discriminator: Option<Vec<LitInt>>,
     pub heap: bool,
@@ -106,30 +71,13 @@ impl Parse for InstructionArgs {
             if ident == "heap" {
                 heap = true;
             } else if ident == "discriminator" {
-                let _: Token![=] = input.parse()?;
-                if input.peek(syn::token::Bracket) {
-                    let content;
-                    syn::bracketed!(content in input);
-                    let lits = content.parse_terminated(LitInt::parse, Token![,])?;
-                    let disc_bytes: Vec<LitInt> = lits.into_iter().collect();
-                    if disc_bytes.is_empty() {
-                        return Err(syn::Error::new(
-                            input.span(),
-                            "discriminator must have at least one byte",
-                        ));
-                    }
-                    discriminator = Some(disc_bytes);
-                } else {
-                    let lit: LitInt = input.parse()?;
-                    discriminator = Some(vec![lit]);
-                }
+                discriminator = Some(parse_discriminator_value(input)?);
             } else {
                 return Err(syn::Error::new(
                     ident.span(),
                     "expected `discriminator` or `heap`",
                 ));
             }
-            // consume optional trailing comma
             let _ = input.parse::<Option<Token![,]>>();
         }
 
@@ -140,9 +88,26 @@ impl Parse for InstructionArgs {
     }
 }
 
-// --- Discriminator validation ---
+fn parse_discriminator_value(input: ParseStream) -> syn::Result<Vec<LitInt>> {
+    let _: Token![=] = input.parse()?;
+    if input.peek(syn::token::Bracket) {
+        let content;
+        syn::bracketed!(content in input);
+        let lits = content.parse_terminated(LitInt::parse, Token![,])?;
+        let disc_bytes: Vec<LitInt> = lits.into_iter().collect();
+        if disc_bytes.is_empty() {
+            return Err(syn::Error::new(
+                input.span(),
+                "discriminator must have at least one byte",
+            ));
+        }
+        Ok(disc_bytes)
+    } else {
+        let lit: LitInt = input.parse()?;
+        Ok(vec![lit])
+    }
+}
 
-/// Parse discriminator `LitInt`s into byte values.
 pub(crate) fn parse_discriminator_bytes(disc_bytes: &[LitInt]) -> syn::Result<Vec<u8>> {
     disc_bytes
         .iter()
@@ -153,9 +118,6 @@ pub(crate) fn parse_discriminator_bytes(disc_bytes: &[LitInt]) -> syn::Result<Ve
         .collect()
 }
 
-/// Parse discriminator bytes and validate that at least one is non-zero.
-/// Rejects all-zero discriminators which are indistinguishable from
-/// uninitialized account data. Used for `#[account]` only (not instructions).
 pub(crate) fn validate_discriminator_not_zero(disc_bytes: &[LitInt]) -> syn::Result<Vec<u8>> {
     let values = parse_discriminator_bytes(disc_bytes)?;
     if values.iter().all(|&b| b == 0) {
@@ -168,155 +130,6 @@ pub(crate) fn validate_discriminator_not_zero(disc_bytes: &[LitInt]) -> syn::Res
     Ok(values)
 }
 
-// --- Type helpers ---
-
-/// Expand a seed expression into a byte slice for use inside parse (fields are
-/// local variables).
-pub(crate) fn seed_slice_expr_for_parse(
-    expr: &Expr,
-    field_names: &[String],
-) -> proc_macro2::TokenStream {
-    if let Expr::Path(ep) = expr {
-        if ep.path.segments.len() == 1 && ep.qself.is_none() {
-            let ident = &ep.path.segments[0].ident;
-            if field_names.contains(&ident.to_string()) {
-                return quote! { #ident.to_account_view().address().as_ref() };
-            }
-        }
-    }
-    quote! { #expr as &[u8] }
-}
-
-/// Resolve a typed seed argument to a `&[u8]` expression.
-///
-/// Typed seeds use `seeds = Type::seeds(arg1, arg2)` syntax. Each argument is
-/// resolved by its expression kind:
-/// - Bare identifier matching a prior account field -> address bytes
-/// - Bare identifier matching an instruction arg -> type-appropriate conversion
-/// - Dotted field access (`config.namespace`) -> raw byte cast via
-///   `from_raw_parts`
-/// - Anything else -> emit as-is, let rustc decide
-pub(crate) fn typed_seed_slice_expr(
-    expr: &Expr,
-    field_names: &[String],
-    instruction_args: &Option<Vec<crate::accounts::InstructionArg>>,
-) -> proc_macro2::TokenStream {
-    match expr {
-        // Bare identifier
-        Expr::Path(ep) if ep.path.segments.len() == 1 && ep.qself.is_none() => {
-            let ident = &ep.path.segments[0].ident;
-            let name = ident.to_string();
-
-            // Account field -> address
-            if field_names.contains(&name) {
-                return quote! { #ident.to_account_view().address().as_ref() };
-            }
-
-            // Instruction arg -> type-appropriate conversion
-            if let Some(args) = instruction_args {
-                if let Some(arg) = args.iter().find(|a| a.name == *ident) {
-                    return ix_arg_to_seed_bytes(&arg.name, &arg.ty);
-                }
-            }
-
-            // Unknown — emit as-is, rustc will error
-            quote! { &#ident as &[u8] }
-        }
-
-        // Dotted field access: config.namespace
-        // Deserialized account field — on sBPF (little-endian), the in-memory
-        // representation of both Pod types and native integers is already LE bytes.
-        // This is a zero-cost reference to those bytes.
-        Expr::Field(field_expr) => {
-            quote! {{
-                const _: () = assert!(cfg!(target_endian = "little"), "typed seeds require little-endian");
-                unsafe {
-                    core::slice::from_raw_parts(
-                        &#field_expr as *const _ as *const u8,
-                        core::mem::size_of_val(&#field_expr),
-                    )
-                }
-            }}
-        }
-
-        // Byte literal or other expression
-        _ => quote! { #expr as &[u8] },
-    }
-}
-
-/// Like `typed_seed_slice_expr`, but for use in seed methods on the Accounts
-/// struct. Field access expressions (e.g. `config.namespace`) are prefixed
-/// with `self.` so they resolve to the Accounts struct fields.
-pub(crate) fn typed_seed_method_expr(
-    expr: &Expr,
-    field_names: &[String],
-    instruction_args: &Option<Vec<crate::accounts::InstructionArg>>,
-) -> proc_macro2::TokenStream {
-    match expr {
-        // Bare identifier — should not reach here (handled by caller for
-        // account keys and ix args), but if it does, emit with self prefix
-        // if it's a field name.
-        Expr::Path(ep) if ep.path.segments.len() == 1 && ep.qself.is_none() => {
-            let ident = &ep.path.segments[0].ident;
-            let name = ident.to_string();
-
-            if field_names.contains(&name) {
-                return quote! { self.#ident.to_account_view().address().as_ref() };
-            }
-
-            if let Some(args) = instruction_args {
-                if let Some(arg) = args.iter().find(|a| a.name == *ident) {
-                    return ix_arg_to_seed_bytes(&arg.name, &arg.ty);
-                }
-            }
-
-            quote! { &#ident as &[u8] }
-        }
-
-        // Dotted field access: config.namespace -> self.config.namespace
-        Expr::Field(field_expr) => {
-            quote! {{
-                const _: () = assert!(cfg!(target_endian = "little"), "typed seeds require little-endian");
-                unsafe {
-                    core::slice::from_raw_parts(
-                        &self.#field_expr as *const _ as *const u8,
-                        core::mem::size_of_val(&self.#field_expr),
-                    )
-                }
-            }}
-        }
-
-        _ => quote! { #expr as &[u8] },
-    }
-}
-
-fn ix_arg_to_seed_bytes(name: &syn::Ident, ty: &Type) -> proc_macro2::TokenStream {
-    let type_str = quote!(#ty).to_string().replace(' ', "");
-    match type_str.as_str() {
-        "u8" => quote! { &[#name] },
-        "bool" => quote! { &[#name as u8] },
-        "Address" | "Pubkey" => quote! { #name.as_ref() },
-        _ => quote! { &#name.to_le_bytes() },
-    }
-}
-
-/// Check if a field type's base type is `Signer`.
-pub(crate) fn is_signer_type(ty: &Type) -> bool {
-    let inner = match ty {
-        Type::Reference(r) => &*r.elem,
-        other => other,
-    };
-    if let Type::Path(p) = inner {
-        if let Some(last) = p.path.segments.last() {
-            return last.ident == "Signer";
-        }
-    }
-    false
-}
-
-/// Extract the first generic type argument from a named wrapper type.
-/// E.g. `extract_generic_inner_type(ty, "Option")` returns `Some(&T)` for
-/// `Option<T>`.
 pub(crate) fn extract_generic_inner_type<'a>(ty: &'a Type, wrapper: &str) -> Option<&'a Type> {
     if let Type::Path(type_path) = ty {
         if let Some(last) = type_path.path.segments.last() {
@@ -332,8 +145,6 @@ pub(crate) fn extract_generic_inner_type<'a>(ty: &'a Type, wrapper: &str) -> Opt
     None
 }
 
-/// Check if a type is a composite (non-reference, non-Option type with a
-/// lifetime parameter).
 pub(crate) fn is_composite_type(ty: &Type) -> bool {
     if matches!(ty, Type::Reference(_)) {
         return false;
@@ -354,12 +165,10 @@ pub(crate) fn is_composite_type(ty: &Type) -> bool {
     false
 }
 
-/// Returns `true` if `ty` is the unit type `()`.
 pub(crate) fn is_unit_type(ty: &Type) -> bool {
     matches!(ty, Type::Tuple(t) if t.elems.is_empty())
 }
 
-/// Strips generic arguments from a type path, returning the bare path.
 pub(crate) fn strip_generics(ty: &Type) -> proc_macro2::TokenStream {
     match ty {
         Type::Path(type_path) => {
@@ -376,41 +185,6 @@ pub(crate) fn strip_generics(ty: &Type) -> proc_macro2::TokenStream {
     }
 }
 
-/// Converts `PascalCase` to `snake_case` (e.g., `MakeEscrow` → `make_escrow`).
-pub(crate) fn pascal_to_snake(s: &str) -> String {
-    let mut result = String::new();
-    let chars: Vec<char> = s.chars().collect();
-    for (i, &c) in chars.iter().enumerate() {
-        if c.is_uppercase() && i > 0 {
-            // Only insert underscore before an uppercase letter when the
-            // previous char is lowercase, OR the next char is lowercase
-            // (handles acronym runs like "HTTP" → "http" not "h_t_t_p").
-            let prev_lower = chars[i - 1].is_lowercase();
-            let next_lower = chars.get(i + 1).is_some_and(|n| n.is_lowercase());
-            if prev_lower || next_lower {
-                result.push('_');
-            }
-        }
-        result.push(c.to_lowercase().next().unwrap());
-    }
-    result
-}
-
-/// Converts `snake_case` to `PascalCase` (e.g., `make_escrow` → `MakeEscrow`).
-pub(crate) fn snake_to_pascal(s: &str) -> String {
-    s.split('_')
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(c) => c.to_uppercase().to_string() + &chars.collect::<String>(),
-            }
-        })
-        .collect()
-}
-
-// --- Pod dynamic field detection ---
-
 fn extract_const_usize(arg: &GenericArgument) -> Option<usize> {
     if let GenericArgument::Const(Expr::Lit(ExprLit {
         lit: Lit::Int(lit_int),
@@ -423,13 +197,11 @@ fn extract_const_usize(arg: &GenericArgument) -> Option<usize> {
     }
 }
 
-/// Classification of a Pod dynamic field.
 pub(crate) enum PodDynField {
-    /// `PodString<N, PFX>` / `String<N, pfx_type>`: PFX-byte prefix, max N
-    /// bytes.
-    Str { max: usize, prefix_bytes: usize },
-    /// `PodVec<T, N, PFX>` / `Vec<T, N, pfx_type>`: PFX-byte prefix, max N
-    /// elements.
+    Str {
+        max: usize,
+        prefix_bytes: usize,
+    },
     Vec {
         elem: Box<Type>,
         max: usize,
@@ -437,20 +209,35 @@ pub(crate) enum PodDynField {
     },
 }
 
-/// Converts a prefix generic argument to its byte count.
-///
-/// Accepts the user-facing type-path form (`u8`→1, `u16`→2, `u32`→4, `u64`→8)
-/// and the Pod/codegen const-integer form (literal `1`, `2`, `4`, `8`).
+pub(crate) fn classify_lifetime_arg(ty: &Type) -> bool {
+    use syn::{GenericArgument, PathArguments};
+    if let Type::Path(tp) = ty {
+        if let Some(last) = tp.path.segments.last() {
+            if let PathArguments::AngleBracketed(args) = &last.arguments {
+                return args
+                    .args
+                    .iter()
+                    .any(|a| matches!(a, GenericArgument::Lifetime(_)));
+            }
+        }
+    }
+    false
+}
+
 fn parse_prefix_arg(arg: &GenericArgument) -> Option<usize> {
     match arg {
         GenericArgument::Type(Type::Path(type_path)) => {
             if let Some(seg) = type_path.path.segments.last() {
-                match seg.ident.to_string().as_str() {
-                    "u8" => Some(1),
-                    "u16" => Some(2),
-                    "u32" => Some(4),
-                    "u64" => Some(8),
-                    _ => None,
+                if seg.ident == "u8" {
+                    Some(1)
+                } else if seg.ident == "u16" {
+                    Some(2)
+                } else if seg.ident == "u32" {
+                    Some(4)
+                } else if seg.ident == "u64" {
+                    Some(8)
+                } else {
+                    None
                 }
             } else {
                 None
@@ -463,8 +250,6 @@ fn parse_prefix_arg(arg: &GenericArgument) -> Option<usize> {
     }
 }
 
-/// Classifies a type as `PodString<N[, pfx]>` or `String<N[, pfx]>`.
-/// Returns `Some(PodDynField::Str { max, prefix_bytes })`.
 pub(crate) fn classify_pod_string(ty: &Type) -> Option<PodDynField> {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
@@ -483,8 +268,6 @@ pub(crate) fn classify_pod_string(ty: &Type) -> Option<PodDynField> {
     None
 }
 
-/// Classifies a type as `PodVec<T, N[, pfx]>` or `Vec<T, N[, pfx]>`.
-/// Returns `Some(PodDynField::Vec { elem, max, prefix_bytes })`.
 pub(crate) fn classify_pod_vec(ty: &Type) -> Option<PodDynField> {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
@@ -509,8 +292,38 @@ pub(crate) fn classify_pod_vec(ty: &Type) -> Option<PodDynField> {
     None
 }
 
-/// Converts a `prefix_bytes` count to the corresponding Rust integer type
-/// token. Used when generating client-side instruction argument types.
+pub(crate) fn classify_pod_dynamic(ty: &Type) -> Option<PodDynField> {
+    classify_pod_string(ty).or_else(|| classify_pod_vec(ty))
+}
+
+/// Classify a borrowed reference type as a compact schema field.
+/// `&str` maps to PodDynField::Str, `&[T]` maps to PodDynField::Vec.
+/// Returns None if the type is not a supported reference type.
+pub(crate) fn classify_borrowed_as_compact(
+    ty: &Type,
+    max_n: usize,
+    pfx_override: usize,
+) -> Option<PodDynField> {
+    if let Type::Reference(ref_ty) = ty {
+        if matches!(&*ref_ty.elem, Type::Path(tp) if tp.path.is_ident("str")) {
+            let pfx = if pfx_override == 0 { 1 } else { pfx_override };
+            return Some(PodDynField::Str {
+                max: max_n,
+                prefix_bytes: pfx,
+            });
+        }
+        if let Type::Slice(s) = &*ref_ty.elem {
+            let pfx = if pfx_override == 0 { 2 } else { pfx_override };
+            return Some(PodDynField::Vec {
+                elem: Box::new((*s.elem).clone()),
+                max: max_n,
+                prefix_bytes: pfx,
+            });
+        }
+    }
+    None
+}
+
 pub(crate) fn prefix_bytes_to_rust_type(prefix_bytes: usize) -> proc_macro2::TokenStream {
     match prefix_bytes {
         1 => quote! { u8 },
@@ -521,82 +334,70 @@ pub(crate) fn prefix_bytes_to_rust_type(prefix_bytes: usize) -> proc_macro2::Tok
     }
 }
 
-// --- Zc (zero-copy) companion struct helpers ---
+/// Map a PodDynField to the zeropod compact field type tokens.
+/// Used by both #[account] and #[instruction] codegen.
+pub(crate) fn pod_dyn_to_compact_type(dyn_field: &PodDynField) -> proc_macro2::TokenStream {
+    match dyn_field {
+        PodDynField::Str { max, prefix_bytes } => {
+            quote! { zeropod::pod::PodString<#max, #prefix_bytes> }
+        }
+        PodDynField::Vec {
+            elem,
+            max,
+            prefix_bytes,
+        } => {
+            quote! { zeropod::pod::PodVec<#elem, #max, #prefix_bytes> }
+        }
+    }
+}
 
-/// Maps a native integer type to its Pod companion (e.g., `u64` → `PodU64`).
-/// Non-integer types pass through unchanged.
 pub(crate) fn map_to_pod_type(ty: &Type) -> proc_macro2::TokenStream {
-    if let Type::Path(type_path) = ty {
-        if let Some(seg) = type_path.path.segments.last() {
-            let ident_str = seg.ident.to_string();
-            return match ident_str.as_str() {
-                "u128" => quote! { quasar_lang::pod::PodU128 },
-                "u64" => quote! { quasar_lang::pod::PodU64 },
-                "u32" => quote! { quasar_lang::pod::PodU32 },
-                "u16" => quote! { quasar_lang::pod::PodU16 },
-                "i128" => quote! { quasar_lang::pod::PodI128 },
-                "i64" => quote! { quasar_lang::pod::PodI64 },
-                "i32" => quote! { quasar_lang::pod::PodI32 },
-                "i16" => quote! { quasar_lang::pod::PodI16 },
-                "bool" => quote! { quasar_lang::pod::PodBool },
-                // String<N[, pfx_type]> → PodString<N, PFX>
-                // Vec<T, N[, pfx_type]> → PodVec<T, N, PFX>
-                // The optional prefix arg is a Rust type (u8/u16/u32/u64) in
-                // user syntax; convert it to a usize const for the Pod type.
-                "String" | "PodString" => {
-                    if let PathArguments::AngleBracketed(ab) = &seg.arguments {
-                        let mut it = ab.args.iter();
-                        if let Some(n_arg) = it.next() {
-                            let pfx: usize = it.next().and_then(parse_prefix_arg).unwrap_or(1);
-                            return quote! { quasar_lang::pod::PodString<#n_arg, #pfx> };
-                        }
-                    }
-                    return quote! { quasar_lang::pod::PodString };
-                }
-                "Vec" | "PodVec" => {
-                    if let PathArguments::AngleBracketed(ab) = &seg.arguments {
-                        let mut it = ab.args.iter();
-                        if let (Some(t_arg), Some(n_arg)) = (it.next(), it.next()) {
-                            let pfx: usize = it.next().and_then(parse_prefix_arg).unwrap_or(2);
-                            return quote! { quasar_lang::pod::PodVec<#t_arg, #n_arg, #pfx> };
-                        }
-                    }
-                    return quote! { quasar_lang::pod::PodVec };
-                }
-                _ => quote! { #ty },
-            };
-        }
-    }
-    quote! { #ty }
+    pod_alias_type(ty, true)
+        .unwrap_or_else(|| quote! { <#ty as quasar_lang::instruction_arg::InstructionArg>::Zc })
 }
 
-fn zc_assign_expr(
-    field_name: &Ident,
-    ty: &Type,
-    value: proc_macro2::TokenStream,
-) -> proc_macro2::TokenStream {
-    if let Type::Path(type_path) = ty {
-        if let Some(seg) = type_path.path.segments.last() {
-            let pod_type = match seg.ident.to_string().as_str() {
-                "u8" | "i8" => return quote! { __zc.#field_name = #value; },
-                "bool" => quote! { quasar_lang::pod::PodBool },
-                "u16" => quote! { quasar_lang::pod::PodU16 },
-                "u32" => quote! { quasar_lang::pod::PodU32 },
-                "u64" => quote! { quasar_lang::pod::PodU64 },
-                "u128" => quote! { quasar_lang::pod::PodU128 },
-                "i16" => quote! { quasar_lang::pod::PodI16 },
-                "i32" => quote! { quasar_lang::pod::PodI32 },
-                "i64" => quote! { quasar_lang::pod::PodI64 },
-                "i128" => quote! { quasar_lang::pod::PodI128 },
-                _ => return quote! { __zc.#field_name = #value; },
-            };
-            return quote! { __zc.#field_name = #pod_type::from(#value); };
-        }
-    }
-    quote! { __zc.#field_name = #value; }
+pub(crate) fn canonical_instruction_arg_type(ty: &Type) -> proc_macro2::TokenStream {
+    pod_alias_type(ty, false).unwrap_or_else(|| quote! { #ty })
 }
 
-/// Generates a ZC assignment statement: `__zc.field = PodXX::from(field)`.
 pub(crate) fn zc_assign_from_value(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
-    zc_assign_expr(field_name, ty, quote! { #field_name })
+    let canonical = canonical_instruction_arg_type(ty);
+    quote! {
+        __zc.#field_name =
+            <#canonical as quasar_lang::instruction_arg::InstructionArg>::to_zc(&#field_name);
+    }
+}
+
+fn pod_alias_type(ty: &Type, accept_pod_aliases: bool) -> Option<proc_macro2::TokenStream> {
+    if let Type::Path(type_path) = ty {
+        if let Some(seg) = type_path.path.segments.last() {
+            let is_string = seg.ident == "String" || seg.ident == "PodString" && accept_pod_aliases;
+            let is_vec = seg.ident == "Vec" || seg.ident == "PodVec" && accept_pod_aliases;
+
+            if is_string {
+                if let PathArguments::AngleBracketed(ab) = &seg.arguments {
+                    let mut it = ab.args.iter();
+                    if let Some(n_arg) = it.next() {
+                        let pfx: usize = it.next().and_then(parse_prefix_arg).unwrap_or(1);
+                        return Some(quote! { quasar_lang::pod::PodString<#n_arg, #pfx> });
+                    }
+                }
+                if accept_pod_aliases {
+                    return Some(quote! { quasar_lang::pod::PodString });
+                }
+            } else if is_vec {
+                if let PathArguments::AngleBracketed(ab) = &seg.arguments {
+                    let mut it = ab.args.iter();
+                    if let (Some(t_arg), Some(n_arg)) = (it.next(), it.next()) {
+                        let pfx: usize = it.next().and_then(parse_prefix_arg).unwrap_or(2);
+                        return Some(quote! { quasar_lang::pod::PodVec<#t_arg, #n_arg, #pfx> });
+                    }
+                }
+                if accept_pod_aliases {
+                    return Some(quote! { quasar_lang::pod::PodVec });
+                }
+            }
+        }
+    }
+    None
 }

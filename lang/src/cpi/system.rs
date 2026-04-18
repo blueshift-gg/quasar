@@ -287,3 +287,162 @@ impl crate::accounts::Program<System> {
         )
     }
 }
+
+/// Initialize an account with automatic rent calculation.
+///
+/// Computes the minimum rent-exempt balance from the provided `Rent`, then
+/// delegates to [`init_account`]. Used by the derive macro's init codegen to
+/// replace the inline rent-calc + CPI sequence with a single function call.
+///
+/// # Parameters
+///
+/// - `payer`: funding account (must be a signer)
+/// - `account`: account to initialize (writable; PDA signer seeds in `signers`)
+/// - `space`: account data size in bytes
+/// - `owner`: program to own the new account
+/// - `signers`: PDA signer seeds (empty slice for keypair-signed accounts)
+/// - `rent`: shared rent struct (from Sysvar or account data)
+#[inline(always)]
+pub fn init_account_with_rent(
+    payer: &AccountView,
+    account: &mut AccountView,
+    space: u64,
+    owner: &Address,
+    signers: &[Signer],
+    rent: &crate::sysvars::rent::Rent,
+) -> ProgramResult {
+    let lamports = rent.try_minimum_balance(space as usize)?;
+    init_account(payer, account, lamports, space, owner, signers)
+}
+
+/// Write a discriminator to an account's data buffer.
+///
+/// Used by the derive macro after `init_account` to stamp the `Account<T>`
+/// discriminator. Separated from init so the same CPI body can be reused for
+/// token/mint accounts which don't need discriminator writes.
+#[inline(always)]
+pub fn write_discriminator(
+    account: &mut AccountView,
+    discriminator: &[u8],
+) -> Result<(), solana_program_error::ProgramError> {
+    if discriminator.len() > account.data_len() {
+        return Err(solana_program_error::ProgramError::AccountDataTooSmall);
+    }
+    unsafe {
+        core::ptr::copy_nonoverlapping(
+            discriminator.as_ptr(),
+            account.data_mut_ptr(),
+            discriminator.len(),
+        );
+    }
+    Ok(())
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use {
+        super::*,
+        crate::cpi::{AccountBuffer, MIN_ACCOUNT_BUF},
+    };
+
+    #[kani::proof]
+    fn transfer_data_layout() {
+        let lamports: u64 = kani::any();
+
+        let mut buf_from = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
+        buf_from.init([1; 32], [0; 32], 0, true, true, false);
+        let from = unsafe { buf_from.view() };
+
+        let mut buf_to = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
+        buf_to.init([2; 32], [0; 32], 0, false, true, false);
+        let to = unsafe { buf_to.view() };
+
+        let cpi = transfer(&from, &to, lamports);
+        let data = cpi.instruction_data();
+        assert!(u32::from_le_bytes([data[0], data[1], data[2], data[3]]) == IX_TRANSFER as u32);
+        assert!(
+            u64::from_le_bytes([
+                data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
+            ]) == lamports
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(33)]
+    fn assign_data_layout() {
+        let owner_bytes: [u8; 32] = kani::any();
+        let owner = solana_address::Address::new_from_array(owner_bytes);
+
+        let mut buf = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
+        buf.init([1; 32], [0; 32], 0, true, true, false);
+        let acct = unsafe { buf.view() };
+
+        let cpi = assign(&acct, &owner);
+        let data = cpi.instruction_data();
+        assert!(u32::from_le_bytes([data[0], data[1], data[2], data[3]]) == IX_ASSIGN as u32);
+
+        let mut i = 0;
+        while i < 32 {
+            assert!(data[4 + i] == owner_bytes[i]);
+            i += 1;
+        }
+    }
+
+    #[kani::proof]
+    fn allocate_data_layout() {
+        let space: u64 = kani::any();
+
+        let mut buf = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
+        buf.init([1; 32], [0; 32], 0, true, true, false);
+        let acct = unsafe { buf.view() };
+
+        let cpi = allocate(&acct, space);
+        let data = cpi.instruction_data();
+        assert!(u32::from_le_bytes([data[0], data[1], data[2], data[3]]) == IX_ALLOCATE as u32);
+        assert!(
+            u64::from_le_bytes([
+                data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
+            ]) == space
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(33)]
+    fn create_account_data_layout() {
+        let lamports: u64 = kani::any();
+        let space: u64 = kani::any();
+        let owner_bytes: [u8; 32] = kani::any();
+        let owner = solana_address::Address::new_from_array(owner_bytes);
+
+        let mut buf_from = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
+        buf_from.init([1; 32], [0; 32], 0, true, true, false);
+        let from = unsafe { buf_from.view() };
+
+        let mut buf_to = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
+        buf_to.init([2; 32], [0; 32], 0, true, true, false);
+        let to = unsafe { buf_to.view() };
+
+        let cpi = create_account(&from, &to, lamports, space, &owner);
+        let data = cpi.instruction_data();
+
+        assert!(
+            u32::from_le_bytes([data[0], data[1], data[2], data[3]]) == IX_CREATE_ACCOUNT as u32
+        );
+        assert!(
+            u64::from_le_bytes([
+                data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
+            ]) == lamports
+        );
+        assert!(
+            u64::from_le_bytes([
+                data[12], data[13], data[14], data[15], data[16], data[17], data[18], data[19],
+            ]) == space
+        );
+
+        let mut i = 0;
+        while i < 32 {
+            assert!(data[20 + i] == owner_bytes[i]);
+            i += 1;
+        }
+    }
+}

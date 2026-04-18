@@ -90,14 +90,17 @@ fn init_if_needed_token_interface_spl_new() {
     let token_program = spl_token_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededTokenInterfaceInstruction {
-        payer,
-        token_account: token_key,
-        mint: mint_key,
-        token_program,
-        system_program,
-    }
-    .into();
+    let instruction = with_signers(
+        InitIfNeededTokenInterfaceInstruction {
+            payer,
+            token_account: token_key,
+            mint: mint_key,
+            token_program,
+            system_program,
+        }
+        .into(),
+        &[1],
+    );
 
     let result = svm.process_instruction(
         &instruction,
@@ -124,14 +127,17 @@ fn init_if_needed_token_interface_t22_new() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededTokenInterfaceInstruction {
-        payer,
-        token_account: token_key,
-        mint: mint_key,
-        token_program,
-        system_program,
-    }
-    .into();
+    let instruction = with_signers(
+        InitIfNeededTokenInterfaceInstruction {
+            payer,
+            token_account: token_key,
+            mint: mint_key,
+            token_program,
+            system_program,
+        }
+        .into(),
+        &[1],
+    );
 
     let result = svm.process_instruction(
         &instruction,
@@ -299,14 +305,17 @@ fn init_if_needed_mint_interface_spl_new() {
     let token_program = spl_token_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededMintInterfaceInstruction {
-        payer,
-        mint: mint_key,
-        mint_authority: authority,
-        token_program,
-        system_program,
-    }
-    .into();
+    let instruction = with_signers(
+        InitIfNeededMintInterfaceInstruction {
+            payer,
+            mint: mint_key,
+            mint_authority: authority,
+            token_program,
+            system_program,
+        }
+        .into(),
+        &[1],
+    );
 
     let result = svm.process_instruction(
         &instruction,
@@ -332,14 +341,17 @@ fn init_if_needed_mint_interface_t22_new() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededMintInterfaceInstruction {
-        payer,
-        mint: mint_key,
-        mint_authority: authority,
-        token_program,
-        system_program,
-    }
-    .into();
+    let instruction = with_signers(
+        InitIfNeededMintInterfaceInstruction {
+            payer,
+            mint: mint_key,
+            mint_authority: authority,
+            token_program,
+            system_program,
+        }
+        .into(),
+        &[1],
+    );
 
     let result = svm.process_instruction(
         &instruction,

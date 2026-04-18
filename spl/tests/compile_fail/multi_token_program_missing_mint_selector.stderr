@@ -1,0 +1,11 @@
+error: multiple token program fields found; specify `token::token_program`, `associated_token::token_program`, or `mint::token_program` explicitly
+  --> tests/compile_fail/multi_token_program_missing_mint_selector.rs:12:5
+   |
+12 | /     #[account(
+13 | |         mut,
+14 | |         init,
+15 | |         payer = payer,
+...  |
+18 | |     )]
+19 | |     pub mint: Account<Mint>,
+   | |___________________________^

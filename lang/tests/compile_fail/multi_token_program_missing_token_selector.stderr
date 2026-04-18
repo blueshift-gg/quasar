@@ -1,5 +1,0 @@
-error: Multiple token program fields detected. `token::token_program = <field>` is required for `token::*` on this field when more than one token program field is present.
-  --> tests/compile_fail/multi_token_program_missing_token_selector.rs:20:9
-   |
-20 |     pub token: Account<Token>,
-   |         ^^^^^

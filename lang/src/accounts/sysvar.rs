@@ -1,11 +1,6 @@
 use {crate::traits::AsAccountView, core::marker::PhantomData, solana_account_view::AccountView};
 
-/// Generic sysvar account wrapper. Validates the account address matches
-/// `T::ID` on construction and provides zero-copy access to the sysvar data
-/// via `Deref`.
-///
-/// Uses `borrow_unchecked` (no runtime borrow tracking) — sysvars are
-/// always read-only, so there is no aliasing risk.
+/// Sysvar account wrapper. Validates address = `T::ID`, derefs to `T`.
 #[repr(transparent)]
 pub struct Sysvar<T: crate::sysvars::Sysvar> {
     view: AccountView,
@@ -23,6 +18,18 @@ impl<T: crate::sysvars::Sysvar> Sysvar<T> {
     #[inline(always)]
     pub fn get(&self) -> &T {
         unsafe { T::from_bytes_unchecked(self.view.borrow_unchecked()) }
+    }
+}
+
+impl<T: crate::sysvars::Sysvar> crate::account_load::AccountLoad for Sysvar<T> {
+    type Params = ();
+
+    #[inline(always)]
+    fn check(
+        view: &AccountView,
+        field_name: &str,
+    ) -> Result<(), solana_program_error::ProgramError> {
+        crate::validation::check_sysvar::<T>(view, field_name)
     }
 }
 

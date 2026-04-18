@@ -8,3 +8,12 @@ define_account!(
     /// owner, signer, writable, or data checks are performed.
     pub struct UncheckedAccount => []
 );
+
+impl crate::account_load::AccountLoad for UncheckedAccount {
+    type Params = ();
+
+    #[inline(always)]
+    fn check(_view: &AccountView, _field_name: &str) -> Result<(), ProgramError> {
+        Ok(())
+    }
+}

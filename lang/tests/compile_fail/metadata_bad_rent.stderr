@@ -1,7 +1,0 @@
-error: `metadata::*` / `master_edition::*` requires a `Sysvar<Rent>` field
- --> tests/compile_fail/metadata_bad_rent.rs:7:10
-  |
-7 | #[derive(Accounts)]
-  |          ^^^^^^^^
-  |
-  = note: this error originates in the derive macro `Accounts` (in Nightly builds, run with -Z macro-backtrace for more info)

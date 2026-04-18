@@ -52,6 +52,37 @@ mod counter_program {
 
 Full documentation at **[quasar-lang.com](https://quasar-lang.com)**.
 
+## Verification
+
+Local Kani verification is optional. Normal builds and tests do not require Kani:
+
+```bash
+make test
+```
+
+If you want to run the model-checking harnesses locally, install `kani 0.67.0` to match CI, then verify the tool version:
+
+```bash
+kani --version
+make check-kani
+```
+
+Run all proof suites:
+
+```bash
+make kani
+```
+
+Or run a single crate:
+
+```bash
+make kani-pod
+make kani-lang
+make kani-spl
+```
+
+CI installs and runs the same Kani version automatically in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
 ## Contributing
 
 The best way to contribute now is playing with Quasar. Build programs, test them and if you found any bug or areas to improve, please open an Issue. We still on a unstable version that will be changing a lot. Check [Contributing](CONTRIBUTING.md)

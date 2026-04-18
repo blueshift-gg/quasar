@@ -105,15 +105,4 @@ pub fn find_in_deploy(filename: &str) -> Option<PathBuf> {
     None
 }
 
-/// Convert a snake_case string to PascalCase.
-pub fn snake_to_pascal(s: &str) -> String {
-    s.split('_')
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
-            }
-        })
-        .collect()
-}
+pub use quasar_schema::snake_to_pascal;

@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(dead_code)]
 
 use quasar_lang::prelude::*;
 
@@ -79,11 +80,6 @@ mod quasar_test_token_cpi {
 
     #[instruction(discriminator = 12)]
     pub fn init_mint_account(ctx: Ctx<InitMintAccount>) -> Result<(), ProgramError> {
-        ctx.accounts.handler()
-    }
-
-    #[instruction(discriminator = 13)]
-    pub fn init_mint_with_metadata(ctx: Ctx<InitMintWithMetadata>) -> Result<(), ProgramError> {
         ctx.accounts.handler()
     }
 

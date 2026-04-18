@@ -1,13 +1,10 @@
 use {
-    mollusk_svm::Mollusk, quasar_test_events::cpi::*, solana_account::Account,
-    solana_address::Address,
+    crate::helpers::mollusk_for_program, mollusk_svm::Mollusk, quasar_test_events::cpi::*,
+    solana_account::Account, solana_address::Address,
 };
 
 fn setup() -> Mollusk {
-    Mollusk::new(
-        &quasar_test_events::ID,
-        "../../target/deploy/quasar_test_events",
-    )
+    mollusk_for_program(&quasar_test_events::ID, "quasar_test_events")
 }
 
 const EMIT_MIN_CU: u64 = 200;

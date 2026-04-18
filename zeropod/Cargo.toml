@@ -1,0 +1,21 @@
+[package]
+name = "zeropod"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/blueshift-gg/zeropod"
+description = "Zero-copy pod types with derive macros. Alignment-1 representations for zero-overhead data access."
+
+[lints]
+workspace = true
+
+[features]
+wincode = ["dep:wincode"]
+solana-address = ["dep:solana-address"]
+solana-program-error = ["dep:solana-program-error"]
+
+[dependencies]
+zeropod-derive = { path = "../zeropod-derive" }
+wincode = { version = "0.4.7", features = ["derive"], optional = true }
+solana-address = { version = ">=2.2, <2.6", optional = true, features = ["copy"] }
+solana-program-error = { version = ">=1.0, <4.0", optional = true }

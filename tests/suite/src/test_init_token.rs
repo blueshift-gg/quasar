@@ -160,14 +160,17 @@ fn init_if_needed_token_spl_happy_new() {
     let token_program = spl_token_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededTokenInstruction {
-        payer,
-        token_account: token_key,
-        mint: mint_key,
-        token_program,
-        system_program,
-    }
-    .into();
+    let instruction = with_signers(
+        InitIfNeededTokenInstruction {
+            payer,
+            token_account: token_key,
+            mint: mint_key,
+            token_program,
+            system_program,
+        }
+        .into(),
+        &[1],
+    );
 
     let result = svm.process_instruction(
         &instruction,
@@ -346,14 +349,17 @@ fn init_if_needed_token_t22_happy_new() {
     let token_program = token_2022_program_id();
     let system_program = quasar_svm::system_program::ID;
 
-    let instruction: Instruction = InitIfNeededTokenT22Instruction {
-        payer,
-        token_account: token_key,
-        mint: mint_key,
-        token_program,
-        system_program,
-    }
-    .into();
+    let instruction = with_signers(
+        InitIfNeededTokenT22Instruction {
+            payer,
+            token_account: token_key,
+            mint: mint_key,
+            token_program,
+            system_program,
+        }
+        .into(),
+        &[1],
+    );
 
     let result = svm.process_instruction(
         &instruction,

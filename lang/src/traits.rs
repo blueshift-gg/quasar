@@ -94,14 +94,22 @@ pub trait Space {
 
 /// Runtime validation hook called during account parsing.
 ///
-/// The default implementation is a no-op. Override to add custom checks
-/// (e.g. verifying a mint address or checking account state).
+/// `check()` runs after owner/header validation and before pointer casts.
+/// `validate()` is an optional parameterized hook used by namespaced
+/// constraints (for example `token::mint`).
 ///
-/// Implemented by: `define_account!` macro (for check trait composition),
-/// manual `impl` for custom validation.
+/// The default implementations are no-ops.
 pub trait AccountCheck {
     #[inline(always)]
     fn check(_view: &AccountView) -> Result<(), ProgramError> {
+        Ok(())
+    }
+
+    /// Per-type config for namespaced constraints.
+    type Params: Default;
+
+    #[inline(always)]
+    fn validate(_view: &AccountView, _params: &Self::Params) -> Result<(), ProgramError> {
         Ok(())
     }
 }
@@ -132,7 +140,7 @@ pub trait ParseAccounts<'input>: Sized {
     ///
     /// When `#[instruction(args)]` is present on the Accounts struct, the
     /// derived impl deserializes declared args from `data` and makes them
-    /// available during account initialization (e.g. for `metadata::name`).
+    /// available during account validation and initialization.
     ///
     /// The default implementation ignores `data` and delegates to `parse`.
     #[inline(always)]

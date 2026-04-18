@@ -1,0 +1,15 @@
+[package]
+name = "zeropod-derive"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/blueshift-gg/zeropod"
+description = "Derive macros for zeropod"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full", "extra-traits"] }

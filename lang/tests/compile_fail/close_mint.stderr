@@ -1,5 +1,0 @@
-error: #[account(close)] cannot be used on mint accounts. Mint closing is not supported through the token-account close path.
-  --> tests/compile_fail/close_mint.rs:12:9
-   |
-12 |     pub mint: Account<Mint>,
-   |         ^^^^

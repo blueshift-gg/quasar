@@ -1,4 +1,5 @@
 use {
+    crate::helpers::mollusk_for_program,
     mollusk_svm::{program::keyed_account_for_system_program, Mollusk},
     quasar_test_sysvar::cpi::*,
     solana_account::Account,
@@ -12,10 +13,7 @@ const CLOCK_FULL_SNAPSHOT_SIZE: usize = 41;
 const RENT_CALC_SNAPSHOT_SIZE: usize = 9;
 
 fn setup() -> Mollusk {
-    Mollusk::new(
-        &quasar_test_sysvar::ID,
-        "../../target/deploy/quasar_test_sysvar",
-    )
+    mollusk_for_program(&quasar_test_sysvar::ID, "quasar_test_sysvar")
 }
 
 #[test]
