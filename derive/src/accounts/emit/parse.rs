@@ -236,6 +236,7 @@ fn emit_pda_check(
     let seed_array_name = format_ident!("__pda_seeds_{}", field);
     let explicit_bump_name = format_ident!("__bump_val_{}", field);
     let addr_access = quote! { #field.to_account_view().address() };
+    let literal_seeds = detect_literal_seeds(pda, all_semantics);
     let bump_assign = emit_pda_bump_assignment(
         field,
         pda,
@@ -251,6 +252,7 @@ fn emit_pda_check(
                 PdaBareMode::DeriveExpected
             },
             log_failure: true,
+            literal_seeds,
         },
     );
 
@@ -381,6 +383,25 @@ pub(super) struct PdaBumpAssignment<'a> {
     pub(super) explicit_bump_name: &'a syn::Ident,
     pub(super) bare_mode: PdaBareMode,
     pub(super) log_failure: bool,
+    /// Raw bytes when every seed is a byte literal — enables the const-PDA
+    /// fast path in `emit_pda_bump_assignment`.
+    pub(super) literal_seeds: Option<Vec<Vec<u8>>>,
+}
+
+/// Returns the raw seed bytes when every seed is a compile-time byte
+/// literal; `None` if any seed references a field, an instruction arg, or
+/// any other non-literal expression.
+pub(super) fn detect_literal_seeds(
+    pda: &PdaConstraint,
+    all_semantics: &[FieldSemantics],
+) -> Option<Vec<Vec<u8>>> {
+    seeds_to_emit_nodes(&pda.source, all_semantics)
+        .iter()
+        .map(|n| match n {
+            SeedEmitNode::Literal(bytes) => Some(bytes.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 pub(super) fn emit_seed_bindings(
@@ -536,7 +557,31 @@ pub(super) fn emit_pda_bump_assignment(
         explicit_bump_name,
         bare_mode,
         log_failure,
+        literal_seeds,
     } = assignment;
+
+    // Const-PDA fast path: when every seed is a compile-time byte literal
+    // and the bump is bare, evaluate the PDA at compile time via
+    // `find_program_address_const` and emit a single `keys_eq` at runtime —
+    // skipping ~300 CU of `find_bump_for_address` / `based_try_find_program_address`.
+    if let (Some(bytes), Some(BumpSyntax::Bare) | None) = (literal_seeds.as_ref(), &pda.bump) {
+        let invalid_pda_error = emit_invalid_pda_error_expr(field, log_failure);
+        let seed_bytes = bytes.iter().map(|seed| {
+            let b = seed.iter().map(|b| quote! { #b });
+            quote! { &[#(#b),*] as &[u8] }
+        });
+        return quote! {
+            const __PDA_CONST: (quasar_lang::prelude::Address, u8) =
+                quasar_lang::pda::find_program_address_const(
+                    &[#(#seed_bytes),*],
+                    &crate::ID,
+                );
+            if !quasar_lang::keys_eq(#addr_expr, &__PDA_CONST.0) {
+                return Err({ #invalid_pda_error });
+            }
+            #bump_var = __PDA_CONST.1;
+        };
+    }
 
     match &pda.bump {
         Some(BumpSyntax::Explicit(expr)) => match bare_mode {

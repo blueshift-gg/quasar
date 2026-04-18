@@ -371,6 +371,7 @@ fn emit_signers(
     let seed_idents = bindings.seed_idents;
     let seed_array_name = format_ident!("__init_seed_refs_{}", field);
     let explicit_bump_name = format_ident!("__init_bump_{}", field);
+    let literal_seeds = super::parse::detect_literal_seeds(pda, all_semantics);
     let pda_assign = super::parse::emit_pda_bump_assignment(
         field,
         pda,
@@ -382,6 +383,7 @@ fn emit_signers(
             explicit_bump_name: &explicit_bump_name,
             bare_mode: super::parse::PdaBareMode::DeriveExpected,
             log_failure: false,
+            literal_seeds,
         },
     );
 
