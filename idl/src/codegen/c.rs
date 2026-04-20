@@ -8,10 +8,6 @@ use {
 ///
 /// Produces a single header depending on `caravel.h` for Pubkey, AccountMeta,
 /// and Instruction.
-///
-/// Note: A current limitation is that `DynVec` and `DynString` are not
-/// supported, due to them not being directly serializable in C without length
-/// info
 pub fn generate_c_client(idl: &Idl) -> String {
     let prefix = idl.metadata.client_name().replace('-', "_");
     let guard = format!("{}_CLIENT_H", prefix.to_ascii_uppercase());
@@ -100,15 +96,7 @@ fn emit_type_defs(out: &mut String, prefix: &str, types: &[IdlTypeDef]) {
             writeln!(out, "    uint8_t _pad;").unwrap();
         }
         for field in &td.ty.fields {
-            let c = c_type(&field.ty);
-            if is_fixed_array_type(&field.ty) {
-                let size = fixed_array_size(&field.ty);
-                writeln!(out, "    uint8_t {name}[{size}];", name = field.name).unwrap();
-            } else if is_128bit(&field.ty) {
-                writeln!(out, "    uint8_t {name}[16];", name = field.name).unwrap();
-            } else {
-                writeln!(out, "    {c} {name};", name = field.name).unwrap();
-            }
+            emit_struct_field(out, prefix, &field.name, &field.ty);
         }
         writeln!(out, "}} {prefix}_{snake}_t;\n").unwrap();
     }
@@ -156,14 +144,7 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
             writeln!(out, "    uint8_t _pad;").unwrap();
         }
         for arg in &ix.args {
-            if is_fixed_array_type(&arg.ty) {
-                let size = fixed_array_size(&arg.ty);
-                writeln!(out, "    uint8_t {name}[{size}];", name = arg.name).unwrap();
-            } else if is_128bit(&arg.ty) {
-                writeln!(out, "    uint8_t {name}[16];", name = arg.name).unwrap();
-            } else {
-                writeln!(out, "    {} {};", c_type(&arg.ty), arg.name).unwrap();
-            }
+            emit_struct_field(out, prefix, &arg.name, &arg.ty);
         }
         writeln!(out, "}} {prefix}_{ix_snake}_args_t;\n").unwrap();
 
@@ -232,7 +213,13 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
 
         // serialize data
         writeln!(out, "    uint64_t off = 0;").unwrap();
-        writeln!(out, "    if (data_buf_len < {disc_len}) return 0;").unwrap();
+        let args_overhead: usize = ix
+            .args
+            .iter()
+            .map(|a| static_data_overhead(&a.ty, &idl.types))
+            .sum();
+        let min_data = disc_len + args_overhead;
+        writeln!(out, "    if (data_buf_len < {min_data}) return 0;").unwrap();
         writeln!(
             out,
             "    for (uint64_t i = 0; i < {disc_len}; i++) data_buf[off++] = \
@@ -362,7 +349,7 @@ fn emit_error_codes(out: &mut String, prefix: &str, errors: &[crate::types::IdlE
     out.push('\n');
 }
 
-fn c_type(ty: &IdlType) -> String {
+fn c_type(ty: &IdlType, prefix: &str) -> String {
     match ty {
         IdlType::Primitive(p) => match p.as_str() {
             "bool" => "bool".into(),
@@ -382,10 +369,12 @@ fn c_type(ty: &IdlType) -> String {
             _ if p.starts_with('[') => "uint8_t".into(),
             _ => "uint8_t *".into(),
         },
-        IdlType::Option { option } => c_type(option),
+        IdlType::Option { option } => c_type(option, prefix),
         IdlType::DynString { .. } => "uint8_t *".into(),
         IdlType::DynVec { .. } => "uint8_t *".into(),
-        IdlType::Defined { defined } => format!("{}", pascal_to_snake(defined)),
+        IdlType::Defined { defined } => {
+            format!("{prefix}_{}_t", pascal_to_snake(defined))
+        }
     }
 }
 
@@ -404,6 +393,106 @@ fn fixed_array_size(ty: &IdlType) -> usize {
 
 fn is_128bit(ty: &IdlType) -> bool {
     matches!(ty, IdlType::Primitive(p) if p == "u128" || p == "i128")
+}
+
+fn emit_struct_field(out: &mut String, prefix: &str, name: &str, ty: &IdlType) {
+    let (is_opt, inner) = match ty {
+        IdlType::Option { option } => (true, option.as_ref()),
+        other => (false, other),
+    };
+    if is_opt {
+        writeln!(out, "    bool {name}_present;").unwrap();
+    }
+    if matches!(inner, IdlType::DynString { .. } | IdlType::DynVec { .. }) {
+        writeln!(out, "    const uint8_t *{name};").unwrap();
+        writeln!(out, "    uint32_t {name}_len;").unwrap();
+    } else if is_fixed_array_type(inner) {
+        let size = fixed_array_size(inner);
+        writeln!(out, "    uint8_t {name}[{size}];").unwrap();
+    } else if is_128bit(inner) {
+        writeln!(out, "    uint8_t {name}[16];").unwrap();
+    } else {
+        writeln!(out, "    {} {name};", c_type(inner, prefix)).unwrap();
+    }
+}
+
+fn static_data_overhead(ty: &IdlType, types: &[IdlTypeDef]) -> usize {
+    match ty {
+        IdlType::Primitive(p) => match p.as_str() {
+            "bool" | "u8" | "i8" => 1,
+            "u16" | "i16" => 2,
+            "u32" | "i32" | "f32" => 4,
+            "u64" | "i64" | "f64" => 8,
+            "u128" | "i128" => 16,
+            "pubkey" => 32,
+            other if other.starts_with('[') => super::parse_fixed_array_size(other).unwrap_or(0),
+            _ => 0,
+        },
+        IdlType::Option { option } => 1 + static_data_overhead(option, types),
+        IdlType::Defined { defined } => types
+            .iter()
+            .find(|t| t.name == *defined)
+            .map(|td| {
+                td.ty
+                    .fields
+                    .iter()
+                    .map(|f| static_data_overhead(&f.ty, types))
+                    .sum()
+            })
+            .unwrap_or(0),
+        IdlType::DynString { ref string } => string.prefix_bytes as usize,
+        IdlType::DynVec { ref vec } => vec.prefix_bytes as usize,
+    }
+}
+
+fn serialize_dyn_bytes(name: &str, prefix_bytes: usize, t: &str) -> String {
+    let pb = prefix_bytes;
+    let write_prefix = match prefix_bytes {
+        1 => format!("{t}data_buf[off++] = (uint8_t){name}_len;\n"),
+        2 => format!(
+            "{t}{{ uint16_t slen = (uint16_t){name}_len; data_buf[off] = (uint8_t)slen; \
+             data_buf[off+1] = (uint8_t)(slen >> 8); off += 2; }}\n"
+        ),
+        4 => format!(
+            "{t}{{ uint32_t slen = {name}_len; data_buf[off] = (uint8_t)slen; data_buf[off+1] = \
+             (uint8_t)(slen >> 8); data_buf[off+2] = (uint8_t)(slen >> 16); data_buf[off+3] = \
+             (uint8_t)(slen >> 24); off += 4; }}\n"
+        ),
+        _ => format!(
+            "{t}{{ uint64_t slen = (uint64_t){name}_len; for (int i = 0; i < 8; i++) {{ \
+             data_buf[off + i] = (uint8_t)(slen >> (i * 8)); }} off += 8; }}\n"
+        ),
+    };
+    format!(
+        "{t}if (off + {pb} + {name}_len > data_buf_len) return 0;\n\
+         {write_prefix}\
+         {t}for (uint32_t i = 0; i < {name}_len; i++) data_buf[off++] = {name}[i];\n"
+    )
+}
+
+fn decode_dyn_bytes(name: &str, prefix_bytes: usize, t: &str) -> String {
+    match prefix_bytes {
+        1 => format!(
+            "{t}out->{name}_len = data[offset]; offset += 1;\n\
+             {t}out->{name} = &data[offset]; offset += out->{name}_len;\n"
+        ),
+        2 => format!(
+            "{t}out->{name}_len = (uint32_t)((uint16_t)data[offset] | \
+             ((uint16_t)data[offset+1] << 8)); offset += 2;\n\
+             {t}out->{name} = &data[offset]; offset += out->{name}_len;\n"
+        ),
+        4 => format!(
+            "{t}out->{name}_len = (uint32_t)data[offset] | ((uint32_t)data[offset+1] << 8) | \
+             ((uint32_t)data[offset+2] << 16) | ((uint32_t)data[offset+3] << 24); offset += 4;\n\
+             {t}out->{name} = &data[offset]; offset += out->{name}_len;\n"
+        ),
+        _ => format!(
+            "{t}{{ uint64_t dlen = 0; for (int i = 0; i < 8; i++) dlen |= \
+             ((uint64_t)data[offset+i]) << (i*8); offset += 8; \
+             out->{name}_len = (uint32_t)dlen; out->{name} = &data[offset]; \
+             offset += out->{name}_len; }}\n"
+        ),
+    }
 }
 
 fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef], indent: usize) -> String {
@@ -464,10 +553,15 @@ fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef], indent: 
             _ => format!("{t}/* unsupported type for {name} */\n"),
         },
         IdlType::Option { option } => {
+            let ti = "    ".repeat(indent + 1);
             let inner = serialize_field_expr(name, option, types, indent + 1);
             format!(
-                "{t}/* Option: leading byte */\n{t}/* NOTE: caller must set a flag for presence \
-                 */\n{t}data_buf[off++] = 1;\n{inner}"
+                "{t}if ({name}_present) {{\n\
+                 {ti}data_buf[off++] = 1;\n\
+                 {inner}\
+                 {t}}} else {{\n\
+                 {ti}data_buf[off++] = 0;\n\
+                 {t}}}\n"
             )
         }
         IdlType::Defined { defined } => {
@@ -486,16 +580,8 @@ fn serialize_field_expr(name: &str, ty: &IdlType, types: &[IdlTypeDef], indent: 
                 format!("{t}/* unknown defined type: {defined} */\n")
             }
         }
-        IdlType::DynString { ref string } => {
-            let prefix_size = string.prefix_bytes;
-            match prefix_size {
-                1 => format!("{t}/* DynString not directly serializable without length info */\n"),
-                _ => format!("{t}/* DynString not directly serializable without length info */\n"),
-            }
-        }
-        IdlType::DynVec { .. } => {
-            format!("{t}/* DynVec not directly serializable without length info */\n")
-        }
+        IdlType::DynString { ref string } => serialize_dyn_bytes(name, string.prefix_bytes, &t),
+        IdlType::DynVec { ref vec } => serialize_dyn_bytes(name, vec.prefix_bytes, &t),
     }
 }
 
@@ -563,8 +649,14 @@ fn decode_field_expr(name: &str, ty: &IdlType, depth: usize, types: &[IdlTypeDef
             let inner = decode_field_expr(name, option, depth + 1, types);
             let ti = "    ".repeat(depth + 1);
             format!(
-                "{t}if (data[offset] != 0) {{\n{ti}offset += 1;\n{inner}{t}}} else {{\n{ti}offset \
-                 += 1;\n{t}}}\n"
+                "{t}if (data[offset] != 0) {{\n\
+                 {ti}offset += 1;\n\
+                 {ti}out->{name}_present = 1;\n\
+                 {inner}\
+                 {t}}} else {{\n\
+                 {ti}offset += 1;\n\
+                 {ti}out->{name}_present = 0;\n\
+                 {t}}}\n"
             )
         }
         IdlType::Defined { defined } => {
@@ -583,49 +675,7 @@ fn decode_field_expr(name: &str, ty: &IdlType, depth: usize, types: &[IdlTypeDef
                 format!("{t}/* unknown defined type: {defined} */\n")
             }
         }
-        IdlType::DynString { ref string } => {
-            let pb = string.prefix_bytes;
-            let read_len = match pb {
-                1 => {
-                    format!("{t}{{ uint8_t slen = data[offset]; offset += 1; offset += slen; }}\n")
-                }
-                2 => format!(
-                    "{t}{{ uint16_t slen = (uint16_t)data[offset] | ((uint16_t)data[offset+1] << \
-                     8); offset += 2; offset += slen; }}\n"
-                ),
-                4 => format!(
-                    "{t}{{ uint32_t slen = (uint32_t)data[offset] | ((uint32_t)data[offset+1] << \
-                     8) | ((uint32_t)data[offset+2] << 16) | ((uint32_t)data[offset+3] << 24); \
-                     offset += 4; offset += slen; }}\n"
-                ),
-                _ => format!(
-                    "{t}{{ uint64_t slen = 0; for (int i = 0; i < 8; i++) slen |= \
-                     ((uint64_t)data[offset+i]) << (i*8); offset += 8; offset += slen; }}\n"
-                ),
-            };
-            read_len
-        }
-        IdlType::DynVec { ref vec } => {
-            let pb = vec.prefix_bytes;
-            let read_len = match pb {
-                1 => {
-                    format!("{t}{{ uint8_t vlen = data[offset]; offset += 1; offset += vlen; }}\n")
-                }
-                2 => format!(
-                    "{t}{{ uint16_t vlen = (uint16_t)data[offset] | ((uint16_t)data[offset+1] << \
-                     8); offset += 2; offset += vlen; }}\n"
-                ),
-                4 => format!(
-                    "{t}{{ uint32_t vlen = (uint32_t)data[offset] | ((uint32_t)data[offset+1] << \
-                     8) | ((uint32_t)data[offset+2] << 16) | ((uint32_t)data[offset+3] << 24); \
-                     offset += 4; offset += vlen; }}\n"
-                ),
-                _ => format!(
-                    "{t}{{ uint64_t vlen = 0; for (int i = 0; i < 8; i++) vlen |= \
-                     ((uint64_t)data[offset+i]) << (i*8); offset += 8; offset += vlen; }}\n"
-                ),
-            };
-            read_len
-        }
+        IdlType::DynString { ref string } => decode_dyn_bytes(name, string.prefix_bytes, &t),
+        IdlType::DynVec { ref vec } => decode_dyn_bytes(name, vec.prefix_bytes, &t),
     }
 }
