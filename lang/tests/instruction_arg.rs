@@ -326,6 +326,159 @@ fn podvec_zc_is_self() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// `#[repr(...)]` unit enum as InstructionArg — coverage supplement
+//
+// Upstream already covers the happy paths for `Status` (u8) in
+// `repr_enum_round_trip`, `repr_enum_validate_accepts_known_discriminants`
+// and `repr_enum_validate_rejects_invalid_discriminant`. This block adds
+// the coverage those tests don't hit:
+//
+//   * `Zc` layout (size/align) for both `u8` and `u16` reprs,
+//   * a `u16`-repr enum (upstream exercises only `u8`),
+//   * an exhaustive 256-byte `validate_zc` sweep (upstream rejects a single
+//     undeclared byte),
+//   * a wider sampled `validate_zc` rejection sweep for `u16`,
+//   * `Option<Enum>` recursion — the highest-risk path, since a corrupt inner
+//     tag inside `Some(_)` would otherwise reach `from_zc` and panic via
+//     `unreachable!` if `validate_zc` didn't recurse,
+//   * wincode round-trip for both widths, matching the off-chain client codec
+//     used by generated CPI helpers.
+// ---------------------------------------------------------------------------
+
+#[repr(u16)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, quasar_lang::prelude::QuasarSerialize)]
+enum WideCode {
+    Alpha = 0x0001,
+    Beta = 0x0100,
+    Omega = 0xFFFE,
+}
+
+#[test]
+fn repr_u8_enum_zc_matches_repr() {
+    assert_eq!(core::mem::size_of::<<Status as InstructionArg>::Zc>(), 1);
+    assert_eq!(core::mem::align_of::<<Status as InstructionArg>::Zc>(), 1);
+}
+
+#[test]
+fn repr_u16_enum_zc_matches_repr() {
+    // u16 → PodU16 (align 1, size 2).
+    assert_eq!(core::mem::size_of::<<WideCode as InstructionArg>::Zc>(), 2);
+    assert_eq!(core::mem::align_of::<<WideCode as InstructionArg>::Zc>(), 1);
+}
+
+#[test]
+fn repr_u16_enum_round_trip() {
+    for &v in &[WideCode::Alpha, WideCode::Beta, WideCode::Omega] {
+        let zc = v.to_zc();
+        let back = WideCode::from_zc(&zc);
+        assert_eq!(back, v, "u16 enum round trip for {v:?}");
+    }
+}
+
+#[test]
+fn repr_u8_enum_validate_rejects_undeclared_tags() {
+    // `Status` declares {1, 2, 9}. Every other byte must be rejected,
+    // including discriminator-adjacent values (0, 3, 8, 10) and the
+    // full-range sentinel (0xFF). Rejection must surface as
+    // `InvalidInstructionData` so on-chain decoding fails before the
+    // handler runs.
+    let declared = [1u8, 2, 9];
+    for tag in 0u8..=255u8 {
+        let res = Status::validate_zc(&tag);
+        let expected_ok = declared.contains(&tag);
+        assert_eq!(
+            res.is_ok(),
+            expected_ok,
+            "tag={tag} declared={expected_ok} res={res:?}"
+        );
+        if !expected_ok {
+            assert!(matches!(
+                res,
+                Err(quasar_lang::prelude::ProgramError::InvalidInstructionData)
+            ));
+        }
+    }
+}
+
+#[test]
+fn repr_u16_enum_validate_rejects_undeclared_tags() {
+    // u16 has 65,536 possible values but only three declared tags, so
+    // pick representative bad values from each region: low, mid,
+    // one-off of a declared tag, and the top of the range.
+    let bad_tags: [u16; 7] = [0x0000, 0x0002, 0x00FF, 0x0101, 0x8000, 0xFFFD, 0xFFFF];
+    for &tag in &bad_tags {
+        let zc = <u16 as InstructionArg>::to_zc(&tag);
+        let res = WideCode::validate_zc(&zc);
+        assert!(
+            matches!(
+                res,
+                Err(quasar_lang::prelude::ProgramError::InvalidInstructionData)
+            ),
+            "tag=0x{tag:04X} must be rejected, got {res:?}"
+        );
+    }
+}
+
+#[test]
+fn repr_u8_enum_validate_recurses_through_option() {
+    // `Option<Status>`: outer tag=1 (Some), inner byte=99 (not one of
+    // `Status`'s declared discriminants). The outer `validate_zc` must
+    // recurse into the inner enum's `validate_zc` rather than trust
+    // the payload bytes. A corrupt inner enum with `Some` outer is the
+    // highest-risk path because `from_zc` on the inner side panics via
+    // `unreachable!` when `validate_zc` has not filtered it out.
+    let bad: OptionZc<u8> = OptionZc {
+        tag: 1,
+        value: core::mem::MaybeUninit::new(99u8),
+    };
+    assert!(<Option<Status> as InstructionArg>::validate_zc(&bad).is_err());
+
+    // Positive control: a valid `Some(Pending)` must pass recursive
+    // validation.
+    let ok: OptionZc<u8> = OptionZc {
+        tag: 1,
+        value: core::mem::MaybeUninit::new(Status::Pending as u8),
+    };
+    assert!(<Option<Status> as InstructionArg>::validate_zc(&ok).is_ok());
+
+    // `None` is also valid and carries no inner constraint.
+    let none: OptionZc<u8> = None::<Status>.to_zc();
+    assert!(<Option<Status> as InstructionArg>::validate_zc(&none).is_ok());
+}
+
+#[test]
+fn repr_u8_enum_wincode_round_trip() {
+    // Wincode round-trip covers the off-chain client path used by
+    // generated CPI structs. Only valid variants are exercised here;
+    // the bad-tag path is covered on-chain by `validate_zc`.
+    use quasar_lang::client::wincode;
+
+    // `Status` is not `Copy`; iterate by value via array IntoIterator.
+    for (v, byte) in [
+        (Status::Pending, 1u8),
+        (Status::Ready, 2),
+        (Status::Failed, 9),
+    ] {
+        let wire = wincode::serialize(&v).unwrap();
+        assert_eq!(wire, [byte], "wire byte must equal discriminant");
+        let back: Status = wincode::deserialize(&wire).unwrap();
+        assert_eq!(back, v);
+    }
+}
+
+#[test]
+fn repr_u16_enum_wincode_round_trip() {
+    use quasar_lang::client::wincode;
+
+    for &v in &[WideCode::Alpha, WideCode::Beta, WideCode::Omega] {
+        let wire = wincode::serialize(&v).unwrap();
+        assert_eq!(wire, (v as u16).to_le_bytes());
+        let back: WideCode = wincode::deserialize(&wire).unwrap();
+        assert_eq!(back, v);
+    }
+}
+
 // --- repr-backed enums as InstructionArg ---
 
 #[test]
