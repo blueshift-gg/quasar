@@ -321,4 +321,9 @@ mod quasar_test_misc {
     ) -> Result<(), ProgramError> {
         ctx.accounts.handler(new_name)
     }
+
+    #[instruction(discriminator = 60)]
+    pub fn cpi_mut_readback(ctx: Ctx<CpiMutReadback>, new_value: u64) -> Result<(), ProgramError> {
+        ctx.accounts.handler(new_value)
+    }
 }
