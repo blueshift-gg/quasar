@@ -776,6 +776,7 @@ fn rust_codegen_account_metas() {
                     field_class: FieldClass::Unchecked,
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
+                    optional: false,
                     seed_type: None,
                 },
                 RawAccountField {
@@ -787,6 +788,7 @@ fn rust_codegen_account_metas() {
                     field_class: FieldClass::Unchecked,
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
+                    optional: false,
                     seed_type: None,
                 },
                 RawAccountField {
@@ -798,6 +800,7 @@ fn rust_codegen_account_metas() {
                     field_class: FieldClass::Unchecked,
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
+                    optional: false,
                     seed_type: None,
                 },
             ],
@@ -1662,6 +1665,7 @@ fn ts_codegen_pda_helpers_are_exported_and_reused() {
                 field_class: FieldClass::Unchecked,
                 inner_type_name: None,
                 constraints: FieldConstraints::default(),
+                optional: false,
                 seed_type: None,
             },
             RawAccountField {
@@ -1673,6 +1677,7 @@ fn ts_codegen_pda_helpers_are_exported_and_reused() {
                 field_class: FieldClass::Unchecked,
                 inner_type_name: None,
                 constraints: FieldConstraints::default(),
+                optional: false,
                 seed_type: None,
             },
         ],
@@ -1741,6 +1746,7 @@ fn ts_codegen_pda_arg_seeds_are_encoded_by_type() {
             field_class: FieldClass::Unchecked,
             inner_type_name: None,
             constraints: FieldConstraints::default(),
+            optional: false,
             seed_type: None,
         }],
     }];
@@ -1818,6 +1824,7 @@ fn ts_codegen_duplicate_seed_sets_reuse_one_helper_name() {
                     field_class: FieldClass::Unchecked,
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
+                    optional: false,
                     seed_type: None,
                 },
                 RawAccountField {
@@ -1829,6 +1836,7 @@ fn ts_codegen_duplicate_seed_sets_reuse_one_helper_name() {
                     field_class: FieldClass::Unchecked,
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
+                    optional: false,
                     seed_type: None,
                 },
             ],
@@ -1850,6 +1858,7 @@ fn ts_codegen_duplicate_seed_sets_reuse_one_helper_name() {
                     field_class: FieldClass::Unchecked,
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
+                    optional: false,
                     seed_type: None,
                 },
                 RawAccountField {
@@ -1861,6 +1870,7 @@ fn ts_codegen_duplicate_seed_sets_reuse_one_helper_name() {
                     field_class: FieldClass::Unchecked,
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
+                    optional: false,
                     seed_type: None,
                 },
             ],
@@ -1926,6 +1936,7 @@ fn ts_codegen_helper_name_collisions_are_disambiguated() {
                     field_class: FieldClass::Unchecked,
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
+                    optional: false,
                     seed_type: None,
                 },
                 RawAccountField {
@@ -1937,6 +1948,7 @@ fn ts_codegen_helper_name_collisions_are_disambiguated() {
                     field_class: FieldClass::Unchecked,
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
+                    optional: false,
                     seed_type: None,
                 },
             ],
@@ -1958,6 +1970,7 @@ fn ts_codegen_helper_name_collisions_are_disambiguated() {
                     field_class: FieldClass::Unchecked,
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
+                    optional: false,
                     seed_type: None,
                 },
                 RawAccountField {
@@ -1969,6 +1982,7 @@ fn ts_codegen_helper_name_collisions_are_disambiguated() {
                     field_class: FieldClass::Unchecked,
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
+                    optional: false,
                     seed_type: None,
                 },
             ],
@@ -2198,6 +2212,7 @@ fn rust_codegen_pda_helpers() {
                 field_class: FieldClass::Unchecked,
                 inner_type_name: None,
                 constraints: FieldConstraints::default(),
+                optional: false,
                 seed_type: None,
             },
             RawAccountField {
@@ -2209,6 +2224,7 @@ fn rust_codegen_pda_helpers() {
                 field_class: FieldClass::Unchecked,
                 inner_type_name: None,
                 constraints: FieldConstraints::default(),
+                optional: false,
                 seed_type: None,
             },
         ],
@@ -2264,6 +2280,7 @@ fn rust_codegen_pda_dedup() {
                 field_class: FieldClass::Unchecked,
                 inner_type_name: None,
                 constraints: FieldConstraints::default(),
+                optional: false,
                 seed_type: None,
             }],
         },
@@ -2278,6 +2295,7 @@ fn rust_codegen_pda_dedup() {
                 field_class: FieldClass::Unchecked,
                 inner_type_name: None,
                 constraints: FieldConstraints::default(),
+                optional: false,
                 seed_type: None,
             }],
         },
@@ -2291,6 +2309,57 @@ fn rust_codegen_pda_dedup() {
         1,
         "duplicate PDA seeds must be deduplicated: {code}"
     );
+}
+
+#[test]
+fn optional_account_emits_optional_flag_in_idl() {
+    use quasar_idl::parser::build_idl;
+
+    let mut parsed = test_program();
+    parsed.instructions.push(program::RawInstruction {
+        name: "transfer".to_string(),
+        discriminator: vec![1],
+        accounts_type_name: "Transfer".to_string(),
+        args: vec![],
+        has_remaining: false,
+    });
+    parsed.accounts_structs = vec![RawAccountsStruct {
+        name: "Transfer".to_string(),
+        fields: vec![
+            RawAccountField {
+                name: "recipient".to_string(),
+                writable: false,
+                signer: false,
+                pda: None,
+                address: None,
+                field_class: FieldClass::Unchecked,
+                inner_type_name: None,
+                constraints: FieldConstraints::default(),
+                optional: true,
+                seed_type: None,
+            },
+            RawAccountField {
+                name: "payer".to_string(),
+                writable: true,
+                signer: true,
+                pda: None,
+                address: None,
+                field_class: FieldClass::Unchecked,
+                inner_type_name: None,
+                constraints: FieldConstraints::default(),
+                optional: false,
+                seed_type: None,
+            },
+        ],
+    }];
+
+    let idl = build_idl(&parsed).unwrap();
+    let ix = idl.instructions.iter().find(|i| i.name == "transfer").unwrap();
+    let recipient = ix.accounts.iter().find(|a| a.name == "recipient").unwrap();
+    let payer = ix.accounts.iter().find(|a| a.name == "payer").unwrap();
+
+    assert!(recipient.optional, "recipient should be optional");
+    assert!(!payer.optional, "payer should not be optional");
 }
 
 // ===========================================================================
@@ -2553,5 +2622,144 @@ fn rust_codegen_event_discriminator_no_stutter() {
     assert!(
         code.contains("ORDER_CANCELLED_EVENT_DISCRIMINATOR"),
         "{code}"
+    );
+}
+
+// ===========================================================================
+// Optional account codegen — all backends
+// ===========================================================================
+
+fn optional_account_parsed() -> ParsedProgram {
+    let mut parsed = test_program();
+    parsed.instructions.push(program::RawInstruction {
+        name: "transfer".to_string(),
+        discriminator: vec![1],
+        accounts_type_name: "Transfer".to_string(),
+        args: vec![],
+        has_remaining: false,
+    });
+    parsed.accounts_structs = vec![RawAccountsStruct {
+        name: "Transfer".to_string(),
+        fields: vec![
+            RawAccountField {
+                name: "payer".to_string(),
+                writable: true,
+                signer: true,
+                pda: None,
+                address: None,
+                field_class: FieldClass::Unchecked,
+                inner_type_name: None,
+                constraints: FieldConstraints::default(),
+                optional: false,
+                seed_type: None,
+            },
+            RawAccountField {
+                name: "recipient".to_string(),
+                writable: false,
+                signer: false,
+                pda: None,
+                address: None,
+                field_class: FieldClass::Unchecked,
+                inner_type_name: None,
+                constraints: FieldConstraints::default(),
+                optional: true,
+                seed_type: None,
+            },
+        ],
+    }];
+    parsed
+}
+
+#[test]
+fn rust_codegen_optional_account() {
+    let parsed = optional_account_parsed();
+    let files = build_and_generate(&parsed);
+    let ix = files
+        .iter()
+        .find(|(p, _)| p == "instructions/transfer.rs")
+        .unwrap();
+    let code = &ix.1;
+
+    assert!(code.contains("pub payer: Address,"), "required field: {code}");
+    assert!(
+        code.contains("pub recipient: Option<Address>,"),
+        "optional field must be Option<Address>: {code}"
+    );
+    assert!(
+        code.contains("if let Some(addr) = ix.recipient"),
+        "optional push block: {code}"
+    );
+}
+
+#[test]
+fn ts_codegen_optional_account_web3js() {
+    use quasar_idl::{codegen::typescript::generate_ts_client, parser::build_idl};
+
+    let parsed = optional_account_parsed();
+    let idl = build_idl(&parsed).unwrap();
+    let code = generate_ts_client(&idl);
+
+    assert!(code.contains("payer: Address;"), "required field: {code}");
+    assert!(code.contains("recipient?: Address;"), "optional field: {code}");
+    assert!(
+        code.contains("input.recipient !== undefined"),
+        "conditional spread: {code}"
+    );
+}
+
+#[test]
+fn ts_codegen_optional_account_kit() {
+    use quasar_idl::{codegen::typescript::generate_ts_client_kit, parser::build_idl};
+
+    let parsed = optional_account_parsed();
+    let idl = build_idl(&parsed).unwrap();
+    let code = generate_ts_client_kit(&idl);
+
+    assert!(code.contains("payer: Address;"), "required field: {code}");
+    assert!(code.contains("recipient?: Address;"), "optional field: {code}");
+    assert!(
+        code.contains("input.recipient !== undefined"),
+        "conditional spread: {code}"
+    );
+}
+
+#[test]
+fn go_codegen_optional_account() {
+    use quasar_idl::{codegen::golang::generate_go_client, parser::build_idl};
+
+    let parsed = optional_account_parsed();
+    let idl = build_idl(&parsed).unwrap();
+    let code = generate_go_client(&idl);
+
+    assert!(
+        code.contains("Payer solana.PublicKey"),
+        "required field: {code}"
+    );
+    assert!(
+        code.contains("Recipient *solana.PublicKey"),
+        "optional field must be pointer: {code}"
+    );
+    assert!(
+        code.contains("if input.Recipient != nil"),
+        "nil-check conditional: {code}"
+    );
+}
+
+#[test]
+fn python_codegen_optional_account() {
+    use quasar_idl::{codegen::python::generate_python_client, parser::build_idl};
+
+    let parsed = optional_account_parsed();
+    let idl = build_idl(&parsed).unwrap();
+    let code = generate_python_client(&idl);
+
+    assert!(code.contains("payer: Pubkey"), "required field: {code}");
+    assert!(
+        code.contains("recipient: Optional[Pubkey] = None"),
+        "optional field: {code}"
+    );
+    assert!(
+        code.contains("if input.recipient is not None"),
+        "None-check conditional: {code}"
     );
 }

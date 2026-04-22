@@ -503,8 +503,12 @@ fn emit_single_instruction(
     writeln!(out, "pub struct {}Instruction {{", struct_name).expect("write to String");
 
     for account in &ix.accounts {
-        writeln!(out, "    pub {}: Address,", camel_to_snake(&account.name))
-            .expect("write to String");
+        let field_name = camel_to_snake(&account.name);
+        if account.optional {
+            writeln!(out, "    pub {}: Option<Address>,", field_name).expect("write to String");
+        } else {
+            writeln!(out, "    pub {}: Address,", field_name).expect("write to String");
+        }
     }
 
     for arg in &ix.args {
@@ -537,15 +541,28 @@ fn emit_single_instruction(
     )
     .expect("write to String");
 
-    if ix.has_remaining {
+    let has_optional = ix.accounts.iter().any(|a| a.optional);
+    if has_optional || ix.has_remaining {
         out.push_str("        let mut accounts = vec![\n");
+        for account in &ix.accounts {
+            if !account.optional {
+                writeln!(out, "            {},", account_meta_expr(account))
+                    .expect("write to String");
+            }
+        }
+        out.push_str("        ];\n");
+        for account in &ix.accounts {
+            if account.optional {
+                writeln!(out, "{}", optional_account_push(account)).expect("write to String");
+            }
+        }
     } else {
         out.push_str("        let accounts = vec![\n");
+        for account in &ix.accounts {
+            writeln!(out, "            {},", account_meta_expr(account)).expect("write to String");
+        }
+        out.push_str("        ];\n");
     }
-    for account in &ix.accounts {
-        writeln!(out, "            {},", account_meta_expr(account)).expect("write to String");
-    }
-    out.push_str("        ];\n");
     if ix.has_remaining {
         out.push_str("        accounts.extend(ix.remaining_accounts);\n");
     }
@@ -1443,6 +1460,20 @@ fn account_meta_expr(account: &IdlAccountItem) -> String {
     } else {
         format!("AccountMeta::new_readonly(ix.{}, {})", field_name, signer)
     }
+}
+
+fn optional_account_push(account: &IdlAccountItem) -> String {
+    let field_name = camel_to_snake(&account.name);
+    let signer = account.signer;
+    let meta = if account.writable {
+        format!("AccountMeta::new(addr, {})", signer)
+    } else {
+        format!("AccountMeta::new_readonly(addr, {})", signer)
+    };
+    format!(
+        "        if let Some(addr) = ix.{} {{\n            accounts.push({});\n        }}",
+        field_name, meta
+    )
 }
 
 /// Map an `IdlType` to its Rust field type for the client struct.

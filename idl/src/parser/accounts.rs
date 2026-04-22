@@ -21,6 +21,7 @@ pub struct RawAccountField {
     pub name: String,
     pub writable: bool,
     pub signer: bool,
+    pub optional: bool,
     pub pda: Option<RawPda>,
     pub address: Option<String>,
     pub field_class: FieldClass,
@@ -124,6 +125,7 @@ fn parse_account_field(field: &syn::Field, parent: &syn::ItemStruct) -> RawAccou
     let address = detect_known_address(&field.ty);
 
     let signer = helpers::is_signer_type(&field.ty);
+    let optional = helpers::type_base_name(&field.ty).as_deref() == Some("Option");
 
     let (field_class, inner_type_name) = constraints::classify_field_type(&field.ty);
     let constraints = constraints::parse_field_constraints(&field.attrs);
@@ -132,6 +134,7 @@ fn parse_account_field(field: &syn::Field, parent: &syn::ItemStruct) -> RawAccou
         name,
         writable,
         signer,
+        optional,
         pda,
         address,
         field_class,
@@ -437,6 +440,7 @@ fn to_idl_account_item(
         name: helpers::to_camel_case(&field.name),
         writable: field.writable,
         signer: field.signer,
+        optional: field.optional,
         pda,
         address: field.address.clone(),
     }

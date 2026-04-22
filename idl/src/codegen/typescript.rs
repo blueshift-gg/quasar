@@ -280,7 +280,11 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
 
         if !user_accs.is_empty() {
             for acc in &user_accs {
-                writeln!(out, "  {}: Address;", acc.name).expect("write to String");
+                if acc.optional {
+                    writeln!(out, "  {}?: Address;", acc.name).expect("write to String");
+                } else {
+                    writeln!(out, "  {}: Address;", acc.name).expect("write to String");
+                }
             }
         }
         if !ix.args.is_empty() {
@@ -696,12 +700,21 @@ fn generate_instruction_builders_web3js(
             out.push_str("      keys: [\n");
             for acc in &ix.accounts {
                 let pubkey_expr = account_expr(&acc.name);
-                writeln!(
-                    out,
-                    "        {{ pubkey: {}, isSigner: {}, isWritable: {} }},",
-                    pubkey_expr, acc.signer, acc.writable
-                )
-                .expect("write to String");
+                if acc.optional {
+                    writeln!(
+                        out,
+                        "        ...({pubkey_expr} !== undefined ? [{{ pubkey: {pubkey_expr}, isSigner: {}, isWritable: {} }}] : []),",
+                        acc.signer, acc.writable
+                    )
+                    .expect("write to String");
+                } else {
+                    writeln!(
+                        out,
+                        "        {{ pubkey: {}, isSigner: {}, isWritable: {} }},",
+                        pubkey_expr, acc.signer, acc.writable
+                    )
+                    .expect("write to String");
+                }
             }
             if ix.has_remaining {
                 out.push_str("        ...(input.remainingAccounts ?? []),\n");
@@ -855,8 +868,16 @@ fn generate_instruction_builders_kit(
             for acc in &ix.accounts {
                 let addr_expr = account_expr(&acc.name);
                 let role = account_role(acc.signer, acc.writable);
-                writeln!(out, "        {{ address: {}, role: {} }},", addr_expr, role)
+                if acc.optional {
+                    writeln!(
+                        out,
+                        "        ...({addr_expr} !== undefined ? [{{ address: {addr_expr}, role: {role} }}] : []),",
+                    )
                     .expect("write to String");
+                } else {
+                    writeln!(out, "        {{ address: {}, role: {} }},", addr_expr, role)
+                        .expect("write to String");
+                }
             }
             if ix.has_remaining {
                 out.push_str("        ...(input.remainingAccounts ?? []),\n");

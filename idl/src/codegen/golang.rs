@@ -152,7 +152,11 @@ pub fn generate_go_client(idl: &Idl) -> String {
             if acc.address.is_some() || acc.pda.is_some() {
                 continue;
             }
-            writeln!(out, "\t{} solana.PublicKey", snake_to_pascal(&acc.name)).unwrap();
+            if acc.optional {
+                writeln!(out, "\t{} *solana.PublicKey", snake_to_pascal(&acc.name)).unwrap();
+            } else {
+                writeln!(out, "\t{} solana.PublicKey", snake_to_pascal(&acc.name)).unwrap();
+            }
         }
         for arg in &ix.args {
             writeln!(out, "\t{} {}", snake_to_pascal(&arg.name), go_type(&arg.ty),).unwrap();
@@ -202,17 +206,36 @@ pub fn generate_go_client(idl: &Idl) -> String {
                      panic(err) }}; return addr }}()",
                     seeds.join(", ")
                 )
+            } else if acc.optional {
+                format!("input.{}", snake_to_pascal(&acc.name))
             } else {
                 format!("input.{}", snake_to_pascal(&acc.name))
             };
 
-            writeln!(out, "\taccountsMap[\"{}\"] = {}", acc.name, key_expr).unwrap();
-            let meta_expr = account_meta_expr(
-                &format!("accountsMap[\"{}\"]", acc.name),
-                acc.signer,
-                acc.writable,
-            );
-            writeln!(out, "\taccounts = append(accounts, {})", meta_expr).unwrap();
+            if acc.optional && acc.address.is_none() && acc.pda.is_none() {
+                let field = snake_to_pascal(&acc.name);
+                let meta_expr = account_meta_expr(
+                    &format!("*input.{}", field),
+                    acc.signer,
+                    acc.writable,
+                );
+                writeln!(
+                    out,
+                    "\tif input.{f} != nil {{\n\t\taccountsMap[\"{n}\"] = *input.{f}\n\t\taccounts = append(accounts, {meta})\n\t}}",
+                    f = field,
+                    n = acc.name,
+                    meta = meta_expr,
+                )
+                .unwrap();
+            } else {
+                writeln!(out, "\taccountsMap[\"{}\"] = {}", acc.name, key_expr).unwrap();
+                let meta_expr = account_meta_expr(
+                    &format!("accountsMap[\"{}\"]", acc.name),
+                    acc.signer,
+                    acc.writable,
+                );
+                writeln!(out, "\taccounts = append(accounts, {})", meta_expr).unwrap();
+            }
         }
 
         if ix.has_remaining {

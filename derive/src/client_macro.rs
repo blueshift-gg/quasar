@@ -112,6 +112,7 @@ fn describe_accounts(
             writable: sem.is_writable(),
             signer: matches!(sem.core.shape, crate::accounts::resolve::FieldShape::Signer)
                 || sem.client_requires_signer(),
+            optional: sem.core.optional,
             pda: sem.pda.as_ref().map(describe_pda),
             address: known_address(&sem.core.shape).map(str::to_owned),
         })

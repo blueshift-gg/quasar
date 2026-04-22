@@ -160,7 +160,12 @@ pub fn generate_python_client(idl: &Idl) -> String {
             if acc.pda.is_some() {
                 continue; // PDAs are derived
             }
-            writeln!(out, "    {}: Pubkey", camel_to_snake(&acc.name)).unwrap();
+            if acc.optional {
+                writeln!(out, "    {}: Optional[Pubkey] = None", camel_to_snake(&acc.name))
+                    .unwrap();
+            } else {
+                writeln!(out, "    {}: Pubkey", camel_to_snake(&acc.name)).unwrap();
+            }
             has_any_fields = true;
         }
 
@@ -225,16 +230,28 @@ pub fn generate_python_client(idl: &Idl) -> String {
                 format!("input.{}", camel_to_snake(&acc.name))
             };
 
-            writeln!(out, "    accounts_map[\"{}\"] = {}", acc.name, key_expr).unwrap();
-            writeln!(
-                out,
-                "    accounts.append(AccountMeta(accounts_map[\"{}\"], is_signer={}, \
-                 is_writable={}))",
-                acc.name,
-                py_bool(acc.signer),
-                py_bool(acc.writable),
-            )
-            .unwrap();
+            if acc.optional && acc.address.is_none() && acc.pda.is_none() {
+                writeln!(
+                    out,
+                    "    if input.{f} is not None:\n        accounts_map[\"{n}\"] = input.{f}\n        accounts.append(AccountMeta(input.{f}, is_signer={s}, is_writable={w}))",
+                    f = camel_to_snake(&acc.name),
+                    n = acc.name,
+                    s = py_bool(acc.signer),
+                    w = py_bool(acc.writable),
+                )
+                .unwrap();
+            } else {
+                writeln!(out, "    accounts_map[\"{}\"] = {}", acc.name, key_expr).unwrap();
+                writeln!(
+                    out,
+                    "    accounts.append(AccountMeta(accounts_map[\"{}\"], is_signer={}, \
+                     is_writable={}))",
+                    acc.name,
+                    py_bool(acc.signer),
+                    py_bool(acc.writable),
+                )
+                .unwrap();
+            }
         }
 
         if ix.has_remaining {
