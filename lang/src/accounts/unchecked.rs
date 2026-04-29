@@ -10,6 +10,7 @@ define_account!(
 );
 
 impl crate::account_load::AccountLoad for UncheckedAccount {
+    type BehaviorTarget = Self;
     type Params = ();
 
     #[inline(always)]

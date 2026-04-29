@@ -82,6 +82,114 @@ pub mod __internal {
         + MAX_PERMITTED_DATA_INCREASE
         + core::mem::size_of::<u64>();
 
+    /// Size of a duplicate account entry in the SVM input buffer.
+    pub const DUP_ENTRY_SIZE: usize = core::mem::size_of::<u64>();
+
+    /// Round `n` up to the next multiple of 8.
+    #[inline(always)]
+    pub const fn align_up_8(n: usize) -> usize {
+        (n.wrapping_add(7)) & !7
+    }
+
+    /// Byte stride past a non-duplicate account entry in the SVM input buffer:
+    /// header + data_len, rounded up to 8-byte alignment.
+    #[inline(always)]
+    pub const fn account_stride(data_len: usize) -> usize {
+        align_up_8(ACCOUNT_HEADER.wrapping_add(data_len))
+    }
+
+    // Platform invariant: the SVM uses 64-bit pointers and u64 data_len.
+    // The `data_len as usize` cast in account-walking code is only lossless
+    // on 64-bit targets.
+    const _: () = assert!(
+        core::mem::size_of::<usize>() >= core::mem::size_of::<u64>(),
+        "quasar requires usize >= u64 (SVM pointers are 64-bit)"
+    );
+
+    /// Walk the SVM input buffer and write `AccountView`s into a
+    /// caller-provided stack buffer, without any validation (no signer,
+    /// writable, owner, or discriminator checks). Used by
+    /// `#[instruction(raw)]` dispatch codegen.
+    ///
+    /// Returns the number of accounts actually parsed and a pointer past
+    /// the last account entry.
+    ///
+    /// # Safety
+    ///
+    /// - `input` must point to the first account entry in the SVM input buffer
+    ///   and be 8-byte aligned (guaranteed by the SVM ABI).
+    /// - `buf` must have space for at least `count` `AccountView` values.
+    /// - `count` must not exceed the actual number of account entries between
+    ///   `input` and `boundary` (the SVM's reported `num_accounts`, capped by
+    ///   the caller).
+    /// - `boundary` must point to the end of the accounts region (i.e.
+    ///   `ix_data_ptr - sizeof(u64)`).
+    #[inline(always)]
+    pub unsafe fn parse_all_accounts_unchecked(
+        input: *mut u8,
+        buf: *mut AccountView,
+        count: usize,
+        boundary: *const u8,
+    ) -> Result<(usize, *mut u8), solana_program_error::ProgramError> {
+        // SAFETY: The SVM guarantees 8-byte alignment at buffer start and
+        // after each account entry (padded strides).
+        debug_assert!(
+            input as usize & 7 == 0,
+            "parse_all_accounts_unchecked: input pointer is not 8-byte aligned"
+        );
+
+        let mut ptr = input;
+        for i in 0..count {
+            // SAFETY: Early exit if we have reached the accounts boundary.
+            // The SVM guarantees `count` entries fit, but this check is
+            // defense-in-depth against a malformed buffer.
+            if (ptr as *const u8) >= boundary {
+                return Ok((i, ptr));
+            }
+
+            // SAFETY: `ptr` is within the accounts region (checked above)
+            // and points to a valid `RuntimeAccount` header. The
+            // `borrow_state` field is at offset 0 of the `#[repr(C)]`
+            // struct.
+            let raw = ptr as *mut RuntimeAccount;
+            let borrow = (*raw).borrow_state;
+
+            if borrow == NOT_BORROWED {
+                // SAFETY: Non-duplicate entry. `raw` is a valid
+                // `RuntimeAccount` pointer. `AccountView::new_unchecked`
+                // wraps it without copying.
+                core::ptr::write(buf.add(i), AccountView::new_unchecked(raw));
+                // SAFETY: `account_stride` computes header + data_len
+                // rounded to 8-byte alignment, matching the SVM's
+                // serialization layout.
+                ptr = ptr.add(account_stride((*raw).data_len as usize));
+            } else {
+                // SAFETY: Duplicate entry. `borrow_state` encodes the
+                // index of the original (non-dup) account. The SVM
+                // guarantees dup indices always point backward to a
+                // previously-serialized non-dup entry.
+                let orig_idx = borrow as usize;
+                if orig_idx < i {
+                    // SAFETY: `orig_idx < i` ensures the source slot is
+                    // already initialized. `AccountView` does not impl
+                    // `Drop` (verified by static assert in remaining.rs),
+                    // so bitwise copy is safe. Note: the copy creates an
+                    // aliased `AccountView` — both point to the same
+                    // `RuntimeAccount`. The raw handler is responsible for
+                    // avoiding simultaneous `borrow_unchecked_mut()` on
+                    // aliased views.
+                    core::ptr::write(buf.add(i), core::ptr::read(buf.add(orig_idx)));
+                } else {
+                    return Err(solana_program_error::ProgramError::InvalidAccountData);
+                }
+                // SAFETY: Dup entries are exactly `DUP_ENTRY_SIZE` (8)
+                // bytes in the SVM buffer.
+                ptr = ptr.add(DUP_ENTRY_SIZE);
+            }
+        }
+        Ok((count, ptr))
+    }
+
     /// Packed flags for [`parse_account_dup`]. Keeps the param count under the
     /// sBPF 5-register limit to avoid stack spills.
     #[derive(Clone, Copy)]
@@ -313,6 +421,24 @@ pub fn keys_eq(a: &solana_address::Address, b: &solana_address::Address) -> bool
             && core::ptr::read_unaligned(a.add(2)) == core::ptr::read_unaligned(b.add(2))
             && core::ptr::read_unaligned(a.add(3)) == core::ptr::read_unaligned(b.add(3))
     }
+}
+
+/// Const-compatible 32-byte address comparison for use in compile-time
+/// assertions (e.g. `one_of` owner checks, migration owner equality).
+/// Not intended for runtime use — prefer [`keys_eq`] which is branchless
+/// and optimized for sBPF.
+#[inline(always)]
+pub const fn keys_eq_const(a: &solana_address::Address, b: &solana_address::Address) -> bool {
+    let a = a.as_array();
+    let b = b.as_array();
+    let mut i = 0;
+    while i < 32 {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
 }
 
 /// Check if an address is all zeros (the System program address).

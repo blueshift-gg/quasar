@@ -322,6 +322,7 @@ mod kani_proofs {
 impl<T: AsAccountView + CheckOwner + AccountCheck + StaticView> crate::account_load::AccountLoad
     for Account<T>
 {
+    type BehaviorTarget = T;
     type Params = <T as AccountCheck>::Params;
 
     #[inline(always)]

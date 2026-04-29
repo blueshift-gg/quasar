@@ -5,6 +5,8 @@
 
 pub use {
     crate::{
+        account_exit::{AccountExit, CloseCtx, SweepCtx},
+        account_init::{AccountInit, InitCtx},
         account_load::AccountLoad,
         accounts::*,
         checks,
@@ -26,7 +28,8 @@ pub use {
         sysvars::{clock::Clock, rent::Rent},
         traits::{
             AccountCheck, AccountCount, AsAccountView, CheckOwner, Discriminator, Event, HasSeeds,
-            Id, Owner, Owners, ParseAccounts, ProgramInterface, Space, StaticView, ZeroCopyDeref,
+            Id, Migrate, Owner, Owners, ParseAccounts, ProgramInterface, Space, StaticView,
+            ZeroCopyDeref,
         },
         String, Vec, ZcElem, ZcField, ZcValidate, ZeroPodError,
     },

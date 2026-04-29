@@ -155,3 +155,112 @@ impl AccountCheck for Mint {
         validate_mint_inner(view, params, &SPL_TOKEN_ID)
     }
 }
+
+// ---------------------------------------------------------------------------
+// AccountInit — lifecycle trait impls
+// ---------------------------------------------------------------------------
+
+/// Init params for token account creation via CPI.
+#[derive(Default)]
+pub struct TokenInitParams<'a> {
+    pub mint: Option<&'a AccountView>,
+    pub authority: Option<&'a Address>,
+    pub token_program: Option<&'a AccountView>,
+}
+
+/// Init params for mint account creation via CPI.
+#[derive(Default)]
+pub struct MintInitParams<'a> {
+    pub decimals: Option<u8>,
+    pub authority: Option<&'a Address>,
+    pub freeze_authority: Option<&'a Address>,
+    pub token_program: Option<&'a AccountView>,
+}
+
+impl quasar_lang::account_init::AccountInit for Token {
+    type InitParams<'a> = TokenInitParams<'a>;
+
+    #[inline(always)]
+    fn init<'a>(
+        ctx: quasar_lang::account_init::InitCtx<'a>,
+        params: &Self::InitParams<'a>,
+    ) -> Result<(), ProgramError> {
+        let mint = params.mint.ok_or(ProgramError::InvalidAccountData)?;
+        let authority = params.authority.ok_or(ProgramError::InvalidAccountData)?;
+        let token_program = params
+            .token_program
+            .ok_or(ProgramError::InvalidAccountData)?;
+        crate::init::init_token_account(
+            ctx.payer,
+            ctx.target,
+            token_program,
+            mint,
+            authority,
+            ctx.signers,
+            ctx.rent,
+        )
+    }
+}
+
+impl quasar_lang::account_init::AccountInit for Mint {
+    type InitParams<'a> = MintInitParams<'a>;
+
+    #[inline(always)]
+    fn init<'a>(
+        ctx: quasar_lang::account_init::InitCtx<'a>,
+        params: &Self::InitParams<'a>,
+    ) -> Result<(), ProgramError> {
+        let decimals = params.decimals.ok_or(ProgramError::InvalidAccountData)?;
+        let authority = params.authority.ok_or(ProgramError::InvalidAccountData)?;
+        let token_program = params
+            .token_program
+            .ok_or(ProgramError::InvalidAccountData)?;
+        crate::init::init_mint_account(
+            ctx.payer,
+            ctx.target,
+            token_program,
+            decimals,
+            authority,
+            params.freeze_authority,
+            ctx.signers,
+            ctx.rent,
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AccountExit — lifecycle trait impls
+// ---------------------------------------------------------------------------
+
+impl quasar_lang::account_exit::AccountExit for Token {
+    #[inline(always)]
+    fn close(
+        view: &mut AccountView,
+        ctx: quasar_lang::account_exit::CloseCtx<'_>,
+    ) -> Result<(), ProgramError> {
+        // SAFETY: Token close via CPI is atomically safe — the token
+        // program handles drain + zeroing in a single instruction.
+        let authority = ctx.authority.ok_or(ProgramError::InvalidAccountData)?;
+        let token_program = ctx.token_program.ok_or(ProgramError::InvalidAccountData)?;
+        crate::exit::close_token_account(
+            token_program,
+            unsafe { &*(view as *const AccountView) },
+            ctx.destination,
+            authority,
+        )
+    }
+
+    #[inline(always)]
+    fn sweep(
+        view: &AccountView,
+        ctx: quasar_lang::account_exit::SweepCtx<'_>,
+    ) -> Result<(), ProgramError> {
+        crate::exit::sweep_token_account(
+            ctx.token_program,
+            view,
+            ctx.mint,
+            ctx.receiver,
+            ctx.authority,
+        )
+    }
+}

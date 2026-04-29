@@ -157,6 +157,11 @@ pub trait ParseAccounts<'input>: Sized {
     /// custom validation exists, avoiding a dead branch on sBPF.
     const HAS_VALIDATE: bool = false;
 
+    /// Set to `true` when the struct has lifecycle operations (close, sweep,
+    /// migrate). The dispatch path uses this to skip the `epilogue()` call
+    /// entirely when no lifecycle ops exist, avoiding a dead branch on sBPF.
+    const HAS_EPILOGUE: bool = false;
+
     /// User-defined validation hook called after all field-level checks pass
     /// but before the instruction handler executes.
     ///
@@ -319,6 +324,34 @@ pub trait Event {
     const DATA_SIZE: usize;
     fn write_data(&self, buf: &mut [u8]);
     fn emit(&self, f: impl FnOnce(&[u8]) -> Result<(), ProgramError>) -> Result<(), ProgramError>;
+}
+
+/// Declarative account migration.
+///
+/// Implement this trait on the source account's `Data` type, parameterized by
+/// the target account's `Data` type.  The `#[account]` macro generates a
+/// `{Name}Data` alias for every account — a `#[repr(C)]` struct with the
+/// account's field layout.
+///
+/// The framework calls `migrate()` during the epilogue, then reallocs the
+/// account and writes the returned target data along with the new
+/// discriminator.
+///
+/// # Example
+///
+/// ```ignore
+/// impl Migrate<ConfigV2Data> for ConfigV1Data {
+///     fn migrate(&self) -> ConfigV2Data {
+///         ConfigV2Data {
+///             authority: self.authority,
+///             fee_bps: self.fee_bps,
+///             new_field: PodU32::from(0),
+///         }
+///     }
+/// }
+/// ```
+pub trait Migrate<To> {
+    fn migrate(&self) -> To;
 }
 
 /// Verify that the actual account count matches the expected count.

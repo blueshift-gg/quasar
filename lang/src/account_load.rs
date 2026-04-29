@@ -11,6 +11,19 @@ pub trait AccountLoad: AsAccountView + Sized {
     const IS_SIGNER: bool = false;
     const IS_EXECUTABLE: bool = false;
 
+    /// The type that owns lifecycle behavior (init, close, sweep).
+    ///
+    /// For `Account<T>` and `InterfaceAccount<T>` this is `T` — the inner
+    /// data type that implements `AccountInit` / `AccountExit` in its own
+    /// crate. For all other wrappers (Signer, Program, etc.) this is `Self`.
+    ///
+    /// The `derive(Accounts)` macro emits trait calls on `BehaviorTarget`:
+    /// ```text
+    /// type __Target = <FieldTy as AccountLoad>::BehaviorTarget;
+    /// <__Target as AccountInit>::init(ctx, &params)?;
+    /// ```
+    type BehaviorTarget;
+
     /// Per-type config for namespaced constraints (e.g. `token::mint`).
     type Params: Default;
 
@@ -51,5 +64,18 @@ pub trait AccountLoad: AsAccountView + Sized {
     #[inline(always)]
     fn validate(&self, _params: &Self::Params) -> Result<(), ProgramError> {
         Ok(())
+    }
+
+    /// Get a mutable view for lifecycle operations (close, realloc).
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure the account is writable and that no other
+    /// references to the underlying `AccountView` are live. Only called
+    /// by generated epilogue code after writable/lifecycle checks pass.
+    #[doc(hidden)]
+    #[inline(always)]
+    unsafe fn to_account_view_mut(&mut self) -> &mut AccountView {
+        &mut *(self as *mut Self as *mut AccountView)
     }
 }

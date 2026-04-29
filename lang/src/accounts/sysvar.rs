@@ -22,6 +22,7 @@ impl<T: crate::sysvars::Sysvar> Sysvar<T> {
 }
 
 impl<T: crate::sysvars::Sysvar> crate::account_load::AccountLoad for Sysvar<T> {
+    type BehaviorTarget = Self;
     type Params = ();
 
     #[inline(always)]

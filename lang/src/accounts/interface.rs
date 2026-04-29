@@ -18,6 +18,7 @@ impl<T: ProgramInterface> AsAccountView for Interface<T> {
 impl<T: ProgramInterface> crate::account_load::AccountLoad for Interface<T> {
     const IS_EXECUTABLE: bool = true;
 
+    type BehaviorTarget = Self;
     type Params = ();
 
     #[inline(always)]

@@ -62,6 +62,7 @@ impl<T: Owners + AccountCheck> InterfaceAccount<T> {
 }
 
 impl<T: Owners + AccountCheck> crate::account_load::AccountLoad for InterfaceAccount<T> {
+    type BehaviorTarget = T;
     type Params = <T as AccountCheck>::Params;
 
     #[inline(always)]

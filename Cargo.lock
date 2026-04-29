@@ -2320,6 +2320,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "quasar-test-migrate"
+version = "0.1.0"
+dependencies = [
+ "quasar-lang",
+]
+
+[[package]]
 name = "quasar-test-misc"
 version = "0.1.0"
 dependencies = [
@@ -2327,7 +2334,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "quasar-test-one-of"
+version = "0.1.0"
+dependencies = [
+ "quasar-lang",
+]
+
+[[package]]
 name = "quasar-test-pda"
+version = "0.1.0"
+dependencies = [
+ "quasar-lang",
+]
+
+[[package]]
+name = "quasar-test-raw"
 version = "0.1.0"
 dependencies = [
  "quasar-lang",
@@ -2344,8 +2365,11 @@ dependencies = [
  "quasar-test-errors",
  "quasar-test-events",
  "quasar-test-heap",
+ "quasar-test-migrate",
  "quasar-test-misc",
+ "quasar-test-one-of",
  "quasar-test-pda",
+ "quasar-test-raw",
  "quasar-test-sysvar",
  "quasar-test-token-cpi",
  "quasar-test-token-init",
