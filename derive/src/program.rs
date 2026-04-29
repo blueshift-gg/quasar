@@ -14,6 +14,46 @@ use {
     syn::{parse_macro_input, FnArg, Ident, Item, ItemMod, LitInt, Pat, Type},
 };
 
+/// Emit the heap cursor init or poison block for a dispatch arm.
+///
+/// - `heap = true`: reset cursor to start (this endpoint uses the allocator)
+/// - `heap = false, any_heap = true`: poison cursor in release, reset in debug
+///   (this endpoint must NOT allocate — trap accidental allocations)
+/// - `any_heap = false`: no-op (global heap init in entrypoint handles it)
+fn emit_heap_cursor_block(heap: bool, any_heap: bool) -> TokenStream2 {
+    if heap {
+        quote! {
+            #[cfg(feature = "alloc")]
+            {
+                unsafe {
+                    let heap_start = super::allocator::HEAP_START_ADDRESS as usize;
+                    *(heap_start as *mut usize) =
+                        heap_start + core::mem::size_of::<usize>();
+                }
+            }
+        }
+    } else if any_heap {
+        quote! {
+            #[cfg(feature = "alloc")]
+            {
+                #[cfg(feature = "debug")]
+                unsafe {
+                    let heap_start = super::allocator::HEAP_START_ADDRESS as usize;
+                    *(heap_start as *mut usize) =
+                        heap_start + core::mem::size_of::<usize>();
+                }
+                #[cfg(not(feature = "debug"))]
+                unsafe {
+                    *(super::allocator::HEAP_START_ADDRESS as *mut usize) =
+                        super::allocator::HEAP_CURSOR_POISONED;
+                }
+            }
+        }
+    } else {
+        quote! {}
+    }
+}
+
 /// Parse `#[max(N)]` or `#[max(N, pfx = P)]` from a function parameter's
 /// attributes. Used by the `#[program]` macro to map borrowed args to
 /// compact client types.
@@ -90,6 +130,15 @@ struct ClientArgSpec {
     ty: Type,
 }
 
+/// Lightweight spec for `#[instruction(raw)]` — only discriminator + heap flag.
+/// Raw instructions have no accounts type, no client args, no remaining.
+struct RawInstructionSpec {
+    fn_name: Ident,
+    disc_bytes: Vec<LitInt>,
+    disc_values: Vec<u8>,
+    heap: bool,
+}
+
 struct InstructionSpec {
     fn_name: Ident,
     disc_bytes: Vec<LitInt>,
@@ -112,36 +161,8 @@ impl InstructionSpec {
         }
     }
 
-    fn heap_dispatch_arm(&self) -> TokenStream2 {
-        let cursor_init = if self.heap {
-            quote! {
-                #[cfg(feature = "alloc")]
-                {
-                    unsafe {
-                        let heap_start = super::allocator::HEAP_START_ADDRESS as usize;
-                        *(heap_start as *mut usize) =
-                            heap_start + core::mem::size_of::<usize>();
-                    }
-                }
-            }
-        } else {
-            quote! {
-                #[cfg(feature = "alloc")]
-                {
-                    #[cfg(feature = "debug")]
-                    unsafe {
-                        let heap_start = super::allocator::HEAP_START_ADDRESS as usize;
-                        *(heap_start as *mut usize) =
-                            heap_start + core::mem::size_of::<usize>();
-                    }
-                    #[cfg(not(feature = "debug"))]
-                    unsafe {
-                        *(super::allocator::HEAP_START_ADDRESS as *mut usize) =
-                            super::allocator::HEAP_CURSOR_POISONED;
-                    }
-                }
-            }
-        };
+    fn heap_dispatch_arm(&self, any_heap: bool) -> TokenStream2 {
+        let cursor_init = emit_heap_cursor_block(self.heap, any_heap);
         let fn_name = &self.fn_name;
         let accounts_type = &self.accounts_type;
         let disc_bytes = &self.disc_bytes;
@@ -167,7 +188,29 @@ impl InstructionSpec {
     }
 }
 
-pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
+/// Parsed attributes from `#[program(...)]`.
+struct ProgramArgs {
+    no_entrypoint: bool,
+}
+
+impl syn::parse::Parse for ProgramArgs {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut no_entrypoint = false;
+        while !input.is_empty() {
+            let ident: Ident = input.parse()?;
+            if ident == "no_entrypoint" {
+                no_entrypoint = true;
+            } else {
+                return Err(syn::Error::new(ident.span(), "expected `no_entrypoint`"));
+            }
+            let _ = input.parse::<Option<syn::Token![,]>>();
+        }
+        Ok(Self { no_entrypoint })
+    }
+}
+
+pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let program_args = parse_macro_input!(attr as ProgramArgs);
     let mut module = parse_macro_input!(item as ItemMod);
     let mod_name = module.ident.clone();
     let program_type_name = format_ident!("{}", snake_to_pascal(&mod_name.to_string()));
@@ -186,6 +229,7 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Scan for #[instruction(discriminator = ...)] functions
     let mut instruction_specs = Vec::new();
+    let mut raw_instruction_specs: Vec<RawInstructionSpec> = Vec::new();
     let mut seen_discriminators: Vec<(Vec<u8>, String)> = Vec::new();
     let mut disc_len: Option<usize> = None;
 
@@ -209,12 +253,6 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
                         }
                     };
                     let fn_name = &func.sig.ident;
-                    let ctx_kind = match CtxKind::classify(&func.sig) {
-                        Ok(k) => k,
-                        Err(e) => return e.to_compile_error().into(),
-                    };
-                    let inner_ty = ctx_kind.inner_ty();
-                    let accounts_type = quote!(#inner_ty);
 
                     // Validate same length across all instructions
                     match disc_len {
@@ -255,6 +293,24 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
                         .into();
                     }
                     seen_discriminators.push((disc_values.clone(), fn_name.to_string()));
+
+                    if args.raw {
+                        // Raw instruction — no CtxKind, no accounts_type, no client args.
+                        raw_instruction_specs.push(RawInstructionSpec {
+                            fn_name: fn_name.clone(),
+                            disc_bytes: disc_bytes.clone(),
+                            disc_values: disc_values.clone(),
+                            heap: args.heap,
+                        });
+                        break;
+                    }
+
+                    let ctx_kind = match CtxKind::classify(&func.sig) {
+                        Ok(k) => k,
+                        Err(e) => return e.to_compile_error().into(),
+                    };
+                    let inner_ty = ctx_kind.inner_ty();
+                    let accounts_type = quote!(#inner_ty);
 
                     // Collect data for client module generation — invoke the macro_rules
                     // bridge emitted by derive(Accounts)
@@ -372,7 +428,190 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
         .map(InstructionSpec::client_item)
         .collect();
 
-    let any_heap = instruction_specs.iter().any(|spec| spec.heap);
+    let any_heap = instruction_specs.iter().any(|spec| spec.heap)
+        || raw_instruction_specs.iter().any(|spec| spec.heap);
+
+    // ── Raw dispatch early-return block ──────────────────────────
+    // Each raw instruction gets a match arm that walks the SVM buffer
+    // to build a `Context` with all accounts, then calls the handler
+    // directly. This block is inserted in __dispatch before the
+    // normal dispatch! call.
+    let raw_dispatch_block = if raw_instruction_specs.is_empty() {
+        quote! {}
+    } else {
+        // Sort raw specs by discriminator value for table construction.
+        let mut sorted_raw: Vec<&RawInstructionSpec> = raw_instruction_specs.iter().collect();
+        sorted_raw.sort_by_key(|spec| spec.disc_values.clone());
+
+        // For 1-byte discriminators with contiguous values: use O(1) function
+        // pointer table dispatch. The SVM verifier accepts callx (indirect
+        // calls) — verified by the callx_dispatch integration test.
+        //
+        // Contiguity check: sorted disc values must form a gap-free sequence.
+        // If not (e.g. raw discs 1,2,5 with normal at 3,4), fall back to match.
+        let is_contiguous = sorted_raw.len() == 1
+            || sorted_raw
+                .windows(2)
+                .all(|w| w[1].disc_values[0] == w[0].disc_values[0] + 1);
+        let use_table = disc_len_lit == 1 && is_contiguous && !sorted_raw.is_empty();
+
+        if use_table {
+            let raw_min = sorted_raw.first().unwrap().disc_values[0];
+            let raw_max = sorted_raw.last().unwrap().disc_values[0];
+            let table_size = (raw_max - raw_min + 1) as usize;
+
+            // Build the function pointer table. Slots are filled for each
+            // raw disc value. Gaps (if any non-raw instruction sits between
+            // raw ones) should not exist — the disc collision check prevents it.
+            let raw_fn_names: Vec<&Ident> = sorted_raw.iter().map(|s| &s.fn_name).collect();
+            let table_size_lit = table_size;
+            let raw_min_lit = raw_min;
+
+            // Heap: init once before dispatch if any raw instruction uses heap.
+            let heap_init = emit_heap_cursor_block(sorted_raw.iter().any(|s| s.heap), any_heap);
+
+            quote! {
+                if instruction_data.len() >= 1 {
+                    let __raw_disc_byte = instruction_data[0];
+                    let __raw_idx = __raw_disc_byte.wrapping_sub(#raw_min_lit) as usize;
+                    if __raw_idx < #table_size_lit {
+                        #heap_init
+
+                        // SAFETY: Program ID follows instruction data in the SVM buffer.
+                        let __raw_program_id: &[u8; 32] = unsafe {
+                            &*(instruction_data.as_ptr().add(instruction_data.len())
+                                as *const [u8; 32])
+                        };
+                        const __RAW_U64: usize = core::mem::size_of::<u64>();
+                        let __raw_num_accounts = unsafe { *(ptr as *const u64) };
+                        let __raw_accounts_start = unsafe { (ptr as *mut u8).add(__RAW_U64) };
+                        let __raw_boundary = unsafe { instruction_data.as_ptr().sub(__RAW_U64) };
+
+                        const __RAW_MAX: usize = 64;
+                        let __raw_count = core::cmp::min(__raw_num_accounts as usize, __RAW_MAX);
+                        let mut __raw_buf = core::mem::MaybeUninit::<
+                            [quasar_lang::__internal::AccountView; __RAW_MAX]
+                        >::uninit();
+
+                        let (__raw_parsed, __raw_remaining) = unsafe {
+                            quasar_lang::__internal::parse_all_accounts_unchecked(
+                                __raw_accounts_start,
+                                __raw_buf.as_mut_ptr()
+                                    as *mut quasar_lang::__internal::AccountView,
+                                __raw_count,
+                                __raw_boundary,
+                            )?
+                        };
+
+                        let __raw_accounts = unsafe {
+                            core::slice::from_raw_parts_mut(
+                                __raw_buf.as_mut_ptr()
+                                    as *mut quasar_lang::__internal::AccountView,
+                                __raw_parsed,
+                            )
+                        };
+
+                        let __raw_ctx = Context {
+                            program_id: __raw_program_id,
+                            accounts: __raw_accounts,
+                            remaining_ptr: __raw_remaining,
+                            data: &instruction_data[1..],
+                            accounts_boundary: __raw_boundary as *const u8,
+                        };
+
+                        // O(1) dispatch: function pointer table indexed by
+                        // discriminator byte. LLVM emits `callx` for the
+                        // indirect call — ~5 CU constant overhead.
+                        type __RawHandler = fn(Context) -> Result<(), ProgramError>;
+                        let __raw_table: [__RawHandler; #table_size_lit] = [
+                            #(#raw_fn_names),*
+                        ];
+                        return __raw_table[__raw_idx](__raw_ctx);
+                    }
+                }
+            }
+        } else {
+            // Multi-byte discriminators: fall back to match chain.
+            let raw_disc_patterns: Vec<TokenStream2> = raw_instruction_specs
+                .iter()
+                .map(|spec| {
+                    let disc_bytes = &spec.disc_bytes;
+                    quote! { [#(#disc_bytes),*] }
+                })
+                .collect();
+
+            let raw_call_arms: Vec<TokenStream2> = raw_instruction_specs
+                .iter()
+                .map(|spec| {
+                    let fn_name = &spec.fn_name;
+                    let disc_bytes = &spec.disc_bytes;
+                    let cursor_init = emit_heap_cursor_block(spec.heap, any_heap);
+                    quote! {
+                        [#(#disc_bytes),*] => {
+                            #cursor_init
+                            return #fn_name(__raw_ctx);
+                        }
+                    }
+                })
+                .collect();
+
+            quote! {
+                if instruction_data.len() >= #disc_len_lit {
+                    let __raw_disc: [u8; #disc_len_lit] = unsafe {
+                        *(instruction_data.as_ptr() as *const [u8; #disc_len_lit])
+                    };
+
+                    if matches!(__raw_disc, #(#raw_disc_patterns)|*) {
+                        let __raw_program_id: &[u8; 32] = unsafe {
+                            &*(instruction_data.as_ptr().add(instruction_data.len())
+                                as *const [u8; 32])
+                        };
+                        const __RAW_U64: usize = core::mem::size_of::<u64>();
+                        let __raw_num_accounts = unsafe { *(ptr as *const u64) };
+                        let __raw_accounts_start = unsafe { (ptr as *mut u8).add(__RAW_U64) };
+                        let __raw_boundary = unsafe { instruction_data.as_ptr().sub(__RAW_U64) };
+
+                        const __RAW_MAX: usize = 64;
+                        let __raw_count = core::cmp::min(__raw_num_accounts as usize, __RAW_MAX);
+                        let mut __raw_buf = core::mem::MaybeUninit::<
+                            [quasar_lang::__internal::AccountView; __RAW_MAX]
+                        >::uninit();
+
+                        let (__raw_parsed, __raw_remaining) = unsafe {
+                            quasar_lang::__internal::parse_all_accounts_unchecked(
+                                __raw_accounts_start,
+                                __raw_buf.as_mut_ptr()
+                                    as *mut quasar_lang::__internal::AccountView,
+                                __raw_count,
+                                __raw_boundary,
+                            )?
+                        };
+
+                        let __raw_accounts = unsafe {
+                            core::slice::from_raw_parts_mut(
+                                __raw_buf.as_mut_ptr()
+                                    as *mut quasar_lang::__internal::AccountView,
+                                __raw_parsed,
+                            )
+                        };
+
+                        let __raw_ctx = Context {
+                            program_id: __raw_program_id,
+                            accounts: __raw_accounts,
+                            remaining_ptr: __raw_remaining,
+                            data: &instruction_data[#disc_len_lit..],
+                            accounts_boundary: __raw_boundary as *const u8,
+                        };
+
+                        match __raw_disc {
+                            #(#raw_call_arms)*
+                            _ => unsafe { core::hint::unreachable_unchecked() }
+                        }
+                    }
+                }
+            }
+        }
+    };
 
     // Append dispatch + entrypoint to the module
     if let Some((_, ref mut items)) = module.content {
@@ -390,50 +629,66 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         });
 
-        if any_heap {
-            // When any instruction opts into heap, build per-arm cursor init
-            // blocks and feed them into the extended dispatch! macro form.
-            // Heap endpoints get normal cursor init; non-heap endpoints poison
-            // the cursor (clean alloc trap). Debug builds exempt non-heap
-            // endpoints so alloc::format! works in error paths.
+        // Normal dispatch tail: either dispatch! with heap arms, dispatch!
+        // with simple arms, or just InvalidInstructionData if all instructions
+        // are raw.
+        let normal_dispatch_tail = if instruction_specs.is_empty() {
+            // All instructions are raw — no normal dispatch needed.
+            quote! { Err(ProgramError::InvalidInstructionData) }
+        } else if any_heap {
             let heap_dispatch_arms: Vec<proc_macro2::TokenStream> = instruction_specs
                 .iter()
-                .map(InstructionSpec::heap_dispatch_arm)
+                .map(|spec| spec.heap_dispatch_arm(any_heap))
                 .collect();
+            quote! {
+                dispatch!(ptr, instruction_data, #disc_len_lit, {
+                    #(#heap_dispatch_arms),*
+                })
+            }
+        } else {
+            quote! {
+                dispatch!(ptr, instruction_data, #disc_len_lit, {
+                    #(#dispatch_arms),*
+                })
+            }
+        };
 
+        // When no_entrypoint is set, __dispatch is pub so users can call
+        // it from a custom entrypoint. Otherwise it stays module-private.
+        let dispatch_vis = if program_args.no_entrypoint {
+            quote! { pub }
+        } else {
+            quote! {}
+        };
+
+        let dispatch_heap_init = emit_heap_cursor_block(true, true);
+
+        if any_heap {
             items.push(syn::parse_quote! {
                 #[inline(always)]
-                fn __dispatch(ptr: *mut u8, instruction_data: &[u8]) -> Result<(), ProgramError> {
-                    // Initialize cursor to a valid state before the event check.
-                    // __handle_event itself is allocation-free, but this prevents
-                    // UB if it ever changes or if debug error paths allocate.
-                    #[cfg(feature = "alloc")]
-                    unsafe {
-                        let heap_start = super::allocator::HEAP_START_ADDRESS as usize;
-                        *(heap_start as *mut usize) =
-                            heap_start + core::mem::size_of::<usize>();
-                    }
+                #dispatch_vis fn __dispatch(ptr: *mut u8, instruction_data: &[u8]) -> Result<(), ProgramError> {
+                    #dispatch_heap_init
 
                     if !instruction_data.is_empty() && instruction_data[0] == 0xFF {
                         return __handle_event(ptr, instruction_data);
                     }
-                    // Per-arm cursor init overrides the safe default above.
-                    dispatch!(ptr, instruction_data, #disc_len_lit, {
-                        #(#heap_dispatch_arms),*
-                    })
+
+                    #raw_dispatch_block
+
+                    #normal_dispatch_tail
                 }
             });
         } else {
-            // No heap annotations — use the simple dispatch! macro form
             items.push(syn::parse_quote! {
                 #[inline(always)]
-                fn __dispatch(ptr: *mut u8, instruction_data: &[u8]) -> Result<(), ProgramError> {
+                #dispatch_vis fn __dispatch(ptr: *mut u8, instruction_data: &[u8]) -> Result<(), ProgramError> {
                     if !instruction_data.is_empty() && instruction_data[0] == 0xFF {
                         return __handle_event(ptr, instruction_data);
                     }
-                    dispatch!(ptr, instruction_data, #disc_len_lit, {
-                        #(#dispatch_arms),*
-                    })
+
+                    #raw_dispatch_block
+
+                    #normal_dispatch_tail
                 }
             });
         }
@@ -453,24 +708,29 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         };
 
-        items.push(syn::parse_quote! {
-            #[unsafe(no_mangle)]
-            #[cfg(any(target_os = "solana", target_arch = "bpf"))]
-            #[allow(unexpected_cfgs)]
-            pub unsafe extern "C" fn entrypoint(ptr: *mut u8, instruction_data: *const u8) -> u64 {
-                #cursor_init
-                let instruction_data = unsafe {
-                    core::slice::from_raw_parts(
-                        instruction_data,
-                        *(instruction_data.sub(8) as *const u64) as usize,
-                    )
-                };
-                match __dispatch(ptr, instruction_data) {
-                    Ok(_) => 0,
-                    Err(e) => e.into(),
+        // When no_entrypoint is set, skip the generated entrypoint so the
+        // user can write their own extern "C" fn entrypoint that calls
+        // module::__dispatch() for fallthrough (Anchor 0.30 pattern).
+        if !program_args.no_entrypoint {
+            items.push(syn::parse_quote! {
+                #[unsafe(no_mangle)]
+                #[cfg(any(target_os = "solana", target_arch = "bpf"))]
+                #[allow(unexpected_cfgs)]
+                pub unsafe extern "C" fn entrypoint(ptr: *mut u8, instruction_data: *const u8) -> u64 {
+                    #cursor_init
+                    let instruction_data = unsafe {
+                        core::slice::from_raw_parts(
+                            instruction_data,
+                            *(instruction_data.sub(8) as *const u64) as usize,
+                        )
+                    };
+                    match __dispatch(ptr, instruction_data) {
+                        Ok(_) => 0,
+                        Err(e) => e.into(),
+                    }
                 }
-            }
-        });
+            });
+        }
 
         // Add CPI module inside the program module (instruction builders only —
         // the full client with account/event types is generated by the IDL).
@@ -533,6 +793,7 @@ pub(crate) fn program(_attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         impl quasar_lang::account_load::AccountLoad for EventAuthority {
+            type BehaviorTarget = Self;
             type Params = ();
 
             #[inline(always)]

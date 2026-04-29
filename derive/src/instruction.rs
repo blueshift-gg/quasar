@@ -20,6 +20,10 @@ use {
     syn::{parse_macro_input, FnArg, Ident, ItemFn, Pat, ReturnType, Type},
 };
 
+// Note: pre_hook/post_hook have been removed. Users should use
+// #[accounts(validate)] for pre-handler validation, or write logic
+// directly in the handler body.
+
 /// Emit the ZeroPodFixed schema codegen block: derive struct, size check,
 /// validate, cast, and per-field `from_zc` extraction.
 fn emit_fixed_schema_stmts(
@@ -83,6 +87,70 @@ fn parse_max_attr_from_fn_arg(pt: &syn::PatType) -> Option<Result<(usize, usize)
     None
 }
 
+/// Build the handler tail: user body + epilogue, with optional return-data
+/// wrapping. This is the single canonical emission point for the instruction
+/// lifecycle after validate has run.
+///
+/// Lifecycle: parse → validate → handler → epilogue
+fn emit_handler_tail(
+    param_ident: &Ident,
+    stmts: &[syn::Stmt],
+    has_return_data: bool,
+    return_ok_type: Option<&Type>,
+) -> Vec<syn::Stmt> {
+    let user_body: proc_macro2::TokenStream = stmts.iter().map(|s| quote!(#s)).collect();
+    let mut tail = Vec::new();
+
+    // Const-elide via HAS_EPILOGUE. When the struct has no close/sweep/migrate,
+    // this branch is eliminated at compile time — saving ~2-7 CU on sBPF.
+    let epilogue_call = quote! {
+        if #param_ident.has_epilogue() {
+            #param_ident.accounts.epilogue()?;
+        }
+    };
+
+    if has_return_data {
+        let ok_ty =
+            return_ok_type.expect("return_ok_type must be set when has_return_data is true");
+        tail.push(syn::parse_quote!(
+            const _: () = assert!(
+                core::mem::align_of::<<#ok_ty as quasar_lang::instruction_arg::InstructionArg>::Zc>() == 1,
+                "return data type must implement InstructionArg with an alignment-1 Zc companion"
+            );
+        ));
+        tail.push(syn::parse_quote!(
+            {
+                let __result: Result<#ok_ty, ProgramError> = (|| { #user_body })();
+                match __result {
+                    Ok(ref __val) => {
+                        #epilogue_call
+                        let __zc =
+                            <#ok_ty as quasar_lang::instruction_arg::InstructionArg>::to_zc(__val);
+                        let __bytes = unsafe {
+                            core::slice::from_raw_parts(
+                                &__zc as *const <#ok_ty as quasar_lang::instruction_arg::InstructionArg>::Zc as *const u8,
+                                core::mem::size_of::<<#ok_ty as quasar_lang::instruction_arg::InstructionArg>::Zc>(),
+                            )
+                        };
+                        quasar_lang::return_data::set_return_data(__bytes);
+                        Ok(())
+                    }
+                    Err(e) => Err(e),
+                }
+            }
+        ));
+    } else {
+        tail.push(syn::parse_quote!({
+            let __user_result: Result<(), ProgramError> = { #user_body };
+            __user_result?;
+            #epilogue_call
+            Ok(())
+        }));
+    }
+
+    tail
+}
+
 pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as InstructionArgs);
     let mut func = parse_macro_input!(item as ItemFn);
@@ -116,6 +184,57 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into();
     }
 
+    // ── Raw path ────────────────────────────────────────────────────
+    // When `raw` is set, the handler receives a bare `Context` — no
+    // Ctx<T>, no arg decoding, no validate(), no epilogue. The macro
+    // just validates the signature and emits the function unchanged.
+    // The `#[program]` codegen is responsible for generating the
+    // dispatch arm that constructs and passes the `Context`.
+    if args.raw {
+        let first_arg = match func.sig.inputs.first() {
+            Some(FnArg::Typed(pt)) => pt.clone(),
+            _ => {
+                return syn::Error::new_spanned(
+                    &func.sig.ident,
+                    "#[instruction(raw)] requires a single parameter of type Context",
+                )
+                .to_compile_error()
+                .into();
+            }
+        };
+
+        // Check the type path ends with "Context".
+        let is_context = match &*first_arg.ty {
+            Type::Path(tp) => tp
+                .path
+                .segments
+                .last()
+                .is_some_and(|seg| seg.ident == "Context"),
+            _ => false,
+        };
+        if !is_context {
+            return syn::Error::new_spanned(
+                &first_arg.ty,
+                "#[instruction(raw)] parameter must be of type Context",
+            )
+            .to_compile_error()
+            .into();
+        }
+
+        if func.sig.inputs.len() > 1 {
+            return syn::Error::new_spanned(
+                &func.sig,
+                "#[instruction(raw)] handler must have exactly one parameter: Context",
+            )
+            .to_compile_error()
+            .into();
+        }
+
+        // Emit the function unchanged — no wrapping, no codegen.
+        return quote!(#func).into();
+    }
+
+    // ── Normal path ──────────────────────────────────────────────────
     let first_arg = match func.sig.inputs.first() {
         Some(FnArg::Typed(pt)) => pt.clone(),
         _ => {
@@ -266,49 +385,13 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                     #param_ident.data = &[];
                 ));
 
-                if has_return_data {
-                    let ok_ty = return_ok_type
-                        .expect("return_ok_type must be set when has_return_data is true");
-                    let user_body: proc_macro2::TokenStream =
-                        stmts.iter().map(|s| quote!(#s)).collect();
-                    new_stmts.push(syn::parse_quote!(
-                        const _: () = assert!(
-                            core::mem::align_of::<<#ok_ty as quasar_lang::instruction_arg::InstructionArg>::Zc>() == 1,
-                            "return data type must implement InstructionArg with an alignment-1 Zc companion"
-                        );
-                    ));
-                    new_stmts.push(syn::parse_quote!(
-                        {
-                            let __result: Result<#ok_ty, ProgramError> = (|| { #user_body })();
-                            match __result {
-                                Ok(ref __val) => {
-                                    #param_ident.accounts.epilogue()?;
-                                    let __zc =
-                                        <#ok_ty as quasar_lang::instruction_arg::InstructionArg>::to_zc(__val);
-                                    let __bytes = unsafe {
-                                        core::slice::from_raw_parts(
-                                            &__zc as *const <#ok_ty as quasar_lang::instruction_arg::InstructionArg>::Zc as *const u8,
-                                            core::mem::size_of::<<#ok_ty as quasar_lang::instruction_arg::InstructionArg>::Zc>(),
-                                        )
-                                    };
-                                    quasar_lang::return_data::set_return_data(__bytes);
-                                    Ok(())
-                                }
-                                Err(e) => Err(e),
-                            }
-                        }
-                    ));
-                    func.block.stmts = new_stmts;
-                } else {
-                    let user_body: proc_macro2::TokenStream =
-                        stmts.iter().map(|s| quote!(#s)).collect();
-                    new_stmts.push(syn::parse_quote!({
-                        let __user_result: Result<(), ProgramError> = { #user_body };
-                        __user_result?;
-                        #param_ident.accounts.epilogue()
-                    }));
-                    func.block.stmts = new_stmts;
-                }
+                new_stmts.extend(emit_handler_tail(
+                    &param_ident,
+                    &stmts,
+                    has_return_data,
+                    return_ok_type.as_ref(),
+                ));
+                func.block.stmts = new_stmts;
 
                 return quote!(#func).into();
             } else {
@@ -434,47 +517,13 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
         ));
     }
 
-    if has_return_data {
-        let ok_ty =
-            return_ok_type.expect("return_ok_type must be set when has_return_data is true");
-        let user_body: proc_macro2::TokenStream = stmts.iter().map(|s| quote!(#s)).collect();
-        new_stmts.push(syn::parse_quote!(
-            const _: () = assert!(
-                core::mem::align_of::<<#ok_ty as quasar_lang::instruction_arg::InstructionArg>::Zc>() == 1,
-                "return data type must implement InstructionArg with an alignment-1 Zc companion"
-            );
-        ));
-        new_stmts.push(syn::parse_quote!(
-            {
-                let __result: Result<#ok_ty, ProgramError> = (|| { #user_body })();
-                match __result {
-                    Ok(ref __val) => {
-                        #param_ident.accounts.epilogue()?;
-                        let __zc =
-                            <#ok_ty as quasar_lang::instruction_arg::InstructionArg>::to_zc(__val);
-                        let __bytes = unsafe {
-                            core::slice::from_raw_parts(
-                                &__zc as *const <#ok_ty as quasar_lang::instruction_arg::InstructionArg>::Zc as *const u8,
-                                core::mem::size_of::<<#ok_ty as quasar_lang::instruction_arg::InstructionArg>::Zc>(),
-                            )
-                        };
-                        quasar_lang::return_data::set_return_data(__bytes);
-                        Ok(())
-                    }
-                    Err(e) => Err(e),
-                }
-            }
-        ));
-        func.block.stmts = new_stmts;
-    } else {
-        let user_body: proc_macro2::TokenStream = stmts.iter().map(|s| quote!(#s)).collect();
-        new_stmts.push(syn::parse_quote!({
-            let __user_result: Result<(), ProgramError> = { #user_body };
-            __user_result?;
-            #param_ident.accounts.epilogue()
-        }));
-        func.block.stmts = new_stmts;
-    }
+    new_stmts.extend(emit_handler_tail(
+        &param_ident,
+        &stmts,
+        has_return_data,
+        return_ok_type.as_ref(),
+    ));
+    func.block.stmts = new_stmts;
 
     quote!(#func).into()
 }

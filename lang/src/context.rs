@@ -86,6 +86,13 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
     pub const fn has_validate(&self) -> bool {
         T::HAS_VALIDATE
     }
+
+    /// Compile-time check for whether `T` has lifecycle operations
+    /// (close/sweep/migrate). When false, the epilogue call is elided.
+    #[inline(always)]
+    pub const fn has_epilogue(&self) -> bool {
+        T::HAS_EPILOGUE
+    }
 }
 
 /// Like [`Ctx`] but also captures the remaining accounts region.
@@ -161,6 +168,13 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
     #[inline(always)]
     pub const fn has_validate(&self) -> bool {
         T::HAS_VALIDATE
+    }
+
+    /// Compile-time check for whether `T` has lifecycle operations
+    /// (close/sweep/migrate). When false, the epilogue call is elided.
+    #[inline(always)]
+    pub const fn has_epilogue(&self) -> bool {
+        T::HAS_EPILOGUE
     }
 
     /// Strict remaining-account accessor.
