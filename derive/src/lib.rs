@@ -49,7 +49,7 @@ mod serialize;
 ///   struct
 /// - A `Bumps` companion struct containing PDA bump seeds
 /// - `AccountCount` implementation for dispatch buffer sizing
-#[proc_macro_derive(Accounts, attributes(account, instruction))]
+#[proc_macro_derive(Accounts, attributes(account, accounts, instruction))]
 pub fn derive_accounts(input: TokenStream) -> TokenStream {
     accounts::derive_accounts(input)
 }

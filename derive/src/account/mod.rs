@@ -6,6 +6,7 @@ mod dynamic;
 mod fixed;
 mod layout;
 mod methods;
+pub(crate) mod one_of;
 pub mod seeds;
 mod traits;
 
@@ -33,6 +34,38 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     input.attrs.retain(|a| !a.path().is_ident("seeds"));
 
     let name = &input.ident;
+
+    // --- custom on unit struct: transparent wrapper with user-provided check() ---
+    if args.custom {
+        if let Data::Struct(data) = &input.data {
+            if matches!(data.fields, Fields::Unit) {
+                return generate_custom_account(name).into();
+            }
+        }
+        // custom with fields: fall through to normal codegen with disc_len = 0
+    }
+
+    // --- one_of: polymorphic account on enum ---
+    if args.one_of {
+        match &input.data {
+            Data::Enum(data) => {
+                let variants = match one_of::extract_variants(data) {
+                    Ok(v) => v,
+                    Err(e) => return e.to_compile_error().into(),
+                };
+                return one_of::generate_one_of_account(name, &variants, args.implements.as_ref())
+                    .into();
+            }
+            _ => {
+                return syn::Error::new_spanned(
+                    name,
+                    "#[account(one_of)] can only be used on enum declarations",
+                )
+                .to_compile_error()
+                .into();
+            }
+        }
+    }
 
     let gen_set_inner = args.set_inner;
     let unsafe_no_disc = args.unsafe_no_disc;
@@ -118,9 +151,52 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
         &pod_field_infos,
         &input,
         gen_set_inner,
+        args.custom,
     );
     if let Some(seeds_tokens) = &seeds_impl {
         output.extend(TokenStream::from(seeds_tokens.clone()));
     }
     output
+}
+
+/// Generate a custom account type: `#[repr(transparent)]` wrapper over
+/// `AccountView` with user-provided `check()`.
+///
+/// The user must implement:
+/// ```ignore
+/// impl MyType {
+///     pub fn check(view: &AccountView, field_name: &str) -> Result<(), ProgramError> { ... }
+/// }
+/// ```
+///
+/// For full manual control over the wrapper struct and trait impls, users
+/// can skip `#[account(custom)]` and implement `#[repr(transparent)]` +
+/// `AsAccountView` + `AccountLoad` directly.
+fn generate_custom_account(name: &syn::Ident) -> proc_macro2::TokenStream {
+    quote::quote! {
+        #[repr(transparent)]
+        pub struct #name {
+            view: quasar_lang::__internal::AccountView,
+        }
+
+        impl quasar_lang::traits::AsAccountView for #name {
+            #[inline(always)]
+            fn to_account_view(&self) -> &quasar_lang::__internal::AccountView {
+                &self.view
+            }
+        }
+
+        impl quasar_lang::account_load::AccountLoad for #name {
+            type BehaviorTarget = Self;
+            type Params = ();
+
+            #[inline(always)]
+            fn check(
+                view: &quasar_lang::__internal::AccountView,
+                field_name: &str,
+            ) -> Result<(), solana_program_error::ProgramError> {
+                #name::check(view, field_name)
+            }
+        }
+    }
 }

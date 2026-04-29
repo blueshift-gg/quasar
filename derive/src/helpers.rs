@@ -12,6 +12,13 @@ pub(crate) struct AccountAttr {
     pub unsafe_no_disc: bool,
     pub set_inner: bool,
     pub fixed_capacity: bool,
+    /// `custom` — transparent wrapper over AccountView with user-provided
+    /// check().
+    pub custom: bool,
+    /// `one_of` — polymorphic account on enum declarations.
+    pub one_of: bool,
+    /// `implements(TraitPath)` — trait all variants implement; generates Deref.
+    pub implements: Option<syn::Path>,
 }
 
 impl Parse for AccountAttr {
@@ -20,6 +27,9 @@ impl Parse for AccountAttr {
         let mut unsafe_no_disc = false;
         let mut set_inner = false;
         let mut fixed_capacity = false;
+        let mut custom = false;
+        let mut one_of = false;
+        let mut implements: Option<syn::Path> = None;
 
         while !input.is_empty() {
             let ident: Ident = input.parse()?;
@@ -29,21 +39,54 @@ impl Parse for AccountAttr {
                 set_inner = true;
             } else if ident == "fixed_capacity" {
                 fixed_capacity = true;
+            } else if ident == "custom" {
+                custom = true;
+            } else if ident == "one_of" {
+                one_of = true;
             } else if ident == "discriminator" {
                 disc_bytes = parse_discriminator_value(input)?;
+            } else if ident == "implements" {
+                let content;
+                syn::parenthesized!(content in input);
+                implements = Some(content.parse::<syn::Path>()?);
             } else {
                 return Err(syn::Error::new(
                     ident.span(),
-                    "expected `discriminator`, `unsafe_no_disc`, `set_inner`, or `fixed_capacity`",
+                    "expected `discriminator`, `unsafe_no_disc`, `set_inner`, `fixed_capacity`, \
+                     `custom`, `one_of`, or `implements`",
                 ));
             }
             let _ = input.parse::<Option<Token![,]>>();
         }
 
-        if disc_bytes.is_empty() && !unsafe_no_disc {
+        // custom accounts don't have discriminators
+        if custom && (!disc_bytes.is_empty() || unsafe_no_disc || set_inner || fixed_capacity) {
+            return Err(syn::Error::new(
+                input.span(),
+                "`custom` cannot be combined with `discriminator`, `unsafe_no_disc`, `set_inner`, \
+                 or `fixed_capacity`",
+            ));
+        }
+
+        if !custom && !one_of && disc_bytes.is_empty() && !unsafe_no_disc {
             return Err(syn::Error::new(
                 input.span(),
                 "expected `discriminator` or `unsafe_no_disc`",
+            ));
+        }
+
+        if implements.is_some() && !one_of {
+            return Err(syn::Error::new(
+                input.span(),
+                "`implements` can only be used with `one_of`",
+            ));
+        }
+
+        // one_of doesn't have its own discriminator
+        if one_of && (!disc_bytes.is_empty() || unsafe_no_disc) {
+            return Err(syn::Error::new(
+                input.span(),
+                "`one_of` cannot be combined with `discriminator` or `unsafe_no_disc`",
             ));
         }
 
@@ -52,6 +95,9 @@ impl Parse for AccountAttr {
             unsafe_no_disc,
             set_inner,
             fixed_capacity,
+            custom,
+            one_of,
+            implements,
         })
     }
 }
@@ -59,23 +105,33 @@ impl Parse for AccountAttr {
 pub(crate) struct InstructionArgs {
     pub discriminator: Option<Vec<LitInt>>,
     pub heap: bool,
+    pub raw: bool,
 }
 
 impl Parse for InstructionArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let mut discriminator = None;
         let mut heap = false;
+        let mut raw = false;
 
         while !input.is_empty() {
             let ident: Ident = input.parse()?;
             if ident == "heap" {
                 heap = true;
+            } else if ident == "raw" {
+                raw = true;
             } else if ident == "discriminator" {
                 discriminator = Some(parse_discriminator_value(input)?);
+            } else if ident == "pre_hook" || ident == "post_hook" {
+                return Err(syn::Error::new(
+                    ident.span(),
+                    "pre_hook and post_hook have been removed. Use `#[accounts(validate)]` for \
+                     pre-handler validation, or move logic into the handler body.",
+                ));
             } else {
                 return Err(syn::Error::new(
                     ident.span(),
-                    "expected `discriminator` or `heap`",
+                    "expected `discriminator`, `heap`, or `raw`",
                 ));
             }
             let _ = input.parse::<Option<Token![,]>>();
@@ -84,6 +140,7 @@ impl Parse for InstructionArgs {
         Ok(Self {
             discriminator,
             heap,
+            raw,
         })
     }
 }
