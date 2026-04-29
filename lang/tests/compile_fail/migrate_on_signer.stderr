@@ -1,0 +1,11 @@
+error: #[account(migrate = X)] is deprecated. Use the `Migration<From, To>` field type instead:
+
+         Before: #[account(migrate = ConfigV2, payer = payer)]
+         pub config: Account<ConfigV1>,
+
+         After:  #[account(payer = payer)]
+         pub config: Migration<ConfigV1, ConfigV2>,
+  --> tests/compile_fail/migrate_on_signer.rs:18:15
+   |
+18 |     #[account(migrate = ConfigV2, payer = payer)]
+   |               ^^^^^^^

@@ -1,0 +1,6 @@
+error: Migration<From, To> cannot be combined with init
+  --> tests/compile_fail/migrate_with_init.rs:24:5
+   |
+24 | /     #[account(init, payer = payer)]
+25 | |     pub config: Migration<ConfigV1, ConfigV2>,
+   | |_____________________________________________^

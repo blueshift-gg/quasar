@@ -3,3 +3,9 @@ error: borrowed instruction args require #[max(N)] annotation
    |
 16 |     pub fn bad_handler(ctx: Ctx<Args>, label: &str) -> Result<(), ProgramError> {
    |                                               ^^^^
+
+error[E0425]: cannot find function `bad_handler` in this scope
+  --> tests/compile_fail/instruction_borrowed_no_max.rs:16:12
+   |
+16 |     pub fn bad_handler(ctx: Ctx<Args>, label: &str) -> Result<(), ProgramError> {
+   |            ^^^^^^^^^^^ not found in this scope
