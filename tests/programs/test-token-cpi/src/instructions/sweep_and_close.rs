@@ -1,20 +1,29 @@
 use {
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
-    quasar_spl::{Mint, Token},
+    quasar_spl::{
+        ops::{close, sweep, token},
+        Mint, Token, TokenProgram,
+    },
 };
 
-/// Tests sweep + close — transfers all tokens, then closes the account.
+/// Tests sweep + close -- transfers all tokens, then closes the account.
 #[derive(Accounts)]
 pub struct SweepAndClose {
     pub authority: Signer,
-    #[account(mut, sweep = receiver, close = destination, token::mint = mint, token::authority = authority)]
+    #[account(
+        mut,
+        token(mint = mint, authority = authority, token_program = token_program),
+        sweep(receiver = receiver, mint = mint, authority = authority, token_program = token_program),
+        close(dest = destination, authority = authority, token_program = token_program)
+    )]
     pub source: Account<Token>,
     #[account(mut)]
     pub receiver: Account<Token>,
     pub mint: Account<Mint>,
     #[account(mut)]
     pub destination: UncheckedAccount,
-    pub token_program: Program<Token>,
+    pub token_program: Program<TokenProgram>,
 }
 
 impl SweepAndClose {

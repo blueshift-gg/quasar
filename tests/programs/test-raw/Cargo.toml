@@ -1,0 +1,21 @@
+[package]
+name = "quasar-test-raw"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[lints]
+workspace = true
+
+[features]
+client = []
+debug = []
+alloc = []
+
+[dependencies]
+quasar-lang = { path = "../../../lang" }
+quasar-derive = { path = "../../../derive" }
+
+[dev-dependencies]

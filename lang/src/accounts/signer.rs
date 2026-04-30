@@ -11,10 +11,12 @@ define_account!(
 impl crate::account_load::AccountLoad for Signer {
     const IS_SIGNER: bool = true;
 
-    type Params = ();
+    type BehaviorTarget = Self;
 
     #[inline(always)]
     fn check(_view: &AccountView, _field_name: &str) -> Result<(), ProgramError> {
         Ok(())
     }
 }
+
+impl crate::traits::FieldLifecycle for Signer {}

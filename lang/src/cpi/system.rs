@@ -215,15 +215,15 @@ pub fn init_account(
 ///
 /// Use with the `Program<T>` wrapper:
 /// ```ignore
-/// pub system_program: &'info Program<System>,
+/// pub system_program: Program<SystemProgram>,
 /// ```
-pub struct System;
+pub struct SystemProgram;
 
-impl Id for System {
+impl Id for SystemProgram {
     const ID: Address = Address::new_from_array([0u8; 32]);
 }
 
-impl crate::accounts::Program<System> {
+impl crate::accounts::Program<SystemProgram> {
     /// Create a new account. See [`create_account`] for account and data
     /// layout.
     #[inline(always)]

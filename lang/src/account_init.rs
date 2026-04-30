@@ -8,6 +8,32 @@ use {
     solana_program_error::ProgramResult,
 };
 
+/// Context for account initialization CPI.
+pub struct InitCtx<'a> {
+    pub payer: &'a AccountView,
+    pub target: &'a mut AccountView,
+    pub program_id: &'a Address,
+    pub space: u64,
+    pub signers: &'a [Signer<'a, 'a>],
+    pub rent: &'a Rent,
+}
+
+/// Initialization behavior for account types.
+///
+/// Implemented on the behavior target (Token, Mint, `#[account]` types),
+/// NOT on wrapper types (`Account<T>`, `InterfaceAccount<T>`).
+///
+/// The `derive(Accounts)` macro calls this via:
+/// ```text
+/// type __Target = <FieldTy as AccountLoad>::BehaviorTarget;
+/// <__Target as AccountInit>::init(ctx, &params)?;
+/// ```
+pub trait AccountInit {
+    type InitParams<'a>: Default;
+
+    fn init<'a>(ctx: InitCtx<'a>, params: &Self::InitParams<'a>) -> ProgramResult;
+}
+
 /// Create account via system program + write discriminator.
 #[inline(always)]
 pub fn init_account(

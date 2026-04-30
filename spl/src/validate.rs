@@ -214,6 +214,41 @@ pub fn validate_ata(
 }
 
 // ---------------------------------------------------------------------------
+// Program ID validation for ops
+// ---------------------------------------------------------------------------
+
+/// Validate that an `AccountView` is a known SPL Token program.
+#[inline(always)]
+pub fn validate_token_program_id(view: &AccountView) -> Result<(), ProgramError> {
+    validate_token_program(view.address())
+}
+
+/// Validate that an `AccountView` is the ATA program.
+#[inline(always)]
+pub fn validate_ata_program_id(view: &AccountView) -> Result<(), ProgramError> {
+    if unlikely(!quasar_lang::keys_eq(
+        view.address(),
+        &crate::constants::ATA_PROGRAM_ID,
+    )) {
+        #[cfg(feature = "debug")]
+        quasar_lang::prelude::log("Invalid ATA program");
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    Ok(())
+}
+
+/// Validate that an `AccountView` is the system program.
+#[inline(always)]
+pub fn validate_system_program_id(view: &AccountView) -> Result<(), ProgramError> {
+    if unlikely(!quasar_lang::is_system_program(view.address())) {
+        #[cfg(feature = "debug")]
+        quasar_lang::prelude::log("Invalid system program");
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Kani model-checking proof harnesses
 // ---------------------------------------------------------------------------
 

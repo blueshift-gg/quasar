@@ -11,6 +11,7 @@ workspace = true
 
 [dependencies]
 quasar-lang = { path = "../../../lang" }
+quasar-derive = { path = "../../../derive" }
 
 [dev-dependencies]
 

@@ -1,11 +1,12 @@
 use {
     crate::{errors::TestError, state::SimpleAccount},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 
 #[derive(Accounts)]
 pub struct ConstraintCustomError {
-    #[account(constraint = account.value > 0 @ TestError::CustomConstraint)]
+    #[account(constraints(account.value > 0) @ TestError::CustomConstraint)]
     pub account: Account<SimpleAccount>,
 }
 

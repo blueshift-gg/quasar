@@ -1,4 +1,4 @@
-use {crate::errors::TestError, quasar_lang::prelude::*};
+use {crate::errors::TestError, quasar_derive::Accounts, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
 pub struct RequireNeqCheck {

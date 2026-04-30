@@ -21,6 +21,9 @@ quasar-test-token-cpi = { path = "../programs/test-token-cpi" }
 quasar-test-token-validate = { path = "../programs/test-token-validate" }
 quasar-test-heap = { path = "../programs/test-heap", features = ["client"] }
 quasar-test-token-init = { path = "../programs/test-token-init" }
+quasar-test-one-of = { path = "../programs/test-one-of" }
+quasar-test-migrate = { path = "../programs/test-migrate" }
+quasar-test-raw = { path = "../programs/test-raw" }
 quasar-spl = { path = "../../spl" }
 quasar-svm = { git = "https://github.com/blueshift-gg/quasar-svm" }
 mollusk-svm = "0.10.3"

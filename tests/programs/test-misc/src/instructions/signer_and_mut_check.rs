@@ -1,5 +1,6 @@
 use {
     crate::state::{SimpleAccount, SimpleAccountInner},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 

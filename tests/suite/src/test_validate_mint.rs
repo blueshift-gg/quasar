@@ -646,6 +646,7 @@ fn mint_no_program_happy() {
     let instruction: Instruction = ValidateMintNoProgramInstruction {
         mint: mint_key,
         mint_authority: authority,
+        token_program: quasar_spl::SPL_TOKEN_ID,
     }
     .into();
 
@@ -670,6 +671,7 @@ fn mint_no_program_wrong_authority() {
     let instruction: Instruction = ValidateMintNoProgramInstruction {
         mint: mint_key,
         mint_authority: authority,
+        token_program: quasar_spl::SPL_TOKEN_ID,
     }
     .into();
 
@@ -693,6 +695,7 @@ fn mint_no_program_wrong_decimals() {
     let instruction: Instruction = ValidateMintNoProgramInstruction {
         mint: mint_key,
         mint_authority: authority,
+        token_program: quasar_spl::SPL_TOKEN_ID,
     }
     .into();
 

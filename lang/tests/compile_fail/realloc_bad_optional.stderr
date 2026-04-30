@@ -1,4 +1,4 @@
-error: #[account(realloc)] cannot be used on Option<Account<T>> fields
+error: `realloc = ...` cannot be used on Option<T> fields
   --> tests/compile_fail/realloc_bad_optional.rs:13:5
    |
 13 | /     #[account(mut, realloc = 64)]

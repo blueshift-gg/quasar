@@ -1,15 +1,16 @@
 use {
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
-    quasar_spl::{Mint, Token},
+    quasar_spl::{ops::mint, Mint, TokenProgram},
 };
 
 #[derive(Accounts)]
 pub struct ValidateMintWithFreezeCheck {
-    #[account(mint::authority = mint_authority, mint::decimals = 6, mint::freeze_authority = freeze_authority)]
+    #[account(mint(authority = mint_authority, decimals = 6, freeze_authority = Some(freeze_authority), token_program = token_program))]
     pub mint: Account<Mint>,
     pub mint_authority: Signer,
     pub freeze_authority: UncheckedAccount,
-    pub token_program: Program<Token>,
+    pub token_program: Program<TokenProgram>,
 }
 
 impl ValidateMintWithFreezeCheck {

@@ -97,3 +97,15 @@ mod test_interface_migration;
 // Heap opt-in
 #[cfg(test)]
 mod test_heap;
+
+// Polymorphic accounts (one_of)
+#[cfg(test)]
+mod test_one_of;
+
+// Account migration (migrate)
+#[cfg(test)]
+mod test_migrate;
+
+// Raw instruction escape hatch
+#[cfg(test)]
+mod test_raw;

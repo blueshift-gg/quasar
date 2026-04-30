@@ -7,10 +7,10 @@ use {
 pub struct Create {
     #[account(mut)]
     pub creator: Signer,
-    #[account(init, payer = creator, seeds = MultisigConfig::seeds(creator), bump)]
+    #[account(init, payer = creator, address = MultisigConfig::seeds(creator.address()))]
     pub config: Account<MultisigConfig>,
     pub rent: Sysvar<Rent>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl Create {

@@ -1,0 +1,11 @@
+error: #[instruction(raw)] handler must have exactly one parameter: Context
+  --> tests/compile_fail/instruction_raw_extra_args.rs:11:9
+   |
+11 |     pub fn bad_handler(ctx: Context, value: u64) -> Result<(), ProgramError> {
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0425]: cannot find value `bad_handler` in this scope
+  --> tests/compile_fail/instruction_raw_extra_args.rs:11:12
+   |
+11 |     pub fn bad_handler(ctx: Context, value: u64) -> Result<(), ProgramError> {
+   |            ^^^^^^^^^^^ not found in this scope

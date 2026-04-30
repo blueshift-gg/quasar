@@ -306,6 +306,11 @@ pub fn svm_heap() -> QuasarSvm {
     QuasarSvm::new().with_program(&quasar_test_heap::ID, &elf)
 }
 
+pub fn svm_raw() -> QuasarSvm {
+    let elf = read_deploy_elf("quasar_test_raw");
+    QuasarSvm::new().with_program(&quasar_test_raw::ID, &elf)
+}
+
 /// Account with custom lamports (for pre-funded init tests).
 pub fn prefunded_account(address: Pubkey, lamports: u64) -> Account {
     Account {

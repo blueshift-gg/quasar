@@ -9,7 +9,9 @@ PLATFORM_TOOLS := v1.52
 SBF_TEST_PROGRAMS := tests/programs/test-misc tests/programs/test-errors \
 	tests/programs/test-events tests/programs/test-pda \
 	tests/programs/test-token-cpi tests/programs/test-token-init \
-	tests/programs/test-token-validate tests/programs/test-sysvar
+	tests/programs/test-token-validate tests/programs/test-sysvar \
+	tests/programs/test-one-of tests/programs/test-migrate \
+	tests/programs/test-raw
 
 # Example programs that produce SBF binaries
 SBF_EXAMPLES := examples/vault examples/escrow examples/multisig

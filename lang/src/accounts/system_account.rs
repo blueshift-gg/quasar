@@ -13,10 +13,12 @@ impl Owner for SystemAccount {
 }
 
 impl crate::account_load::AccountLoad for SystemAccount {
-    type Params = ();
+    type BehaviorTarget = Self;
 
     #[inline(always)]
     fn check(view: &AccountView, _field_name: &str) -> Result<(), ProgramError> {
         <Self as checks::Owner>::check(view)
     }
 }
+
+impl crate::traits::FieldLifecycle for SystemAccount {}

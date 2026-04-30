@@ -1,4 +1,4 @@
-use {crate::state::DynBytesAccount, quasar_lang::prelude::*};
+use {crate::state::DynBytesAccount, quasar_derive::Accounts, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
 pub struct DynBytesCheck {

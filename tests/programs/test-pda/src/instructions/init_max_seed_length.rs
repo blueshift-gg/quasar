@@ -1,5 +1,6 @@
 use {
     crate::state::{MaxSeedAccount, MaxSeedAccountInner},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 
@@ -7,9 +8,9 @@ use {
 pub struct InitMaxSeedLength {
     #[account(mut)]
     pub payer: Signer,
-    #[account(mut, init, payer = payer, seeds = MaxSeedAccount::seeds(), bump)]
+    #[account(mut, init, payer = payer, address = MaxSeedAccount::seeds())]
     pub max_seed: Account<MaxSeedAccount>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl InitMaxSeedLength {

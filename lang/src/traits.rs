@@ -95,21 +95,10 @@ pub trait Space {
 /// Runtime validation hook called during account parsing.
 ///
 /// `check()` runs after owner/header validation and before pointer casts.
-/// `validate()` is an optional parameterized hook used by namespaced
-/// constraints (for example `token::mint`).
-///
-/// The default implementations are no-ops.
+/// The default implementation is a no-op.
 pub trait AccountCheck {
     #[inline(always)]
     fn check(_view: &AccountView) -> Result<(), ProgramError> {
-        Ok(())
-    }
-
-    /// Per-type config for namespaced constraints.
-    type Params: Default;
-
-    #[inline(always)]
-    fn validate(_view: &AccountView, _params: &Self::Params) -> Result<(), ProgramError> {
         Ok(())
     }
 }
@@ -152,26 +141,10 @@ pub trait ParseAccounts<'input>: Sized {
         Self::parse(accounts, program_id)
     }
 
-    /// Set to `true` when overriding [`validate()`](Self::validate).
-    /// The dispatch path uses this to skip the call entirely when no
-    /// custom validation exists, avoiding a dead branch on sBPF.
-    const HAS_VALIDATE: bool = false;
-
-    /// User-defined validation hook called after all field-level checks pass
-    /// but before the instruction handler executes.
-    ///
-    /// Override this to add cross-field validation that the `#[account(...)]`
-    /// attribute DSL cannot express. The default implementation is a no-op.
-    ///
-    /// Lifecycle: `parse()` -> `validate()` -> handler -> `epilogue()`
-    ///
-    /// The signature is `&self` (not `&mut self`) — validation must not mutate
-    /// validated account references. You must also set `const HAS_VALIDATE:
-    /// bool = true;` for the hook to be called.
-    #[inline(always)]
-    fn validate(&self) -> Result<(), ProgramError> {
-        Ok(())
-    }
+    /// Set to `true` when the struct has lifecycle operations (close, sweep,
+    /// migrate). The dispatch path uses this to skip the `epilogue()` call
+    /// entirely when no lifecycle ops exist, avoiding a dead branch on sBPF.
+    const HAS_EPILOGUE: bool = false;
 
     #[inline(always)]
     fn epilogue(&mut self) -> Result<(), ProgramError> {
@@ -319,6 +292,32 @@ pub trait Event {
     const DATA_SIZE: usize;
     fn write_data(&self, buf: &mut [u8]);
     fn emit(&self, f: impl FnOnce(&[u8]) -> Result<(), ProgramError>) -> Result<(), ProgramError>;
+}
+
+/// Generic field lifecycle trait. The derive calls exit_lifecycle on all
+/// mut fields in the epilogue. Most account types use the default no-op.
+/// Migration<From, To> overrides to enforce .migrate() was called.
+pub trait FieldLifecycle {
+    const HAS_LIFECYCLE_BEFORE: bool = false;
+    const HAS_LIFECYCLE_EXIT: bool = false;
+
+    #[inline(always)]
+    fn before_lifecycle(
+        &mut self,
+        _payer: Option<&AccountView>,
+        _ctx: &crate::ops::OpCtx<'_>,
+    ) -> Result<(), ProgramError> {
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn exit_lifecycle(
+        &mut self,
+        _payer: Option<&AccountView>,
+        _ctx: &crate::ops::OpCtx<'_>,
+    ) -> Result<(), ProgramError> {
+        Ok(())
+    }
 }
 
 /// Verify that the actual account count matches the expected count.

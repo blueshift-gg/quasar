@@ -180,6 +180,15 @@ pub struct IdlAccountItem {
     pub pda: Option<IdlPda>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub address: Option<String>,
+    /// Present when the field is `Migration<From, To>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub migration: Option<IdlMigration>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct IdlMigration {
+    pub from: String,
+    pub to: String,
 }
 
 fn is_false(b: &bool) -> bool {

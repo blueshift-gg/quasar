@@ -70,7 +70,7 @@ pub fn create<'a>(
     ata: &'a AccountView,
     wallet: &'a impl AsAccountView,
     mint: &'a impl AsAccountView,
-    system_program: &'a Program<System>,
+    system_program: &'a Program<SystemProgram>,
     token_program: &'a impl TokenCpi,
 ) -> CpiCall<'a, 6, 1> {
     build_ata_cpi(
@@ -98,7 +98,7 @@ pub fn create_idempotent<'a>(
     ata: &'a AccountView,
     wallet: &'a impl AsAccountView,
     mint: &'a impl AsAccountView,
-    system_program: &'a Program<System>,
+    system_program: &'a Program<SystemProgram>,
     token_program: &'a impl TokenCpi,
 ) -> CpiCall<'a, 6, 1> {
     build_ata_cpi(
@@ -121,7 +121,7 @@ fn build_ata_cpi<'a>(
     ata: &'a AccountView,
     wallet: &'a impl AsAccountView,
     mint: &'a impl AsAccountView,
-    system_program: &'a Program<System>,
+    system_program: &'a Program<SystemProgram>,
     token_program: &'a impl TokenCpi,
     discriminator: u8,
 ) -> CpiCall<'a, 6, 1> {

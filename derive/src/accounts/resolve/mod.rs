@@ -1,13 +1,12 @@
 mod lower;
 mod model;
-mod rules;
-mod support;
+pub(crate) mod rules;
 
-pub(crate) use self::model::*;
+pub(crate) use model::*;
 
-pub(super) fn lower_semantics(
+pub(crate) fn lower_semantics(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
     instruction_args: &Option<Vec<crate::accounts::InstructionArg>>,
 ) -> syn::Result<Vec<FieldSemantics>> {
-    self::lower::lower_semantics(fields, instruction_args)
+    lower::lower_semantics(fields, instruction_args)
 }

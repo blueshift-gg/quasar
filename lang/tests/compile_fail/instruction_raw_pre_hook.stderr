@@ -1,0 +1,5 @@
+error: pre_hook and post_hook have been removed. Use `#[accounts(validate)]` for pre-handler validation, or move logic into the handler body.
+  --> tests/compile_fail/instruction_raw_pre_hook.rs:10:43
+   |
+10 |     #[instruction(discriminator = 1, raw, pre_hook = [my_hook])]
+   |                                           ^^^^^^^^

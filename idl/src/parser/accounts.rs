@@ -27,6 +27,8 @@ pub struct RawAccountField {
     pub inner_type_name: Option<String>,
     pub constraints: FieldConstraints,
     pub seed_type: Option<String>,
+    /// Present when field type is `Migration<From, To>`.
+    pub migration: Option<(String, String)>,
 }
 
 #[derive(Clone)]
@@ -81,6 +83,29 @@ fn has_derive_accounts(attrs: &[syn::Attribute]) -> bool {
     false
 }
 
+/// Extract `(from_type, to_type)` from `Migration<From, To>` field type.
+fn extract_migration_metadata(ty: &syn::Type) -> Option<(String, String)> {
+    if let syn::Type::Path(tp) = ty {
+        if let Some(seg) = tp.path.segments.last() {
+            if seg.ident == "Migration" {
+                if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+                    let mut iter = args.args.iter();
+                    if let (
+                        Some(syn::GenericArgument::Type(from)),
+                        Some(syn::GenericArgument::Type(to)),
+                    ) = (iter.next(), iter.next())
+                    {
+                        let from_str = helpers::type_to_string(from);
+                        let to_str = helpers::type_to_string(to);
+                        return Some((from_str, to_str));
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 fn has_writable_directive(attrs: &[syn::Attribute]) -> bool {
     for attr in attrs {
         if !attr.path().is_ident("account") {
@@ -108,7 +133,10 @@ fn has_writable_directive(attrs: &[syn::Attribute]) -> bool {
 
 fn parse_account_field(field: &syn::Field, parent: &syn::ItemStruct) -> RawAccountField {
     let name = field.ident.as_ref().unwrap().to_string();
-    let writable = helpers::is_mut_ref(&field.ty) || has_writable_directive(&field.attrs);
+    let migration = extract_migration_metadata(&field.ty);
+    let writable = helpers::is_mut_ref(&field.ty)
+        || has_writable_directive(&field.attrs)
+        || migration.is_some();
 
     // Collect sibling field names for seed reference detection
     let sibling_names: Vec<String> = match &parent.fields {
@@ -138,6 +166,7 @@ fn parse_account_field(field: &syn::Field, parent: &syn::ItemStruct) -> RawAccou
         inner_type_name,
         constraints,
         seed_type,
+        migration,
     }
 }
 
@@ -168,12 +197,21 @@ fn parse_pda_from_attrs(
 
         let tokens_str = tokens.to_string();
 
-        // Check if this attribute contains seeds
+        // Check if this attribute contains seeds (in any form)
         if !tokens_str.contains("seeds") {
             continue;
         }
 
-        // Check for Type::seeds(...) syntax first
+        // Check for address = Type::seeds(...) syntax (v3 grammar)
+        if let Some((type_name, args)) = parse_address_seeds_call(&tokens_str) {
+            let seeds: Vec<RawSeed> = args
+                .iter()
+                .filter_map(|s| parse_single_seed(s.trim(), sibling_names))
+                .collect();
+            return (Some(RawPda { seeds }), Some(type_name));
+        }
+
+        // Check for seeds = Type::seeds(...) syntax (v2 grammar)
         if let Some((type_name, args)) = parse_typed_seeds_call(&tokens_str) {
             let seeds: Vec<RawSeed> = args
                 .iter()
@@ -189,6 +227,63 @@ fn parse_pda_from_attrs(
         }
     }
     (None, None)
+}
+
+/// Parse `address = Type::seeds(arg1, arg2)` from a token string (v3 grammar).
+/// Returns `(type_name, vec_of_arg_strings)` if found.
+fn parse_address_seeds_call(tokens_str: &str) -> Option<(String, Vec<String>)> {
+    // Look for "address" followed by "=" then "Type :: seeds ("
+    let addr_idx = tokens_str.find("address")?;
+    let after_addr = tokens_str[addr_idx + "address".len()..].trim();
+    if !after_addr.starts_with('=') {
+        return None;
+    }
+    let after_eq = after_addr[1..].trim();
+
+    // Must contain :: before ( to be Type::seeds(...)
+    let colons_idx = after_eq.find("::")?;
+    let type_name = after_eq[..colons_idx].trim().to_string();
+    if type_name.is_empty() {
+        return None;
+    }
+
+    let after_colons = after_eq[colons_idx + 2..].trim();
+    if !after_colons.starts_with("seeds") {
+        return None;
+    }
+
+    let after_seeds_kw = after_colons["seeds".len()..].trim();
+    if !after_seeds_kw.starts_with('(') {
+        return None;
+    }
+
+    // Find matching close paren
+    let mut depth = 0;
+    let mut paren_end = None;
+    for (i, c) in after_seeds_kw.chars().enumerate() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    paren_end = Some(i);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let paren_end = paren_end?;
+    let inner = &after_seeds_kw[1..paren_end];
+
+    // Split args by comma
+    let args: Vec<String> = inner
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    Some((type_name, args))
 }
 
 /// Parse `seeds = Type::seeds(arg1, arg2)` from a token string.
@@ -433,11 +528,20 @@ fn to_idl_account_item(
         IdlPda { seeds }
     });
 
+    let migration = field
+        .migration
+        .as_ref()
+        .map(|(from, to)| crate::types::IdlMigration {
+            from: from.clone(),
+            to: to.clone(),
+        });
+
     IdlAccountItem {
         name: helpers::to_camel_case(&field.name),
         writable: field.writable,
         signer: field.signer,
         pda,
         address: field.address.clone(),
+        migration,
     }
 }

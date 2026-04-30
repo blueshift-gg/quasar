@@ -156,12 +156,20 @@ pub(super) fn emit_account_wrapper(
     disc_len: usize,
     zc_path: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
+    let data_alias = quote::format_ident!("{}Data", name);
+
     quote! {
         #(#attrs)*
         #[repr(transparent)]
         #vis struct #name {
             __view: AccountView,
         }
+
+        /// Raw `#[repr(C)]` data layout for [`#name`].
+        ///
+        /// Use this type when constructing account data values (e.g.,
+        /// for [`Migrate`](quasar_lang::traits::Migrate) implementations).
+        #vis type #data_alias = #zc_path;
 
         unsafe impl StaticView for #name {}
 

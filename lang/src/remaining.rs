@@ -1,6 +1,6 @@
 use {
     crate::error::QuasarError,
-    solana_account_view::{AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED},
+    solana_account_view::{AccountView, RuntimeAccount, NOT_BORROWED},
     solana_program_error::ProgramError,
 };
 
@@ -20,14 +20,11 @@ const _: () = assert!(
     "AccountView must not implement Drop — ptr::read copies rely on this"
 );
 
-/// Size of a non-duplicate account entry in the SVM input buffer:
-/// `RuntimeAccount` header + 10 KiB realloc region + u64 padding.
-const ACCOUNT_HEADER: usize = core::mem::size_of::<RuntimeAccount>()
-    + MAX_PERMITTED_DATA_INCREASE
-    + core::mem::size_of::<u64>();
-
-/// Size of a duplicate account entry in the SVM input buffer.
-const DUP_ENTRY_SIZE: usize = core::mem::size_of::<u64>();
+// Re-use canonical constants from __internal to avoid duplication.
+// ACCOUNT_HEADER is only referenced by Kani proof harnesses in this module.
+#[cfg(kani)]
+use crate::__internal::ACCOUNT_HEADER;
+use crate::__internal::DUP_ENTRY_SIZE;
 
 /// Maximum number of remaining accounts the iterator will yield
 /// before returning an error. Prevents unbounded stack usage in
@@ -38,19 +35,11 @@ const MAX_REMAINING_ACCOUNTS: usize = 64;
 // Pure arithmetic helpers (extracted for Kani verification)
 // ---------------------------------------------------------------------------
 
-/// Round `n` up to the next multiple of 8. Returns `n` unchanged if already
-/// aligned.
-#[inline(always)]
-const fn align_up_8(n: usize) -> usize {
-    (n.wrapping_add(7)) & !7
-}
-
-/// Compute the byte stride past a non-duplicate account entry in the SVM
-/// input buffer: header + data_len, rounded up to 8-byte alignment.
-#[inline(always)]
-const fn account_stride(data_len: usize) -> usize {
-    align_up_8(ACCOUNT_HEADER.wrapping_add(data_len))
-}
+// Re-use canonical arithmetic helper from __internal.
+use crate::__internal::account_stride;
+// align_up_8 is only referenced by Kani proof harnesses in this module.
+#[cfg(kani)]
+use crate::__internal::align_up_8;
 
 /// Target source for duplicate account resolution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

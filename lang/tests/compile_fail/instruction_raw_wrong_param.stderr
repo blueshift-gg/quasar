@@ -1,0 +1,11 @@
+error: #[instruction(raw)] parameter must be of type Context
+  --> tests/compile_fail/instruction_raw_wrong_param.rs:16:29
+   |
+16 |     pub fn bad_handler(ctx: Ctx<Args>) -> Result<(), ProgramError> {
+   |                             ^^^^^^^^^
+
+error[E0425]: cannot find value `bad_handler` in this scope
+  --> tests/compile_fail/instruction_raw_wrong_param.rs:16:12
+   |
+16 |     pub fn bad_handler(ctx: Ctx<Args>) -> Result<(), ProgramError> {
+   |            ^^^^^^^^^^^ not found in this scope

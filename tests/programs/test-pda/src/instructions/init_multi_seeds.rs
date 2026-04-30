@@ -1,5 +1,6 @@
 use {
     crate::state::{ComplexAccount, ComplexAccountInner},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 
@@ -8,9 +9,9 @@ pub struct InitMultiSeeds {
     #[account(mut)]
     pub payer: Signer,
     pub authority: Signer,
-    #[account(mut, init, payer = payer, seeds = ComplexAccount::seeds(payer, authority), bump)]
+    #[account(mut, init, payer = payer, address = ComplexAccount::seeds(payer.address(), authority.address()))]
     pub complex: Account<ComplexAccount>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl InitMultiSeeds {

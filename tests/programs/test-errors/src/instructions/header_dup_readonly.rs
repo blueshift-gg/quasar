@@ -1,4 +1,4 @@
-use quasar_lang::prelude::*;
+use {quasar_derive::Accounts, quasar_lang::prelude::*};
 
 /// Tests: duplicate readonly aliases are accepted when explicitly annotated.
 #[derive(Accounts)]

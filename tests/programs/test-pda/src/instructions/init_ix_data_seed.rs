@@ -1,5 +1,6 @@
 use {
     crate::state::{IndexedAccount, IndexedAccountInner},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 
@@ -9,9 +10,9 @@ pub struct InitIxDataSeed {
     #[account(mut)]
     pub payer: Signer,
     pub authority: Signer,
-    #[account(mut, init, payer = payer, seeds = IndexedAccount::seeds(authority, index), bump)]
+    #[account(mut, init, payer = payer, address = IndexedAccount::seeds(authority.address(), index))]
     pub item: Account<IndexedAccount>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl InitIxDataSeed {

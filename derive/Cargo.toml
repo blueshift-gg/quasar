@@ -1,6 +1,6 @@
 [package]
 name = "quasar-derive"
-description = "Proc macros for the Quasar Solana framework — #[account], #[derive(Accounts)], #[program], #[event], #[error_code]"
+description = "Proc macros for the Quasar Solana framework"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -20,3 +20,11 @@ proc-macro2 = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 quasar-schema = { path = "../schema" }
+
+[dev-dependencies]
+trybuild = "1"
+quasar-lang = { path = "../lang" }
+quasar-derive = { path = "../derive" }
+quasar-spl = { path = "../spl" }
+solana-address = { version = ">=2.2, <2.6", features = ["copy"] }
+solana-program-error = "3.0.0"

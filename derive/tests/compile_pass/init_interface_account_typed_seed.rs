@@ -1,5 +1,6 @@
 #![allow(unexpected_cfgs)]
 extern crate alloc;
+use quasar_derive::Accounts;
 use quasar_lang::prelude::*;
 
 solana_address::declare_id!("11111111111111111111111111111112");
@@ -27,7 +28,6 @@ impl Owners for ExternalConfig {
 }
 
 impl AccountCheck for ExternalConfig {
-    type Params = ();
 
     fn check(_view: &AccountView) -> Result<(), ProgramError> {
         Ok(())
@@ -47,19 +47,18 @@ impl ZeroCopyDeref for ExternalConfig {
 }
 
 #[derive(Accounts)]
+#[instruction(namespace: u32)]
 pub struct Good {
     #[account(mut)]
     pub payer: Signer,
     pub config: InterfaceAccount<ExternalConfig>,
     #[account(
         mut,
-        init,
-        payer = payer,
-        seeds = InterfaceSnapshot::seeds(config.namespace),
-        bump
+        init, payer = payer,
+        address = InterfaceSnapshot::seeds(namespace)
     )]
     pub snapshot: Account<InterfaceSnapshot>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 fn main() {}

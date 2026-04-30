@@ -18,7 +18,7 @@ impl<T: ProgramInterface> AsAccountView for Interface<T> {
 impl<T: ProgramInterface> crate::account_load::AccountLoad for Interface<T> {
     const IS_EXECUTABLE: bool = true;
 
-    type Params = ();
+    type BehaviorTarget = Self;
 
     #[inline(always)]
     fn check(view: &AccountView, field_name: &str) -> Result<(), ProgramError> {
@@ -34,3 +34,5 @@ impl<T: ProgramInterface> Interface<T> {
         &*(view as *const AccountView as *const Self)
     }
 }
+
+impl<T: crate::traits::ProgramInterface> crate::traits::FieldLifecycle for Interface<T> {}

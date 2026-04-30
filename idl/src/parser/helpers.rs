@@ -127,6 +127,20 @@ pub fn type_inner_name(ty: &syn::Type) -> Option<String> {
     }
 }
 
+/// Convert a syn::Type to a readable string (e.g., "ConfigV1").
+pub fn type_to_string(ty: &syn::Type) -> String {
+    if let syn::Type::Path(tp) = ty {
+        tp.path
+            .segments
+            .iter()
+            .map(|seg| seg.ident.to_string())
+            .collect::<Vec<_>>()
+            .join("::")
+    } else {
+        "Unknown".to_string()
+    }
+}
+
 /// Check if a field type's reference is mutable (`&'a mut T`).
 pub fn is_mut_ref(ty: &syn::Type) -> bool {
     matches!(ty, syn::Type::Reference(r) if r.mutability.is_some())

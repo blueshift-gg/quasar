@@ -1,12 +1,16 @@
 use quasar_lang::prelude::*;
 
+#[derive(Seeds)]
+#[seeds(b"vault", user: Address)]
+pub struct VaultPda;
+
 #[derive(Accounts)]
 pub struct Deposit {
     #[account(mut)]
     pub user: Signer,
-    #[account(mut, seeds = [b"vault", user], bump)]
+    #[account(mut, address = VaultPda::seeds(user.address()))]
     pub vault: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl Deposit {

@@ -1,17 +1,18 @@
 use {
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
-    quasar_spl::{Mint, Token},
+    quasar_spl::{ops::token, Mint, Token, TokenProgram},
 };
 
-/// Validates a token account's mint + authority using `Account<Token>`.
-/// No `token_program` field needed — the program is known at compile time
-/// from the `Account<Token>` type (SPL Token only).
+/// V1 had no `token_program` field (program inferred at compile time).
+/// V2 requires an explicit token_program field.
 #[derive(Accounts)]
 pub struct ValidateTokenNoProgram {
-    #[account(token::mint = mint, token::authority = authority)]
+    #[account(token(mint = mint, authority = authority, token_program = token_program))]
     pub token_account: Account<Token>,
     pub mint: Account<Mint>,
     pub authority: Signer,
+    pub token_program: Program<TokenProgram>,
 }
 
 impl ValidateTokenNoProgram {

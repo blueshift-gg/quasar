@@ -1,5 +1,6 @@
 use {
     crate::state::{NamespaceConfig, NamespaceConfigInner},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 
@@ -7,9 +8,9 @@ use {
 pub struct InitNsConfig {
     #[account(mut)]
     pub payer: Signer,
-    #[account(mut, init, payer = payer, seeds = NamespaceConfig::seeds(), bump)]
+    #[account(mut, init, payer = payer, address = NamespaceConfig::seeds())]
     pub config: Account<NamespaceConfig>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl InitNsConfig {

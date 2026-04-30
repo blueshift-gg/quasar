@@ -1,16 +1,12 @@
 error[E0080]: evaluation panicked: PodVec<T, N, PFX>: N exceeds the maximum value representable by the PFX-byte length prefix
- --> $RUST/core/src/panic.rs
-  |
-  = note: evaluation of `quasar_lang::Vec::<u8, 300, 1>::_CAP_CHECK` failed here
-  |
- ::: $CARGO/zeropod-$VERSION/src/pod/vec.rs
+ --> $CARGO/zeropod-$VERSION/src/pod/vec.rs
   |
   | /         assert!(
   | |             N <= max_n_for_pfx(PFX),
   | |             "PodVec<T, N, PFX>: N exceeds the maximum value representable by the PFX-byte length \
   | |              prefix"
   | |         );
-  | |_________- in this macro invocation
+  | |_________^ evaluation of `quasar_lang::Vec::<u8, 300, 1>::_CAP_CHECK` failed here
 
 note: erroneous constant encountered
  --> $CARGO/zeropod-$VERSION/src/pod/vec.rs

@@ -1,3 +1,6 @@
+//! Final TokenStream assembly for ParseAccounts / ParseAccountsUnchecked.
+//! Adapted from v1 — same output shape, same trait impls.
+
 use quote::quote;
 
 pub(crate) struct AccountsOutput<'a> {
@@ -14,6 +17,7 @@ pub(crate) struct AccountsOutput<'a> {
     pub parse_body: proc_macro2::TokenStream,
     pub bumps_struct: proc_macro2::TokenStream,
     pub epilogue_method: proc_macro2::TokenStream,
+    pub has_epilogue_expr: proc_macro2::TokenStream,
     pub seeds_methods: proc_macro2::TokenStream,
     pub client_macro: proc_macro2::TokenStream,
     pub ix_arg_extraction: proc_macro2::TokenStream,
@@ -34,6 +38,7 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
         parse_body,
         bumps_struct,
         epilogue_method,
+        has_epilogue_expr,
         seeds_methods,
         client_macro,
         ix_arg_extraction,
@@ -53,9 +58,17 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
         }
     };
 
+    let has_epilogue_const = quote! {
+        const HAS_EPILOGUE: bool = #has_epilogue_expr;
+    };
+
+    let has_validate_const = quote! {};
+
     let parse_accounts_impl = quote! {
         impl #parse_impl_generics ParseAccounts<'input> for #name #ty_generics #parse_where_clause {
             type Bumps = #bumps_name;
+            #has_epilogue_const
+            #has_validate_const
 
             #[inline(always)]
             fn parse(accounts: &'input mut [AccountView], program_id: &Address) -> Result<(Self, Self::Bumps), ProgramError> {

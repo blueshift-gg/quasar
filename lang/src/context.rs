@@ -81,10 +81,11 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
         })
     }
 
-    /// Compile-time check for whether `T` has a custom `validate()` override.
+    /// Compile-time check for whether `T` has lifecycle operations
+    /// (close/sweep/migrate). When false, the epilogue call is elided.
     #[inline(always)]
-    pub const fn has_validate(&self) -> bool {
-        T::HAS_VALIDATE
+    pub const fn has_epilogue(&self) -> bool {
+        T::HAS_EPILOGUE
     }
 }
 
@@ -157,10 +158,11 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
         })
     }
 
-    /// Compile-time check for whether `T` has a custom `validate()` override.
+    /// Compile-time check for whether `T` has lifecycle operations
+    /// (close/sweep/migrate). When false, the epilogue call is elided.
     #[inline(always)]
-    pub const fn has_validate(&self) -> bool {
-        T::HAS_VALIDATE
+    pub const fn has_epilogue(&self) -> bool {
+        T::HAS_EPILOGUE
     }
 
     /// Strict remaining-account accessor.

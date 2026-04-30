@@ -1,8 +1,8 @@
-use {crate::errors::TestError, quasar_lang::prelude::*};
+use {crate::errors::TestError, quasar_derive::Accounts, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
 pub struct ConstraintFail {
-    #[account(constraint = false @ TestError::ConstraintCustom)]
+    #[account(constraints(false) @ TestError::ConstraintCustom)]
     pub target: SystemAccount,
 }
 

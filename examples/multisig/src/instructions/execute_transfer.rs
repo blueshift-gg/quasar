@@ -1,4 +1,5 @@
 use {
+    super::deposit::MultisigVaultPda,
     crate::state::MultisigConfig,
     quasar_lang::{prelude::*, remaining::RemainingAccounts},
 };
@@ -6,17 +7,16 @@ use {
 #[derive(Accounts)]
 pub struct ExecuteTransfer {
     #[account(
-        has_one = creator,
-        seeds = MultisigConfig::seeds(creator),
-        bump = config.bump
+        has_one(creator),
+        address = MultisigConfig::seeds(creator.address())
     )]
     pub config: Account<MultisigConfig>,
     pub creator: UncheckedAccount,
-    #[account(mut, seeds = [b"vault", config], bump)]
+    #[account(mut, address = MultisigVaultPda::seeds(config.address()))]
     pub vault: UncheckedAccount,
     #[account(mut)]
     pub recipient: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl ExecuteTransfer {
@@ -49,7 +49,12 @@ impl ExecuteTransfer {
             return Err(ProgramError::MissingRequiredSignature);
         }
 
-        let seeds = self.vault_seeds(bumps);
+        let bump = [bumps.vault];
+        let seeds = [
+            Seed::from(b"vault" as &[u8]),
+            Seed::from(self.config.address().as_ref()),
+            Seed::from(bump.as_ref()),
+        ];
         self.system_program
             .transfer(&self.vault, &self.recipient, amount)
             .invoke_signed(&seeds)?;

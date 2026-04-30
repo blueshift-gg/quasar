@@ -1,6 +1,5 @@
-error: #[account(close)] cannot be used on mint accounts. Mint closing is not supported through the token-account close path.
-  --> tests/compile_fail/close_mint.rs:11:5
+error: unknown key-value directive `close = ...`
+  --> tests/compile_fail/close_mint.rs:11:20
    |
-11 | /     #[account(mut, close = destination)]
-12 | |     pub mint: Account<Mint>,
-   | |___________________________^
+11 |     #[account(mut, close = destination)]
+   |                    ^^^^^

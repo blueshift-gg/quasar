@@ -1,18 +1,17 @@
 use {
     crate::state::{NamespaceConfig, ScopedItem, ScopedItemInner},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 
-/// Tests that `seeds = Type::seeds(account.field)` works in an init context.
-/// This exercises `typed_seed_slice_expr_init` in the derive macro.
 #[derive(Accounts)]
 pub struct InitScopedItemFromConfig {
     #[account(mut)]
     pub payer: Signer,
     pub config: Account<NamespaceConfig>,
-    #[account(mut, init, payer = payer, seeds = ScopedItem::seeds(config.namespace), bump)]
+    #[account(mut, init, payer = payer, address = ScopedItem::seeds(config.namespace.into()))]
     pub item: Account<ScopedItem>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl InitScopedItemFromConfig {

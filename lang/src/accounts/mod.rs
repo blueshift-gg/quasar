@@ -21,3 +21,5 @@ pub mod interface;
 pub use interface::*;
 pub mod interface_account;
 pub use interface_account::*;
+pub mod migration;
+pub use migration::*;

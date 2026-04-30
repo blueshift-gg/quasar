@@ -1,4 +1,5 @@
 use {
+    quasar_derive::Accounts,
     quasar_lang::prelude::{InterfaceAccount, *},
     quasar_spl::{Token, TokenCpi, TokenInterface},
 };

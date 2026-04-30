@@ -1,5 +1,6 @@
 use {
     crate::{errors::TestError, state::ErrorTestAccount},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 

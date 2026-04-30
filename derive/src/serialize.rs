@@ -532,7 +532,9 @@ fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream {
             fn from_zc(zc: &Self::Zc) -> Self {
                 match <#repr_ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(zc) {
                     #(#match_from_zc,)*
-                    _ => unreachable!("invalid enum discriminant; validate_zc must run first"),
+                    // SAFETY: validate_zc rejects invalid discriminants
+                    // before from_zc is called. This branch is unreachable.
+                    _ => unsafe { core::hint::unreachable_unchecked() },
                 }
             }
 

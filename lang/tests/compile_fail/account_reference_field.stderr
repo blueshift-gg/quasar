@@ -1,8 +1,10 @@
-error[E0308]: `?` operator has incompatible types
- --> tests/compile_fail/account_reference_field.rs:4:10
+error[E0308]: mismatched types
+ --> tests/compile_fail/account_reference_field.rs:7:9
   |
-4 | #[derive(Accounts)]
-  |          ^^^^^^^^ expected `&mut Signer`, found `Signer`
+7 |     pub signer: &'account mut Signer,
+  |         ^^^^^^ expected `&mut Signer`, found `Signer`
   |
-  = note: `?` operator cannot convert from `quasar_lang::accounts::Signer` to `&'account mut quasar_lang::accounts::Signer`
-  = note: this error originates in the derive macro `Accounts` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider mutably borrowing here
+  |
+7 |     pub signer: &mut signer: &'account mut Signer,
+  |         ++++++++++++

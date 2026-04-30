@@ -1,6 +1,6 @@
 #![allow(unexpected_cfgs)]
 use quasar_lang::prelude::*;
-use quasar_spl::{Mint, Token, Token2022};
+use quasar_spl::{Mint, Token, Token2022, TokenProgram, Token2022Program};
 
 solana_address::declare_id!("11111111111111111111111111111112");
 
@@ -17,9 +17,9 @@ pub struct BadMintProgramSelector {
         mint::authority = mint_authority,
     )]
     pub mint: Account<Mint>,
-    pub token_program: Program<Token>,
-    pub token_program_2022: Program<Token2022>,
-    pub system_program: Program<System>,
+    pub token_program: Program<TokenProgram>,
+    pub token_program_2022: Program<Token2022Program>,
+    pub system_program: Program<SystemProgram>,
 }
 
 fn main() {}

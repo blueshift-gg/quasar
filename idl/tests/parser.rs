@@ -777,6 +777,7 @@ fn rust_codegen_account_metas() {
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
                     seed_type: None,
+                    migration: None,
                 },
                 RawAccountField {
                     name: "to".to_string(),
@@ -788,6 +789,7 @@ fn rust_codegen_account_metas() {
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
                     seed_type: None,
+                    migration: None,
                 },
                 RawAccountField {
                     name: "authority".to_string(),
@@ -799,6 +801,7 @@ fn rust_codegen_account_metas() {
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
                     seed_type: None,
+                    migration: None,
                 },
             ],
         });
@@ -1663,6 +1666,7 @@ fn ts_codegen_pda_helpers_are_exported_and_reused() {
                 inner_type_name: None,
                 constraints: FieldConstraints::default(),
                 seed_type: None,
+                migration: None,
             },
             RawAccountField {
                 name: "user".to_string(),
@@ -1674,6 +1678,7 @@ fn ts_codegen_pda_helpers_are_exported_and_reused() {
                 inner_type_name: None,
                 constraints: FieldConstraints::default(),
                 seed_type: None,
+                migration: None,
             },
         ],
     }];
@@ -1742,6 +1747,7 @@ fn ts_codegen_pda_arg_seeds_are_encoded_by_type() {
             inner_type_name: None,
             constraints: FieldConstraints::default(),
             seed_type: None,
+            migration: None,
         }],
     }];
 
@@ -1819,6 +1825,7 @@ fn ts_codegen_duplicate_seed_sets_reuse_one_helper_name() {
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
                     seed_type: None,
+                    migration: None,
                 },
                 RawAccountField {
                     name: "user".to_string(),
@@ -1830,6 +1837,7 @@ fn ts_codegen_duplicate_seed_sets_reuse_one_helper_name() {
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
                     seed_type: None,
+                    migration: None,
                 },
             ],
         },
@@ -1851,6 +1859,7 @@ fn ts_codegen_duplicate_seed_sets_reuse_one_helper_name() {
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
                     seed_type: None,
+                    migration: None,
                 },
                 RawAccountField {
                     name: "user".to_string(),
@@ -1862,6 +1871,7 @@ fn ts_codegen_duplicate_seed_sets_reuse_one_helper_name() {
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
                     seed_type: None,
+                    migration: None,
                 },
             ],
         },
@@ -1927,6 +1937,7 @@ fn ts_codegen_helper_name_collisions_are_disambiguated() {
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
                     seed_type: None,
+                    migration: None,
                 },
                 RawAccountField {
                     name: "user".to_string(),
@@ -1938,6 +1949,7 @@ fn ts_codegen_helper_name_collisions_are_disambiguated() {
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
                     seed_type: None,
+                    migration: None,
                 },
             ],
         },
@@ -1959,6 +1971,7 @@ fn ts_codegen_helper_name_collisions_are_disambiguated() {
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
                     seed_type: None,
+                    migration: None,
                 },
                 RawAccountField {
                     name: "user".to_string(),
@@ -1970,6 +1983,7 @@ fn ts_codegen_helper_name_collisions_are_disambiguated() {
                     inner_type_name: None,
                     constraints: FieldConstraints::default(),
                     seed_type: None,
+                    migration: None,
                 },
             ],
         },
@@ -2199,6 +2213,7 @@ fn rust_codegen_pda_helpers() {
                 inner_type_name: None,
                 constraints: FieldConstraints::default(),
                 seed_type: None,
+                migration: None,
             },
             RawAccountField {
                 name: "user".to_string(),
@@ -2210,6 +2225,7 @@ fn rust_codegen_pda_helpers() {
                 inner_type_name: None,
                 constraints: FieldConstraints::default(),
                 seed_type: None,
+                migration: None,
             },
         ],
     }];
@@ -2265,6 +2281,7 @@ fn rust_codegen_pda_dedup() {
                 inner_type_name: None,
                 constraints: FieldConstraints::default(),
                 seed_type: None,
+                migration: None,
             }],
         },
         RawAccountsStruct {
@@ -2279,6 +2296,7 @@ fn rust_codegen_pda_dedup() {
                 inner_type_name: None,
                 constraints: FieldConstraints::default(),
                 seed_type: None,
+                migration: None,
             }],
         },
     ];

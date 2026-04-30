@@ -1,18 +1,18 @@
-use {crate::state::SimpleAccount, quasar_lang::prelude::*};
+use {crate::state::SimpleAccount, quasar_derive::Accounts, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
-#[instruction(new_space: u64)]
 pub struct ReallocCheck {
-    #[account(mut, realloc = new_space as usize)]
+    #[account(mut)]
     pub account: Account<SimpleAccount>,
     #[account(mut)]
     pub payer: Signer,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl ReallocCheck {
     #[inline(always)]
-    pub fn handler(&self) -> Result<(), ProgramError> {
-        Ok(())
+    pub fn handler(&mut self, new_space: u64) -> Result<(), ProgramError> {
+        self.account
+            .realloc(new_space as usize, self.payer.to_account_view(), None)
     }
 }
