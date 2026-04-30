@@ -1,6 +1,0 @@
-error: Migration<From, To> cannot be combined with close
-  --> tests/compile_fail/migrate_with_close.rs:25:5
-   |
-25 | /     #[account(close = destination, payer = payer)]
-26 | |     pub config: Migration<ConfigV1, ConfigV2>,
-   | |_____________________________________________^

@@ -1,23 +1,38 @@
-//! Emit layer: renders from the resolved accounts model and plan.
-
-mod init;
-mod lifecycle;
-pub(crate) mod migrate;
+pub(crate) mod ops;
 mod output;
-pub(super) mod params;
-mod parse;
+pub(crate) mod parse;
+
+pub(crate) use output::{emit_accounts_output, AccountsOutput};
 
 pub(crate) struct EmitCx {
     pub bumps_name: syn::Ident,
 }
 
-pub(crate) use {
-    output::{emit_accounts_output, AccountsOutput},
-    parse::{emit_bump_struct_def, emit_parse_body, emit_seed_methods},
-};
+pub(crate) fn emit_parse_body(
+    semantics: &[super::resolve::FieldSemantics],
+    cx: &EmitCx,
+) -> syn::Result<proc_macro2::TokenStream> {
+    parse::emit_parse_body(semantics, cx)
+}
+
+pub(crate) fn emit_bump_struct_def(
+    semantics: &[super::resolve::FieldSemantics],
+    cx: &EmitCx,
+) -> proc_macro2::TokenStream {
+    parse::emit_bump_struct_def(semantics, cx)
+}
 
 pub(crate) fn emit_epilogue(
     semantics: &[super::resolve::FieldSemantics],
 ) -> syn::Result<proc_macro2::TokenStream> {
-    lifecycle::emit_epilogue(semantics)
+    let op_ctx = ops::OpEmitCtx {
+        field_names: semantics.iter().map(|s| s.core.ident.to_string()).collect(),
+    };
+    parse::emit_epilogue(semantics, &op_ctx)
+}
+
+pub(crate) fn emit_has_epilogue(
+    semantics: &[super::resolve::FieldSemantics],
+) -> proc_macro2::TokenStream {
+    parse::emit_has_epilogue(semantics)
 }

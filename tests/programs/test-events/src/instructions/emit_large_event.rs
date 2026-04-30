@@ -1,4 +1,4 @@
-use {crate::events::LargeEvent, quasar_lang::prelude::*};
+use {crate::events::LargeEvent, quasar_derive::Accounts, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
 pub struct EmitLargeEvent {

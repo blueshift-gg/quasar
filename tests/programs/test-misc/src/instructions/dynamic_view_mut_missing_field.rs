@@ -1,4 +1,4 @@
-use {crate::state::DynamicAccount, quasar_lang::prelude::*};
+use {crate::state::DynamicAccount, quasar_derive::Accounts, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
 pub struct DynamicViewMutMissingField {
@@ -6,7 +6,7 @@ pub struct DynamicViewMutMissingField {
     pub account: Account<DynamicAccount>,
     #[account(mut)]
     pub payer: Signer,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl DynamicViewMutMissingField {

@@ -794,7 +794,6 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         impl quasar_lang::account_load::AccountLoad for EventAuthority {
             type BehaviorTarget = Self;
-            type Params = ();
 
             #[inline(always)]
             fn check(

@@ -1,13 +1,17 @@
 use {crate::state::MultisigConfig, quasar_lang::prelude::*};
 
+#[derive(Seeds)]
+#[seeds(b"vault", config: Address)]
+pub struct MultisigVaultPda;
+
 #[derive(Accounts)]
 pub struct Deposit {
     #[account(mut)]
     pub depositor: Signer,
     pub config: Account<MultisigConfig>,
-    #[account(mut, seeds = [b"vault", config], bump)]
+    #[account(mut, address = MultisigVaultPda::seeds(config.address()))]
     pub vault: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl Deposit {

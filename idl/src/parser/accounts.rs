@@ -197,12 +197,21 @@ fn parse_pda_from_attrs(
 
         let tokens_str = tokens.to_string();
 
-        // Check if this attribute contains seeds
+        // Check if this attribute contains seeds (in any form)
         if !tokens_str.contains("seeds") {
             continue;
         }
 
-        // Check for Type::seeds(...) syntax first
+        // Check for address = Type::seeds(...) syntax (v3 grammar)
+        if let Some((type_name, args)) = parse_address_seeds_call(&tokens_str) {
+            let seeds: Vec<RawSeed> = args
+                .iter()
+                .filter_map(|s| parse_single_seed(s.trim(), sibling_names))
+                .collect();
+            return (Some(RawPda { seeds }), Some(type_name));
+        }
+
+        // Check for seeds = Type::seeds(...) syntax (v2 grammar)
         if let Some((type_name, args)) = parse_typed_seeds_call(&tokens_str) {
             let seeds: Vec<RawSeed> = args
                 .iter()
@@ -218,6 +227,63 @@ fn parse_pda_from_attrs(
         }
     }
     (None, None)
+}
+
+/// Parse `address = Type::seeds(arg1, arg2)` from a token string (v3 grammar).
+/// Returns `(type_name, vec_of_arg_strings)` if found.
+fn parse_address_seeds_call(tokens_str: &str) -> Option<(String, Vec<String>)> {
+    // Look for "address" followed by "=" then "Type :: seeds ("
+    let addr_idx = tokens_str.find("address")?;
+    let after_addr = tokens_str[addr_idx + "address".len()..].trim();
+    if !after_addr.starts_with('=') {
+        return None;
+    }
+    let after_eq = after_addr[1..].trim();
+
+    // Must contain :: before ( to be Type::seeds(...)
+    let colons_idx = after_eq.find("::")?;
+    let type_name = after_eq[..colons_idx].trim().to_string();
+    if type_name.is_empty() {
+        return None;
+    }
+
+    let after_colons = after_eq[colons_idx + 2..].trim();
+    if !after_colons.starts_with("seeds") {
+        return None;
+    }
+
+    let after_seeds_kw = after_colons["seeds".len()..].trim();
+    if !after_seeds_kw.starts_with('(') {
+        return None;
+    }
+
+    // Find matching close paren
+    let mut depth = 0;
+    let mut paren_end = None;
+    for (i, c) in after_seeds_kw.chars().enumerate() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    paren_end = Some(i);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let paren_end = paren_end?;
+    let inner = &after_seeds_kw[1..paren_end];
+
+    // Split args by comma
+    let args: Vec<String> = inner
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    Some((type_name, args))
 }
 
 /// Parse `seeds = Type::seeds(arg1, arg2)` from a token string.

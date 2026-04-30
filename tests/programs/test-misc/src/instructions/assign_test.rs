@@ -1,10 +1,10 @@
-use quasar_lang::prelude::*;
+use {quasar_derive::Accounts, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
 pub struct AssignTest {
     #[account(mut)]
     pub account: Signer,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl AssignTest {

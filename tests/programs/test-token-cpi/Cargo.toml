@@ -16,6 +16,7 @@ debug = []
 
 [dependencies]
 quasar-lang = { path = "../../../lang" }
+quasar-derive = { path = "../../../derive" }
 quasar-spl = { path = "../../../spl" }
 
 [dev-dependencies]

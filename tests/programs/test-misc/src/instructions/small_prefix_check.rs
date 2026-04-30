@@ -1,4 +1,4 @@
-use {crate::state::SmallPrefixAccount, quasar_lang::prelude::*};
+use {crate::state::SmallPrefixAccount, quasar_derive::Accounts, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
 pub struct SmallPrefixCheck {

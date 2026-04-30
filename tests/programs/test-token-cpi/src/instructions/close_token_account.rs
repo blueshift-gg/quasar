@@ -1,6 +1,7 @@
 use {
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
-    quasar_spl::{Token, TokenCpi},
+    quasar_spl::{Token, TokenCpi, TokenProgram},
 };
 
 #[derive(Accounts)]
@@ -13,7 +14,7 @@ pub struct CloseTokenAccount {
     /// themselves.
     #[account(dup)]
     pub authority: Signer,
-    pub token_program: Program<Token>,
+    pub token_program: Program<TokenProgram>,
 }
 
 impl CloseTokenAccount {

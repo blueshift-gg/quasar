@@ -1,5 +1,6 @@
 #![allow(unexpected_cfgs)]
 extern crate alloc;
+use quasar_derive::Accounts;
 use quasar_lang::prelude::*;
 
 solana_address::declare_id!("11111111111111111111111111111112");
@@ -19,19 +20,18 @@ pub struct Item {
 }
 
 #[derive(Accounts)]
+#[instruction(namespace: u32)]
 pub struct Good {
     #[account(mut)]
     pub payer: Signer,
     pub config: Account<Config>,
     #[account(
         mut,
-        init_if_needed,
-        payer = payer,
-        seeds = Item::seeds(config.namespace),
-        bump
+        init, payer = payer,
+        address = Item::seeds(namespace)
     )]
     pub item: Account<Item>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 fn main() {}

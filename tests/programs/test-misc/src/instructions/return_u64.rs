@@ -1,5 +1,6 @@
 use {
     crate::state::{TestMiscProgram, RETURN_U64_VALUE},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 

@@ -1,5 +1,6 @@
 use {
     crate::state::{ConfigAccount, ConfigAccountInner},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 
@@ -7,9 +8,9 @@ use {
 pub struct InitLiteralSeed {
     #[account(mut)]
     pub payer: Signer,
-    #[account(mut, init, payer = payer, seeds = ConfigAccount::seeds(), bump)]
+    #[account(mut, init, payer = payer, address = ConfigAccount::seeds())]
     pub config: Account<ConfigAccount>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl InitLiteralSeed {

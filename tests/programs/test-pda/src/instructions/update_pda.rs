@@ -1,9 +1,9 @@
-use {crate::state::UserAccount, quasar_lang::prelude::*};
+use {crate::state::UserAccount, quasar_derive::Accounts, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
 pub struct UpdatePda {
     pub authority: Signer,
-    #[account(mut, has_one = authority, seeds = UserAccount::seeds(authority), bump = user.bump)]
+    #[account(mut, has_one(authority), address = UserAccount::seeds(authority.address()))]
     pub user: Account<UserAccount>,
 }
 

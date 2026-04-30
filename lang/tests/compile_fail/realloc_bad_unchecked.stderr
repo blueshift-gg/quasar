@@ -1,4 +1,4 @@
-error: #[account(realloc)] is only valid on Account<T> fields
+error: `realloc = ...` requires `payer = ...` on the same field
  --> tests/compile_fail/realloc_bad_unchecked.rs:8:5
   |
 8 | /     #[account(mut, realloc = 64)]

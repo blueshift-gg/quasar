@@ -1,3 +1,6 @@
+//! Header plan — bitmask computation and parse step emission.
+//! Adapted from v1, using FieldKind (2 variants) instead of FieldShape (10).
+
 use {
     super::{emit, resolve},
     crate::helpers::strip_generics,
@@ -25,8 +28,6 @@ enum ParseFieldKind {
 struct HeaderPlan {
     ty: proc_macro2::TokenStream,
     account_index: String,
-    requires_signer: bool,
-    requires_executable: bool,
     writable: bool,
     optional: bool,
     allow_dup: bool,
@@ -43,12 +44,6 @@ impl HeaderPlan {
                 quote! { #ty }
             },
             account_index: offset_expr.to_string(),
-            requires_signer: matches!(sem.core.shape, resolve::FieldShape::Signer)
-                || sem.client_requires_signer(),
-            requires_executable: matches!(
-                sem.core.shape,
-                resolve::FieldShape::Program | resolve::FieldShape::Interface
-            ),
             writable: sem.is_writable(),
             optional: sem.core.optional,
             allow_dup: sem.core.dup,
@@ -57,36 +52,32 @@ impl HeaderPlan {
 
     fn expected_expr(&self) -> proc_macro2::TokenStream {
         let ty = &self.ty;
-        let requires_signer = self.requires_signer;
         let writable_bit: u32 = if self.writable { 0x01 << 16 } else { 0 };
-        let requires_executable = self.requires_executable;
+        // IS_SIGNER and IS_EXECUTABLE come from the type's AccountLoad impl —
+        // no domain knowledge needed here.
         quote! {{
-            const __S: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_SIGNER || #requires_signer;
-            const __E: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE || #requires_executable;
+            const __S: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
+            const __E: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
             0xFFu32 | (__S as u32) << 8 | #writable_bit | (__E as u32) << 24
         }}
     }
 
     fn mask_expr(&self) -> proc_macro2::TokenStream {
         let ty = &self.ty;
-        let requires_signer = self.requires_signer;
         let writable_mask: u32 = if self.writable { 0xFF << 16 } else { 0 };
-        let requires_executable = self.requires_executable;
         quote! {{
-            const __S: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_SIGNER || #requires_signer;
-            const __E: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE || #requires_executable;
+            const __S: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
+            const __E: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
             0xFFu32 | (if __S { 0xFFu32 << 8 } else { 0u32 }) | #writable_mask | (if __E { 0xFFu32 << 24 } else { 0u32 })
         }}
     }
 
     fn flag_mask_expr(&self) -> proc_macro2::TokenStream {
         let ty = &self.ty;
-        let requires_signer = self.requires_signer;
         let writable_mask: u32 = if self.writable { 0xFF << 16 } else { 0 };
-        let requires_executable = self.requires_executable;
         quote! {{
-            const __S: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_SIGNER || #requires_signer;
-            const __E: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE || #requires_executable;
+            const __S: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
+            const __E: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
             (if __S { 0xFFu32 << 8 } else { 0u32 }) | #writable_mask | (if __E { 0xFFu32 << 24 } else { 0u32 })
         }}
     }
@@ -100,7 +91,7 @@ pub(crate) fn build_accounts_plan(
     Ok(AccountsPlan {
         parse_steps: emit_parse_account_steps(&fields),
         count_expr: emit_count_expr(&fields),
-        typed_seed_asserts: emit_typed_seed_asserts(semantics),
+        typed_seed_asserts: quote! {},
         parse_body: emit_full_parse_body(semantics, &fields, cx)?,
     })
 }
@@ -112,22 +103,26 @@ fn build_parse_fields(semantics: &[resolve::FieldSemantics]) -> Vec<ParseFieldPl
     for sem in semantics {
         let offset_expr = buf_offset_expr.clone();
 
-        if let Some(inner_ty) = composite_inner_ty(sem) {
-            fields.push(ParseFieldPlan {
-                field_name: sem.core.ident.clone(),
-                offset_expr: offset_expr.clone(),
-                kind: ParseFieldKind::Composite {
-                    inner_ty: inner_ty.clone(),
-                },
-            });
-            buf_offset_expr = quote! { #offset_expr + <#inner_ty as AccountCount>::COUNT };
-        } else {
-            fields.push(ParseFieldPlan {
-                field_name: sem.core.ident.clone(),
-                offset_expr: offset_expr.clone(),
-                kind: ParseFieldKind::Single(HeaderPlan::from_semantics(sem, &offset_expr)),
-            });
-            buf_offset_expr = quote! { #offset_expr + 1usize };
+        match sem.core.kind {
+            resolve::FieldKind::Composite => {
+                let inner_ty = strip_generics(&sem.core.effective_ty);
+                fields.push(ParseFieldPlan {
+                    field_name: sem.core.ident.clone(),
+                    offset_expr: offset_expr.clone(),
+                    kind: ParseFieldKind::Composite {
+                        inner_ty: inner_ty.clone(),
+                    },
+                });
+                buf_offset_expr = quote! { #offset_expr + <#inner_ty as AccountCount>::COUNT };
+            }
+            resolve::FieldKind::Single => {
+                fields.push(ParseFieldPlan {
+                    field_name: sem.core.ident.clone(),
+                    offset_expr: offset_expr.clone(),
+                    kind: ParseFieldKind::Single(HeaderPlan::from_semantics(sem, &offset_expr)),
+                });
+                buf_offset_expr = quote! { #offset_expr + 1usize };
+            }
         }
     }
 
@@ -271,8 +266,9 @@ fn emit_full_parse_body(
                             __accounts_rest.split_at_mut_unchecked(<#inner_ty as AccountCount>::COUNT)
                         };
                         __accounts_rest = __rest;
-                        let (#field_name, #bumps_var) = unsafe { <#inner_ty as quasar_lang::traits::ParseAccountsUnchecked>::parse_unchecked(
+                        let (#field_name, #bumps_var) = unsafe { <#inner_ty as quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
                             __chunk,
+                            __ix_data,
                             __program_id
                         ) }?;
                     });
@@ -303,29 +299,4 @@ fn emit_full_parse_body(
             #inner_body
         })
     }
-}
-
-fn emit_typed_seed_asserts(semantics: &[resolve::FieldSemantics]) -> proc_macro2::TokenStream {
-    let asserts: Vec<proc_macro2::TokenStream> = semantics
-        .iter()
-        .filter_map(|sem| match &sem.pda {
-            Some(resolve::PdaConstraint {
-                source: resolve::PdaSource::Typed { type_path, args },
-                ..
-            }) => {
-                let arg_count = args.len();
-                Some(quote! {
-                    let _: [(); <#type_path as quasar_lang::traits::HasSeeds>::SEED_DYNAMIC_COUNT] = [(); #arg_count];
-                })
-            }
-            _ => None,
-        })
-        .collect();
-
-    quote! { #(#asserts)* }
-}
-
-fn composite_inner_ty(sem: &resolve::FieldSemantics) -> Option<proc_macro2::TokenStream> {
-    matches!(sem.core.shape, resolve::FieldShape::Composite)
-        .then(|| strip_generics(&sem.core.effective_ty))
 }

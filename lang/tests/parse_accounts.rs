@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+solana_address::declare_id!("11111111111111111111111111111112");
+
 use {
     quasar_lang::{
         __internal::{AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED},

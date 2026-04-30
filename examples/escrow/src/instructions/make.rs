@@ -4,26 +4,26 @@ use {
         state::{Escrow, EscrowInner},
     },
     quasar_lang::prelude::*,
-    quasar_spl::{Mint, Token, TokenCpi},
+    quasar_spl::{ops::token, Mint, Token, TokenCpi, TokenProgram},
 };
 
 #[derive(Accounts)]
 pub struct Make {
     #[account(mut)]
     pub maker: Signer,
-    #[account(mut, init, payer = maker, seeds = Escrow::seeds(maker), bump)]
+    #[account(init, payer = maker, address = Escrow::seeds(maker.address()))]
     pub escrow: Account<Escrow>,
     pub mint_a: Account<Mint>,
     pub mint_b: Account<Mint>,
     #[account(mut)]
     pub maker_ta_a: Account<Token>,
-    #[account(mut, init_if_needed, payer = maker, token::mint = mint_b, token::authority = maker)]
+    #[account(init(idempotent), payer = maker, token(mint = mint_b, authority = maker, token_program = token_program))]
     pub maker_ta_b: Account<Token>,
-    #[account(mut, init_if_needed, payer = maker, token::mint = mint_a, token::authority = escrow)]
+    #[account(init(idempotent), payer = maker, token(mint = mint_a, authority = escrow, token_program = token_program))]
     pub vault_ta_a: Account<Token>,
     pub rent: Sysvar<Rent>,
-    pub token_program: Program<Token>,
-    pub system_program: Program<System>,
+    pub token_program: Program<TokenProgram>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl Make {

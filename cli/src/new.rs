@@ -69,7 +69,7 @@ pub fn run_instruction(name: &str) -> CliResult {
 #[derive(Accounts)]
 pub struct {pascal}<'info> {{
     pub payer: &'info mut Signer,
-    pub system_program: &'info Program<System>,
+    pub system_program: &'info Program<SystemProgram>,
 }}
 
 impl<'info> {pascal}<'info> {{

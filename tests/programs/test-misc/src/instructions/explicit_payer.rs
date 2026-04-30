@@ -1,5 +1,6 @@
 use {
     crate::state::{ExplicitPayerAccount, ExplicitPayerAccountInner},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 
@@ -7,9 +8,9 @@ use {
 pub struct ExplicitPayer {
     #[account(mut)]
     pub funder: Signer,
-    #[account(mut, init, payer = funder, seeds = ExplicitPayerAccount::seeds(funder), bump)]
+    #[account(mut, init, payer = funder, address = ExplicitPayerAccount::seeds(funder.address()))]
     pub account: Account<ExplicitPayerAccount>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl ExplicitPayer {

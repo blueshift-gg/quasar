@@ -20,17 +20,3 @@ pub struct ConfigV2 {
     pub value: PodU64,
     pub extra: PodU32,
 }
-
-// ---------------------------------------------------------------------------
-// Migration: V1 → V2
-// ---------------------------------------------------------------------------
-
-impl Migrate<ConfigV2Data> for ConfigV1Data {
-    fn migrate(&self) -> ConfigV2Data {
-        ConfigV2Data {
-            authority: self.authority,
-            value: self.value,
-            extra: PodU32::from(42),
-        }
-    }
-}

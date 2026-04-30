@@ -110,8 +110,6 @@ const _: () = assert!(core::mem::align_of::<MasterEditionPrefix>() == 1);
 pub struct MetadataAccount;
 
 impl AccountCheck for MetadataAccount {
-    type Params = ();
-
     #[inline(always)]
     fn check(view: &AccountView) -> Result<(), ProgramError> {
         if view.data_len() < MetadataPrefix::LEN {
@@ -165,8 +163,6 @@ impl ZeroCopyDeref for MetadataAccount {
 pub struct MasterEditionAccount;
 
 impl AccountCheck for MasterEditionAccount {
-    type Params = ();
-
     #[inline(always)]
     fn check(view: &AccountView) -> Result<(), ProgramError> {
         if view.data_len() < MasterEditionPrefix::LEN {

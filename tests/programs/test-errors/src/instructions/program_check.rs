@@ -1,8 +1,8 @@
-use quasar_lang::prelude::*;
+use {quasar_derive::Accounts, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
 pub struct ProgramCheck {
-    pub program: Program<System>,
+    pub program: Program<SystemProgram>,
 }
 
 impl ProgramCheck {

@@ -300,14 +300,6 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
         syn::parse_quote!(
             let mut #param_name: #param_type = <#param_type>::new(context)?;
         ),
-        // Call validate() only when the user overrides it. The const bool
-        // is known at compile time so this branch is fully elided when false,
-        // avoiding a dead Result branch that sBPF doesn't optimize away.
-        syn::parse_quote!(
-            if #param_ident.has_validate() {
-                #param_ident.accounts.validate()?;
-            }
-        ),
     ];
 
     if !remaining.is_empty() {

@@ -8,15 +8,15 @@ pub struct ConfigV2 {
     pub value: PodU64,
 }
 
-// ERROR: #[account(migrate = X)] is deprecated
+// ERROR: migration source must be a program account type, not Signer.
 #[derive(Accounts)]
 pub struct Bad {
     #[account(mut)]
     pub payer: Signer,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 
-    #[account(migrate = ConfigV2, payer = payer)]
-    pub target: Signer,
+    #[account(mut, payer = payer)]
+    pub target: Migration<Signer, ConfigV2>,
 }
 
 fn main() {}

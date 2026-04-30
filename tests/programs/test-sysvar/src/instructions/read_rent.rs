@@ -1,5 +1,6 @@
 use {
     crate::state::{RentSnapshot, RentSnapshotInner},
+    quasar_derive::Accounts,
     quasar_lang::{
         prelude::*,
         sysvars::{rent::Rent, Sysvar as _},
@@ -10,9 +11,9 @@ use {
 pub struct ReadRent {
     #[account(mut)]
     pub payer: Signer,
-    #[account(mut, init, payer = payer, seeds = RentSnapshot::seeds(), bump)]
+    #[account(mut, init, payer = payer, address = RentSnapshot::seeds())]
     pub snapshot: Account<RentSnapshot>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl ReadRent {

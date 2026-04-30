@@ -348,14 +348,14 @@ pub mod macros;
 /// Sysvar access and the `impl_sysvar_get!` helper macro.
 #[macro_use]
 pub mod sysvars;
-/// Runtime exit functions for program-owned accounts (close).
-pub mod account_exit;
 /// Runtime init functions for program-owned accounts.
 pub mod account_init;
 /// Trait-based account loading and validation (`AccountLoad`).
 pub mod account_load;
 /// Zero-copy account wrapper types for instruction handlers.
 pub mod accounts;
+/// Unified address verification trait (`AddressVerify`).
+pub mod address;
 /// Compile-time account validation traits (`Address`, `Owner`, `Executable`,
 /// `Mutable`, `Signer`).
 pub mod checks;
@@ -377,6 +377,8 @@ pub mod event;
 pub mod instruction_arg;
 /// Low-level `sol_log_data` syscall wrapper.
 pub mod log;
+/// Op-dispatch traits for account lifecycle operations (`AccountOp`, `OpCtx`).
+pub mod ops;
 /// Program Derived Address creation and lookup.
 pub mod pda;
 /// Alignment-1 Pod integer types (re-exported from `zeropod`).

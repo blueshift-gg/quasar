@@ -1,5 +1,6 @@
 use {
     crate::state::{ReturnPayload, TestMiscProgram, RETURN_PAYLOAD_VALUE},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 

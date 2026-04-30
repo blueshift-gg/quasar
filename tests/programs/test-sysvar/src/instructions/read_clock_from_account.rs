@@ -1,5 +1,6 @@
 use {
     crate::state::{ClockSnapshot, ClockSnapshotInner},
+    quasar_derive::Accounts,
     quasar_lang::{prelude::*, sysvars::clock::Clock},
 };
 

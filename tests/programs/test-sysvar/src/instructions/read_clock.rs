@@ -1,5 +1,6 @@
 use {
     crate::state::{ClockSnapshot, ClockSnapshotInner},
+    quasar_derive::Accounts,
     quasar_lang::{
         prelude::*,
         sysvars::{clock::Clock, Sysvar as _},
@@ -10,9 +11,9 @@ use {
 pub struct ReadClock {
     #[account(mut)]
     pub payer: Signer,
-    #[account(mut, init, payer = payer, seeds = ClockSnapshot::seeds(), bump)]
+    #[account(mut, init, payer = payer, address = ClockSnapshot::seeds())]
     pub snapshot: Account<ClockSnapshot>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl ReadClock {

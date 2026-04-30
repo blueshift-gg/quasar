@@ -1,6 +1,5 @@
-error: PDA seeds for an `init` field cannot reference the account being initialized
-  --> tests/compile_fail/init_self_recursive_typed_seed.rs:18:5
+error: unknown key-value directive `seeds = ...`
+  --> tests/compile_fail/init_self_recursive_typed_seed.rs:18:41
    |
-18 | /     #[account(mut, init, payer = payer, seeds = Item::seeds(item.namespace), bump)]
-19 | |     pub item: Account<Item>,
-   | |___________________________^
+18 |     #[account(mut, init, payer = payer, seeds = Item::seeds(item.namespace), bump)]
+   |                                         ^^^^^

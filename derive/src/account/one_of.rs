@@ -95,7 +95,6 @@ pub(crate) fn generate_one_of_account(
 
     let account_check = quote! {
         impl quasar_lang::traits::AccountCheck for #name {
-            type Params = ();
 
             #[inline(always)]
             fn check(view: &quasar_lang::__internal::AccountView) -> Result<(), quasar_lang::prelude::ProgramError> {

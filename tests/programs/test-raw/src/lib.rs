@@ -6,6 +6,8 @@ use quasar_lang::prelude::*;
 
 declare_id!("RaW1111111111111111111111111111111111111112");
 
+use quasar_derive::Accounts;
+
 #[derive(Accounts)]
 pub struct NormalInit {
     pub signer: Signer,

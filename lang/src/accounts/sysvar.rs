@@ -23,7 +23,6 @@ impl<T: crate::sysvars::Sysvar> Sysvar<T> {
 
 impl<T: crate::sysvars::Sysvar> crate::account_load::AccountLoad for Sysvar<T> {
     type BehaviorTarget = Self;
-    type Params = ();
 
     #[inline(always)]
     fn check(
@@ -49,3 +48,5 @@ impl<T: crate::sysvars::Sysvar> core::ops::Deref for Sysvar<T> {
         self.get()
     }
 }
+
+impl<T: crate::sysvars::Sysvar> crate::traits::FieldLifecycle for Sysvar<T> {}

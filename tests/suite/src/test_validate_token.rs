@@ -758,6 +758,7 @@ fn no_program_happy() {
         token_account: token_key,
         mint: mint_key,
         authority,
+        token_program: quasar_spl::SPL_TOKEN_ID,
     }
     .into();
 
@@ -785,6 +786,7 @@ fn no_program_wrong_mint() {
         token_account: token_key,
         mint: mint_key,
         authority,
+        token_program: quasar_spl::SPL_TOKEN_ID,
     }
     .into();
 
@@ -812,6 +814,7 @@ fn no_program_wrong_authority() {
         token_account: token_key,
         mint: mint_key,
         authority,
+        token_program: quasar_spl::SPL_TOKEN_ID,
     }
     .into();
 

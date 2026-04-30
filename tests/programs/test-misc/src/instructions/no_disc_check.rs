@@ -1,5 +1,6 @@
 use {
     crate::state::{NoDiscAccount, NoDiscAccountInner},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 
@@ -7,9 +8,9 @@ use {
 pub struct InitNoDisc {
     #[account(mut)]
     pub payer: Signer,
-    #[account(mut, init, payer = payer, seeds = NoDiscAccount::seeds(payer), bump)]
+    #[account(mut, init, payer = payer, address = NoDiscAccount::seeds(payer.address()))]
     pub account: Account<NoDiscAccount>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl InitNoDisc {

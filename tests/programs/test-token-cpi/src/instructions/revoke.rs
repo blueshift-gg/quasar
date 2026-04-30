@@ -1,6 +1,7 @@
 use {
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
-    quasar_spl::{Token, TokenCpi},
+    quasar_spl::{Token, TokenCpi, TokenProgram},
 };
 
 #[derive(Accounts)]
@@ -8,7 +9,7 @@ pub struct Revoke {
     pub authority: Signer,
     #[account(mut)]
     pub source: Account<Token>,
-    pub token_program: Program<Token>,
+    pub token_program: Program<TokenProgram>,
 }
 
 impl Revoke {

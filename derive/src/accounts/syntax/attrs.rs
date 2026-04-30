@@ -1,371 +1,289 @@
-//! Constraint attribute types and parsing for `#[account(...)]` field
-//! attributes.
+//! V3 directive parser for `#[account(...)]` attributes.
 //!
-//! Handles: `init`, `mut`, `signer`, `address`, `seeds`, `bump`, `space`,
-//! `payer`, `token_*`, `mint_*`, `associated_token_*`, `constraint`, and more.
+//! Grammar:
+//!   directive ::= bare_flag | init | key_value | group | check
+//!   bare_flag ::= 'mut' | 'dup'
+//!   init      ::= 'init' | 'init' '(' 'idempotent' ')'
+//!   key_value ::= 'payer' '=' ident | 'address' '=' expr | 'realloc' '=' expr
+//!   group     ::= path '(' args ')'
+//!   check     ::= 'has_one' '(' ident_list ')' | 'constraints' '(' expr_list
+//! ')'   args      ::= (ident '=' expr),*
+//!
+//! Phase placement is NOT part of the user syntax. No `pre(...)` or
+//! `exit(...)`. The lowering layer decides which phases each op participates
+//! in.
 
-use syn::{
-    parse::{Parse, ParseStream},
-    Expr, Ident, Path, Token,
+use {
+    super::super::resolve::{GroupArg, GroupDirective, UserCheck},
+    syn::{
+        parse::{Parse, ParseStream},
+        Expr, Ident, Token,
+    },
 };
 
-/// Typed seeds: `seeds = Vault::seeds(authority, index)`
-#[derive(Clone)]
-pub(crate) struct TypedSeeds {
-    pub type_path: syn::Path,
-    pub args: Vec<Expr>,
-}
-
-pub(crate) enum AccountDirective {
-    Mut,
-    Init,
-    InitIfNeeded,
-    Dup,
-    Close(Ident),
+pub(crate) enum Directive {
+    Bare(Ident),
+    Init { idempotent: bool },
     Payer(Ident),
-    Space(Expr),
-    HasOne(Ident, Option<Expr>),
-    Constraint(Expr, Option<Expr>),
-    Seeds(Vec<Expr>),
-    TypedSeeds(TypedSeeds),
-    Bump(Option<Expr>),
-    Address(Expr, Option<Expr>),
-    TokenMint(Ident),
-    TokenAuthority(Ident),
-    TokenTokenProgram(Ident),
-    AssociatedTokenMint(Ident),
-    AssociatedTokenAuthority(Ident),
-    AssociatedTokenTokenProgram(Ident),
-    Sweep(Ident),
-    Realloc(Expr),
-    ReallocPayer(Ident),
-    MintDecimals(Expr),
-    MintInitAuthority(Ident),
-    MintFreezeAuthority(Ident),
-    MintTokenProgram(Ident),
-    Param { key: Ident, value: Expr },
-    InitParam { key: Ident, value: Expr },
+    Address(syn::Expr, Option<syn::Expr>),
+    Realloc(syn::Expr),
+    Group(GroupDirective),
+    Check(UserCheck),
 }
 
 struct ParsedDirective {
-    key: DirectiveKey,
-    value: Option<Expr>,
-    error: Option<Expr>,
-}
-
-enum DirectiveKey {
-    Mut,
-    Path(Path),
+    inner: Directive,
 }
 
 impl Parse for ParsedDirective {
     fn parse(input: ParseStream) -> syn::Result<Self> {
+        // `mut` is a keyword, needs special handling
         if input.peek(Token![mut]) {
-            let _: Token![mut] = input.parse()?;
-            return Ok(Self {
-                key: DirectiveKey::Mut,
-                value: None,
-                error: None,
+            let kw: Token![mut] = input.parse()?;
+            return Ok(ParsedDirective {
+                inner: Directive::Bare(Ident::new("mut", kw.span)),
             });
         }
 
-        let path: Path = input.parse()?;
-        let value = if input.peek(Token![=]) {
-            input.parse::<Token![=]>()?;
-            Some(input.parse::<Expr>()?)
-        } else {
-            None
-        };
-        let error = if input.peek(Token![@]) {
-            input.parse::<Token![@]>()?;
-            Some(input.parse::<Expr>()?)
-        } else {
-            None
-        };
+        let path: syn::Path = input.parse()?;
+        let name = path_to_string(&path);
 
-        Ok(Self {
-            key: DirectiveKey::Path(path),
-            value,
-            error,
-        })
+        // Key-value: `name = value`
+        if input.peek(Token![=]) {
+            input.parse::<Token![=]>()?;
+            match name.as_str() {
+                "payer" => {
+                    let ident: Ident = input.parse()?;
+                    return Ok(ParsedDirective {
+                        inner: Directive::Payer(ident),
+                    });
+                }
+                "address" => {
+                    let expr: Expr = input.parse()?;
+                    let error = parse_trailing_error(input)?;
+                    return Ok(ParsedDirective {
+                        inner: Directive::Address(expr, error),
+                    });
+                }
+                "realloc" => {
+                    let expr: Expr = input.parse()?;
+                    return Ok(ParsedDirective {
+                        inner: Directive::Realloc(expr),
+                    });
+                }
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        &path,
+                        format!("unknown key-value directive `{name} = ...`"),
+                    ));
+                }
+            }
+        }
+
+        // Group / check / init: `name(...)`
+        if input.peek(syn::token::Paren) {
+            let content;
+            syn::parenthesized!(content in input);
+
+            match name.as_str() {
+                // init / init(idempotent)
+                "init" => {
+                    let idempotent = if content.is_empty() {
+                        false
+                    } else {
+                        let flag: Ident = content.parse()?;
+                        if flag != "idempotent" {
+                            return Err(syn::Error::new_spanned(
+                                &flag,
+                                format!(
+                                    "unknown init flag `{flag}`. Only `init` or \
+                                     `init(idempotent)` are valid."
+                                ),
+                            ));
+                        }
+                        if !content.is_empty() {
+                            let _: Token![,] = content.parse()?;
+                            return Err(syn::Error::new(
+                                content.span(),
+                                "`init(idempotent)` does not accept additional arguments",
+                            ));
+                        }
+                        true
+                    };
+                    return Ok(ParsedDirective {
+                        inner: Directive::Init { idempotent },
+                    });
+                }
+
+                // Structural checks
+                "has_one" => {
+                    let targets = parse_ident_list(&content)?;
+                    let error = parse_trailing_error(input)?;
+                    return Ok(ParsedDirective {
+                        inner: Directive::Check(UserCheck::HasOne { targets, error }),
+                    });
+                }
+                "constraints" => {
+                    let exprs = parse_expr_list(&content)?;
+                    let error = parse_trailing_error(input)?;
+                    return Ok(ParsedDirective {
+                        inner: Directive::Check(UserCheck::Constraints { exprs, error }),
+                    });
+                }
+
+                // All other groups: token, mint, close, sweep, etc.
+                _ => {
+                    let args = parse_group_args(&content)?;
+                    return Ok(ParsedDirective {
+                        inner: Directive::Group(GroupDirective { path, args }),
+                    });
+                }
+            }
+        }
+
+        // Bare flags (no parens, no `=`)
+        match name.as_str() {
+            "init" => Ok(ParsedDirective {
+                inner: Directive::Init { idempotent: false },
+            }),
+            "dup" => Ok(ParsedDirective {
+                inner: Directive::Bare(last_ident(&path)),
+            }),
+            _ => Err(syn::Error::new_spanned(
+                &path,
+                format!("unknown bare directive `{name}`; did you mean `{name}(...)`?"),
+            )),
+        }
     }
 }
 
-pub(crate) fn parse_field_attrs(field: &syn::Field) -> syn::Result<Vec<AccountDirective>> {
+/// Parse `key = value` pairs separated by commas.
+fn parse_group_args(input: ParseStream) -> syn::Result<Vec<GroupArg>> {
+    let mut args = Vec::new();
+    while !input.is_empty() {
+        let key: Ident = input.parse()?;
+
+        let value = if input.peek(Token![=]) {
+            input.parse::<Token![=]>()?;
+            input.parse::<Expr>()?
+        } else {
+            // Bare key with no value — treat as `key = true`
+            syn::parse_quote!(true)
+        };
+
+        args.push(GroupArg { key, value });
+
+        if !input.is_empty() {
+            input.parse::<Token![,]>()?;
+        }
+    }
+    Ok(args)
+}
+
+/// Validate that an op-arg value conforms to the phase-polymorphic grammar.
+///
+/// Allowed forms (valid in raw-slot, typed, and epilogue contexts):
+/// - Bare field ident: `authority`
+/// - Literal: `true`, `42`, `"str"`
+/// - Const/type path: `MY_CONST`, `module::Type`
+/// - `Some(valid_arg)`: Option wrapper with a valid inner
+/// - `None`: empty option
+///
+/// Banned: method calls, field paths, casts, arithmetic, instruction args.
+/// These belong in `constraints(...)` or handler code.
+pub(crate) fn validate_op_arg(key: &Ident, expr: &Expr) -> syn::Result<()> {
+    if is_valid_op_arg(expr) {
+        Ok(())
+    } else {
+        Err(syn::Error::new_spanned(
+            expr,
+            format!(
+                "op arg `{}` has a value that is not valid in all lifecycle phases. Op args must \
+                 be bare field idents, literals, const paths, `Some(field)`, or `None`. Move \
+                 complex expressions to `constraints(...)` or handler code.",
+                key,
+            ),
+        ))
+    }
+}
+
+/// Check if an expression conforms to the op-arg grammar.
+fn is_valid_op_arg(expr: &Expr) -> bool {
+    match expr {
+        // Path: bare ident (field ref) or multi-segment (const/type path) — valid
+        Expr::Path(ep) => ep.qself.is_none(),
+        // Literal — valid
+        Expr::Lit(_) => true,
+        // Some(inner) — valid if inner is valid
+        Expr::Call(call) => {
+            if let Expr::Path(func) = &*call.func {
+                if func.qself.is_none()
+                    && func.path.segments.len() == 1
+                    && func.path.segments[0].ident == "Some"
+                {
+                    return call.args.len() == 1 && call.args.iter().all(is_valid_op_arg);
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
+/// Parse a comma-separated list of identifiers.
+fn parse_ident_list(input: ParseStream) -> syn::Result<Vec<Ident>> {
+    let mut idents = Vec::new();
+    while !input.is_empty() {
+        idents.push(input.parse::<Ident>()?);
+        if !input.is_empty() {
+            input.parse::<Token![,]>()?;
+        }
+    }
+    Ok(idents)
+}
+
+/// Parse a comma-separated list of expressions.
+fn parse_expr_list(input: ParseStream) -> syn::Result<Vec<Expr>> {
+    let mut exprs = Vec::new();
+    while !input.is_empty() {
+        exprs.push(input.parse::<Expr>()?);
+        if !input.is_empty() {
+            input.parse::<Token![,]>()?;
+        }
+    }
+    Ok(exprs)
+}
+
+/// Parse optional `@ error_expr` after a check directive.
+fn parse_trailing_error(input: ParseStream) -> syn::Result<Option<Expr>> {
+    if input.peek(Token![@]) {
+        input.parse::<Token![@]>()?;
+        Ok(Some(input.parse::<Expr>()?))
+    } else {
+        Ok(None)
+    }
+}
+
+pub(crate) fn parse_field_attrs(field: &syn::Field) -> syn::Result<Vec<Directive>> {
     let attr = field.attrs.iter().find(|a| a.path().is_ident("account"));
     match attr {
         Some(a) => {
-            let directives: syn::punctuated::Punctuated<ParsedDirective, syn::Token![,]> =
+            let directives: syn::punctuated::Punctuated<ParsedDirective, Token![,]> =
                 a.parse_args_with(syn::punctuated::Punctuated::parse_terminated)?;
-            directives.into_iter().map(lower_directive).collect()
+            Ok(directives.into_iter().map(|pd| pd.inner).collect())
         }
         None => Ok(Vec::new()),
     }
 }
 
-fn lower_directive(directive: ParsedDirective) -> syn::Result<AccountDirective> {
-    if matches!(directive.key, DirectiveKey::Mut) {
-        return expect_bare(directive, AccountDirective::Mut);
-    }
-
-    let path = directive_path(&directive)?;
-    let names = path_idents(path);
-    match names.as_slice() {
-        [name] if *name == "init" => expect_bare(directive, AccountDirective::Init),
-        [name] if *name == "init_if_needed" => {
-            expect_bare(directive, AccountDirective::InitIfNeeded)
-        }
-        [name] if *name == "dup" => expect_bare(directive, AccountDirective::Dup),
-        [name] if *name == "close" => Ok(AccountDirective::Close(expect_ident_value(directive)?)),
-        [name] if *name == "payer" => Ok(AccountDirective::Payer(expect_ident_value(directive)?)),
-        [name] if *name == "space" => Ok(AccountDirective::Space(expect_expr_value(directive)?)),
-        [name] if *name == "has_one" => {
-            let error = directive.error.clone();
-            Ok(AccountDirective::HasOne(
-                expect_ident_value_without_error(directive)?,
-                error,
-            ))
-        }
-        [name] if *name == "constraint" => {
-            let error = directive.error.clone();
-            Ok(AccountDirective::Constraint(
-                expect_expr_value_without_error(directive)?,
-                error,
-            ))
-        }
-        [name] if *name == "address" => {
-            let error = directive.error.clone();
-            Ok(AccountDirective::Address(
-                expect_expr_value_without_error(directive)?,
-                error,
-            ))
-        }
-        [name] if *name == "seeds" => lower_seeds_directive(directive),
-        [name] if *name == "bump" => Ok(AccountDirective::Bump(expect_optional_expr(directive)?)),
-        [name] if *name == "sweep" => Ok(AccountDirective::Sweep(expect_ident_value(directive)?)),
-        [name] if *name == "migrate" => Err(syn::Error::new(
-            name.span(),
-            "#[account(migrate = X)] is deprecated. Use the `Migration<From, To>` field type \
-             instead:\n\n  Before: #[account(migrate = ConfigV2, payer = payer)]\n  pub config: \
-             Account<ConfigV1>,\n\n  After:  #[account(payer = payer)]\n  pub config: \
-             Migration<ConfigV1, ConfigV2>,",
-        )),
-        [ns] if *ns == "realloc" => Ok(AccountDirective::Realloc(expect_expr_value(directive)?)),
-        [ns, sub] if *ns == "realloc" && *sub == "payer" => Ok(AccountDirective::ReallocPayer(
-            expect_ident_value(directive)?,
-        )),
-        [ns, sub] if *ns == "token" && *sub == "mint" => {
-            Ok(AccountDirective::TokenMint(expect_ident_value(directive)?))
-        }
-        [ns, sub] if *ns == "token" && *sub == "authority" => Ok(AccountDirective::TokenAuthority(
-            expect_ident_value(directive)?,
-        )),
-        [ns, sub] if *ns == "token" && *sub == "token_program" => Ok(
-            AccountDirective::TokenTokenProgram(expect_ident_value(directive)?),
-        ),
-        [ns, sub] if *ns == "mint" && *sub == "decimals" => Ok(AccountDirective::MintDecimals(
-            expect_expr_value(directive)?,
-        )),
-        [ns, sub] if *ns == "mint" && *sub == "authority" => Ok(
-            AccountDirective::MintInitAuthority(expect_ident_value(directive)?),
-        ),
-        [ns, sub] if *ns == "mint" && *sub == "freeze_authority" => Ok(
-            AccountDirective::MintFreezeAuthority(expect_ident_value(directive)?),
-        ),
-        [ns, sub] if *ns == "mint" && *sub == "token_program" => Ok(
-            AccountDirective::MintTokenProgram(expect_ident_value(directive)?),
-        ),
-        [ns, sub] if *ns == "associated_token" && *sub == "mint" => Ok(
-            AccountDirective::AssociatedTokenMint(expect_ident_value(directive)?),
-        ),
-        [ns, sub] if *ns == "associated_token" && *sub == "authority" => Ok(
-            AccountDirective::AssociatedTokenAuthority(expect_ident_value(directive)?),
-        ),
-        [ns, sub] if *ns == "associated_token" && *sub == "token_program" => Ok(
-            AccountDirective::AssociatedTokenTokenProgram(expect_ident_value(directive)?),
-        ),
-        [ns, sub_key] if *ns == "realloc" => Err(syn::Error::new(
-            path.segments.last().expect("non-empty path").ident.span(),
-            format!("unknown realloc attribute: `realloc::{sub_key}`"),
-        )),
-        [ns, sub_key] if *ns == "token" => Err(syn::Error::new(
-            path.segments.last().expect("non-empty path").ident.span(),
-            format!("unknown token attribute: `token::{sub_key}`"),
-        )),
-        [ns, sub_key] if *ns == "mint" => Err(syn::Error::new(
-            path.segments.last().expect("non-empty path").ident.span(),
-            format!("unknown mint attribute: `mint::{sub_key}`"),
-        )),
-        [ns, sub_key] if *ns == "associated_token" => Err(syn::Error::new(
-            path.segments.last().expect("non-empty path").ident.span(),
-            format!("unknown associated_token attribute: `associated_token::{sub_key}`"),
-        )),
-        [ns, key] if *ns == "param" => Ok(AccountDirective::Param {
-            key: (*key).clone(),
-            value: expect_expr_value(directive)?,
-        }),
-        [ns, key] if *ns == "init_param" => Ok(AccountDirective::InitParam {
-            key: (*key).clone(),
-            value: expect_expr_value(directive)?,
-        }),
-        _ => Err(syn::Error::new(
-            path.segments.first().expect("non-empty path").ident.span(),
-            format!("unknown account attribute: `{}`", join_path(path)),
-        )),
-    }
-}
-
-fn lower_seeds_directive(directive: ParsedDirective) -> syn::Result<AccountDirective> {
-    ensure_no_error(&directive)?;
-    let Some(expr) = directive.value else {
-        return Err(syn::Error::new_spanned(
-            directive_path(&directive)?,
-            "`seeds` requires a value",
-        ));
-    };
-
-    match expr {
-        Expr::Array(arr) => Ok(AccountDirective::Seeds(arr.elems.into_iter().collect())),
-        Expr::Call(call) => {
-            let Expr::Path(func_path) = *call.func else {
-                return Err(syn::Error::new_spanned(
-                    call.func,
-                    "expected Type::seeds(...)",
-                ));
-            };
-            let segments = &func_path.path.segments;
-            if segments.last().map(|s| s.ident == "seeds") != Some(true) {
-                return Err(syn::Error::new_spanned(
-                    &func_path.path,
-                    "expected Type::seeds(...)",
-                ));
-            }
-            if segments.len() < 2 {
-                return Err(syn::Error::new_spanned(
-                    &func_path.path,
-                    "expected Type::seeds(...), not just seeds(...)",
-                ));
-            }
-
-            let mut type_segments = syn::punctuated::Punctuated::new();
-            for (i, seg) in segments.iter().take(segments.len() - 1).enumerate() {
-                type_segments.push_value(seg.clone());
-                if i + 1 != segments.len() - 1 {
-                    type_segments.push_punct(<Token![::]>::default());
-                }
-            }
-
-            Ok(AccountDirective::TypedSeeds(TypedSeeds {
-                type_path: Path {
-                    leading_colon: func_path.path.leading_colon,
-                    segments: type_segments,
-                },
-                args: call.args.into_iter().collect(),
-            }))
-        }
-        _ => Err(syn::Error::new_spanned(
-            expr,
-            "expected seeds = [...] or seeds = Type::seeds(...)",
-        )),
-    }
-}
-
-fn expect_bare(
-    directive: ParsedDirective,
-    bare: AccountDirective,
-) -> syn::Result<AccountDirective> {
-    ensure_no_value(&directive)?;
-    ensure_no_error(&directive)?;
-    Ok(bare)
-}
-
-fn expect_ident_value(directive: ParsedDirective) -> syn::Result<Ident> {
-    ensure_no_error(&directive)?;
-    expect_ident_value_without_error(directive)
-}
-
-fn expect_ident_value_without_error(directive: ParsedDirective) -> syn::Result<Ident> {
-    let expr = expect_value(directive)?;
-    match expr {
-        Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
-            Ok(path.path.segments[0].ident.clone())
-        }
-        _ => Err(syn::Error::new_spanned(expr, "expected an identifier")),
-    }
-}
-
-fn expect_expr_value(directive: ParsedDirective) -> syn::Result<Expr> {
-    ensure_no_error(&directive)?;
-    expect_expr_value_without_error(directive)
-}
-
-fn expect_expr_value_without_error(directive: ParsedDirective) -> syn::Result<Expr> {
-    expect_value(directive)
-}
-
-fn expect_optional_expr(directive: ParsedDirective) -> syn::Result<Option<Expr>> {
-    ensure_no_error(&directive)?;
-    Ok(directive.value)
-}
-
-fn expect_value(directive: ParsedDirective) -> syn::Result<Expr> {
-    let label = join_directive(&directive);
-    let span = directive_path(&directive)?.clone();
-    directive
-        .value
-        .ok_or_else(|| syn::Error::new_spanned(span, format!("`{label}` requires a value")))
-}
-
-fn ensure_no_value(directive: &ParsedDirective) -> syn::Result<()> {
-    if let Some(value) = &directive.value {
-        Err(syn::Error::new_spanned(
-            value,
-            format!("`{}` does not take a value", join_directive(directive)),
-        ))
-    } else {
-        Ok(())
-    }
-}
-
-fn ensure_no_error(directive: &ParsedDirective) -> syn::Result<()> {
-    if let Some(error) = &directive.error {
-        Err(syn::Error::new_spanned(
-            error,
-            format!(
-                "`{}` does not support custom error syntax",
-                join_directive(directive)
-            ),
-        ))
-    } else {
-        Ok(())
-    }
-}
-
-fn directive_path(directive: &ParsedDirective) -> syn::Result<&Path> {
-    match &directive.key {
-        DirectiveKey::Mut => Err(syn::Error::new(
-            proc_macro2::Span::call_site(),
-            "directive does not have a path",
-        )),
-        DirectiveKey::Path(path) => Ok(path),
-    }
-}
-
-fn join_directive(directive: &ParsedDirective) -> String {
-    match &directive.key {
-        DirectiveKey::Mut => "mut".to_owned(),
-        DirectiveKey::Path(path) => join_path(path),
-    }
-}
-
-fn path_idents(path: &Path) -> Vec<&syn::Ident> {
-    path.segments.iter().map(|segment| &segment.ident).collect()
-}
-
-fn join_path(path: &Path) -> String {
+fn path_to_string(path: &syn::Path) -> String {
     path.segments
         .iter()
-        .map(|segment| segment.ident.to_string())
+        .map(|s| s.ident.to_string())
         .collect::<Vec<_>>()
         .join("::")
+}
+
+fn last_ident(path: &syn::Path) -> Ident {
+    path.segments.last().unwrap().ident.clone()
 }

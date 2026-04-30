@@ -47,7 +47,9 @@ fn has_one_mismatch() {
         ],
     );
     assert!(result.is_err(), "has_one mismatch");
-    result.assert_error(ProgramError::Custom(3005)); // HasOneMismatch
+    // v3: address verification runs before has_one, so the PDA mismatch
+    // (wrong authority in seeds) is caught first.
+    result.assert_error(ProgramError::InvalidSeeds);
 }
 
 #[test]

@@ -1,6 +1,6 @@
-//! `#[derive(Accounts)]` — generates account parsing, validation, and PDA
-//! derivation from a struct definition. This is the core macro that transforms
-//! a declarative accounts struct into the zero-copy parsing pipeline.
+//! `#[derive(Accounts)]` — op-dispatch derive macro.
+//!
+//! Clean-room implementation. No imports from `derive/src/accounts/`.
 
 pub(crate) mod emit;
 mod plan;
@@ -21,8 +21,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
     let name = &input.ident;
     let bumps_name = format_ident!("{}Bumps", name);
 
-    // Currently only custom lifetime parameters are supported, so validate that
-    // we don't have any type or const generics.
+    // Only lifetime generics supported.
     if let Some(param) = input
         .generics
         .params
@@ -38,7 +37,6 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                 "#[derive(Accounts)] only supports lifetime parameters; const parameters are not \
                  supported"
             }
-            // Filtered by the `find` predicate above — lifetimes are skipped.
             GenericParam::Lifetime(_) => "",
         };
         return syn::Error::new_spanned(param, message)
@@ -51,9 +49,6 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
     let where_clause_ts = quote! { #where_clause };
 
     let mut parse_generics = input.generics.clone();
-    // 'input is the default lifetime used for account references in the generated
-    // traits, so we need to make sure that it lives longer than any
-    // user-defined lifetimes.
     parse_generics.params.push(parse_quote!('input));
     {
         let parse_where = parse_generics.make_where_clause();
@@ -64,8 +59,6 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                 .push(syn::parse_quote!('input: #lifetime));
         }
     }
-    // These generics are used for the ParseAccounts impl, which may have different
-    // lifetime requirements than the original struct.
     let (parse_impl_generics, _, parse_where_clause) = parse_generics.split_for_impl();
     let parse_impl_generics_ts = quote! { #parse_impl_generics };
     let parse_where_clause_ts = quote! { #parse_where_clause };
@@ -94,7 +87,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         Err(e) => return e.to_compile_error().into(),
     };
 
-    // --- Run the accounts pipeline (syntax → resolve → emit) ---
+    // --- Pipeline: syntax → resolve → emit ---
 
     let semantics = match resolve::lower_semantics(fields, &instruction_args) {
         Ok(semantics) => semantics,
@@ -115,23 +108,19 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         typed_seed_asserts,
         parse_body,
     } = accounts_plan;
+
     let bumps_struct = emit::emit_bump_struct_def(&semantics, &emit_cx);
     let epilogue_method = match emit::emit_epilogue(&semantics) {
         Ok(ts) => ts,
         Err(e) => return e.to_compile_error().into(),
     };
-    let has_epilogue = !epilogue_method.is_empty();
+    let has_epilogue_expr = emit::emit_has_epilogue(&semantics);
 
-    // --- Seeds impl ---
-
-    let seeds_methods = emit::emit_seed_methods(&semantics, &emit_cx);
-
-    // --- Client macro ---
+    let seeds_methods = quote::quote! {};
 
     let client_macro = crate::client_macro::generate_accounts_macro(name, &semantics);
 
-    // --- Instruction arg extraction (struct-level #[instruction(...)]) ---
-
+    // Instruction arg extraction
     let ix_arg_extraction = if let Some(ref ix_args) = instruction_args {
         generate_instruction_arg_extraction(ix_args)
     } else {
@@ -152,7 +141,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         parse_body,
         bumps_struct,
         epilogue_method,
-        has_epilogue,
+        has_epilogue_expr,
         seeds_methods,
         client_macro,
         ix_arg_extraction,

@@ -1,4 +1,4 @@
-use {crate::state::*, quasar_lang::prelude::*};
+use {crate::state::*, quasar_derive::Accounts, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
 pub struct CheckConsensus {

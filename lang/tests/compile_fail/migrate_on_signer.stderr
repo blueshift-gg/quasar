@@ -1,11 +1,92 @@
-error: #[account(migrate = X)] is deprecated. Use the `Migration<From, To>` field type instead:
-
-         Before: #[account(migrate = ConfigV2, payer = payer)]
-         pub config: Account<ConfigV1>,
-
-         After:  #[account(payer = payer)]
-         pub config: Migration<ConfigV1, ConfigV2>,
-  --> tests/compile_fail/migrate_on_signer.rs:18:15
+error[E0277]: the trait bound `quasar_lang::accounts::Signer: Deref` is not satisfied
+  --> tests/compile_fail/migrate_on_signer.rs:19:17
    |
-18 |     #[account(migrate = ConfigV2, payer = payer)]
-   |               ^^^^^^^
+19 |     pub target: Migration<Signer, ConfigV2>,
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `Deref` is not implemented for `quasar_lang::accounts::Signer`
+   |
+   = help: the trait `FieldLifecycle` is implemented for `quasar_lang::accounts::Migration<From, To>`
+   = note: required for `quasar_lang::accounts::Migration<quasar_lang::accounts::Signer, ConfigV2>` to implement `FieldLifecycle`
+
+error[E0277]: the trait bound `quasar_lang::accounts::Signer: quasar_lang::prelude::Discriminator` is not satisfied
+  --> tests/compile_fail/migrate_on_signer.rs:19:17
+   |
+19 |     pub target: Migration<Signer, ConfigV2>,
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `quasar_lang::prelude::Discriminator` is not implemented for `quasar_lang::accounts::Signer`
+   |
+   = help: the trait `quasar_lang::prelude::Discriminator` is implemented for `ConfigV2`
+   = note: required for `quasar_lang::accounts::Migration<quasar_lang::accounts::Signer, ConfigV2>` to implement `FieldLifecycle`
+
+error[E0277]: the trait bound `quasar_lang::accounts::Signer: quasar_lang::prelude::Owner` is not satisfied
+  --> tests/compile_fail/migrate_on_signer.rs:19:17
+   |
+19 |     pub target: Migration<Signer, ConfigV2>,
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `quasar_lang::prelude::Owner` is not implemented for `quasar_lang::accounts::Signer`
+   |
+   = help: the following other types implement trait `quasar_lang::prelude::Owner`:
+             ConfigV2
+             SystemAccount
+   = note: required for `quasar_lang::accounts::Migration<quasar_lang::accounts::Signer, ConfigV2>` to implement `FieldLifecycle`
+
+error[E0277]: the trait bound `quasar_lang::accounts::Signer: Deref` is not satisfied
+  --> tests/compile_fail/migrate_on_signer.rs:12:10
+   |
+12 | #[derive(Accounts)]
+   |          ^^^^^^^^ the trait `Deref` is not implemented for `quasar_lang::accounts::Signer`
+   |
+   = help: the trait `FieldLifecycle` is implemented for `quasar_lang::accounts::Migration<From, To>`
+   = note: required for `quasar_lang::accounts::Migration<quasar_lang::accounts::Signer, ConfigV2>` to implement `FieldLifecycle`
+   = note: this error originates in the derive macro `Accounts` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `quasar_lang::accounts::Signer: quasar_lang::prelude::Discriminator` is not satisfied
+  --> tests/compile_fail/migrate_on_signer.rs:12:10
+   |
+12 | #[derive(Accounts)]
+   |          ^^^^^^^^ the trait `quasar_lang::prelude::Discriminator` is not implemented for `quasar_lang::accounts::Signer`
+   |
+   = help: the trait `quasar_lang::prelude::Discriminator` is implemented for `ConfigV2`
+   = note: required for `quasar_lang::accounts::Migration<quasar_lang::accounts::Signer, ConfigV2>` to implement `FieldLifecycle`
+   = note: this error originates in the derive macro `Accounts` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `quasar_lang::accounts::Signer: quasar_lang::prelude::Owner` is not satisfied
+  --> tests/compile_fail/migrate_on_signer.rs:12:10
+   |
+12 | #[derive(Accounts)]
+   |          ^^^^^^^^ the trait `quasar_lang::prelude::Owner` is not implemented for `quasar_lang::accounts::Signer`
+   |
+   = help: the following other types implement trait `quasar_lang::prelude::Owner`:
+             ConfigV2
+             SystemAccount
+   = note: required for `quasar_lang::accounts::Migration<quasar_lang::accounts::Signer, ConfigV2>` to implement `FieldLifecycle`
+   = note: this error originates in the derive macro `Accounts` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `quasar_lang::accounts::Signer: quasar_lang::prelude::AccountCheck` is not satisfied
+  --> tests/compile_fail/migrate_on_signer.rs:19:17
+   |
+19 |     pub target: Migration<Signer, ConfigV2>,
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `quasar_lang::prelude::AccountCheck` is not implemented for `quasar_lang::accounts::Signer`
+   |
+   = help: the trait `quasar_lang::prelude::AccountCheck` is implemented for `ConfigV2`
+   = note: required for `quasar_lang::accounts::Migration<quasar_lang::accounts::Signer, ConfigV2>` to implement `AccountLoad`
+
+error[E0277]: the trait bound `quasar_lang::accounts::Signer: quasar_lang::prelude::StaticView` is not satisfied
+  --> tests/compile_fail/migrate_on_signer.rs:19:17
+   |
+19 |     pub target: Migration<Signer, ConfigV2>,
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `quasar_lang::prelude::StaticView` is not implemented for `quasar_lang::accounts::Signer`
+   |
+   = help: the following other types implement trait `quasar_lang::prelude::StaticView`:
+             ConfigV2
+             quasar_lang::accounts::Migration<From, To>
+   = note: required for `quasar_lang::accounts::Migration<quasar_lang::accounts::Signer, ConfigV2>` to implement `AccountLoad`
+
+error[E0277]: the trait bound `quasar_lang::accounts::Signer: quasar_lang::prelude::Owner` is not satisfied
+  --> tests/compile_fail/migrate_on_signer.rs:19:17
+   |
+19 |     pub target: Migration<Signer, ConfigV2>,
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `quasar_lang::prelude::Owner` is not implemented for `quasar_lang::accounts::Signer`
+   |
+   = help: the following other types implement trait `quasar_lang::prelude::Owner`:
+             ConfigV2
+             SystemAccount
+   = note: required for `quasar_lang::accounts::Signer` to implement `CheckOwner`
+   = note: required for `quasar_lang::accounts::Migration<quasar_lang::accounts::Signer, ConfigV2>` to implement `AccountLoad`

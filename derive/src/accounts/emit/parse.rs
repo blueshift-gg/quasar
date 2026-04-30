@@ -1,315 +1,662 @@
+//! Phased UFCS codegen — the core of v3.
+//!
+//! Generated parse body shape:
+//!
+//! ```text
+//! // Phase 1: pre-load
+//! let __ctx = OpCtx::new(...);
+//! // AddressVerify, init::Op::before_load, before_load groups
+//!
+//! // Phase 2: load all
+//! let field_a = <Ty>::load(field_a, "field_a")?;
+//! let mut field_b = <Ty>::load_mut(field_b, "field_b")?;
+//!
+//! // Phase 3a: after_load (shared ref on locals)
+//! <token::Op<'_> as AccountOp<Ty>>::after_load(&op, &field_b, &__ctx)?;
+//!
+//! // Phase 3b: after_load_mut (mut ref on owned locals)
+//! <realloc::Op<'_> as AccountOp<Ty>>::after_load_mut(&op, &mut field_b, &__ctx)?;
+//!
+//! // Phase 3c: user checks
+//! check_address_match(...)?;
+//!
+//! Ok((Self { field_a, field_b }, bumps))
+//! ```
+
 use {
-    super::super::{
-        resolve::{BumpSyntax, FieldSemantics, FieldShape, PdaConstraint, UserCheckKind},
-        syntax::{
-            render_seed_expr, seeds_to_emit_nodes, AccountWrapperKind, SeedEmitNode,
-            SeedRenderContext,
+    super::{
+        super::resolve::{FieldKind, FieldSemantics, UserCheck},
+        ops::{
+            emit_op_struct, emit_op_type, emit_op_type_static, exit_arg, raw_slot_arg, typed_arg,
+            OpEmitCtx,
         },
     },
     crate::helpers::strip_generics,
     quote::{format_ident, quote},
-    std::collections::BTreeMap,
 };
 
 pub(crate) fn emit_parse_body(
     semantics: &[FieldSemantics],
     cx: &super::EmitCx,
 ) -> syn::Result<proc_macro2::TokenStream> {
-    let rent_fetch = emit_rent_fetch(semantics);
-    let init_stmts = super::init::emit_init_stmts(semantics)?;
-    let realloc_stmts = super::lifecycle::emit_realloc_steps(semantics)?;
-    let construct_stmts = emit_construct_steps(semantics);
-    let check_stmts = emit_check_blocks(semantics);
+    let op_ctx = OpEmitCtx {
+        field_names: semantics.iter().map(|s| s.core.ident.to_string()).collect(),
+    };
+    let ctx_init = quote! {
+        let __ctx = quasar_lang::ops::OpCtx::new(unsafe {
+            &*(__program_id as *const quasar_lang::prelude::Address)
+        });
+    };
     let bump_vars = emit_bump_vars(semantics);
+
+    // Phase ordering:
+    // 1. Load non-init fields (they exist on-chain, data available)
+    // 2. Address verify + init CPI for init fields (can reference loaded non-init
+    //    fields like config.namespace)
+    // 3. Load init fields (now created by init CPI)
+    // 4. Ops, validation, user checks
+    // Non-init groups that have before_load (rare but possible)
+    let non_init_before_load = emit_non_init_before_load(semantics, &op_ctx);
+    let load_non_init = emit_phase2_filtered(semantics, false);
+    let init_phase = emit_init_phase(semantics, &op_ctx)?;
+    let load_init = emit_phase2_filtered(semantics, true);
+    let phase3 = emit_phase3(semantics, &op_ctx);
     let bump_init = emit_bump_init(semantics, &cx.bumps_name);
-    let field_names = field_idents(semantics);
 
-    if !check_stmts.is_empty() {
-        Ok(quote! {
-            #bump_vars
-            #rent_fetch
-            #(#init_stmts)*
-            #(#realloc_stmts)*
-            let result = Self { #(#construct_stmts,)* };
-            {
-                let Self { #(ref #field_names,)* } = result;
-                #(#check_stmts)*
-            }
-            Ok((result, #bump_init))
-        })
-    } else {
-        Ok(quote! {
-            #bump_vars
-            #rent_fetch
-            #(#init_stmts)*
-            #(#realloc_stmts)*
-            Ok((Self { #(#construct_stmts,)* }, #bump_init))
-        })
-    }
-}
-
-pub(crate) fn emit_bump_struct_def(
-    semantics: &[FieldSemantics],
-    cx: &super::EmitCx,
-) -> proc_macro2::TokenStream {
-    emit_bump_struct(semantics, &cx.bumps_name)
-}
-
-pub(crate) fn emit_seed_methods(
-    semantics: &[FieldSemantics],
-    cx: &super::EmitCx,
-) -> proc_macro2::TokenStream {
-    emit_seed_methods_impl(semantics, &cx.bumps_name)
-}
-
-fn emit_rent_fetch(semantics: &[FieldSemantics]) -> proc_macro2::TokenStream {
-    if !semantics.iter().any(FieldSemantics::needs_rent) {
-        return quote! {};
-    }
-
-    match semantics
+    let construct_fields: Vec<proc_macro2::TokenStream> = semantics
         .iter()
-        .filter(|sem| sem.needs_rent())
-        .find_map(|sem| sem.support.rent_sysvar.as_ref())
-    {
-        Some(rent_field) => quote! {
-            let __shared_rent = unsafe {
-                core::clone::Clone::clone(
-                    <quasar_lang::sysvars::rent::Rent as quasar_lang::sysvars::Sysvar>::from_bytes_unchecked(
-                        #rent_field.borrow_unchecked()
-                    )
-                )
-            };
-        },
-        None => quote! {
-            let __shared_rent = <quasar_lang::sysvars::rent::Rent as quasar_lang::sysvars::Sysvar>::get()?;
-        },
-    }
+        .map(|sem| {
+            let ident = &sem.core.ident;
+            quote! { #ident }
+        })
+        .collect();
+
+    Ok(quote! {
+        #bump_vars
+        #ctx_init
+        #(#non_init_before_load)*
+        #(#load_non_init)*
+        #(#init_phase)*
+        #(#load_init)*
+        #(#phase3)*
+        Ok((Self { #(#construct_fields,)* }, #bump_init))
+    })
 }
 
-fn field_idents(semantics: &[FieldSemantics]) -> Vec<&syn::Ident> {
-    semantics.iter().map(|sem| &sem.core.ident).collect()
-}
+// ==== Pre-load: before_load for non-init field groups ====
 
-fn emit_construct_steps(semantics: &[FieldSemantics]) -> Vec<proc_macro2::TokenStream> {
-    semantics.iter().map(emit_one_construct).collect()
-}
-
-fn emit_one_construct(sem: &FieldSemantics) -> proc_macro2::TokenStream {
-    let ident = &sem.core.ident;
-    let expr = emit_inner_expr(sem);
-    if sem.core.optional {
-        quote! {
-            #ident: if quasar_lang::keys_eq(#ident.address(), __program_id) { None } else { Some(#expr) }
+fn emit_non_init_before_load(
+    semantics: &[FieldSemantics],
+    op_ctx: &OpEmitCtx,
+) -> Vec<proc_macro2::TokenStream> {
+    let mut stmts = Vec::new();
+    for sem in semantics {
+        if sem.has_init() {
+            continue;
         }
-    } else {
-        quote! { #ident: #expr }
+        let ident = &sem.core.ident;
+        let ty = &sem.core.effective_ty;
+        for group in &sem.groups {
+            let op_static = emit_op_type_static(group);
+            let op_live = emit_op_type(group);
+            let op = emit_op_struct(group, raw_slot_arg, op_ctx);
+            stmts.push(quote! {
+                if <#op_static as quasar_lang::ops::AccountOp<#ty>>::HAS_BEFORE_LOAD {
+                    <#op_live as quasar_lang::ops::AccountOp<
+                        #ty,
+                    >>::before_load(
+                        &#op,
+                        #ident, &__ctx,
+                    )?;
+                }
+            });
+        }
     }
+    stmts
 }
 
-fn emit_inner_expr(sem: &FieldSemantics) -> proc_macro2::TokenStream {
+// ==== Init phase: address verify + init CPI (runs after non-init fields
+// loaded) ====
+
+fn emit_init_phase(
+    semantics: &[FieldSemantics],
+    op_ctx: &OpEmitCtx,
+) -> syn::Result<Vec<proc_macro2::TokenStream>> {
+    let mut stmts = Vec::new();
+
+    for sem in semantics {
+        let ident = &sem.core.ident;
+        let ty = &sem.core.effective_ty;
+
+        // Address verification for init fields.
+        // Runs after non-init fields are loaded, so expressions like
+        // config.namespace work via Deref on loaded Account<T> fields.
+        if sem.has_init() {
+            if let Some(address_expr) = &sem.address {
+                let bump_var = format_ident!("__bumps_{}", ident);
+                let addr_var = format_ident!("__addr_{}", ident);
+                stmts.push(quote! {
+                    let #addr_var = #address_expr;
+                    #bump_var = quasar_lang::address::AddressVerify::verify(
+                        &#addr_var, #ident.address(), __program_id,
+                    )?;
+                });
+            }
+        }
+
+        // init → init::Op::before_load
+        if let Some(init) = &sem.init {
+            stmts.push(emit_init_before_load(sem, init, op_ctx)?);
+        }
+
+        // before_load for ALL groups on init fields.
+        // Args use typed_arg because referenced non-init fields are loaded.
+        // The init field itself (#ident) is still a raw AccountView slot.
+        if sem.has_init() {
+            for group in &sem.groups {
+                let op_static = emit_op_type_static(group);
+                let op_live = emit_op_type(group);
+                let op = emit_op_struct(group, typed_arg, op_ctx);
+                stmts.push(quote! {
+                    if <#op_static as quasar_lang::ops::AccountOp<#ty>>::HAS_BEFORE_LOAD {
+                        <#op_live as quasar_lang::ops::AccountOp<
+                            #ty,
+                        >>::before_load(
+                            &#op,
+                            #ident, &__ctx,
+                        )?;
+                    }
+                });
+            }
+        }
+    }
+
+    Ok(stmts)
+}
+
+fn emit_init_before_load(
+    sem: &FieldSemantics,
+    init: &super::super::resolve::InitDirective,
+    op_ctx: &OpEmitCtx,
+) -> syn::Result<proc_macro2::TokenStream> {
     let ident = &sem.core.ident;
     let ty = &sem.core.effective_ty;
-    let skip_checks =
-        sem.has_init() && (sem.token.is_some() || sem.ata.is_some() || sem.mint.is_some());
 
-    if matches!(sem.core.shape, FieldShape::Composite) {
-        quote! { #ident }
-    } else if sem.core.dynamic {
-        let inner_ty = sem.core.inner_ty.as_ref().unwrap_or(&sem.core.effective_ty);
-        let base = strip_generics(inner_ty);
-        quote! { #base::from_account_view(#ident)? }
-    } else if skip_checks {
-        quote! {
-            unsafe {
-                core::ptr::read(
-                    <#ty as quasar_lang::account_load::AccountLoad>::from_view_unchecked(#ident)
-                )
-            }
-        }
+    let payer = sem
+        .payer
+        .as_ref()
+        .ok_or_else(|| syn::Error::new_spanned(&sem.core.field, "init requires `payer`"))?;
+
+    // Space from Space::SPACE for program-owned accounts.
+    // When groups contribute init params (token, mint, ata_init), space is 0
+    // because the SPL init CPI handles allocation.
+    let has_param_contributors = !sem.groups.is_empty();
+    let space = if has_param_contributors {
+        quote! { 0u64 }
     } else {
-        let field_name_str = ident.to_string();
         quote! {
-            <#ty as quasar_lang::account_load::AccountLoad>::load(#ident, #field_name_str)?
+            <
+                <#ty as quasar_lang::account_load::AccountLoad>::BehaviorTarget
+                as quasar_lang::traits::Space
+            >::SPACE as u64
         }
+    };
+    let idempotent = init.idempotent;
+
+    // Init params: accumulate from ALL groups via apply_init_params.
+    let params_block = quote! {
+        let mut __init_params = <
+            <#ty as quasar_lang::account_load::AccountLoad>::BehaviorTarget
+            as quasar_lang::account_init::AccountInit
+        >::InitParams::default();
+    };
+
+    // Use typed_arg because non-init fields are loaded at this point.
+    let (op_locals, contributor_calls): (Vec<_>, Vec<_>) = sem
+        .groups
+        .iter()
+        .enumerate()
+        .map(|(i, group)| {
+            let op = emit_op_struct(group, typed_arg, op_ctx);
+            let op_live = emit_op_type(group);
+            let op_name = format_ident!("__init_op_{}", i);
+            let local = quote! { let #op_name = #op; };
+            let call = quote! {
+                <#op_live as quasar_lang::ops::AccountOp<#ty>>::apply_init_params(
+                    &#op_name,
+                    &mut __init_params as *mut _ as *mut u8,
+                )?;
+            };
+            (local, call)
+        })
+        .unzip();
+
+    let init_call = quote! {
+        let __init_op = quasar_lang::ops::init::Op {
+            payer: #payer.to_account_view(),
+            space: #space,
+            signers: __signers,
+            params: __init_params,
+            idempotent: #idempotent,
+        };
+        quasar_lang::ops::AccountOp::<#ty>::before_load(&__init_op, #ident, &__ctx)?;
+    };
+
+    let body = quote! {
+            #params_block
+            #(#op_locals)*
+            #(#contributor_calls)*
+            #init_call
+    };
+
+    // Build signers from address spec if present (PDA init).
+    // AddressVerify ran before this, so __bumps_<ident> is populated.
+    if sem.address.is_some() {
+        let bump_var = format_ident!("__bumps_{}", ident);
+        let addr_var = format_ident!("__addr_{}", ident);
+        Ok(quote! {
+            {
+                let __bump_ref: &[u8] = &[#bump_var];
+                quasar_lang::address::AddressVerify::with_signer_seeds(
+                    &#addr_var,
+                    __bump_ref,
+                    |__maybe_signer| -> Result<(), quasar_lang::prelude::ProgramError> {
+                        let __signers = match &__maybe_signer {
+                            Some(__signer) => core::slice::from_ref(__signer),
+                            None => &[] as &[quasar_lang::cpi::Signer<'_, '_>],
+                        };
+                        #body
+                        Ok(())
+                    },
+                )?;
+            }
+        })
+    } else {
+        Ok(quote! {
+            {
+                let __signers: &[quasar_lang::cpi::Signer<'_, '_>] = &[];
+                #body
+            }
+        })
     }
 }
 
-fn emit_check_blocks(semantics: &[FieldSemantics]) -> Vec<proc_macro2::TokenStream> {
+// ==== Phase 2: load (split into non-init first, then init) ====
+
+fn emit_phase2_filtered(
+    semantics: &[FieldSemantics],
+    init_only: bool,
+) -> Vec<proc_macro2::TokenStream> {
     semantics
         .iter()
-        .map(|sem| emit_one_check_block(sem, semantics))
-        .filter(|ts| !ts.is_empty())
+        .filter(|sem| sem.core.kind == FieldKind::Single)
+        .filter(|sem| sem.has_init() == init_only)
+        .map(emit_one_load)
         .collect()
 }
 
-fn emit_one_check_block(
-    sem: &FieldSemantics,
-    all_semantics: &[FieldSemantics],
+fn emit_one_load(sem: &FieldSemantics) -> proc_macro2::TokenStream {
+    let ident = &sem.core.ident;
+    let ty = &sem.core.effective_ty;
+    let field_name_str = ident.to_string();
+
+    if sem.core.dynamic {
+        let inner_ty = sem.core.inner_ty.as_ref().unwrap_or(ty);
+        let base = strip_generics(inner_ty);
+        return quote! { let #ident = #base::from_account_view(#ident)?; };
+    }
+
+    // Always use validated load — no unchecked bypass.
+    // init::Op writes discriminator + data, so load() succeeds after valid init.
+
+    if sem.core.optional {
+        return if sem.core.is_mut {
+            quote! {
+                let mut #ident = if quasar_lang::keys_eq(#ident.address(), __program_id) {
+                    None
+                } else {
+                    Some(<#ty as quasar_lang::account_load::AccountLoad>::load_mut(#ident, #field_name_str)?)
+                };
+            }
+        } else {
+            quote! {
+                let #ident = if quasar_lang::keys_eq(#ident.address(), __program_id) {
+                    None
+                } else {
+                    Some(<#ty as quasar_lang::account_load::AccountLoad>::load(#ident, #field_name_str)?)
+                };
+            }
+        };
+    }
+
+    if sem.core.is_mut {
+        quote! {
+            let mut #ident = <#ty as quasar_lang::account_load::AccountLoad>::load_mut(#ident, #field_name_str)?;
+        }
+    } else {
+        quote! {
+            let #ident = <#ty as quasar_lang::account_load::AccountLoad>::load(#ident, #field_name_str)?;
+        }
+    }
+}
+
+// ==== Phase 3: validate + mutate + user checks ====
+
+fn emit_phase3(semantics: &[FieldSemantics], op_ctx: &OpEmitCtx) -> Vec<proc_macro2::TokenStream> {
+    let mut stmts = Vec::new();
+
+    for sem in semantics {
+        let ident = &sem.core.ident;
+        let ty = &sem.core.effective_ty;
+        let is_optional = sem.core.optional;
+
+        // Phase 3a: after_load for ALL groups
+        for group in &sem.groups {
+            let op = emit_op_struct(group, typed_arg, op_ctx);
+            let op_live = emit_op_type(group);
+            let call = quote! {
+                <#op_live as quasar_lang::ops::AccountOp<
+                    #ty,
+                >>::after_load(&#op, &#ident, &__ctx)?;
+            };
+            stmts.push(wrap_optional(is_optional, ident, &call, false));
+        }
+
+        // Phase 3b: after_load_mut on owned mut locals (ALL groups)
+        if sem.core.is_mut && sem.core.kind == FieldKind::Single {
+            for group in &sem.groups {
+                let op = emit_op_struct(group, typed_arg, op_ctx);
+                let op_static = emit_op_type_static(group);
+                let op_live = emit_op_type(group);
+                // Gate on REQUIRES_MUT at compile time
+                let call = quote! {
+                    {
+                        const __REQ: bool =
+                            <#op_static as quasar_lang::ops::AccountOp<#ty>>::REQUIRES_MUT;
+                        if __REQ {
+                            <#op_live as quasar_lang::ops::AccountOp<
+                                #ty,
+                            >>::after_load_mut(&#op, &mut #ident, &__ctx)?;
+                        }
+                    }
+                };
+                stmts.push(wrap_optional(is_optional, ident, &call, true));
+            }
+
+            // Realloc op (Phase 3b) — emitted when field has `realloc = expr`
+            if let Some(realloc_expr) = &sem.realloc {
+                let payer = sem.payer.as_ref().expect("realloc requires payer");
+                // Build crate path via ident to keep domain strings out of derive source.
+                let spl_crate = format_ident!("quasar_{}", "spl");
+                let call = quote! {
+                    {
+                        let __realloc_op = #spl_crate::ops::realloc::Op {
+                            space: (#realloc_expr) as usize,
+                            payer: #payer.to_account_view(),
+                        };
+                        <#spl_crate::ops::realloc::Op<'_> as quasar_lang::ops::AccountOp<
+                            #ty,
+                        >>::after_load_mut(&__realloc_op, &mut #ident, &__ctx)?;
+                    }
+                };
+                stmts.push(wrap_optional(is_optional, ident, &call, true));
+            }
+
+            if has_field_lifecycle(sem) {
+                // Field lifecycle before-handler hook. Migration uses this to
+                // grow the account before handler code writes the target
+                // layout.
+                let payer_option = match &sem.payer {
+                    Some(p) => quote! { Some(#p.to_account_view()) },
+                    None => quote! { None },
+                };
+                let lifecycle_call = quote! {
+                    if <#ty as quasar_lang::traits::FieldLifecycle>::HAS_LIFECYCLE_BEFORE {
+                        quasar_lang::traits::FieldLifecycle::before_lifecycle(
+                            &mut #ident,
+                            #payer_option,
+                            &__ctx,
+                        )?;
+                    }
+                };
+                stmts.push(wrap_optional(is_optional, ident, &lifecycle_call, true));
+            }
+        }
+
+        // Phase 3c: address verification for NON-init fields (after load).
+        // Uses verify_existing (fast path) — skips on-curve check since the
+        // account already exists on-chain. Safe because SHA256 collision is
+        // computationally infeasible. Init fields use full verify() in Phase 1.
+        if !sem.has_init() {
+            if let Some(address_expr) = &sem.address {
+                let bump_var = format_ident!("__bumps_{}", ident);
+                let call = quote! {
+                    {
+                        let __addr = #address_expr;
+                        #bump_var = quasar_lang::address::AddressVerify::verify_existing(
+                            &__addr, #ident.to_account_view().address(), __program_id,
+                        )?;
+                    }
+                };
+                stmts.push(wrap_optional(is_optional, ident, &call, false));
+            }
+        }
+
+        // Phase 3d: user checks
+        for check in &sem.user_checks {
+            let check_stmts = emit_user_check(sem, check);
+            let combined = quote! { #(#check_stmts)* };
+            stmts.push(wrap_optional(is_optional, ident, &combined, false));
+        }
+
+        // REQUIRES_MUT compile-time assertions
+        for group in &sem.groups {
+            let op_static = emit_op_type_static(group);
+            let path = &group.path;
+            let is_mut = sem.core.is_mut;
+            stmts.push(quote! {
+                const _: () = assert!(
+                    !<#op_static as quasar_lang::ops::AccountOp<#ty>>::REQUIRES_MUT
+                    || #is_mut,
+                    concat!(
+                        "op `", stringify!(#path), "` requires `mut` on field `",
+                        stringify!(#ty), "`"
+                    ),
+                );
+            });
+        }
+    }
+
+    stmts
+}
+
+/// Wrap a code block in `if let Some(ref field) = field { ... }` for optional
+/// accounts. `needs_mut` uses `ref mut` instead.
+fn wrap_optional(
+    is_optional: bool,
+    ident: &syn::Ident,
+    body: &proc_macro2::TokenStream,
+    needs_mut: bool,
 ) -> proc_macro2::TokenStream {
+    if !is_optional {
+        return body.clone();
+    }
+    if needs_mut {
+        quote! {
+            if let Some(ref mut #ident) = #ident {
+                #body
+            }
+        }
+    } else {
+        quote! {
+            if let Some(ref #ident) = #ident {
+                #body
+            }
+        }
+    }
+}
+
+fn emit_user_check(sem: &FieldSemantics, check: &UserCheck) -> Vec<proc_macro2::TokenStream> {
     let field_ident = &sem.core.ident;
     let mut stmts = Vec::new();
 
-    // For Migration<From, To> fields, user checks access source data via
-    // source().unwrap() instead of Deref. At check time (before handler),
-    // the source discriminator is guaranteed present (validated in parse).
-    let is_migration = matches!(sem.core.shape, FieldShape::Migration);
-    let field_access = if is_migration {
-        quote! { #field_ident.source().unwrap() }
-    } else {
-        quote! { #field_ident }
-    };
-
-    for uc in &sem.user_checks {
-        match &uc.kind {
-            UserCheckKind::HasOne { target } => {
-                let err = match &uc.error {
-                    Some(e) => quote! { #e.into() },
-                    None => quote! { QuasarError::HasOneMismatch.into() },
-                };
-                let field_name_str = field_ident.to_string();
-                let target_str = target.to_string();
+    match check {
+        UserCheck::HasOne { targets, error } => {
+            let err = match error {
+                Some(e) => quote! { #e.into() },
+                None => quote! { QuasarError::HasOneMismatch.into() },
+            };
+            for target in targets {
                 stmts.push(quote! {
-                    #[cfg(feature = "debug")]
-                    if !quasar_lang::keys_eq(&#field_access.#target, #target.to_account_view().address()) {
-                        quasar_lang::prelude::log(concat!(
-                            "has_one mismatch: ", #field_name_str, ".", #target_str,
-                            " != ", #target_str, ".address()"
-                        ));
-                    }
                     quasar_lang::validation::check_address_match(
-                        &#field_access.#target,
+                        &#field_ident.#target,
                         #target.to_account_view().address(),
                         #err,
                     )?;
                 });
             }
-            UserCheckKind::Constraint { expr } => {
-                let err = match &uc.error {
-                    Some(e) => quote! { #e.into() },
-                    None => quote! { QuasarError::ConstraintViolation.into() },
-                };
+        }
+        UserCheck::Address { expr, error } => {
+            let err = match error {
+                Some(e) => quote! { #e.into() },
+                None => quote! { QuasarError::AddressMismatch.into() },
+            };
+            stmts.push(quote! {
+                quasar_lang::validation::check_address_match(
+                    #field_ident.to_account_view().address(),
+                    &#expr,
+                    #err,
+                )?;
+            });
+        }
+        UserCheck::Constraints { exprs, error } => {
+            let err = match error {
+                Some(e) => quote! { #e.into() },
+                None => quote! { QuasarError::ConstraintViolation.into() },
+            };
+            for expr in exprs {
                 stmts.push(quote! {
                     quasar_lang::validation::check_constraint(#expr, #err)?;
                 });
             }
-            UserCheckKind::Address { expr } => {
-                let err = match &uc.error {
-                    Some(e) => quote! { #e.into() },
-                    None => quote! { QuasarError::AddressMismatch.into() },
-                };
-                stmts.push(quote! {
-                    quasar_lang::validation::check_address_match(
-                        #field_ident.to_account_view().address(),
-                        &#expr,
-                        #err,
+        }
+    }
+
+    stmts
+}
+
+// ==== Epilogue (Phase 4) ====
+
+pub(crate) fn emit_epilogue(
+    semantics: &[FieldSemantics],
+    op_ctx: &OpEmitCtx,
+) -> syn::Result<proc_macro2::TokenStream> {
+    let mut exit_stmts = Vec::new();
+
+    for sem in semantics {
+        let ty = &sem.core.effective_ty;
+        let field = &sem.core.ident;
+
+        // Phase 4: exit — unconditional emission, symmetric with before_load.
+        // Op-arg grammar guarantees exit_arg always produces valid code.
+        // Gated on HAS_EXIT — dead code eliminated by LLVM.
+        for group in &sem.groups {
+            let op_static = emit_op_type_static(group);
+            let op_live = emit_op_type(group);
+            let op = emit_op_struct(group, exit_arg, op_ctx);
+            exit_stmts.push(quote! {
+                if <#op_static as quasar_lang::ops::AccountOp<#ty>>::HAS_EXIT {
+                    <#op_live as quasar_lang::ops::AccountOp<
+                        #ty,
+                    >>::exit(&#op, &mut self.#field, &__ctx)?;
+                }
+            });
+        }
+
+        // FieldLifecycle exit check for types with lifecycle behavior.
+        if sem.core.is_mut && sem.core.kind == FieldKind::Single && has_field_lifecycle(sem) {
+            let payer_option = match &sem.payer {
+                Some(p) => quote! { Some(self.#p.to_account_view()) },
+                None => quote! { None },
+            };
+            exit_stmts.push(quote! {
+                if <#ty as quasar_lang::traits::FieldLifecycle>::HAS_LIFECYCLE_EXIT {
+                    quasar_lang::traits::FieldLifecycle::exit_lifecycle(
+                        &mut self.#field,
+                        #payer_option,
+                        &__ctx,
                     )?;
-                });
-            }
+                }
+            });
         }
     }
 
-    if !sem.has_init() {
-        if let Some(pda) = &sem.pda {
-            stmts.push(emit_pda_check(sem, field_ident, pda, all_semantics));
+    if exit_stmts.is_empty() {
+        return Ok(quote! {});
+    }
+
+    Ok(quote! {
+        #[inline(always)]
+        fn epilogue(&mut self) -> Result<(), ProgramError> {
+            let __ctx = quasar_lang::ops::OpCtx::new(&crate::ID);
+            #(#exit_stmts)*
+            Ok(())
         }
-        if let Some(token_check) = super::init::emit_non_init_check(sem) {
-            stmts.push(token_check);
+    })
+}
+
+pub(crate) fn emit_has_epilogue(semantics: &[FieldSemantics]) -> proc_macro2::TokenStream {
+    let mut exprs: Vec<proc_macro2::TokenStream> = Vec::new();
+
+    // Op-level HAS_EXIT
+    for sem in semantics {
+        let ty = sem.core.effective_ty.clone();
+        for group in &sem.groups {
+            let op_static = emit_op_type_static(group);
+            exprs.push(quote! {
+                <#op_static as quasar_lang::ops::AccountOp<#ty>>::HAS_EXIT
+            });
         }
-        if let Some(generic_check) = super::params::emit_validate_params(sem) {
-            stmts.push(generic_check);
+
+        // FieldLifecycle exit for types with lifecycle behavior.
+        if sem.core.is_mut && sem.core.kind == FieldKind::Single && has_field_lifecycle(sem) {
+            exprs.push(quote! {
+                <#ty as quasar_lang::traits::FieldLifecycle>::HAS_LIFECYCLE_EXIT
+            });
         }
     }
 
-    if stmts.is_empty() {
-        quote! {}
-    } else if sem.core.optional {
-        quote! {
-            if let Some(ref #field_ident) = #field_ident {
-                #(#stmts)*
-            }
-        }
+    if exprs.is_empty() {
+        quote! { false }
     } else {
-        quote! { #(#stmts)* }
+        quote! { #(#exprs)||* }
     }
 }
 
-fn emit_pda_check(
-    sem: &FieldSemantics,
-    field: &syn::Ident,
-    pda: &PdaConstraint,
-    all_semantics: &[FieldSemantics],
-) -> proc_macro2::TokenStream {
-    let bump_var = format_ident!("__bumps_{}", field);
-    let bindings = emit_seed_bindings(field, pda, all_semantics, SeedRenderContext::Parse, "seed");
-    let seed_lets = bindings.seed_lets;
-    let seed_array_name = format_ident!("__pda_seeds_{}", field);
-    let explicit_bump_name = format_ident!("__bump_val_{}", field);
-    let addr_access = quote! { #field.to_account_view().address() };
-    let literal_seeds = detect_literal_seeds(pda, all_semantics);
-    let bump_assign = emit_pda_bump_assignment(
-        field,
-        pda,
-        &bindings.seed_idents,
-        PdaBumpAssignment {
-            bump_var: &bump_var,
-            addr_expr: &addr_access,
-            seed_array_name: &seed_array_name,
-            explicit_bump_name: &explicit_bump_name,
-            bare_mode: if sem.core.supports_existing_pda_fast_path {
-                PdaBareMode::KnownAddress
-            } else {
-                PdaBareMode::DeriveExpected
-            },
-            log_failure: true,
-            literal_seeds,
-        },
-    );
-
-    quote! {
-        {
-            #(#seed_lets)*
-            #bump_assign
-        }
+fn has_field_lifecycle(sem: &FieldSemantics) -> bool {
+    match &sem.core.effective_ty {
+        syn::Type::Path(tp) => tp
+            .path
+            .segments
+            .last()
+            .is_some_and(|segment| segment.ident == "Migration"),
+        _ => false,
     }
 }
+
+// ==== Helpers ====
 
 fn emit_bump_vars(semantics: &[FieldSemantics]) -> proc_macro2::TokenStream {
     let vars: Vec<proc_macro2::TokenStream> = semantics
         .iter()
-        .filter(|sem| sem.pda.is_some())
+        .filter(|sem| sem.address.is_some())
         .map(|sem| {
             let var = format_ident!("__bumps_{}", sem.core.ident);
             quote! { let mut #var: u8 = 0; }
         })
         .collect();
 
-    if vars.is_empty() {
-        quote! {}
-    } else {
-        quote! { #(#vars)* }
-    }
-}
-
-fn emit_bump_struct(
-    semantics: &[FieldSemantics],
-    bumps_name: &syn::Ident,
-) -> proc_macro2::TokenStream {
-    let fields: Vec<proc_macro2::TokenStream> = semantics
-        .iter()
-        .filter(|sem| sem.pda.is_some())
-        .flat_map(|sem| {
-            let name = &sem.core.ident;
-            let arr_name = format_ident!("__{}_bump", name);
-            vec![quote! { pub #name: u8 }, quote! { pub #arr_name: [u8; 1] }]
-        })
-        .collect();
-
-    if fields.is_empty() {
-        quote! { #[derive(Copy, Clone)] pub struct #bumps_name; }
-    } else {
-        quote! { #[derive(Copy, Clone)] pub struct #bumps_name { #(#fields,)* } }
-    }
+    quote! { #(#vars)* }
 }
 
 fn emit_bump_init(
@@ -318,7 +665,7 @@ fn emit_bump_init(
 ) -> proc_macro2::TokenStream {
     let inits: Vec<proc_macro2::TokenStream> = semantics
         .iter()
-        .filter(|sem| sem.pda.is_some())
+        .filter(|sem| sem.address.is_some())
         .flat_map(|sem| {
             let name = &sem.core.ident;
             let var = format_ident!("__bumps_{}", name);
@@ -334,339 +681,24 @@ fn emit_bump_init(
     }
 }
 
-fn emit_seed_methods_impl(
+pub(crate) fn emit_bump_struct_def(
     semantics: &[FieldSemantics],
-    bumps_name: &syn::Ident,
+    cx: &super::EmitCx,
 ) -> proc_macro2::TokenStream {
-    let methods: Vec<proc_macro2::TokenStream> = semantics
+    let bumps_name = &cx.bumps_name;
+    let fields: Vec<proc_macro2::TokenStream> = semantics
         .iter()
-        .filter_map(|sem| {
-            let pda = sem.pda.as_ref()?;
-            let seeds = seeds_to_emit_nodes(&pda.source, semantics);
-            if seeds.iter().any(|s| matches!(s, SeedEmitNode::InstructionArg { .. })) {
-                return None;
-            }
-
-            let field_ident = &sem.core.ident;
-            let method_name = format_ident!("{}_seeds", field_ident);
-            let bump_arr_field = format_ident!("__{}_bump", field_ident);
-
-            let mut seed_elements: Vec<proc_macro2::TokenStream> = seeds
-                .iter()
-                .map(|node| {
-                    let bytes = render_seed_expr(node, SeedRenderContext::Method);
-                    quote! { quasar_lang::cpi::Seed::from(#bytes) }
-                })
-                .collect();
-
-            seed_elements
-                .push(quote! { quasar_lang::cpi::Seed::from(&bumps.#bump_arr_field as &[u8]) });
-
-            let seed_count = seed_elements.len();
-            Some(quote! {
-                #[inline(always)]
-                pub fn #method_name<'a>(&'a self, bumps: &'a #bumps_name) -> [quasar_lang::cpi::Seed<'a>; #seed_count] {
-                    [#(#seed_elements),*]
-                }
-            })
+        .filter(|sem| sem.address.is_some())
+        .flat_map(|sem| {
+            let name = &sem.core.ident;
+            let arr_name = format_ident!("__{}_bump", name);
+            vec![quote! { pub #name: u8 }, quote! { pub #arr_name: [u8; 1] }]
         })
         .collect();
 
-    quote! { #(#methods)* }
-}
-
-pub(super) struct SeedBindingParts {
-    pub(super) seed_idents: Vec<syn::Ident>,
-    pub(super) seed_lets: Vec<proc_macro2::TokenStream>,
-}
-
-#[derive(Clone, Copy)]
-pub(super) enum PdaBareMode {
-    KnownAddress,
-    DeriveExpected,
-}
-
-pub(super) struct PdaBumpAssignment<'a> {
-    pub(super) bump_var: &'a syn::Ident,
-    pub(super) addr_expr: &'a proc_macro2::TokenStream,
-    pub(super) seed_array_name: &'a syn::Ident,
-    pub(super) explicit_bump_name: &'a syn::Ident,
-    pub(super) bare_mode: PdaBareMode,
-    pub(super) log_failure: bool,
-    /// Raw bytes when every seed is a byte literal — enables the const-PDA
-    /// fast path in `emit_pda_bump_assignment`.
-    pub(super) literal_seeds: Option<Vec<Vec<u8>>>,
-}
-
-/// Returns the raw seed bytes when every seed is a compile-time byte
-/// literal; `None` if any seed references a field, an instruction arg, or
-/// any other non-literal expression.
-pub(super) fn detect_literal_seeds(
-    pda: &PdaConstraint,
-    all_semantics: &[FieldSemantics],
-) -> Option<Vec<Vec<u8>>> {
-    seeds_to_emit_nodes(&pda.source, all_semantics)
-        .iter()
-        .map(|n| match n {
-            SeedEmitNode::Literal(bytes) => Some(bytes.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
-pub(super) fn emit_seed_bindings(
-    field: &syn::Ident,
-    pda: &PdaConstraint,
-    all_semantics: &[FieldSemantics],
-    ctx: SeedRenderContext,
-    name_prefix: &str,
-) -> SeedBindingParts {
-    let seeds = seeds_to_emit_nodes(&pda.source, all_semantics);
-    emit_seed_bindings_from_nodes(field, &seeds, ctx, name_prefix)
-}
-
-fn emit_seed_bindings_from_nodes(
-    field: &syn::Ident,
-    seeds: &[SeedEmitNode],
-    ctx: SeedRenderContext,
-    name_prefix: &str,
-) -> SeedBindingParts {
-    let mut rooted_init_bindings = BTreeMap::<String, syn::Ident>::new();
-    let mut root_lets = Vec::new();
-
-    if matches!(ctx, SeedRenderContext::Init) {
-        for node in seeds {
-            let SeedEmitNode::FieldRootedExpr {
-                root_ident,
-                inner_ty: Some(inner_ty),
-                wrapper_kind,
-                ..
-            } = node
-            else {
-                continue;
-            };
-
-            let key = root_ident.to_string();
-            if rooted_init_bindings.contains_key(&key) {
-                continue;
-            }
-
-            let binding_ident = format_ident!("__{}_{}_root_{}", name_prefix, field, root_ident);
-            let typed_cast = emit_root_wrapper_cast(root_ident, inner_ty, wrapper_kind.as_ref());
-            root_lets.push(quote! { let #binding_ident = unsafe { #typed_cast }; });
-            rooted_init_bindings.insert(key, binding_ident);
-        }
-    }
-
-    let seed_idents: Vec<syn::Ident> = seeds
-        .iter()
-        .enumerate()
-        .map(|(i, _)| format_ident!("__{}_{}_{}", name_prefix, field, i))
-        .collect();
-
-    let seed_lets: Vec<proc_macro2::TokenStream> = seed_idents
-        .iter()
-        .zip(seeds.iter())
-        .map(|(ident, node)| {
-            let expr = match (ctx, node) {
-                (
-                    SeedRenderContext::Init,
-                    SeedEmitNode::FieldRootedExpr {
-                        expr,
-                        root_ident,
-                        inner_ty: Some(_),
-                        ..
-                    },
-                ) => {
-                    let binding_ident = &rooted_init_bindings[&root_ident.to_string()];
-                    render_expr_with_bound_root(expr, root_ident, binding_ident)
-                }
-                _ => render_seed_expr(node, ctx),
-            };
-            quote! { let #ident: &[u8] = #expr; }
-        })
-        .collect();
-
-    SeedBindingParts {
-        seed_idents,
-        seed_lets: root_lets.into_iter().chain(seed_lets).collect(),
-    }
-}
-
-fn emit_root_wrapper_cast(
-    root_ident: &syn::Ident,
-    inner_ty: &syn::Type,
-    wrapper_kind: Option<&AccountWrapperKind>,
-) -> proc_macro2::TokenStream {
-    let base_ty = strip_generics(inner_ty);
-    match wrapper_kind {
-        Some(AccountWrapperKind::InterfaceAccount) => {
-            quote! {
-                quasar_lang::accounts::interface_account::InterfaceAccount::<#base_ty>::from_account_view_unchecked(#root_ident)
-            }
-        }
-        _ => {
-            quote! {
-                quasar_lang::accounts::account::Account::<#base_ty>::from_account_view_unchecked(#root_ident)
-            }
-        }
-    }
-}
-
-fn render_expr_with_bound_root(
-    expr: &syn::Expr,
-    root_ident: &syn::Ident,
-    binding_ident: &syn::Ident,
-) -> proc_macro2::TokenStream {
-    match expr {
-        syn::Expr::Path(ep) if ep.path.segments.len() == 1 && ep.qself.is_none() => {
-            let ident = &ep.path.segments[0].ident;
-            if ident == root_ident {
-                quote! { #binding_ident }
-            } else {
-                quote! { #expr }
-            }
-        }
-        syn::Expr::Field(field_expr) => {
-            let base = render_expr_with_bound_root(&field_expr.base, root_ident, binding_ident);
-            let member = &field_expr.member;
-            quote! { (#base).#member }
-        }
-        syn::Expr::Paren(paren_expr) => {
-            let inner = render_expr_with_bound_root(&paren_expr.expr, root_ident, binding_ident);
-            quote! { (#inner) }
-        }
-        syn::Expr::MethodCall(method_call) => {
-            let receiver =
-                render_expr_with_bound_root(&method_call.receiver, root_ident, binding_ident);
-            let method = &method_call.method;
-            let turbofish = &method_call.turbofish;
-            let args: Vec<_> = method_call.args.iter().collect();
-            quote! { (#receiver).#method #turbofish ( #(#args),* ) }
-        }
-        syn::Expr::Reference(reference_expr) => {
-            let inner =
-                render_expr_with_bound_root(&reference_expr.expr, root_ident, binding_ident);
-            let mutability = &reference_expr.mutability;
-            quote! { &#mutability (#inner) }
-        }
-        _ => quote! { #expr },
-    }
-}
-
-pub(super) fn emit_pda_bump_assignment(
-    field: &syn::Ident,
-    pda: &PdaConstraint,
-    seed_idents: &[syn::Ident],
-    assignment: PdaBumpAssignment<'_>,
-) -> proc_macro2::TokenStream {
-    let PdaBumpAssignment {
-        bump_var,
-        addr_expr,
-        seed_array_name,
-        explicit_bump_name,
-        bare_mode,
-        log_failure,
-        literal_seeds,
-    } = assignment;
-
-    // Const-PDA fast path: when every seed is a compile-time byte literal
-    // and the bump is bare, evaluate the PDA at compile time via
-    // `find_program_address_const` and emit a single `keys_eq` at runtime —
-    // skipping ~300 CU of `find_bump_for_address` /
-    // `based_try_find_program_address`.
-    if let (Some(bytes), Some(BumpSyntax::Bare) | None) = (literal_seeds.as_ref(), &pda.bump) {
-        let invalid_pda_error = emit_invalid_pda_error_expr(field, log_failure);
-        let seed_bytes = bytes.iter().map(|seed| {
-            let b = seed.iter().map(|b| quote! { #b });
-            quote! { &[#(#b),*] as &[u8] }
-        });
-        return quote! {
-            const __PDA_CONST: (quasar_lang::prelude::Address, u8) =
-                quasar_lang::pda::find_program_address_const(
-                    &[#(#seed_bytes),*],
-                    &crate::ID,
-                );
-            if !quasar_lang::keys_eq(#addr_expr, &__PDA_CONST.0) {
-                return Err({ #invalid_pda_error });
-            }
-            #bump_var = __PDA_CONST.1;
-        };
-    }
-
-    match &pda.bump {
-        Some(BumpSyntax::Explicit(expr)) => match bare_mode {
-            PdaBareMode::KnownAddress => {
-                let failure = emit_failure_log(field, log_failure);
-                quote! {
-                    let #explicit_bump_name: u8 = #expr;
-                    let __bump_ref: &[u8] = &[#explicit_bump_name];
-                    let #seed_array_name = [#(#seed_idents,)* __bump_ref];
-                    quasar_lang::pda::verify_program_address(&#seed_array_name, __program_id, #addr_expr)
-                        .map_err(|__e| {
-                            #failure
-                            __e
-                        })?;
-                    #bump_var = #explicit_bump_name;
-                }
-            }
-            PdaBareMode::DeriveExpected => {
-                let invalid_pda_error = emit_invalid_pda_error_expr(field, log_failure);
-                quote! {
-                    let #explicit_bump_name: u8 = #expr;
-                    let #seed_array_name = [#(#seed_idents),*];
-                    let (__expected, __derived_bump) =
-                        quasar_lang::pda::based_try_find_program_address(&#seed_array_name, __program_id)?;
-                    if !quasar_lang::keys_eq(#addr_expr, &__expected) || __derived_bump != #explicit_bump_name {
-                        return Err({ #invalid_pda_error });
-                    }
-                    #bump_var = #explicit_bump_name;
-                }
-            }
-        },
-        Some(BumpSyntax::Bare) | None => {
-            let invalid_pda_error = emit_invalid_pda_error_expr(field, log_failure);
-            match bare_mode {
-                PdaBareMode::KnownAddress => quote! {
-                    let #seed_array_name = [#(#seed_idents),*];
-                    #bump_var = quasar_lang::pda::find_bump_for_address(
-                        &#seed_array_name,
-                        __program_id,
-                        #addr_expr,
-                    ).map_err(|_| { #invalid_pda_error })?;
-                },
-                PdaBareMode::DeriveExpected => quote! {
-                    let #seed_array_name = [#(#seed_idents),*];
-                    let (__expected, __derived_bump) =
-                        quasar_lang::pda::based_try_find_program_address(&#seed_array_name, __program_id)?;
-                    if !quasar_lang::keys_eq(#addr_expr, &__expected) {
-                        return Err({ #invalid_pda_error });
-                    }
-                    #bump_var = __derived_bump;
-                },
-            }
-        }
-    }
-}
-
-fn emit_failure_log(field: &syn::Ident, enabled: bool) -> proc_macro2::TokenStream {
-    if enabled {
-        quote! {
-            #[cfg(feature = "debug")]
-            quasar_lang::prelude::log(concat!(
-                "Account '", stringify!(#field),
-                "': PDA verification failed"
-            ));
-        }
+    if fields.is_empty() {
+        quote! { #[derive(Copy, Clone)] pub struct #bumps_name; }
     } else {
-        quote! {}
-    }
-}
-
-fn emit_invalid_pda_error_expr(field: &syn::Ident, log_failure: bool) -> proc_macro2::TokenStream {
-    let log = emit_failure_log(field, log_failure);
-    quote! {
-        #log
-        quasar_lang::prelude::ProgramError::from(QuasarError::InvalidPda)
+        quote! { #[derive(Copy, Clone)] pub struct #bumps_name { #(#fields,)* } }
     }
 }

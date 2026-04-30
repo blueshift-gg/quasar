@@ -1,5 +1,6 @@
 use {
     crate::state::{ThreeSeedAccount, ThreeSeedAccountInner},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 
@@ -9,9 +10,9 @@ pub struct InitThreeSeeds {
     pub payer: Signer,
     pub first: Signer,
     pub second: Signer,
-    #[account(mut, init, payer = payer, seeds = ThreeSeedAccount::seeds(first, second), bump)]
+    #[account(mut, init, payer = payer, address = ThreeSeedAccount::seeds(first.address(), second.address()))]
     pub triple: Account<ThreeSeedAccount>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl InitThreeSeeds {

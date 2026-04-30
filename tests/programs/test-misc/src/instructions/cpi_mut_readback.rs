@@ -1,5 +1,6 @@
 use {
     crate::state::{SimpleAccount, SimpleAccountInner},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 
@@ -23,7 +24,7 @@ pub struct CpiMutReadback {
     pub account: Account<SimpleAccount>,
     #[account(mut)]
     pub payer: Signer,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl CpiMutReadback {

@@ -24,9 +24,6 @@ pub trait AccountLoad: AsAccountView + Sized {
     /// ```
     type BehaviorTarget;
 
-    /// Per-type config for namespaced constraints (e.g. `token::mint`).
-    type Params: Default;
-
     /// Validate this account after header flag checks pass.
     ///
     /// Header flags (signer, writable, executable) are already validated by
@@ -58,12 +55,6 @@ pub trait AccountLoad: AsAccountView + Sized {
     fn load_mut(view: &mut AccountView, field_name: &str) -> Result<Self, ProgramError> {
         Self::check(view, field_name)?;
         Ok(unsafe { core::ptr::read(Self::from_view_unchecked_mut(view) as *const Self) })
-    }
-
-    /// Validate namespaced constraints. No-op for types with `Params = ()`.
-    #[inline(always)]
-    fn validate(&self, _params: &Self::Params) -> Result<(), ProgramError> {
-        Ok(())
     }
 
     /// Get a mutable view for lifecycle operations (close, realloc).

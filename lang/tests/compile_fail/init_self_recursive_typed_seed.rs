@@ -17,7 +17,7 @@ pub struct Bad {
     pub payer: Signer,
     #[account(mut, init, payer = payer, seeds = Item::seeds(item.namespace), bump)]
     pub item: Account<Item>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 fn main() {}

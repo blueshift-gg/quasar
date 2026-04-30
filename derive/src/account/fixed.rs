@@ -46,7 +46,6 @@ pub(super) fn generate_account(
             let account_load = quote::quote! {
                 impl quasar_lang::account_load::AccountLoad for #name {
                     type BehaviorTarget = Self;
-                    type Params = ();
 
                     #[inline(always)]
                     fn check(
@@ -56,6 +55,8 @@ pub(super) fn generate_account(
                         #name::check(view, field_name)
                     }
                 }
+
+                impl quasar_lang::traits::FieldLifecycle for #name {}
             };
             // Custom accounts do NOT get generated AccountInit/AccountExit —
             // the user provides manual trait impls if needed.
@@ -143,19 +144,21 @@ pub(super) fn generate_account(
                 }
             }
 
-            impl quasar_lang::account_exit::AccountExit for #name {
+            impl quasar_lang::ops::close_program::AccountClose for #name {
                 #[inline(always)]
                 fn close(
                     view: &mut quasar_lang::__internal::AccountView,
-                    ctx: quasar_lang::account_exit::CloseCtx<'_>,
+                    dest: &quasar_lang::__internal::AccountView,
                 ) -> Result<(), quasar_lang::prelude::ProgramError> {
-                    quasar_lang::account_exit::close_program_account(
+                    quasar_lang::ops::close_program::close_program_account(
                         view,
-                        ctx.destination,
+                        dest,
                         <Self as quasar_lang::traits::Discriminator>::DISCRIMINATOR.len(),
                     )
                 }
             }
+
+            impl quasar_lang::ops::SupportsRealloc for #name {}
         }
     };
 

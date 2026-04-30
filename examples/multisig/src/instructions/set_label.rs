@@ -6,12 +6,11 @@ pub struct SetLabel {
     pub creator: Signer,
     #[account(
         mut,
-        has_one = creator,
-        seeds = MultisigConfig::seeds(creator),
-        bump = config.bump
+        has_one(creator),
+        address = MultisigConfig::seeds(creator.address())
     )]
     pub config: Account<MultisigConfig>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl SetLabel {

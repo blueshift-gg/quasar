@@ -1,5 +1,6 @@
 use {
     crate::state::{SpaceTestAccount, SpaceTestAccountInner},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 
@@ -7,9 +8,9 @@ use {
 pub struct SpaceOverride {
     #[account(mut)]
     pub payer: Signer,
-    #[account(mut, init, space = 100, seeds = SpaceTestAccount::seeds(payer), bump)]
+    #[account(mut, init, payer = payer, address = SpaceTestAccount::seeds(payer.address()))]
     pub account: Account<SpaceTestAccount>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl SpaceOverride {

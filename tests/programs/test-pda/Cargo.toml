@@ -11,8 +11,7 @@ workspace = true
 
 [dependencies]
 quasar-lang = { path = "../../../lang" }
-
-[dev-dependencies]
+quasar-derive = { path = "../../../derive" }
 
 [features]
 default = ["alloc"]

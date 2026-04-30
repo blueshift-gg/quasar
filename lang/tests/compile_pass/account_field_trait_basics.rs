@@ -23,7 +23,7 @@ const _: () = assert!(!<Account<MyData> as AccountLoad>::IS_EXECUTABLE);
 const _: () = assert!(<Signer as AccountLoad>::IS_SIGNER);
 
 // Program<T> has IS_EXECUTABLE = true
-const _: () = assert!(<Program<System> as AccountLoad>::IS_EXECUTABLE);
+const _: () = assert!(<Program<SystemProgram> as AccountLoad>::IS_EXECUTABLE);
 
 // UncheckedAccount has all defaults false
 const _: () = assert!(!<UncheckedAccount as AccountLoad>::IS_SIGNER);

@@ -1,6 +1,5 @@
-error: Raw `seeds` are not allowed on `Account<T>` fields; use `typed_seeds` instead
-  --> tests/compile_fail/seeds_raw_on_account.rs:13:5
+error: unknown key-value directive `seeds = ...`
+  --> tests/compile_fail/seeds_raw_on_account.rs:13:15
    |
-13 | /     #[account(seeds = [b"config"], bump = config.bump)]
-14 | |     pub config: Account<Config>,
-   | |_______________________________^
+13 |     #[account(seeds = [b"config"], bump = config.bump)]
+   |               ^^^^^

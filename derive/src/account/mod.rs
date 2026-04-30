@@ -188,7 +188,6 @@ fn generate_custom_account(name: &syn::Ident) -> proc_macro2::TokenStream {
 
         impl quasar_lang::account_load::AccountLoad for #name {
             type BehaviorTarget = Self;
-            type Params = ();
 
             #[inline(always)]
             fn check(
@@ -198,5 +197,7 @@ fn generate_custom_account(name: &syn::Ident) -> proc_macro2::TokenStream {
                 #name::check(view, field_name)
             }
         }
+
+        impl quasar_lang::traits::FieldLifecycle for #name {}
     }
 }

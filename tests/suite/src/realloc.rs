@@ -32,7 +32,7 @@ fn realloc(
         account,
         payer,
         system_program: quasar_svm::system_program::ID,
-        _new_space: new_space,
+        new_space,
     }
     .into();
     svm.process_instruction(&ix, &[])

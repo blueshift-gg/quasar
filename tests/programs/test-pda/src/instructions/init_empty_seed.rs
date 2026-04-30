@@ -1,5 +1,6 @@
 use {
     crate::state::{EmptySeedAccount, EmptySeedAccountInner},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 
@@ -7,9 +8,9 @@ use {
 pub struct InitEmptySeed {
     #[account(mut)]
     pub payer: Signer,
-    #[account(mut, init, payer = payer, seeds = EmptySeedAccount::seeds(), bump)]
+    #[account(mut, init, payer = payer, address = EmptySeedAccount::seeds())]
     pub empty: Account<EmptySeedAccount>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl InitEmptySeed {

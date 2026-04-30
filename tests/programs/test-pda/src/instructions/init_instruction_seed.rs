@@ -1,5 +1,6 @@
 use {
     crate::state::{ItemAccount, ItemAccountInner},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 
@@ -8,9 +9,9 @@ pub struct InitInstructionSeed {
     #[account(mut)]
     pub payer: Signer,
     pub authority: Signer,
-    #[account(mut, init, payer = payer, seeds = ItemAccount::seeds(authority), bump)]
+    #[account(mut, init, payer = payer, address = ItemAccount::seeds(authority.address()))]
     pub item: Account<ItemAccount>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl InitInstructionSeed {

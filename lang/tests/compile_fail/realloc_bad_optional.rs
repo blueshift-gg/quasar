@@ -14,7 +14,7 @@ pub struct BadReallocOptional {
     pub account: Option<Account<DemoAccount>>,
     #[account(mut)]
     pub payer: Signer,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 fn main() {}

@@ -2131,11 +2131,17 @@ name = "quasar-derive"
 version = "0.0.0"
 dependencies = [
  "proc-macro2",
+ "quasar-derive",
+ "quasar-lang",
  "quasar-schema",
+ "quasar-spl",
  "quote",
  "serde",
  "serde_json",
+ "solana-address 2.2.0",
+ "solana-program-error",
  "syn 2.0.117",
+ "trybuild",
 ]
 
 [[package]]
@@ -2302,6 +2308,7 @@ dependencies = [
 name = "quasar-test-errors"
 version = "0.1.0"
 dependencies = [
+ "quasar-derive",
  "quasar-lang",
 ]
 
@@ -2309,6 +2316,7 @@ dependencies = [
 name = "quasar-test-events"
 version = "0.1.0"
 dependencies = [
+ "quasar-derive",
  "quasar-lang",
 ]
 
@@ -2323,20 +2331,25 @@ dependencies = [
 name = "quasar-test-migrate"
 version = "0.1.0"
 dependencies = [
+ "quasar-derive",
  "quasar-lang",
+ "quasar-spl",
 ]
 
 [[package]]
 name = "quasar-test-misc"
 version = "0.1.0"
 dependencies = [
+ "quasar-derive",
  "quasar-lang",
+ "quasar-spl",
 ]
 
 [[package]]
 name = "quasar-test-one-of"
 version = "0.1.0"
 dependencies = [
+ "quasar-derive",
  "quasar-lang",
 ]
 
@@ -2344,6 +2357,7 @@ dependencies = [
 name = "quasar-test-pda"
 version = "0.1.0"
 dependencies = [
+ "quasar-derive",
  "quasar-lang",
 ]
 
@@ -2351,6 +2365,7 @@ dependencies = [
 name = "quasar-test-raw"
 version = "0.1.0"
 dependencies = [
+ "quasar-derive",
  "quasar-lang",
 ]
 
@@ -2385,6 +2400,7 @@ dependencies = [
 name = "quasar-test-sysvar"
 version = "0.1.0"
 dependencies = [
+ "quasar-derive",
  "quasar-lang",
 ]
 
@@ -2392,6 +2408,7 @@ dependencies = [
 name = "quasar-test-token-cpi"
 version = "0.1.0"
 dependencies = [
+ "quasar-derive",
  "quasar-lang",
  "quasar-spl",
 ]
@@ -2400,6 +2417,7 @@ dependencies = [
 name = "quasar-test-token-init"
 version = "0.1.0"
 dependencies = [
+ "quasar-derive",
  "quasar-lang",
  "quasar-spl",
 ]
@@ -2408,6 +2426,7 @@ dependencies = [
 name = "quasar-test-token-validate"
 version = "0.1.0"
 dependencies = [
+ "quasar-derive",
  "quasar-lang",
  "quasar-spl",
 ]

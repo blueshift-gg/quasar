@@ -1,7 +1,11 @@
+//! Client instruction macro generation — adapted from v1.
+//! No FieldShape references.
+
 use {
+    crate::helpers::extract_generic_inner_type,
     proc_macro2::TokenStream,
-    quasar_schema::{known_address_for_type, pascal_to_snake, IdlAccountItem, IdlPda, IdlSeed},
-    quote::{format_ident, quote, ToTokens},
+    quasar_schema::{known_address_for_type, pascal_to_snake, IdlAccountItem},
+    quote::{format_ident, quote},
 };
 
 pub fn generate_accounts_macro(
@@ -107,68 +111,69 @@ fn describe_accounts(
 ) -> Vec<IdlAccountItem> {
     semantics
         .iter()
-        .map(|sem| IdlAccountItem {
-            name: sem.core.ident.to_string(),
-            writable: sem.is_writable(),
-            signer: matches!(sem.core.shape, crate::accounts::resolve::FieldShape::Signer)
-                || sem.client_requires_signer(),
-            pda: sem.pda.as_ref().map(describe_pda),
-            address: known_address(sem).map(str::to_owned),
-            migration: None,
+        .map(|sem| {
+            let ty = &sem.core.effective_ty;
+            // Detect signer/program/sysvar from the type, not from FieldShape
+            let is_signer = is_signer_type(ty);
+            let is_program = is_program_type(ty);
+            let is_sysvar = is_sysvar_type(ty);
+
+            IdlAccountItem {
+                name: sem.core.ident.to_string(),
+                writable: sem.is_writable(),
+                signer: is_signer || client_requires_signer(sem),
+                pda: None, // PDA info now opaque via AddressVerify
+                address: known_address(ty, is_program, is_sysvar).map(str::to_owned),
+                migration: None,
+            }
         })
         .collect()
 }
 
-fn describe_pda(pda: &crate::accounts::resolve::PdaConstraint) -> IdlPda {
-    let seeds = match &pda.source {
-        crate::accounts::resolve::PdaSource::Raw { seeds } => seeds,
-        crate::accounts::resolve::PdaSource::Typed { args, .. } => args,
+fn client_requires_signer(sem: &crate::accounts::resolve::FieldSemantics) -> bool {
+    // init without address = keypair signer (non-PDA init)
+    sem.has_init() && sem.address.is_none()
+}
+
+fn is_signer_type(ty: &syn::Type) -> bool {
+    type_base_name(ty).is_some_and(|n| n == "Signer")
+}
+
+fn is_program_type(ty: &syn::Type) -> bool {
+    extract_generic_inner_type(ty, "Program").is_some()
+        || extract_generic_inner_type(ty, "Interface").is_some()
+}
+
+fn is_sysvar_type(ty: &syn::Type) -> bool {
+    extract_generic_inner_type(ty, "Sysvar").is_some()
+}
+
+fn type_base_name(ty: &syn::Type) -> Option<&syn::Ident> {
+    match ty {
+        syn::Type::Path(tp) => tp.path.segments.last().map(|s| &s.ident),
+        _ => None,
+    }
+}
+
+fn known_address(ty: &syn::Type, is_program: bool, is_sysvar: bool) -> Option<&'static str> {
+    let inner_name = if is_program {
+        extract_generic_inner_type(ty, "Program")
+            .or_else(|| extract_generic_inner_type(ty, "Interface"))
+    } else if is_sysvar {
+        extract_generic_inner_type(ty, "Sysvar")
+    } else {
+        None
     };
 
-    IdlPda {
-        seeds: seeds.iter().map(describe_seed).collect(),
-    }
-}
+    let inner_str = inner_name
+        .and_then(|t| type_base_name(t))
+        .map(|i| i.to_string());
 
-fn describe_seed(seed: &crate::accounts::resolve::SeedNode) -> IdlSeed {
-    match seed {
-        crate::accounts::resolve::SeedNode::Literal(bytes) => IdlSeed::Const {
-            value: bytes.clone(),
-        },
-        crate::accounts::resolve::SeedNode::AccountAddress { field } => IdlSeed::Account {
-            path: field.to_string(),
-        },
-        crate::accounts::resolve::SeedNode::FieldBytes { root, path, .. } => IdlSeed::Account {
-            path: join_path(root, path),
-        },
-        crate::accounts::resolve::SeedNode::InstructionArg { name, .. } => IdlSeed::Arg {
-            path: name.to_string(),
-        },
-        crate::accounts::resolve::SeedNode::FieldRootedExpr { expr, .. }
-        | crate::accounts::resolve::SeedNode::OpaqueExpr(expr) => IdlSeed::Arg {
-            path: expr.to_token_stream().to_string(),
-        },
-    }
-}
-
-fn join_path(root: &syn::Ident, path: &[syn::Ident]) -> String {
-    let mut joined = root.to_string();
-    for segment in path {
-        joined.push('.');
-        joined.push_str(&segment.to_string());
-    }
-    joined
-}
-
-fn known_address(sem: &crate::accounts::resolve::FieldSemantics) -> Option<&'static str> {
-    let inner = sem.core.inner_name.as_ref().map(|name| name.to_string());
-    match sem.core.shape {
-        crate::accounts::resolve::FieldShape::Program => {
-            known_address_for_type("Program", inner.as_deref())
-        }
-        crate::accounts::resolve::FieldShape::Sysvar => {
-            known_address_for_type("Sysvar", inner.as_deref())
-        }
-        _ => None,
+    if is_program {
+        known_address_for_type("Program", inner_str.as_deref())
+    } else if is_sysvar {
+        known_address_for_type("Sysvar", inner_str.as_deref())
+    } else {
+        None
     }
 }

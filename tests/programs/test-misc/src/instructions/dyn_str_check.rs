@@ -1,4 +1,4 @@
-use {crate::state::DynStrAccount, quasar_lang::prelude::*};
+use {crate::state::DynStrAccount, quasar_derive::Accounts, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
 pub struct DynStrCheck {

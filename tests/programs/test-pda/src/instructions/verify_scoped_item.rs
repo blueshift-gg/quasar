@@ -1,12 +1,13 @@
 use {
     crate::state::{NamespaceConfig, ScopedItem},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 
 #[derive(Accounts)]
 pub struct VerifyScopedItem {
     pub config: Account<NamespaceConfig>,
-    #[account(seeds = ScopedItem::seeds(config.namespace), bump = item.bump)]
+    #[account(address = ScopedItem::seeds(config.namespace.into()))]
     pub item: Account<ScopedItem>,
 }
 

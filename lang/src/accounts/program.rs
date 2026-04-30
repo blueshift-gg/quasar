@@ -22,7 +22,6 @@ impl<T: crate::traits::Id> crate::account_load::AccountLoad for Program<T> {
     const IS_EXECUTABLE: bool = true;
 
     type BehaviorTarget = Self;
-    type Params = ();
 
     #[inline(always)]
     fn check(view: &AccountView, field_name: &str) -> Result<(), ProgramError> {
@@ -55,3 +54,5 @@ impl<T: crate::traits::Id> Program<T> {
         event.emit(|data| crate::event::emit_event_cpi(program, ea, data, bump))
     }
 }
+
+impl<T: crate::traits::Id> crate::traits::FieldLifecycle for Program<T> {}

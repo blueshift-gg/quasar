@@ -63,17 +63,11 @@ impl<T: Owners + AccountCheck> InterfaceAccount<T> {
 
 impl<T: Owners + AccountCheck> crate::account_load::AccountLoad for InterfaceAccount<T> {
     type BehaviorTarget = T;
-    type Params = <T as AccountCheck>::Params;
 
     #[inline(always)]
     fn check(view: &AccountView, _field_name: &str) -> Result<(), ProgramError> {
         check_owners(view, T::owners())?;
         T::check(view)
-    }
-
-    #[inline(always)]
-    fn validate(&self, params: &Self::Params) -> Result<(), ProgramError> {
-        <T as AccountCheck>::validate(&self.view, params)
     }
 }
 
@@ -92,3 +86,5 @@ impl<T: ZeroCopyDeref> core::ops::DerefMut for InterfaceAccount<T> {
         unsafe { T::deref_from_mut(&mut self.view) }
     }
 }
+
+impl<T> crate::traits::FieldLifecycle for InterfaceAccount<T> {}

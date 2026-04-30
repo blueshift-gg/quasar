@@ -46,7 +46,7 @@ pub(super) const INSTRUCTION_INITIALIZE: &str = r#"use quasar_lang::prelude::*;
 #[derive(Accounts)]
 pub struct Initialize {
     pub payer: Signer,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl Initialize {

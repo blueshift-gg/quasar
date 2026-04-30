@@ -1,6 +1,7 @@
 use {
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
-    quasar_spl::{Mint, Token, TokenCpi},
+    quasar_spl::{Mint, Token, TokenCpi, TokenProgram},
 };
 
 #[derive(Accounts)]
@@ -10,7 +11,7 @@ pub struct Burn {
     pub from: Account<Token>,
     #[account(mut)]
     pub mint: Account<Mint>,
-    pub token_program: Program<Token>,
+    pub token_program: Program<TokenProgram>,
 }
 
 impl Burn {

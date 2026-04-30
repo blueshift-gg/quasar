@@ -1,5 +1,6 @@
 use {
     crate::state::{ScopedItem, ScopedItemInner},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 
@@ -8,9 +9,9 @@ use {
 pub struct InitScopedItem {
     #[account(mut)]
     pub payer: Signer,
-    #[account(mut, init, payer = payer, seeds = ScopedItem::seeds(namespace), bump)]
+    #[account(mut, init, payer = payer, address = ScopedItem::seeds(namespace))]
     pub item: Account<ScopedItem>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl InitScopedItem {

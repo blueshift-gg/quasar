@@ -1,4 +1,4 @@
-use {crate::events::SimpleEvent, quasar_lang::prelude::*};
+use {crate::events::SimpleEvent, quasar_derive::Accounts, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
 pub struct EmitU64Event {

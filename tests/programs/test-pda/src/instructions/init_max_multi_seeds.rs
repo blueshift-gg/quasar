@@ -1,20 +1,20 @@
-use quasar_lang::prelude::*;
+use {
+    quasar_derive::{Accounts, Seeds},
+    quasar_lang::prelude::*,
+};
+
+#[derive(Seeds)]
+#[seeds(b"max_multi_seeds")]
+pub struct MaxMultiSeedsPda;
 
 #[derive(Accounts)]
 pub struct InitMaxMultiSeeds {
     #[account(mut)]
     pub payer: Signer,
     pub authority: Signer,
-    #[account(
-        seeds = [
-            b"max", b"max", b"max", b"max", b"max",
-            b"max", b"max", b"max", b"max", b"max",
-            b"max", b"max", b"max", b"max", b"max",
-        ],
-        bump
-    )]
+    #[account(address = MaxMultiSeedsPda::seeds())]
     pub complex: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl InitMaxMultiSeeds {

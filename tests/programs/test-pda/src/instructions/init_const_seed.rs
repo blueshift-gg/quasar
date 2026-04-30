@@ -1,5 +1,6 @@
 use {
     crate::state::{IntakeQueue, IntakeQueueInner, SIDE_A},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 
@@ -8,9 +9,9 @@ pub struct InitConstSeed {
     #[account(mut)]
     pub payer: Signer,
     pub authority: Signer,
-    #[account(mut, init, payer = payer, seeds = IntakeQueue::seeds(authority, SIDE_A), bump)]
+    #[account(mut, init, payer = payer, address = IntakeQueue::seeds(authority.address(), SIDE_A))]
     pub intake: Account<IntakeQueue>,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl InitConstSeed {

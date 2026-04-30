@@ -1,5 +1,6 @@
 use {
     crate::{events::SimpleEvent, EventAuthority, QuasarTestEvents},
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
 

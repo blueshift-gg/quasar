@@ -316,7 +316,7 @@ declare_id!("{program_id}");
 #[derive(Accounts)]
 pub struct Initialize {{
     pub payer: Signer,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }}
 
 impl Initialize {{

@@ -1,18 +1,26 @@
 use {
+    quasar_derive::Accounts,
     quasar_lang::prelude::*,
-    quasar_spl::{AssociatedTokenProgram, Mint2022, Token2022},
+    quasar_spl::{ops::ata_init, AssociatedTokenProgram, Mint2022, Token2022, Token2022Program},
 };
 
 #[derive(Accounts)]
 pub struct InitAtaT22 {
     #[account(mut)]
     pub payer: Signer,
-    #[account(mut, init, associated_token::mint = mint, associated_token::authority = wallet)]
+    #[account(mut,
+        init, payer = payer,
+        ata_init(
+            authority = wallet, mint = mint, payer = payer, token_program = token_program,
+            system_program = system_program, ata_program = ata_program,
+            idempotent = false,
+        ),
+    )]
     pub ata: Account<Token2022>,
     pub wallet: Signer,
     pub mint: Account<Mint2022>,
-    pub token_program: Program<Token2022>,
-    pub system_program: Program<System>,
+    pub token_program: Program<Token2022Program>,
+    pub system_program: Program<SystemProgram>,
     pub ata_program: Program<AssociatedTokenProgram>,
 }
 

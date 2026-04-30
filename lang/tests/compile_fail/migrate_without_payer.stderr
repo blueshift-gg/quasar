@@ -1,5 +1,0 @@
-error: Migration<From, To> requires a payer. Add a `payer` field or specify `payer = <field>` on the field.
-  --> tests/compile_fail/migrate_without_payer.rs:22:5
-   |
-22 |     pub config: Migration<ConfigV1, ConfigV2>,
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

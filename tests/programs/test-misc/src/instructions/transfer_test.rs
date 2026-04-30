@@ -1,4 +1,4 @@
-use quasar_lang::prelude::*;
+use {quasar_derive::Accounts, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
 pub struct TransferTest {
@@ -6,7 +6,7 @@ pub struct TransferTest {
     pub from: Signer,
     #[account(mut)]
     pub to: UncheckedAccount,
-    pub system_program: Program<System>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl TransferTest {

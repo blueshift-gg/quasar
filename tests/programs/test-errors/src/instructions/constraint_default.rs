@@ -1,8 +1,8 @@
-use quasar_lang::prelude::*;
+use {quasar_derive::Accounts, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
 pub struct ConstraintDefault {
-    #[account(constraint = false)]
+    #[account(constraints(false))]
     pub target: SystemAccount,
 }
 

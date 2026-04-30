@@ -152,6 +152,10 @@ pub fn parse_field_constraints(attrs: &[syn::Attribute]) -> FieldConstraints {
                 c.associated_token_authority = extract_eq_ident(d);
             } else if d.starts_with("address") {
                 c.has_address = true;
+                // v3 grammar: address = Type::seeds(arg1, arg2)
+                // Extract account refs from the seeds call args.
+                let refs = extract_seed_account_refs(d);
+                c.seeds_account_refs.extend(refs);
             } else if d.starts_with("constraint") {
                 c.has_constraint = true;
             } else if d.starts_with("close") {

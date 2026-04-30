@@ -168,7 +168,7 @@ impl<T: Owner + AsAccountView + crate::traits::Discriminator> Account<T> {
     #[inline(always)]
     pub fn close(&mut self, destination: &AccountView) -> Result<(), ProgramError> {
         let view = unsafe { &mut *(self as *mut Account<T> as *mut AccountView) };
-        crate::account_exit::close_program_account(
+        crate::ops::close_program::close_program_account(
             view,
             destination,
             <T as crate::traits::Discriminator>::DISCRIMINATOR.len(),
@@ -323,7 +323,6 @@ impl<T: AsAccountView + CheckOwner + AccountCheck + StaticView> crate::account_l
     for Account<T>
 {
     type BehaviorTarget = T;
-    type Params = <T as AccountCheck>::Params;
 
     #[inline(always)]
     fn check(
@@ -331,11 +330,6 @@ impl<T: AsAccountView + CheckOwner + AccountCheck + StaticView> crate::account_l
         field_name: &str,
     ) -> Result<(), solana_program_error::ProgramError> {
         crate::validation::check_account::<T>(view, field_name)
-    }
-
-    #[inline(always)]
-    fn validate(&self, params: &Self::Params) -> Result<(), solana_program_error::ProgramError> {
-        <T as AccountCheck>::validate(self.inner.to_account_view(), params)
     }
 }
 
@@ -354,3 +348,5 @@ impl<T> core::ops::DerefMut for Account<T> {
         &mut self.inner
     }
 }
+
+impl<T> crate::traits::FieldLifecycle for Account<T> {}

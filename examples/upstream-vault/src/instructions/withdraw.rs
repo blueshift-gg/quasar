@@ -1,10 +1,10 @@
-use quasar_lang::prelude::*;
+use {super::deposit::VaultPda, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
 pub struct Withdraw {
     #[account(mut)]
     pub user: Signer,
-    #[account(mut, seeds = [b"vault", user], bump)]
+    #[account(mut, address = VaultPda::seeds(user.address()))]
     pub vault: UncheckedAccount,
 }
 

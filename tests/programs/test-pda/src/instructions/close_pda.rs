@@ -1,4 +1,8 @@
-use {crate::state::UserAccount, quasar_lang::prelude::*};
+use {
+    crate::state::UserAccount,
+    quasar_derive::Accounts,
+    quasar_lang::{ops::close_program, prelude::*},
+};
 
 #[derive(Accounts)]
 pub struct ClosePda {
@@ -6,10 +10,9 @@ pub struct ClosePda {
     pub authority: Signer,
     #[account(
         mut,
-        has_one = authority,
-        close = authority,
-        seeds = UserAccount::seeds(authority),
-        bump = user.bump
+        has_one(authority),
+        address = UserAccount::seeds(authority.address()),
+        close_program(dest = authority)
     )]
     pub user: Account<UserAccount>,
 }

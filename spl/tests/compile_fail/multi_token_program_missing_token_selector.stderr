@@ -1,11 +1,13 @@
-error: multiple token program fields found; specify `token::token_program`, `associated_token::token_program`, or `mint::token_program` explicitly
-  --> tests/compile_fail/multi_token_program_missing_token_selector.rs:13:5
+error: unknown key-value directive `token::mint = ...`
+  --> tests/compile_fail/multi_token_program_missing_token_selector.rs:17:9
    |
-13 | /     #[account(
-14 | |         mut,
-15 | |         init,
-16 | |         payer = payer,
-...  |
-19 | |     )]
-20 | |     pub token: Account<Token>,
-   | |_____________________________^
+17 |         token::mint = mint,
+   |         ^^^^^^^^^^^
+
+warning: unused import: `Token2022`
+ --> tests/compile_fail/multi_token_program_missing_token_selector.rs:3:31
+  |
+3 | use quasar_spl::{Mint, Token, Token2022, TokenProgram, Token2022Program};
+  |                               ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

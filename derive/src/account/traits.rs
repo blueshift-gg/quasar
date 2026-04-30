@@ -75,7 +75,6 @@ pub(super) fn emit_account_check_impl(spec: AccountCheckSpec<'_>) -> proc_macro2
         // It validates: header size, all prefix values <= max, tail bounds, UTF-8.
         quote! {
             impl AccountCheck for #name {
-                type Params = ();
 
                 #[inline(always)]
                 fn check(view: &AccountView) -> Result<(), ProgramError> {
@@ -100,7 +99,6 @@ pub(super) fn emit_account_check_impl(spec: AccountCheckSpec<'_>) -> proc_macro2
     } else {
         quote! {
             impl AccountCheck for #name {
-                type Params = ();
 
                 #[inline(always)]
                 fn check(view: &AccountView) -> Result<(), ProgramError> {

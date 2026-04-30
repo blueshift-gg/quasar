@@ -1,11 +1,12 @@
 use {
+    quasar_derive::Accounts,
     quasar_lang::prelude::{InterfaceAccount, *},
-    quasar_spl::{Mint, TokenInterface},
+    quasar_spl::{ops::mint, Mint, TokenInterface},
 };
 
 #[derive(Accounts)]
 pub struct ValidateMintWithFreezeInterfaceCheck {
-    #[account(mint::authority = mint_authority, mint::decimals = 6, mint::freeze_authority = freeze_authority)]
+    #[account(mint(authority = mint_authority, decimals = 6, freeze_authority = Some(freeze_authority), token_program = token_program))]
     pub mint: InterfaceAccount<Mint>,
     pub mint_authority: Signer,
     pub freeze_authority: UncheckedAccount,
