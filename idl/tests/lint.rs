@@ -15,6 +15,31 @@ fn has_diagnostic(report: &lint::LintReport, rule: LintRule, field: &str) -> boo
         .any(|d| d.rule == rule && d.field.as_deref() == Some(field))
 }
 
+/// Filter to the L001–L009 account-relationship rules. The preflight
+/// family (L010+) fires on any account that lacks a `version` prefix
+/// or `_reserved` padding — that's by design but means tests asserting
+/// "no graph findings" need to ignore preflight noise from minimal
+/// fixtures.
+fn graph_diagnostics(report: &lint::LintReport) -> Vec<&lint::Diagnostic> {
+    report
+        .diagnostics
+        .iter()
+        .filter(|d| {
+            matches!(
+                d.rule,
+                LintRule::L001
+                    | LintRule::L002
+                    | LintRule::L003
+                    | LintRule::L004
+                    | LintRule::L005
+                    | LintRule::L006
+                    | LintRule::L007
+                    | LintRule::L009
+            )
+        })
+        .collect()
+}
+
 #[test]
 fn lint_report_empty_for_constrained_program() {
     let src = r#"
@@ -46,10 +71,10 @@ fn lint_report_empty_for_constrained_program() {
 
     let parsed = quasar_idl::parser::parse_program_from_source(src);
     let report = lint::run_lint(&parsed, &lint::LintConfig::default());
+    let graph = graph_diagnostics(&report);
     assert!(
-        report.diagnostics.is_empty(),
-        "expected no diagnostics, got: {:?}",
-        report.diagnostics
+        graph.is_empty(),
+        "expected no graph diagnostics, got: {graph:?}"
     );
 }
 
@@ -192,10 +217,10 @@ fn l001_no_false_positive_for_signers() {
         }
     "#,
     );
+    let graph = graph_diagnostics(&report);
     assert!(
-        report.diagnostics.is_empty(),
-        "expected no diagnostics, got: {:?}",
-        report.diagnostics
+        graph.is_empty(),
+        "expected no graph diagnostics, got: {graph:?}"
     );
 }
 

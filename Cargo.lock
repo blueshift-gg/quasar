@@ -2169,9 +2169,11 @@ dependencies = [
  "bs58",
  "proc-macro2",
  "quasar-schema",
+ "quote",
  "serde",
  "serde_json",
  "syn 2.0.117",
+ "tempfile",
  "toml 0.8.23",
 ]
 

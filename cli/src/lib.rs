@@ -152,6 +152,19 @@ pub struct LintCommand {
     /// Output the account graph (ascii, mermaid, dot, json)
     #[arg(long, value_name = "FORMAT")]
     pub graph: Option<String>,
+
+    /// Diff the current parse against the on-disk `quasar.lock.json`
+    /// snapshot — runs the L013–L026 cross-build rules in addition
+    /// to the single-build rules. No-op (with a hint) when no lock
+    /// file exists yet.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub diff: bool,
+
+    /// Write the current parse to `quasar.lock.json`, replacing any
+    /// existing snapshot. Run after a release to baseline the next
+    /// `--diff` invocation against the just-shipped surface.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub update_lock: bool,
 }
 
 #[derive(Args, Debug, Default)]

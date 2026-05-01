@@ -1,6 +1,6 @@
 use {
     crate::{config::QuasarConfig, error::CliResult, utils, LintCommand},
-    quasar_idl::lint,
+    quasar_idl::lint::{self, comparative, snapshot::ProgramSnapshot},
     std::path::Path,
 };
 
@@ -13,10 +13,49 @@ pub fn run(cmd: LintCommand) -> CliResult {
         graph: cmd.graph.as_deref().map(parse_graph_format),
     };
 
-    run_lint_from_path(&crate_root, &lint_config)
+    let parsed = quasar_idl::parser::parse_program(&crate_root);
+
+    if cmd.update_lock {
+        let snap = ProgramSnapshot::from_parsed(&parsed);
+        let path = lint::snapshot::lock_path(&crate_root);
+        snap.save(&path).map_err(|e| {
+            crate::error::CliError::process_failure(format!("writing lock file: {e}"), 1)
+        })?;
+        println!("Wrote {}", path.display());
+    }
+
+    let mut report = lint::run_lint(&parsed, &lint_config);
+
+    if cmd.diff {
+        let path = lint::snapshot::lock_path(&crate_root);
+        match ProgramSnapshot::load(&path) {
+            Ok(old) => {
+                let new = ProgramSnapshot::from_parsed(&parsed);
+                report.diagnostics.extend(comparative::run_all(&old, &new));
+            }
+            Err(e) => {
+                eprintln!("Skipping diff rules: {e}");
+            }
+        }
+    }
+
+    lint::output::print_report(&report);
+
+    if report.has_errors() {
+        Err(crate::error::CliError::process_failure(
+            "lint check failed".to_string(),
+            1,
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 /// Run lint from a crate path (standalone `quasar lint`).
+///
+/// Convenience wrapper used by `quasar build --lint` — no diff/lock
+/// path, just the single-build rules. The diff family runs only via
+/// the explicit `--diff` flag on the standalone subcommand.
 pub fn run_lint_from_path(crate_path: &Path, lint_config: &lint::LintConfig) -> CliResult {
     let parsed = quasar_idl::parser::parse_program(crate_path);
     run_lint_on_parsed(&parsed, lint_config)

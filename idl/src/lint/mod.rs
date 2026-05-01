@@ -1,11 +1,14 @@
 //! Account relationship linter for Quasar programs.
 
+pub mod comparative;
 pub mod constraints;
 pub mod cross;
 pub mod fix;
 pub mod graph;
 pub mod output;
+pub mod preflight;
 pub mod rules;
+pub mod snapshot;
 pub mod types;
 pub mod viz;
 
@@ -37,6 +40,8 @@ pub fn run_lint(parsed: &ParsedProgram, _config: &LintConfig) -> LintReport {
 
     let cross_diags = cross::check_cross_instruction(parsed, &type_registry);
     diagnostics.extend(cross_diags);
+
+    preflight::run_all(parsed, &mut diagnostics);
 
     LintReport {
         diagnostics,
