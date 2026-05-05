@@ -46,6 +46,13 @@ fn build_idl_from_crate(crate_path: &Path) -> Result<Idl, anyhow::Error> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("does not contain this feature: idl-build") {
+            return Err(anyhow::anyhow!(
+                "IDL build failed because package `{package_name}` does not define the \
+                 `idl-build` feature.\n\nAdd this to Cargo.toml:\n\n[features]\nidl-build = \
+                 [\"quasar-lang/idl-build\"]\n\ncargo stderr:\n{stderr}"
+            ));
+        }
         return Err(anyhow::anyhow!(
             "IDL build failed (cargo test --features idl-build):\n{stderr}"
         ));

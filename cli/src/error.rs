@@ -10,7 +10,7 @@ pub enum CliError {
     TomlParseError(#[from] toml::de::Error),
     #[error("Toml serialize error")]
     TomlSerError(#[from] toml::ser::Error),
-    #[error("Anyhow error")]
+    #[error("{0}")]
     Anyhow(#[from] anyhow::Error),
     #[error("{0}")]
     Message(String),
