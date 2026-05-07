@@ -288,16 +288,9 @@ fn derive_seeds_inner(input: TokenStream) -> Result<TokenStream> {
                 program_id: &quasar_lang::prelude::Address,
             ) -> Result<u8, quasar_lang::prelude::ProgramError> {
                 let slices = self.as_slices();
-                let (expected, bump) = quasar_lang::pda::based_try_find_program_address(
-                    &slices, program_id,
-                )?;
-                if quasar_lang::keys_eq(actual, &expected) {
-                    Ok(bump)
-                } else {
-                    Err(quasar_lang::prelude::ProgramError::from(
-                        quasar_lang::error::QuasarError::InvalidPda,
-                    ))
-                }
+                quasar_lang::pda::verify_canonical_program_address(
+                    &slices, program_id, actual,
+                )
             }
 
             /// Fast path for existing validated accounts. Skips on-curve check,
@@ -318,16 +311,36 @@ fn derive_seeds_inner(input: TokenStream) -> Result<TokenStream> {
             }
 
             #[inline(always)]
+            fn verify_existing_from_account(
+                &self,
+                actual: &quasar_lang::prelude::Address,
+                program_id: &quasar_lang::prelude::Address,
+                account: &quasar_lang::__internal::AccountView,
+                bump_offset: usize,
+            ) -> Result<u8, quasar_lang::prelude::ProgramError> {
+                let bump = quasar_lang::pda::read_bump_from_account(account, bump_offset)?;
+                let __bump_ref = [bump];
+                let slices: [&[u8]; #n_slices_with_bump] = [#(#slice_exprs,)* __bump_ref.as_ref()];
+                quasar_lang::pda::verify_program_address(
+                    &slices, program_id, actual,
+                ).map_err(|_| quasar_lang::prelude::ProgramError::from(
+                    quasar_lang::error::QuasarError::InvalidPda,
+                ))?;
+                Ok(bump)
+            }
+
+            #[inline(always)]
             fn with_signer_seeds<R>(
                 &self,
                 bump: &[u8],
-                f: impl FnOnce(Option<quasar_lang::cpi::Signer<'_, '_>>) -> R,
+                f: impl FnOnce(&[quasar_lang::cpi::Signer<'_, '_>]) -> R,
             ) -> R {
                 let seeds = [
                     #(#signer_seed_exprs,)*
                     quasar_lang::cpi::Seed::from(bump),
                 ];
-                f(Some(quasar_lang::cpi::Signer::from(&seeds)))
+                let signer = quasar_lang::cpi::Signer::from(&seeds);
+                f(core::slice::from_ref(&signer))
             }
         }
 
@@ -350,10 +363,11 @@ fn derive_seeds_inner(input: TokenStream) -> Result<TokenStream> {
             fn with_signer_seeds<R>(
                 &self,
                 _bump: &[u8],
-                f: impl FnOnce(Option<quasar_lang::cpi::Signer<'_, '_>>) -> R,
+                f: impl FnOnce(&[quasar_lang::cpi::Signer<'_, '_>]) -> R,
             ) -> R {
                 let seeds = [#(#signer_seed_exprs_bump),*];
-                f(Some(quasar_lang::cpi::Signer::from(&seeds)))
+                let signer = quasar_lang::cpi::Signer::from(&seeds);
+                f(core::slice::from_ref(&signer))
             }
         }
     })

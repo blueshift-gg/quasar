@@ -85,16 +85,14 @@ fn emit_rent_context(
         RentPlan::NotNeeded => quote! {},
         RentPlan::FromSysvarField { field } => {
             quote! {
-                let __rent: quasar_lang::sysvars::rent::Rent = unsafe {
-                    core::clone::Clone::clone(
-                        <quasar_lang::sysvars::rent::Rent as quasar_lang::sysvars::Sysvar>::from_bytes_unchecked(
-                            #field.borrow_unchecked()
-                        )
+                let __rent: &quasar_lang::sysvars::rent::Rent = unsafe {
+                    <quasar_lang::sysvars::rent::Rent as quasar_lang::sysvars::Sysvar>::from_bytes_unchecked(
+                        #field.borrow_unchecked()
                     )
                 };
                 let __rent_ctx = quasar_lang::ops::OpCtxWithRent::new(
                     unsafe { &*(__program_id as *const quasar_lang::prelude::Address) },
-                    &__rent,
+                    __rent,
                 );
             }
         }
@@ -210,19 +208,42 @@ fn emit_post_load_typed(
                 PostLoadStep::VerifyExistingAddress(addr_spec) => {
                     let bump_var = format_ident!("__bumps_{}", ident);
                     let addr_expr = &addr_spec.expr;
-                    let use_fast_path = is_validated_account_type(ty);
-                    let verify_method = if use_fast_path {
-                        quote! { verify_existing }
+                    let verify_existing = if is_validated_account_type(ty) {
+                        quote! {
+                            #bump_var = quasar_lang::address::AddressVerify::verify_existing(
+                                &__addr, #ident.to_account_view().address(), __program_id,
+                            )?;
+                        }
                     } else {
-                        quote! { verify }
+                        quote! {
+                            #bump_var = quasar_lang::address::AddressVerify::verify(
+                                &__addr, #ident.to_account_view().address(), __program_id,
+                            )?;
+                        }
+                    };
+                    let verify = if let Some(bump_offset_expr) = stored_bump_offset_expr(ty) {
+                        quote! {
+                            if let Some(__bump_offset) = #bump_offset_expr {
+                                let __view = #ident.to_account_view();
+                                #bump_var = quasar_lang::address::AddressVerify::verify_existing_from_account(
+                                    &__addr,
+                                    __view.address(),
+                                    __program_id,
+                                    __view,
+                                    __bump_offset,
+                                )?;
+                            } else {
+                                #verify_existing
+                            }
+                        }
+                    } else {
+                        verify_existing
                     };
                     (
                         quote! {
                             {
                                 let __addr = #addr_expr;
-                                #bump_var = quasar_lang::address::AddressVerify::#verify_method(
-                                    &__addr, #ident.to_account_view().address(), __program_id,
-                                )?;
+                                #verify
                             }
                         },
                         false,
@@ -573,7 +594,11 @@ fn emit_bump_vars(semantics: &[FieldSemantics]) -> proc_macro2::TokenStream {
         .filter(|sem| sem.address.is_some())
         .map(|sem| {
             let var = format_ident!("__bumps_{}", sem.core.ident);
-            quote! { let mut #var: u8 = 0; }
+            if sem.core.optional {
+                quote! { let mut #var: u8 = 0; }
+            } else {
+                quote! { let #var: u8; }
+            }
         })
         .collect();
 
@@ -630,4 +655,15 @@ fn is_validated_account_type(ty: &syn::Type) -> bool {
     extract_generic_inner_type(ty, "Account").is_some()
         || extract_generic_inner_type(ty, "InterfaceAccount").is_some()
         || extract_generic_inner_type(ty, "Migration").is_some()
+}
+
+/// Account<T> stores the discriminator-owned bump offset on T. Restrict this
+/// fast path to Account<T> so SPL/interface wrappers that do not implement
+/// Discriminator keep using the generic existing-account verifier.
+fn stored_bump_offset_expr(ty: &syn::Type) -> Option<proc_macro2::TokenStream> {
+    use crate::helpers::extract_generic_inner_type;
+    let inner = extract_generic_inner_type(ty, "Account")?;
+    Some(quote! {
+        <#inner as quasar_lang::traits::Discriminator>::BUMP_OFFSET
+    })
 }

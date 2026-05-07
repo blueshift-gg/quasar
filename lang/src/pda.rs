@@ -198,6 +198,100 @@ pub fn based_try_find_program_address(
     }
 }
 
+/// Verify `expected` is the canonical PDA for `seeds` and return its bump.
+///
+/// This is the verification form of [`based_try_find_program_address`]. It
+/// avoids materializing the derived `Address` only to compare it at the
+/// callsite.
+#[inline]
+pub fn verify_canonical_program_address(
+    seeds: &[&[u8]],
+    program_id: &Address,
+    expected: &Address,
+) -> Result<u8, ProgramError> {
+    if seeds.len() > 16 {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    #[cfg(any(target_os = "solana", target_arch = "bpf"))]
+    {
+        const CURVE25519_EDWARDS: u64 = 0;
+        let n = seeds.len();
+
+        let mut slices = core::mem::MaybeUninit::<[&[u8]; MAX_PDA_SLICES]>::uninit();
+        let sptr = slices.as_mut_ptr() as *mut &[u8];
+
+        let mut i = 0;
+        while i < n {
+            // SAFETY: `i < n <= 16`, so this writes within the 19-slot array.
+            unsafe { sptr.add(i).write(seeds[i]) };
+            i += 1;
+        }
+        // SAFETY: Slots `n+1` and `n+2` are within bounds because `n <= 16`.
+        unsafe {
+            sptr.add(n + 1).write(program_id.as_ref());
+            sptr.add(n + 2).write(PDA_MARKER.as_slice());
+        }
+
+        let mut bump_arr = [u8::MAX];
+        let bump_ptr = bump_arr.as_mut_ptr();
+        // SAFETY: Slot `n` is within bounds; the syscall consumes this as raw
+        // SolBytes and only the byte behind the pointer changes between hashes.
+        unsafe { sptr.add(n).write(core::slice::from_raw_parts(bump_ptr, 1)) };
+
+        // SAFETY: All `n + 3` elements are initialized above.
+        let input = unsafe { core::slice::from_raw_parts(sptr, n + 3) };
+        let mut hash = core::mem::MaybeUninit::<[u8; 32]>::uninit();
+        let mut bump: u64 = u8::MAX as u64;
+
+        loop {
+            // SAFETY: `bump_ptr` points to `bump_arr[0]`.
+            unsafe { bump_ptr.write(bump as u8) };
+
+            // SAFETY: Same SBF slice layout as `based_try_find_program_address`.
+            unsafe {
+                sol_sha256(
+                    input as *const _ as *const u8,
+                    input.len() as u64,
+                    hash.as_mut_ptr() as *mut u8,
+                );
+            }
+
+            // SAFETY: `hash` was written by `sol_sha256`.
+            let on_curve = unsafe {
+                sol_curve_validate_point(
+                    CURVE25519_EDWARDS,
+                    hash.as_ptr() as *const u8,
+                    core::ptr::null_mut(),
+                )
+            };
+
+            if on_curve != 0 {
+                // SAFETY: `hash` is initialized, and `Address` is `[u8; 32]`.
+                let derived = unsafe { &*(hash.as_ptr() as *const Address) };
+                return if crate::keys_eq(derived, expected) {
+                    Ok(bump as u8)
+                } else {
+                    Err(ProgramError::from(crate::error::QuasarError::InvalidPda))
+                };
+            }
+
+            if bump == 0 {
+                break;
+            }
+            bump -= 1;
+        }
+
+        Err(ProgramError::InvalidSeeds)
+    }
+
+    #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
+    {
+        let _ = (seeds, program_id, expected);
+        Err(ProgramError::InvalidArgument)
+    }
+}
+
 /// Find the bump seed whose PDA hash matches `expected`.
 ///
 /// Iterates bump values from 255 down to 0, hashing with `sol_sha256` and

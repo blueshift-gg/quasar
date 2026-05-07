@@ -119,11 +119,7 @@ pub(crate) fn emit_behavior_init(
             quasar_lang::address::AddressVerify::with_signer_seeds(
                 &#addr_var,
                 __bump_ref,
-                |__maybe_signer| -> Result<(), quasar_lang::prelude::ProgramError> {
-                    let __signers = match &__maybe_signer {
-                        Some(__signer) => core::slice::from_ref(__signer),
-                        None => &[] as &[quasar_lang::cpi::Signer<'_, '_>],
-                    };
+                |__signers| -> Result<(), quasar_lang::prelude::ProgramError> {
                     #init_cpi
                     Ok(())
                 },
@@ -183,11 +179,7 @@ pub(crate) fn emit_program_init(
             quasar_lang::address::AddressVerify::with_signer_seeds(
                 &#addr_var,
                 __bump_ref,
-                |__maybe_signer| -> Result<(), quasar_lang::prelude::ProgramError> {
-                    let __signers = match &__maybe_signer {
-                        Some(__signer) => core::slice::from_ref(__signer),
-                        None => &[] as &[quasar_lang::cpi::Signer<'_, '_>],
-                    };
+                |__signers| -> Result<(), quasar_lang::prelude::ProgramError> {
                     #inner_body
                     Ok(())
                 },

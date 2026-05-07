@@ -89,15 +89,13 @@ pub(super) fn build_zc_spec(
 
 pub(super) fn emit_bump_offset_impl(
     field_infos: &[PodFieldInfo<'_>],
-    has_dynamic: bool,
     disc_len: usize,
     zc_path: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
-    let has_bump_u8 = !has_dynamic
-        && field_infos.iter().any(|fi| {
-            fi.field.ident.as_ref().is_some_and(|id| id == "bump")
-                && matches!(&fi.field.ty, syn::Type::Path(tp) if tp.path.is_ident("u8"))
-        });
+    let has_bump_u8 = field_infos.iter().any(|fi| {
+        fi.field.ident.as_ref().is_some_and(|id| id == "bump")
+            && matches!(&fi.field.ty, syn::Type::Path(tp) if tp.path.is_ident("u8"))
+    });
 
     if has_bump_u8 {
         quote! {

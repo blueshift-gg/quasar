@@ -24,8 +24,7 @@ pub(super) fn generate_account(
     let has_dynamic = field_infos.iter().any(|fi| fi.pod_dyn.is_some());
 
     let zc = super::layout::build_zc_spec(name, field_infos, has_dynamic);
-    let bump_offset_impl =
-        super::layout::emit_bump_offset_impl(field_infos, has_dynamic, disc_len, &zc.zc_path);
+    let bump_offset_impl = super::layout::emit_bump_offset_impl(field_infos, disc_len, &zc.zc_path);
     let dynamic = super::dynamic::build_dynamic_pieces(field_infos, disc_len, &zc.zc_mod);
 
     let zc_definition = super::layout::emit_zc_definition(name, has_dynamic, &zc);

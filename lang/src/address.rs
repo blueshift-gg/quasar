@@ -10,7 +10,9 @@
 //! - `Address` / `&Address` — exact equality check
 //! - `SeedSet` types (from `#[derive(Seeds)]`) — PDA derivation check
 
-use {solana_address::Address, solana_program_error::ProgramError};
+use {
+    solana_account_view::AccountView, solana_address::Address, solana_program_error::ProgramError,
+};
 
 /// Unified address verification trait.
 ///
@@ -40,19 +42,29 @@ pub trait AddressVerify {
         self.verify(actual, program_id)
     }
 
+    /// Existing-account verification with access to the account data.
+    ///
+    /// Seed-set implementations use `account` and `bump_offset` to read a
+    /// stored bump. Exact-address implementations ignore them and compare
+    /// directly.
+    fn verify_existing_from_account(
+        &self,
+        actual: &Address,
+        program_id: &Address,
+        account: &AccountView,
+        bump_offset: usize,
+    ) -> Result<u8, ProgramError>;
+
     /// Run `f` with signer seeds for CPI signing.
     ///
     /// Seed arrays must live at least as long as the CPI call that consumes
     /// them. A callback lets seed-set implementations build those arrays on
     /// their own stack frame and keep them alive while `f` runs.
-    #[inline(always)]
     fn with_signer_seeds<R>(
         &self,
-        _bump: &[u8],
-        f: impl FnOnce(Option<crate::cpi::Signer<'_, '_>>) -> R,
-    ) -> R {
-        f(None)
-    }
+        bump: &[u8],
+        f: impl FnOnce(&[crate::cpi::Signer<'_, '_>]) -> R,
+    ) -> R;
 }
 
 // -- Exact address match impls ------------------------------------------------
@@ -68,11 +80,51 @@ impl AddressVerify for Address {
             ))
         }
     }
+
+    #[inline(always)]
+    fn verify_existing_from_account(
+        &self,
+        actual: &Address,
+        program_id: &Address,
+        _account: &AccountView,
+        _bump_offset: usize,
+    ) -> Result<u8, ProgramError> {
+        self.verify_existing(actual, program_id)
+    }
+
+    #[inline(always)]
+    fn with_signer_seeds<R>(
+        &self,
+        _bump: &[u8],
+        f: impl FnOnce(&[crate::cpi::Signer<'_, '_>]) -> R,
+    ) -> R {
+        f(&[])
+    }
 }
 
 impl AddressVerify for &Address {
     #[inline(always)]
     fn verify(&self, actual: &Address, program_id: &Address) -> Result<u8, ProgramError> {
         (*self).verify(actual, program_id)
+    }
+
+    #[inline(always)]
+    fn verify_existing_from_account(
+        &self,
+        actual: &Address,
+        program_id: &Address,
+        account: &AccountView,
+        bump_offset: usize,
+    ) -> Result<u8, ProgramError> {
+        (*self).verify_existing_from_account(actual, program_id, account, bump_offset)
+    }
+
+    #[inline(always)]
+    fn with_signer_seeds<R>(
+        &self,
+        bump: &[u8],
+        f: impl FnOnce(&[crate::cpi::Signer<'_, '_>]) -> R,
+    ) -> R {
+        (*self).with_signer_seeds(bump, f)
     }
 }
