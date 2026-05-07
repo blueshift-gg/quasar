@@ -89,6 +89,17 @@ capture() {
     "ESCROW_MAKE_CU" "MAKE CU:" \
     "ESCROW_TAKE_CU" "TAKE CU:" \
     "ESCROW_REFUND_CU" "REFUND CU:"
+
+  capture_program_metrics \
+    "$output_file" \
+    "examples/multisig/Cargo.toml" \
+    "quasar-multisig" \
+    "quasar_multisig.so" \
+    "MULTISIG_SIZE" \
+    "MULTISIG_CREATE_CU" "CREATE CU:" \
+    "MULTISIG_DEPOSIT_CU" "DEPOSIT CU:" \
+    "MULTISIG_SET_LABEL_CU" "SET_LABEL CU:" \
+    "MULTISIG_EXECUTE_TRANSFER_CU" "EXECUTE_TRANSFER CU:"
 }
 
 metric_value() {
@@ -140,14 +151,18 @@ compare_files() {
     VAULT_WITHDRAW_CU \
     ESCROW_MAKE_CU \
     ESCROW_TAKE_CU \
-    ESCROW_REFUND_CU
+    ESCROW_REFUND_CU \
+    MULTISIG_CREATE_CU \
+    MULTISIG_DEPOSIT_CU \
+    MULTISIG_SET_LABEL_CU \
+    MULTISIG_EXECUTE_TRANSFER_CU
   do
     if ! compare_metric "$key" "cu"; then
       failed=1
     fi
   done
 
-  for key in VAULT_SIZE ESCROW_SIZE; do
+  for key in VAULT_SIZE ESCROW_SIZE MULTISIG_SIZE; do
     compare_metric "$key" "size" || true
   done
 
@@ -158,6 +173,18 @@ compare_files() {
   fi
 }
 
+copy_benchmark_inputs() {
+  local worktree_dir="$1"
+
+  for path in \
+    examples/vault/src/tests.rs \
+    examples/escrow/src/tests.rs \
+    examples/multisig/src/tests.rs
+  do
+    cp "$path" "$worktree_dir/$path"
+  done
+}
+
 compare() {
   local base_ref="${1:-master}"
   local base_env candidate_env worktree_dir
@@ -166,7 +193,7 @@ compare() {
   candidate_env="$(mktemp)"
   worktree_dir="$(mktemp -d)"
 
-  trap 'rm -f "$base_env" "$candidate_env"; git worktree remove --force "$worktree_dir" 2>/dev/null || true' EXIT
+  trap "rm -f '$base_env' '$candidate_env'; git worktree remove --force '$worktree_dir' 2>/dev/null || true" EXIT
 
   echo "=== Capturing candidate (HEAD) ==="
   capture "$candidate_env"
@@ -174,6 +201,7 @@ compare() {
   echo ""
   echo "=== Capturing base ($base_ref) in worktree ==="
   git worktree add --quiet "$worktree_dir" "$base_ref"
+  copy_benchmark_inputs "$worktree_dir"
   (cd "$worktree_dir" && capture "$base_env")
 
   echo ""
