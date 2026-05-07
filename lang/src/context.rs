@@ -12,7 +12,11 @@
 //! - `CtxWithRemaining` — like `Ctx` but also captures the remaining accounts
 //!   region for instructions that inspect or forward trailing accounts.
 
-use crate::{prelude::*, remaining::RemainingAccounts, traits::ParseAccountsUnchecked};
+use crate::{
+    prelude::*,
+    remaining::{PassthroughRemainingAccounts, RemainingAccounts},
+    traits::ParseAccountsUnchecked,
+};
 
 /// Cast `&[u8; 32]` to `&Address`.
 ///
@@ -181,7 +185,7 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
     /// for CPI forwarding scenarios. Prefer `remaining_accounts()` unless you
     /// explicitly need Solana's raw duplicate-meta behavior.
     #[inline(always)]
-    pub fn remaining_accounts_passthrough(&self) -> RemainingAccounts<'input> {
+    pub fn remaining_accounts_passthrough(&self) -> PassthroughRemainingAccounts<'input> {
         RemainingAccounts::new_passthrough(
             self.remaining_ptr,
             self.accounts_boundary,
