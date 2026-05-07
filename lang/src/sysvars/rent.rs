@@ -102,21 +102,21 @@ impl Rent {
         lamports_per_byte: u64,
         threshold: u64,
     ) -> u64 {
-        let total_bytes = ACCOUNT_STORAGE_OVERHEAD + data_len as u64;
+        let total_bytes = ACCOUNT_STORAGE_OVERHEAD.wrapping_add(data_len as u64);
 
         if threshold == SIMD0194_EXEMPTION_THRESHOLD {
-            total_bytes * lamports_per_byte
+            total_bytes.wrapping_mul(lamports_per_byte)
         } else if threshold == CURRENT_EXEMPTION_THRESHOLD {
-            2 * total_bytes * lamports_per_byte
+            total_bytes.wrapping_mul(lamports_per_byte).wrapping_mul(2)
         } else {
             #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
             {
-                ((total_bytes * lamports_per_byte) as f64
+                (total_bytes.wrapping_mul(lamports_per_byte) as f64
                     * f64::from_le_bytes(self.exemption_threshold)) as u64
             }
             #[cfg(any(target_os = "solana", target_arch = "bpf"))]
             {
-                2 * total_bytes * lamports_per_byte
+                total_bytes.wrapping_mul(lamports_per_byte).wrapping_mul(2)
             }
         }
     }
@@ -182,15 +182,15 @@ pub fn minimum_balance_raw(
             return Err(ProgramError::InvalidArgument);
         }
     }
-    let total_bytes = ACCOUNT_STORAGE_OVERHEAD + space;
+    let total_bytes = ACCOUNT_STORAGE_OVERHEAD.wrapping_add(space);
     if threshold == SIMD0194_EXEMPTION_THRESHOLD {
-        Ok(total_bytes * lamports_per_byte)
+        Ok(total_bytes.wrapping_mul(lamports_per_byte))
     } else {
         debug_assert!(
             threshold == CURRENT_EXEMPTION_THRESHOLD,
             "minimum_balance_raw: unknown exemption threshold"
         );
-        Ok(2 * total_bytes * lamports_per_byte)
+        Ok(total_bytes.wrapping_mul(lamports_per_byte).wrapping_mul(2))
     }
 }
 

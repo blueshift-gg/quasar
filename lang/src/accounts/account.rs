@@ -30,10 +30,14 @@ pub fn resize(view: &mut AccountView, new_len: usize) -> Result<(), ProgramError
         return Ok(());
     }
 
-    let difference = new_len_i32 - current_len;
+    let difference = new_len_i32
+        .checked_sub(current_len)
+        .ok_or(ProgramError::InvalidRealloc)?;
 
     let delta_ptr = unsafe { core::ptr::addr_of_mut!((*raw).padding) as *mut i32 };
-    let accumulated = unsafe { delta_ptr.read_unaligned() } + difference;
+    let accumulated = unsafe { delta_ptr.read_unaligned() }
+        .checked_add(difference)
+        .ok_or(ProgramError::InvalidRealloc)?;
 
     if crate::utils::hint::unlikely(accumulated > MAX_PERMITTED_DATA_INCREASE as i32) {
         return Err(ProgramError::InvalidRealloc);
@@ -109,7 +113,11 @@ pub fn realloc_account_raw(
     } else if current_lamports > rent_exempt_lamports {
         let excess = current_lamports - rent_exempt_lamports;
         view.set_lamports(rent_exempt_lamports);
-        set_lamports(payer, payer.lamports() + excess);
+        let payer_lamports = payer
+            .lamports()
+            .checked_add(excess)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        set_lamports(payer, payer_lamports);
     }
 
     let old_len = view.data_len();

@@ -353,7 +353,9 @@ pub(super) fn emit_compact_mut(
             pub fn reload(&mut self) {
                 let (#(#field_names,)*) = {
                     let __data = unsafe { self.__view.borrow_unchecked() };
-                    let __r = unsafe { #zc_mod::__SchemaRef::new_unchecked(&__data[#disc_len..]) };
+                    let __r = unsafe {
+                        #zc_mod::__SchemaRef::new_unchecked(__data.get_unchecked(#disc_len..))
+                    };
                     #(#load_stmts)*
                     (#(#field_names,)*)
                 };
@@ -363,7 +365,9 @@ pub(super) fn emit_compact_mut(
 
         impl<'a> Drop for #guard_name<'a> {
             fn drop(&mut self) {
-                self.save().expect("as_mut auto-save failed");
+                if self.save().is_err() {
+                    quasar_lang::abort_program();
+                }
             }
         }
 
@@ -375,7 +379,9 @@ pub(super) fn emit_compact_mut(
             ) -> #guard_name<'a> {
                 let (#(#field_names,)*) = {
                     let __data = unsafe { self.__view.borrow_unchecked() };
-                    let __r = unsafe { #zc_mod::__SchemaRef::new_unchecked(&__data[#disc_len..]) };
+                    let __r = unsafe {
+                        #zc_mod::__SchemaRef::new_unchecked(__data.get_unchecked(#disc_len..))
+                    };
                     #(#load_stmts)*
                     (#(#field_names,)*)
                 };
@@ -420,7 +426,9 @@ fn compact_read_accessor(
             #[inline(always)]
             pub fn #name(&self) -> &str {
                 let __data = unsafe { self.__view.borrow_unchecked() };
-                let __r = unsafe { #zc_mod::__SchemaRef::new_unchecked(&__data[#disc_len..]) };
+                let __r = unsafe {
+                    #zc_mod::__SchemaRef::new_unchecked(__data.get_unchecked(#disc_len..))
+                };
                 __r.#name()
             }
         },
@@ -430,7 +438,9 @@ fn compact_read_accessor(
                 #[inline(always)]
                 pub fn #name(&self) -> &[#mapped] {
                     let __data = unsafe { self.__view.borrow_unchecked() };
-                    let __r = unsafe { #zc_mod::__SchemaRef::new_unchecked(&__data[#disc_len..]) };
+                    let __r = unsafe {
+                        #zc_mod::__SchemaRef::new_unchecked(__data.get_unchecked(#disc_len..))
+                    };
                     __r.#name()
                 }
             }

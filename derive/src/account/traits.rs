@@ -86,7 +86,7 @@ pub(super) fn emit_dynamic_account_load(spec: AccountLoadSpec<'_>) -> proc_macro
                 }
             )*
             <#zc_mod::__Schema as quasar_lang::ZeroPodCompact>::validate(
-                &__data[#disc_len..]
+                unsafe { __data.get_unchecked(#disc_len..) }
             ).map_err(|_| ProgramError::InvalidAccountData)?;
             Ok(())
         }
@@ -102,7 +102,11 @@ pub(super) fn emit_dynamic_account_load(spec: AccountLoadSpec<'_>) -> proc_macro
                 }
             )*
             <#zc_mod::__Schema as quasar_lang::ZeroPodFixed>::validate(
-                &__data[#disc_len..#disc_len + core::mem::size_of::<#zc_path>()]
+                unsafe {
+                    __data.get_unchecked(
+                        #disc_len..#disc_len + core::mem::size_of::<#zc_path>()
+                    )
+                }
             ).map_err(|_| ProgramError::InvalidAccountData)?;
             Ok(())
         }

@@ -51,9 +51,11 @@ pub trait AddressVerify {
         &self,
         actual: &Address,
         program_id: &Address,
-        account: &AccountView,
-        bump_offset: usize,
-    ) -> Result<u8, ProgramError>;
+        _account: &AccountView,
+        _bump_offset: usize,
+    ) -> Result<u8, ProgramError> {
+        self.verify_existing(actual, program_id)
+    }
 
     /// Run `f` with signer seeds for CPI signing.
     ///
