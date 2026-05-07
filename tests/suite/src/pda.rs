@@ -260,8 +260,8 @@ fn test_wrong_bump_fail() {
     );
 
     assert!(
-        result.program_result.is_ok(),
-        "Wrong stored bump should not cause failure — verify_existing derives bump from address"
+        result.program_result.is_err(),
+        "wrong stored bump should fail stored-bump PDA verification"
     );
 }
 
@@ -777,8 +777,8 @@ fn test_wrong_bump_off_by_one() {
     );
 
     assert!(
-        result.program_result.is_ok(),
-        "Wrong stored bump should not cause failure — verify_existing derives bump from address"
+        result.program_result.is_err(),
+        "off-by-one stored bump should fail stored-bump PDA verification"
     );
 }
 
@@ -816,8 +816,8 @@ fn test_wrong_bump_zero() {
     );
 
     assert!(
-        result.program_result.is_ok(),
-        "Wrong stored bump should not cause failure — verify_existing derives bump from address"
+        result.program_result.is_err(),
+        "zero stored bump should fail stored-bump PDA verification"
     );
 }
 
