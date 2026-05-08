@@ -12,11 +12,7 @@
 //! - `CtxWithRemaining` — like `Ctx` but also captures the remaining accounts
 //!   region for instructions that inspect or forward trailing accounts.
 
-use crate::{
-    prelude::*,
-    remaining::{PassthroughRemainingAccounts, RemainingAccounts},
-    traits::ParseAccountsUnchecked,
-};
+use crate::{prelude::*, remaining::RemainingAccounts, traits::ParseAccountsUnchecked};
 
 /// Cast `&[u8; 32]` to `&Address`.
 ///
@@ -95,10 +91,9 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
 
 /// Like [`Ctx`] but also captures the remaining accounts region.
 ///
-/// Use this for instructions that call `remaining_accounts()` — e.g.
-/// when inspecting trailing accounts in local logic, or
-/// `remaining_accounts_passthrough()` when forwarding a variable number of
-/// accounts to a downstream CPI.
+/// Use this for instructions that call `remaining_accounts()` — e.g. when
+/// inspecting trailing accounts in local logic or forwarding a variable number
+/// of accounts to a downstream CPI.
 pub struct CtxWithRemaining<
     'input,
     T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + AccountCount,
@@ -169,27 +164,13 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
         T::HAS_EPILOGUE
     }
 
-    /// Strict remaining-account accessor.
+    /// Remaining-account accessor.
     ///
-    /// Rejects any duplicate of a declared or prior remaining account. Use
-    /// this for local program logic so each trailing account has a unique
-    /// identity within the instruction context.
+    /// Preserves duplicate account metas exactly as they appeared in the input.
+    /// Data access through yielded remaining-account handles uses checked
+    /// runtime borrows, so duplicate entries are safe by default.
     #[inline(always)]
     pub fn remaining_accounts(&self) -> RemainingAccounts<'input> {
         RemainingAccounts::new(self.remaining_ptr, self.accounts_boundary, self.declared)
-    }
-
-    /// Passthrough remaining-account accessor.
-    ///
-    /// Preserves duplicate account metas exactly as they appeared in the input
-    /// for CPI forwarding scenarios. Prefer `remaining_accounts()` unless you
-    /// explicitly need Solana's raw duplicate-meta behavior.
-    #[inline(always)]
-    pub fn remaining_accounts_passthrough(&self) -> PassthroughRemainingAccounts<'input> {
-        RemainingAccounts::new_passthrough(
-            self.remaining_ptr,
-            self.accounts_boundary,
-            self.declared,
-        )
     }
 }

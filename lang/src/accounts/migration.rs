@@ -157,6 +157,12 @@ where
         From::check_owner(view)?;
         From::check(view)
     }
+
+    #[inline(always)]
+    fn check_checked(view: &AccountView) -> Result<(), ProgramError> {
+        From::check_owner(view)?;
+        From::check_checked(view)
+    }
 }
 
 // ---------------------------------------------------------------------------

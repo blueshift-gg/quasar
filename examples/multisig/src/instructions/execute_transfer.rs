@@ -1,7 +1,7 @@
 use {
     super::deposit::MultisigVaultPda,
     crate::state::MultisigConfig,
-    quasar_lang::{prelude::*, remaining::PassthroughRemainingAccounts},
+    quasar_lang::{prelude::*, remaining::RemainingAccounts},
 };
 
 #[derive(Accounts)]
@@ -25,7 +25,7 @@ impl ExecuteTransfer {
         &self,
         amount: u64,
         bumps: &ExecuteTransferBumps,
-        remaining: PassthroughRemainingAccounts<'_>,
+        remaining: RemainingAccounts<'_>,
     ) -> Result<(), ProgramError> {
         let stored_signers = self.config.signers();
         let threshold = self.config.threshold as u32;

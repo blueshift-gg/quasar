@@ -116,6 +116,13 @@ pub(super) fn generate_account(
                         <#name as quasar_lang::checks::ZeroPod>::check(view)?;
                         Ok(())
                     }
+
+                    #[inline(always)]
+                    fn check_checked(view: &quasar_lang::__internal::AccountView) -> Result<(), quasar_lang::__solana_program_error::ProgramError> {
+                        <#name as quasar_lang::checks::Discriminator>::check_checked(view)?;
+                        <#name as quasar_lang::checks::ZeroPod>::check_checked(view)?;
+                        Ok(())
+                    }
                 }
 
             };

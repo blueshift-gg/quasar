@@ -467,27 +467,47 @@ fn emit_one_load(sem: &FieldSemantics) -> proc_macro2::TokenStream {
 
     if sem.core.optional {
         return if sem.core.is_mut {
+            let load = if sem.core.dup {
+                quote! { <#ty as quasar_lang::account_load::AccountLoad>::load_mut_checked(#ident)? }
+            } else {
+                quote! { <#ty as quasar_lang::account_load::AccountLoad>::load_mut(#ident)? }
+            };
             quote! {
                 let mut #ident = if quasar_lang::keys_eq(#ident.address(), __program_id) {
                     None
                 } else {
-                    Some(<#ty as quasar_lang::account_load::AccountLoad>::load_mut(#ident)?)
+                    Some(#load)
                 };
             }
         } else {
+            let load = if sem.core.dup {
+                quote! { <#ty as quasar_lang::account_load::AccountLoad>::load_checked(#ident)? }
+            } else {
+                quote! { <#ty as quasar_lang::account_load::AccountLoad>::load(#ident)? }
+            };
             quote! {
                 let #ident = if quasar_lang::keys_eq(#ident.address(), __program_id) {
                     None
                 } else {
-                    Some(<#ty as quasar_lang::account_load::AccountLoad>::load(#ident)?)
+                    Some(#load)
                 };
             }
         };
     }
 
     if sem.core.is_mut {
+        if sem.core.dup {
+            quote! {
+                let mut #ident = <#ty as quasar_lang::account_load::AccountLoad>::load_mut_checked(#ident)?;
+            }
+        } else {
+            quote! {
+                let mut #ident = <#ty as quasar_lang::account_load::AccountLoad>::load_mut(#ident)?;
+            }
+        }
+    } else if sem.core.dup {
         quote! {
-            let mut #ident = <#ty as quasar_lang::account_load::AccountLoad>::load_mut(#ident)?;
+            let #ident = <#ty as quasar_lang::account_load::AccountLoad>::load_checked(#ident)?;
         }
     } else {
         quote! {

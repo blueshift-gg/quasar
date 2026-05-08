@@ -112,11 +112,58 @@ pub(super) fn emit_dynamic_account_load(spec: AccountLoadSpec<'_>) -> proc_macro
         }
     };
 
+    let checked_body = if has_dynamic {
+        quote! {
+            let __data_ref = view.try_borrow()?;
+            let __data: &[u8] = &__data_ref;
+            let __min = #disc_len
+                + <#zc_mod::__Schema as quasar_lang::ZeroPodCompact>::HEADER_SIZE;
+            if __data.len() < __min {
+                return Err(ProgramError::AccountDataTooSmall);
+            }
+            #(
+                if unsafe { *__data.get_unchecked(#disc_indices) } != #disc_bytes {
+                    return Err(ProgramError::InvalidAccountData);
+                }
+            )*
+            <#zc_mod::__Schema as quasar_lang::ZeroPodCompact>::validate(
+                unsafe { __data.get_unchecked(#disc_len..) }
+            ).map_err(|_| ProgramError::InvalidAccountData)?;
+            Ok(())
+        }
+    } else {
+        quote! {
+            let __data_ref = view.try_borrow()?;
+            let __data: &[u8] = &__data_ref;
+            if __data.len() < #disc_len + core::mem::size_of::<#zc_path>() {
+                return Err(ProgramError::AccountDataTooSmall);
+            }
+            #(
+                if unsafe { *__data.get_unchecked(#disc_indices) } != #disc_bytes {
+                    return Err(ProgramError::InvalidAccountData);
+                }
+            )*
+            <#zc_mod::__Schema as quasar_lang::ZeroPodFixed>::validate(
+                unsafe {
+                    __data.get_unchecked(
+                        #disc_len..#disc_len + core::mem::size_of::<#zc_path>()
+                    )
+                }
+            ).map_err(|_| ProgramError::InvalidAccountData)?;
+            Ok(())
+        }
+    };
+
     quote! {
         impl quasar_lang::account_load::AccountLoad for #name {
             #[inline(always)]
             fn check(view: &quasar_lang::__internal::AccountView) -> Result<(), quasar_lang::__solana_program_error::ProgramError> {
                 #body
+            }
+
+            #[inline(always)]
+            fn check_checked(view: &quasar_lang::__internal::AccountView) -> Result<(), quasar_lang::__solana_program_error::ProgramError> {
+                #checked_body
             }
         }
     }

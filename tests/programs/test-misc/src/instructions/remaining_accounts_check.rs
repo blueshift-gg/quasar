@@ -10,10 +10,7 @@ pub struct RemainingAccountsCheck {
 
 impl RemainingAccountsCheck {
     #[inline(always)]
-    pub fn handler<const STRICT: bool>(
-        &self,
-        remaining: RemainingAccounts<STRICT>,
-    ) -> Result<(), ProgramError> {
+    pub fn handler(&self, remaining: RemainingAccounts<'_>) -> Result<(), ProgramError> {
         for account in remaining.iter() {
             let _ = account?;
         }

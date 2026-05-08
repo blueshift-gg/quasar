@@ -64,6 +64,12 @@ impl<T: Owners + crate::account_load::AccountLoad> crate::account_load::AccountL
         <T as Owners>::check_owner(view)?;
         T::check(view)
     }
+
+    #[inline(always)]
+    fn check_checked(view: &AccountView) -> Result<(), ProgramError> {
+        <T as Owners>::check_owner(view)?;
+        T::check_checked(view)
+    }
 }
 
 impl<T: ZeroCopyDeref> core::ops::Deref for InterfaceAccount<T> {

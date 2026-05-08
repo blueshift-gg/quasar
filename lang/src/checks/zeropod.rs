@@ -11,6 +11,17 @@ pub trait ZeroPod: AccountLayout {
     #[inline(always)]
     fn check(view: &AccountView) -> Result<(), ProgramError> {
         let data = unsafe { view.borrow_unchecked() };
+        Self::check_data(data)
+    }
+
+    #[inline(always)]
+    fn check_checked(view: &AccountView) -> Result<(), ProgramError> {
+        let data = view.try_borrow()?;
+        Self::check_data(&data)
+    }
+
+    #[inline(always)]
+    fn check_data(data: &[u8]) -> Result<(), ProgramError> {
         let offset = Self::DATA_OFFSET;
         let size = Self::DATA_SIZE;
         if data.len() < offset + size {

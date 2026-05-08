@@ -40,8 +40,7 @@ pub enum QuasarError {
     CompactWriterFieldNotSet,
     /// More remaining accounts than can fit in the buffer.
     RemainingAccountsOverflow,
-    /// A remaining account duplicated a declared or prior remaining account in
-    /// strict mode.
+    /// A duplicate remaining-account entry could not be resolved.
     RemainingAccountDuplicate,
     /// The callee completed successfully but did not set return data.
     MissingReturnData,

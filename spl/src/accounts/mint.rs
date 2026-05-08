@@ -116,7 +116,7 @@ impl<'a> ArgsBuilder<'a> {
 pub struct Behavior;
 
 macro_rules! impl_mint_behavior {
-    ($wrapper:ty) => {
+    ($wrapper:ty, check_token_program = $check_token_program:literal) => {
         impl AccountBehavior<$wrapper> for Behavior {
             type Args<'a> = Args<'a>;
             const SETS_INIT_PARAMS: bool = true;
@@ -154,7 +154,11 @@ macro_rules! impl_mint_behavior {
                         authority: args.authority,
                         decimals: args.decimals,
                         freeze_authority: freeze,
-                        token_program: args.token_program,
+                        token_program: if $check_token_program {
+                            args.token_program
+                        } else {
+                            None
+                        },
                     },
                 )
             }
@@ -162,6 +166,12 @@ macro_rules! impl_mint_behavior {
     };
 }
 
-impl_mint_behavior!(Account<crate::token::Mint>);
-impl_mint_behavior!(Account<crate::token_2022::Mint2022>);
-impl_mint_behavior!(InterfaceAccount<crate::token::Mint>);
+impl_mint_behavior!(Account<crate::token::Mint>, check_token_program = false);
+impl_mint_behavior!(
+    Account<crate::token_2022::Mint2022>,
+    check_token_program = false
+);
+impl_mint_behavior!(
+    InterfaceAccount<crate::token::Mint>,
+    check_token_program = true
+);

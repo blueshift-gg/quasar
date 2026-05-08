@@ -115,7 +115,7 @@ impl<'a> ArgsBuilder<'a> {
 pub struct Behavior;
 
 macro_rules! impl_ata_behavior {
-    ($wrapper:ty) => {
+    ($wrapper:ty, check_token_program = $check_token_program:literal) => {
         impl AccountBehavior<$wrapper> for Behavior {
             type Args<'a> = Args<'a>;
             const SETS_INIT_PARAMS: bool = true;
@@ -147,7 +147,11 @@ macro_rules! impl_ata_behavior {
                     AssociatedTokenCheckCtx {
                         mint: args.mint,
                         authority: args.authority,
-                        token_program: args.token_program,
+                        token_program: if $check_token_program {
+                            args.token_program
+                        } else {
+                            None
+                        },
                     },
                 )
             }
@@ -155,9 +159,15 @@ macro_rules! impl_ata_behavior {
     };
 }
 
-impl_ata_behavior!(Account<crate::token::Token>);
-impl_ata_behavior!(Account<crate::token_2022::Token2022>);
-impl_ata_behavior!(InterfaceAccount<crate::token::Token>);
+impl_ata_behavior!(Account<crate::token::Token>, check_token_program = false);
+impl_ata_behavior!(
+    Account<crate::token_2022::Token2022>,
+    check_token_program = false
+);
+impl_ata_behavior!(
+    InterfaceAccount<crate::token::Token>,
+    check_token_program = true
+);
 
 /// Check-only behavior for InterfaceAccount<TokenInterface>.
 impl AccountBehavior<InterfaceAccount<crate::interface::TokenInterface>> for Behavior {

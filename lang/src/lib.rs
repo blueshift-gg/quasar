@@ -305,34 +305,14 @@ pub mod __internal {
         } else {
             // Dup branch: borrow_state != NOT_BORROWED means the SVM
             // deduplicated this account slot.
-            if flags.is_ref_mut && !flags.allow_dup {
-                // Mutable dups without #[account(dup)] are rejected.
+            if !flags.allow_dup {
+                // Dups are only accepted for explicit #[account(dup)] fields.
                 return Err(ProgramError::AccountBorrowFailed);
             }
 
             let idx = (actual_header & 0xFF) as usize;
             if crate::utils::hint::unlikely(idx >= offset) {
                 return Err(ProgramError::InvalidAccountData);
-            }
-
-            if flags.is_ref_mut {
-                // Mutable dup: claim exclusive access.
-                let orig_view = core::ptr::read(base.add(idx));
-                let bs_ptr = orig_view.account_ptr() as *mut u8;
-                let bs = *bs_ptr;
-                if crate::utils::hint::unlikely(bs != NOT_BORROWED) {
-                    return Err(ProgramError::AccountBorrowFailed);
-                }
-                *bs_ptr = 0;
-            } else {
-                // Immutable dup: consume one immutable borrow slot.
-                let orig_view = core::ptr::read(base.add(idx));
-                let bs_ptr = orig_view.account_ptr() as *mut u8;
-                let bs = *bs_ptr;
-                if crate::utils::hint::unlikely(bs <= 1) {
-                    return Err(ProgramError::AccountBorrowFailed);
-                }
-                *bs_ptr = bs - 1;
             }
 
             core::ptr::write(base.add(offset), core::ptr::read(base.add(idx)));

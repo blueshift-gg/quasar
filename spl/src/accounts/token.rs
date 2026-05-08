@@ -90,7 +90,7 @@ pub struct Behavior;
 
 /// Implement token behavior for a concrete token wrapper type.
 macro_rules! impl_token_behavior {
-    ($wrapper:ty) => {
+    ($wrapper:ty, check_token_program = $check_token_program:literal) => {
         impl AccountBehavior<$wrapper> for Behavior {
             type Args<'a> = Args<'a>;
             const SETS_INIT_PARAMS: bool = true;
@@ -116,7 +116,11 @@ macro_rules! impl_token_behavior {
                     TokenCheckCtx {
                         mint: args.mint,
                         authority: args.authority,
-                        token_program: args.token_program,
+                        token_program: if $check_token_program {
+                            args.token_program
+                        } else {
+                            None
+                        },
                     },
                 )
             }
@@ -124,9 +128,15 @@ macro_rules! impl_token_behavior {
     };
 }
 
-impl_token_behavior!(Account<crate::token::Token>);
-impl_token_behavior!(Account<crate::token_2022::Token2022>);
-impl_token_behavior!(InterfaceAccount<crate::token::Token>);
+impl_token_behavior!(Account<crate::token::Token>, check_token_program = false);
+impl_token_behavior!(
+    Account<crate::token_2022::Token2022>,
+    check_token_program = false
+);
+impl_token_behavior!(
+    InterfaceAccount<crate::token::Token>,
+    check_token_program = true
+);
 
 /// Check-only behavior for InterfaceAccount<TokenInterface>.
 /// InterfaceAccount doesn't have AccountLayout, so we call validate directly.

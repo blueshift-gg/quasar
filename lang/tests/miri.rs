@@ -41,8 +41,7 @@
 //! | CPI `create_account` / `transfer` / `assign` data construction | Sound |
 //! | Boundary pointer subtraction (`data.as_ptr().sub(8)`) | Sound |
 //! | Remaining accounts alignment rounding | **Provenance warning** |
-//! | Strict remaining accounts reject duplicates | Sound |
-//! | Passthrough remaining accounts preserve duplicates | Sound |
+//! | Remaining accounts preserve duplicate metas through checked handles | Sound |
 //! | Dynamic inline prefix read + boundary probes | Sound |
 //! | `from_utf8_unchecked` on account data String fields | Sound |
 //! | `slice::from_raw_parts` for Vec field access | Sound |
@@ -77,7 +76,9 @@
 
 use {
     quasar_lang::{
-        __internal::{AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED},
+        __internal::{
+            AccountView, ParseFlags, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED,
+        },
         accounts::{
             account::{resize, set_lamports},
             Account, Signer as SignerAccount, UncheckedAccount,
@@ -951,7 +952,7 @@ fn bounds_remaining_max_capacity_64_accounts() {
     assert_eq!(views.len(), 64);
     for (i, v) in views.iter().enumerate() {
         assert_eq!(v.data_len(), 1);
-        let data = unsafe { v.borrow_unchecked() };
+        let data = v.try_borrow_data().unwrap();
         assert_eq!(data[0], i as u8);
     }
 }
@@ -982,34 +983,63 @@ fn bounds_remaining_dup_index_sweep() {
             MultiAccountEntry::account(0x10, 0),
             MultiAccountEntry::duplicate(dup_idx),
         ]);
-        let remaining =
-            RemainingAccounts::new_passthrough(buf.as_mut_ptr(), buf.boundary(), &declared);
+        let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &declared);
         let v = remaining.get(1).unwrap().unwrap();
         assert_eq!(v.address(), &Address::new_from_array([dup_idx as u8; 32]));
     }
 }
 
 #[test]
-fn bounds_remaining_iterator_duplicate_rejected_in_strict_mode() {
+fn bounds_remaining_iterator_duplicate_preserved() {
     let mut buf = MultiAccountBuffer::new(&[
         MultiAccountEntry::account(0x01, 0),
         MultiAccountEntry::duplicate(0),
     ]);
     let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
-    let err = remaining.iter().collect::<Result<Vec<_>, _>>().unwrap_err();
-    assert_eq!(err, QuasarError::RemainingAccountDuplicate.into());
+    let views: Vec<_> = remaining.iter().collect::<Result<Vec<_>, _>>().unwrap();
+    assert_eq!(views.len(), 2);
+    assert_eq!(views[0].address(), views[1].address());
 }
 
 #[test]
-fn bounds_remaining_iterator_dup_cache_resolution_passthrough() {
+fn bounds_remaining_iterator_dup_cache_resolution() {
     let mut buf = MultiAccountBuffer::new(&[
         MultiAccountEntry::account(0x01, 0),
         MultiAccountEntry::duplicate(0),
     ]);
-    let remaining = RemainingAccounts::new_passthrough(buf.as_mut_ptr(), buf.boundary(), &[]);
+    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
     let views: Vec<_> = remaining.iter().collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(views.len(), 2);
     assert_eq!(views[0].address(), views[1].address());
+}
+
+#[test]
+fn bounds_remaining_get_preserves_prior_remaining_duplicate() {
+    let mut buf = MultiAccountBuffer::new(&[
+        MultiAccountEntry::account(0x01, 0),
+        MultiAccountEntry::duplicate(0),
+    ]);
+    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
+    let first = remaining.get(0).unwrap().unwrap();
+    let second = remaining.get(1).unwrap().unwrap();
+    assert_eq!(first.address(), second.address());
+}
+
+#[test]
+fn bounds_remaining_duplicate_checked_borrow_conflicts() {
+    let mut buf = MultiAccountBuffer::new(&[
+        MultiAccountEntry::account_with_data(0x01, vec![7]),
+        MultiAccountEntry::duplicate(0),
+    ]);
+    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
+    let mut iter = remaining.iter();
+    let mut first = iter.next().unwrap().unwrap();
+    let second = iter.next().unwrap().unwrap();
+
+    let mut data = first.try_borrow_data_mut().unwrap();
+    data[0] = 9;
+
+    assert!(second.try_borrow_data().is_err());
 }
 
 #[test]
@@ -1025,7 +1055,10 @@ fn bounds_remaining_iterator_overflow_returns_error() {
     for _ in 0..LIMIT {
         iter.next().unwrap().unwrap();
     }
-    let err = iter.next().unwrap().unwrap_err();
+    let err = match iter.next().unwrap() {
+        Ok(_) => panic!("expected overflow error"),
+        Err(err) => err,
+    };
     assert_eq!(err, QuasarError::RemainingAccountsOverflow.into());
     assert!(iter.next().is_none());
 }
@@ -1475,6 +1508,131 @@ fn uninit_parse_simulation_many_dups() {
     assert_eq!(accounts[2].address(), accounts[0].address());
     assert_eq!(accounts[3].address(), accounts[1].address());
     assert_eq!(accounts[4].address(), accounts[0].address());
+}
+
+#[test]
+fn parse_dup_allowed_does_not_preborrow_canonical_account() {
+    let mut buf = MultiAccountBuffer::new(&[
+        MultiAccountEntry::Full {
+            address: [1; 32],
+            owner: [2; 32],
+            lamports: 10,
+            data_len: 4,
+            data: Some(vec![1, 2, 3, 4]),
+            is_signer: false,
+            is_writable: true,
+        },
+        MultiAccountEntry::Duplicate { original_index: 0 },
+    ]);
+    let program_id = Address::new_from_array([9; 32]);
+    let mut views = MaybeUninit::<[AccountView; 2]>::uninit();
+    let base = views.as_mut_ptr() as *mut AccountView;
+
+    let first = unsafe {
+        quasar_lang::__internal::parse_account_dup(
+            buf.as_mut_ptr(),
+            base,
+            0,
+            &program_id,
+            ParseFlags {
+                expected: quasar_lang::__internal::NODUP_MUT,
+                mask: 0x00FF_FFFF,
+                flag_mask: 0x00FF_0000,
+                is_optional: false,
+                is_ref_mut: true,
+                allow_dup: false,
+            },
+        )
+        .unwrap()
+    };
+    unsafe {
+        quasar_lang::__internal::parse_account_dup(
+            first,
+            base,
+            1,
+            &program_id,
+            ParseFlags {
+                expected: quasar_lang::__internal::NODUP_MUT,
+                mask: 0x00FF_FFFF,
+                flag_mask: 0x00FF_0000,
+                is_optional: false,
+                is_ref_mut: true,
+                allow_dup: true,
+            },
+        )
+        .unwrap();
+    }
+
+    let mut parsed = unsafe { views.assume_init() };
+    assert_eq!(
+        unsafe { (*buf.as_mut_ptr().cast::<RuntimeAccount>()).borrow_state },
+        NOT_BORROWED
+    );
+
+    {
+        let (first, second) = parsed.split_at_mut(1);
+        let mut data = first[0].try_borrow_mut().unwrap();
+        data[0] = 9;
+        assert!(second[0].try_borrow().is_err());
+    }
+
+    assert_eq!(parsed[1].try_borrow().unwrap()[0], 9);
+}
+
+#[test]
+fn parse_dup_rejects_duplicate_without_dup_flag_even_readonly() {
+    let mut buf = MultiAccountBuffer::new(&[
+        MultiAccountEntry::Full {
+            address: [1; 32],
+            owner: [2; 32],
+            lamports: 10,
+            data_len: 0,
+            data: None,
+            is_signer: false,
+            is_writable: false,
+        },
+        MultiAccountEntry::Duplicate { original_index: 0 },
+    ]);
+    let program_id = Address::new_from_array([9; 32]);
+    let mut views = MaybeUninit::<[AccountView; 2]>::uninit();
+    let base = views.as_mut_ptr() as *mut AccountView;
+
+    let first = unsafe {
+        quasar_lang::__internal::parse_account_dup(
+            buf.as_mut_ptr(),
+            base,
+            0,
+            &program_id,
+            ParseFlags {
+                expected: quasar_lang::__internal::NODUP,
+                mask: 0x0000_00FF,
+                flag_mask: 0,
+                is_optional: false,
+                is_ref_mut: false,
+                allow_dup: false,
+            },
+        )
+        .unwrap()
+    };
+    let err = unsafe {
+        quasar_lang::__internal::parse_account_dup(
+            first,
+            base,
+            1,
+            &program_id,
+            ParseFlags {
+                expected: quasar_lang::__internal::NODUP,
+                mask: 0x0000_00FF,
+                flag_mask: 0,
+                is_optional: false,
+                is_ref_mut: false,
+                allow_dup: false,
+            },
+        )
+        .unwrap_err()
+    };
+
+    assert_eq!(err, ProgramError::AccountBorrowFailed);
 }
 
 #[test]
@@ -2394,7 +2552,7 @@ fn adversarial_remaining_zero_data_len_all() {
 }
 
 #[test]
-fn adversarial_remaining_all_duplicates() {
+fn adversarial_remaining_all_duplicates_preserved() {
     let mut entries = vec![MultiAccountEntry::account(0x01, 8)];
     for _ in 0..7 {
         entries.push(MultiAccountEntry::duplicate(0));
@@ -2402,18 +2560,22 @@ fn adversarial_remaining_all_duplicates() {
     let mut buf = MultiAccountBuffer::new(&entries);
     let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
 
-    let err = remaining.iter().collect::<Result<Vec<_>, _>>().unwrap_err();
-    assert_eq!(err, QuasarError::RemainingAccountDuplicate.into());
+    let views: Vec<_> = remaining.iter().collect::<Result<Vec<_>, _>>().unwrap();
+    assert_eq!(views.len(), 8);
+    let first_addr = *views[0].address();
+    for v in &views[1..] {
+        assert_eq!(v.address(), &first_addr);
+    }
 }
 
 #[test]
-fn adversarial_remaining_all_duplicates_passthrough() {
+fn adversarial_remaining_all_duplicates_preserve_order() {
     let mut entries = vec![MultiAccountEntry::account(0x01, 8)];
     for _ in 0..7 {
         entries.push(MultiAccountEntry::duplicate(0));
     }
     let mut buf = MultiAccountBuffer::new(&entries);
-    let remaining = RemainingAccounts::new_passthrough(buf.as_mut_ptr(), buf.boundary(), &[]);
+    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
 
     let views: Vec<_> = remaining.iter().collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(views.len(), 8);

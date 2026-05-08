@@ -348,6 +348,16 @@ impl<T: AsAccountView + crate::account_load::AccountLoad + CheckOwner + StaticVi
         T::check(view)?;
         Ok(())
     }
+
+    #[inline(always)]
+    fn check_checked(view: &AccountView) -> Result<(), solana_program_error::ProgramError> {
+        T::check_owner(view).inspect_err(|_| {
+            #[cfg(feature = "debug")]
+            crate::prelude::log("Owner check failed for account");
+        })?;
+        T::check_checked(view)?;
+        Ok(())
+    }
 }
 
 impl<T> core::ops::Deref for Account<T> {

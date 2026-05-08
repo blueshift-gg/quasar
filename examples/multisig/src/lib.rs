@@ -37,6 +37,6 @@ mod quasar_multisig {
         amount: u64,
     ) -> Result<(), ProgramError> {
         ctx.accounts
-            .verify_and_transfer(amount, &ctx.bumps, ctx.remaining_accounts_passthrough())
+            .verify_and_transfer(amount, &ctx.bumps, ctx.remaining_accounts())
     }
 }

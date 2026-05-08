@@ -107,13 +107,6 @@ mod quasar_test_misc {
         ctx.accounts.handler(ctx.remaining_accounts())
     }
 
-    #[instruction(discriminator = 44)]
-    pub fn remaining_accounts_passthrough_check(
-        ctx: CtxWithRemaining<RemainingAccountsCheck>,
-    ) -> Result<(), ProgramError> {
-        ctx.accounts.handler(ctx.remaining_accounts_passthrough())
-    }
-
     #[instruction(discriminator = 20)]
     pub fn dynamic_account_check(ctx: Ctx<DynamicAccountCheck>) -> Result<(), ProgramError> {
         ctx.accounts.handler()
