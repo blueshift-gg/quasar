@@ -36,14 +36,22 @@ const _: () = assert!(core::mem::offset_of!(TokenDataZc, native) == 109);
 const _: () = assert!(core::mem::offset_of!(TokenDataZc, delegated_amount) == 121);
 const _: () = assert!(core::mem::offset_of!(TokenDataZc, close_authority) == 129);
 
+#[inline(always)]
+fn coption4_tag_valid(base: *const u8, offset: usize) -> bool {
+    // SAFETY: callers pass offsets to the 4-byte COption tag prefix in an
+    // already length-checked SPL token account buffer.
+    unsafe { (base.add(offset) as *const u32).read_unaligned() <= 1 }
+}
+
 /// Semantic accessors for COption fields (auto-generated accessors don't cover
 /// PFX=4).
 impl TokenDataZc {
     #[inline(always)]
     pub fn coption_tags_valid(&self) -> bool {
-        self.delegate.raw_tag() <= 1
-            && self.native.raw_tag() <= 1
-            && self.close_authority.raw_tag() <= 1
+        let base = self as *const Self as *const u8;
+        coption4_tag_valid(base, 72)
+            && coption4_tag_valid(base, 109)
+            && coption4_tag_valid(base, 129)
     }
     #[inline(always)]
     pub fn state_valid(&self) -> bool {
@@ -111,7 +119,8 @@ const _: () = assert!(core::mem::offset_of!(MintDataZc, freeze_authority) == 46)
 impl MintDataZc {
     #[inline(always)]
     pub fn coption_tags_valid(&self) -> bool {
-        self.mint_authority.raw_tag() <= 1 && self.freeze_authority.raw_tag() <= 1
+        let base = self as *const Self as *const u8;
+        coption4_tag_valid(base, 0) && coption4_tag_valid(base, 46)
     }
     #[inline(always)]
     pub fn initialized_flag_valid(&self) -> bool {
