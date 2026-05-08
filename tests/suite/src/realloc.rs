@@ -123,8 +123,8 @@ fn grow_zeroes_new_region() {
 
 #[test]
 fn shrink_below_struct_rejects() {
-    // Attempt to shrink below the struct's minimum size — the realloc handler
-    // itself rejects this because the account data would be too small.
+    // Attempt to shrink below the struct's minimum size; typed realloc rejects
+    // this because the account data would be too small.
     let mut svm = svm_misc();
     let (payer, account, _) = setup_account(&mut svm);
 

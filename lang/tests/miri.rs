@@ -1705,6 +1705,32 @@ fn ops_resize_grows_and_zeroes_extension() {
 }
 
 #[test]
+fn ops_account_realloc_rejects_below_space() {
+    let data_len = 8usize;
+    let mut account_buf = AccountBuffer::new(data_len);
+    account_buf.init(
+        [1u8; 32],
+        TEST_OWNER.to_bytes(),
+        1_000_000,
+        data_len as u64,
+        false,
+        true,
+    );
+
+    let mut payer_buf = AccountBuffer::new(0);
+    payer_buf.init([2u8; 32], [0u8; 32], 1_000_000, 0, true, true);
+
+    let mut view = unsafe { account_buf.view() };
+    let payer = unsafe { payer_buf.view() };
+    let account =
+        unsafe { Account::<TestCloseableType>::from_account_view_unchecked_mut(&mut view) };
+
+    let err = account.realloc(data_len - 1, &payer, None).unwrap_err();
+    assert_eq!(err, ProgramError::AccountDataTooSmall);
+    assert_eq!(account.to_account_view().data_len(), data_len);
+}
+
+#[test]
 fn ops_close_transfers_lamports_and_zeroes_fields() {
     let data_len = 16usize;
     let mut src_buf = AccountBuffer::new(data_len);

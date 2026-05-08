@@ -162,7 +162,7 @@ impl<T> Account<T> {
     }
 }
 
-impl<T: AsAccountView + crate::traits::StaticView> Account<T> {
+impl<T: AsAccountView + crate::traits::StaticView + crate::traits::Space> Account<T> {
     /// Resize data region, adjusting lamports for rent-exemption.
     #[inline(always)]
     pub fn realloc(
@@ -171,6 +171,9 @@ impl<T: AsAccountView + crate::traits::StaticView> Account<T> {
         payer: &AccountView,
         rent: Option<&crate::sysvars::rent::Rent>,
     ) -> Result<(), ProgramError> {
+        if new_space < <T as crate::traits::Space>::SPACE {
+            return Err(ProgramError::AccountDataTooSmall);
+        }
         let view = unsafe { &mut *(self as *mut Account<T> as *mut AccountView) };
         realloc_account(view, new_space, payer, rent)
     }
