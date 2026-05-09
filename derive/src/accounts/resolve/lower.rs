@@ -32,7 +32,8 @@ pub(super) fn lower_semantics(
         .into_iter()
         .zip(cores)
         .map(|((_, directives), core)| {
-            let is_migration = detect_migration(&core.effective_ty);
+            let is_migration = detect_wrapper(&core.effective_ty, "Migration");
+            let is_uninit = detect_wrapper(&core.effective_ty, "Uninit");
             let mut sem = FieldSemantics {
                 core,
                 init: None,
@@ -43,7 +44,11 @@ pub(super) fn lower_semantics(
                 groups: Vec::new(),
                 user_checks: Vec::new(),
                 is_migration,
+                is_uninit,
             };
+            if sem.is_migration || sem.is_uninit {
+                sem.core.is_mut = true;
+            }
             lower_directives(&mut sem, directives)?;
             Ok(sem)
         })
@@ -157,6 +162,7 @@ fn extract_inner_ty(effective_ty: &Type) -> Option<Type> {
         "Account",
         "InterfaceAccount",
         "Migration",
+        "Uninit",
         "Program",
         "Interface",
         "Sysvar",
@@ -186,14 +192,14 @@ fn detect_dynamic(effective_ty: &Type, inner_ty: Option<&Type>) -> bool {
     false
 }
 
-/// Syntactic detection: last path segment is `Migration`.
-fn detect_migration(ty: &Type) -> bool {
+/// Syntactic detection: last path segment matches `wrapper`.
+fn detect_wrapper(ty: &Type, wrapper: &str) -> bool {
     match ty {
         Type::Path(tp) => tp
             .path
             .segments
             .last()
-            .is_some_and(|segment| segment.ident == "Migration"),
+            .is_some_and(|segment| segment.ident == wrapper),
         _ => false,
     }
 }

@@ -10,7 +10,7 @@ cargo install --path cli
 
 ## Commands
 
-### `quasar init [name] [--yes] [--no-git]`
+### `quasar init [name] [--yes] [--no-git] [--verbose]`
 
 Scaffold a new Quasar project. Without `--yes`, this launches an interactive wizard. If a name is provided, it pre-fills the project name prompt. With `--yes`, the command uses saved defaults or explicit flags and requires a project name.
 
@@ -31,17 +31,19 @@ The wizard generates a complete project directory with `Cargo.toml`, `Quasar.tom
 | `--ts-sdk` | Set `kit` or `web3.js` for TypeScript tests |
 | `--template` | Set `minimal` or `full` |
 | `--toolchain` | Set `solana` or `upstream` |
+| `--verbose` | Print each scaffold step as it runs |
 
 ```bash
 quasar init                  # Interactive wizard
 quasar init my-program       # Interactive, with the name pre-filled
 quasar init my-program -y    # Use saved defaults, no prompts
 quasar init .                # Scaffold into current directory
+quasar init my-program -y --verbose
 ```
 
 ### `quasar build [--debug] [--verbose] [--watch] [--features FEATURES] [--lint]`
 
-Compile the on-chain program. Reads `Quasar.toml` to determine which toolchain to use and automatically generates the IDL before building.
+Compile the on-chain program. Reads `Quasar.toml` to determine which toolchain to use and automatically generates the IDL before building. By default, Quasar shows phase progress and keeps child-process output quiet unless the build fails. With `--verbose`, it streams the underlying build command output directly.
 
 | Flag | Effect |
 |------|--------|
@@ -57,9 +59,9 @@ On success, prints the binary size and delta from the previous build:
   ✔ Build complete in 1.2s (56.6 KB, -1.2 KB)
 ```
 
-### `quasar test [--debug] [--show-output] [--filter PATTERN] [--watch] [--no-build] [--features FEATURES]`
+### `quasar test [--debug] [--show-output] [--filter PATTERN] [--watch] [--no-build] [--features FEATURES] [--verbose]`
 
-Run the test suite. Builds first, then runs either Rust tests or TypeScript tests based on `Quasar.toml`.
+Run the test suite. Builds first, then runs either Rust tests or TypeScript tests based on `Quasar.toml`. By default, Quasar prints the active phase and configured test command. With `--verbose`, the build step streams its underlying command output and test/install commands are echoed before execution.
 
 | Flag | Effect |
 |------|--------|
@@ -69,6 +71,7 @@ Run the test suite. Builds first, then runs either Rust tests or TypeScript test
 | `-w, --watch` | Watch `src/` for changes and re-run tests automatically |
 | `--no-build` | Skip the build step (use existing binary) |
 | `--features FEATURES` | Cargo features to enable for the build step |
+| `--verbose` | Show build/test commands as they run |
 
 TypeScript tests run through the configured command, which defaults to `npx vitest run`. Rust tests run through the configured command, which defaults to `cargo test tests::`.
 

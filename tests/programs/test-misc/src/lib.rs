@@ -320,15 +320,20 @@ mod quasar_test_misc {
         ctx.accounts.handler(new_value)
     }
 
-    /// Proves Option<String<N>> and Option<Vec<T, N>> compile as instruction
-    /// arguments (#144).
+    /// Proves Option<String<N>> and Option<Vec<T, N>> use the compact optional
+    /// dynamic wire layout, not the fixed PodOption<PodString/PodVec> layout.
     #[instruction(discriminator = 61)]
     pub fn optional_dynamic_arg(
         ctx: Ctx<PlainOk>,
         maybe_name: Option<String<32>>,
         maybe_addrs: Option<Vec<Address, 4>>,
     ) -> Result<(), ProgramError> {
-        let _ = (maybe_name, maybe_addrs);
+        match (maybe_name, maybe_addrs) {
+            (None, None) => {}
+            (Some(name), Some(addrs))
+                if name == "quasar" && addrs.len() == 1 && addrs[0] == EXPECTED_ADDRESS => {}
+            _ => return Err(ProgramError::InvalidInstructionData),
+        }
         ctx.accounts.handler()
     }
 }

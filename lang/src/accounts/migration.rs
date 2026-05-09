@@ -2,44 +2,10 @@ use {crate::prelude::*, core::marker::PhantomData};
 
 /// Account wrapper for type-safe on-chain migration from `From` to `To`.
 ///
-/// Follows Anchor's migration pattern:
-/// - Deref to `From::Target` for reading old data before migration
-/// - `.migrate(new_data)` writes the `To` discriminator + data
-/// - Exit enforcement: epilogue errors if `.migrate()` was not called
-///
-/// # Lifecycle
-/// ```text
-/// parse:    validate source owner + discriminator
-/// handler:  read old fields via Deref, call .migrate(new_data)
-/// epilogue: verify migration completed (disc matches To)
-/// ```
-///
-/// # Realloc
-/// Growth to the target type's space happens before the handler so
-/// `.migrate()` can write safely. Shrink/normalization happens in the
-/// epilogue. A `payer = ...` field is required whenever the size changes.
-///
-/// # Example
-/// ```ignore
-/// #[derive(Accounts)]
-/// pub struct MigrateConfig {
-///     #[account(mut, payer = payer)]
-///     pub config: Migration<ConfigV1, ConfigV2>,
-///     #[account(mut)]
-///     pub payer: Signer,
-///     pub system_program: Program<SystemProgram>,
-/// }
-///
-/// impl MigrateConfig {
-///     pub fn handler(&mut self) -> Result<(), ProgramError> {
-///         let old_val = self.config.value;  // Deref to ConfigV1Data
-///         self.config.migrate(ConfigV2Data {
-///             value: old_val,
-///             extra: PodU32::from(42),
-///         })
-///     }
-/// }
-/// ```
+/// The type validates and dereferences as `From` during account parsing. The
+/// handler owns the lifecycle transition by calling `.migrate(&payer, data)`,
+/// which reallocates if needed, writes the `To` layout, validates it, and
+/// returns `&mut Account<To>`.
 #[repr(transparent)]
 pub struct Migration<From, To> {
     __view: AccountView,
@@ -56,7 +22,7 @@ impl<From, To> AsAccountView for Migration<From, To> {
 // Safety: Migration is repr(transparent) over AccountView.
 unsafe impl<From, To> crate::traits::StaticView for Migration<From, To> {}
 
-// Migration supports realloc (needed when target is larger than source).
+// Migration supports realloc (performed by `.migrate(...)`).
 impl<From, To> crate::ops::SupportsRealloc for Migration<From, To> {}
 
 // Space for Migration is the target's space (what we're reallocating to).
@@ -76,74 +42,8 @@ impl<From, To> Migration<From, To> {
     }
 
     #[inline(always)]
-    fn discriminator_is<Ty: crate::traits::Discriminator>(&self) -> bool {
-        Self::data_starts_with::<Ty>(unsafe { self.view().borrow_unchecked() })
-    }
-
-    #[inline(always)]
     fn data_starts_with<Ty: crate::traits::Discriminator>(data: &[u8]) -> bool {
         data.starts_with(<Ty as crate::traits::Discriminator>::DISCRIMINATOR)
-    }
-}
-
-impl<From, To> Migration<From, To>
-where
-    To: crate::traits::Space,
-{
-    /// Grow the account to the target type's space before the handler.
-    /// Called by generated parse body when the derive detects a Migration
-    /// field.
-    #[inline(always)]
-    pub fn grow_to_target(
-        &mut self,
-        payer: &AccountView,
-        ctx: &crate::ops::OpCtxWithRent<'_>,
-    ) -> Result<(), ProgramError> {
-        let target_space = <To as crate::traits::Space>::SPACE;
-        if self.view().data_len() >= target_space {
-            return Ok(());
-        }
-        self.realloc_to_target(payer, ctx)
-    }
-
-    /// Normalize the account to exact target space in the epilogue.
-    /// Called by generated epilogue when the derive detects a Migration field.
-    #[inline(always)]
-    pub fn normalize_to_target(
-        &mut self,
-        payer: &AccountView,
-        ctx: &crate::ops::OpCtxWithRent<'_>,
-    ) -> Result<(), ProgramError> {
-        let target_space = <To as crate::traits::Space>::SPACE;
-        if self.view().data_len() == target_space {
-            return Ok(());
-        }
-        self.realloc_to_target(payer, ctx)
-    }
-
-    #[inline(always)]
-    fn realloc_to_target(
-        &mut self,
-        payer: &AccountView,
-        ctx: &crate::ops::OpCtxWithRent<'_>,
-    ) -> Result<(), ProgramError> {
-        crate::accounts::realloc_account(
-            self.view_mut(),
-            <To as crate::traits::Space>::SPACE,
-            payer,
-            Some(ctx.rent),
-        )
-    }
-}
-
-impl<From, To> Migration<From, To>
-where
-    To: crate::traits::Discriminator,
-{
-    /// Check if migration has been completed (discriminator matches `To`).
-    #[inline(always)]
-    pub fn is_migrated(&self) -> bool {
-        self.discriminator_is::<To>()
     }
 }
 
@@ -191,10 +91,13 @@ where
 impl<From, To> Migration<From, To>
 where
     From: crate::traits::Discriminator + crate::traits::Owner,
-    To: core::ops::Deref
+    To: crate::account_load::AccountLoad
+        + CheckOwner
+        + core::ops::Deref
         + crate::traits::Owner
         + crate::traits::Space
-        + crate::traits::Discriminator,
+        + crate::traits::Discriminator
+        + crate::traits::StaticView,
     To::Target: Sized,
 {
     // Compile-time safety assertions.
@@ -243,9 +146,6 @@ where
 
     #[inline(always)]
     fn check_source_ready(&self) -> Result<(), ProgramError> {
-        if self.view().data_len() < <To as crate::traits::Space>::SPACE {
-            return Err(ProgramError::AccountDataTooSmall);
-        }
         let data = unsafe { self.view().borrow_unchecked() };
         if Self::data_starts_with::<To>(data) {
             return Err(ProgramError::AccountAlreadyInitialized);
@@ -270,39 +170,23 @@ where
         }
     }
 
-    /// Migrate to the new schema. Writes the `To` discriminator + new data.
-    ///
-    /// The generated account lifecycle grows the account before the handler
-    /// when `To::SPACE` is larger than the current data length.
-    ///
-    /// Returns `Err(AccountAlreadyInitialized)` if already migrated.
-    ///
-    /// # Example
-    /// ```ignore
-    /// let old_val = self.config.value;  // read via Deref
-    /// self.config.migrate(ConfigV2Data {
-    ///     value: old_val,
-    ///     extra: PodU32::from(42),
-    /// })?;
-    /// ```
+    /// Migrate to the new schema and return the initialized target account.
     #[inline(always)]
-    pub fn migrate(&mut self, new_data: To::Target) -> Result<(), ProgramError> {
+    pub fn migrate(
+        &mut self,
+        payer: &impl AsAccountView,
+        new_data: To::Target,
+    ) -> Result<&mut Account<To>, ProgramError> {
         Self::assert_migration_contract();
         self.check_source_ready()?;
+        crate::accounts::realloc_account(
+            self.view_mut(),
+            <To as crate::traits::Space>::SPACE,
+            payer.to_account_view(),
+            None,
+        )?;
         self.write_target(&new_data);
-        Ok(())
-    }
-
-    /// Idempotent migration. If already migrated, returns `Ok(())`.
-    /// Otherwise, writes the new data.
-    #[inline(always)]
-    pub fn migrate_idempotent(&mut self, new_data: To::Target) -> Result<(), ProgramError> {
-        Self::assert_migration_contract();
-        if self.is_migrated() {
-            return Ok(());
-        }
-        self.check_source_ready()?;
-        self.write_target(&new_data);
-        Ok(())
+        <Account<To> as crate::account_load::AccountLoad>::check(self.view())?;
+        Ok(unsafe { Account::<To>::from_account_view_unchecked_mut(self.view_mut()) })
     }
 }

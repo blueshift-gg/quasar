@@ -48,6 +48,4 @@ pub enum QuasarError {
     ReturnDataFromWrongProgram,
     /// Return data bytes do not match the expected fixed-size layout.
     InvalidReturnData,
-    /// Migration<From, To> field exited without .migrate() being called.
-    AccountNotMigrated,
 }

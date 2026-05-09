@@ -4,7 +4,10 @@ use {
         error::{CliError, CliResult},
         style, ClientCommand,
     },
-    quasar_idl::codegen::{self, model::ProgramModel},
+    quasar_idl::{
+        codegen::{self, model::ProgramModel},
+        types::Idl,
+    },
     std::path::{Path, PathBuf},
 };
 
@@ -23,10 +26,10 @@ pub fn run(command: ClientCommand) -> CliResult {
         )));
     }
 
-    let json = std::fs::read_to_string(idl_path)
-        .map_err(|e| anyhow::anyhow!("failed to read IDL: {e}"))?;
-    let idl: quasar_idl::types::Idl =
-        serde_json::from_str(&json).map_err(|e| anyhow::anyhow!("failed to parse IDL: {e}"))?;
+    let json =
+        std::fs::read_to_string(idl_path).map_err(|e| CliError::io_path("read", idl_path, e))?;
+    let idl: quasar_idl::types::Idl = serde_json::from_str(&json)
+        .map_err(|e| CliError::json_parse(format!("IDL file {}", idl_path.display()), e))?;
 
     let languages: Vec<&str> = if command.lang.is_empty() {
         ALL_LANGUAGES.to_vec()
@@ -55,11 +58,7 @@ pub fn run(command: ClientCommand) -> CliResult {
     Ok(())
 }
 
-pub fn generate_clients(
-    idl: &quasar_idl::types::Idl,
-    languages: &[&str],
-    clients_path: &Path,
-) -> CliResult {
+pub fn generate_clients(idl: &Idl, languages: &[&str], clients_path: &Path) -> CliResult {
     let model = ProgramModel::new(idl);
 
     // TypeScript

@@ -22,7 +22,7 @@ SBF_ALL := $(SBF_EXAMPLES) $(SBF_TEST_PROGRAMS)
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
 	check-runtime-panics check-workspace-invariants build build-sbf test bench-cu \
 	bench-tracked compare-tracked test-miri test-miri-strict test-all nightly-version \
-	kani help-kani check-kani kani-lang kani-spl kani-metadata
+	generated-client-smoke kani help-kani check-kani kani-lang kani-spl kani-metadata
 
 # Print the nightly toolchain version for CI
 nightly-version:
@@ -163,6 +163,9 @@ test:
 		-p quasar-test-suite \
 		--all-features
 
+generated-client-smoke:
+	@cargo test -p quasar-cli --test generated_clients_smoke -- --nocapture
+
 bench-cu:
 	@$(MAKE) build-sbf
 	@echo "Running vault CU benchmark..."
@@ -214,5 +217,6 @@ test-all:
 	@$(MAKE) check-workspace-invariants
 	@$(MAKE) build-sbf
 	@$(MAKE) test
+	@$(MAKE) generated-client-smoke
 	@$(MAKE) test-miri
 	@echo "All checks passed!"

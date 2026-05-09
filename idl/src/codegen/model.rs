@@ -73,9 +73,12 @@ impl ProgramFeatures {
             has_pda_account_seeds: idl.instructions.iter().any(|ix| {
                 ix.accounts.iter().any(|account| {
                     if let IdlResolver::Pda { seeds, .. } = &account.resolver {
-                        seeds
-                            .iter()
-                            .any(|seed| matches!(seed, IdlPdaSeed::Account { .. }))
+                        seeds.iter().any(|seed| {
+                            matches!(
+                                seed,
+                                IdlPdaSeed::Account { .. } | IdlPdaSeed::AccountField { .. }
+                            )
+                        })
                     } else {
                         false
                     }

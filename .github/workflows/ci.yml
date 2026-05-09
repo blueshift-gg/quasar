@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [master]
   workflow_call:
+    inputs:
+      generated_client_smoke:
+        description: Run generated client smoke coverage.
+        required: false
+        type: boolean
+        default: true
 
 env:
   SOLANA_VERSION: stable
@@ -60,16 +66,19 @@ jobs:
           filters: |
             client_codegen:
               - 'cli/**'
+              - 'derive/**'
               - 'idl/**'
+              - 'lang/**'
               - 'schema/**'
               - 'examples/multisig/**'
               - 'Cargo.lock'
               - 'Cargo.toml'
               - '.github/workflows/ci.yml'
+              - 'Makefile'
       - id: scope
         run: |
           if [ "${{ github.event_name }}" = "workflow_call" ]; then
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "should_run=${{ inputs.generated_client_smoke }}" >> "$GITHUB_OUTPUT"
           elif [ "${{ steps.changed.outputs.client_codegen }}" = "true" ]; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
           else
@@ -199,13 +208,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
           cache: false
       - uses: dtolnay/rust-toolchain@stable
       - name: Run generated client smoke test
-        run: cargo test -p quasar-cli --test generated_clients_smoke -- --nocapture
+        run: make generated-client-smoke
 
   miri:
     name: Miri (Tree Borrows)

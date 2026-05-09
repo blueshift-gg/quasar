@@ -11,9 +11,9 @@
 
 use {
     crate::helpers::{
-        classify_borrowed_as_compact, classify_lifetime_arg, classify_pod_dynamic,
-        extract_generic_inner_type, is_unit_type, pod_dyn_to_compact_type, InstructionArgs,
-        PodDynField,
+        classify_borrowed_as_compact, classify_lifetime_arg, classify_option_pod_dynamic,
+        classify_pod_dynamic, extract_generic_inner_type, is_unit_type, pod_dyn_to_compact_type,
+        InstructionArgs, PodDynField,
     },
     proc_macro::TokenStream,
     quote::{format_ident, quote},
@@ -187,12 +187,15 @@ fn emit_decode_and_tail(
         enum ArgClass {
             Fixed,
             PodDyn(PodDynField),
+            OptionalPodDyn(PodDynField),
         }
 
         let mut arg_classes: Vec<ArgClass> = Vec::with_capacity(remaining.len());
         for pt in remaining {
             if let Some(pd) = classify_pod_dynamic(&pt.ty) {
                 arg_classes.push(ArgClass::PodDyn(pd));
+            } else if let Some(pd) = classify_option_pod_dynamic(&pt.ty) {
+                arg_classes.push(ArgClass::OptionalPodDyn(pd));
             } else if matches!(&*pt.ty, Type::Reference(_)) {
                 // Borrowed arg — desugar to compact via #[max(N)]
                 match parse_max_attr_from_fn_arg(pt) {
@@ -266,7 +269,8 @@ fn emit_decode_and_tail(
         let vec_align_asserts: Vec<proc_macro2::TokenStream> = arg_classes
             .iter()
             .filter_map(|cls| match cls {
-                ArgClass::PodDyn(PodDynField::Vec { elem, .. }) => Some(quote! {
+                ArgClass::PodDyn(PodDynField::Vec { elem, .. })
+                | ArgClass::OptionalPodDyn(PodDynField::Vec { elem, .. }) => Some(quote! {
                     const _: () = assert!(
                         core::mem::align_of::<#elem>() == 1,
                         "instruction Vec element type must have alignment 1"
@@ -285,7 +289,7 @@ fn emit_decode_and_tail(
 
         let has_pod_dyn = arg_classes
             .iter()
-            .any(|cls| matches!(cls, ArgClass::PodDyn(_)));
+            .any(|cls| matches!(cls, ArgClass::PodDyn(_) | ArgClass::OptionalPodDyn(_)));
 
         if has_pod_dyn {
             // Alias quasar_lang's re-export so `zeropod::*` paths emitted by
@@ -307,6 +311,10 @@ fn emit_decode_and_tail(
                         quote!(#ty)
                     }
                     ArgClass::PodDyn(ref pd) => pod_dyn_to_compact_type(pd),
+                    ArgClass::OptionalPodDyn(ref pd) => {
+                        let inner = pod_dyn_to_compact_type(pd);
+                        quote!(Option<#inner>)
+                    }
                 })
                 .collect();
 
@@ -340,6 +348,11 @@ fn emit_decode_and_tail(
                         ));
                     }
                     ArgClass::PodDyn(_) => {
+                        out.push(syn::parse_quote!(
+                            let #name = __ref.#name();
+                        ));
+                    }
+                    ArgClass::OptionalPodDyn(_) => {
                         out.push(syn::parse_quote!(
                             let #name = __ref.#name();
                         ));

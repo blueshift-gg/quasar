@@ -73,6 +73,111 @@ fn raw_write_succeeds() {
     assert_eq!(written, 42, "raw handler should write 42 at offset 8");
 }
 
+#[test]
+fn raw_helper_write_succeeds() {
+    let mut svm = svm_raw();
+    let target = Pubkey::new_unique();
+
+    let target_account = quasar_svm::Account {
+        address: target,
+        lamports: 1_000_000,
+        data: vec![0u8; 32],
+        owner: quasar_test_raw::ID,
+        executable: false,
+    };
+
+    let value: u64 = 99;
+    let mut data = vec![6u8];
+    data.extend_from_slice(&value.to_le_bytes());
+
+    let ix = Instruction {
+        program_id: quasar_test_raw::ID,
+        accounts: vec![quasar_svm::AccountMeta {
+            pubkey: target,
+            is_signer: false,
+            is_writable: true,
+        }],
+        data,
+    };
+
+    let result = svm.process_instruction(&ix, &[target_account]);
+    assert!(
+        result.is_ok(),
+        "raw_helper_write should succeed: {:?}",
+        result.raw_result
+    );
+
+    let account_after = svm.get_account(&target).expect("account should exist");
+    let written = u64::from_le_bytes(account_after.data[8..16].try_into().unwrap());
+    assert_eq!(written, 99, "helper should write 99 at offset 8");
+}
+
+#[test]
+fn raw_helper_write_fails_when_write_exceeds_account_data() {
+    let mut svm = svm_raw();
+    let target = Pubkey::new_unique();
+
+    let target_account = quasar_svm::Account {
+        address: target,
+        lamports: 1_000_000,
+        data: vec![0u8; 12],
+        owner: quasar_test_raw::ID,
+        executable: false,
+    };
+
+    let mut data = vec![6u8];
+    data.extend_from_slice(&1u64.to_le_bytes());
+
+    let ix = Instruction {
+        program_id: quasar_test_raw::ID,
+        accounts: vec![quasar_svm::AccountMeta {
+            pubkey: target,
+            is_signer: false,
+            is_writable: true,
+        }],
+        data,
+    };
+
+    let result = svm.process_instruction(&ix, &[target_account]);
+    assert!(
+        result.raw_result.is_err(),
+        "helper should reject out-of-bounds writes"
+    );
+}
+
+#[test]
+fn raw_helper_write_fails_when_account_is_not_writable() {
+    let mut svm = svm_raw();
+    let target = Pubkey::new_unique();
+
+    let target_account = quasar_svm::Account {
+        address: target,
+        lamports: 1_000_000,
+        data: vec![0u8; 32],
+        owner: quasar_test_raw::ID,
+        executable: false,
+    };
+
+    let mut data = vec![6u8];
+    data.extend_from_slice(&1u64.to_le_bytes());
+
+    let ix = Instruction {
+        program_id: quasar_test_raw::ID,
+        accounts: vec![quasar_svm::AccountMeta {
+            pubkey: target,
+            is_signer: false,
+            is_writable: false,
+        }],
+        data,
+    };
+
+    let result = svm.process_instruction(&ix, &[target_account]);
+    assert!(
+        result.raw_result.is_err(),
+        "helper should reject writes to readonly account metas"
+    );
+}
+
 /// Raw instruction fails when signer check fails — account[1] is not a signer.
 #[test]
 fn raw_write_fails_without_signer() {

@@ -22,12 +22,6 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
 
     // --- Migration exclusivity rules ---
     if sem.is_migration {
-        if !sem.core.is_mut {
-            return Err(syn::Error::new_spanned(
-                span,
-                "`Migration<From, To>` requires `mut`",
-            ));
-        }
         if sem.core.optional {
             return Err(syn::Error::new_spanned(
                 span,
@@ -49,8 +43,41 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
         if !sem.groups.is_empty() {
             return Err(syn::Error::new_spanned(
                 span,
-                "behavior groups cannot be used with `Migration<From, To>` — migration and \
-                 behavior exit both mutate the account during epilogue",
+                "behavior groups cannot be used with `Migration<From, To>`",
+            ));
+        }
+    }
+
+    // --- Deferred init exclusivity rules ---
+    if sem.is_uninit {
+        if sem.core.optional {
+            return Err(syn::Error::new_spanned(
+                span,
+                "`Option<Uninit<...>>` is not supported — deferred init fields cannot be optional",
+            ));
+        }
+        if sem.has_init() {
+            return Err(syn::Error::new_spanned(
+                span,
+                "`init` cannot be used with `Uninit<T>`; call `.init(...)` in the handler",
+            ));
+        }
+        if sem.realloc.is_some() {
+            return Err(syn::Error::new_spanned(
+                span,
+                "`realloc` cannot be used with `Uninit<T>`",
+            ));
+        }
+        if sem.close_dest.is_some() {
+            return Err(syn::Error::new_spanned(
+                span,
+                "`close` cannot be used with `Uninit<T>`",
+            ));
+        }
+        if !sem.groups.is_empty() {
+            return Err(syn::Error::new_spanned(
+                span,
+                "behavior groups cannot be used with `Uninit<T>`; pass init params to `.init(...)`",
             ));
         }
     }

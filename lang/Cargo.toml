@@ -20,7 +20,7 @@ inventory = { version = "0.3", optional = true }
 quasar-idl-schema = { path = "../idl/schema", optional = true }
 serde_json = { version = "1", optional = true }
 bs58 = { version = "0.5", optional = true }
-zeropod = { version = "0.2.0", features = ["solana-address", "solana-program-error"] }
+zeropod = { version = "0.3.0", features = ["solana-address", "solana-program-error"] }
 const-crypto = "0.3.0"
 solana-program-error = "3.0.0"
 solana-account-view = "2.0.0"
@@ -34,7 +34,7 @@ solana-define-syscall = { version = "5.0.0", features = [
 ] }
 
 [target.'cfg(not(any(target_os = "solana", target_arch = "bpf")))'.dependencies]
-zeropod = { version = "0.2.0", features = ["wincode", "solana-address", "solana-program-error"] }
+zeropod = { version = "0.3.0", features = ["wincode", "solana-address", "solana-program-error"] }
 solana-instruction = "3.2.0"
 wincode = { version = "0.4", features = ["derive"] }
 

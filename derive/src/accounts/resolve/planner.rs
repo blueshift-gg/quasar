@@ -167,22 +167,6 @@ fn plan_field(
         }));
     }
 
-    // Post-load: migration grow.
-    if sem.is_migration && sem.core.is_mut {
-        let payer = match resolved_payer.as_ref() {
-            Some(p) => p,
-            None => {
-                return Err(syn::Error::new_spanned(
-                    &sem.core.field,
-                    "`Migration<From, To>` requires `payer = ...` (or add a field named `payer`)",
-                ));
-            }
-        };
-        post_load.push(PostLoadStep::MigrationGrow(MigrationSpec {
-            payer: payer.clone(),
-        }));
-    }
-
     // Post-load: address verification for non-init fields.
     if !sem.has_init() {
         if let Some(addr_expr) = &sem.address {
@@ -215,15 +199,6 @@ fn plan_field(
         epilogue.push(EpilogueStep::ProgramClose(ProgramCloseSpec {
             destination_field: dest.clone(),
         }));
-    }
-
-    // Epilogue: migration verify + normalize.
-    if sem.is_migration {
-        if let Some(payer) = resolved_payer.as_ref() {
-            epilogue.push(EpilogueStep::MigrationVerifyAndNormalize(MigrationSpec {
-                payer: payer.clone(),
-            }));
-        }
     }
 
     Ok(FieldPlan {
@@ -357,7 +332,7 @@ fn resolve_field_payer(sem: &FieldSemantics, payer_field: Option<&Ident>) -> Opt
         });
     }
 
-    let needs_payer = sem.init.is_some() || sem.is_migration || sem.realloc.is_some();
+    let needs_payer = sem.init.is_some() || sem.realloc.is_some();
     if needs_payer {
         if let Some(payer_ident) = payer_field {
             return Some(FieldRef {
@@ -376,7 +351,7 @@ fn resolve_field_payer(sem: &FieldSemantics, payer_field: Option<&Ident>) -> Opt
 fn compute_rent_plan(semantics: &[FieldSemantics]) -> RentPlan {
     let needs_rent = semantics
         .iter()
-        .any(|sem| sem.init.is_some() || sem.realloc.is_some() || sem.is_migration);
+        .any(|sem| sem.init.is_some() || sem.realloc.is_some());
 
     if !needs_rent {
         return RentPlan::NotNeeded;

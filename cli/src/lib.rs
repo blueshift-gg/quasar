@@ -103,6 +103,10 @@ pub struct InitCommand {
     /// Toolchain (solana, upstream)
     #[arg(long)]
     pub toolchain: Option<String>,
+
+    /// Show each scaffold step as it runs
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub verbose: bool,
 }
 
 #[derive(Args, Debug)]
@@ -179,6 +183,10 @@ pub struct TestCommand {
     /// Cargo features to enable (comma-separated or repeated)
     #[arg(long, value_name = "FEATURES")]
     pub features: Option<String>,
+
+    /// Show build/test commands as they run
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub verbose: bool,
 }
 
 #[derive(Args, Debug, Default)]
@@ -358,6 +366,7 @@ pub fn run(cli: Cli) -> CliResult {
             cmd.watch,
             cmd.no_build,
             cmd.features,
+            cmd.verbose,
         ),
         Command::Deploy(cmd) => deploy::run(
             cmd.program_keypair,
@@ -436,7 +445,7 @@ pub fn print_help() {
     println!();
     println!("  {}", style::bold("Commands:"));
     print_cmd(
-        "init    [name] [-y] [--no-git] [--template]",
+        "init    [name] [-y] [--no-git] [--template] [--verbose]",
         "Scaffold a new project",
     );
     print_cmd(
@@ -448,7 +457,7 @@ pub fn print_help() {
         "Compile the on-chain program",
     );
     print_cmd(
-        "test    [--debug] [--show-output] [-f] [-w] [--features]",
+        "test    [--debug] [--show-output] [-f] [-w] [--features] [--verbose]",
         "Run the test suite",
     );
     print_cmd(

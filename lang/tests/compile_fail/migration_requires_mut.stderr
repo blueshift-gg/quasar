@@ -1,6 +1,0 @@
-error: `Migration<From, To>` requires `mut`
-  --> tests/compile_fail/migration_requires_mut.rs:24:5
-   |
-24 | /     #[account(payer = payer)]
-25 | |     pub config: Migration<ConfigV1, ConfigV2>,
-   | |_____________________________________________^

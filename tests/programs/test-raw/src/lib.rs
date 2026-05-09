@@ -60,6 +60,20 @@ mod quasar_test_raw {
         Ok(())
     }
 
+    /// Raw instruction using the account write helper instead of a manual
+    /// unchecked borrow + pointer copy.
+    #[instruction(discriminator = 6, raw)]
+    pub fn raw_helper_write(ctx: Context) -> Result<(), ProgramError> {
+        if ctx.accounts.is_empty() {
+            return Err(ProgramError::NotEnoughAccountKeys);
+        }
+        if ctx.data.len() < 8 {
+            return Err(ProgramError::InvalidInstructionData);
+        }
+
+        ctx.accounts[0].write_bytes(8, &ctx.data[..8])
+    }
+
     /// Raw + inline asm — uses sBPF `ldxdw`/`stxdw` to copy a u64 from
     /// instruction data into account[0] data at a fixed offset.
     /// Proves inline assembly works end-to-end in a raw handler.

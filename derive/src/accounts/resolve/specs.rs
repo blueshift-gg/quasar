@@ -127,12 +127,6 @@ pub(crate) struct ReallocSpec {
     pub payer: FieldRef,
 }
 
-/// Migration spec.
-#[derive(Clone)]
-pub(crate) struct MigrationSpec {
-    pub payer: FieldRef,
-}
-
 /// Address verification plan for a field.
 #[derive(Clone)]
 pub(crate) struct AddressSpec {
@@ -181,8 +175,6 @@ pub(crate) enum PostLoadStep {
     VerifyExistingAddress(AddressSpec),
     /// Realloc.
     Realloc(ReallocSpec),
-    /// Migration grow.
-    MigrationGrow(MigrationSpec),
 }
 
 /// A step that runs in the epilogue.
@@ -192,8 +184,6 @@ pub(crate) enum EpilogueStep {
     Behavior(BehaviorCall),
     /// Core program close (lamport drain).
     ProgramClose(ProgramCloseSpec),
-    /// Migration verify + normalize.
-    MigrationVerifyAndNormalize(MigrationSpec),
 }
 
 /// Per-field execution plan. Only phase vectors — structural info lives in

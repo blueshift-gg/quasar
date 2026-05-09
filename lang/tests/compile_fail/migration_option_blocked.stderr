@@ -1,6 +1,5 @@
 error: `Option<Migration<...>>` is not supported — migration fields cannot be optional
-  --> tests/compile_fail/migration_option_blocked.rs:24:5
+  --> tests/compile_fail/migration_option_blocked.rs:23:5
    |
-24 | /     #[account(mut, payer = payer)]
-25 | |     pub config: Option<Migration<ConfigV1, ConfigV2>>,
-   | |_____________________________________________________^
+23 |     pub config: Option<Migration<ConfigV1, ConfigV2>>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

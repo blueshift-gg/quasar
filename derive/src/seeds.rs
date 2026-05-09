@@ -257,6 +257,11 @@ fn derive_seeds_inner(input: TokenStream) -> Result<TokenStream> {
             }
         }
 
+        impl quasar_lang::traits::HasSeeds for #struct_name {
+            const SEED_PREFIX: &'static [u8] = #prefix;
+            const SEED_DYNAMIC_COUNT: usize = #n_slices - 1;
+        }
+
         impl<'__quasar_seed> #seed_set<'__quasar_seed> {
             #[inline(always)]
             pub fn with_bump(self, bump: u8) -> #seed_set_bump<'__quasar_seed> {

@@ -147,7 +147,6 @@ pub(crate) fn generate_instruction_arg_extraction(
                 None => {}
                 Some(PodDynField::Str { max, prefix_bytes }) => {
                     dyn_idx += 1;
-                    let max_lit = *max;
                     let pfx = *prefix_bytes;
                     stmts.push(quote! {
                         if __data.len() < __offset + #pfx {
@@ -165,7 +164,7 @@ pub(crate) fn generate_instruction_arg_extraction(
                         __offset += #pfx;
                     });
                     stmts.push(quote! {
-                        if __ix_dyn_len > #max_lit {
+                        if __ix_dyn_len > #max {
                             return Err(ProgramError::InvalidInstructionData);
                         }
                     });
@@ -189,7 +188,6 @@ pub(crate) fn generate_instruction_arg_extraction(
                     prefix_bytes,
                 }) => {
                     dyn_idx += 1;
-                    let max_lit = *max;
                     let pfx = *prefix_bytes;
                     stmts.push(quote! {
                         if __data.len() < __offset + #pfx {
@@ -207,7 +205,7 @@ pub(crate) fn generate_instruction_arg_extraction(
                         __offset += #pfx;
                     });
                     stmts.push(quote! {
-                        if __ix_dyn_count > #max_lit {
+                        if __ix_dyn_count > #max {
                             return Err(ProgramError::InvalidInstructionData);
                         }
                     });

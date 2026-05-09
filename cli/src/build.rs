@@ -48,14 +48,20 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>, lint_flag: bool)
     let config = QuasarConfig::load()?;
     let clients_path = config.client_path();
     let start = Instant::now();
+    let mut progress = style::Progress::new(verbose);
 
     let languages = config.client_languages();
     let crate_root = utils::find_program_crate(&config);
+    progress.step("Generating IDL and clients...");
     crate::idl::generate(&crate_root, &languages, &clients_path)?;
+    progress.done("Generated IDL and clients");
 
     // Lint pass removed — IDL-based lint will be re-introduced in a future PR.
     let _ = lint_flag;
 
+    if verbose {
+        eprintln!("  {}", style::step("Building program..."));
+    }
     let sp = if verbose {
         indicatif::ProgressBar::hidden()
     } else {
@@ -109,6 +115,7 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>, lint_flag: bool)
     };
 
     sp.finish_and_clear();
+    progress.clear();
 
     match output {
         Ok(BuildResult::Captured(o)) if o.status.success() => {

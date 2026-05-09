@@ -14,9 +14,10 @@ pub fn run(
     watch: bool,
     no_build: bool,
     features: Option<String>,
+    verbose: bool,
 ) -> CliResult {
     if watch {
-        run_watch(debug, show_output, filter, no_build, features);
+        run_watch(debug, show_output, filter, no_build, features, verbose);
     }
     run_once(
         debug,
@@ -24,6 +25,7 @@ pub fn run(
         filter.as_deref(),
         no_build,
         features.as_deref(),
+        verbose,
     )
 }
 
@@ -33,17 +35,18 @@ fn run_once(
     filter: Option<&str>,
     no_build: bool,
     features: Option<&str>,
+    verbose: bool,
 ) -> CliResult {
     let config = QuasarConfig::load()?;
 
     if !no_build {
-        crate::build::run(debug, false, false, features.map(String::from), false)?;
+        crate::build::run(debug, verbose, false, features.map(String::from), false)?;
     }
 
     if config.has_typescript_tests() {
-        run_typescript_tests(&config, filter, show_output)
+        run_typescript_tests(&config, filter, show_output, verbose)
     } else if config.has_rust_tests() {
-        run_rust_tests(&config, filter, show_output)
+        run_rust_tests(&config, filter, show_output, verbose)
     } else {
         println!("  {}", style::warn("no test framework configured"));
         Ok(())
@@ -56,6 +59,7 @@ fn run_watch(
     filter: Option<String>,
     no_build: bool,
     features: Option<String>,
+    verbose: bool,
 ) -> ! {
     crate::build::watch_loop(|| {
         run_once(
@@ -64,6 +68,7 @@ fn run_watch(
             filter.as_deref(),
             no_build,
             features.as_deref(),
+            verbose,
         )
     })
 }
@@ -76,6 +81,7 @@ fn run_typescript_tests(
     config: &QuasarConfig,
     filter: Option<&str>,
     show_output: bool,
+    verbose: bool,
 ) -> CliResult {
     let ts = config.testing.typescript.as_ref();
     let default_install = CommandSpec::new("npm", ["install"]);
@@ -84,17 +90,22 @@ fn run_typescript_tests(
     let test_cmd = ts.map(|t| &t.test).unwrap_or(&default_test);
 
     if !std::path::Path::new("node_modules").exists() {
-        run_command(install_cmd)?;
+        run_command(install_cmd, verbose)?;
     }
 
-    run_test_cmd(test_cmd, filter, show_output)
+    run_test_cmd(test_cmd, filter, show_output, verbose)
 }
 
 // ---------------------------------------------------------------------------
 // Rust (cargo test)
 // ---------------------------------------------------------------------------
 
-fn run_rust_tests(config: &QuasarConfig, filter: Option<&str>, show_output: bool) -> CliResult {
+fn run_rust_tests(
+    config: &QuasarConfig,
+    filter: Option<&str>,
+    show_output: bool,
+    verbose: bool,
+) -> CliResult {
     let default_test = CommandSpec::new("cargo", ["test", "tests::"]);
     let test_cmd = config
         .testing
@@ -103,14 +114,22 @@ fn run_rust_tests(config: &QuasarConfig, filter: Option<&str>, show_output: bool
         .map(|r| &r.test)
         .unwrap_or(&default_test);
 
-    run_test_cmd(test_cmd, filter, show_output)
+    run_test_cmd(test_cmd, filter, show_output, verbose)
 }
 
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-fn run_command(command: &CommandSpec) -> CliResult {
+fn run_command(command: &CommandSpec, verbose: bool) -> CliResult {
+    eprintln!(
+        "  {}",
+        style::step(&format!("Running {}...", command.display()))
+    );
+    if verbose {
+        eprintln!("  {}", style::dim(&format!("$ {}", command.display())));
+    }
+
     let status = Command::new(&command.program).args(&command.args).status();
 
     match status {
@@ -126,9 +145,22 @@ fn run_command(command: &CommandSpec) -> CliResult {
     }
 }
 
-fn run_test_cmd(test_cmd: &CommandSpec, filter: Option<&str>, show_output: bool) -> CliResult {
+fn run_test_cmd(
+    test_cmd: &CommandSpec,
+    filter: Option<&str>,
+    show_output: bool,
+    verbose: bool,
+) -> CliResult {
     let mut cmd = Command::new(&test_cmd.program);
     cmd.args(test_command_args(test_cmd, filter, show_output));
+
+    eprintln!(
+        "  {}",
+        style::step(&format!("Running {}...", test_cmd.display()))
+    );
+    if verbose {
+        eprintln!("  {}", style::dim(&format!("$ {}", test_cmd.display())));
+    }
 
     let status = cmd.status();
 

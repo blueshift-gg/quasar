@@ -66,15 +66,15 @@ fn migrate_v1_to_v2() {
         &ix,
         &[
             rich_signer_account(payer),
-            // system_program is auto-provided by QuasarSvm — no account entry needed
             config_v1_account(config, authority, 100),
             signer_account(authority),
         ],
     );
     assert!(
         result.is_ok(),
-        "migrate V1→V2 failed: {:?}",
-        result.raw_result
+        "migrate V1→V2 failed: {:?}\nlogs: {:?}",
+        result.raw_result,
+        result.logs
     );
 
     // Verify the account was migrated: disc should be 2, size should be V2

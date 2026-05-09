@@ -23,3 +23,5 @@ pub mod interface_account;
 pub use interface_account::*;
 pub mod migration;
 pub use migration::*;
+pub mod uninit;
+pub use uninit::*;

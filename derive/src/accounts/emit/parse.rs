@@ -262,19 +262,6 @@ fn emit_post_load_typed(
                         true,
                     )
                 }
-                PostLoadStep::MigrationGrow(spec) => {
-                    let payer_ident = &spec.payer.ident;
-                    (
-                        quote! {
-                            quasar_lang::accounts::migration::Migration::grow_to_target(
-                                &mut #ident,
-                                #payer_ident.to_account_view(),
-                                &__rent_ctx,
-                            )?;
-                        },
-                        true,
-                    )
-                }
                 PostLoadStep::VerifyExistingAddress(addr_spec) => {
                     let bump_var = format_ident!("__bumps_{}", ident);
                     let addr_expr = &addr_spec.expr;
@@ -342,11 +329,6 @@ pub(crate) fn emit_epilogue(
     plan: &AccountsPlanTyped,
 ) -> syn::Result<proc_macro2::TokenStream> {
     let mut exit_stmts = Vec::new();
-    let needs_lifecycle_rent = plan.fields.iter().any(|fp| {
-        fp.epilogue
-            .iter()
-            .any(|step| matches!(step, EpilogueStep::MigrationVerifyAndNormalize(_)))
-    });
 
     for (fp, sem) in plan.fields.iter().zip(semantics.iter()) {
         let ident = &sem.core.ident;
@@ -356,21 +338,6 @@ pub(crate) fn emit_epilogue(
             let stmt = match step {
                 EpilogueStep::Behavior(call) => typed_emit::emit_epilogue_behavior(call, ident, ty),
                 EpilogueStep::ProgramClose(spec) => typed_emit::emit_program_close(spec, ident, ty),
-                EpilogueStep::MigrationVerifyAndNormalize(spec) => {
-                    let payer_ident = &spec.payer.ident;
-                    quote! {
-                        if !quasar_lang::accounts::migration::Migration::is_migrated(&self.#ident) {
-                            return Err(ProgramError::Custom(
-                                quasar_lang::error::QuasarError::AccountNotMigrated as u32,
-                            ));
-                        }
-                        quasar_lang::accounts::migration::Migration::normalize_to_target(
-                            &mut self.#ident,
-                            self.#payer_ident.to_account_view(),
-                            &__rent_ctx,
-                        )?;
-                    }
-                }
             };
             exit_stmts.push(stmt);
         }
@@ -380,34 +347,9 @@ pub(crate) fn emit_epilogue(
         return Ok(quote! {});
     }
 
-    let ctx_init = if needs_lifecycle_rent {
-        let rent_field = match &plan.rent {
-            RentPlan::FromSysvarField { field } => Some(field.clone()),
-            _ => None,
-        };
-        let rent_fetch = if let Some(rent_ident) = rent_field {
-            quote! {
-                let __rent: quasar_lang::sysvars::rent::Rent =
-                    core::clone::Clone::clone(self.#rent_ident.get());
-            }
-        } else {
-            quote! {
-                let __rent: quasar_lang::sysvars::rent::Rent =
-                    <quasar_lang::sysvars::rent::Rent as quasar_lang::sysvars::Sysvar>::get()?;
-            }
-        };
-        quote! {
-            #rent_fetch
-            let __rent_ctx = quasar_lang::ops::OpCtxWithRent::new(&crate::ID, &__rent);
-        }
-    } else {
-        quote! {}
-    };
-
     Ok(quote! {
         #[inline(always)]
         fn epilogue(&mut self) -> Result<(), ProgramError> {
-            #ctx_init
             #(#exit_stmts)*
             Ok(())
         }
@@ -431,9 +373,7 @@ pub(crate) fn emit_has_epilogue_typed(
                         <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#ty>>::RUN_EXIT
                     });
                 }
-                EpilogueStep::ProgramClose(_) | EpilogueStep::MigrationVerifyAndNormalize(_) => {
-                    terms.push(quote! { true });
-                }
+                EpilogueStep::ProgramClose(_) => terms.push(quote! { true }),
             }
         }
     }

@@ -58,6 +58,30 @@ where
     }
 }
 
+/// Instruction argument serialization for ZeroPod compact layouts.
+///
+/// Compact instruction data is emitted in two phases: every field's fixed
+/// header bytes first, followed by every dynamic tail payload. Fixed fields
+/// therefore put their entire serialized representation in the header, while
+/// dynamic fields split their length prefix/tag from their payload.
+pub trait CompactSerializeArg {
+    fn compact_header(&self) -> Vec<u8>;
+    fn compact_tail(&self) -> Vec<u8>;
+}
+
+impl<T: crate::instruction_arg::InstructionArg> CompactSerializeArg for T
+where
+    T::Zc: SchemaWrite<wincode::config::DefaultConfig, Src = T::Zc>,
+{
+    fn compact_header(&self) -> Vec<u8> {
+        self.serialize_arg()
+    }
+
+    fn compact_tail(&self) -> Vec<u8> {
+        Vec::new()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // DynBytes<P> — length-prefixed raw byte buffer
 // ---------------------------------------------------------------------------
@@ -339,6 +363,21 @@ where
     }
 }
 
+impl<P> CompactSerializeArg for DynString<P>
+where
+    UseIntLen<P>: SeqLen<wincode::config::DefaultConfig>,
+{
+    fn compact_header(&self) -> Vec<u8> {
+        let encoded = self.serialize_arg();
+        encoded[..core::mem::size_of::<P>()].to_vec()
+    }
+
+    fn compact_tail(&self) -> Vec<u8> {
+        let encoded = self.serialize_arg();
+        encoded[core::mem::size_of::<P>()..].to_vec()
+    }
+}
+
 impl<T, P> SerializeArg for DynVec<T, P>
 where
     T: SchemaWrite<wincode::config::DefaultConfig, Src = T>,
@@ -346,6 +385,55 @@ where
 {
     fn serialize_arg(&self) -> Vec<u8> {
         wincode::serialize(self).expect("DynVec serialization")
+    }
+}
+
+impl<T, P> CompactSerializeArg for DynVec<T, P>
+where
+    T: SchemaWrite<wincode::config::DefaultConfig, Src = T>,
+    UseIntLen<P>: SeqLen<wincode::config::DefaultConfig>,
+{
+    fn compact_header(&self) -> Vec<u8> {
+        let encoded = self.serialize_arg();
+        encoded[..core::mem::size_of::<P>()].to_vec()
+    }
+
+    fn compact_tail(&self) -> Vec<u8> {
+        let encoded = self.serialize_arg();
+        encoded[core::mem::size_of::<P>()..].to_vec()
+    }
+}
+
+impl<P> CompactSerializeArg for Option<DynString<P>>
+where
+    UseIntLen<P>: SeqLen<wincode::config::DefaultConfig>,
+{
+    fn compact_header(&self) -> Vec<u8> {
+        alloc::vec![u8::from(self.is_some())]
+    }
+
+    fn compact_tail(&self) -> Vec<u8> {
+        match self {
+            Some(value) => value.serialize_arg(),
+            None => Vec::new(),
+        }
+    }
+}
+
+impl<T, P> CompactSerializeArg for Option<DynVec<T, P>>
+where
+    T: SchemaWrite<wincode::config::DefaultConfig, Src = T>,
+    UseIntLen<P>: SeqLen<wincode::config::DefaultConfig>,
+{
+    fn compact_header(&self) -> Vec<u8> {
+        alloc::vec![u8::from(self.is_some())]
+    }
+
+    fn compact_tail(&self) -> Vec<u8> {
+        match self {
+            Some(value) => value.serialize_arg(),
+            None => Vec::new(),
+        }
     }
 }
 

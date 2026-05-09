@@ -11,7 +11,10 @@ pub mod seeds;
 mod traits;
 
 use {
-    crate::helpers::{classify_pod_dynamic, validate_discriminator_not_zero, AccountAttr},
+    crate::helpers::{
+        classify_option_pod_dynamic, classify_pod_dynamic, validate_discriminator_not_zero,
+        AccountAttr,
+    },
     proc_macro::TokenStream,
     syn::{parse_macro_input, Data, DeriveInput, Fields},
 };
@@ -105,17 +108,29 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     // When `fixed_capacity` is set, ALL fields are treated as fixed — PodVec and
     // PodString go directly into the ZC struct at full capacity. No dynamic
     // region, no CompactWriter, no walk-from-header.
-    let pod_field_infos: Vec<fixed::PodFieldInfo<'_>> = fields_data
+    let pod_field_infos: Vec<fixed::PodFieldInfo<'_>> = match fields_data
         .iter()
         .map(|f| {
+            if !args.fixed_capacity && classify_option_pod_dynamic(&f.ty).is_some() {
+                return Err(syn::Error::new_spanned(
+                    &f.ty,
+                    "Option<String<N>> and Option<Vec<T, N>> account fields are not supported \
+                     yet; use a fixed-capacity account field or split the presence flag from the \
+                     dynamic field",
+                ));
+            }
             let pod_dyn = if args.fixed_capacity {
                 None // fixed_capacity: everything goes in the ZC struct
             } else {
                 classify_pod_dynamic(&f.ty)
             };
-            fixed::PodFieldInfo { field: f, pod_dyn }
+            Ok(fixed::PodFieldInfo { field: f, pod_dyn })
         })
-        .collect();
+        .collect::<syn::Result<_>>()
+    {
+        Ok(infos) => infos,
+        Err(e) => return e.to_compile_error().into(),
+    };
 
     let has_pod_dynamic = pod_field_infos.iter().any(|fi| fi.pod_dyn.is_some());
 

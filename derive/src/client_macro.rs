@@ -58,6 +58,39 @@ pub fn generate_accounts_macro(
                     }
                 }
             };
+            ($struct_name:ident, [$($disc:expr),*], {$($arg_name:ident : $arg_ty:ty),*}, compact) => {
+                pub struct $struct_name {
+                    #(#account_fields)*
+                    $(pub $arg_name: $arg_ty,)*
+                }
+
+                impl From<$struct_name> for quasar_lang::client::Instruction {
+                    fn from(ix: $struct_name) -> quasar_lang::client::Instruction {
+                        let accounts = ::alloc::vec![
+                            #(#account_metas)*
+                        ];
+                        let data = {
+                            let mut _data = ::alloc::vec![$($disc),*];
+                            $(
+                                _data.extend_from_slice(
+                                    &<$arg_ty as quasar_lang::client::CompactSerializeArg>::compact_header(&ix.$arg_name)
+                                );
+                            )*
+                            $(
+                                _data.extend_from_slice(
+                                    &<$arg_ty as quasar_lang::client::CompactSerializeArg>::compact_tail(&ix.$arg_name)
+                                );
+                            )*
+                            _data
+                        };
+                        quasar_lang::client::Instruction {
+                            program_id: $crate::ID,
+                            accounts,
+                            data,
+                        }
+                    }
+                }
+            };
             ($struct_name:ident, [$($disc:expr),*], {$($arg_name:ident : $arg_ty:ty),*}, remaining) => {
                 pub struct $struct_name {
                     #(#account_fields_with_remaining)*
@@ -76,6 +109,41 @@ pub fn generate_accounts_macro(
                             $(
                                 _data.extend_from_slice(
                                     &<$arg_ty as quasar_lang::client::SerializeArg>::serialize_arg(&ix.$arg_name)
+                                );
+                            )*
+                            _data
+                        };
+                        quasar_lang::client::Instruction {
+                            program_id: $crate::ID,
+                            accounts,
+                            data,
+                        }
+                    }
+                }
+            };
+            ($struct_name:ident, [$($disc:expr),*], {$($arg_name:ident : $arg_ty:ty),*}, compact, remaining) => {
+                pub struct $struct_name {
+                    #(#account_fields_with_remaining)*
+                    $(pub $arg_name: $arg_ty,)*
+                    pub remaining_accounts: ::alloc::vec::Vec<quasar_lang::client::AccountMeta>,
+                }
+
+                impl From<$struct_name> for quasar_lang::client::Instruction {
+                    fn from(ix: $struct_name) -> quasar_lang::client::Instruction {
+                        let mut accounts = ::alloc::vec![
+                            #(#account_metas_with_remaining)*
+                        ];
+                        accounts.extend(ix.remaining_accounts);
+                        let data = {
+                            let mut _data = ::alloc::vec![$($disc),*];
+                            $(
+                                _data.extend_from_slice(
+                                    &<$arg_ty as quasar_lang::client::CompactSerializeArg>::compact_header(&ix.$arg_name)
+                                );
+                            )*
+                            $(
+                                _data.extend_from_slice(
+                                    &<$arg_ty as quasar_lang::client::CompactSerializeArg>::compact_tail(&ix.$arg_name)
                                 );
                             )*
                             _data

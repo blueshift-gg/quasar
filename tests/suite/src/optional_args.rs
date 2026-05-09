@@ -1,5 +1,6 @@
 use {
     crate::helpers::*,
+    quasar_lang::client::{DynString, DynVec},
     quasar_svm::{Instruction, Pubkey},
     quasar_test_misc::cpi::*,
 };
@@ -132,4 +133,113 @@ fn option_u64_truncated_data_fails() {
     };
     let result = svm.process_instruction(&ix, &[signer_account(signer)]);
     assert!(result.is_err(), "truncated instruction data should fail");
+}
+
+fn optional_dynamic_ix(data: Vec<u8>) -> solana_instruction::Instruction {
+    solana_instruction::Instruction {
+        program_id: quasar_test_misc::ID,
+        accounts: vec![solana_instruction::AccountMeta::new_readonly(
+            quasar_test_misc::ID,
+            false,
+        )],
+        data,
+    }
+}
+
+#[test]
+fn optional_dynamic_args_none_none_use_compact_tags_only() {
+    let mut svm = svm_misc();
+    let data = vec![61u8, 0, 0];
+    let ix = optional_dynamic_ix(data);
+
+    let result = svm.process_instruction(&ix, &[]);
+
+    assert!(
+        result.is_ok(),
+        "Option<String>/Option<Vec> None/None should decode from compact option tags: {:?}",
+        result.raw_result
+    );
+}
+
+#[test]
+fn optional_dynamic_args_some_some_use_compact_tail_payloads() {
+    let mut svm = svm_misc();
+    let mut data = vec![61u8, 1, 1];
+    data.push(6);
+    data.extend_from_slice(b"quasar");
+    data.extend_from_slice(&1u16.to_le_bytes());
+    data.extend_from_slice(quasar_test_misc::EXPECTED_ADDRESS.as_ref());
+    let ix = optional_dynamic_ix(data);
+
+    let result = svm.process_instruction(&ix, &[]);
+
+    assert!(
+        result.is_ok(),
+        "Option<String>/Option<Vec> Some/Some should decode compact tagged tails: {:?}",
+        result.raw_result
+    );
+}
+
+#[test]
+fn optional_dynamic_generated_client_uses_compact_header_then_tail_layout() {
+    let ix: Instruction = OptionalDynamicArgInstruction {
+        program: quasar_test_misc::ID,
+        maybe_name: Some(DynString::<u8>::from("quasar")),
+        maybe_addrs: Some(DynVec::<Pubkey, u16>::from(vec![
+            quasar_test_misc::EXPECTED_ADDRESS,
+        ])),
+    }
+    .into();
+
+    let mut expected = vec![61u8, 1, 1];
+    expected.push(6);
+    expected.extend_from_slice(b"quasar");
+    expected.extend_from_slice(&1u16.to_le_bytes());
+    expected.extend_from_slice(quasar_test_misc::EXPECTED_ADDRESS.as_ref());
+
+    assert_eq!(ix.data, expected);
+}
+
+#[test]
+fn optional_dynamic_args_invalid_tag_fails() {
+    let mut svm = svm_misc();
+    let data = vec![61u8, 2, 0];
+    let ix = optional_dynamic_ix(data);
+
+    let result = svm.process_instruction(&ix, &[]);
+
+    assert!(
+        result.is_err(),
+        "Option<String>/Option<Vec> tag=2 should be rejected"
+    );
+}
+
+#[test]
+fn optional_dynamic_args_some_missing_prefix_fails() {
+    let mut svm = svm_misc();
+    let data = vec![61u8, 1, 0];
+    let ix = optional_dynamic_ix(data);
+
+    let result = svm.process_instruction(&ix, &[]);
+
+    assert!(
+        result.is_err(),
+        "Some(String) without its tail length prefix should fail"
+    );
+}
+
+#[test]
+fn optional_dynamic_args_some_truncated_payload_fails() {
+    let mut svm = svm_misc();
+    let mut data = vec![61u8, 1, 0];
+    data.push(6);
+    data.extend_from_slice(b"qua");
+    let ix = optional_dynamic_ix(data);
+
+    let result = svm.process_instruction(&ix, &[]);
+
+    assert!(
+        result.is_err(),
+        "Some(String) with a truncated tail payload should fail"
+    );
 }

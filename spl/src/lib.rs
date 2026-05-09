@@ -193,7 +193,7 @@ mod validate;
 // Forwarding impls: Account<T>/InterfaceAccount<T> → T for SPL behavior traits
 // ---------------------------------------------------------------------------
 use quasar_lang::{
-    accounts::Account,
+    accounts::{Account, DeferredInit},
     prelude::{AccountView, ProgramError},
 };
 pub use {
@@ -268,3 +268,51 @@ impl<T: ops::sweep::TokenSweep> ops::sweep::TokenSweep for InterfaceAccount<T> {
         T::sweep(view, receiver, mint, authority, tp)
     }
 }
+
+macro_rules! impl_deferred_init {
+    ($wrapper:ty, $params:ty) => {
+        impl<'a> DeferredInit<$wrapper> for $params {
+            #[inline(always)]
+            fn init_uninit<'target>(
+                self,
+                target: &'target mut AccountView,
+                payer: &AccountView,
+                signers: &[quasar_lang::cpi::Signer<'_, '_>],
+            ) -> Result<&'target mut $wrapper, ProgramError> {
+                if quasar_lang::utils::hint::unlikely(!quasar_lang::is_system_program(
+                    target.owner(),
+                )) {
+                    return Err(ProgramError::AccountAlreadyInitialized);
+                }
+
+                let rent =
+                    <quasar_lang::sysvars::rent::Rent as quasar_lang::sysvars::Sysvar>::get()?;
+                <$wrapper as quasar_lang::account_init::AccountInit>::init(
+                    quasar_lang::account_init::InitCtx {
+                        payer,
+                        target,
+                        program_id: &quasar_lang::cpi::system::ID,
+                        space: <$wrapper as quasar_lang::account_layout::AccountLayout>::DATA_SIZE
+                            as u64,
+                        signers,
+                        rent: &rent,
+                    },
+                    &self,
+                )?;
+                <$wrapper as quasar_lang::account_load::AccountLoad>::check(target)?;
+                Ok(unsafe {
+                    <$wrapper as quasar_lang::account_load::AccountLoad>::from_view_unchecked_mut(
+                        target,
+                    )
+                })
+            }
+        }
+    };
+}
+
+impl_deferred_init!(Account<Token>, TokenInitKind<'a>);
+impl_deferred_init!(Account<Token2022>, TokenInitKind<'a>);
+impl_deferred_init!(InterfaceAccount<Token>, TokenInitKind<'a>);
+impl_deferred_init!(Account<Mint>, MintInitParams<'a>);
+impl_deferred_init!(Account<Mint2022>, MintInitParams<'a>);
+impl_deferred_init!(InterfaceAccount<Mint>, MintInitParams<'a>);

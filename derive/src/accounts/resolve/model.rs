@@ -106,6 +106,9 @@ pub(crate) struct FieldSemantics {
     /// on the last path segment). Proc macros cannot resolve type aliases —
     /// only direct `Migration<From, To>` paths are supported.
     pub is_migration: bool,
+    /// True when the field type is `Uninit<T>` (syntactic detection on the
+    /// last path segment).
+    pub is_uninit: bool,
 }
 
 impl FieldSemantics {
@@ -114,7 +117,7 @@ impl FieldSemantics {
     }
 
     pub fn is_writable(&self) -> bool {
-        self.core.is_mut || self.has_init()
+        self.core.is_mut || self.has_init() || self.is_migration || self.is_uninit
     }
 }
 

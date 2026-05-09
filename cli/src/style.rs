@@ -116,6 +116,49 @@ pub fn spinner(msg: &str) -> indicatif::ProgressBar {
     sp
 }
 
+pub struct Progress {
+    verbose: bool,
+    current: Option<indicatif::ProgressBar>,
+}
+
+impl Progress {
+    pub fn new(verbose: bool) -> Self {
+        Self {
+            verbose,
+            current: None,
+        }
+    }
+
+    pub fn step(&mut self, msg: impl Into<String>) {
+        self.clear();
+        let msg = msg.into();
+        if self.verbose {
+            eprintln!("  {}", step(&msg));
+        } else {
+            self.current = Some(spinner(&msg));
+        }
+    }
+
+    pub fn done(&mut self, msg: impl Into<String>) {
+        self.clear();
+        if self.verbose {
+            eprintln!("  {}", success(&msg.into()));
+        }
+    }
+
+    pub fn clear(&mut self) {
+        if let Some(sp) = self.current.take() {
+            sp.finish_and_clear();
+        }
+    }
+}
+
+impl Drop for Progress {
+    fn drop(&mut self) {
+        self.clear();
+    }
+}
+
 /// Format a duration in a human-readable way.
 pub fn human_duration(d: std::time::Duration) -> String {
     let secs = d.as_secs_f64();

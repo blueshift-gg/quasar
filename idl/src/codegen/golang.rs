@@ -157,8 +157,17 @@ pub fn generate_go_client(idl: &Idl) -> String {
             }
             writeln!(out, "\t{} solana.PublicKey", snake_to_pascal(&acc.name)).unwrap();
         }
+        for seed in account_field_seed_inputs(ix, idl) {
+            writeln!(
+                out,
+                "\t{} {}",
+                account_field_seed_input_name(&seed.path, &seed.field),
+                go_type(&seed.ty),
+            )
+            .unwrap();
+        }
         for arg in &ix.args {
-            writeln!(out, "\t{} {}", snake_to_pascal(&arg.name), go_type(&arg.ty),).unwrap();
+            writeln!(out, "\t{} {}", snake_to_pascal(&arg.name), go_arg_type(arg),).unwrap();
         }
         if ix.remaining_accounts.is_some() {
             out.push_str("\tRemainingAccounts []*solana.AccountMeta\n");
@@ -192,6 +201,18 @@ pub fn generate_go_client(idl: &Idl) -> String {
                             seed_exprs.push(format!(
                                 "func() []byte {{ key := accountsMap[\"{}\"]; return key[:] }}()",
                                 path
+                            ));
+                        }
+                        IdlPdaSeed::AccountField {
+                            path,
+                            field,
+                            account,
+                            ..
+                        } => {
+                            let ty = account_field_type(idl, account, field);
+                            seed_exprs.push(go_pda_seed_expr(
+                                &format!("input.{}", account_field_seed_input_name(path, field)),
+                                ty.as_ref(),
                             ));
                         }
                         IdlPdaSeed::Arg { path, .. } => {
@@ -264,7 +285,15 @@ pub fn generate_go_client(idl: &Idl) -> String {
             for arg in &dyn_args {
                 let name = snake_to_pascal(&arg.name);
                 let prefix_bytes = arg.codec.as_ref().map(|c| c.prefix_bytes()).unwrap_or(2);
-                match &arg.ty {
+                if is_optional_dynamic(&arg.ty) {
+                    writeln!(out, "\tif input.{n} == nil {{", n = name).unwrap();
+                    out.push_str("\t\tdata = append(data, 0)\n");
+                    out.push_str("\t} else {\n");
+                    out.push_str("\t\tdata = append(data, 1)\n");
+                    out.push_str("\t}\n");
+                    continue;
+                }
+                match dynamic_payload_type(&arg.ty).expect("dynamic arg payload") {
                     IdlType::Primitive(p) if p == "string" => {
                         // Pre-encode string bytes so we know the length.
                         writeln!(out, "\t_{n}Bytes := []byte(input.{n})", n = name,).unwrap();
@@ -332,14 +361,128 @@ pub fn generate_go_client(idl: &Idl) -> String {
             // Phase 3: tail data
             for arg in &dyn_args {
                 let name = snake_to_pascal(&arg.name);
-                match &arg.ty {
+                let prefix_bytes = arg.codec.as_ref().map(|c| c.prefix_bytes()).unwrap_or(2);
+                let payload_ty = dynamic_payload_type(&arg.ty).expect("dynamic arg payload");
+                let optional = is_optional_dynamic(&arg.ty);
+                if optional {
+                    writeln!(out, "\tif input.{n} != nil {{", n = name).unwrap();
+                }
+                let pad = if optional { "\t\t" } else { "\t" };
+                let value = if optional {
+                    format!("*input.{name}")
+                } else {
+                    format!("input.{name}")
+                };
+                match payload_ty {
                     IdlType::Primitive(p) if p == "string" => {
-                        writeln!(out, "\tdata = append(data, _{n}Bytes...)", n = name,).unwrap();
+                        if optional {
+                            writeln!(
+                                out,
+                                "{pad}_{n}Bytes := []byte({value})",
+                                pad = pad,
+                                n = name,
+                                value = value
+                            )
+                            .unwrap();
+                            match prefix_bytes {
+                                1 => writeln!(
+                                    out,
+                                    "{pad}data = append(data, byte(len(_{n}Bytes)))",
+                                    pad = pad,
+                                    n = name
+                                )
+                                .unwrap(),
+                                2 => writeln!(
+                                    out,
+                                    "{pad}{{ var _buf [2]byte; \
+                                     binary.LittleEndian.PutUint16(_buf[:], \
+                                     uint16(len(_{n}Bytes))); data = append(data, _buf[:]...) }}",
+                                    pad = pad,
+                                    n = name
+                                )
+                                .unwrap(),
+                                4 => writeln!(
+                                    out,
+                                    "{pad}{{ var _buf [4]byte; \
+                                     binary.LittleEndian.PutUint32(_buf[:], \
+                                     uint32(len(_{n}Bytes))); data = append(data, _buf[:]...) }}",
+                                    pad = pad,
+                                    n = name
+                                )
+                                .unwrap(),
+                                _ => writeln!(
+                                    out,
+                                    "{pad}{{ var _buf [8]byte; \
+                                     binary.LittleEndian.PutUint64(_buf[:], \
+                                     uint64(len(_{n}Bytes))); data = append(data, _buf[:]...) }}",
+                                    pad = pad,
+                                    n = name
+                                )
+                                .unwrap(),
+                            }
+                        }
+                        writeln!(
+                            out,
+                            "{pad}data = append(data, _{n}Bytes...)",
+                            pad = pad,
+                            n = name
+                        )
+                        .unwrap();
                     }
-                    IdlType::Vec { .. } => {
-                        writeln!(out, "\tdata = append(data, input.{n}...)", n = name,).unwrap();
+                    IdlType::Vec { vec } => {
+                        if optional {
+                            match prefix_bytes {
+                                1 => writeln!(
+                                    out,
+                                    "{pad}data = append(data, byte(len({value})))",
+                                    pad = pad,
+                                    value = value
+                                )
+                                .unwrap(),
+                                2 => writeln!(
+                                    out,
+                                    "{pad}{{ var _buf [2]byte; \
+                                     binary.LittleEndian.PutUint16(_buf[:], \
+                                     uint16(len({value}))); data = append(data, _buf[:]...) }}",
+                                    pad = pad,
+                                    value = value
+                                )
+                                .unwrap(),
+                                4 => writeln!(
+                                    out,
+                                    "{pad}{{ var _buf [4]byte; \
+                                     binary.LittleEndian.PutUint32(_buf[:], \
+                                     uint32(len({value}))); data = append(data, _buf[:]...) }}",
+                                    pad = pad,
+                                    value = value
+                                )
+                                .unwrap(),
+                                _ => writeln!(
+                                    out,
+                                    "{pad}{{ var _buf [8]byte; \
+                                     binary.LittleEndian.PutUint64(_buf[:], \
+                                     uint64(len({value}))); data = append(data, _buf[:]...) }}",
+                                    pad = pad,
+                                    value = value
+                                )
+                                .unwrap(),
+                            }
+                        }
+                        writeln!(
+                            out,
+                            "{pad}for _, item := range {value} {{",
+                            pad = pad,
+                            value = value
+                        )
+                        .unwrap();
+                        writeln!(out, "{pad}\t{}", go_vec_item_append(vec, "item"), pad = pad)
+                            .unwrap();
+                        writeln!(out, "{pad}}}", pad = pad).unwrap();
                     }
                     _ => unreachable!(),
+                }
+                if optional {
+                    out.push_str("\t}\n");
                 }
             }
         }
@@ -452,6 +595,20 @@ fn go_type(ty: &IdlType) -> String {
     }
 }
 
+fn go_arg_type(arg: &IdlArg) -> String {
+    if arg.codec.is_some() {
+        if let IdlType::Option { option } = &arg.ty {
+            if let IdlType::Vec { vec } = option.as_ref() {
+                return format!("*[]{}", go_type(vec));
+            }
+        }
+        if let IdlType::Vec { vec } = &arg.ty {
+            return format!("[]{}", go_type(vec));
+        }
+    }
+    go_type(&arg.ty)
+}
+
 // ---------------------------------------------------------------------------
 // Account meta helpers
 // ---------------------------------------------------------------------------
@@ -475,10 +632,57 @@ fn account_meta_expr(key_expr: &str, signer: bool, writable: bool) -> String {
 /// Vec with codec). These require compact 3-phase encoding at the instruction
 /// level.
 fn is_direct_dynamic(arg: &IdlArg) -> bool {
-    match &arg.ty {
-        IdlType::Primitive(p) if p == "string" && arg.codec.is_some() => true,
-        IdlType::Vec { .. } if arg.codec.is_some() => true,
-        _ => false,
+    arg.codec.is_some() && dynamic_payload_type(&arg.ty).is_some()
+}
+
+fn dynamic_payload_type(ty: &IdlType) -> Option<&IdlType> {
+    match ty {
+        IdlType::Primitive(p) if p == "string" => Some(ty),
+        IdlType::Vec { .. } => Some(ty),
+        IdlType::Option { option } => dynamic_payload_type(option),
+        _ => None,
+    }
+}
+
+fn is_optional_dynamic(ty: &IdlType) -> bool {
+    matches!(ty, IdlType::Option { option } if dynamic_payload_type(option).is_some())
+}
+
+fn go_vec_item_append(item: &IdlType, source: &str) -> String {
+    match item {
+        IdlType::Primitive(p) if p == "pubkey" => format!("data = append(data, {source}[:]...)"),
+        IdlType::Primitive(p) => {
+            let width = primitive_size(p);
+            match width {
+                1 => format!("data = append(data, byte({source}))"),
+                2 => format!(
+                    "{{ var buf [2]byte; binary.LittleEndian.PutUint16(buf[:], uint16({source})); \
+                     data = append(data, buf[:]...) }}"
+                ),
+                4 => format!(
+                    "{{ var buf [4]byte; binary.LittleEndian.PutUint32(buf[:], uint32({source})); \
+                     data = append(data, buf[:]...) }}"
+                ),
+                8 => format!(
+                    "{{ var buf [8]byte; binary.LittleEndian.PutUint64(buf[:], uint64({source})); \
+                     data = append(data, buf[:]...) }}"
+                ),
+                _ => format!("data = append(data, {source}[:]...)"),
+            }
+        }
+        _ => format!("data = append(data, {source}...)"),
+    }
+}
+
+fn primitive_size(p: &str) -> usize {
+    match p {
+        "bool" | "u8" | "i8" => 1,
+        "u16" | "i16" => 2,
+        "u32" | "i32" | "f32" => 4,
+        "u64" | "i64" | "f64" => 8,
+        "pubkey" => 32,
+        "u128" | "i128" => 16,
+        _ => 1,
     }
 }
 
@@ -889,5 +1093,115 @@ fn decode_field_expr(
         IdlType::Generic { generic } => {
             panic!("Generic type '{}' not supported in Go codegen", generic)
         }
+    }
+}
+
+struct AccountFieldSeedInput {
+    path: String,
+    field: String,
+    ty: IdlType,
+}
+
+fn account_field_seed_inputs(
+    ix: &crate::types::IdlInstruction,
+    idl: &Idl,
+) -> Vec<AccountFieldSeedInput> {
+    let mut inputs = Vec::new();
+    for acc in &ix.accounts {
+        let IdlResolver::Pda { seeds, .. } = &acc.resolver else {
+            continue;
+        };
+        for seed in seeds {
+            let IdlPdaSeed::AccountField {
+                path,
+                account,
+                field,
+            } = seed
+            else {
+                continue;
+            };
+            if inputs
+                .iter()
+                .any(|input: &AccountFieldSeedInput| input.path == *path && input.field == *field)
+            {
+                continue;
+            }
+            if let Some(ty) = account_field_type(idl, account, field) {
+                inputs.push(AccountFieldSeedInput {
+                    path: path.clone(),
+                    field: field.clone(),
+                    ty,
+                });
+            }
+        }
+    }
+    inputs
+}
+
+fn account_field_type(idl: &Idl, account: &str, field: &str) -> Option<IdlType> {
+    let mut current_account = account.to_string();
+    let mut field_ty = None;
+
+    for segment in field.split('.') {
+        let type_def = idl.types.iter().find(|ty| ty.name == current_account)?;
+        let field_def = type_def.fields.iter().find(|f| f.name == segment)?;
+        field_ty = Some(field_def.ty.clone());
+        if let IdlType::Defined { defined } = &field_def.ty {
+            current_account = defined.name.clone();
+        }
+    }
+
+    field_ty
+}
+
+fn account_field_seed_input_name(path: &str, field: &str) -> String {
+    format!(
+        "{}{}Seed",
+        snake_to_pascal(path),
+        field
+            .split('.')
+            .map(snake_to_pascal)
+            .collect::<Vec<_>>()
+            .join("")
+    )
+}
+
+fn go_pda_seed_expr(expr: &str, ty: Option<&IdlType>) -> String {
+    match ty {
+        Some(IdlType::Primitive(p)) => match p.as_str() {
+            "pubkey" => format!("func() []byte {{ key := {expr}; return key[:] }}()"),
+            "bool" => format!(
+                "func() []byte {{ if {expr} {{ return []byte{{1}} }}; return []byte{{0}} }}()"
+            ),
+            "u8" | "i8" => format!("[]byte{{byte({expr})}}"),
+            "u16" => format!(
+                "func() []byte {{ b := make([]byte, 2); binary.LittleEndian.PutUint16(b, {expr}); \
+                 return b }}()"
+            ),
+            "i16" => format!(
+                "func() []byte {{ b := make([]byte, 2); binary.LittleEndian.PutUint16(b, \
+                 uint16({expr})); return b }}()"
+            ),
+            "u32" => format!(
+                "func() []byte {{ b := make([]byte, 4); binary.LittleEndian.PutUint32(b, {expr}); \
+                 return b }}()"
+            ),
+            "i32" => format!(
+                "func() []byte {{ b := make([]byte, 4); binary.LittleEndian.PutUint32(b, \
+                 uint32({expr})); return b }}()"
+            ),
+            "u64" => format!(
+                "func() []byte {{ b := make([]byte, 8); binary.LittleEndian.PutUint64(b, {expr}); \
+                 return b }}()"
+            ),
+            "i64" => format!(
+                "func() []byte {{ b := make([]byte, 8); binary.LittleEndian.PutUint64(b, \
+                 uint64({expr})); return b }}()"
+            ),
+            "u128" | "i128" => format!("func() []byte {{ b := {expr}; return b[:] }}()"),
+            _ => expr.to_string(),
+        },
+        Some(IdlType::Array { .. }) => format!("{expr}[:]"),
+        _ => expr.to_string(),
     }
 }

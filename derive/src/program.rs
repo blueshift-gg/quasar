@@ -4,9 +4,9 @@
 
 use {
     crate::helpers::{
-        classify_borrowed_as_compact, classify_lifetime_arg, classify_pod_dynamic,
-        extract_generic_inner_type, parse_discriminator_bytes, pascal_to_snake,
-        prefix_bytes_to_rust_type, snake_to_pascal, InstructionArgs, PodDynField,
+        classify_borrowed_as_compact, classify_lifetime_arg, classify_option_pod_dynamic,
+        classify_pod_dynamic, extract_generic_inner_type, parse_discriminator_bytes,
+        pascal_to_snake, prefix_bytes_to_rust_type, snake_to_pascal, InstructionArgs, PodDynField,
     },
     proc_macro::TokenStream,
     proc_macro2::TokenStream as TokenStream2,
@@ -161,6 +161,13 @@ struct InstructionSpec {
 }
 
 impl InstructionSpec {
+    fn has_compact_client_layout(&self) -> bool {
+        self.idl_args.iter().any(|arg| {
+            classify_pod_dynamic(&arg.ty).is_some()
+                || classify_option_pod_dynamic(&arg.ty).is_some()
+        })
+    }
+
     fn guarded_match_arm(&self, any_heap: bool, disc_len: usize) -> TokenStream2 {
         let cursor_init = emit_heap_cursor_block(self.heap, any_heap);
         let fn_name = &self.fn_name;
@@ -237,8 +244,14 @@ impl InstructionSpec {
         } else {
             quote!()
         };
-        quote! {
-            #macro_ident!(#struct_name, [#(#disc_values),*], {#(#arg_names : #arg_types),*} #remaining_arg);
+        if self.has_compact_client_layout() {
+            quote! {
+                #macro_ident!(#struct_name, [#(#disc_values),*], {#(#arg_names : #arg_types),*}, compact #remaining_arg);
+            }
+        } else {
+            quote! {
+                #macro_ident!(#struct_name, [#(#disc_values),*], {#(#arg_names : #arg_types),*} #remaining_arg);
+            }
         }
     }
 }
@@ -406,6 +419,19 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                                 } => {
                                     let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
                                     syn::parse_quote!(quasar_lang::client::DynVec<#elem, #pfx_ty>)
+                                }
+                            }
+                        } else if let Some(pod_dyn) = classify_option_pod_dynamic(&pt.ty) {
+                            match pod_dyn {
+                                PodDynField::Str { prefix_bytes, .. } => {
+                                    let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
+                                    syn::parse_quote!(Option<quasar_lang::client::DynString<#pfx_ty>>)
+                                }
+                                PodDynField::Vec {
+                                    elem, prefix_bytes, ..
+                                } => {
+                                    let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
+                                    syn::parse_quote!(Option<quasar_lang::client::DynVec<#elem, #pfx_ty>>)
                                 }
                             }
                         } else if matches!(&*pt.ty, Type::Reference(_)) {
@@ -1093,7 +1119,9 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
             #[test]
             fn __quasar_emit_idl() {
                 extern crate std;
-                std::print!("{}", __quasar_build_idl());
+                std::println!("__QUASAR_IDL_JSON_BEGIN__");
+                std::println!("{}", __quasar_build_idl());
+                std::println!("__QUASAR_IDL_JSON_END__");
             }
         }
     };

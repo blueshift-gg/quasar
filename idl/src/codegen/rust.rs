@@ -349,27 +349,119 @@ fn emit_instructions(
                 // Phase 2: read length table (all dynamic prefixes)
                 for arg in &dyn_args {
                     let name = camel_to_snake(&arg.name);
-                    let pfx = dynamic_prefix_bytes_from_codec(&arg.codec);
-                    writeln!(mod_rs, "            let {name}_len = {{").expect("write to String");
-                    writeln!(mod_rs, "                let mut buf = [0u8; 8];")
+                    if optional_dynamic_inner(&arg.ty).is_some() {
+                        writeln!(
+                            mod_rs,
+                            "            let {name}_tag = *payload.get(offset)?;"
+                        )
                         .expect("write to String");
-                    writeln!(
-                        mod_rs,
-                        "                buf[..{pfx}].copy_from_slice(&payload[offset..offset + \
-                         {pfx}]);"
-                    )
-                    .expect("write to String");
-                    writeln!(mod_rs, "                offset += {pfx};").expect("write to String");
-                    writeln!(mod_rs, "                u64::from_le_bytes(buf) as usize")
+                        mod_rs.push_str("            offset += 1;\n");
+                        writeln!(mod_rs, "            if {name}_tag > 1 {{ return None; }}")
+                            .expect("write to String");
+                    } else {
+                        let pfx = dynamic_prefix_bytes_from_codec(&arg.codec);
+                        writeln!(mod_rs, "            let {name}_len = {{")
+                            .expect("write to String");
+                        writeln!(mod_rs, "                let mut buf = [0u8; 8];")
+                            .expect("write to String");
+                        writeln!(
+                            mod_rs,
+                            "                buf[..{pfx}].copy_from_slice(&payload[offset..offset \
+                             + {pfx}]);"
+                        )
                         .expect("write to String");
-                    mod_rs.push_str("            };\n");
+                        writeln!(mod_rs, "                offset += {pfx};")
+                            .expect("write to String");
+                        writeln!(mod_rs, "                u64::from_le_bytes(buf) as usize")
+                            .expect("write to String");
+                        mod_rs.push_str("            };\n");
+                    }
                 }
 
                 // Phase 3: read tail data
                 for arg in &dyn_args {
                     let name = camel_to_snake(&arg.name);
                     let rty = rust_field_type(&arg.ty, &arg.codec);
-                    if is_dynamic_string(&arg.ty) {
+                    if let Some(inner) = optional_dynamic_inner(&arg.ty) {
+                        let pfx = dynamic_prefix_bytes_from_codec(&arg.codec);
+                        if is_dynamic_string(inner) {
+                            writeln!(
+                                mod_rs,
+                                "            let {name}: {rty} = if {name}_tag == 0 {{"
+                            )
+                            .expect("write to String");
+                            mod_rs.push_str("                None\n");
+                            mod_rs.push_str("            } else {\n");
+                            writeln!(mod_rs, "                let {name}_len = {{")
+                                .expect("write to String");
+                            mod_rs.push_str("                    let mut buf = [0u8; 8];\n");
+                            writeln!(
+                                mod_rs,
+                                "                    \
+                                 buf[..{pfx}].copy_from_slice(&payload[offset..offset + {pfx}]);"
+                            )
+                            .expect("write to String");
+                            writeln!(mod_rs, "                    offset += {pfx};")
+                                .expect("write to String");
+                            mod_rs
+                                .push_str("                    u64::from_le_bytes(buf) as usize\n");
+                            mod_rs.push_str("                };\n");
+                            writeln!(
+                                mod_rs,
+                                "                let value = payload[offset..offset + \
+                                 {name}_len].to_vec().into();"
+                            )
+                            .expect("write to String");
+                            writeln!(mod_rs, "                offset += {name}_len;")
+                                .expect("write to String");
+                            mod_rs.push_str("                Some(value)\n");
+                            mod_rs.push_str("            };\n");
+                        } else if let Some(vec_inner) = vec_inner_type(inner) {
+                            let item_ty = rust_field_type(vec_inner, &None);
+                            writeln!(
+                                mod_rs,
+                                "            let {name}: {rty} = if {name}_tag == 0 {{"
+                            )
+                            .expect("write to String");
+                            mod_rs.push_str("                None\n");
+                            mod_rs.push_str("            } else {\n");
+                            writeln!(mod_rs, "                let {name}_len = {{")
+                                .expect("write to String");
+                            mod_rs.push_str("                    let mut buf = [0u8; 8];\n");
+                            writeln!(
+                                mod_rs,
+                                "                    \
+                                 buf[..{pfx}].copy_from_slice(&payload[offset..offset + {pfx}]);"
+                            )
+                            .expect("write to String");
+                            writeln!(mod_rs, "                    offset += {pfx};")
+                                .expect("write to String");
+                            mod_rs
+                                .push_str("                    u64::from_le_bytes(buf) as usize\n");
+                            mod_rs.push_str("                };\n");
+                            writeln!(
+                                mod_rs,
+                                "                let mut items = Vec::with_capacity({name}_len);"
+                            )
+                            .expect("write to String");
+                            writeln!(mod_rs, "                for _ in 0..{name}_len {{")
+                                .expect("write to String");
+                            writeln!(
+                                mod_rs,
+                                "                    let item: {item_ty} = \
+                                 wincode::deserialize(&payload[offset..]).ok()?;"
+                            )
+                            .expect("write to String");
+                            mod_rs.push_str(
+                                "                    offset += \
+                                 wincode::serialized_size(&item).ok()? as usize;\n",
+                            );
+                            mod_rs.push_str("                    items.push(item);\n");
+                            mod_rs.push_str("                }\n");
+                            mod_rs.push_str("                Some(items.into())\n");
+                            mod_rs.push_str("            };\n");
+                        }
+                    } else if is_dynamic_string(&arg.ty) {
                         writeln!(
                             mod_rs,
                             "            let {name}: {rty} = payload[offset..offset + \
@@ -486,9 +578,13 @@ fn emit_single_instruction(
         out.push_str("use std::vec::Vec;\n");
     }
 
-    out.push_str("use solana_address::Address;\n");
     out.push_str("use solana_instruction::{AccountMeta, Instruction};\n");
     out.push_str("use crate::ID;\n");
+
+    let args_need_address = ix.args.iter().any(|arg| field_needs_address(&arg.ty));
+    if !args_need_address && !ix.accounts.is_empty() {
+        out.push_str("use solana_address::Address;\n");
+    }
 
     emit_field_imports(
         &mut out,
@@ -585,19 +681,56 @@ fn emit_single_instruction(
             // Phase 2: length table — all dynamic prefixes grouped together
             for arg in &dyn_args {
                 let name = camel_to_snake(&arg.name);
-                let pfx = dynamic_prefix_bytes_from_codec(&arg.codec);
-                writeln!(
-                    out,
-                    "        data.extend_from_slice(&(ix.{name}.len() as \
-                     u64).to_le_bytes()[..{pfx}]);"
-                )
-                .expect("write to String");
+                if optional_dynamic_inner(&arg.ty).is_some() {
+                    writeln!(out, "        data.push(u8::from(ix.{name}.is_some()));")
+                        .expect("write to String");
+                } else {
+                    let pfx = dynamic_prefix_bytes_from_codec(&arg.codec);
+                    writeln!(
+                        out,
+                        "        data.extend_from_slice(&(ix.{name}.len() as \
+                         u64).to_le_bytes()[..{pfx}]);"
+                    )
+                    .expect("write to String");
+                }
             }
 
             // Phase 3: tail — all dynamic data in field order
             for arg in &dyn_args {
                 let name = camel_to_snake(&arg.name);
-                if is_dynamic_string(&arg.ty) {
+                if let Some(inner) = optional_dynamic_inner(&arg.ty) {
+                    let pfx = dynamic_prefix_bytes_from_codec(&arg.codec);
+                    if is_dynamic_string(inner) {
+                        writeln!(out, "        if let Some(value) = &ix.{name} {{")
+                            .expect("write to String");
+                        writeln!(
+                            out,
+                            "            data.extend_from_slice(&(value.len() as \
+                             u64).to_le_bytes()[..{pfx}]);"
+                        )
+                        .expect("write to String");
+                        out.push_str("            data.extend_from_slice(value.as_bytes());\n");
+                        out.push_str("        }\n");
+                    } else if vec_inner_type(inner).is_some() {
+                        writeln!(out, "        if let Some(value) = &ix.{name} {{")
+                            .expect("write to String");
+                        writeln!(
+                            out,
+                            "            data.extend_from_slice(&(value.len() as \
+                             u64).to_le_bytes()[..{pfx}]);"
+                        )
+                        .expect("write to String");
+                        out.push_str("            for item in value.iter() {\n");
+                        writeln!(
+                            out,
+                            "                wincode::serialize_into(&mut data, \
+                             item).expect(\"serialization into Vec<u8> is infallible\");"
+                        )
+                        .expect("write to String");
+                        out.push_str("            }\n");
+                        out.push_str("        }\n");
+                    }
+                } else if is_dynamic_string(&arg.ty) {
                     writeln!(out, "        data.extend_from_slice(ix.{name}.as_bytes());")
                         .expect("write to String");
                 } else if is_dynamic_vec(&arg.ty) {
@@ -1011,6 +1144,9 @@ fn emit_pda(pdas: &[PdaInfo]) -> String {
             .map(|s| match s {
                 IdlPdaSeed::Const { value } => format_const_seed_display(value),
                 IdlPdaSeed::Account { path } => camel_to_snake(path),
+                IdlPdaSeed::AccountField { path, field, .. } => {
+                    format!("{}:{}", camel_to_snake(path), camel_to_snake(field))
+                }
                 IdlPdaSeed::Arg { path, .. } => format!("arg:{}", camel_to_snake(path)),
             })
             .collect();
@@ -1022,6 +1158,13 @@ fn emit_pda(pdas: &[PdaInfo]) -> String {
             match seed {
                 IdlPdaSeed::Account { path } => {
                     params.push(format!("{}: &Address", camel_to_snake(path)));
+                }
+                IdlPdaSeed::AccountField { path, field, .. } => {
+                    params.push(format!(
+                        "{}_{}_seed: &[u8]",
+                        camel_to_snake(path),
+                        camel_to_snake(field)
+                    ));
                 }
                 IdlPdaSeed::Arg { path, .. } => {
                     params.push(format!("{}: &[u8]", camel_to_snake(path)));
@@ -1047,6 +1190,9 @@ fn emit_pda(pdas: &[PdaInfo]) -> String {
             .map(|s| match s {
                 IdlPdaSeed::Const { value } => format_const_seed_display(value),
                 IdlPdaSeed::Account { path } => format!("{}.as_ref()", camel_to_snake(path)),
+                IdlPdaSeed::AccountField { path, field, .. } => {
+                    format!("{}_{}_seed", camel_to_snake(path), camel_to_snake(field))
+                }
                 IdlPdaSeed::Arg { path, .. } => camel_to_snake(path),
             })
             .collect();
@@ -1071,7 +1217,7 @@ fn emit_pda(pdas: &[PdaInfo]) -> String {
 /// SizePrefixed codec). These require compact wire-format handling.
 fn is_direct_dynamic(ty: &IdlType, codec: &Option<IdlCodec>) -> bool {
     matches!(codec, Some(IdlCodec::SizePrefixed { .. }))
-        && (is_dynamic_string(ty) || is_dynamic_vec(ty))
+        && (is_dynamic_string(ty) || is_dynamic_vec(ty) || optional_dynamic_inner(ty).is_some())
 }
 
 /// Check if the type represents a dynamic string.
@@ -1088,6 +1234,17 @@ fn is_dynamic_vec(ty: &IdlType) -> bool {
 fn vec_inner_type(ty: &IdlType) -> Option<&IdlType> {
     match ty {
         IdlType::Vec { vec } => Some(vec.as_ref()),
+        _ => None,
+    }
+}
+
+fn optional_dynamic_inner(ty: &IdlType) -> Option<&IdlType> {
+    match ty {
+        IdlType::Option { option }
+            if is_dynamic_string(option) || matches!(**option, IdlType::Vec { .. }) =>
+        {
+            Some(option)
+        }
         _ => None,
     }
 }
@@ -1464,7 +1621,15 @@ fn rust_field_type(ty: &IdlType, codec: &Option<IdlCodec>) -> String {
             }
             other => other.to_string(),
         },
-        IdlType::Option { option } => format!("Option<{}>", rust_field_type(option, &None)),
+        IdlType::Option { option } => {
+            if matches!(codec, Some(IdlCodec::SizePrefixed { .. }))
+                && optional_dynamic_inner(ty).is_some()
+            {
+                format!("Option<{}>", rust_field_type(option, codec))
+            } else {
+                format!("Option<{}>", rust_field_type(option, &None))
+            }
+        }
         IdlType::Vec { vec } => {
             // If codec is SizePrefixed, use DynVec<Inner, PrefixType>
             if let Some(IdlCodec::SizePrefixed { ref prefix, .. }) = codec {
@@ -1517,7 +1682,11 @@ fn collect_wrapper_needs(
 ) {
     match ty {
         IdlType::Option { option } => {
-            collect_wrapper_needs(option, &None, needs_dyn_string, needs_dyn_vec)
+            if optional_dynamic_inner(ty).is_some() {
+                collect_wrapper_needs(option, codec, needs_dyn_string, needs_dyn_vec)
+            } else {
+                collect_wrapper_needs(option, &None, needs_dyn_string, needs_dyn_vec)
+            }
         }
         IdlType::Primitive(p) if p == "string" => {
             if matches!(codec, Some(IdlCodec::SizePrefixed { .. })) {

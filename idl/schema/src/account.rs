@@ -135,6 +135,13 @@ pub enum IdlPdaSeed {
     /// Derived from another account's address.
     #[serde(rename = "account")]
     Account { path: String },
+    /// Derived from a decoded field of another account.
+    #[serde(rename = "accountField")]
+    AccountField {
+        path: String,
+        account: String,
+        field: String,
+    },
     /// Derived from an instruction argument.
     #[serde(rename = "arg")]
     Arg {

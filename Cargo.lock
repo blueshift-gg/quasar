@@ -2078,7 +2078,6 @@ dependencies = [
 name = "quasar-cli"
 version = "0.0.0"
 dependencies = [
- "anyhow",
  "bs58",
  "clap",
  "clap_complete",
@@ -4699,9 +4698,9 @@ dependencies = [
 
 [[package]]
 name = "zeropod"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "347560ea42254b19900a39f5e7a96dc247e841b3867ac88c729a2d25e5ec498e"
+checksum = "326a19e31370c41192852e51a501f936ee4aff1bbf488951f6b75d1d61138b24"
 dependencies = [
  "solana-address 2.2.0",
  "solana-program-error",
@@ -4711,9 +4710,9 @@ dependencies = [
 
 [[package]]
 name = "zeropod-derive"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b8369005ce19ec7a48b139c6535983521a9e721949ea0c9a1b56c53131749fa"
+checksum = "f0035f87c580a717d577becefd420f1e344b4109f810ca918636b88cb20d7051"
 dependencies = [
  "proc-macro2",
  "quote",

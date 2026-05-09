@@ -43,9 +43,7 @@ pub struct MigrateGrow {
     #[account(mut)]
     pub payer: Signer,
     pub system_program: Program<SystemProgram>,
-    #[account(mut,
-        constraints(config.authority == *authority.address()),
-    )]
+    #[account(constraints(config.authority == *authority.address()))]
     pub config: Migration<ConfigV1, ConfigV2>,
     /// CHECK: authority
     pub authority: Signer,
@@ -56,7 +54,6 @@ pub struct MigrateSameSize {
     #[account(mut)]
     pub payer: Signer,
     pub system_program: Program<SystemProgram>,
-    #[account(mut)]
     pub config: Migration<ConfigV1, ConfigV2Slim>,
 }
 /// Shrink migration (V1Big → V2Slim)
@@ -65,7 +62,6 @@ pub struct MigrateShrink {
     #[account(mut)]
     pub payer: Signer,
     pub system_program: Program<SystemProgram>,
-    #[account(mut)]
     pub config: Migration<ConfigV1Big, ConfigV2Slim>,
 }
 /// PDA migration with seeds + bump
@@ -75,7 +71,6 @@ pub struct MigrateVault {
     pub payer: Signer,
     pub system_program: Program<SystemProgram>,
     #[account(
-        mut,
         constraints(vault.authority == *authority.address()),
         address = VaultV1::seeds(authority.address()),
     )]
@@ -89,7 +84,6 @@ pub struct MigrateWithFunder {
     #[account(mut)]
     pub funder: Signer,
     pub system_program: Program<SystemProgram>,
-    #[account(mut, payer = funder)]
     pub config: Migration<ConfigV1, ConfigV2>,
 }
 #[program]
@@ -99,42 +93,47 @@ pub mod test_migrate {
     pub fn migrate_grow(ctx: Ctx<MigrateGrow>) -> Result<(), ProgramError> {
         let val = ctx.accounts.config.value;
         let auth = ctx.accounts.config.authority;
-        ctx.accounts.config.migrate(ConfigV2Data {
+        ctx.accounts.config.migrate(&ctx.accounts.payer, ConfigV2Data {
             authority: auth, value: val, new_field: PodU32::from(0),
-        })
+        })?;
+        Ok(())
     }
     #[instruction(discriminator = 2)]
     pub fn migrate_same_size(ctx: Ctx<MigrateSameSize>) -> Result<(), ProgramError> {
         let val = ctx.accounts.config.value;
         let auth = ctx.accounts.config.authority;
-        ctx.accounts.config.migrate(ConfigV2SlimData {
+        ctx.accounts.config.migrate(&ctx.accounts.payer, ConfigV2SlimData {
             authority: auth, value: val,
-        })
+        })?;
+        Ok(())
     }
     #[instruction(discriminator = 3)]
     pub fn migrate_shrink(ctx: Ctx<MigrateShrink>) -> Result<(), ProgramError> {
         let val = ctx.accounts.config.value;
         let auth = ctx.accounts.config.authority;
-        ctx.accounts.config.migrate(ConfigV2SlimData {
+        ctx.accounts.config.migrate(&ctx.accounts.payer, ConfigV2SlimData {
             authority: auth, value: val,
-        })
+        })?;
+        Ok(())
     }
     #[instruction(discriminator = 4)]
     pub fn migrate_vault(ctx: Ctx<MigrateVault>) -> Result<(), ProgramError> {
         let bal = ctx.accounts.vault.balance;
         let auth = ctx.accounts.vault.authority;
         let bump = ctx.accounts.vault.bump;
-        ctx.accounts.vault.migrate(VaultV2Data {
+        ctx.accounts.vault.migrate(&ctx.accounts.payer, VaultV2Data {
             authority: auth, balance: bal, fee_bps: PodU16::from(30), bump,
-        })
+        })?;
+        Ok(())
     }
     #[instruction(discriminator = 5)]
     pub fn migrate_with_funder(ctx: Ctx<MigrateWithFunder>) -> Result<(), ProgramError> {
         let val = ctx.accounts.config.value;
         let auth = ctx.accounts.config.authority;
-        ctx.accounts.config.migrate(ConfigV2Data {
+        ctx.accounts.config.migrate(&ctx.accounts.funder, ConfigV2Data {
             authority: auth, value: val, new_field: PodU32::from(0),
-        })
+        })?;
+        Ok(())
     }
 }
 fn main() {}
