@@ -309,7 +309,16 @@ pub fn generate_python_client(idl: &Idl) -> String {
                 let name = camel_to_snake(&arg.name);
                 let prefix_bytes = arg.codec.as_ref().map(|c| c.prefix_bytes()).unwrap_or(2);
                 let (fmt, _sz) = prefix_fmt(prefix_bytes);
-                match &arg.ty {
+                if is_optional_dynamic(&arg.ty) {
+                    writeln!(
+                        out,
+                        "    data.append(0 if input.{name} is None else 1)",
+                        name = name,
+                    )
+                    .unwrap();
+                    continue;
+                }
+                match dynamic_payload_type(&arg.ty).expect("dynamic arg payload") {
                     IdlType::Primitive(p) if p == "string" => {
                         writeln!(
                             out,
@@ -341,23 +350,54 @@ pub fn generate_python_client(idl: &Idl) -> String {
             // Phase 3: tail data
             for arg in &dyn_args {
                 let name = camel_to_snake(&arg.name);
-                match &arg.ty {
+                let prefix_bytes = arg.codec.as_ref().map(|c| c.prefix_bytes()).unwrap_or(2);
+                let (fmt, _sz) = prefix_fmt(prefix_bytes);
+                let payload_ty = dynamic_payload_type(&arg.ty).expect("dynamic arg payload");
+                let optional = is_optional_dynamic(&arg.ty);
+                if optional {
+                    writeln!(out, "    if input.{name} is not None:", name = name).unwrap();
+                }
+                let pad = if optional { "        " } else { "    " };
+                let value = format!("input.{name}");
+                match payload_ty {
                     IdlType::Primitive(p) if p == "string" => {
-                        writeln!(out, "    data += _{name}_b", name = name).unwrap();
+                        if optional {
+                            writeln!(
+                                out,
+                                "{pad}_{name}_b = {value}.encode(\"utf-8\")",
+                                pad = pad,
+                                name = name,
+                                value = value,
+                            )
+                            .unwrap();
+                            writeln!(
+                                out,
+                                "{pad}data += struct.pack(\"<{fmt}\", len(_{name}_b))",
+                                pad = pad,
+                                name = name,
+                                fmt = fmt,
+                            )
+                            .unwrap();
+                        }
+                        writeln!(out, "{pad}data += _{name}_b", pad = pad, name = name).unwrap();
                     }
                     IdlType::Vec { vec } => {
-                        let item_ser = match &**vec {
-                            IdlType::Primitive(p) if p == "pubkey" => "bytes(item)".to_string(),
-                            IdlType::Primitive(p) => {
-                                let f = struct_format(p);
-                                format!("struct.pack(\"<{}\", item)", f)
-                            }
-                            _ => "item".to_string(),
-                        };
+                        if optional {
+                            writeln!(
+                                out,
+                                "{pad}data += struct.pack(\"<{fmt}\", len({value}))",
+                                pad = pad,
+                                fmt = fmt,
+                                value = value,
+                            )
+                            .unwrap();
+                        }
+                        let item_ser = python_vec_item_expr(vec, "item");
                         writeln!(
                             out,
-                            "    for item in input.{name}:\n        data += {ser}",
-                            name = name,
+                            "{pad}for item in {value}:\n{pad}    data += {ser}",
+                            pad = pad,
+                            value = value,
                             ser = item_ser,
                         )
                         .unwrap();
@@ -460,7 +500,7 @@ fn python_type(ty: &IdlType) -> String {
             _ => "bytes".to_string(),
         },
         IdlType::Option { option } => format!("Optional[{}]", python_type(option)),
-        IdlType::Vec { .. } => "list".to_string(),
+        IdlType::Vec { vec } => format!("list[{}]", python_type(vec)),
         IdlType::Array { .. } => "bytes".to_string(),
         IdlType::Defined { defined } => defined.name.clone(),
         IdlType::Generic { generic } => {
@@ -477,10 +517,30 @@ fn python_type(ty: &IdlType) -> String {
 /// Vec with codec). These require compact 3-phase encoding at the instruction
 /// level.
 fn is_direct_dynamic(arg: &IdlArg) -> bool {
-    match &arg.ty {
-        IdlType::Primitive(p) if p == "string" && arg.codec.is_some() => true,
-        IdlType::Vec { .. } if arg.codec.is_some() => true,
-        _ => false,
+    arg.codec.is_some() && dynamic_payload_type(&arg.ty).is_some()
+}
+
+fn dynamic_payload_type(ty: &IdlType) -> Option<&IdlType> {
+    match ty {
+        IdlType::Primitive(p) if p == "string" => Some(ty),
+        IdlType::Vec { .. } => Some(ty),
+        IdlType::Option { option } => dynamic_payload_type(option),
+        _ => None,
+    }
+}
+
+fn is_optional_dynamic(ty: &IdlType) -> bool {
+    matches!(ty, IdlType::Option { option } if dynamic_payload_type(option).is_some())
+}
+
+fn python_vec_item_expr(item: &IdlType, source: &str) -> String {
+    match item {
+        IdlType::Primitive(p) if p == "pubkey" => format!("bytes({source})"),
+        IdlType::Primitive(p) => {
+            let f = struct_format(p);
+            format!("struct.pack(\"<{}\", {source})", f)
+        }
+        _ => source.to_string(),
     }
 }
 

@@ -847,7 +847,11 @@ pub struct Submit {
     )?;
 
     let clients_path = temp.path().join("clients");
-    idl::generate(&program_dir, &["typescript"], &clients_path)?;
+    idl::generate(
+        &program_dir,
+        &["typescript", "python", "golang", "c"],
+        &clients_path,
+    )?;
 
     let rust_root = clients_path.join("rust");
     let rust_client_dir = fs::read_dir(&rust_root)?
@@ -896,12 +900,36 @@ pub struct Submit {
         assert!(source.contains("...maybe_addrsBytes"));
     }
 
-    let unsupported_clients_path = temp.path().join("unsupported-clients");
-    let error = idl::generate(&program_dir, &["python"], &unsupported_clients_path)
-        .expect_err("python optional dynamic client generation should be rejected explicitly");
-    assert!(error
-        .to_string()
-        .contains("generated Rust and TypeScript clients only"));
+    let python_dir = only_child_dir(&clients_path.join("python"))?;
+    let python_source = read_file(&python_dir.join("client.py"))?;
+    assert!(python_source.contains("maybe_name: Optional[str]"));
+    assert!(python_source.contains("maybe_addrs: Optional[list[Pubkey]]"));
+    assert!(python_source.contains("data.append(0 if input.maybe_name is None else 1)"));
+    assert!(python_source.contains("data.append(0 if input.maybe_addrs is None else 1)"));
+    assert!(python_source.contains("if input.maybe_name is not None:"));
+    assert!(python_source.contains("if input.maybe_addrs is not None:"));
+    compile_python_client(&python_dir)?;
+
+    let go_dir = only_child_dir(&clients_path.join("golang"))?;
+    let go_source = read_file(&go_dir.join("client.go"))?;
+    assert!(go_source.contains("MaybeName *string"));
+    assert!(go_source.contains("MaybeAddrs *[]solana.PublicKey"));
+    assert!(go_source.contains("if input.MaybeName == nil"));
+    assert!(go_source.contains("if input.MaybeAddrs == nil"));
+    assert!(go_source.contains("_MaybeNameBytes := []byte(*input.MaybeName)"));
+    assert!(go_source.contains("for _, item := range *input.MaybeAddrs"));
+    compile_go_client(&go_dir)?;
+
+    let c_dir = only_child_dir(&clients_path.join("c"))?;
+    let c_header = read_file(&c_dir.join("client.h"))?;
+    assert!(c_header.contains("bool maybe_name_present;"));
+    assert!(c_header.contains("const uint8_t *maybe_name;"));
+    assert!(c_header.contains("bool maybe_addrs_present;"));
+    assert!(c_header.contains("const Pubkey *maybe_addrs;"));
+    assert!(c_header.contains("data_buf[off++] = args->maybe_name_present ? 1 : 0;"));
+    assert!(c_header.contains("if (args->maybe_name_present)"));
+    assert!(c_header.contains("data_buf[off++] = args->maybe_addrs_present ? 1 : 0;"));
+    assert!(c_header.contains("if (args->maybe_addrs_present)"));
 
     Ok(())
 }

@@ -6,7 +6,7 @@ use {
     },
     quasar_idl::{
         codegen::{self, model::ProgramModel},
-        types::{Idl, IdlCodec, IdlType},
+        types::Idl,
     },
     std::path::{Path, PathBuf},
 };
@@ -60,7 +60,6 @@ pub fn run(command: ClientCommand) -> CliResult {
 
 pub fn generate_clients(idl: &Idl, languages: &[&str], clients_path: &Path) -> CliResult {
     let model = ProgramModel::new(idl);
-    reject_unsupported_optional_dynamic_clients(idl, languages)?;
 
     // TypeScript
     if languages.contains(&"typescript") {
@@ -118,31 +117,4 @@ pub fn generate_clients(idl: &Idl, languages: &[&str], clients_path: &Path) -> C
     }
 
     Ok(())
-}
-
-fn reject_unsupported_optional_dynamic_clients(idl: &Idl, languages: &[&str]) -> CliResult {
-    let has_optional_dynamic = idl.instructions.iter().any(|ix| {
-        ix.args.iter().any(|arg| {
-            matches!(arg.codec, Some(IdlCodec::SizePrefixed { .. }))
-                && matches!(arg.ty, IdlType::Option { .. })
-        })
-    });
-    if !has_optional_dynamic {
-        return Ok(());
-    }
-
-    let unsupported: Vec<&str> = languages
-        .iter()
-        .copied()
-        .filter(|lang| matches!(*lang, "python" | "golang" | "c"))
-        .collect();
-    if unsupported.is_empty() {
-        return Ok(());
-    }
-
-    Err(CliError::message(format!(
-        "optional dynamic instruction arguments are currently supported by generated Rust and \
-         TypeScript clients only; unsupported requested clients: {}",
-        unsupported.join(", ")
-    )))
 }

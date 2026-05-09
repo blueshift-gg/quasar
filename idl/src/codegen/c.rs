@@ -248,14 +248,58 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         )
         .unwrap();
         if has_args {
-            for arg in &ix.args {
-                out.push_str(&serialize_field_expr(
-                    &format!("args->{}", arg.name),
-                    &arg.ty,
-                    arg.codec.as_ref(),
-                    &idl.types,
-                    1,
-                ));
+            if ix
+                .args
+                .iter()
+                .any(|arg| is_dynamic_with_codec(&arg.ty, arg.codec.as_ref()))
+            {
+                for arg in ix
+                    .args
+                    .iter()
+                    .filter(|arg| !is_dynamic_with_codec(&arg.ty, arg.codec.as_ref()))
+                {
+                    out.push_str(&serialize_field_expr(
+                        &format!("args->{}", arg.name),
+                        &arg.ty,
+                        arg.codec.as_ref(),
+                        &idl.types,
+                        1,
+                    ));
+                }
+                for arg in ix
+                    .args
+                    .iter()
+                    .filter(|arg| is_dynamic_with_codec(&arg.ty, arg.codec.as_ref()))
+                {
+                    out.push_str(&serialize_compact_header_expr(
+                        &format!("args->{}", arg.name),
+                        &arg.ty,
+                        arg.codec.as_ref(),
+                        1,
+                    ));
+                }
+                for arg in ix
+                    .args
+                    .iter()
+                    .filter(|arg| is_dynamic_with_codec(&arg.ty, arg.codec.as_ref()))
+                {
+                    out.push_str(&serialize_compact_tail_expr(
+                        &format!("args->{}", arg.name),
+                        &arg.ty,
+                        arg.codec.as_ref(),
+                        1,
+                    ));
+                }
+            } else {
+                for arg in &ix.args {
+                    out.push_str(&serialize_field_expr(
+                        &format!("args->{}", arg.name),
+                        &arg.ty,
+                        arg.codec.as_ref(),
+                        &idl.types,
+                        1,
+                    ));
+                }
             }
         }
 
@@ -459,10 +503,15 @@ fn is_128bit(ty: &IdlType) -> bool {
 }
 
 fn is_dynamic_with_codec(ty: &IdlType, codec: Option<&IdlCodec>) -> bool {
+    codec.is_some() && dynamic_payload_type(ty).is_some()
+}
+
+fn dynamic_payload_type(ty: &IdlType) -> Option<&IdlType> {
     match ty {
-        IdlType::Primitive(p) if p == "string" && codec.is_some() => true,
-        IdlType::Vec { .. } if codec.is_some() => true,
-        _ => false,
+        IdlType::Primitive(p) if p == "string" => Some(ty),
+        IdlType::Vec { .. } => Some(ty),
+        IdlType::Option { option } => dynamic_payload_type(option),
+        _ => None,
     }
 }
 
@@ -474,14 +523,21 @@ fn emit_struct_field(
     codec: Option<&IdlCodec>,
 ) {
     let (is_opt, inner, inner_codec) = match ty {
-        IdlType::Option { option } => (true, option.as_ref(), None),
+        IdlType::Option { option } => (true, option.as_ref(), codec),
         other => (false, other, codec),
     };
     if is_opt {
         writeln!(out, "    bool {name}_present;").unwrap();
     }
     if is_dynamic_with_codec(inner, inner_codec) {
-        writeln!(out, "    const uint8_t *{name};").unwrap();
+        match inner {
+            IdlType::Vec { vec } if matches!(&**vec, IdlType::Primitive(p) if p == "pubkey") => {
+                writeln!(out, "    const Pubkey *{name};").unwrap();
+            }
+            _ => {
+                writeln!(out, "    const uint8_t *{name};").unwrap();
+            }
+        }
         writeln!(out, "    uint32_t {name}_len;").unwrap();
     } else if is_fixed_array_type(inner) {
         let size = fixed_array_size(inner);
@@ -511,6 +567,7 @@ fn static_data_overhead(ty: &IdlType, codec: Option<&IdlCodec>, types: &[IdlType
             }
             _ => 0,
         },
+        IdlType::Option { .. } if is_dynamic_with_codec(ty, codec) => 1,
         IdlType::Option { option } => 1 + static_data_overhead(option, None, types),
         IdlType::Defined { defined } => types
             .iter()
@@ -560,6 +617,82 @@ fn serialize_dyn_bytes(name: &str, prefix_bytes: usize, t: &str) -> String {
         "{t}if (off + {pb} + {name}_len > data_buf_len) return 0;\n{write_prefix}{t}for (uint32_t \
          i = 0; i < {name}_len; i++) data_buf[off++] = {name}[i];\n"
     )
+}
+
+fn serialize_prefix_expr(len_expr: &str, prefix_bytes: usize, t: &str) -> String {
+    match prefix_bytes {
+        1 => format!("{t}data_buf[off++] = (uint8_t){len_expr};\n"),
+        2 => format!(
+            "{t}{{ uint16_t slen = (uint16_t){len_expr}; data_buf[off] = (uint8_t)slen; \
+             data_buf[off+1] = (uint8_t)(slen >> 8); off += 2; }}\n"
+        ),
+        4 => format!(
+            "{t}{{ uint32_t slen = {len_expr}; data_buf[off] = (uint8_t)slen; data_buf[off+1] = \
+             (uint8_t)(slen >> 8); data_buf[off+2] = (uint8_t)(slen >> 16); data_buf[off+3] = \
+             (uint8_t)(slen >> 24); off += 4; }}\n"
+        ),
+        _ => format!(
+            "{t}{{ uint64_t slen = (uint64_t){len_expr}; for (int i = 0; i < 8; i++) {{ \
+             data_buf[off + i] = (uint8_t)(slen >> (i * 8)); }} off += 8; }}\n"
+        ),
+    }
+}
+
+fn serialize_compact_header_expr(
+    name: &str,
+    ty: &IdlType,
+    codec: Option<&IdlCodec>,
+    indent: usize,
+) -> String {
+    let t = "    ".repeat(indent);
+    if matches!(ty, IdlType::Option { .. }) {
+        return format!("{t}data_buf[off++] = {name}_present ? 1 : 0;\n");
+    }
+    serialize_prefix_expr(
+        &format!("{name}_len"),
+        codec.map(IdlCodec::prefix_bytes).unwrap_or(4),
+        &t,
+    )
+}
+
+fn serialize_compact_tail_expr(
+    name: &str,
+    ty: &IdlType,
+    codec: Option<&IdlCodec>,
+    indent: usize,
+) -> String {
+    let t = "    ".repeat(indent);
+    let Some(payload_ty) = dynamic_payload_type(ty) else {
+        return String::new();
+    };
+    let prefix_bytes = codec.map(IdlCodec::prefix_bytes).unwrap_or(4);
+    let mut out = String::new();
+    if matches!(ty, IdlType::Option { .. }) {
+        writeln!(out, "{t}if ({name}_present) {{").unwrap();
+        let ti = "    ".repeat(indent + 1);
+        out.push_str(&serialize_prefix_expr(
+            &format!("{name}_len"),
+            prefix_bytes,
+            &ti,
+        ));
+        out.push_str(&serialize_payload_bytes(name, payload_ty, &ti));
+        writeln!(out, "{t}}}").unwrap();
+    } else {
+        out.push_str(&serialize_payload_bytes(name, payload_ty, &t));
+    }
+    out
+}
+
+fn serialize_payload_bytes(name: &str, ty: &IdlType, t: &str) -> String {
+    match ty {
+        IdlType::Vec { vec } if matches!(&**vec, IdlType::Primitive(p) if p == "pubkey") => {
+            format!(
+                "{t}for (uint32_t i = 0; i < {name}_len; i++) {{ for (int j = 0; j < 32; j++) \
+                 data_buf[off++] = {name}[i].bytes[j]; }}\n"
+            )
+        }
+        _ => format!("{t}for (uint32_t i = 0; i < {name}_len; i++) data_buf[off++] = {name}[i];\n"),
+    }
 }
 
 fn decode_dyn_bytes(name: &str, prefix_bytes: usize, t: &str) -> String {
