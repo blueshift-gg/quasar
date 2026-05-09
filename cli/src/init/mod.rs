@@ -48,6 +48,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
     let ts_sdk_override = cmd.ts_sdk;
     let template_override = cmd.template;
     let toolchain_override = cmd.toolchain;
+    let verbose = cmd.verbose;
 
     // Only skip prompts when --yes is explicitly set
     let skip_prompts = cmd.yes;
@@ -108,8 +109,14 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
         if let Some(default) = name {
             prompt = prompt.default(default);
         }
-        prompt.interact_text().map_err(anyhow::Error::from)?
-    };
+        prompt.interact_text()?
+    }
+    .trim()
+    .to_string();
+
+    if name.is_empty() {
+        return Err(CliError::message("project name cannot be empty"));
+    }
 
     // Validate the target directory before prompting for remaining options
     scaffold::validate_target_dir(&name)?;
@@ -143,8 +150,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
             .with_prompt("Toolchain")
             .items(toolchain_items)
             .default(toolchain_default)
-            .interact()
-            .map_err(anyhow::Error::from)?
+            .interact()?
     };
     let toolchain = match toolchain_idx {
         0 => Toolchain::Solana,
@@ -190,8 +196,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
             .with_prompt("Test language")
             .items(lang_items)
             .default(lang_default)
-            .interact()
-            .map_err(anyhow::Error::from)?
+            .interact()?
     };
     let test_language = match test_lang_idx {
         1 => TestLanguage::Rust,
@@ -209,8 +214,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
                 .with_prompt("Rust test framework")
                 .items(items)
                 .default(rust_fw_default)
-                .interact()
-                .map_err(anyhow::Error::from)?
+                .interact()?
         };
         Some(match idx {
             1 => RustFramework::Mollusk,
@@ -230,8 +234,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
                 .with_prompt("TypeScript SDK")
                 .items(items)
                 .default(ts_sdk_default)
-                .interact()
-                .map_err(anyhow::Error::from)?
+                .interact()?
         };
         Some(match idx {
             1 => TypeScriptSdk::Web3js,
@@ -252,8 +255,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
                 .with_prompt("Package manager")
                 .items(pm_items)
                 .default(pm_default)
-                .interact()
-                .map_err(anyhow::Error::from)?
+                .interact()?
         };
         Some(match pm_idx {
             0 => PackageManager::Pnpm,
@@ -264,14 +266,15 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
                 let install: String = Input::with_theme(&theme)
                     .with_prompt("Install command")
                     .default("pnpm install".into())
-                    .interact_text()
-                    .map_err(anyhow::Error::from)?;
+                    .interact_text()?;
                 let test: String = Input::with_theme(&theme)
                     .with_prompt("Test command")
                     .default("pnpm test".into())
-                    .interact_text()
-                    .map_err(anyhow::Error::from)?;
-                PackageManager::Other { install, test }
+                    .interact_text()?;
+                PackageManager::Other {
+                    install: install.trim().to_string(),
+                    test: test.trim().to_string(),
+                }
             }
         })
     } else {
@@ -313,8 +316,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
         let selected = MultiSelect::with_theme(&theme)
             .with_prompt(&prompt)
             .items(&display_items)
-            .interact()
-            .map_err(anyhow::Error::from)?;
+            .interact()?;
 
         let mut langs: Vec<String> = vec!["rust".to_string()];
         if ts_tests {
@@ -345,8 +347,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
             .with_prompt("Template")
             .items(template_items)
             .default(template_default)
-            .interact()
-            .map_err(anyhow::Error::from)?
+            .interact()?
     };
     let template = match template_idx {
         0 => Template::Minimal,
@@ -369,8 +370,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
             .with_prompt("Initialize a new git repo?")
             .items(git_items)
             .default(git_default.index())
-            .interact()
-            .map_err(anyhow::Error::from)?;
+            .interact()?;
         GitSetup::from_index(git_idx)
     };
 
@@ -393,6 +393,8 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
         );
     }
 
+    let mut progress = crate::style::Progress::new(verbose);
+    progress.step(format!("Scaffolding {crate_name}..."));
     scaffold::scaffold(
         &name,
         &crate_name,
@@ -404,9 +406,12 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
         package_manager.as_ref(),
         &client_languages,
     )?;
+    progress.done("Scaffold files written");
 
     // Optional git setup (unless already in a git repo)
+    progress.step("Configuring git...");
     maybe_initialize_git_repo(&name, git_setup);
+    progress.done("Git setup complete");
 
     // Save preferences for next time (disable animation after first run)
     let saved_git_default = if no_git {
@@ -434,7 +439,10 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
             ..globals.ui
         },
     };
+    progress.step("Saving CLI defaults...");
     let _ = new_globals.save(); // best-effort
+    progress.done("CLI defaults saved");
+    progress.clear();
 
     // Success message
     println!();
@@ -466,4 +474,29 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
     println!();
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn init_command(name: &str) -> crate::InitCommand {
+        crate::InitCommand {
+            name: Some(name.to_string()),
+            yes: true,
+            no_git: true,
+            test_language: Some("none".to_string()),
+            rust_framework: None,
+            ts_sdk: None,
+            template: Some("minimal".to_string()),
+            toolchain: Some("upstream".to_string()),
+            verbose: false,
+        }
+    }
+
+    #[test]
+    fn rejects_empty_project_name_after_trimming() {
+        let err = run(init_command("   ")).expect_err("blank name must fail");
+        assert_eq!(err.to_string(), "project name cannot be empty");
+    }
 }
