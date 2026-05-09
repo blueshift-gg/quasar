@@ -1,10 +1,13 @@
 use {
     super::model::ProgramModel,
     crate::types::{
-        AccountFlag, Idl, IdlArg, IdlCodec, IdlFieldDef, IdlPdaSeed, IdlResolver, IdlType,
-        ScalarRepr,
+        AccountFlag, Idl, IdlAccountDef, IdlArg, IdlCodec, IdlFieldDef, IdlInstruction, IdlPdaSeed,
+        IdlResolver, IdlType, ScalarRepr,
     },
-    quasar_schema::{snake_to_pascal, to_screaming_snake as pascal_to_screaming_snake},
+    quasar_schema::{
+        pascal_to_camel, snake_to_pascal, to_camel_case,
+        to_screaming_snake as pascal_to_screaming_snake,
+    },
     std::{
         collections::{HashMap, HashSet},
         fmt::Write,
@@ -46,7 +49,7 @@ pub fn generate_package_json(idl: &Idl) -> String {
     "./kit": "./kit.ts"
   }},
   "dependencies": {{{codecs_dep}
-    "@solana/kit": "^6.0.0",
+    "@solana/kit": "^6.4.0",
     "@solana/web3.js": "git+https://github.com/blueshift-gg/web3.js.git#v2"
   }}
 }}
@@ -71,6 +74,10 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     let has_pdas = model.features.has_pdas;
     let has_pda_account_seeds = model.features.has_pda_account_seeds;
     let has_dynamic_types = idl.types.iter().any(|t| has_dynamic_field_defs(&t.fields));
+    let plugin_account_count = eligible_plugin_accounts(idl).len();
+    let emit_plugin = target == TsTarget::Kit && (has_instructions || plugin_account_count > 0);
+    let plugin_has_accounts = emit_plugin && plugin_account_count > 0;
+    let plugin_has_instructions = emit_plugin && has_instructions;
 
     // --- Imports ---
     match target {
@@ -94,12 +101,40 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
             if has_pda_account_seeds || has_public_key {
                 kit_imports.push("getAddressCodec");
             }
+            if plugin_has_accounts {
+                kit_imports.push("type ClientWithRpc");
+                kit_imports.push("type GetAccountInfoApi");
+                kit_imports.push("type GetMultipleAccountsApi");
+            }
+            if plugin_has_instructions {
+                kit_imports.push("type ClientWithPayer");
+                kit_imports.push("type ClientWithTransactionPlanning");
+                kit_imports.push("type ClientWithTransactionSending");
+            }
             writeln!(
                 out,
                 "import {{ {} }} from \"@solana/kit\";",
                 kit_imports.join(", ")
             )
             .expect("write to String");
+
+            if emit_plugin {
+                let mut pcc_imports: Vec<&str> = Vec::new();
+                if plugin_has_accounts {
+                    pcc_imports.push("addSelfFetchFunctions");
+                    pcc_imports.push("type SelfFetchFunctions");
+                }
+                if plugin_has_instructions {
+                    pcc_imports.push("addSelfPlanAndSendFunctions");
+                    pcc_imports.push("type SelfPlanAndSendFunctions");
+                }
+                writeln!(
+                    out,
+                    "import {{ {} }} from \"@solana/kit/program-client-core\";",
+                    pcc_imports.join(", ")
+                )
+                .expect("write to String");
+            }
         }
     }
 
@@ -539,6 +574,10 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         emit_pda_helpers(&mut out, &pdas, target, &model.identity.program_name);
     }
 
+    if emit_plugin {
+        emit_program_plugin(&mut out, idl, &model);
+    }
+
     // === Errors ===
     if !idl.errors.is_empty() {
         out.push_str("/* Errors */\n");
@@ -882,6 +921,115 @@ fn generate_instruction_builders_kit(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Program plugin — @solana/kit
+// ---------------------------------------------------------------------------
+
+/// Plugin accounts: only those whose struct codec is a `Codec<T, T>` from
+/// `@solana/codecs` (no dynamic fields).
+fn eligible_plugin_accounts(idl: &Idl) -> Vec<&IdlAccountDef> {
+    let accounts_with_dynamic_fields: HashSet<&str> = idl
+        .types
+        .iter()
+        .filter(|t| has_dynamic_field_defs(&t.fields))
+        .map(|t| t.name.as_str())
+        .collect();
+    idl.accounts
+        .iter()
+        .filter(|a| !accounts_with_dynamic_fields.contains(a.name.as_str()))
+        .collect()
+}
+
+fn ix_has_input(ix: &IdlInstruction) -> bool {
+    let has_accounts = ix
+        .accounts
+        .iter()
+        .any(|a| matches!(a.resolver, IdlResolver::Input {}));
+    has_accounts || !ix.args.is_empty() || ix.remaining_accounts.is_some()
+}
+
+fn emit_program_plugin(out: &mut String, idl: &Idl, model: &ProgramModel) {
+    let prog_pascal = snake_to_pascal(&model.identity.program_name);
+    let prog_camel = to_camel_case(&model.identity.program_name);
+    let class_name = format!("{}Client", prog_pascal);
+    let plugin_accounts = eligible_plugin_accounts(idl);
+    let has_accounts = !plugin_accounts.is_empty();
+    let has_instructions = !idl.instructions.is_empty();
+
+    out.push_str("/* Program Plugin */\n");
+
+    // Input Client requirements
+    let mut requirements: Vec<&str> = Vec::new();
+    if has_accounts {
+        requirements.push("ClientWithRpc<GetAccountInfoApi & GetMultipleAccountsApi>");
+    }
+    if has_instructions {
+        requirements.push("ClientWithPayer");
+        requirements.push("ClientWithTransactionPlanning");
+        requirements.push("ClientWithTransactionSending");
+    }
+    writeln!(
+        out,
+        "export type {prog_pascal}PluginRequirements = {};\n",
+        requirements.join(" &\n  ")
+    )
+    .expect("write to String");
+
+    // --- Factory function ---
+    writeln!(out, "export function {prog_camel}Program() {{").expect("write to String");
+    writeln!(out, "  const __client = new {class_name}();").expect("write to String");
+    writeln!(
+        out,
+        "  return <T extends {prog_pascal}PluginRequirements>(client: T) => ({{"
+    )
+    .expect("write to String");
+    out.push_str("    ...client,\n");
+    writeln!(out, "    {prog_camel}: {{").expect("write to String");
+
+    if has_accounts {
+        out.push_str("      accounts: {\n");
+        for account in &plugin_accounts {
+            let key = pascal_to_camel(&account.name);
+            writeln!(
+                out,
+                "        {key}: addSelfFetchFunctions(client, {}Codec),",
+                account.name
+            )
+            .expect("write to String");
+        }
+        out.push_str("      },\n");
+    }
+
+    if has_instructions {
+        out.push_str("      instructions: {\n");
+        for ix in &idl.instructions {
+            let ix_pascal = snake_to_pascal(&ix.name);
+            let ix_camel = to_camel_case(&ix.name);
+            if ix_has_input(ix) {
+                writeln!(
+                    out,
+                    "        {ix_camel}: (input: {ix_pascal}InstructionInput) => \
+                     addSelfPlanAndSendFunctions(client, \
+                     __client.create{ix_pascal}Instruction(input)),"
+                )
+                .expect("write to String");
+            } else {
+                writeln!(
+                    out,
+                    "        {ix_camel}: () => addSelfPlanAndSendFunctions(client, \
+                     __client.create{ix_pascal}Instruction()),"
+                )
+                .expect("write to String");
+            }
+        }
+        out.push_str("      },\n");
+    }
+
+    out.push_str("    },\n");
+    out.push_str("  });\n");
+    out.push_str("}\n\n");
+}
+
 /// Returns `true` if any field in the slice is a dynamic field (has
 /// SizePrefixed codec).
 fn has_dynamic_field_defs(fields: &[IdlFieldDef]) -> bool {
@@ -1118,7 +1266,7 @@ fn emit_compact_type_codec(out: &mut String, name: &str, fields: &[IdlFieldDef],
 /// Layout: `[disc][fixed fields][all length prefixes][all dynamic data]`
 fn emit_compact_encoding(
     out: &mut String,
-    ix: &crate::types::IdlInstruction,
+    ix: &IdlInstruction,
     disc_str: &str,
     target: TsTarget,
     buf_ctor: &str,
@@ -1229,7 +1377,7 @@ fn emit_compact_encoding(
 /// Emit compact (3-phase) decoding for an instruction with dynamic fields.
 fn emit_compact_decode(
     out: &mut String,
-    ix: &crate::types::IdlInstruction,
+    ix: &IdlInstruction,
     const_name: &str,
     pascal: &str,
     target: TsTarget,
@@ -1615,7 +1763,7 @@ fn write_inline_pda_seed_lines(
     }
 }
 
-fn instruction_arg_types(ix: &crate::types::IdlInstruction) -> HashMap<String, IdlType> {
+fn instruction_arg_types(ix: &IdlInstruction) -> HashMap<String, IdlType> {
     ix.args
         .iter()
         .map(|arg| (arg.name.clone(), arg.ty.clone()))
@@ -1928,3 +2076,133 @@ const MATCH_DISC_HELPER: &str = r#"function matchDisc(data: Uint8Array, disc: Ui
   return true;
 }
 "#;
+
+#[cfg(test)]
+mod plugin_tests {
+    use super::*;
+
+    /// Minimal IDL to test plugin features
+    fn fixture_idl() -> Idl {
+        const RAW: &str = r#"{
+            "spec": "quasar-idl/1.0.0",
+            "name": "demo_program",
+            "version": "0.1.0",
+            "address": "11111111111111111111111111111111",
+            "metadata": {},
+            "instructions": [
+                {
+                    "name": "set_value",
+                    "discriminator": [0],
+                    "accounts": [
+                        { "name": "config", "writable": true, "signer": false, "resolver": { "kind": "input" } }
+                    ],
+                    "args": [
+                        { "name": "value", "type": "u64" }
+                    ]
+                },
+                {
+                    "name": "tick",
+                    "discriminator": [1],
+                    "accounts": [],
+                    "args": []
+                }
+            ],
+            "accounts": [
+                { "name": "ConfigAccount", "discriminator": [9, 9] }
+            ],
+            "events": [],
+            "types": [
+                {
+                    "name": "ConfigAccount",
+                    "kind": "struct",
+                    "fields": [
+                        { "name": "value", "type": "u64" }
+                    ]
+                }
+            ],
+            "errors": [],
+            "constants": []
+        }"#;
+        serde_json::from_str(RAW).expect("fixture IDL parses")
+    }
+
+    #[test]
+    fn kit_plugin_emits_factory_types_and_singleton() {
+        let out = generate_ts_client_kit(&fixture_idl());
+
+        // The plugin pulls helpers from program-client-core
+        assert!(out.contains("from \"@solana/kit/program-client-core\""));
+
+        // Exported requirements type
+        assert!(out.contains("export type DemoProgramPluginRequirements = "));
+
+        // Plugin function
+        assert!(out.contains("export function demoProgramProgram() {"));
+        assert!(out.contains("const __client = new DemoProgramClient();"));
+        assert!(out.contains("configAccount: addSelfFetchFunctions(client, ConfigAccountCodec),"));
+        assert!(out.contains(
+            "setValue: (input: SetValueInstructionInput) => addSelfPlanAndSendFunctions(client, \
+             __client.createSetValueInstruction(input)),"
+        ));
+        assert!(out.contains(
+            "tick: () => addSelfPlanAndSendFunctions(client, __client.createTickInstruction()),"
+        ));
+    }
+
+    #[test]
+    fn web3_target_does_not_emit_plugin() {
+        let out = generate_ts_client(&fixture_idl());
+        assert!(
+            !out.contains("/* Program Plugin */"),
+            "web3.js target must not emit plugin"
+        );
+        assert!(!out.contains("@solana/kit/program-client-core"));
+        assert!(!out.contains("addSelfFetchFunctions"));
+    }
+
+    #[test]
+    fn plugin_skipped_when_no_instructions_and_no_accounts() {
+        let mut idl = fixture_idl();
+        idl.instructions.clear();
+        idl.accounts.clear();
+        let out = generate_ts_client_kit(&idl);
+        assert!(!out.contains("/* Program Plugin */"));
+        assert!(!out.contains("@solana/kit/program-client-core"));
+    }
+
+    #[test]
+    fn dynamic_codec_accounts_are_filtered_from_plugin() {
+        // Add a dynamic-field account to the IDL
+        let mut idl = fixture_idl();
+        idl.accounts.push(
+            serde_json::from_str(r#"{ "name": "DynamicAccount", "discriminator": [1, 1] }"#)
+                .expect("dynamic account parses"),
+        );
+        idl.types.push(
+            serde_json::from_str(
+                r#"{
+                    "name": "DynamicAccount",
+                    "kind": "struct",
+                    "fields": [
+                        {
+                            "name": "name",
+                            "type": "string",
+                            "codec": {
+                                "kind": "sizePrefixed",
+                                "prefix": { "type": "u32", "endian": "le" },
+                                "storage": "tail"
+                            }
+                        }
+                    ]
+                }"#,
+            )
+            .expect("dynamic type parses"),
+        );
+
+        let out = generate_ts_client_kit(&idl);
+        // Struct-codec account included in plugin
+        assert!(out.contains("configAccount: addSelfFetchFunctions(client, ConfigAccountCodec),"));
+        // Dynamic-codec account is filtered out
+        assert!(!out.contains("dynamicAccount: addSelfFetchFunctions"));
+    }
+}
