@@ -1,0 +1,41 @@
+name: Demo Stable CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  demo_stable:
+    name: Demo Stable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build Docker image
+        run: docker build -t quasar-demo .
+
+      - name: Run Docker container
+        run: docker run -d --name quasar quasar-demo
+
+      - name: Run quasar init
+        run: |
+          docker exec quasar quasar init demo-program \
+            --yes \
+            --no-git \
+            --test-language rust \
+            --rust-framework quasar-svm \
+            --template minimal \
+            --toolchain solana
+
+      - name: Run quasar build
+        run: |
+          docker exec quasar bash -c "cd demo-program && quasar build"
+
+      - name: Run quasar test
+        run: |
+          docker exec quasar bash -c "cd demo-program && quasar test"
