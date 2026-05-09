@@ -136,6 +136,66 @@ fn reordering_account_fields_fires_l013() {
 }
 
 #[test]
+fn retyping_account_field_fires_l014() {
+    let v1 = parser::parse_program_from_source(ESCROW_V1);
+    // deposit: u64 → u32 — Borsh layout shifts every later offset.
+    let v2_src = ESCROW_V1.replace("pub deposit: u64,", "pub deposit: u32,");
+    let v2 = parser::parse_program_from_source(&v2_src);
+
+    let old = ProgramSnapshot::from_parsed(&v1);
+    let new = ProgramSnapshot::from_parsed(&v2);
+    let diags = comparative::run_all(&old, &new);
+    assert!(
+        diags.iter().any(|d| d.rule == LintRule::L014),
+        "expected L014, got {:?}",
+        diags.iter().map(|d| d.rule).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn appending_account_field_fires_l017_warning_not_l016() {
+    let v1 = parser::parse_program_from_source(ESCROW_V1);
+    let v2_src = ESCROW_V1.replace(
+        "pub deposit: u64,\n    }",
+        "pub deposit: u64,\n        pub bump: u8,\n    }",
+    );
+    let v2 = parser::parse_program_from_source(&v2_src);
+
+    let old = ProgramSnapshot::from_parsed(&v1);
+    let new = ProgramSnapshot::from_parsed(&v2);
+    let diags = comparative::run_all(&old, &new);
+    assert!(
+        diags.iter().any(|d| d.rule == LintRule::L017),
+        "expected L017 (append warning), got {:?}",
+        diags.iter().map(|d| d.rule).collect::<Vec<_>>()
+    );
+    assert!(
+        !diags.iter().any(|d| d.rule == LintRule::L016),
+        "should not fire L016 (mid-list insert) on a tail append"
+    );
+}
+
+#[test]
+fn changing_instruction_arg_type_fires_l020() {
+    let v1 = parser::parse_program_from_source(ESCROW_V1);
+    // make's `receive` arg flips u64 → u32.
+    let v2_src = ESCROW_V1.replace(
+        "pub fn make(ctx: Ctx<Make>, deposit: u64, receive: u64)",
+        "pub fn make(ctx: Ctx<Make>, deposit: u64, receive: u32)",
+    );
+    let v2 = parser::parse_program_from_source(&v2_src);
+
+    let old = ProgramSnapshot::from_parsed(&v1);
+    let new = ProgramSnapshot::from_parsed(&v2);
+    let diags = comparative::run_all(&old, &new);
+    assert!(
+        diags.iter().any(|d| d.rule == LintRule::L020),
+        "expected L020, got {:?}",
+        diags.iter().map(|d| d.rule).collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn preflight_fires_on_escrow_v1_missing_version_and_padding() {
     let parsed = parser::parse_program_from_source(ESCROW_V1);
     let mut diags = Vec::new();
