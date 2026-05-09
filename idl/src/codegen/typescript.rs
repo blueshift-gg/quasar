@@ -1673,6 +1673,10 @@ fn is_string_type(ty: &IdlType) -> bool {
     matches!(ty, IdlType::Primitive(p) if p == "string")
 }
 
+fn is_u8_type(ty: &IdlType) -> bool {
+    matches!(ty, IdlType::Primitive(p) if p == "u8")
+}
+
 fn ts_type(ty: &IdlType) -> String {
     match ty {
         IdlType::Primitive(p) => match p.as_str() {
@@ -1690,7 +1694,11 @@ fn ts_type(ty: &IdlType) -> String {
         IdlType::Vec { vec } => format!("Array<{}>", ts_type(vec)),
         IdlType::Array { array } => {
             let (item, _size) = array;
-            format!("Array<{}>", ts_type(item))
+            if is_u8_type(item) {
+                "Uint8Array".to_string()
+            } else {
+                format!("Array<{}>", ts_type(item))
+            }
         }
         IdlType::Generic { generic } => generic.clone(),
     }
@@ -1732,11 +1740,15 @@ fn ts_codec(ty: &IdlType, target: TsTarget) -> String {
         }
         IdlType::Array { array } => {
             let (item, size) = array;
-            format!(
-                "getArrayCodec({}, {{ size: {} }})",
-                ts_codec(item, target),
-                size
-            )
+            if is_u8_type(item) {
+                format!("fixCodecSize(getBytesCodec(), {})", size)
+            } else {
+                format!(
+                    "getArrayCodec({}, {{ size: {} }})",
+                    ts_codec(item, target),
+                    size
+                )
+            }
         }
         IdlType::Generic { generic } => format!("/* generic: {} */", generic),
     }
@@ -1844,7 +1856,12 @@ fn collect_used_codecs(idl: &Idl) -> HashSet<String> {
                 visit_type_into(vec, used);
             }
             IdlType::Array { array } => {
-                visit_type_into(&array.0, used);
+                if is_u8_type(&array.0) {
+                    used.insert("fixedBytes".to_string());
+                } else {
+                    used.insert("fixedArray".to_string());
+                    visit_type_into(&array.0, used);
+                }
             }
             IdlType::Defined { .. } => {}
             IdlType::Generic { .. } => {}

@@ -635,6 +635,19 @@ pub(crate) fn type_to_idl_codec_tokens(ty: &Type) -> proc_macro2::TokenStream {
 /// Convert a Rust type to a `proc_macro2::TokenStream` that constructs an
 /// `IdlType` at runtime (used by IDL fragment emission).
 pub(crate) fn type_to_idl_type_tokens(ty: &Type) -> proc_macro2::TokenStream {
+    if let Type::Array(array) = ty {
+        let inner_tokens = type_to_idl_type_tokens(&array.elem);
+        let len = &array.len;
+        return quote! {
+            quasar_lang::idl_build::__reexport::IdlType::Array {
+                array: (
+                    quasar_lang::idl_build::Box::new(#inner_tokens),
+                    #len,
+                ),
+            }
+        };
+    }
+
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
             let name = seg.ident.to_string();
