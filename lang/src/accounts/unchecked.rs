@@ -15,3 +15,43 @@ impl crate::account_load::AccountLoad for UncheckedAccount {
         Ok(())
     }
 }
+
+/// Bounds-checked data writes for unchecked account slots.
+///
+/// This keeps the common "write these bytes at this offset" path safe without
+/// exposing a long-lived mutable account-data slice to handlers.
+pub trait AccountDataWrite {
+    fn write_bytes(&mut self, offset: usize, bytes: &[u8]) -> Result<(), ProgramError>;
+}
+
+impl AccountDataWrite for AccountView {
+    #[inline(always)]
+    fn write_bytes(&mut self, offset: usize, bytes: &[u8]) -> Result<(), ProgramError> {
+        if crate::utils::hint::unlikely(!self.is_writable()) {
+            return Err(ProgramError::Immutable);
+        }
+
+        let end = offset
+            .checked_add(bytes.len())
+            .ok_or(ProgramError::AccountDataTooSmall)?;
+        if crate::utils::hint::unlikely(end > self.data_len()) {
+            return Err(ProgramError::AccountDataTooSmall);
+        }
+
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                self.borrow_unchecked_mut().as_mut_ptr().add(offset),
+                bytes.len(),
+            );
+        }
+        Ok(())
+    }
+}
+
+impl AccountDataWrite for UncheckedAccount {
+    #[inline(always)]
+    fn write_bytes(&mut self, offset: usize, bytes: &[u8]) -> Result<(), ProgramError> {
+        self.view.write_bytes(offset, bytes)
+    }
+}
