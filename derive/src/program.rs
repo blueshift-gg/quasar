@@ -1119,7 +1119,9 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
             #[test]
             fn __quasar_emit_idl() {
                 extern crate std;
-                std::print!("{}", __quasar_build_idl());
+                std::println!("__QUASAR_IDL_JSON_BEGIN__");
+                std::println!("{}", __quasar_build_idl());
+                std::println!("__QUASAR_IDL_JSON_END__");
             }
         }
     };

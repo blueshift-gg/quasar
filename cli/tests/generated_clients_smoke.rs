@@ -76,6 +76,88 @@ fn compile_go_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
     )
 }
 
+fn compile_c_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let temp = tempdir()?;
+    write_file(
+        &temp.path().join("caravel.h"),
+        r#"#ifndef CARAVEL_H
+#define CARAVEL_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+typedef struct {
+    uint8_t bytes[32];
+} Pubkey;
+
+typedef struct {
+    Pubkey *pubkey;
+    bool is_signer;
+    bool is_writable;
+} AccountMeta;
+
+typedef struct {
+    Pubkey *program_id;
+    AccountMeta *accounts;
+    uint64_t accounts_len;
+    uint8_t *data;
+    uint64_t data_len;
+} Instruction;
+
+typedef struct {
+    const uint8_t *addr;
+    uint64_t len;
+} SignerSeed;
+
+static inline AccountMeta meta_readonly(Pubkey *pubkey) {
+    return (AccountMeta){ .pubkey = pubkey, .is_signer = false, .is_writable = false };
+}
+
+static inline AccountMeta meta_readonly_signer(Pubkey *pubkey) {
+    return (AccountMeta){ .pubkey = pubkey, .is_signer = true, .is_writable = false };
+}
+
+static inline AccountMeta meta_writable(Pubkey *pubkey) {
+    return (AccountMeta){ .pubkey = pubkey, .is_signer = false, .is_writable = true };
+}
+
+static inline AccountMeta meta_writable_signer(Pubkey *pubkey) {
+    return (AccountMeta){ .pubkey = pubkey, .is_signer = true, .is_writable = true };
+}
+
+static inline bool find_program_address(
+    const SignerSeed *seeds,
+    uint64_t seeds_len,
+    Pubkey *program_id,
+    Pubkey *out,
+    uint8_t *bump
+) {
+    (void)seeds;
+    (void)seeds_len;
+    (void)program_id;
+    *out = (Pubkey){ .bytes = {0} };
+    *bump = 255;
+    return true;
+}
+
+#endif
+"#,
+    )?;
+    write_file(&temp.path().join("compile.c"), r#"#include "client.h""#)?;
+
+    let cc = std::env::var_os("CC").unwrap_or_else(|| "cc".into());
+    run_command(
+        Command::new(cc)
+            .arg("-std=c11")
+            .arg("-fsyntax-only")
+            .arg("-I")
+            .arg(client_dir)
+            .arg("-I")
+            .arg(temp.path())
+            .arg(temp.path().join("compile.c")),
+    )
+}
+
 fn compile_typescript_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
     // The smoke test validates generated client type-checking, not npm's ability
     // to resolve a GitHub-hosted dependency transport on GitHub runners.
@@ -370,6 +452,7 @@ pub mod lifecycle_client_flags {
     )?;
     assert!(c_client.contains("meta_buf[2] = meta_writable(accounts->config);"));
     assert!(c_client.contains("meta_buf[3] = meta_writable(accounts->vault);"));
+    compile_c_client(&clients_path.join("c").join("lifecycle_client_flags"))?;
 
     Ok(())
 }
@@ -780,6 +863,7 @@ pub struct UseScoped {
         c_header.contains("config_namespace_seed"),
         "C client should expose account-field PDA seeds as explicit bytes"
     );
+    compile_c_client(&only_child_dir(&clients_path.join("c"))?)?;
 
     Ok(())
 }
@@ -930,6 +1014,7 @@ pub struct Submit {
     assert!(c_header.contains("if (args->maybe_name_present)"));
     assert!(c_header.contains("data_buf[off++] = args->maybe_addrs_present ? 1 : 0;"));
     assert!(c_header.contains("if (args->maybe_addrs_present)"));
+    compile_c_client(&c_dir)?;
 
     Ok(())
 }

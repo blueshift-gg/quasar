@@ -452,31 +452,55 @@ fn emit_error_codes(out: &mut String, prefix: &str, errors: &[crate::types::IdlE
     out.push('\n');
 }
 
+fn primitive_c_type(primitive: &str) -> Option<&'static str> {
+    match primitive {
+        "bool" => Some("bool"),
+        "u8" => Some("uint8_t"),
+        "i8" => Some("int8_t"),
+        "u16" => Some("uint16_t"),
+        "i16" => Some("int16_t"),
+        "u32" => Some("uint32_t"),
+        "i32" => Some("int32_t"),
+        "u64" => Some("uint64_t"),
+        "i64" => Some("int64_t"),
+        "u128" | "i128" => Some("uint8_t"),
+        "f32" => Some("float"),
+        "f64" => Some("double"),
+        "pubkey" => Some("Pubkey"),
+        "string" => Some("uint8_t *"),
+        _ => None,
+    }
+}
+
+fn builtin_defined_primitive(name: &str) -> Option<&'static str> {
+    match name {
+        "PodBool" => Some("bool"),
+        "PodU8" => Some("u8"),
+        "PodI8" => Some("i8"),
+        "PodU16" => Some("u16"),
+        "PodI16" => Some("i16"),
+        "PodU32" => Some("u32"),
+        "PodI32" => Some("i32"),
+        "PodU64" => Some("u64"),
+        "PodI64" => Some("i64"),
+        "PodU128" => Some("u128"),
+        "PodI128" => Some("i128"),
+        _ => None,
+    }
+}
+
 fn c_type(ty: &IdlType, prefix: &str) -> String {
     match ty {
-        IdlType::Primitive(p) => match p.as_str() {
-            "bool" => "bool".into(),
-            "u8" => "uint8_t".into(),
-            "i8" => "int8_t".into(),
-            "u16" => "uint16_t".into(),
-            "i16" => "int16_t".into(),
-            "u32" => "uint32_t".into(),
-            "i32" => "int32_t".into(),
-            "u64" => "uint64_t".into(),
-            "i64" => "int64_t".into(),
-            "u128" | "i128" => "uint8_t".into(),
-            "f32" => "float".into(),
-            "f64" => "double".into(),
-            "pubkey" => "Pubkey".into(),
-            "string" => "uint8_t *".into(),
-            _ => "uint8_t *".into(),
-        },
+        IdlType::Primitive(p) => primitive_c_type(p).unwrap_or("uint8_t *").into(),
         IdlType::Option { option } => c_type(option, prefix),
         IdlType::Vec { .. } => "uint8_t *".into(),
         IdlType::Array {
             array: (_inner, size),
         } => format!("uint8_t[{size}]"),
         IdlType::Defined { defined } => {
+            if let Some(primitive) = builtin_defined_primitive(&defined.name) {
+                return primitive_c_type(primitive).unwrap_or("uint8_t *").into();
+            }
             format!("{prefix}_{}_t", pascal_to_snake(&defined.name))
         }
         IdlType::Generic { generic } => {
@@ -529,6 +553,21 @@ fn emit_struct_field(
     if is_opt {
         writeln!(out, "    bool {name}_present;").unwrap();
     }
+    if let IdlType::Defined { defined } = inner {
+        if let Some(primitive) = builtin_defined_primitive(&defined.name) {
+            if primitive == "u128" || primitive == "i128" {
+                writeln!(out, "    uint8_t {name}[16];").unwrap();
+            } else {
+                writeln!(
+                    out,
+                    "    {} {name};",
+                    primitive_c_type(primitive).unwrap_or("uint8_t *")
+                )
+                .unwrap();
+            }
+            return;
+        }
+    }
     if is_dynamic_with_codec(inner, inner_codec) {
         match inner {
             IdlType::Vec { vec } if matches!(&**vec, IdlType::Primitive(p) if p == "pubkey") => {
@@ -577,6 +616,11 @@ fn static_data_overhead(ty: &IdlType, codec: Option<&IdlCodec>, types: &[IdlType
                     .iter()
                     .map(|f| static_data_overhead(&f.ty, f.codec.as_ref(), types))
                     .sum()
+            })
+            .or_else(|| {
+                builtin_defined_primitive(&defined.name).map(|primitive| {
+                    static_data_overhead(&IdlType::Primitive(primitive.into()), None, types)
+                })
             })
             .unwrap_or(0),
         IdlType::Vec { .. } => {
@@ -804,6 +848,15 @@ fn serialize_field_expr(
             )
         }
         IdlType::Defined { defined } => {
+            if let Some(primitive) = builtin_defined_primitive(&defined.name) {
+                return serialize_field_expr(
+                    name,
+                    &IdlType::Primitive(primitive.into()),
+                    None,
+                    types,
+                    indent,
+                );
+            }
             if let Some(td) = types.iter().find(|t| t.name == defined.name) {
                 let mut result = String::new();
                 for field in &td.fields {
@@ -939,6 +992,15 @@ fn decode_field_expr(
             )
         }
         IdlType::Defined { defined } => {
+            if let Some(primitive) = builtin_defined_primitive(&defined.name) {
+                return decode_field_expr(
+                    name,
+                    &IdlType::Primitive(primitive.into()),
+                    None,
+                    depth,
+                    types,
+                );
+            }
             if let Some(td) = types.iter().find(|t| t.name == defined.name) {
                 let mut result = String::new();
                 for field in &td.fields {
