@@ -9,7 +9,7 @@ rustflags = [
 "-C", "relocation-model=static",
 "-C", "link-arg=--disable-memory-builtins",
 "-C", "link-arg=--llvm-args=--bpf-stack-size=4096",
-"-C", "link-arg=--disable-expand-memcpy-in-order",
+"-C", "link-arg=--disable-expand-memcpy-in-order=true",
 "-C", "link-arg=--export=entrypoint",
 "-C", "target-cpu=v2",
 ]
