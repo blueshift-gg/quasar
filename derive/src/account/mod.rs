@@ -38,16 +38,6 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let name = &input.ident;
 
-    // --- custom on unit struct: transparent wrapper with user-provided check() ---
-    if args.custom {
-        if let Data::Struct(data) = &input.data {
-            if matches!(data.fields, Fields::Unit) {
-                return generate_custom_account(name).into();
-            }
-        }
-        // custom with fields: fall through to normal codegen with disc_len = 0
-    }
-
     // --- one_of: polymorphic account on enum ---
     if args.one_of {
         match &input.data {
@@ -166,48 +156,9 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
         &pod_field_infos,
         &input,
         gen_set_inner,
-        args.custom,
     );
     if let Some(seeds_tokens) = &seeds_impl {
         output.extend(TokenStream::from(seeds_tokens.clone()));
     }
     output
-}
-
-/// Generate a custom account type: `#[repr(transparent)]` wrapper over
-/// `AccountView` with user-provided `check()`.
-///
-/// The user must implement:
-/// ```ignore
-/// impl MyType {
-///     pub fn check(view: &AccountView) -> Result<(), ProgramError> { ... }
-/// }
-/// ```
-///
-/// For full manual control over the wrapper struct and trait impls, users
-/// can skip `#[account(custom)]` and implement `#[repr(transparent)]` +
-/// `AsAccountView` + `AccountLoad` directly.
-fn generate_custom_account(name: &syn::Ident) -> proc_macro2::TokenStream {
-    quote::quote! {
-        #[repr(transparent)]
-        pub struct #name {
-            view: quasar_lang::__internal::AccountView,
-        }
-
-        impl quasar_lang::traits::AsAccountView for #name {
-            #[inline(always)]
-            fn to_account_view(&self) -> &quasar_lang::__internal::AccountView {
-                &self.view
-            }
-        }
-
-        impl quasar_lang::account_load::AccountLoad for #name {
-
-            #[inline(always)]
-            fn check(view: &quasar_lang::__internal::AccountView) -> Result<(), solana_program_error::ProgramError> {
-                #name::check(view)
-            }
-        }
-
-    }
 }

@@ -1,0 +1,5 @@
+error: `#[account(custom)]` has been removed; implement `AsAccountView` and `AccountLoad` directly for fully custom account wrappers
+ --> tests/compile_fail/account_custom_removed.rs:5:11
+  |
+5 | #[account(custom)]
+  |           ^^^^^^
