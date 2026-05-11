@@ -20,3 +20,7 @@ solana-address = { version = ">=2.2, <2.6", features = ["copy"] }
 [dev-dependencies]
 trybuild = "1"
 solana-program-error = ">=2.2"
+
+[lib]
+test = false
+doctest = false

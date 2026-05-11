@@ -2109,7 +2109,6 @@ dependencies = [
  "quasar-schema",
  "quasar-spl",
  "quote",
- "serde",
  "serde_json",
  "solana-address 2.2.0",
  "solana-program-error",
@@ -2125,9 +2124,6 @@ dependencies = [
  "quasar-lang",
  "quasar-spl",
  "quasar-svm",
- "solana-address 2.2.0",
- "solana-instruction",
- "solana-program-pack",
  "spl-token-interface",
  "wincode 0.4.9",
 ]
@@ -2148,19 +2144,11 @@ dependencies = [
  "bs58",
  "quasar-idl-schema",
  "quasar-schema",
- "serde",
- "serde_json",
- "toml 0.8.23",
 ]
 
 [[package]]
 name = "quasar-idl-gen"
 version = "0.0.0"
-dependencies = [
- "quasar-idl-schema",
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "quasar-idl-schema"
@@ -2210,7 +2198,6 @@ dependencies = [
  "quasar-lang",
  "quasar-multisig-client",
  "quasar-svm",
- "solana-address 2.2.0",
  "solana-instruction",
  "wincode 0.4.9",
 ]
@@ -2324,7 +2311,6 @@ dependencies = [
 name = "quasar-test-metadata-validate"
 version = "0.1.0"
 dependencies = [
- "quasar-derive",
  "quasar-lang",
  "quasar-metadata",
  "quasar-spl",
@@ -2336,7 +2322,6 @@ version = "0.1.0"
 dependencies = [
  "quasar-derive",
  "quasar-lang",
- "quasar-spl",
 ]
 
 [[package]]
@@ -2345,7 +2330,6 @@ version = "0.1.0"
 dependencies = [
  "quasar-derive",
  "quasar-lang",
- "quasar-spl",
 ]
 
 [[package]]
@@ -4190,7 +4174,6 @@ version = "0.1.0"
 dependencies = [
  "quasar-lang",
  "quasar-svm",
- "solana-address 2.2.0",
  "upstream-vault-client",
 ]
 
