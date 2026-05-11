@@ -151,6 +151,11 @@ pub trait AccountBumps {
     type Bumps: Copy;
 }
 
+/// Marker for fixed account groups that can be composed or parsed as a typed
+/// remaining-account chunk.
+#[doc(hidden)]
+pub trait AccountGroup: AccountCount + AccountBumps {}
+
 /// Internal exact-length parsing fast path used by dispatch and nested
 /// composite account parsing.
 ///

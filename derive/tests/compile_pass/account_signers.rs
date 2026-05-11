@@ -15,7 +15,7 @@ pub struct Vault {
 }
 
 #[derive(Accounts)]
-pub struct VaultAccounts {
+pub struct VaultBundle {
     pub authority: Signer,
 
     #[account(mut, address = Vault::seeds(authority.address()))]
@@ -23,18 +23,33 @@ pub struct VaultAccounts {
 }
 
 #[derive(Accounts)]
+pub struct VaultAccounts {
+    #[account(group)]
+    pub vault_bundle: VaultBundle,
+}
+
+#[derive(Accounts)]
 pub struct UsesNestedVault {
-    pub vault_accounts: VaultAccounts,
+    #[account(group)]
+    pub vault_bundle: VaultBundle,
 }
 
 fn assert_cpi_signer<S: CpiSignerSeeds + ?Sized>(_seeds: &S) {}
 
 fn use_flat(ctx: Ctx<VaultAccounts>) {
-    assert_cpi_signer(&ctx.accounts.vault_signer(&ctx.bumps));
+    let vault_signer = ctx
+        .accounts
+        .vault_bundle
+        .vault_signer(&ctx.bumps.vault_bundle);
+    assert_cpi_signer(&vault_signer);
 }
 
 fn use_nested(ctx: Ctx<UsesNestedVault>) {
-    assert_cpi_signer(&ctx.accounts.vault_accounts.vault_signer(&ctx.bumps.vault_accounts));
+    let vault_signer = ctx
+        .accounts
+        .vault_bundle
+        .vault_signer(&ctx.bumps.vault_bundle);
+    assert_cpi_signer(&vault_signer);
 }
 
 fn main() {}

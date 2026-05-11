@@ -18,7 +18,7 @@ pub(crate) struct AccountsOutput<'a> {
     pub parse_body: proc_macro2::TokenStream,
     pub direct_parse_body: proc_macro2::TokenStream,
     pub bumps_struct: proc_macro2::TokenStream,
-    pub account_seeds_impl: proc_macro2::TokenStream,
+    pub signer_helpers_impl: proc_macro2::TokenStream,
     pub epilogue_method: proc_macro2::TokenStream,
     pub has_epilogue_expr: proc_macro2::TokenStream,
     pub client_macro: proc_macro2::TokenStream,
@@ -41,7 +41,7 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
         parse_body,
         direct_parse_body,
         bumps_struct,
-        account_seeds_impl,
+        signer_helpers_impl,
         epilogue_method,
         has_epilogue_expr,
         client_macro,
@@ -126,7 +126,7 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
 
     quote! {
         #bumps_struct
-        #account_seeds_impl
+        #signer_helpers_impl
 
         #parse_accounts_impl
 
@@ -184,6 +184,29 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
                     __j += 1;
                 }
                 Ok(input)
+            }
+        }
+
+        impl #parse_impl_generics quasar_lang::remaining::RemainingItem<'input>
+            for #name #ty_generics
+            #parse_where_clause
+        {
+            const COUNT: usize = <Self as quasar_lang::traits::AccountCount>::COUNT;
+
+            #[inline(always)]
+            unsafe fn parse_remaining_chunk(
+                accounts: &'input mut [quasar_lang::__internal::AccountView],
+                program_id: Option<&quasar_lang::prelude::Address>,
+                data: &[u8],
+            ) -> Result<Self, ProgramError> {
+                let program_id = program_id.ok_or(ProgramError::InvalidInstructionData)?;
+                let (item, _bumps) =
+                    <Self as quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
+                        accounts,
+                        data,
+                        program_id,
+                    )?;
+                Ok(item)
             }
         }
 

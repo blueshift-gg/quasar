@@ -142,16 +142,16 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
     };
 
     let bumps_struct = emit::emit_bump_struct_def(&semantics, &emit_cx);
-    let account_seeds_impl = emit_account_seeds_impl(
+    let signer_helpers_impl = emit_signer_helpers_impl(SignerHelpersCtx {
         name,
-        &bumps_name,
-        &semantics,
-        &impl_generics_ts,
-        &ty_generics_ts,
-        &where_clause_ts,
-        &ix_arg_extraction,
-        instruction_args.is_some(),
-    );
+        bumps_name: &bumps_name,
+        semantics: &semantics,
+        impl_generics: &impl_generics_ts,
+        ty_generics: &ty_generics_ts,
+        where_clause: &where_clause_ts,
+        ix_arg_extraction: &ix_arg_extraction,
+        has_instruction_args: instruction_args.is_some(),
+    });
     let epilogue_method = match emit::emit_epilogue(&semantics, &typed_plan) {
         Ok(ts) => ts,
         Err(e) => return e.to_compile_error().into(),
@@ -178,7 +178,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         parse_body,
         direct_parse_body,
         bumps_struct,
-        account_seeds_impl,
+        signer_helpers_impl,
         epilogue_method,
         has_epilogue_expr,
         client_macro,
@@ -441,16 +441,29 @@ fn emit_needs_event_cpi_expr(semantics: &[resolve::FieldSemantics]) -> proc_macr
     quote! { false #(|| #terms)* }
 }
 
-fn emit_account_seeds_impl(
-    name: &syn::Ident,
-    bumps_name: &syn::Ident,
-    semantics: &[resolve::FieldSemantics],
-    impl_generics: &proc_macro2::TokenStream,
-    ty_generics: &proc_macro2::TokenStream,
-    where_clause: &proc_macro2::TokenStream,
-    ix_arg_extraction: &proc_macro2::TokenStream,
+struct SignerHelpersCtx<'a> {
+    name: &'a syn::Ident,
+    bumps_name: &'a syn::Ident,
+    semantics: &'a [resolve::FieldSemantics],
+    impl_generics: &'a proc_macro2::TokenStream,
+    ty_generics: &'a proc_macro2::TokenStream,
+    where_clause: &'a proc_macro2::TokenStream,
+    ix_arg_extraction: &'a proc_macro2::TokenStream,
     has_instruction_args: bool,
-) -> proc_macro2::TokenStream {
+}
+
+fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStream {
+    let SignerHelpersCtx {
+        name,
+        bumps_name,
+        semantics,
+        impl_generics,
+        ty_generics,
+        where_clause,
+        ix_arg_extraction,
+        has_instruction_args,
+    } = ctx;
+
     let field_refs: Vec<proc_macro2::TokenStream> = semantics
         .iter()
         .map(|sem| {
@@ -511,6 +524,8 @@ fn emit_account_seeds_impl(
         impl #impl_generics quasar_lang::traits::AccountBumps for #name #ty_generics #where_clause {
             type Bumps = #bumps_name;
         }
+
+        impl #impl_generics quasar_lang::traits::AccountGroup for #name #ty_generics #where_clause {}
     }
 }
 

@@ -96,6 +96,16 @@ use {
     std::mem::{align_of, size_of, MaybeUninit},
 };
 
+mod remaining_group_fixture {
+    use quasar_lang::prelude::*;
+
+    #[derive(quasar_derive::Accounts)]
+    pub struct RemainingPair {
+        pub first: UncheckedAccount,
+        pub second: UncheckedAccount,
+    }
+}
+
 // ===========================================================================
 // Sweep constants -- reused across parameterized tests
 // ===========================================================================
@@ -1040,6 +1050,91 @@ fn bounds_remaining_duplicate_checked_borrow_conflicts() {
     data[0] = 9;
 
     assert!(second.try_borrow_data().is_err());
+}
+
+#[test]
+fn bounds_typed_remaining_rejects_remaining_duplicate() {
+    let mut buf = MultiAccountBuffer::new(&[
+        MultiAccountEntry::account(0x01, 0),
+        MultiAccountEntry::duplicate(0),
+    ]);
+    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
+
+    let err = match remaining.parse::<UncheckedAccount, 4>() {
+        Ok(_) => panic!("typed remaining must reject duplicate aliases"),
+        Err(err) => err,
+    };
+    assert_eq!(err, QuasarError::RemainingAccountDuplicate.into());
+}
+
+#[test]
+fn bounds_typed_remaining_rejects_declared_duplicate() {
+    let mut declared_buf = AccountBuffer::new(0);
+    declared_buf.init([0x01; 32], [0xAA; 32], 1_000_000, 0, false, false);
+    let declared = [unsafe { declared_buf.view() }];
+
+    let mut buf = MultiAccountBuffer::new(&[MultiAccountEntry::account(0x01, 0)]);
+    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &declared);
+
+    let err = match remaining.parse::<UncheckedAccount, 4>() {
+        Ok(_) => panic!("typed remaining must reject aliases to declared accounts"),
+        Err(err) => err,
+    };
+    assert_eq!(err, QuasarError::RemainingAccountDuplicate.into());
+}
+
+#[test]
+fn bounds_typed_remaining_group_parses_variable_chunks() {
+    let mut buf = MultiAccountBuffer::new(&[
+        MultiAccountEntry::account(0x01, 0),
+        MultiAccountEntry::account(0x02, 0),
+        MultiAccountEntry::account(0x03, 0),
+        MultiAccountEntry::account(0x04, 0),
+    ]);
+    let program_id = Address::new_from_array([0x55; 32]);
+    let remaining = RemainingAccounts::new_with_context(
+        buf.as_mut_ptr(),
+        buf.boundary(),
+        &[],
+        &program_id,
+        &[],
+    );
+
+    let parsed = remaining
+        .parse::<remaining_group_fixture::RemainingPair, 4>()
+        .unwrap();
+    assert_eq!(parsed.len(), 2);
+    assert_eq!(
+        parsed.as_slice()[0].first.address(),
+        &Address::new_from_array([0x01; 32])
+    );
+    assert_eq!(
+        parsed.as_slice()[1].second.address(),
+        &Address::new_from_array([0x04; 32])
+    );
+}
+
+#[test]
+fn bounds_typed_remaining_group_rejects_partial_chunk() {
+    let mut buf = MultiAccountBuffer::new(&[
+        MultiAccountEntry::account(0x01, 0),
+        MultiAccountEntry::account(0x02, 0),
+        MultiAccountEntry::account(0x03, 0),
+    ]);
+    let program_id = Address::new_from_array([0x55; 32]);
+    let remaining = RemainingAccounts::new_with_context(
+        buf.as_mut_ptr(),
+        buf.boundary(),
+        &[],
+        &program_id,
+        &[],
+    );
+
+    let err = match remaining.parse::<remaining_group_fixture::RemainingPair, 4>() {
+        Ok(_) => panic!("remaining groups must consume complete chunks"),
+        Err(err) => err,
+    };
+    assert_eq!(err, ProgramError::NotEnoughAccountKeys);
 }
 
 #[test]

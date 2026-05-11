@@ -71,7 +71,12 @@ fn lower_core(field: &syn::Field, directives: &[Directive]) -> FieldCore {
         other => other.clone(),
     };
 
-    let kind = classify_kind(ty);
+    let kind = classify_kind(
+        ty,
+        directives
+            .iter()
+            .any(|d| matches!(d, Directive::Core(CoreDirective::Group))),
+    );
 
     let inner_ty = extract_inner_ty(&effective_ty);
     let dynamic = detect_dynamic(&effective_ty, inner_ty.as_ref());
@@ -96,8 +101,8 @@ fn lower_core(field: &syn::Field, directives: &[Directive]) -> FieldCore {
     }
 }
 
-fn classify_kind(raw_ty: &Type) -> FieldKind {
-    if is_composite_type(raw_ty) {
+fn classify_kind(raw_ty: &Type, explicit_group: bool) -> FieldKind {
+    if explicit_group || is_composite_type(raw_ty) {
         FieldKind::Composite
     } else {
         FieldKind::Single
@@ -110,7 +115,9 @@ fn lower_directives(sem: &mut FieldSemantics, directives: Vec<Directive>) -> syn
     for directive in directives {
         match directive {
             Directive::Core(core) => match core {
-                CoreDirective::Mut | CoreDirective::Dup => { /* handled in lower_core */ }
+                CoreDirective::Mut | CoreDirective::Dup | CoreDirective::Group => {
+                    /* handled in lower_core */
+                }
                 CoreDirective::Init { idempotent } => {
                     sem.init = Some(InitDirective { idempotent });
                     sem.core.is_mut = true;

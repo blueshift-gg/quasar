@@ -89,6 +89,28 @@ macro_rules! define_account {
             }
         }
 
+        impl<'__quasar_remaining> $crate::remaining::RemainingItem<'__quasar_remaining> for $name {
+            const COUNT: usize = 1;
+
+            #[inline(always)]
+            unsafe fn parse_remaining_one(
+                account: $crate::__internal::AccountView,
+                _program_id: Option<&$crate::prelude::Address>,
+                _data: &[u8],
+            ) -> Result<Self, $crate::__solana_program_error::ProgramError> {
+                $crate::remaining::parse_remaining_view::<Self>(&account)
+            }
+
+            #[inline(always)]
+            unsafe fn parse_remaining_chunk(
+                accounts: &'__quasar_remaining mut [$crate::__internal::AccountView],
+                _program_id: Option<&$crate::prelude::Address>,
+                _data: &[u8],
+            ) -> Result<Self, $crate::__solana_program_error::ProgramError> {
+                $crate::remaining::parse_remaining_account::<Self>(accounts)
+            }
+        }
+
     };
 
     // Base form: `pub struct Signer => [checks::Signer]`
@@ -126,6 +148,7 @@ macro_rules! define_account {
                 &mut *(view as *mut AccountView as *mut Self)
             }
         }
+
     };
 }
 

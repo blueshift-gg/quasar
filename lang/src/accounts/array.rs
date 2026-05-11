@@ -1,7 +1,10 @@
 use {
     crate::{
         prelude::*,
-        traits::{check_account_count, AccountBumps, ParseAccountsRaw, ParseAccountsUnchecked},
+        traits::{
+            check_account_count, AccountBumps, AccountGroup, ParseAccountsRaw,
+            ParseAccountsUnchecked,
+        },
     },
     core::mem::MaybeUninit,
 };
@@ -181,3 +184,5 @@ where
 {
     type Bumps = [T::Bumps; N];
 }
+
+impl<T, const N: usize> AccountGroup for AccountsArray<T, N> where T: AccountGroup {}

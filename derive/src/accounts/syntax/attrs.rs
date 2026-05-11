@@ -34,6 +34,7 @@ pub(crate) enum Directive {
 pub(crate) enum CoreDirective {
     Mut,
     Dup,
+    Group,
     Init { idempotent: bool },
     Payer(Ident),
     Address(syn::Expr, Option<syn::Expr>),
@@ -179,6 +180,9 @@ impl Parse for ParsedDirective {
             }),
             "dup" => Ok(ParsedDirective {
                 inner: Directive::Core(CoreDirective::Dup),
+            }),
+            "group" => Ok(ParsedDirective {
+                inner: Directive::Core(CoreDirective::Group),
             }),
             _ => Err(syn::Error::new_spanned(
                 &path,

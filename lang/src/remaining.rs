@@ -215,6 +215,10 @@ pub struct RemainingAccounts<'a> {
     boundary: *const u8,
     /// Previously parsed declared accounts (for dup resolution).
     declared: &'a [AccountView],
+    /// Program ID for typed account-group parsing.
+    program_id: Option<&'a Address>,
+    /// Instruction data for typed account-group parsing.
+    data: &'a [u8],
 }
 
 impl<'a> RemainingAccounts<'a> {
@@ -226,6 +230,27 @@ impl<'a> RemainingAccounts<'a> {
             ptr,
             boundary,
             declared,
+            program_id: None,
+            data: &[],
+        }
+    }
+
+    /// Creates a remaining accounts accessor that can parse typed account
+    /// groups requiring program ID and instruction data.
+    #[inline(always)]
+    pub fn new_with_context(
+        ptr: *mut u8,
+        boundary: *const u8,
+        declared: &'a [AccountView],
+        program_id: &'a Address,
+        data: &'a [u8],
+    ) -> Self {
+        Self {
+            ptr,
+            boundary,
+            declared,
+            program_id: Some(program_id),
+            data,
         }
     }
     /// Returns `true` if there are no remaining accounts.
@@ -287,9 +312,194 @@ impl<'a> RemainingAccounts<'a> {
     #[inline(always)]
     pub fn parse<T, const N: usize>(&self) -> Result<Remaining<T, N>, ProgramError>
     where
-        T: AccountLoad,
+        T: RemainingItem<'a>,
     {
-        Remaining::parse(Self::new(self.ptr, self.boundary, self.declared))
+        Remaining::parse(Self {
+            ptr: self.ptr,
+            boundary: self.boundary,
+            declared: self.declared,
+            program_id: self.program_id,
+            data: self.data,
+        })
+    }
+}
+
+#[doc(hidden)]
+pub trait RemainingItem<'input>: Sized {
+    const COUNT: usize;
+    const REJECT_DUPLICATES: bool = true;
+
+    /// # Safety
+    ///
+    /// `account` must be an initialized account view already checked against
+    /// declared/remaining duplicates.
+    unsafe fn parse_remaining_one(
+        account: AccountView,
+        program_id: Option<&Address>,
+        data: &[u8],
+    ) -> Result<Self, ProgramError> {
+        let mut account = core::mem::MaybeUninit::new(account);
+        let accounts = core::slice::from_raw_parts_mut(account.as_mut_ptr(), 1);
+        Self::parse_remaining_chunk(accounts, program_id, data)
+    }
+
+    /// # Safety
+    ///
+    /// `accounts` must contain exactly `Self::COUNT` initialized account
+    /// views, already checked against declared/remaining duplicates.
+    unsafe fn parse_remaining_chunk(
+        accounts: &'input mut [AccountView],
+        program_id: Option<&Address>,
+        data: &[u8],
+    ) -> Result<Self, ProgramError>;
+}
+
+#[doc(hidden)]
+#[inline(always)]
+pub fn parse_remaining_view<T: AccountLoad>(view: &AccountView) -> Result<T, ProgramError> {
+    if T::IS_SIGNER && !view.is_signer() {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if T::IS_EXECUTABLE && !view.executable() {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    T::load_checked(view)
+}
+
+#[doc(hidden)]
+#[inline(always)]
+pub fn parse_remaining_account<T: AccountLoad>(
+    accounts: &[AccountView],
+) -> Result<T, ProgramError> {
+    let view = accounts.first().ok_or(ProgramError::NotEnoughAccountKeys)?;
+    parse_remaining_view::<T>(view)
+}
+
+impl<'input, T> RemainingItem<'input> for crate::accounts::Account<T>
+where
+    T: crate::traits::AsAccountView
+        + crate::account_load::AccountLoad
+        + crate::traits::CheckOwner
+        + crate::traits::StaticView,
+{
+    const COUNT: usize = 1;
+
+    #[inline(always)]
+    unsafe fn parse_remaining_one(
+        account: AccountView,
+        _program_id: Option<&Address>,
+        _data: &[u8],
+    ) -> Result<Self, ProgramError> {
+        parse_remaining_view::<Self>(&account)
+    }
+
+    #[inline(always)]
+    unsafe fn parse_remaining_chunk(
+        accounts: &'input mut [AccountView],
+        _program_id: Option<&Address>,
+        _data: &[u8],
+    ) -> Result<Self, ProgramError> {
+        parse_remaining_account::<Self>(accounts)
+    }
+}
+
+impl<'input, T> RemainingItem<'input> for crate::accounts::InterfaceAccount<T>
+where
+    T: crate::traits::Owners + crate::account_load::AccountLoad,
+{
+    const COUNT: usize = 1;
+
+    #[inline(always)]
+    unsafe fn parse_remaining_one(
+        account: AccountView,
+        _program_id: Option<&Address>,
+        _data: &[u8],
+    ) -> Result<Self, ProgramError> {
+        parse_remaining_view::<Self>(&account)
+    }
+
+    #[inline(always)]
+    unsafe fn parse_remaining_chunk(
+        accounts: &'input mut [AccountView],
+        _program_id: Option<&Address>,
+        _data: &[u8],
+    ) -> Result<Self, ProgramError> {
+        parse_remaining_account::<Self>(accounts)
+    }
+}
+
+impl<'input, T> RemainingItem<'input> for crate::accounts::Program<T>
+where
+    T: crate::traits::Id,
+{
+    const COUNT: usize = 1;
+
+    #[inline(always)]
+    unsafe fn parse_remaining_one(
+        account: AccountView,
+        _program_id: Option<&Address>,
+        _data: &[u8],
+    ) -> Result<Self, ProgramError> {
+        parse_remaining_view::<Self>(&account)
+    }
+
+    #[inline(always)]
+    unsafe fn parse_remaining_chunk(
+        accounts: &'input mut [AccountView],
+        _program_id: Option<&Address>,
+        _data: &[u8],
+    ) -> Result<Self, ProgramError> {
+        parse_remaining_account::<Self>(accounts)
+    }
+}
+
+impl<'input, T> RemainingItem<'input> for crate::accounts::Interface<T>
+where
+    T: crate::traits::ProgramInterface,
+{
+    const COUNT: usize = 1;
+
+    #[inline(always)]
+    unsafe fn parse_remaining_one(
+        account: AccountView,
+        _program_id: Option<&Address>,
+        _data: &[u8],
+    ) -> Result<Self, ProgramError> {
+        parse_remaining_view::<Self>(&account)
+    }
+
+    #[inline(always)]
+    unsafe fn parse_remaining_chunk(
+        accounts: &'input mut [AccountView],
+        _program_id: Option<&Address>,
+        _data: &[u8],
+    ) -> Result<Self, ProgramError> {
+        parse_remaining_account::<Self>(accounts)
+    }
+}
+
+impl<'input, T> RemainingItem<'input> for crate::accounts::Sysvar<T>
+where
+    T: crate::sysvars::Sysvar,
+{
+    const COUNT: usize = 1;
+
+    #[inline(always)]
+    unsafe fn parse_remaining_one(
+        account: AccountView,
+        _program_id: Option<&Address>,
+        _data: &[u8],
+    ) -> Result<Self, ProgramError> {
+        parse_remaining_view::<Self>(&account)
+    }
+
+    #[inline(always)]
+    unsafe fn parse_remaining_chunk(
+        accounts: &'input mut [AccountView],
+        _program_id: Option<&Address>,
+        _data: &[u8],
+    ) -> Result<Self, ProgramError> {
+        parse_remaining_account::<Self>(accounts)
     }
 }
 
@@ -353,19 +563,121 @@ pub type RemainingIter<'a> = RemainingIterImpl<'a, false>;
 
 /// Bounded typed view over a remaining-account tail.
 ///
-/// `Remaining<T, N>` accepts any number of remaining accounts up to `N` and
-/// validates each one as `T`. Use raw [`RemainingAccounts`] when the account
-/// tail is intentionally uncapped or forwarded without local validation.
+/// `Remaining<T, N>` accepts any number of typed remaining items up to `N`.
+/// For single account wrappers, one item consumes one raw remaining account.
+/// For `#[derive(Accounts)]` groups, one item consumes the group's fixed
+/// account count. Use raw [`RemainingAccounts`] when the tail is intentionally
+/// uncapped or forwarded without local validation.
 pub struct Remaining<T, const N: usize> {
     items: [core::mem::MaybeUninit<T>; N],
     len: usize,
 }
 
-impl<T, const N: usize> Remaining<T, N>
-where
-    T: AccountLoad,
-{
-    pub fn parse(accounts: RemainingAccounts<'_>) -> Result<Self, ProgramError> {
+impl<T, const N: usize> Remaining<T, N> {
+    #[inline(always)]
+    pub fn parse<'input>(accounts: RemainingAccounts<'input>) -> Result<Self, ProgramError>
+    where
+        T: RemainingItem<'input>,
+    {
+        let mut out = Self {
+            // SAFETY: An uninitialized `[MaybeUninit<T>; N]` is valid.
+            items: unsafe {
+                core::mem::MaybeUninit::<[core::mem::MaybeUninit<T>; N]>::uninit().assume_init()
+            },
+            len: 0,
+        };
+        let mut seen = unsafe {
+            core::mem::MaybeUninit::<
+                [core::mem::MaybeUninit<Address>; MAX_REMAINING_ACCOUNTS],
+            >::uninit()
+            .assume_init()
+        };
+        let mut chunk = unsafe {
+            core::mem::MaybeUninit::<
+                [core::mem::MaybeUninit<AccountView>; MAX_REMAINING_ACCOUNTS],
+            >::uninit()
+            .assume_init()
+        };
+        let mut seen_len = 0usize;
+        let mut chunk_len = 0usize;
+        let chunk_count = T::COUNT;
+
+        if chunk_count == 0 || chunk_count > MAX_REMAINING_ACCOUNTS {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        if chunk_count == 1 {
+            return Self::parse_single(accounts);
+        }
+
+        let mut ptr = accounts.ptr;
+        while (ptr as *const u8) < accounts.boundary {
+            if out.len >= N {
+                return Err(QuasarError::RemainingAccountsOverflow.into());
+            }
+            if seen_len >= MAX_REMAINING_ACCOUNTS {
+                return Err(QuasarError::RemainingAccountsOverflow.into());
+            }
+
+            let raw = ptr as *mut RuntimeAccount;
+            // SAFETY: `ptr` is within the SVM buffer (checked against boundary).
+            let borrow = unsafe { (*raw).borrow_state };
+            if borrow != NOT_BORROWED {
+                return Err(QuasarError::RemainingAccountDuplicate.into());
+            }
+
+            // SAFETY: Non-duplicate entry with a valid `RuntimeAccount`.
+            let view = unsafe { AccountView::new_unchecked(raw) };
+            // SAFETY: `raw` is valid; advances past header + data + padding.
+            ptr = unsafe { advance_past_account(ptr, raw) };
+
+            if T::REJECT_DUPLICATES {
+                if accounts
+                    .declared
+                    .iter()
+                    .any(|declared| crate::keys_eq(declared.address(), view.address()))
+                {
+                    return Err(QuasarError::RemainingAccountDuplicate.into());
+                }
+                let mut i = 0usize;
+                while i < seen_len {
+                    let seen_address = unsafe { seen[i].assume_init_ref() };
+                    if crate::keys_eq(seen_address, view.address()) {
+                        return Err(QuasarError::RemainingAccountDuplicate.into());
+                    }
+                    i += 1;
+                }
+                seen[seen_len].write(*view.address());
+                seen_len += 1;
+            }
+
+            chunk[chunk_len].write(view);
+            chunk_len += 1;
+
+            if chunk_len == chunk_count {
+                let chunk_ptr = chunk.as_mut_ptr() as *mut AccountView;
+                let chunk_slice =
+                    unsafe { core::slice::from_raw_parts_mut(chunk_ptr, chunk_count) };
+                let item = unsafe {
+                    T::parse_remaining_chunk(chunk_slice, accounts.program_id, accounts.data)?
+                };
+                out.items[out.len].write(item);
+                out.len += 1;
+                chunk_len = 0;
+            }
+        }
+
+        if chunk_len != 0 {
+            return Err(ProgramError::NotEnoughAccountKeys);
+        }
+
+        Ok(out)
+    }
+
+    #[inline(always)]
+    fn parse_single<'input>(accounts: RemainingAccounts<'input>) -> Result<Self, ProgramError>
+    where
+        T: RemainingItem<'input>,
+    {
         let mut out = Self {
             // SAFETY: An uninitialized `[MaybeUninit<T>; N]` is valid.
             items: unsafe {
@@ -376,41 +688,57 @@ where
         let mut seen = unsafe {
             core::mem::MaybeUninit::<[core::mem::MaybeUninit<Address>; N]>::uninit().assume_init()
         };
-        let mut seen_len = 0usize;
-
-        for account in accounts.iter() {
-            let account = account?;
+        let mut ptr = accounts.ptr;
+        while (ptr as *const u8) < accounts.boundary {
             if out.len >= N {
                 return Err(QuasarError::RemainingAccountsOverflow.into());
             }
 
-            let view = unsafe { account.as_account_view_unchecked() };
-            if accounts
-                .declared
-                .iter()
-                .any(|declared| crate::keys_eq(declared.address(), view.address()))
-            {
+            let raw = ptr as *mut RuntimeAccount;
+            // SAFETY: `ptr` is within the SVM buffer (checked against boundary).
+            let borrow = unsafe { (*raw).borrow_state };
+            if T::REJECT_DUPLICATES && borrow != NOT_BORROWED {
                 return Err(QuasarError::RemainingAccountDuplicate.into());
             }
-            let mut i = 0usize;
-            while i < seen_len {
-                let seen_address = unsafe { seen[i].assume_init_ref() };
-                if crate::keys_eq(seen_address, view.address()) {
+
+            let view = if borrow == NOT_BORROWED {
+                // SAFETY: Non-duplicate entry with a valid `RuntimeAccount`.
+                let view = unsafe { AccountView::new_unchecked(raw) };
+                // SAFETY: `raw` is valid; advances past header + data + padding.
+                ptr = unsafe { advance_past_account(ptr, raw) };
+                view
+            } else {
+                // SAFETY: Duplicate entry — advances past the u64 index.
+                ptr = unsafe { advance_past_dup(ptr) };
+                resolve_dup_walk(
+                    borrow as usize,
+                    accounts.declared,
+                    accounts.ptr,
+                    accounts.boundary,
+                )?
+            };
+
+            let address = *view.address();
+            if T::REJECT_DUPLICATES {
+                if accounts
+                    .declared
+                    .iter()
+                    .any(|declared| crate::keys_eq(declared.address(), &address))
+                {
                     return Err(QuasarError::RemainingAccountDuplicate.into());
                 }
-                i += 1;
+                let mut i = 0usize;
+                while i < out.len {
+                    let seen_address = unsafe { seen[i].assume_init_ref() };
+                    if crate::keys_eq(seen_address, &address) {
+                        return Err(QuasarError::RemainingAccountDuplicate.into());
+                    }
+                    i += 1;
+                }
+                seen[out.len].write(address);
             }
 
-            if T::IS_SIGNER && !view.is_signer() {
-                return Err(ProgramError::MissingRequiredSignature);
-            }
-            if T::IS_EXECUTABLE && !view.executable() {
-                return Err(ProgramError::InvalidAccountData);
-            }
-
-            let item = T::load_checked(view)?;
-            seen[seen_len].write(*view.address());
-            seen_len += 1;
+            let item = unsafe { T::parse_remaining_one(view, accounts.program_id, accounts.data)? };
             out.items[out.len].write(item);
             out.len += 1;
         }
@@ -448,6 +776,9 @@ impl<T, const N: usize> Remaining<T, N> {
 
 impl<T, const N: usize> Drop for Remaining<T, N> {
     fn drop(&mut self) {
+        if !core::mem::needs_drop::<T>() {
+            return;
+        }
         let mut i = 0usize;
         while i < self.len {
             unsafe { self.items[i].assume_init_drop() };

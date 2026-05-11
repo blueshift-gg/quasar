@@ -18,3 +18,25 @@ impl crate::account_load::AccountLoad for SystemAccount {
         <Self as checks::Owner>::check(view)
     }
 }
+
+impl<'input> crate::remaining::RemainingItem<'input> for SystemAccount {
+    const COUNT: usize = 1;
+
+    #[inline(always)]
+    unsafe fn parse_remaining_one(
+        account: AccountView,
+        _program_id: Option<&Address>,
+        _data: &[u8],
+    ) -> Result<Self, ProgramError> {
+        crate::remaining::parse_remaining_view::<Self>(&account)
+    }
+
+    #[inline(always)]
+    unsafe fn parse_remaining_chunk(
+        accounts: &'input mut [AccountView],
+        _program_id: Option<&Address>,
+        _data: &[u8],
+    ) -> Result<Self, ProgramError> {
+        crate::remaining::parse_remaining_account::<Self>(accounts)
+    }
+}
