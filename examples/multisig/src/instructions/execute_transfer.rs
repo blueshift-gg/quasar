@@ -48,15 +48,10 @@ impl ExecuteTransfer {
             return Err(ProgramError::MissingRequiredSignature);
         }
 
-        let bump = [bumps.vault];
-        let seeds = [
-            Seed::from(b"vault" as &[u8]),
-            Seed::from(self.config.address().as_ref()),
-            Seed::from(bump.as_ref()),
-        ];
+        let vault_signer = self.vault_signer(bumps);
         self.system_program
             .transfer(&self.vault, &self.recipient, amount)
-            .invoke_signed(&seeds)?;
+            .invoke_signed(&vault_signer)?;
         Ok(())
     }
 }

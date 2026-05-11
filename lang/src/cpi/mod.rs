@@ -27,6 +27,16 @@ pub use {
     },
 };
 
+/// Signer seed source for a single PDA signer.
+///
+/// Generated account-owned signer helpers return values that implement this
+/// trait, so CPI callers do not need to materialize or expose raw seed slices.
+pub trait CpiSignerSeeds {
+    fn with_signers<R, F>(&self, f: F) -> R
+    where
+        F: FnOnce(&[Signer<'_, '_>]) -> R;
+}
+
 #[cfg(any(target_os = "solana", target_arch = "bpf"))]
 #[repr(C)]
 struct CInstruction<'a> {
@@ -352,8 +362,11 @@ impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
     /// Invoke the CPI with a single PDA signer (seeds for one address).
     #[inline(always)]
     #[must_use = "CPI result must be handled with `?` or matched"]
-    pub fn invoke_signed(&self, seeds: &[Seed]) -> ProgramResult {
-        self.invoke_inner(&[Signer::from(seeds)])
+    pub fn invoke_signed<S>(&self, seeds: &S) -> ProgramResult
+    where
+        S: CpiSignerSeeds + ?Sized,
+    {
+        seeds.with_signers(|signers| self.invoke_inner(signers))
     }
 
     /// Invoke the CPI with multiple PDA signers.
@@ -373,8 +386,11 @@ impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
     /// Invoke the CPI with one PDA signer and read back raw return data.
     #[inline(always)]
     #[must_use = "CPI result must be handled with `?` or matched"]
-    pub fn invoke_signed_with_return(&self, seeds: &[Seed]) -> Result<CpiReturn, ProgramError> {
-        self.invoke_with_return_inner(&[Signer::from(seeds)])
+    pub fn invoke_signed_with_return<S>(&self, seeds: &S) -> Result<CpiReturn, ProgramError>
+    where
+        S: CpiSignerSeeds + ?Sized,
+    {
+        seeds.with_signers(|signers| self.invoke_with_return_inner(signers))
     }
 
     /// Invoke the CPI with multiple PDA signers and read back raw return data.

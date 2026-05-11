@@ -145,6 +145,12 @@ pub trait ParseAccounts<'input>: Sized {
     }
 }
 
+/// Internal bump bundle carrier for macro-generated account structs.
+#[doc(hidden)]
+pub trait AccountBumps {
+    type Bumps: Copy;
+}
+
 /// Internal exact-length parsing fast path used by dispatch and nested
 /// composite account parsing.
 ///
@@ -172,6 +178,24 @@ pub unsafe trait ParseAccountsUnchecked<'input>: ParseAccounts<'input> {
     ) -> Result<(Self, Self::Bumps), ProgramError> {
         Self::parse_unchecked(accounts, program_id)
     }
+}
+
+/// Internal raw SVM-buffer parser used by generated account composition code.
+///
+/// Implemented by `#[derive(Accounts)]` and fixed-size account group wrappers.
+/// This preserves header/duplicate parsing for nested account groups before the
+/// typed `ParseAccountsUnchecked` pass loads account wrappers.
+#[doc(hidden)]
+pub unsafe trait ParseAccountsRaw: AccountCount {
+    /// # Safety
+    ///
+    /// `base.add(offset..offset + Self::COUNT)` must be writable.
+    unsafe fn parse_accounts_raw(
+        input: *mut u8,
+        base: *mut AccountView,
+        offset: usize,
+        program_id: &Address,
+    ) -> Result<*mut u8, ProgramError>;
 }
 
 /// Convert a typed account wrapper to its underlying [`AccountView`].

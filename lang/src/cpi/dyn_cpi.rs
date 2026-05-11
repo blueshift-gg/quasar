@@ -8,7 +8,7 @@
 use {
     super::{
         cpi_account_from_view, get_cpi_return, invoke_raw, result_from_raw, CpiReturn,
-        InstructionAccount, Seed, Signer,
+        CpiSignerSeeds, InstructionAccount, Signer,
     },
     crate::utils::hint::unlikely,
     core::mem::MaybeUninit,
@@ -210,8 +210,11 @@ impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS
     /// Invoke the CPI with a single PDA signer (seeds for one address).
     #[inline(always)]
     #[must_use = "CPI result must be handled with `?` or matched"]
-    pub fn invoke_signed(&self, seeds: &[Seed]) -> ProgramResult {
-        self.invoke_inner(&[Signer::from(seeds)])
+    pub fn invoke_signed<S>(&self, seeds: &S) -> ProgramResult
+    where
+        S: CpiSignerSeeds + ?Sized,
+    {
+        seeds.with_signers(|signers| self.invoke_inner(signers))
     }
 
     /// Invoke the CPI with multiple PDA signers.
@@ -231,8 +234,11 @@ impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS
     /// Invoke the CPI with one PDA signer and read back raw return data.
     #[inline(always)]
     #[must_use = "CPI result must be handled with `?` or matched"]
-    pub fn invoke_signed_with_return(&self, seeds: &[Seed]) -> Result<CpiReturn, ProgramError> {
-        self.invoke_with_return_inner(&[Signer::from(seeds)])
+    pub fn invoke_signed_with_return<S>(&self, seeds: &S) -> Result<CpiReturn, ProgramError>
+    where
+        S: CpiSignerSeeds + ?Sized,
+    {
+        seeds.with_signers(|signers| self.invoke_with_return_inner(signers))
     }
 
     /// Invoke the CPI with multiple PDA signers and read back raw return data.

@@ -134,23 +134,31 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         direct_parse_body,
     } = accounts_plan;
 
-    let bumps_struct = emit::emit_bump_struct_def(&semantics, &emit_cx);
-    let epilogue_method = match emit::emit_epilogue(&semantics, &typed_plan) {
-        Ok(ts) => ts,
-        Err(e) => return e.to_compile_error().into(),
-    };
-    let has_epilogue_expr = emit::emit_has_epilogue(&typed_plan, &semantics);
-
-    let seeds_methods = quote::quote! {};
-
-    let client_macro = crate::client_macro::generate_accounts_macro(name, &semantics);
-
     // Instruction arg extraction
     let ix_arg_extraction = if let Some(ref ix_args) = instruction_args {
         generate_instruction_arg_extraction(ix_args)
     } else {
         quote! {}
     };
+
+    let bumps_struct = emit::emit_bump_struct_def(&semantics, &emit_cx);
+    let account_seeds_impl = emit_account_seeds_impl(
+        name,
+        &bumps_name,
+        &semantics,
+        &impl_generics_ts,
+        &ty_generics_ts,
+        &where_clause_ts,
+        &ix_arg_extraction,
+        instruction_args.is_some(),
+    );
+    let epilogue_method = match emit::emit_epilogue(&semantics, &typed_plan) {
+        Ok(ts) => ts,
+        Err(e) => return e.to_compile_error().into(),
+    };
+    let has_epilogue_expr = emit::emit_has_epilogue(&typed_plan, &semantics);
+
+    let client_macro = crate::client_macro::generate_accounts_macro(name, &semantics);
 
     // IDL accounts meta fragment (feature-gated behind `idl-build`)
     let idl_accounts_meta = emit_idl_accounts_meta(name, &semantics, &instruction_args);
@@ -170,9 +178,9 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         parse_body,
         direct_parse_body,
         bumps_struct,
+        account_seeds_impl,
         epilogue_method,
         has_epilogue_expr,
-        seeds_methods,
         client_macro,
         ix_arg_extraction,
     });
@@ -420,7 +428,7 @@ fn emit_needs_event_cpi_expr(semantics: &[resolve::FieldSemantics]) -> proc_macr
         .iter()
         .map(|sem| match sem.core.kind {
             resolve::FieldKind::Composite => {
-                let inner_ty = strip_generics(&sem.core.effective_ty);
+                let inner_ty = composite_event_ty(&sem.core.effective_ty);
                 quote! { <#inner_ty as AccountCount>::NEEDS_EVENT_CPI }
             }
             resolve::FieldKind::Single if is_event_cpi_field(sem) => {
@@ -431,6 +439,112 @@ fn emit_needs_event_cpi_expr(semantics: &[resolve::FieldSemantics]) -> proc_macr
         .collect();
 
     quote! { false #(|| #terms)* }
+}
+
+fn emit_account_seeds_impl(
+    name: &syn::Ident,
+    bumps_name: &syn::Ident,
+    semantics: &[resolve::FieldSemantics],
+    impl_generics: &proc_macro2::TokenStream,
+    ty_generics: &proc_macro2::TokenStream,
+    where_clause: &proc_macro2::TokenStream,
+    ix_arg_extraction: &proc_macro2::TokenStream,
+    has_instruction_args: bool,
+) -> proc_macro2::TokenStream {
+    let field_refs: Vec<proc_macro2::TokenStream> = semantics
+        .iter()
+        .map(|sem| {
+            let field_name = &sem.core.ident;
+            quote! { let #field_name = &self.#field_name; }
+        })
+        .collect();
+
+    let signer_methods: Vec<proc_macro2::TokenStream> = semantics
+        .iter()
+        .filter_map(|sem| {
+            let field_name = &sem.core.ident;
+            if !matches!(sem.core.kind, resolve::FieldKind::Single) {
+                return None;
+            }
+            let _count = sem.address.as_ref().and_then(seed_expr_count)?;
+            let addr_expr = sem.address.as_ref()?;
+            let method_name = format_ident!("{}_signer", field_name);
+            if has_instruction_args {
+                Some(quote! {
+                    #[inline(always)]
+                    #[allow(unused_variables)]
+                    pub fn #method_name<'__quasar_seed>(
+                        &'__quasar_seed self,
+                        bumps: &'__quasar_seed #bumps_name,
+                        data: &'__quasar_seed [u8],
+                    ) -> Result<
+                        impl quasar_lang::cpi::CpiSignerSeeds + '__quasar_seed,
+                        quasar_lang::prelude::ProgramError,
+                    > {
+                        let __ix_data = data;
+                        #ix_arg_extraction
+                        #(#field_refs)*
+                        Ok(#addr_expr.with_bump(bumps.#field_name))
+                    }
+                })
+            } else {
+                Some(quote! {
+                    #[inline(always)]
+                    #[allow(unused_variables)]
+                    pub fn #method_name<'__quasar_seed>(
+                        &'__quasar_seed self,
+                        bumps: &'__quasar_seed #bumps_name,
+                    ) -> impl quasar_lang::cpi::CpiSignerSeeds + '__quasar_seed {
+                        #(#field_refs)*
+                        #addr_expr.with_bump(bumps.#field_name)
+                    }
+                })
+            }
+        })
+        .collect();
+
+    quote! {
+        impl #impl_generics #name #ty_generics #where_clause {
+            #(#signer_methods)*
+        }
+
+        impl #impl_generics quasar_lang::traits::AccountBumps for #name #ty_generics #where_clause {
+            type Bumps = #bumps_name;
+        }
+    }
+}
+
+fn seed_expr_count(expr: &Expr) -> Option<usize> {
+    match expr {
+        Expr::Call(call) if is_seeds_path(&call.func) => Some(call.args.len() + 2),
+        Expr::Paren(paren) => seed_expr_count(&paren.expr),
+        Expr::Group(group) => seed_expr_count(&group.expr),
+        _ => None,
+    }
+}
+
+fn is_seeds_path(expr: &Expr) -> bool {
+    let Expr::Path(path) = expr else {
+        return false;
+    };
+    path.path
+        .segments
+        .last()
+        .is_some_and(|segment| segment.ident == "seeds")
+}
+
+fn composite_event_ty(ty: &Type) -> proc_macro2::TokenStream {
+    if let Type::Path(type_path) = ty {
+        if type_path
+            .path
+            .segments
+            .last()
+            .is_some_and(|segment| segment.ident == "AccountsArray")
+        {
+            return quote! { #ty };
+        }
+    }
+    strip_generics(ty)
 }
 
 fn is_event_cpi_field(sem: &resolve::FieldSemantics) -> bool {

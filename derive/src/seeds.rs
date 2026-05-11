@@ -217,6 +217,18 @@ fn derive_seeds_inner(input: TokenStream) -> Result<TokenStream> {
             }
         }
 
+        impl<'__quasar_seed> quasar_lang::cpi::CpiSignerSeeds for #seed_set_bump<'__quasar_seed> {
+            #[inline(always)]
+            fn with_signers<R, F>(&self, f: F) -> R
+            where
+                F: FnOnce(&[quasar_lang::cpi::Signer<'_, '_>]) -> R,
+            {
+                let seeds = [#(#signer_seed_exprs_bump),*];
+                let signer = quasar_lang::cpi::Signer::from(&seeds);
+                f(core::slice::from_ref(&signer))
+            }
+        }
+
         // AddressVerify: auto-find bump (full derivation, safe for init).
         impl<'__quasar_seed> quasar_lang::address::AddressVerify for #seed_set<'__quasar_seed> {
             #[inline(always)]

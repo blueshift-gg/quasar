@@ -232,6 +232,12 @@ pub(crate) fn is_composite_type(ty: &Type) -> bool {
     }
     if let Type::Path(type_path) = ty {
         if let Some(last) = type_path.path.segments.last() {
+            if last.ident == "AccountsArray" {
+                return true;
+            }
+            if last.ident.to_string().ends_with("Accounts") {
+                return true;
+            }
             if let PathArguments::AngleBracketed(args) = &last.arguments {
                 return args
                     .args

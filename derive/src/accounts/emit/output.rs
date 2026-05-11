@@ -18,9 +18,9 @@ pub(crate) struct AccountsOutput<'a> {
     pub parse_body: proc_macro2::TokenStream,
     pub direct_parse_body: proc_macro2::TokenStream,
     pub bumps_struct: proc_macro2::TokenStream,
+    pub account_seeds_impl: proc_macro2::TokenStream,
     pub epilogue_method: proc_macro2::TokenStream,
     pub has_epilogue_expr: proc_macro2::TokenStream,
-    pub seeds_methods: proc_macro2::TokenStream,
     pub client_macro: proc_macro2::TokenStream,
     pub ix_arg_extraction: proc_macro2::TokenStream,
 }
@@ -41,25 +41,15 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
         parse_body,
         direct_parse_body,
         bumps_struct,
+        account_seeds_impl,
         epilogue_method,
         has_epilogue_expr,
-        seeds_methods,
         client_macro,
         ix_arg_extraction,
     } = output;
 
     let exact_len_guard = quote! {
         quasar_lang::traits::check_account_count(accounts.len(), Self::COUNT)?;
-    };
-
-    let seeds_impl = if seeds_methods.is_empty() {
-        quote! {}
-    } else {
-        quote! {
-            impl #impl_generics #name #ty_generics #where_clause {
-                #seeds_methods
-            }
-        }
     };
 
     let has_epilogue_const = quote! {
@@ -136,10 +126,9 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
 
     quote! {
         #bumps_struct
+        #account_seeds_impl
 
         #parse_accounts_impl
-
-        #seeds_impl
 
         impl #impl_generics AccountCount for #name #ty_generics #where_clause {
             const COUNT: usize = #count_expr;
@@ -170,6 +159,31 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
             ) -> Result<(Self, #bumps_name), ProgramError> {
                 #ix_arg_extraction
                 #direct_parse_body
+            }
+        }
+
+        unsafe impl #impl_generics quasar_lang::traits::ParseAccountsRaw for #name #ty_generics #where_clause {
+            #[inline(always)]
+            unsafe fn parse_accounts_raw(
+                input: *mut u8,
+                base: *mut quasar_lang::__internal::AccountView,
+                offset: usize,
+                __program_id: &quasar_lang::prelude::Address,
+            ) -> Result<*mut u8, ProgramError> {
+                let mut __inner_buf = core::mem::MaybeUninit::<
+                    [quasar_lang::__internal::AccountView; #count_expr]
+                >::uninit();
+                let input = Self::parse_accounts(input, &mut __inner_buf, __program_id)?;
+                let __inner = core::mem::ManuallyDrop::new(__inner_buf.assume_init());
+                let mut __j = 0usize;
+                while __j < #count_expr {
+                    core::ptr::write(
+                        base.add(offset + __j),
+                        core::ptr::read(__inner.as_ptr().add(__j)),
+                    );
+                    __j += 1;
+                }
+                Ok(input)
             }
         }
 

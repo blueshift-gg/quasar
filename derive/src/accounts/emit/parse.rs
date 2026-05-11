@@ -700,11 +700,16 @@ fn emit_bump_init(
 ) -> proc_macro2::TokenStream {
     let inits: Vec<proc_macro2::TokenStream> = semantics
         .iter()
-        .filter(|sem| sem.address.is_some())
+        .filter(|sem| sem.address.is_some() || matches!(sem.core.kind, FieldKind::Composite))
         .map(|sem| {
             let name = &sem.core.ident;
-            let var = format_ident!("__bumps_{}", name);
-            quote! { #name: #var }
+            if matches!(sem.core.kind, FieldKind::Composite) {
+                let var = format_ident!("__composite_bumps_{}", name);
+                quote! { #name: #var }
+            } else {
+                let var = format_ident!("__bumps_{}", name);
+                quote! { #name: #var }
+            }
         })
         .collect();
 
@@ -722,10 +727,15 @@ pub(crate) fn emit_bump_struct_def(
     let bumps_name = &cx.bumps_name;
     let fields: Vec<proc_macro2::TokenStream> = semantics
         .iter()
-        .filter(|sem| sem.address.is_some())
+        .filter(|sem| sem.address.is_some() || matches!(sem.core.kind, FieldKind::Composite))
         .map(|sem| {
             let name = &sem.core.ident;
-            quote! { pub #name: u8 }
+            if matches!(sem.core.kind, FieldKind::Composite) {
+                let ty = composite_assoc_ty(&sem.core.effective_ty);
+                quote! { pub #name: <#ty as quasar_lang::traits::AccountBumps>::Bumps }
+            } else {
+                quote! { pub #name: u8 }
+            }
         })
         .collect();
 
@@ -734,6 +744,20 @@ pub(crate) fn emit_bump_struct_def(
     } else {
         quote! { #[derive(Copy, Clone)] pub struct #bumps_name { #(#fields,)* } }
     }
+}
+
+fn composite_assoc_ty(ty: &syn::Type) -> proc_macro2::TokenStream {
+    if let syn::Type::Path(type_path) = ty {
+        if type_path
+            .path
+            .segments
+            .last()
+            .is_some_and(|segment| segment.ident == "AccountsArray")
+        {
+            return quote! { #ty };
+        }
+    }
+    strip_generics(ty)
 }
 
 /// Returns true for account types with owner + discriminator validation.

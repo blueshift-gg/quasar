@@ -108,7 +108,7 @@ fn build_parse_fields(semantics: &[resolve::FieldSemantics]) -> Vec<ParseFieldPl
 
         match sem.core.kind {
             resolve::FieldKind::Composite => {
-                let inner_ty = strip_generics(&sem.core.effective_ty);
+                let inner_ty = composite_parse_ty(&sem.core.effective_ty);
                 fields.push(ParseFieldPlan {
                     field_name: sem.core.ident.clone(),
                     offset_expr: offset_expr.clone(),
@@ -132,6 +132,24 @@ fn build_parse_fields(semantics: &[resolve::FieldSemantics]) -> Vec<ParseFieldPl
     fields
 }
 
+fn composite_parse_ty(ty: &syn::Type) -> proc_macro2::TokenStream {
+    if is_accounts_array_type(ty) {
+        return quote! { #ty };
+    }
+    strip_generics(ty)
+}
+
+fn is_accounts_array_type(ty: &syn::Type) -> bool {
+    if let syn::Type::Path(type_path) = ty {
+        return type_path
+            .path
+            .segments
+            .last()
+            .is_some_and(|segment| segment.ident == "AccountsArray");
+    }
+    false
+}
+
 fn emit_parse_account_steps(fields: &[ParseFieldPlan]) -> Vec<proc_macro2::TokenStream> {
     fields.iter().map(emit_parse_field_step).collect()
 }
@@ -142,16 +160,14 @@ fn emit_parse_field_step(field: &ParseFieldPlan) -> proc_macro2::TokenStream {
             let cur_offset = &field.offset_expr;
             quote! {
                 {
-                    let mut __inner_buf = core::mem::MaybeUninit::<
-                        [quasar_lang::__internal::AccountView; <#inner_ty as AccountCount>::COUNT]
-                    >::uninit();
-                    input = <#inner_ty>::parse_accounts(input, &mut __inner_buf, __program_id)?;
-                    let __inner = unsafe { __inner_buf.assume_init() };
-                    let mut __j = 0usize;
-                    while __j < <#inner_ty as AccountCount>::COUNT {
-                        unsafe { core::ptr::write(base.add(#cur_offset + __j), *__inner.as_ptr().add(__j)); }
-                        __j += 1;
-                    }
+                    input = unsafe {
+                        <#inner_ty as quasar_lang::traits::ParseAccountsRaw>::parse_accounts_raw(
+                            input,
+                            base,
+                            #cur_offset,
+                            __program_id,
+                        )?
+                    };
                 }
             }
         }
@@ -235,7 +251,7 @@ fn emit_count_expr(fields: &[ParseFieldPlan]) -> proc_macro2::TokenStream {
         let addends: Vec<proc_macro2::TokenStream> = fields
             .iter()
             .map(|field| match &field.kind {
-                ParseFieldKind::Composite { inner_ty } => {
+                ParseFieldKind::Composite { inner_ty, .. } => {
                     quote! { <#inner_ty as AccountCount>::COUNT }
                 }
                 ParseFieldKind::Single(_) => quote! { 1usize },
@@ -264,11 +280,13 @@ fn emit_parse_body_from_inner(
         .any(|field| matches!(field.kind, ParseFieldKind::Composite { .. }))
     {
         let mut field_lets: Vec<proc_macro2::TokenStream> = Vec::new();
-        field_lets.push(quote! { let mut __accounts_rest = accounts; });
+        field_lets.push(quote! {
+            let mut __accounts_rest: &mut [quasar_lang::__internal::AccountView] = accounts;
+        });
 
         for field in fields {
             match &field.kind {
-                ParseFieldKind::Composite { inner_ty } => {
+                ParseFieldKind::Composite { inner_ty, .. } => {
                     let field_name = &field.field_name;
                     let bumps_var = format_ident!("__composite_bumps_{}", field_name);
                     field_lets.push(quote! {

@@ -55,7 +55,7 @@ pub struct Ctx<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input>
     pub accounts: T,
 
     /// PDA bump seeds discovered during validation.
-    pub bumps: T::Bumps,
+    pub bumps: <T as ParseAccounts<'input>>::Bumps,
 
     /// 32-byte program ID (raw bytes, not [`Address`]).
     pub program_id: &'input [u8; 32],
@@ -102,7 +102,7 @@ pub struct CtxWithRemaining<
     pub accounts: T,
 
     /// PDA bump seeds discovered during validation.
-    pub bumps: T::Bumps,
+    pub bumps: <T as ParseAccounts<'input>>::Bumps,
 
     /// 32-byte program ID (raw bytes).
     pub program_id: &'input [u8; 32],

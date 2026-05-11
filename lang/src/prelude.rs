@@ -14,7 +14,7 @@ pub use {
         context::{Context, Ctx, CtxWithRemaining},
         cpi::{
             system::{SystemProgram, SYSTEM_PROGRAM_ID},
-            CpiDynamic, CpiReturn, Seed,
+            CpiDynamic, CpiReturn, CpiSignerSeeds,
         },
         dispatch, emit,
         error::QuasarError,
@@ -24,6 +24,7 @@ pub use {
             PodBool, PodI128, PodI16, PodI32, PodI64, PodString, PodU128, PodU16, PodU32, PodU64,
             PodVec,
         },
+        remaining::{Remaining, RemainingAccount, RemainingAccounts},
         require, require_eq, require_keys_eq,
         return_data::set_return_data,
         sysvars::{clock::Clock, rent::Rent},
