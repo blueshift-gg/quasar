@@ -10,3 +10,7 @@ workspace = true
 wincode = { version = "=0.4.9", features = ["derive"] }
 solana-address = { version = "=2.2.0", features = ["wincode"] }
 solana-instruction = "3"
+
+[lib]
+test = false
+doctest = false

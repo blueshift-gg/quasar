@@ -40,3 +40,6 @@ wincode = { version = "0.4", features = ["derive"] }
 
 [dev-dependencies]
 trybuild = "1"
+
+[lib]
+doctest = false
