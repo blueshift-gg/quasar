@@ -1,5 +1,5 @@
 use {
-    crate::error::QuasarError,
+    crate::{account_load::AccountLoad, error::QuasarError},
     solana_account_view::{AccountView, Ref, RefMut, RuntimeAccount, NOT_BORROWED},
     solana_address::Address,
     solana_program_error::ProgramError,
@@ -283,6 +283,14 @@ impl<'a> RemainingAccounts<'a> {
             cache: core::mem::MaybeUninit::uninit(),
         }
     }
+
+    #[inline(always)]
+    pub fn parse<T, const N: usize>(&self) -> Result<Remaining<T, N>, ProgramError>
+    where
+        T: AccountLoad,
+    {
+        Remaining::parse(Self::new(self.ptr, self.boundary, self.declared))
+    }
 }
 
 /// Walk-based dup resolution for one-off `get()` access.
@@ -342,6 +350,118 @@ fn resolve_dup_walk(
 /// pattern as the declared accounts parser in the entrypoint). Returns
 /// `Err(QuasarError::RemainingAccountsOverflow)` after 64 accounts.
 pub type RemainingIter<'a> = RemainingIterImpl<'a, false>;
+
+/// Bounded typed view over a remaining-account tail.
+///
+/// `Remaining<T, N>` accepts any number of remaining accounts up to `N` and
+/// validates each one as `T`. Use raw [`RemainingAccounts`] when the account
+/// tail is intentionally uncapped or forwarded without local validation.
+pub struct Remaining<T, const N: usize> {
+    items: [core::mem::MaybeUninit<T>; N],
+    len: usize,
+}
+
+impl<T, const N: usize> Remaining<T, N>
+where
+    T: AccountLoad,
+{
+    pub fn parse(accounts: RemainingAccounts<'_>) -> Result<Self, ProgramError> {
+        let mut out = Self {
+            // SAFETY: An uninitialized `[MaybeUninit<T>; N]` is valid.
+            items: unsafe {
+                core::mem::MaybeUninit::<[core::mem::MaybeUninit<T>; N]>::uninit().assume_init()
+            },
+            len: 0,
+        };
+        let mut seen = unsafe {
+            core::mem::MaybeUninit::<[core::mem::MaybeUninit<Address>; N]>::uninit().assume_init()
+        };
+        let mut seen_len = 0usize;
+
+        for account in accounts.iter() {
+            let account = account?;
+            if out.len >= N {
+                return Err(QuasarError::RemainingAccountsOverflow.into());
+            }
+
+            let view = unsafe { account.as_account_view_unchecked() };
+            if accounts
+                .declared
+                .iter()
+                .any(|declared| crate::keys_eq(declared.address(), view.address()))
+            {
+                return Err(QuasarError::RemainingAccountDuplicate.into());
+            }
+            let mut i = 0usize;
+            while i < seen_len {
+                let seen_address = unsafe { seen[i].assume_init_ref() };
+                if crate::keys_eq(seen_address, view.address()) {
+                    return Err(QuasarError::RemainingAccountDuplicate.into());
+                }
+                i += 1;
+            }
+
+            if T::IS_SIGNER && !view.is_signer() {
+                return Err(ProgramError::MissingRequiredSignature);
+            }
+            if T::IS_EXECUTABLE && !view.executable() {
+                return Err(ProgramError::InvalidAccountData);
+            }
+
+            let item = T::load_checked(view)?;
+            seen[seen_len].write(*view.address());
+            seen_len += 1;
+            out.items[out.len].write(item);
+            out.len += 1;
+        }
+
+        Ok(out)
+    }
+}
+
+impl<T, const N: usize> Remaining<T, N> {
+    #[inline(always)]
+    pub fn as_slice(&self) -> &[T] {
+        unsafe { core::slice::from_raw_parts(self.items.as_ptr() as *const T, self.len) }
+    }
+
+    #[inline(always)]
+    pub fn iter(&self) -> core::slice::Iter<'_, T> {
+        self.as_slice().iter()
+    }
+
+    #[inline(always)]
+    pub const fn len(&self) -> usize {
+        self.len
+    }
+
+    #[inline(always)]
+    pub const fn capacity(&self) -> usize {
+        N
+    }
+
+    #[inline(always)]
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+impl<T, const N: usize> Drop for Remaining<T, N> {
+    fn drop(&mut self) {
+        let mut i = 0usize;
+        while i < self.len {
+            unsafe { self.items[i].assume_init_drop() };
+            i += 1;
+        }
+    }
+}
+
+impl<T, const N: usize> AsRef<[T]> for Remaining<T, N> {
+    #[inline(always)]
+    fn as_ref(&self) -> &[T] {
+        self.as_slice()
+    }
+}
 
 #[doc(hidden)]
 pub struct RemainingIterImpl<'a, const _SPECIALIZE: bool = false> {
