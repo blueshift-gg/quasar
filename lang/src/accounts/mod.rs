@@ -25,3 +25,5 @@ pub mod migration;
 pub use migration::*;
 pub mod uninit;
 pub use uninit::*;
+pub mod array;
+pub use array::*;
