@@ -45,37 +45,6 @@
 
 #![no_std]
 
-/// Implements `TokenClose` and `TokenSweep` for a token account type
-/// (Token / Token2022).
-macro_rules! impl_token_account_traits {
-    ($ty:ty) => {
-        impl crate::ops::close::TokenClose for $ty {
-            #[inline(always)]
-            fn close(
-                view: &mut AccountView,
-                dest: &AccountView,
-                authority: &AccountView,
-                token_program: &AccountView,
-            ) -> Result<(), ProgramError> {
-                crate::exit::close_token_account(token_program, view, dest, authority)
-            }
-        }
-
-        impl crate::ops::sweep::TokenSweep for $ty {
-            #[inline(always)]
-            fn sweep(
-                view: &AccountView,
-                receiver: &AccountView,
-                mint: &AccountView,
-                authority: &AccountView,
-                token_program: &AccountView,
-            ) -> Result<(), ProgramError> {
-                crate::exit::sweep_token_account(token_program, view, mint, receiver, authority)
-            }
-        }
-    };
-}
-
 /// Implements `AccountInit` for a token account type (Token / Token2022).
 /// Both dispatch to the same init_token_account / init_ata helpers.
 macro_rules! impl_token_account_init {
@@ -176,16 +145,12 @@ mod exit;
 mod init;
 mod instructions;
 mod interface;
-mod ops;
 /// Convenience re-exports for SPL programs.
 pub mod prelude;
 mod token;
 mod token_2022;
 mod validate;
 
-// ---------------------------------------------------------------------------
-// Forwarding impls: Account<T>/InterfaceAccount<T> → T for SPL behavior traits
-// ---------------------------------------------------------------------------
 use quasar_lang::{
     accounts::{Account, DeferredInit},
     prelude::{AccountView, ProgramError},
@@ -207,56 +172,6 @@ pub use {
     token_2022::{Mint2022, Token2022, Token2022Program},
     validate::{validate_ata, validate_mint_with_freeze, validate_token_account, FreezeCheck},
 };
-
-impl<T: ops::close::TokenClose> ops::close::TokenClose for Account<T> {
-    #[inline(always)]
-    fn close(
-        view: &mut AccountView,
-        dest: &AccountView,
-        authority: &AccountView,
-        token_program: &AccountView,
-    ) -> Result<(), ProgramError> {
-        T::close(view, dest, authority, token_program)
-    }
-}
-
-impl<T: ops::sweep::TokenSweep> ops::sweep::TokenSweep for Account<T> {
-    #[inline(always)]
-    fn sweep(
-        view: &AccountView,
-        receiver: &AccountView,
-        mint: &AccountView,
-        authority: &AccountView,
-        tp: &AccountView,
-    ) -> Result<(), ProgramError> {
-        T::sweep(view, receiver, mint, authority, tp)
-    }
-}
-
-impl<T: ops::close::TokenClose> ops::close::TokenClose for InterfaceAccount<T> {
-    #[inline(always)]
-    fn close(
-        view: &mut AccountView,
-        dest: &AccountView,
-        authority: &AccountView,
-        token_program: &AccountView,
-    ) -> Result<(), ProgramError> {
-        T::close(view, dest, authority, token_program)
-    }
-}
-
-impl<T: ops::sweep::TokenSweep> ops::sweep::TokenSweep for InterfaceAccount<T> {
-    #[inline(always)]
-    fn sweep(
-        view: &AccountView,
-        receiver: &AccountView,
-        mint: &AccountView,
-        authority: &AccountView,
-        tp: &AccountView,
-    ) -> Result<(), ProgramError> {
-        T::sweep(view, receiver, mint, authority, tp)
-    }
-}
 
 macro_rules! impl_deferred_init {
     ($wrapper:ty, $params:ty) => {

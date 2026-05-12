@@ -11,7 +11,7 @@
 //! pub vault: Account<Token>,
 //! ```
 
-use {crate::ops::sweep::TokenSweep, quasar_lang::prelude::*};
+use quasar_lang::prelude::*;
 
 // ---------------------------------------------------------------------------
 // Args
@@ -103,12 +103,12 @@ macro_rules! impl_token_sweep_behavior {
 
             #[inline(always)]
             fn exit<'a>(account: &mut $wrapper, args: &Args<'a>) -> Result<(), ProgramError> {
-                <$wrapper as TokenSweep>::sweep(
-                    account.to_account_view(),
-                    args.receiver,
-                    args.mint,
-                    args.authority,
+                crate::exit::sweep_token_account(
                     args.token_program,
+                    account.to_account_view(),
+                    args.mint,
+                    args.receiver,
+                    args.authority,
                 )
             }
         }

@@ -153,10 +153,9 @@ impl quasar_lang::traits::Owners for Mint {
 impl TokenCpi for Program<TokenProgram> {}
 
 // ---------------------------------------------------------------------------
-// Shared trait impls (TokenClose, TokenSweep, AccountInit)
+// Shared init impls
 // ---------------------------------------------------------------------------
 
-impl_token_account_traits!(Token);
 impl_token_account_init!(Token);
 impl_mint_account_init!(Mint);
 

@@ -35,9 +35,8 @@ impl Owner for Mint2022 {
 impl TokenCpi for Program<Token2022Program> {}
 
 // ---------------------------------------------------------------------------
-// Shared trait impls (TokenClose, TokenSweep, AccountInit)
+// Shared init impls
 // ---------------------------------------------------------------------------
 
-impl_token_account_traits!(Token2022);
 impl_token_account_init!(Token2022);
 impl_mint_account_init!(Mint2022);

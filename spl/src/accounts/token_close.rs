@@ -8,7 +8,7 @@
 //! pub vault: Account<Token>,
 //! ```
 
-use {crate::ops::close::TokenClose, quasar_lang::prelude::*};
+use quasar_lang::prelude::*;
 
 // ---------------------------------------------------------------------------
 // Args
@@ -91,7 +91,12 @@ macro_rules! impl_token_close_behavior {
             #[inline(always)]
             fn exit<'a>(account: &mut $wrapper, args: &Args<'a>) -> Result<(), ProgramError> {
                 let view = unsafe { <$wrapper as AccountLoad>::to_account_view_mut(account) };
-                <$wrapper as TokenClose>::close(view, args.dest, args.authority, args.token_program)
+                crate::exit::close_token_account(
+                    args.token_program,
+                    view,
+                    args.dest,
+                    args.authority,
+                )
             }
         }
     };
