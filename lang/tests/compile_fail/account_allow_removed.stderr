@@ -1,5 +1,0 @@
-error: behavior arg `unconstrained` requires a value: `unconstrained = ...`. Bare flags are not supported in behavior groups
- --> tests/compile_fail/account_allow_removed.rs:6:21
-  |
-6 |     #[account(allow(unconstrained))]
-  |                     ^^^^^^^^^^^^^
