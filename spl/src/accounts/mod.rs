@@ -10,12 +10,11 @@
 //!    `build_check()`, `build_exit()` methods
 //! 3. Define `Behavior` unit struct
 //! 4. Implement `AccountBehavior<T>` for each supported wrapper type
-//! 5. Export from `accounts/mod.rs`, `accounts/prelude.rs`, and `prelude.rs`
+//! 5. Export from `accounts/mod.rs` and `prelude.rs`
 //! 6. Add compile-pass and compile-fail tests in `spl/tests/`
 
 pub mod associated_token;
 pub mod mint;
-pub mod prelude;
 pub mod token;
 pub mod token_close;
 pub mod token_sweep;
