@@ -8,10 +8,7 @@
 //! pub vault: Account<Token>,
 //! ```
 
-use {
-    crate::ops::{capabilities::TokenCheck, ctx::TokenCheckCtx},
-    quasar_lang::prelude::*,
-};
+use quasar_lang::prelude::*;
 
 // ---------------------------------------------------------------------------
 // Args
@@ -126,16 +123,14 @@ macro_rules! impl_token_behavior {
 
             #[inline(always)]
             fn check<'a>(account: &$wrapper, args: &Args<'a>) -> Result<(), ProgramError> {
-                <$wrapper as TokenCheck>::check_token_view(
+                crate::validate::validate_token_account(
                     account.to_account_view(),
-                    TokenCheckCtx {
-                        mint: args.mint,
-                        authority: args.authority,
-                        token_program: if $check_token_program {
-                            args.token_program
-                        } else {
-                            None
-                        },
+                    args.mint.address(),
+                    args.authority.address(),
+                    if $check_token_program {
+                        args.token_program.map(|program| program.address())
+                    } else {
+                        None
                     },
                 )
             }

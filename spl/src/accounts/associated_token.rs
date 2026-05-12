@@ -12,10 +12,7 @@
 //! pub ata: Account<Token>,
 //! ```
 
-use {
-    crate::ops::{capabilities::AssociatedTokenCheck, ctx::AssociatedTokenCheckCtx},
-    quasar_lang::prelude::*,
-};
+use quasar_lang::prelude::*;
 
 // ---------------------------------------------------------------------------
 // Args
@@ -161,17 +158,19 @@ macro_rules! impl_ata_behavior {
 
             #[inline(always)]
             fn check<'a>(account: &$wrapper, args: &Args<'a>) -> Result<(), ProgramError> {
-                <$wrapper as AssociatedTokenCheck>::check_associated_token_view(
-                    account.to_account_view(),
-                    AssociatedTokenCheckCtx {
-                        mint: args.mint,
-                        authority: args.authority,
-                        token_program: if $check_token_program {
-                            args.token_program
-                        } else {
-                            None
-                        },
-                    },
+                let view = account.to_account_view();
+                let token_program = if $check_token_program {
+                    args.token_program
+                        .map(|program| program.address())
+                        .unwrap_or_else(|| view.owner())
+                } else {
+                    view.owner()
+                };
+                crate::validate::validate_ata(
+                    view,
+                    args.authority.address(),
+                    args.mint.address(),
+                    token_program,
                 )
             }
         }

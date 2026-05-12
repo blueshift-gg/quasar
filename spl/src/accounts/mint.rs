@@ -8,13 +8,7 @@
 //! pub my_mint: Account<Mint>,
 //! ```
 
-use {
-    crate::ops::{
-        capabilities::MintCheck,
-        ctx::{FreezeAuthorityCheck, MintCheckCtx},
-    },
-    quasar_lang::prelude::*,
-};
+use quasar_lang::prelude::*;
 
 // ---------------------------------------------------------------------------
 // Args
@@ -157,23 +151,21 @@ macro_rules! impl_mint_behavior {
             #[inline(always)]
             fn check<'a>(account: &$wrapper, args: &Args<'a>) -> Result<(), ProgramError> {
                 let freeze = match &args.freeze_authority {
-                    FreezeAuthorityArg::Unset => FreezeAuthorityCheck::Skip,
-                    FreezeAuthorityArg::AssertNone => FreezeAuthorityCheck::AssertNone,
+                    FreezeAuthorityArg::Unset => crate::validate::FreezeCheck::Skip,
+                    FreezeAuthorityArg::AssertNone => crate::validate::FreezeCheck::AssertNone,
                     FreezeAuthorityArg::AssertEquals(view) => {
-                        FreezeAuthorityCheck::AssertEquals(view)
+                        crate::validate::FreezeCheck::AssertEquals(view.address())
                     }
                 };
-                <$wrapper as MintCheck>::check_mint_view(
+                crate::validate::validate_mint_with_freeze(
                     account.to_account_view(),
-                    MintCheckCtx {
-                        authority: args.authority,
-                        decimals: args.decimals,
-                        freeze_authority: freeze,
-                        token_program: if $check_token_program {
-                            args.token_program
-                        } else {
-                            None
-                        },
+                    args.authority.address(),
+                    args.decimals,
+                    freeze,
+                    if $check_token_program {
+                        args.token_program.map(|program| program.address())
+                    } else {
+                        None
                     },
                 )
             }
