@@ -511,112 +511,62 @@ fn pod_alias_type(ty: &Type, accept_pod_aliases: bool) -> Option<proc_macro2::To
 /// { .. })` for dynamic types (PodString, PodVec, String, Vec with const
 /// generics).
 pub(crate) fn type_to_idl_codec_tokens(ty: &Type) -> proc_macro2::TokenStream {
-    if let Some(dyn_field) = classify_pod_dynamic(ty) {
-        match dyn_field {
-            PodDynField::Str { max, prefix_bytes } => {
-                let pfx_ty_str = match prefix_bytes {
-                    1 => "u8",
-                    2 => "u16",
-                    4 => "u32",
-                    8 => "u64",
-                    _ => "u8",
-                };
-                return quote! {
-                    Some(quasar_lang::idl_build::__reexport::IdlCodec::SizePrefixed {
-                        prefix: quasar_lang::idl_build::__reexport::ScalarRepr {
-                            ty: quasar_lang::idl_build::s(#pfx_ty_str),
-                            endian: quasar_lang::idl_build::__reexport::Endian::Le,
-                        },
-                        storage: quasar_lang::idl_build::__reexport::Storage::Tail,
-                        max_bytes: Some(#max),
-                        max_items: None,
-                        encoding: Some(quasar_lang::idl_build::s("utf8")),
-                        item: None,
-                    })
-                };
+    let dyn_field = classify_pod_dynamic(ty)
+        .or_else(|| extract_generic_inner_type(ty, "Option").and_then(classify_pod_dynamic));
+
+    match dyn_field {
+        Some(dyn_field) => idl_codec_for_dynamic(dyn_field),
+        None => quote! { None },
+    }
+}
+
+fn idl_codec_for_dynamic(dyn_field: PodDynField) -> proc_macro2::TokenStream {
+    match dyn_field {
+        PodDynField::Str { max, prefix_bytes } => {
+            let pfx_ty_str = prefix_type_name(prefix_bytes, "u8");
+            quote! {
+                Some(quasar_lang::idl_build::__reexport::IdlCodec::SizePrefixed {
+                    prefix: quasar_lang::idl_build::__reexport::ScalarRepr {
+                        ty: quasar_lang::idl_build::s(#pfx_ty_str),
+                        endian: quasar_lang::idl_build::__reexport::Endian::Le,
+                    },
+                    storage: quasar_lang::idl_build::__reexport::Storage::Tail,
+                    max_bytes: Some(#max),
+                    max_items: None,
+                    encoding: Some(quasar_lang::idl_build::s("utf8")),
+                    item: None,
+                })
             }
-            PodDynField::Vec {
-                max, prefix_bytes, ..
-            } => {
-                let pfx_ty_str = match prefix_bytes {
-                    1 => "u8",
-                    2 => "u16",
-                    4 => "u32",
-                    8 => "u64",
-                    _ => "u16",
-                };
-                return quote! {
-                    Some(quasar_lang::idl_build::__reexport::IdlCodec::SizePrefixed {
-                        prefix: quasar_lang::idl_build::__reexport::ScalarRepr {
-                            ty: quasar_lang::idl_build::s(#pfx_ty_str),
-                            endian: quasar_lang::idl_build::__reexport::Endian::Le,
-                        },
-                        storage: quasar_lang::idl_build::__reexport::Storage::Tail,
-                        max_bytes: None,
-                        max_items: Some(#max),
-                        encoding: None,
-                        item: None,
-                    })
-                };
+        }
+        PodDynField::Vec {
+            max, prefix_bytes, ..
+        } => {
+            let pfx_ty_str = prefix_type_name(prefix_bytes, "u16");
+            quote! {
+                Some(quasar_lang::idl_build::__reexport::IdlCodec::SizePrefixed {
+                    prefix: quasar_lang::idl_build::__reexport::ScalarRepr {
+                        ty: quasar_lang::idl_build::s(#pfx_ty_str),
+                        endian: quasar_lang::idl_build::__reexport::Endian::Le,
+                    },
+                    storage: quasar_lang::idl_build::__reexport::Storage::Tail,
+                    max_bytes: None,
+                    max_items: Some(#max),
+                    encoding: None,
+                    item: None,
+                })
             }
         }
     }
-    // Check if it's Option<dynamic_type> — the option-wrapped dynamic field is also
-    // dynamic
-    if let Some(inner) = extract_generic_inner_type(ty, "Option") {
-        if let Some(dyn_field) = classify_pod_dynamic(inner) {
-            match dyn_field {
-                PodDynField::Str { max, prefix_bytes } => {
-                    let pfx_ty_str = match prefix_bytes {
-                        1 => "u8",
-                        2 => "u16",
-                        4 => "u32",
-                        8 => "u64",
-                        _ => "u8",
-                    };
-                    return quote! {
-                        Some(quasar_lang::idl_build::__reexport::IdlCodec::SizePrefixed {
-                            prefix: quasar_lang::idl_build::__reexport::ScalarRepr {
-                                ty: quasar_lang::idl_build::s(#pfx_ty_str),
-                                endian: quasar_lang::idl_build::__reexport::Endian::Le,
-                            },
-                            storage: quasar_lang::idl_build::__reexport::Storage::Tail,
-                            max_bytes: Some(#max),
-                            max_items: None,
-                            encoding: Some(quasar_lang::idl_build::s("utf8")),
-                            item: None,
-                        })
-                    };
-                }
-                PodDynField::Vec {
-                    max, prefix_bytes, ..
-                } => {
-                    let pfx_ty_str = match prefix_bytes {
-                        1 => "u8",
-                        2 => "u16",
-                        4 => "u32",
-                        8 => "u64",
-                        _ => "u16",
-                    };
-                    return quote! {
-                        Some(quasar_lang::idl_build::__reexport::IdlCodec::SizePrefixed {
-                            prefix: quasar_lang::idl_build::__reexport::ScalarRepr {
-                                ty: quasar_lang::idl_build::s(#pfx_ty_str),
-                                endian: quasar_lang::idl_build::__reexport::Endian::Le,
-                            },
-                            storage: quasar_lang::idl_build::__reexport::Storage::Tail,
-                            max_bytes: None,
-                            max_items: Some(#max),
-                            encoding: None,
-                            item: None,
-                        })
-                    };
-                }
-            }
-        }
+}
+
+fn prefix_type_name(prefix_bytes: usize, fallback: &'static str) -> &'static str {
+    match prefix_bytes {
+        1 => "u8",
+        2 => "u16",
+        4 => "u32",
+        8 => "u64",
+        _ => fallback,
     }
-    // Fixed types: codec is inferred, return None
-    quote! { None }
 }
 
 /// Convert a Rust type to a `proc_macro2::TokenStream` that constructs an

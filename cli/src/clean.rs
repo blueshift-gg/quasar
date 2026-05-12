@@ -9,16 +9,17 @@ use {
 
 pub fn run(all: bool) -> CliResult {
     let clients_dir = resolve_client_path()?;
-    let dirs = vec![
-        "target/deploy".to_string(),
-        "target/profile".to_string(),
-        "target/idl".to_string(),
-        clients_dir.to_string_lossy().into_owned(),
+    let clients_dir = clients_dir.to_string_lossy();
+    let dirs = [
+        "target/deploy",
+        "target/profile",
+        "target/idl",
+        clients_dir.as_ref(),
     ];
 
     let removed: Vec<&str> = dirs
         .iter()
-        .map(String::as_str)
+        .copied()
         .filter(|dir| Path::new(dir).exists())
         .collect();
 
