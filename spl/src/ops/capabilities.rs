@@ -1,4 +1,4 @@
-//! Capability traits — the public dispatch surface for SPL token operations.
+//! Capability traits for SPL token behavior modules.
 //!
 //! Each trait represents a single capability (check, init contribution, close,
 //! sweep). Layout-backed blanket impls wire types with the correct schema to
@@ -17,17 +17,17 @@ use {
 // ---------------------------------------------------------------------------
 
 /// Capability: validate a token account (mint, authority, program).
-pub trait TokenCheck: AsAccountView {
+pub(crate) trait TokenCheck: AsAccountView {
     fn check_token_view(view: &AccountView, ctx: TokenCheckCtx<'_>) -> Result<(), ProgramError>;
 }
 
 /// Capability: validate a mint account (authority, decimals, freeze authority).
-pub trait MintCheck: AsAccountView {
+pub(crate) trait MintCheck: AsAccountView {
     fn check_mint_view(view: &AccountView, ctx: MintCheckCtx<'_>) -> Result<(), ProgramError>;
 }
 
 /// Capability: validate an associated token account.
-pub trait AssociatedTokenCheck: AsAccountView {
+pub(crate) trait AssociatedTokenCheck: AsAccountView {
     fn check_associated_token_view(
         view: &AccountView,
         ctx: AssociatedTokenCheckCtx<'_>,

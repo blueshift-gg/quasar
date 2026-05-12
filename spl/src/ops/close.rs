@@ -1,6 +1,6 @@
 //! Token close — CPI to the token program.
 //!
-//! The derive emits direct `TokenClose::close(...)` calls in the epilogue.
+//! Token close behavior modules call this trait during epilogue.
 
 use quasar_lang::prelude::*;
 
@@ -9,7 +9,7 @@ use quasar_lang::prelude::*;
 /// Implemented on the behavior target (`Token`, `Token2022`). The close
 /// is performed by CPI to the token program, which atomically drains
 /// lamports and invalidates the account.
-pub trait TokenClose {
+pub(crate) trait TokenClose {
     fn close(
         view: &mut AccountView,
         dest: &AccountView,

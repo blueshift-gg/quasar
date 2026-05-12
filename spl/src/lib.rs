@@ -176,8 +176,7 @@ mod exit;
 mod init;
 mod instructions;
 mod interface;
-/// Op-dispatch implementations for SPL token operations.
-pub mod ops;
+mod ops;
 /// Convenience re-exports for SPL programs.
 pub mod prelude;
 mod token;

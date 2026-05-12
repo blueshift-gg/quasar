@@ -1,9 +1,6 @@
-//! SPL token operations.
-//!
-//! Capability traits (`capabilities`) and context structs (`ctx`) are the
-//! public dispatch surface. The derive emits direct capability trait calls.
+//! Internal SPL token behavior dispatch.
 
-pub mod capabilities;
-pub mod close;
-pub mod ctx;
-pub mod sweep;
+pub(crate) mod capabilities;
+pub(crate) mod close;
+pub(crate) mod ctx;
+pub(crate) mod sweep;
