@@ -9,7 +9,7 @@ use {
     crate::{
         config::{GlobalConfig, GlobalDefaults, UiConfig},
         error::{CliError, CliResult},
-        toolchain,
+        style, toolchain,
     },
     dialoguer::{theme::ColorfulTheme, Input, MultiSelect, Select},
     git::maybe_initialize_git_repo,
@@ -17,22 +17,6 @@ use {
         GitSetup, PackageManager, RustFramework, Template, TestLanguage, Toolchain, TypeScriptSdk,
     },
 };
-
-// ---------------------------------------------------------------------------
-// ANSI helpers (delegate to shared style module)
-// ---------------------------------------------------------------------------
-
-fn color(code: u8, s: &str) -> String {
-    crate::style::color(code, s)
-}
-
-fn bold(s: &str) -> String {
-    crate::style::bold(s)
-}
-
-fn dim(s: &str) -> String {
-    crate::style::dim(s)
-}
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -383,13 +367,13 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
         };
         println!(
             "  {} {} {} {} {} {} {}",
-            dim("Using:"),
-            bold(&toolchain.to_string()),
-            dim("+"),
-            bold(&fw_label),
-            bold(&template.to_string()),
-            dim("+"),
-            bold(git_setup.summary_label()),
+            style::dim("Using:"),
+            style::bold(&toolchain.to_string()),
+            style::dim("+"),
+            style::bold(&fw_label),
+            style::bold(&template.to_string()),
+            style::dim("+"),
+            style::bold(git_setup.summary_label()),
         );
     }
 
@@ -448,28 +432,36 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
     println!();
     println!(
         "  {}  Created {} {}",
-        color(83, "\u{2714}"),
-        bold(&crate_name),
-        dim("project")
+        style::color(83, "\u{2714}"),
+        style::bold(&crate_name),
+        style::dim("project")
     );
     println!();
-    println!("  {}", dim("Next steps:"));
+    println!("  {}", style::dim("Next steps:"));
     if name != "." {
         println!(
             "    {}  {}",
-            color(45, "\u{276f}"),
-            bold(&format!("cd {name}"))
+            style::color(45, "\u{276f}"),
+            style::bold(&format!("cd {name}"))
         );
     }
-    println!("    {}  {}", color(45, "\u{276f}"), bold("quasar build"));
+    println!(
+        "    {}  {}",
+        style::color(45, "\u{276f}"),
+        style::bold("quasar build")
+    );
     if !matches!(test_language, TestLanguage::None) {
-        println!("    {}  {}", color(45, "\u{276f}"), bold("quasar test"));
+        println!(
+            "    {}  {}",
+            style::color(45, "\u{276f}"),
+            style::bold("quasar test")
+        );
     }
     println!();
     println!(
         "  {} saved to {}",
-        dim("Preferences"),
-        dim(&GlobalConfig::path().display().to_string()),
+        style::dim("Preferences"),
+        style::dim(&GlobalConfig::path().display().to_string()),
     );
     println!();
 
