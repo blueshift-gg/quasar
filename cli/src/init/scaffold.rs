@@ -8,6 +8,7 @@ use {
         types::{PackageManager, RustFramework, Template, TestLanguage, Toolchain, TypeScriptSdk},
     },
     crate::error::{CliError, CliResult},
+    quasar_schema::snake_to_pascal,
     std::{fs, path::Path},
 };
 
@@ -442,7 +443,7 @@ describe.concurrent("{class_name} Program", async () => {{
     }});
 }});
 "#,
-            class_name = crate::utils::snake_to_pascal(&module_name)
+            class_name = snake_to_pascal(&module_name)
         )
     } else {
         format!(
@@ -478,7 +479,7 @@ describe.concurrent("{class_name} Program", async () => {{
     }});
 }});
 "#,
-            class_name = crate::utils::snake_to_pascal(&module_name)
+            class_name = snake_to_pascal(&module_name)
         )
     }
 }

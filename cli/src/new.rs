@@ -1,8 +1,9 @@
 use {
     crate::{
         error::{CliError, CliResult},
-        style, utils,
+        style,
     },
+    quasar_schema::snake_to_pascal,
     std::{fs, path::Path},
 };
 
@@ -62,7 +63,7 @@ pub fn run_instruction(name: &str) -> CliResult {
     }
 
     // Write the instruction file
-    let pascal = utils::snake_to_pascal(&snake);
+    let pascal = snake_to_pascal(&snake);
     let content = format!(
         r#"use quasar_lang::prelude::*;
 
@@ -198,7 +199,7 @@ pub fn run_state(name: &str) -> CliResult {
         )));
     }
 
-    let pascal = utils::snake_to_pascal(&snake);
+    let pascal = snake_to_pascal(&snake);
     let state_path = Path::new("src").join("state.rs");
     let already_exists = state_path.exists();
 
@@ -265,7 +266,7 @@ pub fn run_error(name: &str) -> CliResult {
         )));
     }
 
-    let pascal = utils::snake_to_pascal(&snake);
+    let pascal = snake_to_pascal(&snake);
     let errors_path = Path::new("src").join("errors.rs");
     let already_exists = errors_path.exists();
 
