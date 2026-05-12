@@ -32,21 +32,7 @@ pub fn initialize_mint2<'a>(
     mint_authority: &Address,
     freeze_authority: Option<&Address>,
 ) -> CpiCall<'a, 1, 67> {
-    // SAFETY: All 67 bytes written before `assume_init`.
-    let data = unsafe {
-        let mut buf = core::mem::MaybeUninit::<[u8; 67]>::uninit();
-        let ptr = buf.as_mut_ptr() as *mut u8;
-        core::ptr::write(ptr, 20);
-        core::ptr::write(ptr.add(1), decimals);
-        core::ptr::copy_nonoverlapping(mint_authority.as_ref().as_ptr(), ptr.add(2), 32);
-        if let Some(fa) = freeze_authority {
-            core::ptr::write(ptr.add(34), 1u8);
-            core::ptr::copy_nonoverlapping(fa.as_ref().as_ptr(), ptr.add(35), 32);
-        } else {
-            core::ptr::write_bytes(ptr.add(34), 0, 33);
-        }
-        buf.assume_init()
-    };
+    let data = super::initialize_mint2_data(decimals, mint_authority, freeze_authority);
 
     CpiCall::new(
         token_program.address(),

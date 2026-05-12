@@ -40,6 +40,41 @@ fn checked_amount_data<const DISCRIMINATOR: u8>(amount: u64, decimals: u8) -> [u
     }
 }
 
+#[inline(always)]
+fn initialize_account3_data(owner: &Address) -> [u8; 33] {
+    // SAFETY: All 33 bytes written before `assume_init`.
+    unsafe {
+        let mut buf = core::mem::MaybeUninit::<[u8; 33]>::uninit();
+        let ptr = buf.as_mut_ptr() as *mut u8;
+        core::ptr::write(ptr, 18);
+        core::ptr::copy_nonoverlapping(owner.as_ref().as_ptr(), ptr.add(1), 32);
+        buf.assume_init()
+    }
+}
+
+#[inline(always)]
+fn initialize_mint2_data(
+    decimals: u8,
+    mint_authority: &Address,
+    freeze_authority: Option<&Address>,
+) -> [u8; 67] {
+    // SAFETY: All 67 bytes written before `assume_init`.
+    unsafe {
+        let mut buf = core::mem::MaybeUninit::<[u8; 67]>::uninit();
+        let ptr = buf.as_mut_ptr() as *mut u8;
+        core::ptr::write(ptr, 20);
+        core::ptr::write(ptr.add(1), decimals);
+        core::ptr::copy_nonoverlapping(mint_authority.as_ref().as_ptr(), ptr.add(2), 32);
+        if let Some(fa) = freeze_authority {
+            core::ptr::write(ptr.add(34), 1u8);
+            core::ptr::copy_nonoverlapping(fa.as_ref().as_ptr(), ptr.add(35), 32);
+        } else {
+            core::ptr::write_bytes(ptr.add(34), 0, 33);
+        }
+        buf.assume_init()
+    }
+}
+
 /// Trait for types that can execute SPL Token CPI calls.
 ///
 /// Implemented by `Program<Token>`, `Program<Token2022>`, and `TokenInterface`.
@@ -273,6 +308,7 @@ pub trait TokenCpi: AsAccountView {
 
 #[cfg(kani)]
 mod kani_proofs {
+    use quasar_lang::prelude::Address;
 
     // -- transfer (disc=3, 9-byte buffer) ----------------------------------
 
@@ -395,14 +431,9 @@ mod kani_proofs {
     #[kani::proof]
     fn initialize_account3_instruction_layout() {
         let owner: [u8; 32] = kani::any();
+        let owner_address = Address::new_from_array(owner);
 
-        let data = unsafe {
-            let mut buf = core::mem::MaybeUninit::<[u8; 33]>::uninit();
-            let ptr = buf.as_mut_ptr() as *mut u8;
-            core::ptr::write(ptr, 18u8);
-            core::ptr::copy_nonoverlapping(owner.as_ptr(), ptr.add(1), 32);
-            buf.assume_init()
-        };
+        let data = super::initialize_account3_data(&owner_address);
 
         // Discriminator
         assert!(data[0] == 18u8);
@@ -423,18 +454,14 @@ mod kani_proofs {
         let decimals: u8 = kani::any();
         let mint_authority: [u8; 32] = kani::any();
         let freeze_authority: [u8; 32] = kani::any();
+        let mint_authority_address = Address::new_from_array(mint_authority);
+        let freeze_authority_address = Address::new_from_array(freeze_authority);
 
-        let data = unsafe {
-            let mut buf = core::mem::MaybeUninit::<[u8; 67]>::uninit();
-            let ptr = buf.as_mut_ptr() as *mut u8;
-            core::ptr::write(ptr, 20u8);
-            core::ptr::write(ptr.add(1), decimals);
-            core::ptr::copy_nonoverlapping(mint_authority.as_ptr(), ptr.add(2), 32);
-            // freeze authority present
-            core::ptr::write(ptr.add(34), 1u8);
-            core::ptr::copy_nonoverlapping(freeze_authority.as_ptr(), ptr.add(35), 32);
-            buf.assume_init()
-        };
+        let data = super::initialize_mint2_data(
+            decimals,
+            &mint_authority_address,
+            Some(&freeze_authority_address),
+        );
 
         // Discriminator
         assert!(data[0] == 20u8);
@@ -462,17 +489,9 @@ mod kani_proofs {
     fn initialize_mint2_instruction_layout_without_freeze() {
         let decimals: u8 = kani::any();
         let mint_authority: [u8; 32] = kani::any();
+        let mint_authority_address = Address::new_from_array(mint_authority);
 
-        let data = unsafe {
-            let mut buf = core::mem::MaybeUninit::<[u8; 67]>::uninit();
-            let ptr = buf.as_mut_ptr() as *mut u8;
-            core::ptr::write(ptr, 20u8);
-            core::ptr::write(ptr.add(1), decimals);
-            core::ptr::copy_nonoverlapping(mint_authority.as_ptr(), ptr.add(2), 32);
-            // no freeze authority — zero 33 bytes
-            core::ptr::write_bytes(ptr.add(34), 0, 33);
-            buf.assume_init()
-        };
+        let data = super::initialize_mint2_data(decimals, &mint_authority_address, None);
 
         // Discriminator
         assert!(data[0] == 20u8);

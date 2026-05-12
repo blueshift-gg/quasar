@@ -29,14 +29,7 @@ pub fn initialize_account3<'a>(
     mint: &'a AccountView,
     owner: &Address,
 ) -> CpiCall<'a, 2, 33> {
-    // SAFETY: All 33 bytes written before `assume_init`.
-    let data = unsafe {
-        let mut buf = core::mem::MaybeUninit::<[u8; 33]>::uninit();
-        let ptr = buf.as_mut_ptr() as *mut u8;
-        core::ptr::write(ptr, 18);
-        core::ptr::copy_nonoverlapping(owner.as_ref().as_ptr(), ptr.add(1), 32);
-        buf.assume_init()
-    };
+    let data = super::initialize_account3_data(owner);
 
     CpiCall::new(
         token_program.address(),
