@@ -132,19 +132,6 @@ pub struct CpiReturn {
 }
 
 impl CpiReturn {
-    #[cfg_attr(
-        not(any(test, target_os = "solana", target_arch = "bpf")),
-        allow(dead_code)
-    )]
-    #[inline(always)]
-    fn new(program_id: Address, data: [u8; MAX_RETURN_DATA], data_len: usize) -> Self {
-        Self {
-            program_id,
-            data,
-            data_len,
-        }
-    }
-
     /// Program that most recently set the return data.
     #[inline(always)]
     pub fn program_id(&self) -> &Address {
@@ -209,11 +196,11 @@ fn get_cpi_return() -> Result<CpiReturn, ProgramError> {
         // exactly size_of::<T::Zc>() bytes. We assume_init the full array
         // because the struct carries it by value; the uninitialised tail is
         // inert (u8 has no Drop).
-        return Ok(CpiReturn::new(
-            unsafe { program_id.assume_init() },
-            unsafe { data.assume_init() },
-            core::cmp::min(size, MAX_RETURN_DATA),
-        ));
+        return Ok(CpiReturn {
+            program_id: unsafe { program_id.assume_init() },
+            data: unsafe { data.assume_init() },
+            data_len: core::cmp::min(size, MAX_RETURN_DATA),
+        });
     }
 
     #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
@@ -590,7 +577,11 @@ mod tests {
         let mut data = [0u8; MAX_RETURN_DATA];
         data[..bytes.len()].copy_from_slice(bytes);
 
-        let ret = CpiReturn::new(Address::new_from_array([1u8; 32]), data, bytes.len());
+        let ret = CpiReturn {
+            program_id: Address::new_from_array([1u8; 32]),
+            data,
+            data_len: bytes.len(),
+        };
         assert_eq!(ret.decode::<u64>().unwrap(), 777u64);
     }
 
@@ -610,7 +601,11 @@ mod tests {
         let mut data = [0u8; MAX_RETURN_DATA];
         data[..bytes.len()].copy_from_slice(bytes);
 
-        let ret = CpiReturn::new(Address::new_from_array([2u8; 32]), data, bytes.len());
+        let ret = CpiReturn {
+            program_id: Address::new_from_array([2u8; 32]),
+            data,
+            data_len: bytes.len(),
+        };
         assert_eq!(ret.decode::<ReturnPayload>().unwrap(), payload);
     }
 
