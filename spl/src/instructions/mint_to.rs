@@ -16,7 +16,7 @@ use quasar_lang::{
 /// [1..9] amount        (u64 LE)
 /// ```
 #[inline(always)]
-pub fn mint_to<'a>(
+pub(super) fn mint_to<'a>(
     token_program: &'a AccountView,
     mint: &'a AccountView,
     to: &'a AccountView,

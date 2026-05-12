@@ -18,7 +18,7 @@ use quasar_lang::{
 /// [9  ] decimals       (u8)
 /// ```
 #[inline(always)]
-pub fn transfer_checked<'a>(
+pub(crate) fn transfer_checked<'a>(
     token_program: &'a AccountView,
     from: &'a AccountView,
     mint: &'a AccountView,

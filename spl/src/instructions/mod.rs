@@ -10,10 +10,8 @@ mod transfer;
 mod transfer_checked;
 
 use quasar_lang::{cpi::CpiCall, prelude::*};
-pub use {
-    close_account::close_account, initialize_account::initialize_account3,
-    initialize_mint::initialize_mint2, transfer_checked::transfer_checked,
-};
+pub(super) use {close_account::close_account, transfer_checked::transfer_checked};
+pub use {initialize_account::initialize_account3, initialize_mint::initialize_mint2};
 
 #[inline(always)]
 fn amount_data<const DISCRIMINATOR: u8>(amount: u64) -> [u8; 9] {
