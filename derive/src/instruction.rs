@@ -12,8 +12,8 @@
 use {
     crate::helpers::{
         classify_borrowed_as_compact, classify_lifetime_arg, classify_option_pod_dynamic,
-        classify_pod_dynamic, extract_generic_inner_type, is_unit_type, pod_dyn_to_compact_type,
-        InstructionArgs, PodDynField,
+        classify_pod_dynamic, extract_generic_inner_type, is_unit_type, parse_max_attr,
+        pod_dyn_to_compact_type, InstructionArgs, PodDynField,
     },
     proc_macro::TokenStream,
     quote::{format_ident, quote},
@@ -65,32 +65,6 @@ fn emit_fixed_schema_stmts(
         ));
     }
     stmts
-}
-
-/// Parse #[max(N)] or #[max(N, pfx = P)] from a function parameter's
-/// attributes.
-fn parse_max_attr_from_fn_arg(pt: &syn::PatType) -> Option<Result<(usize, usize), syn::Error>> {
-    for attr in &pt.attrs {
-        if attr.path().is_ident("max") {
-            return Some(attr.parse_args_with(|stream: syn::parse::ParseStream| {
-                let n: syn::LitInt = stream.parse()?;
-                let max_n: usize = n.base10_parse()?;
-                let mut pfx = 0usize;
-                if !stream.is_empty() {
-                    let _: syn::Token![,] = stream.parse()?;
-                    let key: syn::Ident = stream.parse()?;
-                    if key != "pfx" {
-                        return Err(syn::Error::new(key.span(), "expected `pfx`"));
-                    }
-                    let _: syn::Token![=] = stream.parse()?;
-                    let p: syn::LitInt = stream.parse()?;
-                    pfx = p.base10_parse()?;
-                }
-                Ok((max_n, pfx))
-            }));
-        }
-    }
-    None
 }
 
 /// Build the handler tail: user body + epilogue, with optional return-data
@@ -195,7 +169,7 @@ fn emit_decode_and_tail(
                 arg_classes.push(ArgClass::OptionalPodDyn(pd));
             } else if matches!(&*pt.ty, Type::Reference(_)) {
                 // Borrowed arg — desugar to compact via #[max(N)]
-                match parse_max_attr_from_fn_arg(pt) {
+                match parse_max_attr(&pt.attrs) {
                     Some(Ok((max_n, pfx))) => {
                         match classify_borrowed_as_compact(&pt.ty, max_n, pfx) {
                             Some(pd) => arg_classes.push(ArgClass::PodDyn(pd)),

@@ -137,20 +137,6 @@ pub(super) fn generate_account(
             }
         }
 
-        impl quasar_lang::ops::close::AccountClose for #name {
-            #[inline(always)]
-            fn close(
-                view: &mut quasar_lang::__internal::AccountView,
-                dest: &quasar_lang::__internal::AccountView,
-            ) -> Result<(), quasar_lang::prelude::ProgramError> {
-                quasar_lang::ops::close::close_account(
-                    view,
-                    dest,
-                    <Self as quasar_lang::traits::Discriminator>::DISCRIMINATOR.len(),
-                )
-            }
-        }
-
         impl quasar_lang::ops::SupportsRealloc for #name {}
     };
 

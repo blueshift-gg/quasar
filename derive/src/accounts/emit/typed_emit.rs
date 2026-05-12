@@ -226,6 +226,9 @@ pub(crate) fn emit_program_close(
     field_ty: &syn::Type,
 ) -> proc_macro2::TokenStream {
     let dest_ident = &spec.destination_field;
+    let disc_ty = crate::helpers::extract_generic_inner_type(field_ty, "Account")
+        .or_else(|| crate::helpers::extract_generic_inner_type(field_ty, "InterfaceAccount"))
+        .unwrap_or(field_ty);
     quote! {
         {
             let __view = unsafe {
@@ -233,9 +236,10 @@ pub(crate) fn emit_program_close(
                     &mut self.#field_ident
                 )
             };
-            <#field_ty as quasar_lang::ops::close::AccountClose>::close(
+            quasar_lang::ops::close::close_account(
                 __view,
                 self.#dest_ident.to_account_view(),
+                <#disc_ty as quasar_lang::traits::Discriminator>::DISCRIMINATOR.len(),
             )?;
         }
     }

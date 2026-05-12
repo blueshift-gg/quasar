@@ -6,7 +6,8 @@ use {
     crate::helpers::{
         classify_borrowed_as_compact, classify_lifetime_arg, classify_option_pod_dynamic,
         classify_pod_dynamic, extract_generic_inner_type, parse_discriminator_bytes,
-        pascal_to_snake, prefix_bytes_to_rust_type, snake_to_pascal, InstructionArgs, PodDynField,
+        parse_max_attr, pascal_to_snake, prefix_bytes_to_rust_type, snake_to_pascal,
+        InstructionArgs, PodDynField,
     },
     proc_macro::TokenStream,
     proc_macro2::TokenStream as TokenStream2,
@@ -52,34 +53,6 @@ fn emit_heap_cursor_block(heap: bool, any_heap: bool) -> TokenStream2 {
     } else {
         quote! {}
     }
-}
-
-/// Parse `#[max(N)]` or `#[max(N, pfx = P)]` from a function parameter's
-/// attributes. Used by the `#[program]` macro to map borrowed args to
-/// compact client types.
-fn parse_max_attr_from_program_arg(pt: &syn::PatType) -> Option<(usize, usize)> {
-    for attr in &pt.attrs {
-        if attr.path().is_ident("max") {
-            let parsed = attr.parse_args_with(|stream: syn::parse::ParseStream| {
-                let n: LitInt = stream.parse()?;
-                let max_n: usize = n.base10_parse()?;
-                let mut pfx = 0usize;
-                if !stream.is_empty() {
-                    let _: syn::Token![,] = stream.parse()?;
-                    let key: Ident = stream.parse()?;
-                    if key != "pfx" {
-                        return Err(syn::Error::new(key.span(), "expected `pfx`"));
-                    }
-                    let _: syn::Token![=] = stream.parse()?;
-                    let p: LitInt = stream.parse()?;
-                    pfx = p.base10_parse()?;
-                }
-                Ok((max_n, pfx))
-            });
-            return parsed.ok();
-        }
-    }
-    None
 }
 
 /// Context wrapper classification for an instruction function.
@@ -431,8 +404,9 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                         } else if matches!(&*pt.ty, Type::Reference(_)) {
                             // Borrowed arg (&str, &[T]) — parse #[max(N)] and map
                             // to compact client type, same wire format as String<N>/Vec<T,N>.
-                            let (max_n, pfx) =
-                                parse_max_attr_from_program_arg(pt).unwrap_or((0, 0));
+                            let (max_n, pfx) = parse_max_attr(&pt.attrs)
+                                .and_then(Result::ok)
+                                .unwrap_or((0, 0));
                             if let Some(pd) = classify_borrowed_as_compact(&pt.ty, max_n, pfx) {
                                 match pd {
                                     PodDynField::Str { prefix_bytes, .. } => {

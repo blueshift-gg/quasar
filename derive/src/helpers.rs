@@ -28,6 +28,31 @@ use {
     },
 };
 
+/// Parse `#[max(N)]` or `#[max(N, pfx = P)]` from an attribute list.
+pub(crate) fn parse_max_attr(attrs: &[syn::Attribute]) -> Option<syn::Result<(usize, usize)>> {
+    for attr in attrs {
+        if attr.path().is_ident("max") {
+            return Some(attr.parse_args_with(|stream: syn::parse::ParseStream| {
+                let n: LitInt = stream.parse()?;
+                let max_n: usize = n.base10_parse()?;
+                let mut pfx = 0usize;
+                if !stream.is_empty() {
+                    let _: Token![,] = stream.parse()?;
+                    let key: Ident = stream.parse()?;
+                    if key != "pfx" {
+                        return Err(syn::Error::new(key.span(), "expected `pfx`"));
+                    }
+                    let _: Token![=] = stream.parse()?;
+                    let p: LitInt = stream.parse()?;
+                    pfx = p.base10_parse()?;
+                }
+                Ok((max_n, pfx))
+            }));
+        }
+    }
+    None
+}
+
 pub(crate) struct AccountAttr {
     pub disc_bytes: Vec<LitInt>,
     pub unsafe_no_disc: bool,

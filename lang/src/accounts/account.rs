@@ -393,13 +393,6 @@ impl<T: crate::account_init::AccountInit> crate::account_init::AccountInit for A
     }
 }
 
-impl<T: crate::ops::close::AccountClose> crate::ops::close::AccountClose for Account<T> {
-    #[inline(always)]
-    fn close(view: &mut AccountView, dest: &AccountView) -> solana_program_error::ProgramResult {
-        T::close(view, dest)
-    }
-}
-
 impl<T: crate::traits::Space> crate::traits::Space for Account<T> {
     const SPACE: usize = T::SPACE;
 }

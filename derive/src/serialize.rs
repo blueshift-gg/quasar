@@ -348,31 +348,6 @@ fn extend_fixed_schema_generics(generics: &syn::Generics, fields: &[Field]) -> s
 // Borrowed compact struct path
 // ---------------------------------------------------------------------------
 
-/// Parse `#[max(N)]` or `#[max(N, pfx = P)]` from a struct field's attributes.
-fn parse_max_attr(field: &Field) -> Option<Result<(usize, usize), syn::Error>> {
-    for attr in &field.attrs {
-        if attr.path().is_ident("max") {
-            return Some(attr.parse_args_with(|stream: syn::parse::ParseStream| {
-                let n: syn::LitInt = stream.parse()?;
-                let max_n: usize = n.base10_parse()?;
-                let mut pfx = 0usize;
-                if !stream.is_empty() {
-                    let _: syn::Token![,] = stream.parse()?;
-                    let key: syn::Ident = stream.parse()?;
-                    if key != "pfx" {
-                        return Err(syn::Error::new(key.span(), "expected `pfx`"));
-                    }
-                    let _: syn::Token![=] = stream.parse()?;
-                    let p: syn::LitInt = stream.parse()?;
-                    pfx = p.base10_parse()?;
-                }
-                Ok((max_n, pfx))
-            }));
-        }
-    }
-    None
-}
-
 /// Classification of a field in a borrowed compact struct.
 enum BorrowedFieldClass {
     /// Fixed (non-reference) field — use native type in schema, extract via
@@ -396,7 +371,7 @@ fn derive_borrowed_compact(input: DeriveInput, fields: Vec<Field>) -> TokenStrea
     for field in &fields {
         if let Type::Reference(_) = &field.ty {
             // Must have #[max(N)]
-            match parse_max_attr(field) {
+            match crate::helpers::parse_max_attr(&field.attrs) {
                 Some(Ok((max_n, pfx))) => {
                     match classify_borrowed_as_compact(&field.ty, max_n, pfx) {
                         Some(pd) => field_classes.push(BorrowedFieldClass::Dynamic(pd)),

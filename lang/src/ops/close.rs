@@ -1,7 +1,7 @@
 //! Account close: epilogue close for program-owned accounts.
 //!
-//! The derive emits direct `AccountClose::close(view, dest)` calls in the
-//! epilogue. The `close_account` helper performs the actual close.
+//! The derive emits direct `close_account(view, dest, disc_len)` calls in the
+//! epilogue.
 
 use {
     solana_account_view::AccountView,
@@ -28,14 +28,4 @@ pub fn close_account(
     unsafe { account.assign(&crate::cpi::system::SYSTEM_PROGRAM_ID) };
     crate::accounts::resize(account, 0)?;
     Ok(())
-}
-
-/// Trait for program-owned accounts that can be closed.
-///
-/// # Safety Contract
-///
-/// Implementations MUST zero the discriminator before or atomically with
-/// lamport drain. Failure enables revival attacks.
-pub trait AccountClose {
-    fn close(view: &mut AccountView, dest: &AccountView) -> ProgramResult;
 }
