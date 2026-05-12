@@ -7,13 +7,15 @@ mod fixed;
 mod layout;
 mod methods;
 pub(crate) mod one_of;
-pub mod seeds;
 mod traits;
 
 use {
-    crate::helpers::{
-        classify_option_pod_dynamic, classify_pod_dynamic, validate_discriminator_not_zero,
-        AccountAttr,
+    crate::{
+        helpers::{
+            classify_option_pod_dynamic, classify_pod_dynamic, validate_discriminator_not_zero,
+            AccountAttr,
+        },
+        seeds,
     },
     proc_macro::TokenStream,
     syn::{parse_macro_input, Data, DeriveInput, Fields},
@@ -25,10 +27,12 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Parse #[seeds(...)] if present, then strip it before downstream processing.
     let seeds_parsed = seeds::parse_seeds_attr(&input.attrs);
+    let seed_vis = syn::parse_quote!(pub);
     let seeds_impl = match seeds_parsed {
         Some(Ok(ref attr)) => Some(seeds::generate_seeds_impl(
             &input.ident,
             &input.generics,
+            &seed_vis,
             attr,
         )),
         Some(Err(e)) => return e.to_compile_error().into(),
