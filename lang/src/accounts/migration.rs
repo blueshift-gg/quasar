@@ -22,13 +22,6 @@ impl<From, To> AsAccountView for Migration<From, To> {
 // Safety: Migration is repr(transparent) over AccountView.
 unsafe impl<From, To> crate::traits::StaticView for Migration<From, To> {}
 
-impl<From, To> Migration<From, To> {
-    #[inline(always)]
-    fn data_starts_with<Ty: crate::traits::Discriminator>(data: &[u8]) -> bool {
-        data.starts_with(<Ty as crate::traits::Discriminator>::DISCRIMINATOR)
-    }
-}
-
 impl<From, To> crate::account_load::AccountLoad for Migration<From, To>
 where
     From: CheckOwner + crate::account_load::AccountLoad,
@@ -129,10 +122,10 @@ where
     #[inline(always)]
     fn check_source_ready(&self) -> Result<(), ProgramError> {
         let data = unsafe { self.__view.borrow_unchecked() };
-        if Self::data_starts_with::<To>(data) {
+        if data.starts_with(<To as crate::traits::Discriminator>::DISCRIMINATOR) {
             return Err(ProgramError::AccountAlreadyInitialized);
         }
-        if !Self::data_starts_with::<From>(data) {
+        if !data.starts_with(<From as crate::traits::Discriminator>::DISCRIMINATOR) {
             return Err(ProgramError::InvalidAccountData);
         }
         Ok(())
