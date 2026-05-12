@@ -20,9 +20,6 @@ use {
     syn::{parse_macro_input, FnArg, Ident, ItemFn, Pat, ReturnType, Type},
 };
 
-// Note: pre_hook/post_hook have been removed. Users should attach behavior
-// check groups to account fields or write logic directly in the handler body.
-
 /// Emit the fixed-argument decode block.
 ///
 /// This deliberately avoids deriving a local `ZeroPodFixed` schema for the

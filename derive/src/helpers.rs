@@ -56,12 +56,6 @@ impl Parse for AccountAttr {
                 set_inner = true;
             } else if ident == "fixed_capacity" {
                 fixed_capacity = true;
-            } else if ident == "custom" {
-                return Err(syn::Error::new(
-                    ident.span(),
-                    "`#[account(custom)]` has been removed; implement `AsAccountView` and \
-                     `AccountLoad` directly for fully custom account wrappers",
-                ));
             } else if ident == "one_of" {
                 one_of = true;
             } else if ident == "discriminator" {
@@ -133,12 +127,6 @@ impl Parse for InstructionArgs {
                 raw = true;
             } else if ident == "discriminator" {
                 discriminator = Some(parse_discriminator_value(input)?);
-            } else if ident == "pre_hook" || ident == "post_hook" {
-                return Err(syn::Error::new(
-                    ident.span(),
-                    "pre_hook and post_hook have been removed. Attach a behavior check group to \
-                     the relevant account field, or move logic into the handler body.",
-                ));
             } else {
                 return Err(syn::Error::new(
                     ident.span(),
