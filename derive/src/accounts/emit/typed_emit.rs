@@ -66,7 +66,7 @@ pub(crate) fn emit_epilogue_behavior(
     let path = &call.path;
     let bhv =
         quote! { <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#field_ty>> };
-    let args_block = emit_exit_args_builder(call, field_ident, field_ty);
+    let args_block = emit_exit_args_builder(call, field_ty);
 
     quote! {
         if #bhv::RUN_EXIT {
@@ -227,7 +227,6 @@ pub(crate) fn emit_program_close(
     field_ty: &syn::Type,
 ) -> proc_macro2::TokenStream {
     let dest_ident = &spec.destination_field;
-    let trait_name = format_ident!("{}Close", "Account");
     quote! {
         {
             let __view = unsafe {
@@ -235,7 +234,7 @@ pub(crate) fn emit_program_close(
                     &mut self.#field_ident
                 )
             };
-            <#field_ty as quasar_lang::ops::close::#trait_name>::close(
+            <#field_ty as quasar_lang::ops::close::AccountClose>::close(
                 __view,
                 self.#dest_ident.to_account_view(),
             )?;
@@ -289,11 +288,7 @@ fn emit_args_builder(call: &BehaviorCall, field_ty: &syn::Type) -> proc_macro2::
 
 /// Emit the builder chain for an exit behavior call (epilogue phase: uses
 /// `self.field`).
-fn emit_exit_args_builder(
-    call: &BehaviorCall,
-    _field_ident: &syn::Ident,
-    field_ty: &syn::Type,
-) -> proc_macro2::TokenStream {
+fn emit_exit_args_builder(call: &BehaviorCall, field_ty: &syn::Type) -> proc_macro2::TokenStream {
     let path = &call.path;
     let bhv =
         quote! { <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#field_ty>> };
