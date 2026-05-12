@@ -117,6 +117,8 @@ pub struct Behavior;
 const ATA_PROGRAM_ARG: u64 = quasar_lang::account_behavior::behavior_arg_key_hash("ata_program");
 const SYSTEM_PROGRAM_ARG: u64 =
     quasar_lang::account_behavior::behavior_arg_key_hash("system_program");
+const TOKEN_PROGRAM_ARG: u64 =
+    quasar_lang::account_behavior::behavior_arg_key_hash("token_program");
 
 macro_rules! impl_ata_behavior {
     (
@@ -133,7 +135,9 @@ macro_rules! impl_ata_behavior {
             #[inline(always)]
             fn uses_arg<const PHASE: u8, const KEY: u64>() -> bool {
                 !(PHASE == quasar_lang::account_behavior::ARG_PHASE_CHECK
-                    && (KEY == ATA_PROGRAM_ARG || KEY == SYSTEM_PROGRAM_ARG))
+                    && (KEY == ATA_PROGRAM_ARG
+                        || KEY == SYSTEM_PROGRAM_ARG
+                        || (!$check_token_program && KEY == TOKEN_PROGRAM_ARG)))
             }
 
             #[inline(always)]
