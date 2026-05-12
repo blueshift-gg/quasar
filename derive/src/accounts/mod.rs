@@ -140,7 +140,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         quote! {}
     };
 
-    let bumps_struct = emit::emit_bump_struct_def(&semantics, &emit_cx);
+    let bumps_struct = emit::parse::emit_bump_struct_def(&semantics, &emit_cx);
     let signer_helpers_impl = emit_signer_helpers_impl(SignerHelpersCtx {
         name,
         bumps_name: &bumps_name,
@@ -151,11 +151,11 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         ix_arg_extraction: &ix_arg_extraction,
         has_instruction_args: instruction_args.is_some(),
     });
-    let epilogue_method = match emit::emit_epilogue(&semantics, &typed_plan) {
+    let epilogue_method = match emit::parse::emit_epilogue(&semantics, &typed_plan) {
         Ok(ts) => ts,
         Err(e) => return e.to_compile_error().into(),
     };
-    let has_epilogue_expr = emit::emit_has_epilogue(&typed_plan, &semantics);
+    let has_epilogue_expr = emit::parse::emit_has_epilogue_typed(&typed_plan, &semantics);
 
     let client_macro = crate::client_macro::generate_accounts_macro(name, &semantics);
 

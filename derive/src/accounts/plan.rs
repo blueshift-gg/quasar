@@ -265,7 +265,7 @@ fn emit_full_parse_body(
     fields: &[ParseFieldPlan],
     cx: &emit::EmitCx,
 ) -> syn::Result<proc_macro2::TokenStream> {
-    let inner_body = emit::emit_parse_body(semantics, typed_plan, cx)?;
+    let inner_body = emit::parse::emit_parse_body(semantics, typed_plan, cx)?;
     emit_parse_body_from_inner(fields, inner_body)
 }
 
@@ -360,6 +360,7 @@ fn emit_parse_body_without_behavior_assertions(
     fields: &[ParseFieldPlan],
     cx: &emit::EmitCx,
 ) -> syn::Result<proc_macro2::TokenStream> {
-    let inner_body = emit::emit_parse_body_without_behavior_assertions(semantics, typed_plan, cx)?;
+    let inner_body =
+        emit::parse::emit_parse_body_without_behavior_assertions(semantics, typed_plan, cx)?;
     emit_parse_body_from_inner(fields, inner_body)
 }
