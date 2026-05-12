@@ -35,7 +35,7 @@ help-kani:
 	@echo "Expected local version: kani $(KANI_VERSION)"
 	@echo "Check version:         kani --version"
 	@echo "Run all proofs:        make kani"
-	@echo "Run one crate:         make kani-lang | make kani-spl"
+	@echo "Run one crate:         make kani-lang | make kani-spl | make kani-metadata"
 
 check-kani:
 	@command -v kani >/dev/null 2>&1 || { \
@@ -122,12 +122,10 @@ check-workspace-invariants:
 	    fi; \
 	  done <<<"$$matches"; \
 	}; \
-	for script in scripts/bench-tracked-programs.sh scripts/setup-branch-protection.sh; do \
-	  if [[ ! -x "$$script" ]]; then \
-	    echo "expected executable script: $$script" >&2; \
-	    exit 1; \
-	  fi; \
-	done; \
+	if [[ ! -x scripts/bench-tracked-programs.sh ]]; then \
+	  echo "expected executable script: scripts/bench-tracked-programs.sh" >&2; \
+	  exit 1; \
+	fi; \
 	check_allowed "process::exit" 'std::process::exit|process::exit' \
 	  'cli/src/main.rs:' 'cli/src/init/banner.rs:'; \
 	check_allowed "polling watch loop sleep" \

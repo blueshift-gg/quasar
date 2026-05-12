@@ -76,9 +76,9 @@ make kani
 Or run a single crate:
 
 ```bash
-make kani-pod
 make kani-lang
 make kani-spl
+make kani-metadata
 ```
 
 CI installs and runs the same Kani version automatically in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
