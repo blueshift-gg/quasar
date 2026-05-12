@@ -7,7 +7,7 @@ const FREEZE_DELEGATED_ACCOUNT: u8 = 26;
 const THAW_DELEGATED_ACCOUNT: u8 = 27;
 
 #[inline(always)]
-pub fn freeze_delegated_account<'a>(
+pub(super) fn freeze_delegated_account<'a>(
     program: &'a AccountView,
     delegate: &'a AccountView,
     token_account: &'a AccountView,
@@ -30,7 +30,7 @@ pub fn freeze_delegated_account<'a>(
 }
 
 #[inline(always)]
-pub fn thaw_delegated_account<'a>(
+pub(super) fn thaw_delegated_account<'a>(
     program: &'a AccountView,
     delegate: &'a AccountView,
     token_account: &'a AccountView,

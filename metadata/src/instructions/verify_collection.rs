@@ -7,7 +7,7 @@ const VERIFY_COLLECTION: u8 = 18;
 const VERIFY_SIZED_COLLECTION_ITEM: u8 = 30;
 
 #[inline(always)]
-pub fn verify_collection<'a>(
+pub(super) fn verify_collection<'a>(
     program: &'a AccountView,
     metadata: &'a AccountView,
     collection_authority: &'a AccountView,
@@ -39,7 +39,7 @@ pub fn verify_collection<'a>(
 }
 
 #[inline(always)]
-pub fn verify_sized_collection_item<'a>(
+pub(super) fn verify_sized_collection_item<'a>(
     program: &'a AccountView,
     metadata: &'a AccountView,
     collection_authority: &'a AccountView,

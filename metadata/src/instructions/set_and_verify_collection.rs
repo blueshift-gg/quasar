@@ -8,7 +8,7 @@ const SET_AND_VERIFY_SIZED_COLLECTION_ITEM: u8 = 32;
 
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
-pub fn set_and_verify_collection<'a>(
+pub(super) fn set_and_verify_collection<'a>(
     program: &'a AccountView,
     metadata: &'a AccountView,
     collection_authority: &'a AccountView,
@@ -44,7 +44,7 @@ pub fn set_and_verify_collection<'a>(
 
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
-pub fn set_and_verify_sized_collection_item<'a>(
+pub(super) fn set_and_verify_sized_collection_item<'a>(
     program: &'a AccountView,
     metadata: &'a AccountView,
     collection_authority: &'a AccountView,

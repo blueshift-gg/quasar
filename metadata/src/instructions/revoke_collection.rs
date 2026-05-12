@@ -6,7 +6,7 @@ use quasar_lang::{
 const REVOKE_COLLECTION_AUTHORITY: u8 = 24;
 
 #[inline(always)]
-pub fn revoke_collection_authority<'a>(
+pub(super) fn revoke_collection_authority<'a>(
     program: &'a AccountView,
     collection_authority_record: &'a AccountView,
     delegate_authority: &'a AccountView,

@@ -7,7 +7,7 @@ const SET_COLLECTION_SIZE: u8 = 34;
 const BUBBLEGUM_SET_COLLECTION_SIZE: u8 = 36;
 
 #[inline(always)]
-pub fn set_collection_size<'a>(
+pub(super) fn set_collection_size<'a>(
     program: &'a AccountView,
     metadata: &'a AccountView,
     update_authority: &'a AccountView,
@@ -36,7 +36,7 @@ pub fn set_collection_size<'a>(
 }
 
 #[inline(always)]
-pub fn bubblegum_set_collection_size<'a>(
+pub(super) fn bubblegum_set_collection_size<'a>(
     program: &'a AccountView,
     metadata: &'a AccountView,
     update_authority: &'a AccountView,

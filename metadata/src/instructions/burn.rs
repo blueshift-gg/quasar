@@ -7,7 +7,7 @@ const BURN_NFT: u8 = 29;
 const BURN_EDITION_NFT: u8 = 37;
 
 #[inline(always)]
-pub fn burn_nft<'a>(
+pub(super) fn burn_nft<'a>(
     program: &'a AccountView,
     metadata: &'a AccountView,
     owner: &'a AccountView,
@@ -33,7 +33,7 @@ pub fn burn_nft<'a>(
 
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
-pub fn burn_edition_nft<'a>(
+pub(super) fn burn_edition_nft<'a>(
     program: &'a AccountView,
     metadata: &'a AccountView,
     owner: &'a AccountView,

@@ -13,7 +13,7 @@ fn metadata_field_too_long() -> ProgramError {
 
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
-pub fn create_metadata_accounts_v3<'a>(
+pub(crate) fn create_metadata_accounts_v3<'a>(
     program: &'a AccountView,
     metadata: &'a AccountView,
     mint: &'a AccountView,

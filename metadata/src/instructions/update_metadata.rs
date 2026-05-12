@@ -13,7 +13,7 @@ fn metadata_field_too_long() -> ProgramError {
 
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
-pub fn update_metadata_accounts_v2<'a>(
+pub(super) fn update_metadata_accounts_v2<'a>(
     program: &'a AccountView,
     metadata: &'a AccountView,
     update_authority: &'a AccountView,

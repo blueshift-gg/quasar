@@ -6,7 +6,7 @@ use quasar_lang::{
 const SIGN_METADATA: u8 = 7;
 
 #[inline(always)]
-pub fn sign_metadata<'a>(
+pub(super) fn sign_metadata<'a>(
     program: &'a AccountView,
     creator: &'a AccountView,
     metadata: &'a AccountView,

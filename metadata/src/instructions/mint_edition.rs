@@ -7,7 +7,7 @@ const MINT_NEW_EDITION_FROM_MASTER_EDITION_VIA_TOKEN: u8 = 11;
 
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
-pub fn mint_new_edition_from_master_edition_via_token<'a>(
+pub(super) fn mint_new_edition_from_master_edition_via_token<'a>(
     program: &'a AccountView,
     new_metadata: &'a AccountView,
     new_edition: &'a AccountView,

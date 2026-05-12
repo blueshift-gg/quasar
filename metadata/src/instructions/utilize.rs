@@ -6,7 +6,7 @@ use quasar_lang::{
 const UTILIZE: u8 = 19;
 
 #[inline(always)]
-pub fn utilize<'a>(
+pub(super) fn utilize<'a>(
     program: &'a AccountView,
     metadata: &'a AccountView,
     token_account: &'a AccountView,

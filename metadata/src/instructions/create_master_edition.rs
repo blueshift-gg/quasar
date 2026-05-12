@@ -7,7 +7,7 @@ const CREATE_MASTER_EDITION_V3: u8 = 17;
 
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
-pub fn create_master_edition_v3<'a>(
+pub(crate) fn create_master_edition_v3<'a>(
     program: &'a AccountView,
     edition: &'a AccountView,
     mint: &'a AccountView,

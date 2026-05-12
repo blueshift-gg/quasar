@@ -6,7 +6,7 @@ use quasar_lang::{
 const UPDATE_PRIMARY_SALE_HAPPENED_VIA_TOKEN: u8 = 4;
 
 #[inline(always)]
-pub fn update_primary_sale_happened_via_token<'a>(
+pub(super) fn update_primary_sale_happened_via_token<'a>(
     program: &'a AccountView,
     metadata: &'a AccountView,
     owner: &'a AccountView,
