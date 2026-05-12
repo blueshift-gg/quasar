@@ -46,16 +46,11 @@ pub trait DeferredInit<A> {
 
 impl<A> Uninit<A> {
     #[inline(always)]
-    fn view_mut(&mut self) -> &mut AccountView {
-        &mut self.__view
-    }
-
-    #[inline(always)]
     pub fn init<P>(&mut self, payer: &impl AsAccountView, params: P) -> Result<&mut A, ProgramError>
     where
         P: DeferredInit<A>,
     {
-        params.init_uninit(self.view_mut(), payer.to_account_view(), &[])
+        params.init_uninit(&mut self.__view, payer.to_account_view(), &[])
     }
 
     #[inline(always)]
@@ -68,7 +63,7 @@ impl<A> Uninit<A> {
     where
         P: DeferredInit<A>,
     {
-        params.init_uninit(self.view_mut(), payer.to_account_view(), signers)
+        params.init_uninit(&mut self.__view, payer.to_account_view(), signers)
     }
 }
 

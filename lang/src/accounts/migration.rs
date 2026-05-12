@@ -24,16 +24,6 @@ unsafe impl<From, To> crate::traits::StaticView for Migration<From, To> {}
 
 impl<From, To> Migration<From, To> {
     #[inline(always)]
-    fn view(&self) -> &AccountView {
-        &self.__view
-    }
-
-    #[inline(always)]
-    fn view_mut(&mut self) -> &mut AccountView {
-        &mut self.__view
-    }
-
-    #[inline(always)]
     fn data_starts_with<Ty: crate::traits::Discriminator>(data: &[u8]) -> bool {
         data.starts_with(<Ty as crate::traits::Discriminator>::DISCRIMINATOR)
     }
@@ -72,7 +62,7 @@ where
     fn deref(&self) -> &Self::Target {
         // SAFETY: check() validated disc + data_len during load.
         let disc_len = <From as crate::traits::Discriminator>::DISCRIMINATOR.len();
-        unsafe { &*(self.view().data_ptr().add(disc_len) as *const From::Target) }
+        unsafe { &*(self.__view.data_ptr().add(disc_len) as *const From::Target) }
     }
 }
 
@@ -138,7 +128,7 @@ where
 
     #[inline(always)]
     fn check_source_ready(&self) -> Result<(), ProgramError> {
-        let data = unsafe { self.view().borrow_unchecked() };
+        let data = unsafe { self.__view.borrow_unchecked() };
         if Self::data_starts_with::<To>(data) {
             return Err(ProgramError::AccountAlreadyInitialized);
         }
@@ -150,13 +140,13 @@ where
 
     #[inline(always)]
     fn write_target(&mut self, new_data: &To::Target) {
-        let view = self.view_mut();
         let disc = <To as crate::traits::Discriminator>::DISCRIMINATOR;
+        let data = self.__view.data_mut_ptr();
         unsafe {
-            core::ptr::copy_nonoverlapping(disc.as_ptr(), view.data_mut_ptr(), disc.len());
+            core::ptr::copy_nonoverlapping(disc.as_ptr(), data, disc.len());
             core::ptr::copy_nonoverlapping(
                 new_data as *const To::Target as *const u8,
-                view.data_mut_ptr().add(disc.len()),
+                data.add(disc.len()),
                 core::mem::size_of::<To::Target>(),
             );
         }
@@ -172,13 +162,13 @@ where
         Self::assert_migration_contract();
         self.check_source_ready()?;
         crate::accounts::realloc_account(
-            self.view_mut(),
+            &mut self.__view,
             <To as crate::traits::Space>::SPACE,
             payer.to_account_view(),
             None,
         )?;
         self.write_target(&new_data);
-        <Account<To> as crate::account_load::AccountLoad>::check(self.view())?;
-        Ok(unsafe { Account::<To>::from_account_view_unchecked_mut(self.view_mut()) })
+        <Account<To> as crate::account_load::AccountLoad>::check(&self.__view)?;
+        Ok(unsafe { Account::<To>::from_account_view_unchecked_mut(&mut self.__view) })
     }
 }
