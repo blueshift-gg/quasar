@@ -154,14 +154,6 @@ impl<T: crate::account_layout::AccountLayout> crate::account_layout::AccountLayo
     const DATA_OFFSET: usize = T::DATA_OFFSET;
 }
 
-impl<T> Account<T> {
-    /// Wrap a view value (used by dynamic accounts).
-    #[inline(always)]
-    pub fn wrap(inner: T) -> Self {
-        Account { inner }
-    }
-}
-
 impl<T: AsAccountView + crate::traits::StaticView + crate::traits::Space> Account<T> {
     /// Resize data region, adjusting lamports for rent-exemption.
     #[inline(always)]
