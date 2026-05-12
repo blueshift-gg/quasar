@@ -112,9 +112,9 @@ macro_rules! impl_token_account_init {
                         ata_program,
                         idempotent,
                     } => {
-                        crate::validate_ata_program_id(ata_program)?;
-                        crate::validate_token_program_id(token_program)?;
-                        crate::validate_system_program_id(system_program)?;
+                        crate::validate::validate_ata_program_id(ata_program)?;
+                        crate::validate::validate_token_program_id(token_program)?;
+                        crate::validate::validate_system_program_id(system_program)?;
                         crate::init::init_ata(
                             ata_program,
                             ctx.payer,
@@ -205,10 +205,7 @@ pub use {
         TokenProgram,
     },
     token_2022::{Mint2022, Token2022, Token2022Program},
-    validate::{
-        validate_ata, validate_ata_program_id, validate_mint_with_freeze,
-        validate_system_program_id, validate_token_account, validate_token_program_id, FreezeCheck,
-    },
+    validate::{validate_ata, validate_mint_with_freeze, validate_token_account, FreezeCheck},
 };
 
 impl<T: ops::close::TokenClose> ops::close::TokenClose for Account<T> {
