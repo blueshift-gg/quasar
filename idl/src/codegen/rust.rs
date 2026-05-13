@@ -17,9 +17,9 @@ use {
 /// Generate Cargo.toml content for the standalone client crate.
 pub fn generate_cargo_toml(name: &str, version: &str, has_pdas: bool) -> String {
     let solana_address = if has_pdas {
-        r#"solana-address = { version = "=2.2.0", features = ["curve25519", "wincode"] }"#
+        r#"solana-address = { version = "2.5.0", features = ["curve25519", "wincode"] }"#
     } else {
-        r#"solana-address = { version = "=2.2.0", features = ["wincode"] }"#
+        r#"solana-address = { version = "2.5.0", features = ["wincode"] }"#
     };
     format!(
         r#"[package]
