@@ -18,10 +18,12 @@ pub struct TokenData {
     pub mint: Address,
     pub owner: Address,
     pub amount: u64,
+    #[zeropod(skip_accessor)]
     pub delegate: quasar_lang::__zeropod::pod::PodOption<Address, 4>,
     pub state: u8,
     pub native: quasar_lang::__zeropod::pod::PodOption<quasar_lang::__zeropod::pod::PodU64, 4>,
     pub delegated_amount: u64,
+    #[zeropod(skip_accessor)]
     pub close_authority: quasar_lang::__zeropod::pod::PodOption<Address, 4>,
 }
 
@@ -100,11 +102,13 @@ impl TokenDataZc {
 
 #[derive(quasar_lang::__zeropod::ZeroPod)]
 pub struct MintData {
+    #[zeropod(skip_accessor)]
     pub mint_authority: quasar_lang::__zeropod::pod::PodOption<Address, 4>,
     pub supply: u64,
     pub decimals: u8,
     #[zeropod(skip_accessor)]
     pub is_initialized: u8,
+    #[zeropod(skip_accessor)]
     pub freeze_authority: quasar_lang::__zeropod::pod::PodOption<Address, 4>,
 }
 

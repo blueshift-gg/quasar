@@ -22,6 +22,6 @@ quasar-spl = { path = "../../spl" }
 
 [dev-dependencies]
 quasar-escrow-client = { path = "client" }
-wincode = { version = "0.4", features = ["derive"] }
+wincode = { version = "0.4.9", features = ["derive"] }
 quasar-svm = { git = "https://github.com/blueshift-gg/quasar-svm" }
 spl-token-interface = { version = "2.0.0" }

@@ -8,8 +8,8 @@ workspace = true
 
 [dependencies]
 quasar-lang = { path = "../../../lang" }
-wincode = { version = "=0.4.9", features = ["derive"] }
-solana-address = { version = "=2.2.0", features = ["curve25519", "wincode"] }
+wincode = { version = "0.4.9", features = ["derive"] }
+solana-address = { version = "2.5.0", features = ["curve25519", "wincode"] }
 solana-instruction = "3"
 
 [lib]

@@ -27,5 +27,5 @@ trybuild = "1"
 quasar-lang = { path = "../lang" }
 quasar-derive = { path = "../derive" }
 quasar-spl = { path = "../spl" }
-solana-address = { version = ">=2.2, <2.6", features = ["copy"] }
+solana-address = { version = "2.5.0", features = ["copy"] }
 solana-program-error = "3.0.0"

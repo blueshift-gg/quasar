@@ -31,7 +31,7 @@ mollusk-svm = "0.10.3"
 spl-token-interface = "2.0.0"
 solana-program-pack = "3.1.0"
 solana-account = "3.4"
-solana-address = { version = "2.2", features = ["decode"] }
+solana-address = { version = "2.5.0", features = ["decode"] }
 solana-instruction = { version = "3.2", features = ["bincode"] }
 
 [lib]
