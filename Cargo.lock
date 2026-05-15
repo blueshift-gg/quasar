@@ -4616,9 +4616,9 @@ dependencies = [
 
 [[package]]
 name = "zeropod"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "965041fd20bffd6fc11cfc53f7b399f0ce72a7aed122e634f691bbe3954f43fb"
+checksum = "efea93c3bd4eaad26f65af88348e5e08077f4a4682adb37147765172100313c4"
 dependencies = [
  "solana-address 2.2.0",
  "solana-program-error",
@@ -4628,9 +4628,9 @@ dependencies = [
 
 [[package]]
 name = "zeropod-derive"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27ba0818e63a03ddb8582f8b4284626a1422afbccc5ed969123b3f959b52cf3a"
+checksum = "8274ac397f401621161eb645a2bc19b641a81a4f4b4a1e0e4795867fe494f6b1"
 dependencies = [
  "proc-macro2",
  "quote",
