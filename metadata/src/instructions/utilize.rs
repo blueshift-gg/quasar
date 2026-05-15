@@ -15,14 +15,7 @@ pub(super) fn utilize<'a>(
     owner: &'a AccountView,
     number_of_uses: u64,
 ) -> CpiCall<'a, 5, 9> {
-    // SAFETY: All 9 bytes are written before assume_init.
-    let data = unsafe {
-        let mut buf = core::mem::MaybeUninit::<[u8; 9]>::uninit();
-        let ptr = buf.as_mut_ptr() as *mut u8;
-        core::ptr::write(ptr, UTILIZE);
-        core::ptr::copy_nonoverlapping(number_of_uses.to_le_bytes().as_ptr(), ptr.add(1), 8);
-        buf.assume_init()
-    };
+    let data = super::u64_data::<UTILIZE>(number_of_uses);
 
     CpiCall::new(
         program.address(),

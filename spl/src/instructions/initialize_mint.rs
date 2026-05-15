@@ -3,7 +3,7 @@ use quasar_lang::{
     prelude::*,
 };
 
-/// Initialize a mint (InitializeMint2 — opcode 20).
+/// Initialize a mint (InitializeMint2, opcode 20).
 ///
 /// Free function variant for generated code that works with raw `AccountView`
 /// references during parse-time init. Equivalent to

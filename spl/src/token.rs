@@ -9,10 +9,6 @@ use {
     solana_address::Address,
 };
 
-// ---------------------------------------------------------------------------
-// Token account schema — #[derive(ZeroPod)] replaces manual TokenAccountState
-// ---------------------------------------------------------------------------
-
 #[derive(quasar_lang::__zeropod::ZeroPod)]
 pub struct TokenData {
     pub mint: Address,
@@ -45,10 +41,6 @@ impl TokenDataZc {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Mint account schema
-// ---------------------------------------------------------------------------
-
 #[derive(quasar_lang::__zeropod::ZeroPod)]
 pub struct MintData {
     pub mint_authority: quasar_lang::__zeropod::pod::PodOption<Address, 4>,
@@ -73,12 +65,8 @@ impl MintDataZc {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Account wrappers
-// ---------------------------------------------------------------------------
-
 quasar_lang::define_account!(
-    /// Token account data — validates owner is SPL Token program.
+    /// Token account data; validates owner is SPL Token program.
     ///
     /// Use as `Account<Token>` for single-program token accounts,
     /// or `InterfaceAccount<Token>` to accept both SPL Token and Token-2022.
@@ -97,7 +85,7 @@ impl Id for TokenProgram {
 }
 
 quasar_lang::define_account!(
-    /// Mint account — validates owner is SPL Token program.
+    /// Mint account; validates owner is SPL Token program.
     ///
     /// Use as `Account<Mint>` for single-program mints,
     /// or `InterfaceAccount<Mint>` to accept both SPL Token and Token-2022.
@@ -152,16 +140,8 @@ impl quasar_lang::traits::Owners for Mint {
 
 impl TokenCpi for Program<TokenProgram> {}
 
-// ---------------------------------------------------------------------------
-// Shared init impls
-// ---------------------------------------------------------------------------
-
 impl_token_account_init!(Token);
 impl_mint_account_init!(Mint);
-
-// ---------------------------------------------------------------------------
-// Init param types (shared by Token2022/Mint2022)
-// ---------------------------------------------------------------------------
 
 /// Init params for token account creation via CPI.
 ///

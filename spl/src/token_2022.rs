@@ -8,7 +8,7 @@ use {
 };
 
 quasar_lang::define_account!(
-    /// Token-2022 account data — validates owner is Token-2022 program.
+    /// Token-2022 account data; validates owner is Token-2022 program.
     pub struct Token2022 => [checks::ZeroPod]: TokenData
 );
 
@@ -24,7 +24,7 @@ impl Id for Token2022Program {
 }
 
 quasar_lang::define_account!(
-    /// Mint-2022 account data — validates owner is Token-2022 program.
+    /// Mint-2022 account data; validates owner is Token-2022 program.
     pub struct Mint2022 => [checks::ZeroPod]: MintData
 );
 
@@ -33,10 +33,6 @@ impl Owner for Mint2022 {
 }
 
 impl TokenCpi for Program<Token2022Program> {}
-
-// ---------------------------------------------------------------------------
-// Shared init impls
-// ---------------------------------------------------------------------------
 
 impl_token_account_init!(Token2022);
 impl_mint_account_init!(Mint2022);

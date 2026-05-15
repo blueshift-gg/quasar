@@ -8,7 +8,7 @@ pub struct MyData {
     pub value: u64,
 }
 
-// ERROR: no module `nonexistent` in scope — produces a readable Rust error
+// ERROR: no module `nonexistent` in scope: produces a readable Rust error
 #[derive(Accounts)]
 pub struct Bad {
     #[account(nonexistent(value = 42u64))]

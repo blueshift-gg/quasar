@@ -1,5 +1,5 @@
 use {
-    crate::codec::BorshCpiEncode,
+    crate::codec::{BorshCpiEncode, BORSH_PREFIX_LEN},
     quasar_lang::{cpi::CpiDynamic, prelude::*},
 };
 
@@ -9,6 +9,14 @@ const CREATE_METADATA_ACCOUNTS_V3: u8 = 33;
 #[inline(never)]
 fn metadata_field_too_long() -> ProgramError {
     ProgramError::InvalidInstructionData
+}
+
+#[inline(always)]
+fn borsh_payload_len(field: &impl BorshCpiEncode) -> Result<usize, ProgramError> {
+    field
+        .encoded_len()
+        .checked_sub(BORSH_PREFIX_LEN)
+        .ok_or_else(metadata_field_too_long)
 }
 
 #[inline(always)]
@@ -29,9 +37,9 @@ pub(crate) fn create_metadata_accounts_v3<'a>(
     is_mutable: bool,
     update_authority_is_signer: bool,
 ) -> Result<CpiDynamic<'a, 7, 512>, ProgramError> {
-    let name_len = name.encoded_len() - 4;
-    let symbol_len = symbol.encoded_len() - 4;
-    let uri_len = uri.encoded_len() - 4;
+    let name_len = borsh_payload_len(&name)?;
+    let symbol_len = borsh_payload_len(&symbol)?;
+    let uri_len = borsh_payload_len(&uri)?;
     if name_len > super::MAX_NAME_LEN
         || symbol_len > super::MAX_SYMBOL_LEN
         || uri_len > super::MAX_URI_LEN

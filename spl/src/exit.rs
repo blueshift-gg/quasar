@@ -20,8 +20,13 @@ pub(crate) fn sweep_token_account(
     destination: &AccountView,
     authority: &AccountView,
 ) -> Result<(), ProgramError> {
-    // SAFETY: source validated as token account during parse.
+    if quasar_lang::utils::hint::unlikely(
+        source.data_len() < core::mem::size_of::<crate::token::TokenDataZc>(),
+    ) {
+        return Err(ProgramError::InvalidAccountData);
+    }
     let amount = {
+        // SAFETY: Length is checked above and TokenDataZc has alignment 1.
         let state = unsafe { &*(source.data_ptr() as *const crate::token::TokenDataZc) };
         state.amount()
     };
@@ -30,7 +35,13 @@ pub(crate) fn sweep_token_account(
         return Ok(());
     }
 
+    if quasar_lang::utils::hint::unlikely(
+        mint.data_len() < core::mem::size_of::<crate::token::MintDataZc>(),
+    ) {
+        return Err(ProgramError::InvalidAccountData);
+    }
     let decimals = {
+        // SAFETY: Length is checked above and MintDataZc has alignment 1.
         let mint_state = unsafe { &*(mint.data_ptr() as *const crate::token::MintDataZc) };
         mint_state.decimals()
     };

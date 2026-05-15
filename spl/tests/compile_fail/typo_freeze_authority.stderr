@@ -1,4 +1,4 @@
-error: `freeze_authority = nonexistent` — no field `nonexistent` in this accounts struct
+error: `freeze_authority = nonexistent`: no field `nonexistent` in this accounts struct
   --> tests/compile_fail/typo_freeze_authority.rs:12:67
    |
 12 |     #[account(mut, mint(authority = authority, freeze_authority = nonexistent))]

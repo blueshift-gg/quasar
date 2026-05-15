@@ -11,15 +11,11 @@
 //! # Field ordering
 //!
 //! When using `#[account(init, metadata(...))]`, the metadata field must appear
-//! before any `master_edition` field in the struct — the derive processes init
+//! before any `master_edition` field in the struct; the derive processes init
 //! in declaration order and `create_master_edition_v3` requires the metadata
 //! account to exist.
 
 use quasar_lang::prelude::*;
-
-// ---------------------------------------------------------------------------
-// Args
-// ---------------------------------------------------------------------------
 
 pub struct Args<'a> {
     pub program: &'a AccountView,
@@ -176,10 +172,6 @@ impl<'a> ArgsBuilder<'a> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Behavior
-// ---------------------------------------------------------------------------
-
 pub struct Behavior;
 
 impl AccountBehavior<Account<crate::MetadataAccount>> for Behavior {
@@ -213,7 +205,6 @@ impl AccountBehavior<Account<crate::MetadataAccount>> for Behavior {
         account: &Account<crate::MetadataAccount>,
         args: &Args<'a>,
     ) -> Result<(), ProgramError> {
-        // Validate the metadata program address.
         crate::validate::validate_metadata_program(args.program)?;
         let view = account.to_account_view();
         crate::validate::validate_metadata_account(

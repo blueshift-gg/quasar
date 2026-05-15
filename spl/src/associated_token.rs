@@ -15,10 +15,6 @@ use {
     },
 };
 
-// ---------------------------------------------------------------------------
-// AssociatedTokenProgram — program account type
-// ---------------------------------------------------------------------------
-
 quasar_lang::define_account!(pub struct AssociatedTokenProgram => [checks::Executable, checks::Address]);
 
 impl Id for AssociatedTokenProgram {
@@ -83,10 +79,6 @@ pub trait AssociatedTokenCpi: AsAccountView {
 
 impl AssociatedTokenCpi for Program<AssociatedTokenProgram> {}
 
-// ---------------------------------------------------------------------------
-// Address derivation
-// ---------------------------------------------------------------------------
-
 /// Const-compatible ATA address derivation (works off-chain and in const
 /// contexts).
 ///
@@ -107,13 +99,9 @@ pub const fn get_associated_token_address_with_program_const(
     )
 }
 
-// ---------------------------------------------------------------------------
-// CPI instructions
-// ---------------------------------------------------------------------------
-
 // ATA program instruction discriminators.
-const ATA_CREATE: u8 = 0;
-const ATA_CREATE_IDEMPOTENT: u8 = 1;
+pub(crate) const ATA_CREATE: u8 = 0;
+pub(crate) const ATA_CREATE_IDEMPOTENT: u8 = 1;
 
 /// Build a CPI to the ATA program's `Create` instruction.
 ///

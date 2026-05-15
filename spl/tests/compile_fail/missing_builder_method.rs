@@ -8,7 +8,7 @@ pub struct MyData {
     pub value: u64,
 }
 
-// Behavior module with missing `.value()` setter — tests that builder
+// Behavior module with missing `.value()` setter: tests that builder
 // type errors produce readable compiler errors.
 mod bad_behavior {
     use quasar_lang::prelude::*;
@@ -23,7 +23,7 @@ mod bad_behavior {
     }
 
     impl ArgsBuilder {
-        // Missing `.value()` setter — the derive will call `.value(42u64)`
+        // Missing `.value()` setter: the derive will call `.value(42u64)`
         // which doesn't exist.
         pub fn build_check(self) -> Result<Args, ProgramError> {
             Ok(Args)

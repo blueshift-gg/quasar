@@ -25,20 +25,20 @@ fn validate_token_program(token_program: &Address) -> Result<(), ProgramError> {
 /// Validate that an existing token account has the expected mint, authority,
 /// and token program ownership.
 ///
+/// Passing `Some(token_program)` validates that the account owner matches that
+/// program and that the program is SPL Token or Token-2022. Passing `None`
+/// skips those owner checks; use it only after a typed account wrapper already
+/// proved the owner.
+///
 /// # Errors
 ///
-/// - [`ProgramError::IllegalOwner`] — account is not owned by `token_program`.
-/// - [`ProgramError::InvalidAccountData`] — data is too small, mint or
-///   authority does not match.
-/// - [`ProgramError::UninitializedAccount`] — the token account state is not
+/// - [`ProgramError::IllegalOwner`]: account is not owned by `token_program`.
+/// - [`ProgramError::InvalidAccountData`]: data is too small, mint or authority
+///   does not match.
+/// - [`ProgramError::UninitializedAccount`]: the token account state is not
 ///   initialized.
 ///
-/// # Safety
-///
-/// Performs an unchecked pointer cast to [`TokenDataZc`]. This is safe
-/// because the owner and data-length checks above guarantee the account data
-/// is at least `165` bytes and belongs to a token program.
-/// `TokenDataZc` is `#[repr(C)]` with alignment 1.
+/// Internally uses a zero-copy cast after validating owner and data length.
 #[inline(always)]
 pub fn validate_token_account(
     view: &AccountView,
@@ -48,8 +48,6 @@ pub fn validate_token_account(
 ) -> Result<(), ProgramError> {
     match token_program {
         Some(tp) => validate_token_account_inner(view, mint, authority, tp, true, true),
-        // No token_program means AccountLoad already verified the owner.
-        // Skip BOTH program validation AND owner check (owner == owner is tautological).
         None => validate_token_account_inner(view, mint, authority, view.owner(), false, false),
     }
 }
@@ -71,13 +69,13 @@ fn validate_token_account_inner(
         quasar_lang::prelude::log("validate_token_account: wrong program owner");
         return Err(ProgramError::IllegalOwner);
     }
-    if unlikely(view.data_len() < 165) {
+    if unlikely(view.data_len() < core::mem::size_of::<TokenDataZc>()) {
         #[cfg(feature = "debug")]
         quasar_lang::prelude::log("validate_token_account: data too small");
         return Err(ProgramError::InvalidAccountData);
     }
-    // SAFETY: Owner is a token program and `data_len >= LEN` checked
-    // above. `TokenDataZc` is `#[repr(C)]` with alignment 1.
+    // SAFETY: The length check above covers the full token layout, and
+    // `TokenDataZc` has alignment 1.
     let state = unsafe { &*(view.data_ptr() as *const TokenDataZc) };
     if unlikely(
         !state.delegate.tag_valid()
@@ -111,20 +109,9 @@ fn validate_token_account_inner(
     Ok(())
 }
 
-/// Validate that an existing mint account matches the provided parameters.
-///
-/// # Errors
-///
-/// - [`ProgramError::IllegalOwner`] — account is not owned by `token_program`.
-/// - [`ProgramError::InvalidAccountData`] — data is too small, mint authority
-///   or decimals do not match, or freeze authority state is unexpected.
-/// - [`ProgramError::UninitializedAccount`] — the mint state is not
-///   initialized.
-///
-/// # Safety
 /// Three-state freeze authority check for validate_mint_with_freeze.
 pub enum FreezeCheck<'a> {
-    /// Omitted by user — skip check entirely.
+    /// Omitted by user; skip check entirely.
     Skip,
     /// Assert no freeze authority.
     AssertNone,
@@ -133,6 +120,18 @@ pub enum FreezeCheck<'a> {
 }
 
 /// Validate a mint with explicit freeze_authority check semantics.
+///
+/// Passing `Some(token_program)` validates that the mint owner matches that
+/// program and that the program is SPL Token or Token-2022. Passing `None`
+/// skips those owner checks; use it only after a typed account wrapper already
+/// proved the owner.
+///
+/// # Errors
+///
+/// - [`ProgramError::IllegalOwner`]: account is not owned by `token_program`.
+/// - [`ProgramError::InvalidAccountData`]: data is too small, mint authority or
+///   decimals do not match, or freeze authority state is unexpected.
+/// - [`ProgramError::UninitializedAccount`]: the mint state is not initialized.
 #[inline(always)]
 pub fn validate_mint_with_freeze(
     view: &AccountView,
@@ -149,11 +148,13 @@ pub fn validate_mint_with_freeze(
             return Err(ProgramError::IllegalOwner);
         }
     }
-    if unlikely(view.data_len() < 82) {
+    if unlikely(view.data_len() < core::mem::size_of::<MintDataZc>()) {
         #[cfg(feature = "debug")]
         quasar_lang::prelude::log("validate_mint: data too small");
         return Err(ProgramError::InvalidAccountData);
     }
+    // SAFETY: The length check above covers the full mint layout, and
+    // `MintDataZc` has alignment 1.
     let state = unsafe { &*(view.data_ptr() as *const MintDataZc) };
     if unlikely(!state.mint_authority.tag_valid() || !state.freeze_authority.tag_valid()) {
         #[cfg(feature = "debug")]
@@ -218,7 +219,7 @@ pub fn validate_mint_with_freeze(
 ///
 /// # Errors
 ///
-/// - [`ProgramError::InvalidSeeds`] — derived address does not match.
+/// - [`ProgramError::InvalidSeeds`]: derived address does not match.
 /// - All errors from [`validate_token_account`].
 #[inline(always)]
 pub fn validate_ata(
@@ -248,10 +249,6 @@ pub fn validate_ata(
     validate_token_account_inner(view, mint, wallet, token_program, false, true)
 }
 
-// ---------------------------------------------------------------------------
-// Program ID validation for ops
-// ---------------------------------------------------------------------------
-
 #[inline(always)]
 pub(crate) fn validate_token_program_id(view: &AccountView) -> Result<(), ProgramError> {
     validate_token_program(view.address())
@@ -278,51 +275,4 @@ pub(crate) fn validate_system_program_id(view: &AccountView) -> Result<(), Progr
         return Err(ProgramError::IncorrectProgramId);
     }
     Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Kani model-checking proof harnesses
-// ---------------------------------------------------------------------------
-
-#[cfg(kani)]
-mod kani_proofs {
-    use super::*;
-
-    /// Prove 165 equals the actual struct size.
-    /// This is the constant used in the `data_len < LEN` guard (line 68)
-    /// before the pointer cast at line 75.
-    #[kani::proof]
-    fn token_account_len_matches_sizeof() {
-        assert!(165 == core::mem::size_of::<TokenDataZc>());
-    }
-
-    /// Prove 82 equals the actual struct size.
-    /// This is the constant used in the `data_len < LEN` guard (line 128)
-    /// before the pointer cast at line 135.
-    #[kani::proof]
-    fn mint_account_len_matches_sizeof() {
-        assert!(82 == core::mem::size_of::<MintDataZc>());
-    }
-
-    /// Prove: for any `data_len >= 165`, the data
-    /// covers the full struct — i.e. `data_len >=
-    /// size_of::<TokenDataZc>()`. This verifies the runtime guard is
-    /// sufficient for a safe pointer cast.
-    #[kani::proof]
-    fn token_account_data_len_guard_sufficient() {
-        let data_len: usize = kani::any();
-        kani::assume(data_len >= 165);
-        assert!(data_len >= core::mem::size_of::<TokenDataZc>());
-    }
-
-    /// Prove: for any `data_len >= 82`, the data
-    /// covers the full struct — i.e. `data_len >=
-    /// size_of::<MintDataZc>()`. This verifies the runtime guard is
-    /// sufficient for a safe pointer cast.
-    #[kani::proof]
-    fn mint_account_data_len_guard_sufficient() {
-        let data_len: usize = kani::any();
-        kani::assume(data_len >= 82);
-        assert!(data_len >= core::mem::size_of::<MintDataZc>());
-    }
 }

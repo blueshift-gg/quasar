@@ -1,4 +1,4 @@
-error: `mint = mnit` — no field `mnit` in this accounts struct
+error: `mint = mnit`: no field `mnit` in this accounts struct
   --> tests/compile_fail/typo_field_ref.rs:12:28
    |
 12 |     #[account(token(mint = mnit, authority = authority, token_program = token_program))]

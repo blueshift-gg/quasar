@@ -7,8 +7,8 @@ use {
 /// Extension trait for metadata account initialization.
 ///
 /// Invokes `create_metadata_accounts_v3` via CPI. The Metaplex program
-/// derives and allocates the metadata PDA internally — no
-/// `SystemProgram::create_account` needed from the caller.
+/// derives and allocates the metadata PDA internally; callers do not need a
+/// separate `SystemProgram::create_account`.
 ///
 /// ```ignore
 /// self.metadata.init(

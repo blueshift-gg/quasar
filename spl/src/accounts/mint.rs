@@ -10,10 +10,6 @@
 
 use quasar_lang::prelude::*;
 
-// ---------------------------------------------------------------------------
-// Args
-// ---------------------------------------------------------------------------
-
 pub struct Args<'a> {
     pub authority: &'a AccountView,
     pub decimals: Option<u8>,
@@ -23,11 +19,11 @@ pub struct Args<'a> {
 
 /// Freeze authority specification for the behavior arg.
 pub enum FreezeAuthorityArg<'a> {
-    /// Not specified — skip check.
+    /// Not specified; skip check.
     Unset,
-    /// Explicitly `None` — assert no freeze authority.
+    /// Explicitly `None`; assert no freeze authority.
     AssertNone,
-    /// Explicitly `Some(field)` — assert matches.
+    /// Explicitly `Some(field)`; assert matches.
     AssertEquals(&'a AccountView),
 }
 
@@ -102,10 +98,6 @@ impl<'a> ArgsBuilder<'a> {
         self.build_check()
     }
 }
-
-// ---------------------------------------------------------------------------
-// Behavior — concrete impls per wrapper type
-// ---------------------------------------------------------------------------
 
 pub struct Behavior;
 

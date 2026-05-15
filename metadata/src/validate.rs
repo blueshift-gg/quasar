@@ -4,9 +4,8 @@
 //! and the Metadata program. Every error path uses `unlikely()` hints for
 //! expected-success paths.
 //!
-//! These functions perform full validation (owner, data_len, key byte, fields).
-//! The behavior module's `check()` skips base checks already done by
-//! `AccountLoad::check` and calls PDA/field checks directly.
+//! These functions perform full validation (owner, data_len, key byte, fields)
+//! so behavior modules and direct callers share one validation path.
 
 use {
     crate::state::{
@@ -19,7 +18,7 @@ use {
 ///
 /// Performs owner, data length, key discriminant, and field validation.
 /// `mint` is mandatory (always known from PDA derivation or behavior args).
-/// `update_authority` is optional — omit to skip that check.
+/// `update_authority` is optional; omit it to skip that check.
 #[inline(always)]
 pub fn validate_metadata_account(
     view: &AccountView,
@@ -39,7 +38,8 @@ pub fn validate_metadata_account(
         quasar_lang::prelude::log("validate_metadata_account: data too small");
         return Err(ProgramError::InvalidAccountData);
     }
-    // SAFETY: owner + data_len checked. MetadataPrefixZc is #[repr(C)] align 1.
+    // SAFETY: Owner and data length are checked above. MetadataPrefixZc has
+    // alignment 1.
     let prefix = unsafe { &*(view.data_ptr() as *const MetadataPrefixZc) };
     if unlikely(prefix.key() != KEY_METADATA_V1) {
         #[cfg(feature = "debug")]
@@ -85,8 +85,8 @@ pub fn validate_master_edition_account(
         quasar_lang::prelude::log("validate_master_edition: data too small");
         return Err(ProgramError::InvalidAccountData);
     }
-    // SAFETY: owner + data_len checked. MasterEditionPrefixZc is #[repr(C)] align
-    // 1.
+    // SAFETY: Owner and data length are checked above. MasterEditionPrefixZc has
+    // alignment 1.
     let prefix = unsafe { &*(view.data_ptr() as *const MasterEditionPrefixZc) };
     if unlikely(prefix.key() != KEY_MASTER_EDITION_V2) {
         #[cfg(feature = "debug")]

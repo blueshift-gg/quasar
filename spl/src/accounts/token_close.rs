@@ -10,10 +10,6 @@
 
 use quasar_lang::prelude::*;
 
-// ---------------------------------------------------------------------------
-// Args
-// ---------------------------------------------------------------------------
-
 pub struct Args<'a> {
     pub dest: &'a AccountView,
     pub authority: &'a AccountView,
@@ -75,10 +71,6 @@ impl<'a> ArgsBuilder<'a> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Behavior — concrete impls per wrapper type
-// ---------------------------------------------------------------------------
-
 pub struct Behavior;
 
 macro_rules! impl_token_close_behavior {
@@ -90,6 +82,7 @@ macro_rules! impl_token_close_behavior {
 
             #[inline(always)]
             fn exit<'a>(account: &mut $wrapper, args: &Args<'a>) -> Result<(), ProgramError> {
+                // SAFETY: The exit hook has exclusive access to the loaded account wrapper.
                 let view = unsafe { <$wrapper as AccountLoad>::to_account_view_mut(account) };
                 crate::exit::close_token_account(
                     args.token_program,

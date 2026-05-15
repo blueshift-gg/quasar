@@ -6,8 +6,6 @@
 //! MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
 //!   cargo +nightly miri test -p quasar-metadata --test miri
 //! ```
-#![allow(clippy::needless_range_loop)]
-
 use {
     quasar_lang::{
         __internal::{AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED},
@@ -27,10 +25,6 @@ const METADATA_OWNER: [u8; 32] = [
     11, 112, 101, 177, 227, 209, 124, 69, 56, 157, 82, 127, 107, 4, 195, 205, 88, 184, 108, 115,
     26, 160, 253, 181, 73, 182, 209, 188, 3, 248, 41, 70,
 ];
-
-// ---------------------------------------------------------------------------
-// Test helpers
-// ---------------------------------------------------------------------------
 
 struct AccountBuffer {
     inner: Vec<u64>,
@@ -121,10 +115,6 @@ const FAKE_ADDR: [u8; 32] = [1u8; 32];
 const FAKE_MINT: [u8; 32] = [2u8; 32];
 const FAKE_UA: [u8; 32] = [3u8; 32];
 
-// ---------------------------------------------------------------------------
-// Size / alignment assertions
-// ---------------------------------------------------------------------------
-
 #[test]
 fn metadata_prefix_zc_size_65() {
     assert_eq!(size_of::<MetadataPrefixZc>(), 65);
@@ -136,10 +126,6 @@ fn master_edition_prefix_zc_size_18() {
     assert_eq!(size_of::<MasterEditionPrefixZc>(), 18);
     assert_eq!(std::mem::align_of::<MasterEditionPrefixZc>(), 1);
 }
-
-// ---------------------------------------------------------------------------
-// MetadataAccount Deref — Miri UB detection
-// ---------------------------------------------------------------------------
 
 #[test]
 fn metadata_deref_reads_correct_fields() {
@@ -221,10 +207,6 @@ fn metadata_data_too_small_rejected() {
     let result = <MetadataAccount as quasar_lang::account_load::AccountLoad>::check(&view);
     assert!(result.is_err());
 }
-
-// ---------------------------------------------------------------------------
-// MasterEditionAccount Deref — Miri UB detection
-// ---------------------------------------------------------------------------
 
 #[test]
 fn master_edition_deref_reads_correct_fields() {
@@ -336,10 +318,6 @@ fn master_edition_behavior_validation_rejects_invalid_max_supply_tag_after_fast_
     );
 }
 
-// ---------------------------------------------------------------------------
-// Adversarial data — Miri UB detection
-// ---------------------------------------------------------------------------
-
 #[test]
 fn metadata_all_zeros_rejected() {
     let data = vec![0u8; 128];
@@ -361,7 +339,7 @@ fn metadata_all_zeros_rejected() {
 }
 
 #[test]
-fn metadata_all_ff_rejected_or_valid() {
+fn metadata_all_ff_rejected() {
     let data = vec![0xFFu8; 128];
     let mut buf = AccountBuffer::new(data.len());
     buf.init(
@@ -380,9 +358,6 @@ fn metadata_all_ff_rejected_or_valid() {
     assert!(result.is_err());
 }
 
-// ---------------------------------------------------------------------------
-// PDA helpers — require SVM runtime (syscalls unavailable in unit tests)
-// ---------------------------------------------------------------------------
 // PDA derivation and verification tests belong in SVM integration tests
 // because `based_try_find_program_address` and `find_bump_for_address`
 // use Solana syscalls that are only available in the runtime.

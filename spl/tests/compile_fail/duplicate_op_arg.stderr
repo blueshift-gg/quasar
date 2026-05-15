@@ -1,4 +1,4 @@
-error: duplicate arg `authority` — each arg may only appear once
+error: duplicate arg `authority`: each arg may only appear once
   --> tests/compile_fail/duplicate_op_arg.rs:12:57
    |
 12 |     #[account(token(mint = mint, authority = authority, authority = mint))]

@@ -9,10 +9,6 @@ use {
     quasar_lang::prelude::*,
 };
 
-// ---------------------------------------------------------------------------
-// MetadataInitParams
-// ---------------------------------------------------------------------------
-
 /// Init params for metadata account creation via CPI.
 ///
 /// The derive constructs `Default` (Unset) and the metadata behavior fills
@@ -84,10 +80,6 @@ impl quasar_lang::account_init::AccountInit for MetadataAccount {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// MasterEditionInitParams
-// ---------------------------------------------------------------------------
 
 /// Init params for master edition account creation via CPI.
 #[derive(Default)]

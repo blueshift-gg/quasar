@@ -20,22 +20,7 @@ pub(crate) fn create_master_edition_v3<'a>(
     rent: &'a AccountView,
     max_supply: Option<u64>,
 ) -> CpiCall<'a, 9, 10> {
-    let data = unsafe {
-        let mut buf = core::mem::MaybeUninit::<[u8; 10]>::uninit();
-        let ptr = buf.as_mut_ptr() as *mut u8;
-        core::ptr::write(ptr, CREATE_MASTER_EDITION_V3);
-        match max_supply {
-            Some(v) => {
-                core::ptr::write(ptr.add(1), 1u8);
-                core::ptr::copy_nonoverlapping(v.to_le_bytes().as_ptr(), ptr.add(2), 8);
-            }
-            None => {
-                core::ptr::write(ptr.add(1), 0u8);
-                core::ptr::write_bytes(ptr.add(2), 0, 8);
-            }
-        }
-        buf.assume_init()
-    };
+    let data = super::option_u64_data::<CREATE_MASTER_EDITION_V3>(max_supply);
 
     CpiCall::new(
         program.address(),

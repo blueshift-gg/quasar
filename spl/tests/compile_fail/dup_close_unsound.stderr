@@ -1,4 +1,4 @@
-error: `dup` with `mut` cannot have behavior groups — mutation on aliased accounts is unsound
+error: `dup` with `mut` cannot have behavior groups: mutation on aliased accounts is unsound
   --> tests/compile_fail/dup_close_unsound.rs:14:5
    |
 14 | /     /// CHECK: testing dup + close

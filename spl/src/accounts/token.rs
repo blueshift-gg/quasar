@@ -10,10 +10,6 @@
 
 use quasar_lang::prelude::*;
 
-// ---------------------------------------------------------------------------
-// Args
-// ---------------------------------------------------------------------------
-
 pub struct Args<'a> {
     pub mint: &'a AccountView,
     pub authority: &'a AccountView,
@@ -78,10 +74,6 @@ impl<'a> ArgsBuilder<'a> {
         self.build_check()
     }
 }
-
-// ---------------------------------------------------------------------------
-// Behavior — concrete impls per wrapper type
-// ---------------------------------------------------------------------------
 
 pub struct Behavior;
 
@@ -155,7 +147,8 @@ impl_token_behavior!(
 );
 
 /// Check-only behavior for InterfaceAccount<TokenInterface>.
-/// InterfaceAccount doesn't have AccountLayout, so we call validate directly.
+/// `TokenInterface` has no single fixed token layout, so validation dispatches
+/// from the actual owner.
 impl AccountBehavior<InterfaceAccount<crate::interface::TokenInterface>> for Behavior {
     type Args<'a> = Args<'a>;
 
