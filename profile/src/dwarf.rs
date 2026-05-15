@@ -25,8 +25,6 @@ impl Resolver<'_> {
     }
 }
 
-// --- DWARF resolver (full inline frame support) ---
-
 pub(crate) struct DwarfResolver<'a> {
     ctx: addr2line::Context<gimli::EndianSlice<'a, gimli::RunTimeEndian>>,
 }
@@ -97,8 +95,6 @@ impl<'a> DwarfResolver<'a> {
         }
     }
 }
-
-// --- Symbol-only resolver (fallback, no inline info) ---
 
 pub(crate) struct SymbolResolver {
     /// Sorted by address

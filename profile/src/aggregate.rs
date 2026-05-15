@@ -22,8 +22,7 @@ pub(crate) fn profile(mmap: &[u8], info: &ElfInfo, resolver: &Resolver) -> Profi
         let stack = resolver.resolve(addr);
         total_cus += 1;
 
-        // Attribute to leaf function (innermost frame)
-        // addr2line returns frames innermost-first, so first() is the leaf
+        // addr2line returns frames innermost-first.
         if let Some(leaf) = stack.first() {
             *leaf_counts.entry(leaf.clone()).or_insert(0) += 1;
         }
@@ -31,7 +30,6 @@ pub(crate) fn profile(mmap: &[u8], info: &ElfInfo, resolver: &Resolver) -> Profi
         *stack_counts.entry(stack).or_insert(0) += 1;
     }
 
-    // Build sorted function CU table
     let mut function_cus: Vec<_> = leaf_counts.into_iter().collect();
     function_cus.sort_by_key(|b| std::cmp::Reverse(b.1));
 

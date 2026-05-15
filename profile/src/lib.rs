@@ -128,7 +128,7 @@ pub fn run(command: ProfileCommand) {
         return;
     }
 
-    // Start flamegraph server in the background (auto-shuts down when idle)
+    // Start the flamegraph server in the background.
     if has_frontend_assets(&profile_root) {
         let url = format!(
             "http://{}:{}/?program={}",
@@ -137,7 +137,7 @@ pub fn run(command: ProfileCommand) {
         match serve::serve_background(&profile_root, SERVER_PORT, program_name) {
             Ok(_) => output::print_flamegraph_link(&url),
             Err(_) => {
-                // Port busy — server already running, just show the link
+                // Port busy; server is already running, so show the link.
                 if serve::is_alive(SERVER_PORT) {
                     output::print_flamegraph_link(&url);
                 }
