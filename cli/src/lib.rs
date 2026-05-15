@@ -63,13 +63,9 @@ pub enum Command {
     Completions(CompletionsCommand),
 }
 
-// ---------------------------------------------------------------------------
-// Command args
-// ---------------------------------------------------------------------------
-
 #[derive(Args, Debug, Default)]
 pub struct InitCommand {
-    /// Project name — skips the interactive name prompt
+    /// Project name; skips the interactive name prompt
     #[arg(value_name = "NAME")]
     pub name: Option<String>,
 
@@ -314,10 +310,6 @@ pub struct CompletionsCommand {
     pub shell: clap_complete::Shell,
 }
 
-// ---------------------------------------------------------------------------
-// Run
-// ---------------------------------------------------------------------------
-
 pub fn run(cli: Cli) -> CliResult {
     match cli.command {
         Command::Init(cmd) => init::run(cmd),
@@ -404,10 +396,8 @@ pub fn run(cli: Cli) -> CliResult {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Custom help — shown for `quasar`, `quasar -h`, `quasar --help`, `quasar help`
-// ---------------------------------------------------------------------------
-
+/// Print the custom top-level help shown for `quasar`, `quasar -h`,
+/// `quasar --help`, and `quasar help`.
 pub fn print_help() {
     let v = env!("CARGO_PKG_VERSION");
 

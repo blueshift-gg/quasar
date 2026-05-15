@@ -4,10 +4,6 @@ use {
     std::path::{Path, PathBuf},
 };
 
-// ---------------------------------------------------------------------------
-// Project config (Quasar.toml)
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Deserialize)]
 pub struct QuasarConfig {
     pub project: ProjectConfig,
@@ -158,10 +154,6 @@ impl CommandSpec {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Global config (~/.quasar/config.toml) — saved preferences across projects
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct GlobalConfig {
     #[serde(default)]
@@ -183,7 +175,7 @@ pub struct GlobalDefaults {
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct UiConfig {
-    /// Show the animated banner on `quasar init` (default: true)
+    /// Show the banner on `quasar init` (default: true)
     #[serde(default = "default_true")]
     pub animation: bool,
     /// Use colored output (default: true)
@@ -276,7 +268,7 @@ mod tests {
 
     #[test]
     fn saved_config_disables_animation() {
-        // Simulates the init flow: default config → save with animation: false
+        // Simulates the init flow: default config saved with animation disabled.
         let globals = GlobalConfig::default();
         assert!(globals.ui.animation);
 

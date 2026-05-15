@@ -85,7 +85,7 @@ pub fn human_size(bytes: u64) -> String {
     }
 }
 
-/// Create a space-themed cyan spinner with a message.
+/// Create a spinner with a message.
 pub fn spinner(msg: &str) -> indicatif::ProgressBar {
     use {
         indicatif::{ProgressBar, ProgressStyle},
@@ -95,19 +95,7 @@ pub fn spinner(msg: &str) -> indicatif::ProgressBar {
     let sp = ProgressBar::new_spinner();
     sp.set_style(
         ProgressStyle::default_spinner()
-            .tick_strings(&[
-                "✦ ·  · ",
-                " ✦ ·  ·",
-                "·  ✦ · ",
-                " ·  ✦ ·",
-                "·  · ✦ ",
-                " ·  · ✦",
-                "·  · ✦ ",
-                " ·  ✦ ·",
-                "·  ✦ · ",
-                " ✦ ·  ·",
-                "✦ ·  · ",
-            ])
+            .tick_strings(&["|", "/", "-", "\\"])
             .template("  {spinner:.cyan} {msg}")
             .unwrap(),
     );

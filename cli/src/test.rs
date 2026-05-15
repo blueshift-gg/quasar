@@ -73,10 +73,6 @@ fn run_watch(
     })
 }
 
-// ---------------------------------------------------------------------------
-// TypeScript (vitest)
-// ---------------------------------------------------------------------------
-
 fn run_typescript_tests(
     config: &QuasarConfig,
     filter: Option<&str>,
@@ -96,10 +92,6 @@ fn run_typescript_tests(
     run_test_cmd(test_cmd, filter, show_output, verbose)
 }
 
-// ---------------------------------------------------------------------------
-// Rust (cargo test)
-// ---------------------------------------------------------------------------
-
 fn run_rust_tests(
     config: &QuasarConfig,
     filter: Option<&str>,
@@ -116,10 +108,6 @@ fn run_rust_tests(
 
     run_test_cmd(test_cmd, filter, show_output, verbose)
 }
-
-// ---------------------------------------------------------------------------
-// Shared helpers
-// ---------------------------------------------------------------------------
 
 fn run_command(command: &CommandSpec, verbose: bool) -> CliResult {
     eprintln!(

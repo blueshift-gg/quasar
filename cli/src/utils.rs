@@ -50,7 +50,7 @@ pub fn find_program_crate(config: &QuasarConfig) -> PathBuf {
         }
     }
 
-    // Fallback — will produce a clear parse error downstream.
+    // Fallback produces a clear parse error downstream.
     PathBuf::from(".")
 }
 

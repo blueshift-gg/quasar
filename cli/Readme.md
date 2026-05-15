@@ -14,11 +14,11 @@ cargo install --path cli
 
 Scaffold a new Quasar project. Without `--yes`, this launches an interactive wizard. If a name is provided, it pre-fills the project name prompt. With `--yes`, the command uses saved defaults or explicit flags and requires a project name.
 
-- **Project name** — becomes the crate name and `Quasar.toml` project name
-- **Toolchain** — `solana` (cargo build-sbf) or `upstream` (cargo +nightly build-bpf)
-- **Testing framework** — None, Mollusk, QuasarSVM/Rust, QuasarSVM/Web3.js, or QuasarSVM/Kit
-- **Template** — Minimal (single instruction) or Full (state, events, instruction files)
-- **Git setup** — Initialize + Commit, Initialize, or Skip
+- **Project name**: becomes the crate name and `Quasar.toml` project name
+- **Toolchain**: `solana` (cargo build-sbf) or `upstream` (cargo +nightly build-bpf)
+- **Testing framework**: None, Mollusk, QuasarSVM/Rust, QuasarSVM/Web3.js, or QuasarSVM/Kit
+- **Template**: Minimal (single instruction) or Full (state, events, instruction files)
+- **Git setup**: Initialize + Commit, Initialize, or Skip
 
 The wizard generates a complete project directory with `Cargo.toml`, `Quasar.toml`, source files, test scaffolding, a program keypair, and optional git setup. Preferences are saved to `~/.quasar/config.toml` and used as defaults for future runs.
 
@@ -55,7 +55,7 @@ Compile the on-chain program. Reads `Quasar.toml` to determine which toolchain t
 On success, prints the binary size and delta from the previous build:
 
 ```
-  ✔ Build complete in 1.2s (56.6 KB, -1.2 KB)
+  [ok] Build complete in 1.2s (56.6 KB, -1.2 KB)
 ```
 
 ### `quasar test [--debug] [--show-output] [--filter PATTERN] [--watch] [--no-build] [--features FEATURES] [--verbose]`
@@ -207,6 +207,6 @@ git = "commit"      # "commit", "init", or "skip"
 package_manager = "pnpm"
 
 [ui]
-animation = true   # Animated banner on `quasar init`
+animation = true   # Banner on `quasar init`
 color = true       # Colored terminal output
 ```

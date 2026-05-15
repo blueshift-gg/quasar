@@ -18,10 +18,6 @@ use {
     },
 };
 
-// ---------------------------------------------------------------------------
-// Entry point
-// ---------------------------------------------------------------------------
-
 pub fn run(cmd: crate::InitCommand) -> CliResult {
     let globals = GlobalConfig::load()?;
 
@@ -102,18 +98,9 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
         return Err(CliError::message("project name cannot be empty"));
     }
 
-    // Validate the target directory before prompting for remaining options
-    scaffold::validate_target_dir(&name)?;
+    let crate_name = crate_name_for_target(&name)?;
 
-    // When scaffolding into ".", derive the crate name from the current directory
-    let crate_name = if name == "." {
-        std::env::current_dir()
-            .ok()
-            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
-            .unwrap_or_else(|| "my-program".to_string())
-    } else {
-        name.clone()
-    };
+    scaffold::validate_target_dir(&name)?;
 
     // Toolchain
     let toolchain_default = match toolchain_override
@@ -265,7 +252,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
         None
     };
 
-    // Client languages — Rust always included, test language forced on
+    // Rust is always generated; TypeScript is also forced on for TS tests.
     let ts_tests = matches!(test_language, TestLanguage::TypeScript);
     let client_languages: Vec<String> = if skip_prompts {
         let mut langs = vec!["rust".to_string()];
@@ -468,6 +455,44 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
     Ok(())
 }
 
+fn crate_name_for_target(target: &str) -> Result<String, CliError> {
+    let crate_name = if target == "." {
+        std::env::current_dir()
+            .ok()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+            .unwrap_or_else(|| "my-program".to_string())
+    } else {
+        target.to_string()
+    };
+
+    validate_project_name(&crate_name)?;
+    Ok(crate_name)
+}
+
+fn validate_project_name(name: &str) -> CliResult {
+    let module = name.replace('-', "_");
+    let valid = !module.is_empty()
+        && module
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_lowercase())
+        && module
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-');
+
+    if valid {
+        return Ok(());
+    }
+
+    Err(CliError::message(format!(
+        "invalid project name: \"{name}\"\n  use a valid Rust crate name, e.g. my-program or \
+         my_program"
+    )))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -490,5 +515,40 @@ mod tests {
     fn rejects_empty_project_name_after_trimming() {
         let err = run(init_command("   ")).expect_err("blank name must fail");
         assert_eq!(err.to_string(), "project name cannot be empty");
+    }
+
+    #[test]
+    fn rejects_path_like_project_name() {
+        let err = validate_project_name("programs/vault").expect_err("path must fail");
+        assert_eq!(
+            err.to_string(),
+            "invalid project name: \"programs/vault\"\n  use a valid Rust crate name, e.g. \
+             my-program or my_program"
+        );
+    }
+
+    #[test]
+    fn rejects_project_name_that_cannot_be_a_rust_identifier() {
+        let err = validate_project_name("1-vault").expect_err("leading digit must fail");
+        assert_eq!(
+            err.to_string(),
+            "invalid project name: \"1-vault\"\n  use a valid Rust crate name, e.g. my-program or \
+             my_program"
+        );
+    }
+
+    #[test]
+    fn rejects_project_name_that_starts_with_separator() {
+        let err = validate_project_name("-vault").expect_err("leading hyphen must fail");
+        assert_eq!(
+            err.to_string(),
+            "invalid project name: \"-vault\"\n  use a valid Rust crate name, e.g. my-program or \
+             my_program"
+        );
+    }
+
+    #[test]
+    fn accepts_hyphenated_project_name() {
+        validate_project_name("my-program").expect("hyphenated crate names are valid");
     }
 }

@@ -30,7 +30,7 @@ pub fn run(all: bool) -> CliResult {
 
     for dir in &removed {
         if *dir == "target/deploy" {
-            // Preserve keypair files — losing a keypair means losing your program address
+            // Preserve keypair files because losing one changes the program address.
             clean_deploy_dir()?;
         } else {
             fs::remove_dir_all(Path::new(dir))?;

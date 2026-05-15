@@ -39,7 +39,7 @@ pub fn check_build_sbf_supports(required: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Parse "vX.YZ" → numeric value for comparison (e.g. "v1.52" → 152).
+/// Parse "vX.YZ" into a numeric value for comparison (e.g. "v1.52" to 152).
 fn parse_tools_version(s: &str) -> u32 {
     let s = s.strip_prefix('v').unwrap_or(s);
     let (major, minor) = s.split_once('.').unwrap_or(("0", "0"));

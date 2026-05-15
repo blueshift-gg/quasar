@@ -153,7 +153,7 @@ pub(super) fn scaffold(
     // Template-specific files
     match template {
         Template::Minimal => {
-            // Everything lives in lib.rs — no instructions/ directory needed
+            // Everything lives in lib.rs; no instructions/ directory is needed.
         }
         Template::Full => {
             let instructions_dir = src.join("instructions");
@@ -206,7 +206,7 @@ pub(super) fn scaffold(
         eprintln!(
             "  {}",
             crate::style::dim(
-                "note: could not generate Cargo.lock — run `cargo generate-lockfile` before \
+                "note: could not generate Cargo.lock; run `cargo generate-lockfile` before \
                  building"
             )
         );
@@ -214,10 +214,6 @@ pub(super) fn scaffold(
 
     Ok(())
 }
-
-// ---------------------------------------------------------------------------
-// Generators
-// ---------------------------------------------------------------------------
 
 fn generate_cargo_toml(
     name: &str,

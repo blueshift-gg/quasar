@@ -138,7 +138,7 @@ fn generate_idl(crate_path: &Path, clients_path: &Path) -> Result<Idl, CliError>
     Ok(idl)
 }
 
-/// Called by `quasar idl <path>` — generates IDL JSON + Rust client only.
+/// Called by `quasar idl <path>`; generates IDL JSON and the Rust client only.
 pub fn run(command: IdlCommand) -> CliResult {
     let clients_path = resolve_client_path()?;
     let crate_path = &command.crate_path;
@@ -154,8 +154,8 @@ pub fn run(command: IdlCommand) -> CliResult {
     Ok(())
 }
 
-/// Called by `quasar build` — generates IDL + Rust client + configured language
-/// clients.
+/// Called by `quasar build`; generates IDL, Rust client, and configured
+/// language clients.
 pub fn generate(
     crate_path: &Path,
     languages: &[&str],
