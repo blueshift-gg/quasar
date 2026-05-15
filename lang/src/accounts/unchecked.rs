@@ -60,10 +60,12 @@ impl AccountDataWrite for AccountView {
             return Err(ProgramError::AccountDataTooSmall);
         }
 
+        // SAFETY: Writability was checked above, `end <= data_len`, and
+        // `copy_nonoverlapping` reads only from the caller-provided byte slice.
         unsafe {
             core::ptr::copy_nonoverlapping(
                 bytes.as_ptr(),
-                self.borrow_unchecked_mut().as_mut_ptr().add(offset),
+                self.data_mut_ptr().add(offset),
                 bytes.len(),
             );
         }

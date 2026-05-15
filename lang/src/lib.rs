@@ -1,8 +1,8 @@
-//! Quasar — zero-copy Solana program framework.
+//! Quasar: zero-copy Solana program framework.
 //!
 //! `quasar-lang` provides the runtime primitives for building Solana programs
 //! with Anchor-compatible ergonomics and minimal compute unit overhead. Account
-//! data is accessed through pointer casts to `#[repr(C)]` companion structs —
+//! data is accessed through pointer casts to `#[repr(C)]` companion structs:
 //! no deserialization, no heap allocation.
 //!
 //! # Crate structure
@@ -152,20 +152,23 @@ pub mod __internal {
             // `borrow_state` field is at offset 0 of the `#[repr(C)]`
             // struct.
             let raw = ptr as *mut RuntimeAccount;
-            let borrow = (*raw).borrow_state;
+            let borrow = unsafe { (*raw).borrow_state };
 
             if borrow == NOT_BORROWED {
                 // SAFETY: Non-duplicate entry. `raw` is a valid
                 // `RuntimeAccount` pointer. `AccountView::new_unchecked`
                 // wraps it without copying.
-                core::ptr::write(buf.add(i), AccountView::new_unchecked(raw));
+                unsafe {
+                    core::ptr::write(buf.add(i), AccountView::new_unchecked(raw));
+                }
                 // SAFETY: `account_stride` computes header + data_len
                 // rounded to 8-byte alignment, matching the SVM's
                 // serialization layout.
-                ptr = ptr.add(account_stride((*raw).data_len as usize));
+                let data_len = unsafe { (*raw).data_len as usize };
+                ptr = unsafe { ptr.add(account_stride(data_len)) };
             } else {
                 // SAFETY: Duplicate entry. `borrow_state` encodes the
-                // index of the original (non-dup) account. The SVM
+                // index of the source non-dup account. The SVM
                 // guarantees dup indices always point backward to a
                 // previously-serialized non-dup entry.
                 let orig_idx = borrow as usize;
@@ -174,17 +177,19 @@ pub mod __internal {
                     // already initialized. `AccountView` does not impl
                     // `Drop` (verified by static assert in remaining.rs),
                     // so bitwise copy is safe. Note: the copy creates an
-                    // aliased `AccountView` — both point to the same
+                    // aliased `AccountView`; both point to the same
                     // `RuntimeAccount`. The raw handler is responsible for
                     // avoiding simultaneous `borrow_unchecked_mut()` on
                     // aliased views.
-                    core::ptr::write(buf.add(i), core::ptr::read(buf.add(orig_idx)));
+                    unsafe {
+                        core::ptr::write(buf.add(i), core::ptr::read(buf.add(orig_idx)));
+                    }
                 } else {
                     return Err(solana_program_error::ProgramError::InvalidAccountData);
                 }
                 // SAFETY: Dup entries are exactly `DUP_ENTRY_SIZE` (8)
                 // bytes in the SVM buffer.
-                ptr = ptr.add(DUP_ENTRY_SIZE);
+                ptr = unsafe { ptr.add(DUP_ENTRY_SIZE) };
             }
         }
         Ok((count, ptr))
@@ -229,7 +234,8 @@ pub mod __internal {
             "parse_account: input pointer is not 8-byte aligned"
         );
         let raw = input as *mut RuntimeAccount;
-        let header = *(raw as *const u32);
+        // SAFETY: `input` points to a valid `RuntimeAccount` header.
+        let header = unsafe { *(raw as *const u32) };
 
         if crate::utils::hint::unlikely(header != expected) {
             let err = crate::decode_header_error(header, expected, mask);
@@ -238,9 +244,15 @@ pub mod __internal {
             }
         }
 
-        core::ptr::write(base.add(offset), AccountView::new_unchecked(raw));
-        let input = input.add(ACCOUNT_HEADER.wrapping_add((*raw).data_len as usize));
-        let input = input.add((input as usize).wrapping_neg() & 7);
+        // SAFETY: `base.add(offset)` is within the caller-provided output
+        // buffer, and `raw` is the current account header.
+        unsafe { core::ptr::write(base.add(offset), AccountView::new_unchecked(raw)) };
+        // SAFETY: `raw` is valid for the current non-duplicate account.
+        let data_len = unsafe { (*raw).data_len as usize };
+        // SAFETY: Account entries are serialized as header + data + padding.
+        let input = unsafe { input.add(ACCOUNT_HEADER.wrapping_add(data_len)) };
+        // SAFETY: Advance over the SVM 8-byte alignment padding.
+        let input = unsafe { input.add((input as usize).wrapping_neg() & 7) };
         Ok(input)
     }
 
@@ -268,14 +280,17 @@ pub mod __internal {
             "parse_account_dup: input pointer is not 8-byte aligned"
         );
         let raw = input as *mut RuntimeAccount;
-        let actual_header = *(raw as *const u32);
+        // SAFETY: `input` points to a valid account or duplicate header.
+        let actual_header = unsafe { *(raw as *const u32) };
 
         if (actual_header & 0xFF) == NOT_BORROWED as u32 {
-            // Not a dup — validate flags.
+            // Not a dup; validate flags.
             if flags.is_optional {
                 // Optional: skip flag check if address == program_id (sentinel
                 // for None).
-                if !crate::keys_eq(&(*raw).address, program_id) {
+                // SAFETY: Non-duplicate account header contains the address.
+                let address = unsafe { &(*raw).address };
+                if !crate::keys_eq(address, program_id) {
                     let expected_flags = flags.expected & flags.flag_mask;
                     if crate::utils::hint::unlikely(
                         (actual_header & flags.flag_mask) != expected_flags,
@@ -298,9 +313,15 @@ pub mod __internal {
                     )));
                 }
             }
-            core::ptr::write(base.add(offset), AccountView::new_unchecked(raw));
-            let input = input.add(ACCOUNT_HEADER.wrapping_add((*raw).data_len as usize));
-            let input = input.add((input as usize).wrapping_neg() & 7);
+            // SAFETY: `base.add(offset)` is within the caller-provided output
+            // buffer, and `raw` is the current account header.
+            unsafe { core::ptr::write(base.add(offset), AccountView::new_unchecked(raw)) };
+            // SAFETY: `raw` is valid for the current non-duplicate account.
+            let data_len = unsafe { (*raw).data_len as usize };
+            // SAFETY: Account entries are serialized as header + data + padding.
+            let input = unsafe { input.add(ACCOUNT_HEADER.wrapping_add(data_len)) };
+            // SAFETY: Advance over the SVM 8-byte alignment padding.
+            let input = unsafe { input.add((input as usize).wrapping_neg() & 7) };
             Ok(input)
         } else {
             // Dup branch: borrow_state != NOT_BORROWED means the SVM
@@ -315,8 +336,11 @@ pub mod __internal {
                 return Err(ProgramError::InvalidAccountData);
             }
 
-            core::ptr::write(base.add(offset), core::ptr::read(base.add(idx)));
-            let input = input.add(core::mem::size_of::<u64>());
+            // SAFETY: `idx < offset` means the source slot is already
+            // initialized; the destination slot is within the output buffer.
+            unsafe { core::ptr::write(base.add(offset), core::ptr::read(base.add(idx))) };
+            // SAFETY: Duplicate entries are exactly one u64 in the SVM input.
+            let input = unsafe { input.add(core::mem::size_of::<u64>()) };
             Ok(input)
         }
     }
@@ -423,7 +447,7 @@ pub fn keys_eq(a: &solana_address::Address, b: &solana_address::Address) -> bool
 
 /// Const-compatible 32-byte address comparison for use in compile-time
 /// assertions (e.g. `one_of` owner checks, migration owner equality).
-/// Not intended for runtime use — prefer [`keys_eq`] which is branchless
+/// Not intended for runtime use; prefer [`keys_eq`] which is branchless
 /// and optimized for sBPF.
 #[inline(always)]
 pub const fn keys_eq_const(a: &solana_address::Address, b: &solana_address::Address) -> bool {
@@ -441,11 +465,11 @@ pub const fn keys_eq_const(a: &solana_address::Address, b: &solana_address::Addr
 
 /// Check if an address is all zeros (the System program address).
 ///
-/// OR-folds four u64 words — half the loads of a full comparison.
+/// OR-folds four u64 words; half the loads of a full comparison.
 #[inline(always)]
 pub fn is_system_program(addr: &solana_address::Address) -> bool {
     let a = addr.as_array().as_ptr() as *const u64;
-    // SAFETY: Same as `keys_eq` — 32 bytes read as four u64 words.
+    // SAFETY: Same as `keys_eq`: 32 bytes read as four u64 words.
     // `read_unaligned` handles the align-1 `Address` layout.
     unsafe {
         (core::ptr::read_unaligned(a)
@@ -458,14 +482,14 @@ pub fn is_system_program(addr: &solana_address::Address) -> bool {
 
 /// Decode a failed u32 header check into the appropriate error.
 ///
-/// Cold path — called only when the exact header comparison fails.
+/// Cold path, called only when the exact header comparison fails.
 /// Uses `required_mask` to perform a minimum-requirements check: if the
 /// account has all required flags (even with extras like an unexpected
 /// signer bit), returns `0` to signal "acceptable, proceed with parse."
 ///
 /// Returns:
-/// - `0` — acceptable mismatch (extra flags but requirements met)
-/// - non-zero — actual error (dup, missing signer, etc.)
+/// - `0`: acceptable mismatch (extra flags but requirements met)
+/// - non-zero: actual error (dup, missing signer, etc.)
 #[cold]
 #[inline(never)]
 #[allow(unused_variables)]
@@ -477,7 +501,7 @@ pub fn decode_header_error(header: u32, expected: u32, required_mask: u32) -> u6
 
     #[cfg(feature = "debug")]
     {
-        solana_program_log::log("account header mismatch — actual vs expected:");
+        solana_program_log::log("account header mismatch: actual vs expected:");
         crate::log::log_data(&[
             &[borrow, signer, writable, exec],
             &[exp_borrow, exp_signer, exp_writable, exp_exec],
@@ -497,11 +521,11 @@ pub fn decode_header_error(header: u32, expected: u32, required_mask: u32) -> u6
     // accept even with extras (e.g. signer when not required).
     if (header & required_mask) == (expected & required_mask) {
         #[cfg(feature = "debug")]
-        solana_program_log::log("=> extra flags present but minimum requirements met — accepted");
+        solana_program_log::log("=> extra flags present but minimum requirements met: accepted");
         return 0;
     }
 
-    // Actual flag mismatch — only reject if a required flag is missing.
+    // Actual flag mismatch: only reject if a required flag is missing.
     if exp_signer != 0 && signer == 0 {
         #[cfg(feature = "debug")]
         solana_program_log::log("=> signer required but account is not a signer");
@@ -525,12 +549,16 @@ pub fn decode_header_error(header: u32, expected: u32, required_mask: u32) -> u6
 #[inline(always)]
 pub fn abort_program() -> ! {
     #[cfg(target_os = "solana")]
+    // SAFETY: This is the Solana SBF abort sequence: place
+    // `ProgramError::Custom(0)` in r0 and exit without returning.
     unsafe {
         core::arch::asm!("lddw r0, 0x100000000", "exit", options(noreturn));
     }
 
     // bpfel-unknown-none uses LLVM's BPF dialect (different asm syntax).
     #[cfg(all(target_arch = "bpf", not(target_os = "solana")))]
+    // SAFETY: Same abort sequence as above, expressed in LLVM's BPF asm
+    // dialect for bpfel-unknown-none.
     unsafe {
         core::arch::asm!("r0 = 0x100000000 ll", "exit", options(noreturn));
     }
@@ -589,163 +617,6 @@ mod tests {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Kani model-checking proof harnesses
-// ---------------------------------------------------------------------------
-
 #[cfg(kani)]
-mod kani_proofs {
-    use {super::*, solana_address::Address};
-
-    /// Prove that `keys_eq` is equivalent to byte-wise equality for all
-    /// possible 32-byte address pairs.
-    #[kani::proof]
-    fn keys_eq_equivalence() {
-        let a_bytes: [u8; 32] = kani::any();
-        let b_bytes: [u8; 32] = kani::any();
-        let a = Address::new_from_array(a_bytes);
-        let b = Address::new_from_array(b_bytes);
-        assert!(
-            keys_eq(&a, &b) == (a_bytes == b_bytes),
-            "keys_eq must be equivalent to byte-wise equality"
-        );
-    }
-
-    /// Prove that `is_system_program` is true iff all 32 bytes are zero.
-    #[kani::proof]
-    fn is_system_program_equivalence() {
-        let bytes: [u8; 32] = kani::any();
-        let addr = Address::new_from_array(bytes);
-        assert!(
-            is_system_program(&addr) == (bytes == [0u8; 32]),
-            "is_system_program must be true iff address is all-zero"
-        );
-    }
-
-    /// Prove that `decode_header_error` returns `AccountBorrowFailed` when
-    /// the borrow byte does not match (duplicate account detection).
-    #[kani::proof]
-    fn decode_header_dup_returns_borrow_failed() {
-        let header: u32 = kani::any();
-        let expected: u32 = kani::any();
-        let required_mask: u32 = kani::any();
-
-        let h_bytes = header.to_le_bytes();
-        let e_bytes = expected.to_le_bytes();
-
-        // Borrow bytes differ — dup detection path.
-        kani::assume(h_bytes[0] != e_bytes[0]);
-
-        let result = decode_header_error(header, expected, required_mask);
-        let borrow_failed = u64::from(solana_program_error::ProgramError::AccountBorrowFailed);
-        assert!(
-            result == borrow_failed,
-            "borrow mismatch must return AccountBorrowFailed"
-        );
-    }
-
-    /// Prove that `decode_header_error` returns 0 (accept) when the borrow
-    /// byte matches and all required flags are present (superset is OK).
-    #[kani::proof]
-    fn decode_header_accepts_superset() {
-        let header: u32 = kani::any();
-        let expected: u32 = kani::any();
-        let required_mask: u32 = kani::any();
-
-        let h_bytes = header.to_le_bytes();
-        let e_bytes = expected.to_le_bytes();
-
-        // Borrow bytes match.
-        kani::assume(h_bytes[0] == e_bytes[0]);
-        // All required flags present.
-        kani::assume((header & required_mask) == (expected & required_mask));
-
-        let result = decode_header_error(header, expected, required_mask);
-        assert!(result == 0, "superset flags must be accepted (return 0)");
-    }
-
-    /// Prove that when the borrow byte matches, mask check fails, and
-    /// expected signer is nonzero but actual signer is zero, we get
-    /// `MissingRequiredSignature`.
-    #[kani::proof]
-    fn decode_header_missing_signer() {
-        let header: u32 = kani::any();
-        let expected: u32 = kani::any();
-        let required_mask: u32 = kani::any();
-
-        let h_bytes = header.to_le_bytes();
-        let e_bytes = expected.to_le_bytes();
-
-        // Borrow bytes match.
-        kani::assume(h_bytes[0] == e_bytes[0]);
-        // Mask check fails (not a superset).
-        kani::assume((header & required_mask) != (expected & required_mask));
-        // Expected signer nonzero, actual signer zero.
-        kani::assume(e_bytes[1] != 0);
-        kani::assume(h_bytes[1] == 0);
-
-        let result = decode_header_error(header, expected, required_mask);
-        let missing_sig = u64::from(solana_program_error::ProgramError::MissingRequiredSignature);
-        assert!(
-            result == missing_sig,
-            "missing signer must return MissingRequiredSignature"
-        );
-    }
-
-    /// Prove that when signer is OK but writable is missing, we get
-    /// `Immutable`.
-    #[kani::proof]
-    fn decode_header_missing_writable() {
-        let header: u32 = kani::any();
-        let expected: u32 = kani::any();
-        let required_mask: u32 = kani::any();
-
-        let h_bytes = header.to_le_bytes();
-        let e_bytes = expected.to_le_bytes();
-
-        // Borrow bytes match.
-        kani::assume(h_bytes[0] == e_bytes[0]);
-        // Mask check fails.
-        kani::assume((header & required_mask) != (expected & required_mask));
-        // Signer check passes (either not required or present).
-        kani::assume(e_bytes[1] == 0 || h_bytes[1] != 0);
-        // Expected writable nonzero, actual writable zero.
-        kani::assume(e_bytes[2] != 0);
-        kani::assume(h_bytes[2] == 0);
-
-        let result = decode_header_error(header, expected, required_mask);
-        let immutable = u64::from(solana_program_error::ProgramError::Immutable);
-        assert!(
-            result == immutable,
-            "missing writable must return Immutable"
-        );
-    }
-
-    /// Prove that when signer and writable are both OK but mask still
-    /// fails, we get `InvalidAccountData` (the executable fallthrough).
-    #[kani::proof]
-    fn decode_header_fallthrough_invalid_data() {
-        let header: u32 = kani::any();
-        let expected: u32 = kani::any();
-        let required_mask: u32 = kani::any();
-
-        let h_bytes = header.to_le_bytes();
-        let e_bytes = expected.to_le_bytes();
-
-        // Borrow bytes match.
-        kani::assume(h_bytes[0] == e_bytes[0]);
-        // Mask check fails.
-        kani::assume((header & required_mask) != (expected & required_mask));
-        // Signer check passes.
-        kani::assume(e_bytes[1] == 0 || h_bytes[1] != 0);
-        // Writable check passes.
-        kani::assume(e_bytes[2] == 0 || h_bytes[2] != 0);
-
-        let result = decode_header_error(header, expected, required_mask);
-        let invalid_data = u64::from(solana_program_error::ProgramError::InvalidAccountData);
-        assert!(
-            result == invalid_data,
-            "fallthrough must return InvalidAccountData"
-        );
-    }
-}
+#[path = "../kani/lib.rs"]
+mod kani_proofs;

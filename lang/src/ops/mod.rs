@@ -67,10 +67,14 @@ impl RentAccess for RentResolver {
     fn get(&self) -> Result<&crate::sysvars::rent::Rent, solana_program_error::ProgramError> {
         if !self.fetched.get() {
             let rent = <crate::sysvars::rent::Rent as crate::sysvars::Sysvar>::get()?;
+            // SAFETY: `fetched == false` means the cache is uninitialized, and
+            // `&self` has interior mutability through `UnsafeCell`.
             unsafe { (*self.cached.get()).write(rent) };
             self.fetched.set(true);
         }
 
+        // SAFETY: The cache is initialized before this point and remains live
+        // until `Drop`.
         Ok(unsafe { &*(*self.cached.get()).as_ptr() })
     }
 }
@@ -79,6 +83,7 @@ impl Drop for RentResolver {
     #[inline(always)]
     fn drop(&mut self) {
         if self.fetched.get() {
+            // SAFETY: `fetched == true` means the cache was initialized.
             unsafe { (*self.cached.get()).assume_init_drop() };
         }
     }
@@ -110,6 +115,8 @@ mod tests {
 
     #[test]
     fn borrowed_rent_access_returns_same_rent() {
+        // SAFETY: This test only compares pointer identity; it never observes
+        // the zeroed rent fields.
         let rent: crate::sysvars::rent::Rent = unsafe { core::mem::zeroed() };
         let borrowed = &rent;
         let resolved = borrowed.get().unwrap();

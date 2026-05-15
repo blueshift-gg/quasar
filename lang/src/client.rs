@@ -6,21 +6,18 @@
 //! | Type | Wire format |
 //! |------|-------------|
 //! | `DynBytes<P>` | `P` LE length prefix + raw bytes (`P` defaults to `u32`) |
+//! | `DynString<P>` | `P` LE byte-length prefix + UTF-8 bytes |
 //! | `DynVec<T, P>` | `P` LE count prefix + each item serialized |
 //!
 //! The prefix type `P` (u8, u16, or u32) must match the on-chain declaration.
-//! For example, `String<u8, 100>` on-chain requires `DynBytes<u8>` off-chain.
+//! For example, `String<u8, 100>` on-chain requires `DynString<u8>` off-chain.
 //!
-//! **This is the only module in `quasar-lang` that allocates** — it uses
+//! **This is the only module in `quasar-lang` that allocates**: it uses
 //! `alloc::vec::Vec` for instruction data buffers since off-chain code runs
 //! in a standard allocator environment.
 
 extern crate alloc;
 
-// Re-export instruction types used by generated client code.
-pub use solana_instruction::{AccountMeta, Instruction};
-// Re-export wincode for downstream derive macro codegen.
-pub use wincode;
 use {
     alloc::vec::Vec,
     core::{marker::PhantomData, mem::MaybeUninit},
@@ -32,17 +29,17 @@ use {
         SchemaRead, SchemaWrite,
     },
 };
-
-// ---------------------------------------------------------------------------
-// SerializeArg — compile-time dispatch for instruction arg serialization
-// ---------------------------------------------------------------------------
+pub use {
+    solana_instruction::{AccountMeta, Instruction},
+    wincode,
+};
 
 /// Instruction argument serialization for the off-chain client.
 ///
 /// Fixed-size types (`u64`, `bool`, `Option<T>`, custom `QuasarSerialize`)
-/// go through `InstructionArg::to_zc()` → raw bytes, guaranteeing the wire
+/// go through `InstructionArg::to_zc()` to raw bytes, guaranteeing the wire
 /// format matches the on-chain zero-copy layout exactly. Dynamic types
-/// (`DynBytes`, `DynVec`) use wincode's standard encoding.
+/// (`DynBytes`, `DynString`, `DynVec`) use wincode's standard encoding.
 pub trait SerializeArg {
     fn serialize_arg(&self) -> Vec<u8>;
 }
@@ -82,16 +79,12 @@ where
     }
 }
 
-// ---------------------------------------------------------------------------
-// DynBytes<P> — length-prefixed raw byte buffer
-// ---------------------------------------------------------------------------
-
 /// A dynamically-sized byte buffer with a little-endian length prefix.
 ///
 /// The prefix type `P` determines the width of the length field:
-/// - `DynBytes<u8>` — 1-byte prefix (max 255 bytes)
-/// - `DynBytes<u16>` — 2-byte prefix
-/// - `DynBytes` / `DynBytes<u32>` — 4-byte prefix (default)
+/// - `DynBytes<u8>`: 1-byte prefix (max 255 bytes)
+/// - `DynBytes<u16>`: 2-byte prefix
+/// - `DynBytes` / `DynBytes<u32>`: 4-byte prefix (default)
 #[derive(Debug, Clone, PartialEq)]
 pub struct DynBytes<P = u32>(pub Vec<u8>, PhantomData<P>);
 
@@ -165,14 +158,10 @@ where
     }
 }
 
-// ---------------------------------------------------------------------------
-// DynString<P> — length-prefixed string for client instruction args
-// ---------------------------------------------------------------------------
-
 /// A dynamically-sized UTF-8 string with a little-endian length prefix.
 ///
 /// This is the client-side type for `String<N>` instruction arguments.
-/// The wire format is `[prefix][utf8 bytes]` — identical to `DynBytes`,
+/// The wire format is `[prefix][utf8 bytes]`, identical to `DynBytes`,
 /// but with string-native ergonomics.
 ///
 /// ```ignore
@@ -182,6 +171,7 @@ where
 /// };
 /// ```
 #[derive(Debug, Clone, PartialEq)]
+#[repr(transparent)]
 pub struct DynString<P = u8>(DynBytes<P>);
 
 impl<P> DynString<P> {
@@ -247,20 +237,17 @@ where
     fn read(reader: impl Reader<'de>, dst: &mut MaybeUninit<Self>) -> ReadResult<()> {
         // SAFETY: DynString is repr-compatible with DynBytes (single field).
         let inner = dst as *mut MaybeUninit<Self> as *mut MaybeUninit<DynBytes<P>>;
-        DynBytes::<P>::read(reader, unsafe { &mut *inner })
+        let inner = unsafe { &mut *inner };
+        DynBytes::<P>::read(reader, inner)
     }
 }
-
-// ---------------------------------------------------------------------------
-// DynVec<T, P> — length-prefixed sequence of T
-// ---------------------------------------------------------------------------
 
 /// A dynamically-sized vector of `T` with a little-endian element count prefix.
 ///
 /// The prefix type `P` determines the width of the count field:
-/// - `DynVec<T, u8>` — 1-byte prefix (max 255 elements)
-/// - `DynVec<T, u16>` — 2-byte prefix
-/// - `DynVec<T>` / `DynVec<T, u32>` — 4-byte prefix (default)
+/// - `DynVec<T, u8>`: 1-byte prefix (max 255 elements)
+/// - `DynVec<T, u16>`: 2-byte prefix
+/// - `DynVec<T>` / `DynVec<T, u32>`: 4-byte prefix (default)
 #[derive(Debug, Clone, PartialEq)]
 pub struct DynVec<T, P = u32>(pub Vec<T>, PhantomData<P>);
 
@@ -340,10 +327,6 @@ where
         Ok(())
     }
 }
-
-// ---------------------------------------------------------------------------
-// SerializeArg impls for dynamic types (bypass InstructionArg blanket impl)
-// ---------------------------------------------------------------------------
 
 impl<P> SerializeArg for DynBytes<P>
 where
@@ -444,6 +427,3 @@ impl SerializeArg for Vec<u8> {
         self.clone()
     }
 }
-
-// OptionZc<Z> is now a type alias for PodOption<Z>, which already has
-// SchemaWrite/SchemaRead impls in zeropod's wincode module.

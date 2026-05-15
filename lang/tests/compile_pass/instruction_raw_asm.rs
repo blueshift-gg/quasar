@@ -1,6 +1,6 @@
 #![allow(unexpected_cfgs)]
 //! Proves that inline assembly is valid inside a `#[instruction(raw)]` handler.
-//! The raw handler is a plain function — no macro wrapping prevents `asm!()`.
+//! The raw handler is a plain function, so no macro wrapping prevents `asm!()`.
 
 use quasar_lang::prelude::*;
 
@@ -27,7 +27,7 @@ pub mod test_raw_asm {
             return Err(ProgramError::NotEnoughAccountKeys);
         }
 
-        // Inline asm — works because raw emits the function unchanged.
+        // Raw emits the function unchanged, so inline asm remains valid.
         // Use a target-appropriate nop for the compile-pass test.
         unsafe {
             #[cfg(target_arch = "x86_64")]

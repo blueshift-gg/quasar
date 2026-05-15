@@ -1,12 +1,7 @@
 use {
-    crate::{
-        impl_sysvar_get,
-        pod::PodU64,
-        prelude::{Address, ProgramError},
-        sysvars::Sysvar,
-        utils::hint::unlikely,
-    },
-    core::mem::{align_of, size_of},
+    crate::{impl_sysvar_get, pod::PodU64, sysvars::Sysvar, utils::hint::unlikely},
+    solana_address::Address,
+    solana_program_error::ProgramError,
 };
 
 /// The address of the Rent sysvar.
@@ -39,9 +34,8 @@ pub const ACCOUNT_STORAGE_OVERHEAD: u64 = 128;
 
 /// Rent sysvar data (first 16 bytes only).
 ///
-/// The full Rent sysvar is 17 bytes (includes `burn_percent: u8` at offset
-/// 16), but `burn_percent` is unused so only the first 16 bytes are read
-/// via `impl_sysvar_get` with padding = 0.
+/// The full Rent sysvar includes `burn_percent: u8` at offset 16. Quasar does
+/// not consume it, so this struct and the syscall read only the first 16 bytes.
 ///
 /// Uses `PodU64` for `lamports_per_byte` to guarantee alignment 1, making
 /// `from_bytes_unchecked` sound on all targets (not just SBF).
@@ -58,8 +52,8 @@ pub struct Rent {
     exemption_threshold: [u8; 8],
 }
 
-const _: () = assert!(size_of::<Rent>() == 16);
-const _: () = assert!(align_of::<Rent>() == 1);
+const _: () = assert!(core::mem::size_of::<Rent>() == 16);
+const _: () = assert!(core::mem::align_of::<Rent>() == 1);
 
 impl Rent {
     /// Returns the lamports-per-byte rental rate.
@@ -74,7 +68,7 @@ impl Rent {
     ///
     /// # Safety (internal)
     ///
-    /// `exemption_threshold` is a `[u8; 8]` — reading it as u64 via
+    /// `exemption_threshold` is a `[u8; 8]`; reading it as u64 via
     /// `read_unaligned` is always valid. The f64 threshold lives in the
     /// sysvar but is reinterpreted as u64 for bit-exact comparison.
     #[inline(always)]
@@ -84,24 +78,19 @@ impl Rent {
 
     /// Return the minimum lamport balance for rent exemption.
     ///
-    /// Performs no overflow or length validation — prefer
+    /// Performs no overflow or length validation; prefer
     /// [`try_minimum_balance`](Self::try_minimum_balance) unless you have
-    /// already verified that `data_len ≤ 10 MiB` and the sysvar's
+    /// already verified that `data_len <= 10 MiB` and the sysvar's
     /// `lamports_per_byte` is within safe bounds.
     #[inline(always)]
     pub fn minimum_balance_unchecked(&self, data_len: usize) -> u64 {
         let lamports_per_byte = self.lamports_per_byte.get();
         let threshold = self.exemption_threshold_raw();
-        self.minimum_balance_inner(data_len, lamports_per_byte, threshold)
+        Self::minimum_balance_inner(data_len, lamports_per_byte, threshold)
     }
 
     #[inline(always)]
-    fn minimum_balance_inner(
-        &self,
-        data_len: usize,
-        lamports_per_byte: u64,
-        threshold: u64,
-    ) -> u64 {
+    fn minimum_balance_inner(data_len: usize, lamports_per_byte: u64, threshold: u64) -> u64 {
         let total_bytes = ACCOUNT_STORAGE_OVERHEAD.wrapping_add(data_len as u64);
 
         if threshold == SIMD0194_EXEMPTION_THRESHOLD {
@@ -111,8 +100,8 @@ impl Rent {
         } else {
             #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
             {
-                (total_bytes.wrapping_mul(lamports_per_byte) as f64
-                    * f64::from_le_bytes(self.exemption_threshold)) as u64
+                (total_bytes.wrapping_mul(lamports_per_byte) as f64 * f64::from_bits(threshold))
+                    as u64
             }
             #[cfg(any(target_os = "solana", target_arch = "bpf"))]
             {
@@ -130,7 +119,6 @@ impl Rent {
     /// - `data_len` exceeds the 10 MiB maximum permitted account size.
     /// - `lamports_per_byte` would overflow the multiplication for the current
     ///   exemption threshold.
-    #[allow(clippy::collapsible_if)]
     #[inline(always)]
     pub fn try_minimum_balance(&self, data_len: usize) -> Result<u64, ProgramError> {
         if unlikely(data_len as u64 > MAX_PERMITTED_DATA_LENGTH) {
@@ -139,18 +127,30 @@ impl Rent {
 
         let lamports_per_byte = self.lamports_per_byte.get();
         let threshold = self.exemption_threshold_raw();
-        if unlikely(lamports_per_byte > CURRENT_MAX_LAMPORTS_PER_BYTE) {
-            if threshold == CURRENT_EXEMPTION_THRESHOLD {
-                return Err(ProgramError::InvalidArgument);
-            }
-        } else if unlikely(lamports_per_byte > SIMD0194_MAX_LAMPORTS_PER_BYTE) {
-            if threshold == SIMD0194_EXEMPTION_THRESHOLD {
-                return Err(ProgramError::InvalidArgument);
-            }
+        if unlikely(lamports_per_byte_exceeds_bound(
+            lamports_per_byte,
+            threshold,
+        )) {
+            return Err(ProgramError::InvalidArgument);
         }
 
-        Ok(self.minimum_balance_inner(data_len, lamports_per_byte, threshold))
+        Ok(Self::minimum_balance_inner(
+            data_len,
+            lamports_per_byte,
+            threshold,
+        ))
     }
+}
+
+#[inline(always)]
+fn lamports_per_byte_exceeds_bound(lamports_per_byte: u64, threshold: u64) -> bool {
+    let max = if threshold == SIMD0194_EXEMPTION_THRESHOLD {
+        SIMD0194_MAX_LAMPORTS_PER_BYTE
+    } else {
+        CURRENT_MAX_LAMPORTS_PER_BYTE
+    };
+
+    lamports_per_byte > max
 }
 
 /// Compute the rent-exempt minimum balance from raw values.
@@ -162,7 +162,6 @@ impl Rent {
 /// `CURRENT_EXEMPTION_THRESHOLD` (2.0) and `SIMD0194_EXEMPTION_THRESHOLD`
 /// (1.0). The else branch defaults to `2x` (current threshold behavior). If a
 /// third threshold is ever introduced, this function must be updated.
-#[allow(clippy::collapsible_if)]
 #[inline(always)]
 pub fn minimum_balance_raw(
     lamports_per_byte: u64,
@@ -172,16 +171,13 @@ pub fn minimum_balance_raw(
     if unlikely(space > MAX_PERMITTED_DATA_LENGTH) {
         return Err(ProgramError::InvalidArgument);
     }
-    // Overflow guard: same check as try_minimum_balance.
-    if unlikely(lamports_per_byte > CURRENT_MAX_LAMPORTS_PER_BYTE) {
-        if threshold == CURRENT_EXEMPTION_THRESHOLD {
-            return Err(ProgramError::InvalidArgument);
-        }
-    } else if unlikely(lamports_per_byte > SIMD0194_MAX_LAMPORTS_PER_BYTE) {
-        if threshold == SIMD0194_EXEMPTION_THRESHOLD {
-            return Err(ProgramError::InvalidArgument);
-        }
+    if unlikely(lamports_per_byte_exceeds_bound(
+        lamports_per_byte,
+        threshold,
+    )) {
+        return Err(ProgramError::InvalidArgument);
     }
+
     let total_bytes = ACCOUNT_STORAGE_OVERHEAD.wrapping_add(space);
     if threshold == SIMD0194_EXEMPTION_THRESHOLD {
         Ok(total_bytes.wrapping_mul(lamports_per_byte))
@@ -198,142 +194,34 @@ impl Sysvar for Rent {
     impl_sysvar_get!(RENT_ID, 0);
 }
 
-// ---------------------------------------------------------------------------
-// Kani model-checking proof harnesses
-// ---------------------------------------------------------------------------
-
-#[cfg(kani)]
-mod kani_proofs {
+#[cfg(test)]
+mod tests {
     use super::*;
 
-    // --- Rent struct layout ---
-
-    /// Prove alignment is 1 and size is 16 bytes.
-    /// Mirrors the compile-time assertions but makes the property explicit
-    /// in the verification suite.
-    #[kani::proof]
-    fn rent_struct_layout() {
-        assert!(align_of::<Rent>() == 1);
-        assert!(size_of::<Rent>() == 16);
+    #[test]
+    fn minimum_balance_raw_rejects_current_threshold_overflow() {
+        assert_eq!(
+            minimum_balance_raw(
+                CURRENT_MAX_LAMPORTS_PER_BYTE + 1,
+                CURRENT_EXEMPTION_THRESHOLD,
+                0
+            ),
+            Err(ProgramError::InvalidArgument)
+        );
     }
 
-    // --- exemption_threshold_raw roundtrip ---
+    #[test]
+    fn minimum_balance_raw_rejects_simd_threshold_overflow() {
+        let lamports_per_byte = SIMD0194_MAX_LAMPORTS_PER_BYTE + 1;
+        assert!(lamports_per_byte > CURRENT_MAX_LAMPORTS_PER_BYTE);
 
-    /// Prove: any u64 written via `to_le_bytes` then read back through
-    /// `read_unaligned` produces the original value. This is the exact
-    /// pattern `exemption_threshold_raw()` uses.
-    #[kani::proof]
-    fn exemption_threshold_raw_roundtrip() {
-        let value: u64 = kani::any();
-        let bytes = value.to_le_bytes();
-        let recovered = unsafe { core::ptr::read_unaligned(bytes.as_ptr() as *const u64) };
-        assert!(recovered == value);
-    }
-
-    // --- try_minimum_balance overflow safety (current threshold) ---
-
-    /// Prove: when `data_len <= MAX_PERMITTED_DATA_LENGTH` and
-    /// `lamports_per_byte <= CURRENT_MAX_LAMPORTS_PER_BYTE`, the
-    /// multiplication `2 * (ACCOUNT_STORAGE_OVERHEAD + data_len) *
-    /// lamports_per_byte` does not overflow u64.
-    #[kani::proof]
-    fn try_minimum_balance_no_overflow_current_threshold() {
-        let data_len: u64 = kani::any();
-        let lamports_per_byte: u64 = kani::any();
-
-        kani::assume(data_len <= MAX_PERMITTED_DATA_LENGTH);
-        kani::assume(lamports_per_byte <= CURRENT_MAX_LAMPORTS_PER_BYTE);
-
-        let total_bytes = ACCOUNT_STORAGE_OVERHEAD + data_len;
-        // Prove each intermediate step does not overflow.
-        let step1 = total_bytes.checked_mul(lamports_per_byte);
-        assert!(step1.is_some());
-        let step2 = 2u64.checked_mul(step1.unwrap());
-        assert!(step2.is_some());
-    }
-
-    // --- try_minimum_balance overflow safety (SIMD-0194 threshold) ---
-
-    /// Prove: when `data_len <= MAX_PERMITTED_DATA_LENGTH` and
-    /// `lamports_per_byte <= SIMD0194_MAX_LAMPORTS_PER_BYTE`, the
-    /// multiplication `(ACCOUNT_STORAGE_OVERHEAD + data_len) *
-    /// lamports_per_byte` does not overflow u64.
-    #[kani::proof]
-    fn try_minimum_balance_no_overflow_simd0194_threshold() {
-        let data_len: u64 = kani::any();
-        let lamports_per_byte: u64 = kani::any();
-
-        kani::assume(data_len <= MAX_PERMITTED_DATA_LENGTH);
-        kani::assume(lamports_per_byte <= SIMD0194_MAX_LAMPORTS_PER_BYTE);
-
-        let total_bytes = ACCOUNT_STORAGE_OVERHEAD + data_len;
-        let result = total_bytes.checked_mul(lamports_per_byte);
-        assert!(result.is_some());
-    }
-
-    // --- minimum_balance_raw overflow safety (current threshold) ---
-
-    /// Prove: `minimum_balance_raw` with the current exemption threshold
-    /// returns `Ok` and the inner `2 * total_bytes * lamports_per_byte`
-    /// does not overflow, for all in-range inputs.
-    #[kani::proof]
-    fn minimum_balance_raw_no_overflow_current_threshold() {
-        let space: u64 = kani::any();
-        let lamports_per_byte: u64 = kani::any();
-
-        kani::assume(space <= MAX_PERMITTED_DATA_LENGTH);
-        kani::assume(lamports_per_byte <= CURRENT_MAX_LAMPORTS_PER_BYTE);
-
-        let result = minimum_balance_raw(lamports_per_byte, CURRENT_EXEMPTION_THRESHOLD, space);
-        assert!(result.is_ok());
-    }
-
-    // --- minimum_balance_raw overflow safety (SIMD-0194 threshold) ---
-
-    /// Prove: `minimum_balance_raw` with the SIMD-0194 exemption threshold
-    /// returns `Ok` and the inner `total_bytes * lamports_per_byte` does not
-    /// overflow, for all in-range inputs.
-    #[kani::proof]
-    fn minimum_balance_raw_no_overflow_simd0194_threshold() {
-        let space: u64 = kani::any();
-        let lamports_per_byte: u64 = kani::any();
-
-        kani::assume(space <= MAX_PERMITTED_DATA_LENGTH);
-        kani::assume(lamports_per_byte <= SIMD0194_MAX_LAMPORTS_PER_BYTE);
-
-        let result = minimum_balance_raw(lamports_per_byte, SIMD0194_EXEMPTION_THRESHOLD, space);
-        assert!(result.is_ok());
-    }
-
-    // --- minimum_balance_raw rejects oversized data ---
-
-    /// Prove: `minimum_balance_raw` rejects any `space >
-    /// MAX_PERMITTED_DATA_LENGTH` regardless of other inputs.
-    #[kani::proof]
-    fn minimum_balance_raw_rejects_oversized_data() {
-        let space: u64 = kani::any();
-        let lamports_per_byte: u64 = kani::any();
-        let threshold: u64 = kani::any();
-
-        kani::assume(space > MAX_PERMITTED_DATA_LENGTH);
-
-        let result = minimum_balance_raw(lamports_per_byte, threshold, space);
-        assert!(result.is_err());
-    }
-
-    // --- minimum_balance_raw rejects excessive lamports_per_byte ---
-
-    /// Prove: `minimum_balance_raw` with the current threshold rejects
-    /// `lamports_per_byte > CURRENT_MAX_LAMPORTS_PER_BYTE`.
-    #[kani::proof]
-    fn minimum_balance_raw_rejects_excess_lamports_current() {
-        let space: u64 = kani::any();
-        let lamports_per_byte: u64 = kani::any();
-
-        kani::assume(space <= MAX_PERMITTED_DATA_LENGTH);
-        kani::assume(lamports_per_byte > CURRENT_MAX_LAMPORTS_PER_BYTE);
-
-        let result = minimum_balance_raw(lamports_per_byte, CURRENT_EXEMPTION_THRESHOLD, space);
-        assert!(result.is_err());
+        assert_eq!(
+            minimum_balance_raw(lamports_per_byte, SIMD0194_EXEMPTION_THRESHOLD, 0),
+            Err(ProgramError::InvalidArgument)
+        );
     }
 }
+
+#[cfg(kani)]
+#[path = "../../kani/sysvars/rent.rs"]
+mod kani_proofs;

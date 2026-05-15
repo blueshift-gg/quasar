@@ -13,7 +13,7 @@ pub struct Metadata {
 }
 
 /// Account with composite field containing aliased String/Vec.
-/// Tests the full chain: alias rewriting → ZC mapping → set_inner codegen.
+/// Tests the full chain: alias rewriting, ZC mapping, and set_inner codegen.
 #[account(discriminator = 1, set_inner)]
 pub struct Registry {
     pub meta: Metadata,

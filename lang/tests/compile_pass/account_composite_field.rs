@@ -4,7 +4,7 @@ use quasar_lang::prelude::*;
 solana_address::declare_id!("11111111111111111111111111111112");
 
 /// Composite field type: QuasarSerialize generates InstructionArg + SettingsZc.
-/// The #[account] macro's map_to_pod_type maps Settings → SettingsZc in the
+/// The #[account] macro's map_to_pod_type maps Settings to SettingsZc in the
 /// ZC struct, and zc_assign_from_value calls to_zc() for set_inner.
 #[derive(Copy, Clone, QuasarSerialize)]
 pub struct Settings {

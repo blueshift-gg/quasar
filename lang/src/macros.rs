@@ -1,11 +1,11 @@
 //! Core macros for account definitions and runtime assertions.
 //!
-//! - `define_account!` — generates a `#[repr(transparent)]` account wrapper
-//!   with check trait implementations and unchecked constructors for optimized
+//! - `define_account!`: generates a `#[repr(transparent)]` account wrapper with
+//!   check trait implementations and unchecked constructors for optimized
 //!   parsing.
-//! - `require!`, `require_eq!`, `require_keys_eq!` — constraint assertion
-//!   macros that return early with a typed error on failure.
-//! - `emit!` — emits an event via `sol_log_data` (~100 CU).
+//! - `require!`, `require_eq!`, `require_keys_eq!`: constraint assertion macros
+//!   that return early with a typed error on failure.
+//! - `emit!`: emits an event via `sol_log_data` (~100 CU).
 
 #[macro_export]
 macro_rules! define_account {
@@ -45,7 +45,7 @@ macro_rules! define_account {
         impl core::ops::DerefMut for $name {
             #[inline(always)]
             fn deref_mut(&mut self) -> &mut Self::Target {
-                // SAFETY: Same as Deref — length validated, alignment 1.
+                // SAFETY: Same as Deref; length validated, alignment 1.
                 unsafe { &mut *(self.view.data_mut_ptr() as *mut Self::Target) }
             }
         }
@@ -55,12 +55,15 @@ macro_rules! define_account {
 
             #[inline(always)]
             unsafe fn deref_from(view: &AccountView) -> &Self::Target {
-                &*(view.data_ptr() as *const Self::Target)
+                // SAFETY: Caller validated the account data layout and length.
+                unsafe { &*(view.data_ptr() as *const Self::Target) }
             }
 
             #[inline(always)]
             unsafe fn deref_from_mut(view: &mut AccountView) -> &mut Self::Target {
-                &mut *(view.data_mut_ptr() as *mut Self::Target)
+                // SAFETY: Same as `deref_from`; caller also guarantees mutable
+                // access to the account data.
+                unsafe { &mut *(view.data_mut_ptr() as *mut Self::Target) }
             }
         }
 
@@ -138,14 +141,18 @@ macro_rules! define_account {
             /// Caller must ensure all check traits have been validated.
             #[inline(always)]
             pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
-                &*(view as *const AccountView as *const Self)
+                // SAFETY: Generated account wrappers are `repr(transparent)`
+                // over `AccountView`; caller upheld the check invariants.
+                unsafe { &*(view as *const AccountView as *const Self) }
             }
 
             /// # Safety
             /// Caller must ensure all check traits and writability.
             #[inline(always)]
             pub unsafe fn from_account_view_unchecked_mut(view: &mut AccountView) -> &mut Self {
-                &mut *(view as *mut AccountView as *mut Self)
+                // SAFETY: Same layout argument as the immutable cast; caller
+                // also guarantees writable access.
+                unsafe { &mut *(view as *mut AccountView as *mut Self) }
             }
         }
 

@@ -1,7 +1,9 @@
 use crate::prelude::*;
 
-/// Program interface wrapper. Validates against multiple program IDs via
-/// `ProgramInterface`.
+/// Program interface wrapper.
+///
+/// Generated parsing enforces the executable flag via `IS_EXECUTABLE`; this
+/// wrapper validates the address against `ProgramInterface`.
 #[repr(transparent)]
 pub struct Interface<T: ProgramInterface> {
     view: AccountView,
@@ -34,9 +36,13 @@ impl<T: ProgramInterface> crate::account_load::AccountLoad for Interface<T> {
 
 impl<T: ProgramInterface> Interface<T> {
     /// # Safety
-    /// Caller must ensure executable flag and address match.
+    /// Caller must ensure the executable flag is set and the address matches
+    /// one of `T`'s allowed program IDs.
     #[inline(always)]
     pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
-        &*(view as *const AccountView as *const Self)
+        // SAFETY: `Interface<T>` is `repr(transparent)` over `AccountView`
+        // plus `PhantomData<T>`, so the reference cast preserves layout. The
+        // caller upholds the executable/address invariants.
+        unsafe { &*(view as *const AccountView as *const Self) }
     }
 }

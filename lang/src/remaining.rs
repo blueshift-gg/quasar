@@ -1,11 +1,15 @@
 use {
-    crate::{account_load::AccountLoad, error::QuasarError},
+    crate::{
+        __internal::{account_stride, DUP_ENTRY_SIZE},
+        account_load::AccountLoad,
+        error::QuasarError,
+    },
     solana_account_view::{AccountView, Ref, RefMut, RuntimeAccount, NOT_BORROWED},
     solana_address::Address,
     solana_program_error::ProgramError,
 };
 
-// `data_len` (u64) → usize cast in `advance_past_account` is lossless on
+// `data_len` (u64) -> usize cast in `advance_past_account` is lossless on
 // 64-bit targets (SBF, x86-64, aarch64). Fail compilation on 32-bit where
 // the cast would silently truncate.
 const _: () = assert!(
@@ -18,29 +22,13 @@ const _: () = assert!(
 // double-free UB.
 const _: () = assert!(
     !core::mem::needs_drop::<AccountView>(),
-    "AccountView must not implement Drop — ptr::read copies rely on this"
+    "AccountView must not implement Drop; ptr::read copies rely on this"
 );
-
-// Re-use canonical constants from __internal to avoid duplication.
-// ACCOUNT_HEADER is only referenced by Kani proof harnesses in this module.
-#[cfg(kani)]
-use crate::__internal::ACCOUNT_HEADER;
-use crate::__internal::DUP_ENTRY_SIZE;
 
 /// Maximum number of remaining accounts the iterator will yield
 /// before returning an error. Prevents unbounded stack usage in
 /// the cache array.
 const MAX_REMAINING_ACCOUNTS: usize = 64;
-
-// ---------------------------------------------------------------------------
-// Pure arithmetic helpers (extracted for Kani verification)
-// ---------------------------------------------------------------------------
-
-// Re-use canonical arithmetic helper from __internal.
-use crate::__internal::account_stride;
-// align_up_8 is only referenced by Kani proof harnesses in this module.
-#[cfg(kani)]
-use crate::__internal::align_up_8;
 
 /// Target source for duplicate account resolution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,7 +41,7 @@ enum DupSource {
 
 /// Pure index computation for duplicate account resolution.
 ///
-/// Given the original account index from the SVM buffer, determines which
+/// Given the source account index from the SVM buffer, determines which
 /// source (declared accounts or iterator cache) to read from, or returns
 /// `None` if the index is out of range.
 ///
@@ -92,7 +80,7 @@ const fn cache_has_capacity(index: usize) -> bool {
 ///
 /// ```text
 /// [RuntimeAccount header] [data ...] [10 KiB realloc padding] [u64 padding]
-/// └── ACCOUNT_HEADER + data_len ──────────────────────────────┘
+/// stride input = ACCOUNT_HEADER + data_len
 /// ```
 ///
 /// The result is aligned up to 8 bytes (SVM alignment requirement).
@@ -106,7 +94,10 @@ const fn cache_has_capacity(index: usize) -> bool {
 unsafe fn advance_past_account(ptr: *mut u8, raw: *mut RuntimeAccount) -> *mut u8 {
     // Delegates to `account_stride` so the alignment arithmetic is covered
     // by Kani proof harnesses (see kani_proofs::account_stride_*).
-    ptr.add(account_stride((*raw).data_len as usize))
+    // SAFETY: The caller guarantees `raw` points to a valid `RuntimeAccount`.
+    let data_len = unsafe { (*raw).data_len as usize };
+    // SAFETY: The caller guarantees `ptr` is the start of that account entry.
+    unsafe { ptr.add(account_stride(data_len)) }
 }
 
 /// Advance past a duplicate account entry (u64-sized index).
@@ -116,7 +107,8 @@ unsafe fn advance_past_account(ptr: *mut u8, raw: *mut RuntimeAccount) -> *mut u
 /// `ptr` must point to the start of a duplicate entry in the SVM buffer.
 #[inline(always)]
 unsafe fn advance_past_dup(ptr: *mut u8) -> *mut u8 {
-    ptr.add(DUP_ENTRY_SIZE)
+    // SAFETY: The caller guarantees `ptr` starts a duplicate-entry payload.
+    unsafe { ptr.add(DUP_ENTRY_SIZE) }
 }
 
 /// Safe handle for one remaining account entry.
@@ -203,7 +195,7 @@ impl RemainingAccount {
 
 /// Zero-allocation remaining accounts accessor.
 ///
-/// Uses a boundary pointer instead of a count — no reads or arithmetic
+/// Uses a boundary pointer instead of a count, with no reads or arithmetic
 /// in the dispatch hot path. The `ptr` starts at the first remaining
 /// account in the SVM input buffer; `boundary` marks the end. The iterator
 /// keeps a small stack cache of previously yielded accounts so duplicate metas
@@ -274,7 +266,7 @@ impl<'a> RemainingAccounts<'a> {
 
             if i == index {
                 return Ok(Some(RemainingAccount::new(if borrow == NOT_BORROWED {
-                    // SAFETY: Non-duplicate entry — `raw` is a valid `RuntimeAccount`.
+                    // SAFETY: Non-duplicate entry; `raw` is a valid `RuntimeAccount`.
                     unsafe { AccountView::new_unchecked(raw) }
                 } else {
                     resolve_dup_walk(borrow as usize, self.declared, self.ptr, self.boundary)?
@@ -285,7 +277,7 @@ impl<'a> RemainingAccounts<'a> {
                 // SAFETY: `raw` is valid; advances past header + data + padding.
                 ptr = unsafe { advance_past_account(ptr, raw) };
             } else {
-                // SAFETY: Duplicate entry — advances past the u64 index.
+                // SAFETY: Duplicate entry; advances past the u64 index.
                 ptr = unsafe { advance_past_dup(ptr) };
             }
         }
@@ -293,7 +285,7 @@ impl<'a> RemainingAccounts<'a> {
     }
 
     /// Returns an iterator that yields each remaining account in order.
-    /// Builds an index as it walks — duplicate resolution is O(1),
+    /// Builds an index as it walks; duplicate resolution is O(1),
     /// same pattern as the declared accounts parser in the entrypoint.
     ///
     /// Returns `Err(QuasarError::RemainingAccountsOverflow)` if more than
@@ -339,8 +331,12 @@ pub trait RemainingItem<'input>: Sized {
         data: &[u8],
     ) -> Result<Self, ProgramError> {
         let mut account = core::mem::MaybeUninit::new(account);
-        let accounts = core::slice::from_raw_parts_mut(account.as_mut_ptr(), 1);
-        Self::parse_remaining_chunk(accounts, program_id, data)
+        // SAFETY: `account` was initialized above and the temporary slice has
+        // exactly one initialized `AccountView`.
+        let accounts = unsafe { core::slice::from_raw_parts_mut(account.as_mut_ptr(), 1) };
+        // SAFETY: The one-element slice satisfies the default single-account
+        // chunk contract.
+        unsafe { Self::parse_remaining_chunk(accounts, program_id, data) }
     }
 
     /// # Safety
@@ -538,6 +534,8 @@ fn resolve_dup_walk(
 
             if i == target {
                 if borrow == NOT_BORROWED {
+                    // SAFETY: The target entry is inside the walked buffer and
+                    // its borrow marker says it is a full runtime account.
                     return Ok(unsafe { AccountView::new_unchecked(raw) });
                 }
                 idx = borrow as usize;
@@ -545,8 +543,10 @@ fn resolve_dup_walk(
             }
 
             if borrow == NOT_BORROWED {
+                // SAFETY: `raw` is the current non-duplicate runtime account.
                 ptr = unsafe { advance_past_account(ptr, raw) };
             } else {
+                // SAFETY: Duplicate entries occupy exactly `DUP_ENTRY_SIZE`.
                 ptr = unsafe { advance_past_dup(ptr) };
             }
         }
@@ -559,7 +559,7 @@ fn resolve_dup_walk(
 /// Builds a cache of yielded views for O(1) duplicate resolution (same
 /// pattern as the declared accounts parser in the entrypoint). Returns
 /// `Err(QuasarError::RemainingAccountsOverflow)` after 64 accounts.
-pub type RemainingIter<'a> = RemainingIterImpl<'a, false>;
+pub type RemainingIter<'a> = RemainingIterImpl<'a>;
 
 /// Bounded typed view over a remaining-account tail.
 ///
@@ -586,12 +586,16 @@ impl<T, const N: usize> Remaining<T, N> {
             },
             len: 0,
         };
+        // SAFETY: An uninitialized `[MaybeUninit<Address>; MAX_REMAINING_ACCOUNTS]`
+        // is valid.
         let mut seen = unsafe {
             core::mem::MaybeUninit::<
                 [core::mem::MaybeUninit<Address>; MAX_REMAINING_ACCOUNTS],
             >::uninit()
             .assume_init()
         };
+        // SAFETY: An uninitialized
+        // `[MaybeUninit<AccountView>; MAX_REMAINING_ACCOUNTS]` is valid.
         let mut chunk = unsafe {
             core::mem::MaybeUninit::<
                 [core::mem::MaybeUninit<AccountView>; MAX_REMAINING_ACCOUNTS],
@@ -640,6 +644,7 @@ impl<T, const N: usize> Remaining<T, N> {
                 }
                 let mut i = 0usize;
                 while i < seen_len {
+                    // SAFETY: Only slots below `seen_len` have been initialized.
                     let seen_address = unsafe { seen[i].assume_init_ref() };
                     if crate::keys_eq(seen_address, view.address()) {
                         return Err(QuasarError::RemainingAccountDuplicate.into());
@@ -655,8 +660,12 @@ impl<T, const N: usize> Remaining<T, N> {
 
             if chunk_len == chunk_count {
                 let chunk_ptr = chunk.as_mut_ptr() as *mut AccountView;
+                // SAFETY: `chunk_len == chunk_count`, so the first
+                // `chunk_count` entries are initialized.
                 let chunk_slice =
                     unsafe { core::slice::from_raw_parts_mut(chunk_ptr, chunk_count) };
+                // SAFETY: The slice contains exactly `T::COUNT` initialized
+                // account views and duplicate checks have already run.
                 let item = unsafe {
                     T::parse_remaining_chunk(chunk_slice, accounts.program_id, accounts.data)?
                 };
@@ -685,6 +694,7 @@ impl<T, const N: usize> Remaining<T, N> {
             },
             len: 0,
         };
+        // SAFETY: An uninitialized `[MaybeUninit<Address>; N]` is valid.
         let mut seen = unsafe {
             core::mem::MaybeUninit::<[core::mem::MaybeUninit<Address>; N]>::uninit().assume_init()
         };
@@ -708,7 +718,7 @@ impl<T, const N: usize> Remaining<T, N> {
                 ptr = unsafe { advance_past_account(ptr, raw) };
                 view
             } else {
-                // SAFETY: Duplicate entry — advances past the u64 index.
+                // SAFETY: Duplicate entry; advances past the u64 index.
                 ptr = unsafe { advance_past_dup(ptr) };
                 resolve_dup_walk(
                     borrow as usize,
@@ -729,6 +739,8 @@ impl<T, const N: usize> Remaining<T, N> {
                 }
                 let mut i = 0usize;
                 while i < out.len {
+                    // SAFETY: The first `out.len` seen-address slots were
+                    // initialized alongside parsed output items.
                     let seen_address = unsafe { seen[i].assume_init_ref() };
                     if crate::keys_eq(seen_address, &address) {
                         return Err(QuasarError::RemainingAccountDuplicate.into());
@@ -738,6 +750,8 @@ impl<T, const N: usize> Remaining<T, N> {
                 seen[out.len].write(address);
             }
 
+            // SAFETY: `view` is initialized and duplicate policy checks have
+            // already run for this remaining item.
             let item = unsafe { T::parse_remaining_one(view, accounts.program_id, accounts.data)? };
             out.items[out.len].write(item);
             out.len += 1;
@@ -750,6 +764,8 @@ impl<T, const N: usize> Remaining<T, N> {
 impl<T, const N: usize> Remaining<T, N> {
     #[inline(always)]
     pub fn as_slice(&self) -> &[T] {
+        // SAFETY: Only the first `self.len` entries are initialized, and `len`
+        // is incremented after each successful write.
         unsafe { core::slice::from_raw_parts(self.items.as_ptr() as *const T, self.len) }
     }
 
@@ -781,6 +797,7 @@ impl<T, const N: usize> Drop for Remaining<T, N> {
         }
         let mut i = 0usize;
         while i < self.len {
+            // SAFETY: Only slots below `self.len` are initialized.
             unsafe { self.items[i].assume_init_drop() };
             i += 1;
         }
@@ -795,7 +812,7 @@ impl<T, const N: usize> AsRef<[T]> for Remaining<T, N> {
 }
 
 #[doc(hidden)]
-pub struct RemainingIterImpl<'a, const _SPECIALIZE: bool = false> {
+pub struct RemainingIterImpl<'a> {
     /// Current position in the SVM input buffer.
     ptr: *mut u8,
     /// End-of-buffer marker.
@@ -808,7 +825,7 @@ pub struct RemainingIterImpl<'a, const _SPECIALIZE: bool = false> {
     cache: core::mem::MaybeUninit<[AccountView; MAX_REMAINING_ACCOUNTS]>,
 }
 
-impl<const _SPECIALIZE: bool> RemainingIterImpl<'_, _SPECIALIZE> {
+impl RemainingIterImpl<'_> {
     #[inline(always)]
     fn cache_ptr(&self) -> *const AccountView {
         self.cache.as_ptr() as *const AccountView
@@ -840,7 +857,7 @@ impl<const _SPECIALIZE: bool> RemainingIterImpl<'_, _SPECIALIZE> {
     }
 }
 
-impl<const _SPECIALIZE: bool> Iterator for RemainingIterImpl<'_, _SPECIALIZE> {
+impl Iterator for RemainingIterImpl<'_> {
     type Item = Result<RemainingAccount, ProgramError>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -861,9 +878,11 @@ impl<const _SPECIALIZE: bool> Iterator for RemainingIterImpl<'_, _SPECIALIZE> {
         let view = if borrow == NOT_BORROWED {
             // SAFETY: Non-duplicate entry with a valid `RuntimeAccount`.
             let view = unsafe { AccountView::new_unchecked(raw) };
+            // SAFETY: `raw` is the current non-duplicate runtime account.
             self.ptr = unsafe { advance_past_account(self.ptr, raw) };
             view
         } else {
+            // SAFETY: Duplicate entries occupy exactly `DUP_ENTRY_SIZE`.
             self.ptr = unsafe { advance_past_dup(self.ptr) };
             match self.resolve_dup(borrow as usize) {
                 Some(v) => v,
@@ -878,226 +897,11 @@ impl<const _SPECIALIZE: bool> Iterator for RemainingIterImpl<'_, _SPECIALIZE> {
             let copy = core::ptr::read(&view);
             core::ptr::write(self.cache_mut_ptr().add(self.index), copy);
         }
-        self.index = self.index.wrapping_add(1);
+        self.index += 1;
         Some(Ok(RemainingAccount::new(view)))
     }
 }
 
-// ---------------------------------------------------------------------------
-// Kani model-checking proof harnesses
-// ---------------------------------------------------------------------------
-
 #[cfg(kani)]
-mod kani_proofs {
-    use super::*;
-
-    // --- align_up_8 ---
-
-    /// Result is always 8-byte aligned.
-    #[kani::proof]
-    fn align_up_8_always_aligned() {
-        let n: usize = kani::any();
-        // Avoid wrapping for unreasonably large values.
-        kani::assume(n <= usize::MAX - 7);
-        assert!(align_up_8(n) % 8 == 0);
-    }
-
-    /// Result is >= the input (never rounds down).
-    #[kani::proof]
-    fn align_up_8_never_rounds_down() {
-        let n: usize = kani::any();
-        kani::assume(n <= usize::MAX - 7);
-        assert!(align_up_8(n) >= n);
-    }
-
-    /// Overshoot is at most 7 bytes.
-    #[kani::proof]
-    fn align_up_8_overshoot_bounded() {
-        let n: usize = kani::any();
-        kani::assume(n <= usize::MAX - 7);
-        assert!(align_up_8(n) - n < 8);
-    }
-
-    /// Already-aligned values are unchanged.
-    #[kani::proof]
-    fn align_up_8_idempotent() {
-        let n: usize = kani::any();
-        kani::assume(n <= usize::MAX - 7);
-        assert!(align_up_8(align_up_8(n)) == align_up_8(n));
-    }
-
-    // --- account_stride ---
-
-    /// Stride is always 8-byte aligned.
-    #[kani::proof]
-    fn account_stride_aligned() {
-        let data_len: usize = kani::any();
-        // Realistic upper bound: SVM max account data is 10 MiB.
-        kani::assume(data_len <= 10 * 1024 * 1024);
-        assert!(account_stride(data_len) % 8 == 0);
-    }
-
-    /// Stride covers the full header + data (never undershoots).
-    #[kani::proof]
-    fn account_stride_covers_data() {
-        let data_len: usize = kani::any();
-        kani::assume(data_len <= 10 * 1024 * 1024);
-        assert!(account_stride(data_len) >= ACCOUNT_HEADER + data_len);
-    }
-
-    /// Stride overshoot is at most 7 bytes of alignment padding.
-    #[kani::proof]
-    fn account_stride_overshoot_bounded() {
-        let data_len: usize = kani::any();
-        kani::assume(data_len <= 10 * 1024 * 1024);
-        assert!(account_stride(data_len) - (ACCOUNT_HEADER + data_len) < 8);
-    }
-
-    /// Stride is strictly monotone: larger data_len => larger-or-equal stride.
-    #[kani::proof]
-    fn account_stride_monotone() {
-        let a: usize = kani::any();
-        let b: usize = kani::any();
-        kani::assume(a <= 10 * 1024 * 1024);
-        kani::assume(b <= 10 * 1024 * 1024);
-        kani::assume(a <= b);
-        assert!(account_stride(a) <= account_stride(b));
-    }
-
-    // --- DUP_ENTRY_SIZE ---
-
-    /// Dup entry size equals 8 (u64). Compile-time truth, but verifies the
-    /// constant matches the advance_past_dup stride.
-    #[kani::proof]
-    fn dup_entry_size_is_8() {
-        assert!(DUP_ENTRY_SIZE == 8);
-    }
-
-    // --- MAX_REMAINING_ACCOUNTS ---
-
-    // --- cache_has_capacity ---
-
-    /// Prove that when `cache_has_capacity` returns true, the write index
-    /// is within the `MaybeUninit<[AccountView; 64]>` allocation.
-    #[kani::proof]
-    fn cache_has_capacity_implies_write_in_bounds() {
-        let index: usize = kani::any();
-        if cache_has_capacity(index) {
-            assert!(index < MAX_REMAINING_ACCOUNTS);
-            // After the write, index increments — the invariant
-            // `index <= MAX_REMAINING_ACCOUNTS` is preserved.
-            assert!(index + 1 <= MAX_REMAINING_ACCOUNTS);
-        }
-    }
-
-    /// Prove that the `cache_has_capacity` guard makes `has_seen_address`
-    /// cache scans safe: if `index <= MAX_REMAINING_ACCOUNTS`, then every
-    /// scan index `0..index` is a valid cache slot.
-    #[kani::proof]
-    fn cache_capacity_implies_scan_in_bounds() {
-        let index: usize = kani::any();
-        // The iterator invariant: index starts at 0 and increments only
-        // when cache_has_capacity(index) is true, so index never exceeds
-        // MAX_REMAINING_ACCOUNTS.
-        kani::assume(index <= MAX_REMAINING_ACCOUNTS);
-        let scan_idx: usize = kani::any();
-        kani::assume(scan_idx < index);
-        assert!(scan_idx < MAX_REMAINING_ACCOUNTS);
-    }
-
-    // --- resolve_dup_index ---
-
-    /// Prove that `resolve_dup_index` returns a declared index that is
-    /// within bounds of the declared slice.
-    #[kani::proof]
-    fn resolve_dup_index_declared_in_bounds() {
-        let orig_idx: usize = kani::any();
-        let declared_len: usize = kani::any();
-        let cache_count: usize = kani::any();
-        kani::assume(declared_len <= 64);
-        kani::assume(cache_count <= MAX_REMAINING_ACCOUNTS);
-
-        if let Some(DupSource::Declared(idx)) =
-            resolve_dup_index(orig_idx, declared_len, cache_count)
-        {
-            assert!(idx < declared_len);
-        }
-    }
-
-    /// Prove that `resolve_dup_index` returns a cache index that is within
-    /// both the cache count and the `MaybeUninit` array capacity.
-    #[kani::proof]
-    fn resolve_dup_index_cached_in_bounds() {
-        let orig_idx: usize = kani::any();
-        let declared_len: usize = kani::any();
-        let cache_count: usize = kani::any();
-        kani::assume(declared_len <= 64);
-        kani::assume(cache_count <= MAX_REMAINING_ACCOUNTS);
-
-        if let Some(DupSource::Cached(idx)) = resolve_dup_index(orig_idx, declared_len, cache_count)
-        {
-            assert!(idx < cache_count);
-            assert!(idx < MAX_REMAINING_ACCOUNTS);
-        }
-    }
-
-    /// Prove that `resolve_dup_index` returns `None` only when the index
-    /// truly falls outside both the declared slice and the cache.
-    #[kani::proof]
-    fn resolve_dup_index_none_iff_out_of_range() {
-        let orig_idx: usize = kani::any();
-        let declared_len: usize = kani::any();
-        let cache_count: usize = kani::any();
-        kani::assume(declared_len <= 64);
-        kani::assume(cache_count <= MAX_REMAINING_ACCOUNTS);
-
-        if resolve_dup_index(orig_idx, declared_len, cache_count).is_none() {
-            assert!(orig_idx >= declared_len);
-            assert!(orig_idx - declared_len >= cache_count);
-        }
-    }
-
-    // --- resolve_dup_walk ---
-
-    /// Prove resolve_dup_walk always terminates within 2 hops.
-    /// The outer loop runs at most 2 iterations (defense-in-depth),
-    /// so the function is guaranteed to return or error within bounded time.
-    #[kani::proof]
-    fn resolve_dup_walk_bounded_hops() {
-        let hop_limit: usize = 2;
-        let mut hops: usize = 0;
-        // Model the outer loop's iteration count
-        for _ in 0..hop_limit {
-            hops += 1;
-        }
-        assert!(hops <= 2);
-    }
-
-    /// Prove the declared-branch read in resolve_dup_walk is in-bounds:
-    /// when `idx < declared.len()`, `declared.as_ptr().add(idx)` is valid.
-    #[kani::proof]
-    fn resolve_dup_walk_declared_read_in_bounds() {
-        let idx: usize = kani::any();
-        let declared_len: usize = kani::any();
-        kani::assume(declared_len <= 64);
-        kani::assume(idx < declared_len);
-        // The pointer read at declared.as_ptr().add(idx) is within bounds.
-        assert!(idx < declared_len);
-    }
-
-    // --- get() pointer walk ---
-
-    /// Prove that the get() boundary check (`ptr >= boundary`) prevents
-    /// any out-of-bounds access: if the check passes, the function returns
-    /// None before any unsafe dereference.
-    #[kani::proof]
-    fn get_boundary_guard_prevents_overrun() {
-        let ptr: usize = kani::any();
-        let boundary: usize = kani::any();
-        // If ptr >= boundary, no dereference occurs
-        if ptr >= boundary {
-            // Function would return Ok(None) here
-            assert!(ptr >= boundary);
-        }
-    }
-}
+#[path = "../kani/remaining.rs"]
+mod kani_proofs;

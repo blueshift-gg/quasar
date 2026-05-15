@@ -76,7 +76,10 @@ where
     ) -> Result<*mut u8, ProgramError> {
         let mut i = 0usize;
         while i < N {
-            input = T::parse_accounts_raw(input, base, offset + i * T::COUNT, program_id)?;
+            // SAFETY: Caller guarantees the raw account buffer covers
+            // `Self::COUNT`; each iteration advances by one `T` group.
+            input =
+                unsafe { T::parse_accounts_raw(input, base, offset + i * T::COUNT, program_id)? };
             i += 1;
         }
         Ok(input)
@@ -95,6 +98,7 @@ where
         program_id: &Address,
     ) -> Result<(Self, Self::Bumps), ProgramError> {
         check_account_count(accounts.len(), Self::COUNT)?;
+        // SAFETY: The exact account count was checked above.
         unsafe { Self::parse_unchecked(accounts, program_id) }
     }
 
@@ -105,6 +109,7 @@ where
         program_id: &Address,
     ) -> Result<(Self, Self::Bumps), ProgramError> {
         check_account_count(accounts.len(), Self::COUNT)?;
+        // SAFETY: The exact account count was checked above.
         unsafe { Self::parse_with_instruction_data_unchecked(accounts, data, program_id) }
     }
 
@@ -130,7 +135,8 @@ where
         accounts: &'input mut [AccountView],
         program_id: &Address,
     ) -> Result<(Self, Self::Bumps), ProgramError> {
-        Self::parse_with_instruction_data_unchecked(accounts, &[], program_id)
+        // SAFETY: Caller guarantees `accounts.len() == Self::COUNT`.
+        unsafe { Self::parse_with_instruction_data_unchecked(accounts, &[], program_id) }
     }
 
     #[inline(always)]
@@ -150,11 +156,15 @@ where
             let (chunk, next) = rest.split_at_mut(T::COUNT);
             rest = next;
             let (item, item_bumps) =
-                match T::parse_with_instruction_data_unchecked(chunk, data, program_id) {
+                // SAFETY: `chunk.len() == T::COUNT` by construction.
+                match unsafe { T::parse_with_instruction_data_unchecked(chunk, data, program_id) } {
                     Ok(parsed) => parsed,
                     Err(err) => {
                         let mut j = 0usize;
                         while j < i {
+                            // SAFETY: Slots below `i` were initialized by
+                            // earlier loop iterations and must be dropped on
+                            // early return.
                             unsafe {
                                 core::ptr::drop_in_place(items_ptr.add(j));
                                 core::ptr::drop_in_place(bumps_ptr.add(j));
@@ -164,16 +174,21 @@ where
                         return Err(err);
                     }
                 };
-            core::ptr::write(items_ptr.add(i), item);
-            core::ptr::write(bumps_ptr.add(i), item_bumps);
+            // SAFETY: `i < N`, and each slot is written at most once.
+            unsafe {
+                core::ptr::write(items_ptr.add(i), item);
+                core::ptr::write(bumps_ptr.add(i), item_bumps);
+            }
             i += 1;
         }
 
         Ok((
             Self {
-                items: items.assume_init(),
+                // SAFETY: Every `items` slot was initialized in the loop.
+                items: unsafe { items.assume_init() },
             },
-            bumps.assume_init(),
+            // SAFETY: Every `bumps` slot was initialized in the loop.
+            unsafe { bumps.assume_init() },
         ))
     }
 }

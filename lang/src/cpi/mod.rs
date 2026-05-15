@@ -1,6 +1,6 @@
 //! Cross-program invocation (CPI) builders with const-generic stack allocation.
 //!
-//! `CpiCall` is the primary type — a const-generic struct where account count
+//! `CpiCall` is the primary type: a const-generic struct where account count
 //! and data size are known at compile time, keeping everything on the stack.
 //! `CpiDynamic` is the variable-length variant where both account count and
 //! data size are runtime-tracked within compile-time capacity bounds.
@@ -47,7 +47,7 @@ struct CInstruction<'a> {
     data_len: u64,
 }
 
-/// Direct CPI syscall — passes raw pointers to `sol_invoke_signed_c`.
+/// Direct CPI syscall: passes raw pointers to `sol_invoke_signed_c`.
 ///
 /// Uses SDK types (`InstructionAccount`, `CpiAccount`, `Seed`, `Signer`)
 /// but bypasses `InstructionView` / `invoke_signed_unchecked` to go
@@ -99,12 +99,18 @@ pub unsafe fn invoke_raw(
     {
         // SAFETY: Caller guarantees all pointer/length pairs are valid.
         // Reconstructs safe Rust types for the off-chain invoke path.
-        let instruction = InstructionView {
-            program_id: &*program_id,
-            accounts: core::slice::from_raw_parts(instruction_accounts, instruction_accounts_len),
-            data: core::slice::from_raw_parts(data, data_len),
+        let instruction = unsafe {
+            InstructionView {
+                program_id: &*program_id,
+                accounts: core::slice::from_raw_parts(
+                    instruction_accounts,
+                    instruction_accounts_len,
+                ),
+                data: core::slice::from_raw_parts(data, data_len),
+            }
         };
-        let cpi_slice = core::slice::from_raw_parts(cpi_accounts, cpi_accounts_len);
+        // SAFETY: Same pointer/length contract as above for CPI account metas.
+        let cpi_slice = unsafe { core::slice::from_raw_parts(cpi_accounts, cpi_accounts_len) };
         solana_instruction_view::cpi::invoke_signed_unchecked(&instruction, cpi_slice, signers);
         0
     }
@@ -157,6 +163,9 @@ impl CpiReturn {
         }
 
         let mut zc = MaybeUninit::<T::Zc>::uninit();
+        // SAFETY: The length check above proves the initialized return-data
+        // prefix is exactly `size_of::<T::Zc>()`, so the copy fully initializes
+        // `zc` without reading past `self.data`.
         unsafe {
             core::ptr::copy_nonoverlapping(
                 self.data.as_ptr(),
@@ -164,6 +173,7 @@ impl CpiReturn {
                 expected_len,
             );
         }
+        // SAFETY: The previous copy initialized every byte of `T::Zc`.
         let zc = unsafe { zc.assume_init() };
         Ok(T::from_zc(&zc))
     }
@@ -190,11 +200,11 @@ fn get_cpi_return() -> Result<CpiReturn, ProgramError> {
             return Err(QuasarError::MissingReturnData.into());
         }
 
-        // SAFETY: sol_get_return_data initialised `min(size, MAX_RETURN_DATA)`
-        // bytes. The remaining bytes are uninitialised but never accessed —
+        // SAFETY: sol_get_return_data initialized `min(size, MAX_RETURN_DATA)`
+        // bytes. The remaining bytes are uninitialized but never accessed:
         // CpiReturn::as_slice returns &data[..data_len] and decode copies
         // exactly size_of::<T::Zc>() bytes. We assume_init the full array
-        // because the struct carries it by value; the uninitialised tail is
+        // because the struct carries it by value; the uninitialized tail is
         // inert (u8 has no Drop).
         return Ok(CpiReturn {
             program_id: unsafe { program_id.assume_init() },
@@ -295,10 +305,8 @@ pub(crate) fn init_cpi_accounts<'a, const N: usize>(
     unsafe { buf.assume_init() }
 }
 
-// --- CpiCall ---
-
 /// Const-generic CPI builder where account count and data size are known
-/// at compile time. All data lives on the stack — no heap allocation.
+/// at compile time. All data lives on the stack; no heap allocation.
 ///
 /// Typically constructed by helper functions (e.g. `system::transfer`,
 /// `system::create_account`) rather than directly.
@@ -412,6 +420,8 @@ impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
     #[inline(always)]
     fn invoke_with_return_inner(&self, signers: &[Signer]) -> Result<CpiReturn, ProgramError> {
         crate::return_data::set_return_data(&[]);
+        // SAFETY: Same pointer/length argument as `invoke_inner`; all arrays
+        // are owned fixed-size fields and fully initialized.
         let result = unsafe {
             invoke_raw(
                 self.program_id,
@@ -438,63 +448,11 @@ impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Shared test/verification account buffer
-// ---------------------------------------------------------------------------
-
-/// Stack-allocated account buffer for constructing `AccountView` instances
-/// in tests and Kani proofs. Uses `#[repr(align(8))]` for RuntimeAccount
-/// alignment. `N` is buffer size in bytes — use `MIN_ACCOUNT_BUF` for a
-/// zero-data account.
 #[cfg(kani)]
-#[repr(C, align(8))]
-pub(crate) struct AccountBuffer<const N: usize> {
-    inner: [u8; N],
-}
-
-/// Minimum buffer size for a zero-data AccountView.
+#[path = "../../kani/cpi/account_buffer.rs"]
+mod account_buffer;
 #[cfg(kani)]
-pub(crate) const MIN_ACCOUNT_BUF: usize =
-    core::mem::size_of::<solana_account_view::RuntimeAccount>() + 8;
-
-#[cfg(kani)]
-impl<const N: usize> AccountBuffer<N> {
-    pub(crate) fn new() -> Self {
-        Self { inner: [0u8; N] }
-    }
-
-    fn raw(&mut self) -> *mut solana_account_view::RuntimeAccount {
-        self.inner.as_mut_ptr() as *mut solana_account_view::RuntimeAccount
-    }
-
-    pub(crate) fn init(
-        &mut self,
-        address: [u8; 32],
-        owner: [u8; 32],
-        data_len: usize,
-        is_signer: bool,
-        is_writable: bool,
-        executable: bool,
-    ) {
-        let raw = self.raw();
-        unsafe {
-            (*raw).borrow_state = solana_account_view::NOT_BORROWED;
-            (*raw).is_signer = is_signer as u8;
-            (*raw).is_writable = is_writable as u8;
-            (*raw).executable = executable as u8;
-            (*raw).padding = [0u8; 4];
-            (*raw).address = solana_address::Address::new_from_array(address);
-            (*raw).owner = solana_address::Address::new_from_array(owner);
-            (*raw).lamports = 100;
-            (*raw).data_len = data_len as u64;
-        }
-    }
-
-    pub(crate) unsafe fn view(&mut self) -> AccountView {
-        AccountView::new_unchecked(self.raw())
-    }
-}
-
+pub(crate) use account_buffer::{AccountBuffer, MIN_ACCOUNT_BUF};
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -514,7 +472,7 @@ mod tests {
             let byte_len =
                 core::mem::size_of::<RuntimeAccount>() + data_len + MAX_PERMITTED_DATA_INCREASE;
             Self {
-                inner: (0..byte_len.div_ceil(8)).map(|_| 0u64).collect(),
+                inner: std::vec![0u64; byte_len.div_ceil(8)],
             }
         }
 
@@ -532,6 +490,8 @@ mod tests {
             executable: bool,
         ) {
             let raw = self.raw();
+            // SAFETY: `raw` points into `inner`, which was allocated large
+            // enough for a `RuntimeAccount` header plus requested data bytes.
             unsafe {
                 (*raw).borrow_state = NOT_BORROWED;
                 (*raw).is_signer = is_signer as u8;
@@ -546,16 +506,42 @@ mod tests {
         }
 
         pub(in crate::cpi) unsafe fn view(&mut self) -> AccountView {
-            AccountView::new_unchecked(self.raw())
+            // SAFETY: Caller ensures the buffer was initialized with `init`
+            // before constructing an `AccountView`.
+            unsafe { AccountView::new_unchecked(self.raw()) }
         }
     }
 
     fn cpi_account_bytes<'a>(account: &'a CpiAccount<'a>) -> &'a [u8] {
+        // SAFETY: `account` is a valid initialized `CpiAccount`; the returned
+        // byte slice covers exactly its object representation for comparison.
         unsafe {
             core::slice::from_raw_parts(
                 account as *const CpiAccount<'_> as *const u8,
                 core::mem::size_of::<CpiAccount<'_>>(),
             )
+        }
+    }
+
+    fn zc_bytes<T: InstructionArg>(zc: &T::Zc) -> &[u8] {
+        // SAFETY: `zc` is a valid initialized reference to exactly `size_of::<T::Zc>()`
+        // bytes.
+        unsafe {
+            core::slice::from_raw_parts(
+                zc as *const T::Zc as *const u8,
+                core::mem::size_of::<T::Zc>(),
+            )
+        }
+    }
+
+    fn return_with_data(program_id: [u8; 32], bytes: &[u8]) -> CpiReturn {
+        assert!(bytes.len() <= MAX_RETURN_DATA);
+        let mut data = [0u8; MAX_RETURN_DATA];
+        data[..bytes.len()].copy_from_slice(bytes);
+        CpiReturn {
+            program_id: Address::new_from_array(program_id),
+            data,
+            data_len: bytes.len(),
         }
     }
 
@@ -568,20 +554,7 @@ mod tests {
     #[test]
     fn decode_primitive_return_uses_instruction_arg_layout() {
         let pod = <u64 as InstructionArg>::to_zc(&777u64);
-        let bytes = unsafe {
-            core::slice::from_raw_parts(
-                &pod as *const <u64 as InstructionArg>::Zc as *const u8,
-                core::mem::size_of::<<u64 as InstructionArg>::Zc>(),
-            )
-        };
-        let mut data = [0u8; MAX_RETURN_DATA];
-        data[..bytes.len()].copy_from_slice(bytes);
-
-        let ret = CpiReturn {
-            program_id: Address::new_from_array([1u8; 32]),
-            data,
-            data_len: bytes.len(),
-        };
+        let ret = return_with_data([1u8; 32], zc_bytes::<u64>(&pod));
         assert_eq!(ret.decode::<u64>().unwrap(), 777u64);
     }
 
@@ -592,26 +565,13 @@ mod tests {
             flag: true,
         };
         let zc = <ReturnPayload as InstructionArg>::to_zc(&payload);
-        let bytes = unsafe {
-            core::slice::from_raw_parts(
-                &zc as *const <ReturnPayload as InstructionArg>::Zc as *const u8,
-                core::mem::size_of::<<ReturnPayload as InstructionArg>::Zc>(),
-            )
-        };
-        let mut data = [0u8; MAX_RETURN_DATA];
-        data[..bytes.len()].copy_from_slice(bytes);
-
-        let ret = CpiReturn {
-            program_id: Address::new_from_array([2u8; 32]),
-            data,
-            data_len: bytes.len(),
-        };
+        let ret = return_with_data([2u8; 32], zc_bytes::<ReturnPayload>(&zc));
         assert_eq!(ret.decode::<ReturnPayload>().unwrap(), payload);
     }
 
     #[test]
     fn cpi_account_from_view_matches_upstream_layout() {
-        // CpiAccount is 56 bytes: 6×u64 fields + 3 bool flags + 5 padding.
+        // CpiAccount is 56 bytes: six u64 fields + 3 bool flags + 5 padding.
         // Upstream's From impl leaves the 5 trailing padding bytes
         // uninitialized, so only compare the first 51 meaningful bytes.
         const CMP_LEN: usize = 51;
@@ -646,200 +606,6 @@ mod tests {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Kani model-checking proof harnesses
-// ---------------------------------------------------------------------------
-
 #[cfg(kani)]
-mod kani_proofs {
-    use super::*;
-
-    /// Prove that the u32 >> 8 flag extraction correctly isolates
-    /// [is_signer, is_writable, executable] from the RuntimeAccount header.
-    ///
-    /// The actual code in `cpi_account_from_view` does:
-    ///   `(raw as *const u32).read_unaligned() >> 8`
-    /// on the first 4 bytes: [borrow_state, is_signer, is_writable,
-    /// executable]. The compile-time `offset_of!` assertions guarantee this
-    /// field order; this proof verifies the bit arithmetic for all possible
-    /// byte values.
-    #[kani::proof]
-    fn flag_extraction_shift_correctness() {
-        let borrow_state: u8 = kani::any();
-        let is_signer: u8 = kani::any();
-        let is_writable: u8 = kani::any();
-        let executable: u8 = kani::any();
-
-        let header = [borrow_state, is_signer, is_writable, executable];
-        let raw_u32 = unsafe { (header.as_ptr() as *const u32).read_unaligned() };
-        let flags = raw_u32 >> 8;
-
-        // The shift discards borrow_state and preserves the three flag bytes.
-        assert!((flags & 0xFF) as u8 == is_signer);
-        assert!(((flags >> 8) & 0xFF) as u8 == is_writable);
-        assert!(((flags >> 16) & 0xFF) as u8 == executable);
-        // High byte is zero — no garbage from the shift.
-        assert!(flags >> 24 == 0);
-    }
-
-    /// Prove RawCpiBuilder and CpiAccount have identical memory layout.
-    ///
-    /// The transmute in `cpi_account_from_view` requires identical size and
-    /// alignment. The compile-time assertions verify size/align equality,
-    /// but this proof additionally verifies field offset correspondence:
-    /// every pointer/u64 field in RawCpiBuilder lands at the expected offset.
-    #[kani::proof]
-    fn raw_cpi_builder_layout_matches_cpi_account() {
-        // Size and alignment (mirrors compile-time assertions).
-        assert!(core::mem::size_of::<RawCpiBuilder>() == core::mem::size_of::<CpiAccount>());
-        assert!(core::mem::align_of::<RawCpiBuilder>() == core::mem::align_of::<CpiAccount>());
-
-        // Field offsets: RawCpiBuilder is repr(C) with 7 fields, each 8 bytes.
-        // Verify the layout is contiguous with no padding gaps.
-        assert!(core::mem::size_of::<RawCpiBuilder>() == 7 * 8);
-        assert!(core::mem::offset_of!(RawCpiBuilder, address) == 0);
-        assert!(core::mem::offset_of!(RawCpiBuilder, lamports) == 8);
-        assert!(core::mem::offset_of!(RawCpiBuilder, data_len) == 16);
-        assert!(core::mem::offset_of!(RawCpiBuilder, data) == 24);
-        assert!(core::mem::offset_of!(RawCpiBuilder, owner) == 32);
-        assert!(core::mem::offset_of!(RawCpiBuilder, rent_epoch) == 40);
-        assert!(core::mem::offset_of!(RawCpiBuilder, flags) == 48);
-    }
-
-    /// Prove that `init_cpi_accounts` produces an array of exactly N elements
-    /// by calling the real function with N AccountViews.
-    ///
-    /// The function completing without UB (verified by Kani) proves the
-    /// MaybeUninit init loop covers all indices [0, N) and the final
-    /// `assume_init` is valid.
-    #[kani::proof]
-    fn init_cpi_accounts_loop_covers_all_indices() {
-        use super::{AccountBuffer, MIN_ACCOUNT_BUF};
-
-        const N: usize = 4;
-
-        let mut buf0 = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
-        buf0.init([1; 32], [0xAA; 32], 0, true, true, false);
-        let v0 = unsafe { buf0.view() };
-
-        let mut buf1 = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
-        buf1.init([2; 32], [0xAA; 32], 0, false, true, false);
-        let v1 = unsafe { buf1.view() };
-
-        let mut buf2 = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
-        buf2.init([3; 32], [0xAA; 32], 0, true, false, false);
-        let v2 = unsafe { buf2.view() };
-
-        let mut buf3 = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
-        buf3.init([4; 32], [0xAA; 32], 0, false, false, false);
-        let v3 = unsafe { buf3.view() };
-
-        // Call the real function — Kani verifies no UB in the MaybeUninit
-        // loop and assume_init.
-        let result = super::init_cpi_accounts([&v0, &v1, &v2, &v3]);
-        assert!(result.len() == N);
-    }
-
-    /// Prove `CpiReturn::as_slice` is always in bounds.
-    ///
-    /// Mirrors `CpiReturn::as_slice()`:
-    ///   `&self.data[..self.data_len]`
-    /// where `data_len` is set by `get_cpi_return()`:
-    ///   `core::cmp::min(size, MAX_RETURN_DATA)`
-    #[kani::proof]
-    fn cpi_return_as_slice_in_bounds() {
-        let size: usize = kani::any();
-        // MAX_RETURN_DATA is 1024.
-        let data_len = core::cmp::min(size, solana_instruction_view::cpi::MAX_RETURN_DATA);
-        assert!(data_len <= solana_instruction_view::cpi::MAX_RETURN_DATA);
-        // The slice &data[..data_len] is within the [u8; MAX_RETURN_DATA]
-        // array.
-    }
-
-    /// Prove `CpiReturn::decode` copy length is safe.
-    ///
-    /// Mirrors `CpiReturn::decode()`:
-    ///   `if self.data_len != expected_len { return Err(...); }`
-    ///   `copy_nonoverlapping(self.data.as_ptr(), ..., expected_len);`
-    ///
-    /// Proves the copy never reads past `self.data` (capacity
-    /// `MAX_RETURN_DATA`).
-    #[kani::proof]
-    fn cpi_return_decode_copy_in_bounds() {
-        let data_len: usize = kani::any();
-        let expected_len: usize = kani::any();
-
-        // data_len comes from min(size, MAX_RETURN_DATA).
-        kani::assume(data_len <= solana_instruction_view::cpi::MAX_RETURN_DATA);
-        // expected_len is size_of::<T::Zc>() for some concrete T.
-        // Reasonable upper bound: no Zc type exceeds MAX_RETURN_DATA.
-        kani::assume(expected_len <= solana_instruction_view::cpi::MAX_RETURN_DATA);
-
-        // The guard in decode():
-        if data_len != expected_len {
-            // Returns Err, no copy happens.
-            return;
-        }
-
-        // If we reach here, copy_nonoverlapping copies expected_len bytes.
-        // Source is self.data (size MAX_RETURN_DATA), dest is MaybeUninit<Zc>
-        // (size expected_len). Both are valid.
-        assert!(expected_len <= solana_instruction_view::cpi::MAX_RETURN_DATA);
-        assert!(expected_len == data_len);
-    }
-
-    /// Prove that `invoke_raw` usize→u64 casts are lossless.
-    ///
-    /// Mirrors `invoke_raw()` on-chain path casts:
-    ///   `accounts_len: instruction_accounts_len as u64,`
-    ///   `data_len: data_len as u64,`
-    ///   `cpi_accounts_len as u64,`
-    ///
-    /// On SBF (32-bit), usize fits in u64 trivially. This proof covers the
-    /// property for any sizes within Solana's limits (max 10 MiB data,
-    /// max 256 accounts).
-    #[kani::proof]
-    fn invoke_raw_length_cast_lossless() {
-        let acct_len: usize = kani::any();
-        let data_len: usize = kani::any();
-        let cpi_len: usize = kani::any();
-
-        // Solana constraints: max 256 accounts, max ~10 MiB data.
-        kani::assume(acct_len <= 256);
-        kani::assume(data_len <= 10 * 1024 * 1024);
-        kani::assume(cpi_len <= 256);
-
-        // The on-chain path casts to u64:
-        let acct_u64 = acct_len as u64;
-        let data_u64 = data_len as u64;
-        let cpi_u64 = cpi_len as u64;
-
-        // Prove round-trip: no truncation.
-        assert!(acct_u64 as usize == acct_len);
-        assert!(data_u64 as usize == data_len);
-        assert!(cpi_u64 as usize == cpi_len);
-    }
-
-    /// Prove `cpi_account_from_view` data pointer offset is within the
-    /// RuntimeAccount allocation by calling the real function on a valid
-    /// AccountView with data.
-    ///
-    /// The function completing without UB (verified by Kani) proves the
-    /// `(raw as *const u8).add(RUNTIME_ACCOUNT_SIZE)` data pointer offset
-    /// is valid and the transmute produces a well-formed `CpiAccount`.
-    #[kani::proof]
-    fn cpi_account_data_offset_valid() {
-        use super::{AccountBuffer, MIN_ACCOUNT_BUF};
-
-        // Use a buffer large enough for 16 bytes of account data.
-        const BUF_SIZE: usize = MIN_ACCOUNT_BUF + 16;
-
-        let mut buf = AccountBuffer::<BUF_SIZE>::new();
-        buf.init([0x11; 32], [0x22; 32], 16, true, true, false);
-        let view = unsafe { buf.view() };
-
-        // Call the real function — Kani verifies the pointer arithmetic,
-        // unaligned read, shift, and transmute are all free of UB.
-        let _cpi_account = super::cpi_account_from_view(&view);
-    }
-}
+#[path = "../../kani/cpi/mod.rs"]
+mod kani_proofs;

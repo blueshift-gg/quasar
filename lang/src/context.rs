@@ -2,31 +2,33 @@
 //!
 //! Three levels of context exist, each wrapping the previous:
 //!
-//! - `Context` — raw entrypoint data (program ID, account slice, instruction
+//! - `Context`: raw entrypoint data (program ID, account slice, instruction
 //!   data). Produced by the entrypoint; consumed by `Ctx::new()` or
 //!   `CtxWithRemaining::new()`.
 //!
-//! - `Ctx` — parsed and validated accounts with PDA bumps. Use this for most
+//! - `Ctx`: parsed and validated accounts with PDA bumps. Use this for most
 //!   instructions where remaining accounts are not needed.
 //!
-//! - `CtxWithRemaining` — like `Ctx` but also captures the remaining accounts
+//! - `CtxWithRemaining`: like `Ctx` but also captures the remaining accounts
 //!   region for instructions that inspect or forward trailing accounts.
 
 use crate::{prelude::*, remaining::RemainingAccounts, traits::ParseAccountsUnchecked};
 
 /// Cast `&[u8; 32]` to `&Address`.
 ///
-/// The entrypoint owns the original 32-byte program-id storage for the entire
+/// The entrypoint owns the 32-byte program-id storage for the entire
 /// instruction, so the returned reference is valid for `'input`. This avoids
 /// copying the program ID into a stack-local `Address` on every dispatch path.
 #[inline(always)]
 unsafe fn as_address(bytes: &[u8; 32]) -> &Address {
-    &*(bytes as *const [u8; 32] as *const Address)
+    // SAFETY: `Address` is a transparent 32-byte address type and `bytes`
+    // lives for the returned reference.
+    unsafe { &*(bytes as *const [u8; 32] as *const Address) }
 }
 
 /// Raw entrypoint context before parsing.
 ///
-/// Produced by the `dispatch!` macro from the entrypoint's raw pointers.
+/// Produced by entrypoint code from raw account pointers.
 /// Consumed by [`Ctx::new()`] or [`CtxWithRemaining::new()`] which parse
 /// and validate the accounts.
 pub struct Context<'input> {
@@ -67,9 +69,15 @@ pub struct Ctx<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input>
 impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + AccountCount>
     Ctx<'input, T>
 {
+    /// Parse and validate the declared accounts for an instruction that does
+    /// not expose remaining accounts.
     #[inline(always)]
     pub fn new(ctx: Context<'input>) -> Result<Self, ProgramError> {
+        // SAFETY: `Context::program_id` points at the runtime-owned 32-byte
+        // program id for this instruction.
         let program_id_addr = unsafe { as_address(ctx.program_id) };
+        // SAFETY: Entrypoint code constructed `ctx.accounts` with exactly
+        // `T::COUNT` declared account views for this handler.
         let (accounts, bumps) = unsafe {
             T::parse_with_instruction_data_unchecked(ctx.accounts, ctx.data, program_id_addr)?
         };
@@ -91,7 +99,7 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
 
 /// Like [`Ctx`] but also captures the remaining accounts region.
 ///
-/// Use this for instructions that call `remaining_accounts()` — e.g. when
+/// Use this for instructions that call `remaining_accounts()`, for example when
 /// inspecting trailing accounts in local logic or forwarding a variable number
 /// of accounts to a downstream CPI.
 pub struct CtxWithRemaining<
@@ -123,21 +131,24 @@ pub struct CtxWithRemaining<
 impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + AccountCount>
     CtxWithRemaining<'input, T>
 {
+    /// Parse and validate declared accounts while preserving access to the
+    /// trailing remaining-account region.
     #[inline(always)]
     pub fn new(ctx: Context<'input>) -> Result<Self, ProgramError> {
+        // SAFETY: `Context::program_id` points at the runtime-owned 32-byte
+        // program id for this instruction.
         let program_id_addr = unsafe { as_address(ctx.program_id) };
-        // Save raw pointer + length before parse consumes the &mut borrow.
-        // We intentionally keep these as raw pointers — reconstructing an
-        // &[AccountView] would create a shared reference that aliases the
-        // &mut AccountView references held by the parsed struct (fragile
-        // under Stacked Borrows). The RemainingIter uses only raw pointer
-        // reads for duplicate resolution, so a slice reference is unnecessary.
+        // Save pointer + length before parse consumes the mutable slice. This
+        // avoids creating a shared declared-account slice while parsing still
+        // holds the `&mut [AccountView]` borrow.
         let declared_ptr = ctx.accounts.as_ptr();
         let declared_len = ctx.accounts.len();
+        // SAFETY: Entrypoint code constructed `ctx.accounts` with exactly
+        // `T::COUNT` declared account views for this handler.
         let (accounts, bumps) = unsafe {
             T::parse_with_instruction_data_unchecked(ctx.accounts, ctx.data, program_id_addr)?
         };
-        // SAFETY: The backing memory is still valid — parse copies AccountView
+        // SAFETY: The backing memory is still valid. Parse copies AccountView
         // values out of the slice, it does not deallocate. We construct the
         // shared slice here only for the RemainingAccounts API which uses it
         // for read-only address comparisons via keys_eq. The parsed struct
@@ -175,6 +186,8 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
             self.remaining_ptr,
             self.accounts_boundary,
             self.declared,
+            // SAFETY: `program_id` is the same runtime-owned 32-byte storage
+            // originally passed through `Context`.
             unsafe { as_address(self.program_id) },
             self.data,
         )

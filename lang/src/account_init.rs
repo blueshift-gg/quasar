@@ -11,49 +11,57 @@ use {
 
 /// Context for account initialization CPI.
 pub struct InitCtx<'a, R: RentAccess> {
+    /// Account paying rent and system-program create costs.
     pub payer: &'a AccountView,
+    /// Raw account slot being initialized.
     pub target: &'a mut AccountView,
+    /// Owner assigned to the newly created account.
     pub program_id: &'a Address,
+    /// Data length to allocate.
     pub space: u64,
+    /// PDA signer seeds for the create CPI, empty for non-PDA init.
     pub signers: &'a [Signer<'a, 'a>],
+    /// Rent source for the current instruction.
     pub rent: &'a R,
 }
 
 /// Initialization behavior for account types.
 ///
-/// Implemented on the behavior target (Token, Mint, `#[account]` types),
-/// NOT on wrapper types (`Account<T>`, `InterfaceAccount<T>`).
+/// Implemented on the behavior target (Token, Mint, `#[account]` types), not
+/// on wrapper types (`Account<T>`, `InterfaceAccount<T>`).
 ///
 /// The `derive(Accounts)` macro calls this via:
 /// ```text
 /// <FieldTy as AccountInit>::init(ctx, &params)?;
 /// ```
 pub trait AccountInit {
+    /// Params assembled by behavior groups before init.
     type InitParams<'a>: Default;
 
     /// Whether `Default` init params are valid (i.e., the account can be
     /// created without any behavior filling the params). Program-owned
     /// accounts with `InitParams = ()` set this to `true`. Protocol accounts
-    /// like Token/Mint set this to `false` — their `Unset` default is a
+    /// like Token/Mint set this to `false`; their `Unset` default is a
     /// runtime error if no behavior fills the params.
     const DEFAULT_INIT_PARAMS_VALID: bool = true;
 
+    /// Initialize `ctx.target` using the supplied params.
     fn init<'a, R: RentAccess>(ctx: InitCtx<'a, R>, params: &Self::InitParams<'a>)
         -> ProgramResult;
 }
 
-/// Create account via system program + write discriminator.
+/// Create a program-owned account and write its discriminator.
 #[inline(always)]
 pub fn init_account(
     payer: &AccountView,
-    account: &mut AccountView,
+    target: &mut AccountView,
     space: u64,
     owner: &Address,
     signers: &[Signer],
     rent: &Rent,
     discriminator: &[u8],
 ) -> ProgramResult {
-    system::init_account_with_rent(payer, account, space, owner, signers, rent)?;
-    system::write_discriminator(account, discriminator)?;
+    system::init_account_with_rent(payer, target, space, owner, signers, rent)?;
+    system::write_discriminator(target, discriminator)?;
     Ok(())
 }

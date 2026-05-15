@@ -1,30 +1,29 @@
 //! Core trait definitions for the Quasar framework.
 //!
-//! Traits fall into three categories:
+//! Traits are grouped by role:
 //!
-//! **Compile-time markers** — associate constant metadata with types:
-//! - `Owner` — expected on-chain program owner for an account type
-//! - `Id` — program address for a program marker type
-//! - `Discriminator` — byte prefix for accounts and instructions
-//! - `Space` — total byte size of an account's data (including discriminator)
+//! **Compile-time markers**: associate constant metadata with types:
+//! - `Owner`: expected on-chain program owner for an account type
+//! - `Id`: program address for a program marker type
+//! - `Discriminator`: byte prefix for accounts and instructions
+//! - `Space`: total byte size of an account's data (including discriminator)
 //!
-//! **Parsing and validation** — drive the account deserialization pipeline:
-//! - `ParseAccounts` — parse and validate a set of accounts from raw
+//! **Parsing and validation**: drive the account deserialization pipeline:
+//! - `ParseAccounts`: parse and validate a set of accounts from raw
 //!   `AccountView` slices
-//! - `CheckOwner` — verify an account's on-chain owner matches expectations
-//! - `Owners` — declare valid on-chain owners for interface account types
-//! - `AccountCount` — declare how many accounts a struct consumes
+//! - `CheckOwner`: verify an account's on-chain owner matches expectations
+//! - `Owners`: declare valid on-chain owners for interface account types
+//! - `AccountCount`: declare how many accounts a struct consumes
 //!
-//! **Access and dispatch** — provide uniform access to account data:
-//! - `AsAccountView` — convert any account wrapper back to its raw
-//!   `AccountView`
-//! - `StaticView` — marks `#[repr(transparent)]` types safe for pointer cast
+//! **Access and dispatch**: provide uniform access to account data:
+//! - `AsAccountView`: convert any account wrapper back to its raw `AccountView`
+//! - `StaticView`: marks `#[repr(transparent)]` types safe for pointer cast
 //!   construction
-//! - `ZeroCopyDeref` — zero-copy `Deref`/`DerefMut` to `#[repr(C)]` account
+//! - `ZeroCopyDeref`: zero-copy `Deref`/`DerefMut` to `#[repr(C)]` account
 //!   layouts
-//! - `ProgramInterface` — check an address against multiple valid program IDs
+//! - `ProgramInterface`: check an address against multiple valid program IDs
 //!
-//! **Events** — `Event` supports dual emission (log-based and self-CPI).
+//! **Events**: `Event` supports dual emission (log-based and self-CPI).
 
 use crate::prelude::{AccountView, Address, ProgramError};
 
@@ -136,7 +135,8 @@ pub trait ParseAccounts<'input>: Sized {
 
     /// Set to `true` when the struct has lifecycle operations (close, sweep,
     /// migrate). The dispatch path uses this to skip the `epilogue()` call
-    /// entirely when no lifecycle ops exist, avoiding a dead branch on sBPF.
+    /// entirely when no lifecycle ops exist, avoiding an unnecessary branch on
+    /// sBPF.
     const HAS_EPILOGUE: bool = false;
 
     #[inline(always)]
@@ -181,7 +181,8 @@ pub unsafe trait ParseAccountsUnchecked<'input>: ParseAccounts<'input> {
         _data: &[u8],
         program_id: &Address,
     ) -> Result<(Self, Self::Bumps), ProgramError> {
-        Self::parse_unchecked(accounts, program_id)
+        // SAFETY: Caller guarantees `accounts.len() == Self::COUNT`.
+        unsafe { Self::parse_unchecked(accounts, program_id) }
     }
 }
 
@@ -311,7 +312,6 @@ pub trait ZeroCopyDeref {
     /// layout contract.
     unsafe fn deref_from(view: &AccountView) -> &Self::Target;
 
-    #[allow(clippy::mut_from_ref)]
     /// # Safety
     ///
     /// Same requirements as [`deref_from`](Self::deref_from), plus the caller
@@ -323,8 +323,8 @@ pub trait ZeroCopyDeref {
 /// On-chain event with a discriminator, fixed-size data, and emission logic.
 ///
 /// Events support dual emission:
-/// - `emit!()` via `sol_log_data` (~100 CU) — fast but spoofable
-/// - `emit_cpi!()` via self-CPI (~1,000 CU) — spoofing-resistant
+/// - `emit!()` via `sol_log_data` (~100 CU): fast but spoofable
+/// - `emit_cpi!()` via self-CPI (~1,000 CU): spoofing-resistant
 ///
 /// Implemented by: `#[event]` derive macro.
 pub trait Event {

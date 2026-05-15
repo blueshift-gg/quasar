@@ -12,7 +12,7 @@ const _: () = {
 const _: () = {
     assert!(
         core::mem::offset_of!(RuntimeAccount, padding) == 0x04,
-        "RuntimeAccount::padding offset changed — resize() pointer arithmetic is invalid"
+        "RuntimeAccount::padding offset changed; resize() pointer arithmetic is invalid"
     );
 };
 
@@ -22,6 +22,7 @@ const _: () = {
 pub fn resize(view: &mut AccountView, new_len: usize) -> Result<(), ProgramError> {
     let raw = view.account_mut_ptr();
 
+    // SAFETY: `raw` points at the live runtime account behind `view`.
     let current_len =
         i32::try_from(unsafe { (*raw).data_len }).map_err(|_| ProgramError::InvalidRealloc)?;
     let new_len_i32 = i32::try_from(new_len).map_err(|_| ProgramError::InvalidRealloc)?;
@@ -34,7 +35,9 @@ pub fn resize(view: &mut AccountView, new_len: usize) -> Result<(), ProgramError
         .checked_sub(current_len)
         .ok_or(ProgramError::InvalidRealloc)?;
 
+    // SAFETY: `raw` is valid and `padding` is the runtime realloc delta field.
     let delta_ptr = unsafe { core::ptr::addr_of_mut!((*raw).padding) as *mut i32 };
+    // SAFETY: `padding` may be unaligned for `i32`, so use unaligned access.
     let accumulated = unsafe { delta_ptr.read_unaligned() }
         .checked_add(difference)
         .ok_or(ProgramError::InvalidRealloc)?;
@@ -43,6 +46,8 @@ pub fn resize(view: &mut AccountView, new_len: usize) -> Result<(), ProgramError
         return Err(ProgramError::InvalidRealloc);
     }
 
+    // SAFETY: `raw` and `delta_ptr` both refer to the same live runtime
+    // account. `delta_ptr` uses unaligned access for the i32 padding field.
     unsafe {
         (*raw).data_len = new_len as u64;
         delta_ptr.write_unaligned(accumulated);
@@ -50,6 +55,8 @@ pub fn resize(view: &mut AccountView, new_len: usize) -> Result<(), ProgramError
 
     if difference > 0 {
         // Zero-fill extended region (within MAX_PERMITTED_DATA_INCREASE).
+        // SAFETY: `data_len` was updated above, so the newly exposed range
+        // `[current_len, new_len)` is within the account data allocation.
         unsafe {
             core::ptr::write_bytes(
                 view.data_mut_ptr().add(current_len as usize),
@@ -67,6 +74,8 @@ pub fn resize(view: &mut AccountView, new_len: usize) -> Result<(), ProgramError
 /// mutations.
 #[inline(always)]
 pub fn set_lamports(view: &AccountView, lamports: u64) {
+    // SAFETY: The SVM account backing `view` is mutable runtime state. This is
+    // the same raw lamport write used by account close/realloc paths.
     unsafe { (*(view.account_ptr() as *mut RuntimeAccount)).lamports = lamports };
 }
 
@@ -78,19 +87,14 @@ pub fn realloc_account(
     payer: &AccountView,
     rent: Option<&crate::sysvars::rent::Rent>,
 ) -> Result<(), ProgramError> {
-    let r = if let Some(r) = rent {
-        r.clone()
+    let (rent_lpb, rent_threshold) = if let Some(rent) = rent {
+        (rent.lamports_per_byte(), rent.exemption_threshold_raw())
     } else {
         use crate::sysvars::Sysvar;
-        crate::sysvars::rent::Rent::get()?
+        let rent = crate::sysvars::rent::Rent::get()?;
+        (rent.lamports_per_byte(), rent.exemption_threshold_raw())
     };
-    realloc_account_raw(
-        view,
-        new_space,
-        payer,
-        r.lamports_per_byte(),
-        r.exemption_threshold_raw(),
-    )
+    realloc_account_raw(view, new_space, payer, rent_lpb, rent_threshold)
 }
 
 /// Realloc with pre-extracted rent values. [`realloc_account`] delegates here.
@@ -124,6 +128,8 @@ pub fn realloc_account_raw(
 
     if new_space < old_len {
         // Zero trailing bytes on shrink.
+        // SAFETY: `new_space < old_len`, so the trailing range being cleared
+        // is within the account's current data allocation.
         unsafe {
             core::ptr::write_bytes(view.data_mut_ptr().add(new_space), 0, old_len - new_space);
         }
@@ -166,6 +172,8 @@ impl<T: AsAccountView + crate::traits::StaticView + crate::traits::Space> Accoun
         if new_space < <T as crate::traits::Space>::SPACE {
             return Err(ProgramError::AccountDataTooSmall);
         }
+        // SAFETY: `Account<T>` is only constructed for account-view-backed
+        // wrappers in this impl family; realloc needs the underlying view.
         let view = unsafe { &mut *(self as *mut Account<T> as *mut AccountView) };
         realloc_account(view, new_space, payer, rent)
     }
@@ -176,6 +184,8 @@ impl<T: Owner + AsAccountView + crate::traits::Discriminator> Account<T> {
     /// zero.
     #[inline(always)]
     pub fn close(&mut self, destination: &AccountView) -> Result<(), ProgramError> {
+        // SAFETY: Close operates on the runtime account backing this typed
+        // wrapper and does not access `T` after reassigning/resizing it.
         let view = unsafe { &mut *(self as *mut Account<T> as *mut AccountView) };
         crate::ops::close::close_account(
             view,
@@ -191,141 +201,43 @@ impl<T: crate::account_load::AccountLoad + CheckOwner + StaticView> Account<T> {
     pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
         T::check_owner(view)?;
         T::check(view)?;
-        Ok(unsafe { &*(view as *const AccountView as *const Self) })
+        // SAFETY: Owner and account data were validated above.
+        Ok(unsafe { Self::from_account_view_unchecked(view) })
     }
 }
 
 impl<T> Account<T> {
     /// # Safety
-    /// Caller must ensure owner, discriminator, and borrow state are valid.
+    /// Caller must ensure owner, discriminator, borrow state, and
+    /// `AccountView` layout compatibility are valid for `T`.
     #[inline(always)]
     pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
-        &*(view as *const AccountView as *const Self)
+        // SAFETY: The caller guarantees this `Account<T>` wrapper is layout
+        // compatible with `AccountView` and has already satisfied validation.
+        unsafe { &*(view as *const AccountView as *const Self) }
     }
 
     /// # Safety
-    /// Same as above, plus account must be writable.
+    /// Same as [`from_account_view_unchecked`](Self::from_account_view_unchecked),
+    /// plus the account must be writable.
     #[inline(always)]
     pub unsafe fn from_account_view_unchecked_mut(view: &mut AccountView) -> &mut Self {
-        &mut *(view as *mut AccountView as *mut Self)
+        // SAFETY: Same layout argument as the immutable cast; the caller also
+        // guarantees writable access.
+        unsafe { &mut *(view as *mut AccountView as *mut Self) }
     }
 }
 
 #[cfg(kani)]
-mod kani_proofs {
-    use {super::*, solana_account_view::MAX_PERMITTED_DATA_INCREASE};
+#[path = "../../kani/accounts/account.rs"]
+mod kani_proofs;
 
-    #[kani::proof]
-    fn resize_delta_no_overflow() {
-        let current_len: i32 = kani::any();
-        let new_len: i32 = kani::any();
-        kani::assume(current_len >= 0);
-        kani::assume(new_len >= 0);
-        kani::assume(current_len <= 10 * 1024 * 1024);
-        kani::assume(new_len <= 10 * 1024 * 1024);
-
-        let difference = new_len - current_len;
-
-        let prior_accumulated: i32 = kani::any();
-        kani::assume(prior_accumulated >= -(MAX_PERMITTED_DATA_INCREASE as i32));
-        kani::assume(prior_accumulated <= MAX_PERMITTED_DATA_INCREASE as i32);
-
-        assert!(prior_accumulated.checked_add(difference).is_some());
-    }
-
-    #[kani::proof]
-    fn padding_i32_roundtrip() {
-        let value: i32 = kani::any();
-        let mut buf = [0u8; 4];
-        unsafe {
-            core::ptr::copy_nonoverlapping(&value as *const i32 as *const u8, buf.as_mut_ptr(), 4);
-        }
-        let read_back = unsafe { (buf.as_ptr() as *const i32).read_unaligned() };
-        assert!(read_back == value);
-    }
-
-    #[kani::proof]
-    fn account_repr_transparent_size() {
-        use solana_account_view::AccountView;
-
-        assert!(
-            core::mem::size_of::<Account<AccountView>>() == core::mem::size_of::<AccountView>()
-        );
-        assert!(
-            core::mem::align_of::<Account<AccountView>>() == core::mem::align_of::<AccountView>()
-        );
-    }
-
-    #[kani::proof]
-    fn set_lamports_field_offset_stable() {
-        let offset = core::mem::offset_of!(RuntimeAccount, lamports);
-        assert!(offset < core::mem::size_of::<RuntimeAccount>());
-        assert!(offset + core::mem::size_of::<u64>() <= core::mem::size_of::<RuntimeAccount>());
-    }
-
-    #[kani::proof]
-    fn realloc_lamport_subtraction_no_underflow() {
-        let rent_exempt: u64 = kani::any();
-        let current: u64 = kani::any();
-
-        if rent_exempt > current {
-            let deficit = rent_exempt - current;
-            assert!(deficit > 0);
-            assert!(deficit <= rent_exempt);
-        } else if current > rent_exempt {
-            let excess = current - rent_exempt;
-            assert!(excess > 0);
-            assert!(excess <= current);
-        }
-    }
-
-    #[kani::proof]
-    fn realloc_excess_addition_no_overflow() {
-        let payer_lamports: u64 = kani::any();
-        let excess: u64 = kani::any();
-
-        const MAX_SOL_SUPPLY: u64 = 600_000_000_000_000_000;
-        kani::assume(payer_lamports <= MAX_SOL_SUPPLY);
-        kani::assume(excess <= MAX_SOL_SUPPLY);
-        kani::assume(payer_lamports + excess <= MAX_SOL_SUPPLY);
-
-        assert!(payer_lamports.checked_add(excess).is_some());
-    }
-
-    #[kani::proof]
-    fn close_lamports_wrapping_add_equivalent_to_checked() {
-        let dest_lamports: u64 = kani::any();
-        let view_lamports: u64 = kani::any();
-
-        const MAX_SOL_SUPPLY: u64 = 600_000_000_000_000_000;
-        kani::assume(dest_lamports <= MAX_SOL_SUPPLY);
-        kani::assume(view_lamports <= MAX_SOL_SUPPLY);
-
-        let wrapping_result = dest_lamports.wrapping_add(view_lamports);
-        let checked_result = dest_lamports.checked_add(view_lamports);
-        assert!(checked_result.is_some());
-        assert!(wrapping_result == checked_result.unwrap());
-    }
-
-    #[kani::proof]
-    fn resize_write_bytes_region_valid() {
-        let current_len: i32 = kani::any();
-        let new_len: i32 = kani::any();
-        kani::assume(current_len >= 0);
-        kani::assume(new_len >= 0);
-        kani::assume(current_len <= 10 * 1024 * 1024);
-        kani::assume(new_len <= 10 * 1024 * 1024);
-
-        let difference = new_len - current_len;
-        if difference > 0 {
-            let start = current_len as usize;
-            let count = difference as usize;
-            let end = start.checked_add(count);
-            assert!(end.is_some());
-            assert!(end.unwrap() == new_len as usize);
-            assert!(start <= end.unwrap());
-        }
-    }
+#[inline(always)]
+fn check_owner<T: CheckOwner>(view: &AccountView) -> Result<(), ProgramError> {
+    T::check_owner(view).inspect_err(|_| {
+        #[cfg(feature = "debug")]
+        crate::prelude::log("Owner check failed for account");
+    })
 }
 
 impl<T: AsAccountView + crate::account_load::AccountLoad + CheckOwner + StaticView>
@@ -333,30 +245,21 @@ impl<T: AsAccountView + crate::account_load::AccountLoad + CheckOwner + StaticVi
 {
     #[inline(always)]
     fn check(view: &AccountView) -> Result<(), solana_program_error::ProgramError> {
-        T::check_owner(view).inspect_err(|_| {
-            #[cfg(feature = "debug")]
-            crate::prelude::log("Owner check failed for account");
-        })?;
+        check_owner::<T>(view)?;
         T::check(view)?;
         Ok(())
     }
 
     #[inline(always)]
     fn check_checked(view: &AccountView) -> Result<(), solana_program_error::ProgramError> {
-        T::check_owner(view).inspect_err(|_| {
-            #[cfg(feature = "debug")]
-            crate::prelude::log("Owner check failed for account");
-        })?;
+        check_owner::<T>(view)?;
         T::check_checked(view)?;
         Ok(())
     }
 
     #[inline(always)]
     fn check_intrinsic(view: &AccountView) -> Result<(), solana_program_error::ProgramError> {
-        T::check_owner(view).inspect_err(|_| {
-            #[cfg(feature = "debug")]
-            crate::prelude::log("Owner check failed for account");
-        })?;
+        check_owner::<T>(view)?;
         T::check_intrinsic(view)?;
         Ok(())
     }
@@ -377,8 +280,6 @@ impl<T> core::ops::DerefMut for Account<T> {
         &mut self.inner
     }
 }
-
-// --- Forwarding impls: Account<T> delegates behavior to T ---
 
 impl<T: crate::account_init::AccountInit> crate::account_init::AccountInit for Account<T> {
     type InitParams<'a> = T::InitParams<'a>;

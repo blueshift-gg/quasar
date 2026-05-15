@@ -10,6 +10,8 @@ use {
 pub trait ZeroPod: AccountLayout {
     #[inline(always)]
     fn check(view: &AccountView) -> Result<(), ProgramError> {
+        // SAFETY: This is the unchecked fast path used when generated parsing
+        // has ruled out aliasing that requires runtime borrow tracking.
         let data = unsafe { view.borrow_unchecked() };
         Self::check_data(data)
     }
@@ -24,10 +26,11 @@ pub trait ZeroPod: AccountLayout {
     fn check_data(data: &[u8]) -> Result<(), ProgramError> {
         let offset = Self::DATA_OFFSET;
         let size = Self::DATA_SIZE;
-        if data.len() < offset + size {
+        let end = offset + size;
+        if data.len() < end {
             return Err(ProgramError::AccountDataTooSmall);
         }
-        <Self::Schema as crate::__zeropod::ZeroPodFixed>::validate(&data[offset..offset + size])
+        <Self::Schema as crate::__zeropod::ZeroPodFixed>::validate(&data[offset..end])
             .map_err(|_| ProgramError::InvalidAccountData)
     }
 }

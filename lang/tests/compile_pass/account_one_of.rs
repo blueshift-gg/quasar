@@ -6,8 +6,6 @@ use quasar_lang::prelude::*;
 
 solana_address::declare_id!("11111111111111111111111111111112");
 
-// ── Account types (shared owner, different discriminators) ──
-
 #[account(discriminator = 1)]
 pub struct Settings {
     pub authority: Address,
@@ -20,15 +18,11 @@ pub struct Policy {
     pub max_amount: PodU64,
 }
 
-// ── one_of enum ──
-
 #[account(one_of)]
 pub enum ConsensusAccount {
     Settings(Settings),
     Policy(Policy),
 }
-
-// ── Accounts struct using one_of ──
 
 #[derive(Accounts)]
 pub struct ReadConsensus {
@@ -36,8 +30,6 @@ pub struct ReadConsensus {
 
     pub consensus: Account<ConsensusAccount>,
 }
-
-// ── Program ──
 
 #[program]
 pub mod test_one_of {
@@ -53,8 +45,6 @@ pub mod test_one_of {
                 let _max: u64 = p.max_amount.into();
             }
         }
-
-        // Typed accessors
         if ctx.accounts.consensus.is_settings() {
             let _s = ctx.accounts.consensus.settings().unwrap();
         }

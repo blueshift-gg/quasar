@@ -18,6 +18,8 @@ impl<A> AsAccountView for Uninit<A> {
     }
 }
 
+// SAFETY: `Uninit<A>` is `repr(transparent)` over `AccountView` plus
+// `PhantomData<A>`.
 unsafe impl<A> crate::traits::StaticView for Uninit<A> {}
 
 impl<A> crate::account_load::AccountLoad for Uninit<A> {
@@ -101,6 +103,9 @@ where
         )?;
 
         let disc_len = <T as crate::traits::Discriminator>::DISCRIMINATOR.len();
+        // SAFETY: `init_account` allocated `T::SPACE` bytes and wrote the
+        // discriminator. `T::Space` is generated from `T::Target`, so the
+        // payload copy stays inside the allocated account data.
         unsafe {
             core::ptr::copy_nonoverlapping(
                 &self as *const T::Target as *const u8,
@@ -110,6 +115,7 @@ where
         }
 
         <Account<T> as crate::account_load::AccountLoad>::check(target)?;
+        // SAFETY: The initialized bytes were validated as `Account<T>` above.
         Ok(unsafe { Account::<T>::from_account_view_unchecked_mut(target) })
     }
 }

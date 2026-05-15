@@ -231,8 +231,6 @@ fn option_validate_recurses_into_inner() {
     );
 }
 
-// --- PodString<N, PFX> as InstructionArg ---
-
 #[test]
 fn podstring_round_trip() {
     let mut s = PodString::<32>::default();
@@ -280,8 +278,6 @@ fn podstring_zc_is_self() {
     );
 }
 
-// --- PodVec<T, N, PFX> as InstructionArg ---
-
 #[test]
 fn podvec_round_trip() {
     let mut v = PodVec::<u8, 8>::default();
@@ -326,25 +322,8 @@ fn podvec_zc_is_self() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// `#[repr(...)]` unit enum as InstructionArg — coverage supplement
-//
-// Upstream already covers the happy paths for `Status` (u8) in
-// `repr_enum_round_trip`, `repr_enum_validate_accepts_known_discriminants`
-// and `repr_enum_validate_rejects_invalid_discriminant`. This block adds
-// the coverage those tests don't hit:
-//
-//   * `Zc` layout (size/align) for both `u8` and `u16` reprs,
-//   * a `u16`-repr enum (upstream exercises only `u8`),
-//   * an exhaustive 256-byte `validate_zc` sweep (upstream rejects a single
-//     undeclared byte),
-//   * a wider sampled `validate_zc` rejection sweep for `u16`,
-//   * `Option<Enum>` recursion — the highest-risk path, since a corrupt inner
-//     tag inside `Some(_)` would otherwise reach `from_zc` and panic via
-//     `unreachable!` if `validate_zc` didn't recurse,
-//   * wincode round-trip for both widths, matching the off-chain client codec
-//     used by generated CPI helpers.
-// ---------------------------------------------------------------------------
+// Additional repr-enum coverage: Zc layout, u16 repr, exhaustive u8 rejection,
+// sampled u16 rejection, Option recursion, and wincode round-trips.
 
 #[repr(u16)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, quasar_lang::prelude::QuasarSerialize)]
@@ -362,7 +341,7 @@ fn repr_u8_enum_zc_matches_repr() {
 
 #[test]
 fn repr_u16_enum_zc_matches_repr() {
-    // u16 → PodU16 (align 1, size 2).
+    // u16 maps to PodU16 (align 1, size 2).
     assert_eq!(core::mem::size_of::<<WideCode as InstructionArg>::Zc>(), 2);
     assert_eq!(core::mem::align_of::<<WideCode as InstructionArg>::Zc>(), 1);
 }
@@ -472,8 +451,6 @@ fn repr_u16_enum_wincode_round_trip() {
         assert_eq!(back, v);
     }
 }
-
-// --- repr-backed enums as InstructionArg ---
 
 #[test]
 fn repr_enum_round_trip() {

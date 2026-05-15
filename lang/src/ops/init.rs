@@ -41,14 +41,14 @@ impl<'a, P> Op<'a, P> {
         R: RentAccess,
     {
         if crate::is_system_program(slot.owner()) {
-            // SAFETY: lifetime unification — all refs are live for the inlined call.
+            // SAFETY: `slot` is borrowed for the duration of this inlined call.
+            // `AccountInit::init` does not retain the `target` reference.
             let target = unsafe { &mut *(slot as *mut AccountView) };
-            let program_id = unsafe { &*(ctx.program_id as *const solana_address::Address) };
             <F as AccountInit>::init(
                 InitCtx {
                     payer: self.payer,
                     target,
-                    program_id,
+                    program_id: ctx.program_id,
                     space: self.space,
                     signers: self.signers,
                     rent: &ctx.rent,

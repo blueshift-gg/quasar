@@ -3,7 +3,6 @@
 //! `CpiDynamic` is the variable-length counterpart to [`super::CpiCall`].
 //! Both accounts and data are backed by `MaybeUninit` stack arrays with
 //! compile-time capacity, while the active count is tracked at runtime.
-//! This replaces `BufCpiCall` which only supported variable data.
 
 use {
     super::{
@@ -18,7 +17,7 @@ use {
     solana_program_error::{ProgramError, ProgramResult},
 };
 
-// Safety: element types stored in MaybeUninit arrays must not need dropping.
+// SAFETY: element types stored in MaybeUninit arrays must not need dropping.
 // If upstream ever adds Drop impls, these assertions catch it at compile time.
 const _: () = assert!(!core::mem::needs_drop::<InstructionAccount>());
 const _: () = assert!(!core::mem::needs_drop::<CpiAccount>());
@@ -46,7 +45,7 @@ pub struct CpiDynamic<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> {
 }
 
 impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS, MAX_DATA> {
-    // Compile-time stack overflow guard — fires at monomorphization time.
+    // Compile-time stack overflow guard; fires at monomorphization time.
     // InstructionAccount is 24 bytes, CpiAccount is 56 bytes, plus data +
     // bookkeeping.
     const _STACK_CHECK: () = assert!(
@@ -67,7 +66,6 @@ impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS
         let _ = Self::_STACK_CHECK;
         Self {
             program_id,
-            // Stable MaybeUninit pattern (not nightly uninit_array).
             accounts: MaybeUninit::uninit(),
             cpi_accounts: MaybeUninit::uninit(),
             acct_len: 0,
@@ -83,7 +81,7 @@ impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS
     /// have explicitly verified the frame fits within the SVM 4 KiB limit).
     ///
     /// The resulting `CpiDynamic` behaves identically to one created by
-    /// [`new`](Self::new) — only the static assertion is skipped.
+    /// [`new`](Self::new); only the static assertion is skipped.
     #[inline(always)]
     pub fn new_unchecked(program_id: &'a Address) -> Self {
         Self {
@@ -111,8 +109,6 @@ impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS
             return Err(ProgramError::InvalidArgument);
         }
         // SAFETY: acct_len < MAX_ACCTS, so both writes are in bounds.
-        // Uses the stable MaybeUninit::<[T; N]>::uninit() pattern --
-        // as_mut_ptr() gives *mut [T; N], cast to *mut T for element access.
         unsafe {
             let acct_ptr = self.accounts.as_mut_ptr() as *mut InstructionAccount<'a>;
             let cpi_ptr = self.cpi_accounts.as_mut_ptr() as *mut CpiAccount<'a>;
@@ -144,14 +140,16 @@ impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS
         // SAFETY: Caller guarantees acct_len < MAX_ACCTS.
         let acct_ptr = self.accounts.as_mut_ptr() as *mut InstructionAccount<'a>;
         let cpi_ptr = self.cpi_accounts.as_mut_ptr() as *mut CpiAccount<'a>;
-        acct_ptr.add(self.acct_len).write(InstructionAccount {
-            address: view.address(),
-            is_signer,
-            is_writable,
-        });
-        cpi_ptr
-            .add(self.acct_len)
-            .write(cpi_account_from_view(view));
+        unsafe {
+            acct_ptr.add(self.acct_len).write(InstructionAccount {
+                address: view.address(),
+                is_signer,
+                is_writable,
+            });
+            cpi_ptr
+                .add(self.acct_len)
+                .write(cpi_account_from_view(view));
+        }
         self.acct_len += 1;
     }
 
@@ -178,7 +176,7 @@ impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS
     /// Direct access to the data buffer for zero-copy writes.
     ///
     /// Returns a raw pointer because the buffer contents are logically
-    /// uninitialized — callers must write before reading any byte.
+    /// uninitialized; callers must write before reading any byte.
     /// After writing, call `set_data_len()` with the number of bytes written.
     ///
     /// # Safety
@@ -251,8 +249,8 @@ impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS
         self.invoke_with_return_inner(signers)
     }
 
-    #[inline(always)]
     /// Kani proof: `invoke_reads_only_initialized`.
+    #[inline(always)]
     fn invoke_inner(&self, signers: &[Signer]) -> ProgramResult {
         // SAFETY: accounts[0..acct_len] and cpi_accounts[0..acct_len]
         // are initialized by push_account. data[0..data_len] written by
@@ -379,7 +377,7 @@ mod tests {
     fn set_data_len_exact_capacity() {
         let mut cpi = CpiDynamic::<1, 4>::new(&PROGRAM_ID);
         // SAFETY: We're only setting the length; invoke would read these bytes
-        // but we won't invoke — this tests the length validation path.
+        // but we won't invoke; this tests the length validation path.
         assert!(cpi.set_data_len(4).is_ok());
     }
 
@@ -394,7 +392,6 @@ mod tests {
     fn data_mut_returns_raw_pointer() {
         let mut cpi = CpiDynamic::<1, 8>::new(&PROGRAM_ID);
         let ptr = cpi.data_mut();
-        // Verify it's a valid pointer by writing through it.
         // SAFETY: Writing within the MAX_DATA capacity.
         unsafe {
             let buf = &mut *ptr;
@@ -426,123 +423,10 @@ mod tests {
         assert!(cpi.push_account(&v0, false, false).is_ok());
         assert!(cpi.push_account(&v1, false, false).is_ok());
         assert!(cpi.push_account(&v2, false, false).is_ok());
-        // 4th push should fail — capacity is 3
         assert!(cpi.push_account(&v3, false, false).is_err());
     }
 }
 
-// ---------------------------------------------------------------------------
-// Kani model-checking proof harnesses
-// ---------------------------------------------------------------------------
-
 #[cfg(kani)]
-mod kani_proofs {
-    use {
-        super::CpiDynamic,
-        crate::cpi::{AccountBuffer, MIN_ACCOUNT_BUF},
-    };
-
-    /// Prove `push_account` bounds check prevents out-of-bounds MaybeUninit
-    /// writes by calling the real function and verifying Ok/Err at the
-    /// capacity boundary.
-    #[kani::proof]
-    fn push_account_write_in_bounds() {
-        const MAX_ACCTS: usize = 4;
-        let target: usize = kani::any();
-        kani::assume(target <= MAX_ACCTS);
-
-        let addr = solana_address::Address::new_from_array([0x11; 32]);
-        let mut cpi = CpiDynamic::<MAX_ACCTS, 8>::new(&addr);
-
-        let mut buf = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
-        buf.init([1; 32], [0; 32], 0, true, true, false);
-        let view = unsafe { buf.view() };
-
-        // Push `target` times — all should succeed.
-        let mut i = 0;
-        while i < target {
-            assert!(cpi.push_account(&view, true, true).is_ok());
-            i += 1;
-        }
-
-        // At capacity, next push must fail.
-        if target == MAX_ACCTS {
-            assert!(cpi.push_account(&view, true, true).is_err());
-        }
-    }
-
-    /// Prove `set_data` bounds check prevents out-of-bounds
-    /// copy_nonoverlapping by calling the real function.
-    #[kani::proof]
-    fn set_data_copy_in_bounds() {
-        const MAX_DATA: usize = 16;
-        let data_len: usize = kani::any();
-        kani::assume(data_len <= 32);
-
-        let addr = solana_address::Address::new_from_array([0x11; 32]);
-        let mut cpi = CpiDynamic::<1, MAX_DATA>::new(&addr);
-        let buf = [0u8; 32];
-
-        if data_len <= MAX_DATA {
-            assert!(cpi.set_data(&buf[..data_len]).is_ok());
-        } else {
-            assert!(cpi.set_data(&buf[..data_len]).is_err());
-        }
-    }
-
-    /// Prove that sequential `push_account` calls fill all slots by calling
-    /// the real function MAX_ACCTS times and verifying capacity exhaustion.
-    #[kani::proof]
-    fn sequential_pushes_cover_all_indices() {
-        const MAX_ACCTS: usize = 4;
-        let addr = solana_address::Address::new_from_array([0x11; 32]);
-        let mut cpi = CpiDynamic::<MAX_ACCTS, 8>::new(&addr);
-
-        let mut buf0 = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
-        let mut buf1 = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
-        let mut buf2 = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
-        let mut buf3 = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
-        buf0.init([1; 32], [0xFF; 32], 0, false, false, false);
-        buf1.init([2; 32], [0xFF; 32], 0, false, false, false);
-        buf2.init([3; 32], [0xFF; 32], 0, false, false, false);
-        buf3.init([4; 32], [0xFF; 32], 0, false, false, false);
-
-        let v0 = unsafe { buf0.view() };
-        let v1 = unsafe { buf1.view() };
-        let v2 = unsafe { buf2.view() };
-        let v3 = unsafe { buf3.view() };
-
-        assert!(cpi.push_account(&v0, false, false).is_ok());
-        assert!(cpi.push_account(&v1, false, false).is_ok());
-        assert!(cpi.push_account(&v2, false, false).is_ok());
-        assert!(cpi.push_account(&v3, false, false).is_ok());
-        // Capacity exhausted — next push must fail.
-        assert!(cpi.push_account(&v0, false, false).is_err());
-    }
-
-    /// Prove invoke_inner only reads initialized portions of MaybeUninit
-    /// arrays.
-    ///
-    /// Mirrors `invoke_inner()`:
-    ///   `invoke_raw(..., self.acct_len, ..., self.data_len, ...,
-    /// self.acct_len, ...)`
-    ///
-    /// `invoke_inner` passes `acct_len` (not MAX_ACCTS) and `data_len`
-    /// (not MAX_DATA) as lengths to `invoke_raw`, so only initialized
-    /// slots are read. Left as arithmetic model because calling
-    /// invoke_raw requires a CPI syscall.
-    #[kani::proof]
-    fn invoke_reads_only_initialized() {
-        const MAX_ACCTS: usize = 8;
-        const MAX_DATA: usize = 64;
-        let acct_len: usize = kani::any();
-        let data_len: usize = kani::any();
-        kani::assume(acct_len <= MAX_ACCTS);
-        kani::assume(data_len <= MAX_DATA);
-
-        // invoke_raw receives acct_len and data_len as bounds.
-        // Verify these are within the MaybeUninit capacity.
-        assert!(acct_len <= MAX_ACCTS);
-        assert!(data_len <= MAX_DATA);
-    }
-}
+#[path = "../../kani/cpi/dyn_cpi.rs"]
+mod kani_proofs;

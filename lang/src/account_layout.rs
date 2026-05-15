@@ -8,7 +8,7 @@ pub trait AccountLayout {
     /// Used for validation via `ZeroPodFixed::validate()`.
     type Schema: crate::__zeropod::ZeroPodFixed;
 
-    /// The ZC companion type that Deref targets.
+    /// The zero-copy companion type that Deref targets.
     /// Usually `<Schema as ZeroPodFixed>::Zc`.
     type Target;
 
