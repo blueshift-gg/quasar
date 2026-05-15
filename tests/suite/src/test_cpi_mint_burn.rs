@@ -4,9 +4,7 @@ use {
     quasar_test_token_cpi::cpi::*,
 };
 
-// ===========================================================================
-// MintTo (discriminator 3) — Program<Token>
-// ===========================================================================
+// MintTo discriminator 3 with Program<Token>.
 
 #[test]
 fn mint_to_spl() {
@@ -40,9 +38,7 @@ fn mint_to_spl() {
     );
 }
 
-// ===========================================================================
-// MintToT22 (discriminator 26) — Program<Token2022>
-// ===========================================================================
+// MintToT22 discriminator 26 with Program<Token2022>.
 
 #[test]
 fn mint_to_t22() {
@@ -76,9 +72,7 @@ fn mint_to_t22() {
     );
 }
 
-// ===========================================================================
-// MintToInterface (discriminator 27) — Interface<TokenInterface>
-// ===========================================================================
+// MintToInterface discriminator 27 with Interface<TokenInterface>.
 
 #[test]
 fn mint_to_interface_spl() {
@@ -144,9 +138,7 @@ fn mint_to_interface_t22() {
     );
 }
 
-// ===========================================================================
-// Burn (discriminator 4) — Program<Token>
-// ===========================================================================
+// Burn discriminator 4 with Program<Token>.
 
 #[test]
 fn burn_spl() {
@@ -180,9 +172,7 @@ fn burn_spl() {
     );
 }
 
-// ===========================================================================
-// BurnT22 (discriminator 28) — Program<Token2022>
-// ===========================================================================
+// BurnT22 discriminator 28 with Program<Token2022>.
 
 #[test]
 fn burn_t22() {
@@ -216,9 +206,7 @@ fn burn_t22() {
     );
 }
 
-// ===========================================================================
-// BurnInterface (discriminator 29) — Interface<TokenInterface>
-// ===========================================================================
+// BurnInterface discriminator 29 with Interface<TokenInterface>.
 
 #[test]
 fn burn_interface_spl() {

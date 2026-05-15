@@ -78,7 +78,6 @@ fn lamports_transferred() {
 
 #[test]
 fn destination_balance_additive() {
-    // Same as lamports_transferred but with explicit large balances
     let mut svm = svm_misc();
     let authority = Pubkey::new_unique();
     let (account, bump) =
@@ -136,8 +135,7 @@ fn wrong_authority() {
         ],
     );
     assert!(result.is_err(), "should reject wrong authority");
-    // v3: has_one now runs before PDA verification, so HasOneMismatch (3002)
-    // is caught first.
+    // has_one rejects before PDA verification.
     result.assert_error(ProgramError::Custom(3002));
 }
 

@@ -1,6 +1,6 @@
 use {quasar_derive::Accounts, quasar_lang::prelude::*, quasar_spl::prelude::*};
 
-/// Tests sweep + close -- transfers all tokens, then closes the account.
+/// Transfers all tokens, then closes the account.
 #[derive(Accounts)]
 pub struct SweepAndClose {
     pub authority: Signer,

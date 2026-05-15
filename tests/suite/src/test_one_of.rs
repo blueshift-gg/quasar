@@ -4,10 +4,6 @@ use {
     quasar_test_one_of::cpi::*,
 };
 
-// ---------------------------------------------------------------------------
-// Raw data builders
-// ---------------------------------------------------------------------------
-
 /// Settings: disc=10, authority: Address (32), threshold: PodU16 (2)
 /// Total = 1 + 32 + 2 = 35 bytes
 const SETTINGS_SIZE: usize = 35;
@@ -33,10 +29,6 @@ fn build_policy_data(authority: Pubkey, max_amount: u64, threshold: u16) -> Vec<
     data
 }
 
-// ---------------------------------------------------------------------------
-// SVM factory
-// ---------------------------------------------------------------------------
-
 fn svm_one_of() -> quasar_svm::QuasarSvm {
     let path = "../../target/deploy/quasar_test_one_of.so";
     let elf = std::fs::read(path)
@@ -47,10 +39,6 @@ fn svm_one_of() -> quasar_svm::QuasarSvm {
 fn consensus_account(address: Pubkey, data: Vec<u8>) -> quasar_svm::Account {
     raw_account(address, 1_000_000, data, quasar_test_one_of::ID)
 }
-
-// ============================================================================
-// Happy path: Settings variant
-// ============================================================================
 
 #[test]
 fn load_settings_via_one_of() {
@@ -74,10 +62,6 @@ fn load_settings_via_one_of() {
     );
 }
 
-// ============================================================================
-// Happy path: Policy variant
-// ============================================================================
-
 #[test]
 fn load_policy_via_one_of() {
     let mut svm = svm_one_of();
@@ -95,10 +79,6 @@ fn load_policy_via_one_of() {
     );
     assert!(result.is_ok(), "policy via one_of: {:?}", result.raw_result);
 }
-
-// ============================================================================
-// Typed accessor via variant()
-// ============================================================================
 
 #[test]
 fn typed_accessor_settings() {
@@ -144,10 +124,6 @@ fn typed_accessor_policy() {
     );
 }
 
-// ============================================================================
-// Rejection: wrong discriminator
-// ============================================================================
-
 #[test]
 fn rejects_unknown_discriminator() {
     let mut svm = svm_one_of();
@@ -170,10 +146,6 @@ fn rejects_unknown_discriminator() {
         "unknown discriminator should be rejected"
     );
 }
-
-// ============================================================================
-// Rejection: wrong owner
-// ============================================================================
 
 #[test]
 fn rejects_wrong_owner() {

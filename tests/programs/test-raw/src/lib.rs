@@ -17,36 +17,29 @@ pub struct NormalInit {
 mod quasar_test_raw {
     use super::*;
 
-    /// Normal instruction — verifies framework pipeline still works alongside
-    /// raw.
+    /// Verifies normal instruction handling still works alongside raw handlers.
     #[instruction(discriminator = 0)]
     pub fn normal(ctx: Ctx<NormalInit>) -> Result<(), ProgramError> {
         let _ = &ctx.accounts.signer;
         Ok(())
     }
 
-    /// Raw instruction — reads a u64 from instruction data and writes it to the
-    /// first account's data at offset 8 (past the 8-byte discriminator region).
-    /// Verifies: signer check on account[1], data length validation, direct
-    /// account mutation via AccountView.
+    /// Writes a u64 from instruction data into the first account at offset 8.
     #[instruction(discriminator = 1, raw)]
     pub fn raw_write(ctx: Context) -> Result<(), ProgramError> {
         if ctx.accounts.len() < 2 {
             return Err(ProgramError::NotEnoughAccountKeys);
         }
 
-        // Manual signer check on the second account.
         let authority = &ctx.accounts[1];
         if !authority.is_signer() {
             return Err(ProgramError::MissingRequiredSignature);
         }
 
-        // Validate instruction data has at least 8 bytes.
         if ctx.data.len() < 8 {
             return Err(ProgramError::InvalidInstructionData);
         }
 
-        // Write the u64 from instruction data into account[0] data at offset 8.
         let target = &mut ctx.accounts[0];
         let value_bytes: [u8; 8] = ctx.data[..8].try_into().unwrap();
         unsafe {
@@ -60,8 +53,7 @@ mod quasar_test_raw {
         Ok(())
     }
 
-    /// Raw instruction using the account write helper instead of a manual
-    /// unchecked borrow + pointer copy.
+    /// Writes through the account helper instead of manual pointer copying.
     #[instruction(discriminator = 6, raw)]
     pub fn raw_helper_write(ctx: Context) -> Result<(), ProgramError> {
         if ctx.accounts.is_empty() {
@@ -74,12 +66,7 @@ mod quasar_test_raw {
         ctx.accounts[0].write_bytes(8, &ctx.data[..8])
     }
 
-    /// Raw + inline asm — uses sBPF `ldxdw`/`stxdw` to copy a u64 from
-    /// instruction data into account[0] data at a fixed offset.
-    /// Proves inline assembly works end-to-end in a raw handler.
-    ///
-    /// Accounts: [0] writable data account, [1] signer authority
-    /// Data: 8 bytes (u64 little-endian value to write)
+    /// Copies a u64 with inline sBPF assembly in raw handlers.
     #[instruction(discriminator = 2, raw)]
     pub fn raw_asm_write(ctx: Context) -> Result<(), ProgramError> {
         if ctx.accounts.len() < 2 {
@@ -92,13 +79,11 @@ mod quasar_test_raw {
             return Err(ProgramError::InvalidInstructionData);
         }
 
-        const WRITE_OFFSET: usize = 8; // past discriminator region
+        const WRITE_OFFSET: usize = 8;
 
         let dest = ctx.accounts[0].data_mut_ptr();
         let src = ctx.data.as_ptr();
 
-        // On SBF: use inline asm to load 8 bytes from instruction data
-        // and store them into account data at WRITE_OFFSET.
         #[cfg(target_os = "solana")]
         unsafe {
             core::arch::asm!(
@@ -111,7 +96,6 @@ mod quasar_test_raw {
             );
         }
 
-        // On non-SBF (host tests): equivalent in safe Rust.
         #[cfg(not(target_os = "solana"))]
         unsafe {
             core::ptr::copy_nonoverlapping(src, dest.add(WRITE_OFFSET), 8);
@@ -120,12 +104,7 @@ mod quasar_test_raw {
         Ok(())
     }
 
-    /// callx dispatch test — proves the SVM verifier accepts indirect calls
-    /// through function pointers loaded at runtime. This is the foundation
-    /// for O(1) jump table dispatch of raw instructions.
-    ///
-    /// Uses a 2-entry function pointer table. The discriminator data byte
-    /// selects which function to call: 0 = write 0xAA, 1 = write 0xBB.
+    /// Exercises indirect function-pointer dispatch in a raw handler.
     #[instruction(discriminator = 5, raw)]
     pub fn callx_dispatch(ctx: Context) -> Result<(), ProgramError> {
         if ctx.accounts.is_empty() {

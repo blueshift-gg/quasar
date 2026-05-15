@@ -11,8 +11,6 @@ declare_id!("11111111111111111111111111111113");
 mod quasar_test_metadata_validate {
     use super::*;
 
-    // ------- Validation (existing accounts) -------
-
     /// Metadata with behavior: PDA + mint cross-validation.
     #[instruction(discriminator = 0)]
     pub fn validate_metadata_check(ctx: Ctx<ValidateMetadataCheck>) -> Result<(), ProgramError> {
@@ -33,21 +31,20 @@ mod quasar_test_metadata_validate {
         ctx.accounts.handler()
     }
 
-    /// Bare metadata — only AccountLoad checks (owner + key byte + data_len).
+    /// Bare metadata only runs AccountLoad checks (owner + key byte +
+    /// data_len).
     #[instruction(discriminator = 3)]
     pub fn validate_bare_metadata(ctx: Ctx<ValidateBareMetadata>) -> Result<(), ProgramError> {
         ctx.accounts.handler()
     }
 
-    /// Bare master edition — only AccountLoad checks.
+    /// Bare master edition only runs AccountLoad checks.
     #[instruction(discriminator = 4)]
     pub fn validate_bare_master_edition(
         ctx: Ctx<ValidateBareMasterEdition>,
     ) -> Result<(), ProgramError> {
         ctx.accounts.handler()
     }
-
-    // ------- Init (CPI to Metaplex) -------
 
     /// Init metadata via CPI + verify all prefix fields.
     #[instruction(discriminator = 10)]

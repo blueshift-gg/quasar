@@ -6,8 +6,7 @@ pub struct CloseTokenAccountT22 {
     pub account: Account<Token2022>,
     #[account(mut)]
     pub destination: Signer,
-    /// CHECK: authority may equal destination when the signer is closing to
-    /// themselves.
+    /// Duplicate signer used when authority and destination alias.
     #[account(dup)]
     pub authority: Signer,
     pub token_program: Program<Token2022Program>,

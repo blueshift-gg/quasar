@@ -91,16 +91,12 @@ fn require_neq_fails() {
     result.assert_error(ProgramError::Custom(102));
 }
 
-// ============================================================================
-// Default framework error codes (no custom error annotation)
-// Tests the separate codegen path for default vs custom errors.
-// If the framework error mapping regresses, custom-error tests pass but these
-// fail.
-// ============================================================================
+// Default framework error codes, without custom error annotations.
+// These exercise the separate codegen path for default versus custom errors.
 
 #[test]
 fn has_one_default_mismatch() {
-    // has_one = authority (no @ custom error) → default HasOneMismatch (3005)
+    // has_one = authority without a custom error yields HasOneMismatch (3005).
     let mut svm = svm_errors();
     let authority = Pubkey::new_unique();
     let wrong_authority = Pubkey::new_unique();
@@ -120,8 +116,8 @@ fn has_one_default_mismatch() {
 
 #[test]
 fn address_default_mismatch() {
-    // address = EXPECTED_ADDR_DEFAULT (no @ custom error) → default AddressMismatch
-    // (3012)
+    // address = EXPECTED_ADDR_DEFAULT without a custom error yields
+    // AddressMismatch (3012).
     let mut svm = svm_errors();
     let wrong = Pubkey::new_unique();
 
@@ -134,7 +130,7 @@ fn address_default_mismatch() {
 
 #[test]
 fn constraint_default_fail() {
-    // constraint = false (no @ custom error) → default ConstraintViolation (3004)
+    // constraint = false without a custom error yields ConstraintViolation (3004).
     let mut svm = svm_errors();
     let target = Pubkey::new_unique();
 

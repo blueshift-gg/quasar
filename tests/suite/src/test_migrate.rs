@@ -4,10 +4,6 @@ use {
     quasar_test_migrate::cpi::*,
 };
 
-// ---------------------------------------------------------------------------
-// Raw data builders
-// ---------------------------------------------------------------------------
-
 /// ConfigV1: disc=1, authority: Address (32), value: PodU64 (8)
 /// Total = 1 + 32 + 8 = 41 bytes
 const CONFIG_V1_SIZE: usize = 41;
@@ -24,10 +20,6 @@ fn build_config_v1_data(authority: Pubkey, value: u64) -> Vec<u8> {
 /// (4) Total = 1 + 32 + 8 + 4 = 45 bytes
 const CONFIG_V2_SIZE: usize = 45;
 
-// ---------------------------------------------------------------------------
-// SVM factory
-// ---------------------------------------------------------------------------
-
 fn svm_migrate() -> quasar_svm::QuasarSvm {
     let path = "../../target/deploy/quasar_test_migrate.so";
     let elf = std::fs::read(path)
@@ -43,10 +35,6 @@ fn config_v1_account(address: Pubkey, authority: Pubkey, value: u64) -> quasar_s
         quasar_test_migrate::ID,
     )
 }
-
-// ============================================================================
-// Happy path: V1 → V2 migration
-// ============================================================================
 
 #[test]
 fn migrate_v1_to_v2() {
@@ -72,7 +60,7 @@ fn migrate_v1_to_v2() {
     );
     assert!(
         result.is_ok(),
-        "migrate V1→V2 failed: {:?}\nlogs: {:?}",
+        "migrate V1 to V2 failed: {:?}\nlogs: {:?}",
         result.raw_result,
         result.logs
     );
@@ -101,10 +89,6 @@ fn migrate_v1_to_v2() {
         "extra field set to 42 by migrate()"
     );
 }
-
-// ============================================================================
-// Error: wrong authority (has_one fails)
-// ============================================================================
 
 #[test]
 fn migrate_wrong_authority_fails() {

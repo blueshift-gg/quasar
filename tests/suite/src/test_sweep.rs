@@ -4,9 +4,7 @@ use {
     quasar_test_token_cpi::cpi::*,
 };
 
-// ===========================================================================
-// sweep only — SPL Token
-// ===========================================================================
+// sweep only with SPL Token.
 
 #[test]
 fn sweep_spl_happy() {
@@ -107,9 +105,7 @@ fn sweep_spl_wrong_authority() {
     assert!(result.is_err(), "sweep SPL wrong authority should fail");
 }
 
-// ===========================================================================
-// sweep only — Token-2022
-// ===========================================================================
+// sweep only with Token-2022.
 
 #[test]
 fn sweep_t22_happy() {
@@ -179,9 +175,7 @@ fn sweep_t22_zero_balance() {
     );
 }
 
-// ===========================================================================
-// sweep only — InterfaceAccount (SPL + T22)
-// ===========================================================================
+// sweep only with InterfaceAccount, SPL and Token-2022.
 
 #[test]
 fn sweep_interface_spl_happy() {
@@ -285,9 +279,7 @@ fn sweep_interface_wrong_authority() {
     );
 }
 
-// ===========================================================================
-// sweep + close — SPL Token
-// ===========================================================================
+// sweep + close with SPL Token.
 
 #[test]
 fn sweep_and_close_spl_happy() {
@@ -400,9 +392,7 @@ fn sweep_and_close_spl_wrong_mint_receiver() {
     );
 }
 
-// ===========================================================================
-// sweep + close — Token-2022
-// ===========================================================================
+// sweep + close with Token-2022.
 
 #[test]
 fn sweep_and_close_t22_happy() {
@@ -478,9 +468,7 @@ fn sweep_and_close_t22_zero_balance() {
     );
 }
 
-// ===========================================================================
-// sweep + close — InterfaceAccount (SPL + T22)
-// ===========================================================================
+// sweep + close with InterfaceAccount, SPL and Token-2022.
 
 #[test]
 fn sweep_and_close_interface_spl_happy() {

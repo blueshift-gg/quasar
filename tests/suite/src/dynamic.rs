@@ -259,9 +259,7 @@ fn setup() -> Mollusk {
     mollusk_for_program(&quasar_test_misc::ID, "quasar_test_misc")
 }
 
-// ============================================================================
-// Dynamic Account — Basic Validation
-// ============================================================================
+// Dynamic account basic validation.
 
 #[test]
 fn test_dynamic_instruction_invalid_utf8_rejected() {
@@ -365,9 +363,7 @@ fn test_dynamic_account_valid_data_accepted() {
     );
 }
 
-// ============================================================================
-// Dynamic Account — Edge Cases
-// ============================================================================
+// Dynamic account edge cases.
 
 #[test]
 fn test_dynamic_account_empty_string_and_empty_vec() {
@@ -575,7 +571,7 @@ fn test_dynamic_account_too_small_for_prefixes() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    // Only disc byte — not enough for the u32 name prefix
+    // Only a discriminator byte, not enough for the u32 name prefix.
     let data = vec![DYNAMIC_ACCOUNT_DISC];
     let account_data = Account {
         lamports: 1_000_000,
@@ -594,9 +590,7 @@ fn test_dynamic_account_too_small_for_prefixes() {
     );
 }
 
-// ============================================================================
-// MixedAccount (fixed + dynamic fields, discriminator = 6)
-// ============================================================================
+// MixedAccount fixed and dynamic fields, discriminator = 6.
 
 #[test]
 fn test_mixed_account_valid_data() {
@@ -775,9 +769,7 @@ fn test_mixed_account_truncated_in_dynamic_section() {
     );
 }
 
-// ============================================================================
-// SmallPrefixAccount (u8 prefix, discriminator = 7)
-// ============================================================================
+// SmallPrefixAccount with u8 prefix, discriminator = 7.
 
 #[test]
 fn test_small_prefix_valid_data() {
@@ -950,9 +942,7 @@ fn test_small_prefix_truncated_data() {
     );
 }
 
-// ============================================================================
-// Dynamic Accessor Readback (discriminator = 24)
-// ============================================================================
+// Dynamic accessor readback, discriminator = 24.
 
 #[test]
 fn test_dynamic_readback_correct_lengths() {
@@ -1078,9 +1068,7 @@ fn test_dynamic_readback_wrong_tags_count() {
     );
 }
 
-// ============================================================================
-// Dynamic Mutation (discriminator = 26)
-// ============================================================================
+// Dynamic mutation, discriminator = 26.
 
 #[test]
 fn test_dynamic_mutate_same_length_name() {
@@ -1266,7 +1254,7 @@ fn test_dynamic_mutate_preserves_trailing_vec() {
     };
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
-    // Change name from "abc" (3) to "abcdef" (6) — grows, shifts tags
+    // Change name from "abc" (3) to "abcdef" (6), growing and shifting tags.
     let instruction = build_mutate_instruction(account, payer, system_program, b"abcdef");
     let result = mollusk.process_instruction(
         &instruction,
@@ -1329,11 +1317,9 @@ fn test_dynamic_mutate_exceeds_max_rejected() {
     );
 }
 
-// ============================================================================
-// ADVERSARIAL TESTS: Crafted Prefix Attacks
-// ============================================================================
+// Adversarial crafted prefix attacks.
 
-/// u8 prefix claiming 255 bytes — validation must reject (max=8), not
+/// u8 prefix claiming 255 bytes; validation must reject (max=8), not
 /// wrap/panic
 #[test]
 fn test_adversarial_prefix_u8_max_name_len() {
@@ -1364,7 +1350,7 @@ fn test_adversarial_prefix_u8_max_name_len() {
     );
 }
 
-/// u8 prefix just above max (9 when max=8) — off-by-one test
+/// u8 prefix just above max (9 when max=8), an off-by-one test.
 #[test]
 fn test_adversarial_prefix_one_past_max() {
     let mollusk = setup();
@@ -1395,7 +1381,7 @@ fn test_adversarial_prefix_one_past_max() {
     );
 }
 
-/// Vec prefix claiming u16::MAX element count — tests count*elem_size overflow
+/// Vec prefix claiming u16::MAX element count, testing count*elem_size overflow
 /// path
 #[test]
 fn test_adversarial_vec_count_u32_max() {
@@ -1426,7 +1412,7 @@ fn test_adversarial_vec_count_u32_max() {
     );
 }
 
-/// Vec prefix = 3 (max=2) — off-by-one on vec count
+/// Vec prefix = 3 (max=2), an off-by-one on vec count.
 #[test]
 fn test_adversarial_vec_count_one_past_max() {
     let mollusk = setup();
@@ -1528,18 +1514,16 @@ fn test_adversarial_vec_data_truncated_mid_element() {
     );
 }
 
-// ============================================================================
-// ADVERSARIAL TESTS: Multi-byte UTF-8 Edge Cases
-// ============================================================================
+// Adversarial multi-byte UTF-8 edge cases.
 
-/// Valid 2-byte UTF-8 at field boundary: name = "é" (C3 A9) = 2 bytes
+/// Valid 2-byte UTF-8 at field boundary: name = e-acute (C3 A9).
 /// Ensures multi-byte chars at exact max boundary work (2 < max=8)
 #[test]
 fn test_adversarial_utf8_valid_multibyte_accepted() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    let data = build_dynamic_account_data(&[0xC3, 0xA9], &[]); // "é"
+    let data = build_dynamic_account_data(&[0xC3, 0xA9], &[]); // e-acute
     let account_data = Account {
         lamports: 1_000_000,
         data,
@@ -1558,13 +1542,13 @@ fn test_adversarial_utf8_valid_multibyte_accepted() {
     );
 }
 
-/// Valid 4-byte UTF-8 emoji filling max (8 bytes = 2 emoji chars)
+/// Valid 4-byte UTF-8 scalar filling max (8 bytes = 2 scalars).
 #[test]
 fn test_adversarial_utf8_4byte_chars_at_max() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    // 😀 = F0 9F 98 80 (4 bytes). Two of them = 8 bytes = max
+    // U+1F600 = F0 9F 98 80 (4 bytes). Two of them = 8 bytes = max.
     let data = build_dynamic_account_data(&[0xF0, 0x9F, 0x98, 0x80, 0xF0, 0x9F, 0x98, 0x80], &[]);
     let account_data = Account {
         lamports: 1_000_000,
@@ -1584,11 +1568,9 @@ fn test_adversarial_utf8_4byte_chars_at_max() {
     );
 }
 
-// ============================================================================
-// ADVERSARIAL TESTS: SmallPrefix (u8) Attack Surface
-// ============================================================================
+// Adversarial SmallPrefix u8 attack surface.
 
-/// u8 prefix = 255 (max=100 for tag) — tests u8 max check
+/// u8 prefix = 255 (max=100 for tag), testing the u8 max check.
 #[test]
 fn test_adversarial_small_prefix_u8_max_value() {
     let mollusk = setup();
@@ -1596,7 +1578,7 @@ fn test_adversarial_small_prefix_u8_max_value() {
 
     // disc + u8 tag prefix(255) + 0 bytes of tag data + u16 scores prefix(0)
     let mut data = vec![SMALL_PREFIX_DISC, 255];
-    // No actual tag data — prefix claims 255 bytes but max=100
+    // No actual tag data; prefix claims 255 bytes but max=100.
     data.extend_from_slice(&0u16.to_le_bytes()); // scores count = 0
 
     let account_data = Account {
@@ -1623,7 +1605,7 @@ fn test_adversarial_small_prefix_u8_max_value() {
     );
 }
 
-/// u16 scores count = 255 (max=10) — vec prefix overflow
+/// u16 scores count = 255 (max=10), exercising vec prefix overflow.
 #[test]
 fn test_adversarial_small_prefix_vec_u8_overflow() {
     let mollusk = setup();
@@ -1656,9 +1638,7 @@ fn test_adversarial_small_prefix_vec_u8_overflow() {
     );
 }
 
-// ============================================================================
-// ADVERSARIAL TESTS: Mutation → Readback Correctness
-// ============================================================================
+// Adversarial mutation readback correctness.
 
 /// Grow name with 2 trailing tags: verifies memmove shifts tags correctly
 /// and accessor reads them back at the new offset
@@ -1855,11 +1835,9 @@ fn test_adversarial_mutate_empty_to_max_then_readback() {
     assert_eq!(&rd[12..44], tag.as_ref());
 }
 
-// ============================================================================
-// ADVERSARIAL TESTS: Sequential Mutation Stress
-// ============================================================================
+// Adversarial sequential mutation stress.
 
-/// Sequential mutations: grow→shrink→grow in a single transaction chain.
+/// Sequential mutations: grow, shrink, then grow in a single transaction chain.
 /// Tests that repeated realloc + memmove doesn't corrupt state.
 /// We do this as separate Mollusk calls since each produces new account state.
 #[test]
@@ -1883,7 +1861,7 @@ fn test_adversarial_sequential_mutations_grow_shrink_grow() {
     };
     let payer_account = Account::new(10_000_000_000, 0, &system_program);
 
-    // Step 1: Grow "ab" → "12345678" (max)
+    // Step 1: Grow "ab" to "12345678" (max).
     let instruction =
         build_mutate_then_readback_instruction(account, payer, system_program, 2, b"12345678");
     let result = mollusk.process_instruction(
@@ -1901,7 +1879,7 @@ fn test_adversarial_sequential_mutations_grow_shrink_grow() {
     );
     current_account = result.resulting_accounts[0].1.clone();
 
-    // Step 2: Shrink "12345678" → "x"
+    // Step 2: Shrink "12345678" to "x".
     let instruction =
         build_mutate_then_readback_instruction(account, payer, system_program, 2, b"x");
     let result = mollusk.process_instruction(
@@ -1919,7 +1897,7 @@ fn test_adversarial_sequential_mutations_grow_shrink_grow() {
     );
     current_account = result.resulting_accounts[0].1.clone();
 
-    // Step 3: Grow again "x" → "abcdef" (6 bytes, not max)
+    // Step 3: Grow again from "x" to "abcdef" (6 bytes, not max).
     let instruction =
         build_mutate_then_readback_instruction(account, payer, system_program, 2, b"abcdef");
     let result = mollusk.process_instruction(
@@ -2097,9 +2075,7 @@ fn test_as_mut_preserves_untouched_fields() {
     );
 }
 
-// ============================================================================
-// ADVERSARIAL TESTS: Validation Boundary Conditions
-// ============================================================================
+// Adversarial validation boundary conditions.
 
 /// Account with just a discriminator byte and nothing else
 #[test]
@@ -2262,7 +2238,7 @@ fn test_adversarial_all_zeros_account() {
     let mollusk = setup();
     let account = Address::new_unique();
 
-    // 100 bytes of zeros — discriminator 0 is banned
+    // 100 bytes of zeros; discriminator 0 is banned.
     let data = vec![0u8; 100];
 
     let account_data = Account {
@@ -2273,7 +2249,6 @@ fn test_adversarial_all_zeros_account() {
         rent_epoch: 0,
     };
 
-    // Try with DynamicAccountCheck (disc=5)
     let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
@@ -2384,9 +2359,7 @@ fn test_adversarial_minimum_valid_account() {
     );
 }
 
-// ============================================================================
-// TAIL FIELD TESTS: &str and &[u8] tail fields
-// ============================================================================
+// Tail field tests for &str and &[u8].
 
 #[test]
 fn test_dyn_str_valid_utf8_accepted() {
@@ -2444,8 +2417,8 @@ fn test_dyn_str_multibyte_utf8_accepted() {
     let account = Address::new_unique();
     let authority = Address::new_unique();
 
-    // "café" = 63 61 66 C3 A9 = 5 bytes
-    let data = build_dyn_str_account_data(authority, "café".as_bytes());
+    // "cafe" with e-acute = 63 61 66 C3 A9 = 5 bytes.
+    let data = build_dyn_str_account_data(authority, b"caf\xC3\xA9");
     let account_data = Account {
         lamports: 1_000_000,
         data,
@@ -2567,11 +2540,9 @@ fn test_dyn_str_truncated_fixed_section_rejected() {
     );
 }
 
-// ============================================================================
-// Adversarial Tests — Attacker-Controlled Inputs
-// ============================================================================
+// Adversarial attacker-controlled inputs.
 
-/// Send completely empty instruction data (0 bytes) — no discriminator at all.
+/// Send completely empty instruction data (0 bytes), with no discriminator.
 /// The dispatch macro should reject this because ix_data.len() <
 /// discriminator_len.
 #[test]
@@ -2645,7 +2616,7 @@ fn test_adversarial_ix_dynamic_string_prefix_overflow_u32_max() {
 }
 
 /// Instruction discriminator=21: string prefix=200 but only 10 bytes of data
-/// follow. Slightly above actual data — subtler than u8::MAX.
+/// follow. This is subtler than u8::MAX.
 /// (String<N> instruction args use u8 prefix on the wire.)
 #[test]
 fn test_adversarial_ix_dynamic_string_prefix_overflow_1024() {
@@ -2673,7 +2644,7 @@ fn test_adversarial_ix_dynamic_string_prefix_overflow_1024() {
 }
 
 /// Instruction discriminator=21: string prefix=0 (empty string).
-/// This is technically valid — the handler receives an empty &str.
+/// This is technically valid; the handler receives an empty &str.
 /// (String<N> instruction args use u8 prefix on the wire.)
 #[test]
 fn test_adversarial_ix_dynamic_string_prefix_zero() {
@@ -2724,8 +2695,8 @@ fn test_adversarial_ix_data_with_extra_trailing_garbage() {
         &[(signer, Account::new(1_000_000_000, 0, &Address::default()))],
     );
     // The framework may accept this (trailing data ignored) or reject.
-    // Either is acceptable — the key thing is it must NOT crash or read OOB.
-    // We do NOT assert pass/fail here — we assert no panic/abort occurred.
+    // Either is acceptable; the key thing is it must NOT crash or read OOB.
+    // We do NOT assert pass/fail here; we assert no panic/abort occurred.
 }
 
 /// Instruction with discriminator only, no args, for an instruction that

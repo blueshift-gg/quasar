@@ -9,10 +9,6 @@ use {
     spl_token_interface::state::AccountState,
 };
 
-// ---------------------------------------------------------------------------
-// SVM factories
-// ---------------------------------------------------------------------------
-
 fn deploy_artifact_so(name: &str) -> String {
     format!("../../target/deploy/{name}.so")
 }
@@ -49,10 +45,6 @@ pub fn svm_cpi() -> QuasarSvm {
     QuasarSvm::new().with_program(&quasar_test_token_cpi::ID, &elf)
 }
 
-// ---------------------------------------------------------------------------
-// Program IDs
-// ---------------------------------------------------------------------------
-
 pub fn spl_token_program_id() -> Pubkey {
     quasar_svm::SPL_TOKEN_PROGRAM_ID
 }
@@ -71,10 +63,6 @@ pub fn with_signers(mut ix: Instruction, indices: &[usize]) -> Instruction {
     }
     ix
 }
-
-// ---------------------------------------------------------------------------
-// Account constructors
-// ---------------------------------------------------------------------------
 
 pub fn token_account(
     address: Pubkey,
@@ -177,10 +165,6 @@ pub fn empty_account(address: Pubkey) -> Account {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Raw data packing (for adversarial tests)
-// ---------------------------------------------------------------------------
-
 pub fn pack_token_data(mint: Pubkey, owner: Pubkey, amount: u64) -> Vec<u8> {
     let token = TokenAccount {
         mint,
@@ -207,7 +191,7 @@ pub fn pack_mint_data(authority: Pubkey, decimals: u8) -> Vec<u8> {
     data
 }
 
-/// Raw Account with custom data — for adversarial tests (wrong owner, bad data,
+/// Raw Account with custom data for adversarial tests (wrong owner, bad data,
 /// etc.)
 pub fn raw_account(address: Pubkey, lamports: u64, data: Vec<u8>, owner: Pubkey) -> Account {
     Account {
@@ -219,10 +203,6 @@ pub fn raw_account(address: Pubkey, lamports: u64, data: Vec<u8>, owner: Pubkey)
     }
 }
 
-// ---------------------------------------------------------------------------
-// SVM factories — test-misc & test-errors
-// ---------------------------------------------------------------------------
-
 pub fn svm_misc() -> QuasarSvm {
     let elf = read_deploy_elf("quasar_test_misc");
     QuasarSvm::new().with_program(&quasar_test_misc::ID, &elf)
@@ -232,10 +212,6 @@ pub fn svm_errors() -> QuasarSvm {
     let elf = read_deploy_elf("quasar_test_errors");
     QuasarSvm::new().with_program(&quasar_test_errors::ID, &elf)
 }
-
-// ---------------------------------------------------------------------------
-// Account constructors — test-misc state types
-// ---------------------------------------------------------------------------
 
 const SIMPLE_ACCOUNT_SIZE: usize = 42; // 1 disc + 32 addr + 8 u64 + 1 u8
 
@@ -322,10 +298,6 @@ pub fn prefunded_account(address: Pubkey, lamports: u64) -> Account {
     }
 }
 
-// ---------------------------------------------------------------------------
-// SVM factory — test-metadata-validate
-// ---------------------------------------------------------------------------
-
 const METADATA_PROGRAM_BYTES: [u8; 32] = [
     11, 112, 101, 177, 227, 209, 124, 69, 56, 157, 82, 127, 107, 4, 195, 205, 88, 184, 108, 115,
     26, 160, 253, 181, 73, 182, 209, 188, 3, 248, 41, 70,
@@ -334,7 +306,7 @@ const METADATA_PROGRAM_BYTES: [u8; 32] = [
 pub fn svm_metadata_validate() -> QuasarSvm {
     let elf = read_deploy_elf("quasar_test_metadata_validate");
     let mpl_elf = std::fs::read("../../tests/fixtures/mpl_token_metadata.so")
-        .expect("missing mpl_token_metadata.so fixture — run `make build-sbf` first");
+        .expect("missing mpl_token_metadata.so fixture; run `make build-sbf` first");
     QuasarSvm::new()
         .with_program(&quasar_test_metadata_validate::ID, &elf)
         .with_program(&Address::new_from_array(METADATA_PROGRAM_BYTES), &mpl_elf)

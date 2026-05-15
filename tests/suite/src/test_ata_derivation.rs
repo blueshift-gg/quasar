@@ -57,12 +57,3 @@ fn const_matches_with_program_spl() {
     assert_eq!(addr1, addr2);
     assert_eq!(bump1, bump2);
 }
-
-#[test]
-fn bump_is_valid() {
-    let wallet = Pubkey::new_unique();
-    let mint = Pubkey::new_unique();
-    let (_, bump) = get_associated_token_address_const(&wallet, &mint);
-    // bump is a u8 so it's always <= 255; just verify we got one.
-    let _ = bump;
-}

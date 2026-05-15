@@ -1,6 +1,4 @@
-// NOTE: This instruction MUST be declared with #[instruction(heap)] in lib.rs.
-// Without the heap attribute, the cursor is not initialized and alloc will
-// corrupt memory or abort.
+// This instruction is declared with #[instruction(heap)] because it allocates.
 extern crate alloc;
 use {alloc::vec, quasar_lang::prelude::*};
 

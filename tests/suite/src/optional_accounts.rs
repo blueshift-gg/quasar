@@ -106,9 +106,7 @@ fn has_one_some_wrong_authority() {
     result.assert_error(ProgramError::Custom(3005)); // HasOneMismatch
 }
 
-// ============================================================================
-// Validation still runs when present (not sentinel)
-// ============================================================================
+// Validation still runs when present, not sentinel.
 
 #[test]
 fn some_wrong_owner() {

@@ -12,9 +12,7 @@ fn setup() -> Mollusk {
     mollusk_for_program(&quasar_test_misc::ID, "quasar_test_misc")
 }
 
-// ============================================================================
-// Remaining Accounts (discriminator 16)
-// ============================================================================
+// Remaining Accounts, discriminator 16.
 
 #[test]
 fn test_remaining_accounts_with_extras() {
@@ -104,9 +102,7 @@ fn test_remaining_accounts_overflow_errors() {
     );
 }
 
-// ============================================================================
-// Remaining Accounts: one account
-// ============================================================================
+// Remaining Accounts: one account.
 
 #[test]
 fn test_remaining_one_account() {
@@ -135,9 +131,7 @@ fn test_remaining_one_account() {
     );
 }
 
-// ============================================================================
-// Remaining Accounts: five accounts
-// ============================================================================
+// Remaining Accounts: five accounts.
 
 #[test]
 fn test_remaining_five_accounts() {
@@ -169,9 +163,7 @@ fn test_remaining_five_accounts() {
     );
 }
 
-// ============================================================================
-// Remaining Accounts: ten accounts
-// ============================================================================
+// Remaining Accounts: ten accounts.
 
 #[test]
 fn test_remaining_ten_accounts() {
@@ -203,9 +195,7 @@ fn test_remaining_ten_accounts() {
     );
 }
 
-// ============================================================================
-// Remaining Accounts: all signers
-// ============================================================================
+// Remaining Accounts: all signers.
 
 #[test]
 fn test_remaining_accounts_all_signers() {
@@ -241,9 +231,7 @@ fn test_remaining_accounts_all_signers() {
     );
 }
 
-// ============================================================================
-// Remaining Accounts: mixed flags
-// ============================================================================
+// Remaining Accounts: mixed flags.
 
 #[test]
 fn test_remaining_accounts_mixed_flags() {
@@ -292,9 +280,7 @@ fn test_remaining_accounts_mixed_flags() {
     );
 }
 
-// ============================================================================
-// Remaining Accounts: exactly 64 (max)
-// ============================================================================
+// Remaining Accounts: exactly 64, the max.
 
 #[test]
 fn test_remaining_64_accounts_max() {
@@ -326,9 +312,7 @@ fn test_remaining_64_accounts_max() {
     );
 }
 
-// ============================================================================
-// Remaining Accounts: 65 overflows
-// ============================================================================
+// Remaining Accounts: 65 overflows.
 
 #[test]
 fn test_remaining_65_accounts_overflow() {
@@ -362,9 +346,7 @@ fn test_remaining_65_accounts_overflow() {
     );
 }
 
-// ============================================================================
-// Remaining Accounts: include system program
-// ============================================================================
+// Remaining Accounts: include system program.
 
 #[test]
 fn test_remaining_accounts_include_system_program() {
@@ -398,9 +380,7 @@ fn test_remaining_accounts_include_system_program() {
     );
 }
 
-// ============================================================================
-// Remaining Accounts: duplicate handling
-// ============================================================================
+// Remaining Accounts: duplicate handling.
 
 #[test]
 fn test_remaining_duplicate_of_declared_allowed() {

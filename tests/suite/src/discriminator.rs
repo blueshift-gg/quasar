@@ -4,9 +4,7 @@ use {
     quasar_test_misc::cpi::*,
 };
 
-// ============================================================================
-// Happy paths
-// ============================================================================
+// Happy paths.
 
 #[test]
 fn single_byte_valid() {
@@ -29,9 +27,7 @@ fn multi_byte_valid() {
     assert!(result.is_ok(), "multi byte disc: {:?}", result.raw_result);
 }
 
-// ============================================================================
-// Error paths
-// ============================================================================
+// Error paths.
 
 #[test]
 fn single_byte_wrong() {
@@ -160,9 +156,7 @@ fn oversized_data_valid() {
     );
 }
 
-// ============================================================================
-// NoDiscAccount (unsafe_no_disc) — no discriminator check at all
-// ============================================================================
+// NoDiscAccount with unsafe_no_disc has no discriminator check.
 
 #[test]
 fn no_disc_init_success() {
@@ -207,7 +201,7 @@ fn no_disc_read_after_init() {
     let r1 = svm.process_instruction(&ix1, &[rich_signer_account(payer), empty_account(account)]);
     assert!(r1.is_ok(), "init: {:?}", r1.raw_result);
 
-    // Read — handler accesses .authority and .value via Deref
+    // Read through Deref-backed .authority and .value accessors.
     let ix2: Instruction = ReadNoDiscInstruction { account }.into();
     let r2 = svm.process_instruction(&ix2, &[]);
     assert!(r2.is_ok(), "read: {:?}", r2.raw_result);
@@ -220,7 +214,7 @@ fn no_disc_any_data_accepted() {
     let mut svm = svm_misc();
     let account = Pubkey::new_unique();
 
-    // All 0xFF data — no valid discriminator, but unsafe_no_disc skips the check
+    // All 0xFF data has no valid discriminator, but unsafe_no_disc skips the check.
     let data = vec![0xFF; 40];
     let ix: Instruction = ReadNoDiscInstruction { account }.into();
     let result = svm.process_instruction(

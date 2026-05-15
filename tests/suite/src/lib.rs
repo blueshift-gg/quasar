@@ -1,8 +1,3 @@
-// Quasar Test Suite
-//
-// Integration tests for the Quasar Solana framework.
-// Each module tests a specific concern via QuasarSVM.
-
 #[cfg(test)]
 mod dynamic;
 #[cfg(test)]

@@ -7,11 +7,10 @@ use {
     quasar_spl::prelude::*,
 };
 
-/// Init BOTH metadata + master edition via derive behaviors, then verify ALL
-/// prefix fields on both accounts.
+/// Initializes metadata and master edition through derive behaviors, then
+/// verifies prefix fields on both accounts.
 ///
-/// Metadata MUST be declared before master_edition — the derive processes
-/// init in field declaration order.
+/// Metadata is declared before master_edition because init runs in field order.
 #[derive(Accounts)]
 pub struct InitMasterEditionTest {
     #[account(mut)]
@@ -25,7 +24,6 @@ pub struct InitMasterEditionTest {
     pub mint_authority: Signer,
     pub token_program: Program<TokenProgram>,
 
-    /// Metadata is init'd first (field order determines init order).
     #[account(
         init,
         payer = payer,
@@ -45,7 +43,6 @@ pub struct InitMasterEditionTest {
     )]
     pub metadata_account: Account<MetadataAccount>,
 
-    /// Master edition init'd second — uses the now-existing metadata.
     #[account(
         init,
         payer = payer,
@@ -67,7 +64,6 @@ pub struct InitMasterEditionTest {
 impl InitMasterEditionTest {
     #[inline(always)]
     pub fn handler(&self) -> Result<(), ProgramError> {
-        // Verify ALL metadata prefix fields
         let meta = &*self.metadata_account;
         require!(meta.key == 4, ProgramError::InvalidAccountData);
         require_keys_eq!(
@@ -81,7 +77,6 @@ impl InitMasterEditionTest {
             ProgramError::InvalidAccountData
         );
 
-        // Verify ALL master edition prefix fields
         let me = &*self.master_edition;
         require!(me.key == 6, ProgramError::InvalidAccountData);
         require!(me.supply_value() == 0, ProgramError::InvalidAccountData);

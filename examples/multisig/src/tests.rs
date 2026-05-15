@@ -297,7 +297,7 @@ fn test_execute_transfer_insufficient_signers() {
         Pubkey::find_program_address(&[b"multisig", creator.as_ref()], &crate::ID);
     let (vault, _) = Pubkey::find_program_address(&[b"vault", config.as_ref()], &crate::ID);
 
-    // Only 1 signer — threshold is 2, should fail
+    // Only one signer with a threshold of two should fail.
     let instruction: Instruction = ExecuteTransferInstruction {
         config,
         creator,
@@ -392,9 +392,3 @@ fn test_execute_transfer_duplicate_signer_counts_once() {
 
     assert!(result.is_err(), "duplicate signer should count once");
 }
-
-// NOTE: UTF-8 re-validation was removed in Phase 7 (perf/cu-optimizations).
-// The owner check already proves the account was written by this program,
-// and all PodString write paths accept &str (valid UTF-8 by construction).
-// Corrupted data in an owned account means Solana's security model is
-// broken — not something the program needs to defend against.

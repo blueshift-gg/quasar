@@ -3,10 +3,6 @@ use {
     solana_address::Address,
 };
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 #[allow(clippy::too_many_arguments)]
 fn build_token_account_bytes(
     mint: &Address,
@@ -68,10 +64,6 @@ fn cast_token(data: &[u8; 165]) -> &TokenDataZc {
 fn cast_mint(data: &[u8; 82]) -> &MintDataZc {
     unsafe { &*(data.as_ptr() as *const MintDataZc) }
 }
-
-// ---------------------------------------------------------------------------
-// TokenDataZc tests
-// ---------------------------------------------------------------------------
 
 #[test]
 fn test_token_state_mint() {
@@ -221,10 +213,6 @@ fn test_token_state_close_authority_absent() {
     assert_eq!(state.close_authority(), None);
 }
 
-// ---------------------------------------------------------------------------
-// MintDataZc tests
-// ---------------------------------------------------------------------------
-
 #[test]
 fn test_mint_state_has_authority() {
     let authority = Address::new_unique();
@@ -315,10 +303,6 @@ fn test_mint_state_max_decimals() {
     let state = cast_mint(&bytes);
     assert_eq!(state.decimals(), 255);
 }
-
-// ---------------------------------------------------------------------------
-// Layout size assertions
-// ---------------------------------------------------------------------------
 
 #[test]
 fn test_token_account_state_len() {

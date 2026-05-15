@@ -4,9 +4,7 @@ use {
     quasar_test_token_cpi::cpi::*,
 };
 
-// ===========================================================================
-// Approve (discriminator 1) — Program<Token>
-// ===========================================================================
+// Approve discriminator 1 with Program<Token>.
 
 #[test]
 fn approve_spl() {
@@ -41,9 +39,7 @@ fn approve_spl() {
     );
 }
 
-// ===========================================================================
-// ApproveT22 (discriminator 22) — Program<Token2022>
-// ===========================================================================
+// ApproveT22 discriminator 22 with Program<Token2022>.
 
 #[test]
 fn approve_t22() {
@@ -78,9 +74,7 @@ fn approve_t22() {
     );
 }
 
-// ===========================================================================
-// ApproveInterface (discriminator 23) — Interface<TokenInterface>
-// ===========================================================================
+// ApproveInterface discriminator 23 with Interface<TokenInterface>.
 
 #[test]
 fn approve_interface_spl() {
@@ -148,9 +142,7 @@ fn approve_interface_t22() {
     );
 }
 
-// ===========================================================================
-// Revoke (discriminator 2) — Program<Token>
-// ===========================================================================
+// Revoke discriminator 2 with Program<Token>.
 
 #[test]
 fn revoke_spl() {
@@ -190,9 +182,7 @@ fn revoke_spl() {
     );
 }
 
-// ===========================================================================
-// RevokeT22 (discriminator 24) — Program<Token2022>
-// ===========================================================================
+// RevokeT22 discriminator 24 with Program<Token2022>.
 
 #[test]
 fn revoke_t22() {
@@ -232,9 +222,7 @@ fn revoke_t22() {
     );
 }
 
-// ===========================================================================
-// RevokeInterface (discriminator 25) — Interface<TokenInterface>
-// ===========================================================================
+// RevokeInterface discriminator 25 with Interface<TokenInterface>.
 
 #[test]
 fn revoke_interface_spl() {

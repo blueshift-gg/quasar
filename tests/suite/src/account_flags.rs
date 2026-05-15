@@ -4,9 +4,7 @@ use {
     quasar_test_misc::cpi::*,
 };
 
-// ============================================================================
-// Signer
-// ============================================================================
+// Signer.
 
 #[test]
 fn signer_success() {
@@ -31,9 +29,7 @@ fn signer_not_signer() {
     result.assert_error(ProgramError::MissingRequiredSignature);
 }
 
-// ============================================================================
-// Mut
-// ============================================================================
+// Mut.
 
 #[test]
 fn mut_success() {
@@ -90,9 +86,7 @@ fn mut_not_writable() {
     result.assert_error(ProgramError::Immutable);
 }
 
-// ============================================================================
-// Combined signer + mut
-// ============================================================================
+// Combined signer + mut.
 
 #[test]
 fn signer_and_mut_success() {
@@ -166,9 +160,7 @@ fn signer_and_mut_not_writable() {
     result.assert_error(ProgramError::Immutable);
 }
 
-// ============================================================================
-// Dup-allowed path (#[account(dup)]) — separate codegen from nodup
-// ============================================================================
+// Dup-allowed path, #[account(dup)], separate codegen from nodup.
 
 #[test]
 fn dup_readonly_same_account_succeeds() {
@@ -214,7 +206,7 @@ fn dup_signer_same_account_succeeds() {
 #[test]
 fn three_accounts_no_dup_rejects_same() {
     // ThreeAccountsDup: Signer + mut UncheckedAccount + UncheckedAccount
-    // NO #[account(dup)] — so second==third must be rejected by nodup check
+    // No #[account(dup)], so second==third must be rejected by nodup check.
     let mut svm = svm_errors();
     let signer = Pubkey::new_unique();
     let shared = Pubkey::new_unique();
@@ -235,9 +227,7 @@ fn three_accounts_no_dup_rejects_same() {
     assert!(result.is_err(), "should reject dup without #[account(dup)]");
 }
 
-// ============================================================================
-// Double mut — two separate &mut fields in one instruction
-// ============================================================================
+// Double mut with two separate &mut fields in one instruction.
 
 #[test]
 fn double_mut_distinct_accounts() {

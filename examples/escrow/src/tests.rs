@@ -7,7 +7,7 @@ use {
     std::println,
 };
 
-// Deterministic addresses — avoids Pubkey::new_unique() whose global counter
+// Deterministic addresses avoid Pubkey::new_unique(), whose global counter
 // produces different values depending on test binary layout / discovery order.
 const MAKER: Pubkey = Pubkey::new_from_array([1; 32]);
 const TAKER: Pubkey = Pubkey::new_from_array([2; 32]);
@@ -241,10 +241,6 @@ fn test_refund_cu() {
     assert!(result.is_ok(), "refund failed: {:?}", result.raw_result);
     println!("  REFUND CU: {}", result.compute_units_consumed);
 }
-
-// ---------------------------------------------------------------------------
-// init_if_needed: pre-existing token accounts
-// ---------------------------------------------------------------------------
 
 #[test]
 fn test_make_existing_token_accounts() {
