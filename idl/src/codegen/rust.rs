@@ -74,7 +74,6 @@ pub fn generate_client(idl: &Idl) -> Vec<(String, String)> {
     let pdas = collect_pdas(idl);
     let has_pdas = model.features.has_pdas;
 
-    // --- lib.rs ---
     files.push((
         "lib.rs".to_string(),
         emit_lib_rs(
@@ -88,7 +87,6 @@ pub fn generate_client(idl: &Idl) -> Vec<(String, String)> {
         ),
     ));
 
-    // --- instructions/ ---
     if has_instructions {
         let (mod_rs, ix_files) = emit_instructions(idl, &type_map);
         files.push(("instructions/mod.rs".to_string(), mod_rs));
@@ -97,7 +95,6 @@ pub fn generate_client(idl: &Idl) -> Vec<(String, String)> {
         }
     }
 
-    // --- state/ ---
     if has_state {
         let (mod_rs, state_files) = emit_discriminated_module(
             &idl.accounts,
@@ -112,7 +109,6 @@ pub fn generate_client(idl: &Idl) -> Vec<(String, String)> {
         }
     }
 
-    // --- events/ ---
     if has_events {
         let (mod_rs, event_files) = emit_discriminated_module(
             &idl.events,
@@ -127,7 +123,6 @@ pub fn generate_client(idl: &Idl) -> Vec<(String, String)> {
         }
     }
 
-    // --- types/ ---
     if has_types {
         let (mod_rs, type_files) = emit_types(&type_map);
         files.push(("types/mod.rs".to_string(), mod_rs));
@@ -136,22 +131,16 @@ pub fn generate_client(idl: &Idl) -> Vec<(String, String)> {
         }
     }
 
-    // --- errors.rs ---
     if has_errors {
         files.push(("errors.rs".to_string(), emit_errors(idl)));
     }
 
-    // --- pda.rs ---
     if has_pdas {
         files.push(("pda.rs".to_string(), emit_pda(&pdas)));
     }
 
     files
 }
-
-// ===========================================================================
-// lib.rs
-// ===========================================================================
 
 fn emit_lib_rs(
     idl: &Idl,
@@ -200,10 +189,6 @@ fn emit_lib_rs(
 
     out
 }
-
-// ===========================================================================
-// instructions/
-// ===========================================================================
 
 fn emit_instructions(
     idl: &Idl,
@@ -500,7 +485,7 @@ fn emit_instructions(
                     }
                 }
             } else {
-                // All fixed fields — original sequential decode
+                // Fixed fields decode sequentially.
                 let arg_count = ix.args.len();
                 if arg_count > 1 {
                     mod_rs.push_str("            let mut offset = 0usize;\n");
@@ -572,7 +557,6 @@ fn emit_single_instruction(
 
     let struct_name = camel_to_pascal(&ix.name);
 
-    // --- Per-file imports ---
     let has_remaining = ix.remaining_accounts.is_some();
     if has_remaining {
         out.push_str("use std::vec::Vec;\n");
@@ -594,7 +578,6 @@ fn emit_single_instruction(
 
     out.push('\n');
 
-    // --- Struct definition ---
     writeln!(out, "pub struct {}Instruction {{", struct_name).expect("write to String");
 
     for account in &ix.accounts {
@@ -618,7 +601,6 @@ fn emit_single_instruction(
 
     out.push_str("}\n\n");
 
-    // --- From impl ---
     writeln!(
         out,
         "impl From<{}Instruction> for Instruction {{",
@@ -645,7 +627,7 @@ fn emit_single_instruction(
         out.push_str("        accounts.extend(ix.remaining_accounts);\n");
     }
 
-    // Instruction data — compact wire format:
+    // Compact wire format:
     //   [disc][fixed fields][all dynamic prefixes][all dynamic data]
     let disc_str = super::format_disc_decimal(&ix.discriminator);
     let is_compact = matches!(ix.layout, Some(IdlLayout::Compact { .. }));
@@ -666,7 +648,7 @@ fn emit_single_instruction(
             .filter(|a| is_direct_dynamic(&a.ty, &a.codec))
             .collect();
 
-        // Phase 1: fixed fields (serialised via wincode — order preserving)
+        // Fixed fields are serialized in IDL order.
         for arg in &fixed_args {
             writeln!(
                 out,
@@ -678,7 +660,7 @@ fn emit_single_instruction(
         }
 
         if !dyn_args.is_empty() && is_compact {
-            // Phase 2: length table — all dynamic prefixes grouped together
+            // Group all dynamic length prefixes before tail data.
             for arg in &dyn_args {
                 let name = camel_to_snake(&arg.name);
                 if optional_dynamic_inner(&arg.ty).is_some() {
@@ -695,7 +677,7 @@ fn emit_single_instruction(
                 }
             }
 
-            // Phase 3: tail — all dynamic data in field order
+            // Write dynamic data in IDL order.
             for arg in &dyn_args {
                 let name = camel_to_snake(&arg.name);
                 if let Some(inner) = optional_dynamic_inner(&arg.ty) {
@@ -784,10 +766,6 @@ fn emit_single_instruction(
 
     out
 }
-
-// ===========================================================================
-// state/ and events/ — unified via DiscriminatedItem trait
-// ===========================================================================
 
 /// Trait abstracting over IdlAccountDef and IdlEventDef for shared codegen.
 trait DiscriminatedItem {
@@ -974,10 +952,6 @@ fn emit_single_state_or_event(
     out
 }
 
-// ===========================================================================
-// types/
-// ===========================================================================
-
 fn emit_types(type_map: &HashMap<String, Vec<IdlFieldDef>>) -> (String, Vec<(String, String)>) {
     let mut mod_rs = String::new();
     let mut type_files: Vec<(String, String)> = Vec::new();
@@ -1035,10 +1009,6 @@ fn emit_single_type(
     out
 }
 
-// ===========================================================================
-// errors.rs
-// ===========================================================================
-
 fn emit_errors(idl: &Idl) -> String {
     let model = ProgramModel::new(idl);
     let mut out = String::new();
@@ -1082,10 +1052,6 @@ fn emit_errors(idl: &Idl) -> String {
 
     out
 }
-
-// ===========================================================================
-// pda.rs
-// ===========================================================================
 
 /// A collected PDA with its field name and seeds.
 struct PdaInfo {
@@ -1152,22 +1118,37 @@ fn emit_pda(pdas: &[PdaInfo]) -> String {
             .collect();
         writeln!(out, "/// Seeds: [{}]", seed_desc.join(", ")).expect("write to String");
 
-        // Function parameters
         let mut params: Vec<String> = Vec::new();
+        let mut seen_params: HashSet<String> = HashSet::new();
         for seed in &pda.seeds {
             match seed {
                 IdlPdaSeed::Account { path } => {
-                    params.push(format!("{}: &Address", camel_to_snake(path)));
+                    push_unique_param(
+                        &mut params,
+                        &mut seen_params,
+                        format!("account:{path}"),
+                        format!("{}: &Address", camel_to_snake(path)),
+                    );
                 }
                 IdlPdaSeed::AccountField { path, field, .. } => {
-                    params.push(format!(
-                        "{}_{}_seed: &[u8]",
-                        camel_to_snake(path),
-                        camel_to_snake(field)
-                    ));
+                    push_unique_param(
+                        &mut params,
+                        &mut seen_params,
+                        format!("account-field:{path}:{field}"),
+                        format!(
+                            "{}_{}_seed: &[u8]",
+                            camel_to_snake(path),
+                            camel_to_snake(field)
+                        ),
+                    );
                 }
-                IdlPdaSeed::Arg { path, .. } => {
-                    params.push(format!("{}: &[u8]", camel_to_snake(path)));
+                IdlPdaSeed::Arg { path, ty, .. } => {
+                    push_unique_param(
+                        &mut params,
+                        &mut seen_params,
+                        format!("arg:{path}"),
+                        format!("{}: {}", camel_to_snake(path), rust_pda_arg_type(ty)),
+                    );
                 }
                 _ => {}
             }
@@ -1183,7 +1164,20 @@ fn emit_pda(pdas: &[PdaInfo]) -> String {
         )
         .expect("write to String");
 
-        // Build seeds array
+        let mut seen_seed_vars = HashSet::new();
+        for seed in &pda.seeds {
+            let IdlPdaSeed::Arg { path, ty, .. } = seed else {
+                continue;
+            };
+            let var = rust_pda_arg_seed_var(path);
+            if !seen_seed_vars.insert(var) {
+                continue;
+            }
+            if let Some(setup) = rust_pda_arg_seed_setup(path, ty) {
+                out.push_str(&setup);
+            }
+        }
+
         let seed_exprs: Vec<String> = pda
             .seeds
             .iter()
@@ -1193,7 +1187,7 @@ fn emit_pda(pdas: &[PdaInfo]) -> String {
                 IdlPdaSeed::AccountField { path, field, .. } => {
                     format!("{}_{}_seed", camel_to_snake(path), camel_to_snake(field))
                 }
-                IdlPdaSeed::Arg { path, .. } => camel_to_snake(path),
+                IdlPdaSeed::Arg { path, ty, .. } => rust_pda_arg_seed_expr(path, ty),
             })
             .collect();
 
@@ -1209,9 +1203,83 @@ fn emit_pda(pdas: &[PdaInfo]) -> String {
     out
 }
 
-// ===========================================================================
-// Compact-layout helpers
-// ===========================================================================
+fn push_unique_param(
+    params: &mut Vec<String>,
+    seen: &mut HashSet<String>,
+    key: String,
+    param: String,
+) {
+    if seen.insert(key) {
+        params.push(param);
+    }
+}
+
+fn rust_pda_arg_type(ty: &IdlType) -> String {
+    match pda_scalar_type(ty) {
+        Some("pubkey") => "&Address".to_string(),
+        Some(
+            scalar @ ("bool" | "u8" | "i8" | "u16" | "i16" | "u32" | "i32" | "u64" | "i64" | "u128"
+            | "i128"),
+        ) => scalar.to_string(),
+        _ => match ty {
+            IdlType::Array {
+                array: (_inner, size),
+            } => format!("[u8; {size}]"),
+            _ => "&[u8]".to_string(),
+        },
+    }
+}
+
+fn rust_pda_arg_seed_setup(path: &str, ty: &IdlType) -> Option<String> {
+    let name = camel_to_snake(path);
+    let var = rust_pda_arg_seed_var(path);
+    match pda_scalar_type(ty) {
+        Some("bool") => Some(format!("    let {var} = [{name} as u8];\n")),
+        Some("u8") | Some("i8") => Some(format!("    let {var} = [{name} as u8];\n")),
+        Some("u16" | "i16" | "u32" | "i32" | "u64" | "i64" | "u128" | "i128") => {
+            Some(format!("    let {var} = {name}.to_le_bytes();\n"))
+        }
+        _ => None,
+    }
+}
+
+fn rust_pda_arg_seed_expr(path: &str, ty: &IdlType) -> String {
+    match pda_scalar_type(ty) {
+        Some("pubkey") => format!("{}.as_ref()", camel_to_snake(path)),
+        Some(
+            "bool" | "u8" | "i8" | "u16" | "i16" | "u32" | "i32" | "u64" | "i64" | "u128" | "i128",
+        ) => format!("{}.as_ref()", rust_pda_arg_seed_var(path)),
+        _ => match ty {
+            IdlType::Array { .. } => format!("{}.as_ref()", camel_to_snake(path)),
+            _ => camel_to_snake(path),
+        },
+    }
+}
+
+fn rust_pda_arg_seed_var(path: &str) -> String {
+    format!("{}_seed", camel_to_snake(path))
+}
+
+fn pda_scalar_type(ty: &IdlType) -> Option<&str> {
+    match ty {
+        IdlType::Primitive(p) => Some(p),
+        IdlType::Defined { defined } => match defined.name.as_str() {
+            "PodBool" => Some("bool"),
+            "PodU8" => Some("u8"),
+            "PodI8" => Some("i8"),
+            "PodU16" => Some("u16"),
+            "PodI16" => Some("i16"),
+            "PodU32" => Some("u32"),
+            "PodI32" => Some("i32"),
+            "PodU64" => Some("u64"),
+            "PodI64" => Some("i64"),
+            "PodU128" => Some("u128"),
+            "PodI128" => Some("i128"),
+            _ => None,
+        },
+        _ => None,
+    }
+}
 
 /// Returns `true` if the field is a top-level dynamic type (string or vec with
 /// SizePrefixed codec). These require compact wire-format handling.
@@ -1263,10 +1331,6 @@ fn dynamic_prefix_bytes_from_codec(codec: &Option<IdlCodec>) -> usize {
         2 // default
     }
 }
-
-// ===========================================================================
-// Shared helpers
-// ===========================================================================
 
 /// Scan field types and emit wrapper imports (DynString, DynVec), Address
 /// import, and defined type imports.
@@ -1353,7 +1417,6 @@ fn emit_manual_impls(
     let const_name = pascal_to_screaming_snake(base);
     let disc_const = format!("{}_{}_DISCRIMINATOR", const_name, kind.to_ascii_uppercase());
 
-    // --- SchemaWrite impl ---
     writeln!(
         out,
         "unsafe impl<C: ConfigCore> SchemaWrite<C> for {}",
@@ -1410,7 +1473,7 @@ fn emit_manual_impls(
     out.push_str(")\n");
     out.push_str("    }\n\n");
 
-    // write — compact layout: [disc][fixed][all prefixes][all data]
+    // Compact layout: [disc][fixed][all prefixes][all data].
     out.push_str("    fn write(mut writer: impl Writer, src: &Self) -> WriteResult<()> {\n");
     writeln!(out, "        writer.write({disc_const})?;").expect("write to String");
 
@@ -1457,7 +1520,6 @@ fn emit_manual_impls(
     out.push_str("    }\n");
     out.push_str("}\n\n");
 
-    // --- SchemaRead impl ---
     writeln!(
         out,
         "unsafe impl<'de, C: ConfigCore> SchemaRead<'de, C> for {}",
@@ -1504,7 +1566,7 @@ fn emit_manual_impls(
     out.push_str("        }\n");
 
     if !has_dynamic {
-        // No dynamic fields — simple sequential read
+        // No dynamic fields: simple sequential read.
         out.push_str("        dst.write(Self {\n");
         for (field_name, field_type, _) in &fixed_fields {
             writeln!(
@@ -1576,7 +1638,7 @@ fn emit_manual_impls(
             }
         }
 
-        // Assemble struct from all fields in original IDL order
+        // Assemble struct in IDL order.
         out.push_str("        dst.write(Self {\n");
         for (field_name, _) in &fields {
             writeln!(out, "            {field_name},").expect("write to String");

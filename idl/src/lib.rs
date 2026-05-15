@@ -5,8 +5,8 @@
 //! the `#[program]` macro into a complete IDL JSON via the `idl-build` feature.
 //!
 //! This crate provides:
-//! - **Codegen** — TypeScript and Rust client generators from IDL JSON
-//! - **Types** — re-export of `quasar-idl-schema` types
+//! - **Codegen**: TypeScript and Rust client generators from IDL JSON
+//! - **Types**: re-export of `quasar-idl-schema` types
 //!
 //! Programs compile with `--features idl-build` to produce IDL.
 pub mod codegen;

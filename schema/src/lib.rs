@@ -3,12 +3,8 @@
 //! Keep this crate narrow: only shared case-conversion utilities belong here.
 //! The canonical IDL type definitions live in `quasar-idl-schema`.
 
-// ---------------------------------------------------------------------------
-// Case-conversion utilities (shared across derive, idl, cli, client)
-// ---------------------------------------------------------------------------
-
 /// Convert `PascalCase` to `snake_case`. Handles acronyms (e.g.
-/// "HTTPServer" → "http_server") by checking adjacent character case.
+/// "HTTPServer" becomes "http_server") by checking adjacent character case.
 pub fn pascal_to_snake(s: &str) -> String {
     let mut result = String::with_capacity(s.len() + 4);
     let mut prev: Option<char> = None;
@@ -60,7 +56,7 @@ pub fn to_camel_case(s: &str) -> String {
 /// Convert `camelCase` to `snake_case` (inverse of `to_camel_case`).
 ///
 /// Uses the simple rule of inserting `_` before every uppercase character.
-/// Not suitable for acronym-heavy input like "HTTPServer" — use
+/// Not suitable for acronym-heavy input like "HTTPServer"; use
 /// `pascal_to_snake` for that.
 pub fn camel_to_snake(s: &str) -> String {
     let mut result = String::with_capacity(s.len() + 4);
