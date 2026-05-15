@@ -27,6 +27,12 @@ pub(crate) fn parse_struct_instruction_args(
             let name: Ident = stream.parse()?;
             let _: Token![:] = stream.parse()?;
             let ty: Type = stream.parse()?;
+            if args.iter().any(|arg: &InstructionArg| arg.name == name) {
+                return Err(syn::Error::new_spanned(
+                    &name,
+                    format!("duplicate instruction arg `{name}`"),
+                ));
+            }
             args.push(InstructionArg { name, ty });
             if !stream.is_empty() {
                 let _: Token![,] = stream.parse()?;
@@ -42,7 +48,7 @@ pub(crate) fn parse_struct_instruction_args(
 ///
 /// Fixed types are read via a zero-copy `#[repr(C)]` struct pointer cast.
 /// Dynamic fields (String<N>/Vec<T,N>) use inline prefix reads from the data
-/// buffer after the fixed ZC block. String uses u8 prefix, Vec uses u16 prefix.
+/// buffer after the fixed ZC block, using each field's configured prefix width.
 pub(crate) fn generate_instruction_arg_extraction(
     ix_args: &[InstructionArg],
 ) -> proc_macro2::TokenStream {
@@ -50,10 +56,10 @@ pub(crate) fn generate_instruction_arg_extraction(
         return quote! {};
     }
 
-    let mut pod_dyns: Vec<Option<PodDynField>> = Vec::with_capacity(ix_args.len());
-    for arg in ix_args {
-        pod_dyns.push(classify_pod_dynamic(&arg.ty));
-    }
+    let pod_dyns: Vec<Option<PodDynField>> = ix_args
+        .iter()
+        .map(|arg| classify_pod_dynamic(&arg.ty))
+        .collect();
 
     let has_dynamic = pod_dyns.iter().any(|pd| pd.is_some());
     let has_fixed = pod_dyns.iter().any(|pd| pd.is_none());
@@ -109,6 +115,8 @@ pub(crate) fn generate_instruction_arg_extraction(
         });
 
         stmts.push(quote! {
+            // SAFETY: `__IxArgsZc` has alignment 1 and the preceding length check
+            // guarantees the fixed ZC block is present.
             let __ix_zc = unsafe { &*(__ix_data.as_ptr() as *const __IxArgsZc) };
         });
 
@@ -149,19 +157,22 @@ pub(crate) fn generate_instruction_arg_extraction(
                     dyn_idx += 1;
                     let pfx = *prefix_bytes;
                     stmts.push(quote! {
-                        if __data.len() < __offset + #pfx {
+                        let __ix_dyn_prefix_end = __offset
+                            .checked_add(#pfx)
+                            .ok_or(ProgramError::InvalidInstructionData)?;
+                        if __data.len() < __ix_dyn_prefix_end {
                             return Err(ProgramError::InvalidInstructionData);
                         }
                     });
                     stmts.push(quote! {
                         let __ix_dyn_len = {
                             let mut __buf = [0u8; 8];
-                            __buf[..#pfx].copy_from_slice(&__data[__offset..__offset + #pfx]);
+                            __buf[..#pfx].copy_from_slice(&__data[__offset..__ix_dyn_prefix_end]);
                             u64::from_le_bytes(__buf) as usize
                         };
                     });
                     stmts.push(quote! {
-                        __offset += #pfx;
+                        __offset = __ix_dyn_prefix_end;
                     });
                     stmts.push(quote! {
                         if __ix_dyn_len > #max {
@@ -169,16 +180,19 @@ pub(crate) fn generate_instruction_arg_extraction(
                         }
                     });
                     stmts.push(quote! {
-                        if __data.len() < __offset + __ix_dyn_len {
+                        let __ix_dyn_end = __offset
+                            .checked_add(__ix_dyn_len)
+                            .ok_or(ProgramError::InvalidInstructionData)?;
+                        if __data.len() < __ix_dyn_end {
                             return Err(ProgramError::InvalidInstructionData);
                         }
                     });
                     stmts.push(quote! {
-                        let #name: &[u8] = &__data[__offset..__offset + __ix_dyn_len];
+                        let #name: &[u8] = &__data[__offset..__ix_dyn_end];
                     });
                     if dyn_idx < dyn_count {
                         stmts.push(quote! {
-                            __offset += __ix_dyn_len;
+                            __offset = __ix_dyn_end;
                         });
                     }
                 }
@@ -190,19 +204,22 @@ pub(crate) fn generate_instruction_arg_extraction(
                     dyn_idx += 1;
                     let pfx = *prefix_bytes;
                     stmts.push(quote! {
-                        if __data.len() < __offset + #pfx {
+                        let __ix_dyn_prefix_end = __offset
+                            .checked_add(#pfx)
+                            .ok_or(ProgramError::InvalidInstructionData)?;
+                        if __data.len() < __ix_dyn_prefix_end {
                             return Err(ProgramError::InvalidInstructionData);
                         }
                     });
                     stmts.push(quote! {
                         let __ix_dyn_count = {
                             let mut __buf = [0u8; 8];
-                            __buf[..#pfx].copy_from_slice(&__data[__offset..__offset + #pfx]);
+                            __buf[..#pfx].copy_from_slice(&__data[__offset..__ix_dyn_prefix_end]);
                             u64::from_le_bytes(__buf) as usize
                         };
                     });
                     stmts.push(quote! {
-                        __offset += #pfx;
+                        __offset = __ix_dyn_prefix_end;
                     });
                     stmts.push(quote! {
                         if __ix_dyn_count > #max {
@@ -215,11 +232,16 @@ pub(crate) fn generate_instruction_arg_extraction(
                             .ok_or(ProgramError::InvalidInstructionData)?;
                     });
                     stmts.push(quote! {
-                        if __data.len() < __offset + __ix_dyn_byte_len {
+                        let __ix_dyn_end = __offset
+                            .checked_add(__ix_dyn_byte_len)
+                            .ok_or(ProgramError::InvalidInstructionData)?;
+                        if __data.len() < __ix_dyn_end {
                             return Err(ProgramError::InvalidInstructionData);
                         }
                     });
                     stmts.push(quote! {
+                        // SAFETY: the byte range was bounds-checked above and
+                        // vector element alignment is asserted to be 1.
                         let #name: &[#elem] = unsafe {
                             core::slice::from_raw_parts(
                                 __data.as_ptr().add(__offset) as *const #elem,
@@ -229,7 +251,7 @@ pub(crate) fn generate_instruction_arg_extraction(
                     });
                     if dyn_idx < dyn_count {
                         stmts.push(quote! {
-                            __offset += __ix_dyn_byte_len;
+                            __offset = __ix_dyn_end;
                         });
                     }
                 }

@@ -1,7 +1,7 @@
 //! `#[derive(Seeds)]` and account-local `#[seeds(...)]` codegen.
 
 use {
-    crate::seed_param::{parse_seed_type, SeedType},
+    crate::seed_param::{parse_seed_type, SeedType, MAX_SEED_LEN},
     proc_macro2::{Span, TokenStream},
     quote::{format_ident, quote},
     syn::{
@@ -12,6 +12,8 @@ use {
         Type, Visibility,
     },
 };
+
+const MAX_PDA_SEEDS_WITHOUT_BUMP: usize = 16;
 
 /// A single typed seed parameter (e.g. `authority: Address`).
 pub(crate) struct SeedParam {
@@ -25,27 +27,22 @@ pub(crate) struct SeedsAttr {
     params: Vec<SeedParam>,
 }
 
-impl SeedsAttr {
-    fn dynamic_seed_count(&self) -> usize {
-        self.params.len()
-    }
-}
-
 impl Parse for SeedsAttr {
     fn parse(input: ParseStream) -> Result<Self> {
         let prefix_expr: Expr = input.parse()?;
+        let prefix_span = prefix_expr.span();
         let prefix = match &prefix_expr {
             Expr::Lit(ExprLit {
                 lit: Lit::ByteStr(bytes),
                 ..
             }) => {
                 let prefix = bytes.value();
-                if prefix.len() > 32 {
+                if prefix.len() > MAX_SEED_LEN {
                     return Err(Error::new_spanned(
                         bytes,
                         format!(
-                            "seed prefix is {} bytes, exceeds MAX_SEED_LEN of 32",
-                            prefix.len()
+                            "seed prefix is {} bytes, exceeds MAX_SEED_LEN of {MAX_SEED_LEN}",
+                            prefix.len(),
                         ),
                     ));
                 }
@@ -72,16 +69,33 @@ impl Parse for SeedsAttr {
             params.push(SeedParam { name, ty });
         }
 
+        let seed_count_without_bump = 1 + params.len();
+        if seed_count_without_bump > MAX_PDA_SEEDS_WITHOUT_BUMP {
+            return Err(Error::new(
+                prefix_span,
+                format!(
+                    "PDA seed list has {seed_count_without_bump} seeds before bump; Quasar \
+                     supports at most {MAX_PDA_SEEDS_WITHOUT_BUMP}"
+                ),
+            ));
+        }
+
         Ok(SeedsAttr { prefix, params })
     }
 }
 
 /// Extract `#[seeds(...)]` from attributes, if present.
 pub(crate) fn parse_seeds_attr(attrs: &[syn::Attribute]) -> Option<Result<SeedsAttr>> {
-    attrs
-        .iter()
-        .find(|attr| attr.path().is_ident("seeds"))
-        .map(|attr| attr.parse_args::<SeedsAttr>())
+    let mut seeds_attr = None;
+    for attr in attrs.iter().filter(|attr| attr.path().is_ident("seeds")) {
+        if seeds_attr.replace(attr).is_some() {
+            return Some(Err(Error::new_spanned(
+                attr,
+                "duplicate #[seeds(...)] attribute",
+            )));
+        }
+    }
+    seeds_attr.map(|attr| attr.parse_args::<SeedsAttr>())
 }
 
 pub fn derive_seeds(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -132,7 +146,7 @@ pub(crate) fn generate_seeds_impl(
 ) -> TokenStream {
     let prefix_bytes = &seeds_attr.prefix;
     let prefix_lit = LitByteStr::new(prefix_bytes, Span::call_site());
-    let dynamic_count = seeds_attr.dynamic_seed_count();
+    let dynamic_count = seeds_attr.params.len();
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     let seed_set = format_ident!("{}SeedSet", name);

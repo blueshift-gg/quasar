@@ -1,0 +1,5 @@
+error: duplicate instruction arg `amount`
+ --> tests/compile_fail/duplicate_instruction_arg.rs:6:28
+  |
+6 | #[instruction(amount: u64, amount: u8)]
+  |                            ^^^^^^

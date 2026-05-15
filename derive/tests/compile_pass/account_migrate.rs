@@ -37,7 +37,7 @@ pub struct VaultV2 {
     pub fee_bps: PodU16,
     pub bump: u8,
 }
-/// Basic grow migration (V1 → V2)
+/// Basic grow migration (V1 to V2).
 #[derive(Accounts)]
 pub struct MigrateGrow {
     #[account(mut)]
@@ -45,10 +45,9 @@ pub struct MigrateGrow {
     pub system_program: Program<SystemProgram>,
     #[account(constraints(config.authority == *authority.address()))]
     pub config: Migration<ConfigV1, ConfigV2>,
-    /// CHECK: authority
     pub authority: Signer,
 }
-/// Same-size migration (V1 → V2Slim)
+/// Same-size migration (V1 to V2Slim).
 #[derive(Accounts)]
 pub struct MigrateSameSize {
     #[account(mut)]
@@ -56,7 +55,7 @@ pub struct MigrateSameSize {
     pub system_program: Program<SystemProgram>,
     pub config: Migration<ConfigV1, ConfigV2Slim>,
 }
-/// Shrink migration (V1Big → V2Slim)
+/// Shrink migration (V1Big to V2Slim).
 #[derive(Accounts)]
 pub struct MigrateShrink {
     #[account(mut)]
@@ -64,7 +63,7 @@ pub struct MigrateShrink {
     pub system_program: Program<SystemProgram>,
     pub config: Migration<ConfigV1Big, ConfigV2Slim>,
 }
-/// PDA migration with seeds + bump
+/// PDA migration with seeds and bump.
 #[derive(Accounts)]
 pub struct MigrateVault {
     #[account(mut)]
@@ -75,10 +74,9 @@ pub struct MigrateVault {
         address = VaultV1::seeds(authority.address()),
     )]
     pub vault: Migration<VaultV1, VaultV2>,
-    /// CHECK: authority
     pub authority: Signer,
 }
-/// Non-default payer name
+/// Non-default payer name.
 #[derive(Accounts)]
 pub struct MigrateWithFunder {
     #[account(mut)]

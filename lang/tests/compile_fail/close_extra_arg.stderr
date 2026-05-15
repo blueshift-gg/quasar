@@ -1,0 +1,5 @@
+error: `close(...)` accepts only `dest = field`
+  --> tests/compile_fail/close_extra_arg.rs:16:20
+   |
+16 |     #[account(mut, close(dest = authority, extra = authority))]
+   |                    ^^^^^

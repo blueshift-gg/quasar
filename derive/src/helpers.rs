@@ -7,6 +7,10 @@ use {
     },
 };
 
+fn duplicate_arg_error(ident: &Ident) -> syn::Error {
+    syn::Error::new(ident.span(), format!("duplicate `{ident}`"))
+}
+
 /// Parse `#[max(N)]` or `#[max(N, pfx = P)]` from an attribute list.
 pub(crate) fn parse_max_attr(attrs: &[syn::Attribute]) -> Option<syn::Result<(usize, usize)>> {
     for attr in attrs {
@@ -37,9 +41,9 @@ pub(crate) struct AccountAttr {
     pub unsafe_no_disc: bool,
     pub set_inner: bool,
     pub fixed_capacity: bool,
-    /// `one_of` — polymorphic account on enum declarations.
+    /// `one_of`: polymorphic account on enum declarations.
     pub one_of: bool,
-    /// `implements(TraitPath)` — trait all variants implement; generates Deref.
+    /// `implements(TraitPath)`: trait all variants implement; generates Deref.
     pub implements: Option<syn::Path>,
 }
 
@@ -51,20 +55,40 @@ impl Parse for AccountAttr {
         let mut fixed_capacity = false;
         let mut one_of = false;
         let mut implements: Option<syn::Path> = None;
+        let mut has_discriminator = false;
 
         while !input.is_empty() {
             let ident: Ident = input.parse()?;
             if ident == "unsafe_no_disc" {
+                if unsafe_no_disc {
+                    return Err(duplicate_arg_error(&ident));
+                }
                 unsafe_no_disc = true;
             } else if ident == "set_inner" {
+                if set_inner {
+                    return Err(duplicate_arg_error(&ident));
+                }
                 set_inner = true;
             } else if ident == "fixed_capacity" {
+                if fixed_capacity {
+                    return Err(duplicate_arg_error(&ident));
+                }
                 fixed_capacity = true;
             } else if ident == "one_of" {
+                if one_of {
+                    return Err(duplicate_arg_error(&ident));
+                }
                 one_of = true;
             } else if ident == "discriminator" {
+                if has_discriminator {
+                    return Err(duplicate_arg_error(&ident));
+                }
                 disc_bytes = parse_discriminator_value(input)?;
+                has_discriminator = true;
             } else if ident == "implements" {
+                if implements.is_some() {
+                    return Err(duplicate_arg_error(&ident));
+                }
                 let content;
                 syn::parenthesized!(content in input);
                 implements = Some(content.parse::<syn::Path>()?);
@@ -89,6 +113,13 @@ impl Parse for AccountAttr {
             return Err(syn::Error::new(
                 input.span(),
                 "`implements` can only be used with `one_of`",
+            ));
+        }
+
+        if !one_of && has_discriminator && unsafe_no_disc {
+            return Err(syn::Error::new(
+                input.span(),
+                "`discriminator` cannot be combined with `unsafe_no_disc`",
             ));
         }
 
@@ -126,10 +157,19 @@ impl Parse for InstructionArgs {
         while !input.is_empty() {
             let ident: Ident = input.parse()?;
             if ident == "heap" {
+                if heap {
+                    return Err(duplicate_arg_error(&ident));
+                }
                 heap = true;
             } else if ident == "raw" {
+                if raw {
+                    return Err(duplicate_arg_error(&ident));
+                }
                 raw = true;
             } else if ident == "discriminator" {
+                if discriminator.is_some() {
+                    return Err(duplicate_arg_error(&ident));
+                }
                 discriminator = Some(parse_discriminator_value(input)?);
             } else {
                 return Err(syn::Error::new(
@@ -217,15 +257,9 @@ pub(crate) fn is_composite_type(ty: &Type) -> bool {
             if last.ident == "AccountsArray" {
                 return true;
             }
-            if let PathArguments::AngleBracketed(args) = &last.arguments {
-                return args
-                    .args
-                    .iter()
-                    .any(|arg| matches!(arg, GenericArgument::Lifetime(_)));
-            }
         }
     }
-    false
+    classify_lifetime_arg(ty)
 }
 
 pub(crate) fn is_unit_type(ty: &Type) -> bool {
@@ -452,8 +486,9 @@ pub(crate) fn zc_assign_from_value(field_name: &Ident, ty: &Type) -> proc_macro2
 fn pod_alias_type(ty: &Type, accept_pod_aliases: bool) -> Option<proc_macro2::TokenStream> {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
-            let is_string = seg.ident == "String" || seg.ident == "PodString" && accept_pod_aliases;
-            let is_vec = seg.ident == "Vec" || seg.ident == "PodVec" && accept_pod_aliases;
+            let is_string =
+                seg.ident == "String" || (accept_pod_aliases && seg.ident == "PodString");
+            let is_vec = seg.ident == "Vec" || (accept_pod_aliases && seg.ident == "PodVec");
 
             if is_string {
                 if let PathArguments::AngleBracketed(ab) = &seg.arguments {
@@ -478,7 +513,7 @@ fn pod_alias_type(ty: &Type, accept_pod_aliases: bool) -> Option<proc_macro2::To
                     return Some(quote! { quasar_lang::pod::PodVec });
                 }
             } else if seg.ident == "PodOption" {
-                // PodOption<T, PFX> — map inner type, pass PFX through.
+                // PodOption<T, PFX>: map inner type, pass PFX through.
                 if let PathArguments::AngleBracketed(ab) = &seg.arguments {
                     let mut it = ab.args.iter();
                     if let Some(syn::GenericArgument::Type(inner)) = it.next() {

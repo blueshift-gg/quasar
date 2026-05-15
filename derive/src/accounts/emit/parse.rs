@@ -1,4 +1,4 @@
-//! Parse/epilogue body assembly — wires phase snippets into the output.
+//! Parse/epilogue body assembly: wires phase snippets into the output.
 //!
 //! Generated parse body shape:
 //!
@@ -12,7 +12,7 @@
 //! // Phase 2: address verify + init CPI for init fields (field-ordered)
 //! // Phase 3: load init fields (inlined into behavior init sequence)
 //!
-//! // Phase 4: behavior checks, user checks, realloc, migration grow
+//! // Phase 4: behavior checks, user checks, realloc
 //! <path::Behavior as AccountBehavior<Ty>>::check(&field, &args)?;
 //!
 //! Ok((Self { field_a, field_b, field_c }, bumps))
@@ -37,7 +37,7 @@ pub(crate) fn emit_parse_body(
     semantics: &[FieldSemantics],
     plan: &AccountsPlanTyped,
     cx: &super::EmitCx,
-) -> syn::Result<proc_macro2::TokenStream> {
+) -> proc_macro2::TokenStream {
     emit_parse_body_inner(semantics, plan, cx, true)
 }
 
@@ -45,7 +45,7 @@ pub(crate) fn emit_parse_body_without_behavior_assertions(
     semantics: &[FieldSemantics],
     plan: &AccountsPlanTyped,
     cx: &super::EmitCx,
-) -> syn::Result<proc_macro2::TokenStream> {
+) -> proc_macro2::TokenStream {
     emit_parse_body_inner(semantics, plan, cx, false)
 }
 
@@ -54,16 +54,16 @@ fn emit_parse_body_inner(
     plan: &AccountsPlanTyped,
     cx: &super::EmitCx,
     include_behavior_assertions: bool,
-) -> syn::Result<proc_macro2::TokenStream> {
-    let ctx_init = emit_rent_context(&plan.rent, semantics);
+) -> proc_macro2::TokenStream {
+    let ctx_init = emit_rent_context(&plan.rent);
     let bump_vars = emit_bump_vars(semantics);
     let init_state_vars = emit_init_state_vars(&plan.fields, semantics);
 
     // Phase 1: load non-init fields.
     let load_non_init = emit_load_filtered(semantics, false);
     // Phase 2: address verify + init CPI (from typed plan).
-    let init_phase = emit_init_phase_typed(&plan.fields, semantics)?;
-    // Phase 3: load init fields (all init fields — behavior init CPI already
+    let init_phase = emit_init_phase_typed(&plan.fields, semantics);
+    // Phase 3: load init fields (all init fields: behavior init CPI already
     // ran in phase 2, so the slot is initialized and ready to load).
     let load_init = emit_load_filtered(semantics, true);
     // Phase 4: post-load steps.
@@ -85,7 +85,7 @@ fn emit_parse_body_inner(
         })
         .collect();
 
-    Ok(quote! {
+    quote! {
         #behavior_asserts
         #bump_vars
         #(#init_state_vars)*
@@ -95,25 +95,27 @@ fn emit_parse_body_inner(
         #(#load_init)*
         #(#phase4)*
         Ok((Self { #(#construct_fields,)* }, #bump_init))
-    })
+    }
 }
 
-// ==== Rent context ====
+// Rent context.
 
-fn emit_rent_context(
-    rent_plan: &RentPlan,
-    _semantics: &[FieldSemantics],
-) -> proc_macro2::TokenStream {
+fn emit_rent_context(rent_plan: &RentPlan) -> proc_macro2::TokenStream {
     match rent_plan {
         RentPlan::NotNeeded => quote! {},
         RentPlan::FromSysvarField { field } => {
             quote! {
+                // SAFETY: the rent sysvar account was parsed into an AccountView,
+                // and Sysvar<Rent> validation is handled by the field load path.
                 let __rent: &quasar_lang::sysvars::rent::Rent = unsafe {
                     <quasar_lang::sysvars::rent::Rent as quasar_lang::sysvars::Sysvar>::from_bytes_unchecked(
                         #field.borrow_unchecked()
                     )
                 };
                 let __rent_ctx = quasar_lang::ops::OpCtx::new(
+                    // SAFETY: `__program_id` is already a valid `&Address`;
+                    // this reborrow preserves the same address while keeping
+                    // generated SBF in its cheaper shape.
                     unsafe { &*(__program_id as *const quasar_lang::prelude::Address) },
                     __rent,
                 );
@@ -122,6 +124,9 @@ fn emit_rent_context(
         RentPlan::FetchOnce => {
             quote! {
                 let __rent_ctx = quasar_lang::ops::OpCtx::new(
+                    // SAFETY: `__program_id` is already a valid `&Address`;
+                    // this reborrow preserves the same address while keeping
+                    // generated SBF in its cheaper shape.
                     unsafe { &*(__program_id as *const quasar_lang::prelude::Address) },
                     quasar_lang::ops::RentResolver::fetch_once(),
                 );
@@ -130,12 +135,12 @@ fn emit_rent_context(
     }
 }
 
-// ==== Init phase (from typed plan) ====
+// Init phase from the typed plan.
 
 fn emit_init_phase_typed(
     field_plans: &[super::super::resolve::specs::FieldPlan],
     semantics: &[FieldSemantics],
-) -> syn::Result<Vec<proc_macro2::TokenStream>> {
+) -> Vec<proc_macro2::TokenStream> {
     let mut stmts = Vec::new();
 
     for (fp, sem) in field_plans.iter().zip(semantics.iter()) {
@@ -177,7 +182,7 @@ fn emit_init_phase_typed(
         }
     }
 
-    Ok(stmts)
+    stmts
 }
 
 fn emit_init_state_vars(
@@ -215,7 +220,7 @@ fn needs_init_state_var(field_plan: &FieldPlan) -> bool {
     has_behavior_init && has_behavior_check
 }
 
-// ==== Post-load phase (from typed plan) ====
+// Post-load phase from the typed plan.
 
 fn emit_post_load_typed(
     field_plans: &[super::super::resolve::specs::FieldPlan],
@@ -308,7 +313,7 @@ fn emit_post_load_typed(
             stmts.push(wrap_optional(is_optional, ident, &call, needs_mut));
         }
 
-        // User checks (structural — not behavior-group based).
+        // User checks (structural: not behavior-group based).
         for check in &sem.user_checks {
             let check_stmts = emit_user_check(sem, check);
             let combined = quote! { #(#check_stmts)* };
@@ -319,12 +324,12 @@ fn emit_post_load_typed(
     stmts
 }
 
-// ==== Epilogue (from typed plan) ====
+// Epilogue from the typed plan.
 
 pub(crate) fn emit_epilogue(
     semantics: &[FieldSemantics],
     plan: &AccountsPlanTyped,
-) -> syn::Result<proc_macro2::TokenStream> {
+) -> proc_macro2::TokenStream {
     let mut exit_stmts = Vec::new();
 
     for (fp, sem) in plan.fields.iter().zip(semantics.iter()) {
@@ -341,16 +346,16 @@ pub(crate) fn emit_epilogue(
     }
 
     if exit_stmts.is_empty() {
-        return Ok(quote! {});
+        return quote! {};
     }
 
-    Ok(quote! {
+    quote! {
         #[inline(always)]
         fn epilogue(&mut self) -> Result<(), ProgramError> {
             #(#exit_stmts)*
             Ok(())
         }
-    })
+    }
 }
 
 pub(crate) fn emit_has_epilogue_typed(
@@ -378,7 +383,7 @@ pub(crate) fn emit_has_epilogue_typed(
     quote! { #(#terms)||* }
 }
 
-// ==== Load phase ====
+// Load phase.
 
 fn emit_load_filtered(
     semantics: &[FieldSemantics],
@@ -460,6 +465,8 @@ fn emit_load_expr(
         }
         (true, false, Some(validates_account_data)) => quote! {
             if #validates_account_data {
+                // SAFETY: at least one behavior declared that its check validates
+                // the account data before this load path uses it.
                 unsafe {
                     <#ty as quasar_lang::account_load::AccountLoad>::load_mut_intrinsic(#ident)?
                 }
@@ -469,6 +476,8 @@ fn emit_load_expr(
         },
         (false, false, Some(validates_account_data)) => quote! {
             if #validates_account_data {
+                // SAFETY: at least one behavior declared that its check validates
+                // the account data before this load path uses it.
                 unsafe {
                     <#ty as quasar_lang::account_load::AccountLoad>::load_intrinsic(#ident)?
                 }
@@ -501,7 +510,7 @@ fn behavior_validates_account_data_expr(sem: &FieldSemantics) -> Option<proc_mac
     Some(quote! { false #(|| #terms)* })
 }
 
-// ==== User checks (structural — not behavior-group based) ====
+// User checks, structural rather than behavior-group based.
 
 fn emit_user_check(sem: &FieldSemantics, check: &UserCheck) -> Vec<proc_macro2::TokenStream> {
     let field_ident = &sem.core.ident;
@@ -552,7 +561,7 @@ fn emit_user_check(sem: &FieldSemantics, check: &UserCheck) -> Vec<proc_macro2::
     stmts
 }
 
-// ==== Behavior assertions ====
+// Behavior assertions.
 
 /// Emit compile-time assertions for behavior groups:
 /// - `REQUIRES_MUT`: if true, field must be `mut`
@@ -648,7 +657,7 @@ fn emit_behavior_assertions(semantics: &[FieldSemantics]) -> proc_macro2::TokenS
     quote! { #(#asserts)* }
 }
 
-// ==== Helpers ====
+// Helpers.
 
 fn wrap_optional(
     is_optional: bool,

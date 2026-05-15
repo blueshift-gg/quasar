@@ -1,4 +1,4 @@
-//! ATA init — clean syntax with init + associated_token.
+//! ATA init with init + associated_token syntax.
 #![allow(unexpected_cfgs)]
 extern crate alloc;
 use {

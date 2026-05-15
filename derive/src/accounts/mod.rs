@@ -1,13 +1,13 @@
-//! `#[derive(Accounts)]` — protocol-neutral accounts derive macro.
+//! `#[derive(Accounts)]`: protocol-neutral accounts derive macro.
 //!
 //! Pipeline:
 //!
 //! ```text
-//! syntax   → parse raw #[account(...)] directives
-//! lower    → turn parsed directives into FieldSemantics
-//! rules    → validate structural invariants (no protocol knowledge)
-//! planner  → schedule protocol-neutral phase candidates
-//! emit     → generate Rust code from the plan
+//! syntax   -> parse raw #[account(...)] directives
+//! lower    -> turn parsed directives into FieldSemantics
+//! rules    -> validate structural invariants (no protocol knowledge)
+//! planner  -> schedule protocol-neutral phase candidates
+//! emit     -> generate Rust code from the plan
 //! ```
 //!
 //! Protocol crates own behavior. The derive never knows what `token`, `mint`,
@@ -106,9 +106,9 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         Err(e) => return e.to_compile_error().into(),
     };
 
-    // --- Pipeline: syntax → resolve → plan → emit ---
+    // --- Pipeline: syntax -> resolve -> plan -> emit ---
 
-    let semantics = match resolve::lower_semantics(fields, &instruction_args) {
+    let semantics = match resolve::lower_semantics(fields) {
         Ok(semantics) => semantics,
         Err(e) => return e.to_compile_error().into(),
     };
@@ -122,10 +122,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         bumps_name: bumps_name.clone(),
     };
 
-    let accounts_plan = match build_accounts_plan(&semantics, &typed_plan, &emit_cx) {
-        Ok(parts) => parts,
-        Err(e) => return e.to_compile_error().into(),
-    };
+    let accounts_plan = build_accounts_plan(&semantics, &typed_plan, &emit_cx);
     let plan::AccountsPlan {
         parse_steps,
         count_expr,
@@ -151,10 +148,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         ix_arg_extraction: &ix_arg_extraction,
         has_instruction_args: instruction_args.is_some(),
     });
-    let epilogue_method = match emit::parse::emit_epilogue(&semantics, &typed_plan) {
-        Ok(ts) => ts,
-        Err(e) => return e.to_compile_error().into(),
-    };
+    let epilogue_method = emit::parse::emit_epilogue(&semantics, &typed_plan);
     let has_epilogue_expr = emit::parse::emit_has_epilogue_typed(&typed_plan, &semantics);
 
     let client_macro = crate::client_macro::generate_accounts_macro(name, &semantics);
@@ -477,7 +471,9 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
             if !matches!(sem.core.kind, resolve::FieldKind::Single) {
                 return None;
             }
-            let _count = sem.address.as_ref().and_then(seed_expr_count)?;
+            if !sem.address.as_ref().is_some_and(is_seed_expr) {
+                return None;
+            }
             let addr_expr = sem.address.as_ref()?;
             let method_name = format_ident!("{}_signer", field_name);
             if has_instruction_args {
@@ -527,12 +523,12 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
     }
 }
 
-fn seed_expr_count(expr: &Expr) -> Option<usize> {
+fn is_seed_expr(expr: &Expr) -> bool {
     match expr {
-        Expr::Call(call) if is_seeds_path(&call.func) => Some(call.args.len() + 2),
-        Expr::Paren(paren) => seed_expr_count(&paren.expr),
-        Expr::Group(group) => seed_expr_count(&group.expr),
-        _ => None,
+        Expr::Call(call) if is_seeds_path(&call.func) => true,
+        Expr::Paren(paren) => is_seed_expr(&paren.expr),
+        Expr::Group(group) => is_seed_expr(&group.expr),
+        _ => false,
     }
 }
 

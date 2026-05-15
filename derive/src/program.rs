@@ -1,6 +1,6 @@
-//! `#[program]` — generates the program entrypoint, instruction dispatch table,
+//! `#[program]`: generates the program entrypoint, instruction dispatch table,
 //! and CPI method stubs. Scans all `#[instruction]` functions within the module
-//! to build the discriminator → handler routing.
+//! to build the discriminator -> handler routing.
 
 use {
     crate::helpers::{
@@ -19,7 +19,7 @@ use {
 ///
 /// - `heap = true`: reset cursor to start (this endpoint uses the allocator)
 /// - `heap = false, any_heap = true`: poison cursor in release, reset in debug
-///   (this endpoint must NOT allocate — trap accidental allocations)
+///   (this endpoint must NOT allocate: trap accidental allocations)
 /// - `any_heap = false`: no-op (global heap init in entrypoint handles it)
 fn emit_heap_cursor_block(heap: bool, any_heap: bool) -> TokenStream2 {
     if heap {
@@ -27,6 +27,7 @@ fn emit_heap_cursor_block(heap: bool, any_heap: bool) -> TokenStream2 {
             #[cfg(feature = "alloc")]
             {
                 unsafe {
+                    // SAFETY: generated entrypoint owns the process-local bump allocator cursor.
                     let heap_start = super::allocator::HEAP_START_ADDRESS as usize;
                     *(heap_start as *mut usize) =
                         heap_start + core::mem::size_of::<usize>();
@@ -39,12 +40,14 @@ fn emit_heap_cursor_block(heap: bool, any_heap: bool) -> TokenStream2 {
             {
                 #[cfg(feature = "debug")]
                 unsafe {
+                    // SAFETY: debug poison path resets the generated bump allocator cursor.
                     let heap_start = super::allocator::HEAP_START_ADDRESS as usize;
                     *(heap_start as *mut usize) =
                         heap_start + core::mem::size_of::<usize>();
                 }
                 #[cfg(not(feature = "debug"))]
                 unsafe {
+                    // SAFETY: release poison path writes the generated allocator cursor slot.
                     *(super::allocator::HEAP_START_ADDRESS as *mut usize) =
                         super::allocator::HEAP_CURSOR_POISONED;
                 }
@@ -52,6 +55,64 @@ fn emit_heap_cursor_block(heap: bool, any_heap: bool) -> TokenStream2 {
         }
     } else {
         quote! {}
+    }
+}
+
+fn emit_raw_context_setup(data_start: TokenStream2) -> TokenStream2 {
+    quote! {
+        let __raw_program_id: &[u8; 32] = unsafe {
+            // SAFETY: the Solana entrypoint ABI stores the program id immediately
+            // after the instruction data slice.
+            &*(instruction_data.as_ptr().add(instruction_data.len()) as *const [u8; 32])
+        };
+        const __RAW_U64: usize = core::mem::size_of::<u64>();
+        let __raw_num_accounts = unsafe {
+            // SAFETY: the SVM input buffer starts with the account count.
+            *(ptr as *const u64)
+        };
+        let __raw_accounts_start = unsafe {
+            // SAFETY: account records start immediately after the count prefix.
+            (ptr as *mut u8).add(__RAW_U64)
+        };
+        let __raw_boundary = unsafe {
+            // SAFETY: the ABI places the instruction-data length prefix directly
+            // before `instruction_data`.
+            instruction_data.as_ptr().sub(__RAW_U64)
+        };
+
+        const __RAW_MAX: usize = 64;
+        let __raw_count = core::cmp::min(__raw_num_accounts as usize, __RAW_MAX);
+        let mut __raw_buf = core::mem::MaybeUninit::<
+            [quasar_lang::__internal::AccountView; __RAW_MAX]
+        >::uninit();
+
+        let (__raw_parsed, __raw_remaining) = unsafe {
+            // SAFETY: `__raw_buf` has room for `__raw_count` AccountView values,
+            // and `__raw_boundary` bounds the account region.
+            quasar_lang::__internal::parse_all_accounts_unchecked(
+                __raw_accounts_start,
+                __raw_buf.as_mut_ptr() as *mut quasar_lang::__internal::AccountView,
+                __raw_count,
+                __raw_boundary,
+            )?
+        };
+
+        let __raw_accounts = unsafe {
+            // SAFETY: `parse_all_accounts_unchecked` initialized the first
+            // `__raw_parsed` AccountView slots.
+            core::slice::from_raw_parts_mut(
+                __raw_buf.as_mut_ptr() as *mut quasar_lang::__internal::AccountView,
+                __raw_parsed,
+            )
+        };
+
+        let __raw_ctx = Context {
+            program_id: __raw_program_id,
+            accounts: __raw_accounts,
+            remaining_ptr: __raw_remaining,
+            data: &instruction_data[#data_start..],
+            accounts_boundary: __raw_boundary as *const u8,
+        };
     }
 }
 
@@ -98,7 +159,7 @@ struct ClientArgSpec {
     ty: Type,
 }
 
-/// Lightweight spec for `#[instruction(raw)]` — only discriminator + heap flag.
+/// Lightweight spec for `#[instruction(raw)]`: only discriminator + heap flag.
 /// Raw instructions have no accounts type, no client args, no remaining.
 struct RawInstructionSpec {
     fn_name: Ident,
@@ -142,7 +203,11 @@ impl InstructionSpec {
         let accounts_type = &self.accounts_type;
         let disc_bytes = &self.disc_bytes;
         let data_after_disc = quote! {
-            unsafe { instruction_data.get_unchecked(#disc_len..) }
+            unsafe {
+                // SAFETY: dispatch checks `instruction_data.len() >= disc_len`
+                // before matching this arm.
+                instruction_data.get_unchecked(#disc_len..)
+            }
         };
 
         let buffered_body = quote! {
@@ -151,21 +216,33 @@ impl InstructionSpec {
                     [AccountView; <#accounts_type as AccountCount>::COUNT]
                 >::uninit();
                 let __remaining_ptr = unsafe {
+                    // SAFETY: the account count check above guarantees the
+                    // fixed account parser has enough records to read.
                     <#accounts_type>::parse_accounts(
                         __accounts_start,
                         &mut __buf,
                         unsafe {
+                            // SAFETY: Address is represented by the same 32-byte
+                            // value as the ABI program id.
                             &*(__program_id as *const [u8; 32] as *const quasar_lang::prelude::Address)
                         },
                     )?
                 };
-                let mut __accounts = unsafe { __buf.assume_init() };
+                let mut __accounts = unsafe {
+                    // SAFETY: `parse_accounts` initialized exactly COUNT slots
+                    // before returning `Ok`.
+                    __buf.assume_init()
+                };
                 #fn_name(Context {
                     program_id: __program_id,
                     accounts: &mut __accounts,
                     remaining_ptr: __remaining_ptr,
                     data: #data_after_disc,
-                    accounts_boundary: unsafe { instruction_data.as_ptr().sub(__U64_SIZE) },
+                    accounts_boundary: unsafe {
+                        // SAFETY: the ABI places the instruction-data length
+                        // prefix directly before `instruction_data`.
+                        instruction_data.as_ptr().sub(__U64_SIZE)
+                    },
                 })
             }
         };
@@ -234,6 +311,9 @@ impl syn::parse::Parse for ProgramArgs {
         while !input.is_empty() {
             let ident: Ident = input.parse()?;
             if ident == "no_entrypoint" {
+                if no_entrypoint {
+                    return Err(syn::Error::new(ident.span(), "duplicate `no_entrypoint`"));
+                }
                 no_entrypoint = true;
             } else {
                 return Err(syn::Error::new(ident.span(), "expected `no_entrypoint`"));
@@ -289,7 +369,6 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                     };
                     let fn_name = &func.sig.ident;
 
-                    // Validate same length across all instructions
                     match disc_len {
                         Some(len) => {
                             if disc_bytes.len() != len {
@@ -309,7 +388,6 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                         None => disc_len = Some(disc_bytes.len()),
                     }
 
-                    // Check for duplicates
                     let disc_values = match parse_discriminator_bytes(disc_bytes) {
                         Ok(v) => v,
                         Err(e) => return e.to_compile_error().into(),
@@ -330,7 +408,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                     seen_discriminators.push((disc_values.clone(), fn_name.to_string()));
 
                     if args.raw {
-                        // Raw instruction — no CtxKind, no accounts_type, no client args.
+                        // Raw instruction: no CtxKind, no accounts_type, no client args.
                         raw_instruction_specs.push(RawInstructionSpec {
                             fn_name: fn_name.clone(),
                             disc_bytes: disc_bytes.clone(),
@@ -347,15 +425,12 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                     let inner_ty = ctx_kind.inner_ty();
                     let accounts_type = quote!(#inner_ty);
 
-                    // Collect data for client module generation — invoke the macro_rules
-                    // bridge emitted by derive(Accounts)
                     let struct_name =
                         format_ident!("{}Instruction", snake_to_pascal(&fn_name.to_string()));
                     let accounts_type_str = accounts_type.to_string().replace(' ', "");
                     let macro_ident =
                         format_ident!("__{}_instruction", pascal_to_snake(&accounts_type_str));
 
-                    // Collect original arg types for IDL emission (before client mapping).
                     let mut idl_args: Vec<IdlArgSpec> = Vec::new();
                     let mut remaining_args: Vec<(Ident, Type)> = Vec::new();
                     for arg in func.sig.inputs.iter().skip(1) {
@@ -371,7 +446,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                             ty: (*pt.ty).clone(),
                         });
                         let ty = if classify_lifetime_arg(&pt.ty) {
-                            // Borrowed struct (has lifetime param) — the off-chain client
+                            // Borrowed struct (has lifetime param): the off-chain client
                             // takes pre-serialized bytes. The user is responsible for
                             // encoding the struct into the wire format.
                             syn::parse_quote!(::alloc::vec::Vec<u8>)
@@ -402,11 +477,13 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                                 }
                             }
                         } else if matches!(&*pt.ty, Type::Reference(_)) {
-                            // Borrowed arg (&str, &[T]) — parse #[max(N)] and map
+                            // Borrowed arg (&str, &[T]): parse #[max(N)] and map
                             // to compact client type, same wire format as String<N>/Vec<T,N>.
-                            let (max_n, pfx) = parse_max_attr(&pt.attrs)
-                                .and_then(Result::ok)
-                                .unwrap_or((0, 0));
+                            let (max_n, pfx) = match parse_max_attr(&pt.attrs) {
+                                Some(Ok(value)) => value,
+                                Some(Err(e)) => return e.to_compile_error().into(),
+                                None => (0, 0),
+                            };
                             if let Some(pd) = classify_borrowed_as_compact(&pt.ty, max_n, pfx) {
                                 match pd {
                                     PodDynField::Str { prefix_bytes, .. } => {
@@ -421,7 +498,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                                     }
                                 }
                             } else {
-                                // Unsupported borrowed type — pass through; #[instruction]
+                                // Unsupported borrowed type: pass through; #[instruction]
                                 // will emit the real error.
                                 (*pt.ty).clone()
                             }
@@ -458,7 +535,6 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let disc_len_lit = disc_len.unwrap_or(1);
 
-    // Check no instruction discriminator starts with 0xFF (reserved for events)
     if let Some((_, fn_name)) = seen_discriminators
         .iter()
         .find(|(v, _)| v.first() == Some(&0xFF))
@@ -483,7 +559,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
     let any_heap = instruction_specs.iter().any(|spec| spec.heap)
         || raw_instruction_specs.iter().any(|spec| spec.heap);
 
-    // ── Raw dispatch early-return block ──────────────────────────
+    // -- Raw dispatch early-return block --------------------------
     // Each raw instruction gets a match arm that walks the SVM buffer
     // to build a `Context` with all accounts, then calls the handler
     // directly. This block is inserted in __dispatch before the
@@ -493,11 +569,11 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
     } else {
         // Sort raw specs by discriminator value for table construction.
         let mut sorted_raw: Vec<&RawInstructionSpec> = raw_instruction_specs.iter().collect();
-        sorted_raw.sort_by_key(|spec| spec.disc_values.clone());
+        sorted_raw.sort_by(|a, b| a.disc_values.cmp(&b.disc_values));
 
         // For 1-byte discriminators with contiguous values: use O(1) function
         // pointer table dispatch. The SVM verifier accepts callx (indirect
-        // calls) — verified by the callx_dispatch integration test.
+        // calls): verified by the callx_dispatch integration test.
         //
         // Contiguity check: sorted disc values must form a gap-free sequence.
         // If not (e.g. raw discs 1,2,5 with normal at 3,4), fall back to match.
@@ -505,16 +581,17 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
             || sorted_raw
                 .windows(2)
                 .all(|w| w[1].disc_values[0] == w[0].disc_values[0] + 1);
-        let use_table = disc_len_lit == 1 && is_contiguous && !sorted_raw.is_empty();
+        let use_table = disc_len_lit == 1 && is_contiguous;
 
         if use_table {
-            let raw_min = sorted_raw.first().unwrap().disc_values[0];
-            let raw_max = sorted_raw.last().unwrap().disc_values[0];
+            let raw_min = sorted_raw[0].disc_values[0];
+            let raw_max = sorted_raw[sorted_raw.len() - 1].disc_values[0];
             let table_size = (raw_max - raw_min + 1) as usize;
+            let raw_context_setup = emit_raw_context_setup(quote!(1usize));
 
             // Build the function pointer table. Slots are filled for each
             // raw disc value. Gaps (if any non-raw instruction sits between
-            // raw ones) should not exist — the disc collision check prevents it.
+            // raw ones) should not exist: the disc collision check prevents it.
             let raw_fn_names: Vec<&Ident> = sorted_raw.iter().map(|s| &s.fn_name).collect();
             let table_size_lit = table_size;
             let raw_min_lit = raw_min;
@@ -529,51 +606,11 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                     if __raw_idx < #table_size_lit {
                         #heap_init
 
-                        // SAFETY: Program ID follows instruction data in the SVM buffer.
-                        let __raw_program_id: &[u8; 32] = unsafe {
-                            &*(instruction_data.as_ptr().add(instruction_data.len())
-                                as *const [u8; 32])
-                        };
-                        const __RAW_U64: usize = core::mem::size_of::<u64>();
-                        let __raw_num_accounts = unsafe { *(ptr as *const u64) };
-                        let __raw_accounts_start = unsafe { (ptr as *mut u8).add(__RAW_U64) };
-                        let __raw_boundary = unsafe { instruction_data.as_ptr().sub(__RAW_U64) };
-
-                        const __RAW_MAX: usize = 64;
-                        let __raw_count = core::cmp::min(__raw_num_accounts as usize, __RAW_MAX);
-                        let mut __raw_buf = core::mem::MaybeUninit::<
-                            [quasar_lang::__internal::AccountView; __RAW_MAX]
-                        >::uninit();
-
-                        let (__raw_parsed, __raw_remaining) = unsafe {
-                            quasar_lang::__internal::parse_all_accounts_unchecked(
-                                __raw_accounts_start,
-                                __raw_buf.as_mut_ptr()
-                                    as *mut quasar_lang::__internal::AccountView,
-                                __raw_count,
-                                __raw_boundary,
-                            )?
-                        };
-
-                        let __raw_accounts = unsafe {
-                            core::slice::from_raw_parts_mut(
-                                __raw_buf.as_mut_ptr()
-                                    as *mut quasar_lang::__internal::AccountView,
-                                __raw_parsed,
-                            )
-                        };
-
-                        let __raw_ctx = Context {
-                            program_id: __raw_program_id,
-                            accounts: __raw_accounts,
-                            remaining_ptr: __raw_remaining,
-                            data: &instruction_data[1..],
-                            accounts_boundary: __raw_boundary as *const u8,
-                        };
+                        #raw_context_setup
 
                         // O(1) dispatch: function pointer table indexed by
                         // discriminator byte. LLVM emits `callx` for the
-                        // indirect call — ~5 CU constant overhead.
+                        // indirect call: ~5 CU constant overhead.
                         type __RawHandler = fn(Context) -> Result<(), ProgramError>;
                         let __raw_table: [__RawHandler; #table_size_lit] = [
                             #(#raw_fn_names),*
@@ -584,6 +621,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         } else {
             // Multi-byte discriminators: fall back to match chain.
+            let raw_context_setup = emit_raw_context_setup(quote!(#disc_len_lit));
             let raw_disc_patterns: Vec<TokenStream2> = raw_instruction_specs
                 .iter()
                 .map(|spec| {
@@ -610,54 +648,21 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
             quote! {
                 if instruction_data.len() >= #disc_len_lit {
                     let __raw_disc: [u8; #disc_len_lit] = unsafe {
+                        // SAFETY: the length guard above proves the discriminator
+                        // bytes are present.
                         *(instruction_data.as_ptr() as *const [u8; #disc_len_lit])
                     };
 
                     if matches!(__raw_disc, #(#raw_disc_patterns)|*) {
-                        let __raw_program_id: &[u8; 32] = unsafe {
-                            &*(instruction_data.as_ptr().add(instruction_data.len())
-                                as *const [u8; 32])
-                        };
-                        const __RAW_U64: usize = core::mem::size_of::<u64>();
-                        let __raw_num_accounts = unsafe { *(ptr as *const u64) };
-                        let __raw_accounts_start = unsafe { (ptr as *mut u8).add(__RAW_U64) };
-                        let __raw_boundary = unsafe { instruction_data.as_ptr().sub(__RAW_U64) };
-
-                        const __RAW_MAX: usize = 64;
-                        let __raw_count = core::cmp::min(__raw_num_accounts as usize, __RAW_MAX);
-                        let mut __raw_buf = core::mem::MaybeUninit::<
-                            [quasar_lang::__internal::AccountView; __RAW_MAX]
-                        >::uninit();
-
-                        let (__raw_parsed, __raw_remaining) = unsafe {
-                            quasar_lang::__internal::parse_all_accounts_unchecked(
-                                __raw_accounts_start,
-                                __raw_buf.as_mut_ptr()
-                                    as *mut quasar_lang::__internal::AccountView,
-                                __raw_count,
-                                __raw_boundary,
-                            )?
-                        };
-
-                        let __raw_accounts = unsafe {
-                            core::slice::from_raw_parts_mut(
-                                __raw_buf.as_mut_ptr()
-                                    as *mut quasar_lang::__internal::AccountView,
-                                __raw_parsed,
-                            )
-                        };
-
-                        let __raw_ctx = Context {
-                            program_id: __raw_program_id,
-                            accounts: __raw_accounts,
-                            remaining_ptr: __raw_remaining,
-                            data: &instruction_data[#disc_len_lit..],
-                            accounts_boundary: __raw_boundary as *const u8,
-                        };
+                        #raw_context_setup
 
                         match __raw_disc {
                             #(#raw_call_arms)*
-                            _ => unsafe { core::hint::unreachable_unchecked() }
+                            _ => unsafe {
+                                // SAFETY: `matches!` above admits only the
+                                // generated discriminator patterns.
+                                core::hint::unreachable_unchecked()
+                            }
                         }
                     }
                 }
@@ -665,7 +670,6 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
-    // Append dispatch + entrypoint to the module
     if let Some((_, ref mut items)) = module.content {
         items.push(syn::parse_quote! {
             #[inline(always)]
@@ -722,7 +726,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
         // Normal dispatch tail: use a single match and pick the lower-CU
         // account parser shape per instruction.
         let normal_dispatch_tail = if instruction_specs.is_empty() {
-            // All instructions are raw — no normal dispatch needed.
+            // All instructions are raw: no normal dispatch needed.
             quote! { Err(ProgramError::InvalidInstructionData) }
         } else {
             let normal_match_arms: Vec<proc_macro2::TokenStream> = instruction_specs
@@ -732,17 +736,28 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
             quote! {
                 {
                     let __program_id: &[u8; 32] = unsafe {
+                        // SAFETY: the Solana entrypoint ABI stores the program
+                        // id immediately after the instruction data slice.
                         &*(instruction_data.as_ptr().add(instruction_data.len()) as *const [u8; 32])
                     };
                     const __U64_SIZE: usize = core::mem::size_of::<u64>();
-                    let __num_accounts = unsafe { *(ptr as *const u64) };
-                    let __accounts_start = unsafe { (ptr as *mut u8).add(__U64_SIZE) };
+                    let __num_accounts = unsafe {
+                        // SAFETY: the SVM input buffer starts with the account count.
+                        *(ptr as *const u64)
+                    };
+                    let __accounts_start = unsafe {
+                        // SAFETY: account records start immediately after the
+                        // count prefix.
+                        (ptr as *mut u8).add(__U64_SIZE)
+                    };
 
                     if instruction_data.len() < #disc_len_lit {
                         return Err(ProgramError::InvalidInstructionData);
                     }
 
                     let __disc: [u8; #disc_len_lit] = unsafe {
+                        // SAFETY: the length guard above proves the discriminator
+                        // bytes are present.
                         *(instruction_data.as_ptr() as *const [u8; #disc_len_lit])
                     };
 
@@ -791,7 +806,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         // When per-endpoint heap is used, cursor init is in the dispatch
-        // arms — the entrypoint does NOT init the cursor. Otherwise, init
+        // arms: the entrypoint does NOT init the cursor. Otherwise, init
         // the cursor once in the entrypoint.
         let cursor_init = if any_heap {
             quote! {}
@@ -800,7 +815,11 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                 #[cfg(feature = "alloc")]
                 {
                     let heap_start = super::allocator::HEAP_START_ADDRESS as usize;
-                    *(heap_start as *mut usize) = heap_start + core::mem::size_of::<usize>();
+                    unsafe {
+                        // SAFETY: generated entrypoint owns the process-local
+                        // bump allocator cursor.
+                        *(heap_start as *mut usize) = heap_start + core::mem::size_of::<usize>();
+                    }
                 }
             }
         };
@@ -816,6 +835,9 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                 pub unsafe extern "C" fn entrypoint(ptr: *mut u8, instruction_data: *const u8) -> u64 {
                     #cursor_init
                     let instruction_data = unsafe {
+                        // SAFETY: the Solana entrypoint ABI stores the
+                        // instruction-data length in the eight bytes before
+                        // the data pointer.
                         core::slice::from_raw_parts(
                             instruction_data,
                             *(instruction_data.sub(8) as *const u64) as usize,
@@ -829,8 +851,6 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
             });
         }
 
-        // Add CPI module inside the program module (instruction builders only —
-        // the full client with account/event types is generated by the IDL).
         let cpi_mod: syn::Item = syn::parse2(quote! {
             #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
             pub mod cpi {
@@ -843,7 +863,6 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
         items.push(cpi_mod);
     }
 
-    // Generate the named program type outside the module
     let program_type = quote! {
         quasar_lang::define_account!(pub struct #program_type_name => [quasar_lang::checks::Executable, quasar_lang::checks::Address]);
 
@@ -876,7 +895,11 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                 if !quasar_lang::keys_eq(view.address(), &Self::ADDRESS) {
                     return Err(ProgramError::InvalidSeeds);
                 }
-                Ok(unsafe { &*(view as *const AccountView as *const Self) })
+                Ok(unsafe {
+                    // SAFETY: `EventAuthority` is repr(transparent) over
+                    // AccountView, and the PDA address was validated above.
+                    &*(view as *const AccountView as *const Self)
+                })
             }
 
             /// Construct without validation.
@@ -885,7 +908,11 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
             /// Caller must ensure account address matches the expected PDA.
             #[inline(always)]
             pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
-                &*(view as *const AccountView as *const Self)
+                unsafe {
+                    // SAFETY: caller guarantees the account is the event
+                    // authority PDA.
+                    &*(view as *const AccountView as *const Self)
+                }
             }
         }
 
@@ -921,7 +948,6 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
     // from macro-generated dispatch code, which the compiler can't see.
     module.attrs.push(syn::parse_quote!(#[allow(dead_code)]));
 
-    // IDL instruction fragment emissions (feature-gated)
     let idl_instruction_fragments: Vec<TokenStream2> = instruction_specs
         .iter()
         .map(|spec| {
@@ -942,7 +968,6 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
             }).collect();
 
-            // Compute layout based on whether any arg has a codec (is dynamic)
             let has_dynamic = spec.idl_args.iter().any(|arg| {
                 crate::helpers::classify_pod_dynamic(&arg.ty).is_some()
                     || crate::helpers::classify_option_dynamic(&arg.ty)
@@ -980,7 +1005,6 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
             };
 
-            // remaining_accounts
             let remaining_tokens = if spec.has_remaining {
                 quote! {
                     Some(quasar_lang::idl_build::__reexport::IdlRemainingAccounts {
@@ -1034,7 +1058,6 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
         })
         .collect();
 
-    // IDL fragments for raw instructions (issue #5)
     let idl_raw_instruction_fragments: Vec<TokenStream2> = raw_instruction_specs
         .iter()
         .map(|spec| {
@@ -1067,7 +1090,6 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
         })
         .collect();
 
-    // IDL build entry point (feature-gated, host-only)
     let idl_build_fn = {
         let mod_name_str = mod_name.to_string();
         quote! {
@@ -1080,7 +1102,8 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                     #mod_name_str,
                     env!("CARGO_PKG_VERSION"),
                 );
-                quasar_lang::idl_build::__reexport::serde_json::to_string_pretty(&idl).unwrap()
+                quasar_lang::idl_build::__reexport::serde_json::to_string_pretty(&idl)
+                    .expect("generated IDL should serialize")
             }
 
             #[cfg(all(feature = "idl-build", test, not(any(target_os = "solana", target_arch = "bpf"))))]

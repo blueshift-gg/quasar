@@ -1,5 +1,4 @@
-//! Client instruction macro generation — adapted from v1.
-//! No FieldShape references.
+//! Client instruction macro generation for `#[derive(Accounts)]` structs.
 
 use {
     proc_macro2::TokenStream,
@@ -9,7 +8,7 @@ use {
 
 /// Internal account descriptor for client macro generation.
 struct AccountDescriptor {
-    name: String,
+    name: syn::Ident,
     writable: bool,
     signer: bool,
 }
@@ -21,9 +20,7 @@ pub fn generate_accounts_macro(
     let descriptors = describe_accounts(semantics);
     let macro_name = format_ident!("__{}_instruction", pascal_to_snake(&name.to_string()));
     let account_fields: Vec<_> = descriptors.iter().map(emit_account_field).collect();
-    let account_fields_with_remaining = account_fields.clone();
     let account_metas: Vec<_> = descriptors.iter().map(emit_account_meta).collect();
-    let account_metas_with_remaining = account_metas.clone();
 
     quote! {
         #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
@@ -93,7 +90,7 @@ pub fn generate_accounts_macro(
             };
             ($struct_name:ident, [$($disc:expr),*], {$($arg_name:ident : $arg_ty:ty),*}, remaining) => {
                 pub struct $struct_name {
-                    #(#account_fields_with_remaining)*
+                    #(#account_fields)*
                     $(pub $arg_name: $arg_ty,)*
                     pub remaining_accounts: ::alloc::vec::Vec<quasar_lang::client::AccountMeta>,
                 }
@@ -101,7 +98,7 @@ pub fn generate_accounts_macro(
                 impl From<$struct_name> for quasar_lang::client::Instruction {
                     fn from(ix: $struct_name) -> quasar_lang::client::Instruction {
                         let mut accounts = ::alloc::vec![
-                            #(#account_metas_with_remaining)*
+                            #(#account_metas)*
                         ];
                         accounts.extend(ix.remaining_accounts);
                         let data = {
@@ -123,7 +120,7 @@ pub fn generate_accounts_macro(
             };
             ($struct_name:ident, [$($disc:expr),*], {$($arg_name:ident : $arg_ty:ty),*}, compact, remaining) => {
                 pub struct $struct_name {
-                    #(#account_fields_with_remaining)*
+                    #(#account_fields)*
                     $(pub $arg_name: $arg_ty,)*
                     pub remaining_accounts: ::alloc::vec::Vec<quasar_lang::client::AccountMeta>,
                 }
@@ -131,7 +128,7 @@ pub fn generate_accounts_macro(
                 impl From<$struct_name> for quasar_lang::client::Instruction {
                     fn from(ix: $struct_name) -> quasar_lang::client::Instruction {
                         let mut accounts = ::alloc::vec![
-                            #(#account_metas_with_remaining)*
+                            #(#account_metas)*
                         ];
                         accounts.extend(ix.remaining_accounts);
                         let data = {
@@ -161,12 +158,12 @@ pub fn generate_accounts_macro(
 }
 
 fn emit_account_field(descriptor: &AccountDescriptor) -> TokenStream {
-    let ident: syn::Ident = syn::parse_str(&descriptor.name).expect("valid account field name");
+    let ident = &descriptor.name;
     quote! { pub #ident: quasar_lang::prelude::Address, }
 }
 
 fn emit_account_meta(descriptor: &AccountDescriptor) -> TokenStream {
-    let ident: syn::Ident = syn::parse_str(&descriptor.name).expect("valid account field name");
+    let ident = &descriptor.name;
     if descriptor.writable {
         let signer = descriptor.signer;
         quote! {
@@ -187,11 +184,10 @@ fn describe_accounts(
         .iter()
         .map(|sem| {
             let ty = &sem.core.effective_ty;
-            // Detect signer/program/sysvar from the type, not from FieldShape
             let is_signer = is_signer_type(ty);
 
             AccountDescriptor {
-                name: sem.core.ident.to_string(),
+                name: sem.core.ident.clone(),
                 writable: sem.is_writable(),
                 signer: is_signer || client_requires_signer(sem),
             }

@@ -12,6 +12,7 @@ pub(super) struct PodFieldInfo<'a> {
 pub(super) fn generate_account(
     name: &syn::Ident,
     disc_bytes: &[syn::LitInt],
+    disc_values: &[u8],
     disc_len: usize,
     disc_indices: &[usize],
     field_infos: &[PodFieldInfo<'_>],
@@ -29,34 +30,27 @@ pub(super) fn generate_account(
     let zc_definition = super::layout::emit_zc_definition(name, has_dynamic, &zc);
     let account_wrapper =
         super::layout::emit_account_wrapper(attrs, vis, name, disc_len, &zc.zc_path);
-    let (discriminator_impl, owner_impl, space_impl, account_check_impl) = if has_dynamic {
+    let discriminator_impl =
+        super::traits::emit_discriminator_impl(name, disc_bytes, &bump_offset_impl);
+    let owner_impl = super::traits::emit_owner_impl(name);
+    let space_impl =
+        super::traits::emit_space_impl(name, field_infos, has_dynamic, disc_len, &zc.zc_mod);
+    let account_load_impl = if has_dynamic {
         // Dynamic/compact accounts: inline validation into AccountLoad::check.
-        let disc = super::traits::emit_discriminator_impl(name, disc_bytes, &bump_offset_impl);
-        let owner = super::traits::emit_owner_impl(name);
-        let space =
-            super::traits::emit_space_impl(name, field_infos, has_dynamic, disc_len, &zc.zc_mod);
-        let account_load =
-            super::traits::emit_dynamic_account_load(super::traits::AccountLoadSpec {
-                name,
-                has_dynamic,
-                disc_len,
-                disc_indices,
-                disc_bytes,
-                zc_path: &zc.zc_path,
-                zc_mod: &zc.zc_mod,
-            });
-        (disc, owner, space, account_load)
+        super::traits::emit_dynamic_account_load(super::traits::AccountLoadSpec {
+            name,
+            disc_len,
+            disc_indices,
+            disc_bytes,
+            zc_mod: &zc.zc_mod,
+        })
     } else {
         // Fixed accounts: emit AccountLayout + composed checks.
         // AccountLoad::check is the single source of truth, composing
         // Discriminator + DataLen + ZeroPod.
-        let disc = super::traits::emit_discriminator_impl(name, disc_bytes, &bump_offset_impl);
-        let owner = super::traits::emit_owner_impl(name);
-        let space =
-            super::traits::emit_space_impl(name, field_infos, has_dynamic, disc_len, &zc.zc_mod);
         let disc_len_lit = disc_len;
         let zc_mod_ident = &zc.zc_mod;
-        let account_load = quote::quote! {
+        quote::quote! {
             impl quasar_lang::account_layout::AccountLayout for #name {
                 type Schema = #zc_mod_ident::__Schema;
                 type Target = <#zc_mod_ident::__Schema as quasar_lang::__zeropod::ZeroPodFixed>::Zc;
@@ -83,9 +77,7 @@ pub(super) fn generate_account(
                 }
             }
 
-        };
-        // Composed checks are the single generated validation path.
-        (disc, owner, space, account_load)
+        }
     };
     let dynamic_impl_block =
         super::dynamic::emit_dynamic_impl_block(name, has_dynamic, disc_len, &zc.zc_mod, &dynamic);
@@ -143,11 +135,6 @@ pub(super) fn generate_account(
     // IDL fragment emission (feature-gated)
     let idl_fragment = {
         let name_str = name.to_string();
-        let disc_values: Vec<u8> = disc_bytes
-            .iter()
-            .map(|lit| lit.base10_parse::<u8>().unwrap_or(0))
-            .collect();
-
         let mut inline_field_names: Vec<String> = Vec::new();
         let mut tail_field_names: Vec<String> = Vec::new();
 
@@ -158,8 +145,8 @@ pub(super) fn generate_account(
                     .field
                     .ident
                     .as_ref()
-                    .map(|i| i.to_string())
-                    .unwrap_or_default();
+                    .expect("account fields are validated as named before codegen")
+                    .to_string();
                 let fty = crate::helpers::type_to_idl_type_tokens(&fi.field.ty);
                 let codec_tokens = crate::helpers::type_to_idl_codec_tokens(&fi.field.ty);
 
@@ -181,7 +168,7 @@ pub(super) fn generate_account(
             .collect();
 
         let layout_tokens = if tail_field_names.is_empty() {
-            // All fields are fixed — emit Fixed layout
+            // All fields are fixed: emit Fixed layout
             let all_names = inline_field_names.iter().collect::<Vec<_>>();
             quote::quote! {
                 Some(quasar_lang::idl_build::__reexport::IdlLayout::Fixed {
@@ -191,7 +178,7 @@ pub(super) fn generate_account(
                 })
             }
         } else {
-            // Has dynamic fields — emit Compact layout
+            // Has dynamic fields: emit Compact layout
             let inline_refs = inline_field_names.iter().collect::<Vec<_>>();
             let tail_refs = tail_field_names.iter().collect::<Vec<_>>();
             quote::quote! {
@@ -258,7 +245,7 @@ pub(super) fn generate_account(
 
         #space_impl
 
-        #account_check_impl
+        #account_load_impl
 
         #lifecycle_impls
 

@@ -1,16 +1,12 @@
-//! Behavior call snippets — one shape per phase, all const-guarded.
+//! Behavior call snippets: one shape per phase, all const-guarded.
 //!
-//! Every behavior phase emits the same pattern: const guard → build args →
+//! Every behavior phase emits the same pattern: const guard -> build args ->
 //! call trait method. Protocol crates own the trait impls and builders.
 
 use {
     super::super::resolve::specs::*,
     quote::{format_ident, quote},
 };
-
-// ---------------------------------------------------------------------------
-// Behavior call emit — one function per phase, all const-guarded
-// ---------------------------------------------------------------------------
 
 /// Emit a const-guarded behavior phase call for the post-load phase.
 /// The `BehaviorPhase` on the call determines which const, which builder
@@ -76,7 +72,7 @@ pub(crate) fn emit_epilogue_behavior(
     }
 }
 
-/// Emit behavior init CPI: set_init_param → AccountInit::init.
+/// Emit behavior init CPI: set_init_param -> AccountInit::init.
 /// The account is loaded in the normal load phase. After_init and check
 /// run as post-load steps.
 pub(crate) fn emit_behavior_init(
@@ -157,7 +153,7 @@ pub(crate) fn emit_behavior_init(
     }
 }
 
-/// Emit plain program init (no behavior — system program create +
+/// Emit plain program init (no behavior: system program create +
 /// discriminator).
 pub(crate) fn emit_program_init(
     spec: &ProgramInitSpec,
@@ -216,10 +212,6 @@ pub(crate) fn emit_program_init(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Program close emit (core lifecycle, not behavior)
-// ---------------------------------------------------------------------------
-
 pub(crate) fn emit_program_close(
     spec: &ProgramCloseSpec,
     field_ident: &syn::Ident,
@@ -231,6 +223,7 @@ pub(crate) fn emit_program_close(
         .unwrap_or(field_ty);
     quote! {
         {
+            // SAFETY: close runs in the epilogue with exclusive access to `self`.
             let __view = unsafe {
                 <#field_ty as quasar_lang::account_load::AccountLoad>::to_account_view_mut(
                     &mut self.#field_ident
@@ -245,13 +238,19 @@ pub(crate) fn emit_program_close(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Args builder codegen
-// ---------------------------------------------------------------------------
-
-/// Emit the builder chain for a behavior call (parse-time phase: uses local
-/// vars).
 fn emit_args_builder(call: &BehaviorCall, field_ty: &syn::Type) -> proc_macro2::TokenStream {
+    emit_behavior_args_builder(call, field_ty, false)
+}
+
+fn emit_exit_args_builder(call: &BehaviorCall, field_ty: &syn::Type) -> proc_macro2::TokenStream {
+    emit_behavior_args_builder(call, field_ty, true)
+}
+
+fn emit_behavior_args_builder(
+    call: &BehaviorCall,
+    field_ty: &syn::Type,
+    exit_context: bool,
+) -> proc_macro2::TokenStream {
     let path = &call.path;
     let bhv =
         quote! { <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#field_ty>> };
@@ -262,7 +261,11 @@ fn emit_args_builder(call: &BehaviorCall, field_ty: &syn::Type) -> proc_macro2::
         .map(|arg| {
             let key = &arg.key;
             let key_lit = key.to_string();
-            let val = emit_lowered_value(&arg.lowered);
+            let val = if exit_context {
+                emit_exit_lowered_value(&arg.lowered)
+            } else {
+                emit_lowered_value(&arg.lowered)
+            };
             quote! {
                 let __bhv_builder = if #bhv::uses_arg::<
                     { #phase },
@@ -286,40 +289,6 @@ fn emit_args_builder(call: &BehaviorCall, field_ty: &syn::Type) -> proc_macro2::
         let __bhv_builder = #path::Args::builder();
         #(#setters)*
         let __bhv_args = __bhv_builder.#build_method()?;
-    }
-}
-
-/// Emit the builder chain for an exit behavior call (epilogue phase: uses
-/// `self.field`).
-fn emit_exit_args_builder(call: &BehaviorCall, field_ty: &syn::Type) -> proc_macro2::TokenStream {
-    let path = &call.path;
-    let bhv =
-        quote! { <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#field_ty>> };
-    let phase = emit_arg_phase_const(call.phase);
-    let setters: Vec<proc_macro2::TokenStream> = call
-        .args
-        .iter()
-        .map(|arg| {
-            let key = &arg.key;
-            let key_lit = key.to_string();
-            let val = emit_exit_lowered_value(&arg.lowered);
-            quote! {
-                let __bhv_builder = if #bhv::uses_arg::<
-                    { #phase },
-                    { quasar_lang::account_behavior::behavior_arg_key_hash(#key_lit) },
-                >() {
-                    __bhv_builder.#key(#val)
-                } else {
-                    __bhv_builder
-                };
-            }
-        })
-        .collect();
-
-    quote! {
-        let __bhv_builder = #path::Args::builder();
-        #(#setters)*
-        let __bhv_args = __bhv_builder.build_exit()?;
     }
 }
 

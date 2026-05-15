@@ -1,5 +1,5 @@
-//! Header plan — bitmask computation and parse step emission.
-//! Adapted from v1, using FieldKind (2 variants) instead of FieldShape (10).
+//! Header plan: account-count expressions, SVM header parsing, and direct
+//! dispatch setup for generated account structs.
 
 use {
     super::{emit, resolve},
@@ -53,7 +53,7 @@ impl HeaderPlan {
     fn expected_expr(&self) -> proc_macro2::TokenStream {
         let ty = &self.ty;
         let writable_bit: u32 = if self.writable { 0x01 << 16 } else { 0 };
-        // IS_SIGNER and IS_EXECUTABLE come from the type's AccountLoad impl —
+        // IS_SIGNER and IS_EXECUTABLE come from the type's AccountLoad impl:
         // no domain knowledge needed here.
         quote! {{
             const __S: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
@@ -87,14 +87,14 @@ pub(crate) fn build_accounts_plan(
     semantics: &[resolve::FieldSemantics],
     typed_plan: &resolve::specs::AccountsPlanTyped,
     cx: &emit::EmitCx,
-) -> syn::Result<AccountsPlan> {
+) -> AccountsPlan {
     let fields = build_parse_fields(semantics);
-    Ok(AccountsPlan {
+    AccountsPlan {
         parse_steps: emit_parse_account_steps(&fields),
         count_expr: emit_count_expr(&fields),
-        parse_body: emit_full_parse_body(semantics, typed_plan, &fields, cx)?,
-        direct_parse_body: emit_direct_parse_body(semantics, typed_plan, &fields, cx)?,
-    })
+        parse_body: emit_full_parse_body(semantics, typed_plan, &fields, cx),
+        direct_parse_body: emit_direct_parse_body(semantics, typed_plan, &fields, cx),
+    }
 }
 
 fn build_parse_fields(semantics: &[resolve::FieldSemantics]) -> Vec<ParseFieldPlan> {
@@ -159,6 +159,8 @@ fn emit_parse_field_step(field: &ParseFieldPlan) -> proc_macro2::TokenStream {
             quote! {
                 {
                     input = unsafe {
+                        // SAFETY: the generated caller passes an input slice with
+                        // enough accounts for the statically computed COUNT.
                         <#inner_ty as quasar_lang::traits::ParseAccountsRaw>::parse_accounts_raw(
                             input,
                             base,
@@ -196,6 +198,8 @@ fn emit_single_parse_step(
                 const __MASK: u32 = #mask_expr;
                 const __FLAG_MASK: u32 = #flag_mask_expr;
                 input = unsafe {
+                    // SAFETY: parse_account_dup validates the current account
+                    // and advances within the pre-counted input slice.
                     quasar_lang::__internal::parse_account_dup(
                         input,
                         base,
@@ -224,6 +228,8 @@ fn emit_single_parse_step(
                 const __EXPECTED: u32 = #expected_expr;
                 const __MASK: u32 = #mask_expr;
                 input = unsafe {
+                    // SAFETY: parse_account validates the current account and
+                    // advances within the pre-counted input slice.
                     quasar_lang::__internal::parse_account(
                         input, base, #cur_offset, __EXPECTED, __MASK,
                     )?
@@ -264,15 +270,15 @@ fn emit_full_parse_body(
     typed_plan: &resolve::specs::AccountsPlanTyped,
     fields: &[ParseFieldPlan],
     cx: &emit::EmitCx,
-) -> syn::Result<proc_macro2::TokenStream> {
-    let inner_body = emit::parse::emit_parse_body(semantics, typed_plan, cx)?;
+) -> proc_macro2::TokenStream {
+    let inner_body = emit::parse::emit_parse_body(semantics, typed_plan, cx);
     emit_parse_body_from_inner(fields, inner_body)
 }
 
 fn emit_parse_body_from_inner(
     fields: &[ParseFieldPlan],
     inner_body: proc_macro2::TokenStream,
-) -> syn::Result<proc_macro2::TokenStream> {
+) -> proc_macro2::TokenStream {
     if fields
         .iter()
         .any(|field| matches!(field.kind, ParseFieldKind::Composite { .. }))
@@ -288,10 +294,14 @@ fn emit_parse_body_from_inner(
                     let field_name = &field.field_name;
                     let bumps_var = format_ident!("__composite_bumps_{}", field_name);
                     field_lets.push(quote! {
+                        // SAFETY: `parse_accounts_raw` already proved this
+                        // composite's COUNT accounts are present.
                         let (__chunk, __rest) = unsafe {
                             __accounts_rest.split_at_mut_unchecked(<#inner_ty as AccountCount>::COUNT)
                         };
                         __accounts_rest = __rest;
+                        // SAFETY: the raw parser above validated this composite
+                        // account chunk.
                         let (#field_name, #bumps_var) = unsafe { <#inner_ty as quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
                             __chunk,
                             __ix_data,
@@ -302,8 +312,11 @@ fn emit_parse_body_from_inner(
                 ParseFieldKind::Single(_) => {
                     let field_name = &field.field_name;
                     field_lets.push(quote! {
+                        // SAFETY: `parse_accounts_raw` already proved at least
+                        // one account remains for this field.
                         let (__chunk, __rest) = unsafe { __accounts_rest.split_at_mut_unchecked(1) };
                         __accounts_rest = __rest;
+                        // SAFETY: the one-element split above guarantees index 0.
                         let #field_name = unsafe { __chunk.get_unchecked_mut(0) };
                     });
                 }
@@ -311,19 +324,21 @@ fn emit_parse_body_from_inner(
         }
         field_lets.push(quote! { let _ = __accounts_rest; });
 
-        Ok(quote! {
+        quote! {
             #(#field_lets)*
             #inner_body
-        })
+        }
     } else {
         let names: Vec<&syn::Ident> = fields.iter().map(|field| &field.field_name).collect();
 
-        Ok(quote! {
+        quote! {
             let [#(#names),*] = accounts else {
+                // SAFETY: parse_accounts_raw enforces this exact static count
+                // before unchecked parsing runs.
                 unsafe { core::hint::unreachable_unchecked() }
             };
             #inner_body
-        })
+        }
     }
 }
 
@@ -332,15 +347,17 @@ fn emit_direct_parse_body(
     typed_plan: &resolve::specs::AccountsPlanTyped,
     fields: &[ParseFieldPlan],
     cx: &emit::EmitCx,
-) -> syn::Result<proc_macro2::TokenStream> {
+) -> proc_macro2::TokenStream {
     let count_expr = emit_count_expr(fields);
     let fallback_body =
-        emit_parse_body_without_behavior_assertions(semantics, typed_plan, fields, cx)?;
-    Ok(quote! {
+        emit_parse_body_without_behavior_assertions(semantics, typed_plan, fields, cx);
+    quote! {
         let mut __buf = core::mem::MaybeUninit::<
             [quasar_lang::__internal::AccountView; #count_expr]
         >::uninit();
         let _ = Self::parse_accounts(input, &mut __buf, __program_id)?;
+        // SAFETY: parse_accounts initializes the whole fixed-size buffer before
+        // returning Ok.
         let mut __accounts = unsafe { __buf.assume_init() };
         let accounts = &mut __accounts;
         let __parsed_result: Result<
@@ -351,7 +368,7 @@ fn emit_direct_parse_body(
         };
         let (__parsed_accounts, __parsed_bumps) = __parsed_result?;
         Ok((__parsed_accounts, __parsed_bumps))
-    })
+    }
 }
 
 fn emit_parse_body_without_behavior_assertions(
@@ -359,8 +376,8 @@ fn emit_parse_body_without_behavior_assertions(
     typed_plan: &resolve::specs::AccountsPlanTyped,
     fields: &[ParseFieldPlan],
     cx: &emit::EmitCx,
-) -> syn::Result<proc_macro2::TokenStream> {
+) -> proc_macro2::TokenStream {
     let inner_body =
-        emit::parse::emit_parse_body_without_behavior_assertions(semantics, typed_plan, cx)?;
+        emit::parse::emit_parse_body_without_behavior_assertions(semantics, typed_plan, cx);
     emit_parse_body_from_inner(fields, inner_body)
 }

@@ -1,5 +1,7 @@
-//! Final TokenStream assembly for ParseAccounts / ParseAccountsUnchecked.
-//! Adapted from v1 — same output shape, same trait impls.
+//! Final TokenStream assembly for the generated accounts impls.
+//!
+//! This module keeps trait wiring in one place; parsing, planning, lifecycle,
+//! and client macro generation are built before this step.
 
 use quote::quote;
 
@@ -54,17 +56,16 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
         const HAS_EPILOGUE: bool = #has_epilogue_expr;
     };
 
-    let has_validate_const = quote! {};
-
     let parse_accounts_impl = quote! {
         impl #parse_impl_generics ParseAccounts<'input> for #name #ty_generics #parse_where_clause {
             type Bumps = #bumps_name;
             #has_epilogue_const
-            #has_validate_const
 
             #[inline(always)]
             fn parse(accounts: &'input mut [AccountView], program_id: &Address) -> Result<(Self, Self::Bumps), ProgramError> {
                 #exact_len_guard
+                // SAFETY: the exact-count guard above proves the unchecked parser
+                // receives the account count it was generated for.
                 unsafe {
                     <Self as quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
                         accounts,
@@ -81,6 +82,8 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
                 __program_id: &Address,
             ) -> Result<(Self, Self::Bumps), ProgramError> {
                 #exact_len_guard
+                // SAFETY: the exact-count guard above proves the unchecked parser
+                // receives the account count it was generated for.
                 unsafe {
                     <Self as quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
                         accounts,
@@ -171,11 +174,17 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
                     [quasar_lang::__internal::AccountView; #count_expr]
                 >::uninit();
                 let input = Self::parse_accounts(input, &mut __inner_buf, __program_id)?;
+                // SAFETY: parse_accounts initializes every element before
+                // returning Ok.
                 let __inner = core::mem::ManuallyDrop::new(__inner_buf.assume_init());
                 let mut __j = 0usize;
                 while __j < #count_expr {
+                    // SAFETY: `__j < count_expr`; the caller's `base + offset`
+                    // points into the preallocated outer account buffer.
                     core::ptr::write(
                         base.add(offset + __j),
+                        // SAFETY: `__inner` owns `count_expr` initialized
+                        // AccountView values.
                         core::ptr::read(__inner.as_ptr().add(__j)),
                     );
                     __j += 1;

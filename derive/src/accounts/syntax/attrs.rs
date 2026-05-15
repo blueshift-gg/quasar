@@ -1,4 +1,4 @@
-//! Directive parser — grammar only, no semantic decisions.
+//! Directive parser: grammar only, no semantic decisions.
 //!
 //! Grammar summary:
 //! - core: `mut`, `dup`, `init`, `init(idempotent)`, `payer = ident`, `address
@@ -10,7 +10,7 @@
 //! `exit(...)`. The lowering layer decides which phases each behavior
 //! participates in.
 //!
-//! All groups are open behavior groups. The derive is protocol-neutral — it
+//! All groups are open behavior groups. The derive is protocol-neutral: it
 //! does not know what `token`, `mint`, or `metadata` mean.
 
 use {
@@ -30,15 +30,15 @@ pub(crate) enum Directive {
     Check(UserCheck),
 }
 
-/// Core structural directives — owned by the derive, not by protocol crates.
+/// Core structural directives: owned by the derive, not by protocol crates.
 pub(crate) enum CoreDirective {
     Mut,
     Dup,
     Group,
     Init { idempotent: bool },
     Payer(Ident),
-    Address(syn::Expr, Option<syn::Expr>),
-    Realloc(syn::Expr),
+    Address(Expr, Option<Expr>),
+    Realloc(Expr),
     Close(Ident),
 }
 
@@ -48,7 +48,7 @@ struct ParsedDirective {
 
 impl Parse for ParsedDirective {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        // `mut` is a keyword, needs special handling
+        // `mut` is a Rust keyword, so it cannot be parsed through `syn::Path`.
         if input.peek(Token![mut]) {
             let _kw: Token![mut] = input.parse()?;
             return Ok(ParsedDirective {
@@ -59,7 +59,7 @@ impl Parse for ParsedDirective {
         let path: syn::Path = input.parse()?;
         let name = path_to_string(&path);
 
-        // Key-value: `name = value`
+        // Key-value directives: `name = value`.
         if input.peek(Token![=]) {
             input.parse::<Token![=]>()?;
             match name.as_str() {
@@ -91,13 +91,12 @@ impl Parse for ParsedDirective {
             }
         }
 
-        // Group / check / init: `name(...)`
+        // Group directives and structural checks: `name(...)`.
         if input.peek(syn::token::Paren) {
             let content;
             syn::parenthesized!(content in input);
 
             match name.as_str() {
-                // init / init(idempotent)
                 "init" => {
                     let idempotent = if content.is_empty() {
                         false
@@ -126,7 +125,6 @@ impl Parse for ParsedDirective {
                     });
                 }
 
-                // Structural checks
                 "has_one" => {
                     let targets = parse_ident_list(&content)?;
                     let error = parse_trailing_error(input)?;
@@ -142,12 +140,21 @@ impl Parse for ParsedDirective {
                     });
                 }
 
-                // Core structural close: close(dest = field)
                 "close" => {
                     let args = parse_group_args(&content)?;
-                    let dest = args.iter().find(|a| a.key == "dest").ok_or_else(|| {
-                        syn::Error::new_spanned(&path, "`close(...)` requires `dest = field`")
-                    })?;
+                    if args.len() != 1 {
+                        return Err(syn::Error::new_spanned(
+                            &path,
+                            "`close(...)` accepts only `dest = field`",
+                        ));
+                    }
+                    let dest = &args[0];
+                    if dest.key != "dest" {
+                        return Err(syn::Error::new_spanned(
+                            &path,
+                            "`close(...)` requires `dest = field`",
+                        ));
+                    }
                     if let Expr::Path(ep) = &dest.value {
                         if ep.qself.is_none() && ep.path.segments.len() == 1 {
                             return Ok(ParsedDirective {
@@ -163,7 +170,6 @@ impl Parse for ParsedDirective {
                     ));
                 }
 
-                // All other groups: open behavior groups.
                 _ => {
                     let args = parse_group_args(&content)?;
                     return Ok(ParsedDirective {
@@ -173,7 +179,7 @@ impl Parse for ParsedDirective {
             }
         }
 
-        // Bare flags (no parens, no `=`)
+        // Bare flags without parentheses.
         match name.as_str() {
             "init" => Ok(ParsedDirective {
                 inner: Directive::Core(CoreDirective::Init { idempotent: false }),
@@ -213,7 +219,7 @@ fn parse_group_args(input: ParseStream) -> syn::Result<Vec<BehaviorArg>> {
         if args.iter().any(|a: &BehaviorArg| a.key == key) {
             return Err(syn::Error::new_spanned(
                 &key,
-                format!("duplicate arg `{key}` — each arg may only appear once"),
+                format!("duplicate arg `{key}`: each arg may only appear once"),
             ));
         }
         args.push(BehaviorArg { key, value });
@@ -256,11 +262,11 @@ pub(crate) fn validate_behavior_arg(key: &Ident, expr: &Expr) -> syn::Result<()>
 /// Check if an expression conforms to the behavior arg grammar.
 fn is_valid_behavior_arg(expr: &Expr) -> bool {
     match expr {
-        // Path: bare ident (field ref) or multi-segment (const/type path) — valid
+        // Path: bare ident (field ref) or multi-segment (const/type path): valid
         Expr::Path(ep) => ep.qself.is_none(),
-        // Literal — valid
+        // Literal: valid
         Expr::Lit(_) => true,
-        // Some(inner) — valid if inner is valid
+        // Some(inner): valid if inner is valid
         Expr::Call(call) => {
             if let Expr::Path(func) = &*call.func {
                 if func.qself.is_none()
@@ -311,7 +317,15 @@ fn parse_trailing_error(input: ParseStream) -> syn::Result<Option<Expr>> {
 }
 
 pub(crate) fn parse_field_attrs(field: &syn::Field) -> syn::Result<Vec<Directive>> {
-    let attr = field.attrs.iter().find(|a| a.path().is_ident("account"));
+    let mut attr = None;
+    for candidate in field.attrs.iter().filter(|a| a.path().is_ident("account")) {
+        if attr.replace(candidate).is_some() {
+            return Err(syn::Error::new_spanned(
+                candidate,
+                "duplicate #[account(...)] attribute on field",
+            ));
+        }
+    }
     match attr {
         Some(a) => {
             let directives: syn::punctuated::Punctuated<ParsedDirective, Token![,]> =

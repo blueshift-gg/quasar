@@ -3,6 +3,8 @@ use {
     syn::{Error, Expr, Ident, Lit, Result, Type},
 };
 
+pub(crate) const MAX_SEED_LEN: usize = 32;
+
 /// Supported typed PDA seed parameter types.
 pub(crate) enum SeedType {
     Address,
@@ -74,8 +76,10 @@ pub(crate) fn parse_seed_type(ty: Type) -> Result<SeedType> {
                 "u64" => Ok(SeedType::U64),
                 _ => Err(Error::new(
                     ident.span(),
-                    "unsupported seed type; expected Address, u8, u16, u32, u64, or [u8; N] where \
-                     N <= 32",
+                    format!(
+                        "unsupported seed type; expected Address, u8, u16, u32, u64, or [u8; N] \
+                         where N <= {MAX_SEED_LEN}"
+                    ),
                 )),
             };
         }
@@ -107,10 +111,10 @@ pub(crate) fn parse_seed_type(ty: Type) -> Result<SeedType> {
             ));
         };
         let len = lit_int.base10_parse::<usize>()?;
-        if len > 32 {
+        if len > MAX_SEED_LEN {
             return Err(Error::new_spanned(
                 &array.len,
-                "seed byte array length exceeds MAX_SEED_LEN of 32",
+                format!("seed byte array length exceeds MAX_SEED_LEN of {MAX_SEED_LEN}"),
             ));
         }
         return Ok(SeedType::Bytes(len));
@@ -118,6 +122,9 @@ pub(crate) fn parse_seed_type(ty: Type) -> Result<SeedType> {
 
     Err(Error::new_spanned(
         ty,
-        "unsupported seed type; expected Address, u8, u16, u32, u64, or [u8; N] where N <= 32",
+        format!(
+            "unsupported seed type; expected Address, u8, u16, u32, u64, or [u8; N] where N <= \
+             {MAX_SEED_LEN}"
+        ),
     ))
 }

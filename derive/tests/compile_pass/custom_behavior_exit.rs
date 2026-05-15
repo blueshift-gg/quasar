@@ -10,7 +10,6 @@ pub struct Counter {
     pub value: u64,
 }
 
-// --- Custom exit behavior that increments a counter ---
 mod bump_counter {
     use quasar_lang::prelude::*;
 
