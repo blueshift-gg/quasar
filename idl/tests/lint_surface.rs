@@ -262,6 +262,33 @@ fn additive_changes_do_not_fail_by_default() {
 }
 
 #[test]
+fn preflight_warns_when_auto_instruction_discriminators_are_unlocked() {
+    let mut idl = base_idl();
+    idl.metadata.extra.insert(
+        "quasar:instructionDiscriminatorSource".to_owned(),
+        serde_json::json!({ "make": "auto" }),
+    );
+
+    let report = lint::run(
+        &idl,
+        &lint::LintConfig {
+            strict: false,
+            lockfile_present: false,
+        },
+    );
+    assert!(report.contains(RuleCode::P008));
+
+    let locked_report = lint::run(
+        &idl,
+        &lint::LintConfig {
+            strict: false,
+            lockfile_present: true,
+        },
+    );
+    assert!(!locked_report.contains(RuleCode::P008));
+}
+
+#[test]
 fn diff_rules_cover_account_layout_breaks() {
     let old = ProgramSurface::from_idl(&base_idl());
 

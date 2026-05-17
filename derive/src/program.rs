@@ -12,7 +12,8 @@ use {
     proc_macro::TokenStream,
     proc_macro2::TokenStream as TokenStream2,
     quote::{format_ident, quote},
-    syn::{parse_macro_input, FnArg, Ident, Item, ItemMod, LitInt, Pat, Type},
+    std::collections::BTreeSet,
+    syn::{parse_macro_input, FnArg, Ident, Item, ItemMod, LitInt, Meta, Pat, Type},
 };
 
 /// Emit the heap cursor init or poison block for a dispatch arm.
@@ -165,7 +166,27 @@ struct RawInstructionSpec {
     fn_name: Ident,
     disc_bytes: Vec<LitInt>,
     disc_values: Vec<u8>,
+    discriminator_source: DiscriminatorSource,
     heap: bool,
+}
+
+#[derive(Clone, Copy)]
+enum DiscriminatorSource {
+    Auto,
+    Explicit,
+}
+
+impl DiscriminatorSource {
+    fn idl_tokens(self) -> TokenStream2 {
+        match self {
+            Self::Auto => quote! {
+                quasar_lang::idl_build::InstructionDiscriminatorSource::Auto
+            },
+            Self::Explicit => quote! {
+                quasar_lang::idl_build::InstructionDiscriminatorSource::Explicit
+            },
+        }
+    }
 }
 
 /// Original arg (name + type) as declared in the handler, for IDL emission.
@@ -178,6 +199,7 @@ struct InstructionSpec {
     fn_name: Ident,
     disc_bytes: Vec<LitInt>,
     disc_values: Vec<u8>,
+    discriminator_source: DiscriminatorSource,
     accounts_type: TokenStream2,
     accounts_type_str: String,
     heap: bool,
@@ -324,6 +346,41 @@ impl syn::parse::Parse for ProgramArgs {
     }
 }
 
+fn parse_instruction_attr(attr: &syn::Attribute) -> syn::Result<InstructionArgs> {
+    match &attr.meta {
+        Meta::Path(_) => Ok(InstructionArgs {
+            discriminator: None,
+            heap: false,
+            raw: false,
+        }),
+        Meta::List(_) => attr.parse_args(),
+        Meta::NameValue(_) => Err(syn::Error::new_spanned(
+            attr,
+            "expected `#[instruction]` or `#[instruction(...)]`",
+        )),
+    }
+}
+
+fn auto_discriminator(
+    used: &mut BTreeSet<u8>,
+    next_auto: &mut u16,
+    span: proc_macro2::Span,
+) -> syn::Result<(Vec<LitInt>, Vec<u8>)> {
+    while *next_auto <= 254 {
+        let value = *next_auto as u8;
+        *next_auto += 1;
+        if used.insert(value) {
+            return Ok((vec![LitInt::new(&value.to_string(), span)], vec![value]));
+        }
+    }
+
+    Err(syn::Error::new(
+        span,
+        "automatic instruction discriminators exhausted the 1-byte space; pin explicit \
+         discriminators or split the program",
+    ))
+}
+
 pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
     let program_args = parse_macro_input!(attr as ProgramArgs);
     let mut module = parse_macro_input!(item as ItemMod);
@@ -342,32 +399,28 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
-    // Scan for #[instruction(discriminator = ...)] functions
+    // Scan explicit discriminators first so automatic values skip every pinned
+    // value, including values that appear later in the module.
     let mut instruction_specs = Vec::new();
     let mut raw_instruction_specs: Vec<RawInstructionSpec> = Vec::new();
     let mut seen_discriminators: Vec<(Vec<u8>, String)> = Vec::new();
     let mut disc_len: Option<usize> = None;
+    let mut has_auto_discriminators = false;
+    let mut explicit_discriminators: Vec<(Vec<u8>, String)> = Vec::new();
 
     for item in items {
         if let Item::Fn(func) = item {
             for attr in &func.attrs {
                 if attr.path().is_ident("instruction") {
-                    let args: InstructionArgs = match attr.parse_args() {
+                    let args = match parse_instruction_attr(attr) {
                         Ok(a) => a,
                         Err(e) => return e.to_compile_error().into(),
                     };
-                    let disc_bytes = match &args.discriminator {
-                        Some(d) => d,
-                        None => {
-                            return syn::Error::new_spanned(
-                                attr,
-                                "#[program]: instruction requires `discriminator = [...]`",
-                            )
-                            .to_compile_error()
-                            .into();
-                        }
+                    let fn_name = func.sig.ident.to_string();
+                    let Some(disc_bytes) = &args.discriminator else {
+                        has_auto_discriminators = true;
+                        break;
                     };
-                    let fn_name = &func.sig.ident;
 
                     match disc_len {
                         Some(len) => {
@@ -392,6 +445,82 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                         Ok(v) => v,
                         Err(e) => return e.to_compile_error().into(),
                     };
+                    if let Some((_, prev_fn)) = explicit_discriminators
+                        .iter()
+                        .find(|(v, _)| *v == disc_values)
+                    {
+                        return syn::Error::new_spanned(
+                            attr,
+                            format!(
+                                "duplicate discriminator {:?}: already used by `{}`",
+                                disc_values, prev_fn
+                            ),
+                        )
+                        .to_compile_error()
+                        .into();
+                    }
+                    explicit_discriminators.push((disc_values, fn_name));
+                    break;
+                }
+            }
+        }
+    }
+
+    if has_auto_discriminators {
+        if let Some(len) = disc_len {
+            if len != 1 {
+                return syn::Error::new_spanned(
+                    &module.ident,
+                    "automatic instruction discriminators require 1-byte program discriminators; \
+                     pin every instruction when using multi-byte discriminators",
+                )
+                .to_compile_error()
+                .into();
+            }
+        } else {
+            disc_len = Some(1);
+        }
+    }
+
+    let mut used_auto_discriminators = explicit_discriminators
+        .iter()
+        .filter_map(|(values, _)| values.first().copied())
+        .collect::<BTreeSet<_>>();
+    let mut next_auto = 0u16;
+
+    for item in items {
+        if let Item::Fn(func) = item {
+            for attr in &func.attrs {
+                if attr.path().is_ident("instruction") {
+                    let args: InstructionArgs = match parse_instruction_attr(attr) {
+                        Ok(a) => a,
+                        Err(e) => return e.to_compile_error().into(),
+                    };
+                    let fn_name = &func.sig.ident;
+                    let (disc_bytes, disc_values, discriminator_source) = match &args.discriminator
+                    {
+                        Some(disc_bytes) => {
+                            let disc_values = match parse_discriminator_bytes(disc_bytes) {
+                                Ok(v) => v,
+                                Err(e) => return e.to_compile_error().into(),
+                            };
+                            (
+                                disc_bytes.clone(),
+                                disc_values,
+                                DiscriminatorSource::Explicit,
+                            )
+                        }
+                        None => match auto_discriminator(
+                            &mut used_auto_discriminators,
+                            &mut next_auto,
+                            fn_name.span(),
+                        ) {
+                            Ok((disc_bytes, disc_values)) => {
+                                (disc_bytes, disc_values, DiscriminatorSource::Auto)
+                            }
+                            Err(e) => return e.to_compile_error().into(),
+                        },
+                    };
                     if let Some((_, prev_fn)) =
                         seen_discriminators.iter().find(|(v, _)| *v == disc_values)
                     {
@@ -413,6 +542,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                             fn_name: fn_name.clone(),
                             disc_bytes: disc_bytes.clone(),
                             disc_values: disc_values.clone(),
+                            discriminator_source,
                             heap: args.heap,
                         });
                         break;
@@ -517,6 +647,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                         fn_name: fn_name.clone(),
                         disc_bytes: disc_bytes.clone(),
                         disc_values,
+                        discriminator_source,
                         accounts_type,
                         accounts_type_str,
                         heap: args.heap,
@@ -953,6 +1084,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
         .map(|spec| {
             let fn_name_str = spec.fn_name.to_string();
             let disc_values = &spec.disc_values;
+            let discriminator_source = spec.discriminator_source.idl_tokens();
             let accounts_type_str = &spec.accounts_type_str;
             let arg_defs: Vec<TokenStream2> = spec.idl_args.iter().map(|arg| {
                 let arg_name = arg.name.to_string();
@@ -1052,6 +1184,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                             __build
                         },
                         accounts_struct_name: #accounts_type_str,
+                        discriminator_source: #discriminator_source,
                     }
                 }
             }
@@ -1063,6 +1196,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
         .map(|spec| {
             let fn_name_str = spec.fn_name.to_string();
             let disc_values = &spec.disc_values;
+            let discriminator_source = spec.discriminator_source.idl_tokens();
             quote! {
                 #[cfg(feature = "idl-build")]
                 quasar_lang::__private_inventory::submit! {
@@ -1084,6 +1218,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                             __build
                         },
                         accounts_struct_name: "",
+                        discriminator_source: #discriminator_source,
                     }
                 }
             }

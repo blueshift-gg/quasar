@@ -56,6 +56,15 @@ pub struct InstructionFragment {
     pub build: fn() -> IdlInstruction,
     /// Name of the accounts struct used by this instruction (for lookup).
     pub accounts_struct_name: &'static str,
+    /// Whether the discriminator was pinned in source or assigned by
+    /// `#[program]`.
+    pub discriminator_source: InstructionDiscriminatorSource,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum InstructionDiscriminatorSource {
+    Auto,
+    Explicit,
 }
 
 /// Fragment submitted by `#[derive(Accounts)]`; carries account metadata for
@@ -76,6 +85,7 @@ pub fn build_idl(address: &str, name: &str, version: &str) -> Idl {
     let mut events = Vec::new();
     let mut errors = Vec::new();
     let mut instructions = Vec::new();
+    let mut auto_discriminator_sources = serde_json::Map::new();
 
     // Collect accounts meta fragments into a lookup table.
     let accounts_meta: Vec<(String, Vec<IdlAccountNode>)> = inventory::iter::<AccountsMetaFragment>
@@ -101,6 +111,12 @@ pub fn build_idl(address: &str, name: &str, version: &str) -> Idl {
     }
     for frag in inventory::iter::<InstructionFragment> {
         let mut ix = (frag.build)();
+        if frag.discriminator_source == InstructionDiscriminatorSource::Auto {
+            auto_discriminator_sources.insert(
+                ix.name.clone(),
+                serde_json::Value::String(String::from("auto")),
+            );
+        }
         // Look up the matching AccountsMetaFragment by struct name.
         if ix.accounts.is_empty() && !frag.accounts_struct_name.is_empty() {
             if let Some((_, nodes)) = accounts_meta
@@ -135,6 +151,13 @@ pub fn build_idl(address: &str, name: &str, version: &str) -> Idl {
         extensions: None,
         hashes: None,
     };
+
+    if !auto_discriminator_sources.is_empty() {
+        idl.metadata.extra.insert(
+            String::from("quasar:instructionDiscriminatorSource"),
+            serde_json::Value::Object(auto_discriminator_sources),
+        );
+    }
 
     let idl_hash = compute_idl_hash(&idl);
     let abi_hash = compute_abi_hash(&idl);

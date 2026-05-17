@@ -36,6 +36,12 @@ pub struct AccountSurface {
 pub struct InstructionSurface {
     pub name: String,
     pub discriminator: Vec<u8>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "discriminatorSource"
+    )]
+    pub discriminator_source: Option<String>,
     pub args: Vec<FieldSurface>,
     pub accounts: Vec<AccountMetaSurface>,
     pub remaining_accounts: Option<String>,
@@ -89,6 +95,7 @@ impl ProgramSurface {
     pub fn from_idl(idl: &Idl) -> Self {
         let type_map: BTreeMap<&str, &IdlTypeDef> =
             idl.types.iter().map(|ty| (ty.name.as_str(), ty)).collect();
+        let discriminator_sources = instruction_discriminator_sources(&idl.metadata);
 
         Self {
             version: SURFACE_VERSION,
@@ -105,7 +112,9 @@ impl ProgramSurface {
             instructions: idl
                 .instructions
                 .iter()
-                .map(InstructionSurface::from_idl)
+                .map(|instruction| {
+                    InstructionSurface::from_idl(instruction, &discriminator_sources)
+                })
                 .collect(),
             types: idl.types.iter().map(TypeSurface::from_idl).collect(),
             events: idl
@@ -136,10 +145,14 @@ impl AccountSurface {
 }
 
 impl InstructionSurface {
-    fn from_idl(instruction: &IdlInstruction) -> Self {
+    fn from_idl(
+        instruction: &IdlInstruction,
+        discriminator_sources: &BTreeMap<String, String>,
+    ) -> Self {
         Self {
             name: instruction.name.clone(),
             discriminator: instruction.discriminator.clone(),
+            discriminator_source: discriminator_sources.get(&instruction.name).cloned(),
             args: instruction
                 .args
                 .iter()
@@ -161,6 +174,24 @@ impl InstructionSurface {
             .map(|account| account.name.as_str())
             .collect()
     }
+}
+
+fn instruction_discriminator_sources(metadata: &IdlMetadata) -> BTreeMap<String, String> {
+    metadata
+        .extra
+        .get("quasar:instructionDiscriminatorSource")
+        .and_then(serde_json::Value::as_object)
+        .map(|sources| {
+            sources
+                .iter()
+                .filter_map(|(name, source)| {
+                    source
+                        .as_str()
+                        .map(|source| (name.clone(), source.to_owned()))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 impl AccountMetaSurface {

@@ -341,34 +341,26 @@ fn emit_decode_and_tail(
 pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as InstructionArgs);
     let mut func = parse_macro_input!(item as ItemFn);
-    let disc_bytes = match &args.discriminator {
-        Some(d) => d,
-        None => {
+    if let Some(disc_bytes) = &args.discriminator {
+        let disc_len = disc_bytes.len();
+        let disc_values = match parse_discriminator_bytes(disc_bytes) {
+            Ok(values) => values,
+            Err(e) => return e.to_compile_error().into(),
+        };
+
+        // Reject multi-byte all-zero discriminators: zeroed instruction data could
+        // accidentally match. Single-byte discriminators are fine (the dispatch
+        // macro's length check rejects empty instruction data).
+        if disc_len > 1 && disc_values.iter().all(|&byte| byte == 0) {
             return syn::Error::new_spanned(
-                &func.sig.ident,
-                "#[instruction] requires `discriminator = [...]`",
+                &disc_bytes[0],
+                "instruction discriminator must contain at least one non-zero byte; all-zero \
+                 multi-byte discriminators are dangerous because zeroed instruction data would \
+                 match",
             )
             .to_compile_error()
             .into();
         }
-    };
-    let disc_len = disc_bytes.len();
-    let disc_values = match parse_discriminator_bytes(disc_bytes) {
-        Ok(values) => values,
-        Err(e) => return e.to_compile_error().into(),
-    };
-
-    // Reject multi-byte all-zero discriminators: zeroed instruction data could
-    // accidentally match. Single-byte discriminators are fine (the dispatch
-    // macro's length check rejects empty instruction data).
-    if disc_len > 1 && disc_values.iter().all(|&byte| byte == 0) {
-        return syn::Error::new_spanned(
-            &disc_bytes[0],
-            "instruction discriminator must contain at least one non-zero byte; all-zero \
-             multi-byte discriminators are dangerous because zeroed instruction data would match",
-        )
-        .to_compile_error()
-        .into();
     }
 
     if args.raw {

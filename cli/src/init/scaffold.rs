@@ -321,7 +321,7 @@ impl Initialize {{
 mod {module_name} {{
     use super::*;
 
-    #[instruction(discriminator = 0)]
+    #[instruction]
     pub fn initialize(ctx: Ctx<Initialize>) -> Result<(), ProgramError> {{
         ctx.accounts.initialize()
     }}
@@ -346,7 +346,7 @@ declare_id!("{program_id}");
 mod {module_name} {{
     use super::*;
 
-    #[instruction(discriminator = 0)]
+    #[instruction]
     pub fn initialize(ctx: Ctx<Initialize>) -> Result<(), ProgramError> {{
         ctx.accounts.initialize()
     }}

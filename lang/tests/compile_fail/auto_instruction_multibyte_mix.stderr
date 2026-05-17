@@ -1,0 +1,5 @@
+error: automatic instruction discriminators require 1-byte program discriminators; pin every instruction when using multi-byte discriminators
+  --> tests/compile_fail/auto_instruction_multibyte_mix.rs:13:9
+   |
+13 | pub mod auto_instruction_multibyte_mix {
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

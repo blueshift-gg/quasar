@@ -111,20 +111,9 @@ impl<'info> {pascal}<'info> {{
     Ok(())
 }
 
-/// Find the highest discriminator in the #[program] block and insert
-/// a new #[instruction] entry with discriminator = max + 1.
+/// Insert a new auto-discriminated #[instruction] entry into the #[program]
+/// block.
 fn add_instruction_to_entrypoint(lib_content: &str, snake: &str, pascal: &str) -> Option<String> {
-    let mut max_disc: i64 = -1;
-    for line in lib_content.lines() {
-        if let Some(n) = parse_discriminator(line) {
-            if n > max_disc {
-                max_disc = n;
-            }
-        }
-    }
-
-    let next_disc = (max_disc + 1) as u64;
-
     // Find the closing `}}` of the #[program] mod block.
     // Strategy: find the last `}` that closes the program module.
     // We look for the pattern: a line with just `}` or `}}` that ends the mod
@@ -167,8 +156,8 @@ fn add_instruction_to_entrypoint(lib_content: &str, snake: &str, pascal: &str) -
     let insert_pos = insert_pos?;
 
     let new_entry = format!(
-        "\n    #[instruction(discriminator = {next_disc})]\n    pub fn {snake}(ctx: \
-         Ctx<{pascal}>) -> Result<(), ProgramError> {{\n        ctx.accounts.{snake}()\n    }}\n"
+        "\n    #[instruction]\n    pub fn {snake}(ctx: Ctx<{pascal}>) -> Result<(), ProgramError> \
+         {{\n        ctx.accounts.{snake}()\n    }}\n"
     );
 
     let mut result = String::with_capacity(lib_content.len() + new_entry.len());
@@ -318,7 +307,7 @@ mod tests {
     }
 
     #[test]
-    fn instruction_insert_uses_highest_existing_discriminator() {
+    fn instruction_insert_uses_auto_discriminator() {
         let source = r#"#[program]
 mod demo {
     use super::*;
@@ -333,7 +322,7 @@ mod demo {
         let updated = add_instruction_to_entrypoint(source, "settle", "Settle")
             .expect("program block should be updated");
 
-        assert!(updated.contains("#[instruction(discriminator = 4)]"));
+        assert!(updated.contains("#[instruction]"));
         assert!(updated.contains("pub fn settle(ctx: Ctx<Settle>)"));
     }
 }
