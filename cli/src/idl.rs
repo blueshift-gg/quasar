@@ -41,7 +41,7 @@ fn extract_idl_json(stdout: &str) -> Result<&str, CliError> {
 
 /// Build the IDL by compiling the program crate with `--features idl-build`
 /// and running the `__quasar_emit_idl` test to capture the JSON output.
-fn build_idl_from_crate(crate_path: &Path) -> Result<Idl, CliError> {
+pub(crate) fn build(crate_path: &Path) -> Result<Idl, CliError> {
     // Read the crate name from Cargo.toml
     let cargo_toml_path = crate_path.join("Cargo.toml");
     let cargo_toml_content = std::fs::read_to_string(&cargo_toml_path)
@@ -101,7 +101,7 @@ fn build_idl_from_crate(crate_path: &Path) -> Result<Idl, CliError> {
 
 /// Generate IDL JSON and Rust client from the program crate.
 fn generate_idl(crate_path: &Path, clients_path: &Path) -> Result<Idl, CliError> {
-    let idl = build_idl_from_crate(crate_path)?;
+    let idl = build(crate_path)?;
 
     // Generate client code from the IDL
     let model = ProgramModel::new(&idl);
@@ -160,10 +160,10 @@ pub fn generate(
     crate_path: &Path,
     languages: &[&str],
     clients_path: &Path,
-) -> Result<(), CliError> {
+) -> Result<Idl, CliError> {
     let idl = generate_idl(crate_path, clients_path)?;
     crate::client::generate_clients(&idl, languages, clients_path)?;
-    Ok(())
+    Ok(idl)
 }
 
 #[cfg(test)]

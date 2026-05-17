@@ -47,8 +47,11 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
     let languages = config.client_languages();
     let crate_root = utils::find_program_crate(&config);
     progress.step("Generating IDL and clients...");
-    crate::idl::generate(&crate_root, &languages, &clients_path)?;
+    let idl = crate::idl::generate(&crate_root, &languages, &clients_path)?;
     progress.done("Generated IDL and clients");
+    progress.step("Linting program surface...");
+    crate::lint::run_for_build(&crate_root, &idl)?;
+    progress.done("Linted program surface");
 
     if verbose {
         eprintln!("  {}", style::step("Building program..."));

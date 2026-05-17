@@ -14,6 +14,7 @@ pub mod error;
 pub mod idl;
 pub mod init;
 pub mod keys;
+pub mod lint;
 pub mod new;
 pub mod style;
 pub mod test;
@@ -53,6 +54,8 @@ pub enum Command {
     Idl(IdlCommand),
     /// Generate client code from the program IDL
     Client(ClientCommand),
+    /// Audit the program surface for pre-deploy and upgrade-safety issues
+    Lint(LintCommand),
     /// Measure compute-unit usage
     Profile(ProfileCommand),
     /// Dump sBPF assembly
@@ -245,6 +248,21 @@ pub struct ClientCommand {
     pub lang: Vec<String>,
 }
 
+#[derive(Args, Debug, Default)]
+pub struct LintCommand {
+    /// Write the current program surface to quasar.lock.json
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub update_lock: bool,
+
+    /// Do not compare against quasar.lock.json even when it exists
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub no_diff: bool,
+
+    /// Treat warnings and info findings as failures
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub strict: bool,
+}
+
 #[derive(Args, Debug, Clone)]
 pub struct DumpCommand {
     /// Path to a compiled .so (auto-detected from target/deploy/ if omitted)
@@ -351,6 +369,7 @@ pub fn run(cli: Cli) -> CliResult {
         Command::Config(cmd) => cfg::run(cmd.action),
         Command::Idl(cmd) => idl::run(cmd),
         Command::Client(cmd) => client::run(cmd),
+        Command::Lint(cmd) => lint::run(cmd),
         Command::Dump(cmd) => dump::run(cmd.elf_path, cmd.function, cmd.source),
         Command::Completions(cmd) => {
             clap_complete::generate(
