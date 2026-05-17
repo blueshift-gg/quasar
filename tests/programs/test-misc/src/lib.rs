@@ -336,4 +336,9 @@ mod quasar_test_misc {
         }
         ctx.accounts.handler()
     }
+
+    #[instruction(discriminator = 62)]
+    pub fn optional_mut_accounts(ctx: Ctx<OptionalMutAccounts>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
 }
