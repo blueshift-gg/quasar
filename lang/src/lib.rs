@@ -328,14 +328,34 @@ pub mod __internal {
         } else {
             // Dup branch: borrow_state != NOT_BORROWED means the SVM
             // deduplicated this account slot.
-            if !flags.allow_dup {
-                // Dups are only accepted for explicit #[account(dup)] fields.
-                return Err(ProgramError::AccountBorrowFailed);
-            }
-
             let idx = (actual_header & 0xFF) as usize;
             if crate::utils::hint::unlikely(idx >= offset) {
                 return Err(ProgramError::InvalidAccountData);
+            }
+
+            if flags.is_optional {
+                // Optional None uses the program id as a sentinel. Repeated
+                // sentinels may be serialized as SVM duplicate entries, but
+                // they are not aliases of a real user account.
+                let orig_view = unsafe { core::ptr::read(base.add(idx)) };
+                if crate::keys_eq(orig_view.address(), program_id) {
+                    unsafe { core::ptr::write(base.add(offset), orig_view) };
+                    let input = unsafe { input.add(core::mem::size_of::<u64>()) };
+                    return Ok(input);
+                }
+
+                if !flags.allow_dup {
+                    return Err(ProgramError::AccountBorrowFailed);
+                }
+
+                unsafe { core::ptr::write(base.add(offset), orig_view) };
+                let input = unsafe { input.add(core::mem::size_of::<u64>()) };
+                return Ok(input);
+            }
+
+            if !flags.allow_dup {
+                // Dups are only accepted for explicit #[account(dup)] fields.
+                return Err(ProgramError::AccountBorrowFailed);
             }
 
             // SAFETY: `idx < offset` means the source slot is already

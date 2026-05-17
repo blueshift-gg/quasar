@@ -142,3 +142,6 @@ pub use dynamic_view_mut_missing_field::*;
 
 pub mod cpi_mut_readback;
 pub use cpi_mut_readback::*;
+
+pub mod optional_mut_accounts;
+pub use optional_mut_accounts::*;
