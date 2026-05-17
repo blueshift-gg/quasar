@@ -40,6 +40,8 @@
 #[cfg(any(feature = "debug", feature = "idl-build"))]
 extern crate alloc;
 extern crate self as quasar_lang;
+#[cfg(target_arch = "bpf")]
+use solana_compiler_builtins as _;
 
 /// Internal re-exports for proc macro codegen. Not part of the public API.
 /// Breaking changes to this module are not considered semver violations.
@@ -409,15 +411,22 @@ pub use zeropod::{
 /// bounds-checked slicing, `Result` construction, and panic paths.
 #[inline(always)]
 pub fn keys_eq(a: &solana_address::Address, b: &solana_address::Address) -> bool {
-    let a = a.as_array().as_ptr() as *const u64;
-    let b = b.as_array().as_ptr() as *const u64;
-    // SAFETY: `Address` is a 32-byte array. Reading four u64 words covers
-    // all 32 bytes. `read_unaligned` is used because `Address` has align 1.
-    unsafe {
-        core::ptr::read_unaligned(a) == core::ptr::read_unaligned(b)
-            && core::ptr::read_unaligned(a.add(1)) == core::ptr::read_unaligned(b.add(1))
-            && core::ptr::read_unaligned(a.add(2)) == core::ptr::read_unaligned(b.add(2))
-            && core::ptr::read_unaligned(a.add(3)) == core::ptr::read_unaligned(b.add(3))
+    #[cfg(not(target_os = "solana"))]
+    {
+        a == b
+    }
+    #[cfg(target_os = "solana")]
+    {
+        let a = a.as_array().as_ptr() as *const u64;
+        let b = b.as_array().as_ptr() as *const u64;
+        // SAFETY: `Address` is a 32-byte array. Reading four u64 words covers
+        // all 32 bytes. `read_unaligned` is used because `Address` has align 1.
+        unsafe {
+            core::ptr::read_unaligned(a) == core::ptr::read_unaligned(b)
+                && core::ptr::read_unaligned(a.add(1)) == core::ptr::read_unaligned(b.add(1))
+                && core::ptr::read_unaligned(a.add(2)) == core::ptr::read_unaligned(b.add(2))
+                && core::ptr::read_unaligned(a.add(3)) == core::ptr::read_unaligned(b.add(3))
+        }
     }
 }
 
