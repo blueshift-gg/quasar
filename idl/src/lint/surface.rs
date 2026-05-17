@@ -51,6 +51,7 @@ pub struct InstructionSurface {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AccountMetaSurface {
     pub name: String,
+    pub optional: bool,
     pub signer: String,
     pub writable: String,
     pub resolver: String,
@@ -198,6 +199,7 @@ impl AccountMetaSurface {
     fn from_idl(account: &IdlAccountNode) -> Self {
         Self {
             name: account.name.clone(),
+            optional: account.optional,
             signer: flag_key(&account.signer),
             writable: flag_key(&account.writable),
             resolver: json_key(&account.resolver),

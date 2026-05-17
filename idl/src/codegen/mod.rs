@@ -71,6 +71,7 @@ mod tests {
                 accounts: vec![IdlAccountNode {
                     name: "vault".to_owned(),
                     client_type: None,
+                    optional: false,
                     writable: AccountFlag::Fixed(true),
                     signer: AccountFlag::Fixed(false),
                     resolver: IdlResolver::Pda {

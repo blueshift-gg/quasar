@@ -26,6 +26,8 @@ pub struct IdlAccountNode {
         skip_serializing_if = "Option::is_none"
     )]
     pub client_type: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub optional: bool,
     #[serde(default)]
     pub writable: AccountFlag,
     #[serde(default)]
@@ -33,6 +35,10 @@ pub struct IdlAccountNode {
     pub resolver: IdlResolver,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub docs: Vec<String>,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// Account meta flag: fixed boolean, caller-provided, or runtime-resolved.

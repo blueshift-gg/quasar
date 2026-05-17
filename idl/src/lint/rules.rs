@@ -451,19 +451,22 @@ fn diff_instructions(old: &ProgramSurface, new: &ProgramSurface, report: &mut Li
             else {
                 continue;
             };
-            if old_account.signer != new_account.signer
+            if old_account.optional != new_account.optional
+                || old_account.signer != new_account.signer
                 || old_account.writable != new_account.writable
             {
                 report.push(Diagnostic::new(
                     RuleCode::R010,
                     format!("{}.{}", old_instruction.name, old_account.name),
                     format!(
-                        "account flags for `{}.{}` changed from signer={}, writable={} to \
-                         signer={}, writable={}",
+                        "account flags for `{}.{}` changed from optional={}, signer={}, \
+                         writable={} to optional={}, signer={}, writable={}",
                         old_instruction.name,
                         old_account.name,
+                        old_account.optional,
                         old_account.signer,
                         old_account.writable,
+                        new_account.optional,
                         new_account.signer,
                         new_account.writable
                     ),
