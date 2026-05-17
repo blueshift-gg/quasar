@@ -27,7 +27,7 @@ pub trait Sysvar: Sized {
 #[macro_export]
 macro_rules! impl_sysvar_get {
     ($syscall_id:expr, $padding:literal) => {
-        const ID: Address = $syscall_id;
+        const ID: solana_address::Address = $syscall_id;
 
         #[inline(always)]
         unsafe fn from_bytes_unchecked(bytes: &[u8]) -> &Self {
@@ -38,12 +38,12 @@ macro_rules! impl_sysvar_get {
         }
 
         #[inline(always)]
-        fn get() -> Result<Self, ProgramError> {
+        fn get() -> Result<Self, solana_program_error::ProgramError> {
             // Guard: padding must not exceed the struct size.
-            #[allow(unused_comparisons)]
             const {
+                let padding = $padding;
                 assert!(
-                    $padding <= core::mem::size_of::<Self>(),
+                    padding <= core::mem::size_of::<Self>(),
                     "impl_sysvar_get! padding exceeds struct size"
                 )
             };
@@ -75,12 +75,16 @@ macro_rules! impl_sysvar_get {
 
             match result {
                 // SAFETY: On success (result == 0), the syscall has written
-                // valid sysvar data and the padding was zeroed — all bytes
+                // valid sysvar data and the padding was zeroed; all bytes
                 // of `MaybeUninit<Self>` are initialized.
                 0 => Ok(unsafe { var.assume_init() }),
-                $crate::sysvars::OFFSET_LENGTH_EXCEEDS_SYSVAR => Err(ProgramError::InvalidArgument),
-                $crate::sysvars::SYSVAR_NOT_FOUND => Err(ProgramError::UnsupportedSysvar),
-                _ => Err(ProgramError::UnsupportedSysvar),
+                $crate::sysvars::OFFSET_LENGTH_EXCEEDS_SYSVAR => {
+                    Err(solana_program_error::ProgramError::InvalidArgument)
+                }
+                $crate::sysvars::SYSVAR_NOT_FOUND => {
+                    Err(solana_program_error::ProgramError::UnsupportedSysvar)
+                }
+                _ => Err(solana_program_error::ProgramError::UnsupportedSysvar),
             }
         }
     };

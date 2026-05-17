@@ -4,9 +4,7 @@ use {
     quasar_test_token_cpi::cpi::*,
 };
 
-// ===========================================================================
-// TransferChecked (discriminator 0) — Program<Token>
-// ===========================================================================
+// TransferChecked discriminator 0 with Program<Token>.
 
 #[test]
 fn transfer_checked_spl() {
@@ -44,9 +42,7 @@ fn transfer_checked_spl() {
     );
 }
 
-// ===========================================================================
-// TransferCheckedT22 (discriminator 20) — Program<Token2022>
-// ===========================================================================
+// TransferCheckedT22 discriminator 20 with Program<Token2022>.
 
 #[test]
 fn transfer_checked_t22() {
@@ -84,9 +80,7 @@ fn transfer_checked_t22() {
     );
 }
 
-// ===========================================================================
-// TransferCheckedInterface (discriminator 21) — Interface<TokenInterface>
-// ===========================================================================
+// TransferCheckedInterface discriminator 21 with Interface<TokenInterface>.
 
 #[test]
 fn transfer_checked_interface_spl() {
@@ -160,9 +154,7 @@ fn transfer_checked_interface_t22() {
     );
 }
 
-// ===========================================================================
-// InterfaceTransfer (discriminator 6) — unchecked transfer via Interface
-// ===========================================================================
+// InterfaceTransfer discriminator 6, unchecked transfer via Interface.
 
 #[test]
 fn interface_transfer_spl() {

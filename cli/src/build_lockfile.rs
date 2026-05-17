@@ -90,7 +90,7 @@ pub(super) fn ensure_lockfile(sp: &indicatif::ProgressBar) -> Result<(), CliErro
 
     eprintln!(
         "  {}",
-        style::dim("warning: could not refresh Cargo.lock — building with existing lockfile")
+        style::dim("warning: could not refresh Cargo.lock; building with existing lockfile")
     );
     Ok(())
 }

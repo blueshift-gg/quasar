@@ -8,8 +8,8 @@
 //!   mid-flight flushes (e.g. before a CPI), and `.reload()` refreshes the
 //!   cached fields from account data after external mutation.
 //! - `compact_writer()` returns a `{Name}CompactWriter` (builder pattern) with
-//!   explicit `.set_field()` + `.commit()` semantics — used by `set_inner()`
-//!   for account initialization.
+//!   explicit `.set_field()` + `.commit()` semantics: used by `set_inner()` for
+//!   account initialization.
 //!
 //! Read accessors use zeropod's compact `Ref` for zero-copy borrowed views.
 
@@ -171,9 +171,9 @@ pub(super) fn emit_dyn_writer(
     let compact_set_stmts: Vec<proc_macro2::TokenStream> = pieces
         .dyn_fields
         .iter()
-        .map(|(field, pd)| {
+        .map(|(field, _)| {
             let name = field.ident.as_ref().expect("field must be named");
-            writer_compact_set_stmt(name, pd)
+            writer_compact_set_stmt(name)
         })
         .collect();
 
@@ -191,6 +191,8 @@ pub(super) fn emit_dyn_writer(
 
             #[inline(always)]
             fn deref(&self) -> &Self::Target {
+                // SAFETY: `commit` and account initialization keep the compact
+                // header at `disc_len`; the writer holds the account view alive.
                 unsafe { &*(self.__view.data_ptr().add(#disc_len) as *const #zc_path) }
             }
         }
@@ -198,6 +200,9 @@ pub(super) fn emit_dyn_writer(
         impl<'a> core::ops::DerefMut for #writer_name<'a> {
             #[inline(always)]
             fn deref_mut(&mut self) -> &mut Self::Target {
+                // SAFETY: the writer has exclusive access to the account view
+                // for `'a`, and the compact header starts immediately after the
+                // discriminator.
                 unsafe { &mut *(self.__view.data_mut_ptr().add(#disc_len) as *mut #zc_path) }
             }
         }
@@ -222,12 +227,15 @@ pub(super) fn emit_dyn_writer(
                     )?;
                 }
 
+                // SAFETY: `__new_total` includes `disc_len`, and the account has
+                // just been reallocated to that exact length when needed.
                 let __compact_data = unsafe {
                     core::slice::from_raw_parts_mut(
                         self.__view.data_mut_ptr().add(#disc_len),
                         __new_total - #disc_len,
                     )
                 };
+                // SAFETY: the slice spans the full compact schema region.
                 let mut __compact = unsafe { #zc_mod::__SchemaMut::new_unchecked(__compact_data) };
                 #(#compact_set_stmts)*
                 __compact.commit().map_err(|_| ProgramError::InvalidAccountData)?;
@@ -319,6 +327,8 @@ pub(super) fn emit_compact_mut(
 
             #[inline(always)]
             fn deref(&self) -> &Self::Target {
+                // SAFETY: dynamic account validation guarantees the compact
+                // header lives at `disc_len` for the guard lifetime.
                 unsafe { &*(self.__view.data_ptr().add(#disc_len) as *const #zc_path) }
             }
         }
@@ -338,12 +348,15 @@ pub(super) fn emit_compact_mut(
                     )?;
                 }
 
+                // SAFETY: `__new_total` includes `disc_len`, and the account has
+                // just been reallocated to that exact length when needed.
                 let __compact_data = unsafe {
                     core::slice::from_raw_parts_mut(
                         self.__view.data_mut_ptr().add(#disc_len),
                         __new_total - #disc_len,
                     )
                 };
+                // SAFETY: the slice spans the full compact schema region.
                 let mut __compact = unsafe { #zc_mod::__SchemaMut::new_unchecked(__compact_data) };
                 #(#compact_set_stmts)*
                 __compact.commit().map_err(|_| ProgramError::InvalidAccountData)?;
@@ -352,7 +365,11 @@ pub(super) fn emit_compact_mut(
 
             pub fn reload(&mut self) {
                 let (#(#field_names,)*) = {
+                    // SAFETY: the guard has exclusive access to the account
+                    // wrapper, so no checked borrow can be active here.
                     let __data = unsafe { self.__view.borrow_unchecked() };
+                    // SAFETY: this guard is only built after AccountLoad
+                    // compact validation, and reload preserves that layout.
                     let __r = unsafe {
                         #zc_mod::__SchemaRef::new_unchecked(__data.get_unchecked(#disc_len..))
                     };
@@ -378,7 +395,11 @@ pub(super) fn emit_compact_mut(
                 payer: &'a AccountView,
             ) -> #guard_name<'a> {
                 let (#(#field_names,)*) = {
+                    // SAFETY: `&'a mut self` gives the guard exclusive access to
+                    // the account wrapper while it loads cached fields.
                     let __data = unsafe { self.__view.borrow_unchecked() };
+                    // SAFETY: dynamic account construction validated the compact
+                    // layout before this wrapper became available.
                     let __r = unsafe {
                         #zc_mod::__SchemaRef::new_unchecked(__data.get_unchecked(#disc_len..))
                     };
@@ -399,10 +420,6 @@ pub(super) fn emit_compact_mut(
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 fn dyn_max_space_term(dyn_field: &PodDynField) -> proc_macro2::TokenStream {
     match dyn_field {
@@ -425,7 +442,11 @@ fn compact_read_accessor(
         PodDynField::Str { .. } => quote! {
             #[inline(always)]
             pub fn #name(&self) -> &str {
+                // SAFETY: immutable account accessors do not overlap with mutable
+                // borrows in generated account parsing.
                 let __data = unsafe { self.__view.borrow_unchecked() };
+                // SAFETY: AccountLoad validated the compact layout before this
+                // account wrapper was constructed.
                 let __r = unsafe {
                     #zc_mod::__SchemaRef::new_unchecked(__data.get_unchecked(#disc_len..))
                 };
@@ -437,7 +458,11 @@ fn compact_read_accessor(
             quote! {
                 #[inline(always)]
                 pub fn #name(&self) -> &[#mapped] {
+                    // SAFETY: immutable account accessors do not overlap with
+                    // mutable borrows in generated account parsing.
                     let __data = unsafe { self.__view.borrow_unchecked() };
+                    // SAFETY: AccountLoad validated the compact layout before
+                    // this account wrapper was constructed.
                     let __r = unsafe {
                         #zc_mod::__SchemaRef::new_unchecked(__data.get_unchecked(#disc_len..))
                     };
@@ -503,21 +528,12 @@ fn writer_space_term(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2:
     }
 }
 
-fn writer_compact_set_stmt(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::TokenStream {
+fn writer_compact_set_stmt(name: &syn::Ident) -> proc_macro2::TokenStream {
     let setter = format_ident!("set_{}", name);
-    match dyn_field {
-        PodDynField::Str { .. } => quote! {
-            __compact.#setter(#name).map_err(|_| ProgramError::InvalidAccountData)?;
-        },
-        PodDynField::Vec { .. } => quote! {
-            __compact.#setter(#name).map_err(|_| ProgramError::InvalidAccountData)?;
-        },
+    quote! {
+        __compact.#setter(#name).map_err(|_| ProgramError::InvalidAccountData)?;
     }
 }
-
-// ---------------------------------------------------------------------------
-// CompactMut guard helpers
-// ---------------------------------------------------------------------------
 
 fn compact_mut_field(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::TokenStream {
     match dyn_field {
@@ -543,7 +559,9 @@ fn compact_mut_load(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::
     match dyn_field {
         PodDynField::Str { max, prefix_bytes } => quote! {
             let mut #name = quasar_lang::pod::PodString::<#max, #prefix_bytes>::default();
-            let _ = #name.set(__r.#name());
+            if !#name.set(__r.#name()) {
+                quasar_lang::abort_program();
+            }
         },
         PodDynField::Vec {
             elem,
@@ -553,7 +571,9 @@ fn compact_mut_load(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::
             let mapped = map_to_pod_type(elem);
             quote! {
                 let mut #name = quasar_lang::pod::PodVec::<#mapped, #max, #prefix_bytes>::default();
-                let _ = #name.set_from_slice(__r.#name());
+                if !#name.set_from_slice(__r.#name()) {
+                    quasar_lang::abort_program();
+                }
             }
         }
     }

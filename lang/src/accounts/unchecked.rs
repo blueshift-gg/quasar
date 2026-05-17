@@ -16,6 +16,28 @@ impl crate::account_load::AccountLoad for UncheckedAccount {
     }
 }
 
+impl<'input> crate::remaining::RemainingItem<'input> for UncheckedAccount {
+    const COUNT: usize = 1;
+
+    #[inline(always)]
+    unsafe fn parse_remaining_one(
+        account: AccountView,
+        _program_id: Option<&Address>,
+        _data: &[u8],
+    ) -> Result<Self, ProgramError> {
+        crate::remaining::parse_remaining_view::<Self>(&account)
+    }
+
+    #[inline(always)]
+    unsafe fn parse_remaining_chunk(
+        accounts: &'input mut [AccountView],
+        _program_id: Option<&Address>,
+        _data: &[u8],
+    ) -> Result<Self, ProgramError> {
+        crate::remaining::parse_remaining_account::<Self>(accounts)
+    }
+}
+
 /// Bounds-checked data writes for unchecked account slots.
 ///
 /// This keeps the common "write these bytes at this offset" path safe without
@@ -38,10 +60,12 @@ impl AccountDataWrite for AccountView {
             return Err(ProgramError::AccountDataTooSmall);
         }
 
+        // SAFETY: Writability was checked above, `end <= data_len`, and
+        // `copy_nonoverlapping` reads only from the caller-provided byte slice.
         unsafe {
             core::ptr::copy_nonoverlapping(
                 bytes.as_ptr(),
-                self.borrow_unchecked_mut().as_mut_ptr().add(offset),
+                self.data_mut_ptr().add(offset),
                 bytes.len(),
             );
         }

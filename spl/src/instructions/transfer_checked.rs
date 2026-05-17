@@ -18,7 +18,7 @@ use quasar_lang::{
 /// [9  ] decimals       (u8)
 /// ```
 #[inline(always)]
-pub fn transfer_checked<'a>(
+pub(crate) fn transfer_checked<'a>(
     token_program: &'a AccountView,
     from: &'a AccountView,
     mint: &'a AccountView,
@@ -27,15 +27,7 @@ pub fn transfer_checked<'a>(
     amount: u64,
     decimals: u8,
 ) -> CpiCall<'a, 4, 10> {
-    // SAFETY: All 10 bytes written before `assume_init`.
-    let data = unsafe {
-        let mut buf = core::mem::MaybeUninit::<[u8; 10]>::uninit();
-        let ptr = buf.as_mut_ptr() as *mut u8;
-        core::ptr::write(ptr, 12);
-        (ptr.add(1) as *mut u64).write_unaligned(amount);
-        core::ptr::write(ptr.add(9), decimals);
-        buf.assume_init()
-    };
+    let data = super::checked_amount_data::<12>(amount, decimals);
 
     CpiCall::new(
         token_program.address(),

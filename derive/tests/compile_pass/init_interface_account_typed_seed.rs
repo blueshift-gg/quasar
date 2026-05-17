@@ -14,7 +14,7 @@ pub struct ExternalConfigData {
     pub namespace: u32,
     pub bump: u8,
 }
-// External account wrapper — base form + manual AccountLoad.
+// External account wrapper with manual AccountLoad.
 // Real users would typically use define_account! with a ZeroPod schema.
 quasar_lang::define_account!(pub struct ExternalConfig => []);
 impl quasar_lang::account_load::AccountLoad for ExternalConfig {

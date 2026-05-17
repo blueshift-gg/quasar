@@ -29,8 +29,10 @@ impl<T: Owners + crate::account_load::AccountLoad> InterfaceAccount<T> {
     pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
         <T as Owners>::check_owner(view)?;
         T::check(view)?;
-        Ok(unsafe { &*(view as *const AccountView as *const Self) })
+        // SAFETY: Owner and account data were validated above.
+        Ok(unsafe { Self::from_account_view_unchecked(view) })
     }
+
     #[inline(always)]
     pub fn from_account_view_mut(view: &mut AccountView) -> Result<&mut Self, ProgramError> {
         if crate::utils::hint::unlikely(!view.is_writable()) {
@@ -38,21 +40,29 @@ impl<T: Owners + crate::account_load::AccountLoad> InterfaceAccount<T> {
         }
         <T as Owners>::check_owner(view)?;
         T::check(view)?;
-        Ok(unsafe { &mut *(view as *mut AccountView as *mut Self) })
+        // SAFETY: Writability, owner, and account data were validated above.
+        Ok(unsafe { Self::from_account_view_unchecked_mut(view) })
     }
 
     /// # Safety
-    /// Caller must ensure valid owner and data length.
+    /// Caller must ensure the owner and account data satisfy `T`'s validation
+    /// rules.
     #[inline(always)]
     pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
-        &*(view as *const AccountView as *const Self)
+        // SAFETY: `InterfaceAccount<T>` is `repr(transparent)` over
+        // `AccountView` plus `PhantomData<T>`, so the reference cast preserves
+        // layout. The caller upholds the owner/data invariants.
+        unsafe { &*(view as *const AccountView as *const Self) }
     }
 
     /// # Safety
-    /// Same as above, plus account must be writable.
+    /// Same as [`from_account_view_unchecked`](Self::from_account_view_unchecked),
+    /// plus the account must be writable.
     #[inline(always)]
     pub unsafe fn from_account_view_unchecked_mut(view: &mut AccountView) -> &mut Self {
-        &mut *(view as *mut AccountView as *mut Self)
+        // SAFETY: Same layout argument as the immutable cast; the caller also
+        // guarantees writable access.
+        unsafe { &mut *(view as *mut AccountView as *mut Self) }
     }
 }
 
@@ -77,6 +87,9 @@ impl<T: ZeroCopyDeref> core::ops::Deref for InterfaceAccount<T> {
 
     #[inline(always)]
     fn deref(&self) -> &Self::Target {
+        // SAFETY: `InterfaceAccount<T>` can only be constructed safely after
+        // owner and account-data validation; unsafe constructors require the
+        // same invariant from the caller.
         unsafe { T::deref_from(&self.view) }
     }
 }
@@ -84,32 +97,22 @@ impl<T: ZeroCopyDeref> core::ops::Deref for InterfaceAccount<T> {
 impl<T: ZeroCopyDeref> core::ops::DerefMut for InterfaceAccount<T> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
+        // SAFETY: Same validation invariant as `deref`; `&mut self` also
+        // provides exclusive access to the underlying account view.
         unsafe { T::deref_from_mut(&mut self.view) }
     }
 }
-
-// --- Forwarding impls: InterfaceAccount<T> delegates behavior to T ---
 
 impl<T: crate::account_init::AccountInit> crate::account_init::AccountInit for InterfaceAccount<T> {
     type InitParams<'a> = T::InitParams<'a>;
     const DEFAULT_INIT_PARAMS_VALID: bool = T::DEFAULT_INIT_PARAMS_VALID;
 
     #[inline(always)]
-    fn init<'a>(
-        ctx: crate::account_init::InitCtx<'a>,
+    fn init<'a, R: crate::ops::RentAccess>(
+        ctx: crate::account_init::InitCtx<'a, R>,
         params: &Self::InitParams<'a>,
     ) -> solana_program_error::ProgramResult {
         T::init(ctx, params)
-    }
-}
-
-impl<T: crate::ops::close::AccountClose> crate::ops::close::AccountClose for InterfaceAccount<T> {
-    #[inline(always)]
-    fn close(
-        view: &mut solana_account_view::AccountView,
-        dest: &solana_account_view::AccountView,
-    ) -> solana_program_error::ProgramResult {
-        T::close(view, dest)
     }
 }
 

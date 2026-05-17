@@ -10,7 +10,7 @@ pub struct CloseTokenT22 {
     )]
     pub token_account: Account<Token2022>,
     pub mint: Account<Mint2022>,
-    /// CHECK: destination may alias authority (close sends lamports to it).
+    /// Test-only duplicate destination; close may send lamports to authority.
     #[account(mut, dup)]
     pub destination: UncheckedAccount,
     pub token_program: Program<Token2022Program>,

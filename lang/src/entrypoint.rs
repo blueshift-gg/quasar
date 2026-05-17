@@ -10,7 +10,7 @@ pub use solana_account_view::{
 
 #[macro_export]
 macro_rules! dispatch {
-    // Simple form — no per-arm pre-handler blocks.
+    // Simple form: no per-arm pre-handler blocks.
     ($ptr:expr, $ix_data:expr, $disc_len:literal, {
         $([$($disc_byte:literal),+] => $handler:ident($accounts_ty:ty)),+ $(,)?
     }) => {
@@ -19,7 +19,7 @@ macro_rules! dispatch {
         })
     };
 
-    // Extended form — each arm has an optional block executed before the handler.
+    // Extended form: each arm has an optional block executed before the handler.
     // Used by `#[program]` codegen when `#[instruction(heap)]` is present to
     // inject per-arm heap cursor initialization.
     ($ptr:expr, $ix_data:expr, $disc_len:literal, {
@@ -39,7 +39,7 @@ macro_rules! dispatch {
         if $ix_data.len() < $disc_len {
             return Err(ProgramError::InvalidInstructionData);
         }
-        // SAFETY: Length checked above — at least `$disc_len` bytes available.
+        // SAFETY: Length checked above; at least `$disc_len` bytes available.
         let __disc: [u8; $disc_len] = unsafe {
             *($ix_data.as_ptr() as *const [u8; $disc_len])
         };
@@ -53,13 +53,18 @@ macro_rules! dispatch {
                     let mut __buf = core::mem::MaybeUninit::<
                         [AccountView; <$accounts_ty as AccountCount>::COUNT]
                     >::uninit();
+                    // SAFETY: `__program_id` points at the runtime-owned 32-byte
+                    // program id appended after instruction data.
+                    let __program_id_addr = unsafe {
+                        &*(__program_id as *const [u8; 32] as *const $crate::prelude::Address)
+                    };
                     // SAFETY: `parse_accounts` walks the SVM buffer from
                     // `__accounts_start`, validating each account entry.
                     let __remaining_ptr = unsafe {
                         <$accounts_ty>::parse_accounts(
                             __accounts_start,
                             &mut __buf,
-                            unsafe { &*(__program_id as *const [u8; 32] as *const $crate::prelude::Address) },
+                            __program_id_addr,
                         )?
                     };
                     // SAFETY: All COUNT elements initialized by `parse_accounts`.
@@ -68,6 +73,8 @@ macro_rules! dispatch {
                         program_id: __program_id,
                         accounts: &mut __accounts,
                         remaining_ptr: __remaining_ptr,
+                        // SAFETY: The discriminator length was checked before
+                        // matching, so this suffix is in bounds.
                         data: unsafe { $ix_data.get_unchecked($disc_len..) },
                         // SAFETY: Instruction data is preceded by a u64 length
                         // field in the SVM buffer. Subtracting 8 gives the
@@ -87,6 +94,8 @@ macro_rules! no_alloc {
         pub mod allocator {
             extern crate alloc;
             pub struct NoAlloc;
+            // SAFETY: `alloc` always aborts and never returns memory, while
+            // `dealloc` is a no-op because no allocation can succeed.
             unsafe impl alloc::alloc::GlobalAlloc for NoAlloc {
                 #[inline]
                 unsafe fn alloc(&self, _: core::alloc::Layout) -> *mut u8 {
@@ -140,6 +149,10 @@ macro_rules! heap_alloc {
                 end: usize,
             }
             impl BumpAllocator {
+                /// # Safety
+                ///
+                /// `start..start + len` must describe the SVM heap region, and
+                /// `start` must point to the heap cursor word.
                 pub const unsafe fn new_unchecked(start: usize, len: usize) -> Self {
                     Self {
                         start,
@@ -156,14 +169,16 @@ macro_rules! heap_alloc {
             /// - Re-entrancy is forbidden by the SVM, so no aliasing can occur.
             /// - `alloc_zeroed` delegates to `alloc` because the SVM heap is
             ///   pre-zeroed.
-            /// - `dealloc` is a no-op — bump allocators do not free individual
+            /// - `dealloc` is a no-op; bump allocators do not free individual
             ///   allocations.
             #[allow(clippy::arithmetic_side_effects)]
             unsafe impl alloc::alloc::GlobalAlloc for BumpAllocator {
                 #[inline]
                 unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
                     let pos_ptr = self.start as *mut usize;
-                    let pos = *pos_ptr;
+                    // SAFETY: `new_unchecked` was called with the SVM heap
+                    // cursor address.
+                    let pos = unsafe { *pos_ptr };
 
                     let allocation = (pos.wrapping_add(layout.align() - 1)) & !(layout.align() - 1);
 
@@ -176,13 +191,17 @@ macro_rules! heap_alloc {
                         return core::ptr::null_mut();
                     }
 
-                    *pos_ptr = end;
+                    // SAFETY: Same heap cursor pointer as above; allocator has
+                    // exclusive access during the instruction.
+                    unsafe { *pos_ptr = end };
                     allocation as *mut u8
                 }
 
                 #[inline]
                 unsafe fn alloc_zeroed(&self, layout: core::alloc::Layout) -> *mut u8 {
-                    self.alloc(layout)
+                    // SAFETY: Same requirements as `alloc`; the SVM heap is
+                    // already zeroed.
+                    unsafe { self.alloc(layout) }
                 }
 
                 #[inline]
@@ -191,6 +210,7 @@ macro_rules! heap_alloc {
 
             #[cfg(any(target_os = "solana", target_arch = "bpf"))]
             #[global_allocator]
+            // SAFETY: These constants describe the SVM heap region.
             static A: BumpAllocator = unsafe {
                 BumpAllocator::new_unchecked(HEAP_START_ADDRESS as usize, MAX_HEAP_LENGTH as usize)
             };

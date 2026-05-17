@@ -11,11 +11,7 @@
 //! pub vault: Account<Token>,
 //! ```
 
-use {crate::ops::sweep::TokenSweep, quasar_lang::prelude::*};
-
-// ---------------------------------------------------------------------------
-// Args
-// ---------------------------------------------------------------------------
+use quasar_lang::prelude::*;
 
 pub struct Args<'a> {
     pub receiver: &'a AccountView,
@@ -88,26 +84,23 @@ impl<'a> ArgsBuilder<'a> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Behavior — concrete impls per wrapper type
-// ---------------------------------------------------------------------------
-
 pub struct Behavior;
 
 macro_rules! impl_token_sweep_behavior {
     ($wrapper:ty) => {
         impl AccountBehavior<$wrapper> for Behavior {
             type Args<'a> = Args<'a>;
+            const RUN_CHECK: bool = false;
             const RUN_EXIT: bool = true;
 
             #[inline(always)]
             fn exit<'a>(account: &mut $wrapper, args: &Args<'a>) -> Result<(), ProgramError> {
-                <$wrapper as TokenSweep>::sweep(
-                    account.to_account_view(),
-                    args.receiver,
-                    args.mint,
-                    args.authority,
+                crate::exit::sweep_token_account(
                     args.token_program,
+                    account.to_account_view(),
+                    args.mint,
+                    args.receiver,
+                    args.authority,
                 )
             }
         }

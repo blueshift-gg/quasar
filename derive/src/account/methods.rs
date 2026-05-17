@@ -78,17 +78,11 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
             .iter()
             .filter_map(|fi| {
                 let field_name = fi.field.ident.as_ref().expect("field must be named");
-                fi.pod_dyn.as_ref().map(|dyn_field| {
+                fi.pod_dyn.as_ref().map(|_| {
                     let setter = format_ident!("set_{}", field_name);
-                    match dyn_field {
-                        crate::helpers::PodDynField::Str { .. } => quote! {
-                            __compact.#setter(#field_name)
-                                .map_err(|_| ProgramError::InvalidAccountData)?;
-                        },
-                        crate::helpers::PodDynField::Vec { .. } => quote! {
-                            __compact.#setter(#field_name)
-                                .map_err(|_| ProgramError::InvalidAccountData)?;
-                        },
+                    quote! {
+                        __compact.#setter(#field_name)
+                            .map_err(|_| ProgramError::InvalidAccountData)?;
                     }
                 })
             })
@@ -116,6 +110,9 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
                     #(#max_checks)*
 
                     let __space = Self::MIN_SPACE #(#space_terms)*;
+                    // SAFETY: `#[account]` wrappers are `#[repr(transparent)]`
+                    // over `AccountView`; `&mut self` gives exclusive access to
+                    // the backing view for this initialization.
                     let __view = unsafe { &mut *(self as *mut Self as *mut AccountView) };
 
                     if __space != __view.data_len() {
@@ -128,18 +125,21 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
                         )?;
                     }
 
-                    // Write fixed header fields.
                     let __ptr = __view.data_mut_ptr();
+                    // SAFETY: after the realloc above, the compact header starts
+                    // immediately after the discriminator.
                     let __zc = unsafe { &mut *(__ptr.add(#disc_len) as *mut #zc_path) };
                     #(#zc_header_stmts)*
 
-                    // Write dynamic fields via CompactMut.
+                    // SAFETY: the slice spans the full compact schema region.
                     let __compact_data = unsafe {
                         core::slice::from_raw_parts_mut(
                             __ptr.add(#disc_len),
                             __view.data_len() - #disc_len,
                         )
                     };
+                    // SAFETY: the fixed header fields were written above and the
+                    // compact setters below fill the dynamic tail entries.
                     let mut __compact = unsafe {
                         #zc_mod::__SchemaMut::new_unchecked(__compact_data)
                     };
@@ -151,7 +151,15 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
         }
     } else {
         let inner_name = format_ident!("{}Inner", name);
-        let field_names: Vec<_> = field_infos.iter().map(|fi| &fi.field.ident).collect();
+        let field_names: Vec<&syn::Ident> = field_infos
+            .iter()
+            .map(|fi| {
+                fi.field
+                    .ident
+                    .as_ref()
+                    .expect("account fields are validated as named before codegen")
+            })
+            .collect();
         let field_types: Vec<_> = field_infos.iter().map(|fi| &fi.field.ty).collect();
         let set_inner_stmts: Vec<proc_macro2::TokenStream> = field_infos
             .iter()
@@ -171,6 +179,9 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
             impl #name {
                 #[inline(always)]
                 pub fn set_inner(&mut self, inner: #inner_name) {
+                    // SAFETY: fixed account validation guarantees the ZC payload
+                    // begins immediately after the discriminator; `&mut self`
+                    // gives exclusive access to write it.
                     let __zc = unsafe { &mut *(self.__view.data_mut_ptr().add(#disc_len) as *mut #zc_path) };
                     #(let #field_names = inner.#field_names;)*
                     #(#set_inner_stmts)*

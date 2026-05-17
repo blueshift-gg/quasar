@@ -70,6 +70,7 @@ struct AbiSubset {
     address: String,
     instructions: Vec<AbiInstruction>,
     accounts: Vec<AbiAccount>,
+    types: Vec<AbiType>,
     events: Vec<AbiEvent>,
 }
 
@@ -80,6 +81,8 @@ struct AbiInstruction {
     args: Vec<crate::instruction::IdlArg>,
     accounts: Vec<AbiAccountMeta>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    remaining_accounts: Option<crate::account::IdlRemainingAccounts>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     layout: Option<crate::layout::IdlLayout>,
     #[serde(skip_serializing_if = "Option::is_none")]
     returns: Option<crate::instruction::IdlReturnData>,
@@ -88,20 +91,72 @@ struct AbiInstruction {
 #[derive(serde::Serialize)]
 struct AbiAccountMeta {
     name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    client_type: Option<String>,
     writable: crate::account::AccountFlag,
     signer: crate::account::AccountFlag,
+    resolver: crate::account::IdlResolver,
 }
 
 #[derive(serde::Serialize)]
 struct AbiAccount {
     name: String,
     discriminator: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    space: Option<crate::space::IdlSpace>,
+}
+
+#[derive(serde::Serialize)]
+struct AbiType {
+    name: String,
+    kind: crate::types::IdlTypeDefKind,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    generics: Vec<crate::types::IdlGenericParam>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    fields: Vec<AbiField>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    variants: Vec<AbiEnumVariant>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    repr: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    alias: Option<crate::types::IdlType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fallback: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    codec: Option<crate::codec::IdlCodec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    layout: Option<crate::layout::IdlLayout>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    space: Option<crate::space::IdlSpace>,
+}
+
+#[derive(serde::Serialize)]
+struct AbiField {
+    name: String,
+    #[serde(rename = "type")]
+    ty: crate::types::IdlType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    codec: Option<crate::codec::IdlCodec>,
+}
+
+#[derive(serde::Serialize)]
+struct AbiEnumVariant {
+    name: String,
+    value: u64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    fields: Vec<AbiField>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    layout: Option<crate::layout::IdlLayout>,
 }
 
 #[derive(serde::Serialize)]
 struct AbiEvent {
     name: String,
     discriminator: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ty: Option<crate::types::IdlType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    transport: Option<crate::event::EventTransport>,
 }
 
 fn extract_abi_subset(idl: &Idl) -> AbiSubset {
@@ -119,10 +174,13 @@ fn extract_abi_subset(idl: &Idl) -> AbiSubset {
                     .iter()
                     .map(|a| AbiAccountMeta {
                         name: a.name.clone(),
+                        client_type: a.client_type.clone(),
                         writable: a.writable.clone(),
                         signer: a.signer.clone(),
+                        resolver: a.resolver.clone(),
                     })
                     .collect(),
+                remaining_accounts: ix.remaining_accounts.clone(),
                 layout: ix.layout.clone(),
                 returns: ix.returns.clone(),
             })
@@ -133,6 +191,33 @@ fn extract_abi_subset(idl: &Idl) -> AbiSubset {
             .map(|a| AbiAccount {
                 name: a.name.clone(),
                 discriminator: a.discriminator.clone(),
+                space: a.space.clone(),
+            })
+            .collect(),
+        types: idl
+            .types
+            .iter()
+            .map(|t| AbiType {
+                name: t.name.clone(),
+                kind: t.kind,
+                generics: t.generics.clone(),
+                fields: abi_fields(&t.fields),
+                variants: t
+                    .variants
+                    .iter()
+                    .map(|v| AbiEnumVariant {
+                        name: v.name.clone(),
+                        value: v.value,
+                        fields: abi_fields(&v.fields),
+                        layout: v.layout.clone(),
+                    })
+                    .collect(),
+                repr: t.repr.clone(),
+                alias: t.alias.clone(),
+                fallback: t.fallback.clone(),
+                codec: t.codec.clone(),
+                layout: t.layout.clone(),
+                space: t.space.clone(),
             })
             .collect(),
         events: idl
@@ -141,7 +226,165 @@ fn extract_abi_subset(idl: &Idl) -> AbiSubset {
             .map(|e| AbiEvent {
                 name: e.name.clone(),
                 discriminator: e.discriminator.clone(),
+                ty: e.ty.clone(),
+                transport: e.transport,
             })
             .collect(),
+    }
+}
+
+fn abi_fields(fields: &[crate::types::IdlFieldDef]) -> Vec<AbiField> {
+    fields
+        .iter()
+        .map(|f| AbiField {
+            name: f.name.clone(),
+            ty: f.ty.clone(),
+            codec: f.codec.clone(),
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        crate::{
+            account::{
+                AccountFlag, IdlAccountNode, IdlRemainingAccounts, IdlResolver,
+                RemainingAccountItem, RemainingAccountPolicy, RemainingAccountsKind,
+                RemainingOrder, RemainingPosition,
+            },
+            codec::{Endian, IdlCodec, ScalarRepr, Storage},
+            instruction::IdlInstruction,
+            root::IdlMetadata,
+            types::{IdlFieldDef, IdlType, IdlTypeDef, IdlTypeDefKind},
+        },
+    };
+
+    fn minimal_idl(
+        resolver: IdlResolver,
+        remaining_accounts: Option<IdlRemainingAccounts>,
+        types: Vec<IdlTypeDef>,
+    ) -> Idl {
+        Idl {
+            spec: "quasar-idl/1.0.0".to_owned(),
+            name: "hash_test".to_owned(),
+            version: "0.1.0".to_owned(),
+            address: "11111111111111111111111111111111".to_owned(),
+            metadata: IdlMetadata::default(),
+            docs: vec![],
+            instructions: vec![IdlInstruction {
+                name: "check".to_owned(),
+                discriminator: vec![1],
+                docs: vec![],
+                accounts: vec![IdlAccountNode {
+                    name: "authority".to_owned(),
+                    client_type: None,
+                    writable: AccountFlag::Fixed(false),
+                    signer: AccountFlag::Fixed(false),
+                    resolver,
+                    docs: vec![],
+                }],
+                args: vec![],
+                layout: None,
+                returns: None,
+                effects: vec![],
+                remaining_accounts,
+            }],
+            accounts: vec![],
+            types,
+            events: vec![],
+            errors: vec![],
+            constants: vec![],
+            wrappers: None,
+            extensions: None,
+            hashes: None,
+        }
+    }
+
+    fn minimal_idl_with_resolver(resolver: IdlResolver) -> Idl {
+        minimal_idl(resolver, None, vec![])
+    }
+
+    #[test]
+    fn abi_hash_changes_when_account_resolver_changes() {
+        let input_hash = compute_abi_hash(&minimal_idl_with_resolver(IdlResolver::Input {}));
+        let const_hash = compute_abi_hash(&minimal_idl_with_resolver(IdlResolver::Const {
+            address: "SysvarRent111111111111111111111111111111111".to_owned(),
+        }));
+
+        assert_ne!(input_hash, const_hash);
+    }
+
+    #[test]
+    fn abi_hash_changes_when_remaining_accounts_change() {
+        let base_hash = compute_abi_hash(&minimal_idl_with_resolver(IdlResolver::Input {}));
+        let remaining_hash = compute_abi_hash(&minimal_idl(
+            IdlResolver::Input {},
+            Some(IdlRemainingAccounts {
+                kind: RemainingAccountsKind::Append,
+                name: "remainingAccounts".to_owned(),
+                min: 1,
+                max: Some(4),
+                item: RemainingAccountItem {
+                    client_type: "accountMeta".to_owned(),
+                    signer: AccountFlag::Dynamic(crate::account::AccountFlagDynamic::Input),
+                    writable: AccountFlag::Fixed(false),
+                },
+                policy: RemainingAccountPolicy {
+                    position: RemainingPosition::AfterDeclaredAccounts,
+                    order: RemainingOrder::PreserveInput,
+                },
+            }),
+            vec![],
+        ));
+
+        assert_ne!(base_hash, remaining_hash);
+    }
+
+    #[test]
+    fn abi_hash_changes_when_type_layout_changes() {
+        let fixed_type = type_with_label_codec(Storage::Inline);
+        let tail_type = type_with_label_codec(Storage::Tail);
+
+        let fixed_hash =
+            compute_abi_hash(&minimal_idl(IdlResolver::Input {}, None, vec![fixed_type]));
+        let tail_hash =
+            compute_abi_hash(&minimal_idl(IdlResolver::Input {}, None, vec![tail_type]));
+
+        assert_ne!(fixed_hash, tail_hash);
+    }
+
+    fn type_with_label_codec(storage: Storage) -> IdlTypeDef {
+        IdlTypeDef {
+            name: "Config".to_owned(),
+            kind: IdlTypeDefKind::Struct,
+            docs: vec![],
+            generics: vec![],
+            fields: vec![IdlFieldDef {
+                name: "label".to_owned(),
+                ty: IdlType::Primitive("string".to_owned()),
+                codec: Some(IdlCodec::SizePrefixed {
+                    prefix: ScalarRepr {
+                        ty: "u8".to_owned(),
+                        endian: Endian::Le,
+                    },
+                    storage,
+                    max_bytes: Some(32),
+                    max_items: None,
+                    encoding: Some("utf8".to_owned()),
+                    item: None,
+                }),
+                docs: vec![],
+            }],
+            variants: vec![],
+            repr: None,
+            alias: None,
+            fallback: None,
+            codec: None,
+            layout: None,
+            space: None,
+            semantics: None,
+        }
     }
 }

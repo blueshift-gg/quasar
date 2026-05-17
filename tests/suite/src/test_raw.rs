@@ -4,7 +4,7 @@ use {
     quasar_test_raw::cpi::*,
 };
 
-/// Normal instruction via the typed client — proves the framework pipeline
+/// Normal instruction via the typed client; proves the framework pipeline
 /// is unaffected by the presence of raw instructions in the same program.
 #[test]
 fn normal_instruction_works_alongside_raw() {
@@ -19,7 +19,7 @@ fn normal_instruction_works_alongside_raw() {
     );
 }
 
-/// Raw instruction — manually construct the instruction data (discriminator +
+/// Raw instruction: manually construct the instruction data (discriminator +
 /// payload). Passes two accounts: a writable data account and a signer.
 /// The raw handler writes a u64 from instruction data into account[0] at offset
 /// 8.
@@ -178,7 +178,8 @@ fn raw_helper_write_fails_when_account_is_not_writable() {
     );
 }
 
-/// Raw instruction fails when signer check fails — account[1] is not a signer.
+/// Raw instruction fails when signer check fails because account[1] is not a
+/// signer.
 #[test]
 fn raw_write_fails_without_signer() {
     let mut svm = svm_raw();
@@ -228,7 +229,7 @@ fn raw_write_fails_without_signer() {
     );
 }
 
-/// Raw + inline asm — the handler uses sBPF ldxdw/stxdw to copy a u64
+/// Raw + inline asm: the handler uses sBPF ldxdw/stxdw to copy a u64
 /// from instruction data into account data at offset 8.
 #[test]
 fn raw_asm_write_succeeds() {
@@ -324,10 +325,8 @@ fn raw_write_fails_with_short_data() {
     );
 }
 
-// ===========================================================================
-// callx dispatch — proves the SVM accepts indirect function calls via
-// function pointer tables. Foundation for O(1) raw instruction dispatch.
-// ===========================================================================
+// callx dispatch proves the SVM accepts indirect function calls via function
+// pointer tables. Foundation for O(1) raw instruction dispatch.
 
 #[test]
 fn callx_dispatch_selector_0_writes_aa() {
@@ -342,7 +341,7 @@ fn callx_dispatch_selector_0_writes_aa() {
         executable: false,
     };
 
-    // Discriminator [5] + selector byte 0 → write_aa → 0xAA at offset 8
+    // Discriminator [5] + selector byte 0 writes 0xAA at offset 8.
     let data = vec![5u8, 0];
 
     let ix = Instruction {
@@ -382,7 +381,7 @@ fn callx_dispatch_selector_1_writes_bb() {
         executable: false,
     };
 
-    // Discriminator [5] + selector byte 1 → write_bb → 0xBB at offset 8
+    // Discriminator [5] + selector byte 1 writes 0xBB at offset 8.
     let data = vec![5u8, 1];
 
     let ix = Instruction {

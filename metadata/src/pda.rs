@@ -13,68 +13,63 @@ use {
 const METADATA_SEED: &[u8] = b"metadata";
 const EDITION_SEED: &[u8] = b"edition";
 
+#[inline(always)]
+fn find_metadata_pda(seeds: &[&[u8]]) -> (Address, u8) {
+    quasar_lang::pda::based_try_find_program_address(seeds, &METADATA_PROGRAM_ID)
+        .expect("metadata PDA must be derivable")
+}
+
+#[inline(always)]
+fn verify_metadata_pda(address: &Address, seeds: &[&[u8]]) -> Result<(), ProgramError> {
+    quasar_lang::pda::find_bump_for_address(seeds, &METADATA_PROGRAM_ID, address)
+        .map(|_| ())
+        .map_err(|_| ProgramError::InvalidSeeds)
+}
+
 /// Derive the metadata PDA address from a mint.
 ///
-/// **Cost:** ~544 CU (SHA-256 loop). Prefer [`verify_metadata_address`] when
-/// the address is already known.
+/// Prefer [`verify_metadata_address`] when the caller already has an address.
 #[inline(always)]
 pub fn metadata_address(mint: &Address) -> (Address, u8) {
-    quasar_lang::pda::based_try_find_program_address(
-        &[METADATA_SEED, &METADATA_PROGRAM_BYTES, mint.as_ref()],
-        &METADATA_PROGRAM_ID,
-    )
-    .unwrap()
+    find_metadata_pda(&[METADATA_SEED, &METADATA_PROGRAM_BYTES, mint.as_ref()])
 }
 
 /// Derive the master edition PDA address from a mint.
 ///
-/// **Cost:** ~544 CU. Prefer [`verify_master_edition_address`] when known.
+/// Prefer [`verify_master_edition_address`] when the caller already has an
+/// address.
 #[inline(always)]
 pub fn master_edition_address(mint: &Address) -> (Address, u8) {
-    quasar_lang::pda::based_try_find_program_address(
-        &[
-            METADATA_SEED,
-            &METADATA_PROGRAM_BYTES,
-            mint.as_ref(),
-            EDITION_SEED,
-        ],
-        &METADATA_PROGRAM_ID,
-    )
-    .unwrap()
+    find_metadata_pda(&[
+        METADATA_SEED,
+        &METADATA_PROGRAM_BYTES,
+        mint.as_ref(),
+        EDITION_SEED,
+    ])
 }
 
 /// Verify a metadata address matches the expected PDA for a mint.
-///
-/// **Cost:** ~90 CU per attempt (single SHA-256 + compare).
 #[inline(always)]
 pub fn verify_metadata_address(address: &Address, mint: &Address) -> Result<(), ProgramError> {
-    quasar_lang::pda::find_bump_for_address(
-        &[METADATA_SEED, &METADATA_PROGRAM_BYTES, mint.as_ref()],
-        &METADATA_PROGRAM_ID,
+    verify_metadata_pda(
         address,
+        &[METADATA_SEED, &METADATA_PROGRAM_BYTES, mint.as_ref()],
     )
-    .map(|_| ())
-    .map_err(|_| ProgramError::InvalidSeeds)
 }
 
 /// Verify a master edition address matches the expected PDA for a mint.
-///
-/// **Cost:** ~90 CU per attempt.
 #[inline(always)]
 pub fn verify_master_edition_address(
     address: &Address,
     mint: &Address,
 ) -> Result<(), ProgramError> {
-    quasar_lang::pda::find_bump_for_address(
+    verify_metadata_pda(
+        address,
         &[
             METADATA_SEED,
             &METADATA_PROGRAM_BYTES,
             mint.as_ref(),
             EDITION_SEED,
         ],
-        &METADATA_PROGRAM_ID,
-        address,
     )
-    .map(|_| ())
-    .map_err(|_| ProgramError::InvalidSeeds)
 }

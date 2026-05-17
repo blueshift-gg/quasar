@@ -1,4 +1,4 @@
-//! Fully-qualified namespaced behavior path — no `use` import needed.
+//! Fully-qualified namespaced behavior path without a local `use` import.
 #![allow(unexpected_cfgs)]
 extern crate alloc;
 use {

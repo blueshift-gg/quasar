@@ -30,7 +30,6 @@ bs58 = "0.5"
 dirs = "6"
 indicatif = "0.18.4"
 clap_complete = "4.6.0"
-ctrlc = "3.4"
 shlex = "1"
 
 [dev-dependencies]

@@ -16,13 +16,9 @@
 
 use quasar_lang::prelude::*;
 
-// ---------------------------------------------------------------------------
-// Args
-// ---------------------------------------------------------------------------
-
 /// Max supply specification for the master edition behavior arg.
 pub enum MaxSupplyArg {
-    /// Not specified — defaults to `Some(0)` (unique 1/1 NFT).
+    /// Not specified; defaults to `Some(0)` (unique 1/1 NFT).
     Unset,
     /// Unlimited editions (max_supply = None).
     Unlimited,
@@ -166,10 +162,6 @@ impl<'a> ArgsBuilder<'a> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Behavior
-// ---------------------------------------------------------------------------
-
 pub struct Behavior;
 
 impl AccountBehavior<Account<crate::MasterEditionAccount>> for Behavior {
@@ -205,7 +197,6 @@ impl AccountBehavior<Account<crate::MasterEditionAccount>> for Behavior {
         account: &Account<crate::MasterEditionAccount>,
         args: &Args<'a>,
     ) -> Result<(), ProgramError> {
-        // Validate the metadata program address.
         crate::validate::validate_metadata_program(args.program)?;
         crate::validate::validate_master_edition_account(
             account.to_account_view(),

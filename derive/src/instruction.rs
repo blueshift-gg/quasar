@@ -1,4 +1,4 @@
-//! `#[instruction]` — generates instruction handler wrappers with context
+//! `#[instruction]`: generates instruction handler wrappers with context
 //! deserialization, discriminator matching, and zero-copy argument decoding.
 //!
 //! Instruction args use the same zeropod layout as accounts:
@@ -7,21 +7,18 @@
 //!   Ref views
 //!
 //! Borrowed args (`&'a str`, `&'a [T]`) are desugared to compact schema fields
-//! via `#[max(N)]` annotations — the compact Ref returns zero-copy views.
+//! via `#[max(N)]` annotations: the compact Ref returns zero-copy views.
 
 use {
     crate::helpers::{
         classify_borrowed_as_compact, classify_lifetime_arg, classify_option_pod_dynamic,
-        classify_pod_dynamic, extract_generic_inner_type, is_unit_type, pod_dyn_to_compact_type,
-        InstructionArgs, PodDynField,
+        classify_pod_dynamic, extract_generic_inner_type, is_unit_type, parse_discriminator_bytes,
+        parse_max_attr, pod_dyn_to_compact_type, InstructionArgs, PodDynField,
     },
     proc_macro::TokenStream,
     quote::{format_ident, quote},
     syn::{parse_macro_input, FnArg, Ident, ItemFn, Pat, ReturnType, Type},
 };
-
-// Note: pre_hook/post_hook have been removed. Users should attach behavior
-// check groups to account fields or write logic directly in the handler body.
 
 /// Emit the fixed-argument decode block.
 ///
@@ -32,7 +29,7 @@ use {
 fn emit_fixed_schema_stmts(
     param_ident: &Ident,
     field_names: &[Ident],
-    field_types: &[syn::Type],
+    field_types: &[&syn::Type],
 ) -> Vec<syn::Stmt> {
     let mut stmts: Vec<syn::Stmt> = Vec::new();
     stmts.push(syn::parse_quote!(
@@ -70,37 +67,11 @@ fn emit_fixed_schema_stmts(
     stmts
 }
 
-/// Parse #[max(N)] or #[max(N, pfx = P)] from a function parameter's
-/// attributes.
-fn parse_max_attr_from_fn_arg(pt: &syn::PatType) -> Option<Result<(usize, usize), syn::Error>> {
-    for attr in &pt.attrs {
-        if attr.path().is_ident("max") {
-            return Some(attr.parse_args_with(|stream: syn::parse::ParseStream| {
-                let n: syn::LitInt = stream.parse()?;
-                let max_n: usize = n.base10_parse()?;
-                let mut pfx = 0usize;
-                if !stream.is_empty() {
-                    let _: syn::Token![,] = stream.parse()?;
-                    let key: syn::Ident = stream.parse()?;
-                    if key != "pfx" {
-                        return Err(syn::Error::new(key.span(), "expected `pfx`"));
-                    }
-                    let _: syn::Token![=] = stream.parse()?;
-                    let p: syn::LitInt = stream.parse()?;
-                    pfx = p.base10_parse()?;
-                }
-                Ok((max_n, pfx))
-            }));
-        }
-    }
-    None
-}
-
 /// Build the handler tail: user body + epilogue, with optional return-data
 /// wrapping. This is the single canonical emission point for the instruction
 /// lifecycle after validate has run.
 ///
-/// Lifecycle: parse → validate → handler → epilogue
+/// Lifecycle: parse -> validate -> handler -> epilogue
 fn emit_handler_tail(
     param_ident: &Ident,
     stmts: &[syn::Stmt],
@@ -111,7 +82,7 @@ fn emit_handler_tail(
     let mut tail = Vec::new();
 
     // Const-elide via HAS_EPILOGUE. When the struct has no close/sweep/migrate,
-    // this branch is eliminated at compile time — saving ~2-7 CU on sBPF.
+    // this branch is eliminated at compile time: saving ~2-7 CU on sBPF.
     let epilogue_call = quote! {
         if #param_ident.has_epilogue() {
             #param_ident.accounts.epilogue()?;
@@ -197,8 +168,8 @@ fn emit_decode_and_tail(
             } else if let Some(pd) = classify_option_pod_dynamic(&pt.ty) {
                 arg_classes.push(ArgClass::OptionalPodDyn(pd));
             } else if matches!(&*pt.ty, Type::Reference(_)) {
-                // Borrowed arg — desugar to compact via #[max(N)]
-                match parse_max_attr_from_fn_arg(pt) {
+                // Borrowed arg: desugar to compact via #[max(N)]
+                match parse_max_attr(&pt.attrs) {
                     Some(Ok((max_n, pfx))) => {
                         match classify_borrowed_as_compact(&pt.ty, max_n, pfx) {
                             Some(pd) => arg_classes.push(ArgClass::PodDyn(pd)),
@@ -219,7 +190,7 @@ fn emit_decode_and_tail(
                     }
                 }
             } else if classify_lifetime_arg(&pt.ty) {
-                // Grouped borrowed struct (e.g., MintArgs<'a>) — must be the
+                // Grouped borrowed struct (e.g., MintArgs<'a>): must be the
                 // only arg.
                 if remaining.len() != 1 {
                     return Err(syn::Error::new_spanned(
@@ -266,25 +237,17 @@ fn emit_decode_and_tail(
             }
         }
 
-        let vec_align_asserts: Vec<proc_macro2::TokenStream> = arg_classes
-            .iter()
-            .filter_map(|cls| match cls {
-                ArgClass::PodDyn(PodDynField::Vec { elem, .. })
-                | ArgClass::OptionalPodDyn(PodDynField::Vec { elem, .. }) => Some(quote! {
+        for cls in &arg_classes {
+            if let ArgClass::PodDyn(PodDynField::Vec { elem, .. })
+            | ArgClass::OptionalPodDyn(PodDynField::Vec { elem, .. }) = cls
+            {
+                out.push(syn::parse_quote!(
                     const _: () = assert!(
                         core::mem::align_of::<#elem>() == 1,
                         "instruction Vec element type must have alignment 1"
                     );
-                }),
-                _ => None,
-            })
-            .collect();
-
-        for assert_stmt in vec_align_asserts {
-            out.push(
-                syn::parse2(assert_stmt)
-                    .expect("failed to parse generated Vec alignment assert statement"),
-            );
+                ));
+            }
         }
 
         let has_pod_dyn = arg_classes
@@ -298,10 +261,7 @@ fn emit_decode_and_tail(
                 use quasar_lang::__zeropod as zeropod;
             ));
 
-            // Compact path: a single zeropod compact schema with ALL fields
-            // (fixed + dynamic). The header contains fixed fields and length
-            // prefixes; tail data follows immediately after the header.
-            let compact_field_names: Vec<_> = field_names.clone();
+            // Compact schema contains fixed fields, length prefixes, then tail data.
             let compact_field_types: Vec<proc_macro2::TokenStream> = arg_classes
                 .iter()
                 .zip(remaining.iter())
@@ -322,7 +282,7 @@ fn emit_decode_and_tail(
                 #[derive(zeropod::ZeroPod)]
                 #[zeropod(compact)]
                 struct __InstructionDataCompact {
-                    #(#compact_field_names: #compact_field_types,)*
+                    #(#field_names: #compact_field_types,)*
                 }
             ));
 
@@ -347,12 +307,7 @@ fn emit_decode_and_tail(
                             let #name = <#ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(&__ref.#name);
                         ));
                     }
-                    ArgClass::PodDyn(_) => {
-                        out.push(syn::parse_quote!(
-                            let #name = __ref.#name();
-                        ));
-                    }
-                    ArgClass::OptionalPodDyn(_) => {
+                    ArgClass::PodDyn(_) | ArgClass::OptionalPodDyn(_) => {
                         out.push(syn::parse_quote!(
                             let #name = __ref.#name();
                         ));
@@ -360,18 +315,15 @@ fn emit_decode_and_tail(
                 }
             }
         } else {
-            // Fixed-only path: emit the ZC layout directly.
-            let zc_field_names: Vec<_> = field_names.clone();
-            let zc_field_orig_types: Vec<_> = remaining.iter().map(|pt| (*pt.ty).clone()).collect();
+            let zc_field_orig_types: Vec<_> = remaining.iter().map(|pt| pt.ty.as_ref()).collect();
 
             out.extend(emit_fixed_schema_stmts(
                 param_ident,
-                &zc_field_names,
+                &field_names,
                 &zc_field_orig_types,
             ));
         }
 
-        // Clear ctx.data after extraction.
         out.push(syn::parse_quote!(
             #param_ident.data = &[];
         ));
@@ -401,15 +353,15 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
     let disc_len = disc_bytes.len();
+    let disc_values = match parse_discriminator_bytes(disc_bytes) {
+        Ok(values) => values,
+        Err(e) => return e.to_compile_error().into(),
+    };
 
-    // Reject multi-byte all-zero discriminators — zeroed instruction data could
+    // Reject multi-byte all-zero discriminators: zeroed instruction data could
     // accidentally match. Single-byte discriminators are fine (the dispatch
     // macro's length check rejects empty instruction data).
-    if disc_len > 1
-        && disc_bytes
-            .iter()
-            .all(|lit| matches!(lit.base10_parse::<u8>(), Ok(0)))
-    {
+    if disc_len > 1 && disc_values.iter().all(|&byte| byte == 0) {
         return syn::Error::new_spanned(
             &disc_bytes[0],
             "instruction discriminator must contain at least one non-zero byte; all-zero \
@@ -419,12 +371,6 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into();
     }
 
-    // ── Raw path ────────────────────────────────────────────────────
-    // When `raw` is set, the handler receives a bare `Context` — no
-    // Ctx<T>, no arg decoding, no epilogue. The macro
-    // just validates the signature and emits the function unchanged.
-    // The `#[program]` codegen is responsible for generating the
-    // dispatch arm that constructs and passes the `Context`.
     if args.raw {
         let first_arg = match func.sig.inputs.first() {
             Some(FnArg::Typed(pt)) => pt.clone(),
@@ -438,7 +384,6 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         };
 
-        // Check the type path ends with "Context".
         let is_context = match &*first_arg.ty {
             Type::Path(tp) => tp
                 .path
@@ -465,11 +410,9 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
             .into();
         }
 
-        // Emit the function unchanged — no wrapping, no codegen.
         return quote!(#func).into();
     }
 
-    // ── Normal path ──────────────────────────────────────────────────
     let first_arg = match func.sig.inputs.first() {
         Some(FnArg::Typed(pt)) => pt.clone(),
         _ => {

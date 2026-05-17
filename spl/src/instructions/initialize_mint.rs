@@ -3,7 +3,7 @@ use quasar_lang::{
     prelude::*,
 };
 
-/// Initialize a mint (InitializeMint2 — opcode 20).
+/// Initialize a mint (InitializeMint2, opcode 20).
 ///
 /// Free function variant for generated code that works with raw `AccountView`
 /// references during parse-time init. Equivalent to
@@ -25,28 +25,14 @@ use quasar_lang::{
 /// [35..67] freeze_authority (32-byte address, zeroed if absent)
 /// ```
 #[inline(always)]
-pub fn initialize_mint2<'a>(
+pub(crate) fn initialize_mint2<'a>(
     token_program: &'a AccountView,
     mint: &'a AccountView,
     decimals: u8,
     mint_authority: &Address,
     freeze_authority: Option<&Address>,
 ) -> CpiCall<'a, 1, 67> {
-    // SAFETY: All 67 bytes written before `assume_init`.
-    let data = unsafe {
-        let mut buf = core::mem::MaybeUninit::<[u8; 67]>::uninit();
-        let ptr = buf.as_mut_ptr() as *mut u8;
-        core::ptr::write(ptr, 20);
-        core::ptr::write(ptr.add(1), decimals);
-        core::ptr::copy_nonoverlapping(mint_authority.as_ref().as_ptr(), ptr.add(2), 32);
-        if let Some(fa) = freeze_authority {
-            core::ptr::write(ptr.add(34), 1u8);
-            core::ptr::copy_nonoverlapping(fa.as_ref().as_ptr(), ptr.add(35), 32);
-        } else {
-            core::ptr::write_bytes(ptr.add(34), 0, 33);
-        }
-        buf.assume_init()
-    };
+    let data = super::initialize_mint2_data(decimals, mint_authority, freeze_authority);
 
     CpiCall::new(
         token_program.address(),

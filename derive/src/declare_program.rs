@@ -1,10 +1,10 @@
-//! `declare_program!` — generates a typed CPI module from a program's IDL JSON.
+//! `declare_program!`: generates a typed CPI module from a program's IDL JSON.
 //!
 //! Produces account types, CPI helper functions (both free and method
 //! variants), and optional custom struct definitions for cross-program
 //! interaction without runtime IDL parsing.
 //!
-//! Uses canonical schema types from `quasar_idl_schema` — the
+//! Uses canonical schema types from `quasar_idl_schema`: the
 //! `quasar-idl/1.0.0` contract.
 
 use {
@@ -16,11 +16,25 @@ use {
     },
     quote::{format_ident, quote},
     std::collections::{HashMap, HashSet},
+    syn::{
+        parse::{Parse, ParseStream},
+        parse_macro_input, LitStr, Token,
+    },
 };
 
-// ---------------------------------------------------------------------------
-// Type sizing — recursive computation with cycle detection
-// ---------------------------------------------------------------------------
+struct DeclareProgramInput {
+    mod_name: Ident,
+    idl_path: LitStr,
+}
+
+impl Parse for DeclareProgramInput {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let mod_name = input.parse()?;
+        input.parse::<Token![,]>()?;
+        let idl_path = input.parse()?;
+        Ok(Self { mod_name, idl_path })
+    }
+}
 
 /// Compute byte sizes for all custom struct types in the IDL.
 /// Returns an error if any type contains dynamic fields, circular references,
@@ -36,63 +50,64 @@ fn build_type_sizes(types: &[IdlTypeDef]) -> Result<HashMap<String, usize>, Stri
     for td in types {
         if td.kind != IdlTypeDefKind::Struct {
             return Err(format!(
-                "type '{}' has kind '{:?}' — only structs are supported in CPI",
+                "type '{}' has kind '{:?}': only structs are supported in CPI",
                 td.name, td.kind
             ));
         }
     }
 
     let mut sizes: HashMap<String, usize> = HashMap::new();
-    let mut resolving: HashSet<String> = HashSet::new();
+    let mut resolving: HashSet<&str> = HashSet::new();
 
     for td in types {
-        resolve_size(&td.name, &type_map, &mut sizes, &mut resolving)?;
+        resolve_size(td.name.as_str(), &type_map, &mut sizes, &mut resolving)?;
     }
     Ok(sizes)
 }
 
-fn resolve_size(
-    name: &str,
-    type_map: &HashMap<&str, &[IdlFieldDef]>,
+fn resolve_size<'a>(
+    name: &'a str,
+    type_map: &HashMap<&'a str, &'a [IdlFieldDef]>,
     sizes: &mut HashMap<String, usize>,
-    resolving: &mut HashSet<String>,
+    resolving: &mut HashSet<&'a str>,
 ) -> Result<usize, String> {
     if let Some(&size) = sizes.get(name) {
         return Ok(size);
     }
-    if !resolving.insert(name.to_string()) {
+    if !resolving.insert(name) {
         return Err(format!("circular type reference: '{name}'"));
     }
     let fields = type_map
         .get(name)
         .ok_or_else(|| format!("undefined type '{name}'"))?;
-    let mut total = 0;
+    let mut total: usize = 0;
     for field in *fields {
-        total += field_byte_size(&field.ty, type_map, sizes, resolving)?;
+        let field_size = field_byte_size(&field.ty, type_map, sizes, resolving)?;
+        total = total
+            .checked_add(field_size)
+            .ok_or_else(|| format!("type '{name}' byte size overflows usize"))?;
     }
     resolving.remove(name);
     sizes.insert(name.to_string(), total);
     Ok(total)
 }
 
-fn field_byte_size(
-    ty: &IdlType,
-    type_map: &HashMap<&str, &[IdlFieldDef]>,
+fn field_byte_size<'a>(
+    ty: &'a IdlType,
+    type_map: &HashMap<&'a str, &'a [IdlFieldDef]>,
     sizes: &mut HashMap<String, usize>,
-    resolving: &mut HashSet<String>,
+    resolving: &mut HashSet<&'a str>,
 ) -> Result<usize, String> {
     match ty {
         IdlType::Primitive(p) => primitive_size(p),
-        IdlType::Option { option } => Ok(1 + field_byte_size(option, type_map, sizes, resolving)?),
         IdlType::Defined { defined } => resolve_size(&defined.name, type_map, sizes, resolving),
+        IdlType::Option { .. } => {
+            Err("option not supported in CPI: only fixed-size types allowed".into())
+        }
         IdlType::Vec { .. } => {
-            Err("dynamic vec not supported in CPI — only fixed-size types allowed".into())
+            Err("dynamic vec not supported in CPI: only fixed-size types allowed".into())
         }
-        IdlType::Array { array } => {
-            let (item_ty, len) = array;
-            let item_size = field_byte_size(item_ty, type_map, sizes, resolving)?;
-            Ok(item_size * len)
-        }
+        IdlType::Array { .. } => Err("fixed array not yet supported in CPI".into()),
         IdlType::Generic { .. } => Err("generic types not supported in CPI".into()),
     }
 }
@@ -106,21 +121,17 @@ fn primitive_size(name: &str) -> Result<usize, String> {
         "u128" | "i128" => Ok(16),
         "pubkey" => Ok(32),
         "string" => {
-            Err("dynamic string not supported in CPI — only fixed-size types allowed".into())
+            Err("dynamic string not supported in CPI: only fixed-size types allowed".into())
         }
-        "bytes" => Err("dynamic bytes not supported in CPI — only fixed-size types allowed".into()),
+        "bytes" => Err("dynamic bytes not supported in CPI: only fixed-size types allowed".into()),
         other => Err(format!("unsupported primitive type '{other}'")),
     }
 }
 
-// ---------------------------------------------------------------------------
-// Type mapping — converts IDL types to Rust token streams
-// ---------------------------------------------------------------------------
-
 struct TypeInfo {
-    /// Rust type for function parameters (pubkey → &Address).
+    /// Rust type for function parameters (pubkey -> &Address).
     param_type: TokenStream2,
-    /// Rust type for struct field definitions (pubkey → Address).
+    /// Rust type for struct field definitions (pubkey -> Address).
     field_type: TokenStream2,
 }
 
@@ -165,19 +176,15 @@ fn map_idl_type(ty: &IdlType, type_sizes: &HashMap<String, usize>) -> Result<Typ
             })
         }
         IdlType::Option { .. } => {
-            Err("option not supported in CPI — only fixed-size types allowed".into())
+            Err("option not supported in CPI: only fixed-size types allowed".into())
         }
         IdlType::Vec { .. } => {
-            Err("dynamic vec not supported in CPI — only fixed-size types allowed".into())
+            Err("dynamic vec not supported in CPI: only fixed-size types allowed".into())
         }
         IdlType::Array { .. } => Err("fixed array not yet supported in CPI".into()),
         IdlType::Generic { .. } => Err("generic types not supported in CPI".into()),
     }
 }
-
-// ---------------------------------------------------------------------------
-// Code generation helpers
-// ---------------------------------------------------------------------------
 
 /// Generate the data write block for instruction args, flattening struct fields
 /// recursively into a packed byte buffer.
@@ -210,11 +217,15 @@ fn generate_data_write(
 
     let total_size = offset;
     let block = quote! {
-        unsafe {
+        {
             let mut __buf = core::mem::MaybeUninit::<[u8; #total_size]>::uninit();
             let __ptr = __buf.as_mut_ptr() as *mut u8;
-            #(#write_stmts)*
-            __buf.assume_init()
+            // SAFETY: generated offsets cover each byte in the fixed CPI buffer
+            // exactly once before `assume_init`.
+            unsafe {
+                #(#write_stmts)*
+                __buf.assume_init()
+            }
         }
     };
 
@@ -232,31 +243,34 @@ fn emit_field_write(
     match ty {
         IdlType::Primitive(p) => {
             let size = primitive_size(p)?;
+            let field_offset = *offset;
+            let next_offset = field_offset
+                .checked_add(size)
+                .ok_or_else(|| "CPI instruction data size overflows usize".to_string())?;
             if p == "pubkey" {
                 stmts.push(quote! {
                     core::ptr::copy_nonoverlapping(
                         #access.as_ref().as_ptr(),
-                        __ptr.add(#offset),
+                        __ptr.add(#field_offset),
                         #size,
                     );
                 });
             } else if size == 1 {
                 stmts.push(quote! {
-                    core::ptr::write(__ptr.add(#offset), #access as u8);
+                    core::ptr::write(__ptr.add(#field_offset), #access as u8);
                 });
             } else {
                 stmts.push(quote! {
                     core::ptr::copy_nonoverlapping(
                         #access.to_le_bytes().as_ptr(),
-                        __ptr.add(#offset),
+                        __ptr.add(#field_offset),
                         #size,
                     );
                 });
             }
-            *offset += size;
+            *offset = next_offset;
         }
         IdlType::Defined { defined } => {
-            // Recurse into the struct's fields
             let td = idl_types
                 .iter()
                 .find(|t| t.name == defined.name)
@@ -340,7 +354,6 @@ fn collect_referenced_types(
 fn collect_type_refs(ty: &IdlType, idl_types: &[IdlTypeDef], out: &mut HashSet<String>) {
     match ty {
         IdlType::Defined { defined } if out.insert(defined.name.clone()) => {
-            // Recurse into nested types
             if let Some(td) = idl_types.iter().find(|t| t.name == defined.name) {
                 for field in &td.fields {
                     collect_type_refs(&field.ty, idl_types, out);
@@ -355,48 +368,15 @@ fn collect_type_refs(ty: &IdlType, idl_types: &[IdlTypeDef], out: &mut HashSet<S
     }
 }
 
-// ---------------------------------------------------------------------------
-// Entry point
-// ---------------------------------------------------------------------------
-
 pub fn declare_program(input: TokenStream) -> TokenStream {
-    let input2 = proc_macro2::TokenStream::from(input);
-    let mut iter = input2.into_iter();
+    let DeclareProgramInput { mod_name, idl_path } =
+        parse_macro_input!(input as DeclareProgramInput);
+    let idl_path = idl_path.value();
 
-    let mod_name = match iter.next() {
-        Some(proc_macro2::TokenTree::Ident(id)) => id,
-        _ => {
-            return syn::Error::new(Span::call_site(), "expected module name as first argument")
-                .to_compile_error()
-                .into();
-        }
-    };
-
-    match iter.next() {
-        Some(proc_macro2::TokenTree::Punct(p)) if p.as_char() == ',' => {}
-        _ => {
-            return syn::Error::new(Span::call_site(), "expected comma after module name")
-                .to_compile_error()
-                .into();
-        }
-    };
-
-    let idl_path = match iter.next() {
-        Some(proc_macro2::TokenTree::Literal(lit)) => {
-            let s = lit.to_string();
-            if s.starts_with('"') && s.ends_with('"') {
-                s[1..s.len() - 1].to_string()
-            } else {
-                return syn::Error::new(Span::call_site(), "expected string literal for IDL path")
-                    .to_compile_error()
-                    .into();
-            }
-        }
-        _ => {
-            return syn::Error::new(Span::call_site(), "expected string literal for IDL path")
-                .to_compile_error()
-                .into();
-        }
+    if idl_path.is_empty() {
+        return syn::Error::new(Span::call_site(), "IDL path cannot be empty")
+            .to_compile_error()
+            .into();
     };
 
     let idl_json = match std::fs::read_to_string(&idl_path) {
@@ -431,7 +411,6 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         }
     };
 
-    // Build type sizes for custom struct support
     let type_sizes = match build_type_sizes(&idl.types) {
         Ok(sizes) => sizes,
         Err(msg) => {
@@ -441,7 +420,6 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         }
     };
 
-    // Validate all arg types up front
     for ix in &idl.instructions {
         for arg in &ix.args {
             if let Err(msg) = map_idl_type(&arg.ty, &type_sizes) {
@@ -453,7 +431,6 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         }
     }
 
-    // Collect and generate custom struct definitions
     let referenced = collect_referenced_types(&idl.instructions, &idl.types);
     let struct_defs = match emit_struct_defs(&idl.types, &referenced, &type_sizes) {
         Ok(defs) => defs,

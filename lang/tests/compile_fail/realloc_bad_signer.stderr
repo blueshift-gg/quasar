@@ -10,12 +10,14 @@ error[E0277]: the trait bound `quasar_lang::accounts::Signer: SupportsRealloc` i
   = help: the following other types implement trait `SupportsRealloc`:
             Account<T>
             InterfaceAccount<T>
-            Migration<From, To>
 note: required by a bound in `quasar_lang::ops::realloc::Op::<'a>::apply`
  --> src/ops/realloc.rs
   |
-  |     pub fn apply<F: AccountLoad + SupportsRealloc + crate::traits::Space>(
-  |                                   ^^^^^^^^^^^^^^^ required by this bound in `Op::<'a>::apply`
+  |     pub fn apply<F, R>(&self, field: &mut F, ctx: &OpCtx<'_, R>) -> Result<(), ProgramError>
+  |            ----- required by a bound in this associated function
+  |     where
+  |         F: AccountLoad + SupportsRealloc + crate::traits::Space,
+  |                          ^^^^^^^^^^^^^^^ required by this bound in `Op::<'a>::apply`
 
 error[E0277]: the trait bound `quasar_lang::accounts::Signer: quasar_lang::prelude::Space` is not satisfied
  --> tests/compile_fail/realloc_bad_signer.rs:9:18
@@ -29,9 +31,11 @@ error[E0277]: the trait bound `quasar_lang::accounts::Signer: quasar_lang::prelu
   = help: the following other types implement trait `quasar_lang::prelude::Space`:
             Account<T>
             InterfaceAccount<T>
-            Migration<From, To>
 note: required by a bound in `quasar_lang::ops::realloc::Op::<'a>::apply`
  --> src/ops/realloc.rs
   |
-  |     pub fn apply<F: AccountLoad + SupportsRealloc + crate::traits::Space>(
-  |                                                     ^^^^^^^^^^^^^^^^^^^^ required by this bound in `Op::<'a>::apply`
+  |     pub fn apply<F, R>(&self, field: &mut F, ctx: &OpCtx<'_, R>) -> Result<(), ProgramError>
+  |            ----- required by a bound in this associated function
+  |     where
+  |         F: AccountLoad + SupportsRealloc + crate::traits::Space,
+  |                                            ^^^^^^^^^^^^^^^^^^^^ required by this bound in `Op::<'a>::apply`

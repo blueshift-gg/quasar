@@ -215,12 +215,15 @@ pub fn generate_go_client(idl: &Idl) -> String {
                                 ty.as_ref(),
                             ));
                         }
-                        IdlPdaSeed::Arg { path, .. } => {
-                            seed_exprs.push(format!("input.{}", go_field_path(path)));
+                        IdlPdaSeed::Arg { path, ty, .. } => {
+                            seed_exprs.push(go_pda_seed_expr(
+                                &format!("input.{}", go_field_path(path)),
+                                Some(ty),
+                            ));
                         }
                     }
                 }
-                // PDA derivation inline — panic on error (invalid seeds = programmer error)
+                // Invalid seeds are programmer errors in generated PDA calls.
                 format!(
                     "func() solana.PublicKey {{ addr, _, err := \
                      solana.FindProgramAddress([][]byte{{{}}}, ProgramID); if err != nil {{ \
@@ -244,7 +247,7 @@ pub fn generate_go_client(idl: &Idl) -> String {
             out.push_str("\taccounts = append(accounts, input.RemainingAccounts...)\n");
         }
 
-        // Data — compact wire format:
+        // Compact wire format:
         //   [disc][fixed fields][all dynamic prefixes][all dynamic data]
         let disc_var = format!("{}Discriminator", pascal_name);
         let has_dyn = ix.args.iter().any(is_direct_dynamic);
@@ -280,8 +283,7 @@ pub fn generate_go_client(idl: &Idl) -> String {
                 ));
             }
 
-            // Phase 2: length table — pre-encode dynamic slices and emit all
-            // length prefixes grouped together.
+            // Pre-encode dynamic slices and group all length prefixes.
             for arg in &dyn_args {
                 let name = snake_to_pascal(&arg.name);
                 let prefix_bytes = arg.codec.as_ref().map(|c| c.prefix_bytes()).unwrap_or(2);
@@ -559,10 +561,6 @@ require github.com/gagliardetto/solana-go v1.12.0
     )
 }
 
-// ---------------------------------------------------------------------------
-// Type mapping
-// ---------------------------------------------------------------------------
-
 fn go_type(ty: &IdlType) -> String {
     match ty {
         IdlType::Primitive(p) => match p.as_str() {
@@ -609,10 +607,6 @@ fn go_arg_type(arg: &IdlArg) -> String {
     go_type(&arg.ty)
 }
 
-// ---------------------------------------------------------------------------
-// Account meta helpers
-// ---------------------------------------------------------------------------
-
 fn account_meta_expr(key_expr: &str, signer: bool, writable: bool) -> String {
     let mut s = format!("solana.Meta({})", key_expr);
     if writable {
@@ -623,10 +617,6 @@ fn account_meta_expr(key_expr: &str, signer: bool, writable: bool) -> String {
     }
     s
 }
-
-// ---------------------------------------------------------------------------
-// Serialization
-// ---------------------------------------------------------------------------
 
 /// Returns `true` if the arg is a top-level dynamic type (string with codec or
 /// Vec with codec). These require compact 3-phase encoding at the instruction
@@ -843,7 +833,7 @@ fn serialize_field_expr(
             }
         }
         IdlType::Vec { .. } => {
-            // Vec without codec — u32 prefix (borsh-style)
+            // Vec without codec uses a Borsh-style u32 prefix.
             format!(
                 "\t{{ var buf [4]byte; binary.LittleEndian.PutUint32(buf[:], \
                  uint32(len(input.{n}))); data = append(data, buf[:]...); data = append(data, \
@@ -870,10 +860,6 @@ fn go_float_decode(t: &str, n: &str, math_fn: &str, le_fn: &str, size: usize) ->
          {size}\n"
     )
 }
-
-// ---------------------------------------------------------------------------
-// Deserialization
-// ---------------------------------------------------------------------------
 
 fn decode_field_expr(
     name: &str,
@@ -1009,7 +995,7 @@ fn decode_field_expr(
                 n = name,
             ),
             "string" => {
-                // Plain string without codec — u32 prefix (borsh-style)
+                // Plain string without codec uses a Borsh-style u32 prefix.
                 format!(
                     "{t}{n}Len := int(binary.LittleEndian.Uint32(data[offset:]))\n{t}offset += \
                      4\n{t}{n} := string(data[offset:offset+{n}Len])\n{t}offset += {n}Len\n",
@@ -1024,7 +1010,7 @@ fn decode_field_expr(
             ),
         },
         IdlType::Vec { .. } => {
-            // Vec without codec — u32 prefix (borsh-style)
+            // Vec without codec uses a Borsh-style u32 prefix.
             format!(
                 "{t}{n}Len := int(binary.LittleEndian.Uint32(data[offset:]))\n{t}offset += \
                  4\n{t}{n} := data[offset:offset+{n}Len]\n{t}offset += {n}Len\n",

@@ -7,7 +7,8 @@ use {
 pub trait DataLen: AccountLayout {
     #[inline(always)]
     fn check(view: &AccountView) -> Result<(), ProgramError> {
-        if view.data_len() < Self::DATA_OFFSET + Self::DATA_SIZE {
+        let end = Self::DATA_OFFSET + Self::DATA_SIZE;
+        if view.data_len() < end {
             return Err(ProgramError::AccountDataTooSmall);
         }
         Ok(())

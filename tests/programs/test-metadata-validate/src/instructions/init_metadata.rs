@@ -3,7 +3,7 @@ use {
     quasar_metadata::{accounts::metadata, prelude::*},
 };
 
-/// Init metadata account via CPI to Metaplex, then verify ALL prefix fields.
+/// Initializes metadata through Metaplex CPI and verifies prefix fields.
 #[derive(Accounts)]
 pub struct InitMetadataTest {
     #[account(mut)]
@@ -38,21 +38,16 @@ pub struct InitMetadataTest {
 impl InitMetadataTest {
     #[inline(always)]
     pub fn handler(&self) -> Result<(), ProgramError> {
-        // After CPI, read back ALL accessible prefix fields via Deref to
-        // MetadataPrefixZc and verify they match.
         let meta = &*self.metadata;
 
-        // key byte == 4 (MetadataV1)
         require!(meta.key == 4, ProgramError::InvalidAccountData);
 
-        // update_authority matches what was passed in
         require_keys_eq!(
             meta.update_authority,
             *self.update_authority.to_account_view().address(),
             ProgramError::InvalidAccountData
         );
 
-        // mint matches
         require_keys_eq!(
             meta.mint,
             *self.mint.to_account_view().address(),

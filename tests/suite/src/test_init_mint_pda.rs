@@ -4,9 +4,7 @@ use {
     quasar_test_token_init::cpi::*,
 };
 
-// ===========================================================================
-// PDA init mint — SPL Token
-// ===========================================================================
+// PDA init mint with SPL Token.
 
 #[test]
 fn init_mint_pda_spl_happy() {
@@ -64,9 +62,7 @@ fn init_mint_pda_spl_wrong_address() {
     );
 }
 
-// ===========================================================================
-// PDA init mint — Token-2022
-// ===========================================================================
+// PDA init mint with Token-2022.
 
 #[test]
 fn init_mint_pda_t22_happy() {
@@ -124,9 +120,7 @@ fn init_mint_pda_t22_wrong_address() {
     );
 }
 
-// ===========================================================================
-// Pre-funded PDA mint init — SPL Token
-// ===========================================================================
+// Pre-funded PDA mint init with SPL Token.
 
 #[test]
 fn init_mint_pda_spl_prefunded_partial() {

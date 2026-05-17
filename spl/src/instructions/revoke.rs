@@ -17,7 +17,7 @@ const REVOKE: u8 = 5;
 /// [0] discriminator (5)
 /// ```
 #[inline(always)]
-pub fn revoke<'a>(
+pub(super) fn revoke<'a>(
     token_program: &'a AccountView,
     source: &'a AccountView,
     authority: &'a AccountView,

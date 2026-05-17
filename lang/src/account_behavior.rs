@@ -7,10 +7,10 @@ use solana_program_error::ProgramError;
 /// A behavior group `#[account(foo(a = x, b = y))]` requires a module `foo`
 /// exporting:
 ///
-/// - `foo::Args` — the args struct
-/// - `foo::Args::builder()` — returns an `ArgsBuilder` with `.a()`, `.b()`
+/// - `foo::Args`: the args struct
+/// - `foo::Args::builder()`: returns an `ArgsBuilder` with `.a()`, `.b()`
 ///   setters and `build_init()`, `build_check()`, `build_exit()` methods
-/// - `foo::Behavior` — a unit struct implementing `AccountBehavior<T>` for each
+/// - `foo::Behavior`: a unit struct implementing `AccountBehavior<T>` for each
 ///   supported account wrapper type
 ///
 /// # Lifecycle phases
@@ -20,7 +20,7 @@ use solana_program_error::ProgramError;
 ///
 /// ```text
 /// Phase           Const             Builder      Trait method       When
-/// ─────────────── ───────────────── ──────────── ────────────────── ──────────
+/// --------------- ----------------- ------------ ------------------ ----------
 /// set_init_param  SETS_INIT_PARAMS  build_init   set_init_param()  init fields
 /// after_init      RUN_AFTER_INIT    build_init   after_init()      init fields
 /// check           RUN_CHECK         build_check  check()           all fields
@@ -30,6 +30,7 @@ use solana_program_error::ProgramError;
 ///
 /// Default methods are no-ops. Override only the methods your behavior needs.
 pub trait AccountBehavior<A> {
+    /// Behavior arguments for one lifecycle phase.
     type Args<'a>;
 
     /// Whether `set_init_param` contributes init parameters for `A`.
@@ -102,19 +103,29 @@ pub trait AccountBehavior<A> {
     }
 }
 
+/// Phase id passed to `uses_arg` for `set_init_param`.
 pub const ARG_PHASE_SET_INIT_PARAM: u8 = 0;
+/// Phase id passed to `uses_arg` for `after_init`.
 pub const ARG_PHASE_AFTER_INIT: u8 = 1;
+/// Phase id passed to `uses_arg` for `check`.
 pub const ARG_PHASE_CHECK: u8 = 2;
+/// Phase id passed to `uses_arg` for `update`.
 pub const ARG_PHASE_UPDATE: u8 = 3;
+/// Phase id passed to `uses_arg` for `exit`.
 pub const ARG_PHASE_EXIT: u8 = 4;
 
+/// Stable FNV-1a hash for behavior argument keys used in `uses_arg` const
+/// generics.
 pub const fn behavior_arg_key_hash(key: &str) -> u64 {
+    const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+
     let bytes = key.as_bytes();
-    let mut hash = 0xcbf29ce484222325u64;
+    let mut hash = FNV_OFFSET_BASIS;
     let mut i = 0;
     while i < bytes.len() {
         hash ^= bytes[i] as u64;
-        hash = hash.wrapping_mul(0x100000001b3);
+        hash = hash.wrapping_mul(FNV_PRIME);
         i += 1;
     }
     hash

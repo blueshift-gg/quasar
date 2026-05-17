@@ -1,11 +1,15 @@
 use {
-    crate::instructions,
-    quasar_lang::{cpi::Signer, prelude::*, sysvars::rent::Rent},
+    crate::{associated_token, instructions},
+    quasar_lang::{
+        cpi::{CpiCall, InstructionAccount, Signer},
+        prelude::*,
+        sysvars::rent::Rent,
+    },
 };
 
 /// Create token account + initialize_account3.
 #[inline(always)]
-pub fn init_token_account(
+pub(crate) fn init_token_account(
     payer: &AccountView,
     account: &mut AccountView,
     token_program: &AccountView,
@@ -17,7 +21,7 @@ pub fn init_token_account(
     quasar_lang::cpi::system::init_account_with_rent(
         payer,
         account,
-        165u64,
+        core::mem::size_of::<crate::token::TokenDataZc>() as u64,
         token_program.address(),
         signers,
         rent,
@@ -28,7 +32,7 @@ pub fn init_token_account(
 /// Create mint account + initialize_mint2.
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
-pub fn init_mint_account(
+pub(crate) fn init_mint_account(
     payer: &AccountView,
     account: &mut AccountView,
     token_program: &AccountView,
@@ -41,7 +45,7 @@ pub fn init_mint_account(
     quasar_lang::cpi::system::init_account_with_rent(
         payer,
         account,
-        82u64,
+        core::mem::size_of::<crate::token::MintDataZc>() as u64,
         token_program.address(),
         signers,
         rent,
@@ -60,7 +64,7 @@ pub fn init_mint_account(
 /// is true.
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
-pub fn init_ata(
+pub(crate) fn init_ata(
     ata_program: &AccountView,
     payer: &AccountView,
     ata: &AccountView,
@@ -70,16 +74,20 @@ pub fn init_ata(
     token_program: &AccountView,
     idempotent: bool,
 ) -> Result<(), ProgramError> {
-    let instruction_byte: u8 = if idempotent { 1 } else { 0 };
-    quasar_lang::cpi::CpiCall::new(
+    let instruction_byte = if idempotent {
+        associated_token::ATA_CREATE_IDEMPOTENT
+    } else {
+        associated_token::ATA_CREATE
+    };
+    CpiCall::new(
         ata_program.address(),
         [
-            quasar_lang::cpi::InstructionAccount::writable_signer(payer.address()),
-            quasar_lang::cpi::InstructionAccount::writable(ata.address()),
-            quasar_lang::cpi::InstructionAccount::readonly(wallet.address()),
-            quasar_lang::cpi::InstructionAccount::readonly(mint.address()),
-            quasar_lang::cpi::InstructionAccount::readonly(system_program.address()),
-            quasar_lang::cpi::InstructionAccount::readonly(token_program.address()),
+            InstructionAccount::writable_signer(payer.address()),
+            InstructionAccount::writable(ata.address()),
+            InstructionAccount::readonly(wallet.address()),
+            InstructionAccount::readonly(mint.address()),
+            InstructionAccount::readonly(system_program.address()),
+            InstructionAccount::readonly(token_program.address()),
         ],
         [payer, ata, wallet, mint, system_program, token_program],
         [instruction_byte],

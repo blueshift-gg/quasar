@@ -4,9 +4,7 @@ use {
     quasar_test_token_cpi::cpi::*,
 };
 
-// ===========================================================================
-// close = attribute — SPL Token
-// ===========================================================================
+// close attribute with SPL Token.
 
 #[test]
 fn close_attr_spl_happy() {
@@ -110,9 +108,7 @@ fn close_attr_spl_wrong_mint() {
     );
 }
 
-// ===========================================================================
-// close = attribute — Token-2022
-// ===========================================================================
+// close attribute with Token-2022.
 
 #[test]
 fn close_attr_t22_happy() {
@@ -182,9 +178,7 @@ fn close_attr_t22_wrong_authority() {
     );
 }
 
-// ===========================================================================
-// close = attribute — InterfaceAccount
-// ===========================================================================
+// close attribute with InterfaceAccount.
 
 #[test]
 fn close_attr_interface_spl_happy() {

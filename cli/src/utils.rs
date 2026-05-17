@@ -50,7 +50,7 @@ pub fn find_program_crate(config: &QuasarConfig) -> PathBuf {
         }
     }
 
-    // Fallback — will produce a clear parse error downstream.
+    // Fallback produces a clear parse error downstream.
     PathBuf::from(".")
 }
 
@@ -104,5 +104,3 @@ pub fn find_in_deploy(filename: &str) -> Option<PathBuf> {
     }
     None
 }
-
-pub use quasar_schema::snake_to_pascal;

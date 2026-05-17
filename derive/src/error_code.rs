@@ -1,4 +1,4 @@
-//! `#[error_code]` — generates `ProgramError` conversion for custom error
+//! `#[error_code]`: generates `ProgramError` conversion for custom error
 //! enums. Each variant is assigned an error code starting at 6000
 //! (Anchor-compatible offset).
 

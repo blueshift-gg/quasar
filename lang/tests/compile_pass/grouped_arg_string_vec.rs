@@ -4,7 +4,7 @@ use quasar_lang::prelude::*;
 solana_address::declare_id!("11111111111111111111111111111112");
 
 /// Grouped instruction arg struct with user-facing String and Vec fields.
-/// Derives QuasarSerialize → InstructionArg and normalizes them to pod-backed
+/// Derives QuasarSerialize into InstructionArg and normalizes them to pod-backed
 /// fixed fields internally.
 #[derive(Copy, Clone, QuasarSerialize)]
 pub struct MintArgs {

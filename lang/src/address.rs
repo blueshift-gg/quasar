@@ -7,8 +7,8 @@
 //! ```
 //!
 //! Implementors:
-//! - `Address` / `&Address` — exact equality check
-//! - `SeedSet` types (from `#[derive(Seeds)]`) — PDA derivation check
+//! - `Address` / `&Address`: exact equality check
+//! - `SeedSet` types (from `#[derive(Seeds)]`): PDA derivation check
 
 use {
     solana_account_view::AccountView, solana_address::Address, solana_program_error::ProgramError,
@@ -27,15 +27,16 @@ pub trait AddressVerify {
     /// matches.
     fn verify(&self, actual: &Address, program_id: &Address) -> Result<u8, ProgramError>;
 
-    /// Fast verification for existing, validated accounts. Skips the on-curve
-    /// check and uses `keys_eq` instead of `sol_curve_validate_point`.
+    /// Fast verification for existing, validated accounts. Skips canonical
+    /// bump search and uses `keys_eq` instead of `sol_curve_validate_point`.
     ///
-    /// ONLY safe when:
-    /// - The account already exists on-chain (runtime verified PDA at creation)
-    /// - The account type has owner + discriminator validation (Account<T>,
-    ///   InterfaceAccount<T>, Migration<From,To>)
+    /// Safe only when:
+    /// - the account already exists on-chain
+    /// - the account type has owner + discriminator validation (`Account<T>`,
+    ///   `InterfaceAccount<T>`, `Migration<From, To>`)
     ///
-    /// NOT safe for: init fields, UncheckedAccount, SystemAccount, Signer.
+    /// Not safe for init fields, `UncheckedAccount`, `SystemAccount`, or
+    /// `Signer`.
     /// Default: delegates to `verify()` (full derivation).
     #[inline(always)]
     fn verify_existing(&self, actual: &Address, program_id: &Address) -> Result<u8, ProgramError> {
@@ -69,8 +70,6 @@ pub trait AddressVerify {
     ) -> R;
 }
 
-// -- Exact address match impls ------------------------------------------------
-
 impl AddressVerify for Address {
     #[inline(always)]
     fn verify(&self, actual: &Address, _program_id: &Address) -> Result<u8, ProgramError> {
@@ -81,17 +80,6 @@ impl AddressVerify for Address {
                 crate::error::QuasarError::AddressMismatch,
             ))
         }
-    }
-
-    #[inline(always)]
-    fn verify_existing_from_account(
-        &self,
-        actual: &Address,
-        program_id: &Address,
-        _account: &AccountView,
-        _bump_offset: usize,
-    ) -> Result<u8, ProgramError> {
-        self.verify_existing(actual, program_id)
     }
 
     #[inline(always)]
@@ -108,17 +96,6 @@ impl AddressVerify for &Address {
     #[inline(always)]
     fn verify(&self, actual: &Address, program_id: &Address) -> Result<u8, ProgramError> {
         (*self).verify(actual, program_id)
-    }
-
-    #[inline(always)]
-    fn verify_existing_from_account(
-        &self,
-        actual: &Address,
-        program_id: &Address,
-        account: &AccountView,
-        bump_offset: usize,
-    ) -> Result<u8, ProgramError> {
-        (*self).verify_existing_from_account(actual, program_id, account, bump_offset)
     }
 
     #[inline(always)]

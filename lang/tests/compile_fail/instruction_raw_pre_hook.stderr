@@ -1,5 +1,0 @@
-error: pre_hook and post_hook have been removed. Attach a behavior check group to the relevant account field, or move logic into the handler body.
-  --> tests/compile_fail/instruction_raw_pre_hook.rs:10:43
-   |
-10 |     #[instruction(discriminator = 1, raw, pre_hook = [my_hook])]
-   |                                           ^^^^^^^^

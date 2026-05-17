@@ -1,8 +1,8 @@
 //! Miri UB tests for quasar-lang unsafe code paths.
 //!
-//! **Design philosophy: adversarial.** Tests are designed to FIND undefined
+//! **Design philosophy: adversarial.** Tests are designed to find undefined
 //! behavior, not merely confirm correct output. Each test exercises a specific
-//! unsafe pattern with inputs chosen to maximise the chance of catching UB:
+//! unsafe pattern with inputs chosen to maximize the chance of catching UB:
 //! exact-size buffers, boundary values, interleaved aliasing, and exhaustive
 //! flag combinations.
 //!
@@ -15,7 +15,7 @@
 //!
 //! ## Flags
 //!
-//! - `-Zmiri-tree-borrows`: Tree Borrows model. The `& -> &mut` cast in
+//! - `-Zmiri-tree-borrows`: Tree Borrows model. The shared-to-mutable cast in
 //!   `from_account_view_unchecked_mut` is instant UB under Stacked Borrows.
 //!   Under Tree Borrows it is sound because the `&mut Account<T>` never writes
 //!   to the AccountView memory itself -- writes go through the raw pointer to a
@@ -59,7 +59,7 @@
 //! The public `#[account(dup)]` API rejects writable duplicate field bindings
 //! at macro-expansion time; duplicate runtime metas still follow SVM behavior.
 //!
-//! ## What Miri CANNOT test
+//! ## What Miri cannot test
 //!
 //! | Pattern | Why |
 //! |---------|-----|
@@ -96,9 +96,15 @@ use {
     std::mem::{align_of, size_of, MaybeUninit},
 };
 
-// ===========================================================================
-// Sweep constants -- reused across parameterized tests
-// ===========================================================================
+mod remaining_group_fixture {
+    use quasar_lang::prelude::*;
+
+    #[derive(quasar_derive::Accounts)]
+    pub struct RemainingPair {
+        pub first: UncheckedAccount,
+        pub second: UncheckedAccount,
+    }
+}
 
 const SWEEP_DATA_LENS: &[usize] = &[0, 1, 7, 8, 15, 16, 31, 32, 64, 255];
 
@@ -113,10 +119,6 @@ const SWEEP_FLAG_COMBOS: &[(bool, bool, u8)] = &[
     (false, true, 1),
     (true, true, 1),
 ];
-
-// ===========================================================================
-// Test helpers
-// ===========================================================================
 
 /// 8-byte-aligned buffer for constructing RuntimeAccount + data.
 ///
@@ -333,10 +335,6 @@ impl MultiAccountEntry {
     }
 }
 
-// ===========================================================================
-// Test-only types
-// ===========================================================================
-
 #[repr(C)]
 struct TestZcData {
     value: PodU64,
@@ -455,10 +453,6 @@ struct IxDataZc {
 
 const _: () = assert!(align_of::<IxDataZc>() == 1);
 
-// ===========================================================================
-// Common test builders
-// ===========================================================================
-
 fn make_zc_buffer() -> AccountBuffer {
     let disc_len = 4;
     let data_len = disc_len + size_of::<TestZcData>();
@@ -531,15 +525,10 @@ fn make_tail_buffer(tail_data: &[u8]) -> AccountBuffer {
     buf
 }
 
-// ###########################################################################
-// SECTION 1: Aliasing & Cast Tests
-//
-// The & -> &mut cast is THE critical pattern. Account<T> is repr(transparent)
-// over AccountView, which holds a raw pointer. from_account_view_unchecked_mut
-// casts &AccountView to &mut Account<T>. Under Stacked Borrows this is instant
-// UB. Under Tree Borrows it is sound because the &mut never writes to the
-// AccountView memory -- writes go through the raw pointer to RuntimeAccount.
-// ###########################################################################
+// Account<T> is repr(transparent) over AccountView, which holds a raw pointer.
+// from_account_view_unchecked_mut casts AccountView to Account<T>. Under Tree
+// Borrows it is sound because the mutable wrapper writes through the raw
+// RuntimeAccount pointer rather than into the AccountView value itself.
 
 #[test]
 fn aliasing_shared_to_mut_cast_read_lamports() {
@@ -813,10 +802,6 @@ fn aliasing_multiple_deref_mut_calls() {
     }
 }
 
-// ###########################################################################
-// SECTION 2: Bounds & Pointer Arithmetic
-// ###########################################################################
-
 #[test]
 fn bounds_account_view_exact_size_sweep() {
     for &data_len in SWEEP_DATA_LENS {
@@ -1043,6 +1028,91 @@ fn bounds_remaining_duplicate_checked_borrow_conflicts() {
 }
 
 #[test]
+fn bounds_typed_remaining_rejects_remaining_duplicate() {
+    let mut buf = MultiAccountBuffer::new(&[
+        MultiAccountEntry::account(0x01, 0),
+        MultiAccountEntry::duplicate(0),
+    ]);
+    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
+
+    let err = match remaining.parse::<UncheckedAccount, 4>() {
+        Ok(_) => panic!("typed remaining must reject duplicate aliases"),
+        Err(err) => err,
+    };
+    assert_eq!(err, QuasarError::RemainingAccountDuplicate.into());
+}
+
+#[test]
+fn bounds_typed_remaining_rejects_declared_duplicate() {
+    let mut declared_buf = AccountBuffer::new(0);
+    declared_buf.init([0x01; 32], [0xAA; 32], 1_000_000, 0, false, false);
+    let declared = [unsafe { declared_buf.view() }];
+
+    let mut buf = MultiAccountBuffer::new(&[MultiAccountEntry::account(0x01, 0)]);
+    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &declared);
+
+    let err = match remaining.parse::<UncheckedAccount, 4>() {
+        Ok(_) => panic!("typed remaining must reject aliases to declared accounts"),
+        Err(err) => err,
+    };
+    assert_eq!(err, QuasarError::RemainingAccountDuplicate.into());
+}
+
+#[test]
+fn bounds_typed_remaining_group_parses_variable_chunks() {
+    let mut buf = MultiAccountBuffer::new(&[
+        MultiAccountEntry::account(0x01, 0),
+        MultiAccountEntry::account(0x02, 0),
+        MultiAccountEntry::account(0x03, 0),
+        MultiAccountEntry::account(0x04, 0),
+    ]);
+    let program_id = Address::new_from_array([0x55; 32]);
+    let remaining = RemainingAccounts::new_with_context(
+        buf.as_mut_ptr(),
+        buf.boundary(),
+        &[],
+        &program_id,
+        &[],
+    );
+
+    let parsed = remaining
+        .parse::<remaining_group_fixture::RemainingPair, 4>()
+        .unwrap();
+    assert_eq!(parsed.len(), 2);
+    assert_eq!(
+        parsed.as_slice()[0].first.address(),
+        &Address::new_from_array([0x01; 32])
+    );
+    assert_eq!(
+        parsed.as_slice()[1].second.address(),
+        &Address::new_from_array([0x04; 32])
+    );
+}
+
+#[test]
+fn bounds_typed_remaining_group_rejects_partial_chunk() {
+    let mut buf = MultiAccountBuffer::new(&[
+        MultiAccountEntry::account(0x01, 0),
+        MultiAccountEntry::account(0x02, 0),
+        MultiAccountEntry::account(0x03, 0),
+    ]);
+    let program_id = Address::new_from_array([0x55; 32]);
+    let remaining = RemainingAccounts::new_with_context(
+        buf.as_mut_ptr(),
+        buf.boundary(),
+        &[],
+        &program_id,
+        &[],
+    );
+
+    let err = match remaining.parse::<remaining_group_fixture::RemainingPair, 4>() {
+        Ok(_) => panic!("remaining groups must consume complete chunks"),
+        Err(err) => err,
+    };
+    assert_eq!(err, ProgramError::NotEnoughAccountKeys);
+}
+
+#[test]
 fn bounds_remaining_iterator_overflow_returns_error() {
     const LIMIT: usize = 64;
     let entries: Vec<_> = (0..=LIMIT)
@@ -1133,10 +1203,6 @@ fn bounds_program_id_read_from_end_of_slice() {
         unsafe { &*(ix_data.as_ptr().add(ix_data.len()) as *const [u8; 32]) };
     assert_eq!(program_id, &[0x42; 32]);
 }
-
-// ###########################################################################
-// SECTION 3: Uninitialized Memory (MaybeUninit patterns)
-// ###########################################################################
 
 #[test]
 fn uninit_cpi_account_count_sweep() {
@@ -1669,10 +1735,6 @@ fn uninit_sysvar_rent_2x_threshold() {
     assert_eq!(rent.minimum_balance_unchecked(data_len), expected);
 }
 
-// ###########################################################################
-// SECTION 4: Event serialization
-// ###########################################################################
-
 #[repr(C)]
 struct SmallEvent {
     disc: [u8; 4],
@@ -1816,10 +1878,6 @@ fn instruction_arg_round_trip_struct() {
     assert_eq!(<RoundTripArgs as InstructionArg>::from_zc(&zc), value);
     assert_eq!(align_of::<<RoundTripArgs as InstructionArg>::Zc>(), 1);
 }
-
-// ###########################################################################
-// SECTION 5: Account operations (assign, resize, close)
-// ###########################################################################
 
 #[test]
 fn ops_assign_changes_owner() {
@@ -2027,10 +2085,6 @@ fn ops_borrow_unchecked_mut_write_then_read_via_data_ptr() {
     let val = unsafe { *(view.data_ptr() as *const u64) };
     assert_eq!(val, 42);
 }
-
-// ###########################################################################
-// SECTION 6: Dynamic fields
-// ###########################################################################
 
 #[test]
 fn dynamic_size_sweep() {
@@ -2356,10 +2410,6 @@ fn dynamic_offset_cached_empty_fields() {
     assert_eq!(tags_slice.len(), 0);
 }
 
-// ###########################################################################
-// SECTION 7: Instruction data
-// ###########################################################################
-
 #[test]
 fn instruction_zc_cast_exact_length() {
     let name = b"solana";
@@ -2409,10 +2459,6 @@ fn instruction_vec_arg_from_raw_parts_exact_boundary() {
     assert_eq!(slice[9].get(), 9);
     assert_eq!(slice[0].get(), 0);
 }
-
-// ###########################################################################
-// SECTION 8: Tail fields
-// ###########################################################################
 
 #[test]
 fn tail_str_exact_boundary() {
@@ -2471,10 +2517,6 @@ fn tail_str_multibyte_utf8() {
     let s = unsafe { core::str::from_utf8_unchecked(&data[offset..offset + tail_len]) };
     assert_eq!(s, "caf\u{00e9}");
 }
-
-// ###########################################################################
-// SECTION 9: Adversarial inputs
-// ###########################################################################
 
 #[test]
 fn adversarial_all_zero_buffer() {
@@ -2745,9 +2787,6 @@ fn adversarial_dynamic_header_only_no_tail() {
     assert_eq!(slice.len(), 0);
 }
 
-// ###########################################################################
-// SECTION 10: CPI pointer aliasing
-//
 // These tests exercise the interaction between mutable data writes
 // (set_lamports / DerefMut via data_mut_ptr) and cpi_account_from_view(),
 // which extracts *const pointers and shared references from the same
@@ -2758,11 +2797,10 @@ fn adversarial_dynamic_header_only_no_tail() {
 // to the RuntimeAccount fields.
 //
 // If any of these are UB under Tree Borrows, Miri will report it.
-// ###########################################################################
 
 /// Write to account data via DerefMut (same path as set_inner's
 /// data_mut_ptr write), then construct a CpiCall from an aliased view.
-/// cpi_account_from_view extracts shared refs to the RuntimeAccount —
+/// cpi_account_from_view extracts shared refs to the RuntimeAccount;
 /// Miri checks that the prior mutable write didn't invalidate them.
 #[test]
 fn cpi_aliasing_deref_mut_then_cpi_call() {
@@ -2780,7 +2818,7 @@ fn cpi_aliasing_deref_mut_then_cpi_call() {
         zc.value = PodU64::from(123_456_789u64);
     }
 
-    // Construct CpiCall — internally calls cpi_account_from_view which
+    // Construct CpiCall; internally calls cpi_account_from_view which
     // creates &(*raw).lamports, &(*raw).address etc. from the same
     // RuntimeAccount we just wrote to.
     let program_id = Address::new_from_array([0u8; 32]);
@@ -2799,7 +2837,7 @@ fn cpi_aliasing_deref_mut_then_cpi_call() {
 
 /// Write lamports via set_lamports (raw *const -> *mut cast on
 /// RuntimeAccount), then construct CpiCall. cpi_account_from_view
-/// creates `&(*raw).lamports` — a shared ref to the same field
+/// creates `&(*raw).lamports`, a shared ref to the same field
 /// we just mutated through a const-to-mut cast.
 #[test]
 fn cpi_aliasing_set_lamports_then_cpi_call() {
@@ -2861,7 +2899,7 @@ fn cpi_aliasing_data_and_lamports_then_cpi_call() {
     assert_eq!(cpi_view.lamports(), 5_000_000);
 }
 
-/// Interleaved: write → CpiCall → write → CpiCall for N cycles.
+/// Interleaved write and CpiCall construction for several cycles.
 /// Each cycle creates new shared refs via cpi_account_from_view after
 /// a mutable write, stressing Tree Borrows tag tracking.
 #[test]
@@ -2900,7 +2938,7 @@ fn cpi_aliasing_interleaved_write_cpi_cycles() {
 
 /// Two separate AccountView instances to the same RuntimeAccount:
 /// write via one, construct CpiCall via the other.
-/// This is the most aggressive aliasing variant — completely separate
+/// This is the most aggressive aliasing variant: completely separate
 /// view objects sharing the same underlying raw pointer.
 #[test]
 fn cpi_aliasing_two_views_write_one_cpi_other() {
@@ -2991,7 +3029,7 @@ fn cpi_aliasing_zero_data_len() {
 }
 
 /// Sweep all flag combinations with data write + CPI aliasing.
-/// cpi_account_from_view reads flags as a u32 from the header —
+/// cpi_account_from_view reads flags as a u32 from the header;
 /// ensure this unaligned read doesn't conflict with prior writes.
 #[test]
 fn cpi_aliasing_flag_sweep() {

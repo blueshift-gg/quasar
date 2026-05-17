@@ -4,7 +4,7 @@
 //! `sol_create_program_address` / `sol_try_find_program_address`, reducing
 //! per-attempt cost from ~1,500 CU to ~544 CU.
 //!
-//! On SBF, `&[u8]` has layout `(*const u8, u64)` — identical to `sol_sha256`'s
+//! On SBF, `&[u8]` has layout `(*const u8, u64)`, identical to `sol_sha256`'s
 //! `SolBytes`. The slice-of-slices cast exploits this to pass seed arrays
 //! directly to the syscall without intermediate copies.
 
@@ -26,7 +26,7 @@ const MAX_PDA_SLICES: usize = 19;
 /// The seeds slice must already include the bump byte.
 ///
 /// Kani proof: `verify_program_address_indices_within_bounds`.
-// NOTE: Uses `#[inline]` rather than `#[inline(always)]` deliberately —
+// Uses `#[inline]` rather than `#[inline(always)]` deliberately:
 // these functions are large enough that forced inlining at every callsite
 // risks .so bloat. Benchmark `#[inline(always)]` if CU regression appears.
 #[inline]
@@ -134,11 +134,11 @@ pub fn based_try_find_program_address(
             sptr.add(n + 2).write(PDA_MARKER.as_slice());
         }
 
-        // The bump slot points into bump_arr — only the byte changes per iteration.
+        // The bump slot points into bump_arr; only the byte changes per iteration.
         let mut bump_arr = [u8::MAX];
         let bump_ptr = bump_arr.as_mut_ptr();
         // SAFETY: `sptr.add(n)` is within bounds. The `&[u8]` slice stored
-        // here points to `bump_arr` but is NEVER read through Rust code —
+        // here points to `bump_arr` but is never read through Rust code;
         // it is only consumed by `sol_sha256` as a raw `(*const u8, u64)`
         // pair (SolBytes). The subsequent mutation of `bump_arr` via
         // `bump_ptr.write()` is invisible to any Rust reference. This relies
@@ -306,16 +306,16 @@ pub fn verify_canonical_program_address(
 /// # When to use
 ///
 /// Use this instead of [`based_try_find_program_address`] whenever the
-/// expected PDA address is already known — which is always the case during
+/// expected PDA address is already known, which is always the case during
 /// account parsing (the account is passed in the transaction).
 ///
 /// # Correctness
 ///
-/// If `sha256(seeds ‖ bump ‖ program_id ‖ "ProgramDerivedAddress")` equals
+/// If `sha256(seeds || bump || program_id || "ProgramDerivedAddress")` equals
 /// `expected`, and `expected` is the address of an account in the current
 /// transaction, then it must be a valid off-curve PDA: the Solana runtime
 /// rejects on-curve addresses during account creation. Therefore
-/// `hash == expected` ⟹ off-curve ⟹ valid PDA.
+/// `hash == expected` implies off-curve and therefore a valid PDA.
 ///
 /// **Init caveat**: during `#[account(init)]`, the account does not yet
 /// exist on-chain. Correctness relies on defense-in-depth: the subsequent
@@ -323,11 +323,11 @@ pub fn verify_canonical_program_address(
 ///
 /// # Caller contract
 ///
-/// Callers MUST guarantee that `expected` is the address of an account
+/// Callers must guarantee that `expected` is the address of an account
 /// that exists in the current transaction. Passing a fabricated address
 /// that lies on the ed25519 curve would produce a bump value for an
 /// invalid PDA. The framework's codegen never calls this function in
-/// `#[account(init)]` contexts — init paths use
+/// `#[account(init)]` contexts; init paths use
 /// [`based_try_find_program_address`] which includes the on-curve check.
 #[inline]
 pub fn find_bump_for_address(
@@ -362,11 +362,11 @@ pub fn find_bump_for_address(
             sptr.add(n + 2).write(PDA_MARKER.as_slice());
         }
 
-        // The bump slot points into bump_arr — only the byte changes per iteration.
+        // The bump slot points into bump_arr; only the byte changes per iteration.
         let mut bump_arr = [u8::MAX];
         let bump_ptr = bump_arr.as_mut_ptr();
         // SAFETY: `sptr.add(n)` is within bounds. The `&[u8]` slice stored
-        // here points to `bump_arr` but is NEVER read through Rust code —
+        // here points to `bump_arr` but is never read through Rust code;
         // it is only consumed by `sol_sha256` as a raw `(*const u8, u64)`
         // pair (SolBytes). The subsequent mutation of `bump_arr` via
         // `bump_ptr.write()` is invisible to any Rust reference. This relies
@@ -396,7 +396,7 @@ pub fn find_bump_for_address(
 
             // Compare the hash against the expected address (~10 CU) instead
             // of calling `sol_curve_validate_point` (~100 CU). A match proves
-            // this is the correct bump — see the correctness argument above.
+            // this is the correct bump; see the correctness argument above.
             //
             // SAFETY: `hash` fully initialized by `sol_sha256`. The cast to
             // `*const Address` is valid because `Address` is `[u8; 32]`.
@@ -489,6 +489,8 @@ macro_rules! impl_scalar_seed_bytes {
             impl SeedBytes for $ty {
                 #[inline(always)]
                 fn as_seed_bytes(&self) -> &[u8] {
+                    // SAFETY: `self` is a valid scalar value and is borrowed
+                    // for the returned slice's lifetime.
                     unsafe {
                         core::slice::from_raw_parts(
                             self as *const _ as *const u8,
@@ -504,117 +506,5 @@ macro_rules! impl_scalar_seed_bytes {
 impl_scalar_seed_bytes!(u8, i8, u16, i16, u32, i32, u64, i64, u128, i128, bool);
 
 #[cfg(kani)]
-mod kani_proofs {
-    /// `MAX_PDA_SLICES` from the parent module (cfg'd to Solana, so we
-    /// redefine it here for verification).
-    const MAX_PDA_SLICES: usize = 19;
-
-    /// Prove `verify_program_address` index arithmetic is safe.
-    ///
-    /// Mirrors `verify_program_address()` slice-building loop:
-    ///   `while i < n { sptr.add(i).write(seeds[i]); ... }`
-    ///   `sptr.add(n).write(program_id...);`
-    ///   `sptr.add(n + 1).write(PDA_MARKER...);`
-    ///
-    /// seeds.len() is checked `<= 17`. All indices must be `< 19`.
-    #[kani::proof]
-    fn verify_program_address_indices_within_bounds() {
-        let n: usize = kani::any();
-        kani::assume(n <= 17);
-
-        // Loop indices: 0..n
-        let mut i: usize = 0;
-        while i < n {
-            assert!(i < MAX_PDA_SLICES, "loop index out of bounds");
-            i += 1;
-        }
-        // Post-loop: slots n (program_id) and n+1 (PDA_MARKER)
-        assert!(n < MAX_PDA_SLICES, "program_id slot out of bounds");
-        assert!(n + 1 < MAX_PDA_SLICES, "PDA_MARKER slot out of bounds");
-
-        // Total initialized elements passed to from_raw_parts
-        assert!(n + 2 <= MAX_PDA_SLICES, "slice length exceeds array");
-    }
-
-    /// Prove `based_try_find_program_address` and `find_bump_for_address`
-    /// index arithmetic is safe.
-    ///
-    /// Mirrors `based_try_find_program_address()` / `find_bump_for_address()`
-    /// slice-building loop:
-    ///   `while i < n { sptr.add(i).write(seeds[i]); ... }`
-    ///   `sptr.add(n).write(...bump...);`
-    ///   `sptr.add(n + 1).write(program_id...);`
-    ///   `sptr.add(n + 2).write(PDA_MARKER...);`
-    ///
-    /// seeds.len() is checked `<= 16`. All indices must be `< 19`.
-    #[kani::proof]
-    fn find_program_address_indices_within_bounds() {
-        let n: usize = kani::any();
-        kani::assume(n <= 16);
-
-        // Loop indices: 0..n
-        let mut i: usize = 0;
-        while i < n {
-            assert!(i < MAX_PDA_SLICES, "loop index out of bounds");
-            i += 1;
-        }
-        // Post-loop: slots n (bump), n+1 (program_id), n+2 (PDA_MARKER)
-        assert!(n < MAX_PDA_SLICES, "bump slot out of bounds");
-        assert!(n + 1 < MAX_PDA_SLICES, "program_id slot out of bounds");
-        assert!(n + 2 < MAX_PDA_SLICES, "PDA_MARKER slot out of bounds");
-
-        // Total initialized elements passed to from_raw_parts
-        assert!(n + 3 <= MAX_PDA_SLICES, "slice length exceeds array");
-    }
-
-    /// Prove that `read_bump_from_account` offset check prevents
-    /// out-of-bounds access by calling the real function with symbolic offset.
-    ///
-    /// Constructs a real AccountView with known data_len = 8, then calls
-    /// `read_bump_from_account` with a symbolic offset. Kani verifies:
-    /// - No UB in the pointer arithmetic when offset < data_len
-    /// - Ok is returned when offset < data_len
-    /// - Err is returned when offset >= data_len
-    #[kani::proof]
-    fn read_bump_offset_within_bounds() {
-        use crate::cpi::{AccountBuffer, MIN_ACCOUNT_BUF};
-
-        const DATA_LEN: usize = 8;
-        const BUF_SIZE: usize = MIN_ACCOUNT_BUF + DATA_LEN;
-
-        let mut buf = AccountBuffer::<BUF_SIZE>::new();
-        buf.init([1; 32], [0xAA; 32], DATA_LEN, false, true, false);
-        let view = unsafe { buf.view() };
-
-        let offset: usize = kani::any();
-        // Keep solver tractable — offsets beyond a small range are equivalent.
-        kani::assume(offset <= DATA_LEN + 1);
-
-        let result = super::read_bump_from_account(&view, offset);
-
-        if offset < DATA_LEN {
-            assert!(result.is_ok());
-        } else {
-            assert!(result.is_err());
-        }
-    }
-
-    /// Prove the gap between max seeds and MAX_PDA_SLICES is exactly right.
-    ///
-    /// `verify_program_address`: 17 seeds + program_id + marker = 19 =
-    /// MAX_PDA_SLICES. `based_try_find_program_address` /
-    /// `find_bump_for_address`:   16 seeds + bump + program_id + marker =
-    /// 19 = MAX_PDA_SLICES.
-    ///
-    /// This ensures the constants are consistent -- changing one without
-    /// the other would break the proofs above.
-    #[kani::proof]
-    fn pda_slice_capacity_is_exact() {
-        // verify_program_address: seeds(max 17) + program_id + PDA_MARKER
-        assert!(17 + 1 + 1 == MAX_PDA_SLICES);
-
-        // based_try_find_program_address / find_bump_for_address:
-        // seeds(max 16) + bump + program_id + PDA_MARKER
-        assert!(16 + 1 + 1 + 1 == MAX_PDA_SLICES);
-    }
-}
+#[path = "../kani/pda.rs"]
+mod kani_proofs;

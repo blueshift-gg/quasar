@@ -1,7 +1,6 @@
 use {quasar_derive::Accounts, quasar_lang::prelude::*, quasar_spl::prelude::*};
 
-/// Tests sweep without close -- transfers all remaining tokens at end of
-/// instruction.
+/// Transfers all remaining tokens at the end of instruction processing.
 #[derive(Accounts)]
 pub struct SweepToken {
     pub authority: Signer,

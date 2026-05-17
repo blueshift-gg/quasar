@@ -10,7 +10,6 @@ pub struct MyState {
     pub owner: Address,
 }
 
-// --- Custom behavior that sets init params ---
 mod my_state_init {
     use quasar_lang::prelude::*;
 

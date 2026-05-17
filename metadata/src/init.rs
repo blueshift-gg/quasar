@@ -1,10 +1,14 @@
-use {super::instructions::MetadataCpi, crate::codec::BorshCpiEncode, quasar_lang::prelude::*};
+use {
+    super::instructions::MetadataCpi,
+    crate::codec::BorshCpiEncode,
+    quasar_lang::{cpi::Seed, prelude::*},
+};
 
 /// Extension trait for metadata account initialization.
 ///
 /// Invokes `create_metadata_accounts_v3` via CPI. The Metaplex program
-/// derives and allocates the metadata PDA internally — no
-/// `SystemProgram::create_account` needed from the caller.
+/// derives and allocates the metadata PDA internally; callers do not need a
+/// separate `SystemProgram::create_account`.
 ///
 /// ```ignore
 /// self.metadata.init(
@@ -92,7 +96,7 @@ pub trait InitMetadata: AsAccountView + Sized {
                 is_mutable,
                 true,
             )?
-            .invoke_signed(seeds)
+            .invoke_with_signers(&[quasar_lang::cpi::Signer::from(seeds)])
     }
 }
 
@@ -175,6 +179,6 @@ pub trait InitMasterEdition: AsAccountView + Sized {
                 rent,
                 max_supply,
             )
-            .invoke_signed(seeds)
+            .invoke_with_signers(&[quasar_lang::cpi::Signer::from(seeds)])
     }
 }

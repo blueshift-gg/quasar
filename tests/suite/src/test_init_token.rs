@@ -4,9 +4,7 @@ use {
     quasar_test_token_init::cpi::*,
 };
 
-// ===========================================================================
-// init — SPL Token
-// ===========================================================================
+// init with SPL Token.
 
 #[test]
 fn init_token_spl_happy() {
@@ -75,9 +73,7 @@ fn init_token_spl_already_initialized() {
     );
 }
 
-// ===========================================================================
-// init — Token-2022
-// ===========================================================================
+// init with Token-2022.
 
 #[test]
 fn init_token_t22_happy() {
@@ -146,9 +142,7 @@ fn init_token_t22_already_initialized() {
     );
 }
 
-// ===========================================================================
-// init_if_needed new — SPL Token
-// ===========================================================================
+// init_if_needed new account with SPL Token.
 
 #[test]
 fn init_if_needed_token_spl_happy_new() {
@@ -187,9 +181,7 @@ fn init_if_needed_token_spl_happy_new() {
     );
 }
 
-// ===========================================================================
-// init_if_needed existing valid — SPL Token
-// ===========================================================================
+// init_if_needed existing valid account with SPL Token.
 
 #[test]
 fn init_if_needed_token_spl_existing_valid() {
@@ -225,9 +217,7 @@ fn init_if_needed_token_spl_existing_valid() {
     );
 }
 
-// ===========================================================================
-// init_if_needed existing bad — SPL Token
-// ===========================================================================
+// init_if_needed existing invalid account with SPL Token.
 
 #[test]
 fn init_if_needed_token_spl_existing_wrong_mint() {
@@ -335,9 +325,7 @@ fn init_if_needed_token_spl_existing_wrong_owner() {
     );
 }
 
-// ===========================================================================
-// init_if_needed new — Token-2022
-// ===========================================================================
+// init_if_needed new account with Token-2022.
 
 #[test]
 fn init_if_needed_token_t22_happy_new() {
@@ -376,9 +364,7 @@ fn init_if_needed_token_t22_happy_new() {
     );
 }
 
-// ===========================================================================
-// init_if_needed existing valid — Token-2022
-// ===========================================================================
+// init_if_needed existing valid account with Token-2022.
 
 #[test]
 fn init_if_needed_token_t22_existing_valid() {
@@ -414,9 +400,7 @@ fn init_if_needed_token_t22_existing_valid() {
     );
 }
 
-// ===========================================================================
-// init_if_needed existing bad — Token-2022
-// ===========================================================================
+// init_if_needed existing invalid account with Token-2022.
 
 #[test]
 fn init_if_needed_token_t22_existing_wrong_mint() {

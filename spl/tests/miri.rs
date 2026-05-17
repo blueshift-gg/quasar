@@ -1,6 +1,6 @@
 //! Miri UB tests for quasar-spl unsafe code paths.
 //!
-//! These tests are designed to FIND undefined behavior, not confirm correct
+//! These tests are designed to find undefined behavior, not confirm correct
 //! output. Each test exercises a specific unsafe pattern under conditions
 //! that would trigger Miri if the pattern is unsound.
 #![allow(
@@ -20,10 +20,10 @@
 //!
 //! ## Flags
 //!
-//! - `-Zmiri-tree-borrows`: Tree Borrows model. The `& -> &mut` cast in
+//! - `-Zmiri-tree-borrows`: Tree Borrows model. The shared-to-mutable cast in
 //!   `from_account_view_mut` is instant UB under Stacked Borrows. Under Tree
 //!   Borrows it is sound because the `&mut` never writes to the AccountView
-//!   memory itself — writes go through the raw pointer to a separate
+//!   memory itself; writes go through the raw pointer to a separate
 //!   RuntimeAccount allocation.
 //! - `-Zmiri-symbolic-alignment-check`: Catch alignment issues that depend on
 //!   allocation placement rather than happenstance.
@@ -42,7 +42,7 @@
 //! | ZeroCopyDeref `deref_from` / `deref_from_mut` | Sound under Tree Borrows |
 //! | Interleaved shared/mutable access via InterfaceAccount | Sound under Tree Borrows |
 //!
-//! ## What Miri CANNOT test
+//! ## What Miri cannot test
 //!
 //! | Pattern | Why |
 //! |---------|-----|
@@ -65,10 +65,6 @@ use {
     solana_program_error::ProgramError,
     std::mem::{size_of, MaybeUninit},
 };
-
-// ---------------------------------------------------------------------------
-// Test helpers
-// ---------------------------------------------------------------------------
 
 const SPL_TOKEN_BYTES: [u8; 32] = [
     6, 221, 246, 225, 215, 101, 161, 147, 217, 203, 225, 70, 206, 235, 121, 172, 28, 180, 133, 237,
@@ -404,16 +400,12 @@ fn mint_behavior_validation_rejects_invalid_initialized_flag_after_fast_load() {
     );
 }
 
-// ===========================================================================
-// Section 1: TokenDataZc Deref
-// ===========================================================================
-
 #[test]
 fn token_deref_reads_all_fields() {
     let (mut buf, _data) = token_account_buffer(1_000_000);
     let view = unsafe { buf.view() };
 
-    // Use Account<Token> to exercise Deref → TokenDataZc
+    // Use Account<Token> to exercise Deref into TokenDataZc.
     <Token as CheckOwner>::check_owner(&view).unwrap();
     <Token as quasar_lang::account_load::AccountLoad>::check(&view).unwrap();
     let account = unsafe { Account::<Token>::from_account_view_unchecked(&view) };
@@ -422,20 +414,18 @@ fn token_deref_reads_all_fields() {
     assert_eq!(state.mint(), &Address::new_from_array([0xAA; 32]));
     assert_eq!(state.owner(), &Address::new_from_array([0xBB; 32]));
     assert_eq!(state.amount(), 1_000_000);
-    assert!(!state.has_delegate());
     assert!(state.delegate().is_none());
     assert!(state.is_initialized());
     assert!(!state.is_frozen());
-    assert!(!state.is_native());
+    assert!(state.native().is_none());
     assert!(state.native_amount().is_none());
     assert_eq!(state.delegated_amount(), 0);
-    assert!(!state.has_close_authority());
     assert!(state.close_authority().is_none());
 }
 
 #[test]
 fn token_deref_exact_size_buffer() {
-    // Allocate exactly 165 bytes of data — no slack.
+    // Allocate exactly 165 bytes of data, with no slack.
     let data = build_simple_token_data(42);
     let mut buf = AccountBuffer::new(165);
     buf.init([1u8; 32], SPL_TOKEN_OWNER, 500_000, 165, false, true);
@@ -527,27 +517,19 @@ fn token_deref_various_flag_patterns() {
     let account = unsafe { Account::<Token>::from_account_view_unchecked(&view) };
     let state: &TokenDataZc = &*account;
 
-    assert!(state.has_delegate());
+    assert!(state.delegate().is_some());
     assert_eq!(
         state.delegate().unwrap(),
         &Address::new_from_array([0x33; 32])
     );
-    assert_eq!(
-        state.delegate_unchecked(),
-        &Address::new_from_array([0x33; 32])
-    );
     assert!(state.is_frozen());
     assert!(state.is_initialized());
-    assert!(state.is_native());
+    assert!(state.native().is_some());
     assert_eq!(state.native_amount().unwrap(), 100_000);
     assert_eq!(state.delegated_amount(), 3_000_000);
-    assert!(state.has_close_authority());
+    assert!(state.close_authority().is_some());
     assert_eq!(
         state.close_authority().unwrap(),
-        &Address::new_from_array([0x44; 32])
-    );
-    assert_eq!(
-        state.close_authority_unchecked(),
         &Address::new_from_array([0x44; 32])
     );
 }
@@ -571,19 +553,13 @@ fn token_deref_no_flags_set() {
     let account = unsafe { Account::<Token>::from_account_view_unchecked(&view) };
     let state: &TokenDataZc = &*account;
 
-    assert!(!state.has_delegate());
     assert!(state.delegate().is_none());
-    assert!(!state.is_native());
+    assert!(state.native().is_none());
     assert!(state.native_amount().is_none());
-    assert!(!state.has_close_authority());
     assert!(state.close_authority().is_none());
     assert!(!state.is_initialized());
     assert!(!state.is_frozen());
 }
-
-// ===========================================================================
-// Section 2: MintDataZc Deref
-// ===========================================================================
 
 #[test]
 fn mint_deref_reads_all_fields() {
@@ -595,19 +571,14 @@ fn mint_deref_reads_all_fields() {
     let account = unsafe { Account::<Mint>::from_account_view_unchecked(&view) };
     let state: &MintDataZc = &*account;
 
-    assert!(state.has_mint_authority());
+    assert!(state.mint_authority().is_some());
     assert_eq!(
         state.mint_authority().unwrap(),
-        &Address::new_from_array([0xCC; 32])
-    );
-    assert_eq!(
-        state.mint_authority_unchecked(),
         &Address::new_from_array([0xCC; 32])
     );
     assert_eq!(state.supply(), 1_000_000_000);
     assert_eq!(state.decimals(), 9);
     assert!(state.is_initialized());
-    assert!(!state.has_freeze_authority());
     assert!(state.freeze_authority().is_none());
 }
 
@@ -654,17 +625,13 @@ fn mint_all_flags_set() {
     let account = unsafe { Account::<Mint>::from_account_view_unchecked(&view) };
     let state: &MintDataZc = &*account;
 
-    assert!(state.has_mint_authority());
+    assert!(state.mint_authority().is_some());
     assert_eq!(state.supply(), u64::MAX);
     assert_eq!(state.decimals(), 18);
     assert!(state.is_initialized());
-    assert!(state.has_freeze_authority());
+    assert!(state.freeze_authority().is_some());
     assert_eq!(
         state.freeze_authority().unwrap(),
-        &Address::new_from_array([0xBB; 32])
-    );
-    assert_eq!(
-        state.freeze_authority_unchecked(),
         &Address::new_from_array([0xBB; 32])
     );
 }
@@ -680,16 +647,10 @@ fn mint_no_authorities() {
     let account = unsafe { Account::<Mint>::from_account_view_unchecked(&view) };
     let state: &MintDataZc = &*account;
 
-    assert!(!state.has_mint_authority());
     assert!(state.mint_authority().is_none());
-    assert!(!state.has_freeze_authority());
     assert!(state.freeze_authority().is_none());
     assert!(!state.is_initialized());
 }
-
-// ===========================================================================
-// Section 3: InterfaceAccount Casts
-// ===========================================================================
 
 #[test]
 fn interface_account_cast_spl_token_owner() {
@@ -754,7 +715,7 @@ fn interface_account_aliasing() {
     let mut view = unsafe { buf.view() };
     let iface = InterfaceAccount::<Token>::from_account_view_mut(&mut view).unwrap();
 
-    // Interleaved access — go through iface.to_account_view() to avoid
+    // Interleaved access uses iface.to_account_view() to avoid
     // reborrowing `view` while `iface` holds a mutable borrow.
     assert_eq!(iface.amount(), 50);
     assert_eq!(iface.to_account_view().lamports(), 1_000_000);
@@ -866,10 +827,6 @@ fn interface_account_unchecked_mut_cast() {
     assert_eq!(iface.amount(), 88);
 }
 
-// ===========================================================================
-// Section 4: ZeroCopyDeref
-// ===========================================================================
-
 #[test]
 fn zero_copy_deref_from_token() {
     let (mut buf, _data) = token_account_buffer(12345);
@@ -929,7 +886,7 @@ fn zero_copy_deref_from_mut_mint() {
 
 #[test]
 fn zero_copy_deref_from_exact_boundary() {
-    // Exactly 165 bytes — tests boundary alignment of the cast
+    // Exactly 165 bytes tests boundary alignment of the cast.
     let data = build_simple_token_data(u64::MAX);
     let mut buf = AccountBuffer::new(165);
     buf.init([1u8; 32], SPL_TOKEN_OWNER, 1_000_000, 165, false, true);
@@ -958,14 +915,10 @@ fn zero_copy_deref_aliased_read_after_mut() {
         }
     }
 
-    // Read through a fresh deref_from — tests that the write is visible
+    // Read through a fresh deref_from to check that the write is visible.
     let state_shared = unsafe { <Token as ZeroCopyDeref>::deref_from(&view) };
     assert_eq!(state_shared.amount(), 600);
 }
-
-// ===========================================================================
-// Section 5: CPI Instruction Data (MaybeUninit patterns)
-// ===========================================================================
 
 #[test]
 fn transfer_data_all_bytes_initialized() {
@@ -1043,7 +996,7 @@ fn burn_data_initialized() {
 
 #[test]
 fn revoke_data_initialized() {
-    // Revoke is a single byte — no MaybeUninit needed
+    // Revoke is a single byte, so no MaybeUninit is needed.
     let data: [u8; 1] = [5u8]; // REVOKE opcode
     assert_eq!(data[0], 5);
 }
@@ -1104,7 +1057,7 @@ fn initialize_mint_data_without_freeze_authority() {
         core::ptr::write(ptr, 20u8);
         core::ptr::write(ptr.add(1), decimals);
         core::ptr::copy_nonoverlapping(mint_authority.as_ref().as_ptr(), ptr.add(2), 32);
-        // Without freeze authority — zero the remaining 33 bytes
+        // Without freeze authority, zero the remaining 33 bytes.
         core::ptr::write_bytes(ptr.add(34), 0, 33);
         buf.assume_init()
     };
@@ -1123,7 +1076,7 @@ fn transfer_checked_data_initialized() {
     let data = unsafe {
         let mut buf = MaybeUninit::<[u8; 10]>::uninit();
         let ptr = buf.as_mut_ptr() as *mut u8;
-        core::ptr::write(ptr, 12u8); // TRANSFER_CHECKED opcode
+        core::ptr::write(ptr, 12u8); // transfer-checked opcode
         core::ptr::copy_nonoverlapping(amount.to_le_bytes().as_ptr(), ptr.add(1), 8);
         core::ptr::write(ptr.add(9), decimals);
         buf.assume_init()
@@ -1155,10 +1108,6 @@ fn sync_native_data_initialized() {
     let data: [u8; 1] = [17u8]; // SYNC_NATIVE opcode
     assert_eq!(data[0], 17);
 }
-
-// ===========================================================================
-// Section 6: CheckOwner tests
-// ===========================================================================
 
 #[test]
 fn check_owner_spl_token_passes() {
@@ -1212,13 +1161,9 @@ fn mint_account_check_data_too_small() {
     );
 }
 
-// ===========================================================================
-// Section 7: Adversarial Tests
-// ===========================================================================
-
 #[test]
 fn all_zero_token_data() {
-    // 165 bytes of all zeros — state=0 means uninitialized
+    // 165 bytes of all zeros; state=0 means uninitialized.
     let data = [0u8; 165];
     let mut buf = AccountBuffer::new(165);
     buf.init([1u8; 32], SPL_TOKEN_OWNER, 1_000_000, 165, false, true);
@@ -1232,9 +1177,9 @@ fn all_zero_token_data() {
     assert_eq!(state.amount(), 0);
     assert!(!state.is_initialized());
     assert!(!state.is_frozen());
-    assert!(!state.has_delegate());
-    assert!(!state.is_native());
-    assert!(!state.has_close_authority());
+    assert!(state.delegate().is_none());
+    assert!(state.native().is_none());
+    assert!(state.close_authority().is_none());
     assert_eq!(state.delegated_amount(), 0);
 }
 
@@ -1252,13 +1197,13 @@ fn all_zero_mint_data() {
     assert_eq!(state.supply(), 0);
     assert_eq!(state.decimals(), 0);
     assert!(!state.is_initialized());
-    assert!(!state.has_mint_authority());
-    assert!(!state.has_freeze_authority());
+    assert!(state.mint_authority().is_none());
+    assert!(state.freeze_authority().is_none());
 }
 
 #[test]
 fn all_ff_token_data() {
-    // All 0xFF bytes — tests maximum field values.
+    // All 0xFF bytes test maximum field values.
     // Note: flag fields check byte[0] == 1 (not != 0), so 0xFF flags are "false".
     let data = [0xFF; 165];
     let mut buf = AccountBuffer::new(165);
@@ -1271,17 +1216,17 @@ fn all_ff_token_data() {
 
     assert_eq!(state.amount(), u64::MAX);
     // 0xFF != 1, so flags are NOT set despite all bytes being 0xFF
-    assert!(!state.has_delegate());
-    assert!(!state.is_native());
+    assert!(state.delegate().is_none());
+    assert!(state.native().is_none());
     assert_eq!(state.delegated_amount(), u64::MAX);
-    assert!(!state.has_close_authority());
-    // delegate_unchecked / close_authority_unchecked still return addresses
+    assert!(state.close_authority().is_none());
+    // The option is semantically None, but the payload bytes are still present.
     assert_eq!(
-        state.delegate_unchecked(),
+        state.delegate.value_unchecked(),
         &Address::new_from_array([0xFF; 32])
     );
     assert_eq!(
-        state.close_authority_unchecked(),
+        state.close_authority.value_unchecked(),
         &Address::new_from_array([0xFF; 32])
     );
 }
@@ -1321,7 +1266,7 @@ fn rapid_deref_mut_cycling() {
     let mut view = unsafe { buf.view() };
 
     for i in 0u64..50 {
-        // Mutable deref — scoped so borrow is released before shared deref
+        // Mutable deref scoped so the borrow is released before shared deref.
         {
             let state_mut = unsafe { <Token as ZeroCopyDeref>::deref_from_mut(&mut view) };
             unsafe {
@@ -1382,7 +1327,7 @@ fn token_deref_then_lamport_write_then_reread() {
     // Modify lamports (different region of RuntimeAccount)
     set_lamports(account.to_account_view(), 0);
 
-    // Re-read token state — should be unaffected
+    // Re-read token state; it should be unaffected.
     assert_eq!(account.amount(), 42);
     assert_eq!(account.to_account_view().lamports(), 0);
 }
@@ -1426,7 +1371,7 @@ fn maybeunit_init_then_read_every_byte_initialize_mint() {
         core::ptr::copy_nonoverlapping(freeze_auth.as_ptr(), ptr.add(35), 32);
         buf.assume_init()
     };
-    // Read every byte — Miri will flag if any is uninitialized
+    // Read every byte; Miri will flag any uninitialized byte.
     for i in 0..67 {
         let _ = data[i];
     }

@@ -20,19 +20,16 @@ pub fn run(
     let config = QuasarConfig::load()?;
     let name = &config.project.name;
 
-    // Build unless skipped
     if !skip_build {
-        crate::build::run(false, false, false, None, false)?;
+        crate::build::run(false, false, false, None)?;
     }
 
-    // Find the .so binary
     let Some(so_path) = utils::find_so(&config, false) else {
         return Err(CliError::message(format!(
             "no compiled binary found for \"{name}\"\n\n  Run quasar build first."
         )));
     };
 
-    // Find the program keypair (check local and workspace target dirs)
     let keypair_path = program_keypair.unwrap_or_else(|| {
         let module = config.module_name();
         utils::find_in_deploy(&format!("{name}-keypair.json"))
@@ -86,7 +83,6 @@ pub fn run(
         Ok(o) if o.status.success() => {
             let stdout = String::from_utf8_lossy(&o.stdout);
 
-            // Extract program ID from solana CLI output
             let program_id = stdout
                 .lines()
                 .find(|l| l.contains("Program Id:"))

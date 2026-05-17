@@ -4,13 +4,13 @@ use {
     object::{Object, ObjectSection},
 };
 
-pub enum Resolver<'a> {
+pub(crate) enum Resolver<'a> {
     Dwarf(DwarfResolver<'a>, SymbolResolver),
     Symbol(SymbolResolver),
 }
 
 impl Resolver<'_> {
-    pub fn resolve(&self, addr: u64) -> Vec<String> {
+    pub(crate) fn resolve(&self, addr: u64) -> Vec<String> {
         match self {
             Resolver::Dwarf(dwarf, sym_fallback) => {
                 let stack = dwarf.resolve(addr);
@@ -25,15 +25,13 @@ impl Resolver<'_> {
     }
 }
 
-// --- DWARF resolver (full inline frame support) ---
-
-pub struct DwarfResolver<'a> {
+pub(crate) struct DwarfResolver<'a> {
     ctx: addr2line::Context<gimli::EndianSlice<'a, gimli::RunTimeEndian>>,
 }
 
 impl<'a> DwarfResolver<'a> {
-    pub fn new(data: &'a [u8]) -> Self {
-        let obj = object::File::parse(data).expect("failed to parse object file for DWARF");
+    pub(crate) fn try_new(data: &'a [u8]) -> Option<Self> {
+        let obj = object::File::parse(data).ok()?;
 
         let endian = if obj.is_little_endian() {
             gimli::RunTimeEndian::Little
@@ -50,15 +48,14 @@ impl<'a> DwarfResolver<'a> {
                 None => gimli::EndianSlice::new(&[], endian),
             })
         })
-        .expect("failed to load DWARF sections");
+        .ok()?;
 
-        let ctx =
-            addr2line::Context::from_dwarf(dwarf).expect("failed to create addr2line context");
+        let ctx = addr2line::Context::from_dwarf(dwarf).ok()?;
 
-        Self { ctx }
+        Some(Self { ctx })
     }
 
-    pub fn resolve(&self, addr: u64) -> Vec<String> {
+    pub(crate) fn resolve(&self, addr: u64) -> Vec<String> {
         let frames_result = match self.ctx.find_frames(addr) {
             LookupResult::Output(result) => result,
             LookupResult::Load { .. } => return vec!["[unknown]".into()],
@@ -98,15 +95,13 @@ impl<'a> DwarfResolver<'a> {
     }
 }
 
-// --- Symbol-only resolver (fallback, no inline info) ---
-
-pub struct SymbolResolver {
+pub(crate) struct SymbolResolver {
     /// Sorted by address
     symbols: Vec<(u64, u64, String)>,
 }
 
 impl SymbolResolver {
-    pub fn new(symbols: &[Symbol]) -> Self {
+    pub(crate) fn new(symbols: &[Symbol]) -> Self {
         let entries = symbols
             .iter()
             .map(|s| (s.addr, s.size, s.name.clone()))
@@ -114,7 +109,7 @@ impl SymbolResolver {
         Self { symbols: entries }
     }
 
-    pub fn resolve(&self, addr: u64) -> Vec<String> {
+    pub(crate) fn resolve(&self, addr: u64) -> Vec<String> {
         let idx = self.symbols.partition_point(|&(start, _, _)| start <= addr);
 
         if idx > 0 {
@@ -125,5 +120,15 @@ impl SymbolResolver {
         }
 
         vec!["[unknown]".into()]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DwarfResolver;
+
+    #[test]
+    fn malformed_dwarf_input_returns_none() {
+        assert!(DwarfResolver::try_new(b"not an elf").is_none());
     }
 }

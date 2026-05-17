@@ -4,9 +4,7 @@ use {
     quasar_test_token_validate::cpi::*,
 };
 
-// ===========================================================================
-// Account<Mint> (SPL Token) — ValidateMintCheck
-// ===========================================================================
+// Account<Mint> with SPL Token, ValidateMintCheck.
 
 #[test]
 fn mint_spl_happy() {
@@ -161,9 +159,7 @@ fn mint_spl_data_too_small() {
     assert!(result.is_err(), "should fail: data too small");
 }
 
-// ===========================================================================
-// Account<Mint2022> (Token-2022) — ValidateMint2022Check
-// ===========================================================================
+// Account<Mint2022> with Token-2022, ValidateMint2022Check.
 
 #[test]
 fn mint_t22_happy() {
@@ -318,9 +314,7 @@ fn mint_t22_data_too_small() {
     assert!(result.is_err(), "should fail: data too small");
 }
 
-// ===========================================================================
-// InterfaceAccount<Mint> with SPL Token — ValidateMintInterfaceCheck
-// ===========================================================================
+// InterfaceAccount<Mint> with SPL Token, ValidateMintInterfaceCheck.
 
 #[test]
 fn mint_interface_spl_happy() {
@@ -475,9 +469,7 @@ fn mint_interface_spl_data_too_small() {
     assert!(result.is_err(), "should fail: data too small");
 }
 
-// ===========================================================================
-// InterfaceAccount<Mint> with Token-2022 — ValidateMintInterfaceCheck
-// ===========================================================================
+// InterfaceAccount<Mint> with Token-2022, ValidateMintInterfaceCheck.
 
 #[test]
 fn mint_interface_t22_happy() {
@@ -632,9 +624,7 @@ fn mint_interface_t22_data_too_small() {
     assert!(result.is_err(), "should fail: data too small");
 }
 
-// ===========================================================================
-// No token_program field — ValidateMintNoProgram
-// ===========================================================================
+// No token_program field, ValidateMintNoProgram.
 
 #[test]
 fn mint_no_program_happy() {
@@ -709,9 +699,7 @@ fn mint_no_program_wrong_decimals() {
     assert!(result.is_err(), "should fail: decimals mismatch (9 != 6)");
 }
 
-// ===========================================================================
-// Freeze authority — ValidateMintWithFreezeCheck (SPL Token)
-// ===========================================================================
+// Freeze authority, ValidateMintWithFreezeCheck with SPL Token.
 
 #[test]
 fn mint_spl_freeze_happy() {
@@ -799,9 +787,7 @@ fn mint_spl_freeze_missing_on_chain() {
     );
 }
 
-// ===========================================================================
-// Freeze authority — ValidateMintWithFreeze2022Check (Token-2022)
-// ===========================================================================
+// Freeze authority, ValidateMintWithFreeze2022Check with Token-2022.
 
 #[test]
 fn mint_t22_freeze_happy() {
@@ -889,9 +875,8 @@ fn mint_t22_freeze_missing_on_chain() {
     );
 }
 
-// ===========================================================================
-// Freeze authority — ValidateMintWithFreezeInterfaceCheck (SPL via Interface)
-// ===========================================================================
+// Freeze authority, ValidateMintWithFreezeInterfaceCheck with SPL via
+// interface.
 
 #[test]
 fn mint_interface_spl_freeze_happy() {
@@ -979,9 +964,8 @@ fn mint_interface_spl_freeze_missing_on_chain() {
     );
 }
 
-// ===========================================================================
-// Freeze authority — ValidateMintWithFreezeInterfaceCheck (T22 via Interface)
-// ===========================================================================
+// Freeze authority, ValidateMintWithFreezeInterfaceCheck with Token-2022 via
+// interface.
 
 #[test]
 fn mint_interface_t22_freeze_happy() {

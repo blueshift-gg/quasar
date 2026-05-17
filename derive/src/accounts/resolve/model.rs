@@ -1,6 +1,6 @@
 use syn::{Expr, Ident, Type};
 
-/// 2 variants. No domain knowledge.
+/// Account field shape for parsing and account-count planning.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FieldKind {
     Single,
@@ -54,19 +54,19 @@ pub(crate) struct BehaviorArg {
 /// Computed by the planner from the field name table.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ValueKind {
-    /// Bare identifier matching an account field → `field.to_account_view()`.
+    /// Bare identifier matching an account field -> `field.to_account_view()`.
     BareFieldRef,
-    /// Bare identifier matching an optional account field →
+    /// Bare identifier matching an optional account field ->
     /// `field.as_ref().map(|v| v.to_account_view())`.
     OptionalFieldRef,
-    /// Any expression (literal, path, const) → pass through directly.
+    /// Any expression (literal, path, const) -> pass through directly.
     Expr,
-    /// `None` literal → `None`.
+    /// `None` literal -> `None`.
     NoneLiteral,
-    /// `Some(field)` where field is an account field →
+    /// `Some(field)` where field is an account field ->
     /// `Some(field.to_account_view())`.
     SomeFieldRef,
-    /// `Some(expr)` where expr is not a field → `Some(expr)`.
+    /// `Some(expr)` where expr is not a field -> `Some(expr)`.
     SomeExpr,
 }
 
@@ -88,22 +88,22 @@ pub(crate) enum UserCheck {
 
 pub(crate) struct FieldSemantics {
     pub core: FieldCore,
-    /// `init` / `init(idempotent)` — structural, Phase 1.
+    /// `init` / `init(idempotent)`: structural, Phase 1.
     pub init: Option<InitDirective>,
     /// Top-level `payer = field`.
     pub payer: Option<Ident>,
-    /// `address = expr` — opaque address constraint.
+    /// `address = expr`: opaque address constraint.
     pub address: Option<Expr>,
-    /// `realloc = expr` — realloc size expression.
+    /// `realloc = expr`: realloc size expression.
     pub realloc: Option<Expr>,
-    /// `close(dest = field)` — core structural close.
+    /// `close(dest = field)`: core structural close.
     pub close_dest: Option<Ident>,
-    /// All behavior groups (open directives — the derive is protocol-neutral).
+    /// All behavior groups (open directives: the derive is protocol-neutral).
     pub groups: Vec<BehaviorGroup>,
     /// Structural assertions: has_one, address, constraints.
     pub user_checks: Vec<UserCheck>,
     /// True when the field type is `Migration<From, To>` (syntactic detection
-    /// on the last path segment). Proc macros cannot resolve type aliases —
+    /// on the last path segment). Proc macros cannot resolve type aliases :
     /// only direct `Migration<From, To>` paths are supported.
     pub is_migration: bool,
     /// True when the field type is `Uninit<T>` (syntactic detection on the

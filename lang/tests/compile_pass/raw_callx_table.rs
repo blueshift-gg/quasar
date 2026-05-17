@@ -11,7 +11,7 @@ solana_address::declare_id!("11111111111111111111111111111112");
 pub mod test_raw_callx {
     use super::*;
 
-    /// Three contiguous raw instructions → function pointer table dispatch.
+    /// Three contiguous raw instructions select function pointer table dispatch.
     #[instruction(discriminator = 0, raw)]
     pub fn fast_a(ctx: Context) -> Result<(), ProgramError> {
         let _ = ctx.data;

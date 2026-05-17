@@ -30,21 +30,15 @@ enum BuildResult {
     Streamed(ExitStatus),
 }
 
-pub fn run(
-    debug: bool,
-    verbose: bool,
-    watch: bool,
-    features: Option<String>,
-    lint: bool,
-) -> CliResult {
+pub fn run(debug: bool, verbose: bool, watch: bool, features: Option<String>) -> CliResult {
     if watch {
         run_watch(debug, verbose, features);
     }
 
-    run_once(debug, verbose, features.as_deref(), lint)
+    run_once(debug, verbose, features.as_deref())
 }
 
-fn run_once(debug: bool, verbose: bool, features: Option<&str>, lint_flag: bool) -> CliResult {
+fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
     let config = QuasarConfig::load()?;
     let clients_path = config.client_path();
     let start = Instant::now();
@@ -55,9 +49,6 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>, lint_flag: bool)
     progress.step("Generating IDL and clients...");
     crate::idl::generate(&crate_root, &languages, &clients_path)?;
     progress.done("Generated IDL and clients");
-
-    // Lint pass removed — IDL-based lint will be re-introduced in a future PR.
-    let _ = lint_flag;
 
     if verbose {
         eprintln!("  {}", style::step("Building program..."));
@@ -362,7 +353,7 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
 }
 
 fn run_watch(debug: bool, verbose: bool, features: Option<String>) -> ! {
-    watch_loop(|| run_once(debug, verbose, features.as_deref(), false))
+    watch_loop(|| run_once(debug, verbose, features.as_deref()))
 }
 
 fn run_build_command(cmd: &mut Command, verbose: bool) -> std::io::Result<BuildResult> {
@@ -378,10 +369,6 @@ fn run_build_command(cmd: &mut Command, verbose: bool) -> std::io::Result<BuildR
     }
 }
 
-// ---------------------------------------------------------------------------
-// Build size tracking
-// ---------------------------------------------------------------------------
-
 const LAST_SIZE_FILE: &str = "target/.quasar-last-size";
 
 fn size_delta(so_path: &Path, new_size: u64) -> String {
@@ -391,9 +378,7 @@ fn size_delta(so_path: &Path, new_size: u64) -> String {
         .and_then(|contents| {
             contents
                 .lines()
-                .find(|l| l.starts_with(&*key))
-                .and_then(|l| l.rsplit_once(' '))
-                .and_then(|(_, s)| s.parse::<u64>().ok())
+                .find_map(|line| parse_size_entry(line, &key))
         });
 
     let Some(prev) = last else {
@@ -426,9 +411,42 @@ fn save_last_size(so_path: &Path, size: u64) {
     let mut lines: Vec<String> = fs::read_to_string(LAST_SIZE_FILE)
         .unwrap_or_default()
         .lines()
-        .filter(|l| !l.starts_with(&*key))
+        .filter(|line| !size_entry_matches(line, &key))
         .map(String::from)
         .collect();
     lines.push(entry);
     let _ = fs::write(LAST_SIZE_FILE, lines.join("\n"));
+}
+
+fn parse_size_entry(line: &str, key: &str) -> Option<u64> {
+    let (entry_key, size) = line.rsplit_once(' ')?;
+    (entry_key == key).then(|| size.parse().ok()).flatten()
+}
+
+fn size_entry_matches(line: &str, key: &str) -> bool {
+    line.rsplit_once(' ')
+        .is_some_and(|(entry_key, _)| entry_key == key)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_size_entry, size_entry_matches};
+
+    #[test]
+    fn size_entry_match_is_exact_even_for_prefix_paths() {
+        let key = "target/deploy/app.so";
+        let longer = "target/deploy/app.so.backup 200";
+
+        assert_eq!(parse_size_entry(longer, key), None);
+        assert!(!size_entry_matches(longer, key));
+    }
+
+    #[test]
+    fn size_entry_allows_spaces_in_paths() {
+        let key = "target/deploy/my app.so";
+        let line = "target/deploy/my app.so 1234";
+
+        assert_eq!(parse_size_entry(line, key), Some(1234));
+        assert!(size_entry_matches(line, key));
+    }
 }

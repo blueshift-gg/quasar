@@ -1,13 +1,13 @@
 const LDDW: u8 = 0x18;
 
-pub struct InstructionWalker<'a> {
+pub(crate) struct InstructionWalker<'a> {
     text: &'a [u8],
     text_base: u64,
     offset: usize,
 }
 
 impl<'a> InstructionWalker<'a> {
-    pub fn new(text: &'a [u8], text_base: u64) -> Self {
+    pub(crate) fn new(text: &'a [u8], text_base: u64) -> Self {
         Self {
             text,
             text_base,

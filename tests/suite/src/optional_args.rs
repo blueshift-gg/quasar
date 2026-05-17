@@ -89,7 +89,7 @@ fn option_u64_tag_two_rejected() {
     // Discriminator 52 (option_u64_some expects Some(42))
     // Wire format: [disc, tag, PodU64 le bytes]
     let mut data = vec![52u8]; // discriminator
-    data.push(2); // tag = 2 (invalid — only 0 and 1 are valid)
+    data.push(2); // tag = 2, invalid because only 0 and 1 are valid
     data.extend_from_slice(&42u64.to_le_bytes()); // PodU64(42)
     let ix = solana_instruction::Instruction {
         program_id: quasar_test_misc::ID,

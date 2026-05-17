@@ -4,9 +4,7 @@ use {
     quasar_test_token_validate::cpi::*,
 };
 
-// ===========================================================================
-// Account<Token> (SPL Token) — ValidateTokenCheck
-// ===========================================================================
+// Account<Token> with SPL Token, ValidateTokenCheck.
 
 #[test]
 fn account_token_happy() {
@@ -181,9 +179,7 @@ fn account_token_data_too_small() {
     assert!(result.is_err(), "should fail: data too small");
 }
 
-// ===========================================================================
-// Account<Token2022> — ValidateToken2022Check
-// ===========================================================================
+// Account<Token2022>, ValidateToken2022Check.
 
 #[test]
 fn account_token2022_happy() {
@@ -357,9 +353,7 @@ fn account_token2022_data_too_small() {
     assert!(result.is_err(), "should fail: data too small");
 }
 
-// ===========================================================================
-// InterfaceAccount<Token> with SPL Token — ValidateTokenInterfaceCheck
-// ===========================================================================
+// InterfaceAccount<Token> with SPL Token, ValidateTokenInterfaceCheck.
 
 #[test]
 fn interface_token_spl_happy() {
@@ -533,9 +527,7 @@ fn interface_token_spl_data_too_small() {
     assert!(result.is_err(), "should fail: data too small");
 }
 
-// ===========================================================================
-// InterfaceAccount<Token> with Token-2022 — ValidateTokenInterfaceCheck
-// ===========================================================================
+// InterfaceAccount<Token> with Token-2022, ValidateTokenInterfaceCheck.
 
 #[test]
 fn interface_token_t22_happy() {
@@ -709,9 +701,7 @@ fn interface_token_t22_data_too_small() {
     assert!(result.is_err(), "should fail: data too small");
 }
 
-// ===========================================================================
-// InterfaceAccount cross-program mismatch
-// ===========================================================================
+// InterfaceAccount cross-program mismatch.
 
 #[test]
 fn interface_token_cross_program_mismatch() {
@@ -742,9 +732,7 @@ fn interface_token_cross_program_mismatch() {
     assert!(result.is_err(), "should fail: cross-program mismatch");
 }
 
-// ===========================================================================
-// No token_program field — ValidateTokenNoProgram
-// ===========================================================================
+// No token_program field, ValidateTokenNoProgram.
 
 #[test]
 fn no_program_happy() {

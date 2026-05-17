@@ -7,7 +7,7 @@ use std::{
 };
 
 /// Check if something is already listening on the given port.
-pub fn is_alive(port: u16) -> bool {
+pub(crate) fn is_alive(port: u16) -> bool {
     let Ok(addr) = format!("127.0.0.1:{port}").parse() else {
         return false;
     };
@@ -21,7 +21,7 @@ pub fn is_alive(port: u16) -> bool {
 /// `idle_secs` of inactivity (no new connections = browser tab closed).
 ///
 /// Returns the URL on success.
-pub fn serve_background(root: &Path, port: u16, program: &str) -> std::io::Result<String> {
+pub(crate) fn serve_background(root: &Path, port: u16, program: &str) -> std::io::Result<String> {
     // Try to bind first to fail fast if port is busy
     let listener = TcpListener::bind(format!("127.0.0.1:{port}"))?;
     let url = format!("http://127.0.0.1:{port}/?program={program}");
@@ -35,11 +35,11 @@ pub fn serve_background(root: &Path, port: u16, program: &str) -> std::io::Resul
             return Err(std::io::Error::last_os_error());
         }
         if pid > 0 {
-            // Parent — drop our copy of the listener and return
+            // Parent drops its listener copy and returns.
             drop(listener);
             return Ok(url);
         }
-        // Child — detach from parent's process group
+        // Child detaches from the parent's process group.
         libc::setsid();
     }
 
@@ -49,7 +49,7 @@ pub fn serve_background(root: &Path, port: u16, program: &str) -> std::io::Resul
 }
 
 /// Blocking serve (for --diff mode which needs to stay alive until Ctrl-C).
-pub fn serve_blocking(root: &Path, port: u16) -> std::io::Result<()> {
+pub(crate) fn serve_blocking(root: &Path, port: u16) -> std::io::Result<()> {
     let listener = TcpListener::bind(format!("127.0.0.1:{port}"))?;
     let root = root.to_path_buf();
 
@@ -127,7 +127,7 @@ fn handle_connection(mut stream: TcpStream, root: &Path) {
 
 fn resolve_request_path(root: &Path, request_path: &str) -> Option<PathBuf> {
     let raw_path = request_path.strip_prefix('/').unwrap_or(request_path);
-    if raw_path.is_empty() {
+    if raw_path.is_empty() || raw_path == "index.html" {
         return Some(root.join("index.html"));
     }
 
@@ -140,11 +140,16 @@ fn resolve_request_path(root: &Path, request_path: &str) -> Option<PathBuf> {
         }
     }
 
-    if relative.as_os_str().is_empty() {
-        Some(root.join("index.html"))
-    } else {
-        Some(root.join(relative))
+    let mut components = relative.components();
+    match components.next() {
+        Some(Component::Normal(name)) if name == "profiles" => {}
+        _ => return None,
     }
+    if components.any(|component| !matches!(component, Component::Normal(_))) {
+        return None;
+    }
+
+    Some(root.join(relative))
 }
 
 fn serve_file(stream: &mut TcpStream, path: &Path) {
@@ -257,6 +262,25 @@ mod tests {
             None
         );
         assert_eq!(resolve_request_path(root, "../secret.txt"), None);
+    }
+
+    #[test]
+    fn request_path_only_serves_frontend_and_profiles() {
+        let root = Path::new("/tmp/quasar-profile-root");
+        assert_eq!(
+            resolve_request_path(root, "/index.html"),
+            Some(root.join("index.html"))
+        );
+        assert_eq!(
+            resolve_request_path(root, "/profiles/demo.profile.json"),
+            Some(root.join("profiles/demo.profile.json"))
+        );
+        assert_eq!(
+            resolve_request_path(root, "/profiles"),
+            Some(root.join("profiles"))
+        );
+        assert_eq!(resolve_request_path(root, "/src/lib.rs"), None);
+        assert_eq!(resolve_request_path(root, "/Cargo.toml"), None);
     }
 
     #[test]

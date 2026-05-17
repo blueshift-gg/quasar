@@ -6,7 +6,7 @@ use quasar_lang::{
 const REMOVE_CREATOR_VERIFICATION: u8 = 28;
 
 #[inline(always)]
-pub fn remove_creator_verification<'a>(
+pub(super) fn remove_creator_verification<'a>(
     program: &'a AccountView,
     creator: &'a AccountView,
     metadata: &'a AccountView,

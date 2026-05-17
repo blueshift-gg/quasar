@@ -18,7 +18,7 @@ const CLOSE_ACCOUNT: u8 = 9;
 /// [0] discriminator (9)
 /// ```
 #[inline(always)]
-pub fn close_account<'a>(
+pub(crate) fn close_account<'a>(
     token_program: &'a AccountView,
     account: &'a AccountView,
     destination: &'a AccountView,

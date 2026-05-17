@@ -3,7 +3,7 @@ use quasar_lang::{
     prelude::*,
 };
 
-/// Initialize a token account (InitializeAccount3 — opcode 18).
+/// Initialize a token account (InitializeAccount3, opcode 18).
 ///
 /// Free function variant for generated code that works with raw `AccountView`
 /// references during parse-time init. Equivalent to
@@ -23,20 +23,13 @@ use quasar_lang::{
 /// [1..33] owner          (32-byte address)
 /// ```
 #[inline(always)]
-pub fn initialize_account3<'a>(
+pub(crate) fn initialize_account3<'a>(
     token_program: &'a AccountView,
     account: &'a AccountView,
     mint: &'a AccountView,
     owner: &Address,
 ) -> CpiCall<'a, 2, 33> {
-    // SAFETY: All 33 bytes written before `assume_init`.
-    let data = unsafe {
-        let mut buf = core::mem::MaybeUninit::<[u8; 33]>::uninit();
-        let ptr = buf.as_mut_ptr() as *mut u8;
-        core::ptr::write(ptr, 18);
-        core::ptr::copy_nonoverlapping(owner.as_ref().as_ptr(), ptr.add(1), 32);
-        buf.assume_init()
-    };
+    let data = super::initialize_account3_data(owner);
 
     CpiCall::new(
         token_program.address(),

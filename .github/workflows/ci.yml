@@ -328,7 +328,7 @@ jobs:
           git checkout -f ${{ github.event.pull_request.head.sha }}
           bash /tmp/bench-tracked-programs.sh capture /tmp/pr_metrics.env
 
-      - name: Fail on CU regression
+      - name: Fail on tracked metric regression
         id: perf_guard
         run: |
           bash /tmp/bench-tracked-programs.sh compare-files /tmp/base_metrics.env /tmp/pr_metrics.env
@@ -486,6 +486,6 @@ jobs:
           git checkout -f ${{ github.sha }}
           bash scripts/bench-tracked-programs.sh capture /tmp/push_head_metrics.env
 
-      - name: Fail on CU regression
+      - name: Fail on tracked metric regression
         run: |
           bash scripts/bench-tracked-programs.sh compare-files /tmp/push_base_metrics.env /tmp/push_head_metrics.env

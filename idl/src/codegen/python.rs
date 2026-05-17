@@ -236,8 +236,11 @@ pub fn generate_python_client(idl: &Idl) -> String {
                                 ty.as_ref(),
                             ));
                         }
-                        IdlPdaSeed::Arg { path, .. } => {
-                            seed_exprs.push(format!("input.{}", python_field_path(path)));
+                        IdlPdaSeed::Arg { path, ty, .. } => {
+                            seed_exprs.push(python_pda_seed_expr(
+                                &format!("input.{}", python_field_path(path)),
+                                Some(ty),
+                            ));
                         }
                     }
                 }
@@ -268,7 +271,7 @@ pub fn generate_python_client(idl: &Idl) -> String {
             );
         }
 
-        // Build instruction data — compact wire format:
+        // Compact wire format:
         //   [disc][fixed fields][all dynamic prefixes][all dynamic data]
         let const_name = to_screaming_snake(&ix.name);
         let has_dyn = ix.args.iter().any(is_direct_dynamic);
@@ -303,8 +306,7 @@ pub fn generate_python_client(idl: &Idl) -> String {
                 ));
             }
 
-            // Phase 2: length table — pre-encode dynamic bytes and emit all
-            // length prefixes grouped together.
+            // Pre-encode dynamic bytes and group all length prefixes.
             for arg in &dyn_args {
                 let name = camel_to_snake(&arg.name);
                 let prefix_bytes = arg.codec.as_ref().map(|c| c.prefix_bytes()).unwrap_or(2);
@@ -483,10 +485,6 @@ pub fn generate_python_client(idl: &Idl) -> String {
     out
 }
 
-// ---------------------------------------------------------------------------
-// Type mapping
-// ---------------------------------------------------------------------------
-
 fn python_type(ty: &IdlType) -> String {
     match ty {
         IdlType::Primitive(p) => match p.as_str() {
@@ -508,10 +506,6 @@ fn python_type(ty: &IdlType) -> String {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Serialization helpers
-// ---------------------------------------------------------------------------
 
 /// Returns `true` if the arg is a top-level dynamic type (string with codec or
 /// Vec with codec). These require compact 3-phase encoding at the instruction
@@ -610,7 +604,7 @@ fn serialize_field_expr(
             "f64" => format!("    data += struct.pack(\"<d\", input.{})\n", name),
             "pubkey" => format!("    data += bytes(input.{})\n", name),
             "string" => {
-                // Plain string without codec — use u32 prefix (borsh-style)
+                // Plain string without codec uses a Borsh-style u32 prefix.
                 format!(
                     "    _b = input.{n}.encode(\"utf-8\")\n    data += struct.pack(\"<I\", \
                      len(_b))\n    data += _b\n",
@@ -629,7 +623,7 @@ fn serialize_field_expr(
             )
         }
         IdlType::Vec { vec } => {
-            // Vec without codec — use u32 prefix (borsh-style)
+            // Vec without codec uses a Borsh-style u32 prefix.
             let item_ser = match &**vec {
                 IdlType::Primitive(p) if p == "pubkey" => "bytes(item)".to_string(),
                 IdlType::Primitive(p) => {
@@ -765,7 +759,7 @@ fn decode_field_expr(
                 n = name,
             ),
             "string" => {
-                // Plain string without codec — u32 prefix (borsh-style)
+                // Plain string without codec uses a Borsh-style u32 prefix.
                 format!(
                     "{pad}_len = struct.unpack_from(\"<I\", data, offset)[0]\n{pad}offset += \
                      4\n{pad}{n} = data[offset:offset + _len].decode(\"utf-8\")\n{pad}offset += \
@@ -788,7 +782,7 @@ fn decode_field_expr(
             }
         },
         IdlType::Vec { vec } => {
-            // Vec without codec — u32 prefix (borsh-style)
+            // Vec without codec uses a Borsh-style u32 prefix.
             let item_decode = match &**vec {
                 IdlType::Primitive(p) if p == "pubkey" => {
                     "Pubkey.from_bytes(data[offset:offset + 32]); offset += 32".to_string()

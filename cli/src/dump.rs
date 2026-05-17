@@ -47,7 +47,6 @@ pub fn run(elf_path: Option<PathBuf>, function: Option<String>, source: bool) ->
 
     cmd.arg(&so_path);
 
-    // If piping to a pager, let it handle output directly
     let output = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output();
 
     match output {
@@ -66,12 +65,10 @@ pub fn run(elf_path: Option<PathBuf>, function: Option<String>, source: bool) ->
                 }
             }
 
-            // Print with minimal framing
             for line in &lines {
                 println!("{line}");
             }
 
-            // Summary
             let insn_count = lines
                 .iter()
                 .filter(|l| {

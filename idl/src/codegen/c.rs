@@ -391,14 +391,7 @@ fn emit_pda_derivation(
                 )
                 .unwrap();
             }
-            IdlPdaSeed::Arg { path, .. } => {
-                writeln!(
-                    out,
-                    "        seeds[{i}].addr = (const uint8_t *)&args->{path}; seeds[{i}].len = \
-                     sizeof(args->{path});"
-                )
-                .unwrap();
-            }
+            IdlPdaSeed::Arg { path, ty, .. } => emit_arg_seed(out, i, path, ty),
         }
     }
     writeln!(out, "        uint8_t bump;").unwrap();
@@ -409,6 +402,89 @@ fn emit_pda_derivation(
     )
     .unwrap();
     writeln!(out, "    }}").unwrap();
+}
+
+fn emit_arg_seed(out: &mut String, index: usize, path: &str, ty: &IdlType) {
+    let seed = format!("arg_seed_{index}");
+    match ty {
+        IdlType::Primitive(p) => match p.as_str() {
+            "pubkey" => {
+                writeln!(
+                    out,
+                    "        seeds[{index}].addr = args->{path}.bytes; seeds[{index}].len = 32;"
+                )
+                .unwrap();
+            }
+            "bool" => {
+                writeln!(out, "        uint8_t {seed}[1];").unwrap();
+                writeln!(out, "        {seed}[0] = args->{path} ? 1 : 0;").unwrap();
+                writeln!(
+                    out,
+                    "        seeds[{index}].addr = {seed}; seeds[{index}].len = 1;"
+                )
+                .unwrap();
+            }
+            "u8" | "i8" => {
+                writeln!(out, "        uint8_t {seed}[1];").unwrap();
+                writeln!(out, "        {seed}[0] = (uint8_t)args->{path};").unwrap();
+                writeln!(
+                    out,
+                    "        seeds[{index}].addr = {seed}; seeds[{index}].len = 1;"
+                )
+                .unwrap();
+            }
+            "u16" | "i16" => emit_integer_arg_seed(out, index, path, 2, "uint16_t"),
+            "u32" | "i32" => emit_integer_arg_seed(out, index, path, 4, "uint32_t"),
+            "u64" | "i64" => emit_integer_arg_seed(out, index, path, 8, "uint64_t"),
+            "u128" | "i128" => {
+                writeln!(
+                    out,
+                    "        seeds[{index}].addr = args->{path}; seeds[{index}].len = 16;"
+                )
+                .unwrap();
+            }
+            _ => emit_raw_arg_seed(out, index, path),
+        },
+        IdlType::Array {
+            array: (_inner, size),
+        } => {
+            writeln!(
+                out,
+                "        seeds[{index}].addr = args->{path}; seeds[{index}].len = {size};"
+            )
+            .unwrap();
+        }
+        _ => emit_raw_arg_seed(out, index, path),
+    }
+}
+
+fn emit_integer_arg_seed(out: &mut String, index: usize, path: &str, width: usize, cast_ty: &str) {
+    let seed = format!("arg_seed_{index}");
+    writeln!(out, "        uint8_t {seed}[{width}];").unwrap();
+    writeln!(
+        out,
+        "        {cast_ty} {seed}_value = ({cast_ty})args->{path};"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "        for (int j = 0; j < {width}; j++) {seed}[j] = (uint8_t)({seed}_value >> (j * 8));"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "        seeds[{index}].addr = {seed}; seeds[{index}].len = {width};"
+    )
+    .unwrap();
+}
+
+fn emit_raw_arg_seed(out: &mut String, index: usize, path: &str) {
+    writeln!(
+        out,
+        "        seeds[{index}].addr = (const uint8_t *)args->{path}; seeds[{index}].len = \
+         sizeof(args->{path});"
+    )
+    .unwrap();
 }
 
 fn account_field_seed_inputs(ix: &crate::types::IdlInstruction) -> Vec<(String, String)> {
@@ -834,7 +910,7 @@ fn serialize_field_expr(
                 "{t}for (int i = 0; i < 32; i++) data_buf[off + i] = {name}.bytes[i]; off += 32;\n"
             ),
             "string" => {
-                // Plain string without codec — u32 prefix (borsh-style)
+                // Plain string without codec uses a Borsh-style u32 prefix.
                 serialize_dyn_bytes(name, 4, &t)
             }
             _ => format!("{t}/* unsupported type for {name} */\n"),
@@ -874,7 +950,7 @@ fn serialize_field_expr(
             }
         }
         IdlType::Vec { .. } => {
-            // Vec without codec — u32 prefix (borsh-style)
+            // Vec without codec uses a Borsh-style u32 prefix.
             serialize_dyn_bytes(name, 4, &t)
         }
         IdlType::Array {
@@ -966,13 +1042,13 @@ fn decode_field_expr(
                  += 32;\n"
             ),
             "string" => {
-                // Plain string without codec — u32 prefix (borsh-style)
+                // Plain string without codec uses a Borsh-style u32 prefix.
                 decode_dyn_bytes(name, 4, &t)
             }
             _ => format!("{t}/* unsupported decode for {name} */\n"),
         },
         IdlType::Vec { .. } => {
-            // Vec without codec — u32 prefix (borsh-style)
+            // Vec without codec uses a Borsh-style u32 prefix.
             decode_dyn_bytes(name, 4, &t)
         }
         IdlType::Array {

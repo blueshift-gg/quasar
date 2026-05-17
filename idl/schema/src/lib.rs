@@ -21,9 +21,3 @@ pub use {
     account::*, canonical::*, codec::*, constant::*, error::*, event::*, instruction::*, layout::*,
     root::*, space::*, types::*, wrapper::*,
 };
-
-// --- Type aliases for transition ---
-/// Alias: use `IdlArg` for instruction arguments.
-pub type IdlField = instruction::IdlArg;
-/// Alias: use `IdlErrorDef` for error definitions.
-pub type IdlError = error::IdlErrorDef;

@@ -5,8 +5,7 @@ use {quasar_derive::Accounts, quasar_lang::prelude::*};
 pub struct HeaderDupSigner {
     #[account(mut)]
     pub payer: Signer,
-    /// CHECK: test-only — validates that dup signer accounts are parsed
-    /// correctly.
+    /// Test-only duplicate signer account.
     #[account(dup)]
     pub authority: Signer,
 }

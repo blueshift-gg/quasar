@@ -29,7 +29,6 @@ pub struct ReadNoDisc {
 impl ReadNoDisc {
     #[inline(always)]
     pub fn handler(&self) -> Result<(), ProgramError> {
-        // Just access the fields to verify Deref works.
         let _authority = self.account.authority;
         let _value = self.account.value;
         Ok(())

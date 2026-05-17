@@ -1,12 +1,8 @@
 use quasar_lang::client::{wincode, DynBytes, DynVec};
 
-// ===================================================================
-// Wire format oracle tests — u32 prefix (default)
-//
 // Pin the exact byte representation. The on-chain program
 // deserializes from alignment-1 zero-copy structs that expect THIS
 // exact layout. A change here breaks every deployed program's client.
-// ===================================================================
 
 #[test]
 fn dyn_bytes_u32_wire_format() {
@@ -50,10 +46,6 @@ fn dyn_vec_u32_empty_wire() {
     assert_eq!(wire, [0, 0, 0, 0]);
 }
 
-// ===================================================================
-// Wire format oracle tests — u8 prefix
-// ===================================================================
-
 #[test]
 fn dyn_bytes_u8_wire_format() {
     let wire = wincode::serialize(&DynBytes::<u8>::new(vec![1, 2, 3])).unwrap();
@@ -87,10 +79,6 @@ fn dyn_vec_u8_prefix_empty_wire() {
     assert_eq!(wire, [0]);
 }
 
-// ===================================================================
-// Wire format oracle tests — u16 prefix
-// ===================================================================
-
 #[test]
 fn dyn_bytes_u16_wire_format() {
     let wire = wincode::serialize(&DynBytes::<u16>::new(vec![1, 2])).unwrap();
@@ -123,13 +111,7 @@ fn dyn_vec_u16_prefix_empty_wire() {
     assert_eq!(wire, [0, 0]);
 }
 
-// ===================================================================
-// Round-trip: serialize → deserialize = identity
-//
-// Exhaustive for every prefix width × element type combination.
-// ===================================================================
-
-// --- DynBytes round-trips ---
+// Round-trip coverage for every prefix width and element type combination.
 
 #[test]
 fn dyn_bytes_u8_roundtrip() {
@@ -178,8 +160,6 @@ fn dyn_bytes_u32_roundtrip_empty() {
     let decoded: DynBytes<u32> = wincode::deserialize(&wire).unwrap();
     assert_eq!(decoded.0, original.0);
 }
-
-// --- DynVec round-trips ---
 
 #[test]
 fn dyn_vec_u8_prefix_u64_roundtrip() {
@@ -236,15 +216,9 @@ fn dyn_vec_u32_addr_roundtrip() {
     assert_eq!(decoded.0, original.0);
 }
 
-// ===================================================================
-// On-chain wire compatibility
-//
 // Construct bytes exactly as the on-chain ZC layout expects, then
 // deserialize through our types to prove they match. Covers every
 // prefix width to catch prefix-size mismatches.
-// ===================================================================
-
-// --- u32 prefix (String<100> / Vec<T, 100>) ---
 
 #[test]
 fn dyn_bytes_u32_reads_onchain_layout() {
@@ -275,8 +249,6 @@ fn dyn_vec_u32_address_reads_onchain_layout() {
     assert_eq!(decoded.0, vec![solana_address::Address::from(addr_bytes)]);
 }
 
-// --- u8 prefix (String<u8, 100> / Vec<T, u8, 100>) ---
-
 #[test]
 fn dyn_bytes_u8_reads_onchain_layout() {
     // On-chain String<u8, 100>: [u8 byte-length][raw bytes]
@@ -294,8 +266,6 @@ fn dyn_vec_u8_reads_onchain_layout() {
     let decoded: DynVec<u64, u8> = wincode::deserialize(&data).unwrap();
     assert_eq!(decoded.0, vec![42u64, 99]);
 }
-
-// --- u16 prefix (String<u16, 1000> / Vec<T, u16, 1000>) ---
 
 #[test]
 fn dyn_bytes_u16_reads_onchain_layout() {
@@ -318,14 +288,10 @@ fn dyn_vec_u16_reads_onchain_layout() {
     assert_eq!(decoded.0, vec![42u64, 99]);
 }
 
-// ===================================================================
-// Cross-prefix isolation
-//
 // Prove that data serialized with one prefix width cannot be
 // accidentally deserialized with a different prefix width. This
 // catches the exact bug we're fixing: client sending u32-prefixed
 // data to an on-chain program expecting u8-prefixed data.
-// ===================================================================
 
 #[test]
 fn dyn_bytes_u8_data_rejected_by_u32_decode() {
@@ -341,7 +307,7 @@ fn dyn_bytes_u8_data_rejected_by_u32_decode() {
 fn dyn_bytes_u32_data_not_u8_compatible() {
     // u32-prefixed: [3, 0, 0, 0, 1, 2, 3]
     let wire = wincode::serialize(&DynBytes::<u32>::new(vec![1, 2, 3])).unwrap();
-    // Read as u8-prefixed: length = 3, then reads [0, 0, 0] — wrong data
+    // Read as u8-prefixed: length = 3, then reads [0, 0, 0].
     let decoded: DynBytes<u8> = wincode::deserialize(&wire).unwrap();
     assert_ne!(
         decoded.0,
@@ -350,12 +316,8 @@ fn dyn_bytes_u32_data_not_u8_compatible() {
     );
 }
 
-// ===================================================================
-// Multi-field instruction data
-//
 // Simulates what build_ix() produces: disc bytes followed by
 // concat of wincode::serialize for each arg.
-// ===================================================================
 
 #[test]
 fn instruction_data_disc_plus_args() {
@@ -410,12 +372,8 @@ fn instruction_data_disc_plus_dyn_vec_arg() {
     assert_eq!(data, expected);
 }
 
-// ===================================================================
-// Prefix width byte size verification
-//
 // Confirm the exact number of prefix bytes for each type to catch
 // off-by-one or wrong-width regressions.
-// ===================================================================
 
 #[test]
 fn dyn_bytes_prefix_sizes() {

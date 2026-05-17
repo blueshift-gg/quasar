@@ -8,16 +8,16 @@
 extern crate alloc;
 #[allow(unused_imports)]
 pub use alloc::vec;
-pub use alloc::{borrow::ToOwned, boxed::Box, string::String, vec::Vec};
+pub use alloc::{boxed::Box, string::String, vec::Vec};
 
-/// Helper: convert &str to String (avoids needing ToOwned trait in scope).
+/// Convert `&str` to [`String`] in generated IDL code.
 #[inline]
-pub fn s(v: &str) -> alloc::string::String {
-    alloc::string::String::from(v)
+pub fn s(v: &str) -> String {
+    String::from(v)
 }
 
 /// Convert a Solana address to base58 string.
-pub fn address_to_base58(addr: &solana_address::Address) -> alloc::string::String {
+pub fn address_to_base58(addr: &solana_address::Address) -> String {
     bs58::encode(addr.as_array()).into_string()
 }
 
@@ -29,7 +29,7 @@ pub mod __reexport {
 
 use quasar_idl_schema::*;
 
-/// Fragment submitted by `#[account]` — uses a fn pointer to avoid static
+/// Fragment submitted by `#[account]`; uses a fn pointer to avoid static
 /// alloc.
 pub struct AccountFragment {
     pub build: fn() -> (IdlAccountDef, IdlTypeDef),
@@ -58,7 +58,7 @@ pub struct InstructionFragment {
     pub accounts_struct_name: &'static str,
 }
 
-/// Fragment submitted by `#[derive(Accounts)]` — carries account metadata for
+/// Fragment submitted by `#[derive(Accounts)]`; carries account metadata for
 /// IDL.
 pub struct AccountsMetaFragment(pub fn() -> (String, Vec<IdlAccountNode>));
 

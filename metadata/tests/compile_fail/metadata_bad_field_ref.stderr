@@ -1,4 +1,4 @@
-error: `mint = nonexistent_field` — no field `nonexistent_field` in this accounts struct
+error: `mint = nonexistent_field`: no field `nonexistent_field` in this accounts struct
   --> tests/compile_fail/metadata_bad_field_ref.rs:13:59
    |
 13 |     #[account(metadata(program = metadata_program, mint = nonexistent_field))]

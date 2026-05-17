@@ -1,0 +1,5 @@
+error: duplicate #[seeds(...)] attribute
+ --> tests/compile_fail/duplicate_seeds_attr.rs:7:1
+  |
+7 | #[seeds(b"second")]
+  | ^^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,5 @@
+error: PDA seed list has 17 seeds before bump; Quasar supports at most 16
+ --> tests/compile_fail/too_many_seeds.rs:7:5
+  |
+7 |     b"many",
+  |     ^^^^^^^

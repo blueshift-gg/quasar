@@ -12,14 +12,7 @@
 //! pub ata: Account<Token>,
 //! ```
 
-use {
-    crate::ops::{capabilities::AssociatedTokenCheck, ctx::AssociatedTokenCheckCtx},
-    quasar_lang::prelude::*,
-};
-
-// ---------------------------------------------------------------------------
-// Args
-// ---------------------------------------------------------------------------
+use quasar_lang::prelude::*;
 
 pub struct Args<'a> {
     pub mint: &'a AccountView,
@@ -108,15 +101,13 @@ impl<'a> ArgsBuilder<'a> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Behavior — concrete impls per wrapper type
-// ---------------------------------------------------------------------------
-
 pub struct Behavior;
 
 const ATA_PROGRAM_ARG: u64 = quasar_lang::account_behavior::behavior_arg_key_hash("ata_program");
 const SYSTEM_PROGRAM_ARG: u64 =
     quasar_lang::account_behavior::behavior_arg_key_hash("system_program");
+const TOKEN_PROGRAM_ARG: u64 =
+    quasar_lang::account_behavior::behavior_arg_key_hash("token_program");
 
 macro_rules! impl_ata_behavior {
     (
@@ -133,7 +124,9 @@ macro_rules! impl_ata_behavior {
             #[inline(always)]
             fn uses_arg<const PHASE: u8, const KEY: u64>() -> bool {
                 !(PHASE == quasar_lang::account_behavior::ARG_PHASE_CHECK
-                    && (KEY == ATA_PROGRAM_ARG || KEY == SYSTEM_PROGRAM_ARG))
+                    && (KEY == ATA_PROGRAM_ARG
+                        || KEY == SYSTEM_PROGRAM_ARG
+                        || (!$check_token_program && KEY == TOKEN_PROGRAM_ARG)))
             }
 
             #[inline(always)]
@@ -157,17 +150,19 @@ macro_rules! impl_ata_behavior {
 
             #[inline(always)]
             fn check<'a>(account: &$wrapper, args: &Args<'a>) -> Result<(), ProgramError> {
-                <$wrapper as AssociatedTokenCheck>::check_associated_token_view(
-                    account.to_account_view(),
-                    AssociatedTokenCheckCtx {
-                        mint: args.mint,
-                        authority: args.authority,
-                        token_program: if $check_token_program {
-                            args.token_program
-                        } else {
-                            None
-                        },
-                    },
+                let view = account.to_account_view();
+                let token_program = if $check_token_program {
+                    args.token_program
+                        .map(|program| program.address())
+                        .unwrap_or_else(|| view.owner())
+                } else {
+                    view.owner()
+                };
+                crate::validate::validate_ata(
+                    view,
+                    args.authority.address(),
+                    args.mint.address(),
+                    token_program,
                 )
             }
         }

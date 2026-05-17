@@ -53,13 +53,17 @@ fn grow_preserves_data() {
     let mut svm = svm_misc();
     let (payer, account, _) = setup_account(&mut svm);
 
-    // Read original data
-    let orig = svm.get_account(&account).expect("account").data.clone();
+    // Read baseline data.
+    let baseline = svm.get_account(&account).expect("account").data.clone();
 
     let result = realloc(&mut svm, account, payer, 100);
     assert!(result.is_ok(), "grow: {:?}", result.raw_result);
     let acc = result.account(&account).expect("account");
-    assert_eq!(&acc.data[..42], &orig[..], "original 42 bytes preserved");
+    assert_eq!(
+        &acc.data[..42],
+        &baseline[..],
+        "baseline 42 bytes preserved"
+    );
 }
 
 #[test]
@@ -111,7 +115,7 @@ fn grow_zeroes_new_region() {
     let r2 = realloc(&mut svm, account, payer, 42);
     assert!(r2.is_ok());
 
-    // Grow to 100 again — new region should be zeroed
+    // Grow to 100 again; new region should be zeroed.
     let r3 = realloc(&mut svm, account, payer, 100);
     assert!(r3.is_ok(), "re-grow: {:?}", r3.raw_result);
     let acc = r3.account(&account).expect("account");
@@ -128,7 +132,7 @@ fn shrink_below_struct_rejects() {
     let mut svm = svm_misc();
     let (payer, account, _) = setup_account(&mut svm);
 
-    // Shrink to 4 bytes — handler rejects because SimpleAccount needs 42 bytes
+    // Shrink to 4 bytes; handler rejects because SimpleAccount needs 42 bytes.
     let r1 = realloc(&mut svm, account, payer, 4);
     assert!(r1.is_err(), "shrink below struct size should fail");
     r1.assert_error(ProgramError::AccountDataTooSmall);

@@ -10,10 +10,6 @@ use {
     },
 };
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 /// Locate the program keypair in target/deploy/.
 fn keypair_path(config: &QuasarConfig) -> PathBuf {
     let name = &config.project.name;
@@ -36,7 +32,7 @@ fn read_program_id(path: &Path) -> Result<String, crate::error::CliError> {
     let json = fs::read_to_string(path).map_err(|e| CliError::io_path("read", path, e))?;
     let bytes: Vec<u8> = serde_json::from_str(&json)
         .map_err(|e| CliError::json_parse(format!("keypair file {}", path.display()), e))?;
-    if bytes.len() < 64 {
+    if bytes.len() != 64 {
         return Err(CliError::message(format!(
             "invalid keypair file {}: expected 64 bytes, found {}",
             path.display(),
@@ -67,10 +63,6 @@ fn replace_program_id(old_id: &str, new_id: &str) -> Result<(), crate::error::Cl
     fs::write("src/lib.rs", updated).map_err(|e| CliError::io_path("write", "src/lib.rs", e))?;
     Ok(())
 }
-
-// ---------------------------------------------------------------------------
-// Commands
-// ---------------------------------------------------------------------------
 
 /// Print the program ID from the keypair file.
 pub fn list() -> CliResult {
@@ -171,4 +163,38 @@ pub fn new(force: bool) -> CliResult {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::read_program_id,
+        std::{
+            fs,
+            time::{SystemTime, UNIX_EPOCH},
+        },
+    };
+
+    fn temp_keypair_path(name: &str) -> std::path::PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock before unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("quasar-keypair-{name}-{unique}.json"))
+    }
+
+    #[test]
+    fn rejects_keypair_with_extra_bytes() {
+        let path = temp_keypair_path("extra");
+        let bytes = vec![1u8; 65];
+        fs::write(&path, serde_json::to_string(&bytes).unwrap()).expect("write keypair");
+
+        let err = read_program_id(&path).expect_err("extra byte should be invalid");
+        assert!(
+            err.to_string().contains("expected 64 bytes, found 65"),
+            "error should mention exact keypair length: {err}"
+        );
+
+        fs::remove_file(path).expect("remove keypair");
+    }
 }

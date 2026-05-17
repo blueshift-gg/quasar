@@ -10,10 +10,6 @@ use {
     },
 };
 
-// ---------------------------------------------------------------------------
-// ANSI helpers (standalone — profile crate doesn't depend on cli)
-// ---------------------------------------------------------------------------
-
 fn bold(s: &str) -> String {
     format!("\x1b[1m{s}\x1b[0m")
 }
@@ -38,13 +34,14 @@ fn bar_fill(s: &str) -> String {
     cyan(s)
 }
 
-// ---------------------------------------------------------------------------
-// Terminal profile summary
-// ---------------------------------------------------------------------------
-
 const LAST_PROFILE: &str = "target/profile/.last-profile";
 
-pub fn print_summary(result: &ProfileResult, program_name: &str, _binary_size: u64, expand: bool) {
+pub(crate) fn print_summary(
+    result: &ProfileResult,
+    program_name: &str,
+    _binary_size: u64,
+    expand: bool,
+) {
     println!();
     let total = result.total_cus;
     let fn_count = result.function_cus.len();
@@ -95,7 +92,7 @@ pub fn print_summary(result: &ProfileResult, program_name: &str, _binary_size: u
     save_current_profile(program_name, result);
 }
 
-/// First run — show the top hottest functions so the user has a baseline.
+/// First run: show the top hottest functions so the user has a baseline.
 fn print_top_functions(result: &ProfileResult, total: u64) {
     let fn_count = result.function_cus.len();
     let show = 5.min(fn_count);
@@ -124,7 +121,7 @@ fn print_top_functions(result: &ProfileResult, total: u64) {
     }
 }
 
-/// Subsequent runs — show the biggest regressions and improvements.
+/// Subsequent runs: show the biggest regressions and improvements.
 fn print_deltas(result: &ProfileResult, prev: &HashMap<String, u64>, total: u64) {
     let mut deltas: Vec<(&str, i64, u64)> = result
         .function_cus
@@ -201,8 +198,8 @@ fn print_full_table(
     for (name, cus) in &result.function_cus {
         let pct = *cus as f64 / total as f64 * 100.0;
         let filled = (*cus as f64 / max_cu as f64 * bar_width as f64).round() as usize;
-        let bar_filled: String = "█".repeat(filled);
-        let bar_empty: String = "░".repeat(bar_width - filled);
+        let bar_filled: String = "#".repeat(filled);
+        let bar_empty: String = ".".repeat(bar_width - filled);
 
         let delta = prev
             .and_then(|p| {
@@ -238,7 +235,7 @@ fn print_full_table(
     );
 }
 
-pub fn print_flamegraph_link(url: &str) {
+pub(crate) fn print_flamegraph_link(url: &str) {
     println!("  {}  {}", dim("flamegraph"), cyan(url));
 }
 
@@ -279,7 +276,7 @@ fn simplify_name(name: &str) -> String {
         return name.to_string();
     }
 
-    // Handle `<Type as Trait>::method` → `Type::method`
+    // Handle `<Type as Trait>::method` as `Type::method`.
     let working = if name.starts_with('<') {
         if let Some(rest) = name.strip_prefix('<') {
             // Find matching '>' for the impl block
@@ -343,7 +340,7 @@ fn simplify_name(name: &str) -> String {
     if simplified.is_empty()
         || (simplified.len() == 1 && simplified.chars().next().unwrap().is_uppercase())
     {
-        // Grab the last `::segment` from the original name (before generics)
+        // Grab the last `::segment` from the input name before generics.
         let last_fn = name
             .rsplit("::")
             .next()
@@ -372,10 +369,6 @@ fn format_cu(n: u64) -> String {
     result
 }
 
-// ---------------------------------------------------------------------------
-// JSON output (unchanged)
-// ---------------------------------------------------------------------------
-
 #[derive(Serialize)]
 struct ProfileData {
     program: String,
@@ -400,7 +393,7 @@ struct BuildNode {
     children: HashMap<String, BuildNode>,
 }
 
-pub fn write_json(
+pub(crate) fn write_json(
     result: &ProfileResult,
     path: &Path,
     program_name: &str,

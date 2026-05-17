@@ -17,7 +17,7 @@ pub(super) fn build_zc_spec(
     field_infos: &[PodFieldInfo<'_>],
     has_dynamic: bool,
 ) -> ZcSpec {
-    // For dynamic accounts, schema_fields includes ALL fields (fixed with
+    // For dynamic accounts, schema_fields includes all fields (fixed with
     // native types + dynamic with zeropod compact types). For fixed accounts,
     // only the fixed fields with native types.
     let schema_fields = if has_dynamic {
@@ -52,12 +52,9 @@ pub(super) fn build_zc_spec(
             })
             .collect()
     } else {
-        let static_fields: Vec<_> = field_infos
+        field_infos
             .iter()
             .filter(|fi| fi.pod_dyn.is_none())
-            .collect();
-        static_fields
-            .iter()
             .map(|fi| {
                 let field = fi.field;
                 let vis = &field.vis;
@@ -76,7 +73,6 @@ pub(super) fn build_zc_spec(
 
     let zc_name = format_ident!("{}Zc", name);
     let zc_mod = format_ident!("__{}_zc", pascal_to_snake(&name.to_string()));
-    // Both paths now go through the module.
     let zc_path = quote! { #zc_mod::#zc_name };
 
     ZcSpec {
@@ -118,7 +114,7 @@ pub(super) fn emit_zc_definition(
     let schema_fields = &zc.schema_fields;
 
     if has_dynamic {
-        // Compact schema: ALL fields (fixed + dynamic). zeropod generates
+        // Compact schema: all fields (fixed + dynamic). zeropod generates
         // __SchemaHeader, __SchemaRef, __SchemaMut at the module scope.
         quote! {
             #[doc(hidden)]
@@ -194,6 +190,8 @@ pub(super) fn emit_account_wrapper(
 
             #[inline(always)]
             fn deref(&self) -> &Self::Target {
+                // SAFETY: AccountLoad validated that the account data contains a
+                // ZC value immediately after the discriminator.
                 unsafe { &*(self.__view.data_ptr().add(#disc_len) as *const #zc_path) }
             }
         }
@@ -201,6 +199,8 @@ pub(super) fn emit_account_wrapper(
         impl core::ops::DerefMut for #name {
             #[inline(always)]
             fn deref_mut(&mut self) -> &mut Self::Target {
+                // SAFETY: `&mut self` gives exclusive access to the transparent
+                // account wrapper and its backing account data.
                 unsafe { &mut *(self.__view.data_mut_ptr().add(#disc_len) as *mut #zc_path) }
             }
         }

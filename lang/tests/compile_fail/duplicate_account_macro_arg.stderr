@@ -1,0 +1,5 @@
+error: duplicate `discriminator`
+ --> tests/compile_fail/duplicate_account_macro_arg.rs:5:30
+  |
+5 | #[account(discriminator = 1, discriminator = 2)]
+  |                              ^^^^^^^^^^^^^

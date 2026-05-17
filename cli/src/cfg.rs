@@ -102,10 +102,6 @@ fn print_all(config: &GlobalConfig) {
     println!("    color      = {}", config.ui.color);
 }
 
-// ---------------------------------------------------------------------------
-// Interactive config menu
-// ---------------------------------------------------------------------------
-
 struct ConfigItem {
     key: &'static str,
     label: &'static str,
@@ -255,10 +251,6 @@ fn pick_choice(
     }
     false
 }
-
-// ---------------------------------------------------------------------------
-// Get / Set helpers
-// ---------------------------------------------------------------------------
 
 fn get_value(config: &GlobalConfig, key: &str) -> Option<String> {
     match key {

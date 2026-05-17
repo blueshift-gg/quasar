@@ -1,8 +1,9 @@
 use {
     crate::{
         error::{CliError, CliResult},
-        style, utils,
+        style,
     },
+    quasar_schema::snake_to_pascal,
     std::{fs, path::Path},
 };
 
@@ -26,7 +27,7 @@ pub fn run_instruction(name: &str) -> CliResult {
 
     if !lib_path.exists() {
         return Err(CliError::message(
-            "src/lib.rs not found — are you in a Quasar project?",
+            "src/lib.rs not found; are you in a Quasar project?",
         ));
     }
 
@@ -62,7 +63,7 @@ pub fn run_instruction(name: &str) -> CliResult {
     }
 
     // Write the instruction file
-    let pascal = utils::snake_to_pascal(&snake);
+    let pascal = snake_to_pascal(&snake);
     let content = format!(
         r#"use quasar_lang::prelude::*;
 
@@ -92,7 +93,7 @@ impl<'info> {pascal}<'info> {{
         fs::write(&mod_path, updated)?;
     }
 
-    // Update lib.rs — add instruction to #[program] block
+    // Add the instruction to the #[program] block in lib.rs.
     if lib_path.exists() {
         let lib_content = fs::read_to_string(&lib_path)?;
         if let Some(updated) = add_instruction_to_entrypoint(&lib_content, &snake, &pascal) {
@@ -113,19 +114,11 @@ impl<'info> {pascal}<'info> {{
 /// Find the highest discriminator in the #[program] block and insert
 /// a new #[instruction] entry with discriminator = max + 1.
 fn add_instruction_to_entrypoint(lib_content: &str, snake: &str, pascal: &str) -> Option<String> {
-    // Find the highest existing discriminator
     let mut max_disc: i64 = -1;
     for line in lib_content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("#[instruction(discriminator") {
-            if let Some(start) = trimmed.find("= ") {
-                if let Some(end) = trimmed[start + 2..].find(')') {
-                    if let Ok(n) = trimmed[start + 2..start + 2 + end].trim().parse::<i64>() {
-                        if n > max_disc {
-                            max_disc = n;
-                        }
-                    }
-                }
+        if let Some(n) = parse_discriminator(line) {
+            if n > max_disc {
+                max_disc = n;
             }
         }
     }
@@ -156,7 +149,7 @@ fn add_instruction_to_entrypoint(lib_content: &str, snake: &str, pascal: &str) -
                 } else if ch == '}' {
                     program_brace_depth -= 1;
                     if program_brace_depth == 0 {
-                        // This `}` closes the program mod — insert before this line
+                        // Insert before the `}` that closes the program module.
                         insert_pos = Some(pos);
                         break;
                     }
@@ -185,6 +178,27 @@ fn add_instruction_to_entrypoint(lib_content: &str, snake: &str, pascal: &str) -
     Some(result)
 }
 
+fn parse_discriminator(line: &str) -> Option<i64> {
+    let line = line.trim();
+    if !(line.starts_with("#[instruction(") || line.starts_with("#[account(")) {
+        return None;
+    }
+
+    let (_, after_name) = line.split_once("discriminator")?;
+    let (_, after_eq) = after_name.split_once('=')?;
+    let digits: String = after_eq
+        .trim_start()
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+
+    if digits.is_empty() {
+        return None;
+    }
+
+    digits.parse().ok()
+}
+
 pub fn run_state(name: &str) -> CliResult {
     let snake = name.replace('-', "_");
 
@@ -198,26 +212,18 @@ pub fn run_state(name: &str) -> CliResult {
         )));
     }
 
-    let pascal = utils::snake_to_pascal(&snake);
+    let pascal = snake_to_pascal(&snake);
     let state_path = Path::new("src").join("state.rs");
     let already_exists = state_path.exists();
 
     if already_exists {
         let existing = fs::read_to_string(&state_path)?;
 
-        // Find the highest existing discriminator in state.rs
         let mut max_disc: i64 = 0;
         for line in existing.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("#[account(discriminator") {
-                if let Some(start) = trimmed.find("= ") {
-                    if let Some(end) = trimmed[start + 2..].find(')') {
-                        if let Ok(n) = trimmed[start + 2..start + 2 + end].trim().parse::<i64>() {
-                            if n > max_disc {
-                                max_disc = n;
-                            }
-                        }
-                    }
+            if let Some(n) = parse_discriminator(line) {
+                if n > max_disc {
+                    max_disc = n;
                 }
             }
         }
@@ -265,7 +271,7 @@ pub fn run_error(name: &str) -> CliResult {
         )));
     }
 
-    let pascal = utils::snake_to_pascal(&snake);
+    let pascal = snake_to_pascal(&snake);
     let errors_path = Path::new("src").join("errors.rs");
     let already_exists = errors_path.exists();
 
@@ -296,4 +302,38 @@ pub enum {pascal} {{
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{add_instruction_to_entrypoint, parse_discriminator};
+
+    #[test]
+    fn discriminator_parser_accepts_space_or_no_space() {
+        assert_eq!(
+            parse_discriminator("#[instruction(discriminator = 7)]"),
+            Some(7)
+        );
+        assert_eq!(parse_discriminator("#[account(discriminator=8)]"), Some(8));
+    }
+
+    #[test]
+    fn instruction_insert_uses_highest_existing_discriminator() {
+        let source = r#"#[program]
+mod demo {
+    use super::*;
+
+    #[instruction(discriminator=3)]
+    pub fn initialize(ctx: Ctx<Initialize>) -> Result<(), ProgramError> {
+        ctx.accounts.initialize()
+    }
+}
+"#;
+
+        let updated = add_instruction_to_entrypoint(source, "settle", "Settle")
+            .expect("program block should be updated");
+
+        assert!(updated.contains("#[instruction(discriminator = 4)]"));
+        assert!(updated.contains("pub fn settle(ctx: Ctx<Settle>)"));
+    }
 }

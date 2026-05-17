@@ -7,7 +7,7 @@ const UNVERIFY_COLLECTION: u8 = 22;
 const UNVERIFY_SIZED_COLLECTION_ITEM: u8 = 31;
 
 #[inline(always)]
-pub fn unverify_collection<'a>(
+pub(super) fn unverify_collection<'a>(
     program: &'a AccountView,
     metadata: &'a AccountView,
     collection_authority: &'a AccountView,
@@ -36,7 +36,7 @@ pub fn unverify_collection<'a>(
 }
 
 #[inline(always)]
-pub fn unverify_sized_collection_item<'a>(
+pub(super) fn unverify_sized_collection_item<'a>(
     program: &'a AccountView,
     metadata: &'a AccountView,
     collection_authority: &'a AccountView,

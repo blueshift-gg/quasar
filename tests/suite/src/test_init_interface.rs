@@ -4,9 +4,7 @@ use {
     quasar_test_token_init::cpi::*,
 };
 
-// ===========================================================================
-// init InterfaceAccount<Token> — with SPL Token program
-// ===========================================================================
+// init InterfaceAccount<Token> with token programs.
 
 #[test]
 fn init_token_interface_spl_happy() {
@@ -76,9 +74,7 @@ fn init_token_interface_t22_happy() {
     );
 }
 
-// ===========================================================================
-// init_if_needed InterfaceAccount<Token> — new + existing + adversarial
-// ===========================================================================
+// init_if_needed InterfaceAccount<Token>, new, existing, and adversarial.
 
 #[test]
 fn init_if_needed_token_interface_spl_new() {
@@ -256,9 +252,7 @@ fn init_if_needed_token_interface_existing_wrong_mint() {
     );
 }
 
-// ===========================================================================
-// init InterfaceAccount<Mint>
-// ===========================================================================
+// init InterfaceAccount<Mint>.
 
 #[test]
 fn init_mint_interface_spl_happy() {
@@ -326,9 +320,7 @@ fn init_mint_interface_t22_happy() {
     );
 }
 
-// ===========================================================================
-// init_if_needed InterfaceAccount<Mint> — new + existing + adversarial
-// ===========================================================================
+// init_if_needed InterfaceAccount<Mint>, new, existing, and adversarial.
 
 #[test]
 fn init_if_needed_mint_interface_spl_new() {

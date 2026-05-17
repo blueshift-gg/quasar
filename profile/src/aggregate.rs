@@ -3,14 +3,14 @@ use {
     std::collections::HashMap,
 };
 
-pub struct ProfileResult {
-    pub stack_counts: Vec<(Vec<String>, u64)>,
-    pub total_cus: u64,
+pub(crate) struct ProfileResult {
+    pub(crate) stack_counts: Vec<(Vec<String>, u64)>,
+    pub(crate) total_cus: u64,
     /// (function_name, self_cu_count) sorted descending
-    pub function_cus: Vec<(String, u64)>,
+    pub(crate) function_cus: Vec<(String, u64)>,
 }
 
-pub fn profile(mmap: &[u8], info: &ElfInfo, resolver: &Resolver) -> ProfileResult {
+pub(crate) fn profile(mmap: &[u8], info: &ElfInfo, resolver: &Resolver) -> ProfileResult {
     let text = &mmap[info.text_offset..info.text_offset + info.text_size];
     let walker = InstructionWalker::new(text, info.text_base_addr);
 
@@ -22,8 +22,7 @@ pub fn profile(mmap: &[u8], info: &ElfInfo, resolver: &Resolver) -> ProfileResul
         let stack = resolver.resolve(addr);
         total_cus += 1;
 
-        // Attribute to leaf function (innermost frame)
-        // addr2line returns frames innermost-first, so first() is the leaf
+        // addr2line returns frames innermost-first.
         if let Some(leaf) = stack.first() {
             *leaf_counts.entry(leaf.clone()).or_insert(0) += 1;
         }
@@ -31,7 +30,6 @@ pub fn profile(mmap: &[u8], info: &ElfInfo, resolver: &Resolver) -> ProfileResul
         *stack_counts.entry(stack).or_insert(0) += 1;
     }
 
-    // Build sorted function CU table
     let mut function_cus: Vec<_> = leaf_counts.into_iter().collect();
     function_cus.sort_by_key(|b| std::cmp::Reverse(b.1));
 

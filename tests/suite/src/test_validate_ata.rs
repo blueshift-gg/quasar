@@ -5,9 +5,7 @@ use {
     quasar_test_token_validate::cpi::*,
 };
 
-// ===========================================================================
-// Account<Token> (SPL Token) — ValidateAtaCheck
-// ===========================================================================
+// Account<Token> with SPL Token, ValidateAtaCheck.
 
 #[test]
 fn ata_spl_happy() {
@@ -160,9 +158,7 @@ fn ata_spl_wrong_owner() {
     assert!(result.is_err(), "wrong account owner program should fail");
 }
 
-// ===========================================================================
-// Account<Token2022> — ValidateAta2022Check
-// ===========================================================================
+// Account<Token2022>, ValidateAta2022Check.
 
 #[test]
 fn ata_t22_happy() {
@@ -315,9 +311,7 @@ fn ata_t22_wrong_owner() {
     assert!(result.is_err(), "wrong account owner program should fail");
 }
 
-// ===========================================================================
-// InterfaceAccount<Token> with SPL Token — ValidateAtaInterfaceCheck
-// ===========================================================================
+// InterfaceAccount<Token> with SPL Token, ValidateAtaInterfaceCheck.
 
 #[test]
 fn ata_interface_spl_happy() {
@@ -470,9 +464,7 @@ fn ata_interface_spl_wrong_owner() {
     assert!(result.is_err(), "wrong account owner program should fail");
 }
 
-// ===========================================================================
-// InterfaceAccount<Token> with Token-2022 — ValidateAtaInterfaceCheck
-// ===========================================================================
+// InterfaceAccount<Token> with Token-2022, ValidateAtaInterfaceCheck.
 
 #[test]
 fn ata_interface_t22_happy() {

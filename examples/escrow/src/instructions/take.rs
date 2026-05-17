@@ -1,6 +1,6 @@
 use {
     crate::{events::TakeEvent, state::Escrow},
-    quasar_lang::prelude::*,
+    quasar_lang::{cpi::Seed, prelude::*},
     quasar_spl::prelude::*,
 };
 
@@ -48,7 +48,7 @@ impl Take {
     }
 
     #[inline(always)]
-    pub fn withdraw_tokens_and_close(&mut self, bumps: &TakeBumps) -> Result<(), ProgramError> {
+    pub fn withdraw_tokens_and_close(&self, bumps: &TakeBumps) -> Result<(), ProgramError> {
         let bump = [bumps.escrow];
         let seeds = [
             Seed::from(b"escrow" as &[u8]),
@@ -67,8 +67,7 @@ impl Take {
 
         self.token_program
             .close_account(&self.vault_ta_a, &self.taker, &self.escrow)
-            .invoke_signed(&seeds)?;
-        Ok(())
+            .invoke_signed(&seeds)
     }
 
     #[inline(always)]

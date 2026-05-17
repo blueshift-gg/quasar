@@ -1,0 +1,5 @@
+error: duplicate #[account(...)] attribute on field
+ --> tests/compile_fail/duplicate_account_attr.rs:8:5
+  |
+8 |     #[account(mut)]
+  |     ^^^^^^^^^^^^^^^

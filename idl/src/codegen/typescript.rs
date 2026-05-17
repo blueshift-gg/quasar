@@ -85,7 +85,6 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     let pdas = collect_pdas(idl);
     let exportable_pda_helpers = pda_helper_lookup(&pdas);
 
-    // --- Collect which codecs are actually used ---
     let used = collect_used_codecs(idl);
     let has_dyn_string = used.contains("dynString");
     let has_dyn_vec = used.contains("dynVec");
@@ -100,7 +99,6 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     let emit_plugin =
         target == TsTarget::Kit && (!plugin_accounts.is_empty() || !plugin_instructions.is_empty());
 
-    // --- Imports ---
     match target {
         TsTarget::Web3js => {
             if has_instructions || has_dynamic_types {
@@ -229,13 +227,11 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         out.push_str("}\n\n");
     }
 
-    // --- PublicKey codec helper (web3.js only) ---
     if target == TsTarget::Web3js && has_public_key {
         out.push_str(PUBLIC_KEY_CODEC_HELPER);
         out.push('\n');
     }
 
-    // --- Discriminator match helper ---
     let has_decoders =
         !idl.accounts.is_empty() || !idl.events.is_empty() || !idl.instructions.is_empty();
     if has_decoders {
@@ -481,7 +477,6 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         .expect("write to String");
     }
 
-    // --- Account decoders ---
     for account in &idl.accounts {
         let name = &account.name;
         let const_name = pascal_to_screaming_snake(name);
@@ -503,7 +498,6 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         out.push_str("  }\n");
     }
 
-    // --- Event decoder ---
     if !idl.events.is_empty() {
         out.push('\n');
         out.push_str("  decodeEvent(data: Uint8Array): DecodedEvent | null {\n");
@@ -528,7 +522,6 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         out.push_str("  }\n");
     }
 
-    // --- Instruction decoder ---
     if !idl.instructions.is_empty() {
         out.push('\n');
         out.push_str("  decodeInstruction(data: Uint8Array): DecodedInstruction | null {\n");
@@ -582,7 +575,6 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         out.push_str("  }\n");
     }
 
-    // --- Instruction builders (target-specific) ---
     match target {
         TsTarget::Web3js => generate_instruction_builders_web3js(
             &mut out,
@@ -750,10 +742,6 @@ fn lower_first(s: &str) -> String {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Instruction builders — @solana/web3.js
-// ---------------------------------------------------------------------------
-
 fn generate_instruction_builders_web3js(
     out: &mut String,
     idl: &Idl,
@@ -920,10 +908,6 @@ fn generate_instruction_builders_web3js(
         out.push_str("  }\n");
     }
 }
-
-// ---------------------------------------------------------------------------
-// Instruction builders — @solana/kit
-// ---------------------------------------------------------------------------
 
 fn generate_instruction_builders_kit(
     out: &mut String,
@@ -1127,7 +1111,6 @@ fn emit_compact_type_codec(out: &mut String, name: &str, fields: &[IdlFieldDef],
 
     writeln!(out, "export const {name}Codec = {{").expect("write to String");
 
-    // ---- encode ----
     writeln!(out, "  encode(value: {name}): Uint8Array {{").expect("write to String");
 
     // Phase 1: fixed fields
@@ -1278,7 +1261,6 @@ fn emit_compact_type_codec(out: &mut String, name: &str, fields: &[IdlFieldDef],
     .expect("write to String");
     out.push_str("  },\n");
 
-    // ---- decode ----
     writeln!(out, "  decode(data: Uint8Array): {name} {{").expect("write to String");
     out.push_str("    let offset = 0;\n");
 
@@ -2287,10 +2269,6 @@ fn ts_pda_encoded_seed_expr(encoded_expr: &str, target: TsTarget) -> String {
         TsTarget::Kit => encoded_expr.to_string(),
     }
 }
-
-// ---------------------------------------------------------------------------
-// Shared helpers
-// ---------------------------------------------------------------------------
 
 /// Check if a type represents a string (for dynamic codec purposes).
 fn is_string_type(ty: &IdlType) -> bool {

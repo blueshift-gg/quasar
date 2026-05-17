@@ -5,23 +5,19 @@
 //! `Program<T>` for executable program accounts, `Sysvar<T>` for sysvar
 //! accounts, and `UncheckedAccount` for unvalidated passthrough.
 
-pub mod unchecked;
-pub use unchecked::*;
-pub mod signer;
-pub use signer::*;
-pub mod system_account;
-pub use system_account::*;
-pub mod sysvar;
-pub use sysvar::*;
 pub mod account;
-pub use account::*;
-pub mod program;
-pub use program::*;
+pub mod array;
 pub mod interface;
-pub use interface::*;
 pub mod interface_account;
-pub use interface_account::*;
 pub mod migration;
-pub use migration::*;
+pub mod program;
+pub mod signer;
+pub mod system_account;
+pub mod sysvar;
+pub mod unchecked;
 pub mod uninit;
-pub use uninit::*;
+
+pub use {
+    account::*, array::*, interface::*, interface_account::*, migration::*, program::*, signer::*,
+    system_account::*, sysvar::*, unchecked::*, uninit::*,
+};

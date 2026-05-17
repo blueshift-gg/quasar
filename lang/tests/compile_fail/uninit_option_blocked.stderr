@@ -1,4 +1,4 @@
-error: `Option<Uninit<...>>` is not supported — deferred init fields cannot be optional
+error: `Option<Uninit<...>>` is not supported: deferred init fields cannot be optional
   --> tests/compile_fail/uninit_option_blocked.rs:17:5
    |
 17 |     pub vault: Option<Uninit<Account<Vault>>>,

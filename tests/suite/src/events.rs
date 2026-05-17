@@ -259,7 +259,7 @@ fn test_emit_cpi_wrong_authority() {
     );
 }
 
-// ── emit!() tests ───────────────────────────────────────────────────────
+// emit!() tests.
 
 #[test]
 fn test_emit_empty_event() {
@@ -344,7 +344,7 @@ fn test_emit_cu_remains_low() {
     );
 }
 
-// ── emit_cpi!() tests ──────────────────────────────────────────────────
+// emit_cpi!() tests.
 
 #[test]
 fn test_emit_cpi_with_extra_accounts() {
@@ -483,7 +483,7 @@ fn test_emit_cpi_cu_budget() {
     );
 }
 
-// ── Event discriminator tests ───────────────────────────────────────────
+// Event discriminator tests.
 
 #[test]
 fn test_event_discriminator_matches() {

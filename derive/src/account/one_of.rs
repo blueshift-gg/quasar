@@ -83,7 +83,7 @@ pub(crate) fn generate_one_of_account(
         }
     };
 
-    // 3. AccountLoad — delegates to each variant's AccountLoad::check
+    // 3. AccountLoad: delegates to each variant's AccountLoad::check
     let variant_checks: Vec<proc_macro2::TokenStream> = variant_paths
         .iter()
         .map(|v| {
@@ -124,7 +124,7 @@ pub(crate) fn generate_one_of_account(
 
     };
 
-    // 4. Owner — const assertion all variants share same owner
+    // 4. Owner: const assertion all variants share same owner
     let first_variant = &variant_paths[0];
     let owner_checks: Vec<proc_macro2::TokenStream> = variant_paths
         .iter()
@@ -153,10 +153,10 @@ pub(crate) fn generate_one_of_account(
         }
     };
 
-    // 5. Pairwise discriminator prefix assertions (Security Finding #3)
+    // 5. Pairwise discriminator prefix assertions.
     let disc_assertions = emit_pairwise_disc_assertions(&variant_paths);
 
-    // 6. Space — max of all variants
+    // 6. Space: max of all variants
     let space_impl = emit_max_space(name, &variant_paths);
 
     // 7. StaticView
@@ -280,6 +280,9 @@ fn emit_one_of_accessors(
         let ty = &v.inner_ty;
         variant_arms.push(quote! {
             if __data.starts_with(<#ty as quasar_lang::traits::Discriminator>::DISCRIMINATOR) {
+                // SAFETY: `#name` and `Account<#ty>` are transparent wrappers
+                // over the same AccountView, and this branch matched `#ty`'s
+                // discriminator.
                 return #ref_enum_name::#ident(unsafe {
                     &*(&self.__view as *const quasar_lang::__internal::AccountView
                         as *const quasar_lang::accounts::account::Account<#ty>)
@@ -293,7 +296,7 @@ fn emit_one_of_accessors(
         pub fn variant(&self) -> #ref_enum_name<'_> {
             let __data = unsafe { self.__view.borrow_unchecked() };
             #(#variant_arms)*
-            // AccountLoad::check already validated one matches — unreachable.
+            // AccountLoad::check already validated one matches: unreachable.
             unsafe { core::hint::unreachable_unchecked() }
         }
     });
@@ -317,6 +320,8 @@ fn emit_one_of_accessors(
             pub fn #accessor(&self) -> Option<&quasar_lang::accounts::account::Account<#ty>> {
                 let __data = unsafe { self.__view.borrow_unchecked() };
                 if __data.starts_with(<#ty as quasar_lang::traits::Discriminator>::DISCRIMINATOR) {
+                    // SAFETY: the discriminator match proves this transparent
+                    // AccountView wrapper is the requested account type.
                     Some(unsafe {
                         &*(&self.__view as *const quasar_lang::__internal::AccountView
                             as *const quasar_lang::accounts::account::Account<#ty>)
@@ -330,6 +335,8 @@ fn emit_one_of_accessors(
             pub fn #accessor_mut(&mut self) -> Option<&mut quasar_lang::accounts::account::Account<#ty>> {
                 let __data = unsafe { self.__view.borrow_unchecked() };
                 if __data.starts_with(<#ty as quasar_lang::traits::Discriminator>::DISCRIMINATOR) {
+                    // SAFETY: `&mut self` gives exclusive access and the
+                    // discriminator match proves this wrapper's account type.
                     Some(unsafe {
                         &mut *(&mut self.__view as *mut quasar_lang::__internal::AccountView
                             as *mut quasar_lang::accounts::account::Account<#ty>)
@@ -360,6 +367,8 @@ fn emit_deref_impl(
 
     // --- Deref (shared ref) ---
     let mut deref_body = quote! {
+        // SAFETY: AccountLoad already proved that one variant matches. After all
+        // earlier variants failed, the last variant is the only remaining match.
         unsafe {
             &*(&self.__view as *const quasar_lang::__internal::AccountView
                 as *const #last_variant) as &(dyn #trait_path)
@@ -368,6 +377,8 @@ fn emit_deref_impl(
     for variant in variants[..last_idx].iter().rev() {
         deref_body = quote! {
             if __data.starts_with(<#variant as quasar_lang::traits::Discriminator>::DISCRIMINATOR) {
+                // SAFETY: the discriminator match proves this transparent
+                // AccountView wrapper is `#variant`.
                 unsafe {
                     &*(&self.__view as *const quasar_lang::__internal::AccountView
                         as *const #variant) as &(dyn #trait_path)
@@ -380,6 +391,9 @@ fn emit_deref_impl(
 
     // --- DerefMut (exclusive ref) ---
     let mut deref_mut_body = quote! {
+        // SAFETY: AccountLoad already proved that one variant matches. After all
+        // earlier variants failed, the last variant is the only remaining match;
+        // `&mut self` provides exclusive access to the backing view.
         unsafe {
             &mut *(&mut self.__view as *mut quasar_lang::__internal::AccountView
                 as *mut #last_variant) as &mut (dyn #trait_path)
@@ -388,6 +402,8 @@ fn emit_deref_impl(
     for variant in variants[..last_idx].iter().rev() {
         deref_mut_body = quote! {
             if __data.starts_with(<#variant as quasar_lang::traits::Discriminator>::DISCRIMINATOR) {
+                // SAFETY: the discriminator match proves this transparent
+                // AccountView wrapper is `#variant`; `&mut self` is exclusive.
                 unsafe {
                     &mut *(&mut self.__view as *mut quasar_lang::__internal::AccountView
                         as *mut #variant) as &mut (dyn #trait_path)

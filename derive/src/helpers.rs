@@ -1,25 +1,4 @@
-pub(crate) use quasar_schema::{pascal_to_snake, snake_to_pascal};
-
-/// Convert snake_case to camelCase (first word lowercase, subsequent words
-/// capitalized).
-pub(crate) fn snake_to_camel(s: &str) -> String {
-    let mut result = String::new();
-    for (i, part) in s.split('_').enumerate() {
-        if part.is_empty() {
-            continue;
-        }
-        if i == 0 {
-            result.push_str(part);
-        } else {
-            let mut chars = part.chars();
-            if let Some(c) = chars.next() {
-                result.push(c.to_ascii_uppercase());
-                result.extend(chars);
-            }
-        }
-    }
-    result
-}
+pub(crate) use quasar_schema::{pascal_to_snake, snake_to_pascal, to_camel_case as snake_to_camel};
 use {
     quote::quote,
     syn::{
@@ -28,17 +7,43 @@ use {
     },
 };
 
+fn duplicate_arg_error(ident: &Ident) -> syn::Error {
+    syn::Error::new(ident.span(), format!("duplicate `{ident}`"))
+}
+
+/// Parse `#[max(N)]` or `#[max(N, pfx = P)]` from an attribute list.
+pub(crate) fn parse_max_attr(attrs: &[syn::Attribute]) -> Option<syn::Result<(usize, usize)>> {
+    for attr in attrs {
+        if attr.path().is_ident("max") {
+            return Some(attr.parse_args_with(|stream: syn::parse::ParseStream| {
+                let n: LitInt = stream.parse()?;
+                let max_n: usize = n.base10_parse()?;
+                let mut pfx = 0usize;
+                if !stream.is_empty() {
+                    let _: Token![,] = stream.parse()?;
+                    let key: Ident = stream.parse()?;
+                    if key != "pfx" {
+                        return Err(syn::Error::new(key.span(), "expected `pfx`"));
+                    }
+                    let _: Token![=] = stream.parse()?;
+                    let p: LitInt = stream.parse()?;
+                    pfx = p.base10_parse()?;
+                }
+                Ok((max_n, pfx))
+            }));
+        }
+    }
+    None
+}
+
 pub(crate) struct AccountAttr {
     pub disc_bytes: Vec<LitInt>,
     pub unsafe_no_disc: bool,
     pub set_inner: bool,
     pub fixed_capacity: bool,
-    /// `custom` — transparent wrapper over AccountView with user-provided
-    /// check().
-    pub custom: bool,
-    /// `one_of` — polymorphic account on enum declarations.
+    /// `one_of`: polymorphic account on enum declarations.
     pub one_of: bool,
-    /// `implements(TraitPath)` — trait all variants implement; generates Deref.
+    /// `implements(TraitPath)`: trait all variants implement; generates Deref.
     pub implements: Option<syn::Path>,
 }
 
@@ -48,25 +53,42 @@ impl Parse for AccountAttr {
         let mut unsafe_no_disc = false;
         let mut set_inner = false;
         let mut fixed_capacity = false;
-        let mut custom = false;
         let mut one_of = false;
         let mut implements: Option<syn::Path> = None;
+        let mut has_discriminator = false;
 
         while !input.is_empty() {
             let ident: Ident = input.parse()?;
             if ident == "unsafe_no_disc" {
+                if unsafe_no_disc {
+                    return Err(duplicate_arg_error(&ident));
+                }
                 unsafe_no_disc = true;
             } else if ident == "set_inner" {
+                if set_inner {
+                    return Err(duplicate_arg_error(&ident));
+                }
                 set_inner = true;
             } else if ident == "fixed_capacity" {
+                if fixed_capacity {
+                    return Err(duplicate_arg_error(&ident));
+                }
                 fixed_capacity = true;
-            } else if ident == "custom" {
-                custom = true;
             } else if ident == "one_of" {
+                if one_of {
+                    return Err(duplicate_arg_error(&ident));
+                }
                 one_of = true;
             } else if ident == "discriminator" {
+                if has_discriminator {
+                    return Err(duplicate_arg_error(&ident));
+                }
                 disc_bytes = parse_discriminator_value(input)?;
+                has_discriminator = true;
             } else if ident == "implements" {
+                if implements.is_some() {
+                    return Err(duplicate_arg_error(&ident));
+                }
                 let content;
                 syn::parenthesized!(content in input);
                 implements = Some(content.parse::<syn::Path>()?);
@@ -74,22 +96,13 @@ impl Parse for AccountAttr {
                 return Err(syn::Error::new(
                     ident.span(),
                     "expected `discriminator`, `unsafe_no_disc`, `set_inner`, `fixed_capacity`, \
-                     `custom`, `one_of`, or `implements`",
+                     `one_of`, or `implements`",
                 ));
             }
             let _ = input.parse::<Option<Token![,]>>();
         }
 
-        // custom accounts don't have discriminators
-        if custom && (!disc_bytes.is_empty() || unsafe_no_disc || set_inner || fixed_capacity) {
-            return Err(syn::Error::new(
-                input.span(),
-                "`custom` cannot be combined with `discriminator`, `unsafe_no_disc`, `set_inner`, \
-                 or `fixed_capacity`",
-            ));
-        }
-
-        if !custom && !one_of && disc_bytes.is_empty() && !unsafe_no_disc {
+        if !one_of && disc_bytes.is_empty() && !unsafe_no_disc {
             return Err(syn::Error::new(
                 input.span(),
                 "expected `discriminator` or `unsafe_no_disc`",
@@ -100,6 +113,13 @@ impl Parse for AccountAttr {
             return Err(syn::Error::new(
                 input.span(),
                 "`implements` can only be used with `one_of`",
+            ));
+        }
+
+        if !one_of && has_discriminator && unsafe_no_disc {
+            return Err(syn::Error::new(
+                input.span(),
+                "`discriminator` cannot be combined with `unsafe_no_disc`",
             ));
         }
 
@@ -116,7 +136,6 @@ impl Parse for AccountAttr {
             unsafe_no_disc,
             set_inner,
             fixed_capacity,
-            custom,
             one_of,
             implements,
         })
@@ -138,17 +157,20 @@ impl Parse for InstructionArgs {
         while !input.is_empty() {
             let ident: Ident = input.parse()?;
             if ident == "heap" {
+                if heap {
+                    return Err(duplicate_arg_error(&ident));
+                }
                 heap = true;
             } else if ident == "raw" {
+                if raw {
+                    return Err(duplicate_arg_error(&ident));
+                }
                 raw = true;
             } else if ident == "discriminator" {
+                if discriminator.is_some() {
+                    return Err(duplicate_arg_error(&ident));
+                }
                 discriminator = Some(parse_discriminator_value(input)?);
-            } else if ident == "pre_hook" || ident == "post_hook" {
-                return Err(syn::Error::new(
-                    ident.span(),
-                    "pre_hook and post_hook have been removed. Attach a behavior check group to \
-                     the relevant account field, or move logic into the handler body.",
-                ));
             } else {
                 return Err(syn::Error::new(
                     ident.span(),
@@ -232,15 +254,12 @@ pub(crate) fn is_composite_type(ty: &Type) -> bool {
     }
     if let Type::Path(type_path) = ty {
         if let Some(last) = type_path.path.segments.last() {
-            if let PathArguments::AngleBracketed(args) = &last.arguments {
-                return args
-                    .args
-                    .iter()
-                    .any(|arg| matches!(arg, GenericArgument::Lifetime(_)));
+            if last.ident == "AccountsArray" {
+                return true;
             }
         }
     }
-    false
+    classify_lifetime_arg(ty)
 }
 
 pub(crate) fn is_unit_type(ty: &Type) -> bool {
@@ -467,8 +486,9 @@ pub(crate) fn zc_assign_from_value(field_name: &Ident, ty: &Type) -> proc_macro2
 fn pod_alias_type(ty: &Type, accept_pod_aliases: bool) -> Option<proc_macro2::TokenStream> {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
-            let is_string = seg.ident == "String" || seg.ident == "PodString" && accept_pod_aliases;
-            let is_vec = seg.ident == "Vec" || seg.ident == "PodVec" && accept_pod_aliases;
+            let is_string =
+                seg.ident == "String" || (accept_pod_aliases && seg.ident == "PodString");
+            let is_vec = seg.ident == "Vec" || (accept_pod_aliases && seg.ident == "PodVec");
 
             if is_string {
                 if let PathArguments::AngleBracketed(ab) = &seg.arguments {
@@ -493,7 +513,7 @@ fn pod_alias_type(ty: &Type, accept_pod_aliases: bool) -> Option<proc_macro2::To
                     return Some(quote! { quasar_lang::pod::PodVec });
                 }
             } else if seg.ident == "PodOption" {
-                // PodOption<T, PFX> — map inner type, pass PFX through.
+                // PodOption<T, PFX>: map inner type, pass PFX through.
                 if let PathArguments::AngleBracketed(ab) = &seg.arguments {
                     let mut it = ab.args.iter();
                     if let Some(syn::GenericArgument::Type(inner)) = it.next() {
@@ -530,112 +550,62 @@ fn pod_alias_type(ty: &Type, accept_pod_aliases: bool) -> Option<proc_macro2::To
 /// { .. })` for dynamic types (PodString, PodVec, String, Vec with const
 /// generics).
 pub(crate) fn type_to_idl_codec_tokens(ty: &Type) -> proc_macro2::TokenStream {
-    if let Some(dyn_field) = classify_pod_dynamic(ty) {
-        match dyn_field {
-            PodDynField::Str { max, prefix_bytes } => {
-                let pfx_ty_str = match prefix_bytes {
-                    1 => "u8",
-                    2 => "u16",
-                    4 => "u32",
-                    8 => "u64",
-                    _ => "u8",
-                };
-                return quote! {
-                    Some(quasar_lang::idl_build::__reexport::IdlCodec::SizePrefixed {
-                        prefix: quasar_lang::idl_build::__reexport::ScalarRepr {
-                            ty: quasar_lang::idl_build::s(#pfx_ty_str),
-                            endian: quasar_lang::idl_build::__reexport::Endian::Le,
-                        },
-                        storage: quasar_lang::idl_build::__reexport::Storage::Tail,
-                        max_bytes: Some(#max),
-                        max_items: None,
-                        encoding: Some(quasar_lang::idl_build::s("utf8")),
-                        item: None,
-                    })
-                };
+    let dyn_field = classify_pod_dynamic(ty)
+        .or_else(|| extract_generic_inner_type(ty, "Option").and_then(classify_pod_dynamic));
+
+    match dyn_field {
+        Some(dyn_field) => idl_codec_for_dynamic(dyn_field),
+        None => quote! { None },
+    }
+}
+
+fn idl_codec_for_dynamic(dyn_field: PodDynField) -> proc_macro2::TokenStream {
+    match dyn_field {
+        PodDynField::Str { max, prefix_bytes } => {
+            let pfx_ty_str = prefix_type_name(prefix_bytes, "u8");
+            quote! {
+                Some(quasar_lang::idl_build::__reexport::IdlCodec::SizePrefixed {
+                    prefix: quasar_lang::idl_build::__reexport::ScalarRepr {
+                        ty: quasar_lang::idl_build::s(#pfx_ty_str),
+                        endian: quasar_lang::idl_build::__reexport::Endian::Le,
+                    },
+                    storage: quasar_lang::idl_build::__reexport::Storage::Tail,
+                    max_bytes: Some(#max),
+                    max_items: None,
+                    encoding: Some(quasar_lang::idl_build::s("utf8")),
+                    item: None,
+                })
             }
-            PodDynField::Vec {
-                max, prefix_bytes, ..
-            } => {
-                let pfx_ty_str = match prefix_bytes {
-                    1 => "u8",
-                    2 => "u16",
-                    4 => "u32",
-                    8 => "u64",
-                    _ => "u16",
-                };
-                return quote! {
-                    Some(quasar_lang::idl_build::__reexport::IdlCodec::SizePrefixed {
-                        prefix: quasar_lang::idl_build::__reexport::ScalarRepr {
-                            ty: quasar_lang::idl_build::s(#pfx_ty_str),
-                            endian: quasar_lang::idl_build::__reexport::Endian::Le,
-                        },
-                        storage: quasar_lang::idl_build::__reexport::Storage::Tail,
-                        max_bytes: None,
-                        max_items: Some(#max),
-                        encoding: None,
-                        item: None,
-                    })
-                };
+        }
+        PodDynField::Vec {
+            max, prefix_bytes, ..
+        } => {
+            let pfx_ty_str = prefix_type_name(prefix_bytes, "u16");
+            quote! {
+                Some(quasar_lang::idl_build::__reexport::IdlCodec::SizePrefixed {
+                    prefix: quasar_lang::idl_build::__reexport::ScalarRepr {
+                        ty: quasar_lang::idl_build::s(#pfx_ty_str),
+                        endian: quasar_lang::idl_build::__reexport::Endian::Le,
+                    },
+                    storage: quasar_lang::idl_build::__reexport::Storage::Tail,
+                    max_bytes: None,
+                    max_items: Some(#max),
+                    encoding: None,
+                    item: None,
+                })
             }
         }
     }
-    // Check if it's Option<dynamic_type> — the option-wrapped dynamic field is also
-    // dynamic
-    if let Some(inner) = extract_generic_inner_type(ty, "Option") {
-        if let Some(dyn_field) = classify_pod_dynamic(inner) {
-            match dyn_field {
-                PodDynField::Str { max, prefix_bytes } => {
-                    let pfx_ty_str = match prefix_bytes {
-                        1 => "u8",
-                        2 => "u16",
-                        4 => "u32",
-                        8 => "u64",
-                        _ => "u8",
-                    };
-                    return quote! {
-                        Some(quasar_lang::idl_build::__reexport::IdlCodec::SizePrefixed {
-                            prefix: quasar_lang::idl_build::__reexport::ScalarRepr {
-                                ty: quasar_lang::idl_build::s(#pfx_ty_str),
-                                endian: quasar_lang::idl_build::__reexport::Endian::Le,
-                            },
-                            storage: quasar_lang::idl_build::__reexport::Storage::Tail,
-                            max_bytes: Some(#max),
-                            max_items: None,
-                            encoding: Some(quasar_lang::idl_build::s("utf8")),
-                            item: None,
-                        })
-                    };
-                }
-                PodDynField::Vec {
-                    max, prefix_bytes, ..
-                } => {
-                    let pfx_ty_str = match prefix_bytes {
-                        1 => "u8",
-                        2 => "u16",
-                        4 => "u32",
-                        8 => "u64",
-                        _ => "u16",
-                    };
-                    return quote! {
-                        Some(quasar_lang::idl_build::__reexport::IdlCodec::SizePrefixed {
-                            prefix: quasar_lang::idl_build::__reexport::ScalarRepr {
-                                ty: quasar_lang::idl_build::s(#pfx_ty_str),
-                                endian: quasar_lang::idl_build::__reexport::Endian::Le,
-                            },
-                            storage: quasar_lang::idl_build::__reexport::Storage::Tail,
-                            max_bytes: None,
-                            max_items: Some(#max),
-                            encoding: None,
-                            item: None,
-                        })
-                    };
-                }
-            }
-        }
+}
+
+fn prefix_type_name(prefix_bytes: usize, fallback: &'static str) -> &'static str {
+    match prefix_bytes {
+        1 => "u8",
+        2 => "u16",
+        4 => "u32",
+        8 => "u64",
+        _ => fallback,
     }
-    // Fixed types: codec is inferred, return None
-    quote! { None }
 }
 
 /// Convert a Rust type to a `proc_macro2::TokenStream` that constructs an

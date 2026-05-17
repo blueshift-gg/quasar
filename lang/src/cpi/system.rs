@@ -126,8 +126,6 @@ pub fn assign<'a>(account: &'a AccountView, owner: &'a Address) -> CpiCall<'a, 1
 
 /// Allocate space in an account without transferring ownership.
 ///
-/// System program instruction index: 8
-///
 /// ### Accounts:
 ///   0. `[WRITE, SIGNER]` Account to allocate
 ///
@@ -185,20 +183,9 @@ pub fn init_account(
     if account.lamports() == 0 {
         create_account(payer, account, lamports, space, owner).invoke_with_signers(signers)
     } else {
-        // Pre-funded path: the account already has lamports (someone sent SOL
-        // to the PDA address). We can't use CreateAccount (it fails if the
-        // account has a non-zero balance), so we use three system CPIs:
-        //   1. Transfer  — top up to rent-exempt minimum (skip if already enough)
-        //   2. Allocate  — set data space (must be a CPI, not raw resize — the SVM
-        //      tracks original data_len from serialization and rejects direct mutations
-        //      on accounts that were not program-owned at serialization time)
-        //   3. Assign    — transfer ownership to the target program
-        //
-        // TODO: Replace with single `CreateAccountAllowPrefund` CPI (system
-        // program instruction 13) once the `create_account_allow_prefund`
-        // feature gate is activated on mainnet. That instruction is
-        // CreateAccount without the "lamports must be 0" check — collapses
-        // these 3 CPIs into 1. Ref: anza-xyz/pinocchio programs/system.
+        // CreateAccount requires a zero-lamport destination. Prefunded accounts
+        // are topped up if needed, then allocated and assigned through CPIs so
+        // the runtime tracks the owner and data length changes.
         let required = lamports.saturating_sub(account.lamports());
         if required > 0 {
             transfer(payer, account, required).invoke()?;
@@ -208,8 +195,6 @@ pub fn init_account(
         Ok(())
     }
 }
-
-// --- System program account type ---
 
 /// Marker type for the system program.
 ///
@@ -291,8 +276,7 @@ impl crate::accounts::Program<SystemProgram> {
 /// Initialize an account with automatic rent calculation.
 ///
 /// Computes the minimum rent-exempt balance from the provided `Rent`, then
-/// delegates to [`init_account`]. Used by the derive macro's init codegen to
-/// replace the inline rent-calc + CPI sequence with a single function call.
+/// delegates to [`init_account`].
 ///
 /// # Parameters
 ///
@@ -317,9 +301,8 @@ pub fn init_account_with_rent(
 
 /// Write a discriminator to an account's data buffer.
 ///
-/// Used by the derive macro after `init_account` to stamp the `Account<T>`
-/// discriminator. Separated from init so the same CPI body can be reused for
-/// token/mint accounts which don't need discriminator writes.
+/// Kept separate from init so token and mint account flows can reuse the CPI
+/// body without a discriminator write.
 #[inline(always)]
 pub fn write_discriminator(
     account: &mut AccountView,
@@ -328,6 +311,9 @@ pub fn write_discriminator(
     if discriminator.len() > account.data_len() {
         return Err(solana_program_error::ProgramError::AccountDataTooSmall);
     }
+    // SAFETY: The bounds check above proves the discriminator fits in the
+    // account data buffer, and `copy_nonoverlapping` only reads from the
+    // caller-provided discriminator slice.
     unsafe {
         core::ptr::copy_nonoverlapping(
             discriminator.as_ptr(),
@@ -339,110 +325,5 @@ pub fn write_discriminator(
 }
 
 #[cfg(kani)]
-mod kani_proofs {
-    use {
-        super::*,
-        crate::cpi::{AccountBuffer, MIN_ACCOUNT_BUF},
-    };
-
-    #[kani::proof]
-    fn transfer_data_layout() {
-        let lamports: u64 = kani::any();
-
-        let mut buf_from = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
-        buf_from.init([1; 32], [0; 32], 0, true, true, false);
-        let from = unsafe { buf_from.view() };
-
-        let mut buf_to = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
-        buf_to.init([2; 32], [0; 32], 0, false, true, false);
-        let to = unsafe { buf_to.view() };
-
-        let cpi = transfer(&from, &to, lamports);
-        let data = cpi.instruction_data();
-        assert!(u32::from_le_bytes([data[0], data[1], data[2], data[3]]) == IX_TRANSFER as u32);
-        assert!(
-            u64::from_le_bytes([
-                data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
-            ]) == lamports
-        );
-    }
-
-    #[kani::proof]
-    #[kani::unwind(33)]
-    fn assign_data_layout() {
-        let owner_bytes: [u8; 32] = kani::any();
-        let owner = solana_address::Address::new_from_array(owner_bytes);
-
-        let mut buf = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
-        buf.init([1; 32], [0; 32], 0, true, true, false);
-        let acct = unsafe { buf.view() };
-
-        let cpi = assign(&acct, &owner);
-        let data = cpi.instruction_data();
-        assert!(u32::from_le_bytes([data[0], data[1], data[2], data[3]]) == IX_ASSIGN as u32);
-
-        let mut i = 0;
-        while i < 32 {
-            assert!(data[4 + i] == owner_bytes[i]);
-            i += 1;
-        }
-    }
-
-    #[kani::proof]
-    fn allocate_data_layout() {
-        let space: u64 = kani::any();
-
-        let mut buf = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
-        buf.init([1; 32], [0; 32], 0, true, true, false);
-        let acct = unsafe { buf.view() };
-
-        let cpi = allocate(&acct, space);
-        let data = cpi.instruction_data();
-        assert!(u32::from_le_bytes([data[0], data[1], data[2], data[3]]) == IX_ALLOCATE as u32);
-        assert!(
-            u64::from_le_bytes([
-                data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
-            ]) == space
-        );
-    }
-
-    #[kani::proof]
-    #[kani::unwind(33)]
-    fn create_account_data_layout() {
-        let lamports: u64 = kani::any();
-        let space: u64 = kani::any();
-        let owner_bytes: [u8; 32] = kani::any();
-        let owner = solana_address::Address::new_from_array(owner_bytes);
-
-        let mut buf_from = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
-        buf_from.init([1; 32], [0; 32], 0, true, true, false);
-        let from = unsafe { buf_from.view() };
-
-        let mut buf_to = AccountBuffer::<MIN_ACCOUNT_BUF>::new();
-        buf_to.init([2; 32], [0; 32], 0, true, true, false);
-        let to = unsafe { buf_to.view() };
-
-        let cpi = create_account(&from, &to, lamports, space, &owner);
-        let data = cpi.instruction_data();
-
-        assert!(
-            u32::from_le_bytes([data[0], data[1], data[2], data[3]]) == IX_CREATE_ACCOUNT as u32
-        );
-        assert!(
-            u64::from_le_bytes([
-                data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
-            ]) == lamports
-        );
-        assert!(
-            u64::from_le_bytes([
-                data[12], data[13], data[14], data[15], data[16], data[17], data[18], data[19],
-            ]) == space
-        );
-
-        let mut i = 0;
-        while i < 32 {
-            assert!(data[20 + i] == owner_bytes[i]);
-            i += 1;
-        }
-    }
-}
+#[path = "../../kani/cpi/system.rs"]
+mod kani_proofs;

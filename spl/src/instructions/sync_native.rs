@@ -16,7 +16,7 @@ const SYNC_NATIVE: u8 = 17;
 /// [0] discriminator (17)
 /// ```
 #[inline(always)]
-pub fn sync_native<'a>(
+pub(super) fn sync_native<'a>(
     token_program: &'a AccountView,
     token_account: &'a AccountView,
 ) -> CpiCall<'a, 1, 1> {

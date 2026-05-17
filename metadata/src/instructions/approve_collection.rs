@@ -6,7 +6,7 @@ use quasar_lang::{
 const APPROVE_COLLECTION_AUTHORITY: u8 = 23;
 
 #[inline(always)]
-pub fn approve_collection_authority<'a>(
+pub(super) fn approve_collection_authority<'a>(
     program: &'a AccountView,
     collection_authority_record: &'a AccountView,
     new_collection_authority: &'a AccountView,

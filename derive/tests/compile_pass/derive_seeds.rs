@@ -23,6 +23,12 @@ pub struct VaultPda;
 #[seeds(b"indexed", authority: Address, index: u64)]
 pub struct IndexedPda;
 
+// -- With arbitrary fixed-size byte seeds ------------------------------------
+
+#[derive(Seeds)]
+#[seeds(b"registry", hash: [u8; 32], namespace: [u8; 16])]
+pub struct RegistryPda;
+
 fn main() {
     // Verify TestPda::seeds() exists and returns the SeedSet.
     let set = TestPda::seeds();
@@ -61,4 +67,13 @@ fn main() {
     _assert_verify::<VaultPdaSeedSetWithBump>();
     _assert_verify::<IndexedPdaSeedSet>();
     _assert_verify::<IndexedPdaSeedSetWithBump>();
+
+    let hash = [1u8; 32];
+    let namespace = [2u8; 16];
+    let set = RegistryPda::seeds(hash, namespace);
+    let slices = set.as_slices();
+    assert_eq!(slices.len(), 3);
+    assert_eq!(slices[0], b"registry");
+    assert_eq!(slices[1], &[1u8; 32]);
+    assert_eq!(slices[2], &[2u8; 16]);
 }

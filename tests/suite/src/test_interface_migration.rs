@@ -27,9 +27,7 @@ fn vault_v2_data(authority: Pubkey, value: u64, fee: u64) -> Vec<u8> {
     data
 }
 
-// =========================================================================
-// Happy paths: both V1 and V2 accepted through InterfaceAccount<VaultInterface>
-// =========================================================================
+// Happy paths for both V1 and V2 through InterfaceAccount<VaultInterface>.
 
 #[test]
 fn vault_v1_accepted() {
@@ -75,9 +73,7 @@ fn vault_v2_accepted() {
     );
 }
 
-// =========================================================================
-// Error paths
-// =========================================================================
+// Error paths.
 
 #[test]
 fn wrong_owner_rejected() {
@@ -124,7 +120,7 @@ fn v1_data_too_small_rejected() {
 fn v2_data_too_small_rejected() {
     let mut svm = svm_misc();
     let vault = Pubkey::new_unique();
-    // 41 bytes with disc=21 — enough for V1 but not V2
+    // 41 bytes with disc=21 is enough for V1 but not V2.
     let mut data = vec![0u8; 41];
     data[0] = 21;
     let ix: Instruction = InterfaceMigrationCheckInstruction { vault }.into();

@@ -4,8 +4,7 @@ use {quasar_derive::Accounts, quasar_lang::prelude::*};
 #[derive(Accounts)]
 pub struct HeaderDupReadonly {
     pub source: Signer,
-    /// CHECK: test-only — validates that duplicate readonly aliases are parsed
-    /// correctly.
+    /// Test-only unchecked account used to validate duplicate readonly aliases.
     #[account(dup)]
     pub destination: UncheckedAccount,
 }

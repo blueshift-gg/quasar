@@ -1,4 +1,4 @@
-//! Plain accounts — Signer, Account, Program, SystemAccount.
+//! Plain accounts: Signer, Account, Program, SystemAccount.
 #![allow(unexpected_cfgs)]
 extern crate alloc;
 

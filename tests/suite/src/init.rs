@@ -4,9 +4,7 @@ use {
     quasar_test_misc::cpi::*,
 };
 
-// ============================================================================
-// Happy paths
-// ============================================================================
+// Happy paths.
 
 #[test]
 fn fresh_account() {
@@ -206,9 +204,7 @@ fn explicit_payer() {
     assert_eq!(&acc.data[1..33], funder.as_ref(), "authority = funder");
 }
 
-// ============================================================================
-// Error paths
-// ============================================================================
+// Error paths.
 
 #[test]
 fn already_initialized() {
@@ -369,9 +365,7 @@ fn zero_data_owned_by_program() {
     result.assert_error(ProgramError::AccountAlreadyInitialized);
 }
 
-// ============================================================================
-// Pre-funded edge cases
-// ============================================================================
+// Pre-funded edge cases.
 
 #[test]
 fn prefunded_exact_no_topup() {
@@ -389,7 +383,7 @@ fn prefunded_exact_no_topup() {
     }
     .into();
 
-    // Pre-fund with 10 SOL — well above rent-exempt minimum → no transfer CPI
+    // Pre-fund with 10 SOL, well above rent-exempt minimum, so no transfer CPI.
     let result = svm.process_instruction(
         &ix,
         &[
@@ -409,7 +403,7 @@ fn prefunded_exact_no_topup() {
         result.raw_result
     );
 
-    // Verify payer was NOT charged (saturating_sub → required=0 → transfer skipped)
+    // Verify payer was NOT charged because required top-up is zero.
     let payer_after = result.account(&payer).expect("payer");
     assert_eq!(payer_after.lamports, payer_lamports, "payer not charged");
 }
@@ -429,7 +423,7 @@ fn prefunded_one_lamport() {
     }
     .into();
 
-    // Pre-fund with just 1 lamport — payer must top up almost all rent
+    // Pre-fund with just 1 lamport; payer must top up almost all rent.
     let result = svm.process_instruction(
         &ix,
         &[rich_signer_account(payer), prefunded_account(account, 1)],

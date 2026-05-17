@@ -7,6 +7,8 @@ use {solana_account_view::AccountView, solana_program_error::ProgramError};
 pub trait Discriminator: crate::traits::Discriminator {
     #[inline(always)]
     fn check(view: &AccountView) -> Result<(), ProgramError> {
+        // SAFETY: This is the unchecked fast path used when generated parsing
+        // has ruled out aliasing that requires runtime borrow tracking.
         let data = unsafe { view.borrow_unchecked() };
         Self::check_data(data)
     }

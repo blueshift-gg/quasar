@@ -30,9 +30,7 @@ fn derive_master_edition_pda(mint: &Pubkey) -> Pubkey {
     Pubkey::from(addr.to_bytes())
 }
 
-// ===========================================================================
-// Bare Account<MetadataAccount> — ValidateBareMetadata (disc=3)
-// ===========================================================================
+// Bare Account<MetadataAccount>, ValidateBareMetadata disc=3.
 
 #[test]
 fn bare_metadata_happy() {
@@ -127,9 +125,7 @@ fn bare_metadata_all_zeros() {
     assert!(result.is_err(), "should fail: key=0 is not metadata");
 }
 
-// ===========================================================================
-// Bare Account<MasterEditionAccount> — ValidateBareMasterEdition (disc=4)
-// ===========================================================================
+// Bare Account<MasterEditionAccount>, ValidateBareMasterEdition disc=4.
 
 #[test]
 fn bare_master_edition_happy() {
@@ -223,9 +219,7 @@ fn bare_master_edition_data_too_small() {
     assert!(result.is_err(), "should fail: data too small");
 }
 
-// ===========================================================================
-// Metadata with behavior — ValidateMetadataCheck (disc=0)
-// ===========================================================================
+// Metadata with behavior, ValidateMetadataCheck disc=0.
 
 #[test]
 fn metadata_check_happy() {
@@ -305,9 +299,7 @@ fn metadata_check_wrong_pda() {
     assert!(result.is_err(), "should fail: address doesn't match PDA");
 }
 
-// ===========================================================================
-// Metadata with update_authority — ValidateMetadataWithUa (disc=1)
-// ===========================================================================
+// Metadata with update_authority, ValidateMetadataWithUa disc=1.
 
 #[test]
 fn metadata_with_ua_happy() {
@@ -366,9 +358,7 @@ fn metadata_with_ua_wrong_authority() {
     assert!(result.is_err(), "should fail: update_authority mismatch");
 }
 
-// ===========================================================================
-// Master Edition with behavior — ValidateMasterEditionCheck (disc=2)
-// ===========================================================================
+// Master Edition with behavior, ValidateMasterEditionCheck disc=2.
 
 #[test]
 fn master_edition_check_happy() {
@@ -419,10 +409,8 @@ fn master_edition_check_wrong_pda() {
     assert!(result.is_err(), "should fail: address doesn't match PDA");
 }
 
-// ===========================================================================
-// Init Metadata via CPI — InitMetadataTest (disc=10)
-// Full end-to-end: create mint -> CPI to Metaplex -> verify prefix fields
-// ===========================================================================
+// Init Metadata via CPI, InitMetadataTest disc=10.
+// Full end-to-end: create mint, CPI to Metaplex, then verify prefix fields.
 
 #[test]
 fn init_metadata_happy() {
@@ -465,9 +453,7 @@ fn init_metadata_happy() {
     );
 }
 
-// ===========================================================================
-// Init Master Edition via CPI — InitMasterEditionTest (disc=11)
-// ===========================================================================
+// Init Master Edition via CPI, InitMasterEditionTest disc=11.
 
 #[test]
 fn init_master_edition_happy() {

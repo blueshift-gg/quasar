@@ -6,7 +6,6 @@ error[E0277]: the trait bound `quasar_metadata::MetadataAccount: quasar_lang::pr
    |
    = help: the following other types implement trait `quasar_lang::prelude::Space`:
              InterfaceAccount<T>
-             Migration<From, To>
              quasar_lang::accounts::Account<T>
    = note: required for `quasar_lang::accounts::Account<quasar_metadata::MetadataAccount>` to implement `quasar_lang::prelude::Space`
 
@@ -19,8 +18,11 @@ error[E0271]: type mismatch resolving `<Account<MetadataAccount> as AccountInit>
 note: required by a bound in `quasar_lang::ops::init::Op::<'a, P>::apply`
   --> $WORKSPACE/lang/src/ops/init.rs
    |
-   |     pub fn apply<F: AccountLoad + AccountInit<InitParams<'a> = P>>(
-   |                                               ^^^^^^^^^^^^^^^^^^ required by this bound in `Op::<'a, P>::apply`
+   |     pub fn apply<F, R>(
+   |            ----- required by a bound in this associated function
+...
+   |         F: AccountLoad + AccountInit<InitParams<'a> = P>,
+   |                                      ^^^^^^^^^^^^^^^^^^ required by this bound in `Op::<'a, P>::apply`
 
 error[E0080]: evaluation panicked: field `metadata` requires an init-param behavior (e.g., token(...) or mint(...))
  --> tests/compile_fail/init_without_behavior.rs:7:10

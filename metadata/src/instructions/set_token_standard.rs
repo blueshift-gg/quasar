@@ -6,7 +6,7 @@ use quasar_lang::{
 const SET_TOKEN_STANDARD: u8 = 35;
 
 #[inline(always)]
-pub fn set_token_standard<'a>(
+pub(super) fn set_token_standard<'a>(
     program: &'a AccountView,
     metadata: &'a AccountView,
     update_authority: &'a AccountView,

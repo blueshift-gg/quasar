@@ -1,6 +1,6 @@
 use {
     crate::{events::RefundEvent, state::Escrow},
-    quasar_lang::prelude::*,
+    quasar_lang::{cpi::Seed, prelude::*},
     quasar_spl::prelude::*,
 };
 
@@ -27,7 +27,7 @@ pub struct Refund {
 
 impl Refund {
     #[inline(always)]
-    pub fn withdraw_tokens_and_close(&mut self, bumps: &RefundBumps) -> Result<(), ProgramError> {
+    pub fn withdraw_tokens_and_close(&self, bumps: &RefundBumps) -> Result<(), ProgramError> {
         let bump = [bumps.escrow];
         let seeds = [
             Seed::from(b"escrow" as &[u8]),
@@ -46,8 +46,7 @@ impl Refund {
 
         self.token_program
             .close_account(&self.vault_ta_a, &self.maker, &self.escrow)
-            .invoke_signed(&seeds)?;
-        Ok(())
+            .invoke_signed(&seeds)
     }
 
     #[inline(always)]

@@ -1,12 +1,12 @@
-//! Structural validation — invariants only, no protocol knowledge.
+//! Structural validation: invariants only, no protocol knowledge.
 //!
 //! Protocol-specific validation (required args, arg types, exit ordering)
 //! is owned by behavior modules via builder errors and trait bounds.
 
-use {super::FieldSemantics, syn::Expr};
+use {super::FieldSemantics, std::collections::HashSet, syn::Expr};
 
 pub(super) fn validate_semantics(semantics: &[FieldSemantics]) -> syn::Result<()> {
-    let field_names: Vec<String> = semantics
+    let field_names: HashSet<String> = semantics
         .iter()
         .map(|sem| sem.core.ident.to_string())
         .collect();
@@ -25,7 +25,7 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
         if sem.core.optional {
             return Err(syn::Error::new_spanned(
                 span,
-                "`Option<Migration<...>>` is not supported — migration fields cannot be optional",
+                "`Option<Migration<...>>` is not supported: migration fields cannot be optional",
             ));
         }
         if sem.has_init() {
@@ -53,7 +53,7 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
         if sem.core.optional {
             return Err(syn::Error::new_spanned(
                 span,
-                "`Option<Uninit<...>>` is not supported — deferred init fields cannot be optional",
+                "`Option<Uninit<...>>` is not supported: deferred init fields cannot be optional",
             ));
         }
         if sem.has_init() {
@@ -100,25 +100,25 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
         if sem.has_init() {
             return Err(syn::Error::new_spanned(
                 span,
-                "`dup` cannot be used with `init` — mutation on aliased accounts is unsound",
+                "`dup` cannot be used with `init`: mutation on aliased accounts is unsound",
             ));
         }
         if sem.realloc.is_some() {
             return Err(syn::Error::new_spanned(
                 span,
-                "`dup` cannot be used with `realloc` — mutation on aliased accounts is unsound",
+                "`dup` cannot be used with `realloc`: mutation on aliased accounts is unsound",
             ));
         }
         if sem.close_dest.is_some() {
             return Err(syn::Error::new_spanned(
                 span,
-                "`dup` cannot be used with `close` — mutation on aliased accounts is unsound",
+                "`dup` cannot be used with `close`: mutation on aliased accounts is unsound",
             ));
         }
         if sem.core.is_mut && !sem.groups.is_empty() {
             return Err(syn::Error::new_spanned(
                 span,
-                "`dup` with `mut` cannot have behavior groups — mutation on aliased accounts is \
+                "`dup` with `mut` cannot have behavior groups: mutation on aliased accounts is \
                  unsound",
             ));
         }
@@ -140,7 +140,6 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
         }
     }
 
-    // Optional init not supported in first implementation
     if sem.core.optional && sem.has_init() {
         return Err(syn::Error::new_spanned(
             span,
@@ -184,7 +183,10 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
 
 /// Validate behavior arg values: reject single-segment lowercase identifiers
 /// that don't match any field name (likely typos or instruction args).
-fn validate_behavior_field_refs(sem: &FieldSemantics, field_names: &[String]) -> syn::Result<()> {
+fn validate_behavior_field_refs(
+    sem: &FieldSemantics,
+    field_names: &HashSet<String>,
+) -> syn::Result<()> {
     for group in &sem.groups {
         for arg in &group.args {
             validate_single_arg(&arg.value, &arg.key, field_names)?;
@@ -204,7 +206,11 @@ fn validate_behavior_field_refs(sem: &FieldSemantics, field_names: &[String]) ->
 }
 
 /// Reject a bare lowercase single-segment identifier that isn't a field name.
-fn validate_single_arg(expr: &Expr, key: &syn::Ident, field_names: &[String]) -> syn::Result<()> {
+fn validate_single_arg(
+    expr: &Expr,
+    key: &syn::Ident,
+    field_names: &HashSet<String>,
+) -> syn::Result<()> {
     if let Expr::Path(ep) = expr {
         if ep.qself.is_none() && ep.path.segments.len() == 1 {
             let name = ep.path.segments[0].ident.to_string();
@@ -214,10 +220,10 @@ fn validate_single_arg(expr: &Expr, key: &syn::Ident, field_names: &[String]) ->
             if name.starts_with(|c: char| c.is_uppercase()) {
                 return Ok(());
             }
-            if !field_names.contains(&name) {
+            if !field_names.contains(name.as_str()) {
                 return Err(syn::Error::new_spanned(
                     expr,
-                    format!("`{key} = {name}` — no field `{name}` in this accounts struct"),
+                    format!("`{key} = {name}`: no field `{name}` in this accounts struct"),
                 ));
             }
         }

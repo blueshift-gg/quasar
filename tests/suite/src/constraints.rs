@@ -4,9 +4,7 @@ use {
     quasar_test_misc::cpi::*,
 };
 
-// ============================================================================
-// has_one — default error
-// ============================================================================
+// has_one default errors.
 
 #[test]
 fn has_one_success() {
@@ -148,9 +146,7 @@ fn has_one_default_passed() {
     result.assert_error(ProgramError::Custom(3005));
 }
 
-// ============================================================================
-// has_one — custom error (via test-errors crate)
-// ============================================================================
+// has_one custom errors.
 
 #[test]
 fn has_one_custom_success() {
@@ -194,9 +190,7 @@ fn has_one_custom_mismatch() {
     result.assert_error(ProgramError::Custom(0)); // TestError::Hello
 }
 
-// ============================================================================
-// address — default error
-// ============================================================================
+// address default errors.
 
 #[test]
 fn address_success() {
@@ -223,9 +217,7 @@ fn address_mismatch() {
     result.assert_error(ProgramError::Custom(3012)); // AddressMismatch
 }
 
-// ============================================================================
-// address — custom error (via test-errors crate)
-// ============================================================================
+// address custom errors.
 
 #[test]
 fn address_custom_success() {
@@ -254,9 +246,7 @@ fn address_custom_mismatch() {
     result.assert_error(ProgramError::Custom(104)); // TestError::AddressCustom
 }
 
-// ============================================================================
-// constraint — default error
-// ============================================================================
+// constraint default errors.
 
 #[test]
 fn constraint_success() {
@@ -289,9 +279,7 @@ fn constraint_fail() {
     result.assert_error(ProgramError::Custom(3004)); // ConstraintViolation
 }
 
-// ============================================================================
-// constraint — custom error
-// ============================================================================
+// constraint custom errors.
 
 #[test]
 fn constraint_custom_success() {
@@ -322,9 +310,7 @@ fn constraint_custom_fail() {
     result.assert_error(ProgramError::Custom(2)); // TestError::CustomConstraint
 }
 
-// ============================================================================
-// combined constraints
-// ============================================================================
+// combined constraints.
 
 #[test]
 fn has_one_and_owner_success() {

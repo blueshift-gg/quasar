@@ -15,9 +15,6 @@ const SYSTEM_PROGRAM_ID: Address = Address::new_from_array([
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ]);
 
-// ============================================================================
-// Header Validation Debug Message Tests
-//
 // Build test-errors with debug feature:
 //   cargo build-sbf --manifest-path tests/programs/test-errors/Cargo.toml
 // --features debug,alloc
@@ -28,7 +25,6 @@ const SYSTEM_PROGRAM_ID: Address = Address::new_from_array([
 // The tests verify that:
 // 1. Account header validation works correctly
 // 2. Debug messages are emitted with the correct account name and constraint
-// ============================================================================
 
 #[test]
 fn test_header_nodup_mut_signer_success() {
@@ -48,7 +44,7 @@ fn test_header_nodup_mut_signer_success() {
     assert_eq!(result.program_result, MolluskResult::Success);
 
     #[cfg(feature = "debug")]
-    println!("✓ Test passed: writable signer account validated correctly");
+    println!("[ok] writable signer account validated correctly");
 }
 
 #[test]
@@ -68,7 +64,7 @@ fn test_header_nodup_mut_success() {
     assert_eq!(result.program_result, MolluskResult::Success);
 
     #[cfg(feature = "debug")]
-    println!("✓ Test passed: writable account validated correctly");
+    println!("[ok] writable account validated correctly");
 }
 
 #[test]
@@ -89,7 +85,7 @@ fn test_header_nodup_signer_success() {
     assert_eq!(result.program_result, MolluskResult::Success);
 
     #[cfg(feature = "debug")]
-    println!("✓ Test passed: signer account validated correctly");
+    println!("[ok] signer account validated correctly");
 }
 
 #[test]
@@ -120,7 +116,7 @@ fn test_header_executable_success() {
     assert_eq!(result.program_result, MolluskResult::Success);
 
     #[cfg(feature = "debug")]
-    println!("✓ Test passed: executable program validated correctly");
+    println!("[ok] executable program validated correctly");
 }
 
 #[test]
@@ -129,7 +125,7 @@ fn test_header_dup_accounts_distinct_address_accepted() {
     let source = Address::new_unique();
     let destination = Address::new_unique();
 
-    // `#[account(dup)]` means "MAY alias" — distinct addresses are fine.
+    // `#[account(dup)]` means "may alias"; distinct addresses are fine.
     let instruction = Instruction {
         program_id: quasar_test_errors::ID,
         accounts: vec![
@@ -154,10 +150,6 @@ fn test_header_dup_accounts_distinct_address_accepted() {
     );
 }
 
-// ============================================================================
-// Failure Cases — Non-signer passed where signer required
-// ============================================================================
-
 #[test]
 fn test_header_nodup_signer_fails_not_signer() {
     let mollusk = setup();
@@ -177,10 +169,6 @@ fn test_header_nodup_signer_fails_not_signer() {
     );
 }
 
-// ============================================================================
-// Failure Cases — Non-writable passed where writable required
-// ============================================================================
-
 #[test]
 fn test_header_nodup_mut_fails_not_writable() {
     let mollusk = setup();
@@ -199,10 +187,6 @@ fn test_header_nodup_mut_fails_not_writable() {
         MolluskResult::Failure(ProgramError::Immutable)
     );
 }
-
-// ============================================================================
-// Failure Cases — Non-writable non-signer passed where both required
-// ============================================================================
 
 #[test]
 fn test_header_nodup_mut_signer_fails_not_signer() {
@@ -242,10 +226,6 @@ fn test_header_nodup_mut_signer_fails_not_writable() {
     );
 }
 
-// ============================================================================
-// Failure Cases — Not executable
-// ============================================================================
-
 #[test]
 fn test_header_executable_fails_not_executable() {
     let mollusk = setup();
@@ -275,10 +255,6 @@ fn test_header_executable_fails_not_executable() {
         MolluskResult::Failure(ProgramError::InvalidAccountData)
     );
 }
-
-// ============================================================================
-// Failure Cases — Duplicate account where no-dup required
-// ============================================================================
 
 #[test]
 fn test_header_three_way_duplicate() {
@@ -312,10 +288,6 @@ fn test_header_three_way_duplicate() {
         MolluskResult::Failure(ProgramError::AccountBorrowFailed)
     );
 }
-
-// ============================================================================
-// Dup-allowed accounts — Duplicate with different flags
-// ============================================================================
 
 #[test]
 fn test_header_dup_readonly_same_account_success() {

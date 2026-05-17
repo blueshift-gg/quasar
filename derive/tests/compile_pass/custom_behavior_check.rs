@@ -10,7 +10,6 @@ pub struct MyData {
     pub value: u64,
 }
 
-// --- Custom check-only behavior module ---
 mod min_value {
     use quasar_lang::prelude::*;
 

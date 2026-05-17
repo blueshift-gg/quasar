@@ -9,7 +9,6 @@ pub struct CheckConsensus {
 impl CheckConsensus {
     #[inline(always)]
     pub fn handler(&self) -> Result<(), ProgramError> {
-        // Read threshold via Deref<Target = dyn Consensus>
         let _t = self.consensus.threshold();
         Ok(())
     }

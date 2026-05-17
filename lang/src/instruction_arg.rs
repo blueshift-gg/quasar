@@ -1,7 +1,7 @@
 //! Traits for instruction arguments.
 //!
 //! Zeropod owns all storage layout and validation. Quasar provides the
-//! native↔pod conversion bridge so framework types participate in
+//! native-to-pod conversion bridge so framework types participate in
 //! instruction decoding.
 //!
 //! - Fixed args: `InstructionArg` (zero-copy pointer cast)
@@ -83,7 +83,7 @@ impl<T: zeropod::ZcElem, const N: usize, const PFX: usize> BuiltinPod for PodVec
 /// Blanket `InstructionArg` for all builtin pod types via `ZcField` + `From`.
 ///
 /// QuasarSerialize structs/enums are NOT `BuiltinPod` (sealed), so they
-/// generate direct `InstructionArg` impls — no E0119 overlap.
+/// generate direct `InstructionArg` impls; no E0119 overlap.
 impl<T> InstructionArg for T
 where
     T: Copy + BuiltinPod + zeropod::ZcField,
@@ -109,12 +109,9 @@ where
     }
 }
 
-// --- Option<T> explicit impl (blanket doesn't cover it) ---
-
 /// Zero-copy companion for `Option<T>`.
 pub type OptionZc<Z> = crate::pod::PodOption<Z>;
 
-// Compile-time alignment and size checks.
 const _: () = assert!(core::mem::align_of::<OptionZc<[u8; 1]>>() == 1);
 const _: () = assert!(core::mem::size_of::<OptionZc<[u8; 1]>>() == 2);
 
@@ -126,6 +123,8 @@ impl<T: InstructionArg> InstructionArg for Option<T> {
         if zc.raw_tag() == 0 {
             None
         } else {
+            // SAFETY: Nonzero tags carry an initialized payload. Untrusted
+            // instruction data must call `validate_zc` before this conversion.
             Some(T::from_zc(unsafe { zc.assume_init_ref() }))
         }
     }
@@ -137,6 +136,7 @@ impl<T: InstructionArg> InstructionArg for Option<T> {
             return Err(crate::prelude::ProgramError::InvalidInstructionData);
         }
         if tag == 1 {
+            // SAFETY: Tag 1 is the initialized `Some` variant.
             T::validate_zc(unsafe { zc.assume_init_ref() })?;
         }
         Ok(())
@@ -213,6 +213,8 @@ mod tests {
 
     fn option_zc_with_tag<Z: Copy>(tag: u8, inner: Z) -> OptionZc<Z> {
         let mut zc = OptionZc::some(inner);
+        // SAFETY: The first byte of `PodOption` is its tag; tests deliberately
+        // forge invalid tags to exercise validation.
         unsafe {
             *((&mut zc) as *mut OptionZc<Z> as *mut u8) = tag;
         }
@@ -236,6 +238,8 @@ mod tests {
     #[test]
     fn option_none_payload_is_zeroed() {
         let zc = None::<u64>.to_zc();
+        // SAFETY: Skip the one-byte tag and read exactly the PodU64 payload
+        // bytes from the stack-local `OptionZc`.
         let bytes = unsafe {
             core::slice::from_raw_parts(
                 (&zc as *const _ as *const u8).add(1),
@@ -311,52 +315,5 @@ mod tests {
 }
 
 #[cfg(kani)]
-mod kani_proofs {
-    use super::*;
-
-    #[kani::proof]
-    fn option_validate_zc_tag_boundary() {
-        let tag: u8 = kani::any();
-        let mut zc = OptionZc::some(PodU64::from(0u64));
-        unsafe {
-            *((&mut zc) as *mut OptionZc<PodU64> as *mut u8) = tag;
-        }
-        let result = Option::<u64>::validate_zc(&zc);
-        assert!(result.is_ok() == (tag <= 1));
-    }
-
-    #[kani::proof]
-    fn option_roundtrip_some() {
-        let v: u64 = kani::any();
-        let opt = Some(v);
-        let zc = opt.to_zc();
-        assert!(Option::<u64>::validate_zc(&zc).is_ok());
-        let decoded = Option::<u64>::from_zc(&zc);
-        assert!(decoded == Some(v));
-    }
-
-    #[kani::proof]
-    fn option_roundtrip_none() {
-        let opt: Option<u64> = None;
-        let zc = opt.to_zc();
-        assert!(Option::<u64>::validate_zc(&zc).is_ok());
-        let decoded = Option::<u64>::from_zc(&zc);
-        assert!(decoded.is_none());
-    }
-
-    #[kani::proof]
-    fn instruction_arg_u64_roundtrip() {
-        let v: u64 = kani::any();
-        let zc = v.to_zc();
-        let decoded = u64::from_zc(&zc);
-        assert!(decoded == v);
-    }
-
-    #[kani::proof]
-    fn instruction_arg_bool_roundtrip() {
-        let v: bool = kani::any();
-        let zc = v.to_zc();
-        let decoded = bool::from_zc(&zc);
-        assert!(decoded == v);
-    }
-}
+#[path = "../kani/instruction_arg.rs"]
+mod kani_proofs;

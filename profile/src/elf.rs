@@ -1,30 +1,30 @@
 use {goblin::elf::Elf, memmap2::Mmap, std::path::Path};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DebugLevel {
+pub(crate) enum DebugLevel {
     Dwarf,
     SymbolsOnly,
     Stripped,
 }
 
-pub struct Symbol {
-    pub addr: u64,
-    pub size: u64,
-    pub name: String,
+pub(crate) struct Symbol {
+    pub(crate) addr: u64,
+    pub(crate) size: u64,
+    pub(crate) name: String,
 }
 
-pub struct ElfInfo {
-    pub text_offset: usize,
-    pub text_size: usize,
-    pub text_base_addr: u64,
-    pub symbols: Vec<Symbol>,
-    pub debug_level: DebugLevel,
+pub(crate) struct ElfInfo {
+    pub(crate) text_offset: usize,
+    pub(crate) text_size: usize,
+    pub(crate) text_base_addr: u64,
+    pub(crate) symbols: Vec<Symbol>,
+    pub(crate) debug_level: DebugLevel,
 }
 
 const EM_BPF: u16 = 247;
 const EM_SBF: u16 = 263;
 
-pub fn load(mmap: &Mmap, path: &Path) -> ElfInfo {
+pub(crate) fn load(mmap: &Mmap, path: &Path) -> ElfInfo {
     let elf = Elf::parse(mmap).unwrap_or_else(|e| {
         eprintln!("Error: failed to parse ELF file {}: {}", path.display(), e);
         std::process::exit(1);

@@ -1,14 +1,10 @@
-//! Typed execution plan — protocol-neutral phase model.
+//! Typed execution plan: protocol-neutral phase model.
 //!
 //! After planning, every field has a `FieldPlan` with phase-ordered steps.
 //! All protocol behavior is lowered to generic `BehaviorCall` steps that
 //! emit `AccountBehavior` trait calls. No SPL domain knowledge.
 
 use syn::{Expr, Ident, Type};
-
-// ---------------------------------------------------------------------------
-// Behavior call — the single protocol-neutral operation
-// ---------------------------------------------------------------------------
 
 /// A resolved behavior call for one behavior group on one field.
 ///
@@ -40,9 +36,9 @@ pub(crate) struct LoweredArg {
 /// How a behavior arg value is lowered for codegen.
 #[derive(Clone)]
 pub(crate) enum LoweredValue {
-    /// `field.to_account_view()` — bare field reference.
+    /// `field.to_account_view()`: bare field reference.
     FieldView(Ident),
-    /// `field.as_ref().map(|v| v.to_account_view())` — optional field
+    /// `field.as_ref().map(|v| v.to_account_view())`: optional field
     /// reference.
     OptionalFieldView(Ident),
     /// Pass expression directly.
@@ -59,27 +55,16 @@ pub(crate) enum LoweredValue {
 /// one builder build method, and one trait method call.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BehaviorPhase {
-    /// `SETS_INIT_PARAMS` → `build_init()` → `set_init_param()`
+    /// `SETS_INIT_PARAMS` -> `build_init()` -> `set_init_param()`
     SetInitParam,
-    /// `RUN_AFTER_INIT` → `build_init()` → `after_init()`
+    /// `RUN_AFTER_INIT` -> `build_init()` -> `after_init()`
     AfterInit,
-    /// `RUN_CHECK` → `build_check()` → `check()`
+    /// `RUN_CHECK` -> `build_check()` -> `check()`
     Check,
-    /// `RUN_UPDATE` → `build_check()` → `update()`
+    /// `RUN_UPDATE` -> `build_check()` -> `update()`
     Update,
-    /// `RUN_EXIT` → `build_exit()` → `exit()`
+    /// `RUN_EXIT` -> `build_exit()` -> `exit()`
     Exit,
-}
-
-// ---------------------------------------------------------------------------
-// Core structural specs (protocol-agnostic)
-// ---------------------------------------------------------------------------
-
-/// Space specification for program init.
-#[derive(Clone)]
-pub(crate) enum SpaceSpec {
-    /// Derived from `<T as Space>::SPACE`.
-    FromType(Type),
 }
 
 /// A reference that is guaranteed to be a field (never an expression).
@@ -89,12 +74,12 @@ pub(crate) struct FieldRef {
     pub ident: Ident,
 }
 
-/// Plain program account init (no behavior — system program create +
+/// Plain program account init (no behavior: system program create +
 /// discriminator).
 #[derive(Clone)]
 pub(crate) struct ProgramInitSpec {
     pub payer: FieldRef,
-    pub space: SpaceSpec,
+    pub space_ty: Type,
     pub idempotent: bool,
 }
 
@@ -115,7 +100,7 @@ pub(crate) struct BehaviorInitSpec {
 pub(crate) enum InitPlan {
     /// Plain program-owned init (system program create + discriminator).
     Program(ProgramInitSpec),
-    /// Behavior-delegated init (set_init_param → AccountInit::init).
+    /// Behavior-delegated init (set_init_param -> AccountInit::init).
     /// Load, after_init, and check happen in later phases.
     Behavior(BehaviorInitSpec),
 }
@@ -133,30 +118,22 @@ pub(crate) struct AddressSpec {
     pub expr: Expr,
 }
 
-/// Program-level close (drain lamports). Core lifecycle — not protocol-owned.
+/// Program-level close (drain lamports). Core lifecycle: not protocol-owned.
 #[derive(Clone)]
 pub(crate) struct ProgramCloseSpec {
     pub destination_field: Ident,
 }
-
-// ---------------------------------------------------------------------------
-// Rent plan (instruction-wide)
-// ---------------------------------------------------------------------------
 
 /// Instruction-wide rent resolution.
 #[derive(Clone)]
 pub(crate) enum RentPlan {
     /// No step needs rent.
     NotNeeded,
-    /// A Sysvar<Rent> field exists — read from it.
+    /// A Sysvar<Rent> field exists: read from it.
     FromSysvarField { field: Ident },
-    /// No sysvar field — syscall once.
+    /// No sysvar field: syscall once.
     FetchOnce,
 }
-
-// ---------------------------------------------------------------------------
-// Field plan — per-field phase vectors only
-// ---------------------------------------------------------------------------
 
 /// A step that runs before account load (address verify + init CPI).
 #[derive(Clone)]
@@ -186,15 +163,15 @@ pub(crate) enum EpilogueStep {
     ProgramClose(ProgramCloseSpec),
 }
 
-/// Per-field execution plan. Only phase vectors — structural info lives in
+/// Per-field execution plan. Only phase vectors: structural info lives in
 /// FieldSemantics.
 #[derive(Clone)]
 pub(crate) struct FieldPlan {
     /// Steps before load (init fields only).
     pub pre_load: Vec<PreLoadStep>,
-    /// Steps after load (checks, realloc, migration grow, address verify).
+    /// Steps after load (behavior checks/updates, realloc, address verify).
     pub post_load: Vec<PostLoadStep>,
-    /// Steps in epilogue (behavior exit, program close, migration normalize).
+    /// Steps in epilogue (behavior exit, program close).
     pub epilogue: Vec<EpilogueStep>,
 }
 

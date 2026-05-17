@@ -4,25 +4,12 @@ use {
     std::path::{Path, PathBuf},
 };
 
-// ---------------------------------------------------------------------------
-// Project config (Quasar.toml)
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Deserialize)]
 pub struct QuasarConfig {
     pub project: ProjectConfig,
     pub toolchain: ToolchainConfig,
     pub testing: TestingConfig,
-    #[serde(default)]
-    pub clients: Option<ClientsConfig>,
-    #[serde(default)]
-    pub lint: Option<LintConfig>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-pub struct LintConfig {
-    #[serde(default)]
-    pub enabled: bool,
+    pub clients: ClientsConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -80,20 +67,8 @@ impl QuasarConfig {
         }
         let contents = std::fs::read_to_string(path)
             .map_err(|e| CliError::message(format!("failed to read {}: {e}", path.display())))?;
-        let config: QuasarConfig = toml::from_str(&contents).map_err(|e| {
-            // Check if this looks like an old-format config (pre-init-rework)
-            if contents.contains("[testing]\nframework")
-                || contents.contains("[testing]\r\nframework")
-                || (contents.contains("[testing]") && !contents.contains("language"))
-            {
-                CliError::message(
-                    "Quasar.toml uses an outdated format.\n\n  Run quasar config reset and \
-                     re-init your project.",
-                )
-            } else {
-                CliError::message(format!("invalid {}: {e}", path.display()))
-            }
-        })?;
+        let config: QuasarConfig = toml::from_str(&contents)
+            .map_err(|e| CliError::message(format!("invalid {}: {e}", path.display())))?;
         Ok(config)
     }
 
@@ -113,29 +88,12 @@ impl QuasarConfig {
         self.testing.language == "rust"
     }
 
-    pub fn lint_enabled(&self) -> bool {
-        self.lint.as_ref().is_some_and(|l| l.enabled)
-    }
-
     pub fn client_path(&self) -> PathBuf {
-        self.clients
-            .as_ref()
-            .map(|c| c.path.clone())
-            .unwrap_or(PathBuf::from("target").join("client"))
+        self.clients.path.clone()
     }
 
     pub fn client_languages(&self) -> Vec<&str> {
-        match self.clients {
-            Some(ref c) => c.languages.iter().map(|s| s.as_str()).collect(),
-            None => {
-                // Backward compat: infer from testing framework
-                let mut langs = vec!["rust"];
-                if self.has_typescript_tests() {
-                    langs.push("typescript");
-                }
-                langs
-            }
-        }
+        self.clients.languages.iter().map(|s| s.as_str()).collect()
     }
 }
 
@@ -149,7 +107,6 @@ pub fn resolve_client_path() -> Result<PathBuf, CliError> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(try_from = "RawCommandSpec", into = "RawCommandSpec")]
 pub struct CommandSpec {
     pub program: String,
     #[serde(default)]
@@ -184,44 +141,6 @@ impl CommandSpec {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(untagged)]
-enum RawCommandSpec {
-    String(String),
-    Args(Vec<String>),
-    Structured {
-        program: String,
-        #[serde(default)]
-        args: Vec<String>,
-    },
-}
-
-impl TryFrom<RawCommandSpec> for CommandSpec {
-    type Error = String;
-
-    fn try_from(value: RawCommandSpec) -> Result<Self, Self::Error> {
-        match value {
-            RawCommandSpec::String(command) => Self::parse(&command).map_err(|e| e.to_string()),
-            RawCommandSpec::Args(parts) => Self::from_parts(parts),
-            RawCommandSpec::Structured { program, args } => {
-                if program.trim().is_empty() {
-                    return Err("command program cannot be empty".to_string());
-                }
-                Ok(Self { program, args })
-            }
-        }
-    }
-}
-
-impl From<CommandSpec> for RawCommandSpec {
-    fn from(value: CommandSpec) -> Self {
-        Self::Structured {
-            program: value.program,
-            args: value.args,
-        }
-    }
-}
-
 impl CommandSpec {
     fn from_parts(parts: Vec<String>) -> Result<Self, String> {
         let mut parts = parts.into_iter();
@@ -234,10 +153,6 @@ impl CommandSpec {
         })
     }
 }
-
-// ---------------------------------------------------------------------------
-// Global config (~/.quasar/config.toml) — saved preferences across projects
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct GlobalConfig {
@@ -260,7 +175,7 @@ pub struct GlobalDefaults {
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct UiConfig {
-    /// Show the animated banner on `quasar init` (default: true)
+    /// Show the banner on `quasar init` (default: true)
     #[serde(default = "default_true")]
     pub animation: bool,
     /// Use colored output (default: true)
@@ -353,7 +268,7 @@ mod tests {
 
     #[test]
     fn saved_config_disables_animation() {
-        // Simulates the init flow: default config → save with animation: false
+        // Simulates the init flow: default config saved with animation disabled.
         let globals = GlobalConfig::default();
         assert!(globals.ui.animation);
 
@@ -380,31 +295,6 @@ mod tests {
     }
 
     #[test]
-    fn command_spec_deserializes_legacy_string() {
-        let config: QuasarConfig = toml::from_str(
-            r#"
-            [project]
-            name = "demo"
-
-            [toolchain]
-            type = "solana"
-
-            [testing]
-            language = "rust"
-
-            [testing.rust]
-            framework = "quasar-svm"
-            test = "cargo test tests::"
-            "#,
-        )
-        .unwrap();
-
-        let test = &config.testing.rust.unwrap().test;
-        assert_eq!(test.program, "cargo");
-        assert_eq!(test.args, vec!["test", "tests::"]);
-    }
-
-    #[test]
     fn command_spec_deserializes_structured_command() {
         let config: QuasarConfig = toml::from_str(
             r#"
@@ -421,7 +311,11 @@ mod tests {
             framework = "quasar-svm"
             sdk = "kit"
             install = { program = "pnpm", args = ["install", "--frozen-lockfile"] }
-            test = ["pnpm", "vitest", "run"]
+            test = { program = "pnpm", args = ["vitest", "run"] }
+
+            [clients]
+            path = "target/client"
+            languages = ["typescript"]
             "#,
         )
         .unwrap();

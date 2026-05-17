@@ -125,8 +125,6 @@ pub struct IdlCodecItem {
     pub codec: Option<IdlCodec>,
 }
 
-// --- Helper methods ---
-
 impl IdlCodec {
     /// Get the prefix byte width for size-prefixed codecs.
     pub fn prefix_bytes(&self) -> usize {

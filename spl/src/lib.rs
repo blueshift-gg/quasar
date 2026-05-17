@@ -45,42 +45,6 @@
 
 #![no_std]
 
-/// Implements `TokenClose` and `TokenSweep` for a token account type
-/// (Token / Token2022).
-macro_rules! impl_token_account_traits {
-    ($ty:ty) => {
-        impl crate::ops::close::TokenClose for $ty {
-            #[inline(always)]
-            fn close(
-                view: &mut AccountView,
-                dest: &AccountView,
-                authority: &AccountView,
-                token_program: &AccountView,
-            ) -> Result<(), ProgramError> {
-                crate::exit::close_token_account(
-                    token_program,
-                    unsafe { &*(view as *const AccountView) },
-                    dest,
-                    authority,
-                )
-            }
-        }
-
-        impl crate::ops::sweep::TokenSweep for $ty {
-            #[inline(always)]
-            fn sweep(
-                view: &AccountView,
-                receiver: &AccountView,
-                mint: &AccountView,
-                authority: &AccountView,
-                token_program: &AccountView,
-            ) -> Result<(), ProgramError> {
-                crate::exit::sweep_token_account(token_program, view, mint, receiver, authority)
-            }
-        }
-    };
-}
-
 /// Implements `AccountInit` for a token account type (Token / Token2022).
 /// Both dispatch to the same init_token_account / init_ata helpers.
 macro_rules! impl_token_account_init {
@@ -90,8 +54,8 @@ macro_rules! impl_token_account_init {
             const DEFAULT_INIT_PARAMS_VALID: bool = false;
 
             #[inline(always)]
-            fn init<'a>(
-                ctx: quasar_lang::account_init::InitCtx<'a>,
+            fn init<'a, R: quasar_lang::ops::RentAccess>(
+                ctx: quasar_lang::account_init::InitCtx<'a, R>,
                 params: &Self::InitParams<'a>,
             ) -> Result<(), ProgramError> {
                 match params {
@@ -107,7 +71,7 @@ macro_rules! impl_token_account_init {
                         mint,
                         authority,
                         ctx.signers,
-                        ctx.rent,
+                        ctx.rent.get()?,
                     ),
                     crate::token::TokenInitKind::AssociatedToken {
                         mint,
@@ -117,9 +81,9 @@ macro_rules! impl_token_account_init {
                         ata_program,
                         idempotent,
                     } => {
-                        crate::validate_ata_program_id(ata_program)?;
-                        crate::validate_token_program_id(token_program)?;
-                        crate::validate_system_program_id(system_program)?;
+                        crate::validate::validate_ata_program_id(ata_program)?;
+                        crate::validate::validate_token_program_id(token_program)?;
+                        crate::validate::validate_system_program_id(system_program)?;
                         crate::init::init_ata(
                             ata_program,
                             ctx.payer,
@@ -146,8 +110,8 @@ macro_rules! impl_mint_account_init {
             const DEFAULT_INIT_PARAMS_VALID: bool = false;
 
             #[inline(always)]
-            fn init<'a>(
-                ctx: quasar_lang::account_init::InitCtx<'a>,
+            fn init<'a, R: quasar_lang::ops::RentAccess>(
+                ctx: quasar_lang::account_init::InitCtx<'a, R>,
                 params: &Self::InitParams<'a>,
             ) -> Result<(), ProgramError> {
                 match params {
@@ -165,7 +129,7 @@ macro_rules! impl_mint_account_init {
                         authority,
                         *freeze_authority,
                         ctx.signers,
-                        ctx.rent,
+                        ctx.rent.get()?,
                     ),
                 }
             }
@@ -181,17 +145,12 @@ mod exit;
 mod init;
 mod instructions;
 mod interface;
-/// Op-dispatch implementations for SPL token operations.
-pub mod ops;
 /// Convenience re-exports for SPL programs.
 pub mod prelude;
 mod token;
 mod token_2022;
 mod validate;
 
-// ---------------------------------------------------------------------------
-// Forwarding impls: Account<T>/InterfaceAccount<T> → T for SPL behavior traits
-// ---------------------------------------------------------------------------
 use quasar_lang::{
     accounts::{Account, DeferredInit},
     prelude::{AccountView, ProgramError},
@@ -203,9 +162,7 @@ pub use {
         AssociatedTokenCpi, AssociatedTokenProgram,
     },
     constants::{ATA_PROGRAM_ID, SPL_TOKEN_ID, TOKEN_2022_ID},
-    exit::{close_token_account, sweep_token_account},
-    init::{init_ata, init_mint_account, init_token_account},
-    instructions::{initialize_account3, initialize_mint2, TokenCpi},
+    instructions::TokenCpi,
     interface::TokenInterface,
     quasar_lang::prelude::InterfaceAccount,
     token::{
@@ -213,61 +170,8 @@ pub use {
         TokenProgram,
     },
     token_2022::{Mint2022, Token2022, Token2022Program},
-    validate::{
-        validate_ata, validate_ata_program_id, validate_mint_with_freeze,
-        validate_system_program_id, validate_token_account, validate_token_program_id, FreezeCheck,
-    },
+    validate::{validate_ata, validate_mint_with_freeze, validate_token_account, FreezeCheck},
 };
-
-impl<T: ops::close::TokenClose> ops::close::TokenClose for Account<T> {
-    #[inline(always)]
-    fn close(
-        view: &mut AccountView,
-        dest: &AccountView,
-        authority: &AccountView,
-        token_program: &AccountView,
-    ) -> Result<(), ProgramError> {
-        T::close(view, dest, authority, token_program)
-    }
-}
-
-impl<T: ops::sweep::TokenSweep> ops::sweep::TokenSweep for Account<T> {
-    #[inline(always)]
-    fn sweep(
-        view: &AccountView,
-        receiver: &AccountView,
-        mint: &AccountView,
-        authority: &AccountView,
-        tp: &AccountView,
-    ) -> Result<(), ProgramError> {
-        T::sweep(view, receiver, mint, authority, tp)
-    }
-}
-
-impl<T: ops::close::TokenClose> ops::close::TokenClose for InterfaceAccount<T> {
-    #[inline(always)]
-    fn close(
-        view: &mut AccountView,
-        dest: &AccountView,
-        authority: &AccountView,
-        token_program: &AccountView,
-    ) -> Result<(), ProgramError> {
-        T::close(view, dest, authority, token_program)
-    }
-}
-
-impl<T: ops::sweep::TokenSweep> ops::sweep::TokenSweep for InterfaceAccount<T> {
-    #[inline(always)]
-    fn sweep(
-        view: &AccountView,
-        receiver: &AccountView,
-        mint: &AccountView,
-        authority: &AccountView,
-        tp: &AccountView,
-    ) -> Result<(), ProgramError> {
-        T::sweep(view, receiver, mint, authority, tp)
-    }
-}
 
 macro_rules! impl_deferred_init {
     ($wrapper:ty, $params:ty) => {
@@ -300,6 +204,8 @@ macro_rules! impl_deferred_init {
                     &self,
                 )?;
                 <$wrapper as quasar_lang::account_load::AccountLoad>::check(target)?;
+                // SAFETY: The account was just initialized and re-checked as the target
+                // wrapper.
                 Ok(unsafe {
                     <$wrapper as quasar_lang::account_load::AccountLoad>::from_view_unchecked_mut(
                         target,

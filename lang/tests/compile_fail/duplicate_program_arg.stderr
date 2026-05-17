@@ -1,0 +1,5 @@
+error: duplicate `no_entrypoint`
+ --> tests/compile_fail/duplicate_program_arg.rs:7:26
+  |
+7 | #[program(no_entrypoint, no_entrypoint)]
+  |                          ^^^^^^^^^^^^^

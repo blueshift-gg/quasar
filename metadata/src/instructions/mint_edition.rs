@@ -7,7 +7,7 @@ const MINT_NEW_EDITION_FROM_MASTER_EDITION_VIA_TOKEN: u8 = 11;
 
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
-pub fn mint_new_edition_from_master_edition_via_token<'a>(
+pub(super) fn mint_new_edition_from_master_edition_via_token<'a>(
     program: &'a AccountView,
     new_metadata: &'a AccountView,
     new_edition: &'a AccountView,
@@ -25,14 +25,7 @@ pub fn mint_new_edition_from_master_edition_via_token<'a>(
     rent: &'a AccountView,
     edition: u64,
 ) -> CpiCall<'a, 14, 9> {
-    // SAFETY: All 9 bytes are written before assume_init.
-    let data = unsafe {
-        let mut buf = core::mem::MaybeUninit::<[u8; 9]>::uninit();
-        let ptr = buf.as_mut_ptr() as *mut u8;
-        core::ptr::write(ptr, MINT_NEW_EDITION_FROM_MASTER_EDITION_VIA_TOKEN);
-        core::ptr::copy_nonoverlapping(edition.to_le_bytes().as_ptr(), ptr.add(1), 8);
-        buf.assume_init()
-    };
+    let data = super::u64_data::<MINT_NEW_EDITION_FROM_MASTER_EDITION_VIA_TOKEN>(edition);
 
     CpiCall::new(
         program.address(),

@@ -9,10 +9,6 @@ use {
     quasar_lang::prelude::*,
 };
 
-// ---------------------------------------------------------------------------
-// MetadataInitParams
-// ---------------------------------------------------------------------------
-
 /// Init params for metadata account creation via CPI.
 ///
 /// The derive constructs `Default` (Unset) and the metadata behavior fills
@@ -43,8 +39,8 @@ impl quasar_lang::account_init::AccountInit for MetadataAccount {
     const DEFAULT_INIT_PARAMS_VALID: bool = false;
 
     #[inline(always)]
-    fn init<'a>(
-        ctx: quasar_lang::account_init::InitCtx<'a>,
+    fn init<'a, R: quasar_lang::ops::RentAccess>(
+        ctx: quasar_lang::account_init::InitCtx<'a, R>,
         params: &Self::InitParams<'a>,
     ) -> quasar_lang::__solana_program_error::ProgramResult {
         match params {
@@ -85,10 +81,6 @@ impl quasar_lang::account_init::AccountInit for MetadataAccount {
     }
 }
 
-// ---------------------------------------------------------------------------
-// MasterEditionInitParams
-// ---------------------------------------------------------------------------
-
 /// Init params for master edition account creation via CPI.
 #[derive(Default)]
 pub enum MasterEditionInitParams<'a> {
@@ -114,8 +106,8 @@ impl quasar_lang::account_init::AccountInit for MasterEditionAccount {
     const DEFAULT_INIT_PARAMS_VALID: bool = false;
 
     #[inline(always)]
-    fn init<'a>(
-        ctx: quasar_lang::account_init::InitCtx<'a>,
+    fn init<'a, R: quasar_lang::ops::RentAccess>(
+        ctx: quasar_lang::account_init::InitCtx<'a, R>,
         params: &Self::InitParams<'a>,
     ) -> quasar_lang::__solana_program_error::ProgramResult {
         match params {

@@ -6,7 +6,6 @@ pub struct MigrateConfig {
     pub system_program: Program<SystemProgram>,
     #[account(constraints(config.authority == *authority.address()))]
     pub config: Migration<ConfigV1, ConfigV2>,
-    /// CHECK: authority validated via constraint
     pub authority: Signer,
 }
 impl MigrateConfig {

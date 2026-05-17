@@ -1,8 +1,8 @@
-//! `#[derive(QuasarSerialize)]` — generates instruction-arg type bridges.
+//! `#[derive(QuasarSerialize)]`: generates instruction-arg type bridges.
 //!
 //! **Fixed structs** (all fields `Copy`, no lifetimes):
 //! 1. A hidden ZeroPod companion struct.
-//! 2. `InstructionArg` impl for native↔ZC conversion.
+//! 2. `InstructionArg` impl for native<->ZC conversion.
 //! 3. Off-chain `SchemaWrite` / `SchemaRead` impls.
 //!
 //! **Borrowed structs** (has lifetime params):
@@ -63,10 +63,6 @@ pub(crate) fn derive_quasar_serialize(input: TokenStream) -> TokenStream {
 
     derive_fixed(input, fields)
 }
-
-// ---------------------------------------------------------------------------
-// Fixed struct path (original behaviour)
-// ---------------------------------------------------------------------------
 
 fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
     let name = &input.ident;
@@ -187,6 +183,8 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
             }
 
             fn write(mut __writer: impl wincode::io::Writer, src: &Self) -> wincode::error::WriteResult<()> {
+                // SAFETY: `Self` is the generated ZeroPod companion. Its bytes
+                // are initialized and its wire format is exactly its memory layout.
                 let __bytes = unsafe {
                     core::slice::from_raw_parts(
                         src as *const Self as *const u8,
@@ -209,6 +207,8 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
                 __dst: &mut core::mem::MaybeUninit<Self>,
             ) -> wincode::error::ReadResult<()> {
                 let __bytes = __reader.take_scoped(core::mem::size_of::<Self>())?;
+                // SAFETY: `take_scoped` returned exactly `size_of::<Self>()`
+                // bytes. `read_unaligned` avoids assuming reader-buffer alignment.
                 let __zc = unsafe { core::ptr::read_unaligned(__bytes.as_ptr() as *const Self) };
                 quasar_lang::__zeropod::ZcValidate::validate_ref(&__zc)
                     .map_err(|_| wincode::error::ReadError::InvalidValue("pod validation failed"))?;
@@ -242,7 +242,7 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
             }
         }
 
-        // From impls for native ↔ ZC conversion.
+        // From impls for native <-> ZC conversion.
         impl #schema_impl_generics From<#name #schema_ty_generics>
             for #zc_name #schema_ty_generics #schema_where_clause
         {
@@ -288,6 +288,8 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
 
             fn write(mut __writer: impl wincode::io::Writer, src: &Self) -> wincode::error::WriteResult<()> {
                 let __zc = <Self as quasar_lang::instruction_arg::InstructionArg>::to_zc(src);
+                // SAFETY: `__zc` is the generated alignment-1 ZC representation;
+                // its bytes are initialized and define the fixed wire format.
                 let __bytes = unsafe {
                     core::slice::from_raw_parts(
                         &__zc as *const #zc_name #schema_ty_generics as *const u8,
@@ -310,10 +312,15 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
                 __dst: &mut core::mem::MaybeUninit<Self>,
             ) -> wincode::error::ReadResult<()> {
                 let __bytes = __reader.take_scoped(core::mem::size_of::<#zc_name #schema_ty_generics>())?;
-                let __zc = unsafe { &*(__bytes.as_ptr() as *const #zc_name #schema_ty_generics) };
-                <#zc_name #schema_ty_generics as quasar_lang::__zeropod::ZcValidate>::validate_ref(__zc)
+                // SAFETY: `take_scoped` returned exactly the ZC byte length.
+                // `read_unaligned` is required because reader buffers have no
+                // alignment contract.
+                let __zc = unsafe {
+                    core::ptr::read_unaligned(__bytes.as_ptr() as *const #zc_name #schema_ty_generics)
+                };
+                <#zc_name #schema_ty_generics as quasar_lang::__zeropod::ZcValidate>::validate_ref(&__zc)
                     .map_err(|_| wincode::error::ReadError::InvalidValue("pod validation failed"))?;
-                __dst.write(<Self as quasar_lang::instruction_arg::InstructionArg>::from_zc(__zc));
+                __dst.write(<Self as quasar_lang::instruction_arg::InstructionArg>::from_zc(&__zc));
                 Ok(())
             }
         }
@@ -344,41 +351,12 @@ fn extend_fixed_schema_generics(generics: &syn::Generics, fields: &[Field]) -> s
     generics
 }
 
-// ---------------------------------------------------------------------------
-// Borrowed compact struct path
-// ---------------------------------------------------------------------------
-
-/// Parse `#[max(N)]` or `#[max(N, pfx = P)]` from a struct field's attributes.
-fn parse_max_attr(field: &Field) -> Option<Result<(usize, usize), syn::Error>> {
-    for attr in &field.attrs {
-        if attr.path().is_ident("max") {
-            return Some(attr.parse_args_with(|stream: syn::parse::ParseStream| {
-                let n: syn::LitInt = stream.parse()?;
-                let max_n: usize = n.base10_parse()?;
-                let mut pfx = 0usize;
-                if !stream.is_empty() {
-                    let _: syn::Token![,] = stream.parse()?;
-                    let key: syn::Ident = stream.parse()?;
-                    if key != "pfx" {
-                        return Err(syn::Error::new(key.span(), "expected `pfx`"));
-                    }
-                    let _: syn::Token![=] = stream.parse()?;
-                    let p: syn::LitInt = stream.parse()?;
-                    pfx = p.base10_parse()?;
-                }
-                Ok((max_n, pfx))
-            }));
-        }
-    }
-    None
-}
-
 /// Classification of a field in a borrowed compact struct.
 enum BorrowedFieldClass {
-    /// Fixed (non-reference) field — use native type in schema, extract via
+    /// Fixed (non-reference) field: use native type in schema, extract via
     /// `InstructionArg::from_zc`.
     Fixed,
-    /// Dynamic reference field — maps to a PodString or PodVec in the schema.
+    /// Dynamic reference field: maps to a PodString or PodVec in the schema.
     Dynamic(PodDynField),
 }
 
@@ -391,12 +369,10 @@ fn derive_borrowed_compact(input: DeriveInput, fields: Vec<Field>) -> TokenStrea
 
     let field_names: Vec<_> = fields.iter().map(|f| f.ident.as_ref().unwrap()).collect();
 
-    // Classify each field
     let mut field_classes: Vec<BorrowedFieldClass> = Vec::with_capacity(fields.len());
     for field in &fields {
         if let Type::Reference(_) = &field.ty {
-            // Must have #[max(N)]
-            match parse_max_attr(field) {
+            match crate::helpers::parse_max_attr(&field.attrs) {
                 Some(Ok((max_n, pfx))) => {
                     match classify_borrowed_as_compact(&field.ty, max_n, pfx) {
                         Some(pd) => field_classes.push(BorrowedFieldClass::Dynamic(pd)),
@@ -425,7 +401,6 @@ fn derive_borrowed_compact(input: DeriveInput, fields: Vec<Field>) -> TokenStrea
         }
     }
 
-    // Build schema field types
     let schema_field_types: Vec<proc_macro2::TokenStream> = field_classes
         .iter()
         .zip(fields.iter())
@@ -447,7 +422,6 @@ fn derive_borrowed_compact(input: DeriveInput, fields: Vec<Field>) -> TokenStrea
         })
         .collect();
 
-    // Build extraction statements
     let extract_fields: Vec<proc_macro2::TokenStream> = field_classes
         .iter()
         .zip(fields.iter())
@@ -494,10 +468,6 @@ fn derive_borrowed_compact(input: DeriveInput, fields: Vec<Field>) -> TokenStrea
 
     expanded.into()
 }
-
-// ---------------------------------------------------------------------------
-// repr-backed unit enum path
-// ---------------------------------------------------------------------------
 
 fn parse_repr_type(input: &DeriveInput) -> Result<Type, syn::Error> {
     for attr in &input.attrs {
@@ -591,7 +561,7 @@ fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream {
         .iter()
         .map(|v| {
             let vname = v.ident.to_string();
-            // Use the explicit discriminant expression — guaranteed present by
+            // Use the explicit discriminant expression: guaranteed present by
             // the earlier validation loop.
             let disc_expr = &v.discriminant.as_ref().unwrap().1;
             quote! {
@@ -673,6 +643,8 @@ fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream {
 
             fn write(mut __writer: impl wincode::io::Writer, src: &Self) -> wincode::error::WriteResult<()> {
                 let __zc = <Self as quasar_lang::instruction_arg::InstructionArg>::to_zc(src);
+                // SAFETY: `__zc` is the repr-backed enum's alignment-1 ZC
+                // representation and is fully initialized.
                 let __bytes = unsafe {
                     core::slice::from_raw_parts(
                         &__zc as *const <Self as quasar_lang::instruction_arg::InstructionArg>::Zc as *const u8,
@@ -695,11 +667,16 @@ fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream {
                 __dst: &mut core::mem::MaybeUninit<Self>,
             ) -> wincode::error::ReadResult<()> {
                 let __bytes = __reader.take_scoped(core::mem::size_of::<<Self as quasar_lang::instruction_arg::InstructionArg>::Zc>())?;
-                let __zc =
-                    unsafe { &*(__bytes.as_ptr() as *const <Self as quasar_lang::instruction_arg::InstructionArg>::Zc) };
-                <Self as quasar_lang::instruction_arg::InstructionArg>::validate_zc(__zc)
+                // SAFETY: `take_scoped` returned exactly the enum ZC byte length.
+                // `read_unaligned` avoids assuming the reader buffer is aligned.
+                let __zc = unsafe {
+                    core::ptr::read_unaligned(
+                        __bytes.as_ptr() as *const <Self as quasar_lang::instruction_arg::InstructionArg>::Zc,
+                    )
+                };
+                <Self as quasar_lang::instruction_arg::InstructionArg>::validate_zc(&__zc)
                     .map_err(|_| wincode::error::ReadError::InvalidValue("invalid enum discriminant"))?;
-                __dst.write(<Self as quasar_lang::instruction_arg::InstructionArg>::from_zc(__zc));
+                __dst.write(<Self as quasar_lang::instruction_arg::InstructionArg>::from_zc(&__zc));
                 Ok(())
             }
         }

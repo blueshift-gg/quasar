@@ -4,9 +4,7 @@ use {
         pod::{PodI64, PodU64},
         sysvars::Sysvar,
     },
-    core::mem::{align_of, size_of},
     solana_address::Address,
-    solana_program_error::ProgramError,
 };
 
 const CLOCK_ID: Address = Address::new_from_array([
@@ -25,31 +23,13 @@ pub struct Clock {
     pub unix_timestamp: PodI64,
 }
 
-const _: () = assert!(size_of::<Clock>() == 40);
-const _: () = assert!(align_of::<Clock>() == 1);
+const _: () = assert!(core::mem::size_of::<Clock>() == 40);
+const _: () = assert!(core::mem::align_of::<Clock>() == 1);
 
 impl Sysvar for Clock {
     impl_sysvar_get!(CLOCK_ID, 0);
 }
 
-// ---------------------------------------------------------------------------
-// Kani model-checking proof harnesses
-// ---------------------------------------------------------------------------
-
 #[cfg(kani)]
-mod kani_proofs {
-    use super::*;
-
-    /// Prove Clock has alignment 1 — required for the pointer cast in
-    /// `from_bytes_unchecked` (`bytes.as_ptr() as *const Self`).
-    #[kani::proof]
-    fn clock_align_one() {
-        assert!(align_of::<Clock>() == 1);
-    }
-
-    /// Prove Clock is exactly 40 bytes.
-    #[kani::proof]
-    fn clock_size_40() {
-        assert!(size_of::<Clock>() == 40);
-    }
-}
+#[path = "../../kani/sysvars/clock.rs"]
+mod kani_proofs;

@@ -9,7 +9,6 @@ pub struct TypedAccessor {
 impl TypedAccessor {
     #[inline(always)]
     pub fn handler(&self) -> Result<(), ProgramError> {
-        // Pattern match on variant()
         match self.consensus.variant() {
             ConsensusAccountRef::Settings(s) => {
                 let _auth = s.authority;

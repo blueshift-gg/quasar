@@ -1,8 +1,8 @@
-//! `#[event]` — generates event discriminator, serialization, and the `Event`
+//! `#[event]`: generates event discriminator, serialization, and the `Event`
 //! trait impl for emission via `sol_log_data` or self-CPI.
 
 use {
-    crate::helpers::InstructionArgs,
+    crate::helpers::{parse_discriminator_bytes, InstructionArgs},
     proc_macro::TokenStream,
     quote::quote,
     syn::{parse_macro_input, Data, DeriveInput, Fields, Type},
@@ -71,7 +71,14 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
             Ok(s) => s,
             Err(e) => return e.to_compile_error().into(),
         };
-        data_size += size;
+        data_size = match data_size.checked_add(size) {
+            Some(total) => total,
+            None => {
+                return syn::Error::new_spanned(&field.ty, "event data size exceeds usize::MAX")
+                    .to_compile_error()
+                    .into();
+            }
+        };
     }
 
     let total_buf_size = disc_len + data_size;
@@ -81,17 +88,22 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
             pub fn emit_log(&self) {
                 let mut buf = core::mem::MaybeUninit::<[u8; #total_buf_size]>::uninit();
                 let ptr = buf.as_mut_ptr() as *mut u8;
-                // Use the extracted helper so the code path is covered by Kani
-                // proof harnesses (see lang/src/event.rs kani_proofs).
+                // SAFETY: `ptr` points to the start of a `#total_buf_size`
+                // byte buffer, which is `disc_len + data_size`.
                 let data_offset = unsafe {
                     quasar_lang::event::write_log_disc(
                         ptr,
                         <Self as quasar_lang::traits::Event>::DISCRIMINATOR,
                     )
                 };
+                // SAFETY: `write_log_disc` initialized the discriminator bytes
+                // and returned the payload offset. The remaining `#data_size`
+                // bytes fit exactly in the buffer.
                 <Self as quasar_lang::traits::Event>::write_data(self, unsafe {
                     core::slice::from_raw_parts_mut(ptr.add(data_offset), #data_size)
                 });
+                // SAFETY: Discriminator and payload bytes were initialized
+                // above before exposing the full buffer as a slice.
                 quasar_lang::log::log_data(&[unsafe { buf.assume_init_ref() }]);
             }
         }
@@ -101,10 +113,10 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // IDL fragment emission
     let name_str = name.to_string();
-    let disc_values: Vec<u8> = disc_bytes
-        .iter()
-        .map(|lit| lit.base10_parse::<u8>().unwrap_or(0))
-        .collect();
+    let disc_values = match parse_discriminator_bytes(disc_bytes) {
+        Ok(values) => values,
+        Err(e) => return e.to_compile_error().into(),
+    };
     let field_defs: Vec<proc_macro2::TokenStream> = fields_data
         .iter()
         .map(|f| {
@@ -176,6 +188,9 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             #[inline(always)]
             fn write_data(&self, buf: &mut [u8]) {
+                // SAFETY: The compile-time size assertion above proves `Self`
+                // has exactly `DATA_SIZE` bytes with no padding, and callers
+                // pass a buffer of that length.
                 unsafe {
                     core::ptr::copy_nonoverlapping(
                         self as *const Self as *const u8,
@@ -193,12 +208,15 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
                 let mut buf = core::mem::MaybeUninit::<[u8; __BUF_SIZE]>::uninit();
                 let ptr = buf.as_mut_ptr() as *mut u8;
 
-                // Use the extracted helper so the code path is covered by Kani
-                // proof harnesses (see lang/src/event.rs kani_proofs).
+                // SAFETY: `ptr` points to the start of a buffer sized for the
+                // self-CPI sentinel, discriminator, and payload.
                 let data_offset = unsafe {
                     quasar_lang::event::write_cpi_disc(ptr, Self::DISCRIMINATOR)
                 };
 
+                // SAFETY: `write_cpi_disc` initialized the prefix bytes and
+                // returned the payload offset. The remaining `__DATA_SIZE`
+                // bytes fit exactly in the buffer.
                 self.write_data(unsafe {
                     core::slice::from_raw_parts_mut(
                         ptr.add(data_offset),
@@ -206,6 +224,7 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
                     )
                 });
 
+                // SAFETY: Prefix and payload bytes were initialized above.
                 f(unsafe { buf.assume_init_ref() })
             }
         }

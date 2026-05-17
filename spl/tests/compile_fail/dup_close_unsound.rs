@@ -4,7 +4,7 @@ use quasar_spl::{accounts::token_close, *};
 
 solana_address::declare_id!("11111111111111111111111111111112");
 
-// ERROR: `dup` cannot be used with `close` — mutation on aliased accounts is unsound
+// ERROR: `dup` cannot be used with `close`: mutation on aliased accounts is unsound
 #[derive(Accounts)]
 pub struct Bad {
     #[account(mut)]

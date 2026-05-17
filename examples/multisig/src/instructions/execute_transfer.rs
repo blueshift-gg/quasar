@@ -1,8 +1,4 @@
-use {
-    super::deposit::MultisigVaultPda,
-    crate::state::MultisigConfig,
-    quasar_lang::{prelude::*, remaining::RemainingAccounts},
-};
+use {super::deposit::MultisigVaultPda, crate::state::MultisigConfig, quasar_lang::prelude::*};
 
 #[derive(Accounts)]
 pub struct ExecuteTransfer {
@@ -25,16 +21,15 @@ impl ExecuteTransfer {
         &self,
         amount: u64,
         bumps: &ExecuteTransferBumps,
-        remaining: RemainingAccounts<'_>,
+        signers: Remaining<Signer, 10>,
     ) -> Result<(), ProgramError> {
         let stored_signers = self.config.signers();
         let threshold = self.config.threshold as u32;
 
         let mut approvals = 0u32;
         for stored in stored_signers {
-            for account in remaining.iter() {
-                let account = account?;
-                if account.is_signer() && quasar_lang::keys_eq(account.address(), stored) {
+            for signer in signers.iter() {
+                if quasar_lang::keys_eq(signer.address(), stored) {
                     approvals = approvals.wrapping_add(1);
                     break;
                 }
@@ -48,15 +43,10 @@ impl ExecuteTransfer {
             return Err(ProgramError::MissingRequiredSignature);
         }
 
-        let bump = [bumps.vault];
-        let seeds = [
-            Seed::from(b"vault" as &[u8]),
-            Seed::from(self.config.address().as_ref()),
-            Seed::from(bump.as_ref()),
-        ];
+        let vault_signer = self.vault_signer(bumps);
         self.system_program
             .transfer(&self.vault, &self.recipient, amount)
-            .invoke_signed(&seeds)?;
+            .invoke_signed(&vault_signer)?;
         Ok(())
     }
 }

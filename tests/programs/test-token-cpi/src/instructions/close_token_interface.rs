@@ -10,7 +10,7 @@ pub struct CloseTokenInterface {
     )]
     pub token_account: InterfaceAccount<Token>,
     pub mint: InterfaceAccount<Mint>,
-    /// CHECK: destination may alias authority (close sends lamports to it).
+    /// Test-only duplicate destination; close may send lamports to authority.
     #[account(mut, dup)]
     pub destination: UncheckedAccount,
     pub token_program: Interface<TokenInterface>,

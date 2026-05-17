@@ -12,7 +12,6 @@ pub struct MutateThenReadback {
 impl MutateThenReadback {
     #[inline(always)]
     pub fn handler(&mut self, expected_tags_count: u8, new_name: &str) -> Result<(), ProgramError> {
-        // Mutate via as_mut guard — only change name, tags preserved automatically
         {
             let mut guard = self.account.as_mut(self.payer.to_account_view());
             if !guard.name.set(new_name) {
@@ -20,7 +19,6 @@ impl MutateThenReadback {
             }
         }
 
-        // Read back from account data to verify the save worked
         let name = self.account.name();
         if name.len() != new_name.len() {
             return Err(ProgramError::Custom(10));

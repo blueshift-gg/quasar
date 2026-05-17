@@ -1,4 +1,4 @@
-error: `Option<Migration<...>>` is not supported — migration fields cannot be optional
+error: `Option<Migration<...>>` is not supported: migration fields cannot be optional
   --> tests/compile_fail/migration_option_blocked.rs:23:5
    |
 23 |     pub config: Option<Migration<ConfigV1, ConfigV2>>,

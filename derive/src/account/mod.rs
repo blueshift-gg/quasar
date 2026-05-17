@@ -1,4 +1,4 @@
-//! `#[account]` — generates the zero-copy companion struct, discriminator
+//! `#[account]`: generates the zero-copy companion struct, discriminator
 //! validation, `Owner`/`Discriminator`/`Space` trait impls, and typed accessor
 //! methods for on-chain account types.
 
@@ -7,13 +7,15 @@ mod fixed;
 mod layout;
 mod methods;
 pub(crate) mod one_of;
-pub mod seeds;
 mod traits;
 
 use {
-    crate::helpers::{
-        classify_option_pod_dynamic, classify_pod_dynamic, validate_discriminator_not_zero,
-        AccountAttr,
+    crate::{
+        helpers::{
+            classify_option_pod_dynamic, classify_pod_dynamic, validate_discriminator_not_zero,
+            AccountAttr,
+        },
+        seeds,
     },
     proc_macro::TokenStream,
     syn::{parse_macro_input, Data, DeriveInput, Fields},
@@ -25,10 +27,12 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Parse #[seeds(...)] if present, then strip it before downstream processing.
     let seeds_parsed = seeds::parse_seeds_attr(&input.attrs);
+    let seed_vis = syn::parse_quote!(pub);
     let seeds_impl = match seeds_parsed {
         Some(Ok(ref attr)) => Some(seeds::generate_seeds_impl(
             &input.ident,
             &input.generics,
+            &seed_vis,
             attr,
         )),
         Some(Err(e)) => return e.to_compile_error().into(),
@@ -38,17 +42,7 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let name = &input.ident;
 
-    // --- custom on unit struct: transparent wrapper with user-provided check() ---
-    if args.custom {
-        if let Data::Struct(data) = &input.data {
-            if matches!(data.fields, Fields::Unit) {
-                return generate_custom_account(name).into();
-            }
-        }
-        // custom with fields: fall through to normal codegen with disc_len = 0
-    }
-
-    // --- one_of: polymorphic account on enum ---
+    // Handle enum-backed polymorphic accounts before struct-only validation.
     if args.one_of {
         match &input.data {
             Data::Enum(data) => {
@@ -72,13 +66,14 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let gen_set_inner = args.set_inner;
     let unsafe_no_disc = args.unsafe_no_disc;
-    let disc_bytes = if !args.disc_bytes.is_empty() {
-        if let Err(e) = validate_discriminator_not_zero(&args.disc_bytes) {
-            return e.to_compile_error().into();
-        }
-        args.disc_bytes
+    let (disc_bytes, disc_values) = if !args.disc_bytes.is_empty() {
+        let values = match validate_discriminator_not_zero(&args.disc_bytes) {
+            Ok(values) => values,
+            Err(e) => return e.to_compile_error().into(),
+        };
+        (args.disc_bytes, values)
     } else {
-        vec![]
+        (vec![], vec![])
     };
 
     let disc_len = disc_bytes.len();
@@ -103,9 +98,9 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
-    // --- Classify fields: String<N>/PodString<N> -> PodDynField::Str,
-    //     Vec<T,N>/PodVec<T,N> -> PodDynField::Vec, everything else -> fixed ---
-    // When `fixed_capacity` is set, ALL fields are treated as fixed — PodVec and
+    // Classify fields: String<N>/PodString<N> -> PodDynField::Str,
+    // Vec<T,N>/PodVec<T,N> -> PodDynField::Vec, everything else -> fixed.
+    // When `fixed_capacity` is set, all fields are treated as fixed: PodVec and
     // PodString go directly into the ZC struct at full capacity. No dynamic
     // region, no CompactWriter, no walk-from-header.
     let pod_field_infos: Vec<fixed::PodFieldInfo<'_>> = match fields_data
@@ -135,7 +130,7 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     let has_pod_dynamic = pod_field_infos.iter().any(|fi| fi.pod_dyn.is_some());
 
     if has_pod_dynamic {
-        // Validate: fixed fields must precede Pod-dynamic fields
+        // Fixed fields must precede Pod-dynamic fields.
         let first_pod_dyn = pod_field_infos.iter().position(|fi| fi.pod_dyn.is_some());
         let last_fixed = pod_field_infos.iter().rposition(|fi| fi.pod_dyn.is_none());
         if let (Some(fd), Some(lf)) = (first_pod_dyn, last_fixed) {
@@ -161,53 +156,15 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut output = fixed::generate_account(
         name,
         &disc_bytes,
+        &disc_values,
         disc_len,
         &disc_indices,
         &pod_field_infos,
         &input,
         gen_set_inner,
-        args.custom,
     );
-    if let Some(seeds_tokens) = &seeds_impl {
-        output.extend(TokenStream::from(seeds_tokens.clone()));
+    if let Some(seeds_tokens) = seeds_impl {
+        output.extend(TokenStream::from(seeds_tokens));
     }
     output
-}
-
-/// Generate a custom account type: `#[repr(transparent)]` wrapper over
-/// `AccountView` with user-provided `check()`.
-///
-/// The user must implement:
-/// ```ignore
-/// impl MyType {
-///     pub fn check(view: &AccountView) -> Result<(), ProgramError> { ... }
-/// }
-/// ```
-///
-/// For full manual control over the wrapper struct and trait impls, users
-/// can skip `#[account(custom)]` and implement `#[repr(transparent)]` +
-/// `AsAccountView` + `AccountLoad` directly.
-fn generate_custom_account(name: &syn::Ident) -> proc_macro2::TokenStream {
-    quote::quote! {
-        #[repr(transparent)]
-        pub struct #name {
-            view: quasar_lang::__internal::AccountView,
-        }
-
-        impl quasar_lang::traits::AsAccountView for #name {
-            #[inline(always)]
-            fn to_account_view(&self) -> &quasar_lang::__internal::AccountView {
-                &self.view
-            }
-        }
-
-        impl quasar_lang::account_load::AccountLoad for #name {
-
-            #[inline(always)]
-            fn check(view: &quasar_lang::__internal::AccountView) -> Result<(), solana_program_error::ProgramError> {
-                #name::check(view)
-            }
-        }
-
-    }
 }

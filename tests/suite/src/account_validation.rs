@@ -4,9 +4,7 @@ use {
     quasar_test_errors::cpi::*,
 };
 
-// ============================================================================
-// Happy paths
-// ============================================================================
+// Happy paths.
 
 #[test]
 fn valid_account() {
@@ -41,9 +39,7 @@ fn valid_with_extra_data() {
     assert!(result.is_ok(), "extra data: {:?}", result.raw_result);
 }
 
-// ============================================================================
-// Owner checks
-// ============================================================================
+// Owner checks.
 
 #[test]
 fn wrong_owner() {
@@ -84,9 +80,7 @@ fn system_program_owner() {
     assert!(result.is_err(), "system program owner");
 }
 
-// ============================================================================
-// Discriminator checks
-// ============================================================================
+// Discriminator checks.
 
 #[test]
 fn wrong_discriminator() {
@@ -129,9 +123,7 @@ fn zero_discriminator() {
     result.assert_error(ProgramError::InvalidAccountData);
 }
 
-// ============================================================================
-// Size checks
-// ============================================================================
+// Size checks.
 
 #[test]
 fn data_too_small() {
@@ -194,9 +186,7 @@ fn one_byte_short() {
     result.assert_error(ProgramError::AccountDataTooSmall);
 }
 
-// ============================================================================
-// Duplicate detection
-// ============================================================================
+// Duplicate detection.
 
 #[test]
 fn duplicate_same_address() {
@@ -232,9 +222,7 @@ fn two_distinct_accounts() {
     assert!(result.is_ok(), "distinct accounts: {:?}", result.raw_result);
 }
 
-// ============================================================================
-// SystemAccount validation (merged from system_account.rs)
-// ============================================================================
+// SystemAccount validation.
 
 #[test]
 fn system_account_success() {
@@ -280,9 +268,7 @@ fn system_account_owned_by_program() {
     assert!(result.is_err(), "owned by program");
 }
 
-// ============================================================================
-// Program<T> validation (merged from program_check.rs)
-// ============================================================================
+// Program<T> validation.
 
 #[test]
 fn program_success() {
@@ -334,9 +320,7 @@ fn program_not_executable() {
     result.assert_error(ProgramError::InvalidAccountData);
 }
 
-// ============================================================================
-// UncheckedAccount — verifies NO validation is applied
-// ============================================================================
+// UncheckedAccount verifies that no validation is applied.
 
 #[test]
 fn unchecked_any_owner_passes() {

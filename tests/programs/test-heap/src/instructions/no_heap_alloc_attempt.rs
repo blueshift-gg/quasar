@@ -1,7 +1,4 @@
-// NOTE: This instruction is intentionally NOT marked #[instruction(heap)].
-// In release builds, the heap cursor is set past the end of the heap region,
-// so any allocation triggers: alloc returns null -> handle_alloc_error -> panic
-// -> abort.
+// This instruction intentionally allocates without #[instruction(heap)].
 extern crate alloc;
 use {alloc::vec, quasar_lang::prelude::*};
 

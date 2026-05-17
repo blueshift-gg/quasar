@@ -1,6 +1,9 @@
 use crate::prelude::*;
 
-/// Program account wrapper. Validates executable flag + address match.
+/// Program account wrapper.
+///
+/// Generated parsing enforces the executable flag via `IS_EXECUTABLE`; this
+/// wrapper validates the program address.
 #[repr(transparent)]
 pub struct Program<T: crate::traits::Id> {
     view: AccountView,
@@ -38,10 +41,13 @@ impl<T: crate::traits::Id> crate::account_load::AccountLoad for Program<T> {
 
 impl<T: crate::traits::Id> Program<T> {
     /// # Safety
-    /// Caller must ensure executable flag and address are valid.
+    /// Caller must ensure the executable flag and program address are valid.
     #[inline(always)]
     pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
-        &*(view as *const AccountView as *const Self)
+        // SAFETY: `Program<T>` is `repr(transparent)` over `AccountView` plus
+        // `PhantomData<T>`, so the reference cast preserves layout. The caller
+        // upholds the executable/address invariants.
+        unsafe { &*(view as *const AccountView as *const Self) }
     }
 
     /// Emit an event via self-CPI.

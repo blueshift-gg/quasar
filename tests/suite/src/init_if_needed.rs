@@ -4,9 +4,7 @@ use {
     quasar_test_misc::cpi::*,
 };
 
-// ============================================================================
-// Happy paths
-// ============================================================================
+// Happy paths.
 
 #[test]
 fn new_account() {
@@ -121,7 +119,7 @@ fn new_prefunded() {
     }
     .into();
 
-    // System-owned with lamports → pre-funded init path
+    // System-owned with lamports uses the pre-funded init path.
     let result = svm.process_instruction(
         &ix,
         &[
@@ -136,9 +134,7 @@ fn new_prefunded() {
     assert_eq!(acc.owner, quasar_test_misc::ID, "owner");
 }
 
-// ============================================================================
-// Error paths — existing branch
-// ============================================================================
+// Error paths for the existing branch.
 
 #[test]
 fn wrong_owner() {
@@ -246,9 +242,7 @@ fn not_writable() {
     result.assert_error(ProgramError::Immutable);
 }
 
-// ============================================================================
-// Error paths — new branch
-// ============================================================================
+// Error paths for the new branch.
 
 #[test]
 fn payer_insufficient_funds() {
@@ -281,9 +275,7 @@ fn payer_insufficient_funds() {
     assert!(result.is_err(), "should reject insufficient funds");
 }
 
-// ============================================================================
-// Front-running scenario
-// ============================================================================
+// Front-running scenario.
 
 #[test]
 fn front_running_attacker_data() {
@@ -307,8 +299,8 @@ fn front_running_attacker_data() {
     }
     .into();
 
-    // Account already initialized by "attacker" — correct owner, disc, size
-    // but authority = attacker (not payer)
+    // Account already initialized by "attacker" with correct owner, disc, and
+    // size, but authority = attacker (not payer).
     let result = svm.process_instruction(
         &ix,
         &[
@@ -322,7 +314,7 @@ fn front_running_attacker_data() {
     assert!(result.is_ok(), "front-run: {:?}", result.raw_result);
 
     // Handler always calls set_inner(), so authority is overwritten to payer
-    // and value to 99 — the attacker's data does not persist.
+    // and value to 99; the attacker's data does not persist.
     let acc = result.account(&account).expect("account");
     assert_eq!(
         &acc.data[1..33],

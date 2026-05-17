@@ -8,14 +8,7 @@
 //! pub vault: Account<Token>,
 //! ```
 
-use {
-    crate::ops::{capabilities::TokenCheck, ctx::TokenCheckCtx},
-    quasar_lang::prelude::*,
-};
-
-// ---------------------------------------------------------------------------
-// Args
-// ---------------------------------------------------------------------------
+use quasar_lang::prelude::*;
 
 pub struct Args<'a> {
     pub mint: &'a AccountView,
@@ -82,10 +75,6 @@ impl<'a> ArgsBuilder<'a> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Behavior — concrete impls per wrapper type
-// ---------------------------------------------------------------------------
-
 pub struct Behavior;
 
 const TOKEN_PROGRAM_ARG: u64 =
@@ -126,16 +115,14 @@ macro_rules! impl_token_behavior {
 
             #[inline(always)]
             fn check<'a>(account: &$wrapper, args: &Args<'a>) -> Result<(), ProgramError> {
-                <$wrapper as TokenCheck>::check_token_view(
+                crate::validate::validate_token_account(
                     account.to_account_view(),
-                    TokenCheckCtx {
-                        mint: args.mint,
-                        authority: args.authority,
-                        token_program: if $check_token_program {
-                            args.token_program
-                        } else {
-                            None
-                        },
+                    args.mint.address(),
+                    args.authority.address(),
+                    if $check_token_program {
+                        args.token_program.map(|program| program.address())
+                    } else {
+                        None
                     },
                 )
             }
@@ -160,7 +147,8 @@ impl_token_behavior!(
 );
 
 /// Check-only behavior for InterfaceAccount<TokenInterface>.
-/// InterfaceAccount doesn't have AccountLayout, so we call validate directly.
+/// `TokenInterface` has no single fixed token layout, so validation dispatches
+/// from the actual owner.
 impl AccountBehavior<InterfaceAccount<crate::interface::TokenInterface>> for Behavior {
     type Args<'a> = Args<'a>;
 

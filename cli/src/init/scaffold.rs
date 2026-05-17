@@ -8,6 +8,7 @@ use {
         types::{PackageManager, RustFramework, Template, TestLanguage, Toolchain, TypeScriptSdk},
     },
     crate::error::{CliError, CliResult},
+    quasar_schema::snake_to_pascal,
     std::{fs, path::Path},
 };
 
@@ -152,7 +153,7 @@ pub(super) fn scaffold(
     // Template-specific files
     match template {
         Template::Minimal => {
-            // Everything lives in lib.rs — no instructions/ directory needed
+            // Everything lives in lib.rs; no instructions/ directory is needed.
         }
         Template::Full => {
             let instructions_dir = src.join("instructions");
@@ -205,7 +206,7 @@ pub(super) fn scaffold(
         eprintln!(
             "  {}",
             crate::style::dim(
-                "note: could not generate Cargo.lock — run `cargo generate-lockfile` before \
+                "note: could not generate Cargo.lock; run `cargo generate-lockfile` before \
                  building"
             )
         );
@@ -213,10 +214,6 @@ pub(super) fn scaffold(
 
     Ok(())
 }
-
-// ---------------------------------------------------------------------------
-// Generators
-// ---------------------------------------------------------------------------
 
 fn generate_cargo_toml(
     name: &str,
@@ -442,7 +439,7 @@ describe.concurrent("{class_name} Program", async () => {{
     }});
 }});
 "#,
-            class_name = crate::utils::snake_to_pascal(&module_name)
+            class_name = snake_to_pascal(&module_name)
         )
     } else {
         format!(
@@ -478,7 +475,7 @@ describe.concurrent("{class_name} Program", async () => {{
     }});
 }});
 "#,
-            class_name = crate::utils::snake_to_pascal(&module_name)
+            class_name = snake_to_pascal(&module_name)
         )
     }
 }

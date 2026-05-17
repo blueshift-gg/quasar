@@ -1,4 +1,4 @@
-//! Planner — phase scheduling only.
+//! Planner: phase scheduling only.
 //!
 //! Reads FieldSemantics, produces phase-ordered BehaviorCall candidates.
 //! No validation, no protocol knowledge. The planner should be boring.
@@ -11,13 +11,8 @@ use {
     syn::{Expr, Ident, Type},
 };
 
-// ---------------------------------------------------------------------------
-// Public entry point
-// ---------------------------------------------------------------------------
-
 /// Build a typed execution plan from lowered field semantics.
 pub(crate) fn build_plan(semantics: &[FieldSemantics]) -> syn::Result<AccountsPlanTyped> {
-    // Collect field names and optional field names for value classification.
     let field_names: Vec<String> = semantics
         .iter()
         .map(|sem| sem.core.ident.to_string())
@@ -40,14 +35,9 @@ pub(crate) fn build_plan(semantics: &[FieldSemantics]) -> syn::Result<AccountsPl
     Ok(AccountsPlanTyped { fields, rent })
 }
 
-// ---------------------------------------------------------------------------
-// Value classification
-// ---------------------------------------------------------------------------
-
 /// Classify a behavior arg value into a ValueKind based on field names.
 fn classify_value(expr: &Expr, field_names: &[String], optional_fields: &[String]) -> ValueKind {
     match expr {
-        // None literal
         Expr::Path(ep)
             if ep.qself.is_none()
                 && ep.path.segments.len() == 1
@@ -55,21 +45,19 @@ fn classify_value(expr: &Expr, field_names: &[String], optional_fields: &[String
         {
             ValueKind::NoneLiteral
         }
-        // Some(inner)
         Expr::Call(call)
             if matches!(&*call.func, Expr::Path(p)
                 if p.path.segments.len() == 1 && p.path.segments[0].ident == "Some")
                 && call.args.len() == 1 =>
         {
             let inner = &call.args[0];
-            if let Some(name) = expr_as_ident_str(inner) {
+            if let Some(name) = expr_as_ident(inner).map(|id| id.to_string()) {
                 if field_names.contains(&name) {
                     return ValueKind::SomeFieldRef;
                 }
             }
             ValueKind::SomeExpr
         }
-        // Bare ident — check if it's a field
         Expr::Path(ep) if ep.qself.is_none() && ep.path.segments.len() == 1 => {
             let name = ep.path.segments[0].ident.to_string();
             if field_names.contains(&name) {
@@ -82,14 +70,9 @@ fn classify_value(expr: &Expr, field_names: &[String], optional_fields: &[String
                 ValueKind::Expr
             }
         }
-        // Everything else is an expression
         _ => ValueKind::Expr,
     }
 }
-
-// ---------------------------------------------------------------------------
-// Per-field planning
-// ---------------------------------------------------------------------------
 
 fn plan_field(
     sem: &FieldSemantics,
@@ -103,7 +86,6 @@ fn plan_field(
 
     let resolved_payer = resolve_field_payer(sem, payer_field);
 
-    // Pre-load: address verification for init fields.
     if sem.has_init() {
         if let Some(addr_expr) = &sem.address {
             pre_load.push(PreLoadStep::VerifyAddress(AddressSpec {
@@ -112,21 +94,14 @@ fn plan_field(
         }
     }
 
-    // Pre-load: init plan.
     if let Some(init) = &sem.init {
-        if resolved_payer.is_none() {
+        let Some(payer) = resolved_payer.as_ref() else {
             return Err(syn::Error::new_spanned(
                 &sem.core.field,
                 "init requires `payer = ...` (or add a field named `payer`)",
             ));
-        }
-        let init_plan = plan_init(
-            sem,
-            init.idempotent,
-            &resolved_payer,
-            field_names,
-            optional_fields,
-        )?;
+        };
+        let init_plan = plan_init(sem, init.idempotent, payer, field_names, optional_fields);
         pre_load.push(PreLoadStep::Init(init_plan));
     }
 
@@ -208,34 +183,20 @@ fn plan_field(
     })
 }
 
-// ---------------------------------------------------------------------------
-// Init planning
-// ---------------------------------------------------------------------------
-
 fn plan_init(
     sem: &FieldSemantics,
     idempotent: bool,
-    resolved_payer: &Option<FieldRef>,
+    payer: &FieldRef,
     field_names: &[String],
     optional_fields: &[String],
-) -> syn::Result<InitPlan> {
-    let payer = resolved_payer
-        .as_ref()
-        .ok_or_else(|| {
-            syn::Error::new_spanned(
-                &sem.core.field,
-                "init requires `payer = ...` (or add a field named `payer`)",
-            )
-        })?
-        .clone();
-
+) -> InitPlan {
     // If there are behavior groups attached, this is a delegated init.
     if sem.groups.is_empty() {
-        return Ok(InitPlan::Program(ProgramInitSpec {
-            payer,
-            space: SpaceSpec::FromType(sem.core.effective_ty.clone()),
+        return InitPlan::Program(ProgramInitSpec {
+            payer: payer.clone(),
+            space_ty: sem.core.effective_ty.clone(),
             idempotent,
-        }));
+        });
     }
 
     // Delegated init: behavior groups contribute init params via
@@ -251,16 +212,12 @@ fn plan_init(
         ));
     }
 
-    Ok(InitPlan::Behavior(BehaviorInitSpec {
-        payer,
+    InitPlan::Behavior(BehaviorInitSpec {
+        payer: payer.clone(),
         idempotent,
         init_param_calls,
-    }))
+    })
 }
-
-// ---------------------------------------------------------------------------
-// Behavior call lowering
-// ---------------------------------------------------------------------------
 
 /// Lower a BehaviorGroup directive into a BehaviorCall with classified values.
 fn lower_behavior_call(
@@ -292,17 +249,22 @@ fn lower_behavior_call(
 fn lower_value(expr: &Expr, kind: ValueKind) -> LoweredValue {
     match kind {
         ValueKind::BareFieldRef => {
-            let ident = expr_as_ident(expr).unwrap();
+            let ident =
+                expr_as_ident(expr).expect("BareFieldRef is only assigned to bare identifiers");
             LoweredValue::FieldView(ident)
         }
         ValueKind::OptionalFieldRef => {
-            let ident = expr_as_ident(expr).unwrap();
+            let ident =
+                expr_as_ident(expr).expect("OptionalFieldRef is only assigned to bare identifiers");
             LoweredValue::OptionalFieldView(ident)
         }
         ValueKind::Expr => LoweredValue::Expr(expr.clone()),
         ValueKind::NoneLiteral => LoweredValue::NoneLiteral,
         ValueKind::SomeFieldRef => match expr {
-            Expr::Call(call) => LoweredValue::SomeFieldView(expr_as_ident(&call.args[0]).unwrap()),
+            Expr::Call(call) => LoweredValue::SomeFieldView(
+                expr_as_ident(&call.args[0])
+                    .expect("SomeFieldRef is only assigned to Some(field_ident)"),
+            ),
             _ => LoweredValue::Expr(expr.clone()),
         },
         ValueKind::SomeExpr => match expr {
@@ -311,10 +273,6 @@ fn lower_value(expr: &Expr, kind: ValueKind) -> LoweredValue {
         },
     }
 }
-
-// ---------------------------------------------------------------------------
-// Payer resolution
-// ---------------------------------------------------------------------------
 
 /// Find the struct-wide payer field (by name convention).
 fn find_payer_field(semantics: &[FieldSemantics]) -> Option<Ident> {
@@ -343,10 +301,6 @@ fn resolve_field_payer(sem: &FieldSemantics, payer_field: Option<&Ident>) -> Opt
 
     None
 }
-
-// ---------------------------------------------------------------------------
-// Rent planning
-// ---------------------------------------------------------------------------
 
 fn compute_rent_plan(semantics: &[FieldSemantics]) -> RentPlan {
     let needs_rent = semantics
@@ -388,10 +342,6 @@ fn compute_rent_plan(semantics: &[FieldSemantics]) -> RentPlan {
     RentPlan::FetchOnce
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 fn expr_as_ident(expr: &Expr) -> Option<Ident> {
     if let Expr::Path(ep) = expr {
         if ep.qself.is_none() && ep.path.segments.len() == 1 {
@@ -399,8 +349,4 @@ fn expr_as_ident(expr: &Expr) -> Option<Ident> {
         }
     }
     None
-}
-
-fn expr_as_ident_str(expr: &Expr) -> Option<String> {
-    expr_as_ident(expr).map(|id| id.to_string())
 }

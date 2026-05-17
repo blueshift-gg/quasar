@@ -1,0 +1,5 @@
+error: duplicate `discriminator`
+  --> tests/compile_fail/duplicate_instruction_macro_arg.rs:11:38
+   |
+11 |     #[instruction(discriminator = 1, discriminator = 2)]
+   |                                      ^^^^^^^^^^^^^

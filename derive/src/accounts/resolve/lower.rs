@@ -1,5 +1,7 @@
-//! Lowering — parsed directives → FieldSemantics.
-//! No inference, no classification, no validation — that's rules + planner.
+//! Lowering: parsed directives to field semantics.
+//!
+//! This pass records syntax-level facts and simple wrapper shape; validation
+//! and lifecycle scheduling happen in rules + planner.
 
 use {
     super::{
@@ -8,7 +10,7 @@ use {
             parse_field_attrs,
         },
         rules::validate_semantics,
-        FieldCore, FieldKind, FieldSemantics, InitDirective,
+        FieldCore, FieldKind, FieldSemantics, InitDirective, UserCheck,
     },
     crate::helpers::{extract_generic_inner_type, is_composite_type},
     syn::Type,
@@ -16,7 +18,6 @@ use {
 
 pub(super) fn lower_semantics(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
-    _instruction_args: &Option<Vec<crate::accounts::InstructionArg>>,
 ) -> syn::Result<Vec<FieldSemantics>> {
     let parsed: Vec<(syn::Field, Vec<Directive>)> = fields
         .iter()
@@ -61,17 +62,21 @@ pub(super) fn lower_semantics(
 
 fn lower_core(field: &syn::Field, directives: &[Directive]) -> FieldCore {
     let ty = &field.ty;
-    let optional = extract_generic_inner_type(ty, "Option").is_some();
-    let after_option = extract_generic_inner_type(ty, "Option")
-        .cloned()
-        .unwrap_or_else(|| ty.clone());
+    let option_inner = extract_generic_inner_type(ty, "Option").cloned();
+    let optional = option_inner.is_some();
+    let after_option = option_inner.unwrap_or_else(|| ty.clone());
 
     let effective_ty = match &after_option {
         Type::Reference(r) => (*r.elem).clone(),
         other => other.clone(),
     };
 
-    let kind = classify_kind(ty);
+    let kind = classify_kind(
+        ty,
+        directives
+            .iter()
+            .any(|d| matches!(d, Directive::Core(CoreDirective::Group))),
+    );
 
     let inner_ty = extract_inner_ty(&effective_ty);
     let dynamic = detect_dynamic(&effective_ty, inner_ty.as_ref());
@@ -96,8 +101,8 @@ fn lower_core(field: &syn::Field, directives: &[Directive]) -> FieldCore {
     }
 }
 
-fn classify_kind(raw_ty: &Type) -> FieldKind {
-    if is_composite_type(raw_ty) {
+fn classify_kind(raw_ty: &Type, explicit_group: bool) -> FieldKind {
+    if explicit_group || is_composite_type(raw_ty) {
         FieldKind::Composite
     } else {
         FieldKind::Single
@@ -110,26 +115,61 @@ fn lower_directives(sem: &mut FieldSemantics, directives: Vec<Directive>) -> syn
     for directive in directives {
         match directive {
             Directive::Core(core) => match core {
-                CoreDirective::Mut | CoreDirective::Dup => { /* handled in lower_core */ }
+                CoreDirective::Mut | CoreDirective::Dup | CoreDirective::Group => {
+                    /* handled in lower_core */
+                }
                 CoreDirective::Init { idempotent } => {
+                    if sem.init.is_some() {
+                        return Err(syn::Error::new_spanned(
+                            &sem.core.field,
+                            "duplicate `init` directive",
+                        ));
+                    }
                     sem.init = Some(InitDirective { idempotent });
                     sem.core.is_mut = true;
                 }
                 CoreDirective::Payer(ident) => {
+                    if sem.payer.is_some() {
+                        return Err(syn::Error::new_spanned(
+                            &ident,
+                            "duplicate `payer = ...` directive",
+                        ));
+                    }
                     sem.payer = Some(ident);
                 }
                 CoreDirective::Address(expr, error) => {
+                    let has_address_check = sem
+                        .user_checks
+                        .iter()
+                        .any(|check| matches!(check, UserCheck::Address { .. }));
+                    if sem.address.is_some() || has_address_check {
+                        return Err(syn::Error::new_spanned(
+                            &expr,
+                            "duplicate `address = ...` directive",
+                        ));
+                    }
                     if error.is_some() {
-                        sem.user_checks
-                            .push(super::UserCheck::Address { expr, error });
+                        sem.user_checks.push(UserCheck::Address { expr, error });
                     } else {
                         sem.address = Some(expr);
                     }
                 }
                 CoreDirective::Realloc(expr) => {
+                    if sem.realloc.is_some() {
+                        return Err(syn::Error::new_spanned(
+                            &expr,
+                            "duplicate `realloc = ...` directive",
+                        ));
+                    }
                     sem.realloc = Some(expr);
                 }
                 CoreDirective::Close(dest) => {
+                    if sem.close_dest.is_some() {
+                        return Err(syn::Error::new_spanned(
+                            &dest,
+                            "duplicate `close(...)` directive",
+                        ));
+                    }
                     sem.close_dest = Some(dest);
                     sem.core.is_mut = true;
                 }
@@ -155,7 +195,7 @@ fn lower_directives(sem: &mut FieldSemantics, directives: Vec<Directive>) -> syn
     Ok(())
 }
 
-// --- Type classification helpers ---
+// Type classification helpers.
 
 fn extract_inner_ty(effective_ty: &Type) -> Option<Type> {
     for wrapper in &[

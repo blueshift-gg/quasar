@@ -89,7 +89,7 @@ pub struct DynBytesAccount {
     pub data: Vec<u8, 1024>,
 }
 
-/// Pod-dynamic account test — uses PodString/PodVec with dynamic sizing.
+/// Dynamic account using PodString/PodVec with runtime-sized storage.
 #[account(discriminator = 10, set_inner)]
 pub struct PodDynamicAccount {
     pub authority: Address,
@@ -98,8 +98,7 @@ pub struct PodDynamicAccount {
     pub members: PodVec<Address, 10>,
 }
 
-/// Fixed-capacity account — PodString/PodVec are inlined in the ZC struct
-/// at full capacity. Zero-copy reads AND writes. No CompactWriter needed.
+/// Fixed-capacity dynamic fields are inlined in the zero-copy struct.
 #[account(discriminator = 11, fixed_capacity)]
 pub struct FixedCapacityAccount {
     pub authority: Address,
@@ -107,7 +106,7 @@ pub struct FixedCapacityAccount {
     pub scores: Vec<u8, 10>,
 }
 
-/// Same shape as SimpleAccount but with a different seed prefix — for
+/// Same shape as SimpleAccount but with a different seed prefix for the
 /// space-override test.
 #[account(discriminator = 1, set_inner)]
 #[seeds(b"spacetest", authority: Address)]
@@ -117,7 +116,7 @@ pub struct SpaceTestAccount {
     pub bump: u8,
 }
 
-/// Same shape as SimpleAccount but with a different seed prefix — for
+/// Same shape as SimpleAccount but with a different seed prefix for the
 /// explicit-payer test.
 #[account(discriminator = 1, set_inner)]
 #[seeds(b"explicit", authority: Address)]
@@ -127,7 +126,7 @@ pub struct ExplicitPayerAccount {
     pub bump: u8,
 }
 
-/// Account with no discriminator — size-only validation.
+/// Account with no discriminator and size-only validation.
 #[account(unsafe_no_disc, set_inner)]
 #[seeds(b"nodisc", authority: Address)]
 pub struct NoDiscAccount {
@@ -135,18 +134,14 @@ pub struct NoDiscAccount {
     pub value: u64,
 }
 
-// ---------------------------------------------------------------------------
-// InterfaceAccount migration test: VaultV1 / VaultV2 / VaultInterface
-// ---------------------------------------------------------------------------
-
-// VaultV1: disc=20, { authority, value } = 1 + 32 + 8 = 41 bytes
+// VaultV1 layout: discriminator + authority + value.
 #[account(discriminator = 20)]
 pub struct VaultV1 {
     pub authority: Address,
     pub value: u64,
 }
 
-// VaultV2: disc=21, { authority, value, fee } = 1 + 32 + 8 + 8 = 49 bytes
+// VaultV2 layout: discriminator + authority + value + fee.
 #[account(discriminator = 21)]
 pub struct VaultV2 {
     pub authority: Address,
@@ -154,11 +149,10 @@ pub struct VaultV2 {
     pub fee: u64,
 }
 
-/// Interface type that accepts EITHER VaultV1 or VaultV2 accounts.
+/// Migration interface that accepts either VaultV1 or VaultV2 accounts.
 ///
-/// This is the migration pattern: one instruction handles both old (V1) and
-/// new (V2) account layouts. `Owners` returns the test-misc program ID.
-/// `AccountCheck` accepts disc=20 (V1) or disc=21 (V2) with sufficient data.
+/// `Owners` returns the test-misc program ID. `AccountLoad` accepts
+/// discriminator 20 or 21 with the matching minimum size.
 #[repr(transparent)]
 pub struct VaultInterface {
     __view: AccountView,

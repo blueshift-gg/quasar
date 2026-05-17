@@ -1,6 +1,9 @@
 use {crate::traits::AsAccountView, core::marker::PhantomData, solana_account_view::AccountView};
 
-/// Sysvar account wrapper. Validates address = `T::ID`, derefs to `T`.
+/// Sysvar account wrapper.
+///
+/// Parsing validates the canonical sysvar address, then `get` views the account
+/// data as `T`.
 #[repr(transparent)]
 pub struct Sysvar<T: crate::sysvars::Sysvar> {
     view: AccountView,
@@ -9,14 +12,20 @@ pub struct Sysvar<T: crate::sysvars::Sysvar> {
 
 impl<T: crate::sysvars::Sysvar> Sysvar<T> {
     /// # Safety
-    /// Caller must ensure `view.address() == T::ID`.
+    /// Caller must ensure `view.address() == T::ID` and that the account data
+    /// contains a valid `T` sysvar layout.
     #[inline(always)]
     pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
-        &*(view as *const AccountView as *const Self)
+        // SAFETY: `Sysvar<T>` is `repr(transparent)` over `AccountView` plus
+        // `PhantomData<T>`, so the reference cast preserves layout. The caller
+        // upholds the sysvar address/data invariant.
+        unsafe { &*(view as *const AccountView as *const Self) }
     }
 
     #[inline(always)]
     pub fn get(&self) -> &T {
+        // SAFETY: Checked construction requires the canonical sysvar address;
+        // unchecked construction makes the same data-layout guarantee explicit.
         unsafe { T::from_bytes_unchecked(self.view.borrow_unchecked()) }
     }
 }

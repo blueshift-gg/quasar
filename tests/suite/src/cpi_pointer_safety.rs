@@ -4,12 +4,11 @@ use {
     quasar_test_misc::cpi::*,
 };
 
-// ============================================================================
 // CPI pointer safety: mutable data write + CPI on the same account
 //
 // The handler writes to Account<SimpleAccount> data via set_inner() (raw
 // pointer write through data_mut_ptr, no borrow tracking), then passes
-// the SAME account into a system transfer CPI as the writable destination.
+// the same account into a system transfer CPI as the writable destination.
 // cpi_account_from_view() extracts raw pointers without checking
 // borrow_state.
 //
@@ -19,7 +18,6 @@ use {
 //   - CPI lamport change is visible through the same AccountView
 //   - A second set_inner after CPI still writes correctly (data_mut_ptr still
 //     valid)
-// ============================================================================
 
 #[test]
 fn mut_readback_data_and_lamports() {

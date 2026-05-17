@@ -602,8 +602,6 @@ fn test_pda_cu() {
     );
 }
 
-// ── Seed type tests ─────────────────────────────────────────────────────
-
 #[test]
 fn test_empty_seed() {
     let mollusk = setup();
@@ -710,8 +708,6 @@ fn test_seed_with_special_chars() {
     assert_eq!(account.data.len(), ITEM_SIZE);
     assert_eq!(account.owner, quasar_test_pda::ID);
 }
-
-// ── Error path tests ────────────────────────────────────────────────────
 
 #[test]
 fn test_wrong_seeds_different_literal() {
@@ -892,8 +888,6 @@ fn test_pda_account_not_writable_on_init() {
     );
 }
 
-// ── Multi-seed tests ────────────────────────────────────────────────────
-
 #[test]
 fn test_multi_seed_three_components() {
     let mollusk = setup();
@@ -1055,8 +1049,6 @@ fn test_multi_seed_order_matters() {
     );
 }
 
-// ── PDA signer tests ────────────────────────────────────────────────────
-
 #[test]
 fn test_pda_signer_cpi_success() {
     let mollusk = setup();
@@ -1150,8 +1142,6 @@ fn test_pda_signer_wrong_authority_cpi() {
     );
 }
 
-// ── Typed seed with instruction data ────────────────────────────────────
-
 const INDEXED_SIZE: usize = 42;
 
 #[test]
@@ -1201,8 +1191,6 @@ fn test_typed_seed_ix_data_init() {
     );
     assert_eq!(account.owner, quasar_test_pda::ID);
 }
-
-// ── Typed seed with deserialized account field ──────────────────────────
 
 const NS_CONFIG_SIZE: usize = 6;
 const SCOPED_ITEM_SIZE: usize = 14;
@@ -1290,13 +1278,11 @@ fn test_typed_seed_deserialized_field() {
     );
 }
 
-// ── Init with account field seed ─────────────────────────────────────────────
-
 #[test]
 fn test_init_typed_seed_from_account_field() {
     // Verifies that `seeds = ScopedItem::seeds(config.namespace)` works when
-    // `item` is an `init` account — i.e. `typed_seed_slice_expr_init` correctly
-    // casts `&mut AccountView` → `&NamespaceConfig` to access `.namespace`.
+    // `item` is an `init` account. `typed_seed_slice_expr_init` must cast
+    // `&mut AccountView` to `&NamespaceConfig` to access `.namespace`.
     let mollusk = setup();
     let (system_program, system_program_account) = keyed_account_for_system_program();
     let payer = Address::new_unique();

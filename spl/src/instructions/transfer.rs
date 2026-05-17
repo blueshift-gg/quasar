@@ -16,21 +16,14 @@ use quasar_lang::{
 /// [1..9] amount        (u64 LE)
 /// ```
 #[inline(always)]
-pub fn transfer<'a>(
+pub(super) fn transfer<'a>(
     token_program: &'a AccountView,
     from: &'a AccountView,
     to: &'a AccountView,
     authority: &'a AccountView,
     amount: u64,
 ) -> CpiCall<'a, 3, 9> {
-    // SAFETY: All 9 bytes written before `assume_init`.
-    let data = unsafe {
-        let mut buf = core::mem::MaybeUninit::<[u8; 9]>::uninit();
-        let ptr = buf.as_mut_ptr() as *mut u8;
-        core::ptr::write(ptr, 3);
-        (ptr.add(1) as *mut u64).write_unaligned(amount);
-        buf.assume_init()
-    };
+    let data = super::amount_data::<3>(amount);
 
     CpiCall::new(
         token_program.address(),

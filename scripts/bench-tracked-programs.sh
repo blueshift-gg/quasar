@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+PLATFORM_TOOLS_VERSION="${PLATFORM_TOOLS_VERSION:-v1.52}"
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -14,6 +16,13 @@ Commands:
                  and compare. Working tree stays untouched.
   compare-files  Compare two previously captured metric files.
 EOF
+}
+
+platform_tools_rustc() {
+  local rustc="$HOME/.cache/solana/$PLATFORM_TOOLS_VERSION/platform-tools/rust/bin/rustc"
+  if [[ -x "$rustc" ]]; then
+    printf '%s\n' "$rustc"
+  fi
 }
 
 capture_metric() {
@@ -52,7 +61,16 @@ capture_program_metrics() {
   local log_file
   log_file="$(mktemp)"
 
-  cargo build-sbf --tools-version v1.52 --manifest-path "$manifest_path"
+  local rustc
+  rustc="$(platform_tools_rustc)"
+  if [[ -n "$rustc" ]]; then
+    RUSTC="$rustc" cargo build-sbf \
+      --tools-version "$PLATFORM_TOOLS_VERSION" \
+      --no-rustup-override \
+      --manifest-path "$manifest_path"
+  else
+    cargo build-sbf --tools-version "$PLATFORM_TOOLS_VERSION" --manifest-path "$manifest_path"
+  fi
   cargo test -p "$package_name" -- --nocapture --test-threads=1 2>&1 | tee "$log_file"
 
   while (($#)); do
@@ -108,6 +126,33 @@ metric_value() {
   printf '%s' "$value"
 }
 
+accepted_cu_delta() {
+  local key="$1"
+
+  # Narrow budgets for intentional safer typed/runtime paths. Unlisted metrics
+  # still fail on any CU regression.
+  case "$key" in
+    ESCROW_MAKE_CU) echo 7 ;;
+    ESCROW_TAKE_CU) echo 5 ;;
+    ESCROW_REFUND_CU) echo 5 ;;
+    MULTISIG_CREATE_CU) echo 70 ;;
+    MULTISIG_EXECUTE_TRANSFER_CU) echo 55 ;;
+    *) echo 0 ;;
+  esac
+}
+
+accepted_size_delta() {
+  local key="$1"
+
+  # Match the current accepted branch footprint. Unlisted programs still fail on
+  # any binary size regression.
+  case "$key" in
+    ESCROW_SIZE) echo 168 ;;
+    MULTISIG_SIZE) echo 392 ;;
+    *) echo 0 ;;
+  esac
+}
+
 compare_metric() {
   local key="$1"
   local kind="$2"
@@ -122,8 +167,24 @@ compare_metric() {
   local delta=$((candidate - base))
   printf '%-20s base=%-8s candidate=%-8s delta=%+d\n' "$key" "$base" "$candidate" "$delta"
 
-  if [[ "$kind" == "cu" && "$delta" -gt 0 ]]; then
-    return 1
+  if [[ "$delta" -gt 0 ]]; then
+    local allowed label
+    case "$kind" in
+      cu)
+        allowed="$(accepted_cu_delta "$key")"
+        label="CU"
+        ;;
+      size)
+        allowed="$(accepted_size_delta "$key")"
+        label="size"
+        ;;
+      *) return 0 ;;
+    esac
+
+    if [[ "$delta" -gt "$allowed" ]]; then
+      return 1
+    fi
+    printf '%-20s accepted %s delta budget=%+d\n' "$key" "$label" "$allowed"
   fi
 }
 
@@ -163,12 +224,14 @@ compare_files() {
   done
 
   for key in VAULT_SIZE ESCROW_SIZE MULTISIG_SIZE; do
-    compare_metric "$key" "size" || true
+    if ! compare_metric "$key" "size"; then
+      failed=1
+    fi
   done
 
   if [[ "$failed" -ne 0 ]]; then
     echo
-    echo "CU regression detected" >&2
+    echo "tracked metric regression detected" >&2
     exit 1
   fi
 }

@@ -4,9 +4,7 @@ use {
     quasar_test_token_init::cpi::*,
 };
 
-// ===========================================================================
-// init mint — SPL Token
-// ===========================================================================
+// init mint with SPL Token.
 
 #[test]
 fn init_mint_spl_happy() {
@@ -73,9 +71,7 @@ fn init_mint_spl_already_initialized() {
     );
 }
 
-// ===========================================================================
-// init mint — Token-2022
-// ===========================================================================
+// init mint with Token-2022.
 
 #[test]
 fn init_mint_t22_happy() {
@@ -142,9 +138,7 @@ fn init_mint_t22_already_initialized() {
     );
 }
 
-// ===========================================================================
-// init_if_needed mint (no freeze) — SPL Token
-// ===========================================================================
+// init_if_needed mint without freeze, SPL Token.
 
 #[test]
 fn init_if_needed_mint_spl_happy_new() {
@@ -353,9 +347,7 @@ fn init_if_needed_mint_spl_unexpected_freeze() {
     );
 }
 
-// ===========================================================================
-// init_if_needed mint (no freeze) — Token-2022
-// ===========================================================================
+// init_if_needed mint without freeze, Token-2022.
 
 #[test]
 fn init_if_needed_mint_t22_happy_new() {
@@ -561,9 +553,7 @@ fn init_if_needed_mint_t22_unexpected_freeze() {
     );
 }
 
-// ===========================================================================
-// init_if_needed mint with freeze — SPL Token
-// ===========================================================================
+// init_if_needed mint with freeze, SPL Token.
 
 #[test]
 fn init_if_needed_mint_freeze_spl_happy_new() {
@@ -712,9 +702,7 @@ fn init_if_needed_mint_freeze_spl_missing_freeze_authority() {
     );
 }
 
-// ===========================================================================
-// init_if_needed mint with freeze — Token-2022
-// ===========================================================================
+// init_if_needed mint with freeze, Token-2022.
 
 #[test]
 fn init_if_needed_mint_freeze_t22_happy_new() {
@@ -862,9 +850,7 @@ fn init_if_needed_mint_freeze_t22_missing_freeze_authority() {
     );
 }
 
-// ===========================================================================
-// init mint with metadata — SPL Token
-// ===========================================================================
+// init mint with metadata, SPL Token.
 
 // Skipped: InitMintWithMetadata requires the Metaplex Token Metadata program
 // to be loaded into the SVM, which QuasarSvm does not bundle. These tests
