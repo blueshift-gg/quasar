@@ -19,21 +19,9 @@ EOF
 }
 
 platform_tools_rustc() {
-  printf '%s/.cache/solana/%s/platform-tools/rust/bin/rustc\n' "$HOME" "$PLATFORM_TOOLS_VERSION"
-}
-
-ensure_platform_tools() {
-  local rustc
-  rustc="$(platform_tools_rustc)"
+  local rustc="$HOME/.cache/solana/$PLATFORM_TOOLS_VERSION/platform-tools/rust/bin/rustc"
   if [[ -x "$rustc" ]]; then
-    return 0
-  fi
-
-  cargo build-sbf --install-only --tools-version "$PLATFORM_TOOLS_VERSION"
-
-  if [[ ! -x "$rustc" ]]; then
-    echo "missing platform-tools rustc: $rustc" >&2
-    exit 1
+    printf '%s\n' "$rustc"
   fi
 }
 
@@ -73,11 +61,16 @@ capture_program_metrics() {
   local log_file
   log_file="$(mktemp)"
 
-  ensure_platform_tools
-  RUSTC="$(platform_tools_rustc)" cargo build-sbf \
-    --tools-version "$PLATFORM_TOOLS_VERSION" \
-    --no-rustup-override \
-    --manifest-path "$manifest_path"
+  local rustc
+  rustc="$(platform_tools_rustc)"
+  if [[ -n "$rustc" ]]; then
+    RUSTC="$rustc" cargo build-sbf \
+      --tools-version "$PLATFORM_TOOLS_VERSION" \
+      --no-rustup-override \
+      --manifest-path "$manifest_path"
+  else
+    cargo build-sbf --tools-version "$PLATFORM_TOOLS_VERSION" --manifest-path "$manifest_path"
+  fi
   cargo test -p "$package_name" -- --nocapture --test-threads=1 2>&1 | tee "$log_file"
 
   while (($#)); do
