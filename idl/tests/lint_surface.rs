@@ -64,6 +64,7 @@ fn account_node(name: &str, signer: bool, writable: bool, resolver: IdlResolver)
     IdlAccountNode {
         name: name.to_owned(),
         client_type: None,
+        optional: false,
         writable: AccountFlag::Fixed(writable),
         signer: AccountFlag::Fixed(signer),
         resolver,

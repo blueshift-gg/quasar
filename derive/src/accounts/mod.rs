@@ -199,6 +199,7 @@ fn emit_idl_accounts_meta(
         .iter()
         .map(|sem| {
             let field_name = crate::helpers::snake_to_camel(&sem.core.ident.to_string());
+            let optional = sem.core.optional;
             let writable = sem.is_writable();
             let signer = is_signer_type(&sem.core.effective_ty);
 
@@ -210,6 +211,7 @@ fn emit_idl_accounts_meta(
                 quasar_lang::idl_build::__reexport::IdlAccountNode {
                     name: quasar_lang::idl_build::s(#field_name),
                     client_type: None,
+                    optional: #optional,
                     writable: quasar_lang::idl_build::__reexport::AccountFlag::Fixed(#writable),
                     signer: quasar_lang::idl_build::__reexport::AccountFlag::Fixed(#signer),
                     resolver: #resolver_tokens,

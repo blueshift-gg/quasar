@@ -280,6 +280,7 @@ mod tests {
                 accounts: vec![IdlAccountNode {
                     name: "authority".to_owned(),
                     client_type: None,
+                    optional: false,
                     writable: AccountFlag::Fixed(false),
                     signer: AccountFlag::Fixed(false),
                     resolver,
