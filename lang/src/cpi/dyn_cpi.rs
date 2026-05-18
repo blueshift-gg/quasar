@@ -177,7 +177,8 @@ impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS
     ///
     /// Returns a raw pointer because the buffer contents are logically
     /// uninitialized; callers must write before reading any byte.
-    /// After writing, call `set_data_len()` with the number of bytes written.
+    /// After writing, call unsafe [`set_data_len`](Self::set_data_len) with
+    /// the number of bytes written.
     ///
     /// # Safety
     ///
@@ -188,9 +189,17 @@ impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS
         self.data.as_mut_ptr()
     }
 
-    /// Set the active data length (after writing via `data_mut()`).
+    /// Set the active data length after writing via
+    /// [`data_mut`](Self::data_mut).
+    ///
+    /// # Safety
+    ///
+    /// The caller must guarantee that every byte in `data[0..len]` has been
+    /// initialized. CPI invocation and
+    /// [`instruction_data`](Self::instruction_data) read exactly that byte
+    /// range.
     #[inline(always)]
-    pub fn set_data_len(&mut self, len: usize) -> Result<(), ProgramError> {
+    pub unsafe fn set_data_len(&mut self, len: usize) -> Result<(), ProgramError> {
         if unlikely(len > MAX_DATA) {
             return Err(ProgramError::InvalidInstructionData);
         }
@@ -321,7 +330,8 @@ mod tests {
             let buf = &mut *cpi.data_mut();
             buf[..4].copy_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
         }
-        cpi.set_data_len(4).unwrap();
+        // SAFETY: The first four bytes were written above.
+        unsafe { cpi.set_data_len(4) }.unwrap();
         assert_eq!(cpi.instruction_data(), &[0xAA, 0xBB, 0xCC, 0xDD]);
     }
 
@@ -370,15 +380,19 @@ mod tests {
     #[test]
     fn set_data_len_overflow_returns_error() {
         let mut cpi = CpiDynamic::<1, 4>::new(&PROGRAM_ID);
-        assert!(cpi.set_data_len(5).is_err());
+        // SAFETY: The call must fail before any byte can become active.
+        assert!(unsafe { cpi.set_data_len(5) }.is_err());
     }
 
     #[test]
     fn set_data_len_exact_capacity() {
         let mut cpi = CpiDynamic::<1, 4>::new(&PROGRAM_ID);
-        // SAFETY: We're only setting the length; invoke would read these bytes
-        // but we won't invoke; this tests the length validation path.
-        assert!(cpi.set_data_len(4).is_ok());
+        unsafe {
+            let buf = &mut *cpi.data_mut();
+            buf.copy_from_slice(&[0xAA; 4]);
+        }
+        // SAFETY: All four bytes were written above.
+        assert!(unsafe { cpi.set_data_len(4) }.is_ok());
     }
 
     #[test]
@@ -398,7 +412,8 @@ mod tests {
             buf[0] = 0xBE;
             buf[1] = 0xEF;
         }
-        cpi.set_data_len(2).unwrap();
+        // SAFETY: The first two bytes were written above.
+        unsafe { cpi.set_data_len(2) }.unwrap();
         assert_eq!(cpi.instruction_data(), &[0xBE, 0xEF]);
     }
 

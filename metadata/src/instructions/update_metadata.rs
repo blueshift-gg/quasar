@@ -129,6 +129,8 @@ pub(super) fn update_metadata_accounts_v2<'a>(
         }
     }
 
-    cpi.set_data_len(offset)?;
+    // SAFETY: The serialization block above initialized every byte in
+    // `data[0..offset]`.
+    unsafe { cpi.set_data_len(offset) }?;
     Ok(cpi)
 }
