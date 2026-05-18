@@ -106,6 +106,10 @@ pub(crate) fn create_metadata_accounts_v3<'a>(
         offset += 1;
     }
 
-    cpi.set_data_len(offset)?;
+    // SAFETY: Every byte in `0..offset` was written above; that range becomes the
+    // active instruction data for CPI.
+    unsafe {
+        cpi.set_data_len(offset)?;
+    }
     Ok(cpi)
 }

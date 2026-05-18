@@ -3,8 +3,8 @@
 //! Generated parse body shape:
 //!
 //! ```text
-//! // Rent source (only when init/realloc/migration may need it)
-//! let __rent_ctx = OpCtx::new(&program_id, &__rent);
+//! // RentResolver (fetch syscall) when no Sysvar<Rent> field, else deferred:
+//! //   after phase 1, `__rent`/`__rent_ctx` from validated `Sysvar<Rent>` field.
 //!
 //! // Phase 1: load non-init fields
 //! let field_a = <Ty>::load(field_a)?;
@@ -55,7 +55,8 @@ fn emit_parse_body_inner(
     cx: &super::EmitCx,
     include_behavior_assertions: bool,
 ) -> proc_macro2::TokenStream {
-    let ctx_init = emit_rent_context(&plan.rent);
+    let ctx_init_early = emit_rent_context_early(&plan.rent);
+    let ctx_init_after_non_init = emit_rent_context_after_non_init_loads(&plan.rent);
     let bump_vars = emit_bump_vars(semantics);
     let init_state_vars = emit_init_state_vars(&plan.fields, semantics);
 
@@ -89,8 +90,9 @@ fn emit_parse_body_inner(
         #behavior_asserts
         #bump_vars
         #(#init_state_vars)*
-        #ctx_init
+        #ctx_init_early
         #(#load_non_init)*
+        #ctx_init_after_non_init
         #(#init_phase)*
         #(#load_init)*
         #(#phase4)*
@@ -100,13 +102,32 @@ fn emit_parse_body_inner(
 
 // Rent context.
 
-fn emit_rent_context(rent_plan: &RentPlan) -> proc_macro2::TokenStream {
+/// Rent context that does not depend on account field loads (`RentResolver` only).
+fn emit_rent_context_early(rent_plan: &RentPlan) -> proc_macro2::TokenStream {
     match rent_plan {
-        RentPlan::NotNeeded => quote! {},
+        RentPlan::FetchOnce => {
+            quote! {
+                let __rent_ctx = quasar_lang::ops::OpCtx::new(
+                    // SAFETY: `__program_id` is already a valid `&Address`;
+                    // this reborrow preserves the same address while keeping
+                    // generated SBF in its cheaper shape.
+                    unsafe { &*(__program_id as *const quasar_lang::prelude::Address) },
+                    quasar_lang::ops::RentResolver::fetch_once(),
+                );
+            }
+        }
+        RentPlan::NotNeeded | RentPlan::FromSysvarField { .. } => quote! {},
+    }
+}
+
+/// Rent context built from an explicit `Sysvar<Rent>` field: must run only after
+/// that field has been loaded and validated in phase 1.
+fn emit_rent_context_after_non_init_loads(rent_plan: &RentPlan) -> proc_macro2::TokenStream {
+    match rent_plan {
         RentPlan::FromSysvarField { field } => {
             quote! {
-                // SAFETY: the rent sysvar account was parsed into an AccountView,
-                // and Sysvar<Rent> validation is handled by the field load path.
+                // SAFETY: `Sysvar<Rent>` was loaded above, so the account is the
+                // real rent sysvar before we interpret its bytes.
                 let __rent: &quasar_lang::sysvars::rent::Rent = unsafe {
                     <quasar_lang::sysvars::rent::Rent as quasar_lang::sysvars::Sysvar>::from_bytes_unchecked(
                         #field.borrow_unchecked()
@@ -121,17 +142,7 @@ fn emit_rent_context(rent_plan: &RentPlan) -> proc_macro2::TokenStream {
                 );
             }
         }
-        RentPlan::FetchOnce => {
-            quote! {
-                let __rent_ctx = quasar_lang::ops::OpCtx::new(
-                    // SAFETY: `__program_id` is already a valid `&Address`;
-                    // this reborrow preserves the same address while keeping
-                    // generated SBF in its cheaper shape.
-                    unsafe { &*(__program_id as *const quasar_lang::prelude::Address) },
-                    quasar_lang::ops::RentResolver::fetch_once(),
-                );
-            }
-        }
+        RentPlan::NotNeeded | RentPlan::FetchOnce => quote! {},
     }
 }
 

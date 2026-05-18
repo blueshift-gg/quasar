@@ -68,12 +68,12 @@ pub fn run_instruction(name: &str) -> CliResult {
         r#"use quasar_lang::prelude::*;
 
 #[derive(Accounts)]
-pub struct {pascal}<'info> {{
-    pub payer: &'info mut Signer,
-    pub system_program: &'info Program<SystemProgram>,
+pub struct {pascal} {{
+    pub payer: Signer,
+    pub system_program: Program<SystemProgram>,
 }}
 
-impl<'info> {pascal}<'info> {{
+impl {pascal} {{
     #[inline(always)]
     pub fn {snake}(&self) -> Result<(), ProgramError> {{
         Ok(())

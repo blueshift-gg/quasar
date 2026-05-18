@@ -129,6 +129,10 @@ pub(super) fn update_metadata_accounts_v2<'a>(
         }
     }
 
-    cpi.set_data_len(offset)?;
+    // SAFETY: Every byte in `0..offset` was written above; that range becomes the
+    // active instruction data for CPI.
+    unsafe {
+        cpi.set_data_len(offset)?;
+    }
     Ok(cpi)
 }

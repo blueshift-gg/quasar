@@ -3,6 +3,10 @@
 //! `CpiDynamic` is the variable-length counterpart to [`super::CpiCall`].
 //! Both accounts and data are backed by `MaybeUninit` stack arrays with
 //! compile-time capacity, while the active count is tracked at runtime.
+//!
+//! Instruction data uses a `MaybeUninit` buffer: use [`CpiDynamic::set_data`] for
+//! a fully safe path, or write through [`CpiDynamic::data_mut`] and then call
+//! [`CpiDynamic::set_data_len`] under its safety contract before invoking the CPI.
 
 use {
     super::{
@@ -177,7 +181,8 @@ impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS
     ///
     /// Returns a raw pointer because the buffer contents are logically
     /// uninitialized; callers must write before reading any byte.
-    /// After writing, call `set_data_len()` with the number of bytes written.
+    /// After writing the serialized bytes, call [`Self::set_data_len`] to mark the
+    /// active region (see its safety contract).
     ///
     /// # Safety
     ///
@@ -188,9 +193,16 @@ impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS
         self.data.as_mut_ptr()
     }
 
-    /// Set the active data length (after writing via `data_mut()`).
+    /// Set the active instruction data length after initializing those bytes.
+    ///
+    /// # Safety
+    ///
+    /// Every byte in the range that will be read for CPI (`0..len`) must already be
+    /// initialized (for example by [`Self::set_data`] or by writes through
+    /// [`Self::data_mut`]). Otherwise [`Self::invoke`], [`Self::instruction_data`],
+    /// and similar methods may read uninitialized memory (undefined behavior).
     #[inline(always)]
-    pub fn set_data_len(&mut self, len: usize) -> Result<(), ProgramError> {
+    pub unsafe fn set_data_len(&mut self, len: usize) -> Result<(), ProgramError> {
         if unlikely(len > MAX_DATA) {
             return Err(ProgramError::InvalidInstructionData);
         }
@@ -253,8 +265,9 @@ impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS
     #[inline(always)]
     fn invoke_inner(&self, signers: &[Signer]) -> ProgramResult {
         // SAFETY: accounts[0..acct_len] and cpi_accounts[0..acct_len]
-        // are initialized by push_account. data[0..data_len] written by
-        // set_data or data_mut(). MaybeUninit<[T; N]> has same layout as [T; N].
+        // are initialized by push_account. data[0..data_len] must be initialized
+        // by set_data or by data_mut writes followed by unsafe set_data_len.
+        // MaybeUninit<[T; N]> has same layout as [T; N].
         // We pass pointers with acct_len/data_len to invoke_raw, reading only
         // the initialized portion -- never assume_init() the whole array.
         let result = unsafe {
@@ -299,7 +312,7 @@ impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS
     /// Debug accessor for instruction data (off-chain only).
     #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
     pub fn instruction_data(&self) -> &[u8] {
-        // SAFETY: data[0..data_len] was initialized by set_data or data_mut().
+        // SAFETY: `data[0..data_len]` must be initialized (same obligation as [`Self::invoke`]).
         unsafe { core::slice::from_raw_parts(self.data.as_ptr() as *const u8, self.data_len) }
     }
 }
@@ -320,8 +333,8 @@ mod tests {
         unsafe {
             let buf = &mut *cpi.data_mut();
             buf[..4].copy_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
+            cpi.set_data_len(4).unwrap();
         }
-        cpi.set_data_len(4).unwrap();
         assert_eq!(cpi.instruction_data(), &[0xAA, 0xBB, 0xCC, 0xDD]);
     }
 
@@ -370,15 +383,14 @@ mod tests {
     #[test]
     fn set_data_len_overflow_returns_error() {
         let mut cpi = CpiDynamic::<1, 4>::new(&PROGRAM_ID);
-        assert!(cpi.set_data_len(5).is_err());
+        assert!(unsafe { cpi.set_data_len(5) }.is_err());
     }
 
     #[test]
     fn set_data_len_exact_capacity() {
         let mut cpi = CpiDynamic::<1, 4>::new(&PROGRAM_ID);
-        // SAFETY: We're only setting the length; invoke would read these bytes
-        // but we won't invoke; this tests the length validation path.
-        assert!(cpi.set_data_len(4).is_ok());
+        // SAFETY: Length cap check only; we never read the buffer.
+        assert!(unsafe { cpi.set_data_len(4) }.is_ok());
     }
 
     #[test]
@@ -397,8 +409,8 @@ mod tests {
             let buf = &mut *ptr;
             buf[0] = 0xBE;
             buf[1] = 0xEF;
+            cpi.set_data_len(2).unwrap();
         }
-        cpi.set_data_len(2).unwrap();
         assert_eq!(cpi.instruction_data(), &[0xBE, 0xEF]);
     }
 
