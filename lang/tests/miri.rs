@@ -96,6 +96,8 @@ use {
     std::mem::{align_of, size_of, MaybeUninit},
 };
 
+solana_address::declare_id!("11111111111111111111111111111112");
+
 mod remaining_group_fixture {
     use quasar_lang::prelude::*;
 
@@ -103,6 +105,25 @@ mod remaining_group_fixture {
     pub struct RemainingPair {
         pub first: UncheckedAccount,
         pub second: UncheckedAccount,
+    }
+}
+
+#[allow(dead_code)]
+mod init_with_rent_fixture {
+    use quasar_lang::prelude::*;
+
+    #[account(discriminator = 1)]
+    pub struct ProbeData {
+        pub value: PodU64,
+    }
+
+    #[derive(quasar_derive::Accounts)]
+    pub struct InitWithRent {
+        #[account(mut)]
+        pub payer: Signer,
+        pub rent: Sysvar<Rent>,
+        #[account(mut, init)]
+        pub target: Account<ProbeData>,
     }
 }
 
@@ -1733,6 +1754,25 @@ fn uninit_sysvar_rent_2x_threshold() {
     let data_len = 100usize;
     let expected = 2 * (ACCOUNT_STORAGE_OVERHEAD + data_len as u64) * 3480;
     assert_eq!(rent.minimum_balance_unchecked(data_len), expected);
+}
+
+#[test]
+fn generated_parse_validates_explicit_rent_before_using_it_for_init() {
+    use init_with_rent_fixture::InitWithRent;
+
+    let mut payer_buf = AccountBuffer::new(0);
+    payer_buf.init([1; 32], [9; 32], 1_000_000, 0, true, true);
+
+    let mut short_fake_rent = AccountBuffer::exact(size_of::<RuntimeAccount>());
+    short_fake_rent.init([2; 32], [9; 32], 1_000_000, 0, false, false);
+
+    let mut target_buf = AccountBuffer::new(0);
+    target_buf.init([3; 32], [0; 32], 0, 0, false, true);
+
+    let mut accounts = unsafe { [payer_buf.view(), short_fake_rent.view(), target_buf.view()] };
+    let result = unsafe { InitWithRent::parse_unchecked(&mut accounts, &ID) };
+
+    assert_eq!(result.map(|_| ()), Err(ProgramError::IncorrectProgramId));
 }
 
 #[repr(C)]

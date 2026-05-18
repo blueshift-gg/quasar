@@ -55,19 +55,10 @@ fn emit_parse_body_inner(
     cx: &super::EmitCx,
     include_behavior_assertions: bool,
 ) -> proc_macro2::TokenStream {
-    let ctx_init = emit_rent_context(&plan.rent);
+    let parse_sequence = emit_parse_sequence(semantics, plan);
     let bump_vars = emit_bump_vars(semantics);
     let init_state_vars = emit_init_state_vars(&plan.fields, semantics);
 
-    // Phase 1: load non-init fields.
-    let load_non_init = emit_load_filtered(semantics, false);
-    // Phase 2: address verify + init CPI (from typed plan).
-    let init_phase = emit_init_phase_typed(&plan.fields, semantics);
-    // Phase 3: load init fields (all init fields: behavior init CPI already
-    // ran in phase 2, so the slot is initialized and ready to load).
-    let load_init = emit_load_filtered(semantics, true);
-    // Phase 4: post-load steps.
-    let phase4 = emit_post_load_typed(&plan.fields, semantics);
     let bump_init = emit_bump_init(semantics, &cx.bumps_name);
 
     // Behavior const assertions: REQUIRES_MUT and SETS_INIT_PARAMS.
@@ -89,11 +80,7 @@ fn emit_parse_body_inner(
         #behavior_asserts
         #bump_vars
         #(#init_state_vars)*
-        #ctx_init
-        #(#load_non_init)*
-        #(#init_phase)*
-        #(#load_init)*
-        #(#phase4)*
+        #parse_sequence
         Ok((Self { #(#construct_fields,)* }, #bump_init))
     }
 }
@@ -105,19 +92,12 @@ fn emit_rent_context(rent_plan: &RentPlan) -> proc_macro2::TokenStream {
         RentPlan::NotNeeded => quote! {},
         RentPlan::FromSysvarField { field } => {
             quote! {
-                // SAFETY: the rent sysvar account was parsed into an AccountView,
-                // and Sysvar<Rent> validation is handled by the field load path.
-                let __rent: &quasar_lang::sysvars::rent::Rent = unsafe {
-                    <quasar_lang::sysvars::rent::Rent as quasar_lang::sysvars::Sysvar>::from_bytes_unchecked(
-                        #field.borrow_unchecked()
-                    )
-                };
                 let __rent_ctx = quasar_lang::ops::OpCtx::new(
                     // SAFETY: `__program_id` is already a valid `&Address`;
                     // this reborrow preserves the same address while keeping
                     // generated SBF in its cheaper shape.
                     unsafe { &*(__program_id as *const quasar_lang::prelude::Address) },
-                    __rent,
+                    #field.get(),
                 );
             }
         }
@@ -130,6 +110,53 @@ fn emit_rent_context(rent_plan: &RentPlan) -> proc_macro2::TokenStream {
                     unsafe { &*(__program_id as *const quasar_lang::prelude::Address) },
                     quasar_lang::ops::RentResolver::fetch_once(),
                 );
+            }
+        }
+    }
+}
+
+fn emit_parse_sequence(
+    semantics: &[FieldSemantics],
+    plan: &AccountsPlanTyped,
+) -> proc_macro2::TokenStream {
+    let init_phase = emit_init_phase_typed(&plan.fields, semantics);
+    let load_init = emit_load_filtered(semantics, true);
+    let phase4 = emit_post_load_typed(&plan.fields, semantics);
+
+    match &plan.rent {
+        RentPlan::NotNeeded => {
+            let load_non_init = emit_load_filtered(semantics, false);
+            quote! {
+                #(#load_non_init)*
+                #(#init_phase)*
+                #(#load_init)*
+                #(#phase4)*
+            }
+        }
+        RentPlan::FetchOnce => {
+            let ctx_init = emit_rent_context(&plan.rent);
+            let load_non_init = emit_load_filtered(semantics, false);
+            quote! {
+                #ctx_init
+                #(#load_non_init)*
+                #(#init_phase)*
+                #(#load_init)*
+                #(#phase4)*
+            }
+        }
+        RentPlan::FromSysvarField { field } => {
+            // The rent field must be loaded before `__rent_ctx` can borrow it;
+            // all other non-init fields keep their normal phase position.
+            let rent_load = emit_load_by_ident(semantics, field);
+            let ctx_init = emit_rent_context(&plan.rent);
+            let load_non_init = emit_load_filtered_excluding(semantics, false, Some(field));
+            quote! {
+                #rent_load
+                #ctx_init
+                #(#load_non_init)*
+                #(#init_phase)*
+                #(#load_init)*
+                #(#phase4)*
             }
         }
     }
@@ -389,12 +416,32 @@ fn emit_load_filtered(
     semantics: &[FieldSemantics],
     init_only: bool,
 ) -> Vec<proc_macro2::TokenStream> {
+    emit_load_filtered_excluding(semantics, init_only, None)
+}
+
+fn emit_load_filtered_excluding(
+    semantics: &[FieldSemantics],
+    init_only: bool,
+    skip_ident: Option<&syn::Ident>,
+) -> Vec<proc_macro2::TokenStream> {
     semantics
         .iter()
         .filter(|sem| sem.core.kind == FieldKind::Single)
         .filter(|sem| sem.has_init() == init_only)
+        .filter(|sem| skip_ident.is_none_or(|skip| sem.core.ident != *skip))
         .map(emit_one_load)
         .collect()
+}
+
+fn emit_load_by_ident(
+    semantics: &[FieldSemantics],
+    field: &syn::Ident,
+) -> proc_macro2::TokenStream {
+    semantics
+        .iter()
+        .find(|sem| sem.core.kind == FieldKind::Single && sem.core.ident == *field)
+        .map(emit_one_load)
+        .expect("rent plan field should exist in account semantics")
 }
 
 fn emit_one_load(sem: &FieldSemantics) -> proc_macro2::TokenStream {

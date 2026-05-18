@@ -1,0 +1,7 @@
+error[E0133]: call to unsafe function `CpiDynamic::<'a, MAX_ACCTS, MAX_DATA>::set_data_len` is unsafe and requires unsafe function or block
+ --> tests/compile_fail/cpi_dynamic_safe_set_data_len.rs:7:5
+  |
+7 |     cpi.set_data_len(4).unwrap();
+  |     ^^^^^^^^^^^^^^^^^^^ call to unsafe function
+  |
+  = note: consult the function's documentation for information on how to avoid undefined behavior

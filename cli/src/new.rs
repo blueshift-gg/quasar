@@ -68,12 +68,12 @@ pub fn run_instruction(name: &str) -> CliResult {
         r#"use quasar_lang::prelude::*;
 
 #[derive(Accounts)]
-pub struct {pascal}<'info> {{
-    pub payer: &'info mut Signer,
-    pub system_program: &'info Program<SystemProgram>,
+pub struct {pascal} {{
+    pub payer: Signer,
+    pub system_program: Program<SystemProgram>,
 }}
 
-impl<'info> {pascal}<'info> {{
+impl {pascal} {{
     #[inline(always)]
     pub fn {snake}(&self) -> Result<(), ProgramError> {{
         Ok(())
@@ -295,7 +295,12 @@ pub enum {pascal} {{
 
 #[cfg(test)]
 mod tests {
-    use super::{add_instruction_to_entrypoint, parse_discriminator};
+    use {
+        super::{add_instruction_to_entrypoint, parse_discriminator, run_instruction},
+        std::sync::{Mutex, OnceLock},
+    };
+
+    static CWD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     #[test]
     fn discriminator_parser_accepts_space_or_no_space() {
@@ -324,5 +329,38 @@ mod demo {
 
         assert!(updated.contains("#[instruction]"));
         assert!(updated.contains("pub fn settle(ctx: Ctx<Settle>)"));
+    }
+
+    #[test]
+    fn add_instruction_generates_owned_account_wrappers() {
+        let _guard = CWD_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let original_dir = std::env::current_dir().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let src_dir = temp.path().join("src");
+        std::fs::create_dir(&src_dir).unwrap();
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            r#"use quasar_lang::prelude::*;
+
+#[program]
+mod demo {
+    use super::*;
+}
+"#,
+        )
+        .unwrap();
+
+        std::env::set_current_dir(temp.path()).unwrap();
+        let result = run_instruction("create_pool");
+        std::env::set_current_dir(original_dir).unwrap();
+        result.unwrap();
+
+        let generated =
+            std::fs::read_to_string(src_dir.join("instructions/create_pool.rs")).unwrap();
+        assert!(generated.contains("pub struct CreatePool {"));
+        assert!(generated.contains("pub payer: Signer,"));
+        assert!(generated.contains("pub system_program: Program<SystemProgram>,"));
+        assert!(!generated.contains("'info"));
+        assert!(!generated.contains("&'info"));
     }
 }

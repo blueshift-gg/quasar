@@ -2296,22 +2296,75 @@ fn is_optional_dynamic_vec(ty: &IdlType) -> bool {
 
 fn is_u8_type(ty: &IdlType) -> bool {
     matches!(ty, IdlType::Primitive(p) if p == "u8")
+        || matches!(
+            ty,
+            IdlType::Defined { defined } if builtin_defined_primitive(&defined.name) == Some("u8")
+        )
+}
+
+fn builtin_defined_primitive(name: &str) -> Option<&'static str> {
+    match name {
+        "PodBool" => Some("bool"),
+        "PodU8" => Some("u8"),
+        "PodI8" => Some("i8"),
+        "PodU16" => Some("u16"),
+        "PodI16" => Some("i16"),
+        "PodU32" => Some("u32"),
+        "PodI32" => Some("i32"),
+        "PodU64" => Some("u64"),
+        "PodI64" => Some("i64"),
+        "PodU128" => Some("u128"),
+        "PodI128" => Some("i128"),
+        _ => None,
+    }
+}
+
+fn primitive_ts_type(primitive: &str) -> String {
+    match primitive {
+        "u8" | "u16" | "u32" | "i8" | "i16" | "i32" => "number".to_string(),
+        "u64" | "u128" | "i64" | "i128" => "bigint".to_string(),
+        "bool" => "boolean".to_string(),
+        "pubkey" => "Address".to_string(),
+        "string" => "string".to_string(),
+        "bytes" => "Uint8Array".to_string(),
+        other if other.starts_with('[') => "Uint8Array".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn primitive_ts_codec(primitive: &str, target: TsTarget) -> String {
+    match primitive {
+        "u8" => "getU8Codec()".to_string(),
+        "u16" => "getU16Codec()".to_string(),
+        "u32" => "getU32Codec()".to_string(),
+        "u64" => "getU64Codec()".to_string(),
+        "u128" => "getU128Codec()".to_string(),
+        "i8" => "getI8Codec()".to_string(),
+        "i16" => "getI16Codec()".to_string(),
+        "i32" => "getI32Codec()".to_string(),
+        "i64" => "getI64Codec()".to_string(),
+        "i128" => "getI128Codec()".to_string(),
+        "bool" => "getBooleanCodec()".to_string(),
+        "pubkey" => match target {
+            TsTarget::Web3js => "getPublicKeyCodec()".to_string(),
+            TsTarget::Kit => "getAddressCodec()".to_string(),
+        },
+        "string" => "addCodecSizePrefix(getUtf8Codec(), getU32Codec())".to_string(),
+        other if other.starts_with('[') => {
+            let size = super::parse_fixed_array_size(other).unwrap_or(1);
+            format!("fixCodecSize(getBytesCodec(), {})", size)
+        }
+        other => format!("/* unknown: {} */", other),
+    }
 }
 
 fn ts_type(ty: &IdlType) -> String {
     match ty {
-        IdlType::Primitive(p) => match p.as_str() {
-            "u8" | "u16" | "u32" | "i8" | "i16" | "i32" => "number".to_string(),
-            "u64" | "u128" | "i64" | "i128" => "bigint".to_string(),
-            "bool" => "boolean".to_string(),
-            "pubkey" => "Address".to_string(),
-            "string" => "string".to_string(),
-            "bytes" => "Uint8Array".to_string(),
-            other if other.starts_with('[') => "Uint8Array".to_string(),
-            other => other.to_string(),
-        },
+        IdlType::Primitive(p) => primitive_ts_type(p),
         IdlType::Option { option } => format!("{} | null", ts_type(option)),
-        IdlType::Defined { defined } => defined.name.clone(),
+        IdlType::Defined { defined } => builtin_defined_primitive(&defined.name)
+            .map(primitive_ts_type)
+            .unwrap_or_else(|| defined.name.clone()),
         IdlType::Vec { vec } => format!("Array<{}>", ts_type(vec)),
         IdlType::Array { array } => {
             let (item, _size) = array;
@@ -2328,31 +2381,11 @@ fn ts_type(ty: &IdlType) -> String {
 /// Generate codec expression for a type (no codec metadata).
 fn ts_codec(ty: &IdlType, target: TsTarget) -> String {
     match ty {
-        IdlType::Primitive(p) => match p.as_str() {
-            "u8" => "getU8Codec()".to_string(),
-            "u16" => "getU16Codec()".to_string(),
-            "u32" => "getU32Codec()".to_string(),
-            "u64" => "getU64Codec()".to_string(),
-            "u128" => "getU128Codec()".to_string(),
-            "i8" => "getI8Codec()".to_string(),
-            "i16" => "getI16Codec()".to_string(),
-            "i32" => "getI32Codec()".to_string(),
-            "i64" => "getI64Codec()".to_string(),
-            "i128" => "getI128Codec()".to_string(),
-            "bool" => "getBooleanCodec()".to_string(),
-            "pubkey" => match target {
-                TsTarget::Web3js => "getPublicKeyCodec()".to_string(),
-                TsTarget::Kit => "getAddressCodec()".to_string(),
-            },
-            "string" => "addCodecSizePrefix(getUtf8Codec(), getU32Codec())".to_string(),
-            other if other.starts_with('[') => {
-                let size = super::parse_fixed_array_size(other).unwrap_or(1);
-                format!("fixCodecSize(getBytesCodec(), {})", size)
-            }
-            other => format!("/* unknown: {} */", other),
-        },
+        IdlType::Primitive(p) => primitive_ts_codec(p, target),
         IdlType::Option { option } => format!("getOptionCodec({})", ts_codec(option, target)),
-        IdlType::Defined { defined } => format!("{}Codec", defined.name),
+        IdlType::Defined { defined } => builtin_defined_primitive(&defined.name)
+            .map(|primitive| primitive_ts_codec(primitive, target))
+            .unwrap_or_else(|| format!("{}Codec", defined.name)),
         IdlType::Vec { vec } => {
             format!(
                 "getArrayCodec({}, {{ size: getU32Codec() }})",
@@ -2484,7 +2517,11 @@ fn collect_used_codecs(idl: &Idl) -> HashSet<String> {
                     visit_type_into(&array.0, used);
                 }
             }
-            IdlType::Defined { .. } => {}
+            IdlType::Defined { defined } => {
+                if let Some(primitive) = builtin_defined_primitive(&defined.name) {
+                    used.insert(primitive.to_string());
+                }
+            }
             IdlType::Generic { .. } => {}
         }
     }

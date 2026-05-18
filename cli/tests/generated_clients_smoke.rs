@@ -596,6 +596,91 @@ pub struct Submit {
 }
 
 #[test]
+fn generated_typescript_client_lowers_pod_vec_args_to_builtin_codecs() -> Result<(), Box<dyn Error>>
+{
+    let temp = tempdir()?;
+    let program_dir = temp.path().join("programs/pod-vec-args");
+
+    write_file(
+        &temp.path().join("Cargo.toml"),
+        r#"[workspace]
+members = ["programs/pod-vec-args"]
+resolver = "3"
+"#,
+    )?;
+    write_file(
+        &program_dir.join("Cargo.toml"),
+        format!(
+            r#"[package]
+name = "pod-vec-args"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+idl-build = ["quasar-lang/idl-build"]
+
+[dependencies]
+quasar-lang = {{ path = "{}" }}
+"#,
+            workspace_root().join("lang").display()
+        ),
+    )?;
+    write_file(
+        &program_dir.join("src/lib.rs"),
+        r#"#![no_std]
+use quasar_lang::prelude::*;
+
+declare_id!("11111111111111111111111111111111");
+
+#[program]
+mod pod_vec_args {
+    use super::*;
+
+    #[instruction(discriminator = 0)]
+    pub fn submit(_ctx: Ctx<Submit>, nums: Vec<PodU64, 16>) -> Result<(), ProgramError> {
+        let _ = nums;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Submit {
+    pub authority: Signer,
+}
+"#,
+    )?;
+
+    let clients_path = temp.path().join("clients");
+    idl::generate(&program_dir, &["typescript"], &clients_path)?;
+    let ts_dir = clients_path.join("typescript").join("pod_vec_args");
+    let kit = read_file(&ts_dir.join("kit.ts"))?;
+
+    assert!(
+        kit.contains("nums: Array<bigint>;"),
+        "PodU64 vec args should surface as bigint arrays"
+    );
+    assert!(
+        kit.contains("getArrayCodec(getU64Codec(), { size: input.nums.length })"),
+        "PodU64 vec args should encode through the builtin u64 codec"
+    );
+    assert!(
+        !kit.contains("PodU64Codec"),
+        "PodU64 vec args should not reference an undefined PodU64Codec"
+    );
+    assert!(
+        !kit.contains("Array<PodU64>"),
+        "PodU64 vec args should not expose undefined PodU64 types"
+    );
+
+    compile_typescript_client(&ts_dir)?;
+
+    Ok(())
+}
+
+#[test]
 fn kit_program_plugin_exposes_only_supported_accounts_and_instructions(
 ) -> Result<(), Box<dyn Error>> {
     let temp = tempdir()?;
