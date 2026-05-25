@@ -13,11 +13,21 @@ use {
     },
 };
 
+const SOLANA_KIT_VERSION: &str = "^6.4.0";
+const SOLANA_WEB3JS_VERSION: &str = "^3.0.0-rc.0";
+
 /// Target flavor for TypeScript client generation.
 #[derive(Clone, Copy, PartialEq)]
 pub enum TsTarget {
     Web3js,
     Kit,
+}
+
+pub fn client_dependency_version(target: TsTarget) -> &'static str {
+    match target {
+        TsTarget::Web3js => SOLANA_WEB3JS_VERSION,
+        TsTarget::Kit => SOLANA_KIT_VERSION,
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -69,12 +79,14 @@ pub fn generate_package_json(idl: &Idl) -> String {
     "./kit": "./kit.ts"
   }},
   "dependencies": {{{codecs_dep}
-    "@solana/kit": "^6.4.0",
-    "@solana/web3.js": "git+https://github.com/blueshift-gg/web3.js.git#v2"
+    "@solana/kit": "{solana_kit_version}",
+    "@solana/web3.js": "{solana_web3js_version}"
   }}
 }}
 "#,
         package_name = model.identity.typescript_package,
+        solana_kit_version = client_dependency_version(TsTarget::Kit),
+        solana_web3js_version = client_dependency_version(TsTarget::Web3js),
         version = idl.version,
     )
 }
@@ -93,7 +105,6 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     let has_pdas = model.features.has_pdas;
     let has_pda_account_seeds = model.features.has_pda_account_seeds;
     let has_pda_account_field_seeds = has_account_field_pda_seeds(idl);
-    let has_dynamic_types = idl.types.iter().any(|t| has_dynamic_field_defs(&t.fields));
     let plugin_accounts = eligible_plugin_accounts(idl);
     let plugin_instructions = eligible_plugin_instructions(idl);
     let emit_plugin =
@@ -101,12 +112,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
 
     match target {
         TsTarget::Web3js => {
-            if has_instructions || has_dynamic_types {
-                out.push_str("import { Buffer } from \"buffer\";\n");
-            }
-            out.push_str(
-                "import { PublicKey, TransactionInstruction } from \"@solana/web3.js\";\n",
-            );
+            out.push_str("import { Address, TransactionInstruction } from \"@solana/web3.js\";\n");
         }
         TsTarget::Kit => {
             let mut kit_imports: Vec<&str> = vec!["type Address", "address"];
@@ -216,11 +222,6 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     }
     out.push('\n');
 
-    if target == TsTarget::Web3js {
-        out.push_str("type Address = PublicKey;\n");
-        out.push_str("const Address = PublicKey;\n\n");
-    }
-
     if has_pda_account_field_seeds {
         out.push_str("export interface AccountDataResolver {\n");
         out.push_str("  getAccountData(address: Address): Promise<Uint8Array | null>;\n");
@@ -228,7 +229,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     }
 
     if target == TsTarget::Web3js && has_public_key {
-        out.push_str(PUBLIC_KEY_CODEC_HELPER);
+        out.push_str(ADDRESS_CODEC_HELPER);
         out.push('\n');
     }
 
@@ -768,6 +769,10 @@ fn generate_instruction_builders_web3js(
         let input_account_names: HashSet<&str> =
             user_accs.iter().map(|a| a.name.as_str()).collect();
         let ix_needs_account_resolver = instruction_has_account_field_pda_seeds(ix);
+        let ix_has_pdas = ix
+            .accounts
+            .iter()
+            .any(|a| matches!(a.resolver, IdlResolver::Pda { .. }));
 
         let account_expr = |name: &str| {
             if input_account_names.contains(name) {
@@ -785,12 +790,9 @@ fn generate_instruction_builders_web3js(
         if ix_needs_account_resolver {
             method_params.push("resolver: AccountDataResolver".to_string());
         }
-        let async_kw = if ix_needs_account_resolver {
-            "async "
-        } else {
-            ""
-        };
-        let return_type = if ix_needs_account_resolver {
+        let ix_needs_async = ix_needs_account_resolver || ix_has_pdas;
+        let async_kw = if ix_needs_async { "async " } else { "" };
+        let return_type = if ix_needs_async {
             "Promise<TransactionInstruction>"
         } else {
             "TransactionInstruction"
@@ -825,7 +827,7 @@ fn generate_instruction_builders_web3js(
                     let args = helper_call_args(seeds, &account_expr);
                     writeln!(
                         out,
-                        "    accountsMap[\"{}\"] = {}({});",
+                        "    accountsMap[\"{}\"] = await {}({});",
                         acc.name, helper_name, args
                     )
                     .expect("write to String");
@@ -850,7 +852,7 @@ fn generate_instruction_builders_web3js(
         let disc_str = super::format_disc_decimal(&ix.discriminator);
         let has_dyn = ix.args.iter().any(is_arg_dynamic);
         if ix.args.is_empty() {
-            writeln!(out, "    const data = Buffer.from([{}]);", disc_str)
+            writeln!(out, "    const data = Uint8Array.from([{}]);", disc_str)
                 .expect("write to String");
         } else if !has_dyn {
             // Fixed-only: use getStructCodec
@@ -872,14 +874,14 @@ fn generate_instruction_builders_web3js(
                 .collect();
             writeln!(
                 out,
-                "    const data = Buffer.from([{}, ...argsCodec.encode({{ {} }})]);",
+                "    const data = Uint8Array.from([{}, ...argsCodec.encode({{ {} }})]);",
                 disc_str,
                 arg_names.join(", ")
             )
             .expect("write to String");
         } else {
             // Compact layout: [disc][fixed fields][all prefixes][all dynamic data]
-            emit_compact_encoding(out, ix, &disc_str, TsTarget::Web3js, "Buffer.from");
+            emit_compact_encoding(out, ix, &disc_str, TsTarget::Web3js, "Uint8Array.from");
         }
 
         // Return TransactionInstruction
@@ -1105,7 +1107,7 @@ fn emit_compact_type_codec(out: &mut String, name: &str, fields: &[IdlFieldDef],
     let dyn_fields: Vec<_> = fields.iter().filter(|f| is_field_def_dynamic(f)).collect();
 
     let buf_ctor = match target {
-        TsTarget::Web3js => "Buffer.from",
+        TsTarget::Web3js => "Uint8Array.from",
         TsTarget::Kit => "Uint8Array.from",
     };
 
@@ -1887,16 +1889,16 @@ fn emit_pda_helpers(out: &mut String, pdas: &[PdaInfo], target: TsTarget, progra
             TsTarget::Web3js => {
                 writeln!(
                     out,
-                    "export function {}({}): Address {{",
+                    "export async function {}({}): Promise<Address> {{",
                     pda.helper_name, params
                 )
                 .expect("write to String");
-                out.push_str("  return Address.findProgramAddressSync(\n");
+                out.push_str("  return (await Address.findProgramAddress(\n");
                 out.push_str("    [\n");
                 write_ts_pda_seed_lines(out, &pda.seeds, target, &arg_types);
                 writeln!(
                     out,
-                    "    ],\n    {}Client.programId,\n  )[0];",
+                    "    ],\n    {}Client.programId,\n  ))[0];",
                     snake_to_pascal(program_name)
                 )
                 .expect("write to String");
@@ -2012,13 +2014,14 @@ fn emit_inline_pda_derivation(
         InlinePdaTarget::Web3js { program_expr } => {
             writeln!(
                 out,
-                "    accountsMap[\"{}\"] = Address.findProgramAddressSync(",
+                "    accountsMap[\"{}\"] = (await Address.findProgramAddress(",
                 account_name
             )
             .expect("write to String");
             out.push_str("      [\n");
             write_inline_pda_seed_lines(out, seeds, idl, ts_target, arg_types, account_expr);
-            writeln!(out, "      ],\n      {},\n    )[0];", program_expr).expect("write to String");
+            writeln!(out, "      ],\n      {},\n    ))[0];", program_expr)
+                .expect("write to String");
         }
         InlinePdaTarget::Kit { .. } => {
             writeln!(
@@ -2243,30 +2246,21 @@ fn ts_pda_arg_seed_expr(expr: &str, ty: &IdlType, target: TsTarget) -> String {
                 TsTarget::Web3js => format!("{expr}.toBytes()"),
                 TsTarget::Kit => format!("getAddressCodec().encode({expr})"),
             },
-            "u8" => ts_pda_encoded_seed_expr(&format!("getU8Codec().encode({expr})"), target),
-            "u16" => ts_pda_encoded_seed_expr(&format!("getU16Codec().encode({expr})"), target),
-            "u32" => ts_pda_encoded_seed_expr(&format!("getU32Codec().encode({expr})"), target),
-            "u64" => ts_pda_encoded_seed_expr(&format!("getU64Codec().encode({expr})"), target),
-            "u128" => ts_pda_encoded_seed_expr(&format!("getU128Codec().encode({expr})"), target),
-            "i8" => ts_pda_encoded_seed_expr(&format!("getI8Codec().encode({expr})"), target),
-            "i16" => ts_pda_encoded_seed_expr(&format!("getI16Codec().encode({expr})"), target),
-            "i32" => ts_pda_encoded_seed_expr(&format!("getI32Codec().encode({expr})"), target),
-            "i64" => ts_pda_encoded_seed_expr(&format!("getI64Codec().encode({expr})"), target),
-            "i128" => ts_pda_encoded_seed_expr(&format!("getI128Codec().encode({expr})"), target),
-            "bool" => {
-                ts_pda_encoded_seed_expr(&format!("getBooleanCodec().encode({expr})"), target)
-            }
+            "u8" => format!("getU8Codec().encode({expr})"),
+            "u16" => format!("getU16Codec().encode({expr})"),
+            "u32" => format!("getU32Codec().encode({expr})"),
+            "u64" => format!("getU64Codec().encode({expr})"),
+            "u128" => format!("getU128Codec().encode({expr})"),
+            "i8" => format!("getI8Codec().encode({expr})"),
+            "i16" => format!("getI16Codec().encode({expr})"),
+            "i32" => format!("getI32Codec().encode({expr})"),
+            "i64" => format!("getI64Codec().encode({expr})"),
+            "i128" => format!("getI128Codec().encode({expr})"),
+            "bool" => format!("getBooleanCodec().encode({expr})"),
             other if other.starts_with('[') => expr.to_string(),
             _ => expr.to_string(),
         },
         _ => expr.to_string(),
-    }
-}
-
-fn ts_pda_encoded_seed_expr(encoded_expr: &str, target: TsTarget) -> String {
-    match target {
-        TsTarget::Web3js => format!("Buffer.from({encoded_expr})"),
-        TsTarget::Kit => encoded_expr.to_string(),
     }
 }
 
@@ -2346,7 +2340,7 @@ fn primitive_ts_codec(primitive: &str, target: TsTarget) -> String {
         "i128" => "getI128Codec()".to_string(),
         "bool" => "getBooleanCodec()".to_string(),
         "pubkey" => match target {
-            TsTarget::Web3js => "getPublicKeyCodec()".to_string(),
+            TsTarget::Web3js => "getAddressCodec()".to_string(),
             TsTarget::Kit => "getAddressCodec()".to_string(),
         },
         "string" => "addCodecSizePrefix(getUtf8Codec(), getU32Codec())".to_string(),
@@ -2562,7 +2556,7 @@ fn write_byte_array(out: &mut String, value: &[u8]) {
     out.push_str("]),\n");
 }
 
-const PUBLIC_KEY_CODEC_HELPER: &str = r#"function getPublicKeyCodec() {
+const ADDRESS_CODEC_HELPER: &str = r#"function getAddressCodec() {
   return transformCodec(
     fixCodecSize(getBytesCodec(), 32),
     (value: Address) => value.toBytes(),

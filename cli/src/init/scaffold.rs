@@ -8,6 +8,7 @@ use {
         types::{PackageManager, RustFramework, Template, TestLanguage, Toolchain, TypeScriptSdk},
     },
     crate::error::{CliError, CliResult},
+    quasar_idl::codegen::typescript::{client_dependency_version, TsTarget},
     quasar_schema::snake_to_pascal,
     std::{fs, path::Path},
 };
@@ -369,9 +370,15 @@ fn quasar_lang_dependency() -> String {
 
 fn generate_package_json(name: &str, ts_sdk: TypeScriptSdk) -> String {
     let solana_dep = if matches!(ts_sdk, TypeScriptSdk::Kit) {
-        "\"@solana/kit\": \"^6.4.0\""
+        format!(
+            "\"@solana/kit\": \"{}\"",
+            client_dependency_version(TsTarget::Kit)
+        )
     } else {
-        "\"@solana/web3.js\": \"github:blueshift-gg/solana-web3.js#v2\""
+        format!(
+            "\"@solana/web3.js\": \"{}\"",
+            client_dependency_version(TsTarget::Web3js)
+        )
     };
     format!(
         r#"{{
@@ -589,6 +596,63 @@ fn test_initialize() {{
 }}
 "#
             )
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::scaffold,
+        crate::init::types::{PackageManager, Template, TestLanguage, Toolchain, TypeScriptSdk},
+        quasar_idl::codegen::typescript::{client_dependency_version, TsTarget},
+        serde_json::Value,
+        std::fs,
+        tempfile::tempdir,
+    };
+
+    #[test]
+    fn scaffold_typescript_projects_use_selected_solana_dependency() {
+        let temp = tempdir().expect("tempdir");
+        let package_manager = PackageManager::Npm;
+
+        for (dir_name, project_name, sdk, dep_name, target) in [
+            (
+                "kit",
+                "demo-kit",
+                TypeScriptSdk::Kit,
+                "@solana/kit",
+                TsTarget::Kit,
+            ),
+            (
+                "web3",
+                "demo-web3",
+                TypeScriptSdk::Web3js,
+                "@solana/web3.js",
+                TsTarget::Web3js,
+            ),
+        ] {
+            let project_dir = temp.path().join(dir_name);
+            scaffold(
+                project_dir.to_str().expect("utf8 path"),
+                project_name,
+                Toolchain::Upstream,
+                TestLanguage::TypeScript,
+                None,
+                Some(sdk),
+                Template::Minimal,
+                Some(&package_manager),
+                &[],
+            )
+            .expect("scaffold project");
+
+            let package_json: Value = serde_json::from_str(
+                &fs::read_to_string(project_dir.join("package.json")).expect("read package.json"),
+            )
+            .expect("valid package.json");
+
+            let dependencies = &package_json["dependencies"];
+            assert_eq!(dependencies[dep_name], client_dependency_version(target));
         }
     }
 }
