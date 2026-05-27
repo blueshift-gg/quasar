@@ -1,0 +1,24 @@
+[package]
+name = "quasar-lsp"
+description = "Quasar language server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "quasar-lsp"
+path = "src/main.rs"
+
+[dependencies]
+quasar-syntax = { path = "../syntax" }
+quasar-hir = { path = "../hir" }
+lsp-server = "0.7"
+lsp-types = "0.97"
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

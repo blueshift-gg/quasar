@@ -7,6 +7,7 @@ cli/target/
 .codex
 .factory
 docs/
+context.md
 
 AGENTS.md
 CLAUDE.md
