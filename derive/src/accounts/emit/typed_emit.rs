@@ -4,7 +4,7 @@
 //! call trait method. Protocol crates own the trait impls and builders.
 
 use {
-    super::super::resolve::specs::*,
+    quasar_hir::accounts::specs::*,
     quote::{format_ident, quote},
 };
 

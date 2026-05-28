@@ -1,54 +1,14 @@
+//! Codegen for instruction args extraction. Reads parsed `InstructionArg`
+//! values from `quasar-syntax` and emits the extraction snippet inserted
+//! into generated `parse` bodies.
+
 use {
     crate::helpers::{classify_pod_dynamic, PodDynField},
+    quasar_syntax::accounts::InstructionArg,
     quote::quote,
-    syn::{parse::ParseStream, DeriveInput, Ident, Token, Type},
+    syn::{Ident, Type},
 };
 
-pub(crate) struct InstructionArg {
-    pub name: Ident,
-    pub ty: Type,
-}
-
-pub(crate) fn parse_struct_instruction_args(
-    input: &DeriveInput,
-) -> syn::Result<Option<Vec<InstructionArg>>> {
-    let attr = match input
-        .attrs
-        .iter()
-        .find(|a| a.path().is_ident("instruction"))
-    {
-        Some(attr) => attr,
-        None => return Ok(None),
-    };
-
-    let args = attr.parse_args_with(|stream: ParseStream| {
-        let mut args = Vec::new();
-        while !stream.is_empty() {
-            let name: Ident = stream.parse()?;
-            let _: Token![:] = stream.parse()?;
-            let ty: Type = stream.parse()?;
-            if args.iter().any(|arg: &InstructionArg| arg.name == name) {
-                return Err(syn::Error::new_spanned(
-                    &name,
-                    format!("duplicate instruction arg `{name}`"),
-                ));
-            }
-            args.push(InstructionArg { name, ty });
-            if !stream.is_empty() {
-                let _: Token![,] = stream.parse()?;
-            }
-        }
-        Ok(args)
-    })?;
-
-    Ok(Some(args))
-}
-
-/// Generate code that extracts `#[instruction(..)]` args from `__ix_data`.
-///
-/// Fixed types are read via a zero-copy `#[repr(C)]` struct pointer cast.
-/// Dynamic fields (String<N>/Vec<T,N>) use inline prefix reads from the data
-/// buffer after the fixed ZC block, using each field's configured prefix width.
 pub(crate) fn generate_instruction_arg_extraction(
     ix_args: &[InstructionArg],
 ) -> proc_macro2::TokenStream {

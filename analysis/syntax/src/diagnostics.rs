@@ -16,8 +16,19 @@ pub enum DiagCode {
     AccountAttrUnknownDirective,
     AccountAttrMalformedDirective,
     AccountAttrDuplicateDirective,
-    AccountAttrDiscriminatorNotIntOrArray,
     AccountAttrDiscriminatorByteOutOfRange,
+    AccountAttrMissingDiscriminatorOrUnsafe,
+    AccountAttrImplementsRequiresOneOf,
+    AccountAttrDiscriminatorWithUnsafe,
+    AccountAttrOneOfWithDiscriminator,
+    AccountsDirectiveUnknown,
+    AccountsDirectiveMalformed,
+    AccountsDirectiveDuplicate,
+    AccountsBehaviorArgInvalid,
+    AccountsBehaviorArgDuplicate,
+    InstructionArgDuplicate,
+    InstructionArgMalformed,
+    UnknownAccountType,
 }
 
 impl DiagCode {
@@ -26,8 +37,20 @@ impl DiagCode {
             DiagCode::AccountAttrUnknownDirective
             | DiagCode::AccountAttrMalformedDirective
             | DiagCode::AccountAttrDuplicateDirective
-            | DiagCode::AccountAttrDiscriminatorNotIntOrArray
-            | DiagCode::AccountAttrDiscriminatorByteOutOfRange => DiagFamily::AccountAttr,
+            | DiagCode::AccountAttrDiscriminatorByteOutOfRange
+            | DiagCode::AccountAttrMissingDiscriminatorOrUnsafe
+            | DiagCode::AccountAttrImplementsRequiresOneOf
+            | DiagCode::AccountAttrDiscriminatorWithUnsafe
+            | DiagCode::AccountAttrOneOfWithDiscriminator => DiagFamily::AccountAttr,
+            DiagCode::AccountsDirectiveUnknown
+            | DiagCode::AccountsDirectiveMalformed
+            | DiagCode::AccountsDirectiveDuplicate
+            | DiagCode::AccountsBehaviorArgInvalid
+            | DiagCode::AccountsBehaviorArgDuplicate => DiagFamily::AccountsDirective,
+            DiagCode::InstructionArgDuplicate | DiagCode::InstructionArgMalformed => {
+                DiagFamily::InstructionArgs
+            }
+            DiagCode::UnknownAccountType => DiagFamily::Resolver,
         }
     }
 
@@ -36,12 +59,29 @@ impl DiagCode {
             DiagCode::AccountAttrUnknownDirective => "quasar::account_attr_unknown_directive",
             DiagCode::AccountAttrMalformedDirective => "quasar::account_attr_malformed_directive",
             DiagCode::AccountAttrDuplicateDirective => "quasar::account_attr_duplicate_directive",
-            DiagCode::AccountAttrDiscriminatorNotIntOrArray => {
-                "quasar::account_attr_discriminator_not_int_or_array"
-            }
             DiagCode::AccountAttrDiscriminatorByteOutOfRange => {
                 "quasar::account_attr_discriminator_byte_out_of_range"
             }
+            DiagCode::AccountAttrMissingDiscriminatorOrUnsafe => {
+                "quasar::account_attr_missing_discriminator_or_unsafe"
+            }
+            DiagCode::AccountAttrImplementsRequiresOneOf => {
+                "quasar::account_attr_implements_requires_one_of"
+            }
+            DiagCode::AccountAttrDiscriminatorWithUnsafe => {
+                "quasar::account_attr_discriminator_with_unsafe"
+            }
+            DiagCode::AccountAttrOneOfWithDiscriminator => {
+                "quasar::account_attr_one_of_with_discriminator"
+            }
+            DiagCode::AccountsDirectiveUnknown => "quasar::accounts_directive_unknown",
+            DiagCode::AccountsDirectiveMalformed => "quasar::accounts_directive_malformed",
+            DiagCode::AccountsDirectiveDuplicate => "quasar::accounts_directive_duplicate",
+            DiagCode::AccountsBehaviorArgInvalid => "quasar::accounts_behavior_arg_invalid",
+            DiagCode::AccountsBehaviorArgDuplicate => "quasar::accounts_behavior_arg_duplicate",
+            DiagCode::InstructionArgDuplicate => "quasar::instruction_arg_duplicate",
+            DiagCode::InstructionArgMalformed => "quasar::instruction_arg_malformed",
+            DiagCode::UnknownAccountType => "quasar::unknown_account_type",
         }
     }
 }
@@ -49,6 +89,9 @@ impl DiagCode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DiagFamily {
     AccountAttr,
+    AccountsDirective,
+    InstructionArgs,
+    Resolver,
 }
 
 #[derive(Debug, Clone)]

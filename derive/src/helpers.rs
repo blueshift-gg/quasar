@@ -1,4 +1,5 @@
 pub(crate) use quasar_schema::{pascal_to_snake, snake_to_pascal, to_camel_case as snake_to_camel};
+pub(crate) use quasar_syntax::types::{extract_generic_inner_type, is_unit_type, classify_lifetime_arg};
 use {
     quote::quote,
     syn::{
@@ -34,112 +35,6 @@ pub(crate) fn parse_max_attr(attrs: &[syn::Attribute]) -> Option<syn::Result<(us
         }
     }
     None
-}
-
-pub(crate) struct AccountAttr {
-    pub disc_bytes: Vec<LitInt>,
-    pub unsafe_no_disc: bool,
-    pub set_inner: bool,
-    pub fixed_capacity: bool,
-    /// `one_of`: polymorphic account on enum declarations.
-    pub one_of: bool,
-    /// `implements(TraitPath)`: trait all variants implement; generates Deref.
-    pub implements: Option<syn::Path>,
-}
-
-impl Parse for AccountAttr {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let mut disc_bytes = Vec::new();
-        let mut unsafe_no_disc = false;
-        let mut set_inner = false;
-        let mut fixed_capacity = false;
-        let mut one_of = false;
-        let mut implements: Option<syn::Path> = None;
-        let mut has_discriminator = false;
-
-        while !input.is_empty() {
-            let ident: Ident = input.parse()?;
-            if ident == "unsafe_no_disc" {
-                if unsafe_no_disc {
-                    return Err(duplicate_arg_error(&ident));
-                }
-                unsafe_no_disc = true;
-            } else if ident == "set_inner" {
-                if set_inner {
-                    return Err(duplicate_arg_error(&ident));
-                }
-                set_inner = true;
-            } else if ident == "fixed_capacity" {
-                if fixed_capacity {
-                    return Err(duplicate_arg_error(&ident));
-                }
-                fixed_capacity = true;
-            } else if ident == "one_of" {
-                if one_of {
-                    return Err(duplicate_arg_error(&ident));
-                }
-                one_of = true;
-            } else if ident == "discriminator" {
-                if has_discriminator {
-                    return Err(duplicate_arg_error(&ident));
-                }
-                disc_bytes = parse_discriminator_value(input)?;
-                has_discriminator = true;
-            } else if ident == "implements" {
-                if implements.is_some() {
-                    return Err(duplicate_arg_error(&ident));
-                }
-                let content;
-                syn::parenthesized!(content in input);
-                implements = Some(content.parse::<syn::Path>()?);
-            } else {
-                return Err(syn::Error::new(
-                    ident.span(),
-                    "expected `discriminator`, `unsafe_no_disc`, `set_inner`, `fixed_capacity`, \
-                     `one_of`, or `implements`",
-                ));
-            }
-            let _ = input.parse::<Option<Token![,]>>();
-        }
-
-        if !one_of && disc_bytes.is_empty() && !unsafe_no_disc {
-            return Err(syn::Error::new(
-                input.span(),
-                "expected `discriminator` or `unsafe_no_disc`",
-            ));
-        }
-
-        if implements.is_some() && !one_of {
-            return Err(syn::Error::new(
-                input.span(),
-                "`implements` can only be used with `one_of`",
-            ));
-        }
-
-        if !one_of && has_discriminator && unsafe_no_disc {
-            return Err(syn::Error::new(
-                input.span(),
-                "`discriminator` cannot be combined with `unsafe_no_disc`",
-            ));
-        }
-
-        // one_of doesn't have its own discriminator
-        if one_of && (!disc_bytes.is_empty() || unsafe_no_disc) {
-            return Err(syn::Error::new(
-                input.span(),
-                "`one_of` cannot be combined with `discriminator` or `unsafe_no_disc`",
-            ));
-        }
-
-        Ok(Self {
-            disc_bytes,
-            unsafe_no_disc,
-            set_inner,
-            fixed_capacity,
-            one_of,
-            implements,
-        })
-    }
 }
 
 pub(crate) struct InstructionArgs {
@@ -230,41 +125,6 @@ pub(crate) fn validate_discriminator_not_zero(disc_bytes: &[LitInt]) -> syn::Res
     Ok(values)
 }
 
-pub(crate) fn extract_generic_inner_type<'a>(ty: &'a Type, wrapper: &str) -> Option<&'a Type> {
-    if let Type::Path(type_path) = ty {
-        if let Some(last) = type_path.path.segments.last() {
-            if last.ident == wrapper {
-                if let PathArguments::AngleBracketed(args) = &last.arguments {
-                    if let Some(GenericArgument::Type(inner)) = args.args.first() {
-                        return Some(inner);
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-pub(crate) fn is_composite_type(ty: &Type) -> bool {
-    if matches!(ty, Type::Reference(_)) {
-        return false;
-    }
-    if extract_generic_inner_type(ty, "Option").is_some() {
-        return false;
-    }
-    if let Type::Path(type_path) = ty {
-        if let Some(last) = type_path.path.segments.last() {
-            if last.ident == "AccountsArray" {
-                return true;
-            }
-        }
-    }
-    classify_lifetime_arg(ty)
-}
-
-pub(crate) fn is_unit_type(ty: &Type) -> bool {
-    matches!(ty, Type::Tuple(t) if t.elems.is_empty())
-}
 
 pub(crate) fn strip_generics(ty: &Type) -> proc_macro2::TokenStream {
     match ty {
@@ -309,20 +169,6 @@ pub(crate) enum PodDynField {
     },
 }
 
-pub(crate) fn classify_lifetime_arg(ty: &Type) -> bool {
-    use syn::{GenericArgument, PathArguments};
-    if let Type::Path(tp) = ty {
-        if let Some(last) = tp.path.segments.last() {
-            if let PathArguments::AngleBracketed(args) = &last.arguments {
-                return args
-                    .args
-                    .iter()
-                    .any(|a| matches!(a, GenericArgument::Lifetime(_)));
-            }
-        }
-    }
-    false
-}
 
 fn parse_prefix_arg(arg: &GenericArgument) -> Option<usize> {
     match arg {

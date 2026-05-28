@@ -12,36 +12,66 @@ use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics, Severity};
 use proc_macro2::{Span, TokenTree};
 use syn::{
     parse::{discouraged::Speculative, Parse, ParseStream},
-    spanned::Spanned,
-    Expr, Result as SynResult, Token,
+    LitInt, Path, Result as SynResult, Token,
 };
 
 #[derive(Debug, Default)]
 pub struct AccountAttrAst {
-    pub discriminator: Option<Discriminator>,
+    pub discriminator: Option<DiscriminatorClause>,
+    pub implements: Option<ImplementsClause>,
     pub one_of: Option<Span>,
     pub unsafe_no_disc: Option<Span>,
+    pub set_inner: Option<Span>,
     pub fixed_capacity: Option<Span>,
 }
 
-#[derive(Debug, Clone)]
-pub enum Discriminator {
-    Int { value: u64, span: Span },
-    Bytes { values: Vec<u8>, span: Span },
+impl AccountAttrAst {
+    pub fn is_one_of(&self) -> bool {
+        self.one_of.is_some()
+    }
+    pub fn is_unsafe_no_disc(&self) -> bool {
+        self.unsafe_no_disc.is_some()
+    }
+    pub fn is_set_inner(&self) -> bool {
+        self.set_inner.is_some()
+    }
+    pub fn is_fixed_capacity(&self) -> bool {
+        self.fixed_capacity.is_some()
+    }
+    pub fn disc_bytes(&self) -> &[LitInt] {
+        self.discriminator
+            .as_ref()
+            .map(|d| d.lits.as_slice())
+            .unwrap_or(&[])
+    }
+    pub fn implements_path(&self) -> Option<&Path> {
+        self.implements.as_ref().map(|c| &c.path)
+    }
 }
 
-/// Wrapper to expose `parse_strict` via `syn::parse_macro_input!`.
-pub struct AccountAttr(pub AccountAttrAst);
+#[derive(Debug, Clone)]
+pub struct DiscriminatorClause {
+    pub lits: Vec<LitInt>,
+    pub keyword_span: Span,
+}
 
-impl Parse for AccountAttr {
+#[derive(Debug, Clone)]
+pub struct ImplementsClause {
+    pub path: Path,
+    pub keyword_span: Span,
+}
+
+impl Parse for AccountAttrAst {
     fn parse(input: ParseStream) -> SynResult<Self> {
-        parse_strict(input).map(AccountAttr)
+        parse_strict(input)
     }
 }
 
 pub fn parse_strict(input: ParseStream) -> SynResult<AccountAttrAst> {
     let mut sink = Diagnostics::new();
+    let fallback_span = input.span();
     let ast = parse_recoverable(input, &mut sink);
+    validate_recoverable(&ast, &mut sink, fallback_span);
     if let Some(first) = sink.into_items().into_iter().next() {
         return Err(syn::Error::new(first.primary, first.message));
     }
@@ -81,9 +111,6 @@ pub fn parse_recoverable(input: ParseStream, sink: &mut Diagnostics) -> AccountA
                 .parse()
                 .expect("peek(Token![,]) succeeded, parse must too");
         } else {
-            // Stray content between directives — emit and recover by skipping
-            // to the next sync point. Ensures the parser always consumes its
-            // entire input even on pathological cases like `one_of bogus`.
             let stray = input.span();
             sink.emit(Diagnostic {
                 severity: Severity::Error,
@@ -101,11 +128,104 @@ pub fn parse_recoverable(input: ParseStream, sink: &mut Diagnostics) -> AccountA
     ast
 }
 
+/// Applies the cross-directive rules on top of a (possibly partial) AST and
+/// pushes any violations to the sink. `fallback_span` is used when the
+/// violation refers to absence rather than a specific token.
+pub fn validate_recoverable(
+    ast: &AccountAttrAst,
+    sink: &mut Diagnostics,
+    fallback_span: Span,
+) {
+    let has_disc = ast.discriminator.is_some();
+    let has_unsafe = ast.unsafe_no_disc.is_some();
+    let is_one_of = ast.one_of.is_some();
+
+    if !is_one_of && !has_disc && !has_unsafe {
+        sink.emit(Diagnostic {
+            severity: Severity::Error,
+            code: DiagCode::AccountAttrMissingDiscriminatorOrUnsafe,
+            message: "expected `discriminator` or `unsafe_no_disc`".into(),
+            primary: fallback_span,
+            labels: vec![],
+            fixes: vec![],
+        });
+    }
+
+    if let Some(implements) = &ast.implements {
+        if !is_one_of {
+            sink.emit(Diagnostic {
+                severity: Severity::Error,
+                code: DiagCode::AccountAttrImplementsRequiresOneOf,
+                message: "`implements` can only be used with `one_of`".into(),
+                primary: implements.keyword_span,
+                labels: vec![],
+                fixes: vec![],
+            });
+        }
+    }
+
+    if !is_one_of && has_disc && has_unsafe {
+        let primary = ast
+            .discriminator
+            .as_ref()
+            .map(|d| d.keyword_span)
+            .unwrap_or(fallback_span);
+        sink.emit(Diagnostic {
+            severity: Severity::Error,
+            code: DiagCode::AccountAttrDiscriminatorWithUnsafe,
+            message: "`discriminator` cannot be combined with `unsafe_no_disc`".into(),
+            primary,
+            labels: vec![],
+            fixes: vec![],
+        });
+    }
+
+    if is_one_of && (has_disc || has_unsafe) {
+        let primary = ast.one_of.unwrap_or(fallback_span);
+        sink.emit(Diagnostic {
+            severity: Severity::Error,
+            code: DiagCode::AccountAttrOneOfWithDiscriminator,
+            message: "`one_of` cannot be combined with `discriminator` or `unsafe_no_disc`".into(),
+            primary,
+            labels: vec![],
+            fixes: vec![],
+        });
+    }
+}
+
+/// Converts the parsed discriminator literals into raw bytes. Each literal
+/// must fit in a `u8`; otherwise an error diagnostic is pushed and the
+/// offending byte is replaced with `0` in the returned vector.
+pub fn parse_discriminator_bytes(
+    disc: &DiscriminatorClause,
+    sink: &mut Diagnostics,
+) -> Vec<u8> {
+    disc.lits
+        .iter()
+        .map(|lit| match lit.base10_parse::<u8>() {
+            Ok(v) => v,
+            Err(_) => {
+                sink.emit(Diagnostic {
+                    severity: Severity::Error,
+                    code: DiagCode::AccountAttrDiscriminatorByteOutOfRange,
+                    message: "discriminator byte must be 0-255".into(),
+                    primary: lit.span(),
+                    labels: vec![],
+                    fixes: vec![],
+                });
+                0
+            }
+        })
+        .collect()
+}
+
 #[derive(Debug)]
 enum ParsedDirective {
-    Discriminator(Discriminator),
+    Discriminator(DiscriminatorClause),
+    Implements(ImplementsClause),
     OneOf(Span),
     UnsafeNoDisc(Span),
+    SetInner(Span),
     FixedCapacity(Span),
     Unknown { name: String, span: Span },
 }
@@ -113,62 +233,104 @@ enum ParsedDirective {
 fn parse_one_directive(input: ParseStream) -> SynResult<ParsedDirective> {
     let ident: syn::Ident = input.parse()?;
     let name = ident.to_string();
-    let span = ident.span();
+    let keyword_span = ident.span();
 
     match name.as_str() {
         "discriminator" => {
             let _: Token![=] = input.parse()?;
-            let expr: Expr = input.parse()?;
-            let disc = parse_discriminator(&expr)?;
-            Ok(ParsedDirective::Discriminator(disc))
+            let lits = parse_discriminator_value(input)?;
+            Ok(ParsedDirective::Discriminator(DiscriminatorClause {
+                lits,
+                keyword_span,
+            }))
         }
-        "one_of" => Ok(ParsedDirective::OneOf(span)),
-        "unsafe_no_disc" => Ok(ParsedDirective::UnsafeNoDisc(span)),
-        "fixed_capacity" => Ok(ParsedDirective::FixedCapacity(span)),
-        _ => Ok(ParsedDirective::Unknown { name, span }),
+        "implements" => {
+            let content;
+            syn::parenthesized!(content in input);
+            let path: Path = content.parse()?;
+            Ok(ParsedDirective::Implements(ImplementsClause {
+                path,
+                keyword_span,
+            }))
+        }
+        "one_of" => Ok(ParsedDirective::OneOf(keyword_span)),
+        "unsafe_no_disc" => Ok(ParsedDirective::UnsafeNoDisc(keyword_span)),
+        "set_inner" => Ok(ParsedDirective::SetInner(keyword_span)),
+        "fixed_capacity" => Ok(ParsedDirective::FixedCapacity(keyword_span)),
+        _ => Ok(ParsedDirective::Unknown {
+            name,
+            span: keyword_span,
+        }),
+    }
+}
+
+fn parse_discriminator_value(input: ParseStream) -> SynResult<Vec<LitInt>> {
+    if input.peek(syn::token::Bracket) {
+        let content;
+        syn::bracketed!(content in input);
+        let lits = content.parse_terminated(LitInt::parse, Token![,])?;
+        let disc: Vec<LitInt> = lits.into_iter().collect();
+        if disc.is_empty() {
+            return Err(syn::Error::new(
+                input.span(),
+                "discriminator must have at least one byte",
+            ));
+        }
+        Ok(disc)
+    } else {
+        let lit: LitInt = input.parse()?;
+        Ok(vec![lit])
     }
 }
 
 fn apply_directive(ast: &mut AccountAttrAst, d: ParsedDirective, sink: &mut Diagnostics) {
     match d {
-        ParsedDirective::Discriminator(disc) => {
-            if ast.discriminator.is_some() {
-                let span = match &disc {
-                    Discriminator::Int { span, .. } => *span,
-                    Discriminator::Bytes { span, .. } => *span,
-                };
+        ParsedDirective::Discriminator(clause) => {
+            if let Some(existing) = &ast.discriminator {
+                let _ = existing;
                 sink.emit(Diagnostic {
                     severity: Severity::Error,
                     code: DiagCode::AccountAttrDuplicateDirective,
-                    message: "duplicate `discriminator` directive".into(),
-                    primary: span,
+                    message: "duplicate `discriminator`".into(),
+                    primary: clause.keyword_span,
                     labels: vec![],
                     fixes: vec![],
                 });
             } else {
-                ast.discriminator = Some(disc);
+                ast.discriminator = Some(clause);
             }
         }
-        ParsedDirective::OneOf(s) => {
-            if ast.one_of.is_none() {
-                ast.one_of = Some(s);
+        ParsedDirective::Implements(clause) => {
+            if ast.implements.is_some() {
+                sink.emit(Diagnostic {
+                    severity: Severity::Error,
+                    code: DiagCode::AccountAttrDuplicateDirective,
+                    message: "duplicate `implements`".into(),
+                    primary: clause.keyword_span,
+                    labels: vec![],
+                    fixes: vec![],
+                });
+            } else {
+                ast.implements = Some(clause);
             }
         }
-        ParsedDirective::UnsafeNoDisc(s) => {
-            if ast.unsafe_no_disc.is_none() {
-                ast.unsafe_no_disc = Some(s);
-            }
+        ParsedDirective::OneOf(span) => set_flag(&mut ast.one_of, span, "one_of", sink),
+        ParsedDirective::UnsafeNoDisc(span) => {
+            set_flag(&mut ast.unsafe_no_disc, span, "unsafe_no_disc", sink)
         }
-        ParsedDirective::FixedCapacity(s) => {
-            if ast.fixed_capacity.is_none() {
-                ast.fixed_capacity = Some(s);
-            }
+        ParsedDirective::SetInner(span) => set_flag(&mut ast.set_inner, span, "set_inner", sink),
+        ParsedDirective::FixedCapacity(span) => {
+            set_flag(&mut ast.fixed_capacity, span, "fixed_capacity", sink)
         }
         ParsedDirective::Unknown { name, span } => {
             sink.emit(Diagnostic {
                 severity: Severity::Error,
                 code: DiagCode::AccountAttrUnknownDirective,
-                message: format!("unknown account directive `{}`", name),
+                message: format!(
+                    "expected `discriminator`, `unsafe_no_disc`, `set_inner`, `fixed_capacity`, \
+                     `one_of`, or `implements`; found `{}`",
+                    name
+                ),
                 primary: span,
                 labels: vec![],
                 fixes: vec![],
@@ -177,61 +339,24 @@ fn apply_directive(ast: &mut AccountAttrAst, d: ParsedDirective, sink: &mut Diag
     }
 }
 
-fn parse_discriminator(expr: &Expr) -> SynResult<Discriminator> {
-    match expr {
-        Expr::Lit(lit) => match &lit.lit {
-            syn::Lit::Int(int) => {
-                let value: u64 = int.base10_parse()?;
-                Ok(Discriminator::Int {
-                    value,
-                    span: int.span(),
-                })
-            }
-            _ => Err(syn::Error::new_spanned(
-                expr,
-                "discriminator must be an integer literal or byte array",
-            )),
-        },
-        Expr::Array(arr) => {
-            let mut values = Vec::with_capacity(arr.elems.len());
-            for e in &arr.elems {
-                let Expr::Lit(lit) = e else {
-                    return Err(syn::Error::new_spanned(
-                        e,
-                        "discriminator bytes must be integer literals",
-                    ));
-                };
-                let syn::Lit::Int(int) = &lit.lit else {
-                    return Err(syn::Error::new_spanned(
-                        e,
-                        "discriminator bytes must be integer literals",
-                    ));
-                };
-                let v: u64 = int.base10_parse()?;
-                if v > u8::MAX as u64 {
-                    return Err(syn::Error::new_spanned(
-                        e,
-                        format!("discriminator byte {} out of range (max 255)", v),
-                    ));
-                }
-                values.push(v as u8);
-            }
-            Ok(Discriminator::Bytes {
-                values,
-                span: arr.bracket_token.span.span(),
-            })
-        }
-        _ => Err(syn::Error::new_spanned(
-            expr,
-            "discriminator must be an integer literal or byte array",
-        )),
+fn set_flag(slot: &mut Option<Span>, span: Span, name: &str, sink: &mut Diagnostics) {
+    if slot.is_some() {
+        sink.emit(Diagnostic {
+            severity: Severity::Error,
+            code: DiagCode::AccountAttrDuplicateDirective,
+            message: format!("duplicate `{}`", name),
+            primary: span,
+            labels: vec![],
+            fixes: vec![],
+        });
+    } else {
+        *slot = Some(span);
     }
 }
 
 /// Advance past the current malformed directive to the next comma at attr-body
 /// depth. The outer `#[account(...)]` parens are already balanced by syn at the
-/// attribute level, so depth-tracking inside is not needed — we only stop at
-/// top-level commas.
+/// attribute level, so we only stop at top-level commas.
 fn skip_to_next_directive(input: ParseStream) {
     while !input.is_empty() && !input.peek(Token![,]) {
         let _ = input.parse::<TokenTree>();

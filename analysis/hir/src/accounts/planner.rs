@@ -1,18 +1,13 @@
 //! Planner: phase scheduling only.
 //!
 //! Reads FieldSemantics, produces phase-ordered BehaviorCall candidates.
-//! No validation, no protocol knowledge. The planner should be boring.
 
-use {
-    super::{
-        model::{BehaviorGroup, FieldKind, FieldSemantics, ValueKind},
-        specs::*,
-    },
-    syn::{Expr, Ident, Type},
-};
+use super::model::{FieldKind, FieldSemantics, ValueKind};
+use super::specs::*;
+use quasar_syntax::accounts::BehaviorGroup;
+use syn::{Expr, Ident, Type};
 
-/// Build a typed execution plan from lowered field semantics.
-pub(crate) fn build_plan(semantics: &[FieldSemantics]) -> syn::Result<AccountsPlanTyped> {
+pub fn build_plan(semantics: &[FieldSemantics]) -> syn::Result<AccountsPlanTyped> {
     let field_names: Vec<String> = semantics
         .iter()
         .map(|sem| sem.core.ident.to_string())
@@ -35,7 +30,6 @@ pub(crate) fn build_plan(semantics: &[FieldSemantics]) -> syn::Result<AccountsPl
     Ok(AccountsPlanTyped { fields, rent })
 }
 
-/// Classify a behavior arg value into a ValueKind based on field names.
 fn classify_value(expr: &Expr, field_names: &[String], optional_fields: &[String]) -> ValueKind {
     match expr {
         Expr::Path(ep)
@@ -105,9 +99,6 @@ fn plan_field(
         pre_load.push(PreLoadStep::Init(init_plan));
     }
 
-    // Post-load: behavior phase candidates. Each group gets the phases
-    // appropriate for this field's lifecycle. The emitter guards each call
-    // behind its associated const.
     for group in &sem.groups {
         if sem.has_init() {
             post_load.push(PostLoadStep::Behavior(lower_behavior_call(
@@ -125,7 +116,6 @@ fn plan_field(
         )));
     }
 
-    // Post-load: realloc.
     if let Some(realloc_expr) = &sem.realloc {
         let payer = match resolved_payer.as_ref() {
             Some(p) => p,
@@ -142,7 +132,6 @@ fn plan_field(
         }));
     }
 
-    // Post-load: address verification for non-init fields.
     if !sem.has_init() {
         if let Some(addr_expr) = &sem.address {
             post_load.push(PostLoadStep::VerifyExistingAddress(AddressSpec {
@@ -151,7 +140,6 @@ fn plan_field(
         }
     }
 
-    // Post-load + epilogue: update and exit candidates (mut fields only).
     if sem.core.is_mut {
         for group in &sem.groups {
             post_load.push(PostLoadStep::Behavior(lower_behavior_call(
@@ -169,7 +157,6 @@ fn plan_field(
         }
     }
 
-    // Epilogue: core program close (lamport drain).
     if let Some(dest) = &sem.close_dest {
         epilogue.push(EpilogueStep::ProgramClose(ProgramCloseSpec {
             destination_field: dest.clone(),
@@ -190,7 +177,6 @@ fn plan_init(
     field_names: &[String],
     optional_fields: &[String],
 ) -> InitPlan {
-    // If there are behavior groups attached, this is a delegated init.
     if sem.groups.is_empty() {
         return InitPlan::Program(ProgramInitSpec {
             payer: payer.clone(),
@@ -199,9 +185,6 @@ fn plan_init(
         });
     }
 
-    // Delegated init: behavior groups contribute init params via
-    // set_init_param. After_init and check run as post-load steps (planned
-    // separately in plan_field).
     let mut init_param_calls = Vec::new();
     for group in &sem.groups {
         init_param_calls.push(lower_behavior_call(
@@ -219,7 +202,6 @@ fn plan_init(
     })
 }
 
-/// Lower a BehaviorGroup directive into a BehaviorCall with classified values.
 fn lower_behavior_call(
     group: &BehaviorGroup,
     phase: BehaviorPhase,
@@ -245,7 +227,6 @@ fn lower_behavior_call(
     }
 }
 
-/// Convert a classified value into a LoweredValue.
 fn lower_value(expr: &Expr, kind: ValueKind) -> LoweredValue {
     match kind {
         ValueKind::BareFieldRef => {
@@ -274,7 +255,6 @@ fn lower_value(expr: &Expr, kind: ValueKind) -> LoweredValue {
     }
 }
 
-/// Find the struct-wide payer field (by name convention).
 fn find_payer_field(semantics: &[FieldSemantics]) -> Option<Ident> {
     semantics
         .iter()
@@ -282,7 +262,6 @@ fn find_payer_field(semantics: &[FieldSemantics]) -> Option<Ident> {
         .map(|sem| sem.core.ident.clone())
 }
 
-/// Resolve payer for a specific field: explicit > inferred by name.
 fn resolve_field_payer(sem: &FieldSemantics, payer_field: Option<&Ident>) -> Option<FieldRef> {
     if let Some(explicit_payer) = &sem.payer {
         return Some(FieldRef {

@@ -12,3 +12,10 @@ workspace = true
 
 [dependencies]
 quasar-syntax = { path = "../syntax" }
+salsa = "0.26"
+syn = { version = "2", features = ["full", "extra-traits"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+
+[dev-dependencies]
+syn = { version = "2", features = ["full", "extra-traits", "parsing"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }

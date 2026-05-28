@@ -1,22 +1,14 @@
 //! Lowering: parsed directives to field semantics.
-//!
-//! This pass records syntax-level facts and simple wrapper shape; validation
-//! and lifecycle scheduling happen in rules + planner.
 
-use {
-    super::{
-        super::syntax::{
-            attrs::{validate_behavior_arg, CoreDirective, Directive},
-            parse_field_attrs,
-        },
-        rules::validate_semantics,
-        FieldCore, FieldKind, FieldSemantics, InitDirective, UserCheck,
-    },
-    crate::helpers::{extract_generic_inner_type, is_composite_type},
-    syn::Type,
+use super::model::{FieldCore, FieldKind, FieldSemantics};
+use super::rules::validate_semantics;
+use quasar_syntax::accounts::{
+    parse_field_attrs, validate_behavior_arg, CoreDirective, Directive, InitDirective, UserCheck,
 };
+use quasar_syntax::types::{extract_generic_inner_type, is_composite_type};
+use syn::Type;
 
-pub(super) fn lower_semantics(
+pub fn lower_semantics(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
 ) -> syn::Result<Vec<FieldSemantics>> {
     let parsed: Vec<(syn::Field, Vec<Directive>)> = fields
@@ -183,7 +175,6 @@ fn lower_directives(sem: &mut FieldSemantics, directives: Vec<Directive>) -> syn
         }
     }
 
-    // Validate behavior arg grammar on behavior groups.
     for group in &groups {
         for arg in &group.args {
             validate_behavior_arg(&arg.key, &arg.value)?;
@@ -194,8 +185,6 @@ fn lower_directives(sem: &mut FieldSemantics, directives: Vec<Directive>) -> syn
 
     Ok(())
 }
-
-// Type classification helpers.
 
 fn extract_inner_ty(effective_ty: &Type) -> Option<Type> {
     for wrapper in &[

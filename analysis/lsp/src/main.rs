@@ -1,43 +1,43 @@
-use lsp_server::{Connection, ErrorCode, Message, Response, ResponseError};
-use lsp_types::{InitializeParams, ServerCapabilities};
+use lsp_server::Connection;
+use lsp_types::InitializeParams;
+use quasar_lsp::{capabilities::server_capabilities, init_logging, Server};
 use std::error::Error;
+use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
-    quasar_lsp::init_logging();
-    tracing::info!("quasar-lsp starting (scaffold build, no capabilities registered)");
+    init_logging();
+    tracing::info!("quasar-lsp starting");
 
     let (connection, io_threads) = Connection::stdio();
-    let server_capabilities = serde_json::to_value(ServerCapabilities::default())?;
-    let init_params = connection.initialize(server_capabilities)?;
-    let _params: InitializeParams = serde_json::from_value(init_params)?;
+    let caps =
+        serde_json::to_value(server_capabilities()).expect("server capabilities serialise");
+    let init_value = connection.initialize(caps)?;
+    let params: InitializeParams = serde_json::from_value(init_value)?;
+    let root = extract_workspace_root(&params);
 
-    main_loop(connection)?;
+    let server = Server::with_workspace_root(connection.sender.clone(), root);
+    server.run(&connection)?;
+
     io_threads.join()?;
-
     tracing::info!("quasar-lsp shutting down");
     Ok(())
 }
 
-fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>> {
-    for msg in &connection.receiver {
-        match msg {
-            Message::Request(req) => {
-                if connection.handle_shutdown(&req)? {
-                    return Ok(());
-                }
-                let resp = Response {
-                    id: req.id,
-                    result: None,
-                    error: Some(ResponseError {
-                        code: ErrorCode::MethodNotFound as i32,
-                        message: format!("method not implemented: {}", req.method),
-                        data: None,
-                    }),
-                };
-                connection.sender.send(Message::Response(resp))?;
+fn extract_workspace_root(params: &InitializeParams) -> Option<PathBuf> {
+    if let Some(folders) = &params.workspace_folders {
+        if let Some(folder) = folders.first() {
+            let s = folder.uri.as_str();
+            if let Some(rest) = s.strip_prefix("file://") {
+                return Some(PathBuf::from(rest));
             }
-            Message::Notification(_) | Message::Response(_) => {}
         }
     }
-    Ok(())
+    #[allow(deprecated)]
+    if let Some(root_uri) = &params.root_uri {
+        let s = root_uri.as_str();
+        if let Some(rest) = s.strip_prefix("file://") {
+            return Some(PathBuf::from(rest));
+        }
+    }
+    None
 }

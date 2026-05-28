@@ -1,4 +1,4 @@
-use quasar_syntax::account::{parse_recoverable, parse_strict, AccountAttrAst, Discriminator};
+use quasar_syntax::account::{parse_recoverable, parse_strict, AccountAttrAst};
 use quasar_syntax::diagnostics::{DiagCode, Diagnostics};
 use syn::parse::{Parser, ParseStream};
 
@@ -16,13 +16,15 @@ fn parse(source: &str) -> (AccountAttrAst, Diagnostics) {
 fn strict_mode_accepts_well_formed_input() {
     let parser = |input: ParseStream| parse_strict(input);
     let ast = parser
-        .parse_str("discriminator = 7, one_of")
+        .parse_str("discriminator = 7, set_inner")
         .expect("well-formed input parses cleanly");
-    match ast.discriminator {
-        Some(Discriminator::Int { value: 7, .. }) => {}
-        other => panic!("expected discriminator = 7, got {:?}", other),
-    }
-    assert!(ast.one_of.is_some());
+    let clause = ast.discriminator.expect("discriminator parsed");
+    assert_eq!(clause.lits.len(), 1);
+    let value: u64 = clause.lits[0]
+        .base10_parse()
+        .expect("LitInt parses as u64");
+    assert_eq!(value, 7);
+    assert!(ast.set_inner.is_some());
 }
 
 #[test]
@@ -33,7 +35,8 @@ fn strict_mode_returns_first_error() {
         .expect_err("strict mode bails on malformed input");
     let msg = err.to_string();
     assert!(
-        msg.contains("expected an expression")
+        msg.contains("expected integer literal")
+            || msg.contains("expected an expression")
             || msg.contains("expected expression")
             || msg.contains("unexpected"),
         "got: {}",

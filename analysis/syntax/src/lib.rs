@@ -5,8 +5,10 @@
 //! never drift in what they accept or what they report.
 
 pub mod account;
+pub mod accounts;
 pub mod diagnostics;
 pub mod span;
+pub mod types;
 
 pub use diagnostics::{DiagCode, DiagFamily, DiagLabel, Diagnostic, Diagnostics, Fix, Severity};
 pub use span::LineIndex;

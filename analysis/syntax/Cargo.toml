@@ -11,9 +11,9 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
-syn = { version = "2", features = ["full"] }
+syn = { version = "2", features = ["full", "extra-traits"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 
 [dev-dependencies]
-syn = { version = "2", features = ["full", "parsing"] }
+syn = { version = "2", features = ["full", "extra-traits", "parsing"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
