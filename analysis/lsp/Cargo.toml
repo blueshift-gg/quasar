@@ -31,3 +31,4 @@ syn = { version = "2", features = ["full", "extra-traits"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 cargo_metadata = "0.18"
 thiserror = "1"
+percent-encoding = "2"

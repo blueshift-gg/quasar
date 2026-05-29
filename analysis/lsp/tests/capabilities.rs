@@ -1,6 +1,3 @@
-//! End-to-end coverage for the final six v1 capabilities: semantic tokens,
-//! inlay hints, code actions, code lens, workspace symbol, document highlight.
-
 use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
 use lsp_types::notification::{
     DidOpenTextDocument, Initialized, Notification as _, PublishDiagnostics,
@@ -212,6 +209,54 @@ fn inlay_hint_shows_discriminator_at_account_ref() {
         label.contains("[7]"),
         "inlay hint should contain `[7]`, got: {}",
         label
+    );
+}
+
+#[test]
+fn inlay_hint_skips_refs_without_discriminator() {
+    // A ref whose type has no discriminator (here an unknown type) must not
+    // abort hints for the whole file — the sibling `Counter` hint must survive.
+    // The no-disc ref is placed FIRST to prove the bug's early-return is gone.
+    let (client, _h) = spawn_server();
+    handshake(&client);
+
+    let state_src = "#[account(discriminator = 7)]\npub struct Counter { pub n: u64 }\n";
+    let inc_src = "#[derive(Accounts)]\npub struct Inc<'info> {\n    pub thing: &'info Account<Unknownish>,\n    pub counter: &'info mut Account<Counter>,\n}\n";
+    let state_uri = Uri::from_str("file:///tmp/state.rs").unwrap();
+    let inc_uri = Uri::from_str("file:///tmp/inc2.rs").unwrap();
+    open(&client, state_uri.clone(), state_src);
+    open(&client, inc_uri.clone(), inc_src);
+    await_initial_diagnostics(&client, &state_uri);
+    await_initial_diagnostics(&client, &inc_uri);
+
+    send_request::<InlayHintRequest>(
+        &client,
+        510,
+        InlayHintParams {
+            text_document: TextDocumentIdentifier { uri: inc_uri.clone() },
+            range: Range {
+                start: Position { line: 0, character: 0 },
+                end: Position { line: 100, character: 0 },
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        },
+    );
+    let resp = await_response(&client, 510);
+    let hints: Vec<InlayHint> =
+        serde_json::from_value(resp.result.expect("inlay result")).unwrap();
+    let labels: String = hints
+        .iter()
+        .map(|h| match &h.label {
+            InlayHintLabel::String(s) => s.clone(),
+            InlayHintLabel::LabelParts(parts) => {
+                parts.iter().map(|p| p.value.as_str()).collect()
+            }
+        })
+        .collect();
+    assert!(
+        labels.contains("[7]"),
+        "Counter's discriminator hint must survive a sibling ref with no discriminator, got: {:?}",
+        labels
     );
 }
 

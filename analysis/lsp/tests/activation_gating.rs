@@ -113,8 +113,10 @@ fn recv_until(
 #[test]
 fn file_inside_quasar_crate_gets_diagnostics() {
     let config = WorkspaceConfig {
-        workspace_root: PathBuf::from("/tmp/ws"),
+        workspace_roots: vec![PathBuf::from("/tmp/ws")],
         quasar_crate_roots: vec![PathBuf::from("/tmp/ws/program")],
+        known_account_types: Vec::new(),
+        indexed_source_files: Vec::new(),
     };
     let (client, _h) = spawn_server_with_config(config);
     handshake(&client);
@@ -136,8 +138,10 @@ fn file_inside_quasar_crate_gets_diagnostics() {
 #[test]
 fn file_outside_quasar_crate_gets_empty_diagnostics() {
     let config = WorkspaceConfig {
-        workspace_root: PathBuf::from("/tmp/ws"),
+        workspace_roots: vec![PathBuf::from("/tmp/ws")],
         quasar_crate_roots: vec![PathBuf::from("/tmp/ws/program")],
+        known_account_types: Vec::new(),
+        indexed_source_files: Vec::new(),
     };
     let (client, _h) = spawn_server_with_config(config);
     handshake(&client);

@@ -1,6 +1,9 @@
 //! Cross-file resolver. Walks `#[derive(Accounts)]` structs, finds
-//! `Account<T>` field references, and resolves each `T` against the
-//! workspace symbol index. Unresolved references become diagnostics.
+//! `Account<T>` field references, and resolves each `T` against the workspace
+//! symbol index. Resolution drives hover and goto-definition; unresolved
+//! references are recorded as `Unknown` but not diagnosed, because we can't
+//! distinguish a typo of a local type from a legitimate external account type
+//! reached through a dependency.
 
 use crate::db::Db;
 use crate::diagnostic::HirDiagnostic;
@@ -24,7 +27,15 @@ pub struct AccountRef {
 /// Per-reference resolution outcome.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AccountRefResolution {
+    /// Resolved to an indexed account type — `#[account]` or `define_account!`,
+    /// in any Quasar crate (member or dependency). Carries its declaring file
+    /// for goto/hover.
     Resolved { defining_file: File },
+    /// Known by name (in `known_account_types`) but with no indexed `File` to
+    /// jump to — a fallback for a real type whose source wasn't indexed. Not
+    /// diagnosed. Rare now that dependency sources are indexed.
+    ResolvedExternal,
+    /// Not found anywhere — genuinely unknown (typo or missing definition).
     Unknown,
 }
 
@@ -68,12 +79,21 @@ pub fn resolve_account_refs<'db>(
                             defining_file: entry.file,
                         }
                     }
+                    _ if index.is_known_account_type(&account_ref.name) => {
+                        // Known by name but not indexed to a file — a real type
+                        // we just can't jump to. Not diagnosed.
+                        AccountRefResolution::ResolvedExternal
+                    }
                     _ => {
+                        // Indexed across every Quasar crate (members + deps), so
+                        // a name found in neither the index nor the name set is
+                        // genuinely unknown — worth flagging.
                         sink.emit(Diagnostic {
                             severity: Severity::Error,
                             code: DiagCode::UnknownAccountType,
                             message: format!(
-                                "unknown account type `{}`: not found in workspace",
+                                "unknown account type `{}`: not found in the workspace or its \
+                                 dependencies",
                                 account_ref.name
                             ),
                             primary: ident_span(&field.ty, &account_ref.name)
@@ -94,8 +114,29 @@ pub fn resolve_account_refs<'db>(
         .into_iter()
         .map(HirDiagnostic::lower)
         .collect();
-
     ResolvedFile::new(db, refs, diagnostics)
+}
+
+/// Find the span of the named identifier inside the field's type tree.
+fn ident_span(ty: &Type, name: &str) -> Option<proc_macro2::Span> {
+    let after_option = extract_generic_inner_type(ty, "Option")
+        .cloned()
+        .unwrap_or_else(|| ty.clone());
+    let effective = match after_option {
+        Type::Reference(r) => (*r.elem).clone(),
+        other => other,
+    };
+    let inner = extract_generic_inner_type(&effective, "Account")
+        .or_else(|| extract_generic_inner_type(&effective, "InterfaceAccount"))?;
+    let Type::Path(type_path) = inner else {
+        return None;
+    };
+    type_path
+        .path
+        .segments
+        .iter()
+        .find(|seg| seg.ident == name)
+        .map(|seg| seg.ident.span())
 }
 
 /// Returns the `T` from `Account<T>` / `InterfaceAccount<T>` / `Option<...>`
@@ -122,27 +163,4 @@ fn extract_account_ref(ty: &Type) -> Option<AccountRef> {
         name: last.ident.to_string(),
         range: ByteRange::from_span(last.ident.span()),
     })
-}
-
-/// Find the span of the named identifier inside the field's type tree, used
-/// as the primary span for diagnostics.
-fn ident_span(ty: &Type, name: &str) -> Option<proc_macro2::Span> {
-    let after_option = extract_generic_inner_type(ty, "Option")
-        .cloned()
-        .unwrap_or_else(|| ty.clone());
-    let effective = match after_option {
-        Type::Reference(r) => (*r.elem).clone(),
-        other => other,
-    };
-    let inner = extract_generic_inner_type(&effective, "Account")
-        .or_else(|| extract_generic_inner_type(&effective, "InterfaceAccount"))?;
-    let Type::Path(type_path) = inner else {
-        return None;
-    };
-    for seg in &type_path.path.segments {
-        if seg.ident == name {
-            return Some(seg.ident.span());
-        }
-    }
-    None
 }

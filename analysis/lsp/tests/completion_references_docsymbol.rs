@@ -147,6 +147,9 @@ pub struct Counter { pub n: u64 }\n\
 \n\
 #[account(discriminator = 2)]\n\
 pub struct Vault { pub balance: u64 }\n\
+\n\
+quasar_lang::define_account!(pub struct Mint => [checks::ZeroPod]: MintData);\n\
+pub struct MintData { pub supply: u64 }\n\
 ";
     let inc_src = "\
 #[derive(Accounts)]\n\
@@ -191,6 +194,11 @@ pub struct Increment<'info> {\n\
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert!(labels.contains(&"Counter"), "labels should include Counter: {:?}", labels);
     assert!(labels.contains(&"Vault"), "labels should include Vault: {:?}", labels);
+    assert!(
+        labels.contains(&"Mint"),
+        "define_account! types should appear in completion too: {:?}",
+        labels
+    );
     assert!(
         !labels.contains(&"Increment"),
         "AccountsStruct items should not show up as account-type completions: {:?}",

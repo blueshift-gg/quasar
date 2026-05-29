@@ -1,4 +1,4 @@
-//! Parser for `#[instruction(args(...))]` on `#[derive(Accounts)]` structs.
+//! Parser for `#[instruction(name: Type, ...)]` on `#[derive(Accounts)]` structs.
 
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics, Severity};
 use proc_macro2::TokenTree;

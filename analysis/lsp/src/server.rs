@@ -24,29 +24,34 @@ use crate::snapshot::Snapshot;
 use crate::vfs::Vfs;
 use crossbeam_channel::{select, Receiver, Sender};
 use lsp_server::{
-    Connection, ErrorCode, Message, Notification as LspNotification, Request, Response,
+    Connection, ErrorCode, Message, Notification as LspNotification, Request, RequestId, Response,
     ResponseError,
 };
 use lsp_types::notification::{
-    DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification as _,
-    Progress, PublishDiagnostics,
+    DidChangeTextDocument, DidChangeWatchedFiles, DidCloseTextDocument, DidOpenTextDocument,
+    Notification as _, Progress, PublishDiagnostics,
 };
 use lsp_types::request::{
     CodeActionRequest, CodeLensRequest, Completion, DocumentHighlightRequest,
     DocumentSymbolRequest, GotoDefinition, HoverRequest, InlayHintRequest, References,
-    Request as _, SemanticTokensFullRequest, WorkspaceSymbolRequest,
+    RegisterCapability, Request as _, SemanticTokensFullRequest, WorkspaceSymbolRequest,
 };
 use lsp_types::{
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    NumberOrString, ProgressParams, ProgressParamsValue, PublishDiagnosticsParams, Uri,
+    DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+    DidChangeWatchedFilesRegistrationOptions, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    FileChangeType, FileEvent, FileSystemWatcher, GlobPattern, NumberOrString, ProgressParams,
+    ProgressParamsValue, PublishDiagnosticsParams, Registration, RegistrationParams, Uri,
     WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressEnd, WorkDoneProgressReport,
 };
-use quasar_hir::{line_index_for, parse_file, resolve_account_refs, Database, File, Workspace};
+use quasar_hir::{
+    line_index_for, parse_file, resolve_account_refs, resolve_has_one, validate_accounts,
+    Database, File, Workspace,
+};
 use salsa::Setter;
 use serde::{de::DeserializeOwned, Serialize};
 use std::error::Error;
 use std::panic::AssertUnwindSafe;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use threadpool::ThreadPool;
 
@@ -54,7 +59,7 @@ const CONTENT_MODIFIED: i32 = -32801;
 const WORKSPACE_LOAD_TOKEN: &str = "quasar/workspace-load";
 
 enum InternalEvent {
-    WorkspaceLoaded(Result<WorkspaceConfig, String>),
+    WorkspaceLoaded(Option<WorkspaceConfig>),
 }
 
 pub struct Server {
@@ -62,6 +67,9 @@ pub struct Server {
     vfs: Vfs,
     workspace: Workspace,
     workspace_config: Option<WorkspaceConfig>,
+    workspace_roots: Vec<PathBuf>,
+    supports_file_watching: bool,
+    next_server_request_id: i32,
     pool: ThreadPool,
     background: ThreadPool,
     sender: Sender<Message>,
@@ -71,42 +79,58 @@ pub struct Server {
 
 impl Server {
     pub fn new(sender: Sender<Message>) -> Self {
-        Self::with_workspace_root(sender, None)
+        Self::build(sender, Vec::new(), false)
     }
 
     /// Test helper: skip the background cargo-metadata load and install a
     /// pre-built [`WorkspaceConfig`] directly.
     pub fn for_test_with_config(sender: Sender<Message>, config: WorkspaceConfig) -> Self {
-        let mut server = Self::with_workspace_root(sender, None);
-        server.workspace_config = Some(config);
+        let mut server = Self::build(sender, Vec::new(), false);
+        server.apply_loaded_config(config);
         server
     }
 
-    /// Construct a server with an optional workspace root from the
-    /// `initialize` handshake. When provided, `cargo metadata` runs in the
-    /// background and populates [`WorkspaceConfig`] before any activation
-    /// gating kicks in.
-    pub fn with_workspace_root(sender: Sender<Message>, root: Option<PathBuf>) -> Self {
+    /// Construct a server with workspace roots from the `initialize`
+    /// handshake. `cargo metadata` runs in the background for each root and
+    /// populates [`WorkspaceConfig`] before activation gating kicks in.
+    /// `supports_file_watching` reflects the client's dynamic-registration
+    /// capability for `workspace/didChangeWatchedFiles`.
+    pub fn with_workspace_roots(
+        sender: Sender<Message>,
+        roots: Vec<PathBuf>,
+        supports_file_watching: bool,
+    ) -> Self {
+        let server = Self::build(sender, roots.clone(), supports_file_watching);
+        if !roots.is_empty() {
+            server.schedule_workspace_load(roots);
+        }
+        server
+    }
+
+    fn build(
+        sender: Sender<Message>,
+        workspace_roots: Vec<PathBuf>,
+        supports_file_watching: bool,
+    ) -> Self {
         let mut db = Database::default();
-        let workspace = Workspace::new(&db, Vec::new());
+        let workspace = Workspace::new(&db, Vec::new(), Vec::new());
         let _ = &mut db;
         let worker_count = num_cpus::get().max(1);
         let (internal_sender, internal_receiver) = crossbeam_channel::unbounded();
-        let server = Self {
+        Self {
             db,
             vfs: Vfs::default(),
             workspace,
             workspace_config: None,
+            workspace_roots,
+            supports_file_watching,
+            next_server_request_id: 1,
             pool: ThreadPool::with_name("quasar-lsp-worker".into(), worker_count),
             background: ThreadPool::with_name("quasar-lsp-bg".into(), 1),
             sender,
             internal_sender,
             internal_receiver,
-        };
-        if let Some(root) = root {
-            server.schedule_workspace_load(root);
         }
-        server
     }
 
     pub fn run(mut self, connection: &Connection) -> Result<(), Box<dyn Error + Sync + Send>> {
@@ -114,6 +138,11 @@ impl Server {
             workers = self.pool.max_count(),
             "quasar-lsp ready"
         );
+
+        // `lsp-server`'s `initialize()` consumes the `Initialized` notification
+        // before `run()` is reached, so register watchers here at startup
+        // rather than on receiving it.
+        self.register_file_watchers();
 
         let lsp_rx = connection.receiver.clone();
         let internal_rx = self.internal_receiver.clone();
@@ -284,21 +313,135 @@ impl Server {
                     self.on_did_close(params);
                 }
             }
+            DidChangeWatchedFiles::METHOD => {
+                if let Ok(params) =
+                    serde_json::from_value::<DidChangeWatchedFilesParams>(notif.params)
+                {
+                    self.on_watched_files_changed(params);
+                }
+            }
             _ => {}
+        }
+    }
+
+    /// Registers client-side watchers for `Cargo.toml` / `Cargo.lock` (the
+    /// dependency graph) and `*.rs` (closed member-source content) so the
+    /// client notifies us via `workspace/didChangeWatchedFiles` when either
+    /// changes. No-op when the client doesn't support dynamic registration or
+    /// no workspace roots were provided.
+    fn register_file_watchers(&mut self) {
+        if !self.supports_file_watching || self.workspace_roots.is_empty() {
+            return;
+        }
+        let watchers = vec![
+            FileSystemWatcher {
+                glob_pattern: GlobPattern::String("**/Cargo.toml".to_string()),
+                kind: None,
+            },
+            FileSystemWatcher {
+                glob_pattern: GlobPattern::String("**/Cargo.lock".to_string()),
+                kind: None,
+            },
+            // Closed member sources are indexed from disk; watch `.rs` so edits
+            // made outside the editor (or in unopened files) refresh the index.
+            FileSystemWatcher {
+                glob_pattern: GlobPattern::String("**/*.rs".to_string()),
+                kind: None,
+            },
+        ];
+        let registration = Registration {
+            id: "quasar-cargo-watcher".to_string(),
+            method: DidChangeWatchedFiles::METHOD.to_string(),
+            register_options: Some(
+                serde_json::to_value(DidChangeWatchedFilesRegistrationOptions { watchers })
+                    .expect("registration options serialise"),
+            ),
+        };
+        let params = RegistrationParams {
+            registrations: vec![registration],
+        };
+        let id = self.next_server_request_id;
+        self.next_server_request_id += 1;
+        let req = Request {
+            id: RequestId::from(id),
+            method: RegisterCapability::METHOD.to_string(),
+            params: serde_json::to_value(params).expect("registration params serialise"),
+        };
+        let _ = self.sender.send(Message::Request(req));
+        tracing::info!("registered Cargo.toml / Cargo.lock / *.rs watchers");
+    }
+
+    fn on_watched_files_changed(&mut self, params: DidChangeWatchedFilesParams) {
+        if self.workspace_roots.is_empty() {
+            return;
+        }
+        // A manifest change can reshape the dependency graph, so it triggers a
+        // full reload (which re-scans and re-registers member sources). A bare
+        // `.rs` change only needs that one closed file's content refreshed.
+        let mut cargo_changed = false;
+        let mut sources_refreshed = false;
+        for change in &params.changes {
+            let Some(path) = crate::paths::uri_to_path(&change.uri) else {
+                continue;
+            };
+            if is_cargo_manifest(&path) {
+                cargo_changed = true;
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                sources_refreshed |= self.refresh_watched_rs(change, &path);
+            }
+        }
+
+        if cargo_changed {
+            tracing::info!("watched Cargo files changed; reloading workspace");
+            self.schedule_workspace_load(self.workspace_roots.clone());
+        } else if sources_refreshed {
+            self.update_workspace();
+            self.schedule_all_open_diagnostics();
+        }
+    }
+
+    /// Refreshes (or drops) a single closed member source after a disk change.
+    /// Returns whether the workspace index needs recomputing. Files outside
+    /// the Quasar crate roots and files currently open in the editor (the
+    /// overlay is authoritative) are ignored.
+    fn refresh_watched_rs(&mut self, change: &FileEvent, path: &Path) -> bool {
+        let covered = self
+            .workspace_config
+            .as_ref()
+            .is_some_and(|cfg| cfg.covers(path));
+        if !covered || self.vfs.is_open(&change.uri) {
+            return false;
+        }
+        if change.typ == FileChangeType::DELETED {
+            self.vfs.remove_workspace_member(&change.uri);
+            return true;
+        }
+        match std::fs::read_to_string(path) {
+            Ok(text) => {
+                let text: Arc<str> = Arc::from(text.as_str());
+                self.vfs
+                    .register_workspace_member(&mut self.db, change.uri.clone(), text);
+                true
+            }
+            Err(_) => false,
         }
     }
 
     fn handle_internal(&mut self, evt: InternalEvent) {
         match evt {
-            InternalEvent::WorkspaceLoaded(Ok(config)) => {
-                let crate_count = config.quasar_crate_roots.len();
-                tracing::info!(crates = crate_count, "workspace loaded");
-                self.workspace_config = Some(config);
-                self.refresh_workspace_membership();
+            InternalEvent::WorkspaceLoaded(Some(config)) => {
+                tracing::info!(
+                    crates = config.quasar_crate_roots.len(),
+                    account_types = config.known_account_types.len(),
+                    indexed_files = config.indexed_source_files.len(),
+                    "workspace loaded"
+                );
+                self.apply_loaded_config(config);
                 self.send_progress_end(WORKSPACE_LOAD_TOKEN, "loaded");
             }
-            InternalEvent::WorkspaceLoaded(Err(err)) => {
-                tracing::warn!(error = %err, "workspace load failed; serving all open files");
+            InternalEvent::WorkspaceLoaded(None) => {
+                tracing::warn!("workspace load failed for all folders; serving all open files");
+                self.workspace_config = None;
                 self.send_progress_end(WORKSPACE_LOAD_TOKEN, "load failed; degraded mode");
             }
         }
@@ -312,10 +455,18 @@ impl Server {
             return;
         }
         let text: Arc<str> = Arc::from(params.text_document.text.as_str());
-        let file = self.vfs.intern(&mut self.db, uri.clone(), text);
-        self.vfs.mark_open(uri.clone());
+        // The file may already be interned as a closed disk-backed member; the
+        // editor's buffer is authoritative on open, so overwrite its content.
+        if self.vfs.set_text(&mut self.db, &uri, text.clone()).is_none() {
+            self.vfs.intern(&mut self.db, uri.clone(), text);
+        }
+        self.vfs.mark_open(uri);
         self.update_workspace();
-        self.schedule_diagnostics(uri, file);
+        // Opening a file changes workspace membership, so every open file's
+        // cross-file diagnostics may shift. Schedule them all against the
+        // post-write snapshot; any worker cancelled by a later mutation is
+        // superseded by that mutation's own all-files pass.
+        self.schedule_all_open_diagnostics();
     }
 
     fn on_did_change(&mut self, params: DidChangeTextDocumentParams) {
@@ -327,11 +478,14 @@ impl Server {
             return;
         };
         let text: Arc<str> = Arc::from(full.text.as_str());
-        let file = match self.vfs.set_text(&mut self.db, &uri, text.clone()) {
-            Some(file) => file,
-            None => self.vfs.intern(&mut self.db, uri.clone(), text),
-        };
-        self.schedule_diagnostics(uri, file);
+        if self.vfs.set_text(&mut self.db, &uri, text.clone()).is_none() {
+            self.vfs.intern(&mut self.db, uri.clone(), text);
+        }
+        // Editing a definition shifts cross-file resolution for every other
+        // open file (their refs read the workspace-wide index), so recompute
+        // all open files — not just this one. Salsa early-cutoff keeps this
+        // cheap when the edit didn't change cross-file results.
+        self.schedule_all_open_diagnostics();
     }
 
     fn on_did_close(&mut self, params: DidCloseTextDocumentParams) {
@@ -339,11 +493,65 @@ impl Server {
         self.vfs.mark_closed(&uri);
         self.update_workspace();
         publish(&self.sender, uri, vec![]);
+        // Remaining files' cross-file diagnostics may shift when a file leaves
+        // the workspace.
+        self.schedule_all_open_diagnostics();
+    }
+
+    fn schedule_all_open_diagnostics(&self) {
+        let map = self.vfs.uri_to_file();
+        for uri in self.vfs.open_uris() {
+            if let Some(file) = map.get(&uri).copied() {
+                self.schedule_diagnostics(uri, file);
+            }
+        }
     }
 
     fn update_workspace(&mut self) {
-        let files = self.vfs.open_files();
+        let files = self.vfs.active_files();
         self.workspace.set_files(&mut self.db).to(files);
+    }
+
+    /// Installs a freshly-loaded [`WorkspaceConfig`]: publishes the known
+    /// account-type names into the Salsa workspace, registers every indexed
+    /// source file as a closed disk-backed file, drops any open files that fell
+    /// outside the discovered crate roots, and recomputes diagnostics for what
+    /// remains open. Shared by the background-load path and test setup.
+    fn apply_loaded_config(&mut self, config: WorkspaceConfig) {
+        self.workspace
+            .set_known_account_types(&mut self.db)
+            .to(config.known_account_types.clone());
+        self.workspace_config = Some(config);
+        self.register_indexed_sources();
+        // Closes open files outside the crate roots and refreshes
+        // `Workspace.files` to include the newly registered members.
+        self.refresh_workspace_membership();
+        // The first didOpen diagnostics ran before this scan finished, so
+        // already-open files may carry stale results — types flagged as unknown,
+        // or cross-file refs that now resolve into a freshly indexed file.
+        // Recompute them now.
+        self.schedule_all_open_diagnostics();
+    }
+
+    /// Reads every indexed Quasar source file (member + dependency) from disk
+    /// and registers it as a closed, `File`-backed workspace member, so
+    /// cross-file analysis covers definitions that aren't open in the editor —
+    /// including account types declared in dependency crates. Open overlays
+    /// keep precedence on content.
+    fn register_indexed_sources(&mut self) {
+        let Some(config) = self.workspace_config.clone() else {
+            return;
+        };
+        for path in &config.indexed_source_files {
+            let Ok(text) = std::fs::read_to_string(path) else {
+                continue;
+            };
+            let Some(uri) = crate::paths::path_to_uri(path) else {
+                continue;
+            };
+            let text: Arc<str> = Arc::from(text.as_str());
+            self.vfs.register_workspace_member(&mut self.db, uri, text);
+        }
     }
 
     /// Called after cargo metadata lands. Any open file outside the
@@ -376,24 +584,23 @@ impl Server {
                 compute_and_publish(&snapshot, workspace, file, uri.clone(), &sender);
             }));
             if result.is_err() {
-                tracing::debug!("diagnostic worker cancelled or panicked for {}", uri.as_str());
+                // Salsa cancelled this worker because the revision moved. The
+                // mutation that caused the cancellation runs its own
+                // all-open-files pass afterwards, so we simply drop here.
+                tracing::debug!("diagnostic worker cancelled for {}", uri.as_str());
             }
         });
     }
 
-    fn schedule_workspace_load(&self, root: PathBuf) {
+    fn schedule_workspace_load(&self, roots: Vec<PathBuf>) {
         self.send_progress_begin(WORKSPACE_LOAD_TOKEN, "Loading Quasar workspace");
         let internal = self.internal_sender.clone();
         self.background.execute(move || {
             let outcome = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                cargo_workspace::load_workspace(&root)
+                cargo_workspace::load_workspaces(&roots)
             }));
-            let result = match outcome {
-                Ok(Ok(cfg)) => Ok(cfg),
-                Ok(Err(err)) => Err(err.to_string()),
-                Err(_) => Err("cargo metadata panicked".to_string()),
-            };
-            let _ = internal.send(InternalEvent::WorkspaceLoaded(result));
+            let config = outcome.unwrap_or(None);
+            let _ = internal.send(InternalEvent::WorkspaceLoaded(config));
         });
     }
 
@@ -458,19 +665,19 @@ impl Server {
 }
 
 fn uri_covered_by(cfg: &WorkspaceConfig, uri: &Uri) -> bool {
-    let Some(path) = uri_to_file_path(uri) else {
+    let Some(path) = crate::paths::uri_to_path(uri) else {
         return false;
     };
     cfg.covers(&path)
 }
 
-/// Lossy file URI → filesystem path. Supports `file://` URIs on Unix-style
-/// paths; Windows drive-letter parsing is intentionally minimal and may need
-/// hardening with a real URL parser later.
-pub(crate) fn uri_to_file_path(uri: &Uri) -> Option<PathBuf> {
-    let s = uri.as_str();
-    let stripped = s.strip_prefix("file://")?;
-    Some(PathBuf::from(stripped))
+/// True for `Cargo.toml` / `Cargo.lock`, whose changes can reshape the
+/// dependency graph and warrant a full workspace reload.
+fn is_cargo_manifest(path: &Path) -> bool {
+    matches!(
+        path.file_name().and_then(|n| n.to_str()),
+        Some("Cargo.toml") | Some("Cargo.lock")
+    )
 }
 
 fn compute_and_publish(
@@ -482,6 +689,7 @@ fn compute_and_publish(
 ) {
     let parsed = parse_file(db, file);
     let resolved = resolve_account_refs(db, workspace, file);
+    let has_one = resolve_has_one(db, workspace, file);
 
     let line_index = line_index_for(db, file);
     let text = file.text(db).clone();
@@ -491,6 +699,12 @@ fn compute_and_publish(
         diagnostics.push(convert(d, &text, &line_index, &uri));
     }
     for d in resolved.diagnostics(db).iter() {
+        diagnostics.push(convert(d, &text, &line_index, &uri));
+    }
+    for d in has_one.diagnostics(db).iter() {
+        diagnostics.push(convert(d, &text, &line_index, &uri));
+    }
+    for d in validate_accounts(db, file).diagnostics(db).iter() {
         diagnostics.push(convert(d, &text, &line_index, &uri));
     }
 

@@ -29,6 +29,9 @@ pub enum DiagCode {
     InstructionArgDuplicate,
     InstructionArgMalformed,
     UnknownAccountType,
+    HasOneUnknownBinding,
+    HasOneMissingAccountField,
+    AccountsConstraintViolation,
 }
 
 impl DiagCode {
@@ -50,7 +53,10 @@ impl DiagCode {
             DiagCode::InstructionArgDuplicate | DiagCode::InstructionArgMalformed => {
                 DiagFamily::InstructionArgs
             }
-            DiagCode::UnknownAccountType => DiagFamily::Resolver,
+            DiagCode::UnknownAccountType
+            | DiagCode::HasOneUnknownBinding
+            | DiagCode::HasOneMissingAccountField
+            | DiagCode::AccountsConstraintViolation => DiagFamily::Resolver,
         }
     }
 
@@ -82,6 +88,9 @@ impl DiagCode {
             DiagCode::InstructionArgDuplicate => "quasar::instruction_arg_duplicate",
             DiagCode::InstructionArgMalformed => "quasar::instruction_arg_malformed",
             DiagCode::UnknownAccountType => "quasar::unknown_account_type",
+            DiagCode::HasOneUnknownBinding => "quasar::has_one_unknown_binding",
+            DiagCode::HasOneMissingAccountField => "quasar::has_one_missing_account_field",
+            DiagCode::AccountsConstraintViolation => "quasar::accounts_constraint_violation",
         }
     }
 }

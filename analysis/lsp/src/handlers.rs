@@ -17,8 +17,9 @@ use lsp_types::{
     WorkspaceSymbolResponse,
 };
 use quasar_hir::{
-    line_index_for, parse_file, resolve_account_refs, workspace_symbol_index, AccountRef,
-    AccountRefResolution, Database, File, ItemHead, ItemKind, Workspace,
+    data_struct_index, line_index_for, parse_file, resolve_account_refs, resolve_has_one,
+    workspace_symbol_index, AccountRef, AccountRefResolution, Database, File, ItemHead, ItemKind,
+    Workspace,
 };
 use quasar_syntax::LineIndex;
 use std::collections::HashMap;
@@ -47,8 +48,12 @@ pub fn handle_hover(snapshot: &Snapshot, params: HoverParams) -> Option<Hover> {
                 account_ref.name, path
             )
         }
+        AccountRefResolution::ResolvedExternal => format!(
+            "**Account type `{}`**\n\nProvided by a dependency.",
+            account_ref.name
+        ),
         AccountRefResolution::Unknown => format!(
-            "**Account type `{}`**\n\nNot found in the current workspace.",
+            "**Account type `{}`**\n\nNot found in the workspace or its dependencies.",
             account_ref.name
         ),
     };
@@ -69,28 +74,94 @@ pub fn handle_definition(
     let uri = &params.text_document_position_params.text_document.uri;
     let position = params.text_document_position_params.position;
     let file = snapshot.file_for(uri)?;
-    let (account_ref, resolution) = ref_at(snapshot, file, position)?;
 
-    let AccountRefResolution::Resolved { defining_file } = resolution else {
+    // `Account<T>` reference → the account type declaration.
+    if let Some((account_ref, AccountRefResolution::Resolved { defining_file })) =
+        ref_at(snapshot, file, position)
+    {
+        let parsed = parse_file(&snapshot.db, defining_file);
+        if let Some(item) = parsed
+            .items(&snapshot.db)
+            .iter()
+            .find(|i| i.name == account_ref.name && i.kind == ItemKind::AccountType)
+        {
+            let def_text = defining_file.text(&snapshot.db).clone();
+            let def_line_index = line_index_for(&snapshot.db, defining_file);
+            let def_range = byte_range_to_lsp_range(
+                &def_line_index,
+                &def_text,
+                item.range.start,
+                item.range.end,
+            );
+            if let Some(def_uri) = snapshot.uri_for(defining_file).cloned() {
+                return Some(GotoDefinitionResponse::Scalar(Location {
+                    uri: def_uri,
+                    range: def_range,
+                }));
+            }
+        }
+    }
+
+    // `has_one(target)` → the account type's field declaration.
+    if let Some(location) = has_one_target_definition(snapshot, file, position) {
+        return Some(GotoDefinitionResponse::Scalar(location));
+    }
+
+    None
+}
+
+fn has_one_target_definition(
+    snapshot: &Snapshot,
+    file: File,
+    position: Position,
+) -> Option<Location> {
+    let text = file.text(&snapshot.db).clone();
+    let byte_offset = lsp_position_to_byte_offset(&text, position);
+
+    let resolved = resolve_has_one(&snapshot.db, snapshot.workspace, file);
+    let r = resolved
+        .refs(&snapshot.db)
+        .iter()
+        .find(|r| r.range.start <= byte_offset && byte_offset < r.range.end)
+        .cloned()?;
+
+    let account_type = r.account_type.as_ref()?;
+    let index = workspace_symbol_index(&snapshot.db, snapshot.workspace);
+    let entry = index.lookup(account_type)?;
+    if entry.kind != ItemKind::AccountType {
         return None;
+    }
+    let parsed = parse_file(&snapshot.db, entry.file);
+    let item = parsed
+        .items(&snapshot.db)
+        .iter()
+        .find(|i| i.name == *account_type && i.kind == ItemKind::AccountType)?
+        .clone();
+
+    // The field declaration lives either inline on a directly-parsed struct (in
+    // `entry.file`) or, for a `define_account!` type, on its data struct —
+    // which may be in a different file. Resolve both the defining file and the
+    // field's range accordingly.
+    let (def_file, field_range) = if item.fields_known {
+        let field = item.fields.iter().find(|f| f.name == r.target)?;
+        (entry.file, field.range)
+    } else {
+        let data_type = item.data_type.as_ref()?;
+        let data_index = data_struct_index(&snapshot.db, snapshot.workspace);
+        let ds = data_index.get(data_type)?;
+        let field = ds.fields.iter().find(|f| f.name == r.target)?;
+        (ds.file, field.range)
     };
 
-    let parsed = parse_file(&snapshot.db, defining_file);
-    let items = parsed.items(&snapshot.db);
-    let item = items
-        .iter()
-        .find(|i| i.name == account_ref.name && i.kind == ItemKind::AccountType)?;
-
-    let def_text = defining_file.text(&snapshot.db).clone();
-    let def_line_index = line_index_for(&snapshot.db, defining_file);
-    let def_range =
-        byte_range_to_lsp_range(&def_line_index, &def_text, item.range.start, item.range.end);
-    let def_uri = snapshot.uri_for(defining_file)?.clone();
-
-    Some(GotoDefinitionResponse::Scalar(Location {
+    let def_text = def_file.text(&snapshot.db).clone();
+    let def_line_index = line_index_for(&snapshot.db, def_file);
+    let range =
+        byte_range_to_lsp_range(&def_line_index, &def_text, field_range.start, field_range.end);
+    let def_uri = snapshot.uri_for(def_file)?.clone();
+    Some(Location {
         uri: def_uri,
-        range: def_range,
-    }))
+        range,
+    })
 }
 
 pub fn handle_completion(
@@ -297,10 +368,16 @@ pub fn handle_inlay_hint(
         if account_ref.range.end < range_start || account_ref.range.start > range_end {
             continue;
         }
-        let bytes = disc_cache
+        // Skip just this ref when it has no discriminator (external/unknown
+        // types, `unsafe_no_disc`, `define_account!`); a `?` here would abort
+        // hints for the whole file.
+        let Some(bytes) = disc_cache
             .entry(account_ref.name.clone())
             .or_insert_with(|| lookup_discriminator(&snapshot.db, &index, &account_ref.name))
-            .clone()?;
+            .clone()
+        else {
+            continue;
+        };
 
         let position = position_for(&line_index, &text, account_ref.range.end);
         hints.push(InlayHint {
@@ -325,73 +402,308 @@ pub fn handle_code_action(
     let uri = params.text_document.uri.clone();
     let file = snapshot.file_for(&uri)?;
     let text = file.text(&snapshot.db).clone();
-    let byte_offset = lsp_position_to_byte_offset(&text, params.range.start);
+    let line_index = line_index_for(&snapshot.db, file);
 
-    let tree = syn::parse_file(&text).ok()?;
+    let mut actions: Vec<CodeActionOrCommand> = Vec::new();
+
+    // Diagnostic-driven quickfixes.
+    for diag in &params.context.diagnostics {
+        let Some(code) = diag_code_str(diag) else {
+            continue;
+        };
+        match code {
+            "quasar::account_attr_missing_discriminator_or_unsafe" => {
+                let diag_byte = lsp_position_to_byte_offset(&text, diag.range.start);
+                if let Some((insert_byte, body_empty)) =
+                    account_attr_body_insertion(&text, diag_byte)
+                {
+                    let pos = position_for(&line_index, &text, insert_byte);
+                    let disc = if body_empty {
+                        "discriminator = 1".to_string()
+                    } else {
+                        "discriminator = 1, ".to_string()
+                    };
+                    let unsafe_flag = if body_empty {
+                        "unsafe_no_disc".to_string()
+                    } else {
+                        "unsafe_no_disc, ".to_string()
+                    };
+                    actions.push(insertion_action(
+                        "Add `discriminator = 1`",
+                        &uri,
+                        pos,
+                        disc,
+                        Some(diag.clone()),
+                    ));
+                    actions.push(insertion_action(
+                        "Add `unsafe_no_disc`",
+                        &uri,
+                        pos,
+                        unsafe_flag,
+                        Some(diag.clone()),
+                    ));
+                }
+            }
+            "quasar::unknown_account_type" => {
+                let diag_byte = lsp_position_to_byte_offset(&text, diag.range.start);
+                if let Some(name) =
+                    find_account_type_name(&snapshot.db, snapshot.workspace, file, diag_byte)
+                {
+                    let end_pos = position_for(&line_index, &text, text.len() as u32);
+                    let stub = format!(
+                        "\n#[account(discriminator = 1)]\npub struct {} {{\n}}\n",
+                        name
+                    );
+                    actions.push(insertion_action(
+                        &format!("Create `#[account] struct {}`", name),
+                        &uri,
+                        end_pos,
+                        stub,
+                        Some(diag.clone()),
+                    ));
+                }
+            }
+            "quasar::has_one_missing_account_field" => {
+                if let Some(action) =
+                    add_field_to_account_type_action(snapshot, file, &text, diag)
+                {
+                    actions.push(action);
+                }
+            }
+            "quasar::accounts_constraint_violation" if diag.message.contains("requires `mut`") => {
+                if let Some(action) = add_mut_action(&text, &line_index, &uri, diag) {
+                    actions.push(action);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Position-based refactor: insert #[account] on a bare struct under the
+    // cursor (not driven by a diagnostic).
+    if let Some(action) =
+        bare_struct_insert_action(&snapshot.db, file, &text, &line_index, &uri, params.range.start)
+    {
+        actions.push(action);
+    }
+
+    Some(actions)
+}
+
+/// Fix for a `requires \`mut\`` constraint violation: insert `mut` into the
+/// offending field's `#[account(...)]` attribute.
+fn add_mut_action(
+    text: &str,
+    line_index: &LineIndex,
+    uri: &lsp_types::Uri,
+    diag: &lsp_types::Diagnostic,
+) -> Option<CodeActionOrCommand> {
+    use syn::spanned::Spanned;
+    let diag_byte = lsp_position_to_byte_offset(text, diag.range.start);
+    let tree = syn::parse_file(text).ok()?;
     for item in &tree.items {
         let Item::Struct(item_struct) = item else {
             continue;
         };
-        let item_span = item_struct.ident.span();
-        let item_range = item_span.byte_range();
-        if (item_range.start as u32) > byte_offset || (item_range.end as u32) < byte_offset {
-            // Allow cursor anywhere on the struct definition line; widen by
-            // checking enclosing struct token span as well.
-            let full_span = item_struct
-                .struct_token
-                .span
-                .byte_range();
-            if (full_span.start as u32) > byte_offset || (item_range.end as u32) < byte_offset {
+        if !item_struct.attrs.iter().any(derives_accounts) {
+            continue;
+        }
+        for field in &item_struct.fields {
+            let fr = field.span().byte_range();
+            if (fr.start as u32) > diag_byte || (fr.end as u32) < diag_byte {
                 continue;
             }
+            for attr in &field.attrs {
+                if !attr.path().is_ident("account") {
+                    continue;
+                }
+                let syn::Meta::List(list) = &attr.meta else {
+                    continue;
+                };
+                let (open, _) = delim_open_close(&list.delimiter);
+                let pos = position_for(line_index, text, open.byte_range().end as u32);
+                let new_text = if list.tokens.is_empty() {
+                    "mut".to_string()
+                } else {
+                    "mut, ".to_string()
+                };
+                return Some(insertion_action(
+                    "Add `mut`",
+                    uri,
+                    pos,
+                    new_text,
+                    Some(diag.clone()),
+                ));
+            }
         }
+    }
+    None
+}
 
-        if item_struct
-            .attrs
-            .iter()
-            .any(|a| a.path().is_ident("account"))
-        {
+/// Fix for `has_one_missing_account_field`: insert the missing field into the
+/// referenced account type's struct body (possibly in another file).
+fn add_field_to_account_type_action(
+    snapshot: &Snapshot,
+    file: File,
+    text: &str,
+    diag: &lsp_types::Diagnostic,
+) -> Option<CodeActionOrCommand> {
+    let diag_byte = lsp_position_to_byte_offset(text, diag.range.start);
+    let resolved = resolve_has_one(&snapshot.db, snapshot.workspace, file);
+    let r = resolved
+        .refs(&snapshot.db)
+        .iter()
+        .find(|r| r.range.start <= diag_byte && diag_byte < r.range.end)
+        .cloned()?;
+    let account_type = r.account_type.as_ref()?;
+
+    let index = workspace_symbol_index(&snapshot.db, snapshot.workspace);
+    let entry = index.lookup(account_type)?;
+    if entry.kind != ItemKind::AccountType {
+        return None;
+    }
+    let parsed = parse_file(&snapshot.db, entry.file);
+    let item = parsed
+        .items(&snapshot.db)
+        .iter()
+        .find(|i| i.name == *account_type && i.kind == ItemKind::AccountType)?
+        .clone();
+    let insert_byte = item.body_insert?;
+
+    let def_text = entry.file.text(&snapshot.db).clone();
+    let def_line_index = line_index_for(&snapshot.db, entry.file);
+    let pos = position_for(&def_line_index, &def_text, insert_byte);
+    let def_uri = snapshot.uri_for(entry.file)?.clone();
+
+    Some(insertion_action(
+        &format!("Add field `{}` to `{}`", r.target, account_type),
+        &def_uri,
+        pos,
+        format!("\n    pub {}: Address,", r.target),
+        Some(diag.clone()),
+    ))
+}
+
+fn bare_struct_insert_action(
+    db: &Database,
+    file: File,
+    text: &str,
+    line_index: &LineIndex,
+    uri: &lsp_types::Uri,
+    cursor: Position,
+) -> Option<CodeActionOrCommand> {
+    let _ = (db, file);
+    let byte_offset = lsp_position_to_byte_offset(text, cursor);
+    let tree = syn::parse_file(text).ok()?;
+    for item in &tree.items {
+        let Item::Struct(item_struct) = item else {
+            continue;
+        };
+        let item_range = item_struct.ident.span().byte_range();
+        let struct_kw = item_struct.struct_token.span.byte_range();
+        let on_struct = (struct_kw.start as u32) <= byte_offset
+            && byte_offset <= (item_range.end as u32);
+        if !on_struct {
+            continue;
+        }
+        if item_struct.attrs.iter().any(|a| a.path().is_ident("account")) {
             continue;
         }
         if item_struct.attrs.iter().any(derives_accounts) {
             continue;
         }
 
-        // Insert at the byte offset where the struct keyword starts, including
-        // any leading `pub` visibility.
-        let insertion_byte = leading_attr_anchor(&item_struct);
-        let insertion_position = position_for(
-            &line_index_for(&snapshot.db, file),
-            &text,
-            insertion_byte,
-        );
-
-        let edit = TextEdit {
-            range: lsp_types::Range {
-                start: insertion_position,
-                end: insertion_position,
-            },
-            new_text: "#[account(discriminator = 1)]\n".to_string(),
-        };
-        let workspace_edit = WorkspaceEdit {
-            changes: Some([(uri.clone(), vec![edit])].into_iter().collect()),
-            document_changes: None,
-            change_annotations: None,
-        };
-        let action = CodeAction {
-            title: "Insert #[account(discriminator = 1)]".to_string(),
-            kind: Some(CodeActionKind::REFACTOR_REWRITE),
-            diagnostics: None,
-            edit: Some(workspace_edit),
-            command: None,
-            is_preferred: None,
-            disabled: None,
-            data: None,
-        };
-        return Some(vec![CodeActionOrCommand::CodeAction(action)]);
+        let insertion_byte = leading_attr_anchor(item_struct);
+        let pos = position_for(line_index, text, insertion_byte);
+        return Some(insertion_action(
+            "Insert #[account(discriminator = 1)]",
+            uri,
+            pos,
+            "#[account(discriminator = 1)]\n".to_string(),
+            None,
+        ));
     }
+    None
+}
 
-    Some(vec![])
+fn insertion_action(
+    title: &str,
+    uri: &lsp_types::Uri,
+    at: Position,
+    new_text: String,
+    diagnostic: Option<lsp_types::Diagnostic>,
+) -> CodeActionOrCommand {
+    let edit = TextEdit {
+        range: lsp_types::Range { start: at, end: at },
+        new_text,
+    };
+    let workspace_edit = WorkspaceEdit {
+        changes: Some([(uri.clone(), vec![edit])].into_iter().collect()),
+        document_changes: None,
+        change_annotations: None,
+    };
+    CodeActionOrCommand::CodeAction(CodeAction {
+        title: title.to_string(),
+        kind: Some(CodeActionKind::QUICKFIX),
+        diagnostics: diagnostic.map(|d| vec![d]),
+        edit: Some(workspace_edit),
+        command: None,
+        is_preferred: None,
+        disabled: None,
+        data: None,
+    })
+}
+
+fn diag_code_str(diag: &lsp_types::Diagnostic) -> Option<&str> {
+    match diag.code.as_ref()? {
+        lsp_types::NumberOrString::String(s) => Some(s.as_str()),
+        _ => None,
+    }
+}
+
+/// Finds the `#[account(...)]` attribute whose parenthesised body contains
+/// `near_byte`, and returns the byte offset just after the `(` plus whether
+/// the body is currently empty.
+fn account_attr_body_insertion(text: &str, near_byte: u32) -> Option<(u32, bool)> {
+    let tree = syn::parse_file(text).ok()?;
+    let mut found = None;
+    for item in &tree.items {
+        let Item::Struct(item_struct) = item else {
+            continue;
+        };
+        for attr in &item_struct.attrs {
+            check_account_attr(attr, near_byte, &mut found);
+        }
+        for field in &item_struct.fields {
+            for attr in &field.attrs {
+                check_account_attr(attr, near_byte, &mut found);
+            }
+        }
+    }
+    found
+}
+
+fn check_account_attr(attr: &Attribute, near_byte: u32, found: &mut Option<(u32, bool)>) {
+    if !attr.path().is_ident("account") {
+        return;
+    }
+    let syn::Meta::List(list) = &attr.meta else {
+        return;
+    };
+    let (open, close) = delim_open_close(&list.delimiter);
+    let open_r = open.byte_range();
+    let close_r = close.byte_range();
+    if (open_r.start as u32) <= near_byte && near_byte <= (close_r.end as u32) {
+        *found = Some((open_r.end as u32, list.tokens.is_empty()));
+    }
+}
+
+fn delim_open_close(d: &syn::MacroDelimiter) -> (proc_macro2::Span, proc_macro2::Span) {
+    match d {
+        syn::MacroDelimiter::Paren(p) => (p.span.open(), p.span.close()),
+        syn::MacroDelimiter::Brace(b) => (b.span.open(), b.span.close()),
+        syn::MacroDelimiter::Bracket(b) => (b.span.open(), b.span.close()),
+    }
 }
 
 pub fn handle_code_lens(snapshot: &Snapshot, params: CodeLensParams) -> Option<Vec<CodeLens>> {

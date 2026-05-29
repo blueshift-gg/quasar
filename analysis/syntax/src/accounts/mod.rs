@@ -1,5 +1,5 @@
 //! Parser and AST for `#[derive(Accounts)]` field attributes and the
-//! `#[instruction(args(...))]` form.
+//! `#[instruction(name: Type, ...)]` form.
 
 pub mod ast;
 pub mod instruction_args;

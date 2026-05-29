@@ -4,11 +4,14 @@ pub mod capabilities;
 pub mod cargo_workspace;
 pub mod diagnostics;
 pub mod handlers;
+pub mod paths;
 pub mod server;
 pub mod snapshot;
 pub mod vfs;
 
-pub use cargo_workspace::{identify_quasar_crates, load_workspace, WorkspaceConfig};
+pub use cargo_workspace::{
+    identify_quasar_crates, load_workspace, load_workspaces, WorkspaceConfig,
+};
 pub use server::Server;
 
 use tracing_subscriber::EnvFilter;

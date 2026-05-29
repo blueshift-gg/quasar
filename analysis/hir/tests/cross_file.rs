@@ -38,7 +38,7 @@ fn workspace(db: &Database, srcs: &[(&str, &str)]) -> (Workspace, Vec<File>) {
         .iter()
         .map(|(name, src)| File::new(db, Arc::from(*src), name.to_string()))
         .collect();
-    let workspace = Workspace::new(db, files.clone());
+    let workspace = Workspace::new(db, files.clone(), Vec::new());
     (workspace, files)
 }
 
@@ -78,7 +78,7 @@ fn resolve_account_refs_finds_cross_file_account_type() {
         AccountRefResolution::Resolved { defining_file } => {
             assert_eq!(*defining_file, state, "Counter resolves to state.rs");
         }
-        AccountRefResolution::Unknown => panic!("Counter should resolve"),
+        other => panic!("Counter should resolve to a workspace file, got {:?}", other),
     }
     assert!(
         resolved.diagnostics(&db).is_empty(),
@@ -87,7 +87,9 @@ fn resolve_account_refs_finds_cross_file_account_type() {
 }
 
 #[test]
-fn unknown_account_type_emits_diagnostic() {
+fn genuinely_unknown_account_type_is_diagnosed() {
+    // `Missing` is in neither the workspace nor the known dependency types, so
+    // it's genuinely unknown and worth flagging.
     let db = Database::default();
     let (ws, files) = workspace(
         &db,
@@ -96,19 +98,48 @@ fn unknown_account_type_emits_diagnostic() {
     let instructions = files[1];
 
     let resolved = resolve_account_refs(&db, ws, instructions);
-    let diags = resolved.diagnostics(&db);
-    let codes: Vec<_> = diags.iter().map(|d| d.code).collect();
+    let codes: Vec<_> = resolved.diagnostics(&db).iter().map(|d| d.code).collect();
     assert!(
         codes.contains(&DiagCode::UnknownAccountType),
-        "expected UnknownAccountType, got {:?}",
+        "genuinely unknown account type should be diagnosed, got {:?}",
         codes
     );
-    let msg = diags
-        .iter()
-        .find(|d| d.code == DiagCode::UnknownAccountType)
-        .map(|d| d.message.as_str())
-        .unwrap();
-    assert!(msg.contains("Missing"), "diagnostic mentions the type name: {}", msg);
+    let refs = resolved.refs(&db);
+    assert!(
+        refs.iter()
+            .any(|(r, res)| r.name == "Missing" && *res == AccountRefResolution::Unknown),
+        "Account<Missing> should resolve to Unknown, got {:?}",
+        refs
+    );
+}
+
+#[test]
+fn external_dependency_account_type_resolves_without_diagnostic() {
+    // `Mint` isn't a workspace type, but it's listed as a known dependency
+    // account type — so it resolves as external and isn't diagnosed.
+    let db = Database::default();
+    let ix = r#"
+#[derive(Accounts)]
+pub struct Trade<'info> {
+    pub source: &'info Account<Mint>,
+}
+"#;
+    let file = File::new(&db, Arc::from(ix), "ix.rs".to_string());
+    let ws = Workspace::new(&db, vec![file], vec!["Mint".to_string()]);
+
+    let resolved = resolve_account_refs(&db, ws, file);
+    assert!(
+        resolved.diagnostics(&db).is_empty(),
+        "external account type must not be diagnosed, got {:?}",
+        resolved.diagnostics(&db)
+    );
+    let refs = resolved.refs(&db);
+    assert!(
+        refs.iter()
+            .any(|(r, res)| r.name == "Mint" && *res == AccountRefResolution::ResolvedExternal),
+        "Account<Mint> should resolve as external, got {:?}",
+        refs
+    );
 }
 
 #[test]
@@ -136,7 +167,7 @@ fn editing_state_does_not_recompute_unrelated_instruction_diagnostics() {
 }
 
 #[test]
-fn removing_an_account_type_invalidates_resolution() {
+fn removing_an_account_type_flips_resolution_to_unknown() {
     let mut db = Database::default();
     let (ws, files) = workspace(
         &db,
@@ -146,15 +177,21 @@ fn removing_an_account_type_invalidates_resolution() {
     let instructions = files[1];
 
     let before = resolve_account_refs(&db, ws, instructions);
-    assert!(before.diagnostics(&db).is_empty());
+    assert!(before
+        .refs(&db)
+        .iter()
+        .any(|(r, res)| r.name == "Counter"
+            && matches!(res, AccountRefResolution::Resolved { .. })));
 
     // Delete Counter from state.rs entirely.
     state.set_text(&mut db).to(Arc::from(""));
 
     let after = resolve_account_refs(&db, ws, instructions);
-    let codes: Vec<_> = after.diagnostics(&db).iter().map(|d| d.code).collect();
     assert!(
-        codes.contains(&DiagCode::UnknownAccountType),
-        "Counter removal must surface a diagnostic on the Accounts struct"
+        after
+            .refs(&db)
+            .iter()
+            .any(|(r, res)| r.name == "Counter" && *res == AccountRefResolution::Unknown),
+        "Counter removal must flip its reference to Unknown"
     );
 }
