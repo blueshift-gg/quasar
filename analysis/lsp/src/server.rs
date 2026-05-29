@@ -572,7 +572,7 @@ impl Server {
         };
         let snapshot = self.vfs.uri_to_file();
         let mut to_close: Vec<Uri> = Vec::new();
-        for (uri, _file) in snapshot.iter() {
+        for uri in snapshot.keys() {
             if !uri_covered_by(&config, uri) {
                 to_close.push(uri.clone());
             }
