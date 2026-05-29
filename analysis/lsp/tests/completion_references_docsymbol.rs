@@ -1,23 +1,21 @@
 //! End-to-end coverage for completion, textDocument/references, and
 //! textDocument/documentSymbol.
 
-use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
-use lsp_types::notification::{
-    DidOpenTextDocument, Initialized, Notification as _, PublishDiagnostics,
+use {
+    lsp_server::{Connection, Message, Notification, Request, RequestId, Response},
+    lsp_types::{
+        notification::{DidOpenTextDocument, Initialized, Notification as _, PublishDiagnostics},
+        request::{Completion, DocumentSymbolRequest, Initialize, References, Request as _},
+        CompletionContext, CompletionItem, CompletionParams, CompletionResponse,
+        CompletionTriggerKind, DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams,
+        DocumentSymbolResponse, InitializeParams, InitializedParams, Location, PartialResultParams,
+        Position, PublishDiagnosticsParams, ReferenceContext, ReferenceParams,
+        TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, Uri,
+        WorkDoneProgressParams,
+    },
+    quasar_lsp::{capabilities::server_capabilities, Server},
+    std::{str::FromStr, time::Duration},
 };
-use lsp_types::request::{
-    Completion, DocumentSymbolRequest, Initialize, References, Request as _,
-};
-use lsp_types::{
-    CompletionContext, CompletionItem, CompletionParams, CompletionResponse, CompletionTriggerKind,
-    DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
-    InitializeParams, InitializedParams, Location, PartialResultParams, Position,
-    PublishDiagnosticsParams, ReferenceContext, ReferenceParams, TextDocumentIdentifier,
-    TextDocumentItem, TextDocumentPositionParams, Uri, WorkDoneProgressParams,
-};
-use quasar_lsp::{capabilities::server_capabilities, Server};
-use std::str::FromStr;
-use std::time::Duration;
 
 fn spawn_server() -> (Connection, std::thread::JoinHandle<()>) {
     let (server_conn, client_conn) = Connection::memory();
@@ -142,21 +140,12 @@ fn completion_inside_account_type_arg_returns_account_types() {
     handshake(&client);
 
     let state_src = "\
-#[account(discriminator = 1)]\n\
-pub struct Counter { pub n: u64 }\n\
-\n\
-#[account(discriminator = 2)]\n\
-pub struct Vault { pub balance: u64 }\n\
-\n\
-quasar_lang::define_account!(pub struct Mint => [checks::ZeroPod]: MintData);\n\
-pub struct MintData { pub supply: u64 }\n\
-";
+#[account(discriminator = 1)]\npub struct Counter { pub n: u64 }\n\n#[account(discriminator = \
+                     2)]\npub struct Vault { pub balance: u64 \
+                     }\n\nquasar_lang::define_account!(pub struct Mint => [checks::ZeroPod]: \
+                     MintData);\npub struct MintData { pub supply: u64 }\n";
     let inc_src = "\
-#[derive(Accounts)]\n\
-pub struct Increment<'info> {\n\
-    pub counter: &'info mut Account<Counter>,\n\
-}\n\
-";
+#[derive(Accounts)]\npub struct Increment<'info> {\npub counter: &'info mut Account<Counter>,\n}\n";
 
     let state_uri = Uri::from_str("file:///tmp/state.rs").unwrap();
     let inc_uri = Uri::from_str("file:///tmp/instructions.rs").unwrap();
@@ -172,8 +161,13 @@ pub struct Increment<'info> {\n\
         100,
         CompletionParams {
             text_document_position: TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier { uri: inc_uri.clone() },
-                position: Position { line: 2, character: col },
+                text_document: TextDocumentIdentifier {
+                    uri: inc_uri.clone(),
+                },
+                position: Position {
+                    line: 2,
+                    character: col,
+                },
             },
             work_done_progress_params: WorkDoneProgressParams::default(),
             partial_result_params: PartialResultParams::default(),
@@ -185,15 +179,22 @@ pub struct Increment<'info> {\n\
     );
     let resp = await_response(&client, 100);
     let value = resp.result.expect("completion result");
-    let response: CompletionResponse =
-        serde_json::from_value(value).expect("completion parses");
+    let response: CompletionResponse = serde_json::from_value(value).expect("completion parses");
     let items: Vec<CompletionItem> = match response {
         CompletionResponse::Array(items) => items,
         CompletionResponse::List(list) => list.items,
     };
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
-    assert!(labels.contains(&"Counter"), "labels should include Counter: {:?}", labels);
-    assert!(labels.contains(&"Vault"), "labels should include Vault: {:?}", labels);
+    assert!(
+        labels.contains(&"Counter"),
+        "labels should include Counter: {:?}",
+        labels
+    );
+    assert!(
+        labels.contains(&"Vault"),
+        "labels should include Vault: {:?}",
+        labels
+    );
     assert!(
         labels.contains(&"Mint"),
         "define_account! types should appear in completion too: {:?}",
@@ -212,11 +213,7 @@ fn completion_outside_account_type_arg_returns_null() {
     handshake(&client);
 
     let inc_src = "\
-#[derive(Accounts)]\n\
-pub struct Increment<'info> {\n\
-    pub counter: &'info mut Account<Counter>,\n\
-}\n\
-";
+#[derive(Accounts)]\npub struct Increment<'info> {\npub counter: &'info mut Account<Counter>,\n}\n";
     let inc_uri = Uri::from_str("file:///tmp/instructions.rs").unwrap();
     open(&client, inc_uri.clone(), inc_src);
     await_initial_diagnostics(&client, &inc_uri);
@@ -227,8 +224,13 @@ pub struct Increment<'info> {\n\
         110,
         CompletionParams {
             text_document_position: TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier { uri: inc_uri.clone() },
-                position: Position { line: 1, character: col },
+                text_document: TextDocumentIdentifier {
+                    uri: inc_uri.clone(),
+                },
+                position: Position {
+                    line: 1,
+                    character: col,
+                },
             },
             work_done_progress_params: WorkDoneProgressParams::default(),
             partial_result_params: PartialResultParams::default(),
@@ -252,21 +254,11 @@ fn references_finds_account_type_uses_across_files() {
     handshake(&client);
 
     let state_src = "\
-#[account(discriminator = 1)]\n\
-pub struct Counter { pub n: u64 }\n\
-";
+#[account(discriminator = 1)]\npub struct Counter { pub n: u64 }\n";
     let a_src = "\
-#[derive(Accounts)]\n\
-pub struct Inc<'info> {\n\
-    pub counter: &'info mut Account<Counter>,\n\
-}\n\
-";
+#[derive(Accounts)]\npub struct Inc<'info> {\npub counter: &'info mut Account<Counter>,\n}\n";
     let b_src = "\
-#[derive(Accounts)]\n\
-pub struct Dec<'info> {\n\
-    pub counter: &'info mut Account<Counter>,\n\
-}\n\
-";
+#[derive(Accounts)]\npub struct Dec<'info> {\npub counter: &'info mut Account<Counter>,\n}\n";
     let state_uri = Uri::from_str("file:///tmp/state.rs").unwrap();
     let a_uri = Uri::from_str("file:///tmp/inc.rs").unwrap();
     let b_uri = Uri::from_str("file:///tmp/dec.rs").unwrap();
@@ -285,7 +277,10 @@ pub struct Dec<'info> {\n\
         ReferenceParams {
             text_document_position: TextDocumentPositionParams {
                 text_document: TextDocumentIdentifier { uri: a_uri.clone() },
-                position: Position { line: 2, character: col },
+                position: Position {
+                    line: 2,
+                    character: col,
+                },
             },
             work_done_progress_params: WorkDoneProgressParams::default(),
             partial_result_params: PartialResultParams::default(),
@@ -322,15 +317,9 @@ fn references_without_include_declaration_omits_def_site() {
     handshake(&client);
 
     let state_src = "\
-#[account(discriminator = 1)]\n\
-pub struct Counter { pub n: u64 }\n\
-";
+#[account(discriminator = 1)]\npub struct Counter { pub n: u64 }\n";
     let inc_src = "\
-#[derive(Accounts)]\n\
-pub struct Inc<'info> {\n\
-    pub counter: &'info mut Account<Counter>,\n\
-}\n\
-";
+#[derive(Accounts)]\npub struct Inc<'info> {\npub counter: &'info mut Account<Counter>,\n}\n";
     let state_uri = Uri::from_str("file:///tmp/state.rs").unwrap();
     let inc_uri = Uri::from_str("file:///tmp/inc.rs").unwrap();
     open(&client, state_uri.clone(), state_src);
@@ -344,8 +333,13 @@ pub struct Inc<'info> {\n\
         210,
         ReferenceParams {
             text_document_position: TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier { uri: inc_uri.clone() },
-                position: Position { line: 2, character: col },
+                text_document: TextDocumentIdentifier {
+                    uri: inc_uri.clone(),
+                },
+                position: Position {
+                    line: 2,
+                    character: col,
+                },
             },
             work_done_progress_params: WorkDoneProgressParams::default(),
             partial_result_params: PartialResultParams::default(),
@@ -374,14 +368,8 @@ fn document_symbol_lists_both_account_and_accounts_struct() {
     handshake(&client);
 
     let src = "\
-#[account(discriminator = 1)]\n\
-pub struct Counter { pub n: u64 }\n\
-\n\
-#[derive(Accounts)]\n\
-pub struct Increment<'info> {\n\
-    pub counter: &'info mut Account<Counter>,\n\
-}\n\
-";
+#[account(discriminator = 1)]\npub struct Counter { pub n: u64 }\n\n#[derive(Accounts)]\npub \
+               struct Increment<'info> {\npub counter: &'info mut Account<Counter>,\n}\n";
     let uri = Uri::from_str("file:///tmp/mixed.rs").unwrap();
     open(&client, uri.clone(), src);
     await_initial_diagnostics(&client, &uri);

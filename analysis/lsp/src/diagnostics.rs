@@ -1,13 +1,14 @@
 //! Converts `quasar-hir`'s `HirDiagnostic` to `lsp_types::Diagnostic` and
 //! translates byte offsets to LSP `Position`s using a [`LineIndex`].
 
-use lsp_types::{
-    Diagnostic as LspDiagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, Location,
-    NumberOrString, Position, Range as LspRange, Uri,
+use {
+    lsp_types::{
+        Diagnostic as LspDiagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, Location,
+        NumberOrString, Position, Range as LspRange, Uri,
+    },
+    quasar_hir::HirDiagnostic,
+    quasar_syntax::{diagnostics::Severity, LineIndex},
 };
-use quasar_hir::HirDiagnostic;
-use quasar_syntax::diagnostics::Severity;
-use quasar_syntax::LineIndex;
 
 pub fn convert(d: &HirDiagnostic, text: &str, line_index: &LineIndex, uri: &Uri) -> LspDiagnostic {
     let related: Vec<DiagnosticRelatedInformation> = d
@@ -29,7 +30,11 @@ pub fn convert(d: &HirDiagnostic, text: &str, line_index: &LineIndex, uri: &Uri)
         code_description: None,
         source: Some("quasar".to_string()),
         message: d.message.clone(),
-        related_information: if related.is_empty() { None } else { Some(related) },
+        related_information: if related.is_empty() {
+            None
+        } else {
+            Some(related)
+        },
         tags: None,
         data: None,
     }

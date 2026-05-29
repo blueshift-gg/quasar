@@ -2,28 +2,32 @@
 //! the response value. The handlers are pure functions over the snapshot —
 //! they don't touch live server state.
 
-use crate::capabilities::{TOK_KEYWORD, TOK_NAMESPACE, TOK_PROPERTY};
-use crate::diagnostics::{byte_range_to_lsp_range, lsp_position_to_byte_offset, position_for};
-use crate::snapshot::Snapshot;
-use lsp_types::{
-    CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeActionResponse,
-    CodeLens, CodeLensParams, CompletionItem, CompletionItemKind, CompletionParams,
-    CompletionResponse, DocumentHighlight, DocumentHighlightKind, DocumentHighlightParams,
-    DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
-    GotoDefinitionResponse, Hover, HoverContents, HoverParams, InlayHint, InlayHintKind,
-    InlayHintLabel, InlayHintParams, Location, MarkupContent, MarkupKind, Position,
-    ReferenceParams, SemanticToken, SemanticTokens, SemanticTokensParams, SemanticTokensResult,
-    SymbolInformation, SymbolKind, TextEdit, WorkspaceEdit, WorkspaceSymbolParams,
-    WorkspaceSymbolResponse,
+use {
+    crate::{
+        capabilities::{TOK_KEYWORD, TOK_NAMESPACE, TOK_PROPERTY},
+        diagnostics::{byte_range_to_lsp_range, lsp_position_to_byte_offset, position_for},
+        snapshot::Snapshot,
+    },
+    lsp_types::{
+        CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeActionResponse,
+        CodeLens, CodeLensParams, CompletionItem, CompletionItemKind, CompletionParams,
+        CompletionResponse, DocumentHighlight, DocumentHighlightKind, DocumentHighlightParams,
+        DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
+        GotoDefinitionResponse, Hover, HoverContents, HoverParams, InlayHint, InlayHintKind,
+        InlayHintLabel, InlayHintParams, Location, MarkupContent, MarkupKind, Position,
+        ReferenceParams, SemanticToken, SemanticTokens, SemanticTokensParams, SemanticTokensResult,
+        SymbolInformation, SymbolKind, TextEdit, WorkspaceEdit, WorkspaceSymbolParams,
+        WorkspaceSymbolResponse,
+    },
+    quasar_hir::{
+        data_struct_index, line_index_for, parse_file, resolve_account_refs, resolve_has_one,
+        workspace_symbol_index, AccountRef, AccountRefResolution, Database, File, ItemHead,
+        ItemKind, Workspace,
+    },
+    quasar_syntax::LineIndex,
+    std::collections::HashMap,
+    syn::{Attribute, GenericArgument, Item, PathArguments, Type},
 };
-use quasar_hir::{
-    data_struct_index, line_index_for, parse_file, resolve_account_refs, resolve_has_one,
-    workspace_symbol_index, AccountRef, AccountRefResolution, Database, File, ItemHead, ItemKind,
-    Workspace,
-};
-use quasar_syntax::LineIndex;
-use std::collections::HashMap;
-use syn::{Attribute, GenericArgument, Item, PathArguments, Type};
 
 pub fn handle_hover(snapshot: &Snapshot, params: HoverParams) -> Option<Hover> {
     let uri = &params.text_document_position_params.text_document.uri;
@@ -155,8 +159,12 @@ fn has_one_target_definition(
 
     let def_text = def_file.text(&snapshot.db).clone();
     let def_line_index = line_index_for(&snapshot.db, def_file);
-    let range =
-        byte_range_to_lsp_range(&def_line_index, &def_text, field_range.start, field_range.end);
+    let range = byte_range_to_lsp_range(
+        &def_line_index,
+        &def_text,
+        field_range.start,
+        field_range.end,
+    );
     let def_uri = snapshot.uri_for(def_file)?.clone();
     Some(Location {
         uri: def_uri,
@@ -278,12 +286,8 @@ pub fn handle_document_symbol(
         .items(&snapshot.db)
         .iter()
         .map(|item| {
-            let range = byte_range_to_lsp_range(
-                &line_index,
-                &text,
-                item.range.start,
-                item.range.end,
-            );
+            let range =
+                byte_range_to_lsp_range(&line_index, &text, item.range.start, item.range.end);
             let detail = Some(match item.kind {
                 ItemKind::AccountType => "#[account]".to_string(),
                 ItemKind::AccountsStruct => "#[derive(Accounts)]".to_string(),
@@ -345,10 +349,7 @@ pub fn handle_semantic_tokens_full(
     }))
 }
 
-pub fn handle_inlay_hint(
-    snapshot: &Snapshot,
-    params: InlayHintParams,
-) -> Option<Vec<InlayHint>> {
+pub fn handle_inlay_hint(snapshot: &Snapshot, params: InlayHintParams) -> Option<Vec<InlayHint>> {
     let uri = &params.text_document.uri;
     let file = snapshot.file_for(uri)?;
     let text = file.text(&snapshot.db).clone();
@@ -373,7 +374,7 @@ pub fn handle_inlay_hint(
         // hints for the whole file.
         let Some(bytes) = disc_cache
             .entry(account_ref.name.clone())
-            .or_insert_with(|| lookup_discriminator(&snapshot.db, &index, &account_ref.name))
+            .or_insert_with(|| lookup_discriminator(&snapshot.db, index, &account_ref.name))
             .clone()
         else {
             continue;
@@ -464,8 +465,7 @@ pub fn handle_code_action(
                 }
             }
             "quasar::has_one_missing_account_field" => {
-                if let Some(action) =
-                    add_field_to_account_type_action(snapshot, file, &text, diag)
+                if let Some(action) = add_field_to_account_type_action(snapshot, file, &text, diag)
                 {
                     actions.push(action);
                 }
@@ -481,9 +481,14 @@ pub fn handle_code_action(
 
     // Position-based refactor: insert #[account] on a bare struct under the
     // cursor (not driven by a diagnostic).
-    if let Some(action) =
-        bare_struct_insert_action(&snapshot.db, file, &text, &line_index, &uri, params.range.start)
-    {
+    if let Some(action) = bare_struct_insert_action(
+        &snapshot.db,
+        file,
+        &text,
+        &line_index,
+        &uri,
+        params.range.start,
+    ) {
         actions.push(action);
     }
 
@@ -601,12 +606,16 @@ fn bare_struct_insert_action(
         };
         let item_range = item_struct.ident.span().byte_range();
         let struct_kw = item_struct.struct_token.span.byte_range();
-        let on_struct = (struct_kw.start as u32) <= byte_offset
-            && byte_offset <= (item_range.end as u32);
+        let on_struct =
+            (struct_kw.start as u32) <= byte_offset && byte_offset <= (item_range.end as u32);
         if !on_struct {
             continue;
         }
-        if item_struct.attrs.iter().any(|a| a.path().is_ident("account")) {
+        if item_struct
+            .attrs
+            .iter()
+            .any(|a| a.path().is_ident("account"))
+        {
             continue;
         }
         if item_struct.attrs.iter().any(derives_accounts) {
@@ -756,12 +765,8 @@ pub fn handle_workspace_symbol(
             if !item.name.to_lowercase().contains(&query) {
                 continue;
             }
-            let range = byte_range_to_lsp_range(
-                &line_index,
-                &file_text,
-                item.range.start,
-                item.range.end,
-            );
+            let range =
+                byte_range_to_lsp_range(&line_index, &file_text, item.range.start, item.range.end);
             #[allow(deprecated)]
             out.push(SymbolInformation {
                 name: item.name.clone(),
@@ -819,12 +824,8 @@ pub fn handle_document_highlight(
     let parsed = parse_file(&snapshot.db, file);
     for item in parsed.items(&snapshot.db).iter() {
         if item.kind == ItemKind::AccountType && item.name == name {
-            let range = byte_range_to_lsp_range(
-                &line_index,
-                &text,
-                item.range.start,
-                item.range.end,
-            );
+            let range =
+                byte_range_to_lsp_range(&line_index, &text, item.range.start, item.range.end);
             highlights.push(DocumentHighlight {
                 range,
                 kind: Some(DocumentHighlightKind::WRITE),
@@ -1092,8 +1093,7 @@ fn emit_account_attr_tokens(
                             _ => TOK_PROPERTY,
                         };
                         let r = ident.span().byte_range();
-                        let (line, col) =
-                            position_of_byte_in_lsp(text, line_index, r.start as u32);
+                        let (line, col) = position_of_byte_in_lsp(text, line_index, r.start as u32);
                         let length = name.encode_utf16().count() as u32;
                         out.push(ProtoToken {
                             line,

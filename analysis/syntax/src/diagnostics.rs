@@ -1,7 +1,6 @@
 //! Diagnostic data shared by parser, resolver, and both consumers.
 
-use proc_macro2::Span;
-use std::collections::HashSet;
+use {proc_macro2::Span, std::collections::HashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Severity {
@@ -141,9 +140,9 @@ pub enum Fix {
 ///
 /// `emit()` deduplicates by `(primary span, code)`. `mark_parse_failed` /
 /// `is_parse_failed` let the resolver skip emitting on input the parser
-/// already reported as broken. [`dedup_subsume_narrower`](Self::dedup_subsume_narrower)
-/// drops diagnostics whose primary span strictly contains another's of the
-/// same [`DiagFamily`].
+/// already reported as broken.
+/// [`dedup_subsume_narrower`](Self::dedup_subsume_narrower) drops diagnostics
+/// whose primary span strictly contains another's of the same [`DiagFamily`].
 #[derive(Debug, Default)]
 pub struct Diagnostics {
     items: Vec<Diagnostic>,

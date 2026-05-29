@@ -1,7 +1,9 @@
 //! Lowered representations downstream of parser output.
 
-use quasar_syntax::accounts::{BehaviorGroup, InitDirective, UserCheck};
-use syn::{Expr, Ident, Type};
+use {
+    quasar_syntax::accounts::{BehaviorGroup, InitDirective, UserCheck},
+    syn::{Expr, Ident, Type},
+};
 
 /// Account field shape for parsing and account-count planning.
 #[derive(Clone, Copy, PartialEq, Eq)]

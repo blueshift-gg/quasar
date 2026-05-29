@@ -1,6 +1,10 @@
-use quasar_syntax::account::{parse_recoverable, parse_strict, AccountAttrAst};
-use quasar_syntax::diagnostics::{DiagCode, Diagnostics};
-use syn::parse::{Parser, ParseStream};
+use {
+    quasar_syntax::{
+        account::{parse_recoverable, parse_strict, AccountAttrAst},
+        diagnostics::{DiagCode, Diagnostics},
+    },
+    syn::parse::{ParseStream, Parser},
+};
 
 /// Helper: run `parse_recoverable` against a string and return (ast, sink).
 fn parse(source: &str) -> (AccountAttrAst, Diagnostics) {
@@ -8,7 +12,9 @@ fn parse(source: &str) -> (AccountAttrAst, Diagnostics) {
     let parser = |input: ParseStream| -> syn::Result<AccountAttrAst> {
         Ok(parse_recoverable(input, &mut diagnostics))
     };
-    let ast = parser.parse_str(source).expect("recoverable parse never returns Err");
+    let ast = parser
+        .parse_str(source)
+        .expect("recoverable parse never returns Err");
     (ast, diagnostics)
 }
 
@@ -20,9 +26,7 @@ fn strict_mode_accepts_well_formed_input() {
         .expect("well-formed input parses cleanly");
     let clause = ast.discriminator.expect("discriminator parsed");
     assert_eq!(clause.lits.len(), 1);
-    let value: u64 = clause.lits[0]
-        .base10_parse()
-        .expect("LitInt parses as u64");
+    let value: u64 = clause.lits[0].base10_parse().expect("LitInt parses as u64");
     assert_eq!(value, 7);
     assert!(ast.set_inner.is_some());
 }
@@ -62,11 +66,7 @@ fn recoverable_mode_continues_past_malformed_directive() {
         !diagnostics.is_empty(),
         "broken input must produce at least one diagnostic"
     );
-    let codes: Vec<_> = diagnostics
-        .items()
-        .iter()
-        .map(|d| d.code)
-        .collect();
+    let codes: Vec<_> = diagnostics.items().iter().map(|d| d.code).collect();
     assert!(
         codes.contains(&DiagCode::AccountAttrMalformedDirective),
         "expected malformed-directive diagnostic, got {:?}",
@@ -77,7 +77,10 @@ fn recoverable_mode_continues_past_malformed_directive() {
 #[test]
 fn recoverable_mode_emits_unknown_directive_diagnostic() {
     let (ast, diagnostics) = parse("bogus, one_of");
-    assert!(ast.one_of.is_some(), "good directive after unknown still parses");
+    assert!(
+        ast.one_of.is_some(),
+        "good directive after unknown still parses"
+    );
     let codes: Vec<_> = diagnostics.items().iter().map(|d| d.code).collect();
     assert!(
         codes.contains(&DiagCode::AccountAttrUnknownDirective),

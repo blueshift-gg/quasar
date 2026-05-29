@@ -8,11 +8,13 @@
 //! Recovery speculatively parses each directive on a fork; on failure the
 //! real stream advances to the next sync point (comma at attr-body depth).
 
-use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics, Severity};
-use proc_macro2::{Span, TokenTree};
-use syn::{
-    parse::{discouraged::Speculative, Parse, ParseStream},
-    LitInt, Path, Result as SynResult, Token,
+use {
+    crate::diagnostics::{DiagCode, Diagnostic, Diagnostics, Severity},
+    proc_macro2::{Span, TokenTree},
+    syn::{
+        parse::{discouraged::Speculative, Parse, ParseStream},
+        LitInt, Path, Result as SynResult, Token,
+    },
 };
 
 #[derive(Debug, Default)]
@@ -131,11 +133,7 @@ pub fn parse_recoverable(input: ParseStream, sink: &mut Diagnostics) -> AccountA
 /// Applies the cross-directive rules on top of a (possibly partial) AST and
 /// pushes any violations to the sink. `fallback_span` is used when the
 /// violation refers to absence rather than a specific token.
-pub fn validate_recoverable(
-    ast: &AccountAttrAst,
-    sink: &mut Diagnostics,
-    fallback_span: Span,
-) {
+pub fn validate_recoverable(ast: &AccountAttrAst, sink: &mut Diagnostics, fallback_span: Span) {
     let has_disc = ast.discriminator.is_some();
     let has_unsafe = ast.unsafe_no_disc.is_some();
     let is_one_of = ast.one_of.is_some();
@@ -196,10 +194,7 @@ pub fn validate_recoverable(
 /// Converts the parsed discriminator literals into raw bytes. Each literal
 /// must fit in a `u8`; otherwise an error diagnostic is pushed and the
 /// offending byte is replaced with `0` in the returned vector.
-pub fn parse_discriminator_bytes(
-    disc: &DiscriminatorClause,
-    sink: &mut Diagnostics,
-) -> Vec<u8> {
+pub fn parse_discriminator_bytes(disc: &DiscriminatorClause, sink: &mut Diagnostics) -> Vec<u8> {
     disc.lits
         .iter()
         .map(|lit| match lit.base10_parse::<u8>() {

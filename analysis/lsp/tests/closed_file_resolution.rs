@@ -8,23 +8,28 @@
 //! references all resolve into the closed file, which they could not before
 //! member sources were indexed (the symbol index held open buffers only).
 
-use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
-use lsp_types::notification::{
-    DidOpenTextDocument, Initialized, Notification as _, PublishDiagnostics,
+// `Uri` map keys are safe: fluent-uri's interior cache doesn't affect Hash/Eq.
+#![allow(clippy::mutable_key_type)]
+
+use {
+    lsp_server::{Connection, Message, Notification, Request, RequestId, Response},
+    lsp_types::{
+        notification::{DidOpenTextDocument, Initialized, Notification as _, PublishDiagnostics},
+        request::{GotoDefinition, Initialize, References, Request as _},
+        DidOpenTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, InitializeParams,
+        InitializedParams, Location, PartialResultParams, Position, PublishDiagnosticsParams,
+        ReferenceContext, ReferenceParams, TextDocumentIdentifier, TextDocumentItem,
+        TextDocumentPositionParams, Uri, WorkDoneProgressParams,
+    },
+    quasar_lsp::{capabilities::server_capabilities, Server, WorkspaceConfig},
+    std::{
+        collections::HashMap,
+        path::PathBuf,
+        str::FromStr,
+        sync::atomic::{AtomicU64, Ordering},
+        time::Duration,
+    },
 };
-use lsp_types::request::{GotoDefinition, Initialize, References, Request as _};
-use lsp_types::{
-    DidOpenTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, InitializeParams,
-    InitializedParams, Location, PartialResultParams, Position, PublishDiagnosticsParams,
-    ReferenceContext, ReferenceParams, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentPositionParams, Uri, WorkDoneProgressParams,
-};
-use quasar_lsp::{capabilities::server_capabilities, Server, WorkspaceConfig};
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
 
 const ESCROW: &str = "\
 #[account(discriminator = 1)]
@@ -67,11 +72,7 @@ impl Drop for TempWs {
 fn unique_temp_ws() -> TempWs {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!(
-        "quasar-lsp-closed-{}-{}",
-        std::process::id(),
-        n
-    ));
+    let dir = std::env::temp_dir().join(format!("quasar-lsp-closed-{}-{}", std::process::id(), n));
     let src = dir.join("src");
     std::fs::create_dir_all(&src).expect("create temp src dir");
     let state_path = src.join("state.rs");
@@ -247,7 +248,9 @@ fn has_one_field_check_fires_with_defining_file_closed() {
     let codes = diag_codes(&diags);
 
     assert!(
-        codes.iter().any(|c| c.contains("has_one_missing_account_field")),
+        codes
+            .iter()
+            .any(|c| c.contains("has_one_missing_account_field")),
         "has_one(taker) should be flagged as a missing field on the closed Escrow, got {:?}",
         codes
     );
@@ -263,7 +266,11 @@ fn has_one_field_check_fires_with_defining_file_closed() {
         .iter()
         .filter(|c| c.contains("has_one_missing_account_field"))
         .count();
-    assert_eq!(missing, 1, "only has_one(taker) should miss, got {:?}", codes);
+    assert_eq!(
+        missing, 1,
+        "only has_one(taker) should miss, got {:?}",
+        codes
+    );
 }
 
 #[test]
@@ -347,7 +354,11 @@ fn references_include_closed_file_declaration() {
     // Two `Account<Escrow>` uses in the open file, plus the declaration in the
     // closed file.
     let in_make = locations.iter().filter(|l| l.uri == ws.make_uri).count();
-    assert_eq!(in_make, 2, "both Account<Escrow> uses in make.rs, got {:?}", locations);
+    assert_eq!(
+        in_make, 2,
+        "both Account<Escrow> uses in make.rs, got {:?}",
+        locations
+    );
     assert!(
         locations.iter().any(|l| l.uri == ws.state_uri),
         "the declaration in the closed state.rs should be included, got {:?}",

@@ -15,6 +15,10 @@ pub enum Directive {
 }
 
 /// Core structural directives: owned by the derive, not by protocol crates.
+// Variants wrap `syn::Expr` (large by nature); these directives are short-lived
+// during parsing, so boxing every expr to equalize variants isn't worth the
+// churn across the parser, HIR, and derive.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum CoreDirective {
     Mut,
@@ -58,6 +62,7 @@ pub struct BehaviorArg {
 }
 
 /// User-specified structural assertion.
+#[allow(clippy::large_enum_variant)] // variants wrap `syn::Expr`; see `CoreDirective`
 #[derive(Debug)]
 pub enum UserCheck {
     HasOne {

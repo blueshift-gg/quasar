@@ -1,23 +1,22 @@
-use lsp_server::Connection;
-use lsp_types::InitializeParams;
-use quasar_lsp::{capabilities::server_capabilities, init_logging, Server};
-use std::error::Error;
-use std::path::PathBuf;
+use {
+    lsp_server::Connection,
+    lsp_types::InitializeParams,
+    quasar_lsp::{capabilities::server_capabilities, init_logging, Server},
+    std::{error::Error, path::PathBuf},
+};
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     init_logging();
     tracing::info!("quasar-lsp starting");
 
     let (connection, io_threads) = Connection::stdio();
-    let caps =
-        serde_json::to_value(server_capabilities()).expect("server capabilities serialise");
+    let caps = serde_json::to_value(server_capabilities()).expect("server capabilities serialise");
     let init_value = connection.initialize(caps)?;
     let params: InitializeParams = serde_json::from_value(init_value)?;
     let roots = extract_workspace_roots(&params);
     let supports_watching = supports_file_watching(&params);
 
-    let server =
-        Server::with_workspace_roots(connection.sender.clone(), roots, supports_watching);
+    let server = Server::with_workspace_roots(connection.sender.clone(), roots, supports_watching);
     server.run(&connection)?;
 
     io_threads.join()?;

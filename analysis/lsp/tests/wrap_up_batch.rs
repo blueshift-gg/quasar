@@ -1,21 +1,22 @@
 //! Coverage for the wrap-up batch: multi-folder activation, fs-watcher
 //! registration, and the completed diagnostic-driven code actions.
 
-use lsp_server::{Connection, Message, Notification, Request, RequestId};
-use lsp_types::notification::{
-    DidOpenTextDocument, Initialized, Notification as _, PublishDiagnostics,
+// `Uri` map keys are safe: fluent-uri's interior cache doesn't affect Hash/Eq.
+#![allow(clippy::mutable_key_type)]
+
+use {
+    lsp_server::{Connection, Message, Notification, Request, RequestId},
+    lsp_types::{
+        notification::{DidOpenTextDocument, Initialized, Notification as _, PublishDiagnostics},
+        request::{CodeActionRequest, Initialize, RegisterCapability, Request as _},
+        CodeActionContext, CodeActionOrCommand, CodeActionParams, CodeActionResponse, Diagnostic,
+        DidOpenTextDocumentParams, InitializeParams, InitializedParams, PartialResultParams,
+        Position, PublishDiagnosticsParams, Range, TextDocumentIdentifier, TextDocumentItem, Uri,
+        WorkDoneProgressParams,
+    },
+    quasar_lsp::{capabilities::server_capabilities, Server, WorkspaceConfig},
+    std::{path::PathBuf, str::FromStr, time::Duration},
 };
-use lsp_types::request::{CodeActionRequest, Initialize, RegisterCapability, Request as _};
-use lsp_types::{
-    CodeActionContext, CodeActionOrCommand, CodeActionParams, CodeActionResponse, Diagnostic,
-    DidOpenTextDocumentParams, InitializeParams, InitializedParams, PartialResultParams, Position,
-    PublishDiagnosticsParams, Range, TextDocumentIdentifier, TextDocumentItem, Uri,
-    WorkDoneProgressParams,
-};
-use quasar_lsp::{capabilities::server_capabilities, Server, WorkspaceConfig};
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::time::Duration;
 
 fn spawn_with_config(config: WorkspaceConfig) -> Connection {
     let (server_conn, client_conn) = Connection::memory();
@@ -35,8 +36,7 @@ fn spawn_with_watching(root: PathBuf) -> Connection {
         let caps = serde_json::to_value(server_capabilities()).unwrap();
         let init_value = server_conn.initialize(caps).expect("handshake");
         let _: InitializeParams = serde_json::from_value(init_value).unwrap();
-        let server =
-            Server::with_workspace_roots(server_conn.sender.clone(), vec![root], true);
+        let server = Server::with_workspace_roots(server_conn.sender.clone(), vec![root], true);
         server.run(&server_conn).expect("server loop");
     });
     client_conn
@@ -171,10 +171,7 @@ fn recv_until(
 fn multi_folder_services_files_in_every_crate_root() {
     let config = WorkspaceConfig {
         workspace_roots: vec![PathBuf::from("/tmp/a"), PathBuf::from("/tmp/b")],
-        quasar_crate_roots: vec![
-            PathBuf::from("/tmp/a/prog"),
-            PathBuf::from("/tmp/b/prog"),
-        ],
+        quasar_crate_roots: vec![PathBuf::from("/tmp/a/prog"), PathBuf::from("/tmp/b/prog")],
         known_account_types: Vec::new(),
         indexed_source_files: Vec::new(),
     };
@@ -202,8 +199,7 @@ fn multi_folder_services_files_in_every_crate_root() {
         };
         if let Message::Notification(n) = msg {
             if n.method == PublishDiagnostics::METHOD {
-                if let Ok(p) =
-                    serde_json::from_value::<PublishDiagnosticsParams>(n.params.clone())
+                if let Ok(p) = serde_json::from_value::<PublishDiagnosticsParams>(n.params.clone())
                 {
                     if (p.uri == a || p.uri == b) && !p.diagnostics.is_empty() {
                         seen.insert(p.uri, p.diagnostics);
@@ -233,8 +229,7 @@ fn registers_cargo_watchers_on_initialized() {
     .expect("server should send client/registerCapability");
     match msg {
         Message::Request(req) => {
-            let params: lsp_types::RegistrationParams =
-                serde_json::from_value(req.params).unwrap();
+            let params: lsp_types::RegistrationParams = serde_json::from_value(req.params).unwrap();
             assert!(
                 params
                     .registrations
@@ -274,7 +269,13 @@ fn code_action_add_discriminator_and_unsafe_for_missing_disc() {
         .expect("missing-discriminator diagnostic")
         .clone();
 
-    send_code_action(&client, 50, uri.clone(), missing.range, vec![missing.clone()]);
+    send_code_action(
+        &client,
+        50,
+        uri.clone(),
+        missing.range,
+        vec![missing.clone()],
+    );
     let resp = await_code_action(&client, 50);
     let titles = action_titles(&resp);
     assert!(
@@ -306,8 +307,14 @@ fn code_action_insert_account_on_bare_struct() {
 
     // Cursor on the struct name.
     let range = Range {
-        start: Position { line: 0, character: 11 },
-        end: Position { line: 0, character: 11 },
+        start: Position {
+            line: 0,
+            character: 11,
+        },
+        end: Position {
+            line: 0,
+            character: 11,
+        },
     };
     send_code_action(&client, 70, uri.clone(), range, vec![]);
     let resp = await_code_action(&client, 70);

@@ -1,5 +1,4 @@
-use proc_macro2::TokenStream;
-use std::str::FromStr;
+use {proc_macro2::TokenStream, std::str::FromStr};
 
 #[test]
 fn byte_range_maps_to_input_offsets() {

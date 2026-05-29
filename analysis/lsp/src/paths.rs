@@ -6,10 +6,14 @@
 //! the server appears silently dead. These helpers round-trip correctly so
 //! activation and goto work wherever the project lives.
 
-use lsp_types::Uri;
-use percent_encoding::{percent_decode_str, utf8_percent_encode, AsciiSet, CONTROLS};
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use {
+    lsp_types::Uri,
+    percent_encoding::{percent_decode_str, utf8_percent_encode, AsciiSet, CONTROLS},
+    std::{
+        path::{Path, PathBuf},
+        str::FromStr,
+    },
+};
 
 /// Characters encoded when building a file URI. We deliberately leave `/`
 /// (separators) and `:` (Windows drive) intact and encode the rest of the
@@ -106,7 +110,11 @@ mod tests {
         let p = Path::new("/Users/me/My Project/café/lib.rs");
         let uri = path_to_uri(p).unwrap();
         // Space and non-ASCII must be percent-encoded in the URI…
-        assert!(uri.as_str().contains("My%20Project"), "got {}", uri.as_str());
+        assert!(
+            uri.as_str().contains("My%20Project"),
+            "got {}",
+            uri.as_str()
+        );
         assert!(!uri.as_str().contains(' '));
         // …and decode back to the original path.
         assert_eq!(uri_to_path(&uri).unwrap(), p);

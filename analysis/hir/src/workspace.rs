@@ -2,13 +2,19 @@
 //! name -> defining-file index built from per-file scope scans, augmented
 //! with account-type names discovered in dependency-crate sources.
 
-use crate::db::Db;
-use crate::input::File;
-use crate::items::{FieldDecl, ItemKind, Symbol};
-use crate::parse::parse_file;
-use crate::scope::scope_items;
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use {
+    crate::{
+        db::Db,
+        input::File,
+        items::{FieldDecl, ItemKind, Symbol},
+        parse::parse_file,
+        scope::scope_items,
+    },
+    std::{
+        collections::{HashMap, HashSet},
+        sync::Arc,
+    },
+};
 
 /// All files visible to one cross-file analysis, plus the set of `#[account]`
 /// type names found in dependency-crate sources (e.g. SPL `Mint`/`Token`).
@@ -78,10 +84,7 @@ pub struct DataStruct {
 /// each file's [`ParsedFile::data_structs`](crate::parse::ParsedFile). The
 /// first declaration of a given name wins (stable across files).
 #[salsa::tracked(returns(ref))]
-pub fn data_struct_index<'db>(
-    db: &'db dyn Db,
-    workspace: Workspace,
-) -> Arc<HashMap<String, DataStruct>> {
+pub fn data_struct_index(db: &dyn Db, workspace: Workspace) -> Arc<HashMap<String, DataStruct>> {
     let mut map: HashMap<String, DataStruct> = HashMap::new();
     for &file in workspace.files(db) {
         let parsed = parse_file(db, file);
@@ -96,17 +99,15 @@ pub fn data_struct_index<'db>(
 }
 
 #[salsa::tracked(returns(ref))]
-pub fn workspace_symbol_index<'db>(
-    db: &'db dyn Db,
-    workspace: Workspace,
-) -> Arc<SymbolIndex> {
+pub fn workspace_symbol_index(db: &dyn Db, workspace: Workspace) -> Arc<SymbolIndex> {
     let mut entries: HashMap<String, SymbolEntry> = HashMap::new();
     for &file in workspace.files(db) {
         let symbols: &Arc<[Symbol]> = scope_items(db, file);
         for sym in symbols.iter() {
-            entries
-                .entry(sym.name.clone())
-                .or_insert(SymbolEntry { file, kind: sym.kind });
+            entries.entry(sym.name.clone()).or_insert(SymbolEntry {
+                file,
+                kind: sym.kind,
+            });
         }
     }
     let external: HashSet<String> = workspace.known_account_types(db).iter().cloned().collect();

@@ -1,9 +1,11 @@
 //! Constraint validation: structural rules from the derive surfaced as
 //! diagnostics.
 
-use quasar_hir::{db::Database, validate_accounts, File};
-use quasar_syntax::diagnostics::DiagCode;
-use std::sync::Arc;
+use {
+    quasar_hir::{db::Database, validate_accounts, File},
+    quasar_syntax::diagnostics::DiagCode,
+    std::sync::Arc,
+};
 
 fn diagnostics(src: &str) -> Vec<DiagCode> {
     let db = Database::default();

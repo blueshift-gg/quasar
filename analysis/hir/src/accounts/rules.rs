@@ -3,9 +3,7 @@
 //! Protocol-specific validation (required args, arg types, exit ordering)
 //! is owned by behavior modules via builder errors and trait bounds.
 
-use super::model::FieldSemantics;
-use std::collections::HashSet;
-use syn::Expr;
+use {super::model::FieldSemantics, std::collections::HashSet, syn::Expr};
 
 pub fn validate_semantics(semantics: &[FieldSemantics]) -> syn::Result<()> {
     let field_names: HashSet<String> = semantics
@@ -222,4 +220,3 @@ fn validate_single_arg(
     }
     Ok(())
 }
-

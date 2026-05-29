@@ -2,10 +2,14 @@
 //!
 //! Reads FieldSemantics, produces phase-ordered BehaviorCall candidates.
 
-use super::model::{FieldKind, FieldSemantics, ValueKind};
-use super::specs::*;
-use quasar_syntax::accounts::BehaviorGroup;
-use syn::{Expr, Ident, Type};
+use {
+    super::{
+        model::{FieldKind, FieldSemantics, ValueKind},
+        specs::*,
+    },
+    quasar_syntax::accounts::BehaviorGroup,
+    syn::{Expr, Ident, Type},
+};
 
 pub fn build_plan(semantics: &[FieldSemantics]) -> syn::Result<AccountsPlanTyped> {
     let field_names: Vec<String> = semantics

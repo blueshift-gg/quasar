@@ -5,9 +5,11 @@
 //! consistent point in time. The Salsa database itself is internally Arc'd,
 //! so cloning is cheap.
 
-use lsp_types::Uri;
-use quasar_hir::{Database, File, Workspace};
-use std::collections::HashMap;
+use {
+    lsp_types::Uri,
+    quasar_hir::{Database, File, Workspace},
+    std::collections::HashMap,
+};
 
 pub struct Snapshot {
     pub db: Database,

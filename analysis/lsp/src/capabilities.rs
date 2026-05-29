@@ -38,14 +38,14 @@ pub fn server_capabilities() -> ServerCapabilities {
             trigger_characters: Some(vec!["<".to_string()]),
             ..Default::default()
         }),
-        semantic_tokens_provider: Some(
-            SemanticTokensServerCapabilities::SemanticTokensOptions(SemanticTokensOptions {
+        semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(
+            SemanticTokensOptions {
                 work_done_progress_options: WorkDoneProgressOptions::default(),
                 legend: semantic_token_legend(),
                 range: Some(false),
                 full: Some(SemanticTokensFullOptions::Bool(true)),
-            }),
-        ),
+            },
+        )),
         inlay_hint_provider: Some(OneOf::Right(InlayHintServerCapabilities::Options(
             InlayHintOptions {
                 work_done_progress_options: WorkDoneProgressOptions::default(),

@@ -1,12 +1,12 @@
 //! Salsa query behavior: end-to-end parse on real Quasar source, plus
 //! incremental-recompute checks for cross-file isolation and early cutoff.
 
-use quasar_hir::{
-    db::Database, parse_file, scope_items, File, ItemKind,
+use {
+    quasar_hir::{db::Database, parse_file, scope_items, File, ItemKind},
+    quasar_syntax::diagnostics::DiagCode,
+    salsa::Setter,
+    std::sync::Arc,
 };
-use quasar_syntax::diagnostics::DiagCode;
-use salsa::Setter;
-use std::sync::Arc;
 
 const COUNTER_SRC: &str = r#"
 use quasar_lang::prelude::*;
@@ -44,7 +44,10 @@ fn parse_file_extracts_account_types() {
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].name, "Counter");
     assert_eq!(items[0].kind, ItemKind::AccountType);
-    assert!(parsed.diagnostics(&db).is_empty(), "well-formed source has no diagnostics");
+    assert!(
+        parsed.diagnostics(&db).is_empty(),
+        "well-formed source has no diagnostics"
+    );
 }
 
 #[test]
@@ -109,7 +112,8 @@ fn whitespace_edit_preserves_scope_items() {
     let scope_before = scope_items(&db, file).clone();
 
     let with_whitespace = MULTI_ITEM_SRC.replace("\n\n", "\n\n   \n");
-    file.set_text(&mut db).to(Arc::from(with_whitespace.as_str()));
+    file.set_text(&mut db)
+        .to(Arc::from(with_whitespace.as_str()));
 
     let scope_after = scope_items(&db, file);
     assert_eq!(&scope_before, scope_after);

@@ -1,20 +1,19 @@
 //! Hover and goto-definition request handlers wired end-to-end through the
 //! in-process LSP transport.
 
-use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
-use lsp_types::notification::{
-    DidOpenTextDocument, Initialized, Notification as _, PublishDiagnostics,
+use {
+    lsp_server::{Connection, Message, Notification, Request, RequestId, Response},
+    lsp_types::{
+        notification::{DidOpenTextDocument, Initialized, Notification as _, PublishDiagnostics},
+        request::{GotoDefinition, HoverRequest, Initialize, Request as _},
+        DidOpenTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+        HoverContents, HoverParams, InitializeParams, InitializedParams, Location, Position,
+        PublishDiagnosticsParams, TextDocumentIdentifier, TextDocumentItem,
+        TextDocumentPositionParams, Uri, WorkDoneProgressParams,
+    },
+    quasar_lsp::{capabilities::server_capabilities, Server},
+    std::{str::FromStr, time::Duration},
 };
-use lsp_types::request::{GotoDefinition, HoverRequest, Initialize, Request as _};
-use lsp_types::{
-    DidOpenTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-    HoverContents, HoverParams, InitializeParams, InitializedParams, Location, Position,
-    PublishDiagnosticsParams, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentPositionParams, Uri, WorkDoneProgressParams,
-};
-use quasar_lsp::{capabilities::server_capabilities, Server};
-use std::str::FromStr;
-use std::time::Duration;
 
 fn spawn_server() -> (Connection, std::thread::JoinHandle<()>) {
     let (server_conn, client_conn) = Connection::memory();
@@ -147,10 +146,9 @@ fn hover_on_account_type_returns_resolved_content() {
     let (client, _handle) = spawn_server();
     handshake(&client);
 
-    let counter_src =
-        "#[account(discriminator = 1)]\npub struct Counter { pub n: u64 }\n";
-    let inc_src =
-        "#[derive(Accounts)]\npub struct Increment<'info> {\n    pub counter: &'info mut Account<Counter>,\n}\n";
+    let counter_src = "#[account(discriminator = 1)]\npub struct Counter { pub n: u64 }\n";
+    let inc_src = "#[derive(Accounts)]\npub struct Increment<'info> {\n    pub counter: &'info \
+                   mut Account<Counter>,\n}\n";
 
     let counter_uri = Uri::from_str("file:///tmp/state.rs").unwrap();
     let inc_uri = Uri::from_str("file:///tmp/instructions.rs").unwrap();
@@ -161,15 +159,21 @@ fn hover_on_account_type_returns_resolved_content() {
     await_initial_diagnostics(&client, &inc_uri);
 
     // Position cursor on `Counter` inside `Account<Counter>` (line index 2,
-    // i.e. third line of inc_src — `    pub counter: &'info mut Account<Counter>,`).
+    // i.e. third line of inc_src — `    pub counter: &'info mut
+    // Account<Counter>,`).
     let col = column_of(inc_src, 2, "Counter");
     send_request::<HoverRequest>(
         &client,
         10,
         HoverParams {
             text_document_position_params: TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier { uri: inc_uri.clone() },
-                position: Position { line: 2, character: col },
+                text_document: TextDocumentIdentifier {
+                    uri: inc_uri.clone(),
+                },
+                position: Position {
+                    line: 2,
+                    character: col,
+                },
             },
             work_done_progress_params: WorkDoneProgressParams::default(),
         },
@@ -197,8 +201,8 @@ fn hover_outside_quasar_region_returns_null() {
     let (client, _handle) = spawn_server();
     handshake(&client);
 
-    let inc_src =
-        "#[derive(Accounts)]\npub struct Increment<'info> {\n    pub counter: &'info mut Account<Counter>,\n}\n";
+    let inc_src = "#[derive(Accounts)]\npub struct Increment<'info> {\n    pub counter: &'info \
+                   mut Account<Counter>,\n}\n";
     let inc_uri = Uri::from_str("file:///tmp/instructions.rs").unwrap();
     open(&client, inc_uri.clone(), inc_src);
     await_initial_diagnostics(&client, &inc_uri);
@@ -210,8 +214,13 @@ fn hover_outside_quasar_region_returns_null() {
         20,
         HoverParams {
             text_document_position_params: TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier { uri: inc_uri.clone() },
-                position: Position { line: 1, character: col },
+                text_document: TextDocumentIdentifier {
+                    uri: inc_uri.clone(),
+                },
+                position: Position {
+                    line: 1,
+                    character: col,
+                },
             },
             work_done_progress_params: WorkDoneProgressParams::default(),
         },
@@ -229,10 +238,9 @@ fn goto_definition_resolves_account_type_across_files() {
     let (client, _handle) = spawn_server();
     handshake(&client);
 
-    let counter_src =
-        "#[account(discriminator = 1)]\npub struct Counter { pub n: u64 }\n";
-    let inc_src =
-        "#[derive(Accounts)]\npub struct Increment<'info> {\n    pub counter: &'info mut Account<Counter>,\n}\n";
+    let counter_src = "#[account(discriminator = 1)]\npub struct Counter { pub n: u64 }\n";
+    let inc_src = "#[derive(Accounts)]\npub struct Increment<'info> {\n    pub counter: &'info \
+                   mut Account<Counter>,\n}\n";
 
     let counter_uri = Uri::from_str("file:///tmp/state.rs").unwrap();
     let inc_uri = Uri::from_str("file:///tmp/instructions.rs").unwrap();
@@ -248,8 +256,13 @@ fn goto_definition_resolves_account_type_across_files() {
         30,
         GotoDefinitionParams {
             text_document_position_params: TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier { uri: inc_uri.clone() },
-                position: Position { line: 2, character: col },
+                text_document: TextDocumentIdentifier {
+                    uri: inc_uri.clone(),
+                },
+                position: Position {
+                    line: 2,
+                    character: col,
+                },
             },
             work_done_progress_params: WorkDoneProgressParams::default(),
             partial_result_params: Default::default(),
@@ -277,8 +290,8 @@ fn goto_definition_unknown_account_type_returns_null() {
     let (client, _handle) = spawn_server();
     handshake(&client);
 
-    let inc_src =
-        "#[derive(Accounts)]\npub struct Increment<'info> {\n    pub counter: &'info mut Account<Missing>,\n}\n";
+    let inc_src = "#[derive(Accounts)]\npub struct Increment<'info> {\n    pub counter: &'info \
+                   mut Account<Missing>,\n}\n";
     let inc_uri = Uri::from_str("file:///tmp/instructions.rs").unwrap();
     open(&client, inc_uri.clone(), inc_src);
     await_initial_diagnostics(&client, &inc_uri);
@@ -289,8 +302,13 @@ fn goto_definition_unknown_account_type_returns_null() {
         40,
         GotoDefinitionParams {
             text_document_position_params: TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier { uri: inc_uri.clone() },
-                position: Position { line: 2, character: col },
+                text_document: TextDocumentIdentifier {
+                    uri: inc_uri.clone(),
+                },
+                position: Position {
+                    line: 2,
+                    character: col,
+                },
             },
             work_done_progress_params: WorkDoneProgressParams::default(),
             partial_result_params: Default::default(),

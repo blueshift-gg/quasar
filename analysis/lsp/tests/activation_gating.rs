@@ -3,19 +3,17 @@
 //! diagnostics, and a previously-published diagnostic gets cleared on the
 //! file's didOpen.
 
-use lsp_server::{Connection, Message, Notification, Request, RequestId};
-use lsp_types::notification::{
-    DidOpenTextDocument, Initialized, Notification as _, PublishDiagnostics,
+use {
+    lsp_server::{Connection, Message, Notification, Request, RequestId},
+    lsp_types::{
+        notification::{DidOpenTextDocument, Initialized, Notification as _, PublishDiagnostics},
+        request::{Initialize, Request as _},
+        DidOpenTextDocumentParams, InitializeParams, InitializedParams, PublishDiagnosticsParams,
+        TextDocumentItem, Uri,
+    },
+    quasar_lsp::{capabilities::server_capabilities, Server, WorkspaceConfig},
+    std::{path::PathBuf, str::FromStr, time::Duration},
 };
-use lsp_types::request::{Initialize, Request as _};
-use lsp_types::{
-    DidOpenTextDocumentParams, InitializeParams, InitializedParams, PublishDiagnosticsParams,
-    TextDocumentItem, Uri,
-};
-use quasar_lsp::{capabilities::server_capabilities, Server, WorkspaceConfig};
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::time::Duration;
 
 fn spawn_server_with_config(config: WorkspaceConfig) -> (Connection, std::thread::JoinHandle<()>) {
     let (server_conn, client_conn) = Connection::memory();
@@ -67,7 +65,11 @@ fn open(conn: &Connection, uri: Uri, text: &str) {
         .unwrap();
 }
 
-fn await_diagnostics(conn: &Connection, uri: &Uri, timeout: Duration) -> Vec<lsp_types::Diagnostic> {
+fn await_diagnostics(
+    conn: &Connection,
+    uri: &Uri,
+    timeout: Duration,
+) -> Vec<lsp_types::Diagnostic> {
     let msg = recv_until(
         conn,
         |m| {
@@ -184,8 +186,5 @@ fn no_config_degrades_to_all_files_active() {
     );
 
     let diags = await_diagnostics(&client_conn, &uri, Duration::from_secs(5));
-    assert!(
-        !diags.is_empty(),
-        "with no config, all files are serviced"
-    );
+    assert!(!diags.is_empty(), "with no config, all files are serviced");
 }

@@ -1,23 +1,23 @@
 //! has_one LSP features: diagnostics, goto-definition to the account-type
 //! field, and the "add field to account type" code action.
 
-use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
-use lsp_types::notification::{
-    DidOpenTextDocument, Initialized, Notification as _, PublishDiagnostics,
+// `Uri` map keys are safe: fluent-uri's interior cache doesn't affect Hash/Eq.
+#![allow(clippy::mutable_key_type)]
+
+use {
+    lsp_server::{Connection, Message, Notification, Request, RequestId, Response},
+    lsp_types::{
+        notification::{DidOpenTextDocument, Initialized, Notification as _, PublishDiagnostics},
+        request::{CodeActionRequest, GotoDefinition, Initialize, Request as _},
+        CodeActionContext, CodeActionOrCommand, CodeActionParams, CodeActionResponse, Diagnostic,
+        DidOpenTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, InitializeParams,
+        InitializedParams, Location, PartialResultParams, Position, PublishDiagnosticsParams,
+        TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, Uri,
+        WorkDoneProgressParams,
+    },
+    quasar_lsp::{capabilities::server_capabilities, Server, WorkspaceConfig},
+    std::{collections::HashMap, path::PathBuf, str::FromStr, time::Duration},
 };
-use lsp_types::request::{CodeActionRequest, GotoDefinition, Initialize, Request as _};
-use lsp_types::{
-    CodeActionContext, CodeActionOrCommand, CodeActionParams, CodeActionResponse, Diagnostic,
-    DidOpenTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, InitializeParams,
-    InitializedParams, Location, PartialResultParams, Position, PublishDiagnosticsParams,
-    TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, Uri,
-    WorkDoneProgressParams,
-};
-use quasar_lsp::{capabilities::server_capabilities, Server, WorkspaceConfig};
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::time::Duration;
 
 const VAULT_URI: &str = "file:///tmp/ws/state.rs";
 const IX_URI: &str = "file:///tmp/ws/ix.rs";
@@ -151,7 +151,8 @@ fn column_of(text: &str, line: u32, needle: &str) -> u32 {
     line_text[..byte_col].encode_utf16().count() as u32
 }
 
-const VAULT: &str = "#[account(discriminator = 3)]\npub struct Vault {\n    pub authority: Address,\n    pub amount: u64,\n}\n";
+const VAULT: &str = "#[account(discriminator = 3)]\npub struct Vault {\n    pub authority: \
+                     Address,\n    pub amount: u64,\n}\n";
 
 #[test]
 fn has_one_missing_field_publishes_diagnostic() {
@@ -159,7 +160,8 @@ fn has_one_missing_field_publishes_diagnostic() {
     handshake(&client);
     open(&client, VAULT_URI, VAULT);
     // `manager` is a sibling binding but Vault has no `manager` field.
-    let ix = "#[derive(Accounts)]\npub struct C<'info> {\n    pub manager: Signer,\n    #[account(has_one(manager))]\n    pub vault: &'info Account<Vault>,\n}\n";
+    let ix = "#[derive(Accounts)]\npub struct C<'info> {\n    pub manager: Signer,\n    \
+              #[account(has_one(manager))]\n    pub vault: &'info Account<Vault>,\n}\n";
     open(&client, IX_URI, ix);
 
     let diags = collect_diagnostics(&client, &Uri::from_str(IX_URI).unwrap());
@@ -171,7 +173,9 @@ fn has_one_missing_field_publishes_diagnostic() {
         })
         .collect();
     assert!(
-        codes.iter().any(|c| c.contains("has_one_missing_account_field")),
+        codes
+            .iter()
+            .any(|c| c.contains("has_one_missing_account_field")),
         "expected has_one missing-field diagnostic, got {:?}",
         codes
     );
@@ -182,7 +186,8 @@ fn has_one_target_goto_definition_jumps_to_account_field() {
     let client = spawn();
     handshake(&client);
     open(&client, VAULT_URI, VAULT);
-    let ix = "#[derive(Accounts)]\npub struct C<'info> {\n    pub authority: Signer,\n    #[account(has_one(authority))]\n    pub vault: &'info Account<Vault>,\n}\n";
+    let ix = "#[derive(Accounts)]\npub struct C<'info> {\n    pub authority: Signer,\n    \
+              #[account(has_one(authority))]\n    pub vault: &'info Account<Vault>,\n}\n";
     open(&client, IX_URI, ix);
     let _ = collect_diagnostics(&client, &Uri::from_str(IX_URI).unwrap());
 
@@ -196,7 +201,10 @@ fn has_one_target_goto_definition_jumps_to_account_field() {
                 text_document: TextDocumentIdentifier {
                     uri: Uri::from_str(IX_URI).unwrap(),
                 },
-                position: Position { line: 3, character: col },
+                position: Position {
+                    line: 3,
+                    character: col,
+                },
             },
             work_done_progress_params: WorkDoneProgressParams::default(),
             partial_result_params: PartialResultParams::default(),
@@ -211,7 +219,10 @@ fn has_one_target_goto_definition_jumps_to_account_field() {
     };
     assert_eq!(loc.uri, Uri::from_str(VAULT_URI).unwrap());
     // Vault.authority is on line 2 (zero-indexed) of VAULT.
-    assert_eq!(loc.range.start.line, 2, "should jump to Vault.authority field");
+    assert_eq!(
+        loc.range.start.line, 2,
+        "should jump to Vault.authority field"
+    );
 }
 
 #[test]
@@ -219,7 +230,8 @@ fn add_field_code_action_targets_account_type() {
     let client = spawn();
     handshake(&client);
     open(&client, VAULT_URI, VAULT);
-    let ix = "#[derive(Accounts)]\npub struct C<'info> {\n    pub manager: Signer,\n    #[account(has_one(manager))]\n    pub vault: &'info Account<Vault>,\n}\n";
+    let ix = "#[derive(Accounts)]\npub struct C<'info> {\n    pub manager: Signer,\n    \
+              #[account(has_one(manager))]\n    pub vault: &'info Account<Vault>,\n}\n";
     open(&client, IX_URI, ix);
 
     let diags = collect_diagnostics(&client, &Uri::from_str(IX_URI).unwrap());

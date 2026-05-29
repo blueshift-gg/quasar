@@ -10,20 +10,25 @@
 //! mistakes: referencing a non-existent binding, or an account type that
 //! lacks the named field.
 
-use crate::db::Db;
-use crate::diagnostic::HirDiagnostic;
-use crate::input::File;
-use crate::items::{ByteRange, FieldDecl, ItemKind};
-use crate::parse::parse_file;
-use crate::workspace::{
-    data_struct_index, workspace_symbol_index, DataStruct, SymbolIndex, Workspace,
+use {
+    crate::{
+        db::Db,
+        diagnostic::HirDiagnostic,
+        input::File,
+        items::{ByteRange, FieldDecl, ItemKind},
+        parse::parse_file,
+        workspace::{
+            data_struct_index, workspace_symbol_index, DataStruct, SymbolIndex, Workspace,
+        },
+    },
+    quasar_syntax::{
+        accounts::{parse_field_attrs_recoverable, Directive, UserCheck},
+        diagnostics::{DiagCode, Diagnostic, Diagnostics, Severity},
+        types::extract_generic_inner_type,
+    },
+    std::collections::{HashMap, HashSet},
+    syn::{Item, Type},
 };
-use std::collections::HashMap;
-use quasar_syntax::accounts::{parse_field_attrs_recoverable, Directive, UserCheck};
-use quasar_syntax::diagnostics::{DiagCode, Diagnostic, Diagnostics, Severity};
-use quasar_syntax::types::extract_generic_inner_type;
-use std::collections::HashSet;
-use syn::{Item, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HasOneRef {
@@ -44,7 +49,9 @@ pub enum HasOneResolution {
     /// No sibling binding with this name in the Accounts struct.
     UnknownBinding,
     /// A sibling binding exists, but the account type lacks the named field.
-    MissingAccountField { account_type: String },
+    MissingAccountField {
+        account_type: String,
+    },
 }
 
 #[salsa::tracked(debug)]
@@ -116,7 +123,8 @@ pub fn resolve_has_one<'db>(
                             severity: Severity::Error,
                             code: DiagCode::HasOneUnknownBinding,
                             message: format!(
-                                "`has_one({target})`: no binding `{target}` in this accounts struct"
+                                "`has_one({target})`: no binding `{target}` in this accounts \
+                                 struct"
                             ),
                             primary: target_ident.span(),
                             labels: vec![],

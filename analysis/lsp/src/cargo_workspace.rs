@@ -6,9 +6,13 @@
 //! only services files whose canonical path falls under one of those crate
 //! roots.
 
-use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId};
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use {
+    cargo_metadata::{Metadata, MetadataCommand, Package, PackageId},
+    std::{
+        collections::{HashMap, HashSet},
+        path::{Path, PathBuf},
+    },
+};
 
 /// The Cargo crate the framework ships as. A package transitively depending
 /// on this is a Quasar crate.
@@ -25,12 +29,13 @@ pub struct WorkspaceConfig {
     /// Quasar crates (members + `quasar-lang`-depending dependencies). Lets the
     /// resolver tell a genuinely-unknown type from a legitimate one.
     pub known_account_types: Vec<String>,
-    /// Every `.rs` file under *any* Quasar crate (members **and** dependencies).
-    /// Registered as closed, `File`-backed entries in the symbol index so goto,
-    /// completion, hover, has_one checks and references resolve an account type
-    /// to its declaration wherever it lives. Deliberately broader than
-    /// [`Self::quasar_crate_roots`]: these only feed the index, they don't gate
-    /// activation — we resolve into a read-only dependency without linting it.
+    /// Every `.rs` file under *any* Quasar crate (members **and**
+    /// dependencies). Registered as closed, `File`-backed entries in the
+    /// symbol index so goto, completion, hover, has_one checks and
+    /// references resolve an account type to its declaration wherever it
+    /// lives. Deliberately broader than [`Self::quasar_crate_roots`]: these
+    /// only feed the index, they don't gate activation — we resolve into a
+    /// read-only dependency without linting it.
     pub indexed_source_files: Vec<PathBuf>,
 }
 
@@ -162,8 +167,11 @@ fn load_single(root: &Path) -> Result<Loaded, LoadError> {
 /// crates with a custom `[lib] path` are still scanned. Falls back to
 /// `<manifest>/src` for packages whose targets expose no usable source path.
 fn quasar_package_src_dirs(metadata: &Metadata) -> Vec<PathBuf> {
-    let pkgs_by_id: HashMap<PackageId, &Package> =
-        metadata.packages.iter().map(|p| (p.id.clone(), p)).collect();
+    let pkgs_by_id: HashMap<PackageId, &Package> = metadata
+        .packages
+        .iter()
+        .map(|p| (p.id.clone(), p))
+        .collect();
     let Some(resolve) = &metadata.resolve else {
         return Vec::new();
     };
@@ -176,7 +184,13 @@ fn quasar_package_src_dirs(metadata: &Metadata) -> Vec<PathBuf> {
     let mut memo: HashMap<PackageId, bool> = HashMap::new();
     let mut dirs = Vec::new();
     for pkg in &metadata.packages {
-        if !depends_on_quasar(&pkg.id, &pkgs_by_id, &deps_by_id, &mut memo, &mut HashSet::new()) {
+        if !depends_on_quasar(
+            &pkg.id,
+            &pkgs_by_id,
+            &deps_by_id,
+            &mut memo,
+            &mut HashSet::new(),
+        ) {
             continue;
         }
         let before = dirs.len();
@@ -232,8 +246,11 @@ fn scan_dir(dir: &Path, out: &mut Vec<String>) {
 /// Returns the manifest directory of every workspace member that
 /// transitively depends on the Quasar framework crate.
 pub fn identify_quasar_crates(metadata: &Metadata) -> Vec<PathBuf> {
-    let pkgs_by_id: HashMap<PackageId, &Package> =
-        metadata.packages.iter().map(|p| (p.id.clone(), p)).collect();
+    let pkgs_by_id: HashMap<PackageId, &Package> = metadata
+        .packages
+        .iter()
+        .map(|p| (p.id.clone(), p))
+        .collect();
 
     let mut transitively_depends_on_quasar: HashMap<PackageId, bool> = HashMap::new();
     let resolve = match &metadata.resolve {

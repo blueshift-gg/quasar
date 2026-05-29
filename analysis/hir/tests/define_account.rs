@@ -3,13 +3,14 @@
 //! in the same file, full `has_one` field validation. Types whose data struct
 //! can't be resolved fall back to "fields unknown" rather than false-flagging.
 
-use quasar_hir::{
-    db::Database, parse_file, resolve_account_refs, resolve_has_one,
-    workspace::Workspace, workspace_symbol_index, AccountRefResolution, File, HasOneResolution,
-    ItemKind,
+use {
+    quasar_hir::{
+        db::Database, parse_file, resolve_account_refs, resolve_has_one, workspace::Workspace,
+        workspace_symbol_index, AccountRefResolution, File, HasOneResolution, ItemKind,
+    },
+    quasar_syntax::diagnostics::DiagCode,
+    std::sync::Arc,
 };
-use quasar_syntax::diagnostics::DiagCode;
-use std::sync::Arc;
 
 fn workspace(db: &Database, srcs: &[(&str, &str)]) -> (Workspace, Vec<File>) {
     let files: Vec<File> = srcs
@@ -50,7 +51,10 @@ pub struct Ix {
     let token = index.lookup("Token").expect("Token indexed");
     assert_eq!(token.kind, ItemKind::AccountType);
     assert_eq!(token.file, files[0], "Token resolves to spl.rs");
-    assert!(index.lookup("TokenProgram").is_some(), "marker also indexed");
+    assert!(
+        index.lookup("TokenProgram").is_some(),
+        "marker also indexed"
+    );
 
     // `Account<Token>` resolves to the defining file (enables goto/hover).
     let resolved = resolve_account_refs(&db, ws, files[1]);

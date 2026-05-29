@@ -21,8 +21,6 @@ pub(crate) mod emit;
 mod instruction_args_codegen;
 mod plan;
 
-pub(crate) use quasar_hir::accounts as resolve;
-pub(crate) use quasar_syntax::accounts::InstructionArg;
 use {
     crate::helpers::strip_generics,
     instruction_args_codegen::generate_instruction_arg_extraction,
@@ -35,6 +33,7 @@ use {
         Member, Type,
     },
 };
+pub(crate) use {quasar_hir::accounts as resolve, quasar_syntax::accounts::InstructionArg};
 
 pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

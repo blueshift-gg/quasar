@@ -2,11 +2,14 @@
 //! per-directive recovery, validate_behavior_arg as diagnostic, instruction
 //! args with continued parsing past errors.
 
-use quasar_syntax::accounts::{
-    parse_field_attrs, parse_field_attrs_recoverable, parse_struct_instruction_args_recoverable,
-    validate_behavior_arg_recoverable, CoreDirective, Directive, UserCheck,
+use quasar_syntax::{
+    accounts::{
+        parse_field_attrs, parse_field_attrs_recoverable,
+        parse_struct_instruction_args_recoverable, validate_behavior_arg_recoverable,
+        CoreDirective, Directive, UserCheck,
+    },
+    diagnostics::{DiagCode, Diagnostics},
 };
-use quasar_syntax::diagnostics::{DiagCode, Diagnostics};
 
 fn parse_directives(field_attr_body: &str) -> (Vec<Directive>, Diagnostics) {
     // Wrap the body in a fake `#[account(...)]` attribute on a synthetic field
@@ -29,14 +32,21 @@ fn parse_directives(field_attr_body: &str) -> (Vec<Directive>, Diagnostics) {
 #[test]
 fn strict_round_trips_well_formed_attribute() {
     let (directives, sink) = parse_directives("mut, init, payer = signer");
-    assert!(sink.is_empty(), "no diagnostics expected, got {:?}", sink.items());
+    assert!(
+        sink.is_empty(),
+        "no diagnostics expected, got {:?}",
+        sink.items()
+    );
     assert_eq!(directives.len(), 3);
     assert!(matches!(directives[0], Directive::Core(CoreDirective::Mut)));
     assert!(matches!(
         directives[1],
         Directive::Core(CoreDirective::Init { idempotent: false })
     ));
-    assert!(matches!(directives[2], Directive::Core(CoreDirective::Payer(_))));
+    assert!(matches!(
+        directives[2],
+        Directive::Core(CoreDirective::Payer(_))
+    ));
 }
 
 #[test]
@@ -62,10 +72,9 @@ fn recovery_keeps_directives_after_unknown_kv() {
 fn recovery_keeps_directives_after_unknown_bare() {
     let (directives, sink) = parse_directives("nonsense, has_one(authority)");
     assert!(
-        directives.iter().any(|d| matches!(
-            d,
-            Directive::Check(UserCheck::HasOne { .. })
-        )),
+        directives
+            .iter()
+            .any(|d| matches!(d, Directive::Check(UserCheck::HasOne { .. }))),
         "has_one should still parse after unknown bare directive"
     );
     assert!(!sink.is_empty());
@@ -85,7 +94,9 @@ fn recovery_emits_malformed_for_bad_init_flag() {
 #[test]
 fn recovery_handles_behavior_group_then_unknown() {
     let (directives, sink) = parse_directives("token(mint = some_mint), bogus_kv = 1");
-    assert!(directives.iter().any(|d| matches!(d, Directive::Behavior(_))));
+    assert!(directives
+        .iter()
+        .any(|d| matches!(d, Directive::Behavior(_))));
     assert!(sink
         .items()
         .iter()
@@ -94,8 +105,7 @@ fn recovery_handles_behavior_group_then_unknown() {
 
 #[test]
 fn strict_mode_returns_first_error_as_syn_error() {
-    let source =
-        "struct __F { #[account(mystery = 1)] pub x: u8, }";
+    let source = "struct __F { #[account(mystery = 1)] pub x: u8, }";
     let derive_input: syn::DeriveInput = syn::parse_str(source).unwrap();
     let field = match &derive_input.data {
         syn::Data::Struct(s) => s.fields.iter().next().unwrap(),
@@ -205,4 +215,3 @@ fn duplicate_account_attribute_emits_diagnostic() {
         codes
     );
 }
-

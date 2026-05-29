@@ -2,17 +2,25 @@
 //! struct, parses its attribute body in recoverable mode via `quasar-syntax`,
 //! and accumulates diagnostics.
 
-use crate::db::Db;
-use crate::diagnostic::HirDiagnostic;
-use crate::input::File;
-use crate::items::{ByteRange, FieldDecl, ItemHead, ItemKind};
-use quasar_syntax::account::{
-    parse_discriminator_bytes, parse_recoverable, validate_recoverable, AccountAttrAst,
+use {
+    crate::{
+        db::Db,
+        diagnostic::HirDiagnostic,
+        input::File,
+        items::{ByteRange, FieldDecl, ItemHead, ItemKind},
+    },
+    quasar_syntax::{
+        account::{
+            parse_discriminator_bytes, parse_recoverable, validate_recoverable, AccountAttrAst,
+        },
+        diagnostics::{DiagCode, Diagnostic, Diagnostics, Severity},
+        LineIndex,
+    },
+    syn::{
+        parse::{ParseStream, Parser as _},
+        Attribute, Item,
+    },
 };
-use quasar_syntax::diagnostics::{DiagCode, Diagnostic, Diagnostics, Severity};
-use quasar_syntax::LineIndex;
-use syn::parse::{Parser as _, ParseStream};
-use syn::{Attribute, Item};
 
 #[salsa::tracked(debug)]
 pub struct ParsedFile<'db> {
@@ -43,7 +51,11 @@ pub fn line_index_for(db: &dyn Db, file: File) -> LineIndex {
     LineIndex::new(file.text(db).as_ref())
 }
 
-type Analysis = (Vec<ItemHead>, Vec<HirDiagnostic>, Vec<(String, Vec<FieldDecl>)>);
+type Analysis = (
+    Vec<ItemHead>,
+    Vec<HirDiagnostic>,
+    Vec<(String, Vec<FieldDecl>)>,
+);
 
 fn analyze(text: &str) -> Analysis {
     let mut items = Vec::new();
@@ -215,5 +227,8 @@ fn parse_account_attr_into(attr: &Attribute, sink: &mut Diagnostics) -> Option<V
 
 fn lower_diagnostics(mut sink: Diagnostics) -> Vec<HirDiagnostic> {
     sink.dedup_subsume_narrower();
-    sink.into_items().into_iter().map(HirDiagnostic::lower).collect()
+    sink.into_items()
+        .into_iter()
+        .map(HirDiagnostic::lower)
+        .collect()
 }

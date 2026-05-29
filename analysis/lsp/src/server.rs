@@ -1,59 +1,66 @@
 //! Server state and main loop.
 //!
 //! Threading model:
-//!   - Main thread runs the JSON-RPC I/O loop and owns the [`Database`]
-//!     + [`Vfs`]. All writes (didOpen/didChange/didClose) happen here,
+//!   - Main thread runs the JSON-RPC I/O loop and owns the [`Database`] and
+//!     [`Vfs`]. All writes (didOpen/didChange/didClose) happen here,
 //!     synchronously, which bumps Salsa's revision.
 //!   - A [`ThreadPool`] sized to `num_cpus` handles reads — diagnostic
-//!     recomputation and request handlers. Workers clone the database
-//!     (cheap, Arc-internal) and may be implicitly cancelled by Salsa
-//!     when the revision moves underneath them.
-//!   - A dedicated background pool (size 1) services low-priority work
-//!     like `cargo metadata` so workspace discovery doesn't compete with
-//!     interactive request latency.
+//!     recomputation and request handlers. Workers clone the database (cheap,
+//!     Arc-internal) and may be implicitly cancelled by Salsa when the revision
+//!     moves underneath them.
+//!   - A dedicated background pool (size 1) services low-priority work like
+//!     `cargo metadata` so workspace discovery doesn't compete with interactive
+//!     request latency.
 //!
 //! Background workers communicate back via a private channel; the main
 //! loop selects between the LSP receiver and the internal channel so
 //! workspace-loaded events arrive in the same single-threaded state
 //! mutation point as didChange / didOpen.
 
-use crate::cargo_workspace::{self, WorkspaceConfig};
-use crate::diagnostics::convert;
-use crate::handlers;
-use crate::snapshot::Snapshot;
-use crate::vfs::Vfs;
-use crossbeam_channel::{select, Receiver, Sender};
-use lsp_server::{
-    Connection, ErrorCode, Message, Notification as LspNotification, Request, RequestId, Response,
-    ResponseError,
+use {
+    crate::{
+        cargo_workspace::{self, WorkspaceConfig},
+        diagnostics::convert,
+        handlers,
+        snapshot::Snapshot,
+        vfs::Vfs,
+    },
+    crossbeam_channel::{select, Receiver, Sender},
+    lsp_server::{
+        Connection, ErrorCode, Message, Notification as LspNotification, Request, RequestId,
+        Response, ResponseError,
+    },
+    lsp_types::{
+        notification::{
+            DidChangeTextDocument, DidChangeWatchedFiles, DidCloseTextDocument,
+            DidOpenTextDocument, Notification as _, Progress, PublishDiagnostics,
+        },
+        request::{
+            CodeActionRequest, CodeLensRequest, Completion, DocumentHighlightRequest,
+            DocumentSymbolRequest, GotoDefinition, HoverRequest, InlayHintRequest, References,
+            RegisterCapability, Request as _, SemanticTokensFullRequest, WorkspaceSymbolRequest,
+        },
+        DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+        DidChangeWatchedFilesRegistrationOptions, DidCloseTextDocumentParams,
+        DidOpenTextDocumentParams, FileChangeType, FileEvent, FileSystemWatcher, GlobPattern,
+        NumberOrString, ProgressParams, ProgressParamsValue, PublishDiagnosticsParams,
+        Registration, RegistrationParams, Uri, WorkDoneProgress, WorkDoneProgressBegin,
+        WorkDoneProgressEnd, WorkDoneProgressReport,
+    },
+    quasar_hir::{
+        line_index_for, parse_file, resolve_account_refs, resolve_has_one, validate_accounts,
+        Database, File, Workspace,
+    },
+    salsa::Setter,
+    serde::{de::DeserializeOwned, Serialize},
+    std::{
+        error::Error,
+        panic::AssertUnwindSafe,
+        path::{Path, PathBuf},
+        sync::Arc,
+    },
+    threadpool::ThreadPool,
 };
-use lsp_types::notification::{
-    DidChangeTextDocument, DidChangeWatchedFiles, DidCloseTextDocument, DidOpenTextDocument,
-    Notification as _, Progress, PublishDiagnostics,
-};
-use lsp_types::request::{
-    CodeActionRequest, CodeLensRequest, Completion, DocumentHighlightRequest,
-    DocumentSymbolRequest, GotoDefinition, HoverRequest, InlayHintRequest, References,
-    RegisterCapability, Request as _, SemanticTokensFullRequest, WorkspaceSymbolRequest,
-};
-use lsp_types::{
-    DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
-    DidChangeWatchedFilesRegistrationOptions, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    FileChangeType, FileEvent, FileSystemWatcher, GlobPattern, NumberOrString, ProgressParams,
-    ProgressParamsValue, PublishDiagnosticsParams, Registration, RegistrationParams, Uri,
-    WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressEnd, WorkDoneProgressReport,
-};
-use quasar_hir::{
-    line_index_for, parse_file, resolve_account_refs, resolve_has_one, validate_accounts,
-    Database, File, Workspace,
-};
-use salsa::Setter;
-use serde::{de::DeserializeOwned, Serialize};
-use std::error::Error;
-use std::panic::AssertUnwindSafe;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use threadpool::ThreadPool;
 
 const CONTENT_MODIFIED: i32 = -32801;
 const WORKSPACE_LOAD_TOKEN: &str = "quasar/workspace-load";
@@ -134,10 +141,7 @@ impl Server {
     }
 
     pub fn run(mut self, connection: &Connection) -> Result<(), Box<dyn Error + Sync + Send>> {
-        tracing::info!(
-            workers = self.pool.max_count(),
-            "quasar-lsp ready"
-        );
+        tracing::info!(workers = self.pool.max_count(), "quasar-lsp ready");
 
         // `lsp-server`'s `initialize()` consumes the `Initialized` notification
         // before `run()` is reached, so register watchers here at startup
@@ -215,11 +219,8 @@ impl Server {
         }
     }
 
-    fn dispatch<R>(
-        &self,
-        req: Request,
-        handler: fn(&Snapshot, R::Params) -> R::Result,
-    ) where
+    fn dispatch<R>(&self, req: Request, handler: fn(&Snapshot, R::Params) -> R::Result)
+    where
         R: lsp_types::request::Request,
         R::Params: DeserializeOwned + Send + 'static,
         R::Result: Serialize + Send + 'static,
@@ -457,7 +458,11 @@ impl Server {
         let text: Arc<str> = Arc::from(params.text_document.text.as_str());
         // The file may already be interned as a closed disk-backed member; the
         // editor's buffer is authoritative on open, so overwrite its content.
-        if self.vfs.set_text(&mut self.db, &uri, text.clone()).is_none() {
+        if self
+            .vfs
+            .set_text(&mut self.db, &uri, text.clone())
+            .is_none()
+        {
             self.vfs.intern(&mut self.db, uri.clone(), text);
         }
         self.vfs.mark_open(uri);
@@ -478,7 +483,11 @@ impl Server {
             return;
         };
         let text: Arc<str> = Arc::from(full.text.as_str());
-        if self.vfs.set_text(&mut self.db, &uri, text.clone()).is_none() {
+        if self
+            .vfs
+            .set_text(&mut self.db, &uri, text.clone())
+            .is_none()
+        {
             self.vfs.intern(&mut self.db, uri.clone(), text);
         }
         // Editing a definition shifts cross-file resolution for every other

@@ -1,20 +1,21 @@
 //! Constraint-validation LSP features: diagnostics + the "Add `mut`" fix.
 
-use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
-use lsp_types::notification::{
-    DidOpenTextDocument, Initialized, Notification as _, PublishDiagnostics,
+// `Uri` map keys are safe: fluent-uri's interior cache doesn't affect Hash/Eq.
+#![allow(clippy::mutable_key_type)]
+
+use {
+    lsp_server::{Connection, Message, Notification, Request, RequestId, Response},
+    lsp_types::{
+        notification::{DidOpenTextDocument, Initialized, Notification as _, PublishDiagnostics},
+        request::{CodeActionRequest, Initialize, Request as _},
+        CodeActionContext, CodeActionOrCommand, CodeActionParams, CodeActionResponse, Diagnostic,
+        DidOpenTextDocumentParams, InitializeParams, InitializedParams, PartialResultParams,
+        PublishDiagnosticsParams, TextDocumentIdentifier, TextDocumentItem, Uri,
+        WorkDoneProgressParams,
+    },
+    quasar_lsp::{capabilities::server_capabilities, Server, WorkspaceConfig},
+    std::{path::PathBuf, str::FromStr, time::Duration},
 };
-use lsp_types::request::{CodeActionRequest, Initialize, Request as _};
-use lsp_types::{
-    CodeActionContext, CodeActionOrCommand, CodeActionParams, CodeActionResponse, Diagnostic,
-    DidOpenTextDocumentParams, InitializeParams, InitializedParams, PartialResultParams,
-    PublishDiagnosticsParams, TextDocumentIdentifier, TextDocumentItem, Uri,
-    WorkDoneProgressParams,
-};
-use quasar_lsp::{capabilities::server_capabilities, Server, WorkspaceConfig};
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::time::Duration;
 
 const URI: &str = "file:///tmp/ws/ix.rs";
 
@@ -155,7 +156,9 @@ fn recv_until(
     }
 }
 
-const REALLOC_NO_MUT: &str = "#[derive(Accounts)]\npub struct Resize<'info> {\n    pub payer: Signer,\n    #[account(realloc = 128, payer = payer)]\n    pub account: &'info Account<Thing>,\n}\n";
+const REALLOC_NO_MUT: &str = "#[derive(Accounts)]\npub struct Resize<'info> {\n    pub payer: \
+                              Signer,\n    #[account(realloc = 128, payer = payer)]\n    pub \
+                              account: &'info Account<Thing>,\n}\n";
 
 #[test]
 fn constraint_violation_is_published() {
@@ -171,7 +174,9 @@ fn constraint_violation_is_published() {
         })
         .collect();
     assert!(
-        codes.iter().any(|c| c.contains("accounts_constraint_violation")),
+        codes
+            .iter()
+            .any(|c| c.contains("accounts_constraint_violation")),
         "expected constraint violation diagnostic, got {:?}",
         codes
     );

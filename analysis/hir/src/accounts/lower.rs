@@ -1,12 +1,19 @@
 //! Lowering: parsed directives to field semantics.
 
-use super::model::{FieldCore, FieldKind, FieldSemantics};
-use super::rules::validate_semantics;
-use quasar_syntax::accounts::{
-    parse_field_attrs, validate_behavior_arg, CoreDirective, Directive, InitDirective, UserCheck,
+use {
+    super::{
+        model::{FieldCore, FieldKind, FieldSemantics},
+        rules::validate_semantics,
+    },
+    quasar_syntax::{
+        accounts::{
+            parse_field_attrs, validate_behavior_arg, CoreDirective, Directive, InitDirective,
+            UserCheck,
+        },
+        types::{extract_generic_inner_type, is_composite_type},
+    },
+    syn::Type,
 };
-use quasar_syntax::types::{extract_generic_inner_type, is_composite_type};
-use syn::Type;
 
 pub fn lower_semantics(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,

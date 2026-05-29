@@ -5,8 +5,10 @@
 //! cutoff. `HirDiagnostic` lowers spans into byte ranges so tracked outputs
 //! are comparable and hashable.
 
-use crate::items::ByteRange;
-use quasar_syntax::diagnostics::{DiagCode, Diagnostic, Severity};
+use {
+    crate::items::ByteRange,
+    quasar_syntax::diagnostics::{DiagCode, Diagnostic, Severity},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HirDiagnostic {

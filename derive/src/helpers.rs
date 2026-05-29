@@ -1,5 +1,7 @@
-pub(crate) use quasar_schema::{pascal_to_snake, snake_to_pascal, to_camel_case as snake_to_camel};
-pub(crate) use quasar_syntax::types::{extract_generic_inner_type, is_unit_type, classify_lifetime_arg};
+pub(crate) use {
+    quasar_schema::{pascal_to_snake, snake_to_pascal, to_camel_case as snake_to_camel},
+    quasar_syntax::types::{classify_lifetime_arg, extract_generic_inner_type, is_unit_type},
+};
 use {
     quote::quote,
     syn::{
@@ -125,7 +127,6 @@ pub(crate) fn validate_discriminator_not_zero(disc_bytes: &[LitInt]) -> syn::Res
     Ok(values)
 }
 
-
 pub(crate) fn strip_generics(ty: &Type) -> proc_macro2::TokenStream {
     match ty {
         Type::Path(type_path) => {
@@ -168,7 +169,6 @@ pub(crate) enum PodDynField {
         prefix_bytes: usize,
     },
 }
-
 
 fn parse_prefix_arg(arg: &GenericArgument) -> Option<usize> {
     match arg {

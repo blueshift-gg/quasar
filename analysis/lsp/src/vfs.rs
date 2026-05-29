@@ -1,12 +1,16 @@
-//! Virtual file system to translate communication between document Uri and Salsa. 
-//! Open buffers (overlays) take precedence over
+//! Virtual file system to translate communication between document Uri and
+//! Salsa. Open buffers (overlays) take precedence over
 //! disk for any path they cover until `didClose`.
 
-use lsp_types::Uri;
-use quasar_hir::{Database, File};
-use salsa::Setter;
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use {
+    lsp_types::Uri,
+    quasar_hir::{Database, File},
+    salsa::Setter,
+    std::{
+        collections::{HashMap, HashSet},
+        sync::Arc,
+    },
+};
 
 #[derive(Default)]
 pub struct Vfs {

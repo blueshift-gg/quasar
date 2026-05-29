@@ -1,8 +1,8 @@
 //! Directive parser for `#[account(...)]` on `#[derive(Accounts)]` fields.
 //!
 //! Grammar:
-//! - core: `mut`, `dup`, `init`, `init(idempotent)`, `payer = ident`,
-//!   `address = expr`, `realloc = expr`, `close(dest = ident)`
+//! - core: `mut`, `dup`, `init`, `init(idempotent)`, `payer = ident`, `address
+//!   = expr`, `realloc = expr`, `close(dest = ident)`
 //! - behavior: `path(arg = value, ...)`
 //! - check: `has_one(...)`, `constraints(...)`
 //!
@@ -11,12 +11,14 @@
 //! list and pushes every error to a [`Diagnostics`] sink so a single broken
 //! directive doesn't discard the rest of the attribute body.
 
-use super::ast::{BehaviorArg, BehaviorGroup, CoreDirective, Directive, UserCheck};
-use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics, Severity};
-use proc_macro2::TokenTree;
-use syn::{
-    parse::{discouraged::Speculative, ParseStream, Parser as _},
-    Expr, Ident, Token,
+use {
+    super::ast::{BehaviorArg, BehaviorGroup, CoreDirective, Directive, UserCheck},
+    crate::diagnostics::{DiagCode, Diagnostic, Diagnostics, Severity},
+    proc_macro2::TokenTree,
+    syn::{
+        parse::{discouraged::Speculative, ParseStream, Parser as _},
+        Expr, Ident, Token,
+    },
 };
 
 pub fn parse_field_attrs(field: &syn::Field) -> syn::Result<Vec<Directive>> {
@@ -28,10 +30,7 @@ pub fn parse_field_attrs(field: &syn::Field) -> syn::Result<Vec<Directive>> {
     Ok(directives)
 }
 
-pub fn parse_field_attrs_recoverable(
-    field: &syn::Field,
-    sink: &mut Diagnostics,
-) -> Vec<Directive> {
+pub fn parse_field_attrs_recoverable(field: &syn::Field, sink: &mut Diagnostics) -> Vec<Directive> {
     let mut chosen: Option<&syn::Attribute> = None;
     for candidate in field.attrs.iter().filter(|a| a.path().is_ident("account")) {
         if chosen.is_some() {
@@ -51,7 +50,9 @@ pub fn parse_field_attrs_recoverable(
         chosen = Some(candidate);
     }
 
-    let Some(attr) = chosen else { return Vec::new() };
+    let Some(attr) = chosen else {
+        return Vec::new();
+    };
 
     let tokens = match &attr.meta {
         syn::Meta::List(list) => list.tokens.clone(),
@@ -168,8 +169,8 @@ fn parse_one_directive(input: ParseStream) -> syn::Result<Directive> {
                         return Err(syn::Error::new_spanned(
                             &flag,
                             format!(
-                                "unknown init flag `{flag}`. Only `init` or \
-                                 `init(idempotent)` are valid."
+                                "unknown init flag `{flag}`. Only `init` or `init(idempotent)` \
+                                 are valid."
                             ),
                         ));
                     }
@@ -309,9 +310,9 @@ pub fn validate_behavior_arg_recoverable(key: &Ident, expr: &Expr, sink: &mut Di
 
 fn invalid_behavior_arg_message(key: &Ident) -> String {
     format!(
-        "behavior arg `{}` has a value that is not valid in all lifecycle phases. \
-         Behavior args must be bare field idents, literals, const paths, `Some(field)`, \
-         or `None`. Move complex expressions to `constraints(...)` or handler code.",
+        "behavior arg `{}` has a value that is not valid in all lifecycle phases. Behavior args \
+         must be bare field idents, literals, const paths, `Some(field)`, or `None`. Move complex \
+         expressions to `constraints(...)` or handler code.",
         key,
     )
 }

@@ -1,10 +1,13 @@
-//! Parser for `#[instruction(name: Type, ...)]` on `#[derive(Accounts)]` structs.
+//! Parser for `#[instruction(name: Type, ...)]` on `#[derive(Accounts)]`
+//! structs.
 
-use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics, Severity};
-use proc_macro2::TokenTree;
-use syn::{
-    parse::{discouraged::Speculative, ParseStream},
-    DeriveInput, Ident, Token, Type,
+use {
+    crate::diagnostics::{DiagCode, Diagnostic, Diagnostics, Severity},
+    proc_macro2::TokenTree,
+    syn::{
+        parse::{discouraged::Speculative, ParseStream},
+        DeriveInput, Ident, Token, Type,
+    },
 };
 
 pub struct InstructionArg {
@@ -27,7 +30,10 @@ pub fn parse_struct_instruction_args_recoverable(
     input: &DeriveInput,
     sink: &mut Diagnostics,
 ) -> Option<Vec<InstructionArg>> {
-    let attr = input.attrs.iter().find(|a| a.path().is_ident("instruction"))?;
+    let attr = input
+        .attrs
+        .iter()
+        .find(|a| a.path().is_ident("instruction"))?;
 
     let mut out = Vec::new();
     let _ = attr.parse_args_with(|stream: ParseStream| -> syn::Result<()> {
@@ -53,7 +59,7 @@ fn parse_args_recoverable(
                         code: DiagCode::InstructionArgDuplicate,
                         message: format!("duplicate instruction arg `{}`", arg.name),
                         primary: arg.name.span(),
-                        labels: vec![syn::spanned::Spanned::span(&prev.name).into()]
+                        labels: vec![syn::spanned::Spanned::span(&prev.name)]
                             .into_iter()
                             .map(|span| crate::diagnostics::DiagLabel {
                                 span,

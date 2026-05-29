@@ -1,27 +1,28 @@
 //! End-to-end: spawn the server in-process via `Connection::memory()`, send
 //! initialize + didOpen, assert the expected `publishDiagnostics` arrives.
 
-use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
-use lsp_types::notification::{
-    DidChangeTextDocument, DidOpenTextDocument, Initialized, Notification as _, PublishDiagnostics,
+use {
+    lsp_server::{Connection, Message, Notification, Request, RequestId, Response},
+    lsp_types::{
+        notification::{
+            DidChangeTextDocument, DidOpenTextDocument, Initialized, Notification as _,
+            PublishDiagnostics,
+        },
+        request::{Initialize, Request as _},
+        DidChangeTextDocumentParams, DidOpenTextDocumentParams, InitializeParams,
+        InitializedParams, NumberOrString, PublishDiagnosticsParams,
+        TextDocumentContentChangeEvent, TextDocumentItem, Uri, VersionedTextDocumentIdentifier,
+    },
+    quasar_lsp::{capabilities::server_capabilities, Server},
+    std::{str::FromStr, time::Duration},
 };
-use lsp_types::request::{Initialize, Request as _};
-use lsp_types::{
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, InitializeParams, InitializedParams,
-    NumberOrString, PublishDiagnosticsParams, TextDocumentContentChangeEvent, TextDocumentItem,
-    Uri, VersionedTextDocumentIdentifier,
-};
-use quasar_lsp::{capabilities::server_capabilities, Server};
-use std::str::FromStr;
-use std::time::Duration;
 
 /// Helper to bring up a Server in another thread on top of an in-memory
 /// connection. Returns the client side of the connection and the join handle.
 fn spawn_server() -> (Connection, std::thread::JoinHandle<()>) {
     let (server_conn, client_conn) = Connection::memory();
     let handle = std::thread::spawn(move || {
-        let caps =
-            serde_json::to_value(server_capabilities()).expect("server caps serialise");
+        let caps = serde_json::to_value(server_capabilities()).expect("server caps serialise");
         // initialize() blocks until the client sends Initialize, then sends the
         // response and returns the params.
         let init_value = server_conn.initialize(caps).expect("initialize handshake");
@@ -43,8 +44,12 @@ fn send_initialize(conn: &Connection) {
     conn.sender.send(Message::Request(req)).unwrap();
 
     // Wait for the initialize response.
-    let response = recv_until(conn, |m| matches!(m, Message::Response(_)), Duration::from_secs(5))
-        .expect("initialize response");
+    let response = recv_until(
+        conn,
+        |m| matches!(m, Message::Response(_)),
+        Duration::from_secs(5),
+    )
+    .expect("initialize response");
     match response {
         Message::Response(Response { error: None, .. }) => {}
         other => panic!("unexpected initialize response: {:?}", other),
@@ -160,8 +165,9 @@ fn server_publishes_diagnostics_for_malformed_account_attribute() {
         })
         .collect();
     assert!(
-        codes.iter().any(|c| c
-            .contains("missing_discriminator_or_unsafe")),
+        codes
+            .iter()
+            .any(|c| c.contains("missing_discriminator_or_unsafe")),
         "expected missing-discriminator code, got {:?}",
         codes
     );
@@ -188,7 +194,8 @@ fn genuinely_unknown_account_type_is_diagnosed() {
     send_did_open(
         &client,
         uri.clone(),
-        "#[derive(Accounts)]\npub struct Increment<'info> {\n    pub counter: &'info mut Account<Counter>,\n}\n",
+        "#[derive(Accounts)]\npub struct Increment<'info> {\n    pub counter: &'info mut \
+         Account<Counter>,\n}\n",
     );
 
     let diagnostics = await_diagnostics(&client, &uri);
@@ -241,7 +248,8 @@ fn editing_a_definition_file_refreshes_other_open_files() {
     send_did_open(
         &client,
         inc.clone(),
-        "#[derive(Accounts)]\npub struct Inc<'info> {\n    pub counter: &'info mut Account<Counter>,\n}\n",
+        "#[derive(Accounts)]\npub struct Inc<'info> {\n    pub counter: &'info mut \
+         Account<Counter>,\n}\n",
     );
     // Initially `Counter` is undefined → unknown-account-type error.
     let initial = await_diagnostics(&client, &inc);

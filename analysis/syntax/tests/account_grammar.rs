@@ -1,12 +1,16 @@
 //! Covers every directive and every cross-directive rule of `#[account(...)]`
 //! parsing in both strict and recoverable modes.
 
-use quasar_syntax::account::{
-    parse_discriminator_bytes, parse_recoverable, parse_strict, validate_recoverable,
-    AccountAttrAst,
+use {
+    quasar_syntax::{
+        account::{
+            parse_discriminator_bytes, parse_recoverable, parse_strict, validate_recoverable,
+            AccountAttrAst,
+        },
+        diagnostics::{DiagCode, Diagnostics},
+    },
+    syn::parse::{ParseStream, Parser},
 };
-use quasar_syntax::diagnostics::{DiagCode, Diagnostics};
-use syn::parse::{Parser, ParseStream};
 
 fn strict(source: &str) -> Result<AccountAttrAst, String> {
     let parser = |input: ParseStream| parse_strict(input);

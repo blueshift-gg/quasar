@@ -8,12 +8,11 @@
 //! requires `mut`, `dup` requires a `/// CHECK:` doc, init/realloc are
 //! mutually exclusive, and so on).
 
-use crate::accounts::lower_semantics;
-use crate::db::Db;
-use crate::diagnostic::HirDiagnostic;
-use crate::input::File;
-use quasar_syntax::diagnostics::{DiagCode, Diagnostic, Diagnostics, Severity};
-use syn::{Fields, Item};
+use {
+    crate::{accounts::lower_semantics, db::Db, diagnostic::HirDiagnostic, input::File},
+    quasar_syntax::diagnostics::{DiagCode, Diagnostic, Diagnostics, Severity},
+    syn::{Fields, Item},
+};
 
 #[salsa::tracked(debug)]
 pub struct AccountsValidation<'db> {

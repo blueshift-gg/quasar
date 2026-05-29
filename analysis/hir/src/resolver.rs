@@ -5,15 +5,21 @@
 //! distinguish a typo of a local type from a legitimate external account type
 //! reached through a dependency.
 
-use crate::db::Db;
-use crate::diagnostic::HirDiagnostic;
-use crate::input::File;
-use crate::items::ByteRange;
-use crate::scope::derives_accounts;
-use crate::workspace::{workspace_symbol_index, Workspace};
-use quasar_syntax::diagnostics::{DiagCode, Diagnostic, Diagnostics, Severity};
-use quasar_syntax::types::extract_generic_inner_type;
-use syn::{Item, Type};
+use {
+    crate::{
+        db::Db,
+        diagnostic::HirDiagnostic,
+        input::File,
+        items::ByteRange,
+        scope::derives_accounts,
+        workspace::{workspace_symbol_index, Workspace},
+    },
+    quasar_syntax::{
+        diagnostics::{DiagCode, Diagnostic, Diagnostics, Severity},
+        types::extract_generic_inner_type,
+    },
+    syn::{Item, Type},
+};
 
 /// One `Account<T>` (or `InterfaceAccount<T>`) reference detected in a file.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

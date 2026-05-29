@@ -5,14 +5,18 @@
 //! so workspace-wide symbol indexes built on top of it get aggressive early
 //! cutoff.
 
-use crate::db::Db;
-use crate::input::File;
-use crate::items::{ItemKind, Symbol};
-use std::sync::Arc;
-use syn::{Attribute, Item};
+use {
+    crate::{
+        db::Db,
+        input::File,
+        items::{ItemKind, Symbol},
+    },
+    std::sync::Arc,
+    syn::{Attribute, Item},
+};
 
 #[salsa::tracked(returns(ref))]
-pub fn scope_items<'db>(db: &'db dyn Db, file: File) -> Arc<[Symbol]> {
+pub fn scope_items(db: &dyn Db, file: File) -> Arc<[Symbol]> {
     let text = file.text(db);
     let Ok(tree) = syn::parse_file(text.as_ref()) else {
         return Arc::from([]);
@@ -76,7 +80,8 @@ pub fn account_type_names(text: &str) -> Vec<String> {
 }
 
 /// True when a macro invocation is `define_account!` (matched on the last path
-/// segment, so both `define_account!` and `quasar_lang::define_account!` count).
+/// segment, so both `define_account!` and `quasar_lang::define_account!`
+/// count).
 pub(crate) fn is_define_account(m: &syn::ItemMacro) -> bool {
     m.mac
         .path
@@ -87,9 +92,7 @@ pub(crate) fn is_define_account(m: &syn::ItemMacro) -> bool {
 
 /// Extracts every `struct <Name>` identifier from a token stream — used to
 /// pull account-type names (with spans) out of `define_account!` macro bodies.
-pub(crate) fn struct_idents_in_tokens(
-    tokens: proc_macro2::TokenStream,
-) -> Vec<proc_macro2::Ident> {
+pub(crate) fn struct_idents_in_tokens(tokens: proc_macro2::TokenStream) -> Vec<proc_macro2::Ident> {
     let mut idents = Vec::new();
     let mut prev_was_struct = false;
     for tt in tokens {
@@ -117,6 +120,22 @@ fn classify_struct(attrs: &[Attribute]) -> Option<ItemKind> {
     None
 }
 
+/// True if the attribute is `#[derive(...)]` and one of its arguments is the
+/// `Accounts` identifier.
+pub(crate) fn derives_accounts(attr: &Attribute) -> bool {
+    if !attr.path().is_ident("derive") {
+        return false;
+    }
+    let mut found = false;
+    let _ = attr.parse_nested_meta(|meta| {
+        if meta.path.is_ident("Accounts") {
+            found = true;
+        }
+        Ok(())
+    });
+    found
+}
+
 #[cfg(test)]
 mod tests {
     use super::account_type_names;
@@ -140,20 +159,4 @@ pub struct NotAnAccount { pub x: u8 }
         names.sort();
         assert_eq!(names, vec!["Counter", "Token", "TokenProgram"]);
     }
-}
-
-/// True if the attribute is `#[derive(...)]` and one of its arguments is the
-/// `Accounts` identifier.
-pub(crate) fn derives_accounts(attr: &Attribute) -> bool {
-    if !attr.path().is_ident("derive") {
-        return false;
-    }
-    let mut found = false;
-    let _ = attr.parse_nested_meta(|meta| {
-        if meta.path.is_ident("Accounts") {
-            found = true;
-        }
-        Ok(())
-    });
-    found
 }

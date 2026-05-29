@@ -1,23 +1,22 @@
-use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
-use lsp_types::notification::{
-    DidOpenTextDocument, Initialized, Notification as _, PublishDiagnostics,
+use {
+    lsp_server::{Connection, Message, Notification, Request, RequestId, Response},
+    lsp_types::{
+        notification::{DidOpenTextDocument, Initialized, Notification as _, PublishDiagnostics},
+        request::{
+            CodeActionRequest, CodeLensRequest, DocumentHighlightRequest, Initialize,
+            InlayHintRequest, Request as _, SemanticTokensFullRequest, WorkspaceSymbolRequest,
+        },
+        CodeActionContext, CodeActionOrCommand, CodeActionParams, CodeActionResponse, CodeLens,
+        CodeLensParams, DidOpenTextDocumentParams, DocumentHighlight, DocumentHighlightParams,
+        InitializeParams, InitializedParams, InlayHint, InlayHintLabel, InlayHintParams,
+        PartialResultParams, Position, PublishDiagnosticsParams, Range, SemanticTokens,
+        SemanticTokensParams, SemanticTokensResult, SymbolInformation, TextDocumentIdentifier,
+        TextDocumentItem, TextDocumentPositionParams, Uri, WorkDoneProgressParams,
+        WorkspaceSymbolParams, WorkspaceSymbolResponse,
+    },
+    quasar_lsp::{capabilities::server_capabilities, Server},
+    std::{str::FromStr, time::Duration},
 };
-use lsp_types::request::{
-    CodeActionRequest, CodeLensRequest, DocumentHighlightRequest, InlayHintRequest, Initialize,
-    Request as _, SemanticTokensFullRequest, WorkspaceSymbolRequest,
-};
-use lsp_types::{
-    CodeActionContext, CodeActionOrCommand, CodeActionParams, CodeActionResponse, CodeLens,
-    CodeLensParams, DidOpenTextDocumentParams, DocumentHighlight, DocumentHighlightParams,
-    InitializeParams, InitializedParams, InlayHint, InlayHintLabel, InlayHintParams,
-    PartialResultParams, Position, PublishDiagnosticsParams, Range, SemanticTokens,
-    SemanticTokensParams, SemanticTokensResult, SymbolInformation, TextDocumentIdentifier,
-    TextDocumentItem, TextDocumentPositionParams, Uri, WorkDoneProgressParams,
-    WorkspaceSymbolParams, WorkspaceSymbolResponse,
-};
-use quasar_lsp::{capabilities::server_capabilities, Server};
-use std::str::FromStr;
-use std::time::Duration;
 
 fn spawn_server() -> (Connection, std::thread::JoinHandle<()>) {
     let (server_conn, client_conn) = Connection::memory();
@@ -175,7 +174,8 @@ fn inlay_hint_shows_discriminator_at_account_ref() {
     handshake(&client);
 
     let state_src = "#[account(discriminator = 7)]\npub struct Counter { pub n: u64 }\n";
-    let inc_src = "#[derive(Accounts)]\npub struct Inc<'info> {\n    pub counter: &'info mut Account<Counter>,\n}\n";
+    let inc_src = "#[derive(Accounts)]\npub struct Inc<'info> {\n    pub counter: &'info mut \
+                   Account<Counter>,\n}\n";
     let state_uri = Uri::from_str("file:///tmp/state.rs").unwrap();
     let inc_uri = Uri::from_str("file:///tmp/inc.rs").unwrap();
     open(&client, state_uri.clone(), state_src);
@@ -187,17 +187,24 @@ fn inlay_hint_shows_discriminator_at_account_ref() {
         &client,
         500,
         InlayHintParams {
-            text_document: TextDocumentIdentifier { uri: inc_uri.clone() },
+            text_document: TextDocumentIdentifier {
+                uri: inc_uri.clone(),
+            },
             range: Range {
-                start: Position { line: 0, character: 0 },
-                end: Position { line: 100, character: 0 },
+                start: Position {
+                    line: 0,
+                    character: 0,
+                },
+                end: Position {
+                    line: 100,
+                    character: 0,
+                },
             },
             work_done_progress_params: WorkDoneProgressParams::default(),
         },
     );
     let resp = await_response(&client, 500);
-    let hints: Vec<InlayHint> =
-        serde_json::from_value(resp.result.expect("inlay result")).unwrap();
+    let hints: Vec<InlayHint> = serde_json::from_value(resp.result.expect("inlay result")).unwrap();
     assert!(!hints.is_empty(), "expected at least one inlay hint");
     let label = match &hints[0].label {
         InlayHintLabel::String(s) => s.clone(),
@@ -221,7 +228,8 @@ fn inlay_hint_skips_refs_without_discriminator() {
     handshake(&client);
 
     let state_src = "#[account(discriminator = 7)]\npub struct Counter { pub n: u64 }\n";
-    let inc_src = "#[derive(Accounts)]\npub struct Inc<'info> {\n    pub thing: &'info Account<Unknownish>,\n    pub counter: &'info mut Account<Counter>,\n}\n";
+    let inc_src = "#[derive(Accounts)]\npub struct Inc<'info> {\n    pub thing: &'info \
+                   Account<Unknownish>,\n    pub counter: &'info mut Account<Counter>,\n}\n";
     let state_uri = Uri::from_str("file:///tmp/state.rs").unwrap();
     let inc_uri = Uri::from_str("file:///tmp/inc2.rs").unwrap();
     open(&client, state_uri.clone(), state_src);
@@ -233,24 +241,29 @@ fn inlay_hint_skips_refs_without_discriminator() {
         &client,
         510,
         InlayHintParams {
-            text_document: TextDocumentIdentifier { uri: inc_uri.clone() },
+            text_document: TextDocumentIdentifier {
+                uri: inc_uri.clone(),
+            },
             range: Range {
-                start: Position { line: 0, character: 0 },
-                end: Position { line: 100, character: 0 },
+                start: Position {
+                    line: 0,
+                    character: 0,
+                },
+                end: Position {
+                    line: 100,
+                    character: 0,
+                },
             },
             work_done_progress_params: WorkDoneProgressParams::default(),
         },
     );
     let resp = await_response(&client, 510);
-    let hints: Vec<InlayHint> =
-        serde_json::from_value(resp.result.expect("inlay result")).unwrap();
+    let hints: Vec<InlayHint> = serde_json::from_value(resp.result.expect("inlay result")).unwrap();
     let labels: String = hints
         .iter()
         .map(|h| match &h.label {
             InlayHintLabel::String(s) => s.clone(),
-            InlayHintLabel::LabelParts(parts) => {
-                parts.iter().map(|p| p.value.as_str()).collect()
-            }
+            InlayHintLabel::LabelParts(parts) => parts.iter().map(|p| p.value.as_str()).collect(),
         })
         .collect();
     assert!(
@@ -276,8 +289,14 @@ fn code_action_offers_account_attribute_insertion_on_bare_struct() {
         CodeActionParams {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
             range: Range {
-                start: Position { line: 0, character: col },
-                end: Position { line: 0, character: col },
+                start: Position {
+                    line: 0,
+                    character: col,
+                },
+                end: Position {
+                    line: 0,
+                    character: col,
+                },
             },
             context: CodeActionContext {
                 diagnostics: vec![],
@@ -293,15 +312,17 @@ fn code_action_offers_account_attribute_insertion_on_bare_struct() {
         serde_json::from_value(resp.result.expect("code action result")).unwrap();
     assert!(
         response.iter().any(|c| match c {
-            CodeActionOrCommand::CodeAction(a) =>
-                a.title.contains("#[account(discriminator = 1)]"),
+            CodeActionOrCommand::CodeAction(a) => a.title.contains("#[account(discriminator = 1)]"),
             _ => false,
         }),
         "expected an insertion action, got {:?}",
-        response.iter().map(|c| match c {
-            CodeActionOrCommand::CodeAction(a) => &a.title,
-            CodeActionOrCommand::Command(c) => &c.title,
-        }).collect::<Vec<_>>()
+        response
+            .iter()
+            .map(|c| match c {
+                CodeActionOrCommand::CodeAction(a) => &a.title,
+                CodeActionOrCommand::Command(c) => &c.title,
+            })
+            .collect::<Vec<_>>()
     );
 }
 
@@ -310,8 +331,10 @@ fn code_lens_reports_reference_count_above_account_type() {
     let (client, _h) = spawn_server();
     handshake(&client);
     let state_src = "#[account(discriminator = 1)]\npub struct Counter { pub n: u64 }\n";
-    let inc_src = "#[derive(Accounts)]\npub struct Inc<'info> {\n    pub counter: &'info mut Account<Counter>,\n}\n";
-    let inc2_src = "#[derive(Accounts)]\npub struct Dec<'info> {\n    pub counter: &'info mut Account<Counter>,\n}\n";
+    let inc_src = "#[derive(Accounts)]\npub struct Inc<'info> {\n    pub counter: &'info mut \
+                   Account<Counter>,\n}\n";
+    let inc2_src = "#[derive(Accounts)]\npub struct Dec<'info> {\n    pub counter: &'info mut \
+                    Account<Counter>,\n}\n";
 
     let state_uri = Uri::from_str("file:///tmp/state.rs").unwrap();
     let inc_uri = Uri::from_str("file:///tmp/inc.rs").unwrap();
@@ -327,7 +350,9 @@ fn code_lens_reports_reference_count_above_account_type() {
         &client,
         700,
         CodeLensParams {
-            text_document: TextDocumentIdentifier { uri: state_uri.clone() },
+            text_document: TextDocumentIdentifier {
+                uri: state_uri.clone(),
+            },
             work_done_progress_params: WorkDoneProgressParams::default(),
             partial_result_params: PartialResultParams::default(),
         },
@@ -351,8 +376,8 @@ fn workspace_symbol_filters_by_query_substring() {
 
     let src_a = "#[account(discriminator = 1)]\npub struct Counter { pub n: u64 }\n";
     let src_b = "#[account(discriminator = 2)]\npub struct Vault { pub n: u64 }\n";
-    let src_c =
-        "#[derive(Accounts)]\npub struct Increment<'info> { pub counter: &'info Account<Counter> }\n";
+    let src_c = "#[derive(Accounts)]\npub struct Increment<'info> { pub counter: &'info \
+                 Account<Counter> }\n";
     let a_uri = Uri::from_str("file:///tmp/a.rs").unwrap();
     let b_uri = Uri::from_str("file:///tmp/b.rs").unwrap();
     let c_uri = Uri::from_str("file:///tmp/c.rs").unwrap();
@@ -380,7 +405,10 @@ fn workspace_symbol_filters_by_query_substring() {
         WorkspaceSymbolResponse::Nested(_) => panic!("expected flat response"),
     };
     let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
-    assert!(names.contains(&"Counter"), "Counter should match query \"Cou\"");
+    assert!(
+        names.contains(&"Counter"),
+        "Counter should match query \"Cou\""
+    );
     assert!(!names.contains(&"Vault"), "Vault should NOT match \"Cou\"");
 }
 
@@ -389,7 +417,9 @@ fn document_highlight_finds_same_file_uses() {
     let (client, _h) = spawn_server();
     handshake(&client);
 
-    let src = "#[account(discriminator = 1)]\npub struct Counter { pub n: u64 }\n\n#[derive(Accounts)]\npub struct A<'info> { pub a: &'info Account<Counter>, pub b: &'info Account<Counter> }\n";
+    let src = "#[account(discriminator = 1)]\npub struct Counter { pub n: u64 \
+               }\n\n#[derive(Accounts)]\npub struct A<'info> { pub a: &'info Account<Counter>, \
+               pub b: &'info Account<Counter> }\n";
     let uri = Uri::from_str("file:///tmp/multi.rs").unwrap();
     open(&client, uri.clone(), src);
     await_initial_diagnostics(&client, &uri);
@@ -402,7 +432,10 @@ fn document_highlight_finds_same_file_uses() {
         DocumentHighlightParams {
             text_document_position_params: TextDocumentPositionParams {
                 text_document: TextDocumentIdentifier { uri: uri.clone() },
-                position: Position { line: 4, character: col },
+                position: Position {
+                    line: 4,
+                    character: col,
+                },
             },
             work_done_progress_params: WorkDoneProgressParams::default(),
             partial_result_params: PartialResultParams::default(),

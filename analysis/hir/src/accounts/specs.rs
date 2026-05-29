@@ -95,6 +95,7 @@ pub struct BehaviorInitSpec {
 }
 
 /// Discriminated init plan.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone)]
 pub enum InitPlan {
     /// Plain program-owned init (system program create + discriminator).

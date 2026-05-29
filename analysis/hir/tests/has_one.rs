@@ -1,11 +1,11 @@
 //! has_one resolution: sibling-binding + account-type-field checks.
 
-use quasar_hir::{
-    db::Database, resolve_has_one, workspace::Workspace, File, HasOneResolution,
+use {
+    quasar_hir::{db::Database, resolve_has_one, workspace::Workspace, File, HasOneResolution},
+    quasar_syntax::diagnostics::DiagCode,
+    salsa::Setter,
+    std::sync::Arc,
 };
-use quasar_syntax::diagnostics::DiagCode;
-use salsa::Setter;
-use std::sync::Arc;
 
 fn workspace(db: &Database, srcs: &[(&str, &str)]) -> (Workspace, Vec<File>) {
     let files: Vec<File> = srcs

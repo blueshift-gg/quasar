@@ -10,5 +10,7 @@ pub mod diagnostics;
 pub mod span;
 pub mod types;
 
-pub use diagnostics::{DiagCode, DiagFamily, DiagLabel, Diagnostic, Diagnostics, Fix, Severity};
-pub use span::LineIndex;
+pub use {
+    diagnostics::{DiagCode, DiagFamily, DiagLabel, Diagnostic, Diagnostics, Fix, Severity},
+    span::LineIndex,
+};
