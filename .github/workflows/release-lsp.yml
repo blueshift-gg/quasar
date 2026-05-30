@@ -1,0 +1,84 @@
+name: Release LSP
+
+# Independent release train for the `quasar-lsp` language server, decoupled from
+# the framework's release. Cut an LSP release by pushing a tag like `lsp-v0.1.0`; 
+# this builds the server for each platform and publishes a 
+# GitHub Release the VS Code extension consumes by tag.
+on:
+  push:
+    tags: ["lsp-v*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Lockstep gate: the LSP shares quasar-syntax/quasar-hir with the derive
+  #    macro, so the binary is only built if all four crates are green.
+  test:
+    name: Test (lockstep)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test syntax/hir/lsp/derive
+        run: cargo test -p quasar-syntax -p quasar-hir -p quasar-lsp -p quasar-derive
+
+  # ── Cross-compile the server natively per platform. ──
+  build:
+    name: Build (${{ matrix.target }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14, target: aarch64-apple-darwin, ext: "" }
+          - { os: macos-13, target: x86_64-apple-darwin, ext: "" }
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, ext: "" }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, ext: ".exe" }
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Build quasar-lsp
+        run: cargo build --release -p quasar-lsp --target ${{ matrix.target }}
+      - name: Stage binary
+        shell: bash
+        run: |
+          cp "target/${{ matrix.target }}/release/quasar-lsp${{ matrix.ext }}" \
+             "quasar-lsp-${{ matrix.target }}${{ matrix.ext }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quasar-lsp-${{ matrix.target }}
+          path: quasar-lsp-${{ matrix.target }}${{ matrix.ext }}
+          if-no-files-found: error
+
+  # ── Publish a GitHub Release on the `lsp-v*` tag with the platform binaries. ──
+  release:
+    name: GitHub Release
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: lsp-binaries
+          pattern: quasar-lsp-*
+          merge-multiple: true
+      - name: Create GitHub Release
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            lsp-binaries/*
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
