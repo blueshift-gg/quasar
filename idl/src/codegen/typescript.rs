@@ -14,7 +14,7 @@ use {
 };
 
 const SOLANA_KIT_VERSION: &str = "^6.4.0";
-const SOLANA_WEB3JS_VERSION: &str = "^3.0.0-rc.0";
+const SOLANA_WEB3JS_VERSION: &str = "^3.0.0-rc.1";
 
 /// Target flavor for TypeScript client generation.
 #[derive(Clone, Copy, PartialEq)]
