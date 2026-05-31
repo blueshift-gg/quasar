@@ -190,8 +190,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     if used.contains("option") {
         codec_imports.push("getOptionCodec");
     }
-    // PublicKey codec imports: web3.js uses custom helper, kit uses getAddressCodec
-    // from @solana/kit
+    // For Web3.js v3, a custom codec is needed to handle its Address type
     if target == TsTarget::Web3js && has_public_key {
         codec_imports.extend_from_slice(&["getBytesCodec", "fixCodecSize", "transformCodec"]);
     }
@@ -229,7 +228,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
     }
 
     if target == TsTarget::Web3js && has_public_key {
-        out.push_str(ADDRESS_CODEC_HELPER);
+        out.push_str(WEB3JS_ADDRESS_CODEC_HELPER);
         out.push('\n');
     }
 
@@ -2340,7 +2339,7 @@ fn primitive_ts_codec(primitive: &str, target: TsTarget) -> String {
         "i128" => "getI128Codec()".to_string(),
         "bool" => "getBooleanCodec()".to_string(),
         "pubkey" => match target {
-            TsTarget::Web3js => "getAddressCodec()".to_string(),
+            TsTarget::Web3js => "getWeb3jsAddressCodec()".to_string(),
             TsTarget::Kit => "getAddressCodec()".to_string(),
         },
         "string" => "addCodecSizePrefix(getUtf8Codec(), getU32Codec())".to_string(),
@@ -2556,7 +2555,7 @@ fn write_byte_array(out: &mut String, value: &[u8]) {
     out.push_str("]),\n");
 }
 
-const ADDRESS_CODEC_HELPER: &str = r#"function getAddressCodec() {
+const WEB3JS_ADDRESS_CODEC_HELPER: &str = r#"function getWeb3jsAddressCodec() {
   return transformCodec(
     fixCodecSize(getBytesCodec(), 32),
     (value: Address) => value.toBytes(),
