@@ -19,17 +19,16 @@
 //! ```
 
 use {
-    super::{
-        super::resolve::{
-            specs::{
-                AccountsPlanTyped, EpilogueStep, FieldPlan, InitPlan, PostLoadStep, PreLoadStep,
-                RentPlan,
-            },
-            FieldKind, FieldSemantics, UserCheck,
-        },
-        typed_emit,
-    },
+    super::typed_emit,
     crate::helpers::strip_generics,
+    quasar_hir::accounts::{
+        specs::{
+            AccountsPlanTyped, EpilogueStep, FieldPlan, InitPlan, PostLoadStep, PreLoadStep,
+            RentPlan,
+        },
+        FieldKind, FieldSemantics,
+    },
+    quasar_syntax::accounts::UserCheck,
     quote::{format_ident, quote},
 };
 
@@ -165,7 +164,7 @@ fn emit_parse_sequence(
 // Init phase from the typed plan.
 
 fn emit_init_phase_typed(
-    field_plans: &[super::super::resolve::specs::FieldPlan],
+    field_plans: &[quasar_hir::accounts::specs::FieldPlan],
     semantics: &[FieldSemantics],
 ) -> Vec<proc_macro2::TokenStream> {
     let mut stmts = Vec::new();
@@ -239,7 +238,7 @@ fn needs_init_state_var(field_plan: &FieldPlan) -> bool {
             PostLoadStep::Behavior(call)
                 if matches!(
                     call.phase,
-                    super::super::resolve::specs::BehaviorPhase::Check
+                    quasar_hir::accounts::specs::BehaviorPhase::Check
                 )
         )
     });
@@ -250,7 +249,7 @@ fn needs_init_state_var(field_plan: &FieldPlan) -> bool {
 // Post-load phase from the typed plan.
 
 fn emit_post_load_typed(
-    field_plans: &[super::super::resolve::specs::FieldPlan],
+    field_plans: &[quasar_hir::accounts::specs::FieldPlan],
     semantics: &[FieldSemantics],
 ) -> Vec<proc_macro2::TokenStream> {
     let mut stmts = Vec::new();
@@ -267,8 +266,8 @@ fn emit_post_load_typed(
                 PostLoadStep::Behavior(bhv) => {
                     let needs = matches!(
                         bhv.phase,
-                        super::super::resolve::specs::BehaviorPhase::AfterInit
-                            | super::super::resolve::specs::BehaviorPhase::Update
+                        quasar_hir::accounts::specs::BehaviorPhase::AfterInit
+                            | quasar_hir::accounts::specs::BehaviorPhase::Update
                     );
                     (
                         typed_emit::emit_post_load_behavior(bhv, ident, ty, did_init_var.as_ref()),

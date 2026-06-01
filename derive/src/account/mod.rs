@@ -13,16 +13,16 @@ use {
     crate::{
         helpers::{
             classify_option_pod_dynamic, classify_pod_dynamic, validate_discriminator_not_zero,
-            AccountAttr,
         },
         seeds,
     },
     proc_macro::TokenStream,
+    quasar_syntax::account::AccountAttrAst,
     syn::{parse_macro_input, Data, DeriveInput, Fields},
 };
 
 pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let args = parse_macro_input!(attr as AccountAttr);
+    let args = parse_macro_input!(attr as AccountAttrAst);
     let mut input = parse_macro_input!(item as DeriveInput);
 
     // Parse #[seeds(...)] if present, then strip it before downstream processing.
@@ -43,14 +43,14 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     let name = &input.ident;
 
     // Handle enum-backed polymorphic accounts before struct-only validation.
-    if args.one_of {
+    if args.is_one_of() {
         match &input.data {
             Data::Enum(data) => {
                 let variants = match one_of::extract_variants(data) {
                     Ok(v) => v,
                     Err(e) => return e.to_compile_error().into(),
                 };
-                return one_of::generate_one_of_account(name, &variants, args.implements.as_ref())
+                return one_of::generate_one_of_account(name, &variants, args.implements_path())
                     .into();
             }
             _ => {
@@ -64,14 +64,14 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
-    let gen_set_inner = args.set_inner;
-    let unsafe_no_disc = args.unsafe_no_disc;
-    let (disc_bytes, disc_values) = if !args.disc_bytes.is_empty() {
-        let values = match validate_discriminator_not_zero(&args.disc_bytes) {
+    let gen_set_inner = args.is_set_inner();
+    let unsafe_no_disc = args.is_unsafe_no_disc();
+    let (disc_bytes, disc_values) = if !args.disc_bytes().is_empty() {
+        let values = match validate_discriminator_not_zero(args.disc_bytes()) {
             Ok(values) => values,
             Err(e) => return e.to_compile_error().into(),
         };
-        (args.disc_bytes, values)
+        (args.disc_bytes().to_vec(), values)
     } else {
         (vec![], vec![])
     };
@@ -106,7 +106,7 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     let pod_field_infos: Vec<fixed::PodFieldInfo<'_>> = match fields_data
         .iter()
         .map(|f| {
-            if !args.fixed_capacity && classify_option_pod_dynamic(&f.ty).is_some() {
+            if !args.is_fixed_capacity() && classify_option_pod_dynamic(&f.ty).is_some() {
                 return Err(syn::Error::new_spanned(
                     &f.ty,
                     "Option<String<N>> and Option<Vec<T, N>> account fields are not supported \
@@ -114,7 +114,7 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
                      dynamic field",
                 ));
             }
-            let pod_dyn = if args.fixed_capacity {
+            let pod_dyn = if args.is_fixed_capacity() {
                 None // fixed_capacity: everything goes in the ZC struct
             } else {
                 classify_pod_dynamic(&f.ty)

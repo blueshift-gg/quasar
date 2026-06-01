@@ -352,6 +352,7 @@ fn extend_fixed_schema_generics(generics: &syn::Generics, fields: &[Field]) -> s
 }
 
 /// Classification of a field in a borrowed compact struct.
+#[allow(clippy::large_enum_variant)] // transient per-field codegen value, not stored in bulk
 enum BorrowedFieldClass {
     /// Fixed (non-reference) field: use native type in schema, extract via
     /// `InstructionArg::from_zc`.

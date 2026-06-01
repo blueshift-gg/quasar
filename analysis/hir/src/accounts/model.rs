@@ -1,13 +1,18 @@
-use syn::{Expr, Ident, Type};
+//! Lowered representations downstream of parser output.
+
+use {
+    quasar_syntax::accounts::{BehaviorGroup, InitDirective, UserCheck},
+    syn::{Expr, Ident, Type},
+};
 
 /// Account field shape for parsing and account-count planning.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FieldKind {
+pub enum FieldKind {
     Single,
     Composite,
 }
 
-pub(crate) struct FieldCore {
+pub struct FieldCore {
     pub ident: Ident,
     pub field: syn::Field,
     pub effective_ty: Type,
@@ -20,40 +25,10 @@ pub(crate) struct FieldCore {
     pub dup: bool,
 }
 
-/// A behavior group directive: `path(key = value, ...)`.
-///
-/// The derive treats every non-core group as an open behavior group. The path
-/// resolves to a Rust module exporting `Args::builder()` and `Behavior`.
-/// No protocol-specific knowledge lives here.
-#[derive(Clone)]
-pub(crate) struct BehaviorGroup {
-    pub path: syn::Path,
-    pub args: Vec<BehaviorArg>,
-}
-
-impl BehaviorGroup {
-    /// The last segment of the path, used for variable naming.
-    pub(crate) fn name(&self) -> String {
-        self.path
-            .segments
-            .iter()
-            .map(|s| s.ident.to_string())
-            .collect::<Vec<_>>()
-            .join("_")
-    }
-}
-
-/// A single `key = value` arg in a behavior group directive.
-#[derive(Clone)]
-pub(crate) struct BehaviorArg {
-    pub key: Ident,
-    pub value: Expr,
-}
-
 /// Classification of a behavior arg value for lowering.
 /// Computed by the planner from the field name table.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ValueKind {
+pub enum ValueKind {
     /// Bare identifier matching an account field -> `field.to_account_view()`.
     BareFieldRef,
     /// Bare identifier matching an optional account field ->
@@ -70,23 +45,7 @@ pub(crate) enum ValueKind {
     SomeExpr,
 }
 
-/// User-specified structural assertion.
-pub(crate) enum UserCheck {
-    HasOne {
-        targets: Vec<Ident>,
-        error: Option<Expr>,
-    },
-    Address {
-        expr: Expr,
-        error: Option<Expr>,
-    },
-    Constraints {
-        exprs: Vec<Expr>,
-        error: Option<Expr>,
-    },
-}
-
-pub(crate) struct FieldSemantics {
+pub struct FieldSemantics {
     pub core: FieldCore,
     /// `init` / `init(idempotent)`: structural, Phase 1.
     pub init: Option<InitDirective>,
@@ -103,7 +62,7 @@ pub(crate) struct FieldSemantics {
     /// Structural assertions: has_one, address, constraints.
     pub user_checks: Vec<UserCheck>,
     /// True when the field type is `Migration<From, To>` (syntactic detection
-    /// on the last path segment). Proc macros cannot resolve type aliases :
+    /// on the last path segment). Proc macros cannot resolve type aliases:
     /// only direct `Migration<From, To>` paths are supported.
     pub is_migration: bool,
     /// True when the field type is `Uninit<T>` (syntactic detection on the
@@ -119,9 +78,4 @@ impl FieldSemantics {
     pub fn is_writable(&self) -> bool {
         self.core.is_mut || self.has_init() || self.is_migration || self.is_uninit
     }
-}
-
-/// Parsed `init` / `init(idempotent)` directive.
-pub(crate) struct InitDirective {
-    pub idempotent: bool,
 }

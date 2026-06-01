@@ -21,6 +21,8 @@ proc-macro2 = "1"
 serde_json = "1"
 quasar-schema = { path = "../schema" }
 quasar-idl-schema = { path = "../idl/schema" }
+quasar-syntax = { path = "../analysis/syntax" }
+quasar-hir = { path = "../analysis/hir" }
 
 [dev-dependencies]
 trybuild = "1"

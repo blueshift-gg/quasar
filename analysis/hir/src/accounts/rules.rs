@@ -3,9 +3,9 @@
 //! Protocol-specific validation (required args, arg types, exit ordering)
 //! is owned by behavior modules via builder errors and trait bounds.
 
-use {super::FieldSemantics, std::collections::HashSet, syn::Expr};
+use {super::model::FieldSemantics, std::collections::HashSet, syn::Expr};
 
-pub(super) fn validate_semantics(semantics: &[FieldSemantics]) -> syn::Result<()> {
+pub fn validate_semantics(semantics: &[FieldSemantics]) -> syn::Result<()> {
     let field_names: HashSet<String> = semantics
         .iter()
         .map(|sem| sem.core.ident.to_string())
@@ -20,7 +20,6 @@ pub(super) fn validate_semantics(semantics: &[FieldSemantics]) -> syn::Result<()
 fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
     let span = &sem.core.field;
 
-    // --- Migration exclusivity rules ---
     if sem.is_migration {
         if sem.core.optional {
             return Err(syn::Error::new_spanned(
@@ -48,7 +47,6 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
         }
     }
 
-    // --- Deferred init exclusivity rules ---
     if sem.is_uninit {
         if sem.core.optional {
             return Err(syn::Error::new_spanned(
@@ -82,12 +80,10 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
         }
     }
 
-    // init requires mut
     if sem.has_init() && !sem.core.is_mut {
         return Err(syn::Error::new_spanned(span, "`init(...)` requires `mut`"));
     }
 
-    // init + realloc mutual exclusion
     if sem.has_init() && sem.realloc.is_some() {
         return Err(syn::Error::new_spanned(
             span,
@@ -95,7 +91,6 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
         ));
     }
 
-    // dup + mutation ops blocked (init, realloc, close, mut behavior groups)
     if sem.core.dup {
         if sem.has_init() {
             return Err(syn::Error::new_spanned(
@@ -124,7 +119,6 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
         }
     }
 
-    // dup requires /// CHECK: doc comment
     if sem.core.dup {
         let has_doc = sem
             .core
@@ -147,7 +141,6 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
         ));
     }
 
-    // Optional realloc not supported
     if sem.core.optional && sem.realloc.is_some() {
         return Err(syn::Error::new_spanned(
             span,
@@ -155,7 +148,6 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
         ));
     }
 
-    // realloc requires mut
     if sem.realloc.is_some() && !sem.core.is_mut {
         return Err(syn::Error::new_spanned(
             span,
@@ -163,7 +155,6 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
         ));
     }
 
-    // init(idempotent) requires a behavior group or address constraint
     if let Some(init) = &sem.init {
         if init.idempotent {
             let has_behavior = !sem.groups.is_empty();
@@ -205,7 +196,6 @@ fn validate_behavior_field_refs(
     Ok(())
 }
 
-/// Reject a bare lowercase single-segment identifier that isn't a field name.
 fn validate_single_arg(
     expr: &Expr,
     key: &syn::Ident,

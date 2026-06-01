@@ -2,8 +2,9 @@
 //! dispatch setup for generated account structs.
 
 use {
-    super::{emit, resolve},
+    super::emit,
     crate::helpers::strip_generics,
+    quasar_hir::accounts as resolve,
     quote::{format_ident, quote},
 };
 
