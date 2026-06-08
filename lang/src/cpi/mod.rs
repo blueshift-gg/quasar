@@ -229,7 +229,9 @@ fn get_cpi_return() -> Result<CpiReturn, ProgramError> {
         // to ensure the entire `data` array is fully initialized.
         unsafe {
             let data_ptr = data.as_mut_ptr() as *mut u8;
-            data_ptr.add(data_len).write_bytes(0, MAX_RETURN_DATA - data_len);
+            data_ptr
+                .add(data_len)
+                .write_bytes(0, MAX_RETURN_DATA - data_len);
         }
 
         // SAFETY: `program_id` is written by sol_get_return_data whenever the
