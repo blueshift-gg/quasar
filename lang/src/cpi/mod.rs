@@ -207,9 +207,10 @@ fn get_cpi_return() -> Result<CpiReturn, ProgramError> {
     {
         let mut program_id = MaybeUninit::<Address>::uninit();
         // SAFETY: sol_get_return_data writes `min(size, MAX_RETURN_DATA)` bytes
-        // into the buffer. All consumer paths (as_slice, decode) are bounded by
-        // `data_len`, so uninitialized trailing bytes are never read.
+        // into the buffer. The remaining bytes are to be zeroed separately before
+        // calling `assume_init`.
         let mut data = MaybeUninit::<[u8; MAX_RETURN_DATA]>::uninit();
+
         let size = unsafe {
             solana_define_syscall::definitions::sol_get_return_data(
                 data.as_mut_ptr() as *mut u8,
@@ -222,16 +223,23 @@ fn get_cpi_return() -> Result<CpiReturn, ProgramError> {
             return Err(QuasarError::MissingReturnData.into());
         }
 
-        // SAFETY: sol_get_return_data initialized `min(size, MAX_RETURN_DATA)`
-        // bytes. The remaining bytes are uninitialized but never accessed:
-        // CpiReturn::as_slice returns &data[..data_len] and decode copies
-        // exactly size_of::<T::Zc>() bytes. We assume_init the full array
-        // because the struct carries it by value; the uninitialized tail is
-        // inert (u8 has no Drop).
+        let data_len = core::cmp::min(size, MAX_RETURN_DATA);
+
+        // SAFETY: Zeroes the remaining `MAX_RETURN_DATA - data_len` bytes
+        // to ensure the entire `data` array is fully initialized.
+        unsafe {
+            let data_ptr = data.as_mut_ptr() as *mut u8;
+            data_ptr.add(data_len).write_bytes(0, MAX_RETURN_DATA - data_len);
+        }
+
+        // SAFETY: `program_id` is written by sol_get_return_data whenever the
+        // return-data size is non-zero, which we checked above. The syscall
+        // initializes the first `data_len` bytes of `data`, and the remaining
+        // bytes were zeroed before `assume_init`.
         return Ok(CpiReturn {
             program_id: unsafe { program_id.assume_init() },
             data: unsafe { data.assume_init() },
-            data_len: core::cmp::min(size, MAX_RETURN_DATA),
+            data_len,
         });
     }
 
