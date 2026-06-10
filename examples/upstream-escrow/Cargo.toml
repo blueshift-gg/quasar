@@ -1,0 +1,27 @@
+[package]
+name = "upstream-escrow"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+doctest = false
+
+[lints]
+workspace = true
+
+[features]
+alloc = []
+client = []
+debug = []
+idl-build = ["quasar-lang/idl-build"]
+
+[dependencies]
+quasar-lang = { path = "../../lang" }
+quasar-spl = { path = "../../spl" }
+
+[dev-dependencies]
+upstream-escrow-client = { path = "client" }
+wincode = { version = "0.4", features = ["derive"] }
+quasar-svm = { git = "https://github.com/blueshift-gg/quasar-svm" }
+spl-token-interface = { version = "2.0.0" }
