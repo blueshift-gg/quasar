@@ -353,4 +353,9 @@ mod quasar_test_misc {
     ) -> Result<(), ProgramError> {
         ctx.accounts.handler(tag, a, b)
     }
+
+    #[instruction(discriminator = 64)]
+    pub fn close_account_alias(ctx: Ctx<CloseAccountAlias>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
 }

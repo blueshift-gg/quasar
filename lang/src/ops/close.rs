@@ -34,6 +34,9 @@ impl Op {
 ///
 /// The discriminator is cleared first so any later failure leaves the account
 /// unusable as typed program state.
+///
+/// Returns [`ProgramError::InvalidArgument`] if `destination` is the same
+/// account as `account`.
 #[inline(always)]
 pub fn close_account(
     account: &mut AccountView,
@@ -42,6 +45,16 @@ pub fn close_account(
 ) -> ProgramResult {
     if crate::utils::hint::unlikely(!destination.is_writable()) {
         return Err(ProgramError::Immutable);
+    }
+    // A self-close sums the drained lamports back into the same account and
+    // then zeroes them, destroying the balance (`UnbalancedInstruction`). A
+    // duplicate meta shares one backing account, so reject by pointer identity
+    // before any mutation leaves the account in a partially-closed state.
+    if crate::utils::hint::unlikely(core::ptr::eq(
+        account.account_ptr(),
+        destination.account_ptr(),
+    )) {
+        return Err(ProgramError::InvalidArgument);
     }
     // SAFETY: Callers only close accounts that have already passed the normal
     // account load path, so the discriminator prefix is present and writable.

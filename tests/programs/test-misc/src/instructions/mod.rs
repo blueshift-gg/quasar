@@ -4,6 +4,9 @@ pub use initialize::*;
 pub mod close_account;
 pub use close_account::*;
 
+pub mod close_account_alias;
+pub use close_account_alias::*;
+
 pub mod update_has_one;
 pub use update_has_one::*;
 

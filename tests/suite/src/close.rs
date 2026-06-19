@@ -159,3 +159,22 @@ fn authority_not_signer() {
     assert!(result.is_err(), "should reject non-signer authority");
     result.assert_error(ProgramError::MissingRequiredSignature);
 }
+
+#[test]
+fn self_close_rejected_without_mutation() {
+    let mut svm = svm_misc();
+    let account = Pubkey::new_unique();
+    let before = simple_account(account, Pubkey::new_unique(), 42, 7);
+
+    let ix: Instruction = CloseAccountAliasInstruction {
+        account,
+        destination: account,
+    }
+    .into();
+
+    let result = svm.process_instruction(&ix, core::slice::from_ref(&before));
+
+    assert!(result.is_err(), "self-close should fail");
+    result.assert_error(ProgramError::InvalidArgument);
+    assert_eq!(result.account(&account), Some(&before));
+}
