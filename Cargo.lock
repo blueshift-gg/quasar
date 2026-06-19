@@ -2108,7 +2108,7 @@ dependencies = [
  "serde_json",
  "solana-account-view",
  "solana-address 2.2.0",
- "solana-compiler-builtins",
+ "solana-compiler-builtins 0.1.0 (git+https://github.com/blueshift-gg/solana-compiler-builtins)",
  "solana-define-syscall 5.1.0",
  "solana-instruction",
  "solana-instruction-view",
@@ -2954,6 +2954,11 @@ dependencies = [
 [[package]]
 name = "solana-compiler-builtins"
 version = "0.1.0"
+
+[[package]]
+name = "solana-compiler-builtins"
+version = "0.1.0"
+source = "git+https://github.com/blueshift-gg/solana-compiler-builtins#6fe6a43649d57ecc4daf4e2ac14c08db2adec883"
 
 [[package]]
 name = "solana-compute-budget"
@@ -4126,6 +4131,27 @@ dependencies = [
 name = "upstream-escrow-client"
 version = "0.1.0"
 dependencies = [
+ "solana-address 2.2.0",
+ "solana-instruction",
+ "wincode 0.4.9",
+]
+
+[[package]]
+name = "upstream-multisig"
+version = "0.1.0"
+dependencies = [
+ "quasar-lang",
+ "quasar-svm",
+ "solana-instruction",
+ "upstream-multisig-client",
+ "wincode 0.4.9",
+]
+
+[[package]]
+name = "upstream-multisig-client"
+version = "0.1.0"
+dependencies = [
+ "quasar-lang",
  "solana-address 2.2.0",
  "solana-instruction",
  "wincode 0.4.9",

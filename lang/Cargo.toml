@@ -34,7 +34,7 @@ solana-define-syscall = { version = "5.0.1", features = [
 ] }
 
 [target.'cfg(target_arch = "bpf")'.dependencies]
-solana-compiler-builtins = { path = "../solana-compiler-builtins" }
+solana-compiler-builtins = { git = "https://github.com/blueshift-gg/solana-compiler-builtins" }
 
 [target.'cfg(not(any(target_os = "solana", target_arch = "bpf")))'.dependencies]
 zeropod = { version = "0.3.3", features = ["wincode", "solana-address", "solana-program-error"] }
