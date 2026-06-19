@@ -2113,6 +2113,32 @@ fn ops_close_rejects_lamport_overflow() {
 }
 
 #[test]
+fn ops_close_rejects_self_close() {
+    let data_len = 16usize;
+    let mut buf = AccountBuffer::new(data_len);
+    buf.init(
+        [1u8; 32],
+        TEST_OWNER.to_bytes(),
+        1_000_000,
+        data_len as u64,
+        false,
+        true,
+    );
+
+    let mut src_view = unsafe { buf.view() };
+    let self_view = unsafe { AccountView::new_unchecked(buf.raw()) };
+
+    let account =
+        unsafe { Account::<TestCloseableType>::from_account_view_unchecked_mut(&mut src_view) };
+    let result = account.close(&self_view);
+
+    assert_eq!(result, Err(ProgramError::InvalidArgument));
+    assert_eq!(self_view.lamports(), 1_000_000);
+    assert_eq!(self_view.data_len(), data_len);
+    assert!(self_view.owned_by(&TEST_OWNER));
+}
+
+#[test]
 fn ops_borrow_unchecked_mut_write_then_read_via_data_ptr() {
     let mut buf = AccountBuffer::new(16);
     buf.init([1u8; 32], [0u8; 32], 100, 16, false, true);
