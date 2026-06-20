@@ -197,6 +197,10 @@ impl CpiReturn {
         }
         // SAFETY: The previous copy initialized every byte of `T::Zc`.
         let zc = unsafe { zc.assume_init() };
+        // Return data is untrusted: validate before `from_zc`, whose
+        // contract assumes a validated companion (e.g. enum `from_zc` calls
+        // `unreachable_unchecked` on undeclared discriminants).
+        T::validate_zc(&zc)?;
         Ok(T::from_zc(&zc))
     }
 }
@@ -589,6 +593,23 @@ mod tests {
         let zc = <ReturnPayload as InstructionArg>::to_zc(&payload);
         let ret = return_with_data([2u8; 32], zc_bytes::<ReturnPayload>(&zc));
         assert_eq!(ret.decode::<ReturnPayload>().unwrap(), payload);
+    }
+
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, QuasarSerialize)]
+    #[repr(u8)]
+    enum Status {
+        Active = 1,
+        Closed = 2,
+    }
+
+    #[test]
+    fn decode_rejects_undeclared_enum_discriminant() {
+        let ret = return_with_data([1u8; 32], &[9u8]);
+        let result = ret.decode::<Status>();
+        assert!(
+            result.is_err(),
+            "undeclared discriminant must be rejected, got {result:?}"
+        );
     }
 
     #[test]
