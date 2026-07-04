@@ -1,0 +1,14 @@
+[unstable]
+build-std = ["core", "alloc"]
+
+[target.bpfel-unknown-none]
+rustflags = [
+"-C", "linker=sbpf-linker",
+"-C", "panic=abort",
+"-C", "relocation-model=static",
+"-C", "link-arg=--export=__multi3",
+"-C", "link-arg=--llvm-args=--bpf-max-stores-per-memfunc=5",
+"-C", "link-arg=--sbpf-arch=v0",
+]
+[alias]
+build-bpf = "build --release --target bpfel-unknown-none"

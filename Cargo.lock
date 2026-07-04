@@ -2954,6 +2954,7 @@ dependencies = [
 [[package]]
 name = "solana-compiler-builtins"
 version = "0.1.0"
+source = "git+https://github.com/blueshift-gg/solana-compiler-builtins#6fe6a43649d57ecc4daf4e2ac14c08db2adec883"
 
 [[package]]
 name = "solana-compute-budget"
@@ -4108,24 +4109,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "382810877fe448991dfc7f0dd6e3ae5d58088fd0ea5e35189655f84e6814fa56"
 dependencies = [
  "void",
-]
-
-[[package]]
-name = "upstream-vault"
-version = "0.1.0"
-dependencies = [
- "quasar-lang",
- "quasar-svm",
- "upstream-vault-client",
-]
-
-[[package]]
-name = "upstream-vault-client"
-version = "0.1.0"
-dependencies = [
- "solana-address 2.2.0",
- "solana-instruction",
- "wincode 0.4.9",
 ]
 
 [[package]]

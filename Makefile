@@ -20,7 +20,7 @@ SBF_EXAMPLES := examples/vault examples/escrow examples/multisig
 SBF_ALL := $(SBF_EXAMPLES) $(SBF_TEST_PROGRAMS)
 
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
-	check-runtime-panics check-workspace-invariants build build-sbf test bench-cu \
+	check-runtime-panics check-workspace-invariants build build-sbf build-upstream test bench-cu \
 	bench-tracked compare-tracked test-miri test-miri-strict test-all nightly-version \
 	generated-client-smoke kani help-kani check-kani kani-lang kani-spl kani-metadata
 
@@ -151,6 +151,12 @@ build-sbf:
 	done
 	@echo "Building test-heap (alloc only, no debug — tests alloc trap)"
 	cargo build-sbf --tools-version $(PLATFORM_TOOLS) --manifest-path tests/programs/test-heap/Cargo.toml --features alloc
+
+build-upstream:
+	@for dir in $(SBF_EXAMPLES); do \
+		echo "Building $$dir (upstream nightly)"; \
+		(cd "$$dir" && cargo +nightly build-bpf); \
+	done
 
 test:
 	@$(MAKE) build
