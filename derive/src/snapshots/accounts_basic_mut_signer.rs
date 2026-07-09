@@ -142,13 +142,13 @@ impl BasicAccounts {
                 quasar_lang::__internal::parse_account(
                     input,
                     base,
-                    0usize + 1usize,
+                    1usize,
                     __EXPECTED,
                     __MASK,
                 )?
             };
             quasar_lang::debug_log!(
-                concat!("Account '", stringify!(config), "' (index ", "0usize + 1usize",
+                concat!("Account '", stringify!(config), "' (index ", "1usize",
                 "): validation passed")
             );
         }
@@ -176,14 +176,14 @@ impl BasicAccounts {
                 quasar_lang::__internal::parse_account(
                     input,
                     base,
-                    0usize + 1usize + 1usize,
+                    2usize,
                     __EXPECTED,
                     __MASK,
                 )?
             };
             quasar_lang::debug_log!(
-                concat!("Account '", stringify!(system_program), "' (index ",
-                "0usize + 1usize + 1usize", "): validation passed")
+                concat!("Account '", stringify!(system_program), "' (index ", "2usize",
+                "): validation passed")
             );
         }
         Ok(input)

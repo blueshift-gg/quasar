@@ -155,7 +155,7 @@ impl OptionalAccounts {
                 quasar_lang::__internal::parse_account_dup(
                     input,
                     base,
-                    0usize + 1usize,
+                    1usize,
                     __program_id,
                     quasar_lang::__internal::ParseFlags {
                         expected: __EXPECTED,
@@ -168,7 +168,7 @@ impl OptionalAccounts {
                 )?
             };
             quasar_lang::debug_log!(
-                concat!("Account '", stringify!(config), "' (index ", "0usize + 1usize",
+                concat!("Account '", stringify!(config), "' (index ", "1usize",
                 "): parsed (dup-aware)")
             );
         }

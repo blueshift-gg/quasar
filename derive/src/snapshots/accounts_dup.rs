@@ -128,7 +128,7 @@ impl HeaderDupReadonly {
                 quasar_lang::__internal::parse_account_dup(
                     input,
                     base,
-                    0usize + 1usize,
+                    1usize,
                     __program_id,
                     quasar_lang::__internal::ParseFlags {
                         expected: __EXPECTED,
@@ -141,8 +141,8 @@ impl HeaderDupReadonly {
                 )?
             };
             quasar_lang::debug_log!(
-                concat!("Account '", stringify!(destination), "' (index ",
-                "0usize + 1usize", "): parsed (dup-aware)")
+                concat!("Account '", stringify!(destination), "' (index ", "1usize",
+                "): parsed (dup-aware)")
             );
         }
         Ok(input)

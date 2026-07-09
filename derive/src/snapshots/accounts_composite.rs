@@ -144,7 +144,7 @@ impl UsesAccountArray {
                 > as quasar_lang::traits::ParseAccountsRaw>::parse_accounts_raw(
                     input,
                     base,
-                    0usize + 1usize,
+                    1usize,
                     __program_id,
                 )?
             };
