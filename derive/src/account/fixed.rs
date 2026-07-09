@@ -146,8 +146,10 @@ pub(super) fn generate_account(spec: AccountCodegenSpec<'_>) -> TokenStream {
     // IDL fragment emission (feature-gated)
     let idl_fragment = {
         let name_str = name.to_string();
-        let mut inline_field_names: Vec<String> = Vec::new();
-        let mut tail_field_names: Vec<String> = Vec::new();
+        // Ordered (name, is_dynamic) list — the dynamic flag is the SAME
+        // classification that drives the compact wire schema (`fi.pod_dyn`), so
+        // the projected IDL layout cannot drift from the wire layout.
+        let mut layout_fields: Vec<(String, bool)> = Vec::new();
 
         let field_defs: Vec<proc_macro2::TokenStream> = field_infos
             .iter()
@@ -162,11 +164,7 @@ pub(super) fn generate_account(spec: AccountCodegenSpec<'_>) -> TokenStream {
                 let codec_tokens = crate::idl::type_to_idl_codec_tokens(&fi.field.ty);
                 let fdocs = crate::helpers::docs_tokens(&fi.field.attrs);
 
-                if fi.pod_dyn.is_some() {
-                    tail_field_names.push(fname.clone());
-                } else {
-                    inline_field_names.push(fname.clone());
-                }
+                layout_fields.push((fname.clone(), fi.pod_dyn.is_some()));
 
                 quote::quote! {
                     quasar_lang::idl_build::__reexport::IdlFieldDef {
@@ -180,8 +178,9 @@ pub(super) fn generate_account(spec: AccountCodegenSpec<'_>) -> TokenStream {
             .collect();
 
         // Fixed layout when all fields are inline; Compact otherwise — via the
-        // single-source `emit_idl_layout` shared with the instruction fragments.
-        let layout_tokens = crate::idl::emit_idl_layout(&inline_field_names, &tail_field_names);
+        // single-source `project_idl_layout` shared with the instruction
+        // fragments.
+        let layout_tokens = crate::idl::project_idl_layout(&layout_fields);
 
         // Emit the account's on-chain footprint. The fragment builder runs
         // host-side (in the `__quasar_emit_idl` test), where the account's

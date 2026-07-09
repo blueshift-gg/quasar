@@ -12,12 +12,37 @@ use {
     syn::{GenericArgument, PathArguments, Type},
 };
 
+/// Project an ordered field list into the `IdlLayout` tokens by partitioning it
+/// into inline (fixed) and tail (dynamic) names, then deferring to
+/// [`emit_idl_layout`].
+///
+/// The dynamic flag per field is the SAME classification that drives the
+/// compact wire schema (`fi.pod_dyn.is_some()` for `#[account]` fields,
+/// `instruction_arg_is_compact` for instruction args — both mirror
+/// `schema_ir::LayoutClass::is_dynamic`). Partitioning here, from that single
+/// classification, is what keeps the emitted IDL layout from drifting away from
+/// the wire layout: a field cannot be inline in the IDL yet tail on the wire.
+/// Field order is preserved within each region, matching the wire ordering.
+pub(crate) fn project_idl_layout(fields: &[(String, bool)]) -> proc_macro2::TokenStream {
+    let inline: Vec<String> = fields
+        .iter()
+        .filter(|(_, dynamic)| !dynamic)
+        .map(|(name, _)| name.clone())
+        .collect();
+    let tail: Vec<String> = fields
+        .iter()
+        .filter(|(_, dynamic)| *dynamic)
+        .map(|(name, _)| name.clone())
+        .collect();
+    emit_idl_layout(&inline, &tail)
+}
+
 /// Emit the `Some(IdlLayout::{Fixed|Compact})` tokens for a field/arg list
 /// split into inline (fixed) and tail (dynamic) names. A `Fixed` layout is
 /// emitted when there are no tail fields; otherwise a `Compact` layout with the
 /// standard wire ordering. Callers that need `None` for an empty list handle
 /// that before calling.
-pub(crate) fn emit_idl_layout(inline: &[String], tail: &[String]) -> proc_macro2::TokenStream {
+fn emit_idl_layout(inline: &[String], tail: &[String]) -> proc_macro2::TokenStream {
     if tail.is_empty() {
         quote! {
             Some(quasar_lang::idl_build::__reexport::IdlLayout::Fixed {

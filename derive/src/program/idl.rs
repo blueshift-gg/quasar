@@ -33,24 +33,23 @@ pub(super) fn emit_idl(model: &ProgramModel, mod_name: &Ident) -> TokenStream2 {
                 }
             }).collect();
 
-            // No args -> no layout; otherwise partition into inline (fixed) and
-            // tail (compact) names and defer to the single-source emitter.
+            // No args -> no layout; otherwise project the ordered args (with the
+            // same compact classification that drives the wire schema) into the
+            // inline/tail split via the single-source projector.
             let layout_tokens = if spec.idl_args.is_empty() {
                 quote! { None }
             } else {
-                let inline_fields: Vec<String> = spec
+                let layout_fields: Vec<(String, bool)> = spec
                     .idl_args
                     .iter()
-                    .filter(|arg| !crate::helpers::instruction_arg_is_compact(&arg.ty))
-                    .map(|arg| arg.name.to_string())
+                    .map(|arg| {
+                        (
+                            arg.name.to_string(),
+                            crate::helpers::instruction_arg_is_compact(&arg.ty),
+                        )
+                    })
                     .collect();
-                let tail_fields: Vec<String> = spec
-                    .idl_args
-                    .iter()
-                    .filter(|arg| crate::helpers::instruction_arg_is_compact(&arg.ty))
-                    .map(|arg| arg.name.to_string())
-                    .collect();
-                crate::idl::emit_idl_layout(&inline_fields, &tail_fields)
+                crate::idl::project_idl_layout(&layout_fields)
             };
 
             let remaining_tokens = if spec.has_remaining {
