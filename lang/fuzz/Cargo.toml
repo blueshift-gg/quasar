@@ -1,0 +1,41 @@
+# Fuzz harnesses for quasar-lang's untrusted-input decoders.
+#
+# This crate declares its OWN `[workspace]` so the repo-root workspace never
+# captures it (its members list is explicit, not a `lang/*` glob) and the
+# libfuzzer + sanitizer build graph stays isolated from the main build.
+[package]
+name = "quasar-lang-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+quasar-lang = { path = ".." }
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "decode_fixed"
+path = "fuzz_targets/decode_fixed.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_compact"
+path = "fuzz_targets/decode_compact.rs"
+test = false
+doc = false
+bench = false
+
+# libFuzzer needs some debug info for readable stacks; keep optimizations on.
+[profile.release]
+debug = 1
