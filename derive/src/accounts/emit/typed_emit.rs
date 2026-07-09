@@ -122,6 +122,19 @@ pub(crate) fn emit_behavior_init(
         #did_init_assignment
     };
 
+    wrap_init(field_ident, has_address, idempotent, &init_cpi)
+}
+
+/// The shared `init` scaffold: bind `__signers` (empty, or the PDA signer seeds
+/// via `AddressVerify::with_signer_seeds` when the field has a verified
+/// address), then run `inner_body`; idempotent inits guard on the account still
+/// being system-owned.
+fn wrap_init(
+    field_ident: &syn::Ident,
+    has_address: bool,
+    idempotent: bool,
+    inner_body: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
     let body = if has_address {
         let bump_var = format_ident!("__bumps_{}", field_ident);
         let addr_var = format_ident!("__addr_{}", field_ident);
@@ -131,7 +144,7 @@ pub(crate) fn emit_behavior_init(
                 &#addr_var,
                 __bump_ref,
                 |__signers| -> Result<(), quasar_lang::prelude::ProgramError> {
-                    #init_cpi
+                    #inner_body
                     Ok(())
                 },
             )?;
@@ -139,7 +152,7 @@ pub(crate) fn emit_behavior_init(
     } else {
         quote! {
             let __signers: &[quasar_lang::cpi::Signer<'_, '_>] = &[];
-            #init_cpi
+            #inner_body
         }
     };
 
@@ -181,36 +194,7 @@ pub(crate) fn emit_program_init(
         __init_op.apply::<#field_ty, _>(#field_ident, &__rent_ctx)?;
     };
 
-    let body = if has_address {
-        let bump_var = format_ident!("__bumps_{}", field_ident);
-        let addr_var = format_ident!("__addr_{}", field_ident);
-        quote! {
-            let __bump_ref: &[u8] = &[#bump_var];
-            quasar_lang::address::AddressVerify::with_signer_seeds(
-                &#addr_var,
-                __bump_ref,
-                |__signers| -> Result<(), quasar_lang::prelude::ProgramError> {
-                    #inner_body
-                    Ok(())
-                },
-            )?;
-        }
-    } else {
-        quote! {
-            let __signers: &[quasar_lang::cpi::Signer<'_, '_>] = &[];
-            #inner_body
-        }
-    };
-
-    if idempotent {
-        quote! {
-            if quasar_lang::is_system_program(#field_ident.owner()) {
-                #body
-            }
-        }
-    } else {
-        quote! { { #body } }
-    }
+    wrap_init(field_ident, has_address, idempotent, &inner_body)
 }
 
 pub(crate) fn emit_program_close(
@@ -255,11 +239,7 @@ fn emit_behavior_args_builder(
         .map(|arg| {
             let key = &arg.key;
             let key_lit = key.to_string();
-            let val = if exit_context {
-                emit_exit_lowered_value(&arg.lowered)
-            } else {
-                emit_lowered_value(&arg.lowered)
-            };
+            let val = emit_lowered_value(&arg.lowered, exit_context);
             quote! {
                 let __bhv_builder = if #bhv::uses_arg::<
                     { #phase_const },
@@ -307,33 +287,31 @@ fn emit_arg_phase_const(phase: BehaviorPhase) -> proc_macro2::TokenStream {
     }
 }
 
-/// Emit a lowered value in parse-time context (local variables).
-fn emit_lowered_value(val: &LoweredValue) -> proc_macro2::TokenStream {
+/// Emit a lowered behavior-arg value. `on_self` selects the receiver: exit-phase
+/// (epilogue) args reference `self.field`; every other phase uses the local
+/// binding `field`.
+fn emit_lowered_value(val: &LoweredValue, on_self: bool) -> proc_macro2::TokenStream {
+    let recv = |ident: &syn::Ident| {
+        if on_self {
+            quote! { self.#ident }
+        } else {
+            quote! { #ident }
+        }
+    };
     match val {
-        LoweredValue::FieldView(ident) => quote! { #ident.to_account_view() },
+        LoweredValue::FieldView(ident) => {
+            let r = recv(ident);
+            quote! { #r.to_account_view() }
+        }
         LoweredValue::OptionalFieldView(ident) => {
-            quote! { #ident.as_ref().map(|v| v.to_account_view()) }
+            let r = recv(ident);
+            quote! { #r.as_ref().map(|v| v.to_account_view()) }
         }
         LoweredValue::Expr(expr) => quote! { #expr },
         LoweredValue::NoneLiteral => quote! { None },
         LoweredValue::SomeFieldView(ident) => {
-            quote! { Some(#ident.to_account_view()) }
-        }
-        LoweredValue::SomeExpr(expr) => quote! { Some(#expr) },
-    }
-}
-
-/// Emit a lowered value in epilogue context (`self.field`).
-fn emit_exit_lowered_value(val: &LoweredValue) -> proc_macro2::TokenStream {
-    match val {
-        LoweredValue::FieldView(ident) => quote! { self.#ident.to_account_view() },
-        LoweredValue::OptionalFieldView(ident) => {
-            quote! { self.#ident.as_ref().map(|v| v.to_account_view()) }
-        }
-        LoweredValue::Expr(expr) => quote! { #expr },
-        LoweredValue::NoneLiteral => quote! { None },
-        LoweredValue::SomeFieldView(ident) => {
-            quote! { Some(self.#ident.to_account_view()) }
+            let r = recv(ident);
+            quote! { Some(#r.to_account_view()) }
         }
         LoweredValue::SomeExpr(expr) => quote! { Some(#expr) },
     }
