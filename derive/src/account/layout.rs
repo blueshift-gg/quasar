@@ -14,8 +14,8 @@ pub(super) struct ZcSpec {
     /// Native-typed fields for the fixed (non-compact) zeropod schema struct.
     /// Empty for dynamic accounts (which carry a `compact_ir` instead).
     pub schema_fields: Vec<proc_macro2::TokenStream>,
-    /// The compact schema IR for dynamic accounts (emitted via the single-source
-    /// `emit_compact_schema`); `None` for fixed accounts.
+    /// The compact schema IR for dynamic accounts (emitted via the
+    /// single-source `emit_compact_schema`); `None` for fixed accounts.
     pub compact_ir: Option<SchemaIR>,
 }
 

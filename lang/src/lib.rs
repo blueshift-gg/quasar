@@ -692,7 +692,10 @@ mod tests {
         assert_eq!(header_expected(false, false, false), 0xFF);
         assert_eq!(header_expected(true, false, false), 0xFF | (1 << 8));
         assert_eq!(header_expected(false, true, false), 0xFF | (1 << 16));
-        assert_eq!(header_expected(true, true, false), 0xFF | (1 << 8) | (1 << 16));
+        assert_eq!(
+            header_expected(true, true, false),
+            0xFF | (1 << 8) | (1 << 16)
+        );
         assert_eq!(header_expected(false, false, true), 0xFF | (1 << 24));
 
         assert_eq!(NODUP, 0xFF);

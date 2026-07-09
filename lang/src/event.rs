@@ -16,8 +16,9 @@ use {
 /// `#[derive(Accounts)]` implements this for any struct that carries both an
 /// event-authority field (named `event_authority` or typed `EventAuthority`)
 /// and a program field (`Program<T>`); `emit_cpi!` calls the default
-/// [`EventCpi::emit`]. The default body mirrors [`crate::accounts::Program::emit_event`]
-/// exactly, so the self-CPI monomorphizes to identical code and CU.
+/// [`EventCpi::emit`]. The default body mirrors
+/// [`crate::accounts::Program::emit_event`] exactly, so the self-CPI
+/// monomorphizes to identical code and CU.
 pub trait EventCpi {
     /// This program's `EventAuthority` PDA bump (`EventAuthority::BUMP`).
     const EVENT_AUTHORITY_BUMP: u8;

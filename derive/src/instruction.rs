@@ -133,7 +133,8 @@ fn emit_handler_tail(
 }
 
 /// Map a classified instruction arg to its compact schema layout class. The
-/// handler decode uses the raw `PodVec` element (its accessor yields `&[elem]`).
+/// handler decode uses the raw `PodVec` element (its accessor yields
+/// `&[elem]`).
 fn compact_layout_class(cls: &ArgClass) -> crate::schema_ir::LayoutClass {
     use crate::schema_ir::LayoutClass;
     match cls {
@@ -177,7 +178,11 @@ fn emit_decode_and_tail(
         // pod-dyn, borrowed) / grouped-borrowed-struct.
         let mut arg_classes: Vec<ArgClass> = Vec::with_capacity(remaining.len());
         for pt in remaining {
-            arg_classes.push(classify_instruction_arg(&pt.ty, &pt.attrs, ArgSite::Handler)?);
+            arg_classes.push(classify_instruction_arg(
+                &pt.ty,
+                &pt.attrs,
+                ArgSite::Handler,
+            )?);
         }
 
         // A grouped borrowed struct is decoded whole and must be the only arg.
@@ -257,8 +262,11 @@ fn emit_decode_and_tail(
             let schema_name: Ident = syn::parse_quote!(__InstructionDataCompact);
             let ref_name: Ident = syn::parse_quote!(__InstructionDataCompactRef);
 
-            let schema_struct =
-                crate::schema_ir::emit_compact_schema(&schema_name, &ir, &syn::Visibility::Inherited);
+            let schema_struct = crate::schema_ir::emit_compact_schema(
+                &schema_name,
+                &ir,
+                &syn::Visibility::Inherited,
+            );
             out.push(syn::parse_quote!(#schema_struct));
             out.extend(crate::schema_ir::emit_compact_decode(
                 &ir,

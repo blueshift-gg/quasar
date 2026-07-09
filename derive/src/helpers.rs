@@ -195,8 +195,8 @@ impl Parse for InstructionArgs {
 }
 
 /// `#[event(...)]` arguments: an event accepts ONLY `discriminator`. Unlike
-/// `InstructionArgs`, `heap`/`raw` are rejected (previously they parsed and were
-/// silently discarded).
+/// `InstructionArgs`, `heap`/`raw` are rejected (previously they parsed and
+/// were silently discarded).
 pub(crate) struct EventArgs {
     pub discriminator: Option<Vec<LitInt>>,
 }
@@ -266,10 +266,7 @@ pub(crate) enum DiscCtx {
 /// Parse and validate a discriminator, rejecting all-zero values per context.
 /// This is the single definition site for the all-zero policy across
 /// `#[account]`, `#[instruction]`, and `#[event]`.
-pub(crate) fn validate_discriminator(
-    disc_bytes: &[LitInt],
-    cx: DiscCtx,
-) -> syn::Result<Vec<u8>> {
+pub(crate) fn validate_discriminator(disc_bytes: &[LitInt], cx: DiscCtx) -> syn::Result<Vec<u8>> {
     let values = parse_discriminator_bytes(disc_bytes)?;
     let all_zero = values.iter().all(|&b| b == 0);
     let (reject, message) = match cx {
@@ -289,13 +286,8 @@ pub(crate) fn validate_discriminator(
             "instruction discriminator must contain at least one non-zero byte; all-zero \
              multi-byte discriminators are dangerous because zeroed instruction data would match",
         ),
-        // The planned all-zero event tightening is HELD: the in-tree escrow
-        // example emits `#[event(discriminator = 0)]` (an intentional 0/1/2
-        // sequence), so rejecting it would break a shipped example — the E4
-        // STOP condition. Event discriminators keep the current (no-op) policy;
-        // flip `reject` to `all_zero` here once the example is migrated.
         DiscCtx::Event => (
-            false,
+            all_zero,
             "event discriminator must contain at least one non-zero byte; all-zero discriminators \
              are indistinguishable from zeroed event data",
         ),
@@ -608,10 +600,11 @@ pub(crate) enum ArgClass {
     PodDyn(PodDynField),
     /// `Option<String<N,P>>` / `Option<Vec<T,N,P>>`: a compact tail field.
     OptionPodDyn(PodDynField),
-    /// Borrowed `&str` / `&[T]` desugared via `#[max(N)]`: a compact tail field.
+    /// Borrowed `&str` / `&[T]` desugared via `#[max(N)]`: a compact tail
+    /// field.
     Borrowed(PodDynField),
-    /// A lifetime-carrying struct decoded whole via `decode_compact` (must be the
-    /// sole handler arg). Not a compact tail field itself.
+    /// A lifetime-carrying struct decoded whole via `decode_compact` (must be
+    /// the sole handler arg). Not a compact tail field itself.
     BorrowedGroup(Type),
 }
 
@@ -698,10 +691,10 @@ pub(crate) fn wire_layout(args: &[ArgClass]) -> WireLayout {
     }
 }
 
-/// Enforce that no fixed item follows a dynamic one. `is_dynamic` is parallel to
-/// `items`; the error is spanned at the offending fixed item with `message`.
-/// Shared by the `#[instruction]` handler decode, `#[account]` field layout, and
-/// the borrowed-struct serializer.
+/// Enforce that no fixed item follows a dynamic one. `is_dynamic` is parallel
+/// to `items`; the error is spanned at the offending fixed item with `message`.
+/// Shared by the `#[instruction]` handler decode, `#[account]` field layout,
+/// and the borrowed-struct serializer.
 pub(crate) fn check_fixed_before_dynamic<T: ToTokens>(
     items: &[T],
     is_dynamic: &[bool],

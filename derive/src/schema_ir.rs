@@ -1,7 +1,7 @@
 //! Compact-schema IR: the single source of `#[zeropod(compact)]` emission.
 //!
-//! Four codegen paths lower a list of fields into a compact zeropod schema — the
-//! `#[instruction]` handler decode, the struct-level `#[instruction(...)]`
+//! Four codegen paths lower a list of fields into a compact zeropod schema —
+//! the `#[instruction]` handler decode, the struct-level `#[instruction(...)]`
 //! extractor (`accounts/emit/ix_args.rs`), the borrowed `QuasarSerialize`
 //! struct, and the dynamic `#[account]`. They previously each hand-wrote the
 //! `#[derive(zeropod::ZeroPod)] #[zeropod(compact)] struct { .. }` boilerplate.
@@ -9,9 +9,9 @@
 //!
 //! The IR is pure `syn`/token data (no behavior). The per-field *element*
 //! spelling for `PodVec` is supplied by the caller (see the divergence note on
-//! [`LayoutClass::Vec`]): each caller's schema field type must match the element
-//! type its own accessor yields, so the element token is caller data rather than
-//! recomputed here.
+//! [`LayoutClass::Vec`]): each caller's schema field type must match the
+//! element type its own accessor yields, so the element token is caller data
+//! rather than recomputed here.
 
 use {
     crate::helpers::{map_to_pod_type, PodDynField},
@@ -99,7 +99,8 @@ pub(crate) struct SchemaField {
 }
 
 impl SchemaField {
-    /// A private field with no passthrough attributes (instruction / serialize).
+    /// A private field with no passthrough attributes (instruction /
+    /// serialize).
     pub(crate) fn private(ident: Ident, class: LayoutClass) -> Self {
         Self {
             ident,
@@ -140,8 +141,8 @@ impl SchemaIR {
     }
 }
 
-/// Emit the shared `#[derive(zeropod::ZeroPod)] #[zeropod(compact)] struct` for a
-/// compact schema. `struct_vis` is the struct visibility (`pub` for accounts,
+/// Emit the shared `#[derive(zeropod::ZeroPod)] #[zeropod(compact)] struct` for
+/// a compact schema. `struct_vis` is the struct visibility (`pub` for accounts,
 /// inherited for instruction/serialize). This is the ONLY place the
 /// `#[zeropod(compact)]` attribute is constructed.
 pub(crate) fn emit_compact_schema(

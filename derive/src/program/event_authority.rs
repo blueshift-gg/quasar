@@ -7,11 +7,7 @@
 //! trait, whose impl `#[derive(Accounts)]` emits from a struct's
 //! `event_authority` + program fields (`emit_cpi!` calls it).
 
-use {
-    proc_macro2::TokenStream as TokenStream2,
-    quote::quote,
-    syn::Ident,
-};
+use {proc_macro2::TokenStream as TokenStream2, quote::quote, syn::Ident};
 
 /// Emit the program marker type and its `EventAuthority` PDA companion.
 pub(super) fn emit_program_type(program_type_name: &Ident) -> TokenStream2 {

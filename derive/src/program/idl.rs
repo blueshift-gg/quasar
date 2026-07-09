@@ -5,10 +5,7 @@
 //! with the account metadata registered by `#[derive(Accounts)]`.
 
 use {
-    super::model::ProgramModel,
-    proc_macro2::TokenStream as TokenStream2,
-    quote::quote,
-    syn::Ident,
+    super::model::ProgramModel, proc_macro2::TokenStream as TokenStream2, quote::quote, syn::Ident,
 };
 
 /// Emit the per-instruction IDL fragments and the `__quasar_build_idl` fn.

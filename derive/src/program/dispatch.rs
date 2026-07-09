@@ -28,8 +28,8 @@ const DIRECT_PARSE_MIN_ACCOUNTS: usize = 8;
 /// tables benefit from erasing it. (Derive-side comparison, not emitted.)
 const EVENT_FASTPATH_MIN_IX: usize = 4;
 
-/// Stack-allocated `AccountView` buffer cap for raw dispatch: a raw handler sees
-/// up to this many accounts inlined on the entrypoint frame, the rest flow
+/// Stack-allocated `AccountView` buffer cap for raw dispatch: a raw handler
+/// sees up to this many accounts inlined on the entrypoint frame, the rest flow
 /// through the remaining-accounts cursor. Bounds the stack footprint of the raw
 /// path. (Emitted as an unsuffixed `64` literal to match the historical shape.)
 const RAW_INLINE_ACCOUNT_CAP: usize = 64;
@@ -142,8 +142,8 @@ fn emit_raw_context_setup(data_start: TokenStream2) -> TokenStream2 {
 
 /// Emit the normal-dispatch match arm for one instruction: the account-count
 /// guard, then the buffered parse (small account lists) or the direct parser
-/// (>= `DIRECT_PARSE_MIN_ACCOUNTS`); handlers with remaining accounts always use
-/// the buffered path.
+/// (>= `DIRECT_PARSE_MIN_ACCOUNTS`); handlers with remaining accounts always
+/// use the buffered path.
 fn guarded_match_arm(spec: &InstructionSpec, any_heap: bool, disc_len: usize) -> TokenStream2 {
     let cursor_init = emit_heap_cursor_block(spec.heap, any_heap);
     let fn_name = &spec.fn_name;

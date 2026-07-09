@@ -1,5 +1,6 @@
-//! IDL token emission: the derive-side helpers that build `quasar_lang::idl_build`
-//! constructor tokens for a type's IDL `type`, `codec`, and `layout`.
+//! IDL token emission: the derive-side helpers that build
+//! `quasar_lang::idl_build` constructor tokens for a type's IDL `type`,
+//! `codec`, and `layout`.
 //!
 //! [`emit_idl_layout`] is the single source for the `IdlLayout` fragment shared
 //! by `#[account]` (`account/mod.rs`) and `#[program]` instructions
@@ -11,11 +12,11 @@ use {
     syn::{GenericArgument, PathArguments, Type},
 };
 
-/// Emit the `Some(IdlLayout::{Fixed|Compact})` tokens for a field/arg list split
-/// into inline (fixed) and tail (dynamic) names. A `Fixed` layout is emitted
-/// when there are no tail fields; otherwise a `Compact` layout with the standard
-/// wire ordering. Callers that need `None` for an empty list handle that before
-/// calling.
+/// Emit the `Some(IdlLayout::{Fixed|Compact})` tokens for a field/arg list
+/// split into inline (fixed) and tail (dynamic) names. A `Fixed` layout is
+/// emitted when there are no tail fields; otherwise a `Compact` layout with the
+/// standard wire ordering. Callers that need `None` for an empty list handle
+/// that before calling.
 pub(crate) fn emit_idl_layout(inline: &[String], tail: &[String]) -> proc_macro2::TokenStream {
     if tail.is_empty() {
         quote! {

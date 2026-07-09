@@ -3,10 +3,10 @@
 //! to build the discriminator -> handler routing.
 //!
 //! Pipeline: [`scan`] parses each `#[instruction]` attribute once into a raw
-//! list; [`model::ProgramModel`] assigns discriminators and runs every scan-time
-//! rule; [`dispatch`] emits the router + entrypoint; [`event_authority`] emits
-//! the program marker type + `EventAuthority` PDA; [`idl`] emits the IDL
-//! fragments. `mod.rs` is only the orchestrator.
+//! list; [`model::ProgramModel`] assigns discriminators and runs every
+//! scan-time rule; [`dispatch`] emits the router + entrypoint;
+//! [`event_authority`] emits the program marker type + `EventAuthority` PDA;
+//! [`idl`] emits the IDL fragments. `mod.rs` is only the orchestrator.
 
 mod dispatch;
 mod event_authority;

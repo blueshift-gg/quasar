@@ -35,8 +35,8 @@ fn parse_instruction_attr(attr: &syn::Attribute) -> syn::Result<InstructionArgs>
 }
 
 /// Scan the module items in source order, returning one `RawInstruction` per
-/// `#[instruction]`-annotated function. Attribute parse errors surface here (the
-/// same error the first historical pass raised), fail-fast.
+/// `#[instruction]`-annotated function. Attribute parse errors surface here
+/// (the same error the first historical pass raised), fail-fast.
 pub(super) fn scan(items: &[Item]) -> syn::Result<Vec<RawInstruction<'_>>> {
     let mut raw = Vec::new();
     for item in items {

@@ -1,10 +1,10 @@
 //! Per-instruction specs and the `#[program(...)]` attribute.
 //!
 //! `InstructionSpec` is the resolved, validated description of one normal
-//! instruction (discriminator, accounts type, client/IDL args, remaining-account
-//! flag); `RawInstructionSpec` is the lighter `#[instruction(raw)]` variant.
-//! `model.rs` builds these from the raw scan; `dispatch.rs` and `idl.rs` consume
-//! them for codegen.
+//! instruction (discriminator, accounts type, client/IDL args,
+//! remaining-account flag); `RawInstructionSpec` is the lighter
+//! `#[instruction(raw)]` variant. `model.rs` builds these from the raw scan;
+//! `dispatch.rs` and `idl.rs` consume them for codegen.
 
 use {
     crate::{
@@ -66,8 +66,8 @@ impl DiscriminatorSource {
 }
 
 /// An instruction argument's name and type. The client-arg list stores the
-/// off-chain mapped type (`String<N>` -> `DynString<P>`); the IDL-arg list keeps
-/// the type as declared in the handler signature.
+/// off-chain mapped type (`String<N>` -> `DynString<P>`); the IDL-arg list
+/// keeps the type as declared in the handler signature.
 pub(super) struct ArgSpec {
     pub name: Ident,
     pub ty: Type,
@@ -118,9 +118,10 @@ fn dyn_client_type(pd: &PodDynField) -> Type {
     }
 }
 
-/// Map a handler argument to its off-chain client type. Fixed args pass through;
-/// dynamic (`String<N>`/`Vec<T,N>`), optional-dynamic, and borrowed (`&str`/
-/// `&[T]` + `#[max]`) args map to the compact `DynString`/`DynVec` client types.
+/// Map a handler argument to its off-chain client type. Fixed args pass
+/// through; dynamic (`String<N>`/`Vec<T,N>`), optional-dynamic, and borrowed
+/// (`&str`/ `&[T]` + `#[max]`) args map to the compact `DynString`/`DynVec`
+/// client types.
 fn map_client_arg_type(pt: &syn::PatType) -> syn::Result<Type> {
     let ty = if classify_lifetime_arg(&pt.ty) {
         // Borrowed struct (has lifetime param): the off-chain client
@@ -154,8 +155,8 @@ fn map_client_arg_type(pt: &syn::PatType) -> syn::Result<Type> {
 
 impl InstructionSpec {
     /// Build the spec for one normal instruction handler. The discriminator has
-    /// already been resolved (auto or explicit) by `model.rs`; this collects the
-    /// accounts type, client/IDL arg lists, and remaining-account flag.
+    /// already been resolved (auto or explicit) by `model.rs`; this collects
+    /// the accounts type, client/IDL arg lists, and remaining-account flag.
     pub(super) fn from_handler(
         func: &syn::ItemFn,
         disc_bytes: Vec<LitInt>,

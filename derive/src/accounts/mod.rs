@@ -210,8 +210,8 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
 ///
 /// - authority field = the field the plan marked `EventCpiTerm::EventAuthority`
 ///   (named `event_authority` or typed `EventAuthority`);
-/// - program field   = the first `Program<T>` field, detected by type so it need
-///   not be named `program`.
+/// - program field   = the first `Program<T>` field, detected by type so it
+///   need not be named `program`.
 ///
 /// A struct with an event-authority field but no program field is a spanned
 /// error (previously this silently generated nothing).

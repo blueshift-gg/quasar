@@ -1,20 +1,20 @@
 //! The validated program model: discriminator assignment + all scan-time rules.
 //!
 //! `ProgramModel::build` consumes the once-parsed [`RawInstruction`] list and
-//! resolves it into the instruction/raw specs the codegen consumes. It preserves
-//! the historical two-phase discriminator logic exactly — explicit values are
-//! collected first (so autos skip every pinned value, including ones declared
-//! later), then values are assigned in source order:
+//! resolves it into the instruction/raw specs the codegen consumes. It
+//! preserves the historical two-phase discriminator logic exactly — explicit
+//! values are collected first (so autos skip every pinned value, including ones
+//! declared later), then values are assigned in source order:
 //!
 //! - length/duplicate/reserved-`0xFF` rules stay byte-for-byte;
 //! - an instruction whose signature fails is *recorded and skipped* only AFTER
 //!   its discriminator (including any auto value) is committed, so no sibling's
-//!   auto number shifts between the erroring compile and the fixed one
-//!   (guarded by `lang/tests/auto_instruction_discriminator.rs`);
+//!   auto number shifts between the erroring compile and the fixed one (guarded
+//!   by `lang/tests/auto_instruction_discriminator.rs`);
 //! - independent signature and reserved-`0xFF` errors accumulate via
-//!   `syn::Error::combine` and surface together; disc-level and attr-parse errors
-//!   stay fail-fast (they recur from the scan or cascade, so accumulating them
-//!   adds only noise).
+//!   `syn::Error::combine` and surface together; disc-level and attr-parse
+//!   errors stay fail-fast (they recur from the scan or cascade, so
+//!   accumulating them adds only noise).
 
 use {
     super::{
@@ -67,10 +67,7 @@ fn combine_err(acc: &mut Option<syn::Error>, e: syn::Error) {
 }
 
 impl ProgramModel {
-    pub(super) fn build(
-        raw: &[RawInstruction<'_>],
-        module_ident: &Ident,
-    ) -> syn::Result<Self> {
+    pub(super) fn build(raw: &[RawInstruction<'_>], module_ident: &Ident) -> syn::Result<Self> {
         let mut instruction_specs: Vec<InstructionSpec> = Vec::new();
         let mut raw_specs: Vec<RawInstructionSpec> = Vec::new();
         let mut seen_discriminators: Vec<(Vec<u8>, String)> = Vec::new();
@@ -93,8 +90,8 @@ impl ProgramModel {
                         return Err(syn::Error::new_spanned(
                             ri.attr,
                             format!(
-                                "all instruction discriminators must have the same \
-                                 length: expected {} byte(s), found {}",
+                                "all instruction discriminators must have the same length: \
+                                 expected {} byte(s), found {}",
                                 len,
                                 disc_bytes.len()
                             ),
@@ -168,8 +165,7 @@ impl ProgramModel {
                     Err(e) => return Err(e),
                 },
             };
-            if let Some((_, prev_fn)) =
-                seen_discriminators.iter().find(|(v, _)| *v == disc_values)
+            if let Some((_, prev_fn)) = seen_discriminators.iter().find(|(v, _)| *v == disc_values)
             {
                 return Err(syn::Error::new_spanned(
                     ri.attr,
