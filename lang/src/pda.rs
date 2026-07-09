@@ -7,6 +7,18 @@
 //! On SBF, `&[u8]` has layout `(*const u8, u64)`, identical to `sol_sha256`'s
 //! `SolBytes`. The slice-of-slices cast exploits this to pass seed arrays
 //! directly to the syscall without intermediate copies.
+//!
+//! # Error convention
+//!
+//! Each failure class maps to one error, consistently:
+//! - **Malformed seeds** (seed count exceeds the limit): native
+//!   [`ProgramError::InvalidSeeds`].
+//! - **PDA derivation/verification failure** (the derived address or hash does
+//!   not match `expected`, or no valid PDA/bump was found): framework
+//!   [`QuasarError::InvalidPda`](crate::error::QuasarError::InvalidPda).
+//!
+//! Note: the framework `QuasarError::InvalidSeeds` variant is currently
+//! unemitted — the malformed-seeds class uses the cheaper native error.
 
 #[cfg(any(target_os = "solana", target_arch = "bpf"))]
 use solana_define_syscall::definitions::{sol_curve_validate_point, sol_sha256};
@@ -82,7 +94,7 @@ pub fn verify_program_address(
         if crate::keys_eq(unsafe { &*(hash.as_ptr() as *const Address) }, expected) {
             Ok(())
         } else {
-            Err(ProgramError::InvalidSeeds)
+            Err(ProgramError::from(crate::error::QuasarError::InvalidPda))
         }
     }
 
@@ -188,7 +200,7 @@ pub fn try_find_program_address(
             bump -= 1;
         }
 
-        Err(ProgramError::InvalidSeeds)
+        Err(ProgramError::from(crate::error::QuasarError::InvalidPda))
     }
 
     #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
@@ -282,7 +294,7 @@ pub fn verify_canonical_program_address(
             bump -= 1;
         }
 
-        Err(ProgramError::InvalidSeeds)
+        Err(ProgramError::from(crate::error::QuasarError::InvalidPda))
     }
 
     #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
@@ -410,7 +422,7 @@ pub fn find_bump_for_address(
             bump -= 1;
         }
 
-        Err(ProgramError::InvalidSeeds)
+        Err(ProgramError::from(crate::error::QuasarError::InvalidPda))
     }
 
     #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
