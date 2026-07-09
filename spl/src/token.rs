@@ -1,5 +1,7 @@
-// Re-export zeropod so #[derive(ZeroPod)] expansion resolves `zeropod::*`
-// paths.
+// The `#[derive(quasar_lang::ZeroPod)]` expansion emits unqualified `zeropod::`
+// paths and has no crate-path override, so alias the framework's re-export as
+// `zeropod` to resolve them. Everything else uses the stable
+// `quasar_lang::{ZeroPod, pod, ...}` paths.
 use {
     crate::{
         constants::{SPL_TOKEN_BYTES, SPL_TOKEN_ID, TOKEN_2022_ID},
@@ -9,16 +11,16 @@ use {
     solana_address::Address,
 };
 
-#[derive(quasar_lang::__zeropod::ZeroPod)]
+#[derive(quasar_lang::ZeroPod)]
 pub struct TokenData {
     pub mint: Address,
     pub owner: Address,
     pub amount: u64,
-    pub delegate: quasar_lang::__zeropod::pod::PodOption<Address, 4>,
+    pub delegate: quasar_lang::pod::PodOption<Address, 4>,
     pub state: u8,
-    pub native: quasar_lang::__zeropod::pod::PodOption<quasar_lang::__zeropod::pod::PodU64, 4>,
+    pub native: quasar_lang::pod::PodOption<quasar_lang::pod::PodU64, 4>,
     pub delegated_amount: u64,
-    pub close_authority: quasar_lang::__zeropod::pod::PodOption<Address, 4>,
+    pub close_authority: quasar_lang::pod::PodOption<Address, 4>,
 }
 
 const _: () = assert!(core::mem::size_of::<TokenDataZc>() == 165);
@@ -41,14 +43,14 @@ impl TokenDataZc {
     }
 }
 
-#[derive(quasar_lang::__zeropod::ZeroPod)]
+#[derive(quasar_lang::ZeroPod)]
 pub struct MintData {
-    pub mint_authority: quasar_lang::__zeropod::pod::PodOption<Address, 4>,
+    pub mint_authority: quasar_lang::pod::PodOption<Address, 4>,
     pub supply: u64,
     pub decimals: u8,
     #[zeropod(skip_accessor)]
     pub is_initialized: u8,
-    pub freeze_authority: quasar_lang::__zeropod::pod::PodOption<Address, 4>,
+    pub freeze_authority: quasar_lang::pod::PodOption<Address, 4>,
 }
 
 const _: () = assert!(core::mem::size_of::<MintDataZc>() == 82);

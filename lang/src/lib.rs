@@ -450,6 +450,18 @@ pub use solana_program_error as __solana_program_error;
 /// downstream crates adding a direct dependency.
 #[doc(hidden)]
 pub use zeropod as __zeropod;
+
+/// The `#[derive(ZeroPod)]` macro for defining zero-copy account and
+/// instruction schemas.
+///
+/// This is the stable path for framework plugins that define their own
+/// zero-copy schema types (see [`pod`] for the alignment-1 field types).
+///
+/// Note: the derive expands to unqualified `zeropod::` paths, so a crate using
+/// `#[derive(quasar_lang::ZeroPod)]` must also bring the `zeropod` crate into
+/// scope (e.g. `use quasar_lang::__zeropod as zeropod;`) until the derive
+/// gains a crate-path override.
+pub use zeropod::ZeroPod;
 // Re-export zeropod traits for framework integration.
 pub use zeropod::{
     ZcElem, ZcField, ZcValidate, ZeroPodCompact, ZeroPodError, ZeroPodFixed, ZeroPodSchema,

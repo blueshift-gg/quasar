@@ -1,4 +1,7 @@
-// Import zeropod so #[derive(ZeroPod)] expansion resolves `zeropod::*` paths.
+// The `#[derive(quasar_lang::ZeroPod)]` expansion emits unqualified `zeropod::`
+// paths and has no crate-path override, so alias the framework's re-export as
+// `zeropod` to resolve them. Everything else uses the stable
+// `quasar_lang::{ZeroPod, pod, ...}` paths.
 use {
     crate::constants::METADATA_PROGRAM_ID,
     quasar_lang::{__zeropod as zeropod, prelude::*},
@@ -19,7 +22,7 @@ pub(crate) const KEY_MASTER_EDITION_V2: u8 = 6;
 ///
 /// Fields after the prefix (name, symbol, uri, creators, etc.) are
 /// variable-length Borsh-serialized data and require offset walking to access.
-#[derive(quasar_lang::__zeropod::ZeroPod)]
+#[derive(quasar_lang::ZeroPod)]
 pub struct MetadataPrefix {
     pub key: u8,
     pub update_authority: Address,
@@ -31,7 +34,7 @@ const _: () = assert!(core::mem::align_of::<MetadataPrefixZc>() == 1);
 const _: () = assert!(core::mem::offset_of!(MetadataPrefixZc, key) == 0);
 const _: () = assert!(core::mem::offset_of!(MetadataPrefixZc, update_authority) == 1);
 const _: () = assert!(core::mem::offset_of!(MetadataPrefixZc, mint) == 33);
-const _: () = assert!(<MetadataPrefix as quasar_lang::__zeropod::ZeroPodFixed>::SIZE == 65);
+const _: () = assert!(<MetadataPrefix as quasar_lang::ZeroPodFixed>::SIZE == 65);
 
 /// Zero-copy layout for the fixed-size prefix of Metaplex MasterEdition
 /// accounts.
@@ -40,7 +43,7 @@ const _: () = assert!(<MetadataPrefix as quasar_lang::__zeropod::ZeroPodFixed>::
 ///   = 6`)
 /// - `supply` (8 bytes, u64 LE): number of editions printed
 /// - `max_supply` (9 bytes): Borsh `Option<u64>` tag + value
-#[derive(quasar_lang::__zeropod::ZeroPod)]
+#[derive(quasar_lang::ZeroPod)]
 pub struct MasterEditionPrefix {
     pub key: u8,
     pub supply: u64,
@@ -52,7 +55,7 @@ const _: () = assert!(core::mem::align_of::<MasterEditionPrefixZc>() == 1);
 const _: () = assert!(core::mem::offset_of!(MasterEditionPrefixZc, key) == 0);
 const _: () = assert!(core::mem::offset_of!(MasterEditionPrefixZc, supply) == 1);
 const _: () = assert!(core::mem::offset_of!(MasterEditionPrefixZc, max_supply) == 9);
-const _: () = assert!(<MasterEditionPrefix as quasar_lang::__zeropod::ZeroPodFixed>::SIZE == 18);
+const _: () = assert!(<MasterEditionPrefix as quasar_lang::ZeroPodFixed>::SIZE == 18);
 
 /// Semantic accessors for MasterEditionPrefixZc.
 impl MasterEditionPrefixZc {
