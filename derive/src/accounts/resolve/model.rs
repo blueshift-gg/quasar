@@ -98,6 +98,38 @@ pub(crate) enum UserCheck {
 pub(crate) struct AddressConstraint {
     pub expr: Expr,
     pub error: Option<Expr>,
+    /// Whether this is a typed-seeds PDA and, if so, its resolved seeds.
+    /// Classified once in lowering so the signer-helper emitter and the IDL
+    /// resolver emitter can never disagree on paren/group-wrapped forms.
+    pub kind: AddressKind,
+}
+
+/// The shape of an `address = expr` constraint, classified once in lowering.
+pub(crate) enum AddressKind {
+    /// `Path::seeds(args...)` (paren/group tolerant): a typed-seeds PDA. The
+    /// account type owns `HasSeeds::SEED_PREFIX`; each arg is a resolved seed.
+    Seeds {
+        account_ty: syn::Path,
+        seeds: Vec<SeedRef>,
+    },
+    /// Any other address expression (a constant or opaque derivation). The
+    /// expression itself lives on `AddressConstraint::expr`.
+    Opaque,
+}
+
+/// One resolved seed argument of a typed-seeds PDA. Resolution (which account
+/// field / instruction arg an ident refers to) happens once in lowering; the
+/// IDL emitter maps these directly to `IdlPdaSeed` variants.
+pub(crate) enum SeedRef {
+    /// `vault.address()` — the address of another account field.
+    AccountAddr(Ident),
+    /// `vault.owner` (or nested `vault.a.b`) — a field read off another account.
+    /// `base` is the account field; `path` is the dotted member path.
+    AccountField { base: Ident, path: String },
+    /// A bare identifier naming a struct-level `#[instruction(..)]` argument.
+    IxArg(Ident),
+    /// Any other expression: hashed to bytes at PDA-derivation time.
+    Const(Expr),
 }
 
 pub(crate) struct FieldSemantics {

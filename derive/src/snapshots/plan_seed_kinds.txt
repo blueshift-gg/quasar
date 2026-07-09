@@ -1,0 +1,50 @@
+SEMANTICS (3 fields)
+[0] authority
+    core: effective_ty=`Signer` kind=Single optional=false dynamic=false is_mut=false dup=false
+          inner_ty=None
+    init: None
+    payer: None
+    address: None
+    realloc: None
+    close_dest: None
+    groups: []
+    user_checks: []
+    is_migration=false is_uninit=false
+[1] config
+    core: effective_ty=`Account < Config >` kind=Single optional=false dynamic=false is_mut=false dup=false
+          inner_ty=`Config`
+    init: None
+    payer: None
+    address: None
+    realloc: None
+    close_dest: None
+    groups: []
+    user_checks: []
+    is_migration=false is_uninit=false
+[2] item
+    core: effective_ty=`Account < Item >` kind=Single optional=false dynamic=false is_mut=false dup=false
+          inner_ty=`Item`
+    init: None
+    payer: None
+    address: Some(expr=`(Item :: seeds (authority . address () , config . namespace . into () , index , SIDE_A))` error=None kind=Seeds(account_ty=`Item` seeds=[AccountAddr(authority), AccountField(base=config path=namespace), IxArg(index), Const(`SIDE_A`)]))
+    realloc: None
+    close_dest: None
+    groups: []
+    user_checks: []
+    is_migration=false is_uninit=false
+
+PLAN (3 fields)
+rent: NotNeeded
+[0]
+    pre_load: []
+    post_load: []
+    epilogue: []
+[1]
+    pre_load: []
+    post_load: []
+    epilogue: []
+[2]
+    pre_load: []
+    post_load:
+      - VerifyExistingAddress(expr=`(Item :: seeds (authority . address () , config . namespace . into () , index , SIDE_A))` error=None)
+    epilogue: []

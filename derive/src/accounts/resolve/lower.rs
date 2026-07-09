@@ -5,20 +5,20 @@
 
 use {
     super::{
-        super::syntax::{
-            attrs::{validate_behavior_arg, CoreDirective, Directive},
-            parse_field_attrs,
-        },
+        super::{syntax::attrs::{validate_behavior_arg, CoreDirective, Directive}, InstructionArg},
+        super::syntax::parse_field_attrs,
         rules::validate_semantics,
         wrapper::{classify_wrapper, WrapperKind},
-        AddressConstraint, FieldCore, FieldKind, FieldSemantics, InitDirective,
+        AddressConstraint, AddressKind, FieldCore, FieldKind, FieldSemantics, InitDirective, SeedRef,
     },
     crate::helpers::{extract_generic_inner_type, is_composite_type},
-    syn::Type,
+    std::collections::HashSet,
+    syn::{Expr, ExprCall, Member, Type},
 };
 
 pub(super) fn lower_semantics(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
+    instruction_args: &[InstructionArg],
 ) -> syn::Result<Vec<FieldSemantics>> {
     let parsed: Vec<(syn::Field, Vec<Directive>)> = fields
         .iter()
@@ -29,6 +29,8 @@ pub(super) fn lower_semantics(
         .iter()
         .map(|(field, directives)| lower_core(field, directives))
         .collect();
+
+    let scope = SeedScope::new(&cores, instruction_args);
 
     let semantics: Vec<FieldSemantics> = parsed
         .into_iter()
@@ -51,7 +53,7 @@ pub(super) fn lower_semantics(
             if sem.is_migration || sem.is_uninit {
                 sem.core.is_mut = true;
             }
-            lower_directives(&mut sem, directives)?;
+            lower_directives(&mut sem, directives, &scope)?;
             Ok(sem)
         })
         .collect::<syn::Result<_>>()?;
@@ -59,6 +61,35 @@ pub(super) fn lower_semantics(
     validate_semantics(&semantics)?;
 
     Ok(semantics)
+}
+
+/// Name sets used to resolve typed-seed arguments once during lowering.
+struct SeedScope {
+    /// Every account field ident in the struct.
+    field_names: HashSet<String>,
+    /// Account field idents whose wrapper carries an inner type (so a
+    /// `field.member` seed can name the account type for the IDL). Fields
+    /// without an inner type fall back to `Const`, matching the old resolver.
+    field_with_inner: HashSet<String>,
+    /// Struct-level `#[instruction(..)]` argument names.
+    ix_args: HashSet<String>,
+}
+
+impl SeedScope {
+    fn new(cores: &[FieldCore], instruction_args: &[InstructionArg]) -> Self {
+        Self {
+            field_names: cores.iter().map(|c| c.ident.to_string()).collect(),
+            field_with_inner: cores
+                .iter()
+                .filter(|c| c.inner_ty.is_some())
+                .map(|c| c.ident.to_string())
+                .collect(),
+            ix_args: instruction_args
+                .iter()
+                .map(|a| a.name.to_string())
+                .collect(),
+        }
+    }
 }
 
 fn lower_core(field: &syn::Field, directives: &[Directive]) -> FieldCore {
@@ -112,7 +143,11 @@ fn classify_kind(raw_ty: &Type, explicit_group: bool) -> FieldKind {
     }
 }
 
-fn lower_directives(sem: &mut FieldSemantics, directives: Vec<Directive>) -> syn::Result<()> {
+fn lower_directives(
+    sem: &mut FieldSemantics,
+    directives: Vec<Directive>,
+    scope: &SeedScope,
+) -> syn::Result<()> {
     let mut groups = Vec::new();
 
     for directive in directives {
@@ -150,7 +185,8 @@ fn lower_directives(sem: &mut FieldSemantics, directives: Vec<Directive>) -> syn
                     // The `@ error` form stays on the address constraint (not
                     // user_checks) so the field keeps its Bumps entry, stored-
                     // bump fast path, signer helper, and IDL PDA resolver.
-                    sem.address = Some(AddressConstraint { expr, error });
+                    let kind = classify_address(&expr, scope);
+                    sem.address = Some(AddressConstraint { expr, error, kind });
                 }
                 CoreDirective::Realloc(expr) => {
                     if sem.realloc.is_some() {
@@ -230,6 +266,135 @@ fn detect_dynamic(effective_ty: &Type, inner_ty: Option<&Type>) -> bool {
     false
 }
 
+// Address classification: `AddressKind` computed once, consumed by the signer
+// helper and IDL resolver emitters so they can never disagree.
+
+/// Classify an `address = expr` constraint. A `Path::seeds(args...)` call
+/// (tolerant of surrounding parentheses/groups) is a typed-seeds PDA; every
+/// other form is `Opaque` and keeps `expr` verbatim on the constraint.
+fn classify_address(expr: &Expr, scope: &SeedScope) -> AddressKind {
+    let Some(call) = as_seeds_call(expr) else {
+        return AddressKind::Opaque;
+    };
+    let Expr::Path(func) = call.func.as_ref() else {
+        return AddressKind::Opaque;
+    };
+    // The account type is the path with the trailing `seeds` segment removed;
+    // `as_seeds_call` guarantees at least two segments.
+    let segments = func.path.segments.len() - 1;
+    let account_ty = syn::Path {
+        leading_colon: func.path.leading_colon,
+        segments: func.path.segments.iter().take(segments).cloned().collect(),
+    };
+    let seeds = call
+        .args
+        .iter()
+        .map(|arg| resolve_seed_ref(arg, scope))
+        .collect();
+    AddressKind::Seeds { account_ty, seeds }
+}
+
+/// Strip surrounding parens/groups and return the inner call if it is a
+/// `Account::seeds(...)` (at least a type segment plus the `seeds` segment).
+fn as_seeds_call(expr: &Expr) -> Option<&ExprCall> {
+    match expr {
+        Expr::Paren(p) => as_seeds_call(&p.expr),
+        Expr::Group(g) => as_seeds_call(&g.expr),
+        Expr::Call(call) => {
+            let Expr::Path(path) = call.func.as_ref() else {
+                return None;
+            };
+            let last = path.path.segments.last()?;
+            (last.ident == "seeds" && path.path.segments.len() >= 2).then_some(call)
+        }
+        _ => None,
+    }
+}
+
+/// Classify one seed argument into a `SeedRef`.
+fn resolve_seed_ref(expr: &Expr, scope: &SeedScope) -> SeedRef {
+    let expr = strip_seed_into(expr);
+
+    // `field.address()` on an account field.
+    if let Expr::MethodCall(call) = expr {
+        if call.method == "address" && call.args.is_empty() {
+            if let Some(base) = single_ident(&call.receiver) {
+                if scope.field_names.contains(&base.to_string()) {
+                    return SeedRef::AccountAddr(base);
+                }
+            }
+        }
+    }
+
+    // `field.member` (possibly nested) read off an account field that carries an
+    // inner type; without an inner type the IDL cannot name the account, so it
+    // degrades to `Const` exactly as the old resolver did.
+    if let Some((base, path)) = account_field_path(expr) {
+        if scope.field_with_inner.contains(&base.to_string()) {
+            return SeedRef::AccountField {
+                base,
+                path,
+            };
+        }
+    }
+
+    // Bare identifier naming an instruction argument.
+    if let Some(id) = single_ident(expr) {
+        if scope.ix_args.contains(&id.to_string()) {
+            return SeedRef::IxArg(id);
+        }
+    }
+
+    SeedRef::Const(expr.clone())
+}
+
+/// Strip a trailing `.into()` (with no args) from a seed expression.
+fn strip_seed_into(expr: &Expr) -> &Expr {
+    if let Expr::MethodCall(call) = expr {
+        if call.method == "into" && call.args.is_empty() {
+            return strip_seed_into(&call.receiver);
+        }
+    }
+    expr
+}
+
+/// If `expr` is a single-segment path, return that identifier.
+fn single_ident(expr: &Expr) -> Option<syn::Ident> {
+    if let Expr::Path(ep) = expr {
+        if ep.qself.is_none() && ep.path.segments.len() == 1 {
+            return Some(ep.path.segments[0].ident.clone());
+        }
+    }
+    None
+}
+
+/// Walk a `base.a.b` member chain; return the base ident and dotted path.
+fn account_field_path(expr: &Expr) -> Option<(syn::Ident, String)> {
+    let mut fields = Vec::new();
+    let mut cur = expr;
+    loop {
+        match cur {
+            Expr::Field(field) => {
+                let name = match &field.member {
+                    Member::Named(ident) => ident.to_string(),
+                    Member::Unnamed(_) => return None,
+                };
+                fields.push(name);
+                cur = &field.base;
+            }
+            Expr::Path(_) => {
+                let base = single_ident(cur)?;
+                if fields.is_empty() {
+                    return None;
+                }
+                fields.reverse();
+                return Some((base, fields.join(".")));
+            }
+            _ => return None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use {
@@ -301,6 +466,7 @@ mod tests {
         });
         let directives = parse_field_attrs(&f).expect("directives parse");
         let core = lower_core(&f, &directives);
+        let scope = SeedScope::new(std::slice::from_ref(&core), &[]);
         let mut sem = FieldSemantics {
             core,
             init: None,
@@ -313,7 +479,7 @@ mod tests {
             is_migration: false,
             is_uninit: false,
         };
-        lower_directives(&mut sem, directives).expect("lowering succeeds");
+        lower_directives(&mut sem, directives, &scope).expect("lowering succeeds");
         let address = sem.address.expect("address constraint recorded");
         assert!(
             address.error.is_some(),
@@ -338,7 +504,7 @@ mod tests {
             Fields::Named(named) => named.named,
             _ => Default::default(),
         };
-        let sems = lower_semantics(&fields).expect("valid struct lowers");
+        let sems = lower_semantics(&fields, &[]).expect("valid struct lowers");
         assert_eq!(sems.len(), 2);
         assert!(sems[1].core.optional);
         assert_eq!(sems[1].user_checks.len(), 1);

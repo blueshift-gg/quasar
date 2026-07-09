@@ -15,7 +15,7 @@ SEMANTICS (3 fields)
           inner_ty=`Escrow`
     init: Some(idempotent=false)
     payer: payer
-    address: Some(expr=`Escrow :: seeds (payer . address ())` error=None)
+    address: Some(expr=`Escrow :: seeds (payer . address ())` error=None kind=Seeds(account_ty=`Escrow` seeds=[AccountAddr(payer)]))
     realloc: None
     close_dest: None
     groups: []

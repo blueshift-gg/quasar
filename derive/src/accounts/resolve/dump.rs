@@ -13,8 +13,8 @@
 use {
     super::{
         model::{
-            AddressConstraint, BehaviorArg, BehaviorGroup, FieldCore, FieldKind, FieldSemantics,
-            InitDirective, UserCheck,
+            AddressConstraint, AddressKind, BehaviorArg, BehaviorGroup, FieldCore, FieldKind,
+            FieldSemantics, InitDirective, SeedRef, UserCheck,
         },
         specs::{
             AccountsPlanTyped, AddressSpec, BehaviorCall, EpilogueStep, FieldPlan, InitPlan,
@@ -117,17 +117,41 @@ fn dump_field_semantics(out: &mut String, sem: &FieldSemantics) {
 
 fn dump_address_constraint(out: &mut String, addr: &Option<AddressConstraint>) {
     match addr {
-        Some(AddressConstraint { expr, error }) => {
+        Some(AddressConstraint { expr, error, kind }) => {
             let _ = writeln!(
                 out,
-                "    address: Some(expr=`{}` error={})",
+                "    address: Some(expr=`{}` error={} kind={})",
                 toks(expr),
                 opt_expr(error),
+                address_kind(kind),
             );
         }
         None => {
             let _ = writeln!(out, "    address: None");
         }
+    }
+}
+
+fn address_kind(kind: &AddressKind) -> String {
+    match kind {
+        AddressKind::Opaque => "Opaque".to_string(),
+        AddressKind::Seeds { account_ty, seeds } => {
+            let seeds: Vec<String> = seeds.iter().map(seed_ref).collect();
+            format!(
+                "Seeds(account_ty=`{}` seeds=[{}])",
+                toks(account_ty),
+                seeds.join(", "),
+            )
+        }
+    }
+}
+
+fn seed_ref(seed: &SeedRef) -> String {
+    match seed {
+        SeedRef::AccountAddr(i) => format!("AccountAddr({i})"),
+        SeedRef::AccountField { base, path } => format!("AccountField(base={base} path={path})"),
+        SeedRef::IxArg(i) => format!("IxArg({i})"),
+        SeedRef::Const(e) => format!("Const(`{}`)", toks(e)),
     }
 }
 
