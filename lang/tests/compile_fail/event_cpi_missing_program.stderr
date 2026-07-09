@@ -1,0 +1,5 @@
+error: event CPI requires a `program: Program<...>` field alongside `event_authority`
+  --> tests/compile_fail/event_cpi_missing_program.rs:24:9
+   |
+24 |     pub event_authority: EventAuthority,
+   |         ^^^^^^^^^^^^^^^

@@ -158,6 +158,19 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
     // IDL accounts meta fragment (feature-gated behind `idl-build`)
     let idl_accounts_meta = emit_idl_accounts_meta(name, &typed_plan);
 
+    // Typed `EventCpi` impl (only for structs with an event-authority field).
+    // Computed before `emit_accounts_output` moves the generics. A missing
+    // program field yields a `compile_error!` that is appended to (not
+    // substituted for) the account impls, so the single spanned message
+    // surfaces without an E0277 cascade from a struct left without impls.
+    let event_cpi_impl = emit_event_cpi_impl(
+        name,
+        &typed_plan,
+        &impl_generics_ts,
+        &ty_generics_ts,
+        &where_clause_ts,
+    );
+
     let main_output = emit::emit_accounts_output(emit::AccountsOutput {
         name,
         bumps_name: &bumps_name,
@@ -186,6 +199,67 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
     quote::quote! {
         #main_output
         #idl_accounts_meta
+        #event_cpi_impl
+    }
+}
+
+/// Emit the typed `EventCpi` impl for a struct that carries both an
+/// event-authority field and a program field, wiring `emit_cpi!` to the
+/// program's self-CPI. Reads the plan's per-field event-CPI terms and wrapper
+/// kinds (never `FieldSemantics`):
+///
+/// - authority field = the field the plan marked `EventCpiTerm::EventAuthority`
+///   (named `event_authority` or typed `EventAuthority`);
+/// - program field   = the first `Program<T>` field, detected by type so it need
+///   not be named `program`.
+///
+/// A struct with an event-authority field but no program field is a spanned
+/// error (previously this silently generated nothing).
+fn emit_event_cpi_impl(
+    name: &syn::Ident,
+    plan: &resolve::specs::AccountsPlanTyped,
+    impl_generics: &proc_macro2::TokenStream,
+    ty_generics: &proc_macro2::TokenStream,
+    where_clause: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    use resolve::{specs::EventCpiTerm, wrapper::WrapperKind};
+
+    let Some(authority_field) = plan
+        .fields
+        .iter()
+        .zip(plan.event_cpi.iter())
+        .find(|(_, term)| matches!(term, EventCpiTerm::EventAuthority))
+        .map(|(fp, _)| &fp.ident)
+    else {
+        // No event authority: this struct does not participate in event CPI.
+        return quote! {};
+    };
+
+    let Some(program_field) = plan
+        .fields
+        .iter()
+        .find(|fp| fp.wrapper == WrapperKind::Program)
+        .map(|fp| &fp.ident)
+    else {
+        return syn::Error::new_spanned(
+            authority_field,
+            "event CPI requires a `program: Program<...>` field alongside `event_authority`",
+        )
+        .to_compile_error();
+    };
+
+    quote! {
+        impl #impl_generics quasar_lang::event::EventCpi for #name #ty_generics #where_clause {
+            const EVENT_AUTHORITY_BUMP: u8 = crate::EventAuthority::BUMP;
+            #[inline(always)]
+            fn event_program(&self) -> &AccountView {
+                self.#program_field.to_account_view()
+            }
+            #[inline(always)]
+            fn event_authority(&self) -> &AccountView {
+                self.#authority_field.to_account_view()
+            }
+        }
     }
 }
 

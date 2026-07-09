@@ -48,26 +48,6 @@ impl quasar_lang::account_load::AccountLoad for EventAuthority {
         Ok(())
     }
 }
-impl QuasarDemo {
-    #[inline(always)]
-    pub fn emit_event<E: quasar_lang::traits::Event>(
-        &self,
-        event: &E,
-        event_authority: &EventAuthority,
-    ) -> Result<(), ProgramError> {
-        let program = self.to_account_view();
-        let ea = event_authority.to_account_view();
-        event
-            .emit(|data| {
-                quasar_lang::event::emit_event_cpi(
-                    program,
-                    ea,
-                    data,
-                    EventAuthority::BUMP,
-                )
-            })
-    }
-}
 #[allow(dead_code)]
 mod quasar_demo {
     use super::*;

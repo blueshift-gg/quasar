@@ -2,9 +2,10 @@
 //!
 //! `#[program] mod foo` emits a `Foo` program type (used as `Program<Foo>` in
 //! account structs) plus an `EventAuthority` newtype whose PDA is derived from
-//! the fixed `b"__event_authority"` seed. The `emit_event` inherent method wires
-//! the self-CPI event path; `#[derive(Accounts)]` (Workstream D4) emits the
-//! typed `EventCpi` impl that calls it.
+//! the fixed `b"__event_authority"` seed and exposes the `ADDRESS`/`BUMP`
+//! consts. The self-CPI event path is the typed `quasar_lang::event::EventCpi`
+//! trait, whose impl `#[derive(Accounts)]` emits from a struct's
+//! `event_authority` + program fields (`emit_cpi!` calls it).
 
 use {
     proc_macro2::TokenStream as TokenStream2,
@@ -78,21 +79,6 @@ pub(super) fn emit_program_type(program_type_name: &Ident) -> TokenStream2 {
                     return Err(ProgramError::InvalidSeeds);
                 }
                 Ok(())
-            }
-        }
-
-        impl #program_type_name {
-            #[inline(always)]
-            pub fn emit_event<E: quasar_lang::traits::Event>(
-                &self,
-                event: &E,
-                event_authority: &EventAuthority,
-            ) -> Result<(), ProgramError> {
-                let program = self.to_account_view();
-                let ea = event_authority.to_account_view();
-                event.emit(|data| {
-                    quasar_lang::event::emit_event_cpi(program, ea, data, EventAuthority::BUMP)
-                })
             }
         }
     }

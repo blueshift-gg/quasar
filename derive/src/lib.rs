@@ -67,11 +67,16 @@ pub fn error_code(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /// Emit an event via self-CPI (spoofing-resistant).
+///
+/// Expands to the typed [`quasar_lang::event::EventCpi::emit`] call on `self`;
+/// `#[derive(Accounts)]` supplies the `EventCpi` impl from the struct's
+/// `event_authority` + program fields, so the field names are not hard-coded
+/// here.
 #[proc_macro]
 pub fn emit_cpi(input: TokenStream) -> TokenStream {
     let input = proc_macro2::TokenStream::from(input);
     quote::quote! {
-        self.program.emit_event(&#input, &self.event_authority, crate::EventAuthority::BUMP)
+        quasar_lang::event::EventCpi::emit(self, &#input)
     }
     .into()
 }

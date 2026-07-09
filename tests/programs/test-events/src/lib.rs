@@ -74,4 +74,14 @@ mod quasar_test_events {
     ) -> Result<(), ProgramError> {
         ctx.accounts.handler(first, second)
     }
+
+    // Event CPI where the program field is named `emitter`, not `program`:
+    // proves the derive's type-based detection + name-agnostic `emit_cpi!`.
+    #[instruction(discriminator = 8)]
+    pub fn emit_via_cpi_aliased(
+        ctx: Ctx<EmitViaCpiAliased>,
+        value: u64,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler(value)
+    }
 }
