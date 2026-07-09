@@ -165,7 +165,7 @@ pub(super) fn emit_dyn_writer(
         .iter()
         .map(|(field, pd)| {
             let name = field.ident.as_ref().expect("field must be named");
-            writer_space_term(name, pd)
+            emit_space_term(name, pd)
         })
         .collect();
     let compact_set_stmts: Vec<proc_macro2::TokenStream> = pieces
@@ -514,16 +514,6 @@ fn dyn_view_setter(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::T
                     Ok(())
                 }
             }
-        }
-    }
-}
-
-fn writer_space_term(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::TokenStream {
-    match dyn_field {
-        PodDynField::Str { .. } => quote! { + #name.len() },
-        PodDynField::Vec { elem, .. } => {
-            let mapped = map_to_pod_type(elem);
-            quote! { + #name.len() * core::mem::size_of::<#mapped>() }
         }
     }
 }
