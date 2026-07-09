@@ -146,7 +146,17 @@ fn plan_field(
         }));
     }
 
+    let flags = account_meta_flags(sem);
+
     Ok(FieldPlan {
+        ident: sem.core.ident.clone(),
+        effective_ty: sem.core.effective_ty.clone(),
+        wrapper: sem.core.wrapper,
+        kind: sem.core.kind,
+        optional: sem.core.optional,
+        dup: sem.core.dup,
+        writable: flags.writable,
+        signer: flags.signer,
         pre_load,
         post_load,
         epilogue,

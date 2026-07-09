@@ -5,7 +5,10 @@
 //! emit `AccountBehavior` trait calls. No SPL domain knowledge.
 
 use {
-    super::model::UserCheck,
+    super::{
+        model::{FieldKind, UserCheck},
+        wrapper::WrapperKind,
+    },
     syn::{Expr, Ident, Type},
 };
 
@@ -198,10 +201,28 @@ pub(crate) enum EpilogueStep {
     ProgramClose(ProgramCloseSpec),
 }
 
-/// Per-field execution plan. Only phase vectors: structural info lives in
-/// FieldSemantics.
+/// Per-field execution plan. Carries every structural fact and phase-ordered
+/// step the emitter needs, so emit consumes ONLY the plan (never
+/// `FieldSemantics`). Field `i` corresponds to lowering's semantics field `i`.
 #[derive(Clone)]
 pub(crate) struct FieldPlan {
+    /// The field's identifier.
+    pub ident: Ident,
+    /// The field's effective (wrapper) type, e.g. `Account<'a, Vault>`.
+    pub effective_ty: Type,
+    /// Which library wrapper `effective_ty` is (last-segment match).
+    pub wrapper: WrapperKind,
+    /// Single account vs a composite (`#[derive(Accounts)]` group).
+    pub kind: FieldKind,
+    /// `Option<..>`-wrapped account field.
+    pub optional: bool,
+    /// `#[account(dup)]`: duplicate-alias tolerant.
+    pub dup: bool,
+    /// Derived writability (`FieldSemantics::is_writable`), computed once here.
+    pub writable: bool,
+    /// Account-meta signer flag (`account_meta_flags().signer`): the single
+    /// source shared by the client macro and the IDL accounts-meta fragment.
+    pub signer: bool,
     /// Steps before load (init fields only).
     pub pre_load: Vec<PreLoadStep>,
     /// Steps after load (behavior checks/updates, realloc, address verify).

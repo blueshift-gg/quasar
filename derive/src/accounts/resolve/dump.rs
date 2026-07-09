@@ -236,6 +236,19 @@ fn rent_str(rent: &RentPlan) -> String {
 }
 
 fn dump_field_plan(out: &mut String, field: &FieldPlan) {
+    let _ = writeln!(
+        out,
+        "    id: ident={} effective_ty=`{}` wrapper={:?} kind={} optional={} dup={} writable={} \
+         signer={}",
+        field.ident,
+        toks(&field.effective_ty),
+        field.wrapper,
+        kind_str(field.kind),
+        field.optional,
+        field.dup,
+        field.writable,
+        field.signer,
+    );
     dump_steps(out, "pre_load", &field.pre_load, pre_load_step);
     dump_steps(out, "post_load", &field.post_load, post_load_step);
     dump_steps(out, "epilogue", &field.epilogue, epilogue_step);

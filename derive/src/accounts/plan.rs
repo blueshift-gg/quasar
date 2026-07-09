@@ -34,19 +34,19 @@ struct HeaderPlan {
 }
 
 impl HeaderPlan {
-    fn from_semantics(
-        sem: &resolve::FieldSemantics,
+    fn from_field_plan(
+        fp: &resolve::specs::FieldPlan,
         offset_expr: &proc_macro2::TokenStream,
     ) -> Self {
         Self {
             ty: {
-                let ty = &sem.core.effective_ty;
+                let ty = &fp.effective_ty;
                 quote! { #ty }
             },
             account_index: offset_expr.to_string(),
-            writable: sem.is_writable(),
-            optional: sem.core.optional,
-            allow_dup: sem.core.dup,
+            writable: fp.writable,
+            optional: fp.optional,
+            allow_dup: fp.dup,
         }
     }
 
@@ -88,7 +88,7 @@ pub(crate) fn build_accounts_plan(
     typed_plan: &resolve::specs::AccountsPlanTyped,
     cx: &emit::EmitCx,
 ) -> AccountsPlan {
-    let fields = build_parse_fields(semantics);
+    let fields = build_parse_fields(&typed_plan.fields);
     AccountsPlan {
         parse_steps: emit_parse_account_steps(&fields),
         count_expr: emit_count_expr(&fields),
@@ -97,18 +97,18 @@ pub(crate) fn build_accounts_plan(
     }
 }
 
-fn build_parse_fields(semantics: &[resolve::FieldSemantics]) -> Vec<ParseFieldPlan> {
+fn build_parse_fields(field_plans: &[resolve::specs::FieldPlan]) -> Vec<ParseFieldPlan> {
     let mut fields = Vec::new();
     let mut buf_offset_expr = quote! { 0usize };
 
-    for sem in semantics {
+    for fp in field_plans {
         let offset_expr = buf_offset_expr.clone();
 
-        match sem.core.kind {
+        match fp.kind {
             resolve::FieldKind::Composite => {
-                let inner_ty = composite_parse_ty(&sem.core.effective_ty);
+                let inner_ty = composite_parse_ty(&fp.effective_ty);
                 fields.push(ParseFieldPlan {
-                    field_name: sem.core.ident.clone(),
+                    field_name: fp.ident.clone(),
                     offset_expr: offset_expr.clone(),
                     kind: ParseFieldKind::Composite {
                         inner_ty: inner_ty.clone(),
@@ -118,9 +118,9 @@ fn build_parse_fields(semantics: &[resolve::FieldSemantics]) -> Vec<ParseFieldPl
             }
             resolve::FieldKind::Single => {
                 fields.push(ParseFieldPlan {
-                    field_name: sem.core.ident.clone(),
+                    field_name: fp.ident.clone(),
                     offset_expr: offset_expr.clone(),
-                    kind: ParseFieldKind::Single(HeaderPlan::from_semantics(sem, &offset_expr)),
+                    kind: ParseFieldKind::Single(HeaderPlan::from_field_plan(fp, &offset_expr)),
                 });
                 buf_offset_expr = quote! { #offset_expr + 1usize };
             }

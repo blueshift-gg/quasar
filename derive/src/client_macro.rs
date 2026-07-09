@@ -15,9 +15,9 @@ struct AccountDescriptor {
 
 pub fn generate_accounts_macro(
     name: &syn::Ident,
-    semantics: &[crate::accounts::resolve::FieldSemantics],
+    plan: &crate::accounts::resolve::specs::AccountsPlanTyped,
 ) -> TokenStream {
-    let descriptors = describe_accounts(semantics);
+    let descriptors = describe_accounts(plan);
     let macro_name = format_ident!("__{}_instruction", pascal_to_snake(&name.to_string()));
     let account_fields: Vec<_> = descriptors.iter().map(emit_account_field).collect();
     let account_metas: Vec<_> = descriptors.iter().map(emit_account_meta).collect();
@@ -178,17 +178,14 @@ fn emit_account_meta(descriptor: &AccountDescriptor) -> TokenStream {
 }
 
 fn describe_accounts(
-    semantics: &[crate::accounts::resolve::FieldSemantics],
+    plan: &crate::accounts::resolve::specs::AccountsPlanTyped,
 ) -> Vec<AccountDescriptor> {
-    semantics
+    plan.fields
         .iter()
-        .map(|sem| {
-            let flags = crate::accounts::resolve::account_meta_flags(sem);
-            AccountDescriptor {
-                name: sem.core.ident.clone(),
-                writable: flags.writable,
-                signer: flags.signer,
-            }
+        .map(|fp| AccountDescriptor {
+            name: fp.ident.clone(),
+            writable: fp.writable,
+            signer: fp.signer,
         })
         .collect()
 }

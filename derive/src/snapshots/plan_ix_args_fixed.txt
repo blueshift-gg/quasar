@@ -15,6 +15,7 @@ SEMANTICS (1 fields)
 PLAN (1 fields)
 rent: NotNeeded
 [0]
+    id: ident=account effective_ty=`Account < SimpleAccount >` wrapper=Account kind=Single optional=false dup=false writable=true signer=false
     pre_load: []
     post_load:
       - UserCheck(Constraints exprs=[`amount > 0 && flag`] error=None)

@@ -25,10 +25,12 @@ SEMANTICS (2 fields)
 PLAN (2 fields)
 rent: NotNeeded
 [0]
+    id: ident=authority effective_ty=`Signer` wrapper=Signer kind=Single optional=false dup=false writable=true signer=true
     pre_load: []
     post_load: []
     epilogue: []
 [1]
+    id: ident=old_data effective_ty=`Account < OldData >` wrapper=Account kind=Single optional=false dup=false writable=true signer=false
     pre_load: []
     post_load: []
     epilogue:

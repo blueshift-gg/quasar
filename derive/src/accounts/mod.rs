@@ -149,10 +149,10 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
         ix_arg_extraction: &ix_arg_extraction,
         has_instruction_args: instruction_args.is_some(),
     });
-    let epilogue_method = emit::parse::emit_epilogue(&semantics, &typed_plan);
-    let has_epilogue_expr = emit::parse::emit_has_epilogue_typed(&typed_plan, &semantics);
+    let epilogue_method = emit::parse::emit_epilogue(&typed_plan);
+    let has_epilogue_expr = emit::parse::emit_has_epilogue_typed(&typed_plan);
 
-    let client_macro = crate::client_macro::generate_accounts_macro(name, &semantics);
+    let client_macro = crate::client_macro::generate_accounts_macro(name, &typed_plan);
 
     // IDL accounts meta fragment (feature-gated behind `idl-build`)
     let idl_accounts_meta = emit_idl_accounts_meta(name, &semantics, &instruction_args);
@@ -166,7 +166,7 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
         parse_impl_generics: parse_impl_generics_ts,
         parse_where_clause: parse_where_clause_ts,
         count_expr,
-        needs_event_cpi_expr: emit_needs_event_cpi_expr(&semantics),
+        needs_event_cpi_expr: emit_needs_event_cpi_expr(&typed_plan),
         parse_steps,
         parse_body,
         direct_parse_body,
@@ -325,15 +325,16 @@ fn account_type_name(ty: &Type) -> Option<String> {
         .map(|segment| segment.ident.to_string())
 }
 
-fn emit_needs_event_cpi_expr(semantics: &[resolve::FieldSemantics]) -> proc_macro2::TokenStream {
-    let terms: Vec<proc_macro2::TokenStream> = semantics
+fn emit_needs_event_cpi_expr(plan: &resolve::specs::AccountsPlanTyped) -> proc_macro2::TokenStream {
+    let terms: Vec<proc_macro2::TokenStream> = plan
+        .fields
         .iter()
-        .map(|sem| match sem.core.kind {
+        .map(|fp| match fp.kind {
             resolve::FieldKind::Composite => {
-                let inner_ty = composite_event_ty(&sem.core.effective_ty);
+                let inner_ty = composite_event_ty(&fp.effective_ty);
                 quote! { <#inner_ty as AccountCount>::NEEDS_EVENT_CPI }
             }
-            resolve::FieldKind::Single if is_event_cpi_field(sem) => {
+            resolve::FieldKind::Single if is_event_cpi_field(fp) => {
                 quote! { true }
             }
             resolve::FieldKind::Single => quote! { false },
@@ -447,7 +448,7 @@ fn composite_event_ty(ty: &Type) -> proc_macro2::TokenStream {
     strip_generics(ty).unwrap_or_else(|_| quote! { #ty })
 }
 
-fn is_event_cpi_field(sem: &resolve::FieldSemantics) -> bool {
-    sem.core.ident == resolve::reserved::EVENT_AUTHORITY_FIELD
-        || sem.core.wrapper == resolve::wrapper::WrapperKind::EventAuthority
+fn is_event_cpi_field(fp: &resolve::specs::FieldPlan) -> bool {
+    fp.ident == resolve::reserved::EVENT_AUTHORITY_FIELD
+        || fp.wrapper == resolve::wrapper::WrapperKind::EventAuthority
 }

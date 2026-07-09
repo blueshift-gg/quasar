@@ -57,7 +57,7 @@ fn emit_parse_body_inner(
 ) -> proc_macro2::TokenStream {
     let parse_sequence = emit_parse_sequence(semantics, plan);
     let bump_vars = emit_bump_vars(semantics);
-    let init_state_vars = emit_init_state_vars(&plan.fields, semantics);
+    let init_state_vars = emit_init_state_vars(&plan.fields);
 
     let bump_init = emit_bump_init(semantics, &cx.bumps_name);
 
@@ -68,10 +68,11 @@ fn emit_parse_body_inner(
         quote! {}
     };
 
-    let construct_fields: Vec<proc_macro2::TokenStream> = semantics
+    let construct_fields: Vec<proc_macro2::TokenStream> = plan
+        .fields
         .iter()
-        .map(|sem| {
-            let ident = &sem.core.ident;
+        .map(|fp| {
+            let ident = &fp.ident;
             quote! { #ident }
         })
         .collect();
@@ -121,7 +122,7 @@ fn emit_parse_sequence(
 ) -> proc_macro2::TokenStream {
     let init_phase = emit_init_phase_typed(&plan.fields, semantics);
     let load_init = emit_load_filtered(semantics, true);
-    let phase4 = emit_post_load_typed(&plan.fields, semantics);
+    let phase4 = emit_post_load_typed(&plan.fields);
 
     match &plan.rent {
         RentPlan::NotNeeded => {
@@ -213,17 +214,12 @@ fn emit_init_phase_typed(
     stmts
 }
 
-fn emit_init_state_vars(
-    field_plans: &[FieldPlan],
-    semantics: &[FieldSemantics],
-) -> Vec<proc_macro2::TokenStream> {
+fn emit_init_state_vars(field_plans: &[FieldPlan]) -> Vec<proc_macro2::TokenStream> {
     field_plans
         .iter()
-        .zip(semantics.iter())
-        .filter(|(fp, _)| needs_init_state_var(fp))
-        .map(|(_, sem)| {
-            let ident = &sem.core.ident;
-            let did_init_var = format_ident!("__quasar_did_init_{}", ident);
+        .filter(|fp| needs_init_state_var(fp))
+        .map(|fp| {
+            let did_init_var = format_ident!("__quasar_did_init_{}", fp.ident);
             quote! { let mut #did_init_var = false; }
         })
         .collect()
@@ -251,14 +247,13 @@ fn needs_init_state_var(field_plan: &FieldPlan) -> bool {
 
 fn emit_post_load_typed(
     field_plans: &[super::super::resolve::specs::FieldPlan],
-    semantics: &[FieldSemantics],
 ) -> Vec<proc_macro2::TokenStream> {
     let mut stmts = Vec::new();
 
-    for (fp, sem) in field_plans.iter().zip(semantics.iter()) {
-        let ident = &sem.core.ident;
-        let ty = &sem.core.effective_ty;
-        let is_optional = sem.core.optional;
+    for fp in field_plans {
+        let ident = &fp.ident;
+        let ty = &fp.effective_ty;
+        let is_optional = fp.optional;
         let did_init_var =
             needs_init_state_var(fp).then(|| format_ident!("__quasar_did_init_{}", ident));
 
@@ -298,7 +293,7 @@ fn emit_post_load_typed(
                     )
                 }
                 PostLoadStep::UserCheck(check) => {
-                    let check_stmts = emit_user_check(sem, check);
+                    let check_stmts = emit_user_check(ident, check);
                     (quote! { #(#check_stmts)* }, false)
                 }
                 PostLoadStep::VerifyExistingAddress(addr_spec) => {
@@ -357,15 +352,12 @@ fn emit_post_load_typed(
 
 // Epilogue from the typed plan.
 
-pub(crate) fn emit_epilogue(
-    semantics: &[FieldSemantics],
-    plan: &AccountsPlanTyped,
-) -> proc_macro2::TokenStream {
+pub(crate) fn emit_epilogue(plan: &AccountsPlanTyped) -> proc_macro2::TokenStream {
     let mut exit_stmts = Vec::new();
 
-    for (fp, sem) in plan.fields.iter().zip(semantics.iter()) {
-        let ident = &sem.core.ident;
-        let ty = &sem.core.effective_ty;
+    for fp in &plan.fields {
+        let ident = &fp.ident;
+        let ty = &fp.effective_ty;
 
         for step in &fp.epilogue {
             let stmt = match step {
@@ -389,15 +381,12 @@ pub(crate) fn emit_epilogue(
     }
 }
 
-pub(crate) fn emit_has_epilogue_typed(
-    plan: &AccountsPlanTyped,
-    semantics: &[FieldSemantics],
-) -> proc_macro2::TokenStream {
+pub(crate) fn emit_has_epilogue_typed(plan: &AccountsPlanTyped) -> proc_macro2::TokenStream {
     // Collect const-evaluable terms for HAS_EPILOGUE.
     let mut terms: Vec<proc_macro2::TokenStream> = vec![quote! { false }];
 
-    for (fp, sem) in plan.fields.iter().zip(semantics.iter()) {
-        let ty = &sem.core.effective_ty;
+    for fp in &plan.fields {
+        let ty = &fp.effective_ty;
         for step in &fp.epilogue {
             match step {
                 EpilogueStep::Behavior(call) => {
@@ -564,8 +553,7 @@ fn behavior_validates_account_data_expr(sem: &FieldSemantics) -> Option<proc_mac
 
 // User checks, structural rather than behavior-group based.
 
-fn emit_user_check(sem: &FieldSemantics, check: &UserCheck) -> Vec<proc_macro2::TokenStream> {
-    let field_ident = &sem.core.ident;
+fn emit_user_check(field_ident: &syn::Ident, check: &UserCheck) -> Vec<proc_macro2::TokenStream> {
     let mut stmts = Vec::new();
 
     match check {

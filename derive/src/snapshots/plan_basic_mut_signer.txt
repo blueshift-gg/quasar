@@ -36,14 +36,17 @@ SEMANTICS (3 fields)
 PLAN (3 fields)
 rent: NotNeeded
 [0]
+    id: ident=payer effective_ty=`Signer` wrapper=Signer kind=Single optional=false dup=false writable=true signer=true
     pre_load: []
     post_load: []
     epilogue: []
 [1]
+    id: ident=config effective_ty=`Account < TestConfig >` wrapper=Account kind=Single optional=false dup=false writable=false signer=false
     pre_load: []
     post_load: []
     epilogue: []
 [2]
+    id: ident=system_program effective_ty=`Program < SystemProgram >` wrapper=Program kind=Single optional=false dup=false writable=false signer=false
     pre_load: []
     post_load: []
     epilogue: []
