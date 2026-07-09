@@ -263,7 +263,6 @@ fn emit_idl_resolver(
         quasar_lang::idl_build::__reexport::IdlResolver::Pda {
             program: quasar_lang::idl_build::__reexport::IdlPdaProgram::ProgramId {},
             seeds: quasar_lang::idl_build::vec![#(#seed_tokens),*],
-            bump: None,
         }
     })
 }
@@ -305,7 +304,6 @@ fn emit_idl_pda_seed(
                 quasar_lang::idl_build::__reexport::IdlPdaSeed::Arg {
                     path: quasar_lang::idl_build::s(#path),
                     ty: #idl_type,
-                    encoding: None,
                 }
             })
         }

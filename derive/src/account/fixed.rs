@@ -226,7 +226,6 @@ pub(super) fn generate_account(
                                     name: quasar_lang::idl_build::s(#name_str),
                                     kind: quasar_lang::idl_build::__reexport::IdlTypeDefKind::Struct,
                                     docs: quasar_lang::idl_build::Vec::new(),
-                                    generics: quasar_lang::idl_build::Vec::new(),
                                     fields: quasar_lang::idl_build::vec![#(#field_defs),*],
                                     variants: quasar_lang::idl_build::Vec::new(),
                                     repr: None,

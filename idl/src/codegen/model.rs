@@ -219,8 +219,6 @@ mod tests {
             events: vec![],
             types: vec![],
             errors: vec![],
-            constants: vec![],
-            wrappers: None,
             extensions: None,
             hashes: None,
         }

@@ -1,7 +1,7 @@
 use {
     crate::{
-        account::IdlAccountDef, constant::IdlConstant, error::IdlErrorDef, event::IdlEventDef,
-        instruction::IdlInstruction, types::IdlTypeDef, wrapper::IdlWrappers,
+        account::IdlAccountDef, error::IdlErrorDef, event::IdlEventDef,
+        instruction::IdlInstruction, types::IdlTypeDef,
     },
     serde::{Deserialize, Serialize},
     std::collections::BTreeMap,
@@ -47,12 +47,6 @@ pub struct Idl {
     /// Error definitions.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub errors: Vec<IdlErrorDef>,
-    /// Constants exposed to clients.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub constants: Vec<IdlConstant>,
-    /// Wrapper registry (extension points).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub wrappers: Option<IdlWrappers>,
     /// Extension declarations (reserved for v1.1+).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extensions: Option<serde_json::Value>,

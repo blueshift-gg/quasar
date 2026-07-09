@@ -156,13 +156,11 @@ pub(crate) fn event_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream
                                 discriminator: quasar_lang::idl_build::vec![#(#disc_values),*],
                                 docs: quasar_lang::idl_build::Vec::new(),
                                 ty: None,
-                                transport: None,
                             },
                             quasar_lang::idl_build::__reexport::IdlTypeDef {
                                 name: quasar_lang::idl_build::s(#name_str),
                                 kind: quasar_lang::idl_build::__reexport::IdlTypeDefKind::Struct,
                                 docs: quasar_lang::idl_build::Vec::new(),
-                                generics: quasar_lang::idl_build::Vec::new(),
                                 fields: quasar_lang::idl_build::vec![#(#field_defs),*],
                                 variants: quasar_lang::idl_build::Vec::new(),
                                 repr: None,
