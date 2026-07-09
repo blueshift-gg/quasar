@@ -556,7 +556,12 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
 
                     let struct_name =
                         format_ident!("{}Instruction", snake_to_pascal(&fn_name.to_string()));
-                    let accounts_type_str = accounts_type.to_string().replace(' ', "");
+                    // Resolve the fragment name from the last path segment sans
+                    // generics (`Ctx<instructions::Deposit>` -> "Deposit"), so
+                    // it matches the bare accounts-struct ident on the other
+                    // side of the join and never feeds `::`/`<..>` into
+                    // `format_ident!` (which would panic).
+                    let accounts_type_str = crate::helpers::last_type_segment_name(inner_ty);
                     let macro_ident =
                         format_ident!("__{}_instruction", pascal_to_snake(&accounts_type_str));
 

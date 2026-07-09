@@ -294,6 +294,23 @@ pub(crate) fn strip_generics(ty: &Type) -> syn::Result<proc_macro2::TokenStream>
     }
 }
 
+/// Last path-segment identifier of a type, ignoring the module path and
+/// generic arguments (`instructions::Deposit<'a>` -> `"Deposit"`). Falls back
+/// to the whitespace-stripped token string for non-path types.
+///
+/// Used to name the IDL/client fragment for `Ctx<T>`: it must equal the bare
+/// accounts-struct ident (`#[derive(Accounts)] struct Deposit`) so the two
+/// sides of the join agree, and must never feed a `::`-bearing string into
+/// `format_ident!` (which panics).
+pub(crate) fn last_type_segment_name(ty: &Type) -> String {
+    if let Type::Path(tp) = ty {
+        if let Some(seg) = tp.path.segments.last() {
+            return seg.ident.to_string();
+        }
+    }
+    quote!(#ty).to_string().replace(' ', "")
+}
+
 fn extract_const_expr(arg: &GenericArgument) -> Option<Expr> {
     match arg {
         GenericArgument::Const(expr) => Some(expr.clone()),
