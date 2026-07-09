@@ -1520,25 +1520,16 @@ fn uninit_parse_simulation_dup_from_partially_initialized() {
     const N: usize = 3;
     let mut buf = MaybeUninit::<[AccountView; N]>::uninit();
     let arr_ptr = buf.as_mut_ptr() as *mut AccountView;
-    let mut ptr = accounts_start;
 
-    for i in 0..N {
-        let raw = ptr as *mut RuntimeAccount;
-        let borrow = unsafe { (*raw).borrow_state };
-
-        if borrow == NOT_BORROWED {
-            let view = unsafe { AccountView::new_unchecked(raw) };
-            unsafe { core::ptr::write(arr_ptr.add(i), view) };
-            unsafe {
-                ptr = ptr.add(ACCOUNT_HEADER + (*raw).data_len as usize);
-                ptr = ptr.add((ptr as usize).wrapping_neg() & 7);
-            }
-        } else {
-            let dup = unsafe { core::ptr::read(arr_ptr.add(borrow as usize)) };
-            unsafe { core::ptr::write(arr_ptr.add(i), dup) };
-            unsafe { ptr = ptr.add(size_of::<u64>()) };
-        }
+    // Exercise the REAL production walk (`parse_all_accounts_unchecked`) under
+    // Miri instead of re-implementing the parse loop here.
+    let boundary =
+        unsafe { accounts_start.add(acct0_size + acct1_size + dup_size) } as *const u8;
+    let (parsed, _end) = unsafe {
+        quasar_lang::__internal::parse_all_accounts_unchecked(accounts_start, arr_ptr, N, boundary)
     }
+    .expect("parse_all_accounts_unchecked");
+    assert_eq!(parsed, N);
 
     let accounts = unsafe { buf.assume_init() };
     assert_eq!(accounts[0].lamports(), 100);
@@ -1584,25 +1575,16 @@ fn uninit_parse_simulation_many_dups() {
     const N: usize = 5;
     let mut buf = MaybeUninit::<[AccountView; N]>::uninit();
     let arr_ptr = buf.as_mut_ptr() as *mut AccountView;
-    let mut ptr = accounts_start;
 
-    for i in 0..N {
-        let raw = ptr as *mut RuntimeAccount;
-        let borrow = unsafe { (*raw).borrow_state };
-
-        if borrow == NOT_BORROWED {
-            let view = unsafe { AccountView::new_unchecked(raw) };
-            unsafe { core::ptr::write(arr_ptr.add(i), view) };
-            unsafe {
-                ptr = ptr.add(ACCOUNT_HEADER + (*raw).data_len as usize);
-                ptr = ptr.add((ptr as usize).wrapping_neg() & 7);
-            }
-        } else {
-            let dup = unsafe { core::ptr::read(arr_ptr.add(borrow as usize)) };
-            unsafe { core::ptr::write(arr_ptr.add(i), dup) };
-            unsafe { ptr = ptr.add(size_of::<u64>()) };
-        }
+    // Exercise the REAL production walk (`parse_all_accounts_unchecked`) under
+    // Miri instead of re-implementing the parse loop here.
+    let boundary =
+        unsafe { accounts_start.add(acct_size * 2 + dup_size * 3) } as *const u8;
+    let (parsed, _end) = unsafe {
+        quasar_lang::__internal::parse_all_accounts_unchecked(accounts_start, arr_ptr, N, boundary)
     }
+    .expect("parse_all_accounts_unchecked");
+    assert_eq!(parsed, N);
 
     let accounts = unsafe { buf.assume_init() };
     assert_eq!(accounts[0].lamports(), 100);
