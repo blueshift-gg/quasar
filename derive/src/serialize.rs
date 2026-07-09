@@ -122,11 +122,12 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
             .map(|f| {
                 let fname = f.ident.as_ref().map(|i| i.to_string()).unwrap_or_default();
                 let fty = crate::helpers::type_to_idl_type_tokens(&f.ty);
+                let fcodec = crate::helpers::type_to_idl_codec_tokens(&f.ty);
                 quote! {
                     quasar_lang::idl_build::__reexport::IdlFieldDef {
                         name: quasar_lang::idl_build::s(#fname),
                         ty: #fty,
-                        codec: None,
+                        codec: #fcodec,
                         docs: quasar_lang::idl_build::Vec::new(),
                     }
                 }

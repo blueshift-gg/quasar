@@ -186,6 +186,8 @@ pub fn build_idl(address: &str, name: &str, crate_name: &str, version: &str) -> 
         );
     }
 
+    assert_dynamic_fields_have_codecs(&idl);
+
     let idl_hash = compute_idl_hash(&idl);
     let abi_hash = compute_abi_hash(&idl);
     idl.hashes = Some(IdlHashes {
@@ -194,4 +196,147 @@ pub fn build_idl(address: &str, name: &str, crate_name: &str, version: &str) -> 
     });
 
     idl
+}
+
+/// Whether an IDL type is dynamically sized and therefore requires an explicit
+/// size-prefix codec. Strings and vecs (including those wrapped in `Option`)
+/// carry a length prefix whose width the client must know; without a codec a
+/// client defaults to a guessed width (e.g. u32) that diverges from the wire.
+fn idl_type_needs_codec(ty: &IdlType) -> bool {
+    match ty {
+        IdlType::Primitive(name) => name == "string",
+        IdlType::Vec { .. } => true,
+        IdlType::Option { option } => idl_type_needs_codec(option),
+        _ => false,
+    }
+}
+
+/// Codec is mandatory for dynamic types: every string/vec field and arg must
+/// carry an explicit codec so clients cannot silently pick the wrong prefix
+/// width. A missing codec is a hard error (a producer bug), matching the
+/// panic style used for missing account fragments above.
+fn assert_dynamic_fields_have_codecs(idl: &Idl) {
+    fn check(ty: &IdlType, codec_present: bool, location: &dyn core::fmt::Display) {
+        if idl_type_needs_codec(ty) && !codec_present {
+            panic!(
+                "idl-build: {location} has a dynamic (string/vec) type but no codec; dynamic \
+                 types must declare an explicit size-prefix codec so clients use the right \
+                 prefix width"
+            );
+        }
+    }
+
+    for ix in &idl.instructions {
+        for arg in &ix.args {
+            check(
+                &arg.ty,
+                arg.codec.is_some(),
+                &format_args!("instruction `{}` arg `{}`", ix.name, arg.name),
+            );
+        }
+    }
+    for ty in &idl.types {
+        for field in &ty.fields {
+            check(
+                &field.ty,
+                field.codec.is_some(),
+                &format_args!("type `{}` field `{}`", ty.name, field.name),
+            );
+        }
+        for variant in &ty.variants {
+            for field in &variant.fields {
+                check(
+                    &field.ty,
+                    field.codec.is_some(),
+                    &format_args!(
+                        "type `{}` variant `{}` field `{}`",
+                        ty.name, variant.name, field.name
+                    ),
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod codec_tests {
+    use super::*;
+
+    fn arg(ty: IdlType, codec: Option<IdlCodec>) -> IdlArg {
+        IdlArg {
+            name: String::from("x"),
+            ty,
+            codec,
+            docs: Vec::new(),
+        }
+    }
+
+    fn idl_with_arg(a: IdlArg) -> Idl {
+        Idl {
+            spec: String::from(CURRENT_SPEC),
+            name: String::from("t"),
+            version: String::from("0"),
+            address: String::from("11111111111111111111111111111111"),
+            metadata: IdlMetadata::default(),
+            docs: Vec::new(),
+            instructions: vec![IdlInstruction {
+                name: String::from("ix"),
+                discriminator: vec![0],
+                docs: Vec::new(),
+                accounts: Vec::new(),
+                args: vec![a],
+                layout: None,
+                returns: None,
+                effects: Vec::new(),
+                remaining_accounts: None,
+            }],
+            accounts: Vec::new(),
+            types: Vec::new(),
+            events: Vec::new(),
+            errors: Vec::new(),
+            constants: Vec::new(),
+            wrappers: None,
+            extensions: None,
+            hashes: None,
+        }
+    }
+
+    fn u8_vec() -> IdlType {
+        IdlType::Vec {
+            vec: Box::new(IdlType::Primitive(String::from("u8"))),
+        }
+    }
+
+    fn vec_codec() -> IdlCodec {
+        IdlCodec::SizePrefixed {
+            prefix: ScalarRepr {
+                ty: String::from("u16"),
+                endian: Endian::Le,
+            },
+            storage: Storage::Tail,
+            max_bytes: None,
+            max_items: Some(4),
+            encoding: None,
+            item: None,
+        }
+    }
+
+    #[test]
+    fn fixed_arg_without_codec_ok() {
+        assert_dynamic_fields_have_codecs(&idl_with_arg(arg(
+            IdlType::Primitive(String::from("u64")),
+            None,
+        )));
+    }
+
+    #[test]
+    fn dynamic_arg_with_codec_ok() {
+        assert_dynamic_fields_have_codecs(&idl_with_arg(arg(u8_vec(), Some(vec_codec()))));
+    }
+
+    #[test]
+    #[should_panic(expected = "no codec")]
+    fn dynamic_arg_without_codec_panics() {
+        assert_dynamic_fields_have_codecs(&idl_with_arg(arg(u8_vec(), None)));
+    }
 }
