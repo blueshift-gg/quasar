@@ -117,14 +117,23 @@ pub fn build_idl(address: &str, name: &str, version: &str) -> Idl {
                 serde_json::Value::String(String::from("auto")),
             );
         }
-        // Look up the matching AccountsMetaFragment by struct name.
+        // Look up the matching AccountsMetaFragment by struct name. A missing
+        // fragment is a hard error: the instruction names an accounts struct
+        // whose metadata never registered (e.g. a fragment-name mismatch),
+        // which would otherwise silently emit an instruction with no accounts.
         if ix.accounts.is_empty() && !frag.accounts_struct_name.is_empty() {
-            if let Some((_, nodes)) = accounts_meta
+            let (_, nodes) = accounts_meta
                 .iter()
                 .find(|(struct_name, _)| struct_name == frag.accounts_struct_name)
-            {
-                ix.accounts = nodes.clone();
-            }
+                .unwrap_or_else(|| {
+                    panic!(
+                        "idl-build: instruction `{}` references accounts struct \
+                         `{}` but no AccountsMetaFragment with that name was \
+                         registered",
+                        ix.name, frag.accounts_struct_name
+                    )
+                });
+            ix.accounts = nodes.clone();
         }
         instructions.push(ix);
     }
