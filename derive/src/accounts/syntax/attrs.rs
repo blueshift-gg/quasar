@@ -82,6 +82,11 @@ impl Parse for ParsedDirective {
                         inner: Directive::Core(CoreDirective::Realloc(expr)),
                     });
                 }
+                // Anchor-migration redirects: `seeds = [...]` and `bump [= ...]`
+                // are Anchor's PDA syntax, not Quasar's. Point at the real
+                // typed-seeds form instead of the opaque "unknown directive".
+                "seeds" => return Err(anchor_seeds_error(&path)),
+                "bump" => return Err(anchor_bump_error(&path)),
                 _ => {
                     return Err(syn::Error::new_spanned(
                         &path,
@@ -196,12 +201,43 @@ impl Parse for ParsedDirective {
             "group" => Ok(ParsedDirective {
                 inner: Directive::Core(CoreDirective::Group),
             }),
+            // Anchor writes a bare `bump` (and, rarely, a bare `seeds`); redirect
+            // both to the typed-seeds form.
+            "bump" => Err(anchor_bump_error(&path)),
+            "seeds" => Err(anchor_seeds_error(&path)),
             _ => Err(syn::Error::new_spanned(
                 &path,
                 format!("unknown bare directive `{name}`; did you mean `{name}(...)`?"),
             )),
         }
     }
+}
+
+/// Redirect Anchor's `seeds = [...]` to the confirmed in-repo typed-seeds form:
+/// declare `#[seeds(b"prefix", field: Type, ...)]` on the account type (see
+/// `#[derive(Seeds)]`), then bind the PDA on the field with
+/// `#[account(address = MyAccount::seeds(<args>))]`.
+fn anchor_seeds_error(path: &syn::Path) -> syn::Error {
+    syn::Error::new_spanned(
+        path,
+        "`seeds = [...]` is Anchor syntax and is not supported here. Declare the seed layout on \
+         the account type with `#[seeds(b\"prefix\", field: Type, ...)]`, then bind the PDA on \
+         this field with `#[account(address = MyAccount::seeds(<args>))]`. The bump is derived \
+         and stored automatically.",
+    )
+}
+
+/// Redirect Anchor's `bump` / `bump = ...` to the typed-seeds form. Quasar
+/// derives and stores the bump automatically once the field binds a typed-seeds
+/// PDA via `address = MyAccount::seeds(...)`.
+fn anchor_bump_error(path: &syn::Path) -> syn::Error {
+    syn::Error::new_spanned(
+        path,
+        "`bump` is Anchor syntax and is not supported here. Bumps are derived and stored \
+         automatically when a field binds a typed-seeds PDA with \
+         `#[account(address = MyAccount::seeds(<args>))]`; declare the seed layout with \
+         `#[seeds(...)]` on the account type.",
+    )
 }
 
 /// Parse `key = value` pairs separated by commas into raw `(Ident, Expr)`

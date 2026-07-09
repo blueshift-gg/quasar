@@ -1,0 +1,6 @@
+error: `init` requires a program account (`Account<T>` or `InterfaceAccount<T>`); `Program` cannot be initialized
+  --> tests/compile_fail/init_on_program.rs:13:5
+   |
+13 | /     #[account(init, payer = payer)]
+14 | |     pub target: Program<SystemProgram>,
+   | |______________________________________^

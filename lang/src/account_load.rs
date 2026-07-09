@@ -12,6 +12,12 @@ use {
 /// supertrait makes that requirement a compile-time obligation: the
 /// pointer-cast constructors below are only sound because every implementor is
 /// layout-compatible with `AccountView`.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a loadable account type",
+    label = "not an account wrapper",
+    note = "wrap the field in `Account<T>`, or add `#[account]` to the struct \
+            you are trying to load"
+)]
 pub trait AccountLoad: AsAccountView + StaticView + Sized {
     const IS_SIGNER: bool = false;
     const IS_EXECUTABLE: bool = false;

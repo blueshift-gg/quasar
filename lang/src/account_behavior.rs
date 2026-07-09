@@ -64,6 +64,12 @@ use solana_program_error::ProgramError;
 /// ```
 ///
 /// Default methods are no-ops. Override only the methods your behavior needs.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a behavior for `{A}`",
+    label = "no `AccountBehavior<{A}>` impl",
+    note = "behavior groups like `token(...)` require a module exposing a \
+            `Behavior` type that implements `AccountBehavior` for this account"
+)]
 pub trait AccountBehavior<A> {
     /// Behavior arguments for one lifecycle phase.
     type Args<'a>;

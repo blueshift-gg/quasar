@@ -4,10 +4,102 @@
 //! is owned by behavior modules via builder errors and trait bounds.
 
 use {
-    super::{BehaviorArgValue, FieldKind, FieldSemantics},
+    super::{
+        wrapper::{classify_wrapper, WrapperKind},
+        BehaviorArgValue, FieldKind, FieldSemantics,
+    },
     std::collections::HashSet,
     syn::Ident,
 };
+
+/// A wrapper type that cannot be the target of a structural lifecycle op
+/// (`init` / `realloc` / `close`) or the `From` side of a `Migration`. Returns
+/// the display name of the wrapper when it is in the deny-set, `None` when the
+/// wrapper legitimately supports these ops (`Account<T>` / `InterfaceAccount<T>`,
+/// plus user composites, which carry their own rules).
+///
+/// The deny-set is verified against the runtime trait impls: only `Account<T>`
+/// and `InterfaceAccount<T>` implement `SupportsRealloc`/`AccountInit`/`Space`
+/// (`lang/src/accounts/{account,interface_account}.rs`), and only they carry a
+/// discriminator to zero on close, so every wrapper below genuinely lacks the
+/// op. Front-ending the rejection here turns an `E0277` trait-bound dump that
+/// quotes `ops/realloc.rs` internals into one spanned error at the field.
+fn denied_op_target(wrapper: WrapperKind) -> Option<&'static str> {
+    match wrapper {
+        WrapperKind::Signer => Some("`Signer`"),
+        WrapperKind::UncheckedAccount => Some("`UncheckedAccount`"),
+        WrapperKind::Program => Some("`Program`"),
+        WrapperKind::Interface => Some("`Interface`"),
+        WrapperKind::Sysvar => Some("`Sysvar`"),
+        WrapperKind::EventAuthority => Some("`EventAuthority`"),
+        _ => None,
+    }
+}
+
+/// Reject structural lifecycle ops on wrapper types that cannot support them,
+/// as a single spanned error at the field, before codegen reaches the op's
+/// trait bounds. `Uninit`/`Migration`/composite wrappers are handled by their
+/// own dedicated rules and are never in the deny-set.
+fn validate_op_target(sem: &FieldSemantics) -> syn::Result<()> {
+    let span = &sem.core.field;
+    let wrapper = sem.core.wrapper;
+
+    if sem.realloc.is_some() {
+        if let Some(name) = denied_op_target(wrapper) {
+            return Err(syn::Error::new_spanned(
+                span,
+                format!(
+                    "`realloc` requires a program account (`Account<T>` or `InterfaceAccount<T>`); \
+                     {name} cannot be reallocated"
+                ),
+            ));
+        }
+    }
+
+    if sem.has_init() {
+        if let Some(name) = denied_op_target(wrapper) {
+            return Err(syn::Error::new_spanned(
+                span,
+                format!(
+                    "`init` requires a program account (`Account<T>` or `InterfaceAccount<T>`); \
+                     {name} cannot be initialized"
+                ),
+            ));
+        }
+    }
+
+    if sem.close_dest.is_some() {
+        if let Some(name) = denied_op_target(wrapper) {
+            return Err(syn::Error::new_spanned(
+                span,
+                format!(
+                    "`close` requires a program account (`Account<T>` or `InterfaceAccount<T>`); \
+                     {name} cannot be closed"
+                ),
+            ));
+        }
+    }
+
+    // `Migration<From, To>`: the `From` (source) type is the first generic
+    // argument, recorded as `core.inner_ty`. It must be a program-owned data
+    // account (a `#[account]` type, classified `Other`), never a bare wrapper
+    // like `Signer` that carries no discriminator to verify the old version.
+    if sem.is_migration {
+        if let Some(from) = &sem.core.inner_ty {
+            if let Some(name) = denied_op_target(classify_wrapper(from)) {
+                return Err(syn::Error::new_spanned(
+                    span,
+                    format!(
+                        "`Migration<From, To>` requires a program account as its `From` type; \
+                         {name} cannot be migrated"
+                    ),
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
 
 pub(super) fn validate_semantics(semantics: &[FieldSemantics]) -> syn::Result<()> {
     let field_names: HashSet<String> = semantics
@@ -126,6 +218,9 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
     }
 
     // `init` implies `mut` (init-implies-mut): no separate requirement.
+
+    // Structural ops require a program data-account wrapper (type gate).
+    validate_op_target(sem)?;
 
     // init + realloc mutual exclusion
     if sem.has_init() && sem.realloc.is_some() {
