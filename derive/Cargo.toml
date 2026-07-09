@@ -24,6 +24,8 @@ quasar-idl-schema = { path = "../idl/schema" }
 
 [dev-dependencies]
 trybuild = "1"
+expect-test = "1"
+prettyplease = "0.2"
 quasar-lang = { path = "../lang" }
 quasar-derive = { path = "../derive" }
 quasar-spl = { path = "../spl" }
