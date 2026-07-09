@@ -169,8 +169,8 @@ fn instruction_has_signer(instruction: &InstructionSurface) -> bool {
 ///
 /// - Account discriminators collide when equal OR when one is a prefix of the
 ///   other: the runtime discriminator check reads only the declared-length
-///   prefix (`checks/discriminator.rs`), and every `#[account]` shares
-///   `OWNER = crate::ID`, so a prefix relation is silent type confusion. Empty
+///   prefix (`checks/discriminator.rs`), and every `#[account]` shares `OWNER =
+///   crate::ID`, so a prefix relation is silent type confusion. Empty
 ///   discriminators (`unsafe_no_disc`) are an explicit opt-out and are skipped.
 /// - Event discriminators collide on exact duplication.
 /// - Error codes collide on exact duplication (codes are 6000-based).
@@ -722,7 +722,11 @@ mod collision_tests {
 
     #[test]
     fn account_exact_discriminator_pair_collides() {
-        let s = surface(vec![account("A", vec![1]), account("B", vec![1])], vec![], vec![]);
+        let s = surface(
+            vec![account("A", vec![1]), account("B", vec![1])],
+            vec![],
+            vec![],
+        );
         assert!(contains(&s, RuleCode::P009));
     }
 
@@ -763,13 +767,21 @@ mod collision_tests {
 
     #[test]
     fn event_duplicate_discriminator_collides() {
-        let s = surface(vec![], vec![event("A", vec![5]), event("B", vec![5])], vec![]);
+        let s = surface(
+            vec![],
+            vec![event("A", vec![5]), event("B", vec![5])],
+            vec![],
+        );
         assert!(contains(&s, RuleCode::P010));
     }
 
     #[test]
     fn event_distinct_discriminators_are_clean() {
-        let s = surface(vec![], vec![event("A", vec![5]), event("B", vec![6])], vec![]);
+        let s = surface(
+            vec![],
+            vec![event("A", vec![5]), event("B", vec![6])],
+            vec![],
+        );
         assert!(!contains(&s, RuleCode::P010));
     }
 

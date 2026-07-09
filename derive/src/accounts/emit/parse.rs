@@ -645,7 +645,8 @@ fn emit_behavior_assertions(semantics: &[FieldSemantics]) -> proc_macro2::TokenS
             // silently never fire. Require `init` on the field.
             if !sem.has_init() {
                 let after_init_msg = format!(
-                    "behavior `{}` runs after_init and requires `#[account(init, ...)]` on field `{}`",
+                    "behavior `{}` runs after_init and requires `#[account(init, ...)]` on field \
+                     `{}`",
                     group.name(),
                     field_name,
                 );

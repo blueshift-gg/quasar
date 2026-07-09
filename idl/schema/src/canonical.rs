@@ -325,7 +325,10 @@ mod tests {
         let first = canonical_json(&idl).expect("serialize");
         let parsed: Idl = serde_json::from_slice(&first).expect("parse");
         let second = canonical_json(&parsed).expect("reserialize");
-        assert_eq!(first, second, "canonical_json must be idempotent across parse");
+        assert_eq!(
+            first, second,
+            "canonical_json must be idempotent across parse"
+        );
     }
 
     #[test]

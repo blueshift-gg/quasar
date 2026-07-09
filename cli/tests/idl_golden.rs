@@ -1,9 +1,10 @@
 //! Golden + determinism guard for IDL generation.
 //!
 //! Builds the `examples/multisig` IDL and asserts (1) two independent builds
-//! are byte-identical (the deterministic-assembly sort in `build_idl` must hold)
-//! and (2) the output matches a committed golden. Regenerate the golden after an
-//! intentional IDL-affecting change with `UPDATE_GOLDEN=1` and review the diff.
+//! are byte-identical (the deterministic-assembly sort in `build_idl` must
+//! hold) and (2) the output matches a committed golden. Regenerate the golden
+//! after an intentional IDL-affecting change with `UPDATE_GOLDEN=1` and review
+//! the diff.
 
 use {
     quasar_idl::types::canonical_json_pretty,

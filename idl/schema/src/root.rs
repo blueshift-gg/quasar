@@ -142,9 +142,9 @@ pub fn parse_spec(json: &str) -> Result<String, serde_json::Error> {
 }
 
 /// Whether a `spec` string is one this build can read. The contract is additive
-/// within major version 1 (`quasar-idl/1.x`): the root tolerates unknown fields,
-/// so a v1.0 reader accepts any 1.x document. Other majors or schemes are
-/// rejected.
+/// within major version 1 (`quasar-idl/1.x`): the root tolerates unknown
+/// fields, so a v1.0 reader accepts any 1.x document. Other majors or schemes
+/// are rejected.
 pub fn spec_is_supported(spec: &str) -> bool {
     spec.strip_prefix(SPEC_SCHEME)
         .and_then(|version| version.split('.').next())
@@ -156,8 +156,9 @@ pub fn spec_is_supported(spec: &str) -> bool {
 /// parse site should call this first so an incompatible spec fails with a clear
 /// message instead of a confusing field-level deserialization error.
 pub fn check_spec(json: &str) -> Result<String, String> {
-    let spec = parse_spec(json)
-        .map_err(|e| format!("IDL is missing a top-level `spec` field or is not valid JSON: {e}"))?;
+    let spec = parse_spec(json).map_err(|e| {
+        format!("IDL is missing a top-level `spec` field or is not valid JSON: {e}")
+    })?;
     if spec_is_supported(&spec) {
         Ok(spec)
     } else {
@@ -211,8 +212,8 @@ mod deny_unknown_tests {
         // v1.0 reader must not reject them.
         let json = MINIMAL.replace(
             "\"address\": \"11111111111111111111111111111111\"",
-            "\"address\": \"11111111111111111111111111111111\", \
-             \"futureTopLevelField\": { \"anything\": true }",
+            "\"address\": \"11111111111111111111111111111111\", \"futureTopLevelField\": { \
+             \"anything\": true }",
         );
         let idl: Idl = serde_json::from_str(&json).expect("unknown root field must be tolerated");
         assert_eq!(idl.name, "demo");
@@ -223,8 +224,8 @@ mod deny_unknown_tests {
         // `hashes` is a leaf type: stray keys are contract errors.
         let json = MINIMAL.replace(
             "\"address\": \"11111111111111111111111111111111\"",
-            "\"address\": \"11111111111111111111111111111111\", \
-             \"hashes\": { \"idl\": \"a\", \"abi\": \"b\", \"bogus\": \"c\" }",
+            "\"address\": \"11111111111111111111111111111111\", \"hashes\": { \"idl\": \"a\", \
+             \"abi\": \"b\", \"bogus\": \"c\" }",
         );
         let err =
             serde_json::from_str::<Idl>(&json).expect_err("unknown leaf field must be rejected");

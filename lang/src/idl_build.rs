@@ -220,8 +220,8 @@ fn assert_dynamic_fields_have_codecs(idl: &Idl) {
         if idl_type_needs_codec(ty) && !codec_present {
             panic!(
                 "idl-build: {location} has a dynamic (string/vec) type but no codec; dynamic \
-                 types must declare an explicit size-prefix codec so clients use the right \
-                 prefix width"
+                 types must declare an explicit size-prefix codec so clients use the right prefix \
+                 width"
             );
         }
     }
