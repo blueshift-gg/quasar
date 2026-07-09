@@ -191,7 +191,13 @@ pub(crate) fn generate_instruction_arg_extraction(
             }
             None => {
                 let ty = &arg.ty;
+                // Per-field semantic validation before from_zc: the compact
+                // schema validate() checks layout/prefix bounds but not
+                // InstructionArg-level invariants (e.g. Option tags), matching
+                // the handler macro's compact decode path.
                 stmts.push(quote! {
+                    <#ty as quasar_lang::instruction_arg::InstructionArg>::validate_zc(&__ref.#name)
+                        .map_err(|_| ProgramError::InvalidInstructionData)?;
                     let #name = <#ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(&__ref.#name);
                 });
             }
