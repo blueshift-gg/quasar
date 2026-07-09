@@ -352,3 +352,175 @@ fn expr_as_ident(expr: &Expr) -> Option<Ident> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        crate::accounts::resolve::model::{FieldCore, InitDirective},
+        quote::quote,
+        syn::parse::Parser,
+    };
+
+    fn expr(tokens: proc_macro2::TokenStream) -> Expr {
+        syn::parse2(tokens).expect("expr parses")
+    }
+
+    /// Minimal single-account semantics with the given name and effective type.
+    fn make_sem(name: &str, ty: &str) -> FieldSemantics {
+        let ident: Ident = syn::parse_str(name).expect("ident");
+        let effective_ty: Type = syn::parse_str(ty).expect("type");
+        let field = syn::Field::parse_named
+            .parse2(quote!(#ident: #effective_ty))
+            .expect("field");
+        FieldSemantics {
+            core: FieldCore {
+                ident,
+                field,
+                effective_ty,
+                kind: FieldKind::Single,
+                inner_ty: None,
+                optional: false,
+                dynamic: false,
+                is_mut: false,
+                dup: false,
+            },
+            init: None,
+            payer: None,
+            address: None,
+            realloc: None,
+            close_dest: None,
+            groups: Vec::new(),
+            user_checks: Vec::new(),
+            is_migration: false,
+            is_uninit: false,
+        }
+    }
+
+    #[test]
+    fn classify_none_literal() {
+        assert!(matches!(
+            classify_value(&expr(quote!(None)), &[], &[]),
+            ValueKind::NoneLiteral
+        ));
+    }
+
+    #[test]
+    fn classify_field_refs_by_name() {
+        let names = vec!["authority".to_string(), "maybe".to_string()];
+        let optional = vec!["maybe".to_string()];
+        assert!(matches!(
+            classify_value(&expr(quote!(authority)), &names, &optional),
+            ValueKind::BareFieldRef
+        ));
+        assert!(matches!(
+            classify_value(&expr(quote!(maybe)), &names, &optional),
+            ValueKind::OptionalFieldRef
+        ));
+        assert!(matches!(
+            classify_value(&expr(quote!(not_a_field)), &names, &optional),
+            ValueKind::Expr
+        ));
+    }
+
+    #[test]
+    fn classify_some_variants() {
+        let names = vec!["authority".to_string()];
+        assert!(matches!(
+            classify_value(&expr(quote!(Some(authority))), &names, &[]),
+            ValueKind::SomeFieldRef
+        ));
+        assert!(matches!(
+            classify_value(&expr(quote!(Some(42u64))), &names, &[]),
+            ValueKind::SomeExpr
+        ));
+    }
+
+    #[test]
+    fn classify_literal_is_expr() {
+        assert!(matches!(
+            classify_value(&expr(quote!(10u64)), &[], &[]),
+            ValueKind::Expr
+        ));
+    }
+
+    #[test]
+    fn lower_value_field_and_optional_views() {
+        assert!(matches!(
+            lower_value(&expr(quote!(authority)), ValueKind::BareFieldRef),
+            LoweredValue::FieldView(id) if id == "authority"
+        ));
+        assert!(matches!(
+            lower_value(&expr(quote!(maybe)), ValueKind::OptionalFieldRef),
+            LoweredValue::OptionalFieldView(id) if id == "maybe"
+        ));
+    }
+
+    #[test]
+    fn lower_value_some_field_view_unwraps_inner() {
+        assert!(matches!(
+            lower_value(&expr(quote!(Some(authority))), ValueKind::SomeFieldRef),
+            LoweredValue::SomeFieldView(id) if id == "authority"
+        ));
+    }
+
+    #[test]
+    fn lower_value_none_and_passthrough_expr() {
+        assert!(matches!(
+            lower_value(&expr(quote!(None)), ValueKind::NoneLiteral),
+            LoweredValue::NoneLiteral
+        ));
+        assert!(matches!(
+            lower_value(&expr(quote!(5u8)), ValueKind::Expr),
+            LoweredValue::Expr(_)
+        ));
+    }
+
+    #[test]
+    fn find_payer_field_by_name_convention() {
+        let with_payer = vec![
+            make_sem("payer", "Signer"),
+            make_sem("config", "Account<C>"),
+        ];
+        assert_eq!(
+            find_payer_field(&with_payer)
+                .expect("payer found")
+                .to_string(),
+            "payer"
+        );
+        let without = vec![make_sem("authority", "Signer")];
+        assert!(find_payer_field(&without).is_none());
+    }
+
+    #[test]
+    fn rent_plan_not_needed_without_init_or_realloc() {
+        let sems = vec![
+            make_sem("authority", "Signer"),
+            make_sem("config", "Account<C>"),
+        ];
+        assert!(matches!(compute_rent_plan(&sems), RentPlan::NotNeeded));
+    }
+
+    #[test]
+    fn rent_plan_fetch_once_when_init_and_no_sysvar() {
+        let mut escrow = make_sem("escrow", "Account<E>");
+        escrow.init = Some(InitDirective { idempotent: false });
+        let sems = vec![make_sem("payer", "Signer"), escrow];
+        assert!(matches!(compute_rent_plan(&sems), RentPlan::FetchOnce));
+    }
+
+    #[test]
+    fn rent_plan_from_sysvar_when_rent_field_present() {
+        let mut escrow = make_sem("escrow", "Account<E>");
+        escrow.init = Some(InitDirective { idempotent: false });
+        let sems = vec![
+            make_sem("payer", "Signer"),
+            escrow,
+            make_sem("rent", "Sysvar<Rent>"),
+        ];
+        assert!(matches!(
+            compute_rent_plan(&sems),
+            RentPlan::FromSysvarField { field } if field == "rent"
+        ));
+    }
+}
