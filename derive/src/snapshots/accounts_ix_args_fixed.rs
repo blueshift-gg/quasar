@@ -70,7 +70,7 @@ unsafe impl<'input> quasar_lang::traits::ParseAccountsUnchecked<'input> for IxAr
 }
 impl AccountCount for IxArgsFixed {
     const COUNT: usize = 1usize;
-    const NEEDS_EVENT_CPI: bool = false || false;
+    const NEEDS_EVENT_CPI: bool = false;
 }
 impl IxArgsFixed {
     #[inline(always)]

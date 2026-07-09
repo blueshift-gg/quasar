@@ -92,7 +92,7 @@ for ReallocAccounts {
 }
 impl AccountCount for ReallocAccounts {
     const COUNT: usize = 3usize;
-    const NEEDS_EVENT_CPI: bool = false || false || false || false;
+    const NEEDS_EVENT_CPI: bool = false;
 }
 impl ReallocAccounts {
     #[inline(always)]

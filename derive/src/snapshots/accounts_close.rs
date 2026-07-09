@@ -89,7 +89,7 @@ for CloseAccounts {
 }
 impl AccountCount for CloseAccounts {
     const COUNT: usize = 2usize;
-    const NEEDS_EVENT_CPI: bool = false || false || false;
+    const NEEDS_EVENT_CPI: bool = false;
 }
 impl CloseAccounts {
     #[inline(always)]

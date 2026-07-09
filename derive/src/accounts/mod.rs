@@ -309,16 +309,18 @@ fn emit_idl_pda_seed(seed: &resolve::specs::IdlSeedPlan) -> proc_macro2::TokenSt
 
 fn emit_needs_event_cpi_expr(plan: &resolve::specs::AccountsPlanTyped) -> proc_macro2::TokenStream {
     use resolve::specs::EventCpiTerm;
+    // Only fields that can contribute `true` are ORed in; plain single fields
+    // (`Never`) would only add redundant `|| false`, so they are dropped.
     let terms: Vec<proc_macro2::TokenStream> = plan
         .event_cpi
         .iter()
-        .map(|term| match term {
+        .filter_map(|term| match term {
             EventCpiTerm::Composite(ty) => {
                 let inner_ty = composite_event_ty(ty);
-                quote! { <#inner_ty as AccountCount>::NEEDS_EVENT_CPI }
+                Some(quote! { <#inner_ty as AccountCount>::NEEDS_EVENT_CPI })
             }
-            EventCpiTerm::EventAuthority => quote! { true },
-            EventCpiTerm::Never => quote! { false },
+            EventCpiTerm::EventAuthority => Some(quote! { true }),
+            EventCpiTerm::Never => None,
         })
         .collect();
 

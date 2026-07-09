@@ -81,7 +81,7 @@ for BasicAccounts {
 }
 impl AccountCount for BasicAccounts {
     const COUNT: usize = 3usize;
-    const NEEDS_EVENT_CPI: bool = false || false || false || false;
+    const NEEDS_EVENT_CPI: bool = false;
 }
 impl BasicAccounts {
     #[inline(always)]

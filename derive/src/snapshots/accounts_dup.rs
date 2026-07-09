@@ -69,7 +69,7 @@ for HeaderDupReadonly {
 }
 impl AccountCount for HeaderDupReadonly {
     const COUNT: usize = 2usize;
-    const NEEDS_EVENT_CPI: bool = false || false || false;
+    const NEEDS_EVENT_CPI: bool = false;
 }
 impl HeaderDupReadonly {
     #[inline(always)]

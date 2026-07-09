@@ -84,7 +84,7 @@ for OptionalAccounts {
 }
 impl AccountCount for OptionalAccounts {
     const COUNT: usize = 2usize;
-    const NEEDS_EVENT_CPI: bool = false || false || false;
+    const NEEDS_EVENT_CPI: bool = false;
 }
 impl OptionalAccounts {
     #[inline(always)]

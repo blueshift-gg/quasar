@@ -70,7 +70,7 @@ unsafe impl<'input> quasar_lang::traits::ParseAccountsUnchecked<'input> for TwoD
 }
 impl AccountCount for TwoDyn {
     const COUNT: usize = 1usize;
-    const NEEDS_EVENT_CPI: bool = false || false;
+    const NEEDS_EVENT_CPI: bool = false;
 }
 impl TwoDyn {
     #[inline(always)]

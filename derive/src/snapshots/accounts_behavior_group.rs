@@ -119,7 +119,7 @@ for UseCustomBehavior {
 }
 impl AccountCount for UseCustomBehavior {
     const COUNT: usize = 1usize;
-    const NEEDS_EVENT_CPI: bool = false || false;
+    const NEEDS_EVENT_CPI: bool = false;
 }
 impl UseCustomBehavior {
     #[inline(always)]

@@ -132,7 +132,7 @@ unsafe impl<'input> quasar_lang::traits::ParseAccountsUnchecked<'input> for Init
 }
 impl AccountCount for InitEscrow {
     const COUNT: usize = 3usize;
-    const NEEDS_EVENT_CPI: bool = false || false || false || false;
+    const NEEDS_EVENT_CPI: bool = false;
 }
 impl InitEscrow {
     #[inline(always)]
