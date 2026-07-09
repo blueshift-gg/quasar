@@ -71,6 +71,18 @@ pub struct MixedAccount {
     pub label: String<32>,
 }
 
+/// Fixed-layout scratch account for the two-dynamic-arg wire-format test (A1).
+/// The handler packs the decoded `a`/`b` bytes here so the suite can read them
+/// back and confirm the on-chain decode matched the client's compact layout.
+#[account(discriminator = 22, set_inner)]
+pub struct TwoDynArgsAccount {
+    pub tag: u64,
+    pub a_len: u8,
+    pub a: u64,
+    pub b_len: u8,
+    pub b: u64,
+}
+
 #[account(discriminator = 7)]
 pub struct SmallPrefixAccount {
     pub tag: String<100>,

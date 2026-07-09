@@ -341,4 +341,16 @@ mod quasar_test_misc {
     pub fn optional_mut_accounts(ctx: Ctx<OptionalMutAccounts>) -> Result<(), ProgramError> {
         ctx.accounts.handler()
     }
+
+    /// Two dynamic instruction args: proves the accounts-side `#[instruction]`
+    /// extraction decodes the same compact layout the handler/client use (A1).
+    #[instruction(discriminator = 63)]
+    pub fn two_dyn(
+        ctx: Ctx<TwoDyn>,
+        tag: u64,
+        a: String<8>,
+        b: String<8>,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler(tag, a, b)
+    }
 }
