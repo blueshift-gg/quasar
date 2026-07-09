@@ -294,7 +294,14 @@ fn emit_behavior_args_builder(
     quote! {
         let __bhv_builder = #path::Args::builder();
         #(#setters)*
-        let __bhv_args = __bhv_builder.#build_method()?;
+        // Bound check: the builder must implement the stable BehaviorArgsBuilder
+        // contract. A plugin whose builder is missing a phase fails here with a
+        // clear diagnostic instead of a "no method" error. Scoped to the
+        // enclosing const-guard block, so multiple behaviors never collide.
+        fn __assert_builder<__B: quasar_lang::account_behavior::BehaviorArgsBuilder>(_: &__B) {}
+        __assert_builder(&__bhv_builder);
+        let __bhv_args =
+            quasar_lang::account_behavior::BehaviorArgsBuilder::#build_method(__bhv_builder)?;
     }
 }
 

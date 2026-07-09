@@ -1,76 +1,73 @@
-//! Custom behavior: exit (epilogue). Proves behavior-driven exit works.
+//! A behavior builder must implement the full `BehaviorArgsBuilder` contract.
+//! This toy builder is missing `build_exit`, so the impl fails to compile.
 #![allow(unexpected_cfgs)]
 extern crate alloc;
 use {quasar_derive::Accounts, quasar_lang::prelude::*};
 
 solana_address::declare_id!("11111111111111111111111111111112");
 
-#[account(discriminator = 44)]
-pub struct Counter {
+#[account(discriminator = 42)]
+pub struct MyData {
     pub value: u64,
 }
 
-mod bump_counter {
+mod min_value {
     use quasar_lang::prelude::*;
 
     pub struct Args {
-        pub amount: u64,
+        pub min: u64,
     }
 
     pub struct ArgsBuilder {
-        amount: Option<u64>,
+        min: Option<u64>,
     }
 
     impl Args {
         pub fn builder() -> ArgsBuilder {
-            ArgsBuilder { amount: None }
+            ArgsBuilder { min: None }
         }
     }
 
     impl ArgsBuilder {
-        pub fn amount(mut self, v: u64) -> Self {
-            self.amount = Some(v);
+        pub fn min(mut self, v: u64) -> Self {
+            self.min = Some(v);
             self
         }
     }
 
+    // Missing `build_exit`: `BehaviorArgsBuilder` requires all three phases.
     impl quasar_lang::account_behavior::BehaviorArgsBuilder for ArgsBuilder {
         type Init = Args;
         type Check = Args;
         type Exit = Args;
         fn build_check(self) -> Result<Args, ProgramError> {
             Ok(Args {
-                amount: self.amount.ok_or(ProgramError::InvalidArgument)?,
+                min: self.min.ok_or(ProgramError::InvalidArgument)?,
             })
         }
         fn build_init(self) -> Result<Args, ProgramError> {
-            self.build_check()
-        }
-        fn build_exit(self) -> Result<Args, ProgramError> {
             self.build_check()
         }
     }
 
     pub struct Behavior;
 
-    impl AccountBehavior<Account<super::Counter>> for Behavior {
+    impl AccountBehavior<Account<super::MyData>> for Behavior {
         type Args<'a> = Args;
-        const RUN_EXIT: bool = true;
 
-        fn exit<'a>(
-            account: &mut Account<super::Counter>,
-            args: &Args,
-        ) -> Result<(), ProgramError> {
-            account.value = account.value.saturating_add(args.amount);
+        fn check<'a>(account: &Account<super::MyData>, args: &Args) -> Result<(), ProgramError> {
+            if account.value < args.min {
+                return Err(ProgramError::InvalidAccountData);
+            }
             Ok(())
         }
     }
 }
 
 #[derive(Accounts)]
-pub struct BumpCounter {
-    #[account(mut, bump_counter(amount = 1u64))]
-    pub counter: Account<Counter>,
+pub struct UseCustomBehavior {
+    #[account(min_value(min = 10u64))]
+    pub data: Account<MyData>,
 }
 
 fn main() {}

@@ -9,9 +9,44 @@ use solana_program_error::ProgramError;
 ///
 /// - `foo::Args`: the args struct
 /// - `foo::Args::builder()`: returns an `ArgsBuilder` with `.a()`, `.b()`
-///   setters and `build_init()`, `build_check()`, `build_exit()` methods
+///   setters, implementing [`BehaviorArgsBuilder`] (`build_init` /
+///   `build_check` / `build_exit`)
 /// - `foo::Behavior`: a unit struct implementing `AccountBehavior<T>` for each
 ///   supported account wrapper type
+///
+/// Everything is built from the stable API
+/// (`quasar_lang::account_behavior::{AccountBehavior, BehaviorArgsBuilder}`):
+///
+/// ```ignore
+/// use quasar_lang::account_behavior::{AccountBehavior, BehaviorArgsBuilder};
+/// use quasar_lang::prelude::*;
+///
+/// pub struct Args<'a> { pub authority: &'a AccountView }
+///
+/// pub struct ArgsBuilder<'a> { authority: Option<&'a AccountView> }
+/// impl<'a> Args<'a> {
+///     pub fn builder() -> ArgsBuilder<'a> { ArgsBuilder { authority: None } }
+/// }
+/// impl<'a> ArgsBuilder<'a> {
+///     pub fn authority(mut self, v: &'a AccountView) -> Self { self.authority = Some(v); self }
+/// }
+/// impl<'a> BehaviorArgsBuilder for ArgsBuilder<'a> {
+///     type Init = Args<'a>;
+///     type Check = Args<'a>;
+///     type Exit = Args<'a>;
+///     fn build_init(self) -> Result<Args<'a>, ProgramError> { self.build_check() }
+///     fn build_check(self) -> Result<Args<'a>, ProgramError> {
+///         Ok(Args { authority: self.authority.ok_or(ProgramError::InvalidArgument)? })
+///     }
+///     fn build_exit(self) -> Result<Args<'a>, ProgramError> { self.build_check() }
+/// }
+///
+/// pub struct Behavior;
+/// impl<T> AccountBehavior<T> for Behavior {
+///     type Args<'a> = Args<'a>;
+///     fn check<'a>(_account: &T, _args: &Args<'a>) -> Result<(), ProgramError> { Ok(()) }
+/// }
+/// ```
 ///
 /// # Lifecycle phases
 ///
@@ -101,6 +136,32 @@ pub trait AccountBehavior<A> {
     fn exit<'a>(_account: &mut A, _args: &Self::Args<'a>) -> Result<(), ProgramError> {
         Ok(())
     }
+}
+
+/// The builder contract for a behavior module's phase arguments.
+///
+/// A behavior module's `Args::builder()` returns a builder implementing this
+/// trait; the derive calls `build_init` / `build_check` / `build_exit` to
+/// assemble the per-phase argument struct. Making this a trait (rather than
+/// duck-typed inherent methods) means a plugin whose builder is missing a phase
+/// fails to compile with a clear diagnostic pointing at this trait.
+///
+/// The three associated types are usually the same `Args` struct, but the
+/// contract allows a builder to produce a different shape per phase.
+pub trait BehaviorArgsBuilder {
+    /// Arguments for the init phases (`set_init_param`, `after_init`).
+    type Init;
+    /// Arguments for the read phases (`check`, `update`).
+    type Check;
+    /// Arguments for the epilogue `exit` phase.
+    type Exit;
+
+    /// Assemble arguments for the init phases.
+    fn build_init(self) -> Result<Self::Init, ProgramError>;
+    /// Assemble arguments for the read phases.
+    fn build_check(self) -> Result<Self::Check, ProgramError>;
+    /// Assemble arguments for the epilogue `exit` phase.
+    fn build_exit(self) -> Result<Self::Exit, ProgramError>;
 }
 
 /// Phase id passed to `uses_arg` for `set_init_param`.

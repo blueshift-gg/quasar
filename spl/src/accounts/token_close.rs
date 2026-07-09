@@ -50,19 +50,25 @@ impl<'a> ArgsBuilder<'a> {
         self.token_program = Some(v);
         self
     }
+}
+
+impl<'a> quasar_lang::account_behavior::BehaviorArgsBuilder for ArgsBuilder<'a> {
+    type Init = Args<'a>;
+    type Check = Args<'a>;
+    type Exit = Args<'a>;
 
     #[inline(always)]
-    pub fn build_check(self) -> Result<Args<'a>, ProgramError> {
+    fn build_check(self) -> Result<Args<'a>, ProgramError> {
         self.build_exit()
     }
 
     #[inline(always)]
-    pub fn build_init(self) -> Result<Args<'a>, ProgramError> {
+    fn build_init(self) -> Result<Args<'a>, ProgramError> {
         self.build_exit()
     }
 
     #[inline(always)]
-    pub fn build_exit(self) -> Result<Args<'a>, ProgramError> {
+    fn build_exit(self) -> Result<Args<'a>, ProgramError> {
         Ok(Args {
             dest: self.dest.ok_or(ProgramError::InvalidArgument)?,
             authority: self.authority.ok_or(ProgramError::InvalidArgument)?,

@@ -129,10 +129,16 @@ impl<'a> ArgsBuilder<'a> {
         self.is_mutable = Some(v);
         self
     }
+}
+
+impl<'a> quasar_lang::account_behavior::BehaviorArgsBuilder for ArgsBuilder<'a> {
+    type Init = Args<'a>;
+    type Check = Args<'a>;
+    type Exit = Args<'a>;
 
     /// Build args for the check phase. Only `program` and `mint` are required.
     #[inline(always)]
-    pub fn build_check(self) -> Result<Args<'a>, ProgramError> {
+    fn build_check(self) -> Result<Args<'a>, ProgramError> {
         Ok(Args {
             program: self.program.ok_or(ProgramError::InvalidArgument)?,
             mint: self.mint.ok_or(ProgramError::InvalidArgument)?,
@@ -150,7 +156,7 @@ impl<'a> ArgsBuilder<'a> {
 
     /// Build args for the init phase. All CPI-relevant fields required.
     #[inline(always)]
-    pub fn build_init(self) -> Result<Args<'a>, ProgramError> {
+    fn build_init(self) -> Result<Args<'a>, ProgramError> {
         Ok(Args {
             program: self.program.ok_or(ProgramError::InvalidArgument)?,
             mint: self.mint.ok_or(ProgramError::InvalidArgument)?,
@@ -167,7 +173,7 @@ impl<'a> ArgsBuilder<'a> {
     }
 
     #[inline(always)]
-    pub fn build_exit(self) -> Result<Args<'a>, ProgramError> {
+    fn build_exit(self) -> Result<Args<'a>, ProgramError> {
         self.build_check()
     }
 }
