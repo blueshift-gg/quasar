@@ -56,6 +56,26 @@ unsafe impl<'input> quasar_lang::traits::ParseAccountsUnchecked<'input> for IxAr
         __ix_data: &[u8],
         __program_id: &Address,
     ) -> Result<(Self, Self::Bumps), ProgramError> {
+        let (amount, flag) = Self::__extract_ix_args(__ix_data)?;
+        let [account] = accounts else { unsafe { core::hint::unreachable_unchecked() } };
+        let mut account = <Account<
+            SimpleAccount,
+        > as quasar_lang::account_load::AccountLoad>::load_mut(account)?;
+        quasar_lang::validation::check_constraint(
+            amount > 0 && flag,
+            QuasarError::ConstraintViolation.into(),
+        )?;
+        Ok((Self { account }, IxArgsFixedBumps))
+    }
+}
+impl AccountCount for IxArgsFixed {
+    const COUNT: usize = 1usize;
+    const NEEDS_EVENT_CPI: bool = false;
+}
+impl IxArgsFixed {
+    #[inline(always)]
+    #[allow(unused_variables)]
+    fn __extract_ix_args<'a>(__ix_data: &'a [u8]) -> Result<(u64, bool), ProgramError> {
         #[repr(C)]
         struct __IxArgsZc {
             amount: <u64 as quasar_lang::instruction_arg::InstructionArg>::Zc,
@@ -81,22 +101,8 @@ unsafe impl<'input> quasar_lang::traits::ParseAccountsUnchecked<'input> for IxAr
         let flag = <bool as quasar_lang::instruction_arg::InstructionArg>::from_zc(
             &__ix_zc.flag,
         );
-        let [account] = accounts else { unsafe { core::hint::unreachable_unchecked() } };
-        let mut account = <Account<
-            SimpleAccount,
-        > as quasar_lang::account_load::AccountLoad>::load_mut(account)?;
-        quasar_lang::validation::check_constraint(
-            amount > 0 && flag,
-            QuasarError::ConstraintViolation.into(),
-        )?;
-        Ok((Self { account }, IxArgsFixedBumps))
+        Ok((amount, flag))
     }
-}
-impl AccountCount for IxArgsFixed {
-    const COUNT: usize = 1usize;
-    const NEEDS_EVENT_CPI: bool = false || false;
-}
-impl IxArgsFixed {
     #[inline(always)]
     #[doc(hidden)]
     pub unsafe fn parse_accounts(
@@ -148,31 +154,7 @@ impl IxArgsFixed {
         __ix_data: &[u8],
         __program_id: &quasar_lang::prelude::Address,
     ) -> Result<(Self, IxArgsFixedBumps), ProgramError> {
-        #[repr(C)]
-        struct __IxArgsZc {
-            amount: <u64 as quasar_lang::instruction_arg::InstructionArg>::Zc,
-            flag: <bool as quasar_lang::instruction_arg::InstructionArg>::Zc,
-        }
-        const _: () = assert!(
-            core::mem::align_of:: < __IxArgsZc > () == 1,
-            "instruction args ZC struct must have alignment 1"
-        );
-        if __ix_data.len() < core::mem::size_of::<__IxArgsZc>() {
-            return Err(ProgramError::InvalidInstructionData);
-        }
-        let __ix_zc = unsafe { &*(__ix_data.as_ptr() as *const __IxArgsZc) };
-        <u64 as quasar_lang::instruction_arg::InstructionArg>::validate_zc(
-            &__ix_zc.amount,
-        )?;
-        let amount = <u64 as quasar_lang::instruction_arg::InstructionArg>::from_zc(
-            &__ix_zc.amount,
-        );
-        <bool as quasar_lang::instruction_arg::InstructionArg>::validate_zc(
-            &__ix_zc.flag,
-        )?;
-        let flag = <bool as quasar_lang::instruction_arg::InstructionArg>::from_zc(
-            &__ix_zc.flag,
-        );
+        let (amount, flag) = Self::__extract_ix_args(__ix_data)?;
         let mut __buf = core::mem::MaybeUninit::<
             [quasar_lang::__internal::AccountView; 1usize],
         >::uninit();

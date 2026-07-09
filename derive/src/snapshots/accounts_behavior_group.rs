@@ -103,10 +103,7 @@ for UseCustomBehavior {
             } else {
                 __bhv_builder
             };
-            fn __assert_builder<__B: quasar_lang::account_behavior::BehaviorArgsBuilder>(
-                _: &__B,
-            ) {}
-            __assert_builder(&__bhv_builder);
+            Self::__assert_builder(&__bhv_builder);
             let __bhv_args = quasar_lang::account_behavior::BehaviorArgsBuilder::build_check(
                 __bhv_builder,
             )?;
@@ -119,9 +116,13 @@ for UseCustomBehavior {
 }
 impl AccountCount for UseCustomBehavior {
     const COUNT: usize = 1usize;
-    const NEEDS_EVENT_CPI: bool = false || false;
+    const NEEDS_EVENT_CPI: bool = false;
 }
 impl UseCustomBehavior {
+    #[inline(always)]
+    fn __assert_builder<__B: quasar_lang::account_behavior::BehaviorArgsBuilder>(
+        _: &__B,
+    ) {}
     #[inline(always)]
     #[doc(hidden)]
     pub unsafe fn parse_accounts(
@@ -214,10 +215,7 @@ impl UseCustomBehavior {
                 } else {
                     __bhv_builder
                 };
-                fn __assert_builder<
-                    __B: quasar_lang::account_behavior::BehaviorArgsBuilder,
-                >(_: &__B) {}
-                __assert_builder(&__bhv_builder);
+                Self::__assert_builder(&__bhv_builder);
                 let __bhv_args = quasar_lang::account_behavior::BehaviorArgsBuilder::build_check(
                     __bhv_builder,
                 )?;

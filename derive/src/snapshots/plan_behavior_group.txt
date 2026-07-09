@@ -14,7 +14,16 @@ SEMANTICS (1 fields)
 
 PLAN (1 fields)
 rent: NotNeeded
+has_instruction_args: false
+event_cpi: [Never]
 [0]
+    id: ident=data effective_ty=`Account < MyData >` wrapper=Account kind=Single optional=false dup=false writable=false signer=false
+    load: Fixed(validates=[min_value])
+    bump: None
+    behaviors: [`min_value`(name=min_value)]
+    docs: []
+    idl_resolver: None
+    signer_helper: None
     pre_load: []
     post_load:
       - Behavior(path=`min_value` phase=Check args=[min=Expr(`10u64`)])

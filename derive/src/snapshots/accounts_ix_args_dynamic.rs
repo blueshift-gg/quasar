@@ -56,6 +56,28 @@ unsafe impl<'input> quasar_lang::traits::ParseAccountsUnchecked<'input> for TwoD
         __ix_data: &[u8],
         __program_id: &Address,
     ) -> Result<(Self, Self::Bumps), ProgramError> {
+        let (tag, a, b) = Self::__extract_ix_args(__ix_data)?;
+        let [account] = accounts else { unsafe { core::hint::unreachable_unchecked() } };
+        let mut account = <Account<
+            TwoDynArgsAccount,
+        > as quasar_lang::account_load::AccountLoad>::load_mut(account)?;
+        quasar_lang::validation::check_constraint(
+            tag != 0 && a.len() == b.len(),
+            QuasarError::ConstraintViolation.into(),
+        )?;
+        Ok((Self { account }, TwoDynBumps))
+    }
+}
+impl AccountCount for TwoDyn {
+    const COUNT: usize = 1usize;
+    const NEEDS_EVENT_CPI: bool = false;
+}
+impl TwoDyn {
+    #[inline(always)]
+    #[allow(unused_variables)]
+    fn __extract_ix_args<'a>(
+        __ix_data: &'a [u8],
+    ) -> Result<(u64, &'a str, &'a str), ProgramError> {
         use quasar_lang::__zeropod as zeropod;
         #[derive(zeropod::ZeroPod)]
         #[zeropod(compact)]
@@ -74,22 +96,8 @@ unsafe impl<'input> quasar_lang::traits::ParseAccountsUnchecked<'input> for TwoD
         );
         let a = __ref.a();
         let b = __ref.b();
-        let [account] = accounts else { unsafe { core::hint::unreachable_unchecked() } };
-        let mut account = <Account<
-            TwoDynArgsAccount,
-        > as quasar_lang::account_load::AccountLoad>::load_mut(account)?;
-        quasar_lang::validation::check_constraint(
-            tag != 0 && a.len() == b.len(),
-            QuasarError::ConstraintViolation.into(),
-        )?;
-        Ok((Self { account }, TwoDynBumps))
+        Ok((tag, a, b))
     }
-}
-impl AccountCount for TwoDyn {
-    const COUNT: usize = 1usize;
-    const NEEDS_EVENT_CPI: bool = false || false;
-}
-impl TwoDyn {
     #[inline(always)]
     #[doc(hidden)]
     pub unsafe fn parse_accounts(
@@ -141,24 +149,7 @@ impl TwoDyn {
         __ix_data: &[u8],
         __program_id: &quasar_lang::prelude::Address,
     ) -> Result<(Self, TwoDynBumps), ProgramError> {
-        use quasar_lang::__zeropod as zeropod;
-        #[derive(zeropod::ZeroPod)]
-        #[zeropod(compact)]
-        struct __IxArgsCompact {
-            tag: u64,
-            a: zeropod::pod::PodString<8, 1usize>,
-            b: zeropod::pod::PodString<8, 1usize>,
-        }
-        <__IxArgsCompact as quasar_lang::ZeroPodCompact>::validate(__ix_data)
-            .map_err(|_| ProgramError::InvalidInstructionData)?;
-        let __ref = unsafe { __IxArgsCompactRef::new_unchecked(__ix_data) };
-        <u64 as quasar_lang::instruction_arg::InstructionArg>::validate_zc(&__ref.tag)
-            .map_err(|_| ProgramError::InvalidInstructionData)?;
-        let tag = <u64 as quasar_lang::instruction_arg::InstructionArg>::from_zc(
-            &__ref.tag,
-        );
-        let a = __ref.a();
-        let b = __ref.b();
+        let (tag, a, b) = Self::__extract_ix_args(__ix_data)?;
         let mut __buf = core::mem::MaybeUninit::<
             [quasar_lang::__internal::AccountView; 1usize],
         >::uninit();

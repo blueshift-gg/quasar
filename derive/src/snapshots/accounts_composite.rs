@@ -95,7 +95,7 @@ for UsesAccountArray {
 }
 impl AccountCount for UsesAccountArray {
     const COUNT: usize = 1usize + <AccountsArray<SignerPair, 2> as AccountCount>::COUNT;
-    const NEEDS_EVENT_CPI: bool = false || false
+    const NEEDS_EVENT_CPI: bool = false
         || <AccountsArray<SignerPair, 2> as AccountCount>::NEEDS_EVENT_CPI;
 }
 impl UsesAccountArray {
@@ -144,7 +144,7 @@ impl UsesAccountArray {
                 > as quasar_lang::traits::ParseAccountsRaw>::parse_accounts_raw(
                     input,
                     base,
-                    0usize + 1usize,
+                    1usize,
                     __program_id,
                 )?
             };

@@ -185,16 +185,16 @@ pub(crate) fn account_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
         }
     }
 
-    let mut output: TokenStream2 = fixed::generate_account(
+    let mut output: TokenStream2 = fixed::generate_account(fixed::AccountCodegenSpec {
         name,
-        &disc_bytes,
-        &disc_values,
+        disc_bytes: &disc_bytes,
+        disc_values: &disc_values,
         disc_len,
-        &disc_indices,
-        &pod_field_infos,
-        &input,
+        disc_indices: &disc_indices,
+        field_infos: &pod_field_infos,
+        input: &input,
         gen_set_inner,
-    );
+    });
     if let Some(seeds_tokens) = seeds_impl {
         output.extend(seeds_tokens);
     }

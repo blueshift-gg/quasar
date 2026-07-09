@@ -2,7 +2,7 @@
 //! dispatch setup for generated account structs.
 
 use {
-    super::{emit, resolve},
+    super::{super::resolve, EmitCx},
     crate::helpers::strip_generics,
     quote::{format_ident, quote},
 };
@@ -16,7 +16,7 @@ pub(crate) struct AccountsPlan {
 
 struct ParseFieldPlan {
     field_name: syn::Ident,
-    offset_expr: proc_macro2::TokenStream,
+    offset: SlotOffset,
     kind: ParseFieldKind,
 }
 
@@ -25,28 +25,47 @@ enum ParseFieldKind {
     Composite { inner_ty: proc_macro2::TokenStream },
 }
 
+/// The flattened-account-array index of a field: the number of preceding fixed
+/// (single) accounts plus the `AccountCount::COUNT` of every preceding
+/// composite. Emitted as `fixed + Σ <composite>::COUNT` (a const expression).
+struct SlotOffset {
+    fixed: usize,
+    composites: Vec<syn::Type>,
+}
+
+impl SlotOffset {
+    fn to_tokens(&self) -> proc_macro2::TokenStream {
+        let fixed = self.fixed;
+        let terms = self.composites.iter().map(|ty| {
+            let inner = composite_parse_ty(ty);
+            quote! { <#inner as AccountCount>::COUNT }
+        });
+        quote! { #fixed #(+ #terms)* }
+    }
+
+    /// The offset rendered as a string literal for the debug log.
+    fn debug_string(&self) -> String {
+        self.to_tokens().to_string()
+    }
+}
+
 struct HeaderPlan {
     ty: proc_macro2::TokenStream,
-    account_index: String,
     writable: bool,
     optional: bool,
     allow_dup: bool,
 }
 
 impl HeaderPlan {
-    fn from_semantics(
-        sem: &resolve::FieldSemantics,
-        offset_expr: &proc_macro2::TokenStream,
-    ) -> Self {
+    fn from_field_plan(fp: &resolve::specs::FieldPlan) -> Self {
         Self {
             ty: {
-                let ty = &sem.core.effective_ty;
+                let ty = &fp.effective_ty;
                 quote! { #ty }
             },
-            account_index: offset_expr.to_string(),
-            writable: sem.is_writable(),
-            optional: sem.core.optional,
-            allow_dup: sem.core.dup,
+            writable: fp.writable,
+            optional: fp.optional,
+            allow_dup: fp.dup,
         }
     }
 
@@ -84,45 +103,46 @@ impl HeaderPlan {
 }
 
 pub(crate) fn build_accounts_plan(
-    semantics: &[resolve::FieldSemantics],
     typed_plan: &resolve::specs::AccountsPlanTyped,
-    cx: &emit::EmitCx,
+    cx: &EmitCx,
 ) -> AccountsPlan {
-    let fields = build_parse_fields(semantics);
+    let fields = build_parse_fields(&typed_plan.fields);
     AccountsPlan {
         parse_steps: emit_parse_account_steps(&fields),
         count_expr: emit_count_expr(&fields),
-        parse_body: emit_full_parse_body(semantics, typed_plan, &fields, cx),
-        direct_parse_body: emit_direct_parse_body(semantics, typed_plan, &fields, cx),
+        parse_body: emit_full_parse_body(typed_plan, &fields, cx),
+        direct_parse_body: emit_direct_parse_body(typed_plan, &fields, cx),
     }
 }
 
-fn build_parse_fields(semantics: &[resolve::FieldSemantics]) -> Vec<ParseFieldPlan> {
+fn build_parse_fields(field_plans: &[resolve::specs::FieldPlan]) -> Vec<ParseFieldPlan> {
     let mut fields = Vec::new();
-    let mut buf_offset_expr = quote! { 0usize };
+    let mut fixed = 0usize;
+    let mut composites: Vec<syn::Type> = Vec::new();
 
-    for sem in semantics {
-        let offset_expr = buf_offset_expr.clone();
+    for fp in field_plans {
+        let offset = SlotOffset {
+            fixed,
+            composites: composites.clone(),
+        };
 
-        match sem.core.kind {
+        match fp.kind {
             resolve::FieldKind::Composite => {
-                let inner_ty = composite_parse_ty(&sem.core.effective_ty);
+                let inner_ty = composite_parse_ty(&fp.effective_ty);
                 fields.push(ParseFieldPlan {
-                    field_name: sem.core.ident.clone(),
-                    offset_expr: offset_expr.clone(),
-                    kind: ParseFieldKind::Composite {
-                        inner_ty: inner_ty.clone(),
-                    },
+                    field_name: fp.ident.clone(),
+                    offset,
+                    kind: ParseFieldKind::Composite { inner_ty },
                 });
-                buf_offset_expr = quote! { #offset_expr + <#inner_ty as AccountCount>::COUNT };
+                composites.push(fp.effective_ty.clone());
             }
             resolve::FieldKind::Single => {
                 fields.push(ParseFieldPlan {
-                    field_name: sem.core.ident.clone(),
-                    offset_expr: offset_expr.clone(),
-                    kind: ParseFieldKind::Single(HeaderPlan::from_semantics(sem, &offset_expr)),
+                    field_name: fp.ident.clone(),
+                    offset,
+                    kind: ParseFieldKind::Single(HeaderPlan::from_field_plan(fp)),
                 });
-                buf_offset_expr = quote! { #offset_expr + 1usize };
+                fixed += 1;
             }
         }
     }
@@ -146,7 +166,7 @@ fn emit_parse_account_steps(fields: &[ParseFieldPlan]) -> Vec<proc_macro2::Token
 fn emit_parse_field_step(field: &ParseFieldPlan) -> proc_macro2::TokenStream {
     match &field.kind {
         ParseFieldKind::Composite { inner_ty } => {
-            let cur_offset = &field.offset_expr;
+            let cur_offset = field.offset.to_tokens();
             quote! {
                 {
                     input = unsafe {
@@ -163,7 +183,7 @@ fn emit_parse_field_step(field: &ParseFieldPlan) -> proc_macro2::TokenStream {
             }
         }
         ParseFieldKind::Single(header) => {
-            emit_single_parse_step(&field.field_name, header, &field.offset_expr)
+            emit_single_parse_step(&field.field_name, header, &field.offset)
         }
     }
 }
@@ -171,9 +191,10 @@ fn emit_parse_field_step(field: &ParseFieldPlan) -> proc_macro2::TokenStream {
 fn emit_single_parse_step(
     field_name: &syn::Ident,
     header: &HeaderPlan,
-    cur_offset: &proc_macro2::TokenStream,
+    offset: &SlotOffset,
 ) -> proc_macro2::TokenStream {
-    let account_index = &header.account_index;
+    let cur_offset = offset.to_tokens();
+    let account_index = offset.debug_string();
     let expected_expr = header.expected_expr();
     let mask_expr = header.mask_expr();
 
@@ -255,12 +276,11 @@ fn emit_count_expr(fields: &[ParseFieldPlan]) -> proc_macro2::TokenStream {
 }
 
 fn emit_full_parse_body(
-    semantics: &[resolve::FieldSemantics],
     typed_plan: &resolve::specs::AccountsPlanTyped,
     fields: &[ParseFieldPlan],
-    cx: &emit::EmitCx,
+    cx: &EmitCx,
 ) -> proc_macro2::TokenStream {
-    let inner_body = emit::parse::emit_parse_body(semantics, typed_plan, cx);
+    let inner_body = super::parse::emit_parse_body(typed_plan, cx);
     emit_parse_body_from_inner(fields, inner_body)
 }
 
@@ -332,14 +352,12 @@ fn emit_parse_body_from_inner(
 }
 
 fn emit_direct_parse_body(
-    semantics: &[resolve::FieldSemantics],
     typed_plan: &resolve::specs::AccountsPlanTyped,
     fields: &[ParseFieldPlan],
-    cx: &emit::EmitCx,
+    cx: &EmitCx,
 ) -> proc_macro2::TokenStream {
     let count_expr = emit_count_expr(fields);
-    let fallback_body =
-        emit_parse_body_without_behavior_assertions(semantics, typed_plan, fields, cx);
+    let fallback_body = emit_parse_body_without_behavior_assertions(typed_plan, fields, cx);
     quote! {
         let mut __buf = core::mem::MaybeUninit::<
             [quasar_lang::__internal::AccountView; #count_expr]
@@ -361,12 +379,10 @@ fn emit_direct_parse_body(
 }
 
 fn emit_parse_body_without_behavior_assertions(
-    semantics: &[resolve::FieldSemantics],
     typed_plan: &resolve::specs::AccountsPlanTyped,
     fields: &[ParseFieldPlan],
-    cx: &emit::EmitCx,
+    cx: &EmitCx,
 ) -> proc_macro2::TokenStream {
-    let inner_body =
-        emit::parse::emit_parse_body_without_behavior_assertions(semantics, typed_plan, cx);
+    let inner_body = super::parse::emit_parse_body_without_behavior_assertions(typed_plan, cx);
     emit_parse_body_from_inner(fields, inner_body)
 }

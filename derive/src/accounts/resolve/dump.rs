@@ -17,8 +17,9 @@ use {
             FieldSemantics, InitDirective, SeedRef, UserCheck,
         },
         specs::{
-            AccountsPlanTyped, AddressSpec, BehaviorCall, EpilogueStep, FieldPlan, InitPlan,
-            LoweredArg, LoweredValue, PostLoadStep, PreLoadStep, ReallocSpec, RentPlan,
+            AccountsPlanTyped, AddressSpec, BehaviorCall, EpilogueStep, EventCpiTerm, FieldPlan,
+            IdlResolverPlan, IdlSeedPlan, InitPlan, LoadStep, LoweredArg, LoweredValue,
+            PostLoadStep, PreLoadStep, ReallocSpec, RentPlan,
         },
     },
     quote::ToTokens,
@@ -220,11 +221,26 @@ pub(crate) fn dump_plan(plan: &AccountsPlanTyped) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "PLAN ({} fields)", plan.fields.len());
     let _ = writeln!(out, "rent: {}", rent_str(&plan.rent));
+    let _ = writeln!(
+        out,
+        "has_instruction_args: {}",
+        plan.has_instruction_args
+    );
+    let event_cpi: Vec<String> = plan.event_cpi.iter().map(event_cpi_term).collect();
+    let _ = writeln!(out, "event_cpi: [{}]", event_cpi.join(", "));
     for (i, field) in plan.fields.iter().enumerate() {
         let _ = writeln!(out, "[{i}]");
         dump_field_plan(&mut out, field);
     }
     out
+}
+
+fn event_cpi_term(term: &EventCpiTerm) -> String {
+    match term {
+        EventCpiTerm::Never => "Never".to_string(),
+        EventCpiTerm::EventAuthority => "EventAuthority".to_string(),
+        EventCpiTerm::Composite(ty) => format!("Composite(`{}`)", toks(ty)),
+    }
 }
 
 fn rent_str(rent: &RentPlan) -> String {
@@ -236,6 +252,41 @@ fn rent_str(rent: &RentPlan) -> String {
 }
 
 fn dump_field_plan(out: &mut String, field: &FieldPlan) {
+    let _ = writeln!(
+        out,
+        "    id: ident={} effective_ty=`{}` wrapper={:?} kind={} optional={} dup={} writable={} \
+         signer={}",
+        field.ident,
+        toks(&field.effective_ty),
+        field.wrapper,
+        kind_str(field.kind),
+        field.optional,
+        field.dup,
+        field.writable,
+        field.signer,
+    );
+    let _ = writeln!(out, "    load: {}", load_step(&field.load));
+    let _ = writeln!(
+        out,
+        "    bump: {}",
+        if field.bump.is_some() { "Some" } else { "None" },
+    );
+    let behaviors: Vec<String> = field
+        .behaviors
+        .iter()
+        .map(|b| format!("`{}`(name={})", toks(&b.path), b.name))
+        .collect();
+    let _ = writeln!(out, "    behaviors: [{}]", behaviors.join(", "));
+    let _ = writeln!(out, "    docs: {:?}", field.docs);
+    let _ = writeln!(out, "    idl_resolver: {}", idl_resolver(&field.idl_resolver));
+    let _ = writeln!(
+        out,
+        "    signer_helper: {}",
+        match &field.signer_helper {
+            Some(h) => format!("Some(addr_expr=`{}`)", toks(&h.addr_expr)),
+            None => "None".to_string(),
+        },
+    );
     dump_steps(out, "pre_load", &field.pre_load, pre_load_step);
     dump_steps(out, "post_load", &field.post_load, post_load_step);
     dump_steps(out, "epilogue", &field.epilogue, epilogue_step);
@@ -252,8 +303,52 @@ fn dump_steps<S>(out: &mut String, label: &str, steps: &[S], render: fn(&S) -> S
     }
 }
 
+fn idl_resolver(resolver: &Option<IdlResolverPlan>) -> String {
+    match resolver {
+        None => "None".to_string(),
+        Some(r) => {
+            let seeds: Vec<String> = r.seeds.iter().map(idl_seed).collect();
+            format!(
+                "Pda(account_ty=`{}` seeds=[{}])",
+                toks(&r.account_ty),
+                seeds.join(", "),
+            )
+        }
+    }
+}
+
+fn idl_seed(seed: &IdlSeedPlan) -> String {
+    match seed {
+        IdlSeedPlan::AccountAddr { base } => format!("AccountAddr({base})"),
+        IdlSeedPlan::AccountField {
+            base,
+            account,
+            field,
+        } => format!("AccountField(base={base} account={account} field={field})"),
+        IdlSeedPlan::IxArg { name, ty } => format!("IxArg(name={name} ty=`{}`)", toks(ty)),
+        IdlSeedPlan::Const { expr } => format!("Const(`{}`)", toks(expr)),
+    }
+}
+
+fn load_step(load: &LoadStep) -> String {
+    match load {
+        LoadStep::Dynamic { base_ty } => format!("Dynamic(base_ty=`{}`)", toks(base_ty)),
+        LoadStep::Fixed { validates_paths } => {
+            let paths: Vec<String> = validates_paths.iter().map(|p| toks(p)).collect();
+            format!("Fixed(validates=[{}])", paths.join(", "))
+        }
+    }
+}
+
 fn addr_spec(a: &AddressSpec) -> String {
     format!("expr=`{}` error={}", toks(&a.expr), opt_expr(&a.error))
+}
+
+fn opt_addr_spec(a: &Option<AddressSpec>) -> String {
+    match a {
+        Some(a) => format!("Some({})", addr_spec(a)),
+        None => "None".to_string(),
+    }
 }
 
 fn pre_load_step(step: &PreLoadStep) -> String {
@@ -261,10 +356,11 @@ fn pre_load_step(step: &PreLoadStep) -> String {
         PreLoadStep::VerifyAddress(a) => format!("VerifyAddress({})", addr_spec(a)),
         PreLoadStep::Init(plan) => match plan {
             InitPlan::Program(p) => format!(
-                "Init::Program(payer={} space_ty=`{}` idempotent={})",
+                "Init::Program(payer={} space_ty=`{}` idempotent={} verified_address={})",
                 p.payer.ident,
                 toks(&p.space_ty),
                 p.idempotent,
+                opt_addr_spec(&p.verified_address),
             ),
             InitPlan::Behavior(b) => {
                 let calls: Vec<String> = b
@@ -273,10 +369,11 @@ fn pre_load_step(step: &PreLoadStep) -> String {
                     .map(|c| behavior_call(c, "SetInitParam"))
                     .collect();
                 format!(
-                    "Init::Behavior(payer={} idempotent={} init_param_calls=[{}])",
+                    "Init::Behavior(payer={} idempotent={} init_param_calls=[{}] verified_address={})",
                     b.payer.ident,
                     b.idempotent,
                     calls.join(", "),
+                    opt_addr_spec(&b.verified_address),
                 )
             }
         },

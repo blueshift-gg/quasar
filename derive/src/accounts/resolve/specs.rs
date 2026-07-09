@@ -5,8 +5,11 @@
 //! emit `AccountBehavior` trait calls. No SPL domain knowledge.
 
 use {
-    super::model::UserCheck,
-    syn::{Expr, Ident, Type},
+    super::{
+        model::{FieldKind, UserCheck},
+        wrapper::WrapperKind,
+    },
+    syn::{Expr, Ident, Path, Type},
 };
 
 /// A resolved behavior call for one behavior group on one field.
@@ -23,7 +26,6 @@ use {
 /// the call (`init_param_calls` = SetInitParam, `PostLoadStep::Behavior` =
 /// `PostLoadPhase`, `EpilogueStep::Behavior` = Exit), so an out-of-phase call
 /// is unrepresentable rather than an ICE.
-#[derive(Clone)]
 pub(crate) struct BehaviorCall {
     /// Module path for the behavior (e.g., `token`,
     /// `quasar_spl::accounts::token`).
@@ -33,14 +35,12 @@ pub(crate) struct BehaviorCall {
 }
 
 /// A resolved key = value pair with the value already lowered.
-#[derive(Clone)]
 pub(crate) struct LoweredArg {
     pub key: Ident,
     pub lowered: LoweredValue,
 }
 
 /// How a behavior arg value is lowered for codegen.
-#[derive(Clone)]
 pub(crate) enum LoweredValue {
     /// `field.to_account_view()`: bare field reference.
     FieldView(Ident),
@@ -102,29 +102,43 @@ pub(crate) struct FieldRef {
     pub ident: Ident,
 }
 
+/// One behavior group's identity, carried on `FieldPlan` so the compile-time
+/// behavior assertions (REQUIRES_MUT / SETS_INIT_PARAMS / RUN_AFTER_INIT /
+/// VALIDATES_ACCOUNT_DATA / DEFAULT_INIT_PARAMS_VALID) are emitted from the
+/// plan. `name` is `BehaviorGroup::name()` captured once so the assertion
+/// messages match lowering exactly.
+pub(crate) struct BehaviorGroupRef {
+    pub path: Path,
+    pub name: String,
+}
+
 /// Plain program account init (no behavior: system program create +
 /// discriminator).
-#[derive(Clone)]
 pub(crate) struct ProgramInitSpec {
     pub payer: FieldRef,
     pub space_ty: Type,
     pub idempotent: bool,
+    /// When this init field also has an `address` constraint, the preceding
+    /// `VerifyAddress` step stored `__addr_{f}`/`__bumps_{f}`; init then signs
+    /// with those seeds. `Some` records that cross-step dependency (the address
+    /// itself is verified by the `VerifyAddress` step).
+    pub verified_address: Option<AddressSpec>,
 }
 
 /// Delegated init via behavior modules. Pre-load stage only: calls
 /// `set_init_param` for each behavior, then `AccountInit::init`. The account
 /// is loaded in the normal load phase. `after_init` + `check` run as
 /// post-load steps.
-#[derive(Clone)]
 pub(crate) struct BehaviorInitSpec {
     pub payer: FieldRef,
     pub idempotent: bool,
     /// Behavior calls that contribute init params via `set_init_param`.
     pub init_param_calls: Vec<BehaviorCall>,
+    /// See `ProgramInitSpec::verified_address`.
+    pub verified_address: Option<AddressSpec>,
 }
 
 /// Discriminated init plan.
-#[derive(Clone)]
 pub(crate) enum InitPlan {
     /// Plain program-owned init (system program create + discriminator).
     Program(ProgramInitSpec),
@@ -134,28 +148,64 @@ pub(crate) enum InitPlan {
 }
 
 /// Realloc spec.
-#[derive(Clone)]
 pub(crate) struct ReallocSpec {
     pub new_space: Expr,
     pub payer: FieldRef,
 }
 
 /// Address verification plan for a field.
-#[derive(Clone)]
 pub(crate) struct AddressSpec {
     pub expr: Expr,
     /// Optional custom `@ error` mapped onto the verify call's failure.
     pub error: Option<Expr>,
 }
 
+/// A field carries a generated stored-bump slot (`__bumps_{f}: u8` and a `u8`
+/// field in the `Bumps` struct) exactly when it has an `address` constraint.
+/// Marker type: the slot's name derives from `FieldPlan::ident`/`optional`.
+pub(crate) struct BumpSlot;
+
 /// Program-level close (drain lamports). Core lifecycle: not protocol-owned.
-#[derive(Clone)]
 pub(crate) struct ProgramCloseSpec {
     pub destination_field: Ident,
 }
 
+/// A typed-seeds PDA resolver for the IDL accounts-meta fragment. Built once in
+/// the planner from `AddressKind::Seeds` (resolving each seed against the other
+/// fields / instruction args), so the driver's IDL emitter is a pure formatter
+/// and never reads `FieldSemantics`.
+pub(crate) struct IdlResolverPlan {
+    /// The PDA account type (owns `HasSeeds::SEED_PREFIX`).
+    pub account_ty: Path,
+    pub seeds: Vec<IdlSeedPlan>,
+}
+
+/// One resolved IDL PDA seed.
+pub(crate) enum IdlSeedPlan {
+    /// `base.address()`: the address of another account field.
+    AccountAddr { base: Ident },
+    /// `base.field`: a field read off another account, with the account type
+    /// name resolved from the base field's inner type.
+    AccountField {
+        base: Ident,
+        account: String,
+        field: String,
+    },
+    /// A struct-level `#[instruction(..)]` argument, with its type resolved for
+    /// the IDL layout.
+    IxArg { name: Ident, ty: Type },
+    /// Any other expression hashed to bytes at derivation time.
+    Const { expr: Expr },
+}
+
+/// The `{field}_signer` helper for a Single field with a typed-seeds address.
+/// Carries the address expression; the method/field names derive from
+/// `FieldPlan::ident`.
+pub(crate) struct SignerHelperPlan {
+    pub addr_expr: Expr,
+}
+
 /// Instruction-wide rent resolution.
-#[derive(Clone)]
 pub(crate) enum RentPlan {
     /// No step needs rent.
     NotNeeded,
@@ -165,15 +215,27 @@ pub(crate) enum RentPlan {
     FetchOnce,
 }
 
+/// How a field is loaded in the load phase. Encodes the load-mode selection
+/// (dynamic wrapper vs `AccountLoad`) and the `VALIDATES_ACCOUNT_DATA` guard,
+/// previously derived in `emit/parse.rs` from `FieldSemantics`.
+pub(crate) enum LoadStep {
+    /// Dynamic-layout wrapper: `<base_ty>::from_account_view(ident)?`. `base_ty`
+    /// is the wrapper's inner type (generics are stripped at emit time).
+    Dynamic { base_ty: Type },
+    /// Fixed-layout account loaded via `AccountLoad::load*`. `validates_paths`
+    /// are the field's behavior-group paths; when non-empty the load is guarded
+    /// by their `VALIDATES_ACCOUNT_DATA` to pick the intrinsic path. The
+    /// checked/mut variant is selected from `FieldPlan::dup`/`writable`.
+    Fixed { validates_paths: Vec<Path> },
+}
+
 /// A step that runs before account load (address verify + init CPI).
-#[derive(Clone)]
 pub(crate) enum PreLoadStep {
     VerifyAddress(AddressSpec),
     Init(InitPlan),
 }
 
 /// A step that runs after account load.
-#[derive(Clone)]
 pub(crate) enum PostLoadStep {
     /// Behavior phase call (after_init, check, or update). Guarded by the
     /// phase's associated const at compile time.
@@ -190,7 +252,6 @@ pub(crate) enum PostLoadStep {
 }
 
 /// A step that runs in the epilogue.
-#[derive(Clone)]
 pub(crate) enum EpilogueStep {
     /// Behavior exit phase call. Guarded by `RUN_EXIT` at compile time.
     Behavior(BehaviorCall),
@@ -198,10 +259,43 @@ pub(crate) enum EpilogueStep {
     ProgramClose(ProgramCloseSpec),
 }
 
-/// Per-field execution plan. Only phase vectors: structural info lives in
-/// FieldSemantics.
-#[derive(Clone)]
+/// Per-field execution plan. Carries every structural fact and phase-ordered
+/// step the emitter needs, so emit consumes ONLY the plan (never
+/// `FieldSemantics`). Field `i` corresponds to lowering's semantics field `i`.
 pub(crate) struct FieldPlan {
+    /// The field's identifier.
+    pub ident: Ident,
+    /// The field's effective (wrapper) type, e.g. `Account<'a, Vault>`.
+    pub effective_ty: Type,
+    /// Which library wrapper `effective_ty` is (last-segment match).
+    pub wrapper: WrapperKind,
+    /// Single account vs a composite (`#[derive(Accounts)]` group).
+    pub kind: FieldKind,
+    /// `Option<..>`-wrapped account field.
+    pub optional: bool,
+    /// `#[account(dup)]`: duplicate-alias tolerant.
+    pub dup: bool,
+    /// Derived writability (`FieldSemantics::is_writable`), computed once here.
+    pub writable: bool,
+    /// Account-meta signer flag (`account_meta_flags().signer`): the single
+    /// source shared by the client macro and the IDL accounts-meta fragment.
+    pub signer: bool,
+    /// How this field is loaded (single fields only; composites parse via
+    /// their own `ParseAccountsUnchecked` impl).
+    pub load: LoadStep,
+    /// A stored-bump slot when the field has an `address` constraint. Drives
+    /// the `__bumps_{f}` local and the field's entry in the `Bumps` struct.
+    pub bump: Option<BumpSlot>,
+    /// The field's behavior groups (declaration order), for the compile-time
+    /// behavior assertions.
+    pub behaviors: Vec<BehaviorGroupRef>,
+    /// Doc-comment lines for the IDL account node (`/// ...` on the field).
+    pub docs: Vec<String>,
+    /// Typed-seeds PDA resolver for the IDL accounts-meta fragment, if any.
+    pub idl_resolver: Option<IdlResolverPlan>,
+    /// The `{field}_signer` helper, emitted for Single fields with a
+    /// typed-seeds address.
+    pub signer_helper: Option<SignerHelperPlan>,
     /// Steps before load (init fields only).
     pub pre_load: Vec<PreLoadStep>,
     /// Steps after load (behavior checks/updates, realloc, address verify).
@@ -210,8 +304,34 @@ pub(crate) struct FieldPlan {
     pub epilogue: Vec<EpilogueStep>,
 }
 
+impl FieldPlan {
+    /// Whether this field is initialized (an `Init` step is scheduled pre-load).
+    pub(crate) fn has_init(&self) -> bool {
+        self.pre_load
+            .iter()
+            .any(|step| matches!(step, PreLoadStep::Init(_)))
+    }
+}
+
+/// One field's contribution to the instruction-wide `NEEDS_EVENT_CPI`
+/// OR-chain.
+pub(crate) enum EventCpiTerm {
+    /// A single field that never enables event CPI: contributes `false`.
+    Never,
+    /// The event-authority field: contributes `true`.
+    EventAuthority,
+    /// A composite: delegates to its inner `AccountCount::NEEDS_EVENT_CPI`.
+    /// Carries the field's effective type (the inner type is derived at emit).
+    Composite(Type),
+}
+
 /// Instruction-wide execution plan.
 pub(crate) struct AccountsPlanTyped {
     pub fields: Vec<FieldPlan>,
     pub rent: RentPlan,
+    /// Whether the instruction declares struct-level `#[instruction(..)]` args
+    /// (the ix-arg-extraction need).
+    pub has_instruction_args: bool,
+    /// Per-field `NEEDS_EVENT_CPI` contributions, in field order.
+    pub event_cpi: Vec<EventCpiTerm>,
 }

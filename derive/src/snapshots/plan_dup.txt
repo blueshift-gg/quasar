@@ -24,11 +24,27 @@ SEMANTICS (2 fields)
 
 PLAN (2 fields)
 rent: NotNeeded
+has_instruction_args: false
+event_cpi: [Never, Never]
 [0]
+    id: ident=source effective_ty=`Signer` wrapper=Signer kind=Single optional=false dup=false writable=false signer=true
+    load: Fixed(validates=[])
+    bump: None
+    behaviors: []
+    docs: []
+    idl_resolver: None
+    signer_helper: None
     pre_load: []
     post_load: []
     epilogue: []
 [1]
+    id: ident=destination effective_ty=`UncheckedAccount` wrapper=UncheckedAccount kind=Single optional=false dup=true writable=false signer=false
+    load: Fixed(validates=[])
+    bump: None
+    behaviors: []
+    docs: ["CHECK: test-only unchecked account used to validate duplicate readonly aliases."]
+    idl_resolver: None
+    signer_helper: None
     pre_load: []
     post_load: []
     epilogue: []

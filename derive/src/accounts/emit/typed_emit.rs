@@ -80,11 +80,11 @@ pub(crate) fn emit_behavior_init(
     spec: &BehaviorInitSpec,
     field_ident: &syn::Ident,
     field_ty: &syn::Type,
-    has_address: bool,
     did_init_var: Option<&syn::Ident>,
 ) -> proc_macro2::TokenStream {
     let payer_ident = &spec.payer.ident;
     let idempotent = spec.idempotent;
+    let has_address = spec.verified_address.is_some();
 
     let set_params: Vec<proc_macro2::TokenStream> = spec
         .init_param_calls
@@ -122,65 +122,19 @@ pub(crate) fn emit_behavior_init(
         #did_init_assignment
     };
 
-    let body = if has_address {
-        let bump_var = format_ident!("__bumps_{}", field_ident);
-        let addr_var = format_ident!("__addr_{}", field_ident);
-        quote! {
-            let __bump_ref: &[u8] = &[#bump_var];
-            quasar_lang::address::AddressVerify::with_signer_seeds(
-                &#addr_var,
-                __bump_ref,
-                |__signers| -> Result<(), quasar_lang::prelude::ProgramError> {
-                    #init_cpi
-                    Ok(())
-                },
-            )?;
-        }
-    } else {
-        quote! {
-            let __signers: &[quasar_lang::cpi::Signer<'_, '_>] = &[];
-            #init_cpi
-        }
-    };
-
-    if idempotent {
-        quote! {
-            if quasar_lang::is_system_program(#field_ident.owner()) {
-                #body
-            }
-        }
-    } else {
-        quote! { { #body } }
-    }
+    wrap_init(field_ident, has_address, idempotent, &init_cpi)
 }
 
-/// Emit plain program init (no behavior: system program create +
-/// discriminator).
-pub(crate) fn emit_program_init(
-    spec: &ProgramInitSpec,
+/// The shared `init` scaffold: bind `__signers` (empty, or the PDA signer seeds
+/// via `AddressVerify::with_signer_seeds` when the field has a verified
+/// address), then run `inner_body`; idempotent inits guard on the account still
+/// being system-owned.
+fn wrap_init(
     field_ident: &syn::Ident,
-    field_ty: &syn::Type,
     has_address: bool,
+    idempotent: bool,
+    inner_body: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
-    let payer_ident = &spec.payer.ident;
-    let idempotent = spec.idempotent;
-    let space_ty = &spec.space_ty;
-    let space = quote! {
-        <#space_ty as quasar_lang::traits::Space>::SPACE as u64
-    };
-
-    let inner_body = quote! {
-        let __init_params = ();
-        let __init_op = quasar_lang::ops::init::Op {
-            payer: #payer_ident.to_account_view(),
-            space: #space,
-            signers: __signers,
-            params: __init_params,
-            idempotent: #idempotent,
-        };
-        __init_op.apply::<#field_ty, _>(#field_ident, &__rent_ctx)?;
-    };
-
     let body = if has_address {
         let bump_var = format_ident!("__bumps_{}", field_ident);
         let addr_var = format_ident!("__addr_{}", field_ident);
@@ -211,6 +165,36 @@ pub(crate) fn emit_program_init(
     } else {
         quote! { { #body } }
     }
+}
+
+/// Emit plain program init (no behavior: system program create +
+/// discriminator).
+pub(crate) fn emit_program_init(
+    spec: &ProgramInitSpec,
+    field_ident: &syn::Ident,
+    field_ty: &syn::Type,
+) -> proc_macro2::TokenStream {
+    let payer_ident = &spec.payer.ident;
+    let idempotent = spec.idempotent;
+    let has_address = spec.verified_address.is_some();
+    let space_ty = &spec.space_ty;
+    let space = quote! {
+        <#space_ty as quasar_lang::traits::Space>::SPACE as u64
+    };
+
+    let inner_body = quote! {
+        let __init_params = ();
+        let __init_op = quasar_lang::ops::init::Op {
+            payer: #payer_ident.to_account_view(),
+            space: #space,
+            signers: __signers,
+            params: __init_params,
+            idempotent: #idempotent,
+        };
+        __init_op.apply::<#field_ty, _>(#field_ident, &__rent_ctx)?;
+    };
+
+    wrap_init(field_ident, has_address, idempotent, &inner_body)
 }
 
 pub(crate) fn emit_program_close(
@@ -255,11 +239,7 @@ fn emit_behavior_args_builder(
         .map(|arg| {
             let key = &arg.key;
             let key_lit = key.to_string();
-            let val = if exit_context {
-                emit_exit_lowered_value(&arg.lowered)
-            } else {
-                emit_lowered_value(&arg.lowered)
-            };
+            let val = emit_lowered_value(&arg.lowered, exit_context);
             quote! {
                 let __bhv_builder = if #bhv::uses_arg::<
                     { #phase_const },
@@ -284,12 +264,25 @@ fn emit_behavior_args_builder(
         #(#setters)*
         // Bound check: the builder must implement the stable BehaviorArgsBuilder
         // contract. A plugin whose builder is missing a phase fails here with a
-        // clear diagnostic instead of a "no method" error. Scoped to the
-        // enclosing const-guard block, so multiple behaviors never collide.
-        fn __assert_builder<__B: quasar_lang::account_behavior::BehaviorArgsBuilder>(_: &__B) {}
-        __assert_builder(&__bhv_builder);
+        // clear diagnostic instead of a "no method" error. The assertion helper
+        // is defined once per derive (see `emit_assert_builder_fn`).
+        Self::__assert_builder(&__bhv_builder);
         let __bhv_args =
             quasar_lang::account_behavior::BehaviorArgsBuilder::#build_method(__bhv_builder)?;
+    }
+}
+
+/// Emit the single `__assert_builder` helper on the accounts struct's inherent
+/// impl, used by every behavior-args block to prove the builder implements the
+/// stable `BehaviorArgsBuilder` contract. Empty when the struct has no
+/// behavior groups.
+pub(crate) fn emit_assert_builder_fn(has_behaviors: bool) -> proc_macro2::TokenStream {
+    if !has_behaviors {
+        return quote! {};
+    }
+    quote! {
+        #[inline(always)]
+        fn __assert_builder<__B: quasar_lang::account_behavior::BehaviorArgsBuilder>(_: &__B) {}
     }
 }
 
@@ -307,33 +300,31 @@ fn emit_arg_phase_const(phase: BehaviorPhase) -> proc_macro2::TokenStream {
     }
 }
 
-/// Emit a lowered value in parse-time context (local variables).
-fn emit_lowered_value(val: &LoweredValue) -> proc_macro2::TokenStream {
+/// Emit a lowered behavior-arg value. `on_self` selects the receiver: exit-phase
+/// (epilogue) args reference `self.field`; every other phase uses the local
+/// binding `field`.
+fn emit_lowered_value(val: &LoweredValue, on_self: bool) -> proc_macro2::TokenStream {
+    let recv = |ident: &syn::Ident| {
+        if on_self {
+            quote! { self.#ident }
+        } else {
+            quote! { #ident }
+        }
+    };
     match val {
-        LoweredValue::FieldView(ident) => quote! { #ident.to_account_view() },
+        LoweredValue::FieldView(ident) => {
+            let r = recv(ident);
+            quote! { #r.to_account_view() }
+        }
         LoweredValue::OptionalFieldView(ident) => {
-            quote! { #ident.as_ref().map(|v| v.to_account_view()) }
+            let r = recv(ident);
+            quote! { #r.as_ref().map(|v| v.to_account_view()) }
         }
         LoweredValue::Expr(expr) => quote! { #expr },
         LoweredValue::NoneLiteral => quote! { None },
         LoweredValue::SomeFieldView(ident) => {
-            quote! { Some(#ident.to_account_view()) }
-        }
-        LoweredValue::SomeExpr(expr) => quote! { Some(#expr) },
-    }
-}
-
-/// Emit a lowered value in epilogue context (`self.field`).
-fn emit_exit_lowered_value(val: &LoweredValue) -> proc_macro2::TokenStream {
-    match val {
-        LoweredValue::FieldView(ident) => quote! { self.#ident.to_account_view() },
-        LoweredValue::OptionalFieldView(ident) => {
-            quote! { self.#ident.as_ref().map(|v| v.to_account_view()) }
-        }
-        LoweredValue::Expr(expr) => quote! { #expr },
-        LoweredValue::NoneLiteral => quote! { None },
-        LoweredValue::SomeFieldView(ident) => {
-            quote! { Some(self.#ident.to_account_view()) }
+            let r = recv(ident);
+            quote! { Some(#r.to_account_view()) }
         }
         LoweredValue::SomeExpr(expr) => quote! { Some(#expr) },
     }

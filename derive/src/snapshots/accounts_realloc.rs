@@ -92,7 +92,7 @@ for ReallocAccounts {
 }
 impl AccountCount for ReallocAccounts {
     const COUNT: usize = 3usize;
-    const NEEDS_EVENT_CPI: bool = false || false || false || false;
+    const NEEDS_EVENT_CPI: bool = false;
 }
 impl ReallocAccounts {
     #[inline(always)]
@@ -153,13 +153,13 @@ impl ReallocAccounts {
                 quasar_lang::__internal::parse_account(
                     input,
                     base,
-                    0usize + 1usize,
+                    1usize,
                     __EXPECTED,
                     __MASK,
                 )?
             };
             quasar_lang::debug_log!(
-                concat!("Account '", stringify!(data), "' (index ", "0usize + 1usize",
+                concat!("Account '", stringify!(data), "' (index ", "1usize",
                 "): validation passed")
             );
         }
@@ -187,14 +187,14 @@ impl ReallocAccounts {
                 quasar_lang::__internal::parse_account(
                     input,
                     base,
-                    0usize + 1usize + 1usize,
+                    2usize,
                     __EXPECTED,
                     __MASK,
                 )?
             };
             quasar_lang::debug_log!(
-                concat!("Account '", stringify!(system_program), "' (index ",
-                "0usize + 1usize + 1usize", "): validation passed")
+                concat!("Account '", stringify!(system_program), "' (index ", "2usize",
+                "): validation passed")
             );
         }
         Ok(input)

@@ -22,10 +22,10 @@ use {
     super::{
         super::resolve::{
             specs::{
-                AccountsPlanTyped, EpilogueStep, FieldPlan, InitPlan, PostLoadStep, PreLoadStep,
-                RentPlan,
+                AccountsPlanTyped, EpilogueStep, FieldPlan, InitPlan, LoadStep, PostLoadStep,
+                PreLoadStep, RentPlan,
             },
-            FieldKind, FieldSemantics, UserCheck,
+            FieldKind, UserCheck,
         },
         typed_emit,
     },
@@ -34,44 +34,42 @@ use {
 };
 
 pub(crate) fn emit_parse_body(
-    semantics: &[FieldSemantics],
     plan: &AccountsPlanTyped,
     cx: &super::EmitCx,
 ) -> proc_macro2::TokenStream {
-    emit_parse_body_inner(semantics, plan, cx, true)
+    emit_parse_body_inner(plan, cx, true)
 }
 
 pub(crate) fn emit_parse_body_without_behavior_assertions(
-    semantics: &[FieldSemantics],
     plan: &AccountsPlanTyped,
     cx: &super::EmitCx,
 ) -> proc_macro2::TokenStream {
-    emit_parse_body_inner(semantics, plan, cx, false)
+    emit_parse_body_inner(plan, cx, false)
 }
 
 fn emit_parse_body_inner(
-    semantics: &[FieldSemantics],
     plan: &AccountsPlanTyped,
     cx: &super::EmitCx,
     include_behavior_assertions: bool,
 ) -> proc_macro2::TokenStream {
-    let parse_sequence = emit_parse_sequence(semantics, plan);
-    let bump_vars = emit_bump_vars(semantics);
-    let init_state_vars = emit_init_state_vars(&plan.fields, semantics);
+    let parse_sequence = emit_parse_sequence(plan);
+    let bump_vars = emit_bump_vars(&plan.fields);
+    let init_state_vars = emit_init_state_vars(&plan.fields);
 
-    let bump_init = emit_bump_init(semantics, &cx.bumps_name);
+    let bump_init = emit_bump_init(&plan.fields, &cx.bumps_name);
 
     // Behavior const assertions: REQUIRES_MUT and SETS_INIT_PARAMS.
     let behavior_asserts = if include_behavior_assertions {
-        emit_behavior_assertions(semantics)
+        emit_behavior_assertions(&plan.fields)
     } else {
         quote! {}
     };
 
-    let construct_fields: Vec<proc_macro2::TokenStream> = semantics
+    let construct_fields: Vec<proc_macro2::TokenStream> = plan
+        .fields
         .iter()
-        .map(|sem| {
-            let ident = &sem.core.ident;
+        .map(|fp| {
+            let ident = &fp.ident;
             quote! { #ident }
         })
         .collect();
@@ -115,17 +113,14 @@ fn emit_rent_context(rent_plan: &RentPlan) -> proc_macro2::TokenStream {
     }
 }
 
-fn emit_parse_sequence(
-    semantics: &[FieldSemantics],
-    plan: &AccountsPlanTyped,
-) -> proc_macro2::TokenStream {
-    let init_phase = emit_init_phase_typed(&plan.fields, semantics);
-    let load_init = emit_load_filtered(semantics, true);
-    let phase4 = emit_post_load_typed(&plan.fields, semantics);
+fn emit_parse_sequence(plan: &AccountsPlanTyped) -> proc_macro2::TokenStream {
+    let init_phase = emit_init_phase_typed(&plan.fields);
+    let load_init = emit_load_filtered(&plan.fields, true);
+    let phase4 = emit_post_load_typed(&plan.fields);
 
     match &plan.rent {
         RentPlan::NotNeeded => {
-            let load_non_init = emit_load_filtered(semantics, false);
+            let load_non_init = emit_load_filtered(&plan.fields, false);
             quote! {
                 #(#load_non_init)*
                 #(#init_phase)*
@@ -135,7 +130,7 @@ fn emit_parse_sequence(
         }
         RentPlan::FetchOnce => {
             let ctx_init = emit_rent_context(&plan.rent);
-            let load_non_init = emit_load_filtered(semantics, false);
+            let load_non_init = emit_load_filtered(&plan.fields, false);
             quote! {
                 #ctx_init
                 #(#load_non_init)*
@@ -147,9 +142,9 @@ fn emit_parse_sequence(
         RentPlan::FromSysvarField { field } => {
             // The rent field must be loaded before `__rent_ctx` can borrow it;
             // all other non-init fields keep their normal phase position.
-            let rent_load = emit_load_by_ident(semantics, field);
+            let rent_load = emit_load_by_ident(&plan.fields, field);
             let ctx_init = emit_rent_context(&plan.rent);
-            let load_non_init = emit_load_filtered_excluding(semantics, false, Some(field));
+            let load_non_init = emit_load_filtered_excluding(&plan.fields, false, Some(field));
             quote! {
                 #rent_load
                 #ctx_init
@@ -166,13 +161,12 @@ fn emit_parse_sequence(
 
 fn emit_init_phase_typed(
     field_plans: &[super::super::resolve::specs::FieldPlan],
-    semantics: &[FieldSemantics],
 ) -> Vec<proc_macro2::TokenStream> {
     let mut stmts = Vec::new();
 
-    for (fp, sem) in field_plans.iter().zip(semantics.iter()) {
-        let ident = &sem.core.ident;
-        let ty = &sem.core.effective_ty;
+    for fp in field_plans {
+        let ident = &fp.ident;
+        let ty = &fp.effective_ty;
 
         for step in &fp.pre_load {
             match step {
@@ -189,20 +183,13 @@ fn emit_init_phase_typed(
                     });
                 }
                 PreLoadStep::Init(init_plan) => {
-                    let has_address = sem.address.is_some();
                     let did_init_var = needs_init_state_var(fp)
                         .then(|| format_ident!("__quasar_did_init_{}", ident));
                     let ts = match init_plan {
-                        InitPlan::Program(spec) => {
-                            typed_emit::emit_program_init(spec, ident, ty, has_address)
+                        InitPlan::Program(spec) => typed_emit::emit_program_init(spec, ident, ty),
+                        InitPlan::Behavior(spec) => {
+                            typed_emit::emit_behavior_init(spec, ident, ty, did_init_var.as_ref())
                         }
-                        InitPlan::Behavior(spec) => typed_emit::emit_behavior_init(
-                            spec,
-                            ident,
-                            ty,
-                            has_address,
-                            did_init_var.as_ref(),
-                        ),
                     };
                     stmts.push(ts);
                 }
@@ -213,17 +200,12 @@ fn emit_init_phase_typed(
     stmts
 }
 
-fn emit_init_state_vars(
-    field_plans: &[FieldPlan],
-    semantics: &[FieldSemantics],
-) -> Vec<proc_macro2::TokenStream> {
+fn emit_init_state_vars(field_plans: &[FieldPlan]) -> Vec<proc_macro2::TokenStream> {
     field_plans
         .iter()
-        .zip(semantics.iter())
-        .filter(|(fp, _)| needs_init_state_var(fp))
-        .map(|(_, sem)| {
-            let ident = &sem.core.ident;
-            let did_init_var = format_ident!("__quasar_did_init_{}", ident);
+        .filter(|fp| needs_init_state_var(fp))
+        .map(|fp| {
+            let did_init_var = format_ident!("__quasar_did_init_{}", fp.ident);
             quote! { let mut #did_init_var = false; }
         })
         .collect()
@@ -251,14 +233,13 @@ fn needs_init_state_var(field_plan: &FieldPlan) -> bool {
 
 fn emit_post_load_typed(
     field_plans: &[super::super::resolve::specs::FieldPlan],
-    semantics: &[FieldSemantics],
 ) -> Vec<proc_macro2::TokenStream> {
     let mut stmts = Vec::new();
 
-    for (fp, sem) in field_plans.iter().zip(semantics.iter()) {
-        let ident = &sem.core.ident;
-        let ty = &sem.core.effective_ty;
-        let is_optional = sem.core.optional;
+    for fp in field_plans {
+        let ident = &fp.ident;
+        let ty = &fp.effective_ty;
+        let is_optional = fp.optional;
         let did_init_var =
             needs_init_state_var(fp).then(|| format_ident!("__quasar_did_init_{}", ident));
 
@@ -298,7 +279,7 @@ fn emit_post_load_typed(
                     )
                 }
                 PostLoadStep::UserCheck(check) => {
-                    let check_stmts = emit_user_check(sem, check);
+                    let check_stmts = emit_user_check(ident, check);
                     (quote! { #(#check_stmts)* }, false)
                 }
                 PostLoadStep::VerifyExistingAddress(addr_spec) => {
@@ -357,15 +338,12 @@ fn emit_post_load_typed(
 
 // Epilogue from the typed plan.
 
-pub(crate) fn emit_epilogue(
-    semantics: &[FieldSemantics],
-    plan: &AccountsPlanTyped,
-) -> proc_macro2::TokenStream {
+pub(crate) fn emit_epilogue(plan: &AccountsPlanTyped) -> proc_macro2::TokenStream {
     let mut exit_stmts = Vec::new();
 
-    for (fp, sem) in plan.fields.iter().zip(semantics.iter()) {
-        let ident = &sem.core.ident;
-        let ty = &sem.core.effective_ty;
+    for fp in &plan.fields {
+        let ident = &fp.ident;
+        let ty = &fp.effective_ty;
 
         for step in &fp.epilogue {
             let stmt = match step {
@@ -389,15 +367,12 @@ pub(crate) fn emit_epilogue(
     }
 }
 
-pub(crate) fn emit_has_epilogue_typed(
-    plan: &AccountsPlanTyped,
-    semantics: &[FieldSemantics],
-) -> proc_macro2::TokenStream {
+pub(crate) fn emit_has_epilogue_typed(plan: &AccountsPlanTyped) -> proc_macro2::TokenStream {
     // Collect const-evaluable terms for HAS_EPILOGUE.
     let mut terms: Vec<proc_macro2::TokenStream> = vec![quote! { false }];
 
-    for (fp, sem) in plan.fields.iter().zip(semantics.iter()) {
-        let ty = &sem.core.effective_ty;
+    for fp in &plan.fields {
+        let ty = &fp.effective_ty;
         for step in &fp.epilogue {
             match step {
                 EpilogueStep::Behavior(call) => {
@@ -416,56 +391,55 @@ pub(crate) fn emit_has_epilogue_typed(
 
 // Load phase.
 
-fn emit_load_filtered(
-    semantics: &[FieldSemantics],
-    init_only: bool,
-) -> Vec<proc_macro2::TokenStream> {
-    emit_load_filtered_excluding(semantics, init_only, None)
+fn emit_load_filtered(field_plans: &[FieldPlan], init_only: bool) -> Vec<proc_macro2::TokenStream> {
+    emit_load_filtered_excluding(field_plans, init_only, None)
 }
 
 fn emit_load_filtered_excluding(
-    semantics: &[FieldSemantics],
+    field_plans: &[FieldPlan],
     init_only: bool,
     skip_ident: Option<&syn::Ident>,
 ) -> Vec<proc_macro2::TokenStream> {
-    semantics
+    field_plans
         .iter()
-        .filter(|sem| sem.core.kind == FieldKind::Single)
-        .filter(|sem| sem.has_init() == init_only)
-        .filter(|sem| skip_ident.is_none_or(|skip| sem.core.ident != *skip))
+        .filter(|fp| fp.kind == FieldKind::Single)
+        .filter(|fp| fp.has_init() == init_only)
+        .filter(|fp| skip_ident.is_none_or(|skip| fp.ident != *skip))
         .map(emit_one_load)
         .collect()
 }
 
 fn emit_load_by_ident(
-    semantics: &[FieldSemantics],
+    field_plans: &[FieldPlan],
     field: &syn::Ident,
 ) -> proc_macro2::TokenStream {
-    semantics
+    field_plans
         .iter()
-        .find(|sem| sem.core.kind == FieldKind::Single && sem.core.ident == *field)
+        .find(|fp| fp.kind == FieldKind::Single && fp.ident == *field)
         .map(emit_one_load)
-        .expect("rent plan field should exist in account semantics")
+        .expect("rent plan field should exist in the plan")
 }
 
-fn emit_one_load(sem: &FieldSemantics) -> proc_macro2::TokenStream {
-    let ident = &sem.core.ident;
-    let ty = &sem.core.effective_ty;
-    let writable = sem.is_writable();
-    let behavior_validates_account_data = behavior_validates_account_data_expr(sem);
+fn emit_one_load(fp: &FieldPlan) -> proc_macro2::TokenStream {
+    let ident = &fp.ident;
+    let ty = &fp.effective_ty;
+    let writable = fp.writable;
 
-    if sem.core.dynamic {
-        let inner_ty = sem.core.inner_ty.as_ref().unwrap_or(ty);
-        let base = strip_generics(inner_ty).unwrap_or_else(|_| quote! { #inner_ty });
-        return quote! { let #ident = #base::from_account_view(#ident)?; };
-    }
+    let validates_paths = match &fp.load {
+        LoadStep::Dynamic { base_ty } => {
+            let base = strip_generics(base_ty).unwrap_or_else(|_| quote! { #base_ty });
+            return quote! { let #ident = #base::from_account_view(#ident)?; };
+        }
+        LoadStep::Fixed { validates_paths } => validates_paths,
+    };
+    let behavior_validates_account_data = behavior_validates_account_data_expr(ty, validates_paths);
 
-    if sem.core.optional {
+    if fp.optional {
         let load = emit_load_expr(
             ident,
             ty,
             writable,
-            sem.core.dup,
+            fp.dup,
             behavior_validates_account_data.as_ref(),
         );
         return if writable {
@@ -491,7 +465,7 @@ fn emit_one_load(sem: &FieldSemantics) -> proc_macro2::TokenStream {
         ident,
         ty,
         writable,
-        sem.core.dup,
+        fp.dup,
         behavior_validates_account_data.as_ref(),
     );
     if writable {
@@ -546,14 +520,15 @@ fn emit_load_expr(
     }
 }
 
-fn behavior_validates_account_data_expr(sem: &FieldSemantics) -> Option<proc_macro2::TokenStream> {
-    if sem.groups.is_empty() {
+fn behavior_validates_account_data_expr(
+    ty: &syn::Type,
+    validates_paths: &[syn::Path],
+) -> Option<proc_macro2::TokenStream> {
+    if validates_paths.is_empty() {
         return None;
     }
 
-    let ty = &sem.core.effective_ty;
-    let terms = sem.groups.iter().map(|group| {
-        let path = &group.path;
+    let terms = validates_paths.iter().map(|path| {
         quote! {
             <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#ty>>::VALIDATES_ACCOUNT_DATA
         }
@@ -564,8 +539,7 @@ fn behavior_validates_account_data_expr(sem: &FieldSemantics) -> Option<proc_mac
 
 // User checks, structural rather than behavior-group based.
 
-fn emit_user_check(sem: &FieldSemantics, check: &UserCheck) -> Vec<proc_macro2::TokenStream> {
-    let field_ident = &sem.core.ident;
+fn emit_user_check(field_ident: &syn::Ident, check: &UserCheck) -> Vec<proc_macro2::TokenStream> {
     let mut stmts = Vec::new();
 
     match check {
@@ -605,22 +579,22 @@ fn emit_user_check(sem: &FieldSemantics, check: &UserCheck) -> Vec<proc_macro2::
 /// Emit compile-time assertions for behavior groups:
 /// - `REQUIRES_MUT`: if true, field must be `mut`
 /// - `SETS_INIT_PARAMS`: at most one per init field
-fn emit_behavior_assertions(semantics: &[FieldSemantics]) -> proc_macro2::TokenStream {
+fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStream {
     let mut asserts = Vec::new();
 
-    for sem in semantics {
-        let ty = &sem.core.effective_ty;
-        let field_name = sem.core.ident.to_string();
+    for fp in field_plans {
+        let ty = &fp.effective_ty;
+        let field_name = fp.ident.to_string();
 
-        for group in &sem.groups {
+        for group in &fp.behaviors {
             let path = &group.path;
 
             // REQUIRES_MUT assertion: if behavior requires mut but the field is
             // not writable, emit a compile error.
-            if !sem.is_writable() {
+            if !fp.writable {
                 let msg = format!(
                     "behavior `{}` requires `#[account(mut)]` on field `{}`",
-                    group.name(),
+                    group.name,
                     field_name,
                 );
                 asserts.push(quote! {
@@ -633,7 +607,7 @@ fn emit_behavior_assertions(semantics: &[FieldSemantics]) -> proc_macro2::TokenS
 
             let validates_data_msg = format!(
                 "behavior `{}` sets VALIDATES_ACCOUNT_DATA and must keep RUN_CHECK = true",
-                group.name(),
+                group.name,
             );
             asserts.push(quote! {
                 const _: () = assert!(
@@ -646,11 +620,11 @@ fn emit_behavior_assertions(semantics: &[FieldSemantics]) -> proc_macro2::TokenS
             // RUN_AFTER_INIT assertion: `after_init` only runs on account
             // creation, so a behavior scheduling it on a non-`init` field would
             // silently never fire. Require `init` on the field.
-            if !sem.has_init() {
+            if !fp.has_init() {
                 let after_init_msg = format!(
                     "behavior `{}` runs after_init and requires `#[account(init, ...)]` on field \
                      `{}`",
-                    group.name(),
+                    group.name,
                     field_name,
                 );
                 asserts.push(quote! {
@@ -663,9 +637,9 @@ fn emit_behavior_assertions(semantics: &[FieldSemantics]) -> proc_macro2::TokenS
         }
 
         // Init field assertions.
-        if sem.has_init() {
-            let init_contributor_count: Vec<proc_macro2::TokenStream> = sem
-                .groups
+        if fp.has_init() {
+            let init_contributor_count: Vec<proc_macro2::TokenStream> = fp
+                .behaviors
                 .iter()
                 .map(|g| {
                     let p = &g.path;
@@ -740,13 +714,13 @@ fn wrap_optional(
     }
 }
 
-fn emit_bump_vars(semantics: &[FieldSemantics]) -> proc_macro2::TokenStream {
-    let vars: Vec<proc_macro2::TokenStream> = semantics
+fn emit_bump_vars(field_plans: &[FieldPlan]) -> proc_macro2::TokenStream {
+    let vars: Vec<proc_macro2::TokenStream> = field_plans
         .iter()
-        .filter(|sem| sem.address.is_some())
-        .map(|sem| {
-            let var = format_ident!("__bumps_{}", sem.core.ident);
-            if sem.core.optional {
+        .filter(|fp| fp.bump.is_some())
+        .map(|fp| {
+            let var = format_ident!("__bumps_{}", fp.ident);
+            if fp.optional {
                 quote! { let mut #var: u8 = 0; }
             } else {
                 quote! { let #var: u8; }
@@ -758,15 +732,15 @@ fn emit_bump_vars(semantics: &[FieldSemantics]) -> proc_macro2::TokenStream {
 }
 
 fn emit_bump_init(
-    semantics: &[FieldSemantics],
+    field_plans: &[FieldPlan],
     bumps_name: &syn::Ident,
 ) -> proc_macro2::TokenStream {
-    let inits: Vec<proc_macro2::TokenStream> = semantics
+    let inits: Vec<proc_macro2::TokenStream> = field_plans
         .iter()
-        .filter(|sem| sem.address.is_some() || matches!(sem.core.kind, FieldKind::Composite))
-        .map(|sem| {
-            let name = &sem.core.ident;
-            if matches!(sem.core.kind, FieldKind::Composite) {
+        .filter(|fp| fp.bump.is_some() || matches!(fp.kind, FieldKind::Composite))
+        .map(|fp| {
+            let name = &fp.ident;
+            if matches!(fp.kind, FieldKind::Composite) {
                 let var = format_ident!("__composite_bumps_{}", name);
                 quote! { #name: #var }
             } else {
@@ -784,17 +758,17 @@ fn emit_bump_init(
 }
 
 pub(crate) fn emit_bump_struct_def(
-    semantics: &[FieldSemantics],
+    field_plans: &[FieldPlan],
     cx: &super::EmitCx,
 ) -> proc_macro2::TokenStream {
     let bumps_name = &cx.bumps_name;
-    let fields: Vec<proc_macro2::TokenStream> = semantics
+    let fields: Vec<proc_macro2::TokenStream> = field_plans
         .iter()
-        .filter(|sem| sem.address.is_some() || matches!(sem.core.kind, FieldKind::Composite))
-        .map(|sem| {
-            let name = &sem.core.ident;
-            if matches!(sem.core.kind, FieldKind::Composite) {
-                let ty = composite_assoc_ty(&sem.core.effective_ty);
+        .filter(|fp| fp.bump.is_some() || matches!(fp.kind, FieldKind::Composite))
+        .map(|fp| {
+            let name = &fp.ident;
+            if matches!(fp.kind, FieldKind::Composite) {
+                let ty = composite_assoc_ty(&fp.effective_ty);
                 quote! { pub #name: <#ty as quasar_lang::traits::AccountBumps>::Bumps }
             } else {
                 quote! { pub #name: u8 }

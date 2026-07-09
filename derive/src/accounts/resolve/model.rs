@@ -36,7 +36,6 @@ pub(crate) struct FieldCore {
 /// The derive treats every non-core group as an open behavior group. The path
 /// resolves to a Rust module exporting `Args::builder()` and `Behavior`.
 /// No protocol-specific knowledge lives here.
-#[derive(Clone)]
 pub(crate) struct BehaviorGroup {
     pub path: syn::Path,
     pub args: Vec<BehaviorArg>,
@@ -56,7 +55,6 @@ impl BehaviorGroup {
 
 /// A single `key = value` arg in a behavior group directive. The value is
 /// parsed once at parse time into the phase-polymorphic grammar.
-#[derive(Clone)]
 pub(crate) struct BehaviorArg {
     pub key: Ident,
     pub value: BehaviorArgValue,
@@ -66,7 +64,6 @@ pub(crate) struct BehaviorArg {
 /// time. Grammar validation, field-ref validation, and lowering are all total
 /// matches on this enum — there is no re-parsing of a raw `Expr` and no
 /// one-level `Some(Some(typo))` hole.
-#[derive(Clone)]
 pub(crate) enum BehaviorArgValue {
     /// A bare lowercase identifier: a candidate account-field reference,
     /// validated against the struct's field names by rules.

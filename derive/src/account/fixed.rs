@@ -8,17 +8,30 @@ pub(super) struct PodFieldInfo<'a> {
     pub pod_dyn: Option<crate::helpers::PodDynField>,
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn generate_account(
-    name: &syn::Ident,
-    disc_bytes: &[syn::LitInt],
-    disc_values: &[u8],
-    disc_len: usize,
-    disc_indices: &[usize],
-    field_infos: &[PodFieldInfo<'_>],
-    input: &DeriveInput,
-    gen_set_inner: bool,
-) -> TokenStream {
+/// All inputs to `generate_account`, bundled so the entry point takes one spec
+/// instead of eight positional arguments.
+pub(super) struct AccountCodegenSpec<'a> {
+    pub name: &'a syn::Ident,
+    pub disc_bytes: &'a [syn::LitInt],
+    pub disc_values: &'a [u8],
+    pub disc_len: usize,
+    pub disc_indices: &'a [usize],
+    pub field_infos: &'a [PodFieldInfo<'a>],
+    pub input: &'a DeriveInput,
+    pub gen_set_inner: bool,
+}
+
+pub(super) fn generate_account(spec: AccountCodegenSpec<'_>) -> TokenStream {
+    let AccountCodegenSpec {
+        name,
+        disc_bytes,
+        disc_values,
+        disc_len,
+        disc_indices,
+        field_infos,
+        input,
+        gen_set_inner,
+    } = spec;
     let vis = &input.vis;
     let attrs = &input.attrs;
     let has_dynamic = field_infos.iter().any(|fi| fi.pod_dyn.is_some());

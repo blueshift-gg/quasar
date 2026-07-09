@@ -89,7 +89,7 @@ for CloseAccounts {
 }
 impl AccountCount for CloseAccounts {
     const COUNT: usize = 2usize;
-    const NEEDS_EVENT_CPI: bool = false || false || false;
+    const NEEDS_EVENT_CPI: bool = false;
 }
 impl CloseAccounts {
     #[inline(always)]
@@ -150,14 +150,14 @@ impl CloseAccounts {
                 quasar_lang::__internal::parse_account(
                     input,
                     base,
-                    0usize + 1usize,
+                    1usize,
                     __EXPECTED,
                     __MASK,
                 )?
             };
             quasar_lang::debug_log!(
-                concat!("Account '", stringify!(old_data), "' (index ",
-                "0usize + 1usize", "): validation passed")
+                concat!("Account '", stringify!(old_data), "' (index ", "1usize",
+                "): validation passed")
             );
         }
         Ok(input)

@@ -2,10 +2,9 @@
 pub struct MixedAccount {
     __view: AccountView,
 }
-/// Raw `#[repr(C)]` data layout for [`#name`].
-///
-/// Use this type when constructing account data values (e.g.,
-/// for [`Migrate`](quasar_lang::traits::Migrate) implementations).
+/**Raw `#[repr(C)]` data layout for [`MixedAccount`].
+
+Use this type when constructing account data values (e.g., for [`Migrate`](quasar_lang::traits::Migrate) implementations).*/
 pub type MixedAccountData = __mixed_account_zc::MixedAccountZc;
 unsafe impl StaticView for MixedAccount {}
 impl AsAccountView for MixedAccount {
