@@ -148,6 +148,7 @@ pub(crate) fn generate_seeds_impl(
     vis: &Visibility,
     seeds_attr: &SeedsAttr,
 ) -> TokenStream {
+    let krate = crate::krate::lang_path();
     let prefix_bytes = &seeds_attr.prefix;
     let prefix_lit = LitByteStr::new(prefix_bytes, Span::call_site());
     let dynamic_count = seeds_attr.params.len();
@@ -199,11 +200,11 @@ pub(crate) fn generate_seeds_impl(
     };
     let signer_seed_exprs: Vec<_> = slice_exprs
         .iter()
-        .map(|expr| quote! { quasar_lang::cpi::Seed::from(#expr) })
+        .map(|expr| quote! { #krate::cpi::Seed::from(#expr) })
         .collect();
     let signer_seed_exprs_bump: Vec<_> = slice_exprs_bump
         .iter()
-        .map(|expr| quote! { quasar_lang::cpi::Seed::from(#expr) })
+        .map(|expr| quote! { #krate::cpi::Seed::from(#expr) })
         .collect();
 
     let has_address_param = seeds_attr
@@ -222,7 +223,7 @@ pub(crate) fn generate_seeds_impl(
     };
 
     quote! {
-        impl #impl_generics quasar_lang::traits::HasSeeds for #name #ty_generics #where_clause {
+        impl #impl_generics #krate::traits::HasSeeds for #name #ty_generics #where_clause {
             const SEED_PREFIX: &'static [u8] = &[#(#prefix_bytes),*];
             const SEED_DYNAMIC_COUNT: usize = #dynamic_count;
         }
@@ -273,27 +274,27 @@ pub(crate) fn generate_seeds_impl(
             }
         }
 
-        impl<'__quasar_seed> quasar_lang::cpi::CpiSignerSeeds for #seed_set_bump<'__quasar_seed> {
+        impl<'__quasar_seed> #krate::cpi::CpiSignerSeeds for #seed_set_bump<'__quasar_seed> {
             #[inline(always)]
             fn with_signers<R, F>(&self, f: F) -> R
             where
-                F: FnOnce(&[quasar_lang::cpi::Signer<'_, '_>]) -> R,
+                F: FnOnce(&[#krate::cpi::Signer<'_, '_>]) -> R,
             {
                 let seeds = [#(#signer_seed_exprs_bump),*];
-                let signer = quasar_lang::cpi::Signer::from(&seeds);
+                let signer = #krate::cpi::Signer::from(&seeds);
                 f(core::slice::from_ref(&signer))
             }
         }
 
-        impl<'__quasar_seed> quasar_lang::address::AddressVerify for #seed_set<'__quasar_seed> {
+        impl<'__quasar_seed> #krate::address::AddressVerify for #seed_set<'__quasar_seed> {
             #[inline(always)]
             fn verify(
                 &self,
-                actual: &quasar_lang::prelude::Address,
-                program_id: &quasar_lang::prelude::Address,
-            ) -> Result<u8, quasar_lang::prelude::ProgramError> {
+                actual: &#krate::prelude::Address,
+                program_id: &#krate::prelude::Address,
+            ) -> Result<u8, #krate::prelude::ProgramError> {
                 let slices = self.as_slices();
-                quasar_lang::pda::verify_canonical_program_address(
+                #krate::pda::verify_canonical_program_address(
                     &slices, program_id, actual,
                 )
             }
@@ -301,14 +302,14 @@ pub(crate) fn generate_seeds_impl(
             #[inline(always)]
             fn verify_existing(
                 &self,
-                actual: &quasar_lang::prelude::Address,
-                program_id: &quasar_lang::prelude::Address,
-            ) -> Result<u8, quasar_lang::prelude::ProgramError> {
+                actual: &#krate::prelude::Address,
+                program_id: &#krate::prelude::Address,
+            ) -> Result<u8, #krate::prelude::ProgramError> {
                 let slices = self.as_slices();
-                let bump = quasar_lang::pda::find_bump_for_address(
+                let bump = #krate::pda::find_bump_for_address(
                     &slices, program_id, actual,
-                ).map_err(|_| quasar_lang::prelude::ProgramError::from(
-                    quasar_lang::error::QuasarError::InvalidPda,
+                ).map_err(|_| #krate::prelude::ProgramError::from(
+                    #krate::error::QuasarError::InvalidPda,
                 ))?;
                 Ok(bump)
             }
@@ -316,18 +317,18 @@ pub(crate) fn generate_seeds_impl(
             #[inline(always)]
             fn verify_existing_from_account(
                 &self,
-                actual: &quasar_lang::prelude::Address,
-                program_id: &quasar_lang::prelude::Address,
-                account: &quasar_lang::__internal::AccountView,
+                actual: &#krate::prelude::Address,
+                program_id: &#krate::prelude::Address,
+                account: &#krate::__internal::AccountView,
                 bump_offset: usize,
-            ) -> Result<u8, quasar_lang::prelude::ProgramError> {
-                let bump = quasar_lang::pda::read_bump_from_account(account, bump_offset)?;
+            ) -> Result<u8, #krate::prelude::ProgramError> {
+                let bump = #krate::pda::read_bump_from_account(account, bump_offset)?;
                 let __bump_ref = [bump];
                 let slices: [&[u8]; #n_slices_with_bump] = [#(#slice_exprs,)* __bump_ref.as_ref()];
-                quasar_lang::pda::verify_program_address(
+                #krate::pda::verify_program_address(
                     &slices, program_id, actual,
-                ).map_err(|_| quasar_lang::prelude::ProgramError::from(
-                    quasar_lang::error::QuasarError::InvalidPda,
+                ).map_err(|_| #krate::prelude::ProgramError::from(
+                    #krate::error::QuasarError::InvalidPda,
                 ))?;
                 Ok(bump)
             }
@@ -336,26 +337,26 @@ pub(crate) fn generate_seeds_impl(
             fn with_signer_seeds<R>(
                 &self,
                 bump: &[u8],
-                f: impl FnOnce(&[quasar_lang::cpi::Signer<'_, '_>]) -> R,
+                f: impl FnOnce(&[#krate::cpi::Signer<'_, '_>]) -> R,
             ) -> R {
                 let seeds = [
                     #(#signer_seed_exprs,)*
-                    quasar_lang::cpi::Seed::from(bump),
+                    #krate::cpi::Seed::from(bump),
                 ];
-                let signer = quasar_lang::cpi::Signer::from(&seeds);
+                let signer = #krate::cpi::Signer::from(&seeds);
                 f(core::slice::from_ref(&signer))
             }
         }
 
-        impl<'__quasar_seed> quasar_lang::address::AddressVerify for #seed_set_bump<'__quasar_seed> {
+        impl<'__quasar_seed> #krate::address::AddressVerify for #seed_set_bump<'__quasar_seed> {
             #[inline(always)]
             fn verify(
                 &self,
-                actual: &quasar_lang::prelude::Address,
-                program_id: &quasar_lang::prelude::Address,
-            ) -> Result<u8, quasar_lang::prelude::ProgramError> {
+                actual: &#krate::prelude::Address,
+                program_id: &#krate::prelude::Address,
+            ) -> Result<u8, #krate::prelude::ProgramError> {
                 let slices = self.as_slices();
-                quasar_lang::pda::verify_program_address(
+                #krate::pda::verify_program_address(
                     &slices, program_id, actual,
                 )?;
                 Ok(self._bump[0])
@@ -365,10 +366,10 @@ pub(crate) fn generate_seeds_impl(
             fn with_signer_seeds<R>(
                 &self,
                 _bump: &[u8],
-                f: impl FnOnce(&[quasar_lang::cpi::Signer<'_, '_>]) -> R,
+                f: impl FnOnce(&[#krate::cpi::Signer<'_, '_>]) -> R,
             ) -> R {
                 let seeds = [#(#signer_seed_exprs_bump),*];
-                let signer = quasar_lang::cpi::Signer::from(&seeds);
+                let signer = #krate::cpi::Signer::from(&seeds);
                 f(core::slice::from_ref(&signer))
             }
         }

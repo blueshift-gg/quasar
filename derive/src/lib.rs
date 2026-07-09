@@ -13,6 +13,7 @@ mod declare_program;
 mod error_code;
 mod event;
 mod helpers;
+mod krate;
 mod idl;
 mod instruction;
 mod program;
@@ -76,9 +77,10 @@ pub fn error_code(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// here.
 #[proc_macro]
 pub fn emit_cpi(input: TokenStream) -> TokenStream {
+    let krate = crate::krate::lang_path();
     let input = proc_macro2::TokenStream::from(input);
     quote::quote! {
-        quasar_lang::event::EventCpi::emit(self, &#input)
+        #krate::event::EventCpi::emit(self, &#input)
     }
     .into()
 }

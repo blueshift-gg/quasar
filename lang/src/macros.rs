@@ -50,13 +50,13 @@ macro_rules! define_account {
             type Target = <$schema as $crate::__zeropod::ZeroPodFixed>::Zc;
 
             #[inline(always)]
-            unsafe fn deref_from(view: &AccountView) -> &Self::Target {
+            unsafe fn deref_from(view: &$crate::__internal::AccountView) -> &Self::Target {
                 // SAFETY: Caller validated the account data layout and length.
                 unsafe { &*(view.data_ptr() as *const Self::Target) }
             }
 
             #[inline(always)]
-            unsafe fn deref_from_mut(view: &mut AccountView) -> &mut Self::Target {
+            unsafe fn deref_from_mut(view: &mut $crate::__internal::AccountView) -> &mut Self::Target {
                 // SAFETY: Same as `deref_from`; caller also guarantees mutable
                 // access to the account data.
                 unsafe { &mut *(view.data_mut_ptr() as *mut Self::Target) }
@@ -65,13 +65,13 @@ macro_rules! define_account {
 
         impl $crate::account_load::AccountLoad for $name {
             #[inline(always)]
-            fn check(view: &AccountView) -> Result<(), $crate::__solana_program_error::ProgramError> {
+            fn check(view: &$crate::__internal::AccountView) -> Result<(), $crate::__solana_program_error::ProgramError> {
                 $(<$name as $check>::check(view)?;)*
                 Ok(())
             }
 
             #[inline(always)]
-            fn check_checked(view: &AccountView) -> Result<(), $crate::__solana_program_error::ProgramError> {
+            fn check_checked(view: &$crate::__internal::AccountView) -> Result<(), $crate::__solana_program_error::ProgramError> {
                 let __data = view.try_borrow()?;
                 let __size = core::mem::size_of::<<$schema as $crate::__zeropod::ZeroPodFixed>::Zc>();
                 if __data.len() < __size {
@@ -83,7 +83,7 @@ macro_rules! define_account {
             }
 
             #[inline(always)]
-            fn check_intrinsic(_view: &AccountView) -> Result<(), $crate::__solana_program_error::ProgramError> {
+            fn check_intrinsic(_view: &$crate::__internal::AccountView) -> Result<(), $crate::__solana_program_error::ProgramError> {
                 Ok(())
             }
         }
@@ -120,7 +120,7 @@ macro_rules! define_account {
         $(#[$meta])*
         #[repr(transparent)]
         $vis struct $name {
-            view: AccountView,
+            view: $crate::__internal::AccountView,
         }
 
         // SAFETY: The wrapper is `#[repr(transparent)]` over `AccountView`.
@@ -128,9 +128,9 @@ macro_rules! define_account {
 
         $(impl $check for $name {})*
 
-        impl AsAccountView for $name {
+        impl $crate::traits::AsAccountView for $name {
             #[inline(always)]
-            fn to_account_view(&self) -> &AccountView {
+            fn to_account_view(&self) -> &$crate::__internal::AccountView {
                 &self.view
             }
         }
@@ -139,19 +139,19 @@ macro_rules! define_account {
             /// # Safety
             /// Caller must ensure all check traits have been validated.
             #[inline(always)]
-            pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
+            pub unsafe fn from_account_view_unchecked(view: &$crate::__internal::AccountView) -> &Self {
                 // SAFETY: Generated account wrappers are `repr(transparent)`
                 // over `AccountView`; caller upheld the check invariants.
-                unsafe { &*(view as *const AccountView as *const Self) }
+                unsafe { &*(view as *const $crate::__internal::AccountView as *const Self) }
             }
 
             /// # Safety
             /// Caller must ensure all check traits and writability.
             #[inline(always)]
-            pub unsafe fn from_account_view_unchecked_mut(view: &mut AccountView) -> &mut Self {
+            pub unsafe fn from_account_view_unchecked_mut(view: &mut $crate::__internal::AccountView) -> &mut Self {
                 // SAFETY: Same layout argument as the immutable cast; caller
                 // also guarantees writable access.
-                unsafe { &mut *(view as *mut AccountView as *mut Self) }
+                unsafe { &mut *(view as *mut $crate::__internal::AccountView as *mut Self) }
             }
         }
 

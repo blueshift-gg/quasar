@@ -1,7 +1,16 @@
 //! Convenience re-exports for Quasar programs.
 //!
-//! Most programs only need `use quasar::prelude::*` to access all framework
-//! types, traits, macros, and account wrappers.
+//! Most programs only need `use quasar_lang::prelude::*` to access all
+//! framework types, traits, macros, and account wrappers.
+//
+// Umbrella-crate decision (OPEN): there is deliberately no `quasar` library
+// crate that re-exports this prelude as `quasar::prelude`. The short name
+// `quasar` is owned by the CLI package (`cli/`), so shipping a `quasar` lib
+// would collide with it. Whether to publish a thin umbrella lib (renaming the
+// CLI, or namespacing it) is a maintainer decision left open by Workstream H;
+// until then, programs depend on `quasar-lang` directly. Because generated code
+// resolves the runtime crate by its dependency name (see `derive/src/krate.rs`),
+// a future rename to `quasar` would not require touching any emitter.
 
 pub use {
     crate::{

@@ -87,6 +87,7 @@ pub(crate) fn derive_quasar_serialize_inner(input: TokenStream2) -> TokenStream2
 }
 
 fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
+    let krate = crate::krate::lang_path();
     let name = &input.ident;
     let schema_generics = extend_fixed_schema_generics(&input.generics, &fields);
     let (schema_impl_generics, schema_ty_generics, schema_where_clause) =
@@ -108,7 +109,7 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
         .zip(canonical_field_types.iter())
         .map(|(name, ty)| {
             quote! {
-                #name: <#ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(&pod.#name)
+                #name: <#ty as #krate::instruction_arg::InstructionArg>::from_zc(&pod.#name)
             }
         })
         .collect();
@@ -118,7 +119,7 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
         .zip(canonical_field_types.iter())
         .map(|(name, ty)| {
             quote! {
-                #name: <#ty as quasar_lang::instruction_arg::InstructionArg>::to_zc(&self.#name)
+                #name: <#ty as #krate::instruction_arg::InstructionArg>::to_zc(&self.#name)
             }
         })
         .collect();
@@ -139,8 +140,8 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
                 let fcodec = crate::idl::type_to_idl_codec_tokens(&f.ty);
                 let fdocs = crate::helpers::docs_tokens(&f.attrs);
                 quote! {
-                    quasar_lang::idl_build::__reexport::IdlFieldDef {
-                        name: quasar_lang::idl_build::s(#fname),
+                    #krate::idl_build::__reexport::IdlFieldDef {
+                        name: #krate::idl_build::s(#fname),
                         ty: #fty,
                         codec: #fcodec,
                         docs: #fdocs,
@@ -151,16 +152,16 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
 
         quote! {
             #[cfg(feature = "idl-build")]
-            quasar_lang::__private_inventory::submit! {
-                quasar_lang::idl_build::TypeFragment {
+            #krate::__private_inventory::submit! {
+                #krate::idl_build::TypeFragment {
                     build: {
-                        fn __build() -> quasar_lang::idl_build::__reexport::IdlTypeDef {
-                            quasar_lang::idl_build::__reexport::IdlTypeDef {
-                                name: quasar_lang::idl_build::s(#name_str),
-                                kind: quasar_lang::idl_build::__reexport::IdlTypeDefKind::Struct,
+                        fn __build() -> #krate::idl_build::__reexport::IdlTypeDef {
+                            #krate::idl_build::__reexport::IdlTypeDef {
+                                name: #krate::idl_build::s(#name_str),
+                                kind: #krate::idl_build::__reexport::IdlTypeDefKind::Struct,
                                 docs: #type_docs,
-                                fields: quasar_lang::idl_build::vec![#(#idl_field_defs),*],
-                                variants: quasar_lang::idl_build::Vec::new(),
+                                fields: #krate::idl_build::vec![#(#idl_field_defs),*],
+                                variants: #krate::idl_build::Vec::new(),
                                 repr: None,
                                 alias: None,
                                 fallback: None,
@@ -179,7 +180,7 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
 
     let expanded = quote! {
         #[doc(hidden)]
-        #[derive(quasar_lang::__zeropod::ZeroPod)]
+        #[derive(#krate::__zeropod::ZeroPod)]
         pub struct #schema_name #schema_generics #schema_where_clause {
             #(pub #field_names: #field_types,)*
         }
@@ -225,14 +226,14 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
                 // SAFETY: `take_scoped` returned exactly `size_of::<Self>()`
                 // bytes. `read_unaligned` avoids assuming reader-buffer alignment.
                 let __zc = unsafe { core::ptr::read_unaligned(__bytes.as_ptr() as *const Self) };
-                quasar_lang::__zeropod::ZcValidate::validate_ref(&__zc)
+                #krate::__zeropod::ZcValidate::validate_ref(&__zc)
                     .map_err(|_| wincode::error::ReadError::InvalidValue("pod validation failed"))?;
                 __dst.write(__zc);
                 Ok(())
             }
         }
 
-        impl #schema_impl_generics quasar_lang::instruction_arg::InstructionArg
+        impl #schema_impl_generics #krate::instruction_arg::InstructionArg
             for #name #schema_ty_generics #schema_where_clause
         {
             type Zc = #zc_name #schema_ty_generics;
@@ -252,7 +253,7 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
             }
             #[inline(always)]
             fn validate_zc(zc: &Self::Zc) -> Result<(), solana_program_error::ProgramError> {
-                <Self::Zc as quasar_lang::__zeropod::ZcValidate>::validate_ref(zc)
+                <Self::Zc as #krate::__zeropod::ZcValidate>::validate_ref(zc)
                     .map_err(|_| solana_program_error::ProgramError::InvalidInstructionData)
             }
         }
@@ -263,7 +264,7 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
         {
             #[inline(always)]
             fn from(v: #name #schema_ty_generics) -> Self {
-                <#name #schema_ty_generics as quasar_lang::instruction_arg::InstructionArg>::to_zc(&v)
+                <#name #schema_ty_generics as #krate::instruction_arg::InstructionArg>::to_zc(&v)
             }
         }
 
@@ -272,14 +273,14 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
         {
             #[inline(always)]
             fn from(v: #zc_name #schema_ty_generics) -> Self {
-                <#name #schema_ty_generics as quasar_lang::instruction_arg::InstructionArg>::from_zc(&v)
+                <#name #schema_ty_generics as #krate::instruction_arg::InstructionArg>::from_zc(&v)
             }
         }
 
         // ZcField: maps the native schema type to its ZC companion so that
         // zeropod-derive's fallback (`<T as ZcField>::Pod`) resolves correctly
         // when this type appears as a field inside a `#[derive(ZeroPod)]` struct.
-        impl #schema_impl_generics quasar_lang::ZcField for #name #schema_ty_generics #schema_where_clause {
+        impl #schema_impl_generics #krate::ZcField for #name #schema_ty_generics #schema_where_clause {
             type Pod = #zc_name #schema_ty_generics;
             const POD_SIZE: usize = core::mem::size_of::<#zc_name #schema_ty_generics>();
         }
@@ -302,7 +303,7 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
             }
 
             fn write(mut __writer: impl wincode::io::Writer, src: &Self) -> wincode::error::WriteResult<()> {
-                let __zc = <Self as quasar_lang::instruction_arg::InstructionArg>::to_zc(src);
+                let __zc = <Self as #krate::instruction_arg::InstructionArg>::to_zc(src);
                 // SAFETY: `__zc` is the generated alignment-1 ZC representation;
                 // its bytes are initialized and define the fixed wire format.
                 let __bytes = unsafe {
@@ -333,9 +334,9 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
                 let __zc = unsafe {
                     core::ptr::read_unaligned(__bytes.as_ptr() as *const #zc_name #schema_ty_generics)
                 };
-                <#zc_name #schema_ty_generics as quasar_lang::__zeropod::ZcValidate>::validate_ref(&__zc)
+                <#zc_name #schema_ty_generics as #krate::__zeropod::ZcValidate>::validate_ref(&__zc)
                     .map_err(|_| wincode::error::ReadError::InvalidValue("pod validation failed"))?;
-                __dst.write(<Self as quasar_lang::instruction_arg::InstructionArg>::from_zc(&__zc));
+                __dst.write(<Self as #krate::instruction_arg::InstructionArg>::from_zc(&__zc));
                 Ok(())
             }
         }
@@ -347,11 +348,12 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
 }
 
 fn extend_fixed_schema_generics(generics: &syn::Generics, fields: &[Field]) -> syn::Generics {
+    let krate = crate::krate::lang_path();
     let mut generics = generics.clone();
 
     for param in generics.type_params_mut() {
         param.bounds.push(parse_quote!(
-            quasar_lang::instruction_arg::InstructionArgField
+            #krate::instruction_arg::InstructionArgField
         ));
     }
 
@@ -360,7 +362,7 @@ fn extend_fixed_schema_generics(generics: &syn::Generics, fields: &[Field]) -> s
         let pod_ty = map_to_pod_type(&field.ty);
         where_clause
             .predicates
-            .push(parse_quote!(#pod_ty: quasar_lang::__zeropod::ZcValidate));
+            .push(parse_quote!(#pod_ty: #krate::__zeropod::ZcValidate));
     }
 
     generics
@@ -376,6 +378,7 @@ enum BorrowedFieldClass {
 }
 
 fn derive_borrowed_compact(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
+    let krate = crate::krate::lang_path();
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
@@ -455,7 +458,7 @@ fn derive_borrowed_compact(input: DeriveInput, fields: Vec<Field>) -> TokenStrea
             schema_name: schema_name.clone(),
             ref_name: ref_name.clone(),
             data: quote!(data),
-            err: quote!(quasar_lang::prelude::ProgramError::InvalidInstructionData),
+            err: quote!(#krate::prelude::ProgramError::InvalidInstructionData),
             validate_fixed: false,
         },
     );
@@ -464,8 +467,8 @@ fn derive_borrowed_compact(input: DeriveInput, fields: Vec<Field>) -> TokenStrea
         impl #impl_generics #name #ty_generics #where_clause {
             #[doc(hidden)]
             #[inline(always)]
-            pub fn decode_compact(data: &'a [u8]) -> Result<Self, quasar_lang::prelude::ProgramError> {
-                use quasar_lang::__zeropod as zeropod;
+            pub fn decode_compact(data: &'a [u8]) -> Result<Self, #krate::prelude::ProgramError> {
+                use #krate::__zeropod as zeropod;
 
                 // Re-derive the schema inside the method so the Ref type is in scope.
                 #schema_struct
@@ -514,6 +517,7 @@ fn parse_repr_type(input: &DeriveInput) -> Result<Type, syn::Error> {
 }
 
 fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream2 {
+    let krate = crate::krate::lang_path();
     if input.generics.lifetimes().next().is_some() {
         return syn::Error::new_spanned(
             &input.ident,
@@ -576,10 +580,10 @@ fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream2 
                 .unwrap_or_else(|| ice!("enum variant discriminant validated present above"))
                 .1;
             quote! {
-                quasar_lang::idl_build::__reexport::IdlEnumVariant {
-                    name: quasar_lang::idl_build::s(#vname),
+                #krate::idl_build::__reexport::IdlEnumVariant {
+                    name: #krate::idl_build::s(#vname),
                     value: #disc_expr as u64,
-                    fields: quasar_lang::idl_build::Vec::new(),
+                    fields: #krate::idl_build::Vec::new(),
                     layout: None,
                 }
             }
@@ -591,14 +595,14 @@ fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream2 
     let (schema_read_impl_generics, _, _) = schema_read_generics.split_for_impl();
 
     let expanded = quote! {
-        impl #impl_generics quasar_lang::instruction_arg::InstructionArg
+        impl #impl_generics #krate::instruction_arg::InstructionArg
             for #name #ty_generics #where_clause
         {
-            type Zc = <#repr_ty as quasar_lang::instruction_arg::InstructionArg>::Zc;
+            type Zc = <#repr_ty as #krate::instruction_arg::InstructionArg>::Zc;
 
             #[inline(always)]
             fn from_zc(zc: &Self::Zc) -> Self {
-                match <#repr_ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(zc) {
+                match <#repr_ty as #krate::instruction_arg::InstructionArg>::from_zc(zc) {
                     #(#match_from_zc,)*
                     // SAFETY: validate_zc rejects invalid discriminants
                     // before from_zc is called. This branch is unreachable.
@@ -611,26 +615,26 @@ fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream2 
                 let raw: #repr_ty = match self {
                     #(#match_to_zc,)*
                 };
-                <#repr_ty as quasar_lang::instruction_arg::InstructionArg>::to_zc(&raw)
+                <#repr_ty as #krate::instruction_arg::InstructionArg>::to_zc(&raw)
             }
 
             #[inline(always)]
             fn validate_zc(
                 zc: &Self::Zc,
-            ) -> Result<(), quasar_lang::prelude::ProgramError> {
-                <#repr_ty as quasar_lang::instruction_arg::InstructionArg>::validate_zc(zc)?;
-                match <#repr_ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(zc) {
+            ) -> Result<(), #krate::prelude::ProgramError> {
+                <#repr_ty as #krate::instruction_arg::InstructionArg>::validate_zc(zc)?;
+                match <#repr_ty as #krate::instruction_arg::InstructionArg>::from_zc(zc) {
                     #(#validate_arms,)*
-                    _ => Err(quasar_lang::prelude::ProgramError::InvalidInstructionData),
+                    _ => Err(#krate::prelude::ProgramError::InvalidInstructionData),
                 }
             }
         }
 
         // ZcField: maps the enum to its repr-type's pod type so that zeropod
         // schema derivation works for structs containing this enum as a field.
-        impl #impl_generics quasar_lang::ZcField for #name #ty_generics #where_clause {
-            type Pod = <#repr_ty as quasar_lang::ZcField>::Pod;
-            const POD_SIZE: usize = <#repr_ty as quasar_lang::ZcField>::POD_SIZE;
+        impl #impl_generics #krate::ZcField for #name #ty_generics #where_clause {
+            type Pod = <#repr_ty as #krate::ZcField>::Pod;
+            const POD_SIZE: usize = <#repr_ty as #krate::ZcField>::POD_SIZE;
         }
 
         #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
@@ -640,17 +644,17 @@ fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream2 
             type Src = Self;
 
             fn size_of(_src: &Self) -> wincode::error::WriteResult<usize> {
-                Ok(core::mem::size_of::<<Self as quasar_lang::instruction_arg::InstructionArg>::Zc>())
+                Ok(core::mem::size_of::<<Self as #krate::instruction_arg::InstructionArg>::Zc>())
             }
 
             fn write(mut __writer: impl wincode::io::Writer, src: &Self) -> wincode::error::WriteResult<()> {
-                let __zc = <Self as quasar_lang::instruction_arg::InstructionArg>::to_zc(src);
+                let __zc = <Self as #krate::instruction_arg::InstructionArg>::to_zc(src);
                 // SAFETY: `__zc` is the repr-backed enum's alignment-1 ZC
                 // representation and is fully initialized.
                 let __bytes = unsafe {
                     core::slice::from_raw_parts(
-                        &__zc as *const <Self as quasar_lang::instruction_arg::InstructionArg>::Zc as *const u8,
-                        core::mem::size_of::<<Self as quasar_lang::instruction_arg::InstructionArg>::Zc>(),
+                        &__zc as *const <Self as #krate::instruction_arg::InstructionArg>::Zc as *const u8,
+                        core::mem::size_of::<<Self as #krate::instruction_arg::InstructionArg>::Zc>(),
                     )
                 };
                 __writer.write(__bytes)?;
@@ -668,33 +672,33 @@ fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream2 
                 mut __reader: impl wincode::io::Reader<'__de>,
                 __dst: &mut core::mem::MaybeUninit<Self>,
             ) -> wincode::error::ReadResult<()> {
-                let __bytes = __reader.take_scoped(core::mem::size_of::<<Self as quasar_lang::instruction_arg::InstructionArg>::Zc>())?;
+                let __bytes = __reader.take_scoped(core::mem::size_of::<<Self as #krate::instruction_arg::InstructionArg>::Zc>())?;
                 // SAFETY: `take_scoped` returned exactly the enum ZC byte length.
                 // `read_unaligned` avoids assuming the reader buffer is aligned.
                 let __zc = unsafe {
                     core::ptr::read_unaligned(
-                        __bytes.as_ptr() as *const <Self as quasar_lang::instruction_arg::InstructionArg>::Zc,
+                        __bytes.as_ptr() as *const <Self as #krate::instruction_arg::InstructionArg>::Zc,
                     )
                 };
-                <Self as quasar_lang::instruction_arg::InstructionArg>::validate_zc(&__zc)
+                <Self as #krate::instruction_arg::InstructionArg>::validate_zc(&__zc)
                     .map_err(|_| wincode::error::ReadError::InvalidValue("invalid enum discriminant"))?;
-                __dst.write(<Self as quasar_lang::instruction_arg::InstructionArg>::from_zc(&__zc));
+                __dst.write(<Self as #krate::instruction_arg::InstructionArg>::from_zc(&__zc));
                 Ok(())
             }
         }
 
         #[cfg(feature = "idl-build")]
-        quasar_lang::__private_inventory::submit! {
-            quasar_lang::idl_build::TypeFragment {
+        #krate::__private_inventory::submit! {
+            #krate::idl_build::TypeFragment {
                 build: {
-                    fn __build() -> quasar_lang::idl_build::__reexport::IdlTypeDef {
-                        quasar_lang::idl_build::__reexport::IdlTypeDef {
-                            name: quasar_lang::idl_build::s(#name_str),
-                            kind: quasar_lang::idl_build::__reexport::IdlTypeDefKind::Enum,
-                            docs: quasar_lang::idl_build::Vec::new(),
-                            fields: quasar_lang::idl_build::Vec::new(),
-                            variants: quasar_lang::idl_build::vec![#(#idl_variant_defs),*],
-                            repr: Some(quasar_lang::idl_build::s(#repr_name_str)),
+                    fn __build() -> #krate::idl_build::__reexport::IdlTypeDef {
+                        #krate::idl_build::__reexport::IdlTypeDef {
+                            name: #krate::idl_build::s(#name_str),
+                            kind: #krate::idl_build::__reexport::IdlTypeDefKind::Enum,
+                            docs: #krate::idl_build::Vec::new(),
+                            fields: #krate::idl_build::Vec::new(),
+                            variants: #krate::idl_build::vec![#(#idl_variant_defs),*],
+                            repr: Some(#krate::idl_build::s(#repr_name_str)),
                             alias: None,
                             fallback: None,
                             codec: None,

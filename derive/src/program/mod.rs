@@ -30,6 +30,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 pub(crate) fn program_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
+    let krate = crate::krate::lang_path();
     let program_args = match syn::parse2::<ProgramArgs>(attr) {
         Ok(args) => args,
         Err(e) => return e.to_compile_error(),
@@ -99,16 +100,16 @@ pub(crate) fn program_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
         #[cfg(any(target_os = "solana", target_arch = "bpf"))]
         #[panic_handler]
         fn panic(_info: &core::panic::PanicInfo<'_>) -> ! {
-            quasar_lang::abort_program()
+            #krate::abort_program()
         }
 
         #[allow(unexpected_cfgs)]
         #[cfg(feature = "alloc")]
-        quasar_lang::heap_alloc!();
+        #krate::heap_alloc!();
 
         #[allow(unexpected_cfgs)]
         #[cfg(not(feature = "alloc"))]
-        quasar_lang::no_alloc!();
+        #krate::no_alloc!();
 
         #idl
     }

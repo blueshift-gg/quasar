@@ -18,24 +18,25 @@ use {
 /// standard wire ordering. Callers that need `None` for an empty list handle
 /// that before calling.
 pub(crate) fn emit_idl_layout(inline: &[String], tail: &[String]) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     if tail.is_empty() {
         quote! {
-            Some(quasar_lang::idl_build::__reexport::IdlLayout::Fixed {
-                fields: quasar_lang::idl_build::vec![
-                    #(quasar_lang::idl_build::s(#inline)),*
+            Some(#krate::idl_build::__reexport::IdlLayout::Fixed {
+                fields: #krate::idl_build::vec![
+                    #(#krate::idl_build::s(#inline)),*
                 ],
             })
         }
     } else {
         quote! {
-            Some(quasar_lang::idl_build::__reexport::IdlLayout::Compact {
-                inline_fields: quasar_lang::idl_build::vec![
-                    #(quasar_lang::idl_build::s(#inline)),*
+            Some(#krate::idl_build::__reexport::IdlLayout::Compact {
+                inline_fields: #krate::idl_build::vec![
+                    #(#krate::idl_build::s(#inline)),*
                 ],
-                tail_fields: quasar_lang::idl_build::vec![
-                    #(quasar_lang::idl_build::s(#tail)),*
+                tail_fields: #krate::idl_build::vec![
+                    #(#krate::idl_build::s(#tail)),*
                 ],
-                wire: quasar_lang::idl_build::__reexport::CompactWire::InlineFieldsThenTailHeadersThenTailPayloads,
+                wire: #krate::idl_build::__reexport::CompactWire::InlineFieldsThenTailHeadersThenTailPayloads,
             })
         }
     }
@@ -58,19 +59,20 @@ pub(crate) fn type_to_idl_codec_tokens(ty: &Type) -> proc_macro2::TokenStream {
 }
 
 fn idl_codec_for_dynamic(dyn_field: PodDynField) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     match dyn_field {
         PodDynField::Str { max, prefix_bytes } => {
             let pfx_ty_str = prefix_type_name(prefix_bytes, "u8");
             quote! {
-                Some(quasar_lang::idl_build::__reexport::IdlCodec::SizePrefixed {
-                    prefix: quasar_lang::idl_build::__reexport::ScalarRepr {
-                        ty: quasar_lang::idl_build::s(#pfx_ty_str),
-                        endian: quasar_lang::idl_build::__reexport::Endian::Le,
+                Some(#krate::idl_build::__reexport::IdlCodec::SizePrefixed {
+                    prefix: #krate::idl_build::__reexport::ScalarRepr {
+                        ty: #krate::idl_build::s(#pfx_ty_str),
+                        endian: #krate::idl_build::__reexport::Endian::Le,
                     },
-                    storage: quasar_lang::idl_build::__reexport::Storage::Tail,
+                    storage: #krate::idl_build::__reexport::Storage::Tail,
                     max_bytes: Some(#max),
                     max_items: None,
-                    encoding: Some(quasar_lang::idl_build::s("utf8")),
+                    encoding: Some(#krate::idl_build::s("utf8")),
                     item: None,
                 })
             }
@@ -80,12 +82,12 @@ fn idl_codec_for_dynamic(dyn_field: PodDynField) -> proc_macro2::TokenStream {
         } => {
             let pfx_ty_str = prefix_type_name(prefix_bytes, "u16");
             quote! {
-                Some(quasar_lang::idl_build::__reexport::IdlCodec::SizePrefixed {
-                    prefix: quasar_lang::idl_build::__reexport::ScalarRepr {
-                        ty: quasar_lang::idl_build::s(#pfx_ty_str),
-                        endian: quasar_lang::idl_build::__reexport::Endian::Le,
+                Some(#krate::idl_build::__reexport::IdlCodec::SizePrefixed {
+                    prefix: #krate::idl_build::__reexport::ScalarRepr {
+                        ty: #krate::idl_build::s(#pfx_ty_str),
+                        endian: #krate::idl_build::__reexport::Endian::Le,
                     },
-                    storage: quasar_lang::idl_build::__reexport::Storage::Tail,
+                    storage: #krate::idl_build::__reexport::Storage::Tail,
                     max_bytes: None,
                     max_items: Some(#max),
                     encoding: None,
@@ -109,13 +111,14 @@ fn prefix_type_name(prefix_bytes: usize, fallback: &'static str) -> &'static str
 /// Convert a Rust type to a `proc_macro2::TokenStream` that constructs an
 /// `IdlType` at runtime (used by IDL fragment emission).
 pub(crate) fn type_to_idl_type_tokens(ty: &Type) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     if let Type::Array(array) = ty {
         let inner_tokens = type_to_idl_type_tokens(&array.elem);
         let len = &array.len;
         return quote! {
-            quasar_lang::idl_build::__reexport::IdlType::Array {
+            #krate::idl_build::__reexport::IdlType::Array {
                 array: (
-                    quasar_lang::idl_build::Box::new(#inner_tokens),
+                    #krate::idl_build::Box::new(#inner_tokens),
                     #len,
                 ),
             }
@@ -133,7 +136,7 @@ pub(crate) fn type_to_idl_type_tokens(ty: &Type) -> proc_macro2::TokenStream {
             };
             if let Some(prim) = primitive {
                 return quote! {
-                    quasar_lang::idl_build::__reexport::IdlType::Primitive(quasar_lang::idl_build::s(#prim))
+                    #krate::idl_build::__reexport::IdlType::Primitive(#krate::idl_build::s(#prim))
                 };
             }
             // Option<T>
@@ -142,8 +145,8 @@ pub(crate) fn type_to_idl_type_tokens(ty: &Type) -> proc_macro2::TokenStream {
                     if let Some(GenericArgument::Type(inner)) = ab.args.first() {
                         let inner_tokens = type_to_idl_type_tokens(inner);
                         return quote! {
-                            quasar_lang::idl_build::__reexport::IdlType::Option {
-                                option: quasar_lang::idl_build::Box::new(#inner_tokens),
+                            #krate::idl_build::__reexport::IdlType::Option {
+                                option: #krate::idl_build::Box::new(#inner_tokens),
                             }
                         };
                     }
@@ -155,8 +158,8 @@ pub(crate) fn type_to_idl_type_tokens(ty: &Type) -> proc_macro2::TokenStream {
                     if let Some(GenericArgument::Type(inner)) = ab.args.first() {
                         let inner_tokens = type_to_idl_type_tokens(inner);
                         return quote! {
-                            quasar_lang::idl_build::__reexport::IdlType::Vec {
-                                vec: quasar_lang::idl_build::Box::new(#inner_tokens),
+                            #krate::idl_build::__reexport::IdlType::Vec {
+                                vec: #krate::idl_build::Box::new(#inner_tokens),
                             }
                         };
                     }
@@ -165,15 +168,15 @@ pub(crate) fn type_to_idl_type_tokens(ty: &Type) -> proc_macro2::TokenStream {
             // String / PodString
             if name == "String" || name == "PodString" {
                 return quote! {
-                    quasar_lang::idl_build::__reexport::IdlType::Primitive(quasar_lang::idl_build::s("string"))
+                    #krate::idl_build::__reexport::IdlType::Primitive(#krate::idl_build::s("string"))
                 };
             }
             // Fall back to defined type reference
             return quote! {
-                quasar_lang::idl_build::__reexport::IdlType::Defined {
-                    defined: quasar_lang::idl_build::__reexport::IdlDefinedRef {
-                        name: quasar_lang::idl_build::s(#name),
-                        generics: quasar_lang::idl_build::Vec::new(),
+                #krate::idl_build::__reexport::IdlType::Defined {
+                    defined: #krate::idl_build::__reexport::IdlDefinedRef {
+                        name: #krate::idl_build::s(#name),
+                        generics: #krate::idl_build::Vec::new(),
                     },
                 }
             };
@@ -181,6 +184,6 @@ pub(crate) fn type_to_idl_type_tokens(ty: &Type) -> proc_macro2::TokenStream {
     }
     // Fallback: opaque bytes
     quote! {
-        quasar_lang::idl_build::__reexport::IdlType::Primitive(quasar_lang::idl_build::s("bytes"))
+        #krate::idl_build::__reexport::IdlType::Primitive(#krate::idl_build::s("bytes"))
     }
 }

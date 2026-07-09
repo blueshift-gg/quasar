@@ -35,6 +35,7 @@ pub(crate) struct AccountsOutput<'a> {
 }
 
 pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let AccountsOutput {
         name,
         bumps_name,
@@ -59,7 +60,7 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
     } = output;
 
     let exact_len_guard = quote! {
-        quasar_lang::traits::check_account_count(accounts.len(), Self::COUNT)?;
+        #krate::traits::check_account_count(accounts.len(), Self::COUNT)?;
     };
 
     let has_epilogue_const = quote! {
@@ -67,17 +68,17 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
     };
 
     let parse_accounts_impl = quote! {
-        impl #parse_impl_generics ParseAccounts<'input> for #name #ty_generics #parse_where_clause {
+        impl #parse_impl_generics #krate::traits::ParseAccounts<'input> for #name #ty_generics #parse_where_clause {
             type Bumps = #bumps_name;
             #has_epilogue_const
 
             #[inline(always)]
-            fn parse(accounts: &'input mut [AccountView], program_id: &Address) -> Result<(Self, Self::Bumps), ProgramError> {
+            fn parse(accounts: &'input mut [#krate::__internal::AccountView], program_id: &#krate::prelude::Address) -> Result<(Self, Self::Bumps), #krate::__solana_program_error::ProgramError> {
                 #exact_len_guard
                 // SAFETY: the exact-count guard above proves the unchecked parser
                 // receives the account count it was generated for.
                 unsafe {
-                    <Self as quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
+                    <Self as #krate::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
                         accounts,
                         &[],
                         program_id,
@@ -87,15 +88,15 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
 
             #[inline(always)]
             fn parse_with_instruction_data(
-                accounts: &'input mut [AccountView],
+                accounts: &'input mut [#krate::__internal::AccountView],
                 __ix_data: &[u8],
-                __program_id: &Address,
-            ) -> Result<(Self, Self::Bumps), ProgramError> {
+                __program_id: &#krate::prelude::Address,
+            ) -> Result<(Self, Self::Bumps), #krate::__solana_program_error::ProgramError> {
                 #exact_len_guard
                 // SAFETY: the exact-count guard above proves the unchecked parser
                 // receives the account count it was generated for.
                 unsafe {
-                    <Self as quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
+                    <Self as #krate::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
                         accounts,
                         __ix_data,
                         __program_id,
@@ -106,16 +107,16 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
             #epilogue_method
         }
 
-        unsafe impl #parse_impl_generics quasar_lang::traits::ParseAccountsUnchecked<'input>
+        unsafe impl #parse_impl_generics #krate::traits::ParseAccountsUnchecked<'input>
             for #name #ty_generics
             #parse_where_clause
         {
             #[inline(always)]
             unsafe fn parse_unchecked(
-                accounts: &'input mut [AccountView],
-                program_id: &Address,
-            ) -> Result<(Self, Self::Bumps), ProgramError> {
-                <Self as quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
+                accounts: &'input mut [#krate::__internal::AccountView],
+                program_id: &#krate::prelude::Address,
+            ) -> Result<(Self, Self::Bumps), #krate::__solana_program_error::ProgramError> {
+                <Self as #krate::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
                     accounts,
                     &[],
                     program_id,
@@ -124,10 +125,10 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
 
             #[inline(always)]
             unsafe fn parse_with_instruction_data_unchecked(
-                accounts: &'input mut [AccountView],
+                accounts: &'input mut [#krate::__internal::AccountView],
                 __ix_data: &[u8],
-                __program_id: &Address,
-            ) -> Result<(Self, Self::Bumps), ProgramError> {
+                __program_id: &#krate::prelude::Address,
+            ) -> Result<(Self, Self::Bumps), #krate::__solana_program_error::ProgramError> {
                 #ix_arg_extraction
                 #parse_body
             }
@@ -140,7 +141,7 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
 
         #parse_accounts_impl
 
-        impl #impl_generics AccountCount for #name #ty_generics #where_clause {
+        impl #impl_generics #krate::traits::AccountCount for #name #ty_generics #where_clause {
             const COUNT: usize = #count_expr;
             const NEEDS_EVENT_CPI: bool = #needs_event_cpi_expr;
         }
@@ -153,10 +154,10 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
             #[doc(hidden)]
             pub unsafe fn parse_accounts(
                 mut input: *mut u8,
-                buf: &mut core::mem::MaybeUninit<[quasar_lang::__internal::AccountView; #count_expr]>,
-                __program_id: &quasar_lang::prelude::Address,
-            ) -> Result<*mut u8, ProgramError> {
-                let base = buf.as_mut_ptr() as *mut quasar_lang::__internal::AccountView;
+                buf: &mut core::mem::MaybeUninit<[#krate::__internal::AccountView; #count_expr]>,
+                __program_id: &#krate::prelude::Address,
+            ) -> Result<*mut u8, #krate::__solana_program_error::ProgramError> {
+                let base = buf.as_mut_ptr() as *mut #krate::__internal::AccountView;
 
                 #(#parse_steps)*
 
@@ -168,23 +169,23 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
             pub unsafe fn parse_direct_with_instruction_data_unchecked(
                 mut input: *mut u8,
                 __ix_data: &[u8],
-                __program_id: &quasar_lang::prelude::Address,
-            ) -> Result<(Self, #bumps_name), ProgramError> {
+                __program_id: &#krate::prelude::Address,
+            ) -> Result<(Self, #bumps_name), #krate::__solana_program_error::ProgramError> {
                 #ix_arg_extraction
                 #direct_parse_body
             }
         }
 
-        unsafe impl #impl_generics quasar_lang::traits::ParseAccountsRaw for #name #ty_generics #where_clause {
+        unsafe impl #impl_generics #krate::traits::ParseAccountsRaw for #name #ty_generics #where_clause {
             #[inline(always)]
             unsafe fn parse_accounts_raw(
                 input: *mut u8,
-                base: *mut quasar_lang::__internal::AccountView,
+                base: *mut #krate::__internal::AccountView,
                 offset: usize,
-                __program_id: &quasar_lang::prelude::Address,
-            ) -> Result<*mut u8, ProgramError> {
+                __program_id: &#krate::prelude::Address,
+            ) -> Result<*mut u8, #krate::__solana_program_error::ProgramError> {
                 let mut __inner_buf = core::mem::MaybeUninit::<
-                    [quasar_lang::__internal::AccountView; #count_expr]
+                    [#krate::__internal::AccountView; #count_expr]
                 >::uninit();
                 let input = Self::parse_accounts(input, &mut __inner_buf, __program_id)?;
                 // SAFETY: parse_accounts initializes every element before
@@ -206,21 +207,21 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
             }
         }
 
-        impl #parse_impl_generics quasar_lang::remaining::RemainingItem<'input>
+        impl #parse_impl_generics #krate::remaining::RemainingItem<'input>
             for #name #ty_generics
             #parse_where_clause
         {
-            const COUNT: usize = <Self as quasar_lang::traits::AccountCount>::COUNT;
+            const COUNT: usize = <Self as #krate::traits::AccountCount>::COUNT;
 
             #[inline(always)]
             unsafe fn parse_remaining_chunk(
-                accounts: &'input mut [quasar_lang::__internal::AccountView],
-                program_id: Option<&quasar_lang::prelude::Address>,
+                accounts: &'input mut [#krate::__internal::AccountView],
+                program_id: Option<&#krate::prelude::Address>,
                 data: &[u8],
-            ) -> Result<Self, ProgramError> {
-                let program_id = program_id.ok_or(ProgramError::InvalidInstructionData)?;
+            ) -> Result<Self, #krate::__solana_program_error::ProgramError> {
+                let program_id = program_id.ok_or(#krate::__solana_program_error::ProgramError::InvalidInstructionData)?;
                 let (item, _bumps) =
-                    <Self as quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
+                    <Self as #krate::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
                         accounts,
                         data,
                         program_id,

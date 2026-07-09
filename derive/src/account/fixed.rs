@@ -22,6 +22,7 @@ pub(super) struct AccountCodegenSpec<'a> {
 }
 
 pub(super) fn generate_account(spec: AccountCodegenSpec<'_>) -> TokenStream {
+    let krate = crate::krate::lang_path();
     let AccountCodegenSpec {
         name,
         disc_bytes,
@@ -64,26 +65,26 @@ pub(super) fn generate_account(spec: AccountCodegenSpec<'_>) -> TokenStream {
         let disc_len_lit = disc_len;
         let zc_mod_ident = &zc.zc_mod;
         quote::quote! {
-            impl quasar_lang::account_layout::AccountLayout for #name {
+            impl #krate::account_layout::AccountLayout for #name {
                 type Schema = #zc_mod_ident::__Schema;
                 const DATA_OFFSET: usize = #disc_len_lit;
             }
 
-            impl quasar_lang::checks::Discriminator for #name {}
-            impl quasar_lang::checks::ZeroPod for #name {}
+            impl #krate::checks::Discriminator for #name {}
+            impl #krate::checks::ZeroPod for #name {}
 
-            impl quasar_lang::account_load::AccountLoad for #name {
+            impl #krate::account_load::AccountLoad for #name {
                 #[inline(always)]
-                fn check(view: &quasar_lang::__internal::AccountView) -> Result<(), quasar_lang::__solana_program_error::ProgramError> {
-                    <#name as quasar_lang::checks::Discriminator>::check(view)?;
-                    <#name as quasar_lang::checks::ZeroPod>::check(view)?;
+                fn check(view: &#krate::__internal::AccountView) -> Result<(), #krate::__solana_program_error::ProgramError> {
+                    <#name as #krate::checks::Discriminator>::check(view)?;
+                    <#name as #krate::checks::ZeroPod>::check(view)?;
                     Ok(())
                 }
 
                 #[inline(always)]
-                fn check_checked(view: &quasar_lang::__internal::AccountView) -> Result<(), quasar_lang::__solana_program_error::ProgramError> {
-                    <#name as quasar_lang::checks::Discriminator>::check_checked(view)?;
-                    <#name as quasar_lang::checks::ZeroPod>::check_checked(view)?;
+                fn check_checked(view: &#krate::__internal::AccountView) -> Result<(), #krate::__solana_program_error::ProgramError> {
+                    <#name as #krate::checks::Discriminator>::check_checked(view)?;
+                    <#name as #krate::checks::ZeroPod>::check_checked(view)?;
                     Ok(())
                 }
             }
@@ -120,27 +121,27 @@ pub(super) fn generate_account(spec: AccountCodegenSpec<'_>) -> TokenStream {
     });
 
     let lifecycle_impls = quote::quote! {
-        impl quasar_lang::account_init::AccountInit for #name {
+        impl #krate::account_init::AccountInit for #name {
             type InitParams<'a> = ();
 
             #[inline(always)]
-            fn init<'a, R: quasar_lang::ops::RentAccess>(
-                ctx: quasar_lang::account_init::InitCtx<'a, R>,
+            fn init<'a, R: #krate::ops::RentAccess>(
+                ctx: #krate::account_init::InitCtx<'a, R>,
                 _params: &(),
-            ) -> Result<(), quasar_lang::prelude::ProgramError> {
-                quasar_lang::account_init::init_account(
+            ) -> Result<(), #krate::prelude::ProgramError> {
+                #krate::account_init::init_account(
                     ctx.payer,
                     ctx.target,
                     ctx.space,
                     ctx.program_id,
                     ctx.signers,
                     ctx.rent.get()?,
-                    <Self as quasar_lang::traits::Discriminator>::DISCRIMINATOR,
+                    <Self as #krate::traits::Discriminator>::DISCRIMINATOR,
                 )
             }
         }
 
-        impl quasar_lang::ops::SupportsRealloc for #name {}
+        impl #krate::ops::SupportsRealloc for #name {}
     };
 
     // IDL fragment emission (feature-gated)
@@ -169,8 +170,8 @@ pub(super) fn generate_account(spec: AccountCodegenSpec<'_>) -> TokenStream {
                 }
 
                 quote::quote! {
-                    quasar_lang::idl_build::__reexport::IdlFieldDef {
-                        name: quasar_lang::idl_build::s(#fname),
+                    #krate::idl_build::__reexport::IdlFieldDef {
+                        name: #krate::idl_build::s(#fname),
                         ty: #fty,
                         codec: #codec_tokens,
                         docs: #fdocs,
@@ -188,9 +189,9 @@ pub(super) fn generate_account(spec: AccountCodegenSpec<'_>) -> TokenStream {
         // `Space::SPACE` associated const is evaluable. `min` is the minimum
         // byte size including the discriminator.
         let space_tokens = quote::quote! {
-            Some(quasar_lang::idl_build::__reexport::IdlSpace {
+            Some(#krate::idl_build::__reexport::IdlSpace {
                 discriminator: Some(#disc_len),
-                min: <#name as quasar_lang::traits::Space>::SPACE as u64,
+                min: <#name as #krate::traits::Space>::SPACE as u64,
                 max: None,
                 formula: None,
             })
@@ -200,26 +201,26 @@ pub(super) fn generate_account(spec: AccountCodegenSpec<'_>) -> TokenStream {
 
         quote::quote! {
             #[cfg(feature = "idl-build")]
-            quasar_lang::__private_inventory::submit! {
-                quasar_lang::idl_build::AccountFragment {
+            #krate::__private_inventory::submit! {
+                #krate::idl_build::AccountFragment {
                     build: {
                         fn __build() -> (
-                            quasar_lang::idl_build::__reexport::IdlAccountDef,
-                            quasar_lang::idl_build::__reexport::IdlTypeDef,
+                            #krate::idl_build::__reexport::IdlAccountDef,
+                            #krate::idl_build::__reexport::IdlTypeDef,
                         ) {
                             (
-                                quasar_lang::idl_build::__reexport::IdlAccountDef {
-                                    name: quasar_lang::idl_build::s(#name_str),
-                                    discriminator: quasar_lang::idl_build::vec![#(#disc_values),*],
+                                #krate::idl_build::__reexport::IdlAccountDef {
+                                    name: #krate::idl_build::s(#name_str),
+                                    discriminator: #krate::idl_build::vec![#(#disc_values),*],
                                     docs: #struct_docs,
                                     space: #space_tokens,
                                 },
-                                quasar_lang::idl_build::__reexport::IdlTypeDef {
-                                    name: quasar_lang::idl_build::s(#name_str),
-                                    kind: quasar_lang::idl_build::__reexport::IdlTypeDefKind::Struct,
-                                    docs: quasar_lang::idl_build::Vec::new(),
-                                    fields: quasar_lang::idl_build::vec![#(#field_defs),*],
-                                    variants: quasar_lang::idl_build::Vec::new(),
+                                #krate::idl_build::__reexport::IdlTypeDef {
+                                    name: #krate::idl_build::s(#name_str),
+                                    kind: #krate::idl_build::__reexport::IdlTypeDefKind::Struct,
+                                    docs: #krate::idl_build::Vec::new(),
+                                    fields: #krate::idl_build::vec![#(#field_defs),*],
+                                    variants: #krate::idl_build::Vec::new(),
                                     repr: None,
                                     alias: None,
                                     fallback: None,

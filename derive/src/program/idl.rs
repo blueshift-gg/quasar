@@ -10,6 +10,7 @@ use {
 
 /// Emit the per-instruction IDL fragments and the `__quasar_build_idl` fn.
 pub(super) fn emit_idl(model: &ProgramModel, mod_name: &Ident) -> TokenStream2 {
+    let krate = crate::krate::lang_path();
     let idl_instruction_fragments: Vec<TokenStream2> = model
         .instruction_specs
         .iter()
@@ -24,11 +25,11 @@ pub(super) fn emit_idl(model: &ProgramModel, mod_name: &Ident) -> TokenStream2 {
                 let idl_type_tokens = crate::idl::type_to_idl_type_tokens(&arg.ty);
                 let codec_tokens = crate::idl::type_to_idl_codec_tokens(&arg.ty);
                 quote! {
-                    quasar_lang::idl_build::__reexport::IdlArg {
-                        name: quasar_lang::idl_build::s(#arg_name),
+                    #krate::idl_build::__reexport::IdlArg {
+                        name: #krate::idl_build::s(#arg_name),
                         ty: #idl_type_tokens,
                         codec: #codec_tokens,
-                        docs: quasar_lang::idl_build::Vec::new(),
+                        docs: #krate::idl_build::Vec::new(),
                     }
                 }
             }).collect();
@@ -55,23 +56,23 @@ pub(super) fn emit_idl(model: &ProgramModel, mod_name: &Ident) -> TokenStream2 {
 
             let remaining_tokens = if spec.has_remaining {
                 quote! {
-                    Some(quasar_lang::idl_build::__reexport::IdlRemainingAccounts {
-                        kind: quasar_lang::idl_build::__reexport::RemainingAccountsKind::Append,
-                        name: quasar_lang::idl_build::s("remainingAccounts"),
+                    Some(#krate::idl_build::__reexport::IdlRemainingAccounts {
+                        kind: #krate::idl_build::__reexport::RemainingAccountsKind::Append,
+                        name: #krate::idl_build::s("remainingAccounts"),
                         min: 0,
                         max: None,
-                        item: quasar_lang::idl_build::__reexport::RemainingAccountItem {
-                            client_type: quasar_lang::idl_build::s("accountMeta"),
-                            signer: quasar_lang::idl_build::__reexport::AccountFlag::Dynamic(
-                                quasar_lang::idl_build::__reexport::AccountFlagDynamic::Input,
+                        item: #krate::idl_build::__reexport::RemainingAccountItem {
+                            client_type: #krate::idl_build::s("accountMeta"),
+                            signer: #krate::idl_build::__reexport::AccountFlag::Dynamic(
+                                #krate::idl_build::__reexport::AccountFlagDynamic::Input,
                             ),
-                            writable: quasar_lang::idl_build::__reexport::AccountFlag::Dynamic(
-                                quasar_lang::idl_build::__reexport::AccountFlagDynamic::Input,
+                            writable: #krate::idl_build::__reexport::AccountFlag::Dynamic(
+                                #krate::idl_build::__reexport::AccountFlagDynamic::Input,
                             ),
                         },
-                        policy: quasar_lang::idl_build::__reexport::RemainingAccountPolicy {
-                            position: quasar_lang::idl_build::__reexport::RemainingPosition::AfterDeclaredAccounts,
-                            order: quasar_lang::idl_build::__reexport::RemainingOrder::PreserveInput,
+                        policy: #krate::idl_build::__reexport::RemainingAccountPolicy {
+                            position: #krate::idl_build::__reexport::RemainingPosition::AfterDeclaredAccounts,
+                            order: #krate::idl_build::__reexport::RemainingOrder::PreserveInput,
                         },
                     })
                 }
@@ -81,16 +82,16 @@ pub(super) fn emit_idl(model: &ProgramModel, mod_name: &Ident) -> TokenStream2 {
 
             quote! {
                 #[cfg(feature = "idl-build")]
-                quasar_lang::__private_inventory::submit! {
-                    quasar_lang::idl_build::InstructionFragment {
+                #krate::__private_inventory::submit! {
+                    #krate::idl_build::InstructionFragment {
                         build: {
-                            fn __build() -> quasar_lang::idl_build::__reexport::IdlInstruction {
-                                quasar_lang::idl_build::__reexport::IdlInstruction {
-                                    name: quasar_lang::idl_build::s(#fn_name_str),
-                                    discriminator: quasar_lang::idl_build::vec![#(#disc_values),*],
+                            fn __build() -> #krate::idl_build::__reexport::IdlInstruction {
+                                #krate::idl_build::__reexport::IdlInstruction {
+                                    name: #krate::idl_build::s(#fn_name_str),
+                                    discriminator: #krate::idl_build::vec![#(#disc_values),*],
                                     docs: #ix_docs,
-                                    accounts: quasar_lang::idl_build::Vec::new(),
-                                    args: quasar_lang::idl_build::vec![#(#arg_defs),*],
+                                    accounts: #krate::idl_build::Vec::new(),
+                                    args: #krate::idl_build::vec![#(#arg_defs),*],
                                     layout: #layout_tokens,
                                     remaining_accounts: #remaining_tokens,
                                 }
@@ -115,16 +116,16 @@ pub(super) fn emit_idl(model: &ProgramModel, mod_name: &Ident) -> TokenStream2 {
             let ix_docs = crate::helpers::docs_tokens_from_lines(&spec.docs);
             quote! {
                 #[cfg(feature = "idl-build")]
-                quasar_lang::__private_inventory::submit! {
-                    quasar_lang::idl_build::InstructionFragment {
+                #krate::__private_inventory::submit! {
+                    #krate::idl_build::InstructionFragment {
                         build: {
-                            fn __build() -> quasar_lang::idl_build::__reexport::IdlInstruction {
-                                quasar_lang::idl_build::__reexport::IdlInstruction {
-                                    name: quasar_lang::idl_build::s(#fn_name_str),
-                                    discriminator: quasar_lang::idl_build::vec![#(#disc_values),*],
+                            fn __build() -> #krate::idl_build::__reexport::IdlInstruction {
+                                #krate::idl_build::__reexport::IdlInstruction {
+                                    name: #krate::idl_build::s(#fn_name_str),
+                                    discriminator: #krate::idl_build::vec![#(#disc_values),*],
                                     docs: #ix_docs,
-                                    accounts: quasar_lang::idl_build::Vec::new(),
-                                    args: quasar_lang::idl_build::Vec::new(),
+                                    accounts: #krate::idl_build::Vec::new(),
+                                    args: #krate::idl_build::Vec::new(),
                                     layout: None,
                                     remaining_accounts: None,
                                 }
@@ -144,15 +145,15 @@ pub(super) fn emit_idl(model: &ProgramModel, mod_name: &Ident) -> TokenStream2 {
         quote! {
             /// Assemble all IDL fragments and return JSON.
             #[cfg(feature = "idl-build")]
-            pub fn __quasar_build_idl() -> quasar_lang::idl_build::String {
-                let address = quasar_lang::idl_build::address_to_base58(&crate::ID);
-                let idl = quasar_lang::idl_build::build_idl(
+            pub fn __quasar_build_idl() -> #krate::idl_build::String {
+                let address = #krate::idl_build::address_to_base58(&crate::ID);
+                let idl = #krate::idl_build::build_idl(
                     &address,
                     #mod_name_str,
                     env!("CARGO_PKG_NAME"),
                     env!("CARGO_PKG_VERSION"),
                 );
-                quasar_lang::idl_build::__reexport::serde_json::to_string_pretty(&idl)
+                #krate::idl_build::__reexport::serde_json::to_string_pretty(&idl)
                     .expect("generated IDL should serialize")
             }
 

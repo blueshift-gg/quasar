@@ -18,9 +18,10 @@ pub(crate) fn emit_post_load_behavior(
     field_ty: &syn::Type,
     did_init_var: Option<&syn::Ident>,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let path = &call.path;
     let bhv =
-        quote! { <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#field_ty>> };
+        quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
     let args_block = emit_behavior_args_builder(call, field_ty, phase.as_behavior_phase());
 
     // Total match: `PostLoadPhase` cannot be SetInitParam/Exit, so no ICE arm.
@@ -60,9 +61,10 @@ pub(crate) fn emit_epilogue_behavior(
     field_ident: &syn::Ident,
     field_ty: &syn::Type,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let path = &call.path;
     let bhv =
-        quote! { <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#field_ty>> };
+        quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
     let args_block = emit_behavior_args_builder(call, field_ty, BehaviorPhase::Exit);
 
     quote! {
@@ -82,6 +84,7 @@ pub(crate) fn emit_behavior_init(
     field_ty: &syn::Type,
     did_init_var: Option<&syn::Ident>,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let payer_ident = &spec.payer.ident;
     let idempotent = spec.idempotent;
     let has_address = spec.verified_address.is_some();
@@ -93,9 +96,9 @@ pub(crate) fn emit_behavior_init(
             let path = &call.path;
             let args_block = emit_behavior_args_builder(call, field_ty, BehaviorPhase::SetInitParam);
             quote! {
-                if <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#field_ty>>::SETS_INIT_PARAMS {
+                if <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>>::SETS_INIT_PARAMS {
                     #args_block
-                    <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#field_ty>>::set_init_param(
+                    <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>>::set_init_param(
                         &mut __init_params,
                         &__bhv_args,
                     )?;
@@ -109,9 +112,9 @@ pub(crate) fn emit_behavior_init(
         .unwrap_or_else(|| quote! {});
 
     let init_cpi = quote! {
-        let mut __init_params = <#field_ty as quasar_lang::account_init::AccountInit>::InitParams::default();
+        let mut __init_params = <#field_ty as #krate::account_init::AccountInit>::InitParams::default();
         #(#set_params)*
-        let __init_op = quasar_lang::ops::init::Op {
+        let __init_op = #krate::ops::init::Op {
             payer: #payer_ident.to_account_view(),
             space: 0u64,
             signers: __signers,
@@ -135,15 +138,16 @@ fn wrap_init(
     idempotent: bool,
     inner_body: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let body = if has_address {
         let bump_var = format_ident!("__bumps_{}", field_ident);
         let addr_var = format_ident!("__addr_{}", field_ident);
         quote! {
             let __bump_ref: &[u8] = &[#bump_var];
-            quasar_lang::address::AddressVerify::with_signer_seeds(
+            #krate::address::AddressVerify::with_signer_seeds(
                 &#addr_var,
                 __bump_ref,
-                |__signers| -> Result<(), quasar_lang::prelude::ProgramError> {
+                |__signers| -> Result<(), #krate::prelude::ProgramError> {
                     #inner_body
                     Ok(())
                 },
@@ -151,14 +155,14 @@ fn wrap_init(
         }
     } else {
         quote! {
-            let __signers: &[quasar_lang::cpi::Signer<'_, '_>] = &[];
+            let __signers: &[#krate::cpi::Signer<'_, '_>] = &[];
             #inner_body
         }
     };
 
     if idempotent {
         quote! {
-            if quasar_lang::is_system_program(#field_ident.owner()) {
+            if #krate::is_system_program(#field_ident.owner()) {
                 #body
             }
         }
@@ -174,17 +178,18 @@ pub(crate) fn emit_program_init(
     field_ident: &syn::Ident,
     field_ty: &syn::Type,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let payer_ident = &spec.payer.ident;
     let idempotent = spec.idempotent;
     let has_address = spec.verified_address.is_some();
     let space_ty = &spec.space_ty;
     let space = quote! {
-        <#space_ty as quasar_lang::traits::Space>::SPACE as u64
+        <#space_ty as #krate::traits::Space>::SPACE as u64
     };
 
     let inner_body = quote! {
         let __init_params = ();
-        let __init_op = quasar_lang::ops::init::Op {
+        let __init_op = #krate::ops::init::Op {
             payer: #payer_ident.to_account_view(),
             space: #space,
             signers: __signers,
@@ -202,6 +207,7 @@ pub(crate) fn emit_program_close(
     field_ident: &syn::Ident,
     field_ty: &syn::Type,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let dest_ident = &spec.destination_field;
     let disc_ty = crate::helpers::extract_generic_inner_type(field_ty, "Account")
         .or_else(|| crate::helpers::extract_generic_inner_type(field_ty, "InterfaceAccount"))
@@ -210,12 +216,12 @@ pub(crate) fn emit_program_close(
         {
             // SAFETY: close runs in the epilogue with exclusive access to `self`.
             let __view = unsafe {
-                <#field_ty as quasar_lang::account_load::AccountLoad>::to_account_view_mut(
+                <#field_ty as #krate::account_load::AccountLoad>::to_account_view_mut(
                     &mut self.#field_ident
                 )
             };
-            quasar_lang::ops::close::Op {
-                disc_len: <#disc_ty as quasar_lang::traits::Discriminator>::DISCRIMINATOR.len(),
+            #krate::ops::close::Op {
+                disc_len: <#disc_ty as #krate::traits::Discriminator>::DISCRIMINATOR.len(),
             }
             .apply(__view, self.#dest_ident.to_account_view())?;
         }
@@ -227,11 +233,12 @@ fn emit_behavior_args_builder(
     field_ty: &syn::Type,
     phase: BehaviorPhase,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     // Exit args reference `self.field`; every other phase uses local bindings.
     let exit_context = matches!(phase, BehaviorPhase::Exit);
     let path = &call.path;
     let bhv =
-        quote! { <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#field_ty>> };
+        quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
     let phase_const = emit_arg_phase_const(phase);
     let setters: Vec<proc_macro2::TokenStream> = call
         .args
@@ -243,7 +250,7 @@ fn emit_behavior_args_builder(
             quote! {
                 let __bhv_builder = if #bhv::uses_arg::<
                     { #phase_const },
-                    { quasar_lang::account_behavior::behavior_arg_key_hash(#key_lit) },
+                    { #krate::account_behavior::behavior_arg_key_hash(#key_lit) },
                 >() {
                     __bhv_builder.#key(#val)
                 } else {
@@ -268,7 +275,7 @@ fn emit_behavior_args_builder(
         // is defined once per derive (see `emit_assert_builder_fn`).
         Self::__assert_builder(&__bhv_builder);
         let __bhv_args =
-            quasar_lang::account_behavior::BehaviorArgsBuilder::#build_method(__bhv_builder)?;
+            #krate::account_behavior::BehaviorArgsBuilder::#build_method(__bhv_builder)?;
     }
 }
 
@@ -277,26 +284,28 @@ fn emit_behavior_args_builder(
 /// stable `BehaviorArgsBuilder` contract. Empty when the struct has no
 /// behavior groups.
 pub(crate) fn emit_assert_builder_fn(has_behaviors: bool) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     if !has_behaviors {
         return quote! {};
     }
     quote! {
         #[inline(always)]
-        fn __assert_builder<__B: quasar_lang::account_behavior::BehaviorArgsBuilder>(_: &__B) {}
+        fn __assert_builder<__B: #krate::account_behavior::BehaviorArgsBuilder>(_: &__B) {}
     }
 }
 
 fn emit_arg_phase_const(phase: BehaviorPhase) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     match phase {
         BehaviorPhase::SetInitParam => {
-            quote! { quasar_lang::account_behavior::ARG_PHASE_SET_INIT_PARAM }
+            quote! { #krate::account_behavior::ARG_PHASE_SET_INIT_PARAM }
         }
         BehaviorPhase::AfterInit => {
-            quote! { quasar_lang::account_behavior::ARG_PHASE_AFTER_INIT }
+            quote! { #krate::account_behavior::ARG_PHASE_AFTER_INIT }
         }
-        BehaviorPhase::Check => quote! { quasar_lang::account_behavior::ARG_PHASE_CHECK },
-        BehaviorPhase::Update => quote! { quasar_lang::account_behavior::ARG_PHASE_UPDATE },
-        BehaviorPhase::Exit => quote! { quasar_lang::account_behavior::ARG_PHASE_EXIT },
+        BehaviorPhase::Check => quote! { #krate::account_behavior::ARG_PHASE_CHECK },
+        BehaviorPhase::Update => quote! { #krate::account_behavior::ARG_PHASE_UPDATE },
+        BehaviorPhase::Exit => quote! { #krate::account_behavior::ARG_PHASE_EXIT },
     }
 }
 

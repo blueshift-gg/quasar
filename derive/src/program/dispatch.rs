@@ -78,6 +78,7 @@ fn emit_heap_cursor_block(heap: bool, any_heap: bool) -> TokenStream2 {
 }
 
 fn emit_raw_context_setup(data_start: TokenStream2) -> TokenStream2 {
+    let krate = crate::krate::lang_path();
     let raw_max = Literal::usize_unsuffixed(RAW_INLINE_ACCOUNT_CAP);
     quote! {
         let __raw_program_id: &[u8; 32] = unsafe {
@@ -103,15 +104,15 @@ fn emit_raw_context_setup(data_start: TokenStream2) -> TokenStream2 {
         const __RAW_MAX: usize = #raw_max;
         let __raw_count = core::cmp::min(__raw_num_accounts as usize, __RAW_MAX);
         let mut __raw_buf = core::mem::MaybeUninit::<
-            [quasar_lang::__internal::AccountView; __RAW_MAX]
+            [#krate::__internal::AccountView; __RAW_MAX]
         >::uninit();
 
         let (__raw_parsed, __raw_remaining) = unsafe {
             // SAFETY: `__raw_buf` has room for `__raw_count` AccountView values,
             // and `__raw_boundary` bounds the account region.
-            quasar_lang::__internal::parse_all_accounts_unchecked(
+            #krate::__internal::parse_all_accounts_unchecked(
                 __raw_accounts_start,
-                __raw_buf.as_mut_ptr() as *mut quasar_lang::__internal::AccountView,
+                __raw_buf.as_mut_ptr() as *mut #krate::__internal::AccountView,
                 __raw_count,
                 __raw_boundary,
             )?
@@ -121,7 +122,7 @@ fn emit_raw_context_setup(data_start: TokenStream2) -> TokenStream2 {
             // SAFETY: `parse_all_accounts_unchecked` initialized the first
             // `__raw_parsed` AccountView slots.
             core::slice::from_raw_parts_mut(
-                __raw_buf.as_mut_ptr() as *mut quasar_lang::__internal::AccountView,
+                __raw_buf.as_mut_ptr() as *mut #krate::__internal::AccountView,
                 __raw_parsed,
             )
         };
@@ -129,7 +130,7 @@ fn emit_raw_context_setup(data_start: TokenStream2) -> TokenStream2 {
         // SAFETY: `__raw_remaining` and `__raw_boundary` came from the raw
         // account walk over this same SVM input buffer.
         let __raw_ctx = unsafe {
-            Context::from_raw_parts(
+            #krate::context::Context::from_raw_parts(
                 __raw_program_id,
                 __raw_accounts,
                 &instruction_data[#data_start..],
@@ -145,6 +146,7 @@ fn emit_raw_context_setup(data_start: TokenStream2) -> TokenStream2 {
 /// (>= `DIRECT_PARSE_MIN_ACCOUNTS`); handlers with remaining accounts always
 /// use the buffered path.
 fn guarded_match_arm(spec: &InstructionSpec, any_heap: bool, disc_len: usize) -> TokenStream2 {
+    let krate = crate::krate::lang_path();
     let cursor_init = emit_heap_cursor_block(spec.heap, any_heap);
     let fn_name = &spec.fn_name;
     let direct_fn_name = format_ident!("__quasar_direct_{}", fn_name);
@@ -162,7 +164,7 @@ fn guarded_match_arm(spec: &InstructionSpec, any_heap: bool, disc_len: usize) ->
     let buffered_body = quote! {
         {
             let mut __buf = core::mem::MaybeUninit::<
-                [AccountView; <#accounts_type as AccountCount>::COUNT]
+                [#krate::__internal::AccountView; <#accounts_type as #krate::traits::AccountCount>::COUNT]
             >::uninit();
             let __remaining_ptr = unsafe {
                 // SAFETY: the account count check above guarantees the
@@ -173,7 +175,7 @@ fn guarded_match_arm(spec: &InstructionSpec, any_heap: bool, disc_len: usize) ->
                     unsafe {
                         // SAFETY: Address is represented by the same 32-byte
                         // value as the ABI program id.
-                        &*(__program_id as *const [u8; 32] as *const quasar_lang::prelude::Address)
+                        &*(__program_id as *const [u8; 32] as *const #krate::prelude::Address)
                     },
                 )?
             };
@@ -188,7 +190,7 @@ fn guarded_match_arm(spec: &InstructionSpec, any_heap: bool, disc_len: usize) ->
             // instruction-data length prefix directly before
             // `instruction_data`, giving the accounts boundary.
             #fn_name(unsafe {
-                Context::from_raw_parts(
+                #krate::context::Context::from_raw_parts(
                     __program_id,
                     &mut __accounts,
                     __data_after_disc,
@@ -206,7 +208,7 @@ fn guarded_match_arm(spec: &InstructionSpec, any_heap: bool, disc_len: usize) ->
             // The direct helper removes one generated Context/Ctx::new layer.
             // On small account lists the buffered path is cheaper, so the
             // derive selects the lower-CU shape from the account count.
-            if <#accounts_type as AccountCount>::COUNT >= #min_direct {
+            if <#accounts_type as #krate::traits::AccountCount>::COUNT >= #min_direct {
                 #direct_fn_name(
                     __program_id,
                     __accounts_start,
@@ -221,8 +223,8 @@ fn guarded_match_arm(spec: &InstructionSpec, any_heap: bool, disc_len: usize) ->
     quote! {
         [#(#disc_bytes),*] => {
             #cursor_init
-            if (__num_accounts as usize) < <#accounts_type as AccountCount>::COUNT {
-                return Err(ProgramError::NotEnoughAccountKeys);
+            if (__num_accounts as usize) < <#accounts_type as #krate::traits::AccountCount>::COUNT {
+                return Err(#krate::__solana_program_error::ProgramError::NotEnoughAccountKeys);
             }
             #body
         }
@@ -232,6 +234,7 @@ fn guarded_match_arm(spec: &InstructionSpec, any_heap: bool, disc_len: usize) ->
 /// Build the raw-instruction dispatch block: an O(1) function-pointer table for
 /// contiguous 1-byte discriminators, else a match chain.
 fn emit_raw_dispatch_block(model: &ProgramModel) -> TokenStream2 {
+    let krate = crate::krate::lang_path();
     let raw_instruction_specs = &model.raw_specs;
     let disc_len_lit = model.disc_len;
     let any_heap = model.any_heap;
@@ -284,7 +287,7 @@ fn emit_raw_dispatch_block(model: &ProgramModel) -> TokenStream2 {
                     // O(1) dispatch: function pointer table indexed by
                     // discriminator byte. LLVM emits `callx` for the
                     // indirect call: ~5 CU constant overhead.
-                    type __RawHandler = fn(Context) -> Result<(), ProgramError>;
+                    type __RawHandler = fn(#krate::context::Context) -> Result<(), #krate::__solana_program_error::ProgramError>;
                     let __raw_table: [__RawHandler; #table_size_lit] = [
                         #(#raw_fn_names),*
                     ];
@@ -345,6 +348,7 @@ fn emit_raw_dispatch_block(model: &ProgramModel) -> TokenStream2 {
 
 /// Build the `0xFF` event-CPI fast-path block.
 fn emit_event_dispatch_block(model: &ProgramModel) -> TokenStream2 {
+    let krate = crate::krate::lang_path();
     let instruction_specs = &model.instruction_specs;
     if model.raw_specs.is_empty() {
         let accounts_types: Vec<&TokenStream2> = instruction_specs
@@ -357,7 +361,7 @@ fn emit_event_dispatch_block(model: &ProgramModel) -> TokenStream2 {
         if instruction_specs.len() >= EVENT_FASTPATH_MIN_IX {
             quote! {
                 const __QUASAR_NEEDS_EVENT_CPI: bool =
-                    false #(|| <#accounts_types as AccountCount>::NEEDS_EVENT_CPI)*;
+                    false #(|| <#accounts_types as #krate::traits::AccountCount>::NEEDS_EVENT_CPI)*;
                 if __QUASAR_NEEDS_EVENT_CPI {
                     if !instruction_data.is_empty() && instruction_data[0] == 0xFF {
                         return __handle_event(ptr, instruction_data);
@@ -367,12 +371,12 @@ fn emit_event_dispatch_block(model: &ProgramModel) -> TokenStream2 {
         } else {
             quote! {
                 const __QUASAR_NEEDS_EVENT_CPI: bool =
-                    false #(|| <#accounts_types as AccountCount>::NEEDS_EVENT_CPI)*;
+                    false #(|| <#accounts_types as #krate::traits::AccountCount>::NEEDS_EVENT_CPI)*;
                 if !instruction_data.is_empty() && instruction_data[0] == 0xFF {
                     if __QUASAR_NEEDS_EVENT_CPI {
                         return __handle_event(ptr, instruction_data);
                     }
-                    return Err(ProgramError::InvalidInstructionData);
+                    return Err(#krate::__solana_program_error::ProgramError::InvalidInstructionData);
                 }
             }
         }
@@ -388,13 +392,14 @@ fn emit_event_dispatch_block(model: &ProgramModel) -> TokenStream2 {
 /// Build the normal dispatch tail: a single discriminator match picking the
 /// lower-CU account parser shape per instruction.
 fn emit_normal_dispatch_tail(model: &ProgramModel) -> TokenStream2 {
+    let krate = crate::krate::lang_path();
     let instruction_specs = &model.instruction_specs;
     let disc_len_lit = model.disc_len;
     let any_heap = model.any_heap;
 
     if instruction_specs.is_empty() {
         // All instructions are raw: no normal dispatch needed.
-        return quote! { Err(ProgramError::InvalidInstructionData) };
+        return quote! { Err(#krate::__solana_program_error::ProgramError::InvalidInstructionData) };
     }
     let normal_match_arms: Vec<TokenStream2> = instruction_specs
         .iter()
@@ -419,7 +424,7 @@ fn emit_normal_dispatch_tail(model: &ProgramModel) -> TokenStream2 {
             };
 
             if instruction_data.len() < #disc_len_lit {
-                return Err(ProgramError::InvalidInstructionData);
+                return Err(#krate::__solana_program_error::ProgramError::InvalidInstructionData);
             }
 
             let __disc: [u8; #disc_len_lit] = unsafe {
@@ -430,7 +435,7 @@ fn emit_normal_dispatch_tail(model: &ProgramModel) -> TokenStream2 {
 
             match __disc {
                 #(#normal_match_arms)*
-                _ => Err(ProgramError::InvalidInstructionData),
+                _ => Err(#krate::__solana_program_error::ProgramError::InvalidInstructionData),
             }
         }
     }
@@ -444,6 +449,7 @@ pub(super) fn push_dispatch_items(
     program_args: &ProgramArgs,
     client_items: &[TokenStream2],
 ) {
+    let krate = crate::krate::lang_path();
     let any_heap = model.any_heap;
     let raw_dispatch_block = emit_raw_dispatch_block(model);
 
@@ -453,10 +459,10 @@ pub(super) fn push_dispatch_items(
 
     items.push(syn::parse_quote! {
         #[inline(always)]
-        fn __handle_event(ptr: *mut u8, instruction_data: &[u8]) -> Result<(), ProgramError> {
+        fn __handle_event(ptr: *mut u8, instruction_data: &[u8]) -> Result<(), #krate::__solana_program_error::ProgramError> {
             // SAFETY: `ptr` is the SVM input buffer from the entrypoint.
             unsafe {
-                quasar_lang::event::handle_event(
+                #krate::event::handle_event(
                     ptr,
                     instruction_data,
                     &super::EventAuthority::ADDRESS,
@@ -481,7 +487,7 @@ pub(super) fn push_dispatch_items(
     if any_heap {
         items.push(syn::parse_quote! {
             #[inline(always)]
-            #dispatch_vis fn __dispatch(ptr: *mut u8, instruction_data: &[u8]) -> Result<(), ProgramError> {
+            #dispatch_vis fn __dispatch(ptr: *mut u8, instruction_data: &[u8]) -> Result<(), #krate::__solana_program_error::ProgramError> {
                 #dispatch_heap_init
 
                 #event_dispatch_block
@@ -494,7 +500,7 @@ pub(super) fn push_dispatch_items(
     } else {
         items.push(syn::parse_quote! {
             #[inline(always)]
-            #dispatch_vis fn __dispatch(ptr: *mut u8, instruction_data: &[u8]) -> Result<(), ProgramError> {
+            #dispatch_vis fn __dispatch(ptr: *mut u8, instruction_data: &[u8]) -> Result<(), #krate::__solana_program_error::ProgramError> {
                 #event_dispatch_block
 
                 #raw_dispatch_block

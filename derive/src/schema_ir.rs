@@ -187,6 +187,7 @@ pub(crate) struct DecodeOpts {
 /// first when `validate_fixed`). Returned as statements so callers can splice
 /// the bindings directly into the enclosing scope.
 pub(crate) fn emit_compact_decode(ir: &SchemaIR, opts: &DecodeOpts) -> Vec<syn::Stmt> {
+    let krate = crate::krate::lang_path();
     let DecodeOpts {
         schema_name,
         ref_name,
@@ -197,7 +198,7 @@ pub(crate) fn emit_compact_decode(ir: &SchemaIR, opts: &DecodeOpts) -> Vec<syn::
 
     let mut stmts: Vec<syn::Stmt> = Vec::new();
     stmts.push(syn::parse_quote! {
-        <#schema_name as quasar_lang::ZeroPodCompact>::validate(#data)
+        <#schema_name as #krate::ZeroPodCompact>::validate(#data)
             .map_err(|_| #err)?;
     });
     stmts.push(syn::parse_quote! {
@@ -215,12 +216,12 @@ pub(crate) fn emit_compact_decode(ir: &SchemaIR, opts: &DecodeOpts) -> Vec<syn::
             };
             if *validate_fixed {
                 stmts.push(syn::parse_quote! {
-                    <#ty as quasar_lang::instruction_arg::InstructionArg>::validate_zc(&__ref.#name)
+                    <#ty as #krate::instruction_arg::InstructionArg>::validate_zc(&__ref.#name)
                         .map_err(|_| #err)?;
                 });
             }
             stmts.push(syn::parse_quote! {
-                let #name = <#ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(&__ref.#name);
+                let #name = <#ty as #krate::instruction_arg::InstructionArg>::from_zc(&__ref.#name);
             });
         }
     }

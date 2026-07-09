@@ -11,42 +11,43 @@ use {proc_macro2::TokenStream as TokenStream2, quote::quote, syn::Ident};
 
 /// Emit the program marker type and its `EventAuthority` PDA companion.
 pub(super) fn emit_program_type(program_type_name: &Ident) -> TokenStream2 {
+    let krate = crate::krate::lang_path();
     quote! {
-        quasar_lang::define_account!(pub struct #program_type_name => [quasar_lang::checks::Executable, quasar_lang::checks::Address]);
+        #krate::define_account!(pub struct #program_type_name => [#krate::checks::Executable, #krate::checks::Address]);
 
-        impl quasar_lang::traits::Id for #program_type_name {
-            const ID: Address = crate::ID;
+        impl #krate::traits::Id for #program_type_name {
+            const ID: #krate::prelude::Address = crate::ID;
         }
 
         #[repr(transparent)]
         pub struct EventAuthority {
-            view: AccountView,
+            view: #krate::__internal::AccountView,
         }
 
-        impl AsAccountView for EventAuthority {
+        impl #krate::traits::AsAccountView for EventAuthority {
             #[inline(always)]
-            fn to_account_view(&self) -> &AccountView {
+            fn to_account_view(&self) -> &#krate::__internal::AccountView {
                 &self.view
             }
         }
 
         impl EventAuthority {
-            const __PDA: (Address, u8) = quasar_lang::pda::find_program_address_const(
+            const __PDA: (#krate::prelude::Address, u8) = #krate::pda::find_program_address_const(
                 &[b"__event_authority"],
                 &crate::ID,
             );
-            pub const ADDRESS: Address = Self::__PDA.0;
+            pub const ADDRESS: #krate::prelude::Address = Self::__PDA.0;
             pub const BUMP: u8 = Self::__PDA.1;
 
             #[inline(always)]
-            pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
-                if !quasar_lang::keys_eq(view.address(), &Self::ADDRESS) {
-                    return Err(ProgramError::InvalidSeeds);
+            pub fn from_account_view(view: &#krate::__internal::AccountView) -> Result<&Self, #krate::__solana_program_error::ProgramError> {
+                if !#krate::keys_eq(view.address(), &Self::ADDRESS) {
+                    return Err(#krate::__solana_program_error::ProgramError::InvalidSeeds);
                 }
                 Ok(unsafe {
                     // SAFETY: `EventAuthority` is repr(transparent) over
                     // AccountView, and the PDA address was validated above.
-                    &*(view as *const AccountView as *const Self)
+                    &*(view as *const #krate::__internal::AccountView as *const Self)
                 })
             }
 
@@ -55,24 +56,24 @@ pub(super) fn emit_program_type(program_type_name: &Ident) -> TokenStream2 {
             /// # Safety
             /// Caller must ensure account address matches the expected PDA.
             #[inline(always)]
-            pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
+            pub unsafe fn from_account_view_unchecked(view: &#krate::__internal::AccountView) -> &Self {
                 unsafe {
                     // SAFETY: caller guarantees the account is the event
                     // authority PDA.
-                    &*(view as *const AccountView as *const Self)
+                    &*(view as *const #krate::__internal::AccountView as *const Self)
                 }
             }
         }
 
         // SAFETY: `EventAuthority` is `#[repr(transparent)]` over `AccountView`.
-        unsafe impl quasar_lang::traits::StaticView for EventAuthority {}
+        unsafe impl #krate::traits::StaticView for EventAuthority {}
 
-        impl quasar_lang::account_load::AccountLoad for EventAuthority {
+        impl #krate::account_load::AccountLoad for EventAuthority {
 
             #[inline(always)]
-            fn check(view: &AccountView) -> Result<(), ProgramError> {
-                if !quasar_lang::keys_eq(view.address(), &Self::ADDRESS) {
-                    return Err(ProgramError::InvalidSeeds);
+            fn check(view: &#krate::__internal::AccountView) -> Result<(), #krate::__solana_program_error::ProgramError> {
+                if !#krate::keys_eq(view.address(), &Self::ADDRESS) {
+                    return Err(#krate::__solana_program_error::ProgramError::InvalidSeeds);
                 }
                 Ok(())
             }

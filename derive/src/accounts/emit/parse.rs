@@ -86,27 +86,28 @@ fn emit_parse_body_inner(
 // Rent context.
 
 fn emit_rent_context(rent_plan: &RentPlan) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     match rent_plan {
         RentPlan::NotNeeded => quote! {},
         RentPlan::FromSysvarField { field } => {
             quote! {
-                let __rent_ctx = quasar_lang::ops::OpCtx::new(
+                let __rent_ctx = #krate::ops::OpCtx::new(
                     // SAFETY: `__program_id` is already a valid `&Address`;
                     // this reborrow preserves the same address while keeping
                     // generated SBF in its cheaper shape.
-                    unsafe { &*(__program_id as *const quasar_lang::prelude::Address) },
+                    unsafe { &*(__program_id as *const #krate::prelude::Address) },
                     #field.get(),
                 );
             }
         }
         RentPlan::FetchOnce => {
             quote! {
-                let __rent_ctx = quasar_lang::ops::OpCtx::new(
+                let __rent_ctx = #krate::ops::OpCtx::new(
                     // SAFETY: `__program_id` is already a valid `&Address`;
                     // this reborrow preserves the same address while keeping
                     // generated SBF in its cheaper shape.
-                    unsafe { &*(__program_id as *const quasar_lang::prelude::Address) },
-                    quasar_lang::ops::RentResolver::fetch_once(),
+                    unsafe { &*(__program_id as *const #krate::prelude::Address) },
+                    #krate::ops::RentResolver::fetch_once(),
                 );
             }
         }
@@ -162,6 +163,7 @@ fn emit_parse_sequence(plan: &AccountsPlanTyped) -> proc_macro2::TokenStream {
 fn emit_init_phase_typed(
     field_plans: &[super::super::resolve::specs::FieldPlan],
 ) -> Vec<proc_macro2::TokenStream> {
+    let krate = crate::krate::lang_path();
     let mut stmts = Vec::new();
 
     for fp in field_plans {
@@ -177,7 +179,7 @@ fn emit_init_phase_typed(
                     let term = address_verify_terminator(&addr_spec.error);
                     stmts.push(quote! {
                         let #addr_var = #addr_expr;
-                        #bump_var = quasar_lang::address::AddressVerify::verify(
+                        #bump_var = #krate::address::AddressVerify::verify(
                             &#addr_var, #ident.address(), __program_id,
                         )#term;
                     });
@@ -234,6 +236,7 @@ fn needs_init_state_var(field_plan: &FieldPlan) -> bool {
 fn emit_post_load_typed(
     field_plans: &[super::super::resolve::specs::FieldPlan],
 ) -> Vec<proc_macro2::TokenStream> {
+    let krate = crate::krate::lang_path();
     let mut stmts = Vec::new();
 
     for fp in field_plans {
@@ -268,7 +271,7 @@ fn emit_post_load_typed(
                     (
                         quote! {
                             {
-                                let __realloc_op = quasar_lang::ops::realloc::Op {
+                                let __realloc_op = #krate::ops::realloc::Op {
                                     space: (#realloc_expr) as usize,
                                     payer: #payer_ident.to_account_view(),
                                 };
@@ -288,13 +291,13 @@ fn emit_post_load_typed(
                     let term = address_verify_terminator(&addr_spec.error);
                     let verify_existing = if is_validated_account_type(ty) {
                         quote! {
-                            #bump_var = quasar_lang::address::AddressVerify::verify_existing(
+                            #bump_var = #krate::address::AddressVerify::verify_existing(
                                 &__addr, #ident.to_account_view().address(), __program_id,
                             )#term;
                         }
                     } else {
                         quote! {
-                            #bump_var = quasar_lang::address::AddressVerify::verify(
+                            #bump_var = #krate::address::AddressVerify::verify(
                                 &__addr, #ident.to_account_view().address(), __program_id,
                             )#term;
                         }
@@ -303,7 +306,7 @@ fn emit_post_load_typed(
                         quote! {
                             if let Some(__bump_offset) = #bump_offset_expr {
                                 let __view = #ident.to_account_view();
-                                #bump_var = quasar_lang::address::AddressVerify::verify_existing_from_account(
+                                #bump_var = #krate::address::AddressVerify::verify_existing_from_account(
                                     &__addr,
                                     __view.address(),
                                     __program_id,
@@ -339,6 +342,7 @@ fn emit_post_load_typed(
 // Epilogue from the typed plan.
 
 pub(crate) fn emit_epilogue(plan: &AccountsPlanTyped) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let mut exit_stmts = Vec::new();
 
     for fp in &plan.fields {
@@ -360,7 +364,7 @@ pub(crate) fn emit_epilogue(plan: &AccountsPlanTyped) -> proc_macro2::TokenStrea
 
     quote! {
         #[inline(always)]
-        fn epilogue(&mut self) -> Result<(), ProgramError> {
+        fn epilogue(&mut self) -> Result<(), #krate::__solana_program_error::ProgramError> {
             #(#exit_stmts)*
             Ok(())
         }
@@ -368,6 +372,7 @@ pub(crate) fn emit_epilogue(plan: &AccountsPlanTyped) -> proc_macro2::TokenStrea
 }
 
 pub(crate) fn emit_has_epilogue_typed(plan: &AccountsPlanTyped) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     // Collect const-evaluable terms for HAS_EPILOGUE.
     let mut terms: Vec<proc_macro2::TokenStream> = vec![quote! { false }];
 
@@ -378,7 +383,7 @@ pub(crate) fn emit_has_epilogue_typed(plan: &AccountsPlanTyped) -> proc_macro2::
                 EpilogueStep::Behavior(call) => {
                     let path = &call.path;
                     terms.push(quote! {
-                        <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#ty>>::RUN_EXIT
+                        <#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::RUN_EXIT
                     });
                 }
                 EpilogueStep::ProgramClose(_) => terms.push(quote! { true }),
@@ -418,6 +423,7 @@ fn emit_load_by_ident(field_plans: &[FieldPlan], field: &syn::Ident) -> proc_mac
 }
 
 fn emit_one_load(fp: &FieldPlan) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let ident = &fp.ident;
     let ty = &fp.effective_ty;
     let writable = fp.writable;
@@ -441,7 +447,7 @@ fn emit_one_load(fp: &FieldPlan) -> proc_macro2::TokenStream {
         );
         return if writable {
             quote! {
-                let mut #ident = if quasar_lang::keys_eq(#ident.address(), __program_id) {
+                let mut #ident = if #krate::keys_eq(#ident.address(), __program_id) {
                     None
                 } else {
                     Some(#load)
@@ -449,7 +455,7 @@ fn emit_one_load(fp: &FieldPlan) -> proc_macro2::TokenStream {
             }
         } else {
             quote! {
-                let #ident = if quasar_lang::keys_eq(#ident.address(), __program_id) {
+                let #ident = if #krate::keys_eq(#ident.address(), __program_id) {
                     None
                 } else {
                     Some(#load)
@@ -479,22 +485,23 @@ fn emit_load_expr(
     checked: bool,
     behavior_validates_account_data: Option<&proc_macro2::TokenStream>,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     match (writable, checked, behavior_validates_account_data) {
         (true, true, _) => {
-            quote! { <#ty as quasar_lang::account_load::AccountLoad>::load_mut_checked(#ident)? }
+            quote! { <#ty as #krate::account_load::AccountLoad>::load_mut_checked(#ident)? }
         }
         (false, true, _) => {
-            quote! { <#ty as quasar_lang::account_load::AccountLoad>::load_checked(#ident)? }
+            quote! { <#ty as #krate::account_load::AccountLoad>::load_checked(#ident)? }
         }
         (true, false, Some(validates_account_data)) => quote! {
             if #validates_account_data {
                 // SAFETY: at least one behavior declared that its check validates
                 // the account data before this load path uses it.
                 unsafe {
-                    <#ty as quasar_lang::account_load::AccountLoad>::load_mut_intrinsic(#ident)?
+                    <#ty as #krate::account_load::AccountLoad>::load_mut_intrinsic(#ident)?
                 }
             } else {
-                <#ty as quasar_lang::account_load::AccountLoad>::load_mut(#ident)?
+                <#ty as #krate::account_load::AccountLoad>::load_mut(#ident)?
             }
         },
         (false, false, Some(validates_account_data)) => quote! {
@@ -502,17 +509,17 @@ fn emit_load_expr(
                 // SAFETY: at least one behavior declared that its check validates
                 // the account data before this load path uses it.
                 unsafe {
-                    <#ty as quasar_lang::account_load::AccountLoad>::load_intrinsic(#ident)?
+                    <#ty as #krate::account_load::AccountLoad>::load_intrinsic(#ident)?
                 }
             } else {
-                <#ty as quasar_lang::account_load::AccountLoad>::load(#ident)?
+                <#ty as #krate::account_load::AccountLoad>::load(#ident)?
             }
         },
         (true, false, None) => {
-            quote! { <#ty as quasar_lang::account_load::AccountLoad>::load_mut(#ident)? }
+            quote! { <#ty as #krate::account_load::AccountLoad>::load_mut(#ident)? }
         }
         (false, false, None) => {
-            quote! { <#ty as quasar_lang::account_load::AccountLoad>::load(#ident)? }
+            quote! { <#ty as #krate::account_load::AccountLoad>::load(#ident)? }
         }
     }
 }
@@ -521,13 +528,14 @@ fn behavior_validates_account_data_expr(
     ty: &syn::Type,
     validates_paths: &[syn::Path],
 ) -> Option<proc_macro2::TokenStream> {
+    let krate = crate::krate::lang_path();
     if validates_paths.is_empty() {
         return None;
     }
 
     let terms = validates_paths.iter().map(|path| {
         quote! {
-            <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#ty>>::VALIDATES_ACCOUNT_DATA
+            <#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::VALIDATES_ACCOUNT_DATA
         }
     });
 
@@ -537,17 +545,18 @@ fn behavior_validates_account_data_expr(
 // User checks, structural rather than behavior-group based.
 
 fn emit_user_check(field_ident: &syn::Ident, check: &UserCheck) -> Vec<proc_macro2::TokenStream> {
+    let krate = crate::krate::lang_path();
     let mut stmts = Vec::new();
 
     match check {
         UserCheck::HasOne { targets, error } => {
             let err = match error {
                 Some(e) => quote! { #e.into() },
-                None => quote! { QuasarError::HasOneMismatch.into() },
+                None => quote! { #krate::error::QuasarError::HasOneMismatch.into() },
             };
             for target in targets {
                 stmts.push(quote! {
-                    quasar_lang::validation::check_address_match(
+                    #krate::validation::check_address_match(
                         &#field_ident.#target,
                         #target.to_account_view().address(),
                         #err,
@@ -558,11 +567,11 @@ fn emit_user_check(field_ident: &syn::Ident, check: &UserCheck) -> Vec<proc_macr
         UserCheck::Constraints { exprs, error } => {
             let err = match error {
                 Some(e) => quote! { #e.into() },
-                None => quote! { QuasarError::ConstraintViolation.into() },
+                None => quote! { #krate::error::QuasarError::ConstraintViolation.into() },
             };
             for expr in exprs {
                 stmts.push(quote! {
-                    quasar_lang::validation::check_constraint(#expr, #err)?;
+                    #krate::validation::check_constraint(#expr, #err)?;
                 });
             }
         }
@@ -577,6 +586,7 @@ fn emit_user_check(field_ident: &syn::Ident, check: &UserCheck) -> Vec<proc_macr
 /// - `REQUIRES_MUT`: if true, field must be `mut`
 /// - `SETS_INIT_PARAMS`: at most one per init field
 fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let mut asserts = Vec::new();
 
     for fp in field_plans {
@@ -595,7 +605,7 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
                 );
                 asserts.push(quote! {
                     const _: () = assert!(
-                        !<#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#ty>>::REQUIRES_MUT,
+                        !<#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::REQUIRES_MUT,
                         #msg,
                     );
                 });
@@ -607,8 +617,8 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
             );
             asserts.push(quote! {
                 const _: () = assert!(
-                    !<#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#ty>>::VALIDATES_ACCOUNT_DATA
-                        || <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#ty>>::RUN_CHECK,
+                    !<#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::VALIDATES_ACCOUNT_DATA
+                        || <#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::RUN_CHECK,
                     #validates_data_msg,
                 );
             });
@@ -624,7 +634,7 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
                 );
                 asserts.push(quote! {
                     const _: () = assert!(
-                        !<#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#ty>>::RUN_AFTER_INIT,
+                        !<#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::RUN_AFTER_INIT,
                         #after_init_msg,
                     );
                 });
@@ -639,7 +649,7 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
                 .map(|g| {
                     let p = &g.path;
                     quote! {
-                        <#p::Behavior as quasar_lang::account_behavior::AccountBehavior<#ty>>::SETS_INIT_PARAMS as usize
+                        <#p::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::SETS_INIT_PARAMS as usize
                     }
                 })
                 .collect();
@@ -672,7 +682,7 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
             );
             asserts.push(quote! {
                 const _: () = assert!(
-                    <#ty as quasar_lang::account_init::AccountInit>::DEFAULT_INIT_PARAMS_VALID
+                    <#ty as #krate::account_init::AccountInit>::DEFAULT_INIT_PARAMS_VALID
                         || #count_expr >= 1,
                     #required_msg,
                 );
@@ -753,6 +763,7 @@ pub(crate) fn emit_bump_struct_def(
     field_plans: &[FieldPlan],
     cx: &super::EmitCx,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let bumps_name = &cx.bumps_name;
     let fields: Vec<proc_macro2::TokenStream> = field_plans
         .iter()
@@ -761,7 +772,7 @@ pub(crate) fn emit_bump_struct_def(
             let name = &fp.ident;
             if matches!(fp.kind, FieldKind::Composite) {
                 let ty = composite_assoc_ty(&fp.effective_ty);
-                quote! { pub #name: <#ty as quasar_lang::traits::AccountBumps>::Bumps }
+                quote! { pub #name: <#ty as #krate::traits::AccountBumps>::Bumps }
             } else {
                 quote! { pub #name: u8 }
             }
@@ -793,9 +804,10 @@ fn composite_assoc_ty(ty: &syn::Type) -> proc_macro2::TokenStream {
 /// `Result<u8, ProgramError>`, so this works for plain and typed-seeds
 /// addresses alike (hence the reroute branch, not a rejection).
 fn address_verify_terminator(error: &Option<syn::Expr>) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     match error {
         Some(e) => quote! {
-            .map_err(|_| -> quasar_lang::prelude::ProgramError { (#e).into() })?
+            .map_err(|_| -> #krate::prelude::ProgramError { (#e).into() })?
         },
         None => quote! { ? },
     }
@@ -813,9 +825,10 @@ fn is_validated_account_type(ty: &syn::Type) -> bool {
 /// fast path to Account<T> so SPL/interface wrappers that do not implement
 /// Discriminator keep using the generic existing-account verifier.
 fn stored_bump_offset_expr(ty: &syn::Type) -> Option<proc_macro2::TokenStream> {
+    let krate = crate::krate::lang_path();
     use crate::helpers::extract_generic_inner_type;
     let inner = extract_generic_inner_type(ty, "Account")?;
     Some(quote! {
-        <#inner as quasar_lang::traits::Discriminator>::BUMP_OFFSET
+        <#inner as #krate::traits::Discriminator>::BUMP_OFFSET
     })
 }
