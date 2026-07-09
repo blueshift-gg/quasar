@@ -76,14 +76,22 @@ pub(crate) enum UserCheck {
         targets: Vec<Ident>,
         error: Option<Expr>,
     },
-    Address {
-        expr: Expr,
-        error: Option<Expr>,
-    },
     Constraints {
         exprs: Vec<Expr>,
         error: Option<Expr>,
     },
+}
+
+/// An `address = expr` constraint with its optional custom `@ error`.
+///
+/// The `@ error` form used to be rerouted into `user_checks`, which dropped the
+/// field from the generated `Bumps` struct, the stored-bump fast path, the
+/// `{field}_signer` helper, and the IDL PDA resolver. Keeping the error on the
+/// address constraint itself preserves all of those while still surfacing the
+/// custom error from the verify call.
+pub(crate) struct AddressConstraint {
+    pub expr: Expr,
+    pub error: Option<Expr>,
 }
 
 pub(crate) struct FieldSemantics {
@@ -92,8 +100,8 @@ pub(crate) struct FieldSemantics {
     pub init: Option<InitDirective>,
     /// Top-level `payer = field`.
     pub payer: Option<Ident>,
-    /// `address = expr`: opaque address constraint.
-    pub address: Option<Expr>,
+    /// `address = expr [@ error]`: address constraint (plain or typed-seeds).
+    pub address: Option<AddressConstraint>,
     /// `realloc = expr`: realloc size expression.
     pub realloc: Option<Expr>,
     /// `close(dest = field)`: core structural close.

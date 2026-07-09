@@ -87,9 +87,10 @@ fn plan_field(
     let resolved_payer = resolve_field_payer(sem, payer_field);
 
     if sem.has_init() {
-        if let Some(addr_expr) = &sem.address {
+        if let Some(addr) = &sem.address {
             pre_load.push(PreLoadStep::VerifyAddress(AddressSpec {
-                expr: addr_expr.clone(),
+                expr: addr.expr.clone(),
+                error: addr.error.clone(),
             }));
         }
     }
@@ -144,9 +145,10 @@ fn plan_field(
 
     // Post-load: address verification for non-init fields.
     if !sem.has_init() {
-        if let Some(addr_expr) = &sem.address {
+        if let Some(addr) = &sem.address {
             post_load.push(PostLoadStep::VerifyExistingAddress(AddressSpec {
-                expr: addr_expr.clone(),
+                expr: addr.expr.clone(),
+                error: addr.error.clone(),
             }));
         }
     }

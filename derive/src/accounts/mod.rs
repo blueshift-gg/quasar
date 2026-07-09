@@ -240,7 +240,7 @@ fn emit_idl_resolver(
     semantics: &[resolve::FieldSemantics],
     instruction_args: &[InstructionArg],
 ) -> Option<proc_macro2::TokenStream> {
-    let Expr::Call(call) = sem.address.as_ref()? else {
+    let Expr::Call(call) = &sem.address.as_ref()?.expr else {
         return None;
     };
     emit_typed_seeds_resolver(call, semantics, instruction_args)
@@ -474,10 +474,14 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
             if !matches!(sem.core.kind, resolve::FieldKind::Single) {
                 return None;
             }
-            if !sem.address.as_ref().is_some_and(is_seed_expr) {
+            if !sem
+                .address
+                .as_ref()
+                .is_some_and(|addr| is_seed_expr(&addr.expr))
+            {
                 return None;
             }
-            let addr_expr = sem.address.as_ref()?;
+            let addr_expr = &sem.address.as_ref()?.expr;
             let method_name = format_ident!("{}_signer", field_name);
             if has_instruction_args {
                 Some(quote! {

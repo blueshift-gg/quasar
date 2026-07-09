@@ -116,6 +116,8 @@ pub(crate) struct ReallocSpec {
 #[derive(Clone)]
 pub(crate) struct AddressSpec {
     pub expr: Expr,
+    /// Optional custom `@ error` mapped onto the verify call's failure.
+    pub error: Option<Expr>,
 }
 
 /// Program-level close (drain lamports). Core lifecycle: not protocol-owned.
