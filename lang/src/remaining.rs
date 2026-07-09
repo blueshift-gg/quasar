@@ -3,6 +3,7 @@ use {
         __internal::{account_stride, DUP_ENTRY_SIZE},
         account_load::AccountLoad,
         error::QuasarError,
+        svm::{Cursor, RawEntry},
     },
     solana_account_view::{AccountView, Ref, RefMut, RuntimeAccount, NOT_BORROWED},
     solana_address::Address,
@@ -887,23 +888,17 @@ impl Iterator for RemainingIterImpl<'_> {
             return Some(Err(QuasarError::RemainingAccountsOverflow.into()));
         }
 
-        let raw = self.ptr as *mut RuntimeAccount;
-        // SAFETY: `ptr` is within the SVM buffer (boundary check above).
-        let borrow = unsafe { (*raw).borrow_state };
-
-        let view = if borrow == NOT_BORROWED {
+        // SAFETY: `self.ptr` is within the SVM buffer (boundary check above),
+        // 8-aligned, and delimited by `self.boundary`.
+        let mut cursor = unsafe { Cursor::new(self.ptr, self.boundary) };
+        // SAFETY: the cursor is not at end (boundary check above).
+        let view = match unsafe { cursor.next() } {
             // SAFETY: Non-duplicate entry with a valid `RuntimeAccount`.
-            let view = unsafe { AccountView::new_unchecked(raw) };
-            // SAFETY: `raw` is the current non-duplicate runtime account.
-            self.ptr = unsafe { advance_past_account(self.ptr, raw) };
-            view
-        } else {
-            // SAFETY: Duplicate entries occupy exactly `DUP_ENTRY_SIZE`.
-            self.ptr = unsafe { advance_past_dup(self.ptr) };
-            match self.resolve_dup(borrow as usize) {
+            RawEntry::Account(raw) => unsafe { AccountView::new_unchecked(raw) },
+            RawEntry::Dup(borrow) => match self.resolve_dup(borrow as usize) {
                 Some(v) => v,
                 None => {
-                    // Fuse: an unresolvable dup advances `self.ptr` past the
+                    // Fuse: an unresolvable dup has advanced the cursor past the
                     // entry but skips the cache-index increment below, so the
                     // cache would desync from the buffer position. Jump `ptr`
                     // to `boundary` so the next `next()` returns `None` and
@@ -912,8 +907,9 @@ impl Iterator for RemainingIterImpl<'_> {
                     self.ptr = self.boundary as *mut u8;
                     return Some(Err(QuasarError::RemainingAccountDuplicate.into()));
                 }
-            }
+            },
         };
+        self.ptr = cursor.ptr();
 
         // SAFETY: `self.index < MAX_REMAINING_ACCOUNTS` (checked above),
         // so the write is within the `MaybeUninit` cache allocation.
