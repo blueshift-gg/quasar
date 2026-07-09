@@ -1,0 +1,5 @@
+error: expected `u8`/`u16`/`u32`/`u64` or an integer literal `1`/`2`/`4`/`8` for the length-prefix width, found `f32`
+  --> tests/compile_fail/account_string_bad_prefix.rs:11:26
+   |
+11 |     pub name: String<16, f32>,
+   |                          ^^^

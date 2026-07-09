@@ -133,6 +133,9 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     let pod_field_infos: Vec<fixed::PodFieldInfo<'_>> = match fields_data
         .iter()
         .map(|f| {
+            // Reject an invalid explicit length-prefix (e.g. `String<16, f32>`)
+            // rather than silently defaulting to a 1-byte prefix.
+            crate::helpers::validate_dynamic_prefix(&f.ty)?;
             if !args.fixed_capacity && classify_option_pod_dynamic(&f.ty).is_some() {
                 return Err(syn::Error::new_spanned(
                     &f.ty,
