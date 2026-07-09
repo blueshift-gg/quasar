@@ -215,8 +215,7 @@ fn emit_single_parse_step(
                         },
                     )?
                 };
-                #[cfg(feature = "debug")]
-                quasar_lang::prelude::log(concat!(
+                quasar_lang::debug_log!(concat!(
                     "Account '", stringify!(#field_name),
                     "' (index ", #account_index, "): parsed (dup-aware)"
                 ));
@@ -234,8 +233,7 @@ fn emit_single_parse_step(
                         input, base, #cur_offset, __EXPECTED, __MASK,
                     )?
                 };
-                #[cfg(feature = "debug")]
-                quasar_lang::prelude::log(concat!(
+                quasar_lang::debug_log!(concat!(
                     "Account '", stringify!(#field_name),
                     "' (index ", #account_index, "): validation passed"
                 ));
