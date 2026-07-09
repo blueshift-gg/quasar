@@ -51,12 +51,7 @@ impl Owner for MixedAccount {
 }
 impl Space for MixedAccount {
     const SPACE: usize = 1usize
-        + core::mem::size_of::<
-            <Address as quasar_lang::instruction_arg::InstructionArg>::Zc,
-        >()
-        + core::mem::size_of::<
-            <u64 as quasar_lang::instruction_arg::InstructionArg>::Zc,
-        >();
+        + <__mixed_account_zc::__Schema as quasar_lang::__zeropod::ZeroPodFixed>::SIZE;
 }
 impl quasar_lang::account_layout::AccountLayout for MixedAccount {
     type Schema = __mixed_account_zc::__Schema;

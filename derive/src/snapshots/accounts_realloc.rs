@@ -104,17 +104,16 @@ impl ReallocAccounts {
     ) -> Result<*mut u8, ProgramError> {
         let base = buf.as_mut_ptr() as *mut quasar_lang::__internal::AccountView;
         {
-            const __EXPECTED: u32 = {
-                const __S: bool = <Signer as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
-                const __E: bool = <Signer as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
-                0xFFu32 | (__S as u32) << 8 | 65536u32 | (__E as u32) << 24
-            };
-            const __MASK: u32 = {
-                const __S: bool = <Signer as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
-                const __E: bool = <Signer as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
-                0xFFu32 | (if __S { 0xFFu32 << 8 } else { 0u32 }) | 16711680u32
-                    | (if __E { 0xFFu32 << 24 } else { 0u32 })
-            };
+            const __EXPECTED: u32 = quasar_lang::__internal::header_expected(
+                <Signer as quasar_lang::account_load::AccountLoad>::IS_SIGNER,
+                true,
+                <Signer as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE,
+            );
+            const __MASK: u32 = quasar_lang::__internal::header_mask(
+                <Signer as quasar_lang::account_load::AccountLoad>::IS_SIGNER,
+                true,
+                <Signer as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE,
+            );
             input = unsafe {
                 quasar_lang::__internal::parse_account(
                     input,
@@ -130,25 +129,20 @@ impl ReallocAccounts {
             );
         }
         {
-            const __EXPECTED: u32 = {
-                const __S: bool = <Account<
+            const __EXPECTED: u32 = quasar_lang::__internal::header_expected(
+                <Account<MyData> as quasar_lang::account_load::AccountLoad>::IS_SIGNER,
+                true,
+                <Account<
                     MyData,
-                > as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
-                const __E: bool = <Account<
+                > as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE,
+            );
+            const __MASK: u32 = quasar_lang::__internal::header_mask(
+                <Account<MyData> as quasar_lang::account_load::AccountLoad>::IS_SIGNER,
+                true,
+                <Account<
                     MyData,
-                > as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
-                0xFFu32 | (__S as u32) << 8 | 65536u32 | (__E as u32) << 24
-            };
-            const __MASK: u32 = {
-                const __S: bool = <Account<
-                    MyData,
-                > as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
-                const __E: bool = <Account<
-                    MyData,
-                > as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
-                0xFFu32 | (if __S { 0xFFu32 << 8 } else { 0u32 }) | 16711680u32
-                    | (if __E { 0xFFu32 << 24 } else { 0u32 })
-            };
+                > as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE,
+            );
             input = unsafe {
                 quasar_lang::__internal::parse_account(
                     input,
@@ -164,25 +158,24 @@ impl ReallocAccounts {
             );
         }
         {
-            const __EXPECTED: u32 = {
-                const __S: bool = <Program<
+            const __EXPECTED: u32 = quasar_lang::__internal::header_expected(
+                <Program<
                     SystemProgram,
-                > as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
-                const __E: bool = <Program<
+                > as quasar_lang::account_load::AccountLoad>::IS_SIGNER,
+                false,
+                <Program<
                     SystemProgram,
-                > as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
-                0xFFu32 | (__S as u32) << 8 | 0u32 | (__E as u32) << 24
-            };
-            const __MASK: u32 = {
-                const __S: bool = <Program<
+                > as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE,
+            );
+            const __MASK: u32 = quasar_lang::__internal::header_mask(
+                <Program<
                     SystemProgram,
-                > as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
-                const __E: bool = <Program<
+                > as quasar_lang::account_load::AccountLoad>::IS_SIGNER,
+                false,
+                <Program<
                     SystemProgram,
-                > as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
-                0xFFu32 | (if __S { 0xFFu32 << 8 } else { 0u32 }) | 0u32
-                    | (if __E { 0xFFu32 << 24 } else { 0u32 })
-            };
+                > as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE,
+            );
             input = unsafe {
                 quasar_lang::__internal::parse_account(
                     input,

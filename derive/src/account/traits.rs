@@ -1,4 +1,4 @@
-use {super::fixed::PodFieldInfo, crate::helpers::map_to_pod_type, quote::quote};
+use quote::quote;
 
 pub(super) struct AccountLoadSpec<'a> {
     pub name: &'a syn::Ident,
@@ -31,7 +31,6 @@ pub(super) fn emit_owner_impl(name: &syn::Ident) -> proc_macro2::TokenStream {
 
 pub(super) fn emit_space_impl(
     name: &syn::Ident,
-    field_infos: &[PodFieldInfo<'_>],
     has_dynamic: bool,
     disc_len: usize,
     zc_mod: &syn::Ident,
@@ -45,13 +44,14 @@ pub(super) fn emit_space_impl(
             }
         }
     } else {
-        let field_pod_types: Vec<proc_macro2::TokenStream> = field_infos
-            .iter()
-            .map(|fi| map_to_pod_type(&fi.field.ty))
-            .collect();
+        // Reference the schema's `ZeroPodFixed::SIZE` instead of re-summing the
+        // field pod sizes: the derived `__Schema` is the single source of the
+        // fixed layout (its ZC companion is `#[repr(C)]`, alignment 1, so
+        // `SIZE` equals the old field-size sum).
         quote! {
             impl Space for #name {
-                const SPACE: usize = #disc_len #(+ core::mem::size_of::<#field_pod_types>())*;
+                const SPACE: usize = #disc_len
+                    + <#zc_mod::__Schema as quasar_lang::__zeropod::ZeroPodFixed>::SIZE;
             }
         }
     }

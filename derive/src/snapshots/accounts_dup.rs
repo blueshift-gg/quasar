@@ -81,17 +81,16 @@ impl HeaderDupReadonly {
     ) -> Result<*mut u8, ProgramError> {
         let base = buf.as_mut_ptr() as *mut quasar_lang::__internal::AccountView;
         {
-            const __EXPECTED: u32 = {
-                const __S: bool = <Signer as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
-                const __E: bool = <Signer as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
-                0xFFu32 | (__S as u32) << 8 | 0u32 | (__E as u32) << 24
-            };
-            const __MASK: u32 = {
-                const __S: bool = <Signer as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
-                const __E: bool = <Signer as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
-                0xFFu32 | (if __S { 0xFFu32 << 8 } else { 0u32 }) | 0u32
-                    | (if __E { 0xFFu32 << 24 } else { 0u32 })
-            };
+            const __EXPECTED: u32 = quasar_lang::__internal::header_expected(
+                <Signer as quasar_lang::account_load::AccountLoad>::IS_SIGNER,
+                false,
+                <Signer as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE,
+            );
+            const __MASK: u32 = quasar_lang::__internal::header_mask(
+                <Signer as quasar_lang::account_load::AccountLoad>::IS_SIGNER,
+                false,
+                <Signer as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE,
+            );
             input = unsafe {
                 quasar_lang::__internal::parse_account(
                     input,
@@ -107,23 +106,21 @@ impl HeaderDupReadonly {
             );
         }
         {
-            const __EXPECTED: u32 = {
-                const __S: bool = <UncheckedAccount as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
-                const __E: bool = <UncheckedAccount as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
-                0xFFu32 | (__S as u32) << 8 | 0u32 | (__E as u32) << 24
-            };
-            const __MASK: u32 = {
-                const __S: bool = <UncheckedAccount as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
-                const __E: bool = <UncheckedAccount as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
-                0xFFu32 | (if __S { 0xFFu32 << 8 } else { 0u32 }) | 0u32
-                    | (if __E { 0xFFu32 << 24 } else { 0u32 })
-            };
-            const __FLAG_MASK: u32 = {
-                const __S: bool = <UncheckedAccount as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
-                const __E: bool = <UncheckedAccount as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
-                (if __S { 0xFFu32 << 8 } else { 0u32 }) | 0u32
-                    | (if __E { 0xFFu32 << 24 } else { 0u32 })
-            };
+            const __EXPECTED: u32 = quasar_lang::__internal::header_expected(
+                <UncheckedAccount as quasar_lang::account_load::AccountLoad>::IS_SIGNER,
+                false,
+                <UncheckedAccount as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE,
+            );
+            const __MASK: u32 = quasar_lang::__internal::header_mask(
+                <UncheckedAccount as quasar_lang::account_load::AccountLoad>::IS_SIGNER,
+                false,
+                <UncheckedAccount as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE,
+            );
+            const __FLAG_MASK: u32 = quasar_lang::__internal::header_flag_mask(
+                <UncheckedAccount as quasar_lang::account_load::AccountLoad>::IS_SIGNER,
+                false,
+                <UncheckedAccount as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE,
+            );
             input = unsafe {
                 quasar_lang::__internal::parse_account_dup(
                     input,

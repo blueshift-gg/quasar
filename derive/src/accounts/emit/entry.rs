@@ -69,36 +69,43 @@ impl HeaderPlan {
         }
     }
 
+    // The three header expressions reference the single-source const fns in
+    // `quasar_lang::__internal`; the derive supplies the required-writable bit
+    // and the type's `AccountLoad` signer/executable consts.
     fn expected_expr(&self) -> proc_macro2::TokenStream {
         let ty = &self.ty;
-        let writable_bit: u32 = if self.writable { 0x01 << 16 } else { 0 };
-        // IS_SIGNER and IS_EXECUTABLE come from the type's AccountLoad impl:
-        // no domain knowledge needed here.
-        quote! {{
-            const __S: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
-            const __E: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
-            0xFFu32 | (__S as u32) << 8 | #writable_bit | (__E as u32) << 24
-        }}
+        let writable = self.writable;
+        quote! {
+            quasar_lang::__internal::header_expected(
+                <#ty as quasar_lang::account_load::AccountLoad>::IS_SIGNER,
+                #writable,
+                <#ty as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE,
+            )
+        }
     }
 
     fn mask_expr(&self) -> proc_macro2::TokenStream {
         let ty = &self.ty;
-        let writable_mask: u32 = if self.writable { 0xFF << 16 } else { 0 };
-        quote! {{
-            const __S: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
-            const __E: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
-            0xFFu32 | (if __S { 0xFFu32 << 8 } else { 0u32 }) | #writable_mask | (if __E { 0xFFu32 << 24 } else { 0u32 })
-        }}
+        let writable = self.writable;
+        quote! {
+            quasar_lang::__internal::header_mask(
+                <#ty as quasar_lang::account_load::AccountLoad>::IS_SIGNER,
+                #writable,
+                <#ty as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE,
+            )
+        }
     }
 
     fn flag_mask_expr(&self) -> proc_macro2::TokenStream {
         let ty = &self.ty;
-        let writable_mask: u32 = if self.writable { 0xFF << 16 } else { 0 };
-        quote! {{
-            const __S: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
-            const __E: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
-            (if __S { 0xFFu32 << 8 } else { 0u32 }) | #writable_mask | (if __E { 0xFFu32 << 24 } else { 0u32 })
-        }}
+        let writable = self.writable;
+        quote! {
+            quasar_lang::__internal::header_flag_mask(
+                <#ty as quasar_lang::account_load::AccountLoad>::IS_SIGNER,
+                #writable,
+                <#ty as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE,
+            )
+        }
     }
 }
 

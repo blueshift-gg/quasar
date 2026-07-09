@@ -67,16 +67,44 @@ pub mod __internal {
     // check so that extra permissions (e.g. signer when not required) are
     // silently accepted.
 
+    /// The expected header `u32` for a non-duplicate account with the given
+    /// required flags. The low byte is `NOT_BORROWED` (`0xFF`); each set flag
+    /// bit lands in its byte (signer=byte 1, writable=byte 2, executable=byte
+    /// 3). This is the single source of the header-bit layout: the accounts
+    /// derive emits calls to it instead of open-coding `<< 8`/`<< 16`/`<< 24`.
+    #[inline(always)]
+    pub const fn header_expected(signer: bool, writable: bool, executable: bool) -> u32 {
+        0xFF | (signer as u32) << 8 | (writable as u32) << 16 | (executable as u32) << 24
+    }
+
+    /// The header comparison mask: the borrow byte (`0xFF`) is always compared,
+    /// plus every required flag's full byte. Extra (unrequired) permissions are
+    /// masked out so they are silently accepted.
+    #[inline(always)]
+    pub const fn header_mask(signer: bool, writable: bool, executable: bool) -> u32 {
+        0xFF | header_flag_mask(signer, writable, executable)
+    }
+
+    /// The flag portion of [`header_mask`] without the `0xFF` borrow byte — the
+    /// mask used by the dup-aware parse path, which validates the borrow byte
+    /// separately.
+    #[inline(always)]
+    pub const fn header_flag_mask(signer: bool, writable: bool, executable: bool) -> u32 {
+        (if signer { 0xFFu32 << 8 } else { 0 })
+            | (if writable { 0xFFu32 << 16 } else { 0 })
+            | (if executable { 0xFFu32 << 24 } else { 0 })
+    }
+
     /// Not borrowed, no flags required.
-    pub const NODUP: u32 = 0xFF;
+    pub const NODUP: u32 = header_expected(false, false, false);
     /// Not borrowed + signer.
-    pub const NODUP_SIGNER: u32 = 0xFF | (1 << 8);
+    pub const NODUP_SIGNER: u32 = header_expected(true, false, false);
     /// Not borrowed + writable.
-    pub const NODUP_MUT: u32 = 0xFF | (1 << 16);
+    pub const NODUP_MUT: u32 = header_expected(false, true, false);
     /// Not borrowed + signer + writable.
-    pub const NODUP_MUT_SIGNER: u32 = 0xFF | (1 << 8) | (1 << 16);
+    pub const NODUP_MUT_SIGNER: u32 = header_expected(true, true, false);
     /// Not borrowed + executable.
-    pub const NODUP_EXECUTABLE: u32 = 0xFF | (1 << 24);
+    pub const NODUP_EXECUTABLE: u32 = header_expected(false, false, true);
 
     /// Size of the SVM account header: `RuntimeAccount` struct + 10 KiB
     /// realloc padding + trailing `u64` length.
@@ -649,6 +677,44 @@ mod tests {
         bytes[16] = 1;
         let addr = Address::new_from_array(bytes);
         assert!(!is_system_program(&addr));
+    }
+
+    /// The `header_expected` const fn reproduces the five `NODUP_*` constants
+    /// and the raw bit layout for every flag combination, so the derive-emitted
+    /// calls and the runtime constants can never drift apart.
+    #[test]
+    fn header_bits_match_nodup_constants() {
+        use super::__internal::{
+            header_expected, header_flag_mask, header_mask, NODUP, NODUP_EXECUTABLE, NODUP_MUT,
+            NODUP_MUT_SIGNER, NODUP_SIGNER,
+        };
+
+        assert_eq!(header_expected(false, false, false), 0xFF);
+        assert_eq!(header_expected(true, false, false), 0xFF | (1 << 8));
+        assert_eq!(header_expected(false, true, false), 0xFF | (1 << 16));
+        assert_eq!(header_expected(true, true, false), 0xFF | (1 << 8) | (1 << 16));
+        assert_eq!(header_expected(false, false, true), 0xFF | (1 << 24));
+
+        assert_eq!(NODUP, 0xFF);
+        assert_eq!(NODUP_SIGNER, 0xFF | (1 << 8));
+        assert_eq!(NODUP_MUT, 0xFF | (1 << 16));
+        assert_eq!(NODUP_MUT_SIGNER, 0xFF | (1 << 8) | (1 << 16));
+        assert_eq!(NODUP_EXECUTABLE, 0xFF | (1 << 24));
+
+        // mask = borrow byte + flag mask; flag mask = mask without the borrow byte.
+        for &(s, w, e) in &[
+            (false, false, false),
+            (true, false, false),
+            (false, true, false),
+            (false, false, true),
+            (true, true, true),
+        ] {
+            assert_eq!(header_mask(s, w, e), 0xFF | header_flag_mask(s, w, e));
+            let expected_flag = (if s { 0xFFu32 << 8 } else { 0 })
+                | (if w { 0xFFu32 << 16 } else { 0 })
+                | (if e { 0xFFu32 << 24 } else { 0 });
+            assert_eq!(header_flag_mask(s, w, e), expected_flag);
+        }
     }
 }
 

@@ -46,8 +46,7 @@ pub(super) fn generate_account(spec: AccountCodegenSpec<'_>) -> TokenStream {
     let discriminator_impl =
         super::traits::emit_discriminator_impl(name, disc_bytes, &bump_offset_impl);
     let owner_impl = super::traits::emit_owner_impl(name);
-    let space_impl =
-        super::traits::emit_space_impl(name, field_infos, has_dynamic, disc_len, &zc.zc_mod);
+    let space_impl = super::traits::emit_space_impl(name, has_dynamic, disc_len, &zc.zc_mod);
     let account_load_impl = if has_dynamic {
         // Dynamic/compact accounts: inline validation into AccountLoad::check.
         super::traits::emit_dynamic_account_load(super::traits::AccountLoadSpec {
