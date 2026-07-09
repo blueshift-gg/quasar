@@ -271,6 +271,17 @@ const _: () = assert!(core::mem::offset_of!(RuntimeAccount, is_signer) == 1);
 const _: () = assert!(core::mem::offset_of!(RuntimeAccount, is_writable) == 2);
 const _: () = assert!(core::mem::offset_of!(RuntimeAccount, executable) == 3);
 
+// Guard the destination offsets of the transmuted flag bytes. After the
+// transmute, `CpiAccount`'s `is_signer`/`is_writable`/`executable` occupy the
+// three low bytes of `RawCpiBuilder::flags` at offsets 48/49/50 (little-endian
+// byte 0/1/2 of the u64). `CpiAccount`'s own fields are crate-private in
+// solana-instruction-view, so we cannot `offset_of!` them directly; instead we
+// pin the equivalent offset on the layout-compatible `RawCpiBuilder` (whose
+// size and alignment already equal `CpiAccount`'s, asserted above). The runtime
+// test `cpi_account_from_view_matches_upstream_layout` cross-checks the actual
+// upstream field values.
+const _: () = assert!(core::mem::offset_of!(RawCpiBuilder, flags) == 48);
+
 /// Construct a `CpiAccount` from an `AccountView` with batched flag extraction.
 ///
 /// Reads the 4-byte header `[borrow_state, is_signer, is_writable, executable]`
