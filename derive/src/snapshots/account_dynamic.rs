@@ -2,10 +2,9 @@
 pub struct DynamicAccount {
     __view: AccountView,
 }
-/// Raw `#[repr(C)]` data layout for [`#name`].
-///
-/// Use this type when constructing account data values (e.g.,
-/// for [`Migrate`](quasar_lang::traits::Migrate) implementations).
+/**Raw `#[repr(C)]` data layout for [`DynamicAccount`].
+
+Use this type when constructing account data values (e.g., for [`Migrate`](quasar_lang::traits::Migrate) implementations).*/
 pub type DynamicAccountData = __dynamic_account_zc::DynamicAccountZc;
 unsafe impl StaticView for DynamicAccount {}
 impl AsAccountView for DynamicAccount {
