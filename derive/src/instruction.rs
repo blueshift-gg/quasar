@@ -12,8 +12,8 @@
 use {
     crate::helpers::{
         check_fixed_before_dynamic, classify_instruction_arg, extract_generic_inner_type,
-        is_unit_type, parse_discriminator_bytes, pod_dyn_to_compact_type, wire_layout, ArgClass,
-        ArgSite, InstructionArgs, PodDynField, WireLayout,
+        is_unit_type, pod_dyn_to_compact_type, validate_discriminator, wire_layout, ArgClass,
+        ArgSite, DiscCtx, InstructionArgs, PodDynField, WireLayout,
     },
     proc_macro::TokenStream,
     proc_macro2::TokenStream as TokenStream2,
@@ -328,23 +328,10 @@ pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> Token
         Err(e) => return e.to_compile_error(),
     };
     if let Some(disc_bytes) = &args.discriminator {
-        let disc_len = disc_bytes.len();
-        let disc_values = match parse_discriminator_bytes(disc_bytes) {
-            Ok(values) => values,
-            Err(e) => return e.to_compile_error(),
-        };
-
-        // Reject multi-byte all-zero discriminators: zeroed instruction data could
-        // accidentally match. Single-byte discriminators are fine (the dispatch
-        // macro's length check rejects empty instruction data).
-        if disc_len > 1 && disc_values.iter().all(|&byte| byte == 0) {
-            return syn::Error::new_spanned(
-                &disc_bytes[0],
-                "instruction discriminator must contain at least one non-zero byte; all-zero \
-                 multi-byte discriminators are dangerous because zeroed instruction data would \
-                 match",
-            )
-            .to_compile_error();
+        // Single-source all-zero policy (single-byte 0x00 is safe; multi-byte
+        // all-zero is rejected — see `validate_discriminator`).
+        if let Err(e) = validate_discriminator(disc_bytes, DiscCtx::Instruction) {
+            return e.to_compile_error();
         }
     }
 

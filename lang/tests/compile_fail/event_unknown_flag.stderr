@@ -1,0 +1,5 @@
+error: unknown `#[event]` argument `heap`; only `discriminator` is supported
+ --> tests/compile_fail/event_unknown_flag.rs:8:9
+  |
+8 | #[event(heap)]
+  |         ^^^^

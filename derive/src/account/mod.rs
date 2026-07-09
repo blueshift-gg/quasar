@@ -12,8 +12,8 @@ mod traits;
 use {
     crate::{
         helpers::{
-            classify_option_pod_dynamic, classify_pod_dynamic, validate_discriminator_not_zero,
-            AccountAttr,
+            classify_option_pod_dynamic, classify_pod_dynamic, validate_discriminator, AccountAttr,
+            DiscCtx,
         },
         seeds,
     },
@@ -100,7 +100,7 @@ pub(crate) fn account_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
     let gen_set_inner = args.set_inner;
     let unsafe_no_disc = args.unsafe_no_disc;
     let (disc_bytes, disc_values) = if !args.disc_bytes.is_empty() {
-        let values = match validate_discriminator_not_zero(&args.disc_bytes) {
+        let values = match validate_discriminator(&args.disc_bytes, DiscCtx::Account) {
             Ok(values) => values,
             Err(e) => return e.to_compile_error(),
         };

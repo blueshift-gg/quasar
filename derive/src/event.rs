@@ -2,7 +2,7 @@
 //! trait impl for emission via `sol_log_data` or self-CPI.
 
 use {
-    crate::helpers::{parse_discriminator_bytes, InstructionArgs},
+    crate::helpers::{validate_discriminator, DiscCtx, EventArgs},
     proc_macro::TokenStream,
     proc_macro2::TokenStream as TokenStream2,
     quote::quote,
@@ -38,7 +38,7 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 pub(crate) fn event_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
-    let args = match syn::parse2::<InstructionArgs>(attr) {
+    let args = match syn::parse2::<EventArgs>(attr) {
         Ok(args) => args,
         Err(e) => return e.to_compile_error(),
     };
@@ -120,7 +120,7 @@ pub(crate) fn event_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream
 
     // IDL fragment emission
     let name_str = name.to_string();
-    let disc_values = match parse_discriminator_bytes(disc_bytes) {
+    let disc_values = match validate_discriminator(disc_bytes, DiscCtx::Event) {
         Ok(values) => values,
         Err(e) => return e.to_compile_error(),
     };

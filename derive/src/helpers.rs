@@ -194,6 +194,37 @@ impl Parse for InstructionArgs {
     }
 }
 
+/// `#[event(...)]` arguments: an event accepts ONLY `discriminator`. Unlike
+/// `InstructionArgs`, `heap`/`raw` are rejected (previously they parsed and were
+/// silently discarded).
+pub(crate) struct EventArgs {
+    pub discriminator: Option<Vec<LitInt>>,
+}
+
+impl Parse for EventArgs {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let mut discriminator = None;
+        while !input.is_empty() {
+            let ident: Ident = input.parse()?;
+            if ident == "discriminator" {
+                if discriminator.is_some() {
+                    return Err(duplicate_arg_error(&ident));
+                }
+                discriminator = Some(parse_discriminator_value(input)?);
+            } else {
+                return Err(syn::Error::new_spanned(
+                    &ident,
+                    format!(
+                        "unknown `#[event]` argument `{ident}`; only `discriminator` is supported"
+                    ),
+                ));
+            }
+            let _ = input.parse::<Option<Token![,]>>();
+        }
+        Ok(Self { discriminator })
+    }
+}
+
 fn parse_discriminator_value(input: ParseStream) -> syn::Result<Vec<LitInt>> {
     let _: Token![=] = input.parse()?;
     if input.peek(syn::token::Bracket) {
@@ -224,14 +255,53 @@ pub(crate) fn parse_discriminator_bytes(disc_bytes: &[LitInt]) -> syn::Result<Ve
         .collect()
 }
 
-pub(crate) fn validate_discriminator_not_zero(disc_bytes: &[LitInt]) -> syn::Result<Vec<u8>> {
+/// Where a discriminator is declared, selecting the all-zero rejection policy.
+#[derive(Clone, Copy)]
+pub(crate) enum DiscCtx {
+    Account,
+    Instruction,
+    Event,
+}
+
+/// Parse and validate a discriminator, rejecting all-zero values per context.
+/// This is the single definition site for the all-zero policy across
+/// `#[account]`, `#[instruction]`, and `#[event]`.
+pub(crate) fn validate_discriminator(
+    disc_bytes: &[LitInt],
+    cx: DiscCtx,
+) -> syn::Result<Vec<u8>> {
     let values = parse_discriminator_bytes(disc_bytes)?;
-    if values.iter().all(|&b| b == 0) {
-        return Err(syn::Error::new_spanned(
-            &disc_bytes[0],
+    let all_zero = values.iter().all(|&b| b == 0);
+    let (reject, message) = match cx {
+        // An all-zero account discriminator is indistinguishable from
+        // uninitialized (zeroed) account data.
+        DiscCtx::Account => (
+            all_zero,
             "discriminator must contain at least one non-zero byte; all-zero discriminators are \
              indistinguishable from uninitialized account data",
-        ));
+        ),
+        // Reject multi-byte all-zero discriminators: zeroed instruction data
+        // could accidentally match. A single-byte 0x00 discriminator is safe:
+        // the dispatch macro's length check rejects empty instruction data
+        // before comparing, so empty data can never match a 1-byte value.
+        DiscCtx::Instruction => (
+            all_zero && values.len() > 1,
+            "instruction discriminator must contain at least one non-zero byte; all-zero \
+             multi-byte discriminators are dangerous because zeroed instruction data would match",
+        ),
+        // The planned all-zero event tightening is HELD: the in-tree escrow
+        // example emits `#[event(discriminator = 0)]` (an intentional 0/1/2
+        // sequence), so rejecting it would break a shipped example — the E4
+        // STOP condition. Event discriminators keep the current (no-op) policy;
+        // flip `reject` to `all_zero` here once the example is migrated.
+        DiscCtx::Event => (
+            false,
+            "event discriminator must contain at least one non-zero byte; all-zero discriminators \
+             are indistinguishable from zeroed event data",
+        ),
+    };
+    if reject {
+        return Err(syn::Error::new_spanned(&disc_bytes[0], message));
     }
     Ok(values)
 }
