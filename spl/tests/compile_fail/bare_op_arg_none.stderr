@@ -15,7 +15,7 @@ error[E0308]: mismatched types
 13 |     #[account(token(mint = None, authority = authority))]
    |                     ---- arguments to this method are incorrect
    |
-   = note: expected reference `&quasar_lang::entrypoint::AccountView`
+   = note: expected reference `&AccountView`
                    found enum `Option<_>`
 note: method defined here
   --> src/accounts/token.rs

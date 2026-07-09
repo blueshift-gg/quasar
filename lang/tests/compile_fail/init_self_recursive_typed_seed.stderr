@@ -17,7 +17,7 @@ help: call `Into::into` on this expression to convert `PodU32` into `u32`
 21 |     #[account(mut, init, payer = payer, address = Item::seeds(item.namespace.into()))]
    |                                                                             +++++++
 
-error[E0609]: no field `namespace` on type `&mut quasar_lang::entrypoint::AccountView`
+error[E0609]: no field `namespace` on type `&mut AccountView`
   --> tests/compile_fail/init_self_recursive_typed_seed.rs:21:68
    |
 21 |     #[account(mut, init, payer = payer, address = Item::seeds(item.namespace))]
