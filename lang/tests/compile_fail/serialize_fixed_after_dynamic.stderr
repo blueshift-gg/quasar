@@ -1,0 +1,5 @@
+error: fixed fields must precede all borrowed fields
+  --> tests/compile_fail/serialize_fixed_after_dynamic.rs:12:5
+   |
+12 |     pub amount: u64,
+   |     ^^^^^^^^^^^^^^^

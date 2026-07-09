@@ -1,9 +1,9 @@
 pub(crate) use quasar_schema::{pascal_to_snake, snake_to_pascal, to_camel_case as snake_to_camel};
 use {
-    quote::quote,
+    quote::{quote, ToTokens},
     syn::{
         parse::{Parse, ParseStream},
-        Expr, ExprLit, GenericArgument, Ident, Lit, LitInt, PathArguments, Token, Type,
+        Attribute, Expr, ExprLit, GenericArgument, Ident, Lit, LitInt, PathArguments, Token, Type,
     },
 };
 
@@ -524,6 +524,127 @@ pub(crate) fn classify_borrowed_as_compact(
         }
     }
     None
+}
+
+/// The wire class of one instruction argument (handler param or borrowed
+/// serialize field). This is the single classification consumed by the decode
+/// path (`instruction.rs`), the borrowed-struct serializer (`serialize.rs`),
+/// and — as its type-only `is_dynamic` projection via
+/// [`instruction_arg_is_compact`] — the client/IDL layout choice.
+pub(crate) enum ArgClass {
+    /// Fixed-size arg: decoded through its `InstructionArg::Zc` companion.
+    Fixed(Type),
+    /// `String<N,P>` / `Vec<T,N,P>`: a compact tail field.
+    PodDyn(PodDynField),
+    /// `Option<String<N,P>>` / `Option<Vec<T,N,P>>`: a compact tail field.
+    OptionPodDyn(PodDynField),
+    /// Borrowed `&str` / `&[T]` desugared via `#[max(N)]`: a compact tail field.
+    Borrowed(PodDynField),
+    /// A lifetime-carrying struct decoded whole via `decode_compact` (must be the
+    /// sole handler arg). Not a compact tail field itself.
+    BorrowedGroup(Type),
+}
+
+impl ArgClass {
+    /// Whether this arg contributes a compact tail field (the compact wire
+    /// layout is selected iff any arg is dynamic).
+    pub(crate) fn is_dynamic(&self) -> bool {
+        matches!(
+            self,
+            ArgClass::PodDyn(_) | ArgClass::OptionPodDyn(_) | ArgClass::Borrowed(_)
+        )
+    }
+}
+
+/// Where an argument is being classified, so the borrowed-missing-`#[max]`
+/// diagnostic keeps its domain-specific wording (handler args vs serialize
+/// fields).
+#[derive(Clone, Copy)]
+pub(crate) enum ArgSite {
+    Handler,
+    SerializeField,
+}
+
+/// The wire layout selected for an instruction's argument list.
+pub(crate) enum WireLayout {
+    /// Every arg is fixed: read via one `#[repr(C)]` ZC struct cast.
+    Fixed,
+    /// At least one arg is dynamic: read via the zeropod compact schema.
+    Compact,
+}
+
+/// Classify one instruction argument once. `attrs` carries the field/param
+/// attributes (`#[max(N)]` for borrowed args). Rejects an invalid explicit
+/// length-prefix and a borrowed arg missing `#[max]`.
+pub(crate) fn classify_instruction_arg(
+    ty: &Type,
+    attrs: &[Attribute],
+    site: ArgSite,
+) -> syn::Result<ArgClass> {
+    // Reject an invalid explicit length-prefix (e.g. `String<16, f32>`) before
+    // it silently defaults to a narrower prefix in the schema.
+    validate_dynamic_prefix(ty)?;
+    if let Some(pd) = classify_pod_dynamic(ty) {
+        return Ok(ArgClass::PodDyn(pd));
+    }
+    if let Some(pd) = classify_option_pod_dynamic(ty) {
+        return Ok(ArgClass::OptionPodDyn(pd));
+    }
+    if matches!(ty, Type::Reference(_)) {
+        return match parse_max_attr(attrs) {
+            Some(Ok((max_n, pfx))) => match classify_borrowed_as_compact(ty, max_n, pfx) {
+                Some(pd) => Ok(ArgClass::Borrowed(pd)),
+                None => Err(syn::Error::new_spanned(
+                    ty,
+                    "unsupported borrowed type; use &str or &[T]",
+                )),
+            },
+            Some(Err(e)) => Err(e),
+            None => Err(syn::Error::new_spanned(ty, missing_max_message(site))),
+        };
+    }
+    if classify_lifetime_arg(ty) {
+        return Ok(ArgClass::BorrowedGroup(ty.clone()));
+    }
+    Ok(ArgClass::Fixed(ty.clone()))
+}
+
+fn missing_max_message(site: ArgSite) -> &'static str {
+    match site {
+        ArgSite::Handler => "borrowed instruction args require #[max(N)] annotation",
+        ArgSite::SerializeField => {
+            "borrowed fields in QuasarSerialize require #[max(N)] annotation"
+        }
+    }
+}
+
+/// The wire layout of a classified argument list: compact iff any arg is
+/// dynamic.
+pub(crate) fn wire_layout(args: &[ArgClass]) -> WireLayout {
+    if args.iter().any(ArgClass::is_dynamic) {
+        WireLayout::Compact
+    } else {
+        WireLayout::Fixed
+    }
+}
+
+/// Enforce that no fixed item follows a dynamic one. `is_dynamic` is parallel to
+/// `items`; the error is spanned at the offending fixed item with `message`.
+/// Shared by the `#[instruction]` handler decode, `#[account]` field layout, and
+/// the borrowed-struct serializer.
+pub(crate) fn check_fixed_before_dynamic<T: ToTokens>(
+    items: &[T],
+    is_dynamic: &[bool],
+    message: &str,
+) -> syn::Result<()> {
+    let first_dynamic = is_dynamic.iter().position(|&d| d);
+    let last_fixed = is_dynamic.iter().rposition(|&d| !d);
+    if let (Some(fd), Some(lf)) = (first_dynamic, last_fixed) {
+        if lf > fd {
+            return Err(syn::Error::new_spanned(&items[lf], message));
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn prefix_bytes_to_rust_type(prefix_bytes: usize) -> proc_macro2::TokenStream {

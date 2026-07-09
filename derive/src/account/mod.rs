@@ -164,17 +164,15 @@ pub(crate) fn account_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
     let has_pod_dynamic = pod_field_infos.iter().any(|fi| fi.pod_dyn.is_some());
 
     if has_pod_dynamic {
-        // Fixed fields must precede Pod-dynamic fields.
-        let first_pod_dyn = pod_field_infos.iter().position(|fi| fi.pod_dyn.is_some());
-        let last_fixed = pod_field_infos.iter().rposition(|fi| fi.pod_dyn.is_none());
-        if let (Some(fd), Some(lf)) = (first_pod_dyn, last_fixed) {
-            if lf > fd {
-                return syn::Error::new_spanned(
-                    &fields_data[lf],
-                    "fixed fields must precede all PodString/PodVec fields",
-                )
-                .to_compile_error();
-            }
+        // Fixed fields must precede Pod-dynamic fields (shared ordering check).
+        let fields: Vec<&syn::Field> = fields_data.iter().collect();
+        let is_dynamic: Vec<bool> = pod_field_infos.iter().map(|fi| fi.pod_dyn.is_some()).collect();
+        if let Err(e) = crate::helpers::check_fixed_before_dynamic(
+            &fields,
+            &is_dynamic,
+            "fixed fields must precede all PodString/PodVec fields",
+        ) {
+            return e.to_compile_error();
         }
         if unsafe_no_disc {
             return syn::Error::new_spanned(

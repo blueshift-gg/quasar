@@ -11,9 +11,9 @@
 
 use {
     crate::helpers::{
-        classify_borrowed_as_compact, classify_lifetime_arg, classify_option_pod_dynamic,
-        classify_pod_dynamic, extract_generic_inner_type, is_unit_type, parse_discriminator_bytes,
-        parse_max_attr, pod_dyn_to_compact_type, InstructionArgs, PodDynField,
+        check_fixed_before_dynamic, classify_instruction_arg, extract_generic_inner_type,
+        is_unit_type, parse_discriminator_bytes, pod_dyn_to_compact_type, wire_layout, ArgClass,
+        ArgSite, InstructionArgs, PodDynField, WireLayout,
     },
     proc_macro::TokenStream,
     proc_macro2::TokenStream as TokenStream2,
@@ -155,95 +155,56 @@ fn emit_decode_and_tail(
             }
         }
 
-        /// Per-arg classification: fixed-size or dynamic (compact) decode.
-        enum ArgClass {
-            Fixed,
-            PodDyn(PodDynField),
-            OptionalPodDyn(PodDynField),
-        }
-
+        // Single shared classifier: fixed / compact-tail (pod-dyn, optional
+        // pod-dyn, borrowed) / grouped-borrowed-struct.
         let mut arg_classes: Vec<ArgClass> = Vec::with_capacity(remaining.len());
         for pt in remaining {
-            // Reject an invalid explicit length-prefix (e.g. `String<16, f32>`)
-            // before it silently defaults to a 1-byte prefix in the schema.
-            crate::helpers::validate_dynamic_prefix(&pt.ty)?;
-            if let Some(pd) = classify_pod_dynamic(&pt.ty) {
-                arg_classes.push(ArgClass::PodDyn(pd));
-            } else if let Some(pd) = classify_option_pod_dynamic(&pt.ty) {
-                arg_classes.push(ArgClass::OptionalPodDyn(pd));
-            } else if matches!(&*pt.ty, Type::Reference(_)) {
-                // Borrowed arg: desugar to compact via #[max(N)]
-                match parse_max_attr(&pt.attrs) {
-                    Some(Ok((max_n, pfx))) => {
-                        match classify_borrowed_as_compact(&pt.ty, max_n, pfx) {
-                            Some(pd) => arg_classes.push(ArgClass::PodDyn(pd)),
-                            None => {
-                                return Err(syn::Error::new_spanned(
-                                    &pt.ty,
-                                    "unsupported borrowed type; use &str or &[T]",
-                                ));
-                            }
-                        }
-                    }
-                    Some(Err(e)) => return Err(e),
-                    None => {
-                        return Err(syn::Error::new_spanned(
-                            &pt.ty,
-                            "borrowed instruction args require #[max(N)] annotation",
-                        ));
-                    }
-                }
-            } else if classify_lifetime_arg(&pt.ty) {
-                // Grouped borrowed struct (e.g., MintArgs<'a>): must be the
-                // only arg.
-                if remaining.len() != 1 {
-                    return Err(syn::Error::new_spanned(
-                        &pt.ty,
-                        "a grouped borrowed struct must be the only instruction arg (besides ctx)",
-                    ));
-                }
-
-                // Generate: let arg_name = <ArgType>::decode_compact(&ctx.data)?;
-                let arg_name = &field_names[0];
-                let arg_ty = &pt.ty;
-                out.push(syn::parse_quote!(
-                    let #arg_name = <#arg_ty>::decode_compact(&#param_ident.data)?;
-                ));
-
-                out.push(syn::parse_quote!(
-                    #param_ident.data = &[];
-                ));
-
-                out.extend(emit_handler_tail(
-                    param_ident,
-                    stmts,
-                    has_return_data,
-                    return_ok_type,
-                ));
-                return Ok(out);
-            } else {
-                arg_classes.push(ArgClass::Fixed);
-            }
+            arg_classes.push(classify_instruction_arg(&pt.ty, &pt.attrs, ArgSite::Handler)?);
         }
 
-        let first_dynamic = arg_classes
+        // A grouped borrowed struct is decoded whole and must be the only arg.
+        if let Some(pos) = arg_classes
             .iter()
-            .position(|cls| !matches!(cls, ArgClass::Fixed));
-        let last_fixed = arg_classes
-            .iter()
-            .rposition(|cls| matches!(cls, ArgClass::Fixed));
-        if let (Some(fd), Some(lf)) = (first_dynamic, last_fixed) {
-            if lf > fd {
+            .position(|cls| matches!(cls, ArgClass::BorrowedGroup(_)))
+        {
+            if remaining.len() != 1 {
                 return Err(syn::Error::new_spanned(
-                    &remaining[lf],
-                    "fixed instruction args must precede all dynamic or borrowed args",
+                    &remaining[pos].ty,
+                    "a grouped borrowed struct must be the only instruction arg (besides ctx)",
                 ));
             }
+
+            // Generate: let arg_name = <ArgType>::decode_compact(&ctx.data)?;
+            let arg_name = &field_names[0];
+            let arg_ty = &remaining[0].ty;
+            out.push(syn::parse_quote!(
+                let #arg_name = <#arg_ty>::decode_compact(&#param_ident.data)?;
+            ));
+
+            out.push(syn::parse_quote!(
+                #param_ident.data = &[];
+            ));
+
+            out.extend(emit_handler_tail(
+                param_ident,
+                stmts,
+                has_return_data,
+                return_ok_type,
+            ));
+            return Ok(out);
         }
+
+        let is_dynamic: Vec<bool> = arg_classes.iter().map(ArgClass::is_dynamic).collect();
+        check_fixed_before_dynamic(
+            remaining,
+            &is_dynamic,
+            "fixed instruction args must precede all dynamic or borrowed args",
+        )?;
 
         for cls in &arg_classes {
             if let ArgClass::PodDyn(PodDynField::Vec { elem, .. })
-            | ArgClass::OptionalPodDyn(PodDynField::Vec { elem, .. }) = cls
+            | ArgClass::OptionPodDyn(PodDynField::Vec { elem, .. })
+            | ArgClass::Borrowed(PodDynField::Vec { elem, .. }) = cls
             {
                 out.push(syn::parse_quote!(
                     const _: () = assert!(
@@ -254,11 +215,7 @@ fn emit_decode_and_tail(
             }
         }
 
-        let has_pod_dyn = arg_classes
-            .iter()
-            .any(|cls| matches!(cls, ArgClass::PodDyn(_) | ArgClass::OptionalPodDyn(_)));
-
-        if has_pod_dyn {
+        if let WireLayout::Compact = wire_layout(&arg_classes) {
             // Alias quasar_lang's re-export so `zeropod::*` paths emitted by
             // the ZeroPod derive resolve without a direct crate dependency.
             out.push(syn::parse_quote!(
@@ -270,14 +227,19 @@ fn emit_decode_and_tail(
                 .iter()
                 .zip(remaining.iter())
                 .map(|(cls, pt)| match cls {
-                    ArgClass::Fixed => {
+                    ArgClass::Fixed(_) => {
                         let ty = &pt.ty;
                         quote!(#ty)
                     }
-                    ArgClass::PodDyn(ref pd) => pod_dyn_to_compact_type(pd),
-                    ArgClass::OptionalPodDyn(ref pd) => {
+                    ArgClass::PodDyn(ref pd) | ArgClass::Borrowed(ref pd) => {
+                        pod_dyn_to_compact_type(pd)
+                    }
+                    ArgClass::OptionPodDyn(ref pd) => {
                         let inner = pod_dyn_to_compact_type(pd);
                         quote!(Option<#inner>)
+                    }
+                    ArgClass::BorrowedGroup(_) => {
+                        ice!("grouped borrowed struct handled before compact lowering")
                     }
                 })
                 .collect();
@@ -306,7 +268,7 @@ fn emit_decode_and_tail(
                 let name = &field_names[i];
                 let ty = &remaining[i].ty;
                 match cls {
-                    ArgClass::Fixed => {
+                    ArgClass::Fixed(_) => {
                         // Match the fixed-only path: validate each fixed field's
                         // ZC bytes before reading, so a malformed inline value
                         // (bad bool/enum/etc.) is rejected rather than decoded.
@@ -318,10 +280,13 @@ fn emit_decode_and_tail(
                             let #name = <#ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(&__ref.#name);
                         ));
                     }
-                    ArgClass::PodDyn(_) | ArgClass::OptionalPodDyn(_) => {
+                    ArgClass::PodDyn(_) | ArgClass::OptionPodDyn(_) | ArgClass::Borrowed(_) => {
                         out.push(syn::parse_quote!(
                             let #name = __ref.#name();
                         ));
+                    }
+                    ArgClass::BorrowedGroup(_) => {
+                        ice!("grouped borrowed struct handled before compact lowering")
                     }
                 }
             }

@@ -15,7 +15,8 @@
 
 use {
     crate::helpers::{
-        canonical_instruction_arg_type, classify_borrowed_as_compact, map_to_pod_type, PodDynField,
+        canonical_instruction_arg_type, check_fixed_before_dynamic, classify_instruction_arg,
+        map_to_pod_type, ArgClass, ArgSite, PodDynField,
     },
     proc_macro::TokenStream,
     proc_macro2::TokenStream as TokenStream2,
@@ -393,31 +394,30 @@ fn derive_borrowed_compact(input: DeriveInput, fields: Vec<Field>) -> TokenStrea
     let mut field_classes: Vec<BorrowedFieldClass> = Vec::with_capacity(fields.len());
     for field in &fields {
         if let Type::Reference(_) = &field.ty {
-            match crate::helpers::parse_max_attr(&field.attrs) {
-                Some(Ok((max_n, pfx))) => {
-                    match classify_borrowed_as_compact(&field.ty, max_n, pfx) {
-                        Some(pd) => field_classes.push(BorrowedFieldClass::Dynamic(pd)),
-                        None => {
-                            return syn::Error::new_spanned(
-                                &field.ty,
-                                "unsupported borrowed type; use &str or &[T]",
-                            )
-                            .to_compile_error();
-                        }
-                    }
-                }
-                Some(Err(e)) => return e.to_compile_error(),
-                None => {
-                    return syn::Error::new_spanned(
-                        &field.ty,
-                        "borrowed fields in QuasarSerialize require #[max(N)] annotation",
-                    )
-                    .to_compile_error();
-                }
+            // Borrowed field: route the `&str`/`&[T]` + `#[max(N)]` desugaring
+            // through the shared classifier (same missing-max/unsupported
+            // diagnostics as the `#[instruction]` handler decode).
+            match classify_instruction_arg(&field.ty, &field.attrs, ArgSite::SerializeField) {
+                Ok(ArgClass::Borrowed(pd)) => field_classes.push(BorrowedFieldClass::Dynamic(pd)),
+                Ok(_) => ice!("a reference field classifies as Borrowed or errors"),
+                Err(e) => return e.to_compile_error(),
             }
         } else {
             field_classes.push(BorrowedFieldClass::Fixed);
         }
+    }
+
+    // Fixed fields must precede all borrowed (compact tail) fields.
+    let is_dynamic: Vec<bool> = field_classes
+        .iter()
+        .map(|c| matches!(c, BorrowedFieldClass::Dynamic(_)))
+        .collect();
+    if let Err(e) = check_fixed_before_dynamic(
+        &fields,
+        &is_dynamic,
+        "fixed fields must precede all borrowed fields",
+    ) {
+        return e.to_compile_error();
     }
 
     let schema_field_types: Vec<proc_macro2::TokenStream> = field_classes

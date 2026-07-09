@@ -100,6 +100,24 @@ pub(super) struct InstructionSpec {
     pub docs: Vec<String>,
 }
 
+/// The compact `DynString<P>` / `DynVec<T, P>` client type for one dynamic pod
+/// field — the single mapping shared by the dynamic, optional-dynamic, and
+/// borrowed arms of `map_client_arg_type`.
+fn dyn_client_type(pd: &PodDynField) -> Type {
+    match pd {
+        PodDynField::Str { prefix_bytes, .. } => {
+            let pfx_ty = prefix_bytes_to_rust_type(*prefix_bytes);
+            syn::parse_quote!(quasar_lang::client::DynString<#pfx_ty>)
+        }
+        PodDynField::Vec {
+            elem, prefix_bytes, ..
+        } => {
+            let pfx_ty = prefix_bytes_to_rust_type(*prefix_bytes);
+            syn::parse_quote!(quasar_lang::client::DynVec<#elem, #pfx_ty>)
+        }
+    }
+}
+
 /// Map a handler argument to its off-chain client type. Fixed args pass through;
 /// dynamic (`String<N>`/`Vec<T,N>`), optional-dynamic, and borrowed (`&str`/
 /// `&[T]` + `#[max]`) args map to the compact `DynString`/`DynVec` client types.
@@ -110,31 +128,10 @@ fn map_client_arg_type(pt: &syn::PatType) -> syn::Result<Type> {
         // encoding the struct into the wire format.
         syn::parse_quote!(::alloc::vec::Vec<u8>)
     } else if let Some(pod_dyn) = classify_pod_dynamic(&pt.ty) {
-        match pod_dyn {
-            PodDynField::Str { prefix_bytes, .. } => {
-                let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
-                syn::parse_quote!(quasar_lang::client::DynString<#pfx_ty>)
-            }
-            PodDynField::Vec {
-                elem, prefix_bytes, ..
-            } => {
-                let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
-                syn::parse_quote!(quasar_lang::client::DynVec<#elem, #pfx_ty>)
-            }
-        }
+        dyn_client_type(&pod_dyn)
     } else if let Some(pod_dyn) = classify_option_pod_dynamic(&pt.ty) {
-        match pod_dyn {
-            PodDynField::Str { prefix_bytes, .. } => {
-                let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
-                syn::parse_quote!(Option<quasar_lang::client::DynString<#pfx_ty>>)
-            }
-            PodDynField::Vec {
-                elem, prefix_bytes, ..
-            } => {
-                let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
-                syn::parse_quote!(Option<quasar_lang::client::DynVec<#elem, #pfx_ty>>)
-            }
-        }
+        let inner = dyn_client_type(&pod_dyn);
+        syn::parse_quote!(Option<#inner>)
     } else if matches!(&*pt.ty, Type::Reference(_)) {
         // Borrowed arg (&str, &[T]): parse #[max(N)] and map
         // to compact client type, same wire format as String<N>/Vec<T,N>.
@@ -143,23 +140,11 @@ fn map_client_arg_type(pt: &syn::PatType) -> syn::Result<Type> {
             Some(Err(e)) => return Err(e),
             None => (0, 0),
         };
-        if let Some(pd) = classify_borrowed_as_compact(&pt.ty, max_n, pfx) {
-            match pd {
-                PodDynField::Str { prefix_bytes, .. } => {
-                    let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
-                    syn::parse_quote!(quasar_lang::client::DynString<#pfx_ty>)
-                }
-                PodDynField::Vec {
-                    elem, prefix_bytes, ..
-                } => {
-                    let pfx_ty = prefix_bytes_to_rust_type(prefix_bytes);
-                    syn::parse_quote!(quasar_lang::client::DynVec<#elem, #pfx_ty>)
-                }
-            }
-        } else {
+        match classify_borrowed_as_compact(&pt.ty, max_n, pfx) {
+            Some(pd) => dyn_client_type(&pd),
             // Unsupported borrowed type: pass through; #[instruction]
             // will emit the real error.
-            (*pt.ty).clone()
+            None => (*pt.ty).clone(),
         }
     } else {
         (*pt.ty).clone()
