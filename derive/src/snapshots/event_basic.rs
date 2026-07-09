@@ -10,7 +10,7 @@ const _: () = assert!(
     "event struct has padding; cannot use memcpy serialization"
 );
 impl quasar_lang::traits::Event for MakeEvent {
-    const DISCRIMINATOR: &'static [u8] = &[0];
+    const DISCRIMINATOR: &'static [u8] = &[1];
     const DATA_SIZE: usize = 80usize;
     #[inline(always)]
     fn write_data(&self, buf: &mut [u8]) {
@@ -65,7 +65,7 @@ quasar_lang::__private_inventory::submit! {
     quasar_lang::idl_build::__reexport::IdlTypeDef,) {
     (quasar_lang::idl_build::__reexport::IdlEventDef { name :
     quasar_lang::idl_build::s("MakeEvent"), discriminator :
-    quasar_lang::idl_build::vec![0u8], docs : quasar_lang::idl_build::Vec::new(), ty :
+    quasar_lang::idl_build::vec![1u8], docs : quasar_lang::idl_build::Vec::new(), ty :
     None, }, quasar_lang::idl_build::__reexport::IdlTypeDef { name :
     quasar_lang::idl_build::s("MakeEvent"), kind :
     quasar_lang::idl_build::__reexport::IdlTypeDefKind::Struct, docs :

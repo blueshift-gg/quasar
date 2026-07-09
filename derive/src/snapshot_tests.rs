@@ -273,7 +273,7 @@ fn account_dynamic() {
 /// Event with a fixed byte discriminator: `emit_log` + IDL fragment.
 #[test]
 fn event_basic() {
-    let attr = quote! { discriminator = 0 };
+    let attr = quote! { discriminator = 1 };
     let item = quote! {
         pub struct MakeEvent {
             pub escrow: Address,
