@@ -1,5 +1,24 @@
-/// `MAX_PDA_SLICES` from the parent module is Solana-target-only, so proofs
-/// keep their own copy of the bound they verify.
+//! PDA derivation proofs.
+//!
+//! `read_bump_offset_within_bounds` calls production code directly
+//! (`super::read_bump_from_account`, host-reachable).
+//!
+//! The two `*_indices_within_bounds` proofs re-derive the seed-slot arithmetic
+//! against a local `MAX_PDA_SLICES` copy rather than the production functions.
+//! This is deliberate and currently unavoidable: `MAX_PDA_SLICES` and the
+//! slot-array construction in `verify_program_address` /
+//! `based_try_find_program_address` / `find_bump_for_address` live entirely
+//! inside `#[cfg(any(target_os = "solana", target_arch = "bpf"))]` blocks, so
+//! on Kani's host target those functions take the `Err(InvalidArgument)`
+//! fallback and never execute the arithmetic under proof. Reaching the real
+//! index logic requires hoisting the slot build into a host-reachable
+//! `build_pda_input(seeds, program_id, bump, slots)` helper (planned as the F5
+//! extraction); until that seam exists these proofs stay as-is. Keep the local
+//! bound in sync with `pda::MAX_PDA_SLICES` (`pda_slice_capacity_is_exact`
+//! pins the seed-count decomposition).
+
+/// Local copy of `pda::MAX_PDA_SLICES` (Solana-target-only in production; see
+/// module comment).
 const MAX_PDA_SLICES: usize = 19;
 
 /// Prove `verify_program_address` index arithmetic is safe.
