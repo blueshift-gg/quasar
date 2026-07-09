@@ -389,6 +389,15 @@ fn auto_discriminator(
     ))
 }
 
+/// Fold an error into the running accumulator via `syn::Error::combine`, so
+/// independent instruction errors surface together in one compile cycle.
+fn combine_err(acc: &mut Option<syn::Error>, e: syn::Error) {
+    match acc {
+        Some(prev) => prev.combine(e),
+        None => *acc = Some(e),
+    }
+}
+
 pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
     program_inner(attr.into(), item.into()).into()
 }
@@ -502,6 +511,16 @@ pub(crate) fn program_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
         .collect::<BTreeSet<_>>();
     let mut next_auto = 0u16;
 
+    // Record-and-continue accumulator for the spec loop: an instruction whose
+    // signature (or later spec building) fails is skipped, but only AFTER its
+    // discriminator — including any auto value consumed above — is committed to
+    // `seen_discriminators`. That keeps auto-disc assignment identical between
+    // the erroring compile and the fixed one, so no other instruction's number
+    // shifts (guarded by `auto_instruction_discriminator.rs`). Disc-level and
+    // attr-parse errors stay fail-fast: they either recur from the first scan or
+    // cascade (auto-disc exhaustion), so accumulating them adds only noise.
+    let mut errors: Option<syn::Error> = None;
+
     for item in items {
         if let Item::Fn(func) = item {
             for attr in &func.attrs {
@@ -564,7 +583,13 @@ pub(crate) fn program_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
 
                     let ctx_kind = match CtxKind::classify(&func.sig) {
                         Ok(k) => k,
-                        Err(e) => return e.to_compile_error(),
+                        // Signature error: this instruction's disc is already
+                        // recorded (continuity preserved); record and move on so
+                        // sibling instructions' signature errors also surface.
+                        Err(e) => {
+                            combine_err(&mut errors, e);
+                            break;
+                        }
                     };
                     let inner_ty = ctx_kind.inner_ty();
                     let accounts_type = quote!(#inner_ty);
@@ -690,15 +715,23 @@ pub(crate) fn program_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
         .iter()
         .find(|(v, _)| v.first() == Some(&0xFF))
     {
-        return syn::Error::new_spanned(
-            &module.ident,
-            format!(
-                "instruction `{}` has a discriminator starting with 0xFF which is reserved for \
-                 events",
-                fn_name
+        combine_err(
+            &mut errors,
+            syn::Error::new_spanned(
+                &module.ident,
+                format!(
+                    "instruction `{}` has a discriminator starting with 0xFF which is reserved \
+                     for events",
+                    fn_name
+                ),
             ),
-        )
-        .to_compile_error();
+        );
+    }
+
+    // Never emit dispatch for a partial instruction set: surface every recorded
+    // error and stop before codegen.
+    if let Some(e) = errors {
+        return e.to_compile_error();
     }
 
     let client_items: Vec<TokenStream2> = instruction_specs

@@ -26,6 +26,9 @@ pub(super) fn lower_semantics(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
     instruction_args: &[InstructionArg],
 ) -> syn::Result<Vec<FieldSemantics>> {
+    // Parse each field's directives up front (fail-fast: a malformed attribute
+    // poisons its field's core, which the seed scope and behavior-ref resolver
+    // depend on, so accumulating past a parse error would cascade).
     let parsed: Vec<(syn::Field, Vec<Directive>)> = fields
         .iter()
         .map(|field| Ok((field.clone(), parse_field_attrs(field)?)))
@@ -37,33 +40,52 @@ pub(super) fn lower_semantics(
         .collect();
 
     let scope = SeedScope::new(&cores, instruction_args);
+    // Cores are infallible, so field names are always complete — a field whose
+    // directives fail to lower is still a known name for behavior-ref checks.
+    let field_names: HashSet<String> = cores.iter().map(|c| c.ident.to_string()).collect();
 
-    let semantics: Vec<FieldSemantics> = parsed
-        .into_iter()
-        .zip(cores)
-        .map(|((_, directives), core)| {
-            let is_migration = core.wrapper == WrapperKind::Migration;
-            let is_uninit = core.wrapper == WrapperKind::Uninit;
-            let mut sem = FieldSemantics {
-                core,
-                init: None,
-                payer: None,
-                address: None,
-                realloc: None,
-                close_dest: None,
-                groups: Vec::new(),
-                user_checks: Vec::new(),
-                is_migration,
-                is_uninit,
-            };
-            lower_directives(&mut sem, directives, &scope)?;
-            Ok(sem)
-        })
-        .collect::<syn::Result<_>>()?;
+    // Lower directives, accumulating per-field failures across independent
+    // fields instead of aborting on the first.
+    let mut errors: Option<syn::Error> = None;
+    let mut semantics: Vec<FieldSemantics> = Vec::with_capacity(cores.len());
+    for ((_, directives), core) in parsed.into_iter().zip(cores) {
+        let is_migration = core.wrapper == WrapperKind::Migration;
+        let is_uninit = core.wrapper == WrapperKind::Uninit;
+        let mut sem = FieldSemantics {
+            core,
+            init: None,
+            payer: None,
+            address: None,
+            realloc: None,
+            close_dest: None,
+            groups: Vec::new(),
+            user_checks: Vec::new(),
+            is_migration,
+            is_uninit,
+        };
+        match lower_directives(&mut sem, directives, &scope) {
+            Ok(()) => semantics.push(sem),
+            Err(e) => combine_err(&mut errors, e),
+        }
+    }
 
-    validate_semantics(&semantics)?;
+    // Validation accumulates across every (successfully lowered) field.
+    if let Some(e) = validate_semantics(&semantics, &field_names) {
+        combine_err(&mut errors, e);
+    }
 
-    Ok(semantics)
+    match errors {
+        Some(e) => Err(e),
+        None => Ok(semantics),
+    }
+}
+
+/// Fold an error into the running accumulator via `syn::Error::combine`.
+fn combine_err(acc: &mut Option<syn::Error>, e: syn::Error) {
+    match acc {
+        Some(prev) => prev.combine(e),
+        None => *acc = Some(e),
+    }
 }
 
 /// Name sets used to resolve typed-seed arguments once during lowering.

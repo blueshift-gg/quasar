@@ -101,16 +101,37 @@ fn validate_op_target(sem: &FieldSemantics) -> syn::Result<()> {
     Ok(())
 }
 
-pub(super) fn validate_semantics(semantics: &[FieldSemantics]) -> syn::Result<()> {
-    let field_names: HashSet<String> = semantics
-        .iter()
-        .map(|sem| sem.core.ident.to_string())
-        .collect();
-    for sem in semantics {
-        validate_field(sem)?;
-        validate_behavior_field_refs(sem, &field_names)?;
+/// Fold `e` into the running accumulator via `syn::Error::combine`, so each
+/// contained error is emitted as its own `compile_error!` — three bad fields
+/// surface three diagnostics in one compile cycle instead of three.
+fn push_err(acc: &mut Option<syn::Error>, e: syn::Error) {
+    match acc {
+        Some(prev) => prev.combine(e),
+        None => *acc = Some(e),
     }
-    Ok(())
+}
+
+/// Validate every field, accumulating errors across fields (each field is
+/// independent) so a single compile reports all structural violations.
+///
+/// `field_names` is supplied by the caller (built from the field cores, which
+/// always exist), so a field that failed to *lower* is still a known name for
+/// behavior-ref resolution — dropping it never turns a valid `mint = vault`
+/// into a spurious "no field `vault`".
+pub(super) fn validate_semantics(
+    semantics: &[FieldSemantics],
+    field_names: &HashSet<String>,
+) -> Option<syn::Error> {
+    let mut acc: Option<syn::Error> = None;
+    for sem in semantics {
+        if let Err(e) = validate_field(sem) {
+            push_err(&mut acc, e);
+        }
+        if let Err(e) = validate_behavior_field_refs(sem, field_names) {
+            push_err(&mut acc, e);
+        }
+    }
+    acc
 }
 
 fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
@@ -219,43 +240,62 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
 
     // `init` implies `mut` (init-implies-mut): no separate requirement.
 
+    // The remaining rules are independent single-field constraints: accumulate
+    // them so a field that trips several (e.g. `realloc` on a `Signer` that is
+    // also `Option`) reports every violation at once.
+    let mut acc: Option<syn::Error> = None;
+
     // Structural ops require a program data-account wrapper (type gate).
-    validate_op_target(sem)?;
+    if let Err(e) = validate_op_target(sem) {
+        push_err(&mut acc, e);
+    }
 
     // init + realloc mutual exclusion
     if sem.has_init() && sem.realloc.is_some() {
-        return Err(syn::Error::new_spanned(
-            span,
-            "`realloc = ...` cannot be used with `init`",
-        ));
+        push_err(
+            &mut acc,
+            syn::Error::new_spanned(span, "`realloc = ...` cannot be used with `init`"),
+        );
     }
 
     // dup + mutation ops blocked (init, realloc, close, mut behavior groups)
     if sem.core.dup {
         if sem.has_init() {
-            return Err(syn::Error::new_spanned(
-                span,
-                "`dup` cannot be used with `init`: mutation on aliased accounts is unsound",
-            ));
+            push_err(
+                &mut acc,
+                syn::Error::new_spanned(
+                    span,
+                    "`dup` cannot be used with `init`: mutation on aliased accounts is unsound",
+                ),
+            );
         }
         if sem.realloc.is_some() {
-            return Err(syn::Error::new_spanned(
-                span,
-                "`dup` cannot be used with `realloc`: mutation on aliased accounts is unsound",
-            ));
+            push_err(
+                &mut acc,
+                syn::Error::new_spanned(
+                    span,
+                    "`dup` cannot be used with `realloc`: mutation on aliased accounts is unsound",
+                ),
+            );
         }
         if sem.close_dest.is_some() {
-            return Err(syn::Error::new_spanned(
-                span,
-                "`dup` cannot be used with `close`: mutation on aliased accounts is unsound",
-            ));
+            push_err(
+                &mut acc,
+                syn::Error::new_spanned(
+                    span,
+                    "`dup` cannot be used with `close`: mutation on aliased accounts is unsound",
+                ),
+            );
         }
         if sem.core.declared_mut && !sem.groups.is_empty() {
-            return Err(syn::Error::new_spanned(
-                span,
-                "`dup` with `mut` cannot have behavior groups: mutation on aliased accounts is \
-                 unsound",
-            ));
+            push_err(
+                &mut acc,
+                syn::Error::new_spanned(
+                    span,
+                    "`dup` with `mut` cannot have behavior groups: mutation on aliased accounts \
+                     is unsound",
+                ),
+            );
         }
     }
 
@@ -268,26 +308,29 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
             .iter()
             .any(|a| a.path().is_ident("doc"));
         if !has_doc {
-            return Err(syn::Error::new_spanned(
-                span,
-                "#[account(dup)] requires a /// CHECK: <reason> doc comment",
-            ));
+            push_err(
+                &mut acc,
+                syn::Error::new_spanned(
+                    span,
+                    "#[account(dup)] requires a /// CHECK: <reason> doc comment",
+                ),
+            );
         }
     }
 
     if sem.core.optional && sem.has_init() {
-        return Err(syn::Error::new_spanned(
-            span,
-            "init(...) cannot be used on Option<T> fields",
-        ));
+        push_err(
+            &mut acc,
+            syn::Error::new_spanned(span, "init(...) cannot be used on Option<T> fields"),
+        );
     }
 
     // Optional realloc not supported
     if sem.core.optional && sem.realloc.is_some() {
-        return Err(syn::Error::new_spanned(
-            span,
-            "`realloc = ...` cannot be used on Option<T> fields",
-        ));
+        push_err(
+            &mut acc,
+            syn::Error::new_spanned(span, "`realloc = ...` cannot be used on Option<T> fields"),
+        );
     }
 
     // `realloc` implies `mut` (realloc-implies-mut): no separate requirement.
@@ -298,16 +341,22 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
             let has_behavior = !sem.groups.is_empty();
             let has_address = sem.address.is_some();
             if !has_behavior && !has_address {
-                return Err(syn::Error::new_spanned(
-                    span,
-                    "`init(idempotent)` requires a behavior group (e.g., token(...)) or address \
-                     constraint",
-                ));
+                push_err(
+                    &mut acc,
+                    syn::Error::new_spanned(
+                        span,
+                        "`init(idempotent)` requires a behavior group (e.g., token(...)) or \
+                         address constraint",
+                    ),
+                );
             }
         }
     }
 
-    Ok(())
+    match acc {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
 }
 
 /// Validate behavior arg field references: every `FieldRef` (bare lowercase
