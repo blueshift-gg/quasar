@@ -1,0 +1,49 @@
+SEMANTICS (3 fields)
+[0] payer
+    core: effective_ty=`Signer` kind=Single optional=false dynamic=false is_mut=true dup=false
+          inner_ty=None
+    init: None
+    payer: None
+    address: None
+    realloc: None
+    close_dest: None
+    groups: []
+    user_checks: []
+    is_migration=false is_uninit=false
+[1] config
+    core: effective_ty=`Account < TestConfig >` kind=Single optional=false dynamic=false is_mut=false dup=false
+          inner_ty=`TestConfig`
+    init: None
+    payer: None
+    address: None
+    realloc: None
+    close_dest: None
+    groups: []
+    user_checks: []
+    is_migration=false is_uninit=false
+[2] system_program
+    core: effective_ty=`Program < SystemProgram >` kind=Single optional=false dynamic=false is_mut=false dup=false
+          inner_ty=`SystemProgram`
+    init: None
+    payer: None
+    address: None
+    realloc: None
+    close_dest: None
+    groups: []
+    user_checks: []
+    is_migration=false is_uninit=false
+
+PLAN (3 fields)
+rent: NotNeeded
+[0]
+    pre_load: []
+    post_load: []
+    epilogue: []
+[1]
+    pre_load: []
+    post_load: []
+    epilogue: []
+[2]
+    pre_load: []
+    post_load: []
+    epilogue: []

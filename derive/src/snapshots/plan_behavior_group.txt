@@ -1,0 +1,21 @@
+SEMANTICS (1 fields)
+[0] data
+    core: effective_ty=`Account < MyData >` kind=Single optional=false dynamic=false is_mut=false dup=false
+          inner_ty=`MyData`
+    init: None
+    payer: None
+    address: None
+    realloc: None
+    close_dest: None
+    groups:
+      - path=`min_value` args=[min=`10u64`]
+    user_checks: []
+    is_migration=false is_uninit=false
+
+PLAN (1 fields)
+rent: NotNeeded
+[0]
+    pre_load: []
+    post_load:
+      - Behavior(path=`min_value` phase=Check args=[min=Expr(`10u64`)])
+    epilogue: []

@@ -1,3 +1,5 @@
+#[cfg(test)]
+pub(crate) mod dump;
 mod lower;
 mod model;
 pub(crate) mod planner;

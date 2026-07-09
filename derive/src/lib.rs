@@ -16,6 +16,8 @@ mod seeds;
 mod serialize;
 
 #[cfg(test)]
+mod plan_snapshots;
+#[cfg(test)]
 mod snapshot_tests;
 
 /// Derive account parsing and validation from a struct.
