@@ -37,16 +37,19 @@ PLAN (3 fields)
 rent: NotNeeded
 [0]
     id: ident=authority effective_ty=`Signer` wrapper=Signer kind=Single optional=false dup=false writable=false signer=true
+    load: Fixed(validates=[])
     pre_load: []
     post_load: []
     epilogue: []
 [1]
     id: ident=config effective_ty=`Account < Config >` wrapper=Account kind=Single optional=false dup=false writable=false signer=false
+    load: Fixed(validates=[])
     pre_load: []
     post_load: []
     epilogue: []
 [2]
     id: ident=item effective_ty=`Account < Item >` wrapper=Account kind=Single optional=false dup=false writable=false signer=false
+    load: Fixed(validates=[])
     pre_load: []
     post_load:
       - VerifyExistingAddress(expr=`(Item :: seeds (authority . address () , config . namespace . into () , index , SIDE_A))` error=None)

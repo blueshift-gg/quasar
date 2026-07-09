@@ -18,7 +18,7 @@ use {
         },
         specs::{
             AccountsPlanTyped, AddressSpec, BehaviorCall, EpilogueStep, FieldPlan, InitPlan,
-            LoweredArg, LoweredValue, PostLoadStep, PreLoadStep, ReallocSpec, RentPlan,
+            LoadStep, LoweredArg, LoweredValue, PostLoadStep, PreLoadStep, ReallocSpec, RentPlan,
         },
     },
     quote::ToTokens,
@@ -249,6 +249,7 @@ fn dump_field_plan(out: &mut String, field: &FieldPlan) {
         field.writable,
         field.signer,
     );
+    let _ = writeln!(out, "    load: {}", load_step(&field.load));
     dump_steps(out, "pre_load", &field.pre_load, pre_load_step);
     dump_steps(out, "post_load", &field.post_load, post_load_step);
     dump_steps(out, "epilogue", &field.epilogue, epilogue_step);
@@ -262,6 +263,16 @@ fn dump_steps<S>(out: &mut String, label: &str, steps: &[S], render: fn(&S) -> S
     let _ = writeln!(out, "    {label}:");
     for s in steps {
         let _ = writeln!(out, "      - {}", render(s));
+    }
+}
+
+fn load_step(load: &LoadStep) -> String {
+    match load {
+        LoadStep::Dynamic { base_ty } => format!("Dynamic(base_ty=`{}`)", toks(base_ty)),
+        LoadStep::Fixed { validates_paths } => {
+            let paths: Vec<String> = validates_paths.iter().map(|p| toks(p)).collect();
+            format!("Fixed(validates=[{}])", paths.join(", "))
+        }
     }
 }
 

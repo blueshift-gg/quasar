@@ -147,6 +147,7 @@ fn plan_field(
     }
 
     let flags = account_meta_flags(sem);
+    let load = plan_load(sem);
 
     Ok(FieldPlan {
         ident: sem.core.ident.clone(),
@@ -157,10 +158,29 @@ fn plan_field(
         dup: sem.core.dup,
         writable: flags.writable,
         signer: flags.signer,
+        load,
         pre_load,
         post_load,
         epilogue,
     })
+}
+
+/// Select the load mode for a field. Dynamic wrappers load via
+/// `from_account_view`; fixed accounts load via `AccountLoad`, guarded by the
+/// behavior groups' `VALIDATES_ACCOUNT_DATA`.
+fn plan_load(sem: &FieldSemantics) -> LoadStep {
+    if sem.core.dynamic {
+        let base_ty = sem
+            .core
+            .inner_ty
+            .clone()
+            .unwrap_or_else(|| sem.core.effective_ty.clone());
+        LoadStep::Dynamic { base_ty }
+    } else {
+        LoadStep::Fixed {
+            validates_paths: sem.groups.iter().map(|g| g.path.clone()).collect(),
+        }
+    }
 }
 
 fn plan_init(

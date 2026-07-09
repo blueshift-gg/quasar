@@ -22,8 +22,8 @@ use {
     super::{
         super::resolve::{
             specs::{
-                AccountsPlanTyped, EpilogueStep, FieldPlan, InitPlan, PostLoadStep, PreLoadStep,
-                RentPlan,
+                AccountsPlanTyped, EpilogueStep, FieldPlan, InitPlan, LoadStep, PostLoadStep,
+                PreLoadStep, RentPlan,
             },
             FieldKind, FieldSemantics, UserCheck,
         },
@@ -121,12 +121,12 @@ fn emit_parse_sequence(
     plan: &AccountsPlanTyped,
 ) -> proc_macro2::TokenStream {
     let init_phase = emit_init_phase_typed(&plan.fields, semantics);
-    let load_init = emit_load_filtered(semantics, true);
+    let load_init = emit_load_filtered(&plan.fields, true);
     let phase4 = emit_post_load_typed(&plan.fields);
 
     match &plan.rent {
         RentPlan::NotNeeded => {
-            let load_non_init = emit_load_filtered(semantics, false);
+            let load_non_init = emit_load_filtered(&plan.fields, false);
             quote! {
                 #(#load_non_init)*
                 #(#init_phase)*
@@ -136,7 +136,7 @@ fn emit_parse_sequence(
         }
         RentPlan::FetchOnce => {
             let ctx_init = emit_rent_context(&plan.rent);
-            let load_non_init = emit_load_filtered(semantics, false);
+            let load_non_init = emit_load_filtered(&plan.fields, false);
             quote! {
                 #ctx_init
                 #(#load_non_init)*
@@ -148,9 +148,9 @@ fn emit_parse_sequence(
         RentPlan::FromSysvarField { field } => {
             // The rent field must be loaded before `__rent_ctx` can borrow it;
             // all other non-init fields keep their normal phase position.
-            let rent_load = emit_load_by_ident(semantics, field);
+            let rent_load = emit_load_by_ident(&plan.fields, field);
             let ctx_init = emit_rent_context(&plan.rent);
-            let load_non_init = emit_load_filtered_excluding(semantics, false, Some(field));
+            let load_non_init = emit_load_filtered_excluding(&plan.fields, false, Some(field));
             quote! {
                 #rent_load
                 #ctx_init
@@ -405,56 +405,55 @@ pub(crate) fn emit_has_epilogue_typed(plan: &AccountsPlanTyped) -> proc_macro2::
 
 // Load phase.
 
-fn emit_load_filtered(
-    semantics: &[FieldSemantics],
-    init_only: bool,
-) -> Vec<proc_macro2::TokenStream> {
-    emit_load_filtered_excluding(semantics, init_only, None)
+fn emit_load_filtered(field_plans: &[FieldPlan], init_only: bool) -> Vec<proc_macro2::TokenStream> {
+    emit_load_filtered_excluding(field_plans, init_only, None)
 }
 
 fn emit_load_filtered_excluding(
-    semantics: &[FieldSemantics],
+    field_plans: &[FieldPlan],
     init_only: bool,
     skip_ident: Option<&syn::Ident>,
 ) -> Vec<proc_macro2::TokenStream> {
-    semantics
+    field_plans
         .iter()
-        .filter(|sem| sem.core.kind == FieldKind::Single)
-        .filter(|sem| sem.has_init() == init_only)
-        .filter(|sem| skip_ident.is_none_or(|skip| sem.core.ident != *skip))
+        .filter(|fp| fp.kind == FieldKind::Single)
+        .filter(|fp| fp.has_init() == init_only)
+        .filter(|fp| skip_ident.is_none_or(|skip| fp.ident != *skip))
         .map(emit_one_load)
         .collect()
 }
 
 fn emit_load_by_ident(
-    semantics: &[FieldSemantics],
+    field_plans: &[FieldPlan],
     field: &syn::Ident,
 ) -> proc_macro2::TokenStream {
-    semantics
+    field_plans
         .iter()
-        .find(|sem| sem.core.kind == FieldKind::Single && sem.core.ident == *field)
+        .find(|fp| fp.kind == FieldKind::Single && fp.ident == *field)
         .map(emit_one_load)
-        .expect("rent plan field should exist in account semantics")
+        .expect("rent plan field should exist in the plan")
 }
 
-fn emit_one_load(sem: &FieldSemantics) -> proc_macro2::TokenStream {
-    let ident = &sem.core.ident;
-    let ty = &sem.core.effective_ty;
-    let writable = sem.is_writable();
-    let behavior_validates_account_data = behavior_validates_account_data_expr(sem);
+fn emit_one_load(fp: &FieldPlan) -> proc_macro2::TokenStream {
+    let ident = &fp.ident;
+    let ty = &fp.effective_ty;
+    let writable = fp.writable;
 
-    if sem.core.dynamic {
-        let inner_ty = sem.core.inner_ty.as_ref().unwrap_or(ty);
-        let base = strip_generics(inner_ty).unwrap_or_else(|_| quote! { #inner_ty });
-        return quote! { let #ident = #base::from_account_view(#ident)?; };
-    }
+    let validates_paths = match &fp.load {
+        LoadStep::Dynamic { base_ty } => {
+            let base = strip_generics(base_ty).unwrap_or_else(|_| quote! { #base_ty });
+            return quote! { let #ident = #base::from_account_view(#ident)?; };
+        }
+        LoadStep::Fixed { validates_paths } => validates_paths,
+    };
+    let behavior_validates_account_data = behavior_validates_account_data_expr(ty, validates_paths);
 
-    if sem.core.optional {
+    if fp.optional {
         let load = emit_load_expr(
             ident,
             ty,
             writable,
-            sem.core.dup,
+            fp.dup,
             behavior_validates_account_data.as_ref(),
         );
         return if writable {
@@ -480,7 +479,7 @@ fn emit_one_load(sem: &FieldSemantics) -> proc_macro2::TokenStream {
         ident,
         ty,
         writable,
-        sem.core.dup,
+        fp.dup,
         behavior_validates_account_data.as_ref(),
     );
     if writable {
@@ -535,14 +534,15 @@ fn emit_load_expr(
     }
 }
 
-fn behavior_validates_account_data_expr(sem: &FieldSemantics) -> Option<proc_macro2::TokenStream> {
-    if sem.groups.is_empty() {
+fn behavior_validates_account_data_expr(
+    ty: &syn::Type,
+    validates_paths: &[syn::Path],
+) -> Option<proc_macro2::TokenStream> {
+    if validates_paths.is_empty() {
         return None;
     }
 
-    let ty = &sem.core.effective_ty;
-    let terms = sem.groups.iter().map(|group| {
-        let path = &group.path;
+    let terms = validates_paths.iter().map(|path| {
         quote! {
             <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#ty>>::VALIDATES_ACCOUNT_DATA
         }

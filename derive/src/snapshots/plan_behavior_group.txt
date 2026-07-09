@@ -16,6 +16,7 @@ PLAN (1 fields)
 rent: NotNeeded
 [0]
     id: ident=data effective_ty=`Account < MyData >` wrapper=Account kind=Single optional=false dup=false writable=false signer=false
+    load: Fixed(validates=[min_value])
     pre_load: []
     post_load:
       - Behavior(path=`min_value` phase=Check args=[min=Expr(`10u64`)])

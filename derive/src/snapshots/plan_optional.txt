@@ -27,11 +27,13 @@ PLAN (2 fields)
 rent: NotNeeded
 [0]
     id: ident=authority effective_ty=`Signer` wrapper=Signer kind=Single optional=false dup=false writable=false signer=true
+    load: Fixed(validates=[])
     pre_load: []
     post_load: []
     epilogue: []
 [1]
     id: ident=config effective_ty=`Account < Config >` wrapper=Account kind=Single optional=true dup=false writable=false signer=false
+    load: Fixed(validates=[])
     pre_load: []
     post_load:
       - UserCheck(HasOne targets=[authority] error=None)

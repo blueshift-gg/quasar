@@ -9,7 +9,7 @@ use {
         model::{FieldKind, UserCheck},
         wrapper::WrapperKind,
     },
-    syn::{Expr, Ident, Type},
+    syn::{Expr, Ident, Path, Type},
 };
 
 /// A resolved behavior call for one behavior group on one field.
@@ -168,6 +168,21 @@ pub(crate) enum RentPlan {
     FetchOnce,
 }
 
+/// How a field is loaded in the load phase. Encodes the load-mode selection
+/// (dynamic wrapper vs `AccountLoad`) and the `VALIDATES_ACCOUNT_DATA` guard,
+/// previously derived in `emit/parse.rs` from `FieldSemantics`.
+#[derive(Clone)]
+pub(crate) enum LoadStep {
+    /// Dynamic-layout wrapper: `<base_ty>::from_account_view(ident)?`. `base_ty`
+    /// is the wrapper's inner type (generics are stripped at emit time).
+    Dynamic { base_ty: Type },
+    /// Fixed-layout account loaded via `AccountLoad::load*`. `validates_paths`
+    /// are the field's behavior-group paths; when non-empty the load is guarded
+    /// by their `VALIDATES_ACCOUNT_DATA` to pick the intrinsic path. The
+    /// checked/mut variant is selected from `FieldPlan::dup`/`writable`.
+    Fixed { validates_paths: Vec<Path> },
+}
+
 /// A step that runs before account load (address verify + init CPI).
 #[derive(Clone)]
 pub(crate) enum PreLoadStep {
@@ -223,12 +238,24 @@ pub(crate) struct FieldPlan {
     /// Account-meta signer flag (`account_meta_flags().signer`): the single
     /// source shared by the client macro and the IDL accounts-meta fragment.
     pub signer: bool,
+    /// How this field is loaded (single fields only; composites parse via
+    /// their own `ParseAccountsUnchecked` impl).
+    pub load: LoadStep,
     /// Steps before load (init fields only).
     pub pre_load: Vec<PreLoadStep>,
     /// Steps after load (behavior checks/updates, realloc, address verify).
     pub post_load: Vec<PostLoadStep>,
     /// Steps in epilogue (behavior exit, program close).
     pub epilogue: Vec<EpilogueStep>,
+}
+
+impl FieldPlan {
+    /// Whether this field is initialized (an `Init` step is scheduled pre-load).
+    pub(crate) fn has_init(&self) -> bool {
+        self.pre_load
+            .iter()
+            .any(|step| matches!(step, PreLoadStep::Init(_)))
+    }
 }
 
 /// Instruction-wide execution plan.
