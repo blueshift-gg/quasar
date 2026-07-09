@@ -41,30 +41,11 @@ pub trait AccountLoad: AsAccountView + StaticView + Sized {
         Self::check(view)
     }
 
-    /// # Safety
-    /// Caller must ensure the `AccountView` is valid for `#[repr(transparent)]`
-    /// cast.
-    #[inline(always)]
-    unsafe fn from_view_unchecked(view: &AccountView) -> &Self {
-        // SAFETY: Caller guarantees `Self` is layout-compatible with
-        // `AccountView` and that all required validation has already run.
-        unsafe { &*(view as *const AccountView as *const Self) }
-    }
-
-    /// # Safety
-    /// Same as `from_view_unchecked`, plus the account must be writable.
-    #[inline(always)]
-    unsafe fn from_view_unchecked_mut(view: &mut AccountView) -> &mut Self {
-        // SAFETY: Same layout argument as `from_view_unchecked`; caller also
-        // guarantees writable access.
-        unsafe { &mut *(view as *mut AccountView as *mut Self) }
-    }
-
     #[inline(always)]
     fn load(view: &AccountView) -> Result<Self, ProgramError> {
         Self::check(view)?;
         // SAFETY: `check` validated the account for this wrapper.
-        Ok(unsafe { core::ptr::read(Self::from_view_unchecked(view) as *const Self) })
+        Ok(unsafe { core::ptr::read(view as *const AccountView as *const Self) })
     }
 
     #[inline(always)]
@@ -72,7 +53,7 @@ pub trait AccountLoad: AsAccountView + StaticView + Sized {
         Self::check(view)?;
         // SAFETY: `check` validated the account; mutable load is only used
         // after generated writable checks.
-        Ok(unsafe { core::ptr::read(Self::from_view_unchecked_mut(view) as *const Self) })
+        Ok(unsafe { core::ptr::read(view as *mut AccountView as *const Self) })
     }
 
     #[inline(always)]
@@ -80,7 +61,7 @@ pub trait AccountLoad: AsAccountView + StaticView + Sized {
         Self::check_checked(view)?;
         // SAFETY: `check_checked` validated the account through runtime
         // borrow-checked access.
-        Ok(unsafe { core::ptr::read(Self::from_view_unchecked(view) as *const Self) })
+        Ok(unsafe { core::ptr::read(view as *const AccountView as *const Self) })
     }
 
     #[inline(always)]
@@ -88,7 +69,7 @@ pub trait AccountLoad: AsAccountView + StaticView + Sized {
         Self::check_checked(view)?;
         // SAFETY: `check_checked` validated the account; mutable load is only
         // used after generated writable checks.
-        Ok(unsafe { core::ptr::read(Self::from_view_unchecked_mut(view) as *const Self) })
+        Ok(unsafe { core::ptr::read(view as *mut AccountView as *const Self) })
     }
 
     /// # Safety
@@ -100,7 +81,7 @@ pub trait AccountLoad: AsAccountView + StaticView + Sized {
         Self::check_intrinsic(view)?;
         // SAFETY: Caller guarantees validation skipped by `check_intrinsic`
         // will be completed before observation.
-        Ok(unsafe { core::ptr::read(Self::from_view_unchecked(view) as *const Self) })
+        Ok(unsafe { core::ptr::read(view as *const AccountView as *const Self) })
     }
 
     /// # Safety
@@ -113,7 +94,7 @@ pub trait AccountLoad: AsAccountView + StaticView + Sized {
         // SAFETY: Caller guarantees validation skipped by `check_intrinsic`
         // will be completed before observation; mutable load is only used
         // after generated writable checks.
-        Ok(unsafe { core::ptr::read(Self::from_view_unchecked_mut(view) as *const Self) })
+        Ok(unsafe { core::ptr::read(view as *mut AccountView as *const Self) })
     }
 
     /// Get a mutable view for lifecycle operations (close, realloc).
