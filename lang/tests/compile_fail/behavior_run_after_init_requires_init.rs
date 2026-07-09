@@ -21,16 +21,20 @@ mod after_init_guard {
         }
     }
 
-    impl ArgsBuilder {
-        pub fn build_check(self) -> Result<Args, ProgramError> {
+    impl quasar_lang::account_behavior::BehaviorArgsBuilder for ArgsBuilder {
+        type Init = Args;
+        type Check = Args;
+        type Exit = Args;
+
+        fn build_check(self) -> Result<Args, ProgramError> {
             Ok(Args)
         }
 
-        pub fn build_init(self) -> Result<Args, ProgramError> {
+        fn build_init(self) -> Result<Args, ProgramError> {
             Ok(Args)
         }
 
-        pub fn build_exit(self) -> Result<Args, ProgramError> {
+        fn build_exit(self) -> Result<Args, ProgramError> {
             Ok(Args)
         }
     }

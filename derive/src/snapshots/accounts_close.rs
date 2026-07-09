@@ -47,11 +47,11 @@ impl<'input> ParseAccounts<'input> for CloseAccounts {
                     &mut self.old_data,
                 )
             };
-            quasar_lang::ops::close::close_account(
-                __view,
-                self.authority.to_account_view(),
-                <OldData as quasar_lang::traits::Discriminator>::DISCRIMINATOR.len(),
-            )?;
+            quasar_lang::ops::close::Op {
+                disc_len: <OldData as quasar_lang::traits::Discriminator>::DISCRIMINATOR
+                    .len(),
+            }
+                .apply(__view, self.authority.to_account_view())?;
         }
         Ok(())
     }

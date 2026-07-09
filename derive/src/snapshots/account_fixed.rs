@@ -61,11 +61,9 @@ impl Space for MixedAccount {
 }
 impl quasar_lang::account_layout::AccountLayout for MixedAccount {
     type Schema = __mixed_account_zc::__Schema;
-    type Target = <__mixed_account_zc::__Schema as quasar_lang::__zeropod::ZeroPodFixed>::Zc;
     const DATA_OFFSET: usize = 1usize;
 }
 impl quasar_lang::checks::Discriminator for MixedAccount {}
-impl quasar_lang::checks::DataLen for MixedAccount {}
 impl quasar_lang::checks::ZeroPod for MixedAccount {}
 impl quasar_lang::account_load::AccountLoad for MixedAccount {
     #[inline(always)]

@@ -38,6 +38,7 @@ impl EventAuthority {
         unsafe { &*(view as *const AccountView as *const Self) }
     }
 }
+unsafe impl quasar_lang::traits::StaticView for EventAuthority {}
 impl quasar_lang::account_load::AccountLoad for EventAuthority {
     #[inline(always)]
     fn check(view: &AccountView) -> Result<(), ProgramError> {

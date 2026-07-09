@@ -103,7 +103,13 @@ for UseCustomBehavior {
             } else {
                 __bhv_builder
             };
-            let __bhv_args = __bhv_builder.build_check()?;
+            fn __assert_builder<__B: quasar_lang::account_behavior::BehaviorArgsBuilder>(
+                _: &__B,
+            ) {}
+            __assert_builder(&__bhv_builder);
+            let __bhv_args = quasar_lang::account_behavior::BehaviorArgsBuilder::build_check(
+                __bhv_builder,
+            )?;
             <min_value::Behavior as quasar_lang::account_behavior::AccountBehavior<
                 Account<MyData>,
             >>::check(&data, &__bhv_args)?;
@@ -208,7 +214,13 @@ impl UseCustomBehavior {
                 } else {
                     __bhv_builder
                 };
-                let __bhv_args = __bhv_builder.build_check()?;
+                fn __assert_builder<
+                    __B: quasar_lang::account_behavior::BehaviorArgsBuilder,
+                >(_: &__B) {}
+                __assert_builder(&__bhv_builder);
+                let __bhv_args = quasar_lang::account_behavior::BehaviorArgsBuilder::build_check(
+                    __bhv_builder,
+                )?;
                 <min_value::Behavior as quasar_lang::account_behavior::AccountBehavior<
                     Account<MyData>,
                 >>::check(&data, &__bhv_args)?;
