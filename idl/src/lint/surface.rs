@@ -9,7 +9,7 @@ use {
 };
 
 pub const LOCK_FILE_NAME: &str = "quasar.lock.json";
-const SURFACE_VERSION: u32 = 1;
+const SURFACE_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProgramSurface {
@@ -21,6 +21,7 @@ pub struct ProgramSurface {
     pub instructions: Vec<InstructionSurface>,
     pub types: Vec<TypeSurface>,
     pub events: Vec<EventSurface>,
+    pub errors: Vec<ErrorSurface>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -84,6 +85,12 @@ pub struct EventSurface {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ErrorSurface {
+    pub name: String,
+    pub code: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FieldSurface {
     pub name: String,
     #[serde(rename = "type")]
@@ -123,6 +130,16 @@ impl ProgramSurface {
                 .iter()
                 .map(|event| EventSurface::from_idl(event, &type_map))
                 .collect(),
+            errors: idl.errors.iter().map(ErrorSurface::from_idl).collect(),
+        }
+    }
+}
+
+impl ErrorSurface {
+    fn from_idl(error: &IdlErrorDef) -> Self {
+        Self {
+            name: error.name.clone(),
+            code: error.code,
         }
     }
 }
