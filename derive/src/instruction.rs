@@ -12,8 +12,8 @@
 use {
     crate::helpers::{
         check_fixed_before_dynamic, classify_instruction_arg, extract_generic_inner_type,
-        is_unit_type, pod_dyn_to_compact_type, validate_discriminator, wire_layout, ArgClass,
-        ArgSite, DiscCtx, InstructionArgs, PodDynField, WireLayout,
+        is_unit_type, validate_discriminator, wire_layout, ArgClass, ArgSite, DiscCtx,
+        InstructionArgs, PodDynField, WireLayout,
     },
     proc_macro::TokenStream,
     proc_macro2::TokenStream as TokenStream2,
@@ -132,6 +132,24 @@ fn emit_handler_tail(
     tail
 }
 
+/// Map a classified instruction arg to its compact schema layout class. The
+/// handler decode uses the raw `PodVec` element (its accessor yields `&[elem]`).
+fn compact_layout_class(cls: &ArgClass) -> crate::schema_ir::LayoutClass {
+    use crate::schema_ir::LayoutClass;
+    match cls {
+        ArgClass::Fixed(ty) => LayoutClass::Fixed { ty: quote!(#ty) },
+        ArgClass::PodDyn(pd) | ArgClass::Borrowed(pd) => {
+            LayoutClass::from_pod_dyn(pd, |e| quote!(#e))
+        }
+        ArgClass::OptionPodDyn(pd) => LayoutClass::OptionalDyn {
+            inner: Box::new(LayoutClass::from_pod_dyn(pd, |e| quote!(#e))),
+        },
+        ArgClass::BorrowedGroup(_) => {
+            ice!("grouped borrowed struct handled before compact lowering")
+        }
+    }
+}
+
 fn emit_decode_and_tail(
     param_ident: &Ident,
     remaining: &[syn::PatType],
@@ -175,8 +193,10 @@ fn emit_decode_and_tail(
             }
 
             // Generate: let arg_name = <ArgType>::decode_compact(&ctx.data)?;
+            let ArgClass::BorrowedGroup(arg_ty) = &arg_classes[pos] else {
+                ice!("position() matched BorrowedGroup")
+            };
             let arg_name = &field_names[0];
-            let arg_ty = &remaining[0].ty;
             out.push(syn::parse_quote!(
                 let #arg_name = <#arg_ty>::decode_compact(&#param_ident.data)?;
             ));
@@ -222,74 +242,34 @@ fn emit_decode_and_tail(
                 use quasar_lang::__zeropod as zeropod;
             ));
 
-            // Compact schema contains fixed fields, length prefixes, then tail data.
-            let compact_field_types: Vec<proc_macro2::TokenStream> = arg_classes
+            // Build the compact schema IR: inline fixed fields, then dynamic
+            // tail fields (raw `PodVec` element, matching the `&[elem]` accessor
+            // views this decode yields), then emit via the single-source
+            // emitters.
+            let schema_fields: Vec<crate::schema_ir::SchemaField> = arg_classes
                 .iter()
-                .zip(remaining.iter())
-                .map(|(cls, pt)| match cls {
-                    ArgClass::Fixed(_) => {
-                        let ty = &pt.ty;
-                        quote!(#ty)
-                    }
-                    ArgClass::PodDyn(ref pd) | ArgClass::Borrowed(ref pd) => {
-                        pod_dyn_to_compact_type(pd)
-                    }
-                    ArgClass::OptionPodDyn(ref pd) => {
-                        let inner = pod_dyn_to_compact_type(pd);
-                        quote!(Option<#inner>)
-                    }
-                    ArgClass::BorrowedGroup(_) => {
-                        ice!("grouped borrowed struct handled before compact lowering")
-                    }
+                .zip(field_names.iter())
+                .map(|(cls, name)| {
+                    crate::schema_ir::SchemaField::private(name.clone(), compact_layout_class(cls))
                 })
                 .collect();
+            let ir = crate::schema_ir::SchemaIR::new(schema_fields)?;
+            let schema_name: Ident = syn::parse_quote!(__InstructionDataCompact);
+            let ref_name: Ident = syn::parse_quote!(__InstructionDataCompactRef);
 
-            out.push(syn::parse_quote!(
-                #[derive(zeropod::ZeroPod)]
-                #[zeropod(compact)]
-                struct __InstructionDataCompact {
-                    #(#field_names: #compact_field_types,)*
-                }
+            let schema_struct =
+                crate::schema_ir::emit_compact_schema(&schema_name, &ir, &syn::Visibility::Inherited);
+            out.push(syn::parse_quote!(#schema_struct));
+            out.extend(crate::schema_ir::emit_compact_decode(
+                &ir,
+                &crate::schema_ir::DecodeOpts {
+                    schema_name,
+                    ref_name,
+                    data: quote!(&#param_ident.data),
+                    err: quote!(ProgramError::InvalidInstructionData),
+                    validate_fixed: true,
+                },
             ));
-
-            out.push(syn::parse_quote!(
-                <__InstructionDataCompact as quasar_lang::ZeroPodCompact>::validate(
-                    &#param_ident.data
-                ).map_err(|_| ProgramError::InvalidInstructionData)?;
-            ));
-
-            out.push(syn::parse_quote!(
-                let __ref = unsafe {
-                    __InstructionDataCompactRef::new_unchecked(&#param_ident.data)
-                };
-            ));
-
-            for (i, cls) in arg_classes.iter().enumerate() {
-                let name = &field_names[i];
-                let ty = &remaining[i].ty;
-                match cls {
-                    ArgClass::Fixed(_) => {
-                        // Match the fixed-only path: validate each fixed field's
-                        // ZC bytes before reading, so a malformed inline value
-                        // (bad bool/enum/etc.) is rejected rather than decoded.
-                        out.push(syn::parse_quote!(
-                            <#ty as quasar_lang::instruction_arg::InstructionArg>::validate_zc(&__ref.#name)
-                                .map_err(|_| ProgramError::InvalidInstructionData)?;
-                        ));
-                        out.push(syn::parse_quote!(
-                            let #name = <#ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(&__ref.#name);
-                        ));
-                    }
-                    ArgClass::PodDyn(_) | ArgClass::OptionPodDyn(_) | ArgClass::Borrowed(_) => {
-                        out.push(syn::parse_quote!(
-                            let #name = __ref.#name();
-                        ));
-                    }
-                    ArgClass::BorrowedGroup(_) => {
-                        ice!("grouped borrowed struct handled before compact lowering")
-                    }
-                }
-            }
         } else {
             let zc_field_orig_types: Vec<_> = remaining.iter().map(|pt| pt.ty.as_ref()).collect();
 

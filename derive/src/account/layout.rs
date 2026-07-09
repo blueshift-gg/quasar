@@ -1,6 +1,9 @@
 use {
     super::fixed::PodFieldInfo,
-    crate::helpers::{map_to_pod_type, pascal_to_snake},
+    crate::{
+        helpers::{map_to_pod_type, pascal_to_snake},
+        schema_ir::{LayoutClass, SchemaField, SchemaIR},
+    },
     quote::{format_ident, quote},
 };
 
@@ -8,8 +11,12 @@ pub(super) struct ZcSpec {
     pub zc_name: syn::Ident,
     pub zc_mod: syn::Ident,
     pub zc_path: proc_macro2::TokenStream,
-    /// Native-typed fields for the zeropod schema struct.
+    /// Native-typed fields for the fixed (non-compact) zeropod schema struct.
+    /// Empty for dynamic accounts (which carry a `compact_ir` instead).
     pub schema_fields: Vec<proc_macro2::TokenStream>,
+    /// The compact schema IR for dynamic accounts (emitted via the single-source
+    /// `emit_compact_schema`); `None` for fixed accounts.
+    pub compact_ir: Option<SchemaIR>,
 }
 
 pub(super) fn build_zc_spec(
@@ -17,42 +24,51 @@ pub(super) fn build_zc_spec(
     field_infos: &[PodFieldInfo<'_>],
     has_dynamic: bool,
 ) -> ZcSpec {
-    // For dynamic accounts, schema_fields includes all fields (fixed with
-    // native types + dynamic with zeropod compact types). For fixed accounts,
-    // only the fixed fields with native types.
-    let schema_fields = if has_dynamic {
-        field_infos
+    let (schema_fields, compact_ir) = if has_dynamic {
+        // Dynamic accounts: all fields (fixed with native types + dynamic with
+        // compact pod types) via the shared compact-schema IR. `PodVec` uses the
+        // mapped `ZcField` companion element to match the read accessors. Field
+        // ordering was validated in `account_inner` before codegen.
+        let fields: Vec<SchemaField> = field_infos
             .iter()
             .map(|fi| {
                 let field = fi.field;
-                let vis = &field.vis;
-                let fname = field.ident.as_ref().unwrap_or_else(|| ice!("field must be named"));
+                let ident = field
+                    .ident
+                    .clone()
+                    .unwrap_or_else(|| ice!("field must be named"));
+                let vis = field.vis.clone();
                 match &fi.pod_dyn {
                     None => {
                         let ty = &field.ty;
-                        let zeropod_attrs: Vec<_> = field
+                        let attrs: Vec<syn::Attribute> = field
                             .attrs
                             .iter()
                             .filter(|a| a.path().is_ident("zeropod"))
+                            .cloned()
                             .collect();
-                        quote! { #(#zeropod_attrs)* #vis #fname: #ty }
+                        SchemaField {
+                            ident,
+                            vis,
+                            attrs,
+                            class: LayoutClass::Fixed { ty: quote!(#ty) },
+                        }
                     }
-                    Some(crate::helpers::PodDynField::Str { max, prefix_bytes }) => {
-                        quote! { #vis #fname: zeropod::pod::PodString<#max, #prefix_bytes> }
-                    }
-                    Some(crate::helpers::PodDynField::Vec {
-                        elem,
-                        max,
-                        prefix_bytes,
-                    }) => {
-                        let mapped_elem = map_to_pod_type(elem);
-                        quote! { #vis #fname: zeropod::pod::PodVec<#mapped_elem, #max, #prefix_bytes> }
-                    }
+                    Some(pd) => SchemaField {
+                        ident,
+                        vis,
+                        attrs: Vec::new(),
+                        class: LayoutClass::from_pod_dyn(pd, |e| map_to_pod_type(e)),
+                    },
                 }
             })
-            .collect()
+            .collect();
+        let ir = SchemaIR::new(fields)
+            .unwrap_or_else(|_| ice!("account field ordering validated before codegen"));
+        (Vec::new(), Some(ir))
     } else {
-        field_infos
+        // Fixed accounts: only the fixed fields with native types.
+        let fields = field_infos
             .iter()
             .filter(|fi| fi.pod_dyn.is_none())
             .map(|fi| {
@@ -71,7 +87,8 @@ pub(super) fn build_zc_spec(
                     .collect();
                 quote! { #(#zeropod_attrs)* #vis #name: #ty }
             })
-            .collect()
+            .collect();
+        (fields, None)
     };
 
     let zc_name = format_ident!("{}Zc", name);
@@ -83,6 +100,7 @@ pub(super) fn build_zc_spec(
         zc_mod,
         zc_path,
         schema_fields,
+        compact_ir,
     }
 }
 
@@ -118,18 +136,25 @@ pub(super) fn emit_zc_definition(
 
     if has_dynamic {
         // Compact schema: all fields (fixed + dynamic). zeropod generates
-        // __SchemaHeader, __SchemaRef, __SchemaMut at the module scope.
+        // __SchemaHeader, __SchemaRef, __SchemaMut at the module scope. The
+        // the compact `pub struct __Schema` is emitted by the shared
+        // single-source emitter.
+        let ir = zc
+            .compact_ir
+            .as_ref()
+            .unwrap_or_else(|| ice!("dynamic account must carry a compact schema IR"));
+        let schema_struct = crate::schema_ir::emit_compact_schema(
+            &format_ident!("__Schema"),
+            ir,
+            &syn::parse_quote!(pub),
+        );
         quote! {
             #[doc(hidden)]
             pub mod #zc_mod {
                 use super::*;
                 use quasar_lang::__zeropod as zeropod;
 
-                #[derive(zeropod::ZeroPod)]
-                #[zeropod(compact)]
-                pub struct __Schema {
-                    #(#schema_fields,)*
-                }
+                #schema_struct
 
                 pub type #zc_name = __SchemaHeader;
             }

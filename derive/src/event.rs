@@ -6,32 +6,8 @@ use {
     proc_macro::TokenStream,
     proc_macro2::TokenStream as TokenStream2,
     quote::quote,
-    syn::{Data, DeriveInput, Fields, Type},
+    syn::{Data, DeriveInput, Fields},
 };
-
-fn event_field_size(ty: &Type) -> syn::Result<usize> {
-    if let Type::Path(type_path) = ty {
-        if let Some(seg) = type_path.path.segments.last() {
-            return match seg.ident.to_string().as_str() {
-                "u8" | "i8" | "bool" => Ok(1),
-                "u16" | "i16" => Ok(2),
-                "u32" | "i32" => Ok(4),
-                "u64" | "i64" => Ok(8),
-                "u128" | "i128" => Ok(16),
-                "Address" => Ok(32),
-                _ => Err(syn::Error::new_spanned(
-                    ty,
-                    format!(
-                        "unsupported event field type `{}`; only primitive integers, bool, and \
-                         Address are supported",
-                        seg.ident
-                    ),
-                )),
-            };
-        }
-    }
-    Err(syn::Error::new_spanned(ty, "unsupported event field type"))
-}
 
 pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
     event_inner(attr.into(), item.into()).into()
@@ -75,7 +51,7 @@ pub(crate) fn event_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream
 
     let mut data_size: usize = 0;
     for field in fields_data.iter() {
-        let size = match event_field_size(&field.ty) {
+        let size = match crate::schema_ir::event_field_size(&field.ty) {
             Ok(s) => s,
             Err(e) => return e.to_compile_error(),
         };

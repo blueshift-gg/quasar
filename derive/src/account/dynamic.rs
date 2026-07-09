@@ -87,13 +87,7 @@ pub(super) fn emit_space_term(
     name: &syn::Ident,
     dyn_field: &PodDynField,
 ) -> proc_macro2::TokenStream {
-    match dyn_field {
-        PodDynField::Str { .. } => quote! { + #name.len() },
-        PodDynField::Vec { elem, .. } => {
-            let mapped = map_to_pod_type(elem);
-            quote! { + #name.len() * core::mem::size_of::<#mapped>() }
-        }
-    }
+    crate::schema_ir::field_size_expr(dyn_field, quote! { #name.len() })
 }
 
 pub(super) fn emit_dynamic_impl_block(
@@ -478,13 +472,10 @@ pub(super) fn emit_compact_mut(
 }
 
 fn dyn_max_space_term(dyn_field: &PodDynField) -> proc_macro2::TokenStream {
-    match dyn_field {
-        PodDynField::Str { max, .. } => quote! { + #max },
-        PodDynField::Vec { elem, max, .. } => {
-            let mapped = map_to_pod_type(elem);
-            quote! { + #max * core::mem::size_of::<#mapped>() }
-        }
-    }
+    let max = match dyn_field {
+        PodDynField::Str { max, .. } | PodDynField::Vec { max, .. } => max,
+    };
+    crate::schema_ir::field_size_expr(dyn_field, quote! { #max })
 }
 
 /// Read accessor: construct a CompactRef, delegate to its accessor.
@@ -627,13 +618,7 @@ fn compact_mut_load(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::
 
 /// Size contribution of a guard field's current content (for tail region).
 fn compact_mut_size_term(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::TokenStream {
-    match dyn_field {
-        PodDynField::Str { .. } => quote! { + self.#name.len() },
-        PodDynField::Vec { elem, .. } => {
-            let mapped = map_to_pod_type(elem);
-            quote! { + self.#name.len() * core::mem::size_of::<#mapped>() }
-        }
-    }
+    crate::schema_ir::field_size_expr(dyn_field, quote! { self.#name.len() })
 }
 
 /// Set a dynamic field on a CompactMut from the guard's PodString/PodVec.

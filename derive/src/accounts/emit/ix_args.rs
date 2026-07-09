@@ -21,7 +21,7 @@
 use {
     crate::{
         accounts::InstructionArg,
-        helpers::{classify_pod_dynamic, pod_dyn_to_compact_type, PodDynField},
+        helpers::{classify_pod_dynamic, PodDynField},
     },
     quote::quote,
     syn::{Ident, Type},
@@ -203,60 +203,45 @@ fn extract_body(
         use quasar_lang::__zeropod as zeropod;
     });
 
-    let compact_field_names: Vec<Ident> = ix_args.iter().map(|arg| arg.name.clone()).collect();
-    let compact_field_types: Vec<proc_macro2::TokenStream> = ix_args
+    // Build the compact schema IR (raw `PodVec` element, matching the `&[elem]`
+    // accessor these args decode to) and emit via the single-source emitters.
+    let schema_fields: Vec<crate::schema_ir::SchemaField> = ix_args
         .iter()
         .zip(pod_dyns.iter())
-        .map(|(arg, pd)| match pd {
-            Some(pd) => pod_dyn_to_compact_type(pd),
-            None => {
-                let ty = &arg.ty;
-                quote! { #ty }
-            }
+        .map(|(arg, pd)| {
+            let class = match pd {
+                Some(pd) => crate::schema_ir::LayoutClass::from_pod_dyn(pd, |e| quote!(#e)),
+                None => {
+                    let ty = &arg.ty;
+                    crate::schema_ir::LayoutClass::Fixed { ty: quote!(#ty) }
+                }
+            };
+            crate::schema_ir::SchemaField::private(arg.name.clone(), class)
         })
         .collect();
+    let ir = match crate::schema_ir::SchemaIR::new(schema_fields) {
+        Ok(ir) => ir,
+        Err(e) => return e.to_compile_error(),
+    };
+    let schema_name: Ident = syn::parse_quote!(__IxArgsCompact);
+    let ref_name: Ident = syn::parse_quote!(__IxArgsCompactRef);
 
-    stmts.push(quote! {
-        #[derive(zeropod::ZeroPod)]
-        #[zeropod(compact)]
-        struct __IxArgsCompact {
-            #(#compact_field_names: #compact_field_types,)*
-        }
-    });
-
-    stmts.push(quote! {
-        <__IxArgsCompact as quasar_lang::ZeroPodCompact>::validate(__ix_data)
-            .map_err(|_| ProgramError::InvalidInstructionData)?;
-    });
-
-    stmts.push(quote! {
-        // SAFETY: `validate` succeeded on this exact slice above.
-        let __ref = unsafe { __IxArgsCompactRef::new_unchecked(__ix_data) };
-    });
-
-    for (arg, pd) in ix_args.iter().zip(pod_dyns.iter()) {
-        let name = &arg.name;
-        match pd {
-            Some(_) => {
-                // Dynamic accessor: returns a zero-copy `&str` / `&[T]` view.
-                stmts.push(quote! {
-                    let #name = __ref.#name();
-                });
-            }
-            None => {
-                let ty = &arg.ty;
-                // Per-field semantic validation before from_zc: the compact
-                // schema validate() checks layout/prefix bounds but not
-                // InstructionArg-level invariants (e.g. Option tags), matching
-                // the handler macro's compact decode path.
-                stmts.push(quote! {
-                    <#ty as quasar_lang::instruction_arg::InstructionArg>::validate_zc(&__ref.#name)
-                        .map_err(|_| ProgramError::InvalidInstructionData)?;
-                    let #name = <#ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(&__ref.#name);
-                });
-            }
-        }
-    }
+    stmts.push(crate::schema_ir::emit_compact_schema(
+        &schema_name,
+        &ir,
+        &syn::Visibility::Inherited,
+    ));
+    let decode = crate::schema_ir::emit_compact_decode(
+        &ir,
+        &crate::schema_ir::DecodeOpts {
+            schema_name,
+            ref_name,
+            data: quote!(__ix_data),
+            err: quote!(ProgramError::InvalidInstructionData),
+            validate_fixed: true,
+        },
+    );
+    stmts.push(quote! { #(#decode)* });
 
     quote! { #(#stmts)* }
 }

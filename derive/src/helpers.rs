@@ -727,23 +727,6 @@ pub(crate) fn prefix_bytes_to_rust_type(prefix_bytes: usize) -> proc_macro2::Tok
     }
 }
 
-/// Map a PodDynField to the zeropod compact field type tokens.
-/// Used by both #[account] and #[instruction] codegen.
-pub(crate) fn pod_dyn_to_compact_type(dyn_field: &PodDynField) -> proc_macro2::TokenStream {
-    match dyn_field {
-        PodDynField::Str { max, prefix_bytes } => {
-            quote! { zeropod::pod::PodString<#max, #prefix_bytes> }
-        }
-        PodDynField::Vec {
-            elem,
-            max,
-            prefix_bytes,
-        } => {
-            quote! { zeropod::pod::PodVec<#elem, #max, #prefix_bytes> }
-        }
-    }
-}
-
 pub(crate) fn map_to_pod_type(ty: &Type) -> proc_macro2::TokenStream {
     pod_alias_type(ty, true)
         .unwrap_or_else(|| quote! { <#ty as quasar_lang::instruction_arg::InstructionArg>::Zc })

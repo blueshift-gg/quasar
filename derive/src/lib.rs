@@ -15,6 +15,7 @@ mod event;
 mod helpers;
 mod instruction;
 mod program;
+mod schema_ir;
 mod seed_param;
 mod seeds;
 mod serialize;

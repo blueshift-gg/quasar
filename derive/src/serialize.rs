@@ -6,7 +6,7 @@
 //! 3. Off-chain `SchemaWrite` / `SchemaRead` impls.
 //!
 //! **Borrowed structs** (has lifetime params):
-//! 1. A hidden `#[zeropod(compact)]` schema.
+//! 1. A hidden compact zeropod schema.
 //! 2. A `decode_compact()` method that returns borrowed views from compact Ref.
 //!
 //! **Enums** (repr-backed, unit variants):
@@ -420,50 +420,45 @@ fn derive_borrowed_compact(input: DeriveInput, fields: Vec<Field>) -> TokenStrea
         return e.to_compile_error();
     }
 
-    let schema_field_types: Vec<proc_macro2::TokenStream> = field_classes
-        .iter()
-        .zip(fields.iter())
-        .map(|(cls, field)| match cls {
-            BorrowedFieldClass::Fixed => {
-                let ty = &field.ty;
-                quote!(#ty)
-            }
-            BorrowedFieldClass::Dynamic(PodDynField::Str { max, prefix_bytes }) => {
-                quote!(zeropod::pod::PodString<#max, #prefix_bytes>)
-            }
-            BorrowedFieldClass::Dynamic(PodDynField::Vec {
-                elem,
-                max,
-                prefix_bytes,
-            }) => {
-                quote!(zeropod::pod::PodVec<#elem, #max, #prefix_bytes>)
-            }
-        })
-        .collect();
-
-    let extract_fields: Vec<proc_macro2::TokenStream> = field_classes
+    // Build the compact schema IR (raw `PodVec` element — matches the `&[elem]`
+    // view the borrowed decode yields), then emit the schema struct + decode via
+    // the shared single-source emitters.
+    let schema_fields: Vec<crate::schema_ir::SchemaField> = field_classes
         .iter()
         .zip(fields.iter())
         .map(|(cls, field)| {
-            let fname = field
+            let ident = field
                 .ident
-                .as_ref()
+                .clone()
                 .unwrap_or_else(|| ice!("named struct field has no identifier"));
-            match cls {
+            let class = match cls {
                 BorrowedFieldClass::Fixed => {
                     let ty = &field.ty;
-                    quote! {
-                        let #fname = <#ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(&__ref.#fname);
-                    }
+                    crate::schema_ir::LayoutClass::Fixed { ty: quote!(#ty) }
                 }
-                BorrowedFieldClass::Dynamic(_) => {
-                    quote! {
-                        let #fname = __ref.#fname();
-                    }
+                BorrowedFieldClass::Dynamic(pd) => {
+                    crate::schema_ir::LayoutClass::from_pod_dyn(pd, |e| quote!(#e))
                 }
-            }
+            };
+            crate::schema_ir::SchemaField::private(ident, class)
         })
         .collect();
+    let ir = match crate::schema_ir::SchemaIR::new(schema_fields) {
+        Ok(ir) => ir,
+        Err(e) => return e.to_compile_error(),
+    };
+    let schema_struct =
+        crate::schema_ir::emit_compact_schema(&schema_name, &ir, &syn::Visibility::Inherited);
+    let decode = crate::schema_ir::emit_compact_decode(
+        &ir,
+        &crate::schema_ir::DecodeOpts {
+            schema_name: schema_name.clone(),
+            ref_name: ref_name.clone(),
+            data: quote!(data),
+            err: quote!(quasar_lang::prelude::ProgramError::InvalidInstructionData),
+            validate_fixed: false,
+        },
+    );
 
     let expanded = quote! {
         impl #impl_generics #name #ty_generics #where_clause {
@@ -473,16 +468,9 @@ fn derive_borrowed_compact(input: DeriveInput, fields: Vec<Field>) -> TokenStrea
                 use quasar_lang::__zeropod as zeropod;
 
                 // Re-derive the schema inside the method so the Ref type is in scope.
-                #[derive(zeropod::ZeroPod)]
-                #[zeropod(compact)]
-                struct #schema_name {
-                    #(#field_names: #schema_field_types,)*
-                }
+                #schema_struct
 
-                <#schema_name as quasar_lang::ZeroPodCompact>::validate(data)
-                    .map_err(|_| quasar_lang::prelude::ProgramError::InvalidInstructionData)?;
-                let __ref = unsafe { #ref_name::new_unchecked(data) };
-                #(#extract_fields)*
+                #(#decode)*
                 Ok(Self { #(#field_names,)* })
             }
         }
