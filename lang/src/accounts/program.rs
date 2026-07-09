@@ -17,6 +17,10 @@ impl<T: crate::traits::Id> AsAccountView for Program<T> {
     }
 }
 
+// SAFETY: `Program<T>` is `#[repr(transparent)]` over `AccountView` plus
+// `PhantomData<T>`, so the pointer cast preserves layout.
+unsafe impl<T: crate::traits::Id> crate::traits::StaticView for Program<T> {}
+
 impl<T: crate::traits::Id> crate::traits::Id for Program<T> {
     const ID: Address = T::ID;
 }

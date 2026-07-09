@@ -21,7 +21,8 @@
 /// module comment).
 const MAX_PDA_SLICES: usize = 19;
 
-/// Prove `verify_program_address` index arithmetic is safe.
+/// Prove `build_pda_input`'s no-bump index arithmetic (as used by
+/// `verify_program_address`) is safe: seeds, then program_id and PDA_MARKER.
 #[kani::proof]
 fn verify_program_address_indices_within_bounds() {
     let n: usize = kani::any();
@@ -38,8 +39,9 @@ fn verify_program_address_indices_within_bounds() {
     assert!(n + 2 <= MAX_PDA_SLICES, "slice length exceeds array");
 }
 
-/// Prove `based_try_find_program_address` and `find_bump_for_address` index
-/// arithmetic is safe.
+/// Prove `build_pda_input`'s with-bump index arithmetic (as used by
+/// `try_find_program_address`, `verify_canonical_program_address`, and
+/// `find_bump_for_address`) is safe: seeds, bump, program_id, PDA_MARKER.
 #[kani::proof]
 fn find_program_address_indices_within_bounds() {
     let n: usize = kani::any();

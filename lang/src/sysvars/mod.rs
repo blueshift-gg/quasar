@@ -10,7 +10,6 @@ pub mod clock;
 pub mod rent;
 
 const OFFSET_LENGTH_EXCEEDS_SYSVAR: u64 = 1;
-const SYSVAR_NOT_FOUND: u64 = 2;
 
 pub trait Sysvar: Sized {
     const ID: Address;
@@ -81,9 +80,8 @@ macro_rules! impl_sysvar_get {
                 $crate::sysvars::OFFSET_LENGTH_EXCEEDS_SYSVAR => {
                     Err(solana_program_error::ProgramError::InvalidArgument)
                 }
-                $crate::sysvars::SYSVAR_NOT_FOUND => {
-                    Err(solana_program_error::ProgramError::UnsupportedSysvar)
-                }
+                // Any other nonzero code (including SYSVAR_NOT_FOUND == 2)
+                // maps to `UnsupportedSysvar`.
                 _ => Err(solana_program_error::ProgramError::UnsupportedSysvar),
             }
         }

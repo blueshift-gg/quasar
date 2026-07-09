@@ -8,10 +8,6 @@ pub trait AccountLayout {
     /// Used for validation via `ZeroPodFixed::validate()`.
     type Schema: crate::__zeropod::ZeroPodFixed;
 
-    /// The zero-copy companion type that Deref targets.
-    /// Usually `<Schema as ZeroPodFixed>::Zc`.
-    type Target;
-
     /// Byte offset where account data begins (after discriminator, if any).
     const DATA_OFFSET: usize;
 

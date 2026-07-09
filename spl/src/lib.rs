@@ -206,11 +206,7 @@ macro_rules! impl_deferred_init {
                 <$wrapper as quasar_lang::account_load::AccountLoad>::check(target)?;
                 // SAFETY: The account was just initialized and re-checked as the target
                 // wrapper.
-                Ok(unsafe {
-                    <$wrapper as quasar_lang::account_load::AccountLoad>::from_view_unchecked_mut(
-                        target,
-                    )
-                })
+                Ok(unsafe { <$wrapper>::from_account_view_unchecked_mut(target) })
             }
         }
     };

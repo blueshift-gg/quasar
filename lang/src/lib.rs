@@ -426,6 +426,8 @@ pub mod prelude;
 pub mod remaining;
 /// `set_return_data` syscall wrapper.
 pub mod return_data;
+/// Centralized sBPF ABI facts (entrypoint, input buffer, `SolBytes`).
+pub mod svm_abi;
 /// Core framework traits.
 pub mod traits;
 /// Utility functions
@@ -450,6 +452,17 @@ pub use solana_program_error as __solana_program_error;
 /// downstream crates adding a direct dependency.
 #[doc(hidden)]
 pub use zeropod as __zeropod;
+/// The `#[derive(ZeroPod)]` macro for defining zero-copy account and
+/// instruction schemas.
+///
+/// This is the stable path for framework plugins that define their own
+/// zero-copy schema types (see [`pod`] for the alignment-1 field types).
+///
+/// Note: the derive expands to unqualified `zeropod::` paths, so a crate using
+/// `#[derive(quasar_lang::ZeroPod)]` must also bring the `zeropod` crate into
+/// scope (e.g. `use quasar_lang::__zeropod as zeropod;`) until the derive
+/// gains a crate-path override.
+pub use zeropod::ZeroPod;
 // Re-export zeropod traits for framework integration.
 pub use zeropod::{
     ZcElem, ZcField, ZcValidate, ZeroPodCompact, ZeroPodError, ZeroPodFixed, ZeroPodSchema,
@@ -461,11 +474,11 @@ pub use zeropod::{
 /// bounds-checked slicing, `Result` construction, and panic paths.
 #[inline(always)]
 pub fn keys_eq(a: &solana_address::Address, b: &solana_address::Address) -> bool {
-    #[cfg(not(target_os = "solana"))]
+    #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
     {
         a == b
     }
-    #[cfg(target_os = "solana")]
+    #[cfg(any(target_os = "solana", target_arch = "bpf"))]
     {
         let a = a.as_array().as_ptr() as *const u64;
         let b = b.as_array().as_ptr() as *const u64;
@@ -528,6 +541,7 @@ pub fn is_system_program(addr: &solana_address::Address) -> bool {
 #[cold]
 #[inline(never)]
 #[allow(unused_variables)]
+#[doc(hidden)]
 pub fn decode_header_error(header: u32, expected: u32, required_mask: u32) -> u64 {
     use solana_program_error::ProgramError;
 

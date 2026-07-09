@@ -22,6 +22,7 @@ use {
 /// `ptr` must point to the start of a valid SVM input buffer (account count
 /// at offset 0, followed by serialized `RuntimeAccount` entries).
 #[inline(always)]
+#[doc(hidden)]
 pub unsafe fn handle_event(
     ptr: *mut u8,
     instruction_data: &[u8],
@@ -104,6 +105,7 @@ pub fn emit_event_cpi(
 ///
 /// `buf` must point to at least `disc.len()` writable bytes.
 #[inline(always)]
+#[doc(hidden)]
 pub unsafe fn write_log_disc(buf: *mut u8, disc: &[u8]) -> usize {
     let disc_len = disc.len();
     // SAFETY: Caller guarantees `buf` has at least `disc.len()` writable
@@ -124,6 +126,7 @@ pub unsafe fn write_log_disc(buf: *mut u8, disc: &[u8]) -> usize {
 ///
 /// `buf` must point to at least `1 + disc.len()` writable bytes.
 #[inline(always)]
+#[doc(hidden)]
 pub unsafe fn write_cpi_disc(buf: *mut u8, disc: &[u8]) -> usize {
     let disc_len = disc.len();
     // SAFETY: Caller guarantees `buf` has at least `1 + disc.len()` writable

@@ -216,11 +216,6 @@ macro_rules! heap_alloc {
             static A: BumpAllocator = unsafe {
                 BumpAllocator::new_unchecked(HEAP_START_ADDRESS as usize, MAX_HEAP_LENGTH as usize)
             };
-
-            #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
-            mod __private_alloc {
-                extern crate std as __std;
-            }
         }
     };
 }

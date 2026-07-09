@@ -1,0 +1,7 @@
+error[E0046]: not all trait items implemented, missing: `build_exit`
+  --> tests/compile_fail/behavior_builder_missing_exit.rs:39:5
+   |
+39 |     impl quasar_lang::account_behavior::BehaviorArgsBuilder for ArgsBuilder {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `build_exit` in implementation
+   |
+   = help: implement the missing item: `fn build_exit(self) -> Result<<Self as BehaviorArgsBuilder>::Exit, quasar_lang::prelude::ProgramError> { todo!() }`

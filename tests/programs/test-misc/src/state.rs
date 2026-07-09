@@ -177,11 +177,17 @@ impl AsAccountView for VaultInterface {
 }
 
 impl quasar_lang::traits::Owners for VaultInterface {
-    fn owners() -> &'static [Address] {
-        static OWNERS: [Address; 1] = [crate::ID];
-        &OWNERS
+    fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
+        if quasar_lang::keys_eq(view.owner(), &crate::ID) {
+            Ok(())
+        } else {
+            Err(ProgramError::IllegalOwner)
+        }
     }
 }
+
+// SAFETY: `VaultInterface` is `#[repr(transparent)]` over `AccountView`.
+unsafe impl quasar_lang::traits::StaticView for VaultInterface {}
 
 impl quasar_lang::account_load::AccountLoad for VaultInterface {
     fn check(view: &AccountView) -> Result<(), ProgramError> {

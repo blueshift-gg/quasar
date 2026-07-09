@@ -8,6 +8,7 @@ use {crate::utils::hint::unlikely, solana_address::Address, solana_program_error
 /// Validate that two addresses match (used for `has_one` and `address`
 /// constraints; the check is identical).
 #[inline(always)]
+#[doc(hidden)]
 pub fn check_address_match(
     actual: &Address,
     expected: &Address,
@@ -21,6 +22,7 @@ pub fn check_address_match(
 
 /// Validate a user-defined boolean constraint.
 #[inline(always)]
+#[doc(hidden)]
 pub fn check_constraint(condition: bool, error: ProgramError) -> Result<(), ProgramError> {
     if unlikely(!condition) {
         return Err(error);

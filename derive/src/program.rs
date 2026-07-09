@@ -1062,6 +1062,9 @@ pub(crate) fn program_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
             }
         }
 
+        // SAFETY: `EventAuthority` is `#[repr(transparent)]` over `AccountView`.
+        unsafe impl quasar_lang::traits::StaticView for EventAuthority {}
+
         impl quasar_lang::account_load::AccountLoad for EventAuthority {
 
             #[inline(always)]

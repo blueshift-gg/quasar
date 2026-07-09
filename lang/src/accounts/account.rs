@@ -154,9 +154,13 @@ impl<T: AsAccountView> AsAccountView for Account<T> {
     }
 }
 
+// SAFETY: `Account<T>` is `#[repr(transparent)]` over `T`; when `T: StaticView`
+// (i.e. `T` is itself transparent over `AccountView`), `Account<T>` is
+// transitively transparent over `AccountView`, so the pointer cast is sound.
+unsafe impl<T: crate::traits::StaticView> crate::traits::StaticView for Account<T> {}
+
 impl<T: crate::account_layout::AccountLayout> crate::account_layout::AccountLayout for Account<T> {
     type Schema = T::Schema;
-    type Target = T::Target;
     const DATA_OFFSET: usize = T::DATA_OFFSET;
 }
 

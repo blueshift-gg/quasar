@@ -47,18 +47,17 @@ pub(super) fn generate_account(
     } else {
         // Fixed accounts: emit AccountLayout + composed checks.
         // AccountLoad::check is the single source of truth, composing
-        // Discriminator + DataLen + ZeroPod.
+        // Discriminator + ZeroPod (ZeroPod self-guards its length check, so
+        // checks::DataLen is not emitted here).
         let disc_len_lit = disc_len;
         let zc_mod_ident = &zc.zc_mod;
         quote::quote! {
             impl quasar_lang::account_layout::AccountLayout for #name {
                 type Schema = #zc_mod_ident::__Schema;
-                type Target = <#zc_mod_ident::__Schema as quasar_lang::__zeropod::ZeroPodFixed>::Zc;
                 const DATA_OFFSET: usize = #disc_len_lit;
             }
 
             impl quasar_lang::checks::Discriminator for #name {}
-            impl quasar_lang::checks::DataLen for #name {}
             impl quasar_lang::checks::ZeroPod for #name {}
 
             impl quasar_lang::account_load::AccountLoad for #name {

@@ -30,6 +30,15 @@ pub struct Op<'a, Params = ()> {
 
 impl<'a, P> Op<'a, P> {
     /// Execute the init operation on a raw account slot.
+    ///
+    /// Unlike [`realloc::Op::apply`](crate::ops::realloc::Op::apply) and
+    /// [`close::Op::apply`](crate::ops::close::Op::apply), `ctx` is bound to
+    /// the op's own lifetime (`&'a OpCtx<'a, R>`) rather than a free
+    /// `&OpCtx<'_, R>`. This is required, not incidental: [`InitCtx<'a>`]
+    /// carries `payer`, `program_id`, `signers`, and `rent` under a single
+    /// lifetime, and `payer`/ `signers` come from `Op<'a>`, so
+    /// `ctx.program_id` and `&ctx.rent` must also outlive `'a`. Relaxing it
+    /// would require decoupling `InitCtx`'s lifetimes.
     #[inline(always)]
     pub fn apply<F, R>(
         &self,

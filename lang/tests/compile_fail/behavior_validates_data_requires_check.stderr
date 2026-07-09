@@ -1,5 +1,5 @@
 error[E0080]: evaluation panicked: behavior `fast_guard` sets VALIDATES_ACCOUNT_DATA and must keep RUN_CHECK = true
-  --> tests/compile_fail/behavior_validates_data_requires_check.rs:48:10
+  --> tests/compile_fail/behavior_validates_data_requires_check.rs:52:10
    |
-48 | #[derive(Accounts)]
+52 | #[derive(Accounts)]
    |          ^^^^^^^^ evaluation of `<Bad as quasar_lang::traits::ParseAccountsUnchecked<'input>>::parse_with_instruction_data_unchecked::_` failed here

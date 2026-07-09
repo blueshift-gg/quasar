@@ -17,6 +17,10 @@ impl<T: ProgramInterface> AsAccountView for Interface<T> {
     }
 }
 
+// SAFETY: `Interface<T>` is `#[repr(transparent)]` over `AccountView` plus
+// `PhantomData<T>`, so the pointer cast preserves layout.
+unsafe impl<T: ProgramInterface> crate::traits::StaticView for Interface<T> {}
+
 impl<T: ProgramInterface> crate::account_load::AccountLoad for Interface<T> {
     const IS_EXECUTABLE: bool = true;
 
