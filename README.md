@@ -2,6 +2,9 @@
   <code>quasar</code>
 </h1>
 <p align="center">
+    <img src="./assets/logo-full.svg" alt="Quasar Logo" width="400">
+</p>
+<p align="center">
   Zero-copy, zero-allocation Solana program framework.
 </p>
 

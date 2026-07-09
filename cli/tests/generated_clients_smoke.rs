@@ -159,16 +159,6 @@ static inline bool find_program_address(
 }
 
 fn compile_typescript_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
-    // The smoke test validates generated client type-checking, not npm's ability
-    // to resolve a GitHub-hosted dependency transport on GitHub runners.
-    let package_json_path = client_dir.join("package.json");
-    let mut package_json: Value = serde_json::from_str(&fs::read_to_string(&package_json_path)?)?;
-    package_json["dependencies"]["@solana/web3.js"] = serde_json::json!("^1.98.4");
-    fs::write(
-        &package_json_path,
-        serde_json::to_string_pretty(&package_json)? + "\n",
-    )?;
-
     fs::write(
         client_dir.join("tsconfig.json"),
         r#"{

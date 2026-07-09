@@ -47,8 +47,11 @@ pub fn format_disc_array(disc: &[u8]) -> String {
 mod tests {
     use {
         super::{
-            c::generate_c_client, golang::generate_go_client, python::generate_python_client,
+            c::generate_c_client,
+            golang::generate_go_client,
+            python::generate_python_client,
             rust::generate_client as generate_rust_client,
+            typescript::{generate_ts_client, generate_ts_client_kit},
         },
         crate::types::{
             AccountFlag, Idl, IdlAccountNode, IdlArg, IdlInstruction, IdlMetadata, IdlPdaProgram,
@@ -107,6 +110,41 @@ mod tests {
         }
     }
 
+    fn idl_with_pubkey_arg() -> Idl {
+        Idl {
+            spec: "quasar-idl/1.0.0".to_owned(),
+            name: "address_test".to_owned(),
+            version: "0.1.0".to_owned(),
+            address: "11111111111111111111111111111111".to_owned(),
+            metadata: IdlMetadata::default(),
+            docs: vec![],
+            instructions: vec![IdlInstruction {
+                name: "set_authority".to_owned(),
+                discriminator: vec![9],
+                docs: vec![],
+                accounts: vec![],
+                args: vec![IdlArg {
+                    name: "authority".to_owned(),
+                    ty: IdlType::Primitive("pubkey".to_owned()),
+                    codec: None,
+                    docs: vec![],
+                }],
+                layout: None,
+                returns: None,
+                effects: vec![],
+                remaining_accounts: None,
+            }],
+            accounts: vec![],
+            types: vec![],
+            events: vec![],
+            errors: vec![],
+            constants: vec![],
+            wrappers: None,
+            extensions: None,
+            hashes: None,
+        }
+    }
+
     #[test]
     fn go_pda_arg_seed_uses_typed_encoding() {
         let output = generate_go_client(&idl_with_u64_arg_seed());
@@ -141,5 +179,19 @@ mod tests {
         let output = generate_python_client(&idl_with_u64_arg_seed());
 
         assert!(output.contains("struct.pack(\"<Q\", input.amount)"));
+    }
+
+    #[test]
+    fn typescript_address_codec_is_target_specific() {
+        let web3js = generate_ts_client(&idl_with_pubkey_arg());
+        let kit = generate_ts_client_kit(&idl_with_pubkey_arg());
+
+        assert!(web3js.contains("function getWeb3jsAddressCodec()"));
+        assert!(web3js.contains("[\"authority\", getWeb3jsAddressCodec()]"));
+        assert!(!web3js.contains("function getAddressCodec()"));
+
+        assert!(kit.contains("getAddressCodec"));
+        assert!(kit.contains("[\"authority\", getAddressCodec()]"));
+        assert!(!kit.contains("getWeb3jsAddressCodec()"));
     }
 }
