@@ -204,9 +204,9 @@ impl Parse for ParsedDirective {
     }
 }
 
-/// Parse `key = value` pairs separated by commas into raw `(Ident, Expr)` items.
-/// Shared by `close(dest = ...)` and behavior groups; the latter classifies each
-/// value into `BehaviorArgValue`.
+/// Parse `key = value` pairs separated by commas into raw `(Ident, Expr)`
+/// items. Shared by `close(dest = ...)` and behavior groups; the latter
+/// classifies each value into `BehaviorArgValue`.
 fn parse_group_args(input: ParseStream) -> syn::Result<Vec<(Ident, Expr)>> {
     let mut args: Vec<(Ident, Expr)> = Vec::new();
     while !input.is_empty() {
@@ -292,9 +292,9 @@ fn invalid_behavior_arg(key: &Ident, expr: &Expr) -> syn::Error {
     syn::Error::new_spanned(
         expr,
         format!(
-            "behavior arg `{}` has a value that is not valid in all lifecycle phases. \
-             Behavior args must be bare field idents, literals, const paths, `Some(field)`, \
-             or `None`. Move complex expressions to `constraints(...)` or handler code.",
+            "behavior arg `{}` has a value that is not valid in all lifecycle phases. Behavior \
+             args must be bare field idents, literals, const paths, `Some(field)`, or `None`. \
+             Move complex expressions to `constraints(...)` or handler code.",
             key,
         ),
     )

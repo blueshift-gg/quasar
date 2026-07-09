@@ -1523,8 +1523,7 @@ fn uninit_parse_simulation_dup_from_partially_initialized() {
 
     // Exercise the REAL production walk (`parse_all_accounts_unchecked`) under
     // Miri instead of re-implementing the parse loop here.
-    let boundary =
-        unsafe { accounts_start.add(acct0_size + acct1_size + dup_size) } as *const u8;
+    let boundary = unsafe { accounts_start.add(acct0_size + acct1_size + dup_size) } as *const u8;
     let (parsed, _end) = unsafe {
         quasar_lang::__internal::parse_all_accounts_unchecked(accounts_start, arr_ptr, N, boundary)
     }
@@ -1578,8 +1577,7 @@ fn uninit_parse_simulation_many_dups() {
 
     // Exercise the REAL production walk (`parse_all_accounts_unchecked`) under
     // Miri instead of re-implementing the parse loop here.
-    let boundary =
-        unsafe { accounts_start.add(acct_size * 2 + dup_size * 3) } as *const u8;
+    let boundary = unsafe { accounts_start.add(acct_size * 2 + dup_size * 3) } as *const u8;
     let (parsed, _end) = unsafe {
         quasar_lang::__internal::parse_all_accounts_unchecked(accounts_start, arr_ptr, N, boundary)
     }

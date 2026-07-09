@@ -6,13 +6,16 @@
 use {
     super::{
         super::{
-            syntax::attrs::{CoreDirective, Directive},
+            syntax::{
+                attrs::{CoreDirective, Directive},
+                parse_field_attrs,
+            },
             InstructionArg,
         },
-        super::syntax::parse_field_attrs,
         rules::validate_semantics,
         wrapper::{classify_wrapper, WrapperKind},
-        AddressConstraint, AddressKind, FieldCore, FieldKind, FieldSemantics, InitDirective, SeedRef,
+        AddressConstraint, AddressKind, FieldCore, FieldKind, FieldSemantics, InitDirective,
+        SeedRef,
     },
     crate::helpers::{extract_generic_inner_type, is_composite_type},
     std::collections::HashSet,
@@ -322,10 +325,7 @@ fn resolve_seed_ref(expr: &Expr, scope: &SeedScope) -> SeedRef {
     // degrades to `Const` exactly as the old resolver did.
     if let Some((base, path)) = account_field_path(expr) {
         if scope.field_with_inner.contains(&base.to_string()) {
-            return SeedRef::AccountField {
-                base,
-                path,
-            };
+            return SeedRef::AccountField { base, path };
         }
     }
 

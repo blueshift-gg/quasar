@@ -108,13 +108,11 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
 
     // --- Pipeline: syntax -> resolve -> plan -> emit ---
 
-    let semantics = match resolve::lower_semantics(
-        fields,
-        instruction_args.as_deref().unwrap_or(&[]),
-    ) {
-        Ok(semantics) => semantics,
-        Err(e) => return e.to_compile_error(),
-    };
+    let semantics =
+        match resolve::lower_semantics(fields, instruction_args.as_deref().unwrap_or(&[])) {
+            Ok(semantics) => semantics,
+            Err(e) => return e.to_compile_error(),
+        };
 
     let typed_plan = match resolve::planner::build_plan(&semantics) {
         Ok(plan) => plan,
@@ -214,7 +212,6 @@ fn emit_idl_accounts_meta(
             quote! {
                 quasar_lang::idl_build::__reexport::IdlAccountNode {
                     name: quasar_lang::idl_build::s(#field_name),
-                    client_type: None,
                     optional: #optional,
                     writable: quasar_lang::idl_build::__reexport::AccountFlag::Fixed(#writable),
                     signer: quasar_lang::idl_build::__reexport::AccountFlag::Fixed(#signer),

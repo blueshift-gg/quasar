@@ -267,9 +267,9 @@ quasar_lang::__private_inventory::submit! {
     quasar_lang::idl_build::__reexport::IdlType::Primitive(quasar_lang::idl_build::s("u64")),
     codec : None, docs : quasar_lang::idl_build::Vec::new(), }], layout :
     Some(quasar_lang::idl_build::__reexport::IdlLayout::Fixed { fields :
-    quasar_lang::idl_build::vec![quasar_lang::idl_build::s("amount")], }), returns :
-    None, effects : quasar_lang::idl_build::Vec::new(), remaining_accounts : None, } }
-    __build }, accounts_struct_name : "Initialize", discriminator_source :
+    quasar_lang::idl_build::vec![quasar_lang::idl_build::s("amount")], }),
+    remaining_accounts : None, } } __build }, accounts_struct_name : "Initialize",
+    discriminator_source :
     quasar_lang::idl_build::InstructionDiscriminatorSource::Explicit, }
 }
 #[cfg(feature = "idl-build")]
@@ -280,9 +280,8 @@ quasar_lang::__private_inventory::submit! {
     quasar_lang::idl_build::s("update"), discriminator :
     quasar_lang::idl_build::vec![1u8], docs : quasar_lang::idl_build::Vec::new(),
     accounts : quasar_lang::idl_build::Vec::new(), args : quasar_lang::idl_build::vec![],
-    layout : None, returns : None, effects : quasar_lang::idl_build::Vec::new(),
-    remaining_accounts : None, } } __build }, accounts_struct_name : "Update",
-    discriminator_source :
+    layout : None, remaining_accounts : None, } } __build }, accounts_struct_name :
+    "Update", discriminator_source :
     quasar_lang::idl_build::InstructionDiscriminatorSource::Explicit, }
 }
 /// Assemble all IDL fragments and return JSON.

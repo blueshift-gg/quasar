@@ -436,13 +436,13 @@ quasar_lang::__private_inventory::submit! {
     quasar_lang::idl_build::AccountsMetaFragment(|| {
     (quasar_lang::idl_build::s("InitEscrow"),
     quasar_lang::idl_build::vec![quasar_lang::idl_build::__reexport::IdlAccountNode {
-    name : quasar_lang::idl_build::s("payer"), client_type : None, optional : false,
-    writable : quasar_lang::idl_build::__reexport::AccountFlag::Fixed(true), signer :
+    name : quasar_lang::idl_build::s("payer"), optional : false, writable :
+    quasar_lang::idl_build::__reexport::AccountFlag::Fixed(true), signer :
     quasar_lang::idl_build::__reexport::AccountFlag::Fixed(true), resolver :
     quasar_lang::idl_build::__reexport::IdlResolver::Input {}, docs :
     quasar_lang::idl_build::Vec::new(), },
     quasar_lang::idl_build::__reexport::IdlAccountNode { name :
-    quasar_lang::idl_build::s("escrow"), client_type : None, optional : false, writable :
+    quasar_lang::idl_build::s("escrow"), optional : false, writable :
     quasar_lang::idl_build::__reexport::AccountFlag::Fixed(true), signer :
     quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), resolver :
     quasar_lang::idl_build::__reexport::IdlResolver::Pda { program :
@@ -450,11 +450,10 @@ quasar_lang::__private_inventory::submit! {
     quasar_lang::idl_build::vec![quasar_lang::idl_build::__reexport::IdlPdaSeed::Const {
     value : quasar_lang::idl_build::Vec::from(< Escrow as quasar_lang::traits::HasSeeds >
     ::SEED_PREFIX), }, quasar_lang::idl_build::__reexport::IdlPdaSeed::Account { path :
-    quasar_lang::idl_build::s("payer"), }], bump : None, }, docs :
-    quasar_lang::idl_build::Vec::new(), },
-    quasar_lang::idl_build::__reexport::IdlAccountNode { name :
-    quasar_lang::idl_build::s("systemProgram"), client_type : None, optional : false,
-    writable : quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), signer :
+    quasar_lang::idl_build::s("payer"), }], }, docs : quasar_lang::idl_build::Vec::new(),
+    }, quasar_lang::idl_build::__reexport::IdlAccountNode { name :
+    quasar_lang::idl_build::s("systemProgram"), optional : false, writable :
+    quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), signer :
     quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), resolver :
     quasar_lang::idl_build::__reexport::IdlResolver::Input {}, docs :
     quasar_lang::idl_build::Vec::new(), }],) })

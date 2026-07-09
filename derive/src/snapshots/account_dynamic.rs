@@ -450,9 +450,9 @@ quasar_lang::__private_inventory::submit! {
     formula : None, }), }, quasar_lang::idl_build::__reexport::IdlTypeDef { name :
     quasar_lang::idl_build::s("DynamicAccount"), kind :
     quasar_lang::idl_build::__reexport::IdlTypeDefKind::Struct, docs :
-    quasar_lang::idl_build::Vec::new(), generics : quasar_lang::idl_build::Vec::new(),
-    fields : quasar_lang::idl_build::vec![quasar_lang::idl_build::__reexport::IdlFieldDef
-    { name : quasar_lang::idl_build::s("name"), ty :
+    quasar_lang::idl_build::Vec::new(), fields :
+    quasar_lang::idl_build::vec![quasar_lang::idl_build::__reexport::IdlFieldDef { name :
+    quasar_lang::idl_build::s("name"), ty :
     quasar_lang::idl_build::__reexport::IdlType::Primitive(quasar_lang::idl_build::s("string")),
     codec : Some(quasar_lang::idl_build::__reexport::IdlCodec::SizePrefixed { prefix :
     quasar_lang::idl_build::__reexport::ScalarRepr { ty :

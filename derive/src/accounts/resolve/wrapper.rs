@@ -1,7 +1,7 @@
 //! One wrapper-type classifier (absorbed plan 040).
 //!
-//! Account field types are matched **syntactically on their last path segment**.
-//! Proc macros cannot resolve type aliases, so
+//! Account field types are matched **syntactically on their last path
+//! segment**. Proc macros cannot resolve type aliases, so
 //! `type Vault = Account<'a, VaultState>; vault: Vault` classifies as `Other`,
 //! never `Account`. This is a fundamental proc-macro limitation; it is
 //! documented once here and on the `#[derive(Accounts)]` rustdoc.
@@ -83,7 +83,10 @@ mod tests {
 
     #[test]
     fn last_segment_classification() {
-        assert_eq!(classify_wrapper(&ty("Account<'a, T>")), WrapperKind::Account);
+        assert_eq!(
+            classify_wrapper(&ty("Account<'a, T>")),
+            WrapperKind::Account
+        );
         assert_eq!(
             classify_wrapper(&ty("quasar_lang::Interface<'a, T>")),
             WrapperKind::Interface

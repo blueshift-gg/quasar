@@ -6,8 +6,8 @@
 //! either way.) The planner, event-CPI detection, and diagnostics all read
 //! these constants so they can never disagree on the spelling.
 
-/// A field named `payer` is the struct-wide default payer for `init` / `realloc`
-/// when a field does not name its own `payer = ...`.
+/// A field named `payer` is the struct-wide default payer for `init` /
+/// `realloc` when a field does not name its own `payer = ...`.
 pub(crate) const PAYER_FIELD: &str = "payer";
 
 /// A field named `event_authority` (or one typed `EventAuthority`) enables the

@@ -179,9 +179,9 @@ quasar_lang::__private_inventory::submit! {
     quasar_lang::idl_build::__reexport::IdlTypeDef { name :
     quasar_lang::idl_build::s("Payload"), kind :
     quasar_lang::idl_build::__reexport::IdlTypeDefKind::Struct, docs :
-    quasar_lang::idl_build::Vec::new(), generics : quasar_lang::idl_build::Vec::new(),
-    fields : quasar_lang::idl_build::vec![quasar_lang::idl_build::__reexport::IdlFieldDef
-    { name : quasar_lang::idl_build::s("amount"), ty :
+    quasar_lang::idl_build::Vec::new(), fields :
+    quasar_lang::idl_build::vec![quasar_lang::idl_build::__reexport::IdlFieldDef { name :
+    quasar_lang::idl_build::s("amount"), ty :
     quasar_lang::idl_build::__reexport::IdlType::Primitive(quasar_lang::idl_build::s("u64")),
     codec : None, docs : quasar_lang::idl_build::Vec::new(), },
     quasar_lang::idl_build::__reexport::IdlFieldDef { name :

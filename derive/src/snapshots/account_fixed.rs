@@ -115,9 +115,9 @@ quasar_lang::__private_inventory::submit! {
     : None, }), }, quasar_lang::idl_build::__reexport::IdlTypeDef { name :
     quasar_lang::idl_build::s("MixedAccount"), kind :
     quasar_lang::idl_build::__reexport::IdlTypeDefKind::Struct, docs :
-    quasar_lang::idl_build::Vec::new(), generics : quasar_lang::idl_build::Vec::new(),
-    fields : quasar_lang::idl_build::vec![quasar_lang::idl_build::__reexport::IdlFieldDef
-    { name : quasar_lang::idl_build::s("authority"), ty :
+    quasar_lang::idl_build::Vec::new(), fields :
+    quasar_lang::idl_build::vec![quasar_lang::idl_build::__reexport::IdlFieldDef { name :
+    quasar_lang::idl_build::s("authority"), ty :
     quasar_lang::idl_build::__reexport::IdlType::Primitive(quasar_lang::idl_build::s("pubkey")),
     codec : None, docs : quasar_lang::idl_build::Vec::new(), },
     quasar_lang::idl_build::__reexport::IdlFieldDef { name :

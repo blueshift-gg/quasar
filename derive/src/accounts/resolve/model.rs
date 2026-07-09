@@ -24,8 +24,9 @@ pub(crate) struct FieldCore {
     pub optional: bool,
     pub dynamic: bool,
     /// The user's literal `#[account(mut)]` directive. Never mutated by
-    /// lowering: `init`/`close`/`realloc`/`Migration`/`Uninit` imply writability
-    /// through `is_writable()`, not by forging a `mut` the user never wrote.
+    /// lowering: `init`/`close`/`realloc`/`Migration`/`Uninit` imply
+    /// writability through `is_writable()`, not by forging a `mut` the user
+    /// never wrote.
     pub declared_mut: bool,
     pub dup: bool,
 }
@@ -149,8 +150,9 @@ pub(crate) enum AddressKind {
 pub(crate) enum SeedRef {
     /// `vault.address()` — the address of another account field.
     AccountAddr(Ident),
-    /// `vault.owner` (or nested `vault.a.b`) — a field read off another account.
-    /// `base` is the account field; `path` is the dotted member path.
+    /// `vault.owner` (or nested `vault.a.b`) — a field read off another
+    /// account. `base` is the account field; `path` is the dotted member
+    /// path.
     AccountField { base: Ident, path: String },
     /// A bare identifier naming a struct-level `#[instruction(..)]` argument.
     IxArg(Ident),

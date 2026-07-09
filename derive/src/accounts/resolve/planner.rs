@@ -236,7 +236,10 @@ fn validate_payer_field(payer: &FieldRef, semantics: &[FieldSemantics]) -> syn::
     let Some(payer_sem) = semantics.iter().find(|s| s.core.ident == payer.ident) else {
         return Err(syn::Error::new_spanned(
             &payer.ident,
-            format!("payer `{}` does not name a field in this accounts struct", payer.ident),
+            format!(
+                "payer `{}` does not name a field in this accounts struct",
+                payer.ident
+            ),
         ));
     };
     let flags = account_meta_flags(payer_sem);
@@ -346,15 +349,15 @@ mod tests {
         syn::parse_str(name).expect("ident")
     }
 
-    /// Lower a fixture struct and build its plan, returning the plan error text.
+    /// Lower a fixture struct and build its plan, returning the plan error
+    /// text.
     fn plan_err(ts: proc_macro2::TokenStream) -> String {
         let item: syn::ItemStruct = syn::parse2(ts).expect("struct parses");
         let fields = match item.fields {
             syn::Fields::Named(named) => named.named,
             _ => Default::default(),
         };
-        let sems =
-            crate::accounts::resolve::lower_semantics(&fields, &[]).expect("fixture lowers");
+        let sems = crate::accounts::resolve::lower_semantics(&fields, &[]).expect("fixture lowers");
         build_plan(&sems)
             .err()
             .expect("expected a plan error")
@@ -395,7 +398,10 @@ mod tests {
                 acct: Account<Foo>,
             }
         });
-        assert!(err.contains("close destination") && err.contains("must be writable"), "{err}");
+        assert!(
+            err.contains("close destination") && err.contains("must be writable"),
+            "{err}"
+        );
     }
 
     /// Minimal single-account semantics with the given name and effective type.

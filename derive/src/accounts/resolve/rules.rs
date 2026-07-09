@@ -280,7 +280,10 @@ mod tests {
         let err = lower_err(quote! {
             struct S { #[account(group, init)] bundle: SomeBundle }
         });
-        assert!(err.contains("`init` is not supported on a composite"), "{err}");
+        assert!(
+            err.contains("`init` is not supported on a composite"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -288,7 +291,10 @@ mod tests {
         let err = lower_err(quote! {
             struct S { #[account(group, address = FOO)] bundle: SomeBundle }
         });
-        assert!(err.contains("`address` is not supported on a composite"), "{err}");
+        assert!(
+            err.contains("`address` is not supported on a composite"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -310,7 +316,10 @@ mod tests {
                 #[account(group, dup)] bundle: SomeBundle
             }
         });
-        assert!(err.contains("`dup` is not supported on a composite"), "{err}");
+        assert!(
+            err.contains("`dup` is not supported on a composite"),
+            "{err}"
+        );
     }
 
     #[test]
