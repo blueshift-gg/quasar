@@ -23,7 +23,12 @@ pub(crate) struct AccountsOutput<'a> {
     pub epilogue_method: proc_macro2::TokenStream,
     pub has_epilogue_expr: proc_macro2::TokenStream,
     pub client_macro: proc_macro2::TokenStream,
+    /// The `Self::__extract_ix_args(..)` destructuring call spliced at each
+    /// parse/signer site (empty when there are no ix args).
     pub ix_arg_extraction: proc_macro2::TokenStream,
+    /// The single `#[inline(always)] fn __extract_ix_args` definition, placed on
+    /// the inherent impl (empty when there are no ix args).
+    pub extract_ix_args_fn: proc_macro2::TokenStream,
 }
 
 pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::TokenStream {
@@ -46,6 +51,7 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
         has_epilogue_expr,
         client_macro,
         ix_arg_extraction,
+        extract_ix_args_fn,
     } = output;
 
     let exact_len_guard = quote! {
@@ -136,6 +142,8 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
         }
 
         impl #impl_generics #name #ty_generics #where_clause {
+            #extract_ix_args_fn
+
             #[inline(always)]
             #[doc(hidden)]
             pub unsafe fn parse_accounts(

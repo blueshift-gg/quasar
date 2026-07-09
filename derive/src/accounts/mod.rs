@@ -28,7 +28,6 @@ use {
     proc_macro::TokenStream,
     quote::{format_ident, quote},
     syn::{parse_quote, Data, DeriveInput, Fields, GenericParam, Type},
-    syntax::generate_instruction_arg_extraction,
 };
 
 pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
@@ -134,12 +133,11 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
         direct_parse_body,
     } = accounts_plan;
 
-    // Instruction arg extraction
-    let ix_arg_extraction = if let Some(ref ix_args) = instruction_args {
-        generate_instruction_arg_extraction(ix_args)
-    } else {
-        quote! {}
-    };
+    // Instruction arg extraction: emitted ONCE as `Self::__extract_ix_args` and
+    // called (destructured) from each splice site.
+    let ix_args_slice = instruction_args.as_deref().unwrap_or(&[]);
+    let ix_arg_extraction_fn = emit::ix_args::emit_extract_ix_args_fn(ix_args_slice);
+    let ix_arg_extraction_call = emit::ix_args::emit_extract_ix_args_call(ix_args_slice);
 
     let bumps_struct = emit::parse::emit_bump_struct_def(&typed_plan.fields, &emit_cx);
     let signer_helpers_impl = emit_signer_helpers_impl(SignerHelpersCtx {
@@ -149,7 +147,7 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
         impl_generics: &impl_generics_ts,
         ty_generics: &ty_generics_ts,
         where_clause: &where_clause_ts,
-        ix_arg_extraction: &ix_arg_extraction,
+        ix_arg_extraction: &ix_arg_extraction_call,
         has_instruction_args: typed_plan.has_instruction_args,
     });
     let epilogue_method = emit::parse::emit_epilogue(&typed_plan);
@@ -178,7 +176,8 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
         epilogue_method,
         has_epilogue_expr,
         client_macro,
-        ix_arg_extraction,
+        ix_arg_extraction: ix_arg_extraction_call,
+        extract_ix_args_fn: ix_arg_extraction_fn,
     });
 
     quote::quote! {
