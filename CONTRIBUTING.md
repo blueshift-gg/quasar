@@ -14,6 +14,17 @@ Open an issue if you:
 
 We read every issue. If it's a real bug, we'll fix it. If it's a good idea, we'll track it. If we disagree, we'll explain why.
 
+## Compiler diagnostic goldens
+
+The `.stderr` files under `lang/tests/compile_fail/` and `derive/tests/` are the
+spec of the diagnostics the macros emit. `make test` (and CI) run trybuild in
+assert mode: a diagnostic that drifts from its golden fails the build.
+
+When you intend to change a diagnostic, run `make test-bless` to regenerate the
+goldens (`TRYBUILD=overwrite`), then review every regenerated `.stderr` diff
+like code — each hunk must be a deliberate, correct diagnostic, not an
+accidental regression. Never set `TRYBUILD=overwrite` in `make test` or CI.
+
 ## When this changes
 
 Once the API stabilizes and we've been audited, we'll open up contributions. Until then, issues are the best way to shape the project.

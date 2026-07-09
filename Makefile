@@ -20,9 +20,10 @@ SBF_EXAMPLES := examples/vault examples/escrow examples/multisig
 SBF_ALL := $(SBF_EXAMPLES) $(SBF_TEST_PROGRAMS)
 
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
-	check-runtime-panics check-workspace-invariants build build-sbf test bench-cu \
-	bench-tracked compare-tracked test-miri test-miri-strict test-all nightly-version \
-	generated-client-smoke kani help-kani check-kani kani-lang kani-spl kani-metadata
+	check-runtime-panics check-workspace-invariants build build-sbf test test-bless \
+	bench-cu bench-tracked compare-tracked test-miri test-miri-strict test-all \
+	nightly-version generated-client-smoke kani help-kani check-kani kani-lang \
+	kani-spl kani-metadata
 
 # Print the nightly toolchain version for CI
 nightly-version:
@@ -95,7 +96,6 @@ check-runtime-panics:
 	  if [[ "$$code" =~ ^[[:space:]]*// ]]; then continue; fi; \
 	  case "$$entry" in \
 	    *'lang/src/lib.rs:'*'panic!("program aborted")'*) continue ;; \
-	    *'derive/src/accounts/evidence.rs:'*) continue ;; \
 	  esac; \
 	  violations+=("$$entry"); \
 	done <<<"$$matches"; \
@@ -152,7 +152,21 @@ build-sbf:
 	@echo "Building test-heap (alloc only, no debug — tests alloc trap)"
 	cargo build-sbf --tools-version $(PLATFORM_TOOLS) --manifest-path tests/programs/test-heap/Cargo.toml --features alloc
 
+# Asserts committed trybuild .stderr goldens (trybuild default mode). A stale
+# golden fails the build — that is the gate. Regenerate with `make test-bless`.
 test:
+	@$(MAKE) build
+	@$(MAKE) build-sbf
+	@cargo test -p quasar-lang -p quasar-derive -p quasar-spl \
+		-p quasar-metadata \
+		-p quasar-vault -p quasar-escrow -p quasar-multisig \
+		-p quasar-test-suite \
+		--all-features
+
+# Regenerates trybuild .stderr goldens (TRYBUILD=overwrite). Use only when a
+# diagnostic change is intended; review the regenerated diffs like code before
+# committing. `make test` (and CI) run in assert mode and never set TRYBUILD.
+test-bless:
 	@$(MAKE) build
 	@$(MAKE) build-sbf
 	@TRYBUILD=overwrite cargo test -p quasar-lang -p quasar-derive -p quasar-spl \

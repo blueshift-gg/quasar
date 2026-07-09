@@ -51,7 +51,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        crate: [quasar-lang, quasar-spl]
+        crate: [quasar-lang, quasar-spl, quasar-metadata]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/cache@v5
