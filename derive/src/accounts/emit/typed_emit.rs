@@ -235,11 +235,10 @@ pub(crate) fn emit_program_close(
                     &mut self.#field_ident
                 )
             };
-            quasar_lang::ops::close::close_account(
-                __view,
-                self.#dest_ident.to_account_view(),
-                <#disc_ty as quasar_lang::traits::Discriminator>::DISCRIMINATOR.len(),
-            )?;
+            quasar_lang::ops::close::Op {
+                disc_len: <#disc_ty as quasar_lang::traits::Discriminator>::DISCRIMINATOR.len(),
+            }
+            .apply(__view, self.#dest_ident.to_account_view())?;
         }
     }
 }
