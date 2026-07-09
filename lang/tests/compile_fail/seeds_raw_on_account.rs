@@ -10,7 +10,10 @@ pub struct Config {
 
 #[derive(Accounts)]
 pub struct Bad {
-    #[account(seeds = [b"config"], bump = config.bump)]
+    // Quasar has no raw-seed-array PDA form; addresses use typed
+    // `Type::seeds(...)`. A raw byte-string array does not implement
+    // `AddressVerify`, so using one as an `address = ...` constraint must fail.
+    #[account(address = [b"config"])]
     pub config: Account<Config>,
 }
 

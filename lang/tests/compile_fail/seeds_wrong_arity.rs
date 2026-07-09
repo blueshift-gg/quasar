@@ -14,7 +14,9 @@ pub struct Vault {
 #[derive(Accounts)]
 pub struct Bad {
     pub authority: Signer,
-    #[account(seeds = Vault::seeds(), bump = vault.bump)]
+    // `Vault::seeds` takes the declared `authority: Address` seed. Calling it
+    // with no arguments must fail — the typed seed constructor enforces arity.
+    #[account(address = Vault::seeds())]
     pub vault: Account<Vault>,
 }
 
