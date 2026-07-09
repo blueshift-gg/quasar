@@ -182,14 +182,20 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
     /// runtime borrows, so duplicate entries are safe by default.
     #[inline(always)]
     pub fn remaining_accounts(&self) -> RemainingAccounts<'input> {
-        RemainingAccounts::new_with_context(
-            self.remaining_ptr,
-            self.accounts_boundary,
-            self.declared,
-            // SAFETY: `program_id` is the same runtime-owned 32-byte storage
-            // originally passed through `Context`.
-            unsafe { as_address(self.program_id) },
-            self.data,
-        )
+        // SAFETY: `remaining_ptr`/`accounts_boundary` delimit the remaining
+        // region of the SVM input buffer this `CtxWithRemaining` was built from,
+        // and `declared` is the declared-account slice parsed from that same
+        // buffer, so the `RemainingAccounts` construction contract is upheld.
+        // `program_id` is the same runtime-owned 32-byte storage originally
+        // passed through `Context`.
+        unsafe {
+            RemainingAccounts::new_with_context(
+                self.remaining_ptr,
+                self.accounts_boundary,
+                self.declared,
+                as_address(self.program_id),
+                self.data,
+            )
+        }
     }
 }

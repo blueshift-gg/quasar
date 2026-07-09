@@ -87,6 +87,19 @@ where
         payer: &AccountView,
         signers: &[crate::cpi::Signer<'_, '_>],
     ) -> Result<&'a mut Account<T>, ProgramError> {
+        // Compile-time guard (mirrors migration.rs `_TARGET_FITS_SPACE`): the
+        // account's declared `Space` must cover the discriminator plus the
+        // copied `T::Target` payload, otherwise the `copy_nonoverlapping` below
+        // would write past the allocated account data.
+        const {
+            assert!(
+                <T as crate::traits::Space>::SPACE
+                    >= <T as crate::traits::Discriminator>::DISCRIMINATOR.len()
+                        + core::mem::size_of::<T::Target>(),
+                "Uninit target Space must cover discriminator plus target data"
+            );
+        }
+
         if crate::utils::hint::unlikely(!crate::is_system_program(target.owner())) {
             return Err(ProgramError::AccountAlreadyInitialized);
         }

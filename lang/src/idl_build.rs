@@ -79,7 +79,11 @@ inventory::collect!(InstructionFragment);
 inventory::collect!(AccountsMetaFragment);
 
 /// Assemble all registered fragments into a complete IDL.
-pub fn build_idl(address: &str, name: &str, version: &str) -> Idl {
+///
+/// `crate_name` is the Cargo package name of the program crate (threaded from
+/// `env!("CARGO_PKG_NAME")` at the call site); it is distinct from `name`, the
+/// `#[program]` module name.
+pub fn build_idl(address: &str, name: &str, crate_name: &str, version: &str) -> Idl {
     let mut accounts = Vec::new();
     let mut types = Vec::new();
     let mut events = Vec::new();
@@ -117,17 +121,40 @@ pub fn build_idl(address: &str, name: &str, version: &str) -> Idl {
                 serde_json::Value::String(String::from("auto")),
             );
         }
-        // Look up the matching AccountsMetaFragment by struct name.
+        // Look up the matching AccountsMetaFragment by struct name. A missing
+        // fragment is a hard error: the instruction names an accounts struct
+        // whose metadata never registered (e.g. a fragment-name mismatch),
+        // which would otherwise silently emit an instruction with no accounts.
         if ix.accounts.is_empty() && !frag.accounts_struct_name.is_empty() {
-            if let Some((_, nodes)) = accounts_meta
+            let (_, nodes) = accounts_meta
                 .iter()
                 .find(|(struct_name, _)| struct_name == frag.accounts_struct_name)
-            {
-                ix.accounts = nodes.clone();
-            }
+                .unwrap_or_else(|| {
+                    panic!(
+                        "idl-build: instruction `{}` references accounts struct `{}` but no \
+                         AccountsMetaFragment with that name was registered",
+                        ix.name, frag.accounts_struct_name
+                    )
+                });
+            ix.accounts = nodes.clone();
         }
         instructions.push(ix);
     }
+
+    // Deterministic assembly: `inventory` yields fragments in unspecified,
+    // link-order-dependent order, but the assembled IDL is hashed, so the
+    // output must not depend on registration order. Sort every collection by a
+    // stable key: instructions by discriminator (tie-break on name), everything
+    // else by name.
+    instructions.sort_by(|a, b| {
+        a.discriminator
+            .cmp(&b.discriminator)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    accounts.sort_by(|a, b| a.name.cmp(&b.name));
+    types.sort_by(|a, b| a.name.cmp(&b.name));
+    events.sort_by(|a, b| a.name.cmp(&b.name));
+    errors.sort_by(|a, b| a.name.cmp(&b.name));
 
     let mut idl = Idl {
         spec: String::from("quasar-idl/1.0.0"),
@@ -135,7 +162,7 @@ pub fn build_idl(address: &str, name: &str, version: &str) -> Idl {
         version: String::from(version),
         address: String::from(address),
         metadata: IdlMetadata {
-            crate_name: Some(String::from(name)),
+            crate_name: Some(String::from(crate_name)),
             generator_version: Some(String::from(env!("CARGO_PKG_VERSION"))),
             schema_version: Some(String::from("1.0.0")),
             ..IdlMetadata::default()

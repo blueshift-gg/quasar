@@ -179,13 +179,17 @@ impl<T: AsAccountView + crate::traits::StaticView + crate::traits::Space> Accoun
     }
 }
 
-impl<T: Owner + AsAccountView + crate::traits::Discriminator> Account<T> {
+impl<T: Owner + AsAccountView + crate::traits::Discriminator + crate::traits::StaticView>
+    Account<T>
+{
     /// Close account: zero disc, drain lamports, reassign to system, resize to
     /// zero.
     #[inline(always)]
     pub fn close(&mut self, destination: &AccountView) -> Result<(), ProgramError> {
-        // SAFETY: Close operates on the runtime account backing this typed
-        // wrapper and does not access `T` after reassigning/resizing it.
+        // SAFETY: `T: StaticView` guarantees `Account<T>` is `#[repr(transparent)]`
+        // over `AccountView`, so this pointer cast is valid. Close operates on the
+        // runtime account backing this typed wrapper and does not access `T` after
+        // reassigning/resizing it.
         let view = unsafe { &mut *(self as *mut Account<T> as *mut AccountView) };
         crate::ops::close::close_account(
             view,
