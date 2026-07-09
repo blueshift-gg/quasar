@@ -185,6 +185,7 @@ pub fn build_idl(address: &str, name: &str, crate_name: &str, version: &str) -> 
     }
 
     assert_dynamic_fields_have_codecs(&idl);
+    assert_account_discriminators_distinct(&idl);
 
     let idl_hash = compute_idl_hash(&idl);
     let abi_hash = compute_abi_hash(&idl);
@@ -250,6 +251,37 @@ fn assert_dynamic_fields_have_codecs(idl: &Idl) {
                         "type `{}` variant `{}` field `{}`",
                         ty.name, variant.name, field.name
                     ),
+                );
+            }
+        }
+    }
+}
+
+/// Account discriminators must be pairwise distinct AND non-prefixing: the
+/// runtime discriminator check reads only the declared-length prefix
+/// (`checks/discriminator.rs`) and every `#[account]` shares `OWNER = crate::ID`,
+/// so a discriminator that is a prefix of another (which includes exact
+/// equality) is silent type confusion at runtime. This is the hard-error half of
+/// lint rule P009; an empty discriminator (`unsafe_no_disc`) is an explicit
+/// opt-out and is skipped. Panics in the missing-fragment/missing-codec style.
+fn assert_account_discriminators_distinct(idl: &Idl) {
+    fn collides(a: &[u8], b: &[u8]) -> bool {
+        if a.is_empty() || b.is_empty() {
+            return false;
+        }
+        let shared = a.len().min(b.len());
+        a[..shared] == b[..shared]
+    }
+
+    for (i, account) in idl.accounts.iter().enumerate() {
+        for other in &idl.accounts[i + 1..] {
+            if collides(&account.discriminator, &other.discriminator) {
+                panic!(
+                    "idl-build: accounts `{}` and `{}` have colliding discriminators ({:?} vs \
+                     {:?}); the runtime check is a prefix compare, so one account can be decoded \
+                     as the other. Give every account a distinct discriminator that is not a \
+                     prefix of another.",
+                    account.name, other.name, account.discriminator, other.discriminator
                 );
             }
         }
@@ -332,5 +364,54 @@ mod codec_tests {
     #[should_panic(expected = "no codec")]
     fn dynamic_arg_without_codec_panics() {
         assert_dynamic_fields_have_codecs(&idl_with_arg(arg(u8_vec(), None)));
+    }
+
+    fn idl_with_account_discs(discs: &[(&str, Vec<u8>)]) -> Idl {
+        let mut idl = idl_with_arg(arg(IdlType::Primitive(String::from("u64")), None));
+        idl.accounts = discs
+            .iter()
+            .map(|(name, disc)| IdlAccountDef {
+                name: String::from(*name),
+                discriminator: disc.clone(),
+                docs: Vec::new(),
+                space: None,
+            })
+            .collect();
+        idl
+    }
+
+    #[test]
+    fn distinct_account_discriminators_ok() {
+        assert_account_discriminators_distinct(&idl_with_account_discs(&[
+            ("A", vec![1]),
+            ("B", vec![2]),
+            ("C", vec![3, 4]),
+        ]));
+    }
+
+    #[test]
+    fn no_disc_accounts_are_skipped() {
+        assert_account_discriminators_distinct(&idl_with_account_discs(&[
+            ("A", Vec::new()),
+            ("B", Vec::new()),
+        ]));
+    }
+
+    #[test]
+    #[should_panic(expected = "colliding discriminators")]
+    fn equal_account_discriminators_panic() {
+        assert_account_discriminators_distinct(&idl_with_account_discs(&[
+            ("A", vec![1]),
+            ("B", vec![1]),
+        ]));
+    }
+
+    #[test]
+    #[should_panic(expected = "colliding discriminators")]
+    fn prefix_account_discriminators_panic() {
+        assert_account_discriminators_distinct(&idl_with_account_discs(&[
+            ("A", vec![1]),
+            ("B", vec![1, 2]),
+        ]));
     }
 }

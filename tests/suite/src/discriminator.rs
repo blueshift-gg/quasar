@@ -34,7 +34,7 @@ fn single_byte_wrong() {
     let mut svm = svm_misc();
     let account = Pubkey::new_unique();
     let mut data = vec![0u8; 42];
-    data[0] = 2; // wrong disc (expected 1)
+    data[0] = 99; // wrong disc (expected 2)
 
     let ix: Instruction = OwnerCheckInstruction { account }.into();
     let result = svm.process_instruction(
@@ -117,7 +117,7 @@ fn zero_length_data() {
 fn disc_only_no_fields() {
     let mut svm = svm_misc();
     let account = Pubkey::new_unique();
-    let data = vec![1u8]; // just the disc, no struct fields
+    let data = vec![2u8]; // just the disc, no struct fields
 
     let ix: Instruction = OwnerCheckInstruction { account }.into();
     let result = svm.process_instruction(
@@ -134,7 +134,7 @@ fn oversized_data_valid() {
     let account = Pubkey::new_unique();
     let authority = Pubkey::new_unique();
     let mut data = vec![0u8; 10_000];
-    data[0] = 1; // correct disc
+    data[0] = 2; // correct disc
     data[1..33].copy_from_slice(authority.as_ref());
     data[33..41].copy_from_slice(&42u64.to_le_bytes());
     data[41] = 0; // bump

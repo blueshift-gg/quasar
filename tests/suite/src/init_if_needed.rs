@@ -26,7 +26,7 @@ fn new_account() {
     assert!(result.is_ok(), "new account: {:?}", result.raw_result);
 
     let acc = result.account(&account).expect("account exists");
-    assert_eq!(acc.data[0], 1, "discriminator");
+    assert_eq!(acc.data[0], 2, "discriminator");
     assert_eq!(&acc.data[33..41], &42u64.to_le_bytes(), "value");
     assert_eq!(acc.owner, quasar_test_misc::ID, "owner");
 }
@@ -130,7 +130,7 @@ fn new_prefunded() {
     assert!(result.is_ok(), "new prefunded: {:?}", result.raw_result);
 
     let acc = result.account(&account).expect("account exists");
-    assert_eq!(acc.data[0], 1, "discriminator");
+    assert_eq!(acc.data[0], 2, "discriminator");
     assert_eq!(acc.owner, quasar_test_misc::ID, "owner");
 }
 
@@ -208,7 +208,7 @@ fn data_too_small() {
 
     // Correct owner + disc but data too small
     let mut data = vec![0u8; 10]; // too small (42 needed)
-    data[0] = 1; // correct disc
+    data[0] = 2; // correct disc
     let result = svm.process_instruction(
         &ix,
         &[

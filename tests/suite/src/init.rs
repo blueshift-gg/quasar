@@ -27,7 +27,7 @@ fn fresh_account() {
 
     let acc = result.account(&account).expect("account exists");
     assert_eq!(acc.data.len(), 42, "size");
-    assert_eq!(acc.data[0], 1, "discriminator");
+    assert_eq!(acc.data[0], 2, "discriminator");
     assert_eq!(&acc.data[1..33], payer.as_ref(), "authority");
     assert_eq!(&acc.data[33..41], &42u64.to_le_bytes(), "value");
     assert_eq!(acc.owner, quasar_test_misc::ID, "owner");
@@ -67,7 +67,7 @@ fn prefunded_partial_rent() {
     assert!(result.is_ok(), "prefunded partial: {:?}", result.raw_result);
 
     let acc = result.account(&account).expect("account exists");
-    assert_eq!(acc.data[0], 1, "discriminator");
+    assert_eq!(acc.data[0], 2, "discriminator");
     assert_eq!(acc.owner, quasar_test_misc::ID, "owner");
 
     // Verify payer was only charged the delta (rent - prefund), not full rent
@@ -111,7 +111,7 @@ fn prefunded_excess_rent() {
     assert!(result.is_ok(), "prefunded excess: {:?}", result.raw_result);
 
     let acc = result.account(&account).expect("account exists");
-    assert_eq!(acc.data[0], 1, "discriminator");
+    assert_eq!(acc.data[0], 2, "discriminator");
     assert_eq!(acc.owner, quasar_test_misc::ID, "owner");
 }
 
@@ -200,7 +200,7 @@ fn explicit_payer() {
     assert!(result.is_ok(), "explicit payer: {:?}", result.raw_result);
 
     let acc = result.account(&account).expect("account exists");
-    assert_eq!(acc.data[0], 1, "discriminator");
+    assert_eq!(acc.data[0], 4, "discriminator");
     assert_eq!(&acc.data[1..33], funder.as_ref(), "authority = funder");
 }
 
@@ -435,6 +435,6 @@ fn prefunded_one_lamport() {
     );
 
     let acc = result.account(&account).expect("account");
-    assert_eq!(acc.data[0], 1, "discriminator");
+    assert_eq!(acc.data[0], 2, "discriminator");
     assert_eq!(acc.owner, quasar_test_misc::ID, "owner");
 }

@@ -108,7 +108,12 @@ impl RuleCode {
             | Self::R013
             | Self::R014
             | Self::R015
-            | Self::R016 => Severity::Error,
+            | Self::R016
+            // Account discriminator collisions are silent type confusion at
+            // runtime (the discriminator check is a prefix compare and every
+            // `#[account]` shares `OWNER = crate::ID`), so they are a hard error
+            // — mirrored by the `build_idl` collision panic.
+            | Self::P009 => Severity::Error,
             Self::R005
             | Self::L001
             | Self::P001
@@ -117,7 +122,6 @@ impl RuleCode {
             | Self::P006
             | Self::P007
             | Self::P008
-            | Self::P009
             | Self::P010
             | Self::P011 => Severity::Warning,
             Self::R012 => Severity::Info,
