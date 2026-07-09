@@ -27,6 +27,23 @@ pub(crate) fn derive_quasar_serialize(input: TokenStream) -> TokenStream {
     derive_quasar_serialize_inner(input.into()).into()
 }
 
+/// Build the wincode codec generics from a base: the `SchemaWrite` side adds
+/// `__C: ConfigCore`; the `SchemaRead` side additionally prepends the `'__de`
+/// deserialization lifetime.
+fn wincode_codec_generics(base: &syn::Generics) -> (syn::Generics, syn::Generics) {
+    let mut write = base.clone();
+    write
+        .params
+        .push(parse_quote!(__C: wincode::config::ConfigCore));
+
+    let mut read = base.clone();
+    read.params.insert(0, parse_quote!('__de));
+    read.params
+        .push(parse_quote!(__C: wincode::config::ConfigCore));
+
+    (write, read)
+}
+
 pub(crate) fn derive_quasar_serialize_inner(input: TokenStream2) -> TokenStream2 {
     let input = match syn::parse2::<DeriveInput>(input) {
         Ok(input) => input,
@@ -105,17 +122,8 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
         })
         .collect();
 
-    let mut schema_write_generics = schema_generics.clone();
-    schema_write_generics
-        .params
-        .push(parse_quote!(__C: wincode::config::ConfigCore));
+    let (schema_write_generics, schema_read_generics) = wincode_codec_generics(&schema_generics);
     let (schema_write_impl_generics, _, _) = schema_write_generics.split_for_impl();
-
-    let mut schema_read_generics = schema_generics.clone();
-    schema_read_generics.params.insert(0, parse_quote!('__de));
-    schema_read_generics
-        .params
-        .push(parse_quote!(__C: wincode::config::ConfigCore));
     let (schema_read_impl_generics, _, _) = schema_read_generics.split_for_impl();
 
     // IDL fragment emission
@@ -576,17 +584,8 @@ fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream2 
         })
         .collect();
 
-    let mut schema_write_generics = input.generics.clone();
-    schema_write_generics
-        .params
-        .push(parse_quote!(__C: wincode::config::ConfigCore));
+    let (schema_write_generics, schema_read_generics) = wincode_codec_generics(&input.generics);
     let (schema_write_impl_generics, _, _) = schema_write_generics.split_for_impl();
-
-    let mut schema_read_generics = input.generics.clone();
-    schema_read_generics.params.insert(0, parse_quote!('__de));
-    schema_read_generics
-        .params
-        .push(parse_quote!(__C: wincode::config::ConfigCore));
     let (schema_read_impl_generics, _, _) = schema_read_generics.split_for_impl();
 
     let expanded = quote! {
