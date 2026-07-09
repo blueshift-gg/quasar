@@ -76,7 +76,7 @@ pub trait Discriminator {
     ///
     /// When `Some(offset)`, PDA validation can read the bump directly from
     /// account data and use `verify_program_address` (~200 CU) instead of
-    /// `based_try_find_program_address` (~544 CU). Automatically set by
+    /// `try_find_program_address` (~544 CU). Automatically set by
     /// `#[account]` when the struct contains a `bump: u8` field.
     const BUMP_OFFSET: Option<usize> = None;
 }

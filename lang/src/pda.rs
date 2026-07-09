@@ -102,7 +102,7 @@ pub fn verify_program_address(
 ///
 /// Kani proof: `find_program_address_indices_within_bounds`.
 #[inline]
-pub fn based_try_find_program_address(
+pub fn try_find_program_address(
     seeds: &[&[u8]],
     program_id: &Address,
 ) -> Result<(Address, u8), ProgramError> {
@@ -200,7 +200,7 @@ pub fn based_try_find_program_address(
 
 /// Verify `expected` is the canonical PDA for `seeds` and return its bump.
 ///
-/// This is the verification form of [`based_try_find_program_address`]. It
+/// This is the verification form of [`try_find_program_address`]. It
 /// avoids materializing the derived `Address` only to compare it at the
 /// callsite.
 #[inline]
@@ -248,7 +248,7 @@ pub fn verify_canonical_program_address(
             // SAFETY: `bump_ptr` points to `bump_arr[0]`.
             unsafe { bump_ptr.write(bump as u8) };
 
-            // SAFETY: Same SBF slice layout as `based_try_find_program_address`.
+            // SAFETY: Same SBF slice layout as `try_find_program_address`.
             unsafe {
                 sol_sha256(
                     input as *const _ as *const u8,
@@ -297,7 +297,7 @@ pub fn verify_canonical_program_address(
 /// Iterates bump values from 255 down to 0, hashing with `sol_sha256` and
 /// comparing each hash against `expected` via [`keys_eq`](crate::keys_eq).
 ///
-/// This replaces [`based_try_find_program_address`]'s per-iteration
+/// This replaces [`try_find_program_address`]'s per-iteration
 /// `sol_curve_validate_point` syscall (~100 CU) with a `keys_eq` comparison
 /// (~10 CU), saving ~90 CU per attempt while producing identical results.
 ///
@@ -305,7 +305,7 @@ pub fn verify_canonical_program_address(
 ///
 /// # When to use
 ///
-/// Use this instead of [`based_try_find_program_address`] whenever the
+/// Use this instead of [`try_find_program_address`] whenever the
 /// expected PDA address is already known, which is always the case during
 /// account parsing (the account is passed in the transaction).
 ///
@@ -328,7 +328,7 @@ pub fn verify_canonical_program_address(
 /// that lies on the ed25519 curve would produce a bump value for an
 /// invalid PDA. The framework's codegen never calls this function in
 /// `#[account(init)]` contexts; init paths use
-/// [`based_try_find_program_address`] which includes the on-curve check.
+/// [`try_find_program_address`] which includes the on-curve check.
 #[inline]
 pub fn find_bump_for_address(
     seeds: &[&[u8]],

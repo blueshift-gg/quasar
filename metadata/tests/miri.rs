@@ -359,5 +359,5 @@ fn metadata_all_ff_rejected() {
 }
 
 // PDA derivation and verification tests belong in SVM integration tests
-// because `based_try_find_program_address` and `find_bump_for_address`
+// because `try_find_program_address` and `find_bump_for_address`
 // use Solana syscalls that are only available in the runtime.

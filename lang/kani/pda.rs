@@ -19,7 +19,7 @@ fn verify_program_address_indices_within_bounds() {
     assert!(n + 2 <= MAX_PDA_SLICES, "slice length exceeds array");
 }
 
-/// Prove `based_try_find_program_address` and `find_bump_for_address` index
+/// Prove `try_find_program_address` and `find_bump_for_address` index
 /// arithmetic is safe.
 #[kani::proof]
 fn find_program_address_indices_within_bounds() {
