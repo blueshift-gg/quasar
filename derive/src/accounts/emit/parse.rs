@@ -789,15 +789,9 @@ pub(crate) fn emit_bump_struct_def(
 }
 
 fn composite_assoc_ty(ty: &syn::Type) -> proc_macro2::TokenStream {
-    if let syn::Type::Path(type_path) = ty {
-        if type_path
-            .path
-            .segments
-            .last()
-            .is_some_and(|segment| segment.ident == "AccountsArray")
-        {
-            return quote! { #ty };
-        }
+    use super::super::resolve::wrapper::{classify_wrapper, WrapperKind};
+    if classify_wrapper(ty) == WrapperKind::AccountsArray {
+        return quote! { #ty };
     }
     // Composite field types are path types; fall back to the whole type token
     // (a localized trait error, never a cascade) if that ever fails to hold.

@@ -9,3 +9,7 @@
 /// A field named `payer` is the struct-wide default payer for `init` / `realloc`
 /// when a field does not name its own `payer = ...`.
 pub(crate) const PAYER_FIELD: &str = "payer";
+
+/// A field named `event_authority` (or one typed `EventAuthority`) enables the
+/// event-CPI wiring on the generated accounts struct.
+pub(crate) const EVENT_AUTHORITY_FIELD: &str = "event_authority";

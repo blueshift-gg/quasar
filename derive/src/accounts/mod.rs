@@ -550,15 +550,8 @@ fn is_seeds_path(expr: &Expr) -> bool {
 }
 
 fn composite_event_ty(ty: &Type) -> proc_macro2::TokenStream {
-    if let Type::Path(type_path) = ty {
-        if type_path
-            .path
-            .segments
-            .last()
-            .is_some_and(|segment| segment.ident == "AccountsArray")
-        {
-            return quote! { #ty };
-        }
+    if resolve::wrapper::classify_wrapper(ty) == resolve::wrapper::WrapperKind::AccountsArray {
+        return quote! { #ty };
     }
     // Composite field types are always path types; the fallback keeps a valid
     // type token (no cascade) if that invariant is ever broken -- the invalid
@@ -567,17 +560,6 @@ fn composite_event_ty(ty: &Type) -> proc_macro2::TokenStream {
 }
 
 fn is_event_cpi_field(sem: &resolve::FieldSemantics) -> bool {
-    if sem.core.ident == "event_authority" {
-        return true;
-    }
-
-    if let syn::Type::Path(type_path) = &sem.core.effective_ty {
-        type_path
-            .path
-            .segments
-            .last()
-            .is_some_and(|segment| segment.ident == "EventAuthority")
-    } else {
-        false
-    }
+    sem.core.ident == resolve::reserved::EVENT_AUTHORITY_FIELD
+        || sem.core.wrapper == resolve::wrapper::WrapperKind::EventAuthority
 }
