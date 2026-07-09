@@ -91,8 +91,8 @@ fn emit_handler_tail(
     };
 
     if has_return_data {
-        let ok_ty =
-            return_ok_type.expect("return_ok_type must be set when has_return_data is true");
+        let ok_ty = return_ok_type
+            .unwrap_or_else(|| ice!("return_ok_type must be set when has_return_data is true"));
         tail.push(syn::parse_quote!(
             const _: () = assert!(
                 core::mem::align_of::<<#ok_ty as quasar_lang::instruction_arg::InstructionArg>::Zc>() == 1,

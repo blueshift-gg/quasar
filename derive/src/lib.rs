@@ -2,6 +2,8 @@
 
 use proc_macro::TokenStream;
 
+#[macro_use]
+mod ice;
 mod account;
 mod accounts;
 pub(crate) mod client_macro;

@@ -373,7 +373,10 @@ fn derive_borrowed_compact(input: DeriveInput, fields: Vec<Field>) -> TokenStrea
     let schema_name = format_ident!("__{}CompactSchema", name);
     let ref_name = format_ident!("__{}CompactSchemaRef", name);
 
-    let field_names: Vec<_> = fields.iter().map(|f| f.ident.as_ref().unwrap()).collect();
+    let field_names: Vec<_> = fields
+        .iter()
+        .map(|f| f.ident.as_ref().unwrap_or_else(|| ice!("named struct field has no identifier")))
+        .collect();
 
     let mut field_classes: Vec<BorrowedFieldClass> = Vec::with_capacity(fields.len());
     for field in &fields {
@@ -430,7 +433,10 @@ fn derive_borrowed_compact(input: DeriveInput, fields: Vec<Field>) -> TokenStrea
         .iter()
         .zip(fields.iter())
         .map(|(cls, field)| {
-            let fname = field.ident.as_ref().unwrap();
+            let fname = field
+                .ident
+                .as_ref()
+                .unwrap_or_else(|| ice!("named struct field has no identifier"));
             match cls {
                 BorrowedFieldClass::Fixed => {
                     let ty = &field.ty;
@@ -564,7 +570,11 @@ fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream2 
             let vname = v.ident.to_string();
             // Use the explicit discriminant expression: guaranteed present by
             // the earlier validation loop.
-            let disc_expr = &v.discriminant.as_ref().unwrap().1;
+            let disc_expr = &v
+                .discriminant
+                .as_ref()
+                .unwrap_or_else(|| ice!("enum variant discriminant validated present above"))
+                .1;
             quote! {
                 quasar_lang::idl_build::__reexport::IdlEnumVariant {
                     name: quasar_lang::idl_build::s(#vname),

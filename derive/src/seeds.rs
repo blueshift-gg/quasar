@@ -122,15 +122,15 @@ fn derive_seeds_result(input: TokenStream) -> Result<TokenStream> {
             }
         }
         _ => {
-            return Err(Error::new(
-                Span::call_site(),
+            return Err(Error::new_spanned(
+                &input.ident,
                 "#[derive(Seeds)] can only be applied to a unit struct",
             ));
         }
     }
 
     let seeds_attr = parse_seeds_attr(&input.attrs)
-        .ok_or_else(|| Error::new(Span::call_site(), "missing #[seeds(...)] attribute"))??;
+        .ok_or_else(|| Error::new_spanned(&input.ident, "missing #[seeds(...)] attribute"))??;
 
     Ok(generate_seeds_impl(
         &input.ident,

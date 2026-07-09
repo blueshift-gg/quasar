@@ -84,25 +84,37 @@ check-workspace-lints:
 	if [[ "$$missing" -ne 0 ]]; then exit 1; fi
 
 check-runtime-panics:
-	@matches="$$( \
-	  rg -n 'panic!|unreachable!|todo!|unimplemented!' \
-	    lang/src spl/src derive/src \
-	    --glob '!**/tests/**' || true \
-	)"; \
-	violations=(); \
-	while IFS= read -r entry; do \
-	  [[ -z "$$entry" ]] && continue; \
-	  code="$${entry#*:*:}"; \
-	  if [[ "$$code" =~ ^[[:space:]]*// ]]; then continue; fi; \
-	  case "$$entry" in \
-	    *'lang/src/lib.rs:'*'panic!("program aborted")'*) continue ;; \
-	    *'lang/src/idl_build.rs:'*) continue ;; \
-	  esac; \
-	  violations+=("$$entry"); \
-	done <<<"$$matches"; \
-	if (($${#violations[@]} > 0)); then \
+	@# Panic-style macros in production runtime/derive code. Each file is scanned
+	@# only up to its first #[cfg(test)] (test modules trail the file by
+	@# convention), so inline test-module panics are excluded — the previous
+	@# `tests/`-glob only excluded whole test directories. Allowlisted: the
+	@# intentional lib.rs abort, the whole idl_build.rs, and the ice.rs helper.
+	@viol=""; \
+	while IFS= read -r f; do \
+	  hits="$$(awk '/#\[cfg\(test\)\]/{exit} /^[[:space:]]*\/\//{next} /panic!|unreachable!|todo!|unimplemented!/{print FILENAME":"FNR": "$$0}' "$$f")"; \
+	  [[ -n "$$hits" ]] && viol+="$$hits"$$'\n'; \
+	done < <(find lang/src spl/src derive/src -name '*.rs'); \
+	viol="$$(printf '%s' "$$viol" | grep -v 'lang/src/idl_build.rs:' | grep -vF 'panic!("program aborted")' | grep -v 'derive/src/ice.rs:')"; \
+	if [[ -n "$$viol" ]]; then \
 	  echo "unexpected panic-style macro in runtime/derive code:" >&2; \
-	  printf '  %s\n' "$${violations[@]}" >&2; \
+	  echo "$$viol" >&2; \
+	  exit 1; \
+	fi
+	@# No bare unwrap/expect in derive/src production code: front-end invariants
+	@# panic through ice!() instead. Two sites are allowlisted by message: the
+	@# quote!-generated IDL serializer (runs in the user crate) and the
+	@# sibling-owned rent-plan invariant in emit/parse.rs. Test modules (scanned
+	@# only up to the first #[cfg(test)]) and test-only files are excluded.
+	@uw=""; \
+	while IFS= read -r f; do \
+	  if [[ "$$f" == */snapshot_tests.rs || "$$f" == */plan_snapshots.rs || "$$f" == */snapshots/* || "$$f" == */dump.rs ]]; then continue; fi; \
+	  hits="$$(awk '/#\[cfg\(test\)\]/{exit} /^[[:space:]]*\/\//{next} /\.unwrap\(\)|\.expect\(/{print FILENAME":"FNR": "$$0}' "$$f")"; \
+	  [[ -n "$$hits" ]] && uw+="$$hits"$$'\n'; \
+	done < <(find derive/src -name '*.rs'); \
+	uw="$$(printf '%s' "$$uw" | grep -vF 'generated IDL should serialize' | grep -vF 'rent plan field should exist in account semantics')"; \
+	if [[ -n "$$uw" ]]; then \
+	  echo "unexpected bare unwrap/expect in derive/src production code (use ice!() or extend the allowlist with justification):" >&2; \
+	  echo "$$uw" >&2; \
 	  exit 1; \
 	fi
 

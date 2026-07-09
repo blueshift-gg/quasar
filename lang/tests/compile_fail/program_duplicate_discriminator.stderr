@@ -1,0 +1,5 @@
+error: duplicate discriminator [1]: already used by `foo`
+  --> tests/compile_fail/program_duplicate_discriminator.rs:24:5
+   |
+24 |     #[instruction(discriminator = 1)]
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

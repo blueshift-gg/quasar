@@ -144,7 +144,7 @@ pub(super) fn generate_account(
                     .field
                     .ident
                     .as_ref()
-                    .expect("account fields are validated as named before codegen")
+                    .unwrap_or_else(|| ice!("account fields are validated as named before codegen"))
                     .to_string();
                 let fty = crate::helpers::type_to_idl_type_tokens(&fi.field.ty);
                 let codec_tokens = crate::helpers::type_to_idl_codec_tokens(&fi.field.ty);

@@ -1,0 +1,6 @@
+error: `init(idempotent)` requires a behavior group (e.g., token(...)) or address constraint
+  --> tests/compile_fail/init_idempotent_requires_behavior.rs:18:5
+   |
+18 | /     #[account(init(idempotent), payer = payer)]
+19 | |     pub data: Account<Data>,
+   | |___________________________^

@@ -36,7 +36,7 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
         let inner_fields: Vec<proc_macro2::TokenStream> = field_infos
             .iter()
             .map(|fi| {
-                let field_name = fi.field.ident.as_ref().expect("field must be named");
+                let field_name = fi.field.ident.as_ref().unwrap_or_else(|| ice!("field must be named"));
                 match &fi.pod_dyn {
                     None => {
                         let field_ty = &fi.field.ty;
@@ -49,7 +49,7 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
         let max_checks: Vec<proc_macro2::TokenStream> = field_infos
             .iter()
             .filter_map(|fi| {
-                let field_name = fi.field.ident.as_ref().expect("field must be named");
+                let field_name = fi.field.ident.as_ref().unwrap_or_else(|| ice!("field must be named"));
                 fi.pod_dyn
                     .as_ref()
                     .map(|dyn_field| dynamic::emit_max_check(field_name, dyn_field))
@@ -58,7 +58,7 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
         let space_terms: Vec<proc_macro2::TokenStream> = field_infos
             .iter()
             .filter_map(|fi| {
-                let field_name = fi.field.ident.as_ref().expect("field must be named");
+                let field_name = fi.field.ident.as_ref().unwrap_or_else(|| ice!("field must be named"));
                 fi.pod_dyn
                     .as_ref()
                     .map(|dyn_field| dynamic::emit_space_term(field_name, dyn_field))
@@ -69,7 +69,7 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
             .filter(|fi| fi.pod_dyn.is_none())
             .map(|fi| {
                 zc_assign_from_value(
-                    fi.field.ident.as_ref().expect("field must be named"),
+                    fi.field.ident.as_ref().unwrap_or_else(|| ice!("field must be named")),
                     &fi.field.ty,
                 )
             })
@@ -77,7 +77,7 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
         let compact_set_stmts: Vec<proc_macro2::TokenStream> = field_infos
             .iter()
             .filter_map(|fi| {
-                let field_name = fi.field.ident.as_ref().expect("field must be named");
+                let field_name = fi.field.ident.as_ref().unwrap_or_else(|| ice!("field must be named"));
                 fi.pod_dyn.as_ref().map(|_| {
                     let setter = format_ident!("set_{}", field_name);
                     quote! {
@@ -89,7 +89,7 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
             .collect();
         let init_field_names: Vec<&syn::Ident> = field_infos
             .iter()
-            .map(|fi| fi.field.ident.as_ref().expect("field must be named"))
+            .map(|fi| fi.field.ident.as_ref().unwrap_or_else(|| ice!("field must be named")))
             .collect();
 
         quote! {
@@ -157,7 +157,7 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
                 fi.field
                     .ident
                     .as_ref()
-                    .expect("account fields are validated as named before codegen")
+                    .unwrap_or_else(|| ice!("account fields are validated as named before codegen"))
             })
             .collect();
         let field_types: Vec<_> = field_infos.iter().map(|fi| &fi.field.ty).collect();
@@ -165,7 +165,7 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
             .iter()
             .map(|fi| {
                 zc_assign_from_value(
-                    fi.field.ident.as_ref().expect("field must be named"),
+                    fi.field.ident.as_ref().unwrap_or_else(|| ice!("field must be named")),
                     &fi.field.ty,
                 )
             })

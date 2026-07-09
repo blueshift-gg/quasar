@@ -1,0 +1,5 @@
+error: one_of requires at least two variants
+  --> tests/compile_fail/one_of_too_few_variants.rs:16:5
+   |
+16 |     Settings(Settings),
+   |     ^^^^^^^^^^^^^^^^^^^

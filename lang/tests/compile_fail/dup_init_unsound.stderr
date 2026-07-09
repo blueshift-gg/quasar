@@ -1,0 +1,7 @@
+error: `dup` cannot be used with `init`: mutation on aliased accounts is unsound
+  --> tests/compile_fail/dup_init_unsound.rs:18:5
+   |
+18 | /     /// CHECK: intentionally aliased for the test; the mutation op is the error.
+19 | |     #[account(dup, init, payer = payer)]
+20 | |     pub aliased: Account<Data>,
+   | |______________________________^

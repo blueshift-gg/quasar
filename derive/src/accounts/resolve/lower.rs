@@ -143,7 +143,7 @@ fn lower_core(field: &syn::Field, directives: &[Directive]) -> FieldCore {
         ident: field
             .ident
             .clone()
-            .expect("account field must have an identifier"),
+            .unwrap_or_else(|| ice!("account field must have an identifier")),
         field: field.clone(),
         effective_ty,
         kind,
