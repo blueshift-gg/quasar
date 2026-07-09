@@ -342,6 +342,7 @@ pub fn verify_canonical_program_address(
 /// `#[account(init)]` contexts; init paths use
 /// [`try_find_program_address`] which includes the on-curve check.
 #[inline]
+#[doc(hidden)]
 pub fn find_bump_for_address(
     seeds: &[&[u8]],
     program_id: &Address,

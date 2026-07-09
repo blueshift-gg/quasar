@@ -539,6 +539,7 @@ pub fn is_system_program(addr: &solana_address::Address) -> bool {
 #[cold]
 #[inline(never)]
 #[allow(unused_variables)]
+#[doc(hidden)]
 pub fn decode_header_error(header: u32, expected: u32, required_mask: u32) -> u64 {
     use solana_program_error::ProgramError;
 
