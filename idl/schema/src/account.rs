@@ -70,8 +70,8 @@ impl AccountFlag {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AccountFlagDynamic {
+    /// The flag's value is supplied by the caller at build time.
     Input,
-    Runtime,
 }
 
 /// How an account address is resolved for client construction.

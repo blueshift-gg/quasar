@@ -339,7 +339,6 @@ fn flag_key(flag: &AccountFlag) -> String {
     match flag {
         AccountFlag::Fixed(v) => v.to_string(),
         AccountFlag::Dynamic(AccountFlagDynamic::Input) => "dynamic:input".to_owned(),
-        AccountFlag::Dynamic(AccountFlagDynamic::Runtime) => "dynamic:runtime".to_owned(),
     }
 }
 
