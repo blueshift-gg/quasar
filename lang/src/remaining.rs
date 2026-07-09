@@ -714,34 +714,28 @@ impl<T, const N: usize> Remaining<T, N> {
         let mut seen = unsafe {
             core::mem::MaybeUninit::<[core::mem::MaybeUninit<Address>; N]>::uninit().assume_init()
         };
-        let mut ptr = accounts.ptr;
-        while (ptr as *const u8) < accounts.boundary {
+        // SAFETY: `accounts.ptr`/`accounts.boundary` delimit the region.
+        let mut cursor = unsafe { Cursor::new(accounts.ptr, accounts.boundary) };
+        while !cursor.at_end() {
             if out.len >= N {
                 return Err(QuasarError::RemainingAccountsOverflow.into());
             }
 
-            let raw = ptr as *mut RuntimeAccount;
-            // SAFETY: `ptr` is within the SVM buffer (checked against boundary).
-            let borrow = unsafe { (*raw).borrow_state };
-            if T::REJECT_DUPLICATES && borrow != NOT_BORROWED {
-                return Err(QuasarError::RemainingAccountDuplicate.into());
-            }
-
-            let view = if borrow == NOT_BORROWED {
+            // SAFETY: not at end (checked above).
+            let view = match unsafe { cursor.next() } {
                 // SAFETY: Non-duplicate entry with a valid `RuntimeAccount`.
-                let view = unsafe { AccountView::new_unchecked(raw) };
-                // SAFETY: `raw` is valid; advances past header + data + padding.
-                ptr = unsafe { advance_past_account(ptr, raw) };
-                view
-            } else {
-                // SAFETY: Duplicate entry; advances past the u64 index.
-                ptr = unsafe { advance_past_dup(ptr) };
-                resolve_dup_walk(
-                    borrow as usize,
-                    accounts.declared,
-                    accounts.ptr,
-                    accounts.boundary,
-                )?
+                RawEntry::Account(raw) => unsafe { AccountView::new_unchecked(raw) },
+                RawEntry::Dup(borrow) => {
+                    if T::REJECT_DUPLICATES {
+                        return Err(QuasarError::RemainingAccountDuplicate.into());
+                    }
+                    resolve_dup_walk(
+                        borrow as usize,
+                        accounts.declared,
+                        accounts.ptr,
+                        accounts.boundary,
+                    )?
+                }
             };
 
             let address = *view.address();
