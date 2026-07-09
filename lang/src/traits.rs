@@ -104,7 +104,8 @@ pub trait Space {
 /// Declares the number of accounts consumed by a struct during parsing.
 ///
 /// Implemented by: `#[derive(Accounts)]` macro.
-/// Used by: `dispatch!` macro to size the `MaybeUninit` account buffer.
+/// Used by: generated `#[program]` dispatch to size the `MaybeUninit` account
+/// buffer.
 pub trait AccountCount {
     const COUNT: usize;
     /// True when this account set may service `emit_cpi!` self-CPI events.

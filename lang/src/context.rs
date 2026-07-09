@@ -1,4 +1,4 @@
-//! Instruction context types used by the `dispatch!` macro.
+//! Instruction context types used by the generated `#[program]` dispatch.
 //!
 //! Three levels of context exist, each wrapping the previous:
 //!

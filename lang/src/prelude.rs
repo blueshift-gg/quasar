@@ -16,7 +16,7 @@ pub use {
             system::{SystemProgram, SYSTEM_PROGRAM_ID},
             CpiDynamic, CpiReturn, CpiSignerSeeds,
         },
-        dispatch, emit,
+        emit,
         error::QuasarError,
         instruction_arg::{InstructionArg, OptionZc},
         no_alloc, panic_handler,
