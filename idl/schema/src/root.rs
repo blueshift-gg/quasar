@@ -10,8 +10,13 @@ use {
 /// The root IDL structure. Represents the complete program interface.
 ///
 /// Schema version: `quasar-idl/1.0.0`
+///
+/// The root deliberately does NOT `deny_unknown_fields`: it is the additive
+/// extension point, so a v1.0 reader tolerates unknown top-level fields written
+/// by a newer minor spec (compatibility is decided up front by the `spec`
+/// version gate). Leaf types keep `deny_unknown_fields` so precise contracts
+/// still reject typos and stray keys.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Idl {
     /// Schema version string (e.g., "quasar-idl/1.0.0").
     pub spec: String,
@@ -113,9 +118,51 @@ impl IdlMetadata {
 
 /// Integrity hashes for the IDL.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct IdlHashes {
     /// SHA-256 hash of the full canonical IDL (excluding the `hashes` field).
     pub idl: String,
     /// SHA-256 hash of the ABI-affecting subset only.
     pub abi: String,
+}
+
+#[cfg(test)]
+mod deny_unknown_tests {
+    use super::Idl;
+
+    const MINIMAL: &str = r#"{
+        "spec": "quasar-idl/1.0.0",
+        "name": "demo",
+        "version": "0.1.0",
+        "address": "11111111111111111111111111111111"
+    }"#;
+
+    #[test]
+    fn root_tolerates_unknown_top_level_fields() {
+        // Additive policy: a newer minor spec may add root-level fields, and a
+        // v1.0 reader must not reject them.
+        let json = MINIMAL.replace(
+            "\"address\": \"11111111111111111111111111111111\"",
+            "\"address\": \"11111111111111111111111111111111\", \
+             \"futureTopLevelField\": { \"anything\": true }",
+        );
+        let idl: Idl = serde_json::from_str(&json).expect("unknown root field must be tolerated");
+        assert_eq!(idl.name, "demo");
+    }
+
+    #[test]
+    fn leaf_rejects_unknown_fields() {
+        // `hashes` is a leaf type: stray keys are contract errors.
+        let json = MINIMAL.replace(
+            "\"address\": \"11111111111111111111111111111111\"",
+            "\"address\": \"11111111111111111111111111111111\", \
+             \"hashes\": { \"idl\": \"a\", \"abi\": \"b\", \"bogus\": \"c\" }",
+        );
+        let err =
+            serde_json::from_str::<Idl>(&json).expect_err("unknown leaf field must be rejected");
+        assert!(
+            err.to_string().contains("bogus") || err.to_string().contains("unknown field"),
+            "unexpected error: {err}"
+        );
+    }
 }

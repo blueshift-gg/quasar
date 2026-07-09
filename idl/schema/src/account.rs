@@ -185,6 +185,7 @@ pub enum IdlPdaBump {
 
 /// Remaining accounts configuration.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct IdlRemainingAccounts {
     pub kind: RemainingAccountsKind,
     pub name: String,
@@ -201,6 +202,7 @@ pub enum RemainingAccountsKind {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RemainingAccountItem {
     #[serde(rename = "clientType")]
     pub client_type: String,
@@ -209,6 +211,7 @@ pub struct RemainingAccountItem {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RemainingAccountPolicy {
     pub position: RemainingPosition,
     pub order: RemainingOrder,
