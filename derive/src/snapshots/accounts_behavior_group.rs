@@ -70,6 +70,11 @@ for UseCustomBehavior {
             ::RUN_CHECK,
             "behavior `min_value` sets VALIDATES_ACCOUNT_DATA and must keep RUN_CHECK = true",
         );
+        const _: () = assert!(
+            ! < min_value::Behavior as quasar_lang::account_behavior::AccountBehavior <
+            Account < MyData > >> ::RUN_AFTER_INIT,
+            "behavior `min_value` runs after_init and requires `#[account(init, ...)]` on field `data`",
+        );
         let data = if false
             || <min_value::Behavior as quasar_lang::account_behavior::AccountBehavior<
                 Account<MyData>,

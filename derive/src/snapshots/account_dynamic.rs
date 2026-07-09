@@ -445,7 +445,9 @@ quasar_lang::__private_inventory::submit! {
     (quasar_lang::idl_build::__reexport::IdlAccountDef { name :
     quasar_lang::idl_build::s("DynamicAccount"), discriminator :
     quasar_lang::idl_build::vec![5u8], docs : quasar_lang::idl_build::Vec::new(), space :
-    None, }, quasar_lang::idl_build::__reexport::IdlTypeDef { name :
+    Some(quasar_lang::idl_build::__reexport::IdlSpace { discriminator : Some(1usize), min
+    : < DynamicAccount as quasar_lang::traits::Space > ::SPACE as u64, max : None,
+    formula : None, }), }, quasar_lang::idl_build::__reexport::IdlTypeDef { name :
     quasar_lang::idl_build::s("DynamicAccount"), kind :
     quasar_lang::idl_build::__reexport::IdlTypeDefKind::Struct, docs :
     quasar_lang::idl_build::Vec::new(), generics : quasar_lang::idl_build::Vec::new(),
