@@ -207,6 +207,7 @@ fn emit_idl_accounts_meta(
             let resolver_tokens = emit_idl_resolver(sem, semantics, ix_args).unwrap_or_else(
                 || quote! { quasar_lang::idl_build::__reexport::IdlResolver::Input {} },
             );
+            let node_docs = crate::helpers::docs_tokens(&sem.core.field.attrs);
 
             quote! {
                 quasar_lang::idl_build::__reexport::IdlAccountNode {
@@ -215,7 +216,7 @@ fn emit_idl_accounts_meta(
                     writable: quasar_lang::idl_build::__reexport::AccountFlag::Fixed(#writable),
                     signer: quasar_lang::idl_build::__reexport::AccountFlag::Fixed(#signer),
                     resolver: #resolver_tokens,
-                    docs: quasar_lang::idl_build::Vec::new(),
+                    docs: #node_docs,
                 }
             }
         })

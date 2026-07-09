@@ -123,16 +123,19 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
             let fname = f.ident.as_ref().map(|i| i.to_string()).unwrap_or_default();
             let fty = crate::helpers::type_to_idl_type_tokens(&f.ty);
             let fcodec = crate::helpers::type_to_idl_codec_tokens(&f.ty);
+            let fdocs = crate::helpers::docs_tokens(&f.attrs);
             quote! {
                 quasar_lang::idl_build::__reexport::IdlFieldDef {
                     name: quasar_lang::idl_build::s(#fname),
                     ty: #fty,
                     codec: #fcodec,
-                    docs: quasar_lang::idl_build::Vec::new(),
+                    docs: #fdocs,
                 }
             }
         })
         .collect();
+
+    let event_docs = crate::helpers::docs_tokens(&input.attrs);
 
     let idl_fragment = quote! {
         #[cfg(feature = "idl-build")]
@@ -147,14 +150,13 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
                             quasar_lang::idl_build::__reexport::IdlEventDef {
                                 name: quasar_lang::idl_build::s(#name_str),
                                 discriminator: quasar_lang::idl_build::vec![#(#disc_values),*],
-                                docs: quasar_lang::idl_build::Vec::new(),
+                                docs: #event_docs,
                                 ty: None,
                             },
                             quasar_lang::idl_build::__reexport::IdlTypeDef {
                                 name: quasar_lang::idl_build::s(#name_str),
                                 kind: quasar_lang::idl_build::__reexport::IdlTypeDefKind::Struct,
                                 docs: quasar_lang::idl_build::Vec::new(),
-                                generics: quasar_lang::idl_build::Vec::new(),
                                 fields: quasar_lang::idl_build::vec![#(#field_defs),*],
                                 variants: quasar_lang::idl_build::Vec::new(),
                                 repr: None,
