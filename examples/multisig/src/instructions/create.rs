@@ -5,6 +5,7 @@ use {
 
 #[derive(Accounts)]
 pub struct Create {
+    /// Pays for the config account and becomes the multisig authority.
     #[account(mut)]
     pub creator: Signer,
     #[account(init, payer = creator, address = MultisigConfig::seeds(creator.address()))]

@@ -121,18 +121,20 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
     // IDL fragment emission
     let idl_fragment = {
         let name_str = name.to_string();
+        let type_docs = crate::helpers::docs_tokens(&input.attrs);
         let idl_field_defs: Vec<proc_macro2::TokenStream> = fields
             .iter()
             .map(|f| {
                 let fname = f.ident.as_ref().map(|i| i.to_string()).unwrap_or_default();
                 let fty = crate::helpers::type_to_idl_type_tokens(&f.ty);
                 let fcodec = crate::helpers::type_to_idl_codec_tokens(&f.ty);
+                let fdocs = crate::helpers::docs_tokens(&f.attrs);
                 quote! {
                     quasar_lang::idl_build::__reexport::IdlFieldDef {
                         name: quasar_lang::idl_build::s(#fname),
                         ty: #fty,
                         codec: #fcodec,
-                        docs: quasar_lang::idl_build::Vec::new(),
+                        docs: #fdocs,
                     }
                 }
             })
@@ -147,7 +149,7 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
                             quasar_lang::idl_build::__reexport::IdlTypeDef {
                                 name: quasar_lang::idl_build::s(#name_str),
                                 kind: quasar_lang::idl_build::__reexport::IdlTypeDefKind::Struct,
-                                docs: quasar_lang::idl_build::Vec::new(),
+                                docs: #type_docs,
                                 fields: quasar_lang::idl_build::vec![#(#idl_field_defs),*],
                                 variants: quasar_lang::idl_build::Vec::new(),
                                 repr: None,

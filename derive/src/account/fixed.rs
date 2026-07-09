@@ -148,6 +148,7 @@ pub(super) fn generate_account(
                     .to_string();
                 let fty = crate::helpers::type_to_idl_type_tokens(&fi.field.ty);
                 let codec_tokens = crate::helpers::type_to_idl_codec_tokens(&fi.field.ty);
+                let fdocs = crate::helpers::docs_tokens(&fi.field.attrs);
 
                 if fi.pod_dyn.is_some() {
                     tail_field_names.push(fname.clone());
@@ -160,7 +161,7 @@ pub(super) fn generate_account(
                         name: quasar_lang::idl_build::s(#fname),
                         ty: #fty,
                         codec: #codec_tokens,
-                        docs: quasar_lang::idl_build::Vec::new(),
+                        docs: #fdocs,
                     }
                 }
             })
@@ -206,6 +207,8 @@ pub(super) fn generate_account(
             })
         };
 
+        let struct_docs = crate::helpers::docs_tokens(attrs);
+
         quote::quote! {
             #[cfg(feature = "idl-build")]
             quasar_lang::__private_inventory::submit! {
@@ -219,7 +222,7 @@ pub(super) fn generate_account(
                                 quasar_lang::idl_build::__reexport::IdlAccountDef {
                                     name: quasar_lang::idl_build::s(#name_str),
                                     discriminator: quasar_lang::idl_build::vec![#(#disc_values),*],
-                                    docs: quasar_lang::idl_build::Vec::new(),
+                                    docs: #struct_docs,
                                     space: #space_tokens,
                                 },
                                 quasar_lang::idl_build::__reexport::IdlTypeDef {

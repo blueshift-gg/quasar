@@ -780,6 +780,41 @@ pub(crate) fn type_to_idl_type_tokens(ty: &Type) -> proc_macro2::TokenStream {
     }
 }
 
+/// Extract `///` doc-comment lines from attributes, trimmed, in source order.
+/// Used to populate the IDL `docs` fields.
+pub(crate) fn extract_doc_lines(attrs: &[syn::Attribute]) -> Vec<String> {
+    attrs
+        .iter()
+        .filter(|a| a.path().is_ident("doc"))
+        .filter_map(|a| {
+            if let syn::Meta::NameValue(nv) = &a.meta {
+                if let syn::Expr::Lit(syn::ExprLit {
+                    lit: syn::Lit::Str(s),
+                    ..
+                }) = &nv.value
+                {
+                    return Some(s.value().trim().to_owned());
+                }
+            }
+            None
+        })
+        .collect()
+}
+
+/// Tokens constructing an IDL `docs` vec from pre-extracted doc lines.
+pub(crate) fn docs_tokens_from_lines(lines: &[String]) -> proc_macro2::TokenStream {
+    if lines.is_empty() {
+        quote! { quasar_lang::idl_build::Vec::new() }
+    } else {
+        quote! { quasar_lang::idl_build::vec![#(quasar_lang::idl_build::s(#lines)),*] }
+    }
+}
+
+/// Tokens constructing an IDL `docs` vec from an item's `///` comments.
+pub(crate) fn docs_tokens(attrs: &[syn::Attribute]) -> proc_macro2::TokenStream {
+    docs_tokens_from_lines(&extract_doc_lines(attrs))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

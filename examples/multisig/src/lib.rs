@@ -15,6 +15,8 @@ declare_id!("44444444444444444444444444444444444444444444");
 mod quasar_multisig {
     use super::*;
 
+    /// Create a multisig config PDA for the creator with the given
+    /// threshold and remaining-account signer set.
     #[instruction(discriminator = 0)]
     pub fn create(ctx: CtxWithRemaining<Create>, threshold: u8) -> Result<(), ProgramError> {
         let signers = ctx.remaining_accounts().parse::<Signer, 10>()?;

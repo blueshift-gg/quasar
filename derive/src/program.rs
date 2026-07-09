@@ -172,6 +172,7 @@ struct RawInstructionSpec {
     disc_values: Vec<u8>,
     discriminator_source: DiscriminatorSource,
     heap: bool,
+    docs: Vec<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -212,6 +213,7 @@ struct InstructionSpec {
     client_args: Vec<ClientArgSpec>,
     idl_args: Vec<IdlArgSpec>,
     has_remaining: bool,
+    docs: Vec<String>,
 }
 
 impl InstructionSpec {
@@ -555,6 +557,7 @@ pub(crate) fn program_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
                             disc_values: disc_values.clone(),
                             discriminator_source,
                             heap: args.heap,
+                            docs: crate::helpers::extract_doc_lines(&func.attrs),
                         });
                         break;
                     }
@@ -672,6 +675,7 @@ pub(crate) fn program_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
                         client_args,
                         idl_args,
                         has_remaining: ctx_kind.has_remaining(),
+                        docs: crate::helpers::extract_doc_lines(&func.attrs),
                     });
 
                     break;
@@ -1104,6 +1108,7 @@ pub(crate) fn program_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
             let disc_values = &spec.disc_values;
             let discriminator_source = spec.discriminator_source.idl_tokens();
             let accounts_type_str = &spec.accounts_type_str;
+            let ix_docs = crate::helpers::docs_tokens_from_lines(&spec.docs);
             let arg_defs: Vec<TokenStream2> = spec.idl_args.iter().map(|arg| {
                 let arg_name = arg.name.to_string();
                 let idl_type_tokens = crate::helpers::type_to_idl_type_tokens(&arg.ty);
@@ -1184,7 +1189,7 @@ pub(crate) fn program_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
                                 quasar_lang::idl_build::__reexport::IdlInstruction {
                                     name: quasar_lang::idl_build::s(#fn_name_str),
                                     discriminator: quasar_lang::idl_build::vec![#(#disc_values),*],
-                                    docs: quasar_lang::idl_build::Vec::new(),
+                                    docs: #ix_docs,
                                     accounts: quasar_lang::idl_build::Vec::new(),
                                     args: quasar_lang::idl_build::vec![#(#arg_defs),*],
                                     layout: #layout_tokens,
@@ -1207,6 +1212,7 @@ pub(crate) fn program_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
             let fn_name_str = spec.fn_name.to_string();
             let disc_values = &spec.disc_values;
             let discriminator_source = spec.discriminator_source.idl_tokens();
+            let ix_docs = crate::helpers::docs_tokens_from_lines(&spec.docs);
             quote! {
                 #[cfg(feature = "idl-build")]
                 quasar_lang::__private_inventory::submit! {
@@ -1216,7 +1222,7 @@ pub(crate) fn program_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
                                 quasar_lang::idl_build::__reexport::IdlInstruction {
                                     name: quasar_lang::idl_build::s(#fn_name_str),
                                     discriminator: quasar_lang::idl_build::vec![#(#disc_values),*],
-                                    docs: quasar_lang::idl_build::Vec::new(),
+                                    docs: #ix_docs,
                                     accounts: quasar_lang::idl_build::Vec::new(),
                                     args: quasar_lang::idl_build::Vec::new(),
                                     layout: None,
