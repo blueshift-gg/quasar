@@ -18,14 +18,20 @@ use {
         canonical_instruction_arg_type, classify_borrowed_as_compact, map_to_pod_type, PodDynField,
     },
     proc_macro::TokenStream,
+    proc_macro2::TokenStream as TokenStream2,
     quote::{format_ident, quote},
-    syn::{
-        parse_macro_input, parse_quote, spanned::Spanned, Data, DeriveInput, Field, Fields, Type,
-    },
+    syn::{parse_quote, spanned::Spanned, Data, DeriveInput, Field, Fields, Type},
 };
 
 pub(crate) fn derive_quasar_serialize(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
+    derive_quasar_serialize_inner(input.into()).into()
+}
+
+pub(crate) fn derive_quasar_serialize_inner(input: TokenStream2) -> TokenStream2 {
+    let input = match syn::parse2::<DeriveInput>(input) {
+        Ok(input) => input,
+        Err(e) => return e.to_compile_error(),
+    };
 
     let enum_variants = match &input.data {
         Data::Enum(data) => Some(data.variants.iter().cloned().collect::<Vec<_>>()),
@@ -43,8 +49,7 @@ pub(crate) fn derive_quasar_serialize(input: TokenStream) -> TokenStream {
                     &input.ident,
                     "QuasarSerialize can only be derived for structs with named fields",
                 )
-                .to_compile_error()
-                .into();
+                .to_compile_error();
             }
         },
         _ => {
@@ -52,8 +57,7 @@ pub(crate) fn derive_quasar_serialize(input: TokenStream) -> TokenStream {
                 &input.ident,
                 "QuasarSerialize can only be derived for structs or repr-backed unit enums",
             )
-            .to_compile_error()
-            .into();
+            .to_compile_error();
         }
     };
 
@@ -64,7 +68,7 @@ pub(crate) fn derive_quasar_serialize(input: TokenStream) -> TokenStream {
     derive_fixed(input, fields)
 }
 
-fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
+fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
     let name = &input.ident;
     let schema_generics = extend_fixed_schema_generics(&input.generics, &fields);
     let (schema_impl_generics, schema_ty_generics, schema_where_clause) =
@@ -328,7 +332,7 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
         #idl_fragment
     };
 
-    expanded.into()
+    expanded
 }
 
 fn extend_fixed_schema_generics(generics: &syn::Generics, fields: &[Field]) -> syn::Generics {
@@ -360,7 +364,7 @@ enum BorrowedFieldClass {
     Dynamic(PodDynField),
 }
 
-fn derive_borrowed_compact(input: DeriveInput, fields: Vec<Field>) -> TokenStream {
+fn derive_borrowed_compact(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
@@ -381,19 +385,17 @@ fn derive_borrowed_compact(input: DeriveInput, fields: Vec<Field>) -> TokenStrea
                                 &field.ty,
                                 "unsupported borrowed type; use &str or &[T]",
                             )
-                            .to_compile_error()
-                            .into();
+                            .to_compile_error();
                         }
                     }
                 }
-                Some(Err(e)) => return e.to_compile_error().into(),
+                Some(Err(e)) => return e.to_compile_error(),
                 None => {
                     return syn::Error::new_spanned(
                         &field.ty,
                         "borrowed fields in QuasarSerialize require #[max(N)] annotation",
                     )
-                    .to_compile_error()
-                    .into();
+                    .to_compile_error();
                 }
             }
         } else {
@@ -466,7 +468,7 @@ fn derive_borrowed_compact(input: DeriveInput, fields: Vec<Field>) -> TokenStrea
         }
     };
 
-    expanded.into()
+    expanded
 }
 
 fn parse_repr_type(input: &DeriveInput) -> Result<Type, syn::Error> {
@@ -503,19 +505,18 @@ fn parse_repr_type(input: &DeriveInput) -> Result<Type, syn::Error> {
     ))
 }
 
-fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream {
+fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream2 {
     if input.generics.lifetimes().next().is_some() {
         return syn::Error::new_spanned(
             &input.ident,
             "QuasarSerialize enums cannot have lifetime parameters",
         )
-        .to_compile_error()
-        .into();
+        .to_compile_error();
     }
 
     let repr_ty = match parse_repr_type(&input) {
         Ok(repr_ty) => repr_ty,
-        Err(err) => return err.to_compile_error().into(),
+        Err(err) => return err.to_compile_error(),
     };
 
     let name = &input.ident;
@@ -532,8 +533,7 @@ fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream {
                 &variant.ident,
                 "QuasarSerialize enums must contain only unit variants",
             )
-            .to_compile_error()
-            .into();
+            .to_compile_error();
         }
 
         let discriminant = match &variant.discriminant {
@@ -543,8 +543,7 @@ fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream {
                     &variant.ident,
                     "QuasarSerialize enums require explicit discriminants on every variant",
                 )
-                .to_compile_error()
-                .into();
+                .to_compile_error();
             }
         };
 
@@ -708,5 +707,5 @@ fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream {
         }
     };
 
-    expanded.into()
+    expanded
 }

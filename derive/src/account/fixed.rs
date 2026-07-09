@@ -1,6 +1,6 @@
 //! Unified codegen for `#[account]` types.
 
-use {proc_macro::TokenStream, syn::DeriveInput};
+use {proc_macro2::TokenStream, syn::DeriveInput};
 
 /// Info about each field needed for codegen.
 pub(super) struct PodFieldInfo<'a> {
@@ -259,5 +259,4 @@ pub(super) fn generate_account(
 
         #idl_fragment
     }
-    .into()
 }

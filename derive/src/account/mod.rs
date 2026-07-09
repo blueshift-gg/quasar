@@ -18,12 +18,23 @@ use {
         seeds,
     },
     proc_macro::TokenStream,
-    syn::{parse_macro_input, Data, DeriveInput, Fields},
+    proc_macro2::TokenStream as TokenStream2,
+    syn::{Data, DeriveInput, Fields},
 };
 
 pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let args = parse_macro_input!(attr as AccountAttr);
-    let mut input = parse_macro_input!(item as DeriveInput);
+    account_inner(attr.into(), item.into()).into()
+}
+
+pub(crate) fn account_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
+    let args = match syn::parse2::<AccountAttr>(attr) {
+        Ok(args) => args,
+        Err(e) => return e.to_compile_error(),
+    };
+    let mut input = match syn::parse2::<DeriveInput>(item) {
+        Ok(input) => input,
+        Err(e) => return e.to_compile_error(),
+    };
 
     // Parse #[seeds(...)] if present, then strip it before downstream processing.
     let seeds_parsed = seeds::parse_seeds_attr(&input.attrs);
@@ -35,7 +46,7 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
             &seed_vis,
             attr,
         )),
-        Some(Err(e)) => return e.to_compile_error().into(),
+        Some(Err(e)) => return e.to_compile_error(),
         None => None,
     };
     input.attrs.retain(|a| !a.path().is_ident("seeds"));
@@ -52,41 +63,36 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
                 name,
                 "`#[seeds(...)]` is not supported on `#[account(one_of)]` accounts",
             )
-            .to_compile_error()
-            .into();
+            .to_compile_error();
         }
         if args.set_inner {
             return syn::Error::new_spanned(
                 name,
                 "`set_inner` is not supported on `#[account(one_of)]` accounts",
             )
-            .to_compile_error()
-            .into();
+            .to_compile_error();
         }
         if args.fixed_capacity {
             return syn::Error::new_spanned(
                 name,
                 "`fixed_capacity` is not supported on `#[account(one_of)]` accounts",
             )
-            .to_compile_error()
-            .into();
+            .to_compile_error();
         }
         match &input.data {
             Data::Enum(data) => {
                 let variants = match one_of::extract_variants(data) {
                     Ok(v) => v,
-                    Err(e) => return e.to_compile_error().into(),
+                    Err(e) => return e.to_compile_error(),
                 };
-                return one_of::generate_one_of_account(name, &variants, args.implements.as_ref())
-                    .into();
+                return one_of::generate_one_of_account(name, &variants, args.implements.as_ref());
             }
             _ => {
                 return syn::Error::new_spanned(
                     name,
                     "#[account(one_of)] can only be used on enum declarations",
                 )
-                .to_compile_error()
-                .into();
+                .to_compile_error();
             }
         }
     }
@@ -96,7 +102,7 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     let (disc_bytes, disc_values) = if !args.disc_bytes.is_empty() {
         let values = match validate_discriminator_not_zero(&args.disc_bytes) {
             Ok(values) => values,
-            Err(e) => return e.to_compile_error().into(),
+            Err(e) => return e.to_compile_error(),
         };
         (args.disc_bytes, values)
     } else {
@@ -114,14 +120,12 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
                     name,
                     "#[account] can only be used on structs with named fields",
                 )
-                .to_compile_error()
-                .into();
+                .to_compile_error();
             }
         },
         _ => {
             return syn::Error::new_spanned(name, "#[account] can only be used on structs")
-                .to_compile_error()
-                .into();
+                .to_compile_error();
         }
     };
 
@@ -154,7 +158,7 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
         .collect::<syn::Result<_>>()
     {
         Ok(infos) => infos,
-        Err(e) => return e.to_compile_error().into(),
+        Err(e) => return e.to_compile_error(),
     };
 
     let has_pod_dynamic = pod_field_infos.iter().any(|fi| fi.pod_dyn.is_some());
@@ -169,8 +173,7 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
                     &fields_data[lf],
                     "fixed fields must precede all PodString/PodVec fields",
                 )
-                .to_compile_error()
-                .into();
+                .to_compile_error();
             }
         }
         if unsafe_no_disc {
@@ -178,12 +181,11 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
                 name,
                 "unsafe_no_disc accounts cannot have PodString/PodVec fields",
             )
-            .to_compile_error()
-            .into();
+            .to_compile_error();
         }
     }
 
-    let mut output = fixed::generate_account(
+    let mut output: TokenStream2 = fixed::generate_account(
         name,
         &disc_bytes,
         &disc_values,
@@ -194,7 +196,7 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
         gen_set_inner,
     );
     if let Some(seeds_tokens) = seeds_impl {
-        output.extend(TokenStream::from(seeds_tokens));
+        output.extend(seeds_tokens);
     }
     output
 }

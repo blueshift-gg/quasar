@@ -16,8 +16,9 @@ use {
         parse_max_attr, pod_dyn_to_compact_type, InstructionArgs, PodDynField,
     },
     proc_macro::TokenStream,
+    proc_macro2::TokenStream as TokenStream2,
     quote::{format_ident, quote},
-    syn::{parse_macro_input, FnArg, Ident, ItemFn, Pat, ReturnType, Type},
+    syn::{FnArg, Ident, ItemFn, Pat, ReturnType, Type},
 };
 
 /// Emit the fixed-argument decode block.
@@ -349,13 +350,23 @@ fn emit_decode_and_tail(
 }
 
 pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let args = parse_macro_input!(attr as InstructionArgs);
-    let mut func = parse_macro_input!(item as ItemFn);
+    instruction_inner(attr.into(), item.into()).into()
+}
+
+pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
+    let args = match syn::parse2::<InstructionArgs>(attr) {
+        Ok(args) => args,
+        Err(e) => return e.to_compile_error(),
+    };
+    let mut func = match syn::parse2::<ItemFn>(item) {
+        Ok(func) => func,
+        Err(e) => return e.to_compile_error(),
+    };
     if let Some(disc_bytes) = &args.discriminator {
         let disc_len = disc_bytes.len();
         let disc_values = match parse_discriminator_bytes(disc_bytes) {
             Ok(values) => values,
-            Err(e) => return e.to_compile_error().into(),
+            Err(e) => return e.to_compile_error(),
         };
 
         // Reject multi-byte all-zero discriminators: zeroed instruction data could
@@ -368,8 +379,7 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                  multi-byte discriminators are dangerous because zeroed instruction data would \
                  match",
             )
-            .to_compile_error()
-            .into();
+            .to_compile_error();
         }
     }
 
@@ -381,8 +391,7 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                     &func.sig.ident,
                     "#[instruction(raw)] requires a single parameter of type Context",
                 )
-                .to_compile_error()
-                .into();
+                .to_compile_error();
             }
         };
 
@@ -399,8 +408,7 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                 &first_arg.ty,
                 "#[instruction(raw)] parameter must be of type Context",
             )
-            .to_compile_error()
-            .into();
+            .to_compile_error();
         }
 
         if func.sig.inputs.len() > 1 {
@@ -408,11 +416,10 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                 &func.sig,
                 "#[instruction(raw)] handler must have exactly one parameter: Context",
             )
-            .to_compile_error()
-            .into();
+            .to_compile_error();
         }
 
-        return quote!(#func).into();
+        return quote!(#func);
     }
 
     let first_arg = match func.sig.inputs.first() {
@@ -422,8 +429,7 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                 &func.sig.ident,
                 "#[instruction] requires ctx: Ctx<T> as first parameter",
             )
-            .to_compile_error()
-            .into();
+            .to_compile_error();
         }
     };
 
@@ -435,8 +441,7 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
                 &first_arg.pat,
                 "#[instruction] ctx parameter must be an identifier",
             )
-            .to_compile_error()
-            .into();
+            .to_compile_error();
         }
     };
     let param_type = &first_arg.ty;
@@ -483,7 +488,7 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
         return_ok_type.as_ref(),
     ) {
         Ok(stmts) => stmts,
-        Err(e) => return e.to_compile_error().into(),
+        Err(e) => return e.to_compile_error(),
     };
     new_stmts.extend(decoded_tail);
     func.block.stmts = new_stmts;
@@ -523,7 +528,7 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
             return_ok_type.as_ref(),
         ) {
             Ok(stmts) => stmts,
-            Err(e) => return e.to_compile_error().into(),
+            Err(e) => return e.to_compile_error(),
         };
         direct_stmts.extend(decoded_tail);
 
@@ -545,5 +550,4 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
         #func
         #direct_fn
     )
-    .into()
 }

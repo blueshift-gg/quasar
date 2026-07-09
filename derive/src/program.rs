@@ -13,7 +13,7 @@ use {
     proc_macro2::TokenStream as TokenStream2,
     quote::{format_ident, quote},
     std::collections::BTreeSet,
-    syn::{parse_macro_input, FnArg, Ident, Item, ItemMod, LitInt, Meta, Pat, Type},
+    syn::{FnArg, Ident, Item, ItemMod, LitInt, Meta, Pat, Type},
 };
 
 /// Emit the heap cursor init or poison block for a dispatch arm.
@@ -388,8 +388,18 @@ fn auto_discriminator(
 }
 
 pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let program_args = parse_macro_input!(attr as ProgramArgs);
-    let mut module = parse_macro_input!(item as ItemMod);
+    program_inner(attr.into(), item.into()).into()
+}
+
+pub(crate) fn program_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
+    let program_args = match syn::parse2::<ProgramArgs>(attr) {
+        Ok(args) => args,
+        Err(e) => return e.to_compile_error(),
+    };
+    let mut module = match syn::parse2::<ItemMod>(item) {
+        Ok(module) => module,
+        Err(e) => return e.to_compile_error(),
+    };
     let mod_name = module.ident.clone();
     let program_type_name = format_ident!("{}", snake_to_pascal(&mod_name.to_string()));
 
@@ -400,8 +410,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                 &module,
                 "#[program] must be used on a module with a body",
             )
-            .to_compile_error()
-            .into();
+            .to_compile_error();
         }
     };
 
@@ -420,7 +429,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                 if attr.path().is_ident("instruction") {
                     let args = match parse_instruction_attr(attr) {
                         Ok(a) => a,
-                        Err(e) => return e.to_compile_error().into(),
+                        Err(e) => return e.to_compile_error(),
                     };
                     let fn_name = func.sig.ident.to_string();
                     let Some(disc_bytes) = &args.discriminator else {
@@ -440,8 +449,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                                         disc_bytes.len()
                                     ),
                                 )
-                                .to_compile_error()
-                                .into();
+                                .to_compile_error();
                             }
                         }
                         None => disc_len = Some(disc_bytes.len()),
@@ -449,7 +457,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
 
                     let disc_values = match parse_discriminator_bytes(disc_bytes) {
                         Ok(v) => v,
-                        Err(e) => return e.to_compile_error().into(),
+                        Err(e) => return e.to_compile_error(),
                     };
                     if let Some((_, prev_fn)) = explicit_discriminators
                         .iter()
@@ -462,8 +470,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                                 disc_values, prev_fn
                             ),
                         )
-                        .to_compile_error()
-                        .into();
+                        .to_compile_error();
                     }
                     explicit_discriminators.push((disc_values, fn_name));
                     break;
@@ -480,8 +487,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                     "automatic instruction discriminators require 1-byte program discriminators; \
                      pin every instruction when using multi-byte discriminators",
                 )
-                .to_compile_error()
-                .into();
+                .to_compile_error();
             }
         } else {
             disc_len = Some(1);
@@ -500,7 +506,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                 if attr.path().is_ident("instruction") {
                     let args: InstructionArgs = match parse_instruction_attr(attr) {
                         Ok(a) => a,
-                        Err(e) => return e.to_compile_error().into(),
+                        Err(e) => return e.to_compile_error(),
                     };
                     let fn_name = &func.sig.ident;
                     let (disc_bytes, disc_values, discriminator_source) = match &args.discriminator
@@ -508,7 +514,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                         Some(disc_bytes) => {
                             let disc_values = match parse_discriminator_bytes(disc_bytes) {
                                 Ok(v) => v,
-                                Err(e) => return e.to_compile_error().into(),
+                                Err(e) => return e.to_compile_error(),
                             };
                             (
                                 disc_bytes.clone(),
@@ -524,7 +530,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                             Ok((disc_bytes, disc_values)) => {
                                 (disc_bytes, disc_values, DiscriminatorSource::Auto)
                             }
-                            Err(e) => return e.to_compile_error().into(),
+                            Err(e) => return e.to_compile_error(),
                         },
                     };
                     if let Some((_, prev_fn)) =
@@ -537,8 +543,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                                 disc_values, prev_fn
                             ),
                         )
-                        .to_compile_error()
-                        .into();
+                        .to_compile_error();
                     }
                     seen_discriminators.push((disc_values.clone(), fn_name.to_string()));
 
@@ -556,7 +561,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
 
                     let ctx_kind = match CtxKind::classify(&func.sig) {
                         Ok(k) => k,
-                        Err(e) => return e.to_compile_error().into(),
+                        Err(e) => return e.to_compile_error(),
                     };
                     let inner_ty = ctx_kind.inner_ty();
                     let accounts_type = quote!(#inner_ty);
@@ -622,7 +627,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                             // to compact client type, same wire format as String<N>/Vec<T,N>.
                             let (max_n, pfx) = match parse_max_attr(&pt.attrs) {
                                 Some(Ok(value)) => value,
-                                Some(Err(e)) => return e.to_compile_error().into(),
+                                Some(Err(e)) => return e.to_compile_error(),
                                 None => (0, 0),
                             };
                             if let Some(pd) = classify_borrowed_as_compact(&pt.ty, max_n, pfx) {
@@ -689,8 +694,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                 fn_name
             ),
         )
-        .to_compile_error()
-        .into();
+        .to_compile_error();
     }
 
     let client_items: Vec<TokenStream2> = instruction_specs
@@ -1292,5 +1296,4 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         #idl_build_fn
     }
-    .into()
 }

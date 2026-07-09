@@ -7,21 +7,28 @@
 
 use {
     proc_macro::TokenStream,
+    proc_macro2::TokenStream as TokenStream2,
     quote::quote,
     std::collections::HashMap,
-    syn::{parse_macro_input, Data, DeriveInput},
+    syn::{Data, DeriveInput},
 };
 
-pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(item as DeriveInput);
+pub(crate) fn error_code(attr: TokenStream, item: TokenStream) -> TokenStream {
+    error_code_inner(attr.into(), item.into()).into()
+}
+
+pub(crate) fn error_code_inner(_attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
+    let input = match syn::parse2::<DeriveInput>(item) {
+        Ok(input) => input,
+        Err(e) => return e.to_compile_error(),
+    };
     let name = &input.ident;
 
     let variants = match &input.data {
         Data::Enum(data) => &data.variants,
         _ => {
             return syn::Error::new_spanned(&input, "#[error_code] can only be used on enums")
-                .to_compile_error()
-                .into();
+                .to_compile_error();
         }
     };
 
@@ -46,8 +53,7 @@ pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
                             lit_int,
                             "#[error_code] discriminant must be a valid u32",
                         )
-                        .to_compile_error()
-                        .into();
+                        .to_compile_error();
                     }
                 }
             } else {
@@ -55,8 +61,7 @@ pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     expr,
                     "#[error_code] discriminant must be an integer literal",
                 )
-                .to_compile_error()
-                .into();
+                .to_compile_error();
             }
         }
         let value = next_discriminant;
@@ -68,8 +73,7 @@ pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
                      to the same discriminant",
                 ),
             )
-            .to_compile_error()
-            .into();
+            .to_compile_error();
         }
         assigned.insert(value, ident.to_string());
         next_discriminant = match next_discriminant.checked_add(1) {
@@ -79,8 +83,7 @@ pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     &v.ident,
                     "error code overflow: discriminant exceeds u32::MAX",
                 )
-                .to_compile_error()
-                .into();
+                .to_compile_error();
             }
         };
         match_arms.push(quote! { #value => Ok(#name::#ident) });
@@ -158,5 +161,4 @@ pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
         #idl_fragment
     }
-    .into()
 }
