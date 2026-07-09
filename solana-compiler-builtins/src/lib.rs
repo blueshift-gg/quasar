@@ -1,3 +1,17 @@
+//! Compiler-builtin `memcmp` for the SBF/BPF target.
+//!
+//! The SBF platform has no libc, so the compiler-generated calls to `memcmp`
+//! that back `Ord`/`PartialEq`/`sort`/`BTreeMap` on byte slices have no symbol
+//! to link against. This crate provides one with the C `memcmp` contract (the
+//! sign of the first differing byte, not a boolean).
+//!
+//! Small compares (`n <= INLINE_MEMCMP_THRESHOLD`) are done inline to avoid the
+//! syscall's fixed overhead; larger ones dispatch to the `sol_memcmp` syscall,
+//! which is already correct. The threshold (32 bytes) is tuned so the inline
+//! word-at-a-time scan wins for the short keys typical of on-chain data
+//! (discriminators, addresses) while the syscall handles bulk buffers.
+//!
+//! On non-BPF targets the crate is empty (host builds use the platform libc).
 #![cfg_attr(target_arch = "bpf", no_std)]
 
 #[cfg(target_arch = "bpf")]

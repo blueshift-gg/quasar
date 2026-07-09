@@ -185,6 +185,12 @@ macro_rules! require_keys_eq {
     };
 }
 
+/// Emit an event via `sol_log_data` (~100 CU).
+///
+/// Fast but **spoofable**: any program can write the same log, so off-chain
+/// consumers cannot prove which program emitted it. When authenticity matters,
+/// use `emit_cpi!` (~1,000 CU), which records the program ID in the
+/// transaction's inner-instruction trace.
 #[macro_export]
 macro_rules! emit {
     ($event:expr) => {

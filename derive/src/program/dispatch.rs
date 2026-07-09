@@ -4,6 +4,21 @@
 //! stub, the `__dispatch` router (event fast-path, raw table/match, then the
 //! normal discriminator match), the `extern "C" entrypoint`, and the off-chain
 //! `cpi` client module.
+//!
+//! Generated dispatch shape:
+//!
+//! ```text
+//! extern "C" fn entrypoint(input: *mut u8) -> u64 {
+//!     match __dispatch(input, instruction_data) { Ok(()) => 0, Err(e) => e.into() }
+//! }
+//!
+//! fn __dispatch(ptr, data) -> Result<(), ProgramError> {
+//!     // 0. event fast-path: 0xFF self-CPI sentinel -> __handle_event
+//!     // 1. raw instructions: 1-byte discriminator -> jump table / match
+//!     // 2. normal instructions: match on the discriminator prefix,
+//!     //    each arm parsing accounts directly and calling the handler
+//! }
+//! ```
 
 use {
     super::{

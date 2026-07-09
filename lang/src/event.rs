@@ -14,10 +14,16 @@ use {
 /// Typed self-CPI event emission for an accounts struct.
 ///
 /// `#[derive(Accounts)]` implements this for any struct that carries both an
-/// event-authority field (named `event_authority` or typed `EventAuthority`)
-/// and a program field (`Program<T>`); `emit_cpi!` calls the default
-/// [`EventCpi::emit`]. The default body mirrors
-/// [`crate::accounts::Program::emit_event`] exactly, so the self-CPI
+/// event-authority field (typed `EventAuthority` or named `event_authority`)
+/// and a program field. **The program field is detected by TYPE, not name:**
+/// any field typed `Program<T>` supplies the signer, so it may be called
+/// `program`, `emitter`, or anything else. If an event-authority field is
+/// present but no `Program<T>` field is, the derive raises a spanned error
+/// rather than silently skipping the impl.
+///
+/// `emit_cpi!` dispatches through this trait (`EventCpi::emit(self, &event)`),
+/// so the macro hard-codes no field names. The default [`EventCpi::emit`] body
+/// mirrors [`crate::accounts::Program::emit_event`] exactly, so the self-CPI
 /// monomorphizes to identical code and CU.
 pub trait EventCpi {
     /// This program's `EventAuthority` PDA bump (`EventAuthority::BUMP`).

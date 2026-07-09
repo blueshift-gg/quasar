@@ -1,5 +1,7 @@
 //! Proc macros for the Quasar Solana framework.
 
+#![warn(missing_docs)]
+
 use proc_macro::TokenStream;
 
 #[macro_use]
@@ -64,17 +66,25 @@ pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /// Define a program error enum.
+///
+/// Auto-assigned variants start at error code **6000** (the Anchor-compatible
+/// offset); a variant with an explicit integer discriminant keeps that literal
+/// and re-bases the auto-increment from there. Two variants that resolve to the
+/// same code are a hard, spanned error.
 #[proc_macro_attribute]
 pub fn error_code(attr: TokenStream, item: TokenStream) -> TokenStream {
     error_code::error_code(attr, item)
 }
 
-/// Emit an event via self-CPI (spoofing-resistant).
+/// Emit an event via self-CPI (spoofing-resistant, ~1,000 CU): the program ID
+/// appears in the transaction's inner-instruction trace, so the event cannot be
+/// forged by another program. Use `emit!` instead (~100 CU) when a spoofable
+/// log-based event is acceptable.
 ///
-/// Expands to the typed [`quasar_lang::event::EventCpi::emit`] call on `self`;
+/// Expands to the typed `quasar_lang::event::EventCpi::emit` call on `self`;
 /// `#[derive(Accounts)]` supplies the `EventCpi` impl from the struct's
-/// `event_authority` + program fields, so the field names are not hard-coded
-/// here.
+/// `event_authority` + `Program<T>` fields (the program field is found by type,
+/// so its name is not hard-coded here).
 #[proc_macro]
 pub fn emit_cpi(input: TokenStream) -> TokenStream {
     let krate = crate::krate::lang_path();

@@ -29,10 +29,15 @@
 //!   compile time. Account data is checked against the expected discriminator
 //!   before access.
 //!
-//! Every `unsafe` block is validated by Miri under Tree Borrows with symbolic
-//! alignment checking.
+//! Every `unsafe` block reachable off-chain is validated by Miri under Tree
+//! Borrows with symbolic alignment checking. Miri cannot execute the SBF-only
+//! paths, which are therefore excluded and covered by the on-chain test suite
+//! instead: the syscall wrappers gated on `target_os = "solana"` (`pda`, `log`,
+//! `sysvars`, and the `cpi` `invoke_raw`/return-data paths) and the generated
+//! `extern "C"` program entrypoint.
 
 #![no_std]
+#![warn(missing_docs)]
 #![cfg_attr(
     any(target_os = "solana", target_arch = "bpf"),
     feature(asm_experimental_arch)
