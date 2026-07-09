@@ -23,7 +23,6 @@ impl<T: crate::account_layout::AccountLayout> crate::account_layout::AccountLayo
     for InterfaceAccount<T>
 {
     type Schema = T::Schema;
-    type Target = T::Target;
     const DATA_OFFSET: usize = T::DATA_OFFSET;
 }
 

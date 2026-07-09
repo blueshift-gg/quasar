@@ -54,7 +54,6 @@ pub(super) fn generate_account(
         quote::quote! {
             impl quasar_lang::account_layout::AccountLayout for #name {
                 type Schema = #zc_mod_ident::__Schema;
-                type Target = <#zc_mod_ident::__Schema as quasar_lang::__zeropod::ZeroPodFixed>::Zc;
                 const DATA_OFFSET: usize = #disc_len_lit;
             }
 

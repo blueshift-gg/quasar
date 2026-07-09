@@ -24,7 +24,6 @@ macro_rules! define_account {
 
         impl $crate::account_layout::AccountLayout for $name {
             type Schema = $schema;
-            type Target = <$schema as $crate::__zeropod::ZeroPodFixed>::Zc;
             const DATA_OFFSET: usize = 0;
         }
 
