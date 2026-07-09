@@ -155,7 +155,10 @@ pub fn result_from_raw(result: u64) -> ProgramResult {
 /// Return data captured from a CPI invocation.
 pub struct CpiReturn {
     program_id: Address,
-    data: [u8; MAX_RETURN_DATA],
+    /// Return-data buffer. Only the first `data_len` bytes are initialized;
+    /// `sol_get_return_data` leaves the tail untouched, so the buffer is kept
+    /// as `MaybeUninit` and never fully `assume_init`ed.
+    data: MaybeUninit<[u8; MAX_RETURN_DATA]>,
     data_len: usize,
 }
 
@@ -166,12 +169,15 @@ impl CpiReturn {
         &self.program_id
     }
 
-    /// Raw return-data bytes.
+    /// Raw return-data bytes (the initialized `data_len`-byte prefix).
     ///
     /// Kani proof: `cpi_return_as_slice_in_bounds`.
     #[inline(always)]
     pub fn as_slice(&self) -> &[u8] {
-        &self.data[..self.data_len]
+        // SAFETY: `sol_get_return_data` initialized `data_len <= MAX_RETURN_DATA`
+        // bytes at the front of `data`; slice only that initialized prefix so the
+        // uninitialized tail is never read.
+        unsafe { &*core::ptr::slice_from_raw_parts(self.data.as_ptr() as *const u8, self.data_len) }
     }
 
     /// Decode return data as a fixed-size Quasar instruction-arg type.
@@ -190,7 +196,7 @@ impl CpiReturn {
         // `zc` without reading past `self.data`.
         unsafe {
             core::ptr::copy_nonoverlapping(
-                self.data.as_ptr(),
+                self.data.as_ptr() as *const u8,
                 zc.as_mut_ptr() as *mut u8,
                 expected_len,
             );
@@ -222,15 +228,15 @@ fn get_cpi_return() -> Result<CpiReturn, ProgramError> {
             return Err(QuasarError::MissingReturnData.into());
         }
 
-        // SAFETY: sol_get_return_data initialized `min(size, MAX_RETURN_DATA)`
-        // bytes. The remaining bytes are uninitialized but never accessed:
-        // CpiReturn::as_slice returns &data[..data_len] and decode copies
-        // exactly size_of::<T::Zc>() bytes. We assume_init the full array
-        // because the struct carries it by value; the uninitialized tail is
-        // inert (u8 has no Drop).
+        // `sol_get_return_data` initialized `min(size, MAX_RETURN_DATA)` bytes;
+        // the tail stays uninitialized. The buffer is kept as `MaybeUninit`
+        // (never `assume_init`ed) so moving it into `CpiReturn` is well-defined,
+        // and both consumers (`as_slice`, `decode`) read only the `data_len`
+        // prefix.
         return Ok(CpiReturn {
+            // SAFETY: sol_get_return_data wrote the 32-byte program id.
             program_id: unsafe { program_id.assume_init() },
-            data: unsafe { data.assume_init() },
+            data,
             data_len: core::cmp::min(size, MAX_RETURN_DATA),
         });
     }
@@ -569,13 +575,38 @@ mod tests {
 
     fn return_with_data(program_id: [u8; 32], bytes: &[u8]) -> CpiReturn {
         assert!(bytes.len() <= MAX_RETURN_DATA);
-        let mut data = [0u8; MAX_RETURN_DATA];
-        data[..bytes.len()].copy_from_slice(bytes);
+        // Leave the tail uninitialized, mirroring `sol_get_return_data`, so the
+        // Miri run exercises reads bounded by `data_len` against real uninit
+        // memory rather than a zeroed buffer.
+        let mut data = MaybeUninit::<[u8; MAX_RETURN_DATA]>::uninit();
+        // SAFETY: `bytes.len() <= MAX_RETURN_DATA`, so the copy stays in bounds
+        // and initializes exactly the `data_len` prefix.
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                data.as_mut_ptr() as *mut u8,
+                bytes.len(),
+            );
+        }
         CpiReturn {
             program_id: Address::new_from_array(program_id),
             data,
             data_len: bytes.len(),
         }
+    }
+
+    #[test]
+    fn cpi_return_reads_only_initialized_prefix() {
+        // The buffer tail is uninitialized; `as_slice`/`decode` must read only
+        // the `data_len` prefix. Running under Miri catches any access to the
+        // uninitialized region.
+        let ret = return_with_data([9u8; 32], &[1, 2, 3, 4]);
+        assert_eq!(ret.as_slice(), &[1u8, 2, 3, 4]);
+        assert_eq!(ret.program_id(), &Address::new_from_array([9u8; 32]));
+        assert_eq!(
+            ret.decode::<u32>().unwrap(),
+            u32::from_le_bytes([1, 2, 3, 4])
+        );
     }
 
     #[derive(Copy, Clone, Debug, PartialEq, Eq, QuasarSerialize)]
