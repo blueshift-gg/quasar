@@ -18,6 +18,7 @@ rent: NotNeeded
     id: ident=account effective_ty=`Account < TwoDynArgsAccount >` wrapper=Account kind=Single optional=false dup=false writable=true signer=false
     load: Fixed(validates=[])
     bump: None
+    behaviors: []
     pre_load: []
     post_load:
       - UserCheck(Constraints exprs=[`tag != 0 && a . len () == b . len ()`] error=None)

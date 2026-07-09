@@ -84,7 +84,6 @@ impl HeaderPlan {
 }
 
 pub(crate) fn build_accounts_plan(
-    semantics: &[resolve::FieldSemantics],
     typed_plan: &resolve::specs::AccountsPlanTyped,
     cx: &emit::EmitCx,
 ) -> AccountsPlan {
@@ -92,8 +91,8 @@ pub(crate) fn build_accounts_plan(
     AccountsPlan {
         parse_steps: emit_parse_account_steps(&fields),
         count_expr: emit_count_expr(&fields),
-        parse_body: emit_full_parse_body(semantics, typed_plan, &fields, cx),
-        direct_parse_body: emit_direct_parse_body(semantics, typed_plan, &fields, cx),
+        parse_body: emit_full_parse_body(typed_plan, &fields, cx),
+        direct_parse_body: emit_direct_parse_body(typed_plan, &fields, cx),
     }
 }
 
@@ -255,12 +254,11 @@ fn emit_count_expr(fields: &[ParseFieldPlan]) -> proc_macro2::TokenStream {
 }
 
 fn emit_full_parse_body(
-    semantics: &[resolve::FieldSemantics],
     typed_plan: &resolve::specs::AccountsPlanTyped,
     fields: &[ParseFieldPlan],
     cx: &emit::EmitCx,
 ) -> proc_macro2::TokenStream {
-    let inner_body = emit::parse::emit_parse_body(semantics, typed_plan, cx);
+    let inner_body = emit::parse::emit_parse_body(typed_plan, cx);
     emit_parse_body_from_inner(fields, inner_body)
 }
 
@@ -332,14 +330,12 @@ fn emit_parse_body_from_inner(
 }
 
 fn emit_direct_parse_body(
-    semantics: &[resolve::FieldSemantics],
     typed_plan: &resolve::specs::AccountsPlanTyped,
     fields: &[ParseFieldPlan],
     cx: &emit::EmitCx,
 ) -> proc_macro2::TokenStream {
     let count_expr = emit_count_expr(fields);
-    let fallback_body =
-        emit_parse_body_without_behavior_assertions(semantics, typed_plan, fields, cx);
+    let fallback_body = emit_parse_body_without_behavior_assertions(typed_plan, fields, cx);
     quote! {
         let mut __buf = core::mem::MaybeUninit::<
             [quasar_lang::__internal::AccountView; #count_expr]
@@ -361,12 +357,10 @@ fn emit_direct_parse_body(
 }
 
 fn emit_parse_body_without_behavior_assertions(
-    semantics: &[resolve::FieldSemantics],
     typed_plan: &resolve::specs::AccountsPlanTyped,
     fields: &[ParseFieldPlan],
     cx: &emit::EmitCx,
 ) -> proc_macro2::TokenStream {
-    let inner_body =
-        emit::parse::emit_parse_body_without_behavior_assertions(semantics, typed_plan, cx);
+    let inner_body = emit::parse::emit_parse_body_without_behavior_assertions(typed_plan, cx);
     emit_parse_body_from_inner(fields, inner_body)
 }

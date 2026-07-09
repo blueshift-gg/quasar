@@ -149,6 +149,14 @@ fn plan_field(
     let flags = account_meta_flags(sem);
     let load = plan_load(sem);
     let bump = sem.address.is_some().then_some(BumpSlot);
+    let behaviors: Vec<BehaviorGroupRef> = sem
+        .groups
+        .iter()
+        .map(|g| BehaviorGroupRef {
+            path: g.path.clone(),
+            name: g.name(),
+        })
+        .collect();
 
     Ok(FieldPlan {
         ident: sem.core.ident.clone(),
@@ -161,6 +169,7 @@ fn plan_field(
         signer: flags.signer,
         load,
         bump,
+        behaviors,
         pre_load,
         post_load,
         epilogue,

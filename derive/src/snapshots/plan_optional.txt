@@ -29,6 +29,7 @@ rent: NotNeeded
     id: ident=authority effective_ty=`Signer` wrapper=Signer kind=Single optional=false dup=false writable=false signer=true
     load: Fixed(validates=[])
     bump: None
+    behaviors: []
     pre_load: []
     post_load: []
     epilogue: []
@@ -36,6 +37,7 @@ rent: NotNeeded
     id: ident=config effective_ty=`Account < Config >` wrapper=Account kind=Single optional=true dup=false writable=false signer=false
     load: Fixed(validates=[])
     bump: None
+    behaviors: []
     pre_load: []
     post_load:
       - UserCheck(HasOne targets=[authority] error=None)

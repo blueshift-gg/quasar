@@ -25,7 +25,7 @@ use {
                 AccountsPlanTyped, EpilogueStep, FieldPlan, InitPlan, LoadStep, PostLoadStep,
                 PreLoadStep, RentPlan,
             },
-            FieldKind, FieldSemantics, UserCheck,
+            FieldKind, UserCheck,
         },
         typed_emit,
     },
@@ -34,23 +34,20 @@ use {
 };
 
 pub(crate) fn emit_parse_body(
-    semantics: &[FieldSemantics],
     plan: &AccountsPlanTyped,
     cx: &super::EmitCx,
 ) -> proc_macro2::TokenStream {
-    emit_parse_body_inner(semantics, plan, cx, true)
+    emit_parse_body_inner(plan, cx, true)
 }
 
 pub(crate) fn emit_parse_body_without_behavior_assertions(
-    semantics: &[FieldSemantics],
     plan: &AccountsPlanTyped,
     cx: &super::EmitCx,
 ) -> proc_macro2::TokenStream {
-    emit_parse_body_inner(semantics, plan, cx, false)
+    emit_parse_body_inner(plan, cx, false)
 }
 
 fn emit_parse_body_inner(
-    semantics: &[FieldSemantics],
     plan: &AccountsPlanTyped,
     cx: &super::EmitCx,
     include_behavior_assertions: bool,
@@ -63,7 +60,7 @@ fn emit_parse_body_inner(
 
     // Behavior const assertions: REQUIRES_MUT and SETS_INIT_PARAMS.
     let behavior_asserts = if include_behavior_assertions {
-        emit_behavior_assertions(semantics)
+        emit_behavior_assertions(&plan.fields)
     } else {
         quote! {}
     };
@@ -582,22 +579,22 @@ fn emit_user_check(field_ident: &syn::Ident, check: &UserCheck) -> Vec<proc_macr
 /// Emit compile-time assertions for behavior groups:
 /// - `REQUIRES_MUT`: if true, field must be `mut`
 /// - `SETS_INIT_PARAMS`: at most one per init field
-fn emit_behavior_assertions(semantics: &[FieldSemantics]) -> proc_macro2::TokenStream {
+fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStream {
     let mut asserts = Vec::new();
 
-    for sem in semantics {
-        let ty = &sem.core.effective_ty;
-        let field_name = sem.core.ident.to_string();
+    for fp in field_plans {
+        let ty = &fp.effective_ty;
+        let field_name = fp.ident.to_string();
 
-        for group in &sem.groups {
+        for group in &fp.behaviors {
             let path = &group.path;
 
             // REQUIRES_MUT assertion: if behavior requires mut but the field is
             // not writable, emit a compile error.
-            if !sem.is_writable() {
+            if !fp.writable {
                 let msg = format!(
                     "behavior `{}` requires `#[account(mut)]` on field `{}`",
-                    group.name(),
+                    group.name,
                     field_name,
                 );
                 asserts.push(quote! {
@@ -610,7 +607,7 @@ fn emit_behavior_assertions(semantics: &[FieldSemantics]) -> proc_macro2::TokenS
 
             let validates_data_msg = format!(
                 "behavior `{}` sets VALIDATES_ACCOUNT_DATA and must keep RUN_CHECK = true",
-                group.name(),
+                group.name,
             );
             asserts.push(quote! {
                 const _: () = assert!(
@@ -623,11 +620,11 @@ fn emit_behavior_assertions(semantics: &[FieldSemantics]) -> proc_macro2::TokenS
             // RUN_AFTER_INIT assertion: `after_init` only runs on account
             // creation, so a behavior scheduling it on a non-`init` field would
             // silently never fire. Require `init` on the field.
-            if !sem.has_init() {
+            if !fp.has_init() {
                 let after_init_msg = format!(
                     "behavior `{}` runs after_init and requires `#[account(init, ...)]` on field \
                      `{}`",
-                    group.name(),
+                    group.name,
                     field_name,
                 );
                 asserts.push(quote! {
@@ -640,9 +637,9 @@ fn emit_behavior_assertions(semantics: &[FieldSemantics]) -> proc_macro2::TokenS
         }
 
         // Init field assertions.
-        if sem.has_init() {
-            let init_contributor_count: Vec<proc_macro2::TokenStream> = sem
-                .groups
+        if fp.has_init() {
+            let init_contributor_count: Vec<proc_macro2::TokenStream> = fp
+                .behaviors
                 .iter()
                 .map(|g| {
                     let p = &g.path;

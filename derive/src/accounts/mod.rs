@@ -123,7 +123,7 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
         bumps_name: bumps_name.clone(),
     };
 
-    let accounts_plan = build_accounts_plan(&semantics, &typed_plan, &emit_cx);
+    let accounts_plan = build_accounts_plan(&typed_plan, &emit_cx);
     let plan::AccountsPlan {
         parse_steps,
         count_expr,

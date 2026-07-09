@@ -105,6 +105,17 @@ pub(crate) struct FieldRef {
     pub ident: Ident,
 }
 
+/// One behavior group's identity, carried on `FieldPlan` so the compile-time
+/// behavior assertions (REQUIRES_MUT / SETS_INIT_PARAMS / RUN_AFTER_INIT /
+/// VALIDATES_ACCOUNT_DATA / DEFAULT_INIT_PARAMS_VALID) are emitted from the
+/// plan. `name` is `BehaviorGroup::name()` captured once so the assertion
+/// messages match lowering exactly.
+#[derive(Clone)]
+pub(crate) struct BehaviorGroupRef {
+    pub path: Path,
+    pub name: String,
+}
+
 /// Plain program account init (no behavior: system program create +
 /// discriminator).
 #[derive(Clone)]
@@ -257,6 +268,9 @@ pub(crate) struct FieldPlan {
     /// A stored-bump slot when the field has an `address` constraint. Drives
     /// the `__bumps_{f}` local and the field's entry in the `Bumps` struct.
     pub bump: Option<BumpSlot>,
+    /// The field's behavior groups (declaration order), for the compile-time
+    /// behavior assertions.
+    pub behaviors: Vec<BehaviorGroupRef>,
     /// Steps before load (init fields only).
     pub pre_load: Vec<PreLoadStep>,
     /// Steps after load (behavior checks/updates, realloc, address verify).

@@ -39,6 +39,7 @@ rent: NotNeeded
     id: ident=payer effective_ty=`Signer` wrapper=Signer kind=Single optional=false dup=false writable=true signer=true
     load: Fixed(validates=[])
     bump: None
+    behaviors: []
     pre_load: []
     post_load: []
     epilogue: []
@@ -46,6 +47,7 @@ rent: NotNeeded
     id: ident=config effective_ty=`Account < TestConfig >` wrapper=Account kind=Single optional=false dup=false writable=false signer=false
     load: Fixed(validates=[])
     bump: None
+    behaviors: []
     pre_load: []
     post_load: []
     epilogue: []
@@ -53,6 +55,7 @@ rent: NotNeeded
     id: ident=system_program effective_ty=`Program < SystemProgram >` wrapper=Program kind=Single optional=false dup=false writable=false signer=false
     load: Fixed(validates=[])
     bump: None
+    behaviors: []
     pre_load: []
     post_load: []
     epilogue: []

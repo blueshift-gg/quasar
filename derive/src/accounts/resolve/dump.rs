@@ -255,6 +255,12 @@ fn dump_field_plan(out: &mut String, field: &FieldPlan) {
         "    bump: {}",
         if field.bump.is_some() { "Some" } else { "None" },
     );
+    let behaviors: Vec<String> = field
+        .behaviors
+        .iter()
+        .map(|b| format!("`{}`(name={})", toks(&b.path), b.name))
+        .collect();
+    let _ = writeln!(out, "    behaviors: [{}]", behaviors.join(", "));
     dump_steps(out, "pre_load", &field.pre_load, pre_load_step);
     dump_steps(out, "post_load", &field.post_load, post_load_step);
     dump_steps(out, "epilogue", &field.epilogue, epilogue_step);
