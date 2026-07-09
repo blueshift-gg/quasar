@@ -5,7 +5,7 @@
 
 use {
     super::{
-        model::{BehaviorArgValue, BehaviorGroup, FieldKind, FieldSemantics},
+        model::{account_meta_flags, BehaviorArgValue, BehaviorGroup, FieldKind, FieldSemantics},
         reserved::PAYER_FIELD,
         specs::*,
         wrapper::{sysvar_inner, WrapperKind},
@@ -25,7 +25,7 @@ pub(crate) fn build_plan(semantics: &[FieldSemantics]) -> syn::Result<AccountsPl
 
     let fields: Vec<FieldPlan> = semantics
         .iter()
-        .map(|sem| plan_field(sem, payer_field.as_ref(), &optional_fields))
+        .map(|sem| plan_field(sem, payer_field.as_ref(), semantics, &optional_fields))
         .collect::<syn::Result<_>>()?;
 
     let rent = compute_rent_plan(semantics);
@@ -36,6 +36,7 @@ pub(crate) fn build_plan(semantics: &[FieldSemantics]) -> syn::Result<AccountsPl
 fn plan_field(
     sem: &FieldSemantics,
     payer_field: Option<&Ident>,
+    semantics: &[FieldSemantics],
     optional_fields: &[String],
 ) -> syn::Result<FieldPlan> {
     let mut pre_load = Vec::new();
@@ -43,6 +44,17 @@ fn plan_field(
     let mut epilogue = Vec::new();
 
     let resolved_payer = resolve_field_payer(sem, payer_field);
+
+    // 019-D: a resolved payer must be writable (it funds rent) and a signer;
+    // a `close` destination must be writable (it receives drained lamports).
+    if sem.init.is_some() || sem.realloc.is_some() {
+        if let Some(payer) = resolved_payer.as_ref() {
+            validate_payer_field(payer, semantics)?;
+        }
+    }
+    if let Some(dest) = &sem.close_dest {
+        validate_close_dest(dest, semantics)?;
+    }
 
     if sem.has_init() {
         if let Some(addr) = &sem.address {
@@ -224,6 +236,55 @@ fn find_payer_field(semantics: &[FieldSemantics]) -> Option<Ident> {
         .map(|sem| sem.core.ident.clone())
 }
 
+/// 019-D: the resolved payer for an `init`/`realloc` must exist, be writable
+/// (it funds rent), and be a signer (it authorizes the create/realloc CPI).
+fn validate_payer_field(payer: &FieldRef, semantics: &[FieldSemantics]) -> syn::Result<()> {
+    let Some(payer_sem) = semantics.iter().find(|s| s.core.ident == payer.ident) else {
+        return Err(syn::Error::new_spanned(
+            &payer.ident,
+            format!("payer `{}` does not name a field in this accounts struct", payer.ident),
+        ));
+    };
+    let flags = account_meta_flags(payer_sem);
+    if !flags.writable {
+        return Err(syn::Error::new_spanned(
+            &payer_sem.core.field,
+            format!(
+                "payer field `{}` must be writable (`#[account(mut)]`): it funds account rent",
+                payer.ident
+            ),
+        ));
+    }
+    if !flags.signer {
+        return Err(syn::Error::new_spanned(
+            &payer_sem.core.field,
+            format!("payer field `{}` must be a `Signer`", payer.ident),
+        ));
+    }
+    Ok(())
+}
+
+/// 019-D: a `close` destination must exist and be writable (it receives the
+/// drained lamports).
+fn validate_close_dest(dest: &Ident, semantics: &[FieldSemantics]) -> syn::Result<()> {
+    let Some(dest_sem) = semantics.iter().find(|s| s.core.ident == *dest) else {
+        return Err(syn::Error::new_spanned(
+            dest,
+            format!("close destination `{dest}` does not name a field in this accounts struct"),
+        ));
+    };
+    if !dest_sem.is_writable() {
+        return Err(syn::Error::new_spanned(
+            &dest_sem.core.field,
+            format!(
+                "close destination `{dest}` must be writable (`#[account(mut)]`): it receives the \
+                 drained lamports"
+            ),
+        ));
+    }
+    Ok(())
+}
+
 /// Resolve payer for a specific field: explicit > inferred by name.
 fn resolve_field_payer(sem: &FieldSemantics, payer_field: Option<&Ident>) -> Option<FieldRef> {
     if let Some(explicit_payer) = &sem.payer {
@@ -289,6 +350,58 @@ mod tests {
 
     fn ident(name: &str) -> Ident {
         syn::parse_str(name).expect("ident")
+    }
+
+    /// Lower a fixture struct and build its plan, returning the plan error text.
+    fn plan_err(ts: proc_macro2::TokenStream) -> String {
+        let item: syn::ItemStruct = syn::parse2(ts).expect("struct parses");
+        let fields = match item.fields {
+            syn::Fields::Named(named) => named.named,
+            _ => Default::default(),
+        };
+        let sems =
+            crate::accounts::resolve::lower_semantics(&fields, &[]).expect("fixture lowers");
+        build_plan(&sems)
+            .err()
+            .expect("expected a plan error")
+            .to_string()
+    }
+
+    #[test]
+    fn payer_must_be_writable() {
+        let err = plan_err(quote! {
+            struct S {
+                payer: Signer,
+                #[account(init, payer = payer, address = Foo::seeds(payer.address()))]
+                acct: Account<Foo>,
+            }
+        });
+        assert!(err.contains("must be writable"), "{err}");
+    }
+
+    #[test]
+    fn payer_must_be_signer() {
+        let err = plan_err(quote! {
+            struct S {
+                #[account(mut)]
+                payer: Account<Foo>,
+                #[account(init, payer = payer, address = Bar::seeds(payer.address()))]
+                acct: Account<Bar>,
+            }
+        });
+        assert!(err.contains("must be a `Signer`"), "{err}");
+    }
+
+    #[test]
+    fn close_destination_must_be_writable() {
+        let err = plan_err(quote! {
+            struct S {
+                authority: Signer,
+                #[account(mut, close(dest = authority))]
+                acct: Account<Foo>,
+            }
+        });
+        assert!(err.contains("close destination") && err.contains("must be writable"), "{err}");
     }
 
     /// Minimal single-account semantics with the given name and effective type.
