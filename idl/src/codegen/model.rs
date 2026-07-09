@@ -1,7 +1,263 @@
 use {
-    crate::types::{Idl, IdlPdaSeed, IdlResolver, IdlType},
+    crate::types::{
+        AccountFlag, Idl, IdlArg, IdlCodec, IdlInstruction, IdlLayout, IdlPdaSeed, IdlResolver,
+        IdlType,
+    },
     quasar_schema::{camel_to_pascal, camel_to_snake, snake_to_pascal},
 };
+
+// ---------------------------------------------------------------------------
+// Client IR: the lowered wire model
+// ---------------------------------------------------------------------------
+
+/// A value's fully-resolved wire encoding. Every `IdlType` + `IdlCodec` pair is
+/// lowered here exactly once; backends consume `WireType` and only render their
+/// language spelling, never re-deriving scalar widths, size-prefix widths, or
+/// option tags. Resolution is total and explicit: a dynamic type without a
+/// codec is an error at IR-build time (see [`WireType::resolve`]), never a
+/// silently-guessed prefix width — this is what makes the historical
+/// "bare string/vec defaults to u32" divergence unrepresentable.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WireType {
+    /// One-byte boolean (kept distinct from `Scalar { width: 1 }` so backends
+    /// can pick a bool codec/type rather than a `u8`).
+    Bool,
+    /// Fixed-width integer or float. `width` is the byte width; `float` marks
+    /// `f32`/`f64`; `signed` marks the signed integers.
+    Scalar { width: u8, signed: bool, float: bool },
+    /// 32-byte public key / address (distinct from `FixedBytes(32)` so backends
+    /// render an address type/codec rather than a raw byte blob).
+    Pubkey,
+    /// Opaque variable-length bytes (the IDL `bytes` primitive).
+    Bytes,
+    /// Fixed-length byte array `[u8; N]`.
+    FixedBytes(usize),
+    /// Fixed-length array `[T; N]` of a non-byte element.
+    Array { len: usize, item: Box<WireType> },
+    /// Size-prefixed UTF-8 string. `prefix` is the length-prefix byte width.
+    Str { prefix: u8 },
+    /// Size-prefixed sequence. `prefix` is the length-prefix byte width.
+    List { prefix: u8, item: Box<WireType> },
+    /// Optional value with an explicit presence-tag byte width.
+    Option { tag: u8, inner: Box<WireType> },
+    /// Reference to a named defined type (struct or enum).
+    Defined(String),
+}
+
+impl WireType {
+    /// Lower an `IdlType` + optional `IdlCodec` into a `WireType`.
+    ///
+    /// Errors (rather than guessing) when a dynamic type (`string`/`vec`) lacks
+    /// the size-prefix codec that fixes its length-prefix width — the codec is
+    /// mandatory for dynamic types at IDL-build time, so a missing one is a
+    /// producer bug, not a client default.
+    pub fn resolve(ty: &IdlType, codec: &Option<IdlCodec>) -> Result<Self, String> {
+        match ty {
+            IdlType::Primitive(p) => Self::resolve_primitive(p, codec),
+            IdlType::Option { option } => {
+                // Optional dynamic inners (`Option<String>`, `Option<Vec<_>>`)
+                // carry the inner's size-prefix codec on the option itself; the
+                // presence tag is a single byte. Non-dynamic inners resolve
+                // without a codec.
+                let inner = if type_is_dynamic(option) {
+                    Self::resolve(option, codec)?
+                } else {
+                    Self::resolve(option, &None)?
+                };
+                Ok(WireType::Option {
+                    tag: 1,
+                    inner: Box::new(inner),
+                })
+            }
+            IdlType::Vec { vec } => match codec {
+                Some(IdlCodec::SizePrefixed { .. }) => Ok(WireType::List {
+                    prefix: codec_prefix_width(codec)?,
+                    item: Box::new(Self::resolve(vec, &None)?),
+                }),
+                _ => Err(format!(
+                    "vec type `{ty:?}` requires a size-prefix codec; none was declared"
+                )),
+            },
+            IdlType::Array { array: (inner, size) } => {
+                if idl_type_is_byte(inner) {
+                    Ok(WireType::FixedBytes(*size))
+                } else {
+                    Ok(WireType::Array {
+                        len: *size,
+                        item: Box::new(Self::resolve(inner, &None)?),
+                    })
+                }
+            }
+            IdlType::Defined { defined } => Ok(WireType::Defined(defined.name.clone())),
+            IdlType::Generic { generic } => Ok(WireType::Defined(generic.clone())),
+        }
+    }
+
+    fn resolve_primitive(p: &str, codec: &Option<IdlCodec>) -> Result<Self, String> {
+        Ok(match p {
+            "bool" => WireType::Bool,
+            "u8" => WireType::Scalar { width: 1, signed: false, float: false },
+            "u16" => WireType::Scalar { width: 2, signed: false, float: false },
+            "u32" => WireType::Scalar { width: 4, signed: false, float: false },
+            "u64" => WireType::Scalar { width: 8, signed: false, float: false },
+            "u128" => WireType::Scalar { width: 16, signed: false, float: false },
+            "i8" => WireType::Scalar { width: 1, signed: true, float: false },
+            "i16" => WireType::Scalar { width: 2, signed: true, float: false },
+            "i32" => WireType::Scalar { width: 4, signed: true, float: false },
+            "i64" => WireType::Scalar { width: 8, signed: true, float: false },
+            "i128" => WireType::Scalar { width: 16, signed: true, float: false },
+            "f32" => WireType::Scalar { width: 4, signed: false, float: true },
+            "f64" => WireType::Scalar { width: 8, signed: false, float: true },
+            "pubkey" => WireType::Pubkey,
+            "bytes" => WireType::Bytes,
+            "string" => match codec {
+                Some(IdlCodec::SizePrefixed { .. }) => WireType::Str {
+                    prefix: codec_prefix_width(codec)?,
+                },
+                _ => {
+                    return Err(String::from(
+                        "string type requires a size-prefix codec; none was declared",
+                    ))
+                }
+            },
+            other => return Err(format!("unknown primitive type `{other}`")),
+        })
+    }
+}
+
+/// The length-prefix byte width of a `SizePrefixed` codec, as a `u8`.
+fn codec_prefix_width(codec: &Option<IdlCodec>) -> Result<u8, String> {
+    match codec {
+        Some(c @ IdlCodec::SizePrefixed { .. }) => Ok(c.prefix_bytes() as u8),
+        _ => Err(String::from("expected a size-prefix codec")),
+    }
+}
+
+/// Whether an `IdlType` is a dynamic (length-prefixed) type at its top level.
+fn type_is_dynamic(ty: &IdlType) -> bool {
+    matches!(ty, IdlType::Vec { .. }) || matches!(ty, IdlType::Primitive(p) if p == "string")
+}
+
+/// Whether an `IdlType` is the `u8` byte primitive (used to fold `[u8; N]` into
+/// `FixedBytes`).
+fn idl_type_is_byte(ty: &IdlType) -> bool {
+    matches!(ty, IdlType::Primitive(p) if p == "u8")
+}
+
+/// One instruction argument (or account/type field), lowered.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FieldPlan {
+    /// The field name exactly as it appears in the IDL.
+    pub name: String,
+    /// The resolved wire encoding.
+    pub wire: WireType,
+}
+
+/// An account slot in an instruction, with its flags and resolver resolved.
+#[derive(Clone, Debug)]
+pub struct AccountPlan {
+    pub name: String,
+    pub writable: AccountFlag,
+    pub signer: AccountFlag,
+    /// Whether the account is optional. Absent slots carry the program id as a
+    /// sentinel per the runtime convention (`emit/parse.rs`), so clients expose
+    /// this as an optional parameter.
+    pub optional: bool,
+    pub resolver: IdlResolver,
+}
+
+/// A resolved PDA seed (encoding inferred from the seed's declared type).
+#[derive(Clone, Debug)]
+pub enum ResolvedSeed {
+    Const { value: Vec<u8> },
+    AccountAddress { path: String },
+    AccountField { account: String, field: String, path: String },
+    Arg { path: String, wire: WireType },
+}
+
+/// A PDA derivation plan: resolved seeds plus the generated helper name.
+#[derive(Clone, Debug)]
+pub struct PdaPlan {
+    pub field_name: String,
+    pub helper_name: String,
+    pub seeds: Vec<ResolvedSeed>,
+}
+
+/// Whether an instruction's argument payload uses the compact wire layout
+/// (inline fixed fields, then all tail length-prefixes, then all tail payloads)
+/// or a purely-fixed layout.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WireLayout {
+    Fixed,
+    Compact,
+}
+
+/// A fully-lowered instruction: discriminator bytes, argument split into inline
+/// (fixed) and tail (dynamic) fields, accounts, and the wire layout.
+#[derive(Clone, Debug)]
+pub struct InstructionPlan {
+    pub name: String,
+    pub disc: Vec<u8>,
+    pub inline: Vec<FieldPlan>,
+    pub tail: Vec<FieldPlan>,
+    pub accounts: Vec<AccountPlan>,
+    pub layout: WireLayout,
+    pub has_remaining: bool,
+}
+
+impl InstructionPlan {
+    /// Lower one `IdlInstruction`. Returns an error if any argument's wire type
+    /// cannot be resolved (e.g. a codec-less dynamic type).
+    pub fn from_instruction(ix: &IdlInstruction) -> Result<Self, String> {
+        let compact = matches!(ix.layout, Some(IdlLayout::Compact { .. }));
+        let mut inline = Vec::new();
+        let mut tail = Vec::new();
+        for arg in &ix.args {
+            let field = FieldPlan {
+                name: arg.name.clone(),
+                wire: WireType::resolve(&arg.ty, &arg.codec)
+                    .map_err(|e| format!("instruction `{}` arg `{}`: {e}", ix.name, arg.name))?,
+            };
+            if arg_is_tail(arg) {
+                tail.push(field);
+            } else {
+                inline.push(field);
+            }
+        }
+        let accounts = ix
+            .accounts
+            .iter()
+            .map(|a| AccountPlan {
+                name: a.name.clone(),
+                writable: a.writable.clone(),
+                signer: a.signer.clone(),
+                optional: a.optional,
+                resolver: a.resolver.clone(),
+            })
+            .collect();
+        let layout = if compact && !tail.is_empty() {
+            WireLayout::Compact
+        } else {
+            WireLayout::Fixed
+        };
+        Ok(InstructionPlan {
+            name: ix.name.clone(),
+            disc: ix.discriminator.clone(),
+            inline,
+            tail,
+            accounts,
+            layout,
+            has_remaining: ix.remaining_accounts.is_some(),
+        })
+    }
+}
+
+/// Whether an argument lands in the tail (dynamic) region: a size-prefixed
+/// string/vec, or an optional wrapping one.
+fn arg_is_tail(arg: &IdlArg) -> bool {
+    matches!(arg.codec, Some(IdlCodec::SizePrefixed { .. }))
+        && (type_is_dynamic(&arg.ty) || matches!(&arg.ty, IdlType::Option { option } if type_is_dynamic(option)))
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolvedIdentity {
@@ -257,5 +513,155 @@ mod tests {
             go_field_path("walletConfig.approval_threshold"),
             "WalletConfig.ApprovalThreshold"
         );
+    }
+}
+
+#[cfg(test)]
+mod wire_tests {
+    use super::*;
+    use crate::types::{Endian, IdlArg, IdlDefinedRef, IdlInstruction, ScalarRepr, Storage};
+
+    fn prim(name: &str) -> IdlType {
+        IdlType::Primitive(name.to_string())
+    }
+
+    fn str_codec(prefix: &str) -> IdlCodec {
+        IdlCodec::SizePrefixed {
+            prefix: ScalarRepr {
+                ty: prefix.to_string(),
+                endian: Endian::Le,
+            },
+            storage: Storage::Tail,
+            max_bytes: Some(32),
+            max_items: None,
+            encoding: Some("utf8".to_string()),
+            item: None,
+        }
+    }
+
+    fn vec_codec(prefix: &str) -> IdlCodec {
+        IdlCodec::SizePrefixed {
+            prefix: ScalarRepr {
+                ty: prefix.to_string(),
+                endian: Endian::Le,
+            },
+            storage: Storage::Tail,
+            max_bytes: None,
+            max_items: Some(4),
+            encoding: None,
+            item: None,
+        }
+    }
+
+    #[test]
+    fn scalars_resolve_widths_and_signs() {
+        assert_eq!(
+            WireType::resolve(&prim("u64"), &None).unwrap(),
+            WireType::Scalar { width: 8, signed: false, float: false }
+        );
+        assert_eq!(
+            WireType::resolve(&prim("i32"), &None).unwrap(),
+            WireType::Scalar { width: 4, signed: true, float: false }
+        );
+        assert_eq!(
+            WireType::resolve(&prim("f64"), &None).unwrap(),
+            WireType::Scalar { width: 8, signed: false, float: true }
+        );
+        assert_eq!(WireType::resolve(&prim("bool"), &None).unwrap(), WireType::Bool);
+        assert_eq!(WireType::resolve(&prim("pubkey"), &None).unwrap(), WireType::Pubkey);
+    }
+
+    #[test]
+    fn dynamic_types_take_prefix_from_codec() {
+        assert_eq!(
+            WireType::resolve(&prim("string"), &Some(str_codec("u8"))).unwrap(),
+            WireType::Str { prefix: 1 }
+        );
+        let v = IdlType::Vec { vec: Box::new(prim("pubkey")) };
+        assert_eq!(
+            WireType::resolve(&v, &Some(vec_codec("u16"))).unwrap(),
+            WireType::List { prefix: 2, item: Box::new(WireType::Pubkey) }
+        );
+    }
+
+    #[test]
+    fn codec_less_dynamic_is_an_error_not_a_default() {
+        assert!(WireType::resolve(&prim("string"), &None).is_err());
+        let v = IdlType::Vec { vec: Box::new(prim("u64")) };
+        assert!(WireType::resolve(&v, &None).is_err());
+    }
+
+    #[test]
+    fn optional_dynamic_gets_one_byte_tag_and_inner_prefix() {
+        let opt = IdlType::Option { option: Box::new(prim("string")) };
+        assert_eq!(
+            WireType::resolve(&opt, &Some(str_codec("u8"))).unwrap(),
+            WireType::Option { tag: 1, inner: Box::new(WireType::Str { prefix: 1 }) }
+        );
+    }
+
+    #[test]
+    fn optional_scalar_resolves_inner_without_codec() {
+        let opt = IdlType::Option { option: Box::new(prim("u64")) };
+        assert_eq!(
+            WireType::resolve(&opt, &None).unwrap(),
+            WireType::Option {
+                tag: 1,
+                inner: Box::new(WireType::Scalar { width: 8, signed: false, float: false })
+            }
+        );
+    }
+
+    #[test]
+    fn byte_arrays_fold_to_fixed_bytes_but_typed_arrays_do_not() {
+        let bytes = IdlType::Array { array: (Box::new(prim("u8")), 32) };
+        assert_eq!(WireType::resolve(&bytes, &None).unwrap(), WireType::FixedBytes(32));
+        let typed = IdlType::Array { array: (Box::new(prim("u64")), 4) };
+        assert_eq!(
+            WireType::resolve(&typed, &None).unwrap(),
+            WireType::Array {
+                len: 4,
+                item: Box::new(WireType::Scalar { width: 8, signed: false, float: false })
+            }
+        );
+    }
+
+    #[test]
+    fn defined_types_carry_their_name() {
+        let d = IdlType::Defined { defined: IdlDefinedRef { name: "Foo".to_string(), generics: vec![] } };
+        assert_eq!(WireType::resolve(&d, &None).unwrap(), WireType::Defined("Foo".to_string()));
+    }
+
+    #[test]
+    fn instruction_plan_splits_inline_and_tail_in_compact_layout() {
+        use crate::types::{CompactWire, IdlLayout};
+        let ix = IdlInstruction {
+            name: "submit".to_string(),
+            discriminator: vec![7],
+            docs: vec![],
+            accounts: vec![],
+            args: vec![
+                IdlArg { name: "tag".to_string(), ty: prim("u64"), codec: None, docs: vec![] },
+                IdlArg {
+                    name: "label".to_string(),
+                    ty: prim("string"),
+                    codec: Some(str_codec("u8")),
+                    docs: vec![],
+                },
+            ],
+            layout: Some(IdlLayout::Compact {
+                inline_fields: vec!["tag".to_string()],
+                tail_fields: vec!["label".to_string()],
+                wire: CompactWire::InlineFieldsThenTailHeadersThenTailPayloads,
+            }),
+            remaining_accounts: None,
+        };
+        let plan = InstructionPlan::from_instruction(&ix).unwrap();
+        assert_eq!(plan.layout, WireLayout::Compact);
+        assert_eq!(plan.inline.len(), 1);
+        assert_eq!(plan.inline[0].name, "tag");
+        assert_eq!(plan.tail.len(), 1);
+        assert_eq!(plan.tail[0].name, "label");
+        assert_eq!(plan.tail[0].wire, WireType::Str { prefix: 1 });
     }
 }
