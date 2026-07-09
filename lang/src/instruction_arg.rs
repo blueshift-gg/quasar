@@ -120,12 +120,16 @@ impl<T: InstructionArg> InstructionArg for Option<T> {
 
     #[inline(always)]
     fn from_zc(zc: &Self::Zc) -> Self {
-        if zc.raw_tag() == 0 {
-            None
-        } else {
-            // SAFETY: Nonzero tags carry an initialized payload. Untrusted
+        // Only tag == 1 is `Some` (see `PodOption::some`). Tag 0 is `None`; any
+        // other tag is invalid and rejected by `validate_zc`, but decode it as
+        // `None` here so a stray tag never reaches `assume_init_ref` on a
+        // possibly-uninitialized payload.
+        if zc.raw_tag() == 1 {
+            // SAFETY: Tag 1 is the initialized `Some` variant. Untrusted
             // instruction data must call `validate_zc` before this conversion.
             Some(T::from_zc(unsafe { zc.assume_init_ref() }))
+        } else {
+            None
         }
     }
 
@@ -225,6 +229,16 @@ mod tests {
     fn option_tag_invalid_rejected() {
         let zc = option_zc_with_tag(2, crate::pod::PodU64::from(42));
         assert!(Option::<u64>::validate_zc(&zc).is_err());
+    }
+
+    #[test]
+    fn option_from_zc_decodes_stray_tag_as_none() {
+        // Only tag == 1 is `Some`; any other tag decodes to `None` (defense in
+        // depth so a stray tag never reaches `assume_init_ref`).
+        for tag in [2u8, 0x0F, 0xFF] {
+            let zc = option_zc_with_tag(tag, crate::pod::PodU64::from(42));
+            assert_eq!(Option::<u64>::from_zc(&zc), None, "tag {tag:#x}");
+        }
     }
 
     #[test]
