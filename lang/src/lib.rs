@@ -426,6 +426,8 @@ pub mod prelude;
 pub mod remaining;
 /// `set_return_data` syscall wrapper.
 pub mod return_data;
+/// Centralized sBPF ABI facts (entrypoint, input buffer, `SolBytes`).
+pub mod svm_abi;
 /// Core framework traits.
 pub mod traits;
 /// Utility functions
