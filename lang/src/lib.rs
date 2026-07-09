@@ -450,7 +450,6 @@ pub use solana_program_error as __solana_program_error;
 /// downstream crates adding a direct dependency.
 #[doc(hidden)]
 pub use zeropod as __zeropod;
-
 /// The `#[derive(ZeroPod)]` macro for defining zero-copy account and
 /// instruction schemas.
 ///
@@ -473,11 +472,11 @@ pub use zeropod::{
 /// bounds-checked slicing, `Result` construction, and panic paths.
 #[inline(always)]
 pub fn keys_eq(a: &solana_address::Address, b: &solana_address::Address) -> bool {
-    #[cfg(not(target_os = "solana"))]
+    #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
     {
         a == b
     }
-    #[cfg(target_os = "solana")]
+    #[cfg(any(target_os = "solana", target_arch = "bpf"))]
     {
         let a = a.as_array().as_ptr() as *const u64;
         let b = b.as_array().as_ptr() as *const u64;
