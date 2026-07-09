@@ -51,8 +51,6 @@ pub struct IdlTypeDef {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub docs: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub generics: Vec<IdlGenericParam>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fields: Vec<IdlFieldDef>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub variants: Vec<IdlEnumVariant>,
@@ -81,22 +79,6 @@ pub enum IdlTypeDefKind {
     Alias,
     Enum,
     Opaque,
-}
-
-/// A generic parameter declaration.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct IdlGenericParam {
-    pub kind: IdlGenericParamKind,
-    pub name: String,
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "type")]
-    pub ty: Option<String>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum IdlGenericParamKind {
-    Type,
-    Const,
 }
 
 /// A field in a struct or enum variant.

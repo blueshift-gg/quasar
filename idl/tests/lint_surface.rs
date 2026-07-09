@@ -21,7 +21,6 @@ fn account_type(name: &str, fields: Vec<IdlFieldDef>) -> IdlTypeDef {
         name: name.to_owned(),
         kind: IdlTypeDefKind::Struct,
         docs: Vec::new(),
-        generics: Vec::new(),
         fields,
         variants: Vec::new(),
         repr: None,
@@ -39,7 +38,6 @@ fn enum_type(name: &str, variants: Vec<(&str, u64)>) -> IdlTypeDef {
         name: name.to_owned(),
         kind: IdlTypeDefKind::Enum,
         docs: Vec::new(),
-        generics: Vec::new(),
         fields: Vec::new(),
         variants: variants
             .into_iter()
@@ -63,7 +61,6 @@ fn enum_type(name: &str, variants: Vec<(&str, u64)>) -> IdlTypeDef {
 fn account_node(name: &str, signer: bool, writable: bool, resolver: IdlResolver) -> IdlAccountNode {
     IdlAccountNode {
         name: name.to_owned(),
-        client_type: None,
         optional: false,
         writable: AccountFlag::Fixed(writable),
         signer: AccountFlag::Fixed(signer),
@@ -85,8 +82,6 @@ fn instruction(
         accounts,
         args,
         layout: None,
-        returns: None,
-        effects: Vec::new(),
         remaining_accounts: None,
     }
 }
@@ -128,7 +123,6 @@ fn base_idl() -> Idl {
                                 path: "authority".to_owned(),
                             },
                         ],
-                        bump: Some(IdlPdaBump::Canonical {}),
                     },
                 ),
             ],
@@ -160,11 +154,8 @@ fn base_idl() -> Idl {
             discriminator: vec![7],
             docs: Vec::new(),
             ty: None,
-            transport: None,
         }],
         errors: Vec::new(),
-        constants: Vec::new(),
-        wrappers: None,
         extensions: None,
         hashes: None,
     }
@@ -215,7 +206,6 @@ fn diff_rules_find_breaking_release_surface_changes() {
         seeds: vec![IdlPdaSeed::Const {
             value: b"vault-v2".to_vec(),
         }],
-        bump: Some(IdlPdaBump::Canonical {}),
     };
     new_idl.events[0].discriminator = vec![8];
     new_idl.types[1] = enum_type("Mode", vec![("Closed", 1)]);

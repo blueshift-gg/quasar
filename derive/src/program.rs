@@ -1181,8 +1181,6 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                                     accounts: quasar_lang::idl_build::Vec::new(),
                                     args: quasar_lang::idl_build::vec![#(#arg_defs),*],
                                     layout: #layout_tokens,
-                                    returns: None,
-                                    effects: quasar_lang::idl_build::Vec::new(),
                                     remaining_accounts: #remaining_tokens,
                                 }
                             }
@@ -1215,8 +1213,6 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                                     accounts: quasar_lang::idl_build::Vec::new(),
                                     args: quasar_lang::idl_build::Vec::new(),
                                     layout: None,
-                                    returns: None,
-                                    effects: quasar_lang::idl_build::Vec::new(),
                                     remaining_accounts: None,
                                 }
                             }

@@ -7,7 +7,6 @@
 pub mod account;
 pub mod canonical;
 pub mod codec;
-pub mod constant;
 pub mod error;
 pub mod event;
 pub mod instruction;
@@ -15,9 +14,8 @@ pub mod layout;
 pub mod root;
 pub mod space;
 pub mod types;
-pub mod wrapper;
 
 pub use {
-    account::*, canonical::*, codec::*, constant::*, error::*, event::*, instruction::*, layout::*,
-    root::*, space::*, types::*, wrapper::*,
+    account::*, canonical::*, codec::*, error::*, event::*, instruction::*, layout::*, root::*,
+    space::*, types::*,
 };

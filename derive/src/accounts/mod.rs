@@ -211,7 +211,6 @@ fn emit_idl_accounts_meta(
             quote! {
                 quasar_lang::idl_build::__reexport::IdlAccountNode {
                     name: quasar_lang::idl_build::s(#field_name),
-                    client_type: None,
                     optional: #optional,
                     writable: quasar_lang::idl_build::__reexport::AccountFlag::Fixed(#writable),
                     signer: quasar_lang::idl_build::__reexport::AccountFlag::Fixed(#signer),
@@ -280,7 +279,6 @@ fn emit_typed_seeds_resolver(
         quasar_lang::idl_build::__reexport::IdlResolver::Pda {
             program: quasar_lang::idl_build::__reexport::IdlPdaProgram::ProgramId {},
             seeds: quasar_lang::idl_build::vec![#(#seeds),*],
-            bump: None,
         }
     })
 }
@@ -317,7 +315,6 @@ fn emit_idl_pda_seed(
             quasar_lang::idl_build::__reexport::IdlPdaSeed::Arg {
                 path: quasar_lang::idl_build::s(#path),
                 ty: #idl_type,
-                encoding: None,
             }
         });
     }

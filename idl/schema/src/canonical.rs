@@ -84,15 +84,11 @@ struct AbiInstruction {
     remaining_accounts: Option<crate::account::IdlRemainingAccounts>,
     #[serde(skip_serializing_if = "Option::is_none")]
     layout: Option<crate::layout::IdlLayout>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    returns: Option<crate::instruction::IdlReturnData>,
 }
 
 #[derive(serde::Serialize)]
 struct AbiAccountMeta {
     name: String,
-    #[serde(rename = "clientType", skip_serializing_if = "Option::is_none")]
-    client_type: Option<String>,
     optional: bool,
     writable: crate::account::AccountFlag,
     signer: crate::account::AccountFlag,
@@ -119,8 +115,6 @@ struct AbiAccount {
 struct AbiType {
     name: String,
     kind: crate::types::IdlTypeDefKind,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    generics: Vec<crate::types::IdlGenericParam>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     fields: Vec<AbiField>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -164,8 +158,6 @@ struct AbiEvent {
     discriminator: Vec<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     ty: Option<crate::types::IdlType>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    transport: Option<crate::event::EventTransport>,
 }
 
 fn extract_abi_subset(idl: &Idl) -> AbiSubset {
@@ -183,7 +175,6 @@ fn extract_abi_subset(idl: &Idl) -> AbiSubset {
                     .iter()
                     .map(|a| AbiAccountMeta {
                         name: a.name.clone(),
-                        client_type: a.client_type.clone(),
                         optional: a.optional,
                         writable: a.writable.clone(),
                         signer: a.signer.clone(),
@@ -192,7 +183,6 @@ fn extract_abi_subset(idl: &Idl) -> AbiSubset {
                     .collect(),
                 remaining_accounts: ix.remaining_accounts.clone(),
                 layout: ix.layout.clone(),
-                returns: ix.returns.clone(),
             })
             .collect(),
         accounts: idl
@@ -210,7 +200,6 @@ fn extract_abi_subset(idl: &Idl) -> AbiSubset {
             .map(|t| AbiType {
                 name: t.name.clone(),
                 kind: t.kind,
-                generics: t.generics.clone(),
                 fields: abi_fields(&t.fields),
                 variants: t
                     .variants
@@ -237,7 +226,6 @@ fn extract_abi_subset(idl: &Idl) -> AbiSubset {
                 name: e.name.clone(),
                 discriminator: e.discriminator.clone(),
                 ty: e.ty.clone(),
-                transport: e.transport,
             })
             .collect(),
     }
@@ -289,7 +277,6 @@ mod tests {
                 docs: vec![],
                 accounts: vec![IdlAccountNode {
                     name: "authority".to_owned(),
-                    client_type: None,
                     optional: false,
                     writable: AccountFlag::Fixed(false),
                     signer: AccountFlag::Fixed(false),
@@ -298,16 +285,12 @@ mod tests {
                 }],
                 args: vec![],
                 layout: None,
-                returns: None,
-                effects: vec![],
                 remaining_accounts,
             }],
             accounts: vec![],
             types,
             events: vec![],
             errors: vec![],
-            constants: vec![],
-            wrappers: None,
             extensions: None,
             hashes: None,
         }
@@ -407,7 +390,6 @@ mod tests {
         // from the serialized key set.
         let node = IdlAccountNode {
             name: "authority".to_owned(),
-            client_type: Some("publicKey".to_owned()),
             optional: true,
             writable: AccountFlag::Fixed(true),
             signer: AccountFlag::Fixed(true),
@@ -424,7 +406,6 @@ mod tests {
 
         let meta = AbiAccountMeta {
             name: "authority".to_owned(),
-            client_type: Some("publicKey".to_owned()),
             optional: true,
             writable: AccountFlag::Fixed(true),
             signer: AccountFlag::Fixed(true),
@@ -467,7 +448,6 @@ mod tests {
             name: "Config".to_owned(),
             kind: IdlTypeDefKind::Struct,
             docs: vec![],
-            generics: vec![],
             fields: vec![IdlFieldDef {
                 name: "label".to_owned(),
                 ty: IdlType::Primitive("string".to_owned()),
