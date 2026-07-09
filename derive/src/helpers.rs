@@ -266,7 +266,11 @@ pub(crate) fn is_unit_type(ty: &Type) -> bool {
     matches!(ty, Type::Tuple(t) if t.elems.is_empty())
 }
 
-pub(crate) fn strip_generics(ty: &Type) -> proc_macro2::TokenStream {
+/// Reduce a path type to its bare segment path, dropping generic arguments
+/// (`foo::Bar<'a, T>` -> `foo::Bar`). Returns an error for non-path types so
+/// callers can surface a clean diagnostic instead of splicing
+/// `to_compile_error()` tokens into a *type* position (which cascades).
+pub(crate) fn strip_generics(ty: &Type) -> syn::Result<proc_macro2::TokenStream> {
     match ty {
         Type::Path(type_path) => {
             let segments: Vec<_> = type_path
@@ -275,10 +279,12 @@ pub(crate) fn strip_generics(ty: &Type) -> proc_macro2::TokenStream {
                 .iter()
                 .map(|seg| &seg.ident)
                 .collect();
-            quote! { #(#segments)::* }
+            Ok(quote! { #(#segments)::* })
         }
-        _ => syn::Error::new_spanned(ty, "unsupported field type: expected a path type")
-            .to_compile_error(),
+        _ => Err(syn::Error::new_spanned(
+            ty,
+            "unsupported field type: expected a path type",
+        )),
     }
 }
 

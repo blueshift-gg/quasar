@@ -555,7 +555,10 @@ fn composite_event_ty(ty: &Type) -> proc_macro2::TokenStream {
             return quote! { #ty };
         }
     }
-    strip_generics(ty)
+    // Composite field types are always path types; the fallback keeps a valid
+    // type token (no cascade) if that invariant is ever broken -- the invalid
+    // type then fails with a localized trait-bound error.
+    strip_generics(ty).unwrap_or_else(|_| quote! { #ty })
 }
 
 fn is_event_cpi_field(sem: &resolve::FieldSemantics) -> bool {

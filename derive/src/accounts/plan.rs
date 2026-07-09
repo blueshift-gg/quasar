@@ -134,7 +134,9 @@ fn composite_parse_ty(ty: &syn::Type) -> proc_macro2::TokenStream {
     if is_accounts_array_type(ty) {
         return quote! { #ty };
     }
-    strip_generics(ty)
+    // Composite field types are path types; fall back to the whole type token
+    // (localized trait error, never a cascade) if that ever fails to hold.
+    strip_generics(ty).unwrap_or_else(|_| quote! { #ty })
 }
 
 fn is_accounts_array_type(ty: &syn::Type) -> bool {

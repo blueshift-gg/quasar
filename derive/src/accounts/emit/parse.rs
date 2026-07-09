@@ -451,7 +451,7 @@ fn emit_one_load(sem: &FieldSemantics) -> proc_macro2::TokenStream {
 
     if sem.core.dynamic {
         let inner_ty = sem.core.inner_ty.as_ref().unwrap_or(ty);
-        let base = strip_generics(inner_ty);
+        let base = strip_generics(inner_ty).unwrap_or_else(|_| quote! { #inner_ty });
         return quote! { let #ident = #base::from_account_view(#ident)?; };
     }
 
@@ -810,7 +810,9 @@ fn composite_assoc_ty(ty: &syn::Type) -> proc_macro2::TokenStream {
             return quote! { #ty };
         }
     }
-    strip_generics(ty)
+    // Composite field types are path types; fall back to the whole type token
+    // (a localized trait error, never a cascade) if that ever fails to hold.
+    strip_generics(ty).unwrap_or_else(|_| quote! { #ty })
 }
 
 /// Returns true for account types with owner + discriminator validation.
