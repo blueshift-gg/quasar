@@ -1,7 +1,8 @@
 //! Close epilogue for program-owned accounts.
 //!
 //! The derive emits a `close::Op { disc_len }.apply(view, dest)` call in the
-//! epilogue, mirroring the config-vs-slot split of [`init::Op`](crate::ops::init::Op)
+//! epilogue, mirroring the config-vs-slot split of
+//! [`init::Op`](crate::ops::init::Op)
 //! and [`realloc::Op`](crate::ops::realloc::Op).
 
 use {
@@ -13,8 +14,8 @@ use {
 ///
 /// The config (`disc_len`) is carried on the struct; `apply` operates on the
 /// account slot, mirroring [`init::Op`](crate::ops::init::Op) and
-/// [`realloc::Op`](crate::ops::realloc::Op). Close needs no [`OpCtx`](crate::ops::OpCtx):
-/// it reads neither rent nor the program id.
+/// [`realloc::Op`](crate::ops::realloc::Op). Close needs no
+/// [`OpCtx`](crate::ops::OpCtx): it reads neither rent nor the program id.
 pub struct Op {
     /// Discriminator length to zero before draining and reassigning.
     pub disc_len: usize,
