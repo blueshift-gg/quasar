@@ -18,9 +18,17 @@ doctest = false
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
-serde_json = "1"
+serde_json = { version = "1", optional = true }
 quasar-schema = { path = "../schema" }
-quasar-idl-schema = { path = "../idl/schema" }
+quasar-idl-schema = { path = "../idl/schema", optional = true }
+
+[features]
+# `declare_program!` parses an external IDL JSON at compile time. That path is
+# the only consumer of `serde_json` + `quasar-idl-schema` in this crate; gating
+# it keeps those (and their transitive serde/sha2 stacks) out of every ordinary
+# program build, which only needs the derive macros. Program crates never enable
+# this; only crates that invoke `declare_program!` do.
+declare-program = ["dep:serde_json", "dep:quasar-idl-schema"]
 
 [dev-dependencies]
 trybuild = "1"
