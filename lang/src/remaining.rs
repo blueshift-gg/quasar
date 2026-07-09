@@ -902,7 +902,16 @@ impl Iterator for RemainingIterImpl<'_> {
             self.ptr = unsafe { advance_past_dup(self.ptr) };
             match self.resolve_dup(borrow as usize) {
                 Some(v) => v,
-                None => return Some(Err(QuasarError::RemainingAccountDuplicate.into())),
+                None => {
+                    // Fuse: an unresolvable dup advances `self.ptr` past the
+                    // entry but skips the cache-index increment below, so the
+                    // cache would desync from the buffer position. Jump `ptr`
+                    // to `boundary` so the next `next()` returns `None` and
+                    // iteration terminates instead of yielding mis-cached
+                    // entries.
+                    self.ptr = self.boundary as *mut u8;
+                    return Some(Err(QuasarError::RemainingAccountDuplicate.into()));
+                }
             }
         };
 

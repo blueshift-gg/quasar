@@ -997,6 +997,28 @@ fn bounds_remaining_dup_index_sweep() {
 }
 
 #[test]
+fn bounds_remaining_iterator_fuses_on_unresolvable_dup() {
+    // First entry is a duplicate whose original index (200) cannot resolve:
+    // there are no declared accounts and the iterator cache is empty. The
+    // iterator must fuse after yielding the error, terminating instead of
+    // desyncing onto the trailing account entry (which would be mis-cached).
+    let mut buf = MultiAccountBuffer::new(&[
+        MultiAccountEntry::duplicate(200),
+        MultiAccountEntry::account(0x99, 0),
+    ]);
+    let remaining = unsafe { RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]) };
+    let mut it = remaining.iter();
+
+    match it.next() {
+        Some(Err(e)) => assert_eq!(e, QuasarError::RemainingAccountDuplicate.into()),
+        _ => panic!("first item must be the unresolvable-duplicate error"),
+    }
+    // Fused: the trailing account is not yielded and iteration terminates.
+    assert!(it.next().is_none());
+    assert!(it.next().is_none());
+}
+
+#[test]
 fn bounds_remaining_iterator_duplicate_preserved() {
     let mut buf = MultiAccountBuffer::new(&[
         MultiAccountEntry::account(0x01, 0),
