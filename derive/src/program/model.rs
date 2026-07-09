@@ -19,9 +19,9 @@
 use {
     super::{
         scan::RawInstruction,
-        spec::{CtxKind, DiscriminatorSource, InstructionSpec, RawInstructionSpec},
+        spec::{DiscriminatorSource, InstructionSpec, RawInstructionSpec},
     },
-    crate::helpers::parse_discriminator_bytes,
+    crate::{ctx::CtxKind, helpers::parse_discriminator_bytes},
     proc_macro2::Span,
     std::collections::BTreeSet,
     syn::{Ident, LitInt},

@@ -1,5 +1,8 @@
 pub fn transfer(mut context: Context) -> Result<(), ProgramError> {
-    let mut ctx: Ctx<Transfer> = unsafe { <Ctx<Transfer>>::new_unchecked(context) }?;
+    __transfer_body(unsafe { <Ctx<Transfer>>::new_unchecked(context) }?)
+}
+#[inline(always)]
+fn __transfer_body(mut ctx: Ctx<Transfer>) -> Result<(), ProgramError> {
     use quasar_lang::__zeropod as zeropod;
     #[derive(zeropod::ZeroPod)]
     #[zeropod(compact)]
@@ -44,37 +47,10 @@ fn __quasar_direct_transfer(
             __program_id_addr,
         )?
     };
-    let mut ctx: Ctx<Transfer> = quasar_lang::context::Ctx {
+    __transfer_body(quasar_lang::context::Ctx {
         accounts: __accounts,
         bumps: __bumps,
         program_id: __program_id,
         data: __ix_data,
-    };
-    use quasar_lang::__zeropod as zeropod;
-    #[derive(zeropod::ZeroPod)]
-    #[zeropod(compact)]
-    struct __InstructionDataCompact {
-        amount: u64,
-        memo: zeropod::pod::PodString<8, 1usize>,
-    }
-    <__InstructionDataCompact as quasar_lang::ZeroPodCompact>::validate(&ctx.data)
-        .map_err(|_| ProgramError::InvalidInstructionData)?;
-    let __ref = unsafe { __InstructionDataCompactRef::new_unchecked(&ctx.data) };
-    <u64 as quasar_lang::instruction_arg::InstructionArg>::validate_zc(&__ref.amount)
-        .map_err(|_| ProgramError::InvalidInstructionData)?;
-    let amount = <u64 as quasar_lang::instruction_arg::InstructionArg>::from_zc(
-        &__ref.amount,
-    );
-    let memo = __ref.memo();
-    ctx.data = &[];
-    {
-        let __user_result: Result<(), ProgramError> = {
-            ctx.accounts.handler(amount, memo)
-        };
-        __user_result?;
-        if ctx.has_epilogue() {
-            ctx.accounts.epilogue()?;
-        }
-        Ok(())
-    }
+    })
 }

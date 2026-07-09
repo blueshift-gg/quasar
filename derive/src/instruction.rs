@@ -433,7 +433,6 @@ pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> Token
         }
     };
 
-    let param_name = &first_arg.pat;
     let param_ident = match &*first_arg.pat {
         Pat::Ident(pat_ident) => pat_ident.ident.clone(),
         _ => {
@@ -469,17 +468,23 @@ pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> Token
         })
         .collect();
 
-    func.sig.inputs = syn::punctuated::Punctuated::new();
-    func.sig
-        .inputs
-        .push(syn::parse_quote!(mut context: Context));
+    let fn_name = func.sig.ident.clone();
 
+    // Single classifier, shared with `#[program]`: rejects a non-`Ctx` first
+    // parameter identically and reports whether the direct entry applies.
+    let (accounts_ty, has_remaining) = {
+        let ctx_kind = match crate::ctx::CtxKind::classify(&func.sig) {
+            Ok(k) => k,
+            Err(e) => return e.to_compile_error(),
+        };
+        (ctx_kind.inner_ty().clone(), ctx_kind.has_remaining())
+    };
+
+    // Decode + user body + epilogue, emitted exactly ONCE into `__{name}_body`.
+    // Both thin entries call it; `#[inline(always)]` folds it back into each so
+    // the codegen (and CU) match the previous per-entry inline shape while the
+    // front-end pays the decode-lowering cost a single time.
     let stmts = std::mem::take(&mut func.block.stmts);
-    let mut new_stmts: Vec<syn::Stmt> = vec![syn::parse_quote!(
-        // SAFETY: the generated dispatch parsed exactly `COUNT` validated
-        // account views into this `Context` before invoking the handler.
-        let mut #param_name: #param_type = unsafe { <#param_type>::new_unchecked(context) }?;
-    )];
     let decoded_tail = match emit_decode_and_tail(
         &param_ident,
         &remaining,
@@ -490,48 +495,32 @@ pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> Token
         Ok(stmts) => stmts,
         Err(e) => return e.to_compile_error(),
     };
-    new_stmts.extend(decoded_tail);
-    func.block.stmts = new_stmts;
+    let body_fn_name = format_ident!("__{}_body", fn_name);
+    let body_fn = quote! {
+        #[inline(always)]
+        fn #body_fn_name(mut #param_ident: #param_type) -> Result<(), ProgramError> {
+            #(#decoded_tail)*
+        }
+    };
 
-    let direct_fn = if let Some(accounts_ty) = extract_generic_inner_type(param_type, "Ctx") {
-        let fn_name = &func.sig.ident;
+    // Normal entry: a thin wrapper through the length-checked constructor.
+    func.sig.inputs = syn::punctuated::Punctuated::new();
+    func.sig
+        .inputs
+        .push(syn::parse_quote!(mut context: Context));
+    // SAFETY: the generated dispatch parsed exactly `COUNT` validated account
+    // views into this `Context` before invoking the handler.
+    let entry_call: syn::Expr = syn::parse_quote!(
+        #body_fn_name(unsafe { <#param_type>::new_unchecked(context) }?)
+    );
+    func.block.stmts = vec![syn::Stmt::Expr(entry_call, None)];
+
+    // Direct entry: skipped when the handler carries remaining accounts (the
+    // direct parser has no remaining-account path).
+    let direct_fn = if has_remaining {
+        quote! {}
+    } else {
         let direct_name = format_ident!("__quasar_direct_{}", fn_name);
-        let mut direct_stmts: Vec<syn::Stmt> = vec![
-            syn::parse_quote!(
-                let __program_id_addr = unsafe {
-                    &*(__program_id as *const [u8; 32] as *const quasar_lang::prelude::Address)
-                };
-            ),
-            syn::parse_quote!(
-                let (__accounts, __bumps) = unsafe {
-                    <#accounts_ty>::parse_direct_with_instruction_data_unchecked(
-                        __accounts_start,
-                        __ix_data,
-                        __program_id_addr,
-                    )?
-                };
-            ),
-            syn::parse_quote!(
-                let mut #param_name: #param_type = quasar_lang::context::Ctx {
-                    accounts: __accounts,
-                    bumps: __bumps,
-                    program_id: __program_id,
-                    data: __ix_data,
-                };
-            ),
-        ];
-        let decoded_tail = match emit_decode_and_tail(
-            &param_ident,
-            &remaining,
-            &stmts,
-            has_return_data,
-            return_ok_type.as_ref(),
-        ) {
-            Ok(stmts) => stmts,
-            Err(e) => return e.to_compile_error(),
-        };
-        direct_stmts.extend(decoded_tail);
-
         quote! {
             #[inline(always)]
             fn #direct_name(
@@ -539,15 +528,29 @@ pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> Token
                 __accounts_start: *mut u8,
                 __ix_data: &[u8],
             ) -> Result<(), ProgramError> {
-                #(#direct_stmts)*
+                let __program_id_addr = unsafe {
+                    &*(__program_id as *const [u8; 32] as *const quasar_lang::prelude::Address)
+                };
+                let (__accounts, __bumps) = unsafe {
+                    <#accounts_ty>::parse_direct_with_instruction_data_unchecked(
+                        __accounts_start,
+                        __ix_data,
+                        __program_id_addr,
+                    )?
+                };
+                #body_fn_name(quasar_lang::context::Ctx {
+                    accounts: __accounts,
+                    bumps: __bumps,
+                    program_id: __program_id,
+                    data: __ix_data,
+                })
             }
         }
-    } else {
-        quote! {}
     };
 
     quote!(
         #func
+        #body_fn
         #direct_fn
     )
 }

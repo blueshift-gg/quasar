@@ -7,10 +7,13 @@
 //! them for codegen.
 
 use {
-    crate::helpers::{
-        classify_borrowed_as_compact, classify_lifetime_arg, classify_option_pod_dynamic,
-        classify_pod_dynamic, parse_max_attr, pascal_to_snake, prefix_bytes_to_rust_type,
-        snake_to_pascal, PodDynField,
+    crate::{
+        ctx::CtxKind,
+        helpers::{
+            classify_borrowed_as_compact, classify_lifetime_arg, classify_option_pod_dynamic,
+            classify_pod_dynamic, parse_max_attr, pascal_to_snake, prefix_bytes_to_rust_type,
+            snake_to_pascal, PodDynField,
+        },
     },
     proc_macro2::TokenStream as TokenStream2,
     quote::{format_ident, quote},
@@ -95,47 +98,6 @@ pub(super) struct InstructionSpec {
     pub idl_args: Vec<ArgSpec>,
     pub has_remaining: bool,
     pub docs: Vec<String>,
-}
-
-/// Context wrapper classification for an instruction function.
-#[derive(Clone, Copy)]
-pub(super) struct CtxKind<'a>(&'a Type, bool);
-
-impl<'a> CtxKind<'a> {
-    /// Classify the first parameter of an instruction function.
-    pub(super) fn classify(sig: &'a syn::Signature) -> syn::Result<Self> {
-        let first_arg = match sig.inputs.first() {
-            Some(FnArg::Typed(pt)) => pt,
-            _ => {
-                return Err(syn::Error::new_spanned(
-                    &sig.ident,
-                    "#[program]: instruction function must have ctx: Ctx<T> as first parameter",
-                ));
-            }
-        };
-
-        if let Some(inner) = crate::helpers::extract_generic_inner_type(&first_arg.ty, "Ctx") {
-            return Ok(CtxKind(inner, false));
-        }
-        if let Some(inner) =
-            crate::helpers::extract_generic_inner_type(&first_arg.ty, "CtxWithRemaining")
-        {
-            return Ok(CtxKind(inner, true));
-        }
-
-        Err(syn::Error::new_spanned(
-            &first_arg.ty,
-            "first parameter must be Ctx<T> or CtxWithRemaining<T>",
-        ))
-    }
-
-    pub(super) fn inner_ty(&self) -> &'a Type {
-        self.0
-    }
-
-    pub(super) fn has_remaining(&self) -> bool {
-        self.1
-    }
 }
 
 /// Map a handler argument to its off-chain client type. Fixed args pass through;

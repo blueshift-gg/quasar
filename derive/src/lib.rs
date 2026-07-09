@@ -7,6 +7,7 @@ mod ice;
 mod account;
 mod accounts;
 pub(crate) mod client_macro;
+mod ctx;
 #[cfg(feature = "declare-program")]
 mod declare_program;
 mod error_code;
