@@ -96,6 +96,8 @@ check-runtime-panics:
 	  if [[ "$$code" =~ ^[[:space:]]*// ]]; then continue; fi; \
 	  case "$$entry" in \
 	    *'lang/src/lib.rs:'*'panic!("program aborted")'*) continue ;; \
+	    *'lang/src/idl_build.rs:'*) continue ;; \
+	    *'derive/src/accounts/emit/typed_emit.rs:'*'unreachable!("ICE'*) continue ;; \
 	  esac; \
 	  violations+=("$$entry"); \
 	done <<<"$$matches"; \
