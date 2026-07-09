@@ -629,8 +629,9 @@ impl<T, const N: usize> Remaining<T, N> {
             return Self::parse_single(accounts);
         }
 
-        let mut ptr = accounts.ptr;
-        while (ptr as *const u8) < accounts.boundary {
+        // SAFETY: `accounts.ptr`/`accounts.boundary` delimit the region.
+        let mut cursor = unsafe { Cursor::new(accounts.ptr, accounts.boundary) };
+        while !cursor.at_end() {
             if out.len >= N {
                 return Err(QuasarError::RemainingAccountsOverflow.into());
             }
@@ -638,17 +639,16 @@ impl<T, const N: usize> Remaining<T, N> {
                 return Err(QuasarError::RemainingAccountsOverflow.into());
             }
 
-            let raw = ptr as *mut RuntimeAccount;
-            // SAFETY: `ptr` is within the SVM buffer (checked against boundary).
-            let borrow = unsafe { (*raw).borrow_state };
-            if borrow != NOT_BORROWED {
-                return Err(QuasarError::RemainingAccountDuplicate.into());
-            }
-
-            // SAFETY: Non-duplicate entry with a valid `RuntimeAccount`.
-            let view = unsafe { AccountView::new_unchecked(raw) };
-            // SAFETY: `raw` is valid; advances past header + data + padding.
-            ptr = unsafe { advance_past_account(ptr, raw) };
+            // The multi-account chunk parser never resolves duplicates: a dup
+            // marker in a fixed-count group is always an error.
+            // SAFETY: not at end (checked above).
+            let view = match unsafe { cursor.next() } {
+                // SAFETY: Non-duplicate entry with a valid `RuntimeAccount`.
+                RawEntry::Account(raw) => unsafe { AccountView::new_unchecked(raw) },
+                RawEntry::Dup(_) => {
+                    return Err(QuasarError::RemainingAccountDuplicate.into());
+                }
+            };
 
             if T::REJECT_DUPLICATES {
                 if accounts
