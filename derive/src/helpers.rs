@@ -468,9 +468,19 @@ pub(crate) fn classify_option_pod_dynamic(ty: &Type) -> Option<PodDynField> {
     }
 }
 
-/// Returns true if the type is `Option<T>` where T is a dynamic pod type.
-pub(crate) fn classify_option_dynamic(ty: &Type) -> bool {
-    classify_option_pod_dynamic(ty).is_some()
+/// Does this instruction arg use the compact (dynamic) wire layout?
+///
+/// True for `String<N>`/`Vec<T, N>`, `Option<..>` of those, and borrowed
+/// `&str`/`&[T]` args -- exactly the classes the `#[instruction]` handler
+/// packs into the compact schema (`instruction.rs`). This is the single
+/// predicate consumed by both the generated client
+/// (`has_compact_client_layout`) and the IDL layout (`has_dynamic`), so all
+/// three agree on which args are compact. A grouped borrowed struct
+/// (`Foo<'a>`) is a single arg decoded whole and is deliberately *not* flagged.
+pub(crate) fn instruction_arg_is_compact(ty: &Type) -> bool {
+    classify_pod_dynamic(ty).is_some()
+        || classify_option_pod_dynamic(ty).is_some()
+        || classify_borrowed_as_compact(ty, 0, 0).is_some()
 }
 
 /// Classify a borrowed reference type as a compact schema field.
@@ -773,6 +783,39 @@ mod tests {
             let ty: Type = ty;
             assert!(validate_dynamic_prefix(&ty).is_ok(), "{}", quote!(#ty));
         }
+    }
+
+    #[test]
+    fn compact_predicate_matches_handler_for_borrowed_args() {
+        // The client predicate (`has_compact_client_layout`) and the IDL
+        // predicate (`has_dynamic`) both consume `instruction_arg_is_compact`;
+        // the `#[instruction]` handler classifies a borrowed `&str`/`&[T]`
+        // with `#[max]` as a compact arg via `classify_borrowed_as_compact`.
+        // All three must agree these are compact.
+        for ty in [
+            syn::parse_quote!(&str),
+            syn::parse_quote!(&[u8]),
+        ] {
+            let ty: Type = ty;
+            assert!(instruction_arg_is_compact(&ty), "predicate: {}", quote!(#ty));
+            assert!(
+                classify_borrowed_as_compact(&ty, 32, 0).is_some(),
+                "handler: {}",
+                quote!(#ty)
+            );
+            // The pod-dynamic arms alone (the pre-fix predicate) would miss it.
+            assert!(classify_pod_dynamic(&ty).is_none());
+            assert!(classify_option_pod_dynamic(&ty).is_none());
+        }
+
+        // A plain fixed arg is compact under none of the three.
+        let fixed: Type = syn::parse_quote!(u64);
+        assert!(!instruction_arg_is_compact(&fixed));
+        assert!(classify_borrowed_as_compact(&fixed, 32, 0).is_none());
+
+        // A pod-dynamic arg is compact under the predicate (String<N>).
+        let s: Type = syn::parse_quote!(String<32>);
+        assert!(instruction_arg_is_compact(&s));
     }
 
     #[test]

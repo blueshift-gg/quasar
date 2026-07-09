@@ -212,10 +212,9 @@ struct InstructionSpec {
 
 impl InstructionSpec {
     fn has_compact_client_layout(&self) -> bool {
-        self.idl_args.iter().any(|arg| {
-            classify_pod_dynamic(&arg.ty).is_some()
-                || classify_option_pod_dynamic(&arg.ty).is_some()
-        })
+        self.idl_args
+            .iter()
+            .any(|arg| crate::helpers::instruction_arg_is_compact(&arg.ty))
     }
 
     fn guarded_match_arm(&self, any_heap: bool, disc_len: usize) -> TokenStream2 {
@@ -1100,23 +1099,17 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
             }).collect();
 
-            let has_dynamic = spec.idl_args.iter().any(|arg| {
-                crate::helpers::classify_pod_dynamic(&arg.ty).is_some()
-                    || crate::helpers::classify_option_dynamic(&arg.ty)
-            });
+            let has_dynamic = spec
+                .idl_args
+                .iter()
+                .any(|arg| crate::helpers::instruction_arg_is_compact(&arg.ty));
             let layout_tokens = if has_dynamic {
                 let inline_fields: Vec<String> = spec.idl_args.iter()
-                    .filter(|arg| {
-                        crate::helpers::classify_pod_dynamic(&arg.ty).is_none()
-                            && !crate::helpers::classify_option_dynamic(&arg.ty)
-                    })
+                    .filter(|arg| !crate::helpers::instruction_arg_is_compact(&arg.ty))
                     .map(|arg| arg.name.to_string())
                     .collect();
                 let tail_fields: Vec<String> = spec.idl_args.iter()
-                    .filter(|arg| {
-                        crate::helpers::classify_pod_dynamic(&arg.ty).is_some()
-                            || crate::helpers::classify_option_dynamic(&arg.ty)
-                    })
+                    .filter(|arg| crate::helpers::instruction_arg_is_compact(&arg.ty))
                     .map(|arg| arg.name.to_string())
                     .collect();
                 quote! {
