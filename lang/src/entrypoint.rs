@@ -69,17 +69,19 @@ macro_rules! dispatch {
                     };
                     // SAFETY: All COUNT elements initialized by `parse_accounts`.
                     let mut __accounts = unsafe { __buf.assume_init() };
-                    $handler(Context {
-                        program_id: __program_id,
-                        accounts: &mut __accounts,
-                        remaining_ptr: __remaining_ptr,
-                        // SAFETY: The discriminator length was checked before
-                        // matching, so this suffix is in bounds.
-                        data: unsafe { $ix_data.get_unchecked($disc_len..) },
-                        // SAFETY: Instruction data is preceded by a u64 length
-                        // field in the SVM buffer. Subtracting 8 gives the
-                        // boundary between accounts and instruction data.
-                        accounts_boundary: unsafe { $ix_data.as_ptr().sub(__U64_SIZE) },
+                    // SAFETY: `parse_accounts` returned the remaining-region
+                    // pointer for this SVM buffer; the boundary is derived from
+                    // the u64 length field preceding the instruction data; the
+                    // data suffix is in bounds because the discriminator length
+                    // was checked before matching.
+                    $handler(unsafe {
+                        Context::from_raw_parts(
+                            __program_id,
+                            &mut __accounts,
+                            $ix_data.get_unchecked($disc_len..),
+                            __remaining_ptr,
+                            $ix_data.as_ptr().sub(__U64_SIZE),
+                        )
                     })
                 }
             ),+

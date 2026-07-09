@@ -107,12 +107,16 @@ fn emit_raw_context_setup(data_start: TokenStream2) -> TokenStream2 {
             )
         };
 
-        let __raw_ctx = Context {
-            program_id: __raw_program_id,
-            accounts: __raw_accounts,
-            remaining_ptr: __raw_remaining,
-            data: &instruction_data[#data_start..],
-            accounts_boundary: __raw_boundary as *const u8,
+        // SAFETY: `__raw_remaining` and `__raw_boundary` came from the raw
+        // account walk over this same SVM input buffer.
+        let __raw_ctx = unsafe {
+            Context::from_raw_parts(
+                __raw_program_id,
+                __raw_accounts,
+                &instruction_data[#data_start..],
+                __raw_remaining,
+                __raw_boundary as *const u8,
+            )
         };
     }
 }
@@ -255,16 +259,19 @@ impl InstructionSpec {
                     // before returning `Ok`.
                     __buf.assume_init()
                 };
-                #fn_name(Context {
-                    program_id: __program_id,
-                    accounts: &mut __accounts,
-                    remaining_ptr: __remaining_ptr,
-                    data: #data_after_disc,
-                    accounts_boundary: unsafe {
-                        // SAFETY: the ABI places the instruction-data length
-                        // prefix directly before `instruction_data`.
-                        instruction_data.as_ptr().sub(__U64_SIZE)
-                    },
+                let __data_after_disc = #data_after_disc;
+                // SAFETY: `parse_accounts` returned the remaining-region
+                // pointer for this SVM buffer, and the ABI places the
+                // instruction-data length prefix directly before
+                // `instruction_data`, giving the accounts boundary.
+                #fn_name(unsafe {
+                    Context::from_raw_parts(
+                        __program_id,
+                        &mut __accounts,
+                        __data_after_disc,
+                        __remaining_ptr,
+                        instruction_data.as_ptr().sub(__U64_SIZE),
+                    )
                 })
             }
         };

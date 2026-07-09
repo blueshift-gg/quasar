@@ -461,7 +461,9 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let stmts = std::mem::take(&mut func.block.stmts);
     let mut new_stmts: Vec<syn::Stmt> = vec![syn::parse_quote!(
-        let mut #param_name: #param_type = <#param_type>::new(context)?;
+        // SAFETY: the generated dispatch parsed exactly `COUNT` validated
+        // account views into this `Context` before invoking the handler.
+        let mut #param_name: #param_type = unsafe { <#param_type>::new_unchecked(context) }?;
     )];
     let decoded_tail = match emit_decode_and_tail(
         &param_ident,
