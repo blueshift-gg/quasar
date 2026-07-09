@@ -79,7 +79,11 @@ inventory::collect!(InstructionFragment);
 inventory::collect!(AccountsMetaFragment);
 
 /// Assemble all registered fragments into a complete IDL.
-pub fn build_idl(address: &str, name: &str, version: &str) -> Idl {
+///
+/// `crate_name` is the Cargo package name of the program crate (threaded from
+/// `env!("CARGO_PKG_NAME")` at the call site); it is distinct from `name`, the
+/// `#[program]` module name.
+pub fn build_idl(address: &str, name: &str, crate_name: &str, version: &str) -> Idl {
     let mut accounts = Vec::new();
     let mut types = Vec::new();
     let mut events = Vec::new();
@@ -127,9 +131,8 @@ pub fn build_idl(address: &str, name: &str, version: &str) -> Idl {
                 .find(|(struct_name, _)| struct_name == frag.accounts_struct_name)
                 .unwrap_or_else(|| {
                     panic!(
-                        "idl-build: instruction `{}` references accounts struct \
-                         `{}` but no AccountsMetaFragment with that name was \
-                         registered",
+                        "idl-build: instruction `{}` references accounts struct `{}` but no \
+                         AccountsMetaFragment with that name was registered",
                         ix.name, frag.accounts_struct_name
                     )
                 });
@@ -138,13 +141,28 @@ pub fn build_idl(address: &str, name: &str, version: &str) -> Idl {
         instructions.push(ix);
     }
 
+    // Deterministic assembly: `inventory` yields fragments in unspecified,
+    // link-order-dependent order, but the assembled IDL is hashed, so the
+    // output must not depend on registration order. Sort every collection by a
+    // stable key: instructions by discriminator (tie-break on name), everything
+    // else by name.
+    instructions.sort_by(|a, b| {
+        a.discriminator
+            .cmp(&b.discriminator)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    accounts.sort_by(|a, b| a.name.cmp(&b.name));
+    types.sort_by(|a, b| a.name.cmp(&b.name));
+    events.sort_by(|a, b| a.name.cmp(&b.name));
+    errors.sort_by(|a, b| a.name.cmp(&b.name));
+
     let mut idl = Idl {
         spec: String::from("quasar-idl/1.0.0"),
         name: String::from(name),
         version: String::from(version),
         address: String::from(address),
         metadata: IdlMetadata {
-            crate_name: Some(String::from(name)),
+            crate_name: Some(String::from(crate_name)),
             generator_version: Some(String::from(env!("CARGO_PKG_VERSION"))),
             schema_version: Some(String::from("1.0.0")),
             ..IdlMetadata::default()

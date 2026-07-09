@@ -1235,6 +1235,7 @@ pub(crate) fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
                 let idl = quasar_lang::idl_build::build_idl(
                     &address,
                     #mod_name_str,
+                    env!("CARGO_PKG_NAME"),
                     env!("CARGO_PKG_VERSION"),
                 );
                 quasar_lang::idl_build::__reexport::serde_json::to_string_pretty(&idl)
