@@ -121,6 +121,37 @@ impl FieldSemantics {
     }
 }
 
+/// Resolved `writable`/`signer` account-meta flags for a field.
+///
+/// This is the single source consumed by BOTH the generated client
+/// (`client_macro::describe_accounts`) and the IDL accounts-meta fragment
+/// (`emit_idl_accounts_meta`), so the two can never disagree.
+pub(crate) struct AccountMetaFlags {
+    pub writable: bool,
+    pub signer: bool,
+}
+
+pub(crate) fn account_meta_flags(sem: &FieldSemantics) -> AccountMetaFlags {
+    AccountMetaFlags {
+        writable: sem.is_writable(),
+        // A `Signer<'_>` field is always a signer; a keypair-init account
+        // (`init` without an `address`, i.e. a non-PDA created from a freshly
+        // generated keypair) must also be signed by the client.
+        signer: is_signer_type(&sem.core.effective_ty)
+            || (sem.has_init() && sem.address.is_none()),
+    }
+}
+
+/// True when the effective field type is `Signer` (last-path-segment match).
+fn is_signer_type(ty: &Type) -> bool {
+    if let Type::Path(type_path) = ty {
+        if let Some(last) = type_path.path.segments.last() {
+            return last.ident == "Signer";
+        }
+    }
+    false
+}
+
 /// Parsed `init` / `init(idempotent)` directive.
 pub(crate) struct InitDirective {
     pub idempotent: bool,
