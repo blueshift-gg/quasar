@@ -236,12 +236,10 @@ pub mod __internal {
         // SAFETY: `base.add(offset)` is within the caller-provided output
         // buffer, and `raw` is the current account header.
         unsafe { core::ptr::write(base.add(offset), AccountView::new_unchecked(raw)) };
-        // SAFETY: `raw` is valid for the current non-duplicate account.
+        // SAFETY: `raw` is valid for the current non-duplicate account;
+        // `advance_account_data` advances past header + data + 8-byte padding.
         let data_len = unsafe { (*raw).data_len as usize };
-        // SAFETY: Account entries are serialized as header + data + padding.
-        let input = unsafe { input.add(ACCOUNT_HEADER.wrapping_add(data_len)) };
-        // SAFETY: Advance over the SVM 8-byte alignment padding.
-        let input = unsafe { input.add((input as usize).wrapping_neg() & 7) };
+        let input = unsafe { crate::svm::advance_account_data(input, data_len) };
         Ok(input)
     }
 
@@ -311,12 +309,10 @@ pub mod __internal {
             // SAFETY: `base.add(offset)` is within the caller-provided output
             // buffer, and `raw` is the current account header.
             unsafe { core::ptr::write(base.add(offset), AccountView::new_unchecked(raw)) };
-            // SAFETY: `raw` is valid for the current non-duplicate account.
+            // SAFETY: `raw` is valid for the current non-duplicate account;
+            // `advance_account_data` advances past header + data + 8-byte pad.
             let data_len = unsafe { (*raw).data_len as usize };
-            // SAFETY: Account entries are serialized as header + data + padding.
-            let input = unsafe { input.add(ACCOUNT_HEADER.wrapping_add(data_len)) };
-            // SAFETY: Advance over the SVM 8-byte alignment padding.
-            let input = unsafe { input.add((input as usize).wrapping_neg() & 7) };
+            let input = unsafe { crate::svm::advance_account_data(input, data_len) };
             Ok(input)
         } else {
             // Dup branch: borrow_state != NOT_BORROWED means the SVM

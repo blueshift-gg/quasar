@@ -21,9 +21,39 @@
 //! the walk semantics are defined once and covered once by Miri and Kani.
 
 use {
-    crate::__internal::{account_stride, DUP_ENTRY_SIZE},
+    crate::__internal::{account_stride, ACCOUNT_HEADER, DUP_ENTRY_SIZE},
     solana_account_view::{RuntimeAccount, NOT_BORROWED},
 };
+
+/// Advance a buffer pointer past the non-duplicate account whose header starts
+/// at `ptr`, given its `data_len`, using the pointer-rounding form.
+///
+/// This is **value-equal** to `ptr.add(account_stride(data_len))` —
+/// `ACCOUNT_HEADER` is a multiple of 8, so header+data rounded up to the next
+/// 8-byte boundary lands on the same address either way — but it is retained as
+/// a distinct form on purpose: the two expressions lower to different SBF
+/// instruction schedules, and the hot single-field parsers
+/// (`__internal::parse_account`/`parse_account_dup`) are size/CU-sensitive.
+/// Empirically, rewriting them to call `account_stride` moved `.so` size in
+/// both directions across the example programs (escrow -1 KiB, multisig +176 B),
+/// so those parsers keep this tuned form, de-duplicated here into one
+/// `#[inline(always)]` definition. [`Cursor`], which owns the full walk decode,
+/// uses `account_stride` directly (its walk sites were already on that form, so
+/// routing them through `Cursor` is byte-neutral).
+///
+/// # Safety
+///
+/// `ptr` must be the 8-byte-aligned start of a non-duplicate account entry with
+/// `data_len` bytes of data, within the SVM input allocation. The returned
+/// pointer is at most one-past-the-end of that entry.
+#[inline(always)]
+pub(crate) unsafe fn advance_account_data(ptr: *mut u8, data_len: usize) -> *mut u8 {
+    // SAFETY: header + data stays within the account entry.
+    let ptr = unsafe { ptr.add(ACCOUNT_HEADER.wrapping_add(data_len)) };
+    // SAFETY: rounding up to the next 8-byte boundary stays within the entry's
+    // trailing alignment padding.
+    unsafe { ptr.add((ptr as usize).wrapping_neg() & 7) }
+}
 
 /// One decoded entry from the SVM account buffer, produced by
 /// [`Cursor::next`].
