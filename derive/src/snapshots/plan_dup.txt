@@ -29,6 +29,9 @@ rent: NotNeeded
     load: Fixed(validates=[])
     bump: None
     behaviors: []
+    docs: []
+    idl_resolver: None
+    signer_helper: None
     pre_load: []
     post_load: []
     epilogue: []
@@ -37,6 +40,9 @@ rent: NotNeeded
     load: Fixed(validates=[])
     bump: None
     behaviors: []
+    docs: ["CHECK: test-only unchecked account used to validate duplicate readonly aliases."]
+    idl_resolver: None
+    signer_helper: None
     pre_load: []
     post_load: []
     epilogue: []

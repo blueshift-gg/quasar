@@ -114,7 +114,10 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
             Err(e) => return e.to_compile_error(),
         };
 
-    let typed_plan = match resolve::planner::build_plan(&semantics) {
+    let typed_plan = match resolve::planner::build_plan(
+        &semantics,
+        instruction_args.as_deref().unwrap_or(&[]),
+    ) {
         Ok(plan) => plan,
         Err(e) => return e.to_compile_error(),
     };
@@ -142,7 +145,7 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
     let signer_helpers_impl = emit_signer_helpers_impl(SignerHelpersCtx {
         name,
         bumps_name: &bumps_name,
-        semantics: &semantics,
+        plan: &typed_plan,
         impl_generics: &impl_generics_ts,
         ty_generics: &ty_generics_ts,
         where_clause: &where_clause_ts,
@@ -155,7 +158,7 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
     let client_macro = crate::client_macro::generate_accounts_macro(name, &typed_plan);
 
     // IDL accounts meta fragment (feature-gated behind `idl-build`)
-    let idl_accounts_meta = emit_idl_accounts_meta(name, &semantics, &instruction_args);
+    let idl_accounts_meta = emit_idl_accounts_meta(name, &typed_plan);
 
     let main_output = emit::emit_accounts_output(emit::AccountsOutput {
         name,
@@ -188,27 +191,25 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
 /// struct.
 fn emit_idl_accounts_meta(
     name: &syn::Ident,
-    semantics: &[resolve::FieldSemantics],
-    instruction_args: &Option<Vec<InstructionArg>>,
+    plan: &resolve::specs::AccountsPlanTyped,
 ) -> proc_macro2::TokenStream {
     use quote::quote;
 
     let struct_name_str = name.to_string();
-    let ix_args = instruction_args.as_deref().unwrap_or(&[]);
 
-    let account_nodes: Vec<proc_macro2::TokenStream> = semantics
+    let account_nodes: Vec<proc_macro2::TokenStream> = plan
+        .fields
         .iter()
-        .map(|sem| {
-            let field_name = crate::helpers::snake_to_camel(&sem.core.ident.to_string());
-            let optional = sem.core.optional;
-            let flags = resolve::account_meta_flags(sem);
-            let writable = flags.writable;
-            let signer = flags.signer;
+        .map(|fp| {
+            let field_name = crate::helpers::snake_to_camel(&fp.ident.to_string());
+            let optional = fp.optional;
+            let writable = fp.writable;
+            let signer = fp.signer;
 
-            let resolver_tokens = emit_idl_resolver(sem, semantics, ix_args).unwrap_or_else(
+            let resolver_tokens = fp.idl_resolver.as_ref().map(emit_idl_resolver).unwrap_or_else(
                 || quote! { quasar_lang::idl_build::__reexport::IdlResolver::Input {} },
             );
-            let node_docs = crate::helpers::docs_tokens(&sem.core.field.attrs);
+            let node_docs = crate::helpers::docs_tokens_from_lines(&fp.docs);
 
             quote! {
                 quasar_lang::idl_build::__reexport::IdlAccountNode {
@@ -236,16 +237,12 @@ fn emit_idl_accounts_meta(
     }
 }
 
-fn emit_idl_resolver(
-    sem: &resolve::FieldSemantics,
-    semantics: &[resolve::FieldSemantics],
-    instruction_args: &[InstructionArg],
-) -> Option<proc_macro2::TokenStream> {
-    let resolve::AddressKind::Seeds { account_ty, seeds } = &sem.address.as_ref()?.kind else {
-        return None;
-    };
+/// Format an already-resolved typed-seeds PDA resolver into IDL tokens. All
+/// seed resolution happened once in the planner; this is a pure formatter.
+fn emit_idl_resolver(resolver: &resolve::specs::IdlResolverPlan) -> proc_macro2::TokenStream {
+    let account_ty = &resolver.account_ty;
 
-    let mut seed_tokens = Vec::with_capacity(seeds.len() + 1);
+    let mut seed_tokens = Vec::with_capacity(resolver.seeds.len() + 1);
     seed_tokens.push(quote! {
         quasar_lang::idl_build::__reexport::IdlPdaSeed::Const {
             value: quasar_lang::idl_build::Vec::from(
@@ -253,76 +250,62 @@ fn emit_idl_resolver(
             ),
         }
     });
-    for seed in seeds {
-        seed_tokens.push(emit_idl_pda_seed(seed, semantics, instruction_args)?);
+    for seed in &resolver.seeds {
+        seed_tokens.push(emit_idl_pda_seed(seed));
     }
 
-    Some(quote! {
+    quote! {
         quasar_lang::idl_build::__reexport::IdlResolver::Pda {
             program: quasar_lang::idl_build::__reexport::IdlPdaProgram::ProgramId {},
             seeds: quasar_lang::idl_build::vec![#(#seed_tokens),*],
         }
-    })
+    }
 }
 
-/// Emit one `IdlPdaSeed` from an already-classified `SeedRef`. The reverse
-/// parsing (which idents are account fields / instruction args) happened once
-/// in lowering; this only maps the resolved seed into IDL tokens.
-fn emit_idl_pda_seed(
-    seed: &resolve::SeedRef,
-    semantics: &[resolve::FieldSemantics],
-    instruction_args: &[InstructionArg],
-) -> Option<proc_macro2::TokenStream> {
+/// Format one resolved `IdlSeedPlan` into IDL tokens.
+fn emit_idl_pda_seed(seed: &resolve::specs::IdlSeedPlan) -> proc_macro2::TokenStream {
+    use resolve::specs::IdlSeedPlan;
     match seed {
-        resolve::SeedRef::AccountAddr(base) => {
+        IdlSeedPlan::AccountAddr { base } => {
             let path = crate::helpers::snake_to_camel(&base.to_string());
-            Some(quote! {
+            quote! {
                 quasar_lang::idl_build::__reexport::IdlPdaSeed::Account {
                     path: quasar_lang::idl_build::s(#path),
                 }
-            })
+            }
         }
-        resolve::SeedRef::AccountField { base, path: field } => {
+        IdlSeedPlan::AccountField {
+            base,
+            account,
+            field,
+        } => {
             let path = crate::helpers::snake_to_camel(&base.to_string());
-            let sem = semantics.iter().find(|sem| sem.core.ident == *base)?;
-            let account = account_type_name(sem.core.inner_ty.as_ref()?)?;
-            Some(quote! {
+            quote! {
                 quasar_lang::idl_build::__reexport::IdlPdaSeed::AccountField {
                     path: quasar_lang::idl_build::s(#path),
                     account: quasar_lang::idl_build::s(#account),
                     field: quasar_lang::idl_build::s(#field),
                 }
-            })
+            }
         }
-        resolve::SeedRef::IxArg(name) => {
-            let arg = instruction_args.iter().find(|arg| arg.name == *name)?;
-            let path = arg.name.to_string();
-            let idl_type = crate::helpers::type_to_idl_type_tokens(&arg.ty);
-            Some(quote! {
+        IdlSeedPlan::IxArg { name, ty } => {
+            let path = name.to_string();
+            let idl_type = crate::helpers::type_to_idl_type_tokens(ty);
+            quote! {
                 quasar_lang::idl_build::__reexport::IdlPdaSeed::Arg {
                     path: quasar_lang::idl_build::s(#path),
                     ty: #idl_type,
                 }
-            })
+            }
         }
-        resolve::SeedRef::Const(expr) => Some(quote! {
+        IdlSeedPlan::Const { expr } => quote! {
             quasar_lang::idl_build::__reexport::IdlPdaSeed::Const {
                 value: quasar_lang::idl_build::Vec::from(
                     quasar_lang::pda::seed_bytes(&(#expr))
                 ),
             }
-        }),
+        },
     }
-}
-
-fn account_type_name(ty: &Type) -> Option<String> {
-    let Type::Path(path) = ty else {
-        return None;
-    };
-    path.path
-        .segments
-        .last()
-        .map(|segment| segment.ident.to_string())
 }
 
 fn emit_needs_event_cpi_expr(plan: &resolve::specs::AccountsPlanTyped) -> proc_macro2::TokenStream {
@@ -347,7 +330,7 @@ fn emit_needs_event_cpi_expr(plan: &resolve::specs::AccountsPlanTyped) -> proc_m
 struct SignerHelpersCtx<'a> {
     name: &'a syn::Ident,
     bumps_name: &'a syn::Ident,
-    semantics: &'a [resolve::FieldSemantics],
+    plan: &'a resolve::specs::AccountsPlanTyped,
     impl_generics: &'a proc_macro2::TokenStream,
     ty_generics: &'a proc_macro2::TokenStream,
     where_clause: &'a proc_macro2::TokenStream,
@@ -359,7 +342,7 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
     let SignerHelpersCtx {
         name,
         bumps_name,
-        semantics,
+        plan,
         impl_generics,
         ty_generics,
         where_clause,
@@ -367,29 +350,22 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
         has_instruction_args,
     } = ctx;
 
-    let field_refs: Vec<proc_macro2::TokenStream> = semantics
+    let field_refs: Vec<proc_macro2::TokenStream> = plan
+        .fields
         .iter()
-        .map(|sem| {
-            let field_name = &sem.core.ident;
+        .map(|fp| {
+            let field_name = &fp.ident;
             quote! { let #field_name = &self.#field_name; }
         })
         .collect();
 
-    let signer_methods: Vec<proc_macro2::TokenStream> = semantics
+    let signer_methods: Vec<proc_macro2::TokenStream> = plan
+        .fields
         .iter()
-        .filter_map(|sem| {
-            let field_name = &sem.core.ident;
-            if !matches!(sem.core.kind, resolve::FieldKind::Single) {
-                return None;
-            }
-            if !sem
-                .address
-                .as_ref()
-                .is_some_and(|addr| matches!(addr.kind, resolve::AddressKind::Seeds { .. }))
-            {
-                return None;
-            }
-            let addr_expr = &sem.address.as_ref()?.expr;
+        .filter_map(|fp| {
+            let field_name = &fp.ident;
+            let signer_helper = fp.signer_helper.as_ref()?;
+            let addr_expr = &signer_helper.addr_expr;
             let method_name = format_ident!("{}_signer", field_name);
             if has_instruction_args {
                 Some(quote! {

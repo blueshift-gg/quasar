@@ -40,6 +40,9 @@ rent: NotNeeded
     load: Fixed(validates=[])
     bump: None
     behaviors: []
+    docs: []
+    idl_resolver: None
+    signer_helper: None
     pre_load: []
     post_load: []
     epilogue: []
@@ -48,6 +51,9 @@ rent: NotNeeded
     load: Fixed(validates=[])
     bump: None
     behaviors: []
+    docs: []
+    idl_resolver: None
+    signer_helper: None
     pre_load: []
     post_load: []
     epilogue: []
@@ -56,6 +62,9 @@ rent: NotNeeded
     load: Fixed(validates=[])
     bump: Some
     behaviors: []
+    docs: []
+    idl_resolver: Pda(account_ty=`Item` seeds=[AccountAddr(authority), AccountField(base=config account=Config field=namespace), IxArg(name=index ty=`u64`), Const(`SIDE_A`)])
+    signer_helper: Some(addr_expr=`(Item :: seeds (authority . address () , config . namespace . into () , index , SIDE_A))`)
     pre_load: []
     post_load:
       - VerifyExistingAddress(expr=`(Item :: seeds (authority . address () , config . namespace . into () , index , SIDE_A))` error=None)

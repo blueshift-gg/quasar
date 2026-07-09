@@ -17,8 +17,9 @@ use {
             FieldSemantics, InitDirective, SeedRef, UserCheck,
         },
         specs::{
-            AccountsPlanTyped, AddressSpec, BehaviorCall, EpilogueStep, FieldPlan, InitPlan,
-            LoadStep, LoweredArg, LoweredValue, PostLoadStep, PreLoadStep, ReallocSpec, RentPlan,
+            AccountsPlanTyped, AddressSpec, BehaviorCall, EpilogueStep, FieldPlan, IdlResolverPlan,
+            IdlSeedPlan, InitPlan, LoadStep, LoweredArg, LoweredValue, PostLoadStep, PreLoadStep,
+            ReallocSpec, RentPlan,
         },
     },
     quote::ToTokens,
@@ -261,6 +262,16 @@ fn dump_field_plan(out: &mut String, field: &FieldPlan) {
         .map(|b| format!("`{}`(name={})", toks(&b.path), b.name))
         .collect();
     let _ = writeln!(out, "    behaviors: [{}]", behaviors.join(", "));
+    let _ = writeln!(out, "    docs: {:?}", field.docs);
+    let _ = writeln!(out, "    idl_resolver: {}", idl_resolver(&field.idl_resolver));
+    let _ = writeln!(
+        out,
+        "    signer_helper: {}",
+        match &field.signer_helper {
+            Some(h) => format!("Some(addr_expr=`{}`)", toks(&h.addr_expr)),
+            None => "None".to_string(),
+        },
+    );
     dump_steps(out, "pre_load", &field.pre_load, pre_load_step);
     dump_steps(out, "post_load", &field.post_load, post_load_step);
     dump_steps(out, "epilogue", &field.epilogue, epilogue_step);
@@ -274,6 +285,33 @@ fn dump_steps<S>(out: &mut String, label: &str, steps: &[S], render: fn(&S) -> S
     let _ = writeln!(out, "    {label}:");
     for s in steps {
         let _ = writeln!(out, "      - {}", render(s));
+    }
+}
+
+fn idl_resolver(resolver: &Option<IdlResolverPlan>) -> String {
+    match resolver {
+        None => "None".to_string(),
+        Some(r) => {
+            let seeds: Vec<String> = r.seeds.iter().map(idl_seed).collect();
+            format!(
+                "Pda(account_ty=`{}` seeds=[{}])",
+                toks(&r.account_ty),
+                seeds.join(", "),
+            )
+        }
+    }
+}
+
+fn idl_seed(seed: &IdlSeedPlan) -> String {
+    match seed {
+        IdlSeedPlan::AccountAddr { base } => format!("AccountAddr({base})"),
+        IdlSeedPlan::AccountField {
+            base,
+            account,
+            field,
+        } => format!("AccountField(base={base} account={account} field={field})"),
+        IdlSeedPlan::IxArg { name, ty } => format!("IxArg(name={name} ty=`{}`)", toks(ty)),
+        IdlSeedPlan::Const { expr } => format!("Const(`{}`)", toks(expr)),
     }
 }
 

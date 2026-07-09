@@ -181,6 +181,44 @@ pub(crate) struct ProgramCloseSpec {
     pub destination_field: Ident,
 }
 
+/// A typed-seeds PDA resolver for the IDL accounts-meta fragment. Built once in
+/// the planner from `AddressKind::Seeds` (resolving each seed against the other
+/// fields / instruction args), so the driver's IDL emitter is a pure formatter
+/// and never reads `FieldSemantics`.
+#[derive(Clone)]
+pub(crate) struct IdlResolverPlan {
+    /// The PDA account type (owns `HasSeeds::SEED_PREFIX`).
+    pub account_ty: Path,
+    pub seeds: Vec<IdlSeedPlan>,
+}
+
+/// One resolved IDL PDA seed.
+#[derive(Clone)]
+pub(crate) enum IdlSeedPlan {
+    /// `base.address()`: the address of another account field.
+    AccountAddr { base: Ident },
+    /// `base.field`: a field read off another account, with the account type
+    /// name resolved from the base field's inner type.
+    AccountField {
+        base: Ident,
+        account: String,
+        field: String,
+    },
+    /// A struct-level `#[instruction(..)]` argument, with its type resolved for
+    /// the IDL layout.
+    IxArg { name: Ident, ty: Type },
+    /// Any other expression hashed to bytes at derivation time.
+    Const { expr: Expr },
+}
+
+/// The `{field}_signer` helper for a Single field with a typed-seeds address.
+/// Carries the address expression; the method/field names derive from
+/// `FieldPlan::ident`.
+#[derive(Clone)]
+pub(crate) struct SignerHelperPlan {
+    pub addr_expr: Expr,
+}
+
 /// Instruction-wide rent resolution.
 #[derive(Clone)]
 pub(crate) enum RentPlan {
@@ -271,6 +309,13 @@ pub(crate) struct FieldPlan {
     /// The field's behavior groups (declaration order), for the compile-time
     /// behavior assertions.
     pub behaviors: Vec<BehaviorGroupRef>,
+    /// Doc-comment lines for the IDL account node (`/// ...` on the field).
+    pub docs: Vec<String>,
+    /// Typed-seeds PDA resolver for the IDL accounts-meta fragment, if any.
+    pub idl_resolver: Option<IdlResolverPlan>,
+    /// The `{field}_signer` helper, emitted for Single fields with a
+    /// typed-seeds address.
+    pub signer_helper: Option<SignerHelperPlan>,
     /// Steps before load (init fields only).
     pub pre_load: Vec<PreLoadStep>,
     /// Steps after load (behavior checks/updates, realloc, address verify).

@@ -19,6 +19,9 @@ rent: NotNeeded
     load: Fixed(validates=[])
     bump: None
     behaviors: []
+    docs: []
+    idl_resolver: None
+    signer_helper: None
     pre_load: []
     post_load:
       - UserCheck(Constraints exprs=[`amount > 0 && flag`] error=None)

@@ -30,6 +30,9 @@ rent: NotNeeded
     load: Fixed(validates=[])
     bump: None
     behaviors: []
+    docs: []
+    idl_resolver: None
+    signer_helper: None
     pre_load: []
     post_load: []
     epilogue: []
@@ -38,6 +41,9 @@ rent: NotNeeded
     load: Fixed(validates=[])
     bump: None
     behaviors: []
+    docs: []
+    idl_resolver: None
+    signer_helper: None
     pre_load: []
     post_load:
       - UserCheck(HasOne targets=[authority] error=None)

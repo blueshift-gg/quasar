@@ -5,16 +5,23 @@
 
 use {
     super::{
-        model::{account_meta_flags, BehaviorArgValue, BehaviorGroup, FieldKind, FieldSemantics},
+        model::{
+            account_meta_flags, AddressKind, BehaviorArgValue, BehaviorGroup, FieldKind,
+            FieldSemantics, SeedRef,
+        },
         reserved::PAYER_FIELD,
         specs::*,
         wrapper::{sysvar_inner, WrapperKind},
     },
+    crate::accounts::InstructionArg,
     syn::{Ident, Type},
 };
 
 /// Build a typed execution plan from lowered field semantics.
-pub(crate) fn build_plan(semantics: &[FieldSemantics]) -> syn::Result<AccountsPlanTyped> {
+pub(crate) fn build_plan(
+    semantics: &[FieldSemantics],
+    instruction_args: &[InstructionArg],
+) -> syn::Result<AccountsPlanTyped> {
     let optional_fields: Vec<String> = semantics
         .iter()
         .filter(|sem| sem.core.optional)
@@ -25,7 +32,15 @@ pub(crate) fn build_plan(semantics: &[FieldSemantics]) -> syn::Result<AccountsPl
 
     let fields: Vec<FieldPlan> = semantics
         .iter()
-        .map(|sem| plan_field(sem, payer_field.as_ref(), semantics, &optional_fields))
+        .map(|sem| {
+            plan_field(
+                sem,
+                payer_field.as_ref(),
+                semantics,
+                &optional_fields,
+                instruction_args,
+            )
+        })
         .collect::<syn::Result<_>>()?;
 
     let rent = compute_rent_plan(semantics);
@@ -38,6 +53,7 @@ fn plan_field(
     payer_field: Option<&Ident>,
     semantics: &[FieldSemantics],
     optional_fields: &[String],
+    instruction_args: &[InstructionArg],
 ) -> syn::Result<FieldPlan> {
     let mut pre_load = Vec::new();
     let mut post_load = Vec::new();
@@ -157,6 +173,9 @@ fn plan_field(
             name: g.name(),
         })
         .collect();
+    let docs = crate::helpers::extract_doc_lines(&sem.core.field.attrs);
+    let idl_resolver = plan_idl_resolver(sem, semantics, instruction_args);
+    let signer_helper = plan_signer_helper(sem);
 
     Ok(FieldPlan {
         ident: sem.core.ident.clone(),
@@ -170,9 +189,88 @@ fn plan_field(
         load,
         bump,
         behaviors,
+        docs,
+        idl_resolver,
+        signer_helper,
         pre_load,
         post_load,
         epilogue,
+    })
+}
+
+/// Build the IDL typed-seeds PDA resolver for a field, resolving each seed
+/// against the other fields and the instruction args. Mirrors the old driver's
+/// `?` short-circuit: an unresolvable seed drops the whole resolver (the IDL
+/// then falls back to `IdlResolver::Input`).
+fn plan_idl_resolver(
+    sem: &FieldSemantics,
+    semantics: &[FieldSemantics],
+    instruction_args: &[InstructionArg],
+) -> Option<IdlResolverPlan> {
+    let AddressKind::Seeds { account_ty, seeds } = &sem.address.as_ref()?.kind else {
+        return None;
+    };
+    let mut plan_seeds = Vec::with_capacity(seeds.len());
+    for seed in seeds {
+        plan_seeds.push(plan_idl_seed(seed, semantics, instruction_args)?);
+    }
+    Some(IdlResolverPlan {
+        account_ty: account_ty.clone(),
+        seeds: plan_seeds,
+    })
+}
+
+fn plan_idl_seed(
+    seed: &SeedRef,
+    semantics: &[FieldSemantics],
+    instruction_args: &[InstructionArg],
+) -> Option<IdlSeedPlan> {
+    match seed {
+        SeedRef::AccountAddr(base) => Some(IdlSeedPlan::AccountAddr { base: base.clone() }),
+        SeedRef::AccountField { base, path } => {
+            let base_sem = semantics.iter().find(|s| s.core.ident == *base)?;
+            let account = account_type_name(base_sem.core.inner_ty.as_ref()?)?;
+            Some(IdlSeedPlan::AccountField {
+                base: base.clone(),
+                account,
+                field: path.clone(),
+            })
+        }
+        SeedRef::IxArg(name) => {
+            let arg = instruction_args.iter().find(|a| a.name == *name)?;
+            Some(IdlSeedPlan::IxArg {
+                name: name.clone(),
+                ty: arg.ty.clone(),
+            })
+        }
+        SeedRef::Const(expr) => Some(IdlSeedPlan::Const { expr: expr.clone() }),
+    }
+}
+
+/// Last path segment of a type, naming the account for an IDL `AccountField`
+/// seed.
+fn account_type_name(ty: &Type) -> Option<String> {
+    let Type::Path(path) = ty else {
+        return None;
+    };
+    path.path
+        .segments
+        .last()
+        .map(|segment| segment.ident.to_string())
+}
+
+/// The `{field}_signer` helper is emitted for Single fields whose `address` is
+/// a typed-seeds PDA.
+fn plan_signer_helper(sem: &FieldSemantics) -> Option<SignerHelperPlan> {
+    if sem.core.kind != FieldKind::Single {
+        return None;
+    }
+    let addr = sem.address.as_ref()?;
+    if !matches!(addr.kind, AddressKind::Seeds { .. }) {
+        return None;
+    }
+    Some(SignerHelperPlan {
+        addr_expr: addr.expr.clone(),
     })
 }
 
@@ -408,7 +506,7 @@ mod tests {
             _ => Default::default(),
         };
         let sems = crate::accounts::resolve::lower_semantics(&fields, &[]).expect("fixture lowers");
-        build_plan(&sems)
+        build_plan(&sems, &[])
             .err()
             .expect("expected a plan error")
             .to_string()

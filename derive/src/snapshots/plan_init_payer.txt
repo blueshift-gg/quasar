@@ -40,6 +40,9 @@ rent: FetchOnce
     load: Fixed(validates=[])
     bump: None
     behaviors: []
+    docs: []
+    idl_resolver: None
+    signer_helper: None
     pre_load: []
     post_load: []
     epilogue: []
@@ -48,6 +51,9 @@ rent: FetchOnce
     load: Fixed(validates=[])
     bump: Some
     behaviors: []
+    docs: []
+    idl_resolver: Pda(account_ty=`Escrow` seeds=[AccountAddr(payer)])
+    signer_helper: Some(addr_expr=`Escrow :: seeds (payer . address ())`)
     pre_load:
       - VerifyAddress(expr=`Escrow :: seeds (payer . address ())` error=None)
       - Init::Program(payer=payer space_ty=`Account < Escrow >` idempotent=false verified_address=Some(expr=`Escrow :: seeds (payer . address ())` error=None))
@@ -58,6 +64,9 @@ rent: FetchOnce
     load: Fixed(validates=[])
     bump: None
     behaviors: []
+    docs: []
+    idl_resolver: None
+    signer_helper: None
     pre_load: []
     post_load: []
     epilogue: []
