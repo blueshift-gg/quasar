@@ -5,7 +5,10 @@
 
 use {
     super::{
-        super::{syntax::attrs::{validate_behavior_arg, CoreDirective, Directive}, InstructionArg},
+        super::{
+            syntax::attrs::{CoreDirective, Directive},
+            InstructionArg,
+        },
         super::syntax::parse_field_attrs,
         rules::validate_semantics,
         wrapper::{classify_wrapper, WrapperKind},
@@ -214,13 +217,6 @@ fn lower_directives(
             Directive::Check(check) => {
                 sem.user_checks.push(check);
             }
-        }
-    }
-
-    // Validate behavior arg grammar on behavior groups.
-    for group in &groups {
-        for arg in &group.args {
-            validate_behavior_arg(&arg.key, &arg.value)?;
         }
     }
 

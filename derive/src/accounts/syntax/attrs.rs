@@ -14,7 +14,7 @@
 //! does not know what `token`, `mint`, or `metadata` mean.
 
 use {
-    super::super::resolve::{BehaviorArg, BehaviorGroup, UserCheck},
+    super::super::resolve::{BehaviorArg, BehaviorArgValue, BehaviorGroup, UserCheck},
     syn::{
         parse::{Parse, ParseStream},
         Expr, Ident, Token,
@@ -148,14 +148,14 @@ impl Parse for ParsedDirective {
                             "`close(...)` accepts only `dest = field`",
                         ));
                     }
-                    let dest = &args[0];
-                    if dest.key != "dest" {
+                    let (dest_key, dest_value) = &args[0];
+                    if dest_key != "dest" {
                         return Err(syn::Error::new_spanned(
                             &path,
                             "`close(...)` requires `dest = field`",
                         ));
                     }
-                    if let Expr::Path(ep) = &dest.value {
+                    if let Expr::Path(ep) = dest_value {
                         if ep.qself.is_none() && ep.path.segments.len() == 1 {
                             return Ok(ParsedDirective {
                                 inner: Directive::Core(CoreDirective::Close(
@@ -165,13 +165,19 @@ impl Parse for ParsedDirective {
                         }
                     }
                     return Err(syn::Error::new_spanned(
-                        &dest.value,
+                        dest_value,
                         "`close(dest = ...)` must be a field name",
                     ));
                 }
 
                 _ => {
-                    let args = parse_group_args(&content)?;
+                    let args = parse_group_args(&content)?
+                        .into_iter()
+                        .map(|(key, value)| {
+                            let value = behavior_arg_value(&key, value)?;
+                            Ok(BehaviorArg { key, value })
+                        })
+                        .collect::<syn::Result<Vec<_>>>()?;
                     return Ok(ParsedDirective {
                         inner: Directive::Behavior(BehaviorGroup { path, args }),
                     });
@@ -198,9 +204,11 @@ impl Parse for ParsedDirective {
     }
 }
 
-/// Parse `key = value` pairs separated by commas.
-fn parse_group_args(input: ParseStream) -> syn::Result<Vec<BehaviorArg>> {
-    let mut args = Vec::new();
+/// Parse `key = value` pairs separated by commas into raw `(Ident, Expr)` items.
+/// Shared by `close(dest = ...)` and behavior groups; the latter classifies each
+/// value into `BehaviorArgValue`.
+fn parse_group_args(input: ParseStream) -> syn::Result<Vec<(Ident, Expr)>> {
+    let mut args: Vec<(Ident, Expr)> = Vec::new();
     while !input.is_empty() {
         let key: Ident = input.parse()?;
 
@@ -216,13 +224,13 @@ fn parse_group_args(input: ParseStream) -> syn::Result<Vec<BehaviorArg>> {
         input.parse::<Token![=]>()?;
         let value: Expr = input.parse()?;
 
-        if args.iter().any(|a: &BehaviorArg| a.key == key) {
+        if args.iter().any(|(k, _)| *k == key) {
             return Err(syn::Error::new_spanned(
                 &key,
                 format!("duplicate arg `{key}`: each arg may only appear once"),
             ));
         }
-        args.push(BehaviorArg { key, value });
+        args.push((key, value));
 
         if !input.is_empty() {
             input.parse::<Token![,]>()?;
@@ -231,55 +239,65 @@ fn parse_group_args(input: ParseStream) -> syn::Result<Vec<BehaviorArg>> {
     Ok(args)
 }
 
-/// Validate that a behavior arg value conforms to the phase-polymorphic
-/// grammar.
+/// Classify a behavior arg value into the phase-polymorphic grammar.
 ///
 /// Allowed forms (valid in raw-slot, typed, and epilogue contexts):
-/// - Bare field ident: `authority`
-/// - Literal: `true`, `42`, `"str"`
-/// - Const/type path: `MY_CONST`, `module::Type`
+/// - Bare field ident (lowercase): `authority`
+/// - Literal / `true` / `false`: `42`, `"str"`
+/// - Const/type path (uppercase or multi-segment): `MY_CONST`, `module::Type`
 /// - `Some(valid_arg)`: Option wrapper with a valid inner
 /// - `None`: empty option
 ///
-/// Banned: method calls, field paths, casts, arithmetic, instruction args.
-/// These belong in `constraints(...)` or handler code.
-pub(crate) fn validate_behavior_arg(key: &Ident, expr: &Expr) -> syn::Result<()> {
-    if is_valid_behavior_arg(expr) {
-        Ok(())
-    } else {
-        Err(syn::Error::new_spanned(
-            expr,
-            format!(
-                "behavior arg `{}` has a value that is not valid in all lifecycle phases. \
-                 Behavior args must be bare field idents, literals, const paths, `Some(field)`, \
-                 or `None`. Move complex expressions to `constraints(...)` or handler code.",
-                key,
-            ),
-        ))
-    }
-}
-
-/// Check if an expression conforms to the behavior arg grammar.
-fn is_valid_behavior_arg(expr: &Expr) -> bool {
-    match expr {
-        // Path: bare ident (field ref) or multi-segment (const/type path): valid
-        Expr::Path(ep) => ep.qself.is_none(),
-        // Literal: valid
-        Expr::Lit(_) => true,
-        // Some(inner): valid if inner is valid
+/// Banned: method calls, field paths, casts, arithmetic. These belong in
+/// `constraints(...)` or handler code.
+fn behavior_arg_value(key: &Ident, expr: Expr) -> syn::Result<BehaviorArgValue> {
+    match &expr {
+        Expr::Path(ep) if ep.qself.is_none() => {
+            if ep.path.segments.len() == 1 {
+                let ident = &ep.path.segments[0].ident;
+                let name = ident.to_string();
+                if name == "None" {
+                    return Ok(BehaviorArgValue::None);
+                }
+                // Bare lowercase idents are candidate field refs (validated by
+                // rules); `true`/`false` and uppercase consts pass through.
+                if name != "true"
+                    && name != "false"
+                    && !name.starts_with(|c: char| c.is_uppercase())
+                {
+                    return Ok(BehaviorArgValue::FieldRef(ident.clone()));
+                }
+            }
+            Ok(BehaviorArgValue::Expr(expr))
+        }
+        Expr::Lit(_) => Ok(BehaviorArgValue::Expr(expr)),
         Expr::Call(call) => {
             if let Expr::Path(func) = &*call.func {
                 if func.qself.is_none()
                     && func.path.segments.len() == 1
                     && func.path.segments[0].ident == "Some"
+                    && call.args.len() == 1
                 {
-                    return call.args.len() == 1 && call.args.iter().all(is_valid_behavior_arg);
+                    let inner = behavior_arg_value(key, call.args[0].clone())?;
+                    return Ok(BehaviorArgValue::Some(Box::new(inner)));
                 }
             }
-            false
+            Err(invalid_behavior_arg(key, &expr))
         }
-        _ => false,
+        _ => Err(invalid_behavior_arg(key, &expr)),
     }
+}
+
+fn invalid_behavior_arg(key: &Ident, expr: &Expr) -> syn::Error {
+    syn::Error::new_spanned(
+        expr,
+        format!(
+            "behavior arg `{}` has a value that is not valid in all lifecycle phases. \
+             Behavior args must be bare field idents, literals, const paths, `Some(field)`, \
+             or `None`. Move complex expressions to `constraints(...)` or handler code.",
+            key,
+        ),
+    )
 }
 
 /// Parse a comma-separated list of identifiers.

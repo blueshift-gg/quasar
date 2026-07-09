@@ -3,7 +3,11 @@
 //! Protocol-specific validation (required args, arg types, exit ordering)
 //! is owned by behavior modules via builder errors and trait bounds.
 
-use {super::FieldSemantics, std::collections::HashSet, syn::Expr};
+use {
+    super::{BehaviorArgValue, FieldSemantics},
+    std::collections::HashSet,
+    syn::Ident,
+};
 
 pub(super) fn validate_semantics(semantics: &[FieldSemantics]) -> syn::Result<()> {
     let field_names: HashSet<String> = semantics
@@ -181,52 +185,39 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
     Ok(())
 }
 
-/// Validate behavior arg values: reject single-segment lowercase identifiers
-/// that don't match any field name (likely typos or instruction args).
+/// Validate behavior arg field references: every `FieldRef` (bare lowercase
+/// ident), at any nesting depth inside `Some(...)`, must name a real field.
+/// The recursion closes the old one-level `Some(Some(typo))` hole.
 fn validate_behavior_field_refs(
     sem: &FieldSemantics,
     field_names: &HashSet<String>,
 ) -> syn::Result<()> {
     for group in &sem.groups {
         for arg in &group.args {
-            validate_single_arg(&arg.value, &arg.key, field_names)?;
-            if let Expr::Call(call) = &arg.value {
-                if let Expr::Path(p) = &*call.func {
-                    if p.path.segments.len() == 1
-                        && p.path.segments[0].ident == "Some"
-                        && call.args.len() == 1
-                    {
-                        validate_single_arg(&call.args[0], &arg.key, field_names)?;
-                    }
-                }
-            }
+            check_arg_value(&arg.value, &arg.key, field_names)?;
         }
     }
     Ok(())
 }
 
-/// Reject a bare lowercase single-segment identifier that isn't a field name.
-fn validate_single_arg(
-    expr: &Expr,
-    key: &syn::Ident,
+/// Recursively reject `FieldRef` idents that aren't field names.
+fn check_arg_value(
+    value: &BehaviorArgValue,
+    key: &Ident,
     field_names: &HashSet<String>,
 ) -> syn::Result<()> {
-    if let Expr::Path(ep) = expr {
-        if ep.qself.is_none() && ep.path.segments.len() == 1 {
-            let name = ep.path.segments[0].ident.to_string();
-            if name == "None" || name == "true" || name == "false" {
-                return Ok(());
-            }
-            if name.starts_with(|c: char| c.is_uppercase()) {
-                return Ok(());
-            }
-            if !field_names.contains(name.as_str()) {
+    match value {
+        BehaviorArgValue::FieldRef(ident) => {
+            let name = ident.to_string();
+            if !field_names.contains(&name) {
                 return Err(syn::Error::new_spanned(
-                    expr,
+                    ident,
                     format!("`{key} = {name}`: no field `{name}` in this accounts struct"),
                 ));
             }
+            Ok(())
         }
+        BehaviorArgValue::Some(inner) => check_arg_value(inner, key, field_names),
+        BehaviorArgValue::None | BehaviorArgValue::Expr(_) => Ok(()),
     }
-    Ok(())
 }

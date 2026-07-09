@@ -1,6 +1,7 @@
 use {
     super::wrapper::WrapperKind,
-    syn::{Expr, Ident, Type},
+    quote::ToTokens,
+    syn::{parse_quote, Expr, Ident, Type},
 };
 
 /// Account field shape for parsing and account-count planning.
@@ -49,31 +50,52 @@ impl BehaviorGroup {
     }
 }
 
-/// A single `key = value` arg in a behavior group directive.
+/// A single `key = value` arg in a behavior group directive. The value is
+/// parsed once at parse time into the phase-polymorphic grammar.
 #[derive(Clone)]
 pub(crate) struct BehaviorArg {
     pub key: Ident,
-    pub value: Expr,
+    pub value: BehaviorArgValue,
 }
 
-/// Classification of a behavior arg value for lowering.
-/// Computed by the planner from the field name table.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ValueKind {
-    /// Bare identifier matching an account field -> `field.to_account_view()`.
-    BareFieldRef,
-    /// Bare identifier matching an optional account field ->
-    /// `field.as_ref().map(|v| v.to_account_view())`.
-    OptionalFieldRef,
-    /// Any expression (literal, path, const) -> pass through directly.
-    Expr,
-    /// `None` literal -> `None`.
-    NoneLiteral,
-    /// `Some(field)` where field is an account field ->
-    /// `Some(field.to_account_view())`.
-    SomeFieldRef,
-    /// `Some(expr)` where expr is not a field -> `Some(expr)`.
-    SomeExpr,
+/// A behavior-arg value in the phase-polymorphic grammar, parsed once at parse
+/// time. Grammar validation, field-ref validation, and lowering are all total
+/// matches on this enum — there is no re-parsing of a raw `Expr` and no
+/// one-level `Some(Some(typo))` hole.
+#[derive(Clone)]
+pub(crate) enum BehaviorArgValue {
+    /// A bare lowercase identifier: a candidate account-field reference,
+    /// validated against the struct's field names by rules.
+    FieldRef(Ident),
+    /// `Some(inner)`.
+    Some(Box<BehaviorArgValue>),
+    /// The `None` literal.
+    None,
+    /// Any other value passed through verbatim (literal, `true`/`false`,
+    /// uppercase/multi-segment const or type path).
+    Expr(Expr),
+}
+
+impl BehaviorArgValue {
+    /// Reconstruct the equivalent `syn::Expr`. Every variant tokenizes to a
+    /// valid expression, so this construction cannot fail.
+    pub(crate) fn as_expr(&self) -> Expr {
+        match self {
+            BehaviorArgValue::FieldRef(id) => parse_quote!(#id),
+            BehaviorArgValue::None => parse_quote!(None),
+            BehaviorArgValue::Expr(e) => e.clone(),
+            BehaviorArgValue::Some(inner) => {
+                let inner = inner.as_expr();
+                parse_quote!(Some(#inner))
+            }
+        }
+    }
+}
+
+impl ToTokens for BehaviorArgValue {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        self.as_expr().to_tokens(tokens);
+    }
 }
 
 /// User-specified structural assertion.

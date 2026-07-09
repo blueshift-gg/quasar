@@ -5,20 +5,16 @@
 
 use {
     super::{
-        model::{BehaviorGroup, FieldKind, FieldSemantics, ValueKind},
+        model::{BehaviorArgValue, BehaviorGroup, FieldKind, FieldSemantics},
         reserved::PAYER_FIELD,
         specs::*,
         wrapper::{sysvar_inner, WrapperKind},
     },
-    syn::{Expr, Ident, Type},
+    syn::{Ident, Type},
 };
 
 /// Build a typed execution plan from lowered field semantics.
 pub(crate) fn build_plan(semantics: &[FieldSemantics]) -> syn::Result<AccountsPlanTyped> {
-    let field_names: Vec<String> = semantics
-        .iter()
-        .map(|sem| sem.core.ident.to_string())
-        .collect();
     let optional_fields: Vec<String> = semantics
         .iter()
         .filter(|sem| sem.core.optional)
@@ -29,7 +25,7 @@ pub(crate) fn build_plan(semantics: &[FieldSemantics]) -> syn::Result<AccountsPl
 
     let fields: Vec<FieldPlan> = semantics
         .iter()
-        .map(|sem| plan_field(sem, payer_field.as_ref(), &field_names, &optional_fields))
+        .map(|sem| plan_field(sem, payer_field.as_ref(), &optional_fields))
         .collect::<syn::Result<_>>()?;
 
     let rent = compute_rent_plan(semantics);
@@ -37,49 +33,9 @@ pub(crate) fn build_plan(semantics: &[FieldSemantics]) -> syn::Result<AccountsPl
     Ok(AccountsPlanTyped { fields, rent })
 }
 
-/// Classify a behavior arg value into a ValueKind based on field names.
-fn classify_value(expr: &Expr, field_names: &[String], optional_fields: &[String]) -> ValueKind {
-    match expr {
-        Expr::Path(ep)
-            if ep.qself.is_none()
-                && ep.path.segments.len() == 1
-                && ep.path.segments[0].ident == "None" =>
-        {
-            ValueKind::NoneLiteral
-        }
-        Expr::Call(call)
-            if matches!(&*call.func, Expr::Path(p)
-                if p.path.segments.len() == 1 && p.path.segments[0].ident == "Some")
-                && call.args.len() == 1 =>
-        {
-            let inner = &call.args[0];
-            if let Some(name) = expr_as_ident(inner).map(|id| id.to_string()) {
-                if field_names.contains(&name) {
-                    return ValueKind::SomeFieldRef;
-                }
-            }
-            ValueKind::SomeExpr
-        }
-        Expr::Path(ep) if ep.qself.is_none() && ep.path.segments.len() == 1 => {
-            let name = ep.path.segments[0].ident.to_string();
-            if field_names.contains(&name) {
-                if optional_fields.contains(&name) {
-                    ValueKind::OptionalFieldRef
-                } else {
-                    ValueKind::BareFieldRef
-                }
-            } else {
-                ValueKind::Expr
-            }
-        }
-        _ => ValueKind::Expr,
-    }
-}
-
 fn plan_field(
     sem: &FieldSemantics,
     payer_field: Option<&Ident>,
-    field_names: &[String],
     optional_fields: &[String],
 ) -> syn::Result<FieldPlan> {
     let mut pre_load = Vec::new();
@@ -104,7 +60,7 @@ fn plan_field(
                 "init requires `payer = ...` (or add a field named `payer`)",
             ));
         };
-        let init_plan = plan_init(sem, init.idempotent, payer, field_names, optional_fields);
+        let init_plan = plan_init(sem, init.idempotent, payer, optional_fields);
         pre_load.push(PreLoadStep::Init(init_plan));
     }
 
@@ -116,14 +72,12 @@ fn plan_field(
             post_load.push(PostLoadStep::Behavior(lower_behavior_call(
                 group,
                 BehaviorPhase::AfterInit,
-                field_names,
                 optional_fields,
             )));
         }
         post_load.push(PostLoadStep::Behavior(lower_behavior_call(
             group,
             BehaviorPhase::Check,
-            field_names,
             optional_fields,
         )));
     }
@@ -161,13 +115,11 @@ fn plan_field(
             post_load.push(PostLoadStep::Behavior(lower_behavior_call(
                 group,
                 BehaviorPhase::Update,
-                field_names,
                 optional_fields,
             )));
             epilogue.push(EpilogueStep::Behavior(lower_behavior_call(
                 group,
                 BehaviorPhase::Exit,
-                field_names,
                 optional_fields,
             )));
         }
@@ -191,7 +143,6 @@ fn plan_init(
     sem: &FieldSemantics,
     idempotent: bool,
     payer: &FieldRef,
-    field_names: &[String],
     optional_fields: &[String],
 ) -> InitPlan {
     // If there are behavior groups attached, this is a delegated init.
@@ -211,7 +162,6 @@ fn plan_init(
         init_param_calls.push(lower_behavior_call(
             group,
             BehaviorPhase::SetInitParam,
-            field_names,
             optional_fields,
         ));
     }
@@ -223,22 +173,18 @@ fn plan_init(
     })
 }
 
-/// Lower a BehaviorGroup directive into a BehaviorCall with classified values.
+/// Lower a BehaviorGroup directive into a BehaviorCall with lowered values.
 fn lower_behavior_call(
     group: &BehaviorGroup,
     phase: BehaviorPhase,
-    field_names: &[String],
     optional_fields: &[String],
 ) -> BehaviorCall {
     let args = group
         .args
         .iter()
-        .map(|arg| {
-            let kind = classify_value(&arg.value, field_names, optional_fields);
-            LoweredArg {
-                key: arg.key.clone(),
-                lowered: lower_value(&arg.value, kind),
-            }
+        .map(|arg| LoweredArg {
+            key: arg.key.clone(),
+            lowered: lower_behavior_arg_value(&arg.value, optional_fields),
         })
         .collect();
 
@@ -249,31 +195,23 @@ fn lower_behavior_call(
     }
 }
 
-/// Convert a classified value into a LoweredValue.
-fn lower_value(expr: &Expr, kind: ValueKind) -> LoweredValue {
-    match kind {
-        ValueKind::BareFieldRef => {
-            let ident =
-                expr_as_ident(expr).expect("BareFieldRef is only assigned to bare identifiers");
-            LoweredValue::FieldView(ident)
+/// Lower a parsed behavior-arg value into the emitter's `LoweredValue`. Total
+/// match on `BehaviorArgValue`; every `FieldRef` was validated to name a real
+/// field by rules, so there is no re-derivation and no fallible `.expect`.
+fn lower_behavior_arg_value(value: &BehaviorArgValue, optional_fields: &[String]) -> LoweredValue {
+    match value {
+        BehaviorArgValue::None => LoweredValue::NoneLiteral,
+        BehaviorArgValue::Expr(expr) => LoweredValue::Expr(expr.clone()),
+        BehaviorArgValue::FieldRef(ident) => {
+            if optional_fields.contains(&ident.to_string()) {
+                LoweredValue::OptionalFieldView(ident.clone())
+            } else {
+                LoweredValue::FieldView(ident.clone())
+            }
         }
-        ValueKind::OptionalFieldRef => {
-            let ident =
-                expr_as_ident(expr).expect("OptionalFieldRef is only assigned to bare identifiers");
-            LoweredValue::OptionalFieldView(ident)
-        }
-        ValueKind::Expr => LoweredValue::Expr(expr.clone()),
-        ValueKind::NoneLiteral => LoweredValue::NoneLiteral,
-        ValueKind::SomeFieldRef => match expr {
-            Expr::Call(call) => LoweredValue::SomeFieldView(
-                expr_as_ident(&call.args[0])
-                    .expect("SomeFieldRef is only assigned to Some(field_ident)"),
-            ),
-            _ => LoweredValue::Expr(expr.clone()),
-        },
-        ValueKind::SomeExpr => match expr {
-            Expr::Call(call) => LoweredValue::SomeExpr(call.args[0].clone()),
-            _ => LoweredValue::Expr(expr.clone()),
+        BehaviorArgValue::Some(inner) => match inner.as_ref() {
+            BehaviorArgValue::FieldRef(ident) => LoweredValue::SomeFieldView(ident.clone()),
+            other => LoweredValue::SomeExpr(other.as_expr()),
         },
     }
 }
@@ -336,26 +274,21 @@ fn compute_rent_plan(semantics: &[FieldSemantics]) -> RentPlan {
     RentPlan::FetchOnce
 }
 
-fn expr_as_ident(expr: &Expr) -> Option<Ident> {
-    if let Expr::Path(ep) = expr {
-        if ep.qself.is_none() && ep.path.segments.len() == 1 {
-            return Some(ep.path.segments[0].ident.clone());
-        }
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use {
         super::*,
         crate::accounts::resolve::model::{FieldCore, InitDirective},
         quote::quote,
-        syn::parse::Parser,
+        syn::{parse::Parser, Expr},
     };
 
     fn expr(tokens: proc_macro2::TokenStream) -> Expr {
         syn::parse2(tokens).expect("expr parses")
+    }
+
+    fn ident(name: &str) -> Ident {
+        syn::parse_str(name).expect("ident")
     }
 
     /// Minimal single-account semantics with the given name and effective type.
@@ -391,81 +324,58 @@ mod tests {
     }
 
     #[test]
-    fn classify_none_literal() {
-        assert!(matches!(
-            classify_value(&expr(quote!(None)), &[], &[]),
-            ValueKind::NoneLiteral
-        ));
-    }
-
-    #[test]
-    fn classify_field_refs_by_name() {
-        let names = vec!["authority".to_string(), "maybe".to_string()];
+    fn lower_bare_field_ref_uses_optional_flag() {
         let optional = vec!["maybe".to_string()];
         assert!(matches!(
-            classify_value(&expr(quote!(authority)), &names, &optional),
-            ValueKind::BareFieldRef
-        ));
-        assert!(matches!(
-            classify_value(&expr(quote!(maybe)), &names, &optional),
-            ValueKind::OptionalFieldRef
-        ));
-        assert!(matches!(
-            classify_value(&expr(quote!(not_a_field)), &names, &optional),
-            ValueKind::Expr
-        ));
-    }
-
-    #[test]
-    fn classify_some_variants() {
-        let names = vec!["authority".to_string()];
-        assert!(matches!(
-            classify_value(&expr(quote!(Some(authority))), &names, &[]),
-            ValueKind::SomeFieldRef
-        ));
-        assert!(matches!(
-            classify_value(&expr(quote!(Some(42u64))), &names, &[]),
-            ValueKind::SomeExpr
-        ));
-    }
-
-    #[test]
-    fn classify_literal_is_expr() {
-        assert!(matches!(
-            classify_value(&expr(quote!(10u64)), &[], &[]),
-            ValueKind::Expr
-        ));
-    }
-
-    #[test]
-    fn lower_value_field_and_optional_views() {
-        assert!(matches!(
-            lower_value(&expr(quote!(authority)), ValueKind::BareFieldRef),
+            lower_behavior_arg_value(&BehaviorArgValue::FieldRef(ident("authority")), &optional),
             LoweredValue::FieldView(id) if id == "authority"
         ));
         assert!(matches!(
-            lower_value(&expr(quote!(maybe)), ValueKind::OptionalFieldRef),
+            lower_behavior_arg_value(&BehaviorArgValue::FieldRef(ident("maybe")), &optional),
             LoweredValue::OptionalFieldView(id) if id == "maybe"
         ));
     }
 
     #[test]
-    fn lower_value_some_field_view_unwraps_inner() {
+    fn lower_none_and_expr_passthrough() {
         assert!(matches!(
-            lower_value(&expr(quote!(Some(authority))), ValueKind::SomeFieldRef),
+            lower_behavior_arg_value(&BehaviorArgValue::None, &[]),
+            LoweredValue::NoneLiteral
+        ));
+        assert!(matches!(
+            lower_behavior_arg_value(&BehaviorArgValue::Expr(expr(quote!(5u8))), &[]),
+            LoweredValue::Expr(_)
+        ));
+    }
+
+    #[test]
+    fn lower_some_field_ref_unwraps_to_view() {
+        assert!(matches!(
+            lower_behavior_arg_value(
+                &BehaviorArgValue::Some(Box::new(BehaviorArgValue::FieldRef(ident("authority")))),
+                &[],
+            ),
             LoweredValue::SomeFieldView(id) if id == "authority"
         ));
     }
 
     #[test]
-    fn lower_value_none_and_passthrough_expr() {
+    fn lower_some_non_field_collapses_to_some_expr() {
+        // `Some(None)` and `Some(literal)` collapse to `SomeExpr` carrying the
+        // reconstructed inner expression.
         assert!(matches!(
-            lower_value(&expr(quote!(None)), ValueKind::NoneLiteral),
-            LoweredValue::NoneLiteral
+            lower_behavior_arg_value(
+                &BehaviorArgValue::Some(Box::new(BehaviorArgValue::None)),
+                &[],
+            ),
+            LoweredValue::SomeExpr(_)
         ));
         assert!(matches!(
-            lower_value(&expr(quote!(5u8)), ValueKind::Expr),
-            LoweredValue::Expr(_)
+            lower_behavior_arg_value(
+                &BehaviorArgValue::Some(Box::new(BehaviorArgValue::Expr(expr(quote!(42u64))))),
+                &[],
+            ),
+            LoweredValue::SomeExpr(_)
         ));
     }
 
