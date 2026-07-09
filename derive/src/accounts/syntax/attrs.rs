@@ -343,3 +343,124 @@ fn path_to_string(path: &syn::Path) -> String {
         .collect::<Vec<_>>()
         .join("::")
 }
+
+#[cfg(test)]
+mod tests {
+    use {super::*, quote::quote, syn::parse::Parser};
+
+    /// Build a `syn::Field` (with attributes) from tokens.
+    fn field(tokens: proc_macro2::TokenStream) -> syn::Field {
+        syn::Field::parse_named
+            .parse2(tokens)
+            .expect("test field parses")
+    }
+
+    fn directives(tokens: proc_macro2::TokenStream) -> syn::Result<Vec<Directive>> {
+        parse_field_attrs(&field(tokens))
+    }
+
+    #[test]
+    fn parses_core_directives() {
+        let ds = directives(quote! {
+            #[account(mut, init, payer = funder, address = Pda::seeds(funder.address()))]
+            account: Account<Data>
+        })
+        .expect("directives parse");
+        assert_eq!(ds.len(), 4);
+        assert!(matches!(ds[0], Directive::Core(CoreDirective::Mut)));
+        assert!(matches!(
+            ds[1],
+            Directive::Core(CoreDirective::Init { idempotent: false })
+        ));
+        assert!(matches!(&ds[2], Directive::Core(CoreDirective::Payer(id)) if id == "funder"));
+        assert!(matches!(
+            &ds[3],
+            Directive::Core(CoreDirective::Address(_, None))
+        ));
+    }
+
+    #[test]
+    fn parses_idempotent_init_and_realloc() {
+        let ds = directives(quote! {
+            #[account(init(idempotent), realloc = 200)] account: Account<Data>
+        })
+        .expect("directives parse");
+        assert!(matches!(
+            ds[0],
+            Directive::Core(CoreDirective::Init { idempotent: true })
+        ));
+        assert!(matches!(ds[1], Directive::Core(CoreDirective::Realloc(_))));
+    }
+
+    #[test]
+    fn parses_address_with_trailing_error() {
+        let ds = directives(quote! {
+            #[account(address = SOME_ADDR @ MyError::Bad)] account: UncheckedAccount
+        })
+        .expect("directives parse");
+        assert_eq!(ds.len(), 1);
+        assert!(matches!(
+            &ds[0],
+            Directive::Core(CoreDirective::Address(_, Some(_)))
+        ));
+    }
+
+    #[test]
+    fn parses_close_dest() {
+        let ds = directives(quote! {
+            #[account(close(dest = authority))] account: Account<Data>
+        })
+        .expect("directives parse");
+        assert!(matches!(&ds[0], Directive::Core(CoreDirective::Close(id)) if id == "authority"));
+    }
+
+    #[test]
+    fn parses_behavior_group_and_user_checks() {
+        let ds = directives(quote! {
+            #[account(min_value(min = 10u64), has_one(authority), constraints(x > 0))]
+            account: Account<Data>
+        })
+        .expect("directives parse");
+        assert_eq!(ds.len(), 3);
+        assert!(matches!(&ds[0], Directive::Behavior(_)));
+        assert!(matches!(&ds[1], Directive::Check(UserCheck::HasOne { .. })));
+        assert!(matches!(
+            &ds[2],
+            Directive::Check(UserCheck::Constraints { .. })
+        ));
+    }
+
+    #[test]
+    fn dup_and_group_are_bare_flags() {
+        let ds = directives(quote! { #[account(dup, group)] bundle: SomeBundle })
+            .expect("directives parse");
+        assert!(matches!(ds[0], Directive::Core(CoreDirective::Dup)));
+        assert!(matches!(ds[1], Directive::Core(CoreDirective::Group)));
+    }
+
+    #[test]
+    fn rejects_duplicate_account_attribute() {
+        let f = field(quote! { #[account(mut)] #[account(dup)] account: Signer });
+        assert!(parse_field_attrs(&f).is_err());
+    }
+
+    #[test]
+    fn rejects_unknown_bare_directive() {
+        assert!(directives(quote! { #[account(frobnicate)] account: Signer }).is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_behavior_arg() {
+        assert!(directives(
+            quote! { #[account(token(mint = a, mint = b))] account: Account<Data> }
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn no_account_attribute_yields_no_directives() {
+        assert!(directives(quote! { account: Signer })
+            .expect("directives parse")
+            .is_empty());
+    }
+}

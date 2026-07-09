@@ -99,13 +99,17 @@ pub(crate) fn parse_seeds_attr(attrs: &[syn::Attribute]) -> Option<Result<SeedsA
 }
 
 pub fn derive_seeds(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    match derive_seeds_inner(input.into()) {
-        Ok(ts) => ts.into(),
-        Err(e) => e.to_compile_error().into(),
+    derive_seeds_inner(input.into()).into()
+}
+
+pub(crate) fn derive_seeds_inner(input: TokenStream) -> TokenStream {
+    match derive_seeds_result(input) {
+        Ok(ts) => ts,
+        Err(e) => e.to_compile_error(),
     }
 }
 
-fn derive_seeds_inner(input: TokenStream) -> Result<TokenStream> {
+fn derive_seeds_result(input: TokenStream) -> Result<TokenStream> {
     let input: DeriveInput = parse2(input)?;
 
     match &input.data {

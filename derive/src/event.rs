@@ -4,8 +4,9 @@
 use {
     crate::helpers::{parse_discriminator_bytes, InstructionArgs},
     proc_macro::TokenStream,
+    proc_macro2::TokenStream as TokenStream2,
     quote::quote,
-    syn::{parse_macro_input, Data, DeriveInput, Fields, Type},
+    syn::{Data, DeriveInput, Fields, Type},
 };
 
 fn event_field_size(ty: &Type) -> syn::Result<usize> {
@@ -33,8 +34,18 @@ fn event_field_size(ty: &Type) -> syn::Result<usize> {
 }
 
 pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let args = parse_macro_input!(attr as InstructionArgs);
-    let input = parse_macro_input!(item as DeriveInput);
+    event_inner(attr.into(), item.into()).into()
+}
+
+pub(crate) fn event_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
+    let args = match syn::parse2::<InstructionArgs>(attr) {
+        Ok(args) => args,
+        Err(e) => return e.to_compile_error(),
+    };
+    let input = match syn::parse2::<DeriveInput>(item) {
+        Ok(input) => input,
+        Err(e) => return e.to_compile_error(),
+    };
     let name = &input.ident;
     let disc_bytes = match &args.discriminator {
         Some(d) => d,
@@ -43,8 +54,7 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
                 &input.ident,
                 "#[event] requires `discriminator = [...]`",
             )
-            .to_compile_error()
-            .into();
+            .to_compile_error();
         }
     };
     let disc_len = disc_bytes.len();
@@ -54,14 +64,12 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
             Fields::Named(fields) => &fields.named,
             _ => {
                 return syn::Error::new_spanned(&input, "#[event] requires named fields")
-                    .to_compile_error()
-                    .into();
+                    .to_compile_error();
             }
         },
         _ => {
             return syn::Error::new_spanned(&input, "#[event] can only be used on structs")
-                .to_compile_error()
-                .into();
+                .to_compile_error();
         }
     };
 
@@ -69,14 +77,13 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
     for field in fields_data.iter() {
         let size = match event_field_size(&field.ty) {
             Ok(s) => s,
-            Err(e) => return e.to_compile_error().into(),
+            Err(e) => return e.to_compile_error(),
         };
         data_size = match data_size.checked_add(size) {
             Some(total) => total,
             None => {
                 return syn::Error::new_spanned(&field.ty, "event data size exceeds usize::MAX")
-                    .to_compile_error()
-                    .into();
+                    .to_compile_error();
             }
         };
     }
@@ -115,7 +122,7 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
     let name_str = name.to_string();
     let disc_values = match parse_discriminator_bytes(disc_bytes) {
         Ok(values) => values,
-        Err(e) => return e.to_compile_error().into(),
+        Err(e) => return e.to_compile_error(),
     };
     let field_defs: Vec<proc_macro2::TokenStream> = fields_data
         .iter()
@@ -232,5 +239,5 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
         #emit_log_method
 
         #idl_fragment
-    }.into()
+    }
 }

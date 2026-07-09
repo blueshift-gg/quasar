@@ -28,15 +28,19 @@ use {
     plan::build_accounts_plan,
     proc_macro::TokenStream,
     quote::{format_ident, quote},
-    syn::{
-        parse_macro_input, parse_quote, Data, DeriveInput, Expr, ExprCall, Fields, GenericParam,
-        Member, Type,
-    },
+    syn::{parse_quote, Data, DeriveInput, Expr, ExprCall, Fields, GenericParam, Member, Type},
     syntax::{generate_instruction_arg_extraction, parse_struct_instruction_args},
 };
 
 pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
+    derive_accounts_inner(input.into()).into()
+}
+
+pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    let input = match syn::parse2::<DeriveInput>(input) {
+        Ok(input) => input,
+        Err(e) => return e.to_compile_error(),
+    };
     let name = &input.ident;
     let bumps_name = format_ident!("{}Bumps", name);
 
@@ -58,9 +62,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
             }
             GenericParam::Lifetime(_) => "",
         };
-        return syn::Error::new_spanned(param, message)
-            .to_compile_error()
-            .into();
+        return syn::Error::new_spanned(param, message).to_compile_error();
     }
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let impl_generics_ts = quote! { #impl_generics };
@@ -90,32 +92,30 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                     name,
                     "Accounts can only be derived for structs with named fields",
                 )
-                .to_compile_error()
-                .into();
+                .to_compile_error();
             }
         },
         _ => {
             return syn::Error::new_spanned(name, "Accounts can only be derived for structs")
-                .to_compile_error()
-                .into();
+                .to_compile_error();
         }
     };
 
     let instruction_args = match parse_struct_instruction_args(&input) {
         Ok(args) => args,
-        Err(e) => return e.to_compile_error().into(),
+        Err(e) => return e.to_compile_error(),
     };
 
     // --- Pipeline: syntax -> resolve -> plan -> emit ---
 
     let semantics = match resolve::lower_semantics(fields) {
         Ok(semantics) => semantics,
-        Err(e) => return e.to_compile_error().into(),
+        Err(e) => return e.to_compile_error(),
     };
 
     let typed_plan = match resolve::planner::build_plan(&semantics) {
         Ok(plan) => plan,
-        Err(e) => return e.to_compile_error().into(),
+        Err(e) => return e.to_compile_error(),
     };
 
     let emit_cx = emit::EmitCx {
@@ -177,10 +177,10 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         ix_arg_extraction,
     });
 
-    TokenStream::from(quote::quote! {
+    quote::quote! {
         #main_output
         #idl_accounts_meta
-    })
+    }
 }
 
 /// Emit an `AccountsMetaFragment` inventory submission for this accounts

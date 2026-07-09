@@ -238,3 +238,125 @@ fn detect_wrapper(ty: &Type, wrapper: &str) -> bool {
         _ => false,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        crate::accounts::syntax::parse_field_attrs,
+        quote::{quote, ToTokens},
+        syn::{parse::Parser, Fields},
+    };
+
+    fn field(tokens: proc_macro2::TokenStream) -> syn::Field {
+        syn::Field::parse_named
+            .parse2(tokens)
+            .expect("test field parses")
+    }
+
+    fn core_of(tokens: proc_macro2::TokenStream) -> FieldCore {
+        let f = field(tokens);
+        let directives = parse_field_attrs(&f).expect("directives parse");
+        lower_core(&f, &directives)
+    }
+
+    #[test]
+    fn option_wrapper_is_unwrapped() {
+        let core = core_of(quote! {
+            #[account(has_one(authority))] config: Option<Account<Config>>
+        });
+        assert!(core.optional);
+        assert_eq!(
+            core.effective_ty.to_token_stream().to_string(),
+            "Account < Config >"
+        );
+        assert_eq!(
+            core.inner_ty
+                .as_ref()
+                .unwrap()
+                .to_token_stream()
+                .to_string(),
+            "Config"
+        );
+    }
+
+    #[test]
+    fn reference_is_unwrapped() {
+        let core = core_of(quote! { signer: &'a Signer });
+        assert!(!core.optional);
+        assert_eq!(core.effective_ty.to_token_stream().to_string(), "Signer");
+    }
+
+    #[test]
+    fn mut_and_dup_flags_recorded() {
+        let core = core_of(quote! { #[account(mut, dup)] account: UncheckedAccount });
+        assert!(core.is_mut);
+        assert!(core.dup);
+    }
+
+    #[test]
+    fn group_directive_marks_composite() {
+        let core = core_of(quote! { #[account(group)] bundle: SomeBundle });
+        assert!(matches!(core.kind, FieldKind::Composite));
+    }
+
+    #[test]
+    fn detect_wrapper_matches_last_path_segment() {
+        let ty: Type = syn::parse_quote!(quasar_lang::Migration<Old, New>);
+        assert!(detect_wrapper(&ty, "Migration"));
+        assert!(!detect_wrapper(&ty, "Uninit"));
+    }
+
+    #[test]
+    fn address_error_routes_to_address_not_user_checks() {
+        // A19: the `@ error` form must stay on the address constraint (keeping the
+        // Bumps entry, stored-bump fast path, signer helper, IDL PDA resolver), not
+        // be rerouted into `user_checks`.
+        let f = field(quote! {
+            #[account(address = SOME_ADDR @ MyError::Bad)] account: Account<Config>
+        });
+        let directives = parse_field_attrs(&f).expect("directives parse");
+        let core = lower_core(&f, &directives);
+        let mut sem = FieldSemantics {
+            core,
+            init: None,
+            payer: None,
+            address: None,
+            realloc: None,
+            close_dest: None,
+            groups: Vec::new(),
+            user_checks: Vec::new(),
+            is_migration: false,
+            is_uninit: false,
+        };
+        lower_directives(&mut sem, directives).expect("lowering succeeds");
+        let address = sem.address.expect("address constraint recorded");
+        assert!(
+            address.error.is_some(),
+            "custom `@ error` must stay on the address constraint"
+        );
+        assert!(
+            sem.user_checks.is_empty(),
+            "`@ error` must not be rerouted into user_checks"
+        );
+    }
+
+    #[test]
+    fn full_lower_records_optional_and_has_one() {
+        let item: syn::ItemStruct = syn::parse_quote! {
+            struct OptionalAccounts {
+                authority: Signer,
+                #[account(has_one(authority))]
+                config: Option<Account<Config>>,
+            }
+        };
+        let fields = match item.fields {
+            Fields::Named(named) => named.named,
+            _ => Default::default(),
+        };
+        let sems = lower_semantics(&fields).expect("valid struct lowers");
+        assert_eq!(sems.len(), 2);
+        assert!(sems[1].core.optional);
+        assert_eq!(sems[1].user_checks.len(), 1);
+    }
+}

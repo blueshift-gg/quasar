@@ -15,6 +15,11 @@ mod seed_param;
 mod seeds;
 mod serialize;
 
+#[cfg(test)]
+mod plan_snapshots;
+#[cfg(test)]
+mod snapshot_tests;
+
 /// Derive account parsing and validation from a struct.
 #[proc_macro_derive(Accounts, attributes(account, instruction))]
 pub fn derive_accounts(input: TokenStream) -> TokenStream {
