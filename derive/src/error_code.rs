@@ -1,10 +1,14 @@
 //! `#[error_code]`: generates `ProgramError` conversion for custom error
-//! enums. Each variant is assigned an error code starting at 6000
-//! (Anchor-compatible offset).
+//! enums. Auto-assigned variants start at error code 6000 (the
+//! Anchor-compatible offset); a variant with an explicit integer discriminant
+//! keeps that literal value and re-bases the auto-increment from there. Two
+//! variants that resolve to the same code — explicit, or via an
+//! auto-increment collision — are a hard, spanned error naming both.
 
 use {
     proc_macro::TokenStream,
     quote::quote,
+    std::collections::HashMap,
     syn::{parse_macro_input, Data, DeriveInput},
 };
 
@@ -21,9 +25,12 @@ pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
-    let mut next_discriminant: u32 = 0;
+    let mut next_discriminant: u32 = 6000;
     let mut match_arms = Vec::new();
     let mut idl_error_entries = Vec::new();
+    // Maps an assigned error code back to the variant that claimed it, so a
+    // second variant landing on the same code can name both in the diagnostic.
+    let mut assigned: HashMap<u32, String> = HashMap::new();
     for v in variants.iter() {
         let ident = &v.ident;
         if let Some((_, expr)) = &v.discriminant {
@@ -53,6 +60,18 @@ pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         }
         let value = next_discriminant;
+        if let Some(prev) = assigned.get(&value) {
+            return syn::Error::new_spanned(
+                &v.ident,
+                format!(
+                    "duplicate error code {value}: variants `{prev}` and `{ident}` both resolve \
+                     to the same discriminant",
+                ),
+            )
+            .to_compile_error()
+            .into();
+        }
+        assigned.insert(value, ident.to_string());
         next_discriminant = match next_discriminant.checked_add(1) {
             Some(n) => n,
             None => {
