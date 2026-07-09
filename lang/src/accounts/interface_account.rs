@@ -15,6 +15,10 @@ impl<T> AsAccountView for InterfaceAccount<T> {
     }
 }
 
+// SAFETY: `InterfaceAccount<T>` is `#[repr(transparent)]` over `AccountView`
+// plus `PhantomData<T>`, so the pointer cast preserves layout.
+unsafe impl<T> crate::traits::StaticView for InterfaceAccount<T> {}
+
 impl<T: crate::account_layout::AccountLayout> crate::account_layout::AccountLayout
     for InterfaceAccount<T>
 {

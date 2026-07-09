@@ -11,11 +11,10 @@
 macro_rules! define_account {
     // Schema form: `pub struct Token => [checks::DataLen, checks::ZeroPod]: TokenData`
     //
-    // Generates everything from the base form plus:
+    // Generates everything from the base form (including `StaticView`) plus:
     // - AccountLayout (DATA_OFFSET = 0, Schema = $schema, Target = <$schema as ZeroPodFixed>::Zc)
     // - Deref/DerefMut at DATA_OFFSET (always 0 for define_account!)
     // - ZeroCopyDeref
-    // - StaticView
     // - AccountLoad::check() composing listed checks
     (
         $(#[$meta:meta])*
@@ -28,8 +27,6 @@ macro_rules! define_account {
             type Target = <$schema as $crate::__zeropod::ZeroPodFixed>::Zc;
             const DATA_OFFSET: usize = 0;
         }
-
-        unsafe impl $crate::traits::StaticView for $name {}
 
         impl core::ops::Deref for $name {
             type Target = <$schema as $crate::__zeropod::ZeroPodFixed>::Zc;
@@ -126,6 +123,9 @@ macro_rules! define_account {
         $vis struct $name {
             view: AccountView,
         }
+
+        // SAFETY: The wrapper is `#[repr(transparent)]` over `AccountView`.
+        unsafe impl $crate::traits::StaticView for $name {}
 
         $(impl $check for $name {})*
 

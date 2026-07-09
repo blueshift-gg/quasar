@@ -1,13 +1,18 @@
 use {
-    crate::traits::AsAccountView, solana_account_view::AccountView,
+    crate::traits::{AsAccountView, StaticView},
+    solana_account_view::AccountView,
     solana_program_error::ProgramError,
 };
 
 /// Unified validation, construction, and header flag consts for account wrapper
 /// types.
 ///
-/// All implementors must be `#[repr(transparent)]` over `AccountView`.
-pub trait AccountLoad: AsAccountView + Sized {
+/// All implementors must be `#[repr(transparent)]` over `AccountView`
+/// (possibly through a chain of transparent wrappers). The [`StaticView`]
+/// supertrait makes that requirement a compile-time obligation: the
+/// pointer-cast constructors below are only sound because every implementor is
+/// layout-compatible with `AccountView`.
+pub trait AccountLoad: AsAccountView + StaticView + Sized {
     const IS_SIGNER: bool = false;
     const IS_EXECUTABLE: bool = false;
 

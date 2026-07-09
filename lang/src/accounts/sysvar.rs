@@ -10,6 +10,10 @@ pub struct Sysvar<T: crate::sysvars::Sysvar> {
     _marker: PhantomData<T>,
 }
 
+// SAFETY: `Sysvar<T>` is `#[repr(transparent)]` over `AccountView` plus
+// `PhantomData<T>`, so the pointer cast preserves layout.
+unsafe impl<T: crate::sysvars::Sysvar> crate::traits::StaticView for Sysvar<T> {}
+
 impl<T: crate::sysvars::Sysvar> Sysvar<T> {
     /// # Safety
     /// Caller must ensure `view.address() == T::ID` and that the account data
