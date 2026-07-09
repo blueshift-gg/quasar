@@ -1,4 +1,7 @@
-use syn::{Expr, Ident, Type};
+use {
+    super::wrapper::WrapperKind,
+    syn::{Expr, Ident, Type},
+};
 
 /// Account field shape for parsing and account-count planning.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -12,6 +15,9 @@ pub(crate) struct FieldCore {
     pub field: syn::Field,
     pub effective_ty: Type,
     pub kind: FieldKind,
+    /// Which library wrapper `effective_ty` is (last-segment match). Computed
+    /// once in lowering; every consumer reads this instead of re-classifying.
+    pub wrapper: WrapperKind,
     /// Inner/source type for generic wrappers.
     pub inner_ty: Option<Type>,
     pub optional: bool,
@@ -145,18 +151,9 @@ pub(crate) fn account_meta_flags(sem: &FieldSemantics) -> AccountMetaFlags {
         // A `Signer<'_>` field is always a signer; a keypair-init account
         // (`init` without an `address`, i.e. a non-PDA created from a freshly
         // generated keypair) must also be signed by the client.
-        signer: is_signer_type(&sem.core.effective_ty) || (sem.has_init() && sem.address.is_none()),
+        signer: sem.core.wrapper == WrapperKind::Signer
+            || (sem.has_init() && sem.address.is_none()),
     }
-}
-
-/// True when the effective field type is `Signer` (last-path-segment match).
-fn is_signer_type(ty: &Type) -> bool {
-    if let Type::Path(type_path) = ty {
-        if let Some(last) = type_path.path.segments.last() {
-            return last.ident == "Signer";
-        }
-    }
-    false
 }
 
 /// Parsed `init` / `init(idempotent)` directive.

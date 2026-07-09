@@ -10,6 +10,7 @@ use {
             parse_field_attrs,
         },
         rules::validate_semantics,
+        wrapper::{classify_wrapper, WrapperKind},
         AddressConstraint, FieldCore, FieldKind, FieldSemantics, InitDirective,
     },
     crate::helpers::{extract_generic_inner_type, is_composite_type},
@@ -33,8 +34,8 @@ pub(super) fn lower_semantics(
         .into_iter()
         .zip(cores)
         .map(|((_, directives), core)| {
-            let is_migration = detect_wrapper(&core.effective_ty, "Migration");
-            let is_uninit = detect_wrapper(&core.effective_ty, "Uninit");
+            let is_migration = core.wrapper == WrapperKind::Migration;
+            let is_uninit = core.wrapper == WrapperKind::Uninit;
             let mut sem = FieldSemantics {
                 core,
                 init: None,
@@ -80,6 +81,7 @@ fn lower_core(field: &syn::Field, directives: &[Directive]) -> FieldCore {
 
     let inner_ty = extract_inner_ty(&effective_ty);
     let dynamic = detect_dynamic(&effective_ty, inner_ty.as_ref());
+    let wrapper = classify_wrapper(&effective_ty);
 
     FieldCore {
         ident: field
@@ -89,6 +91,7 @@ fn lower_core(field: &syn::Field, directives: &[Directive]) -> FieldCore {
         field: field.clone(),
         effective_ty,
         kind,
+        wrapper,
         inner_ty,
         optional,
         dynamic,
@@ -227,18 +230,6 @@ fn detect_dynamic(effective_ty: &Type, inner_ty: Option<&Type>) -> bool {
     false
 }
 
-/// Syntactic detection: last path segment matches `wrapper`.
-fn detect_wrapper(ty: &Type, wrapper: &str) -> bool {
-    match ty {
-        Type::Path(tp) => tp
-            .path
-            .segments
-            .last()
-            .is_some_and(|segment| segment.ident == wrapper),
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use {
@@ -298,13 +289,6 @@ mod tests {
     fn group_directive_marks_composite() {
         let core = core_of(quote! { #[account(group)] bundle: SomeBundle });
         assert!(matches!(core.kind, FieldKind::Composite));
-    }
-
-    #[test]
-    fn detect_wrapper_matches_last_path_segment() {
-        let ty: Type = syn::parse_quote!(quasar_lang::Migration<Old, New>);
-        assert!(detect_wrapper(&ty, "Migration"));
-        assert!(!detect_wrapper(&ty, "Uninit"));
     }
 
     #[test]

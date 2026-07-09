@@ -21,6 +21,12 @@ mod plan_snapshots;
 mod snapshot_tests;
 
 /// Derive account parsing and validation from a struct.
+///
+/// Field wrapper types (`Account<T>`, `Signer`, `Sysvar<Rent>`, …) are matched
+/// **syntactically on their last path segment**. Proc macros cannot resolve
+/// type aliases, so a field written through an alias
+/// (`type Vault = Account<'a, VaultState>; vault: Vault`) is not recognized as
+/// its underlying wrapper — spell the wrapper directly on the field.
 #[proc_macro_derive(Accounts, attributes(account, instruction))]
 pub fn derive_accounts(input: TokenStream) -> TokenStream {
     accounts::derive_accounts(input)

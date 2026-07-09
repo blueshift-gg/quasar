@@ -6,7 +6,9 @@
 use {
     super::{
         model::{BehaviorGroup, FieldKind, FieldSemantics, ValueKind},
+        reserved::PAYER_FIELD,
         specs::*,
+        wrapper::{sysvar_inner, WrapperKind},
     },
     syn::{Expr, Ident, Type},
 };
@@ -280,7 +282,7 @@ fn lower_value(expr: &Expr, kind: ValueKind) -> LoweredValue {
 fn find_payer_field(semantics: &[FieldSemantics]) -> Option<Ident> {
     semantics
         .iter()
-        .find(|sem| sem.core.ident == "payer" && sem.core.kind == FieldKind::Single)
+        .find(|sem| sem.core.ident == PAYER_FIELD && sem.core.kind == FieldKind::Single)
         .map(|sem| sem.core.ident.clone())
 }
 
@@ -317,27 +319,17 @@ fn compute_rent_plan(semantics: &[FieldSemantics]) -> RentPlan {
         if sem.core.optional {
             continue;
         }
-        if let Type::Path(tp) = &sem.core.effective_ty {
-            if let Some(last) = tp.path.segments.last() {
-                if last.ident == "Sysvar" {
-                    if let syn::PathArguments::AngleBracketed(args) = &last.arguments {
-                        for arg in &args.args {
-                            if let syn::GenericArgument::Type(Type::Path(inner)) = arg {
-                                if inner
-                                    .path
-                                    .segments
-                                    .last()
-                                    .is_some_and(|s| s.ident == "Rent")
-                                {
-                                    return RentPlan::FromSysvarField {
-                                        field: sem.core.ident.clone(),
-                                    };
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        if sem.core.wrapper != WrapperKind::Sysvar {
+            continue;
+        }
+        let is_rent = sysvar_inner(&sem.core.effective_ty).is_some_and(|inner| {
+            matches!(inner, Type::Path(inner)
+                if inner.path.segments.last().is_some_and(|s| s.ident == "Rent"))
+        });
+        if is_rent {
+            return RentPlan::FromSysvarField {
+                field: sem.core.ident.clone(),
+            };
         }
     }
 
@@ -377,6 +369,7 @@ mod tests {
             core: FieldCore {
                 ident,
                 field,
+                wrapper: crate::accounts::resolve::wrapper::classify_wrapper(&effective_ty),
                 effective_ty,
                 kind: FieldKind::Single,
                 inner_ty: None,
