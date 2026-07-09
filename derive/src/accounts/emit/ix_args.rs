@@ -27,8 +27,8 @@ use {
     syn::{Ident, Type},
 };
 
-/// Emit the single `#[inline(always)] fn __extract_ix_args` definition placed on
-/// the accounts struct's inherent impl. Empty when there are no ix args.
+/// Emit the single `#[inline(always)] fn __extract_ix_args` definition placed
+/// on the accounts struct's inherent impl. Empty when there are no ix args.
 pub(crate) fn emit_extract_ix_args_fn(ix_args: &[InstructionArg]) -> proc_macro2::TokenStream {
     if ix_args.is_empty() {
         return quote! {};

@@ -15,8 +15,8 @@ use {
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not a loadable account type",
     label = "not an account wrapper",
-    note = "wrap the field in `Account<T>`, or add `#[account]` to the struct \
-            you are trying to load"
+    note = "wrap the field in `Account<T>`, or add `#[account]` to the struct you are trying to \
+            load"
 )]
 pub trait AccountLoad: AsAccountView + StaticView + Sized {
     const IS_SIGNER: bool = false;

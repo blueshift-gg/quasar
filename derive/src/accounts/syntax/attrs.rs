@@ -234,9 +234,9 @@ fn anchor_bump_error(path: &syn::Path) -> syn::Error {
     syn::Error::new_spanned(
         path,
         "`bump` is Anchor syntax and is not supported here. Bumps are derived and stored \
-         automatically when a field binds a typed-seeds PDA with \
-         `#[account(address = MyAccount::seeds(<args>))]`; declare the seed layout with \
-         `#[seeds(...)]` on the account type.",
+         automatically when a field binds a typed-seeds PDA with `#[account(address = \
+         MyAccount::seeds(<args>))]`; declare the seed layout with `#[seeds(...)]` on the account \
+         type.",
     )
 }
 

@@ -35,8 +35,8 @@ use {
 /// instruction schedules, and the hot single-field parsers
 /// (`__internal::parse_account`/`parse_account_dup`) are size/CU-sensitive.
 /// Empirically, rewriting them to call `account_stride` moved `.so` size in
-/// both directions across the example programs (escrow -1 KiB, multisig +176 B),
-/// so those parsers keep this tuned form, de-duplicated here into one
+/// both directions across the example programs (escrow -1 KiB, multisig +176
+/// B), so those parsers keep this tuned form, de-duplicated here into one
 /// `#[inline(always)]` definition. [`Cursor`], which owns the full walk decode,
 /// uses `account_stride` directly (its walk sites were already on that form, so
 /// routing them through `Cursor` is byte-neutral).
@@ -85,8 +85,8 @@ impl Cursor {
     /// # Safety
     ///
     /// - `ptr` must be 8-byte aligned and point at the start of an account
-    ///   entry (or at `boundary` for an empty region), within the same live
-    ///   SVM input allocation as `boundary`.
+    ///   entry (or at `boundary` for an empty region), within the same live SVM
+    ///   input allocation as `boundary`.
     /// - `boundary` must be one-past-the-end of the account region (the SVM
     ///   guarantees `ptr <= boundary`).
     #[inline(always)]

@@ -15,8 +15,8 @@ use {
 /// A wrapper type that cannot be the target of a structural lifecycle op
 /// (`init` / `realloc` / `close`) or the `From` side of a `Migration`. Returns
 /// the display name of the wrapper when it is in the deny-set, `None` when the
-/// wrapper legitimately supports these ops (`Account<T>` / `InterfaceAccount<T>`,
-/// plus user composites, which carry their own rules).
+/// wrapper legitimately supports these ops (`Account<T>` /
+/// `InterfaceAccount<T>`, plus user composites, which carry their own rules).
 ///
 /// The deny-set is verified against the runtime trait impls: only `Account<T>`
 /// and `InterfaceAccount<T>` implement `SupportsRealloc`/`AccountInit`/`Space`
@@ -49,8 +49,8 @@ fn validate_op_target(sem: &FieldSemantics) -> syn::Result<()> {
             return Err(syn::Error::new_spanned(
                 span,
                 format!(
-                    "`realloc` requires a program account (`Account<T>` or `InterfaceAccount<T>`); \
-                     {name} cannot be reallocated"
+                    "`realloc` requires a program account (`Account<T>` or \
+                     `InterfaceAccount<T>`); {name} cannot be reallocated"
                 ),
             ));
         }

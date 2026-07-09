@@ -43,7 +43,10 @@ pub(super) fn build_dynamic_pieces<'a>(
     let read_accessors = dyn_fields
         .iter()
         .map(|(field, pd)| {
-            let name = field.ident.as_ref().unwrap_or_else(|| ice!("field must be named"));
+            let name = field
+                .ident
+                .as_ref()
+                .unwrap_or_else(|| ice!("field must be named"));
             compact_read_accessor(name, pd, disc_len, zc_mod)
         })
         .collect();
@@ -133,13 +136,24 @@ pub(super) fn emit_dyn_writer(
     let setter_fields: Vec<proc_macro2::TokenStream> = pieces
         .dyn_fields
         .iter()
-        .map(|(field, pd)| dyn_view_field(field.ident.as_ref().unwrap_or_else(|| ice!("field must be named")), pd))
+        .map(|(field, pd)| {
+            dyn_view_field(
+                field
+                    .ident
+                    .as_ref()
+                    .unwrap_or_else(|| ice!("field must be named")),
+                pd,
+            )
+        })
         .collect();
     let setter_inits: Vec<proc_macro2::TokenStream> = pieces
         .dyn_fields
         .iter()
         .map(|(field, _)| {
-            let name = field.ident.as_ref().unwrap_or_else(|| ice!("field must be named"));
+            let name = field
+                .ident
+                .as_ref()
+                .unwrap_or_else(|| ice!("field must be named"));
             let slot = format_ident!("__{}", name);
             quote! { #slot: None }
         })
@@ -147,13 +161,24 @@ pub(super) fn emit_dyn_writer(
     let setter_methods: Vec<proc_macro2::TokenStream> = pieces
         .dyn_fields
         .iter()
-        .map(|(field, pd)| dyn_view_setter(field.ident.as_ref().unwrap_or_else(|| ice!("field must be named")), pd))
+        .map(|(field, pd)| {
+            dyn_view_setter(
+                field
+                    .ident
+                    .as_ref()
+                    .unwrap_or_else(|| ice!("field must be named")),
+                pd,
+            )
+        })
         .collect();
     let binding_stmts: Vec<proc_macro2::TokenStream> = pieces
         .dyn_fields
         .iter()
         .map(|(field, _)| {
-            let name = field.ident.as_ref().unwrap_or_else(|| ice!("field must be named"));
+            let name = field
+                .ident
+                .as_ref()
+                .unwrap_or_else(|| ice!("field must be named"));
             let slot = format_ident!("__{}", name);
             quote! {
                 let #name = self.#slot.ok_or(QuasarError::CompactWriterFieldNotSet)?;
@@ -164,7 +189,10 @@ pub(super) fn emit_dyn_writer(
         .dyn_fields
         .iter()
         .map(|(field, pd)| {
-            let name = field.ident.as_ref().unwrap_or_else(|| ice!("field must be named"));
+            let name = field
+                .ident
+                .as_ref()
+                .unwrap_or_else(|| ice!("field must be named"));
             emit_space_term(name, pd)
         })
         .collect();
@@ -172,7 +200,10 @@ pub(super) fn emit_dyn_writer(
         .dyn_fields
         .iter()
         .map(|(field, _)| {
-            let name = field.ident.as_ref().unwrap_or_else(|| ice!("field must be named"));
+            let name = field
+                .ident
+                .as_ref()
+                .unwrap_or_else(|| ice!("field must be named"));
             writer_compact_set_stmt(name)
         })
         .collect();
@@ -285,24 +316,46 @@ pub(super) fn emit_compact_mut(
         .dyn_fields
         .iter()
         .map(|(field, pd)| {
-            compact_mut_field(field.ident.as_ref().unwrap_or_else(|| ice!("field must be named")), pd)
+            compact_mut_field(
+                field
+                    .ident
+                    .as_ref()
+                    .unwrap_or_else(|| ice!("field must be named")),
+                pd,
+            )
         })
         .collect();
     let load_stmts: Vec<proc_macro2::TokenStream> = pieces
         .dyn_fields
         .iter()
-        .map(|(field, pd)| compact_mut_load(field.ident.as_ref().unwrap_or_else(|| ice!("field must be named")), pd))
+        .map(|(field, pd)| {
+            compact_mut_load(
+                field
+                    .ident
+                    .as_ref()
+                    .unwrap_or_else(|| ice!("field must be named")),
+                pd,
+            )
+        })
         .collect();
     let field_names: Vec<&syn::Ident> = pieces
         .dyn_fields
         .iter()
-        .map(|(field, _)| field.ident.as_ref().unwrap_or_else(|| ice!("field must be named")))
+        .map(|(field, _)| {
+            field
+                .ident
+                .as_ref()
+                .unwrap_or_else(|| ice!("field must be named"))
+        })
         .collect();
     let save_size_terms: Vec<proc_macro2::TokenStream> = pieces
         .dyn_fields
         .iter()
         .map(|(field, pd)| {
-            let fname = field.ident.as_ref().unwrap_or_else(|| ice!("field must be named"));
+            let fname = field
+                .ident
+                .as_ref()
+                .unwrap_or_else(|| ice!("field must be named"));
             compact_mut_size_term(fname, pd)
         })
         .collect();
@@ -310,7 +363,10 @@ pub(super) fn emit_compact_mut(
         .dyn_fields
         .iter()
         .map(|(field, pd)| {
-            let fname = field.ident.as_ref().unwrap_or_else(|| ice!("field must be named"));
+            let fname = field
+                .ident
+                .as_ref()
+                .unwrap_or_else(|| ice!("field must be named"));
             compact_mut_set_stmt(fname, pd)
         })
         .collect();

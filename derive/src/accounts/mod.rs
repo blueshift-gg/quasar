@@ -208,9 +208,13 @@ fn emit_idl_accounts_meta(
             let writable = fp.writable;
             let signer = fp.signer;
 
-            let resolver_tokens = fp.idl_resolver.as_ref().map(emit_idl_resolver).unwrap_or_else(
-                || quote! { quasar_lang::idl_build::__reexport::IdlResolver::Input {} },
-            );
+            let resolver_tokens = fp
+                .idl_resolver
+                .as_ref()
+                .map(emit_idl_resolver)
+                .unwrap_or_else(
+                    || quote! { quasar_lang::idl_build::__reexport::IdlResolver::Input {} },
+                );
             let node_docs = crate::helpers::docs_tokens_from_lines(&fp.docs);
 
             quote! {
@@ -426,4 +430,3 @@ fn composite_event_ty(ty: &Type) -> proc_macro2::TokenStream {
     // type then fails with a localized trait-bound error.
     strip_generics(ty).unwrap_or_else(|_| quote! { #ty })
 }
-

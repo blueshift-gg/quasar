@@ -8,8 +8,8 @@
 //! available signal for a compiler-internal invariant break.
 //!
 //! Prefer a spanned `syn::Error` for anything a user can trigger; reserve
-//! `ice!` for genuine invariants (e.g. "named struct fields are validated before
-//! codegen reaches here").
+//! `ice!` for genuine invariants (e.g. "named struct fields are validated
+//! before codegen reaches here").
 
 /// Panic with a uniform internal-error message. See the module docs. Brought
 /// into crate-wide scope by `#[macro_use] mod ice;` in `lib.rs`.

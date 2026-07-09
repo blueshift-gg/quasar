@@ -219,8 +219,9 @@ pub(crate) enum RentPlan {
 /// (dynamic wrapper vs `AccountLoad`) and the `VALIDATES_ACCOUNT_DATA` guard,
 /// previously derived in `emit/parse.rs` from `FieldSemantics`.
 pub(crate) enum LoadStep {
-    /// Dynamic-layout wrapper: `<base_ty>::from_account_view(ident)?`. `base_ty`
-    /// is the wrapper's inner type (generics are stripped at emit time).
+    /// Dynamic-layout wrapper: `<base_ty>::from_account_view(ident)?`.
+    /// `base_ty` is the wrapper's inner type (generics are stripped at emit
+    /// time).
     Dynamic { base_ty: Type },
     /// Fixed-layout account loaded via `AccountLoad::load*`. `validates_paths`
     /// are the field's behavior-group paths; when non-empty the load is guarded
@@ -305,7 +306,8 @@ pub(crate) struct FieldPlan {
 }
 
 impl FieldPlan {
-    /// Whether this field is initialized (an `Init` step is scheduled pre-load).
+    /// Whether this field is initialized (an `Init` step is scheduled
+    /// pre-load).
     pub(crate) fn has_init(&self) -> bool {
         self.pre_load
             .iter()

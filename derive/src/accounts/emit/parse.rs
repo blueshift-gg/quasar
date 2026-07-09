@@ -409,15 +409,12 @@ fn emit_load_filtered_excluding(
         .collect()
 }
 
-fn emit_load_by_ident(
-    field_plans: &[FieldPlan],
-    field: &syn::Ident,
-) -> proc_macro2::TokenStream {
+fn emit_load_by_ident(field_plans: &[FieldPlan], field: &syn::Ident) -> proc_macro2::TokenStream {
     field_plans
         .iter()
         .find(|fp| fp.kind == FieldKind::Single && fp.ident == *field)
         .map(emit_one_load)
-        .expect("rent plan field should exist in the plan")
+        .unwrap_or_else(|| ice!("rent plan field should exist in the plan"))
 }
 
 fn emit_one_load(fp: &FieldPlan) -> proc_macro2::TokenStream {
@@ -594,8 +591,7 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
             if !fp.writable {
                 let msg = format!(
                     "behavior `{}` requires `#[account(mut)]` on field `{}`",
-                    group.name,
-                    field_name,
+                    group.name, field_name,
                 );
                 asserts.push(quote! {
                     const _: () = assert!(
@@ -624,8 +620,7 @@ fn emit_behavior_assertions(field_plans: &[FieldPlan]) -> proc_macro2::TokenStre
                 let after_init_msg = format!(
                     "behavior `{}` runs after_init and requires `#[account(init, ...)]` on field \
                      `{}`",
-                    group.name,
-                    field_name,
+                    group.name, field_name,
                 );
                 asserts.push(quote! {
                     const _: () = assert!(
@@ -731,10 +726,7 @@ fn emit_bump_vars(field_plans: &[FieldPlan]) -> proc_macro2::TokenStream {
     quote! { #(#vars)* }
 }
 
-fn emit_bump_init(
-    field_plans: &[FieldPlan],
-    bumps_name: &syn::Ident,
-) -> proc_macro2::TokenStream {
+fn emit_bump_init(field_plans: &[FieldPlan], bumps_name: &syn::Ident) -> proc_macro2::TokenStream {
     let inits: Vec<proc_macro2::TokenStream> = field_plans
         .iter()
         .filter(|fp| fp.bump.is_some() || matches!(fp.kind, FieldKind::Composite))

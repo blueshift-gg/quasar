@@ -58,7 +58,10 @@ pub(super) fn build_zc_spec(
             .map(|fi| {
                 let field = fi.field;
                 let vis = &field.vis;
-                let name = field.ident.as_ref().unwrap_or_else(|| ice!("field must be named"));
+                let name = field
+                    .ident
+                    .as_ref()
+                    .unwrap_or_else(|| ice!("field must be named"));
                 let ty = &field.ty;
                 // Pass through #[zeropod(...)] attributes (e.g. skip_accessor).
                 let zeropod_attrs: Vec<_> = field

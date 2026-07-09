@@ -67,8 +67,8 @@ use solana_program_error::ProgramError;
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not a behavior for `{A}`",
     label = "no `AccountBehavior<{A}>` impl",
-    note = "behavior groups like `token(...)` require a module exposing a \
-            `Behavior` type that implements `AccountBehavior` for this account"
+    note = "behavior groups like `token(...)` require a module exposing a `Behavior` type that \
+            implements `AccountBehavior` for this account"
 )]
 pub trait AccountBehavior<A> {
     /// Behavior arguments for one lifecycle phase.

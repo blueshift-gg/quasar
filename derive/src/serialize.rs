@@ -383,7 +383,11 @@ fn derive_borrowed_compact(input: DeriveInput, fields: Vec<Field>) -> TokenStrea
 
     let field_names: Vec<_> = fields
         .iter()
-        .map(|f| f.ident.as_ref().unwrap_or_else(|| ice!("named struct field has no identifier")))
+        .map(|f| {
+            f.ident
+                .as_ref()
+                .unwrap_or_else(|| ice!("named struct field has no identifier"))
+        })
         .collect();
 
     let mut field_classes: Vec<BorrowedFieldClass> = Vec::with_capacity(fields.len());

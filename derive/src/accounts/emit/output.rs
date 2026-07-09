@@ -26,8 +26,8 @@ pub(crate) struct AccountsOutput<'a> {
     /// The `Self::__extract_ix_args(..)` destructuring call spliced at each
     /// parse/signer site (empty when there are no ix args).
     pub ix_arg_extraction: proc_macro2::TokenStream,
-    /// The single `#[inline(always)] fn __extract_ix_args` definition, placed on
-    /// the inherent impl (empty when there are no ix args).
+    /// The single `#[inline(always)] fn __extract_ix_args` definition, placed
+    /// on the inherent impl (empty when there are no ix args).
     pub extract_ix_args_fn: proc_macro2::TokenStream,
     /// The single `__assert_builder` helper, placed on the inherent impl (empty
     /// when the struct has no behavior groups).

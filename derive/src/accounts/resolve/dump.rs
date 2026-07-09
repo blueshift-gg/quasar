@@ -221,11 +221,7 @@ pub(crate) fn dump_plan(plan: &AccountsPlanTyped) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "PLAN ({} fields)", plan.fields.len());
     let _ = writeln!(out, "rent: {}", rent_str(&plan.rent));
-    let _ = writeln!(
-        out,
-        "has_instruction_args: {}",
-        plan.has_instruction_args
-    );
+    let _ = writeln!(out, "has_instruction_args: {}", plan.has_instruction_args);
     let event_cpi: Vec<String> = plan.event_cpi.iter().map(event_cpi_term).collect();
     let _ = writeln!(out, "event_cpi: [{}]", event_cpi.join(", "));
     for (i, field) in plan.fields.iter().enumerate() {
@@ -278,7 +274,11 @@ fn dump_field_plan(out: &mut String, field: &FieldPlan) {
         .collect();
     let _ = writeln!(out, "    behaviors: [{}]", behaviors.join(", "));
     let _ = writeln!(out, "    docs: {:?}", field.docs);
-    let _ = writeln!(out, "    idl_resolver: {}", idl_resolver(&field.idl_resolver));
+    let _ = writeln!(
+        out,
+        "    idl_resolver: {}",
+        idl_resolver(&field.idl_resolver)
+    );
     let _ = writeln!(
         out,
         "    signer_helper: {}",
@@ -369,7 +369,8 @@ fn pre_load_step(step: &PreLoadStep) -> String {
                     .map(|c| behavior_call(c, "SetInitParam"))
                     .collect();
                 format!(
-                    "Init::Behavior(payer={} idempotent={} init_param_calls=[{}] verified_address={})",
+                    "Init::Behavior(payer={} idempotent={} init_param_calls=[{}] \
+                     verified_address={})",
                     b.payer.ident,
                     b.idempotent,
                     calls.join(", "),

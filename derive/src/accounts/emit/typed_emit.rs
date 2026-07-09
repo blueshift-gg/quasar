@@ -300,9 +300,9 @@ fn emit_arg_phase_const(phase: BehaviorPhase) -> proc_macro2::TokenStream {
     }
 }
 
-/// Emit a lowered behavior-arg value. `on_self` selects the receiver: exit-phase
-/// (epilogue) args reference `self.field`; every other phase uses the local
-/// binding `field`.
+/// Emit a lowered behavior-arg value. `on_self` selects the receiver:
+/// exit-phase (epilogue) args reference `self.field`; every other phase uses
+/// the local binding `field`.
 fn emit_lowered_value(val: &LoweredValue, on_self: bool) -> proc_macro2::TokenStream {
     let recv = |ident: &syn::Ident| {
         if on_self {
