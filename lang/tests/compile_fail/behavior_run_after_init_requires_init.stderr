@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: behavior `after_init_guard` runs after_init and requires `#[account(init, ...)]` on field `data`
+  --> tests/compile_fail/behavior_run_after_init_requires_init.rs:47:10
+   |
+47 | #[derive(Accounts)]
+   |          ^^^^^^^^ evaluation of `<Bad as quasar_lang::traits::ParseAccountsUnchecked<'input>>::parse_with_instruction_data_unchecked::_` failed here

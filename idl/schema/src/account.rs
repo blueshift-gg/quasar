@@ -70,8 +70,8 @@ impl AccountFlag {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AccountFlagDynamic {
+    /// The flag's value is supplied by the caller at build time.
     Input,
-    Runtime,
 }
 
 /// How an account address is resolved for client construction.
@@ -185,6 +185,7 @@ pub enum IdlPdaBump {
 
 /// Remaining accounts configuration.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct IdlRemainingAccounts {
     pub kind: RemainingAccountsKind,
     pub name: String,
@@ -201,6 +202,7 @@ pub enum RemainingAccountsKind {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RemainingAccountItem {
     #[serde(rename = "clientType")]
     pub client_type: String,
@@ -209,6 +211,7 @@ pub struct RemainingAccountItem {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RemainingAccountPolicy {
     pub position: RemainingPosition,
     pub order: RemainingOrder,

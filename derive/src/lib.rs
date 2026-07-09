@@ -5,6 +5,7 @@ use proc_macro::TokenStream;
 mod account;
 mod accounts;
 pub(crate) mod client_macro;
+#[cfg(feature = "declare-program")]
 mod declare_program;
 mod error_code;
 mod event;
@@ -72,10 +73,28 @@ pub fn derive_quasar_serialize(input: TokenStream) -> TokenStream {
     serialize::derive_quasar_serialize(input)
 }
 
-/// Declare a program ID.
+/// Generate typed Rust bindings from an external program's IDL JSON.
+///
+/// Gated behind the `declare-program` feature so that the serde/IDL-schema
+/// stack it needs is not pulled into ordinary program builds.
+#[cfg(feature = "declare-program")]
 #[proc_macro]
 pub fn declare_program(input: TokenStream) -> TokenStream {
     declare_program::declare_program(input)
+}
+
+/// Feature-off stub for [`declare_program!`]: emits a spanned error telling the
+/// caller to enable the `declare-program` feature.
+#[cfg(not(feature = "declare-program"))]
+#[proc_macro]
+pub fn declare_program(_input: TokenStream) -> TokenStream {
+    syn::Error::new(
+        proc_macro2::Span::call_site(),
+        "`declare_program!` requires the `declare-program` feature; enable it on quasar-lang \
+         (e.g. `quasar-lang = { version = \"...\", features = [\"declare-program\"] }`)",
+    )
+    .to_compile_error()
+    .into()
 }
 
 /// Derive typed PDA seed specs from a unit struct.

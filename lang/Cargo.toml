@@ -12,7 +12,14 @@ workspace = true
 
 [features]
 debug = []
+# Host-only: pulls in serde_json/quasar-idl-schema/inventory/bs58 to assemble the
+# IDL from inventory fragments. Enabled only for the host `__quasar_emit_idl`
+# test run (`cargo test --features idl-build`); it must NOT be enabled for an SBF
+# program build, where the serde/std stack does not compile.
 idl-build = ["dep:inventory", "dep:quasar-idl-schema", "dep:serde_json", "dep:bs58"]
+# Enables `declare_program!` (external-IDL client generation). Off by default so
+# the serde/IDL-schema stack stays out of ordinary program builds.
+declare-program = ["quasar-derive/declare-program"]
 
 [dependencies]
 quasar-derive = { version = "0.0", path = "../derive" }

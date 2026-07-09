@@ -194,6 +194,19 @@ pub(super) fn generate_account(
             }
         };
 
+        // Emit the account's on-chain footprint. The fragment builder runs
+        // host-side (in the `__quasar_emit_idl` test), where the account's
+        // `Space::SPACE` associated const is evaluable. `min` is the minimum
+        // byte size including the discriminator.
+        let space_tokens = quote::quote! {
+            Some(quasar_lang::idl_build::__reexport::IdlSpace {
+                discriminator: Some(#disc_len),
+                min: <#name as quasar_lang::traits::Space>::SPACE as u64,
+                max: None,
+                formula: None,
+            })
+        };
+
         quote::quote! {
             #[cfg(feature = "idl-build")]
             quasar_lang::__private_inventory::submit! {
@@ -208,7 +221,7 @@ pub(super) fn generate_account(
                                     name: quasar_lang::idl_build::s(#name_str),
                                     discriminator: quasar_lang::idl_build::vec![#(#disc_values),*],
                                     docs: quasar_lang::idl_build::Vec::new(),
-                                    space: None,
+                                    space: #space_tokens,
                                 },
                                 quasar_lang::idl_build::__reexport::IdlTypeDef {
                                     name: quasar_lang::idl_build::s(#name_str),

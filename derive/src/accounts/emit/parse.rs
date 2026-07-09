@@ -639,6 +639,24 @@ fn emit_behavior_assertions(semantics: &[FieldSemantics]) -> proc_macro2::TokenS
                     #validates_data_msg,
                 );
             });
+
+            // RUN_AFTER_INIT assertion: `after_init` only runs on account
+            // creation, so a behavior scheduling it on a non-`init` field would
+            // silently never fire. Require `init` on the field.
+            if !sem.has_init() {
+                let after_init_msg = format!(
+                    "behavior `{}` runs after_init and requires `#[account(init, ...)]` on field \
+                     `{}`",
+                    group.name(),
+                    field_name,
+                );
+                asserts.push(quote! {
+                    const _: () = assert!(
+                        !<#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#ty>>::RUN_AFTER_INIT,
+                        #after_init_msg,
+                    );
+                });
+            }
         }
 
         // Init field assertions.

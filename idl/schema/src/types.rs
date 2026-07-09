@@ -114,6 +114,7 @@ pub struct IdlFieldDef {
 
 /// An enum variant.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct IdlEnumVariant {
     pub name: String,
     pub value: u64,
