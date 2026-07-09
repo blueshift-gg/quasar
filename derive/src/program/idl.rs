@@ -24,8 +24,8 @@ pub(super) fn emit_idl(model: &ProgramModel, mod_name: &Ident) -> TokenStream2 {
             let ix_docs = crate::helpers::docs_tokens_from_lines(&spec.docs);
             let arg_defs: Vec<TokenStream2> = spec.idl_args.iter().map(|arg| {
                 let arg_name = arg.name.to_string();
-                let idl_type_tokens = crate::helpers::type_to_idl_type_tokens(&arg.ty);
-                let codec_tokens = crate::helpers::type_to_idl_codec_tokens(&arg.ty);
+                let idl_type_tokens = crate::idl::type_to_idl_type_tokens(&arg.ty);
+                let codec_tokens = crate::idl::type_to_idl_codec_tokens(&arg.ty);
                 quote! {
                     quasar_lang::idl_build::__reexport::IdlArg {
                         name: quasar_lang::idl_build::s(#arg_name),
@@ -36,35 +36,24 @@ pub(super) fn emit_idl(model: &ProgramModel, mod_name: &Ident) -> TokenStream2 {
                 }
             }).collect();
 
-            let has_dynamic = spec
-                .idl_args
-                .iter()
-                .any(|arg| crate::helpers::instruction_arg_is_compact(&arg.ty));
-            let layout_tokens = if has_dynamic {
-                let inline_fields: Vec<String> = spec.idl_args.iter()
+            // No args -> no layout; otherwise partition into inline (fixed) and
+            // tail (compact) names and defer to the single-source emitter.
+            let layout_tokens = if spec.idl_args.is_empty() {
+                quote! { None }
+            } else {
+                let inline_fields: Vec<String> = spec
+                    .idl_args
+                    .iter()
                     .filter(|arg| !crate::helpers::instruction_arg_is_compact(&arg.ty))
                     .map(|arg| arg.name.to_string())
                     .collect();
-                let tail_fields: Vec<String> = spec.idl_args.iter()
+                let tail_fields: Vec<String> = spec
+                    .idl_args
+                    .iter()
                     .filter(|arg| crate::helpers::instruction_arg_is_compact(&arg.ty))
                     .map(|arg| arg.name.to_string())
                     .collect();
-                quote! {
-                    Some(quasar_lang::idl_build::__reexport::IdlLayout::Compact {
-                        inline_fields: quasar_lang::idl_build::vec![#(quasar_lang::idl_build::s(#inline_fields)),*],
-                        tail_fields: quasar_lang::idl_build::vec![#(quasar_lang::idl_build::s(#tail_fields)),*],
-                        wire: quasar_lang::idl_build::__reexport::CompactWire::InlineFieldsThenTailHeadersThenTailPayloads,
-                    })
-                }
-            } else if spec.idl_args.is_empty() {
-                quote! { None }
-            } else {
-                let field_names: Vec<String> = spec.idl_args.iter().map(|arg| arg.name.to_string()).collect();
-                quote! {
-                    Some(quasar_lang::idl_build::__reexport::IdlLayout::Fixed {
-                        fields: quasar_lang::idl_build::vec![#(quasar_lang::idl_build::s(#field_names)),*],
-                    })
-                }
+                crate::idl::emit_idl_layout(&inline_fields, &tail_fields)
             };
 
             let remaining_tokens = if spec.has_remaining {

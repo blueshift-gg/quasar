@@ -158,8 +158,8 @@ pub(super) fn generate_account(spec: AccountCodegenSpec<'_>) -> TokenStream {
                     .as_ref()
                     .unwrap_or_else(|| ice!("account fields are validated as named before codegen"))
                     .to_string();
-                let fty = crate::helpers::type_to_idl_type_tokens(&fi.field.ty);
-                let codec_tokens = crate::helpers::type_to_idl_codec_tokens(&fi.field.ty);
+                let fty = crate::idl::type_to_idl_type_tokens(&fi.field.ty);
+                let codec_tokens = crate::idl::type_to_idl_codec_tokens(&fi.field.ty);
                 let fdocs = crate::helpers::docs_tokens(&fi.field.attrs);
 
                 if fi.pod_dyn.is_some() {
@@ -179,32 +179,9 @@ pub(super) fn generate_account(spec: AccountCodegenSpec<'_>) -> TokenStream {
             })
             .collect();
 
-        let layout_tokens = if tail_field_names.is_empty() {
-            // All fields are fixed: emit Fixed layout
-            let all_names = inline_field_names.iter().collect::<Vec<_>>();
-            quote::quote! {
-                Some(quasar_lang::idl_build::__reexport::IdlLayout::Fixed {
-                    fields: quasar_lang::idl_build::vec![
-                        #(quasar_lang::idl_build::s(#all_names)),*
-                    ],
-                })
-            }
-        } else {
-            // Has dynamic fields: emit Compact layout
-            let inline_refs = inline_field_names.iter().collect::<Vec<_>>();
-            let tail_refs = tail_field_names.iter().collect::<Vec<_>>();
-            quote::quote! {
-                Some(quasar_lang::idl_build::__reexport::IdlLayout::Compact {
-                    inline_fields: quasar_lang::idl_build::vec![
-                        #(quasar_lang::idl_build::s(#inline_refs)),*
-                    ],
-                    tail_fields: quasar_lang::idl_build::vec![
-                        #(quasar_lang::idl_build::s(#tail_refs)),*
-                    ],
-                    wire: quasar_lang::idl_build::__reexport::CompactWire::InlineFieldsThenTailHeadersThenTailPayloads,
-                })
-            }
-        };
+        // Fixed layout when all fields are inline; Compact otherwise — via the
+        // single-source `emit_idl_layout` shared with the instruction fragments.
+        let layout_tokens = crate::idl::emit_idl_layout(&inline_field_names, &tail_field_names);
 
         // Emit the account's on-chain footprint. The fragment builder runs
         // host-side (in the `__quasar_emit_idl` test), where the account's

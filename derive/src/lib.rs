@@ -13,6 +13,7 @@ mod declare_program;
 mod error_code;
 mod event;
 mod helpers;
+mod idl;
 mod instruction;
 mod program;
 mod schema_ir;

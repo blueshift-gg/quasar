@@ -104,8 +104,8 @@ pub(crate) fn event_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream
         .iter()
         .map(|f| {
             let fname = f.ident.as_ref().map(|i| i.to_string()).unwrap_or_default();
-            let fty = crate::helpers::type_to_idl_type_tokens(&f.ty);
-            let fcodec = crate::helpers::type_to_idl_codec_tokens(&f.ty);
+            let fty = crate::idl::type_to_idl_type_tokens(&f.ty);
+            let fcodec = crate::idl::type_to_idl_codec_tokens(&f.ty);
             let fdocs = crate::helpers::docs_tokens(&f.attrs);
             quote! {
                 quasar_lang::idl_build::__reexport::IdlFieldDef {

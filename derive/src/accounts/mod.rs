@@ -370,7 +370,7 @@ fn emit_idl_pda_seed(seed: &resolve::specs::IdlSeedPlan) -> proc_macro2::TokenSt
         }
         IdlSeedPlan::IxArg { name, ty } => {
             let path = name.to_string();
-            let idl_type = crate::helpers::type_to_idl_type_tokens(ty);
+            let idl_type = crate::idl::type_to_idl_type_tokens(ty);
             quote! {
                 quasar_lang::idl_build::__reexport::IdlPdaSeed::Arg {
                     path: quasar_lang::idl_build::s(#path),
