@@ -133,68 +133,55 @@ pub mod __internal {
         count: usize,
         boundary: *const u8,
     ) -> Result<(usize, *mut u8), solana_program_error::ProgramError> {
-        // SAFETY: The SVM guarantees 8-byte alignment at buffer start and
-        // after each account entry (padded strides).
-        debug_assert!(
-            input as usize & 7 == 0,
-            "parse_all_accounts_unchecked: input pointer is not 8-byte aligned"
-        );
+        use crate::svm::{Cursor, RawEntry};
 
-        let mut ptr = input;
+        // SAFETY: The SVM guarantees 8-byte alignment at buffer start and
+        // after each account entry (padded strides); `boundary` is the end of
+        // the account region in the same allocation.
+        let mut cursor = unsafe { Cursor::new(input, boundary) };
         for i in 0..count {
-            // SAFETY: Early exit if we have reached the accounts boundary.
-            // The SVM guarantees `count` entries fit, but this check is
+            // Early exit if we have reached the accounts boundary. The SVM
+            // guarantees `count` entries fit, but this check is
             // defense-in-depth against a malformed buffer.
-            if (ptr as *const u8) >= boundary {
-                return Ok((i, ptr));
+            if cursor.at_end() {
+                return Ok((i, cursor.ptr()));
             }
 
-            // SAFETY: `ptr` is within the accounts region (checked above)
-            // and points to a valid `RuntimeAccount` header. The
-            // `borrow_state` field is at offset 0 of the `#[repr(C)]`
-            // struct.
-            let raw = ptr as *mut RuntimeAccount;
-            let borrow = unsafe { (*raw).borrow_state };
-
-            if borrow == NOT_BORROWED {
-                // SAFETY: Non-duplicate entry. `raw` is a valid
-                // `RuntimeAccount` pointer. `AccountView::new_unchecked`
-                // wraps it without copying.
-                unsafe {
-                    core::ptr::write(buf.add(i), AccountView::new_unchecked(raw));
-                }
-                // SAFETY: `account_stride` computes header + data_len
-                // rounded to 8-byte alignment, matching the SVM's
-                // serialization layout.
-                let data_len = unsafe { (*raw).data_len as usize };
-                ptr = unsafe { ptr.add(account_stride(data_len)) };
-            } else {
-                // SAFETY: Duplicate entry. `borrow_state` encodes the
-                // index of the source non-dup account. The SVM
-                // guarantees dup indices always point backward to a
-                // previously-serialized non-dup entry.
-                let orig_idx = borrow as usize;
-                if orig_idx < i {
-                    // SAFETY: `orig_idx < i` ensures the source slot is
-                    // already initialized. `AccountView` does not impl
-                    // `Drop` (verified by static assert in remaining.rs),
-                    // so bitwise copy is safe. Note: the copy creates an
-                    // aliased `AccountView`; both point to the same
-                    // `RuntimeAccount`. The raw handler is responsible for
-                    // avoiding simultaneous `borrow_unchecked_mut()` on
-                    // aliased views.
+            // SAFETY: `cursor` is not at end (checked above), so it points at
+            // a valid account entry.
+            match unsafe { cursor.next() } {
+                RawEntry::Account(raw) => {
+                    // SAFETY: Non-duplicate entry. `raw` is a valid
+                    // `RuntimeAccount` pointer. `AccountView::new_unchecked`
+                    // wraps it without copying.
                     unsafe {
-                        core::ptr::write(buf.add(i), core::ptr::read(buf.add(orig_idx)));
+                        core::ptr::write(buf.add(i), AccountView::new_unchecked(raw));
                     }
-                } else {
-                    return Err(solana_program_error::ProgramError::InvalidAccountData);
                 }
-                // SAFETY: Dup entries are exactly `DUP_ENTRY_SIZE` (8)
-                // bytes in the SVM buffer.
-                ptr = unsafe { ptr.add(DUP_ENTRY_SIZE) };
+                RawEntry::Dup(borrow) => {
+                    // Duplicate entry. `borrow` is the index of the source
+                    // non-dup account. The SVM guarantees dup indices always
+                    // point backward to a previously-serialized non-dup entry.
+                    let orig_idx = borrow as usize;
+                    if orig_idx < i {
+                        // SAFETY: `orig_idx < i` ensures the source slot is
+                        // already initialized. `AccountView` does not impl
+                        // `Drop` (verified by static assert in remaining.rs),
+                        // so bitwise copy is safe. Note: the copy creates an
+                        // aliased `AccountView`; both point to the same
+                        // `RuntimeAccount`. The raw handler is responsible for
+                        // avoiding simultaneous `borrow_unchecked_mut()` on
+                        // aliased views.
+                        unsafe {
+                            core::ptr::write(buf.add(i), core::ptr::read(buf.add(orig_idx)));
+                        }
+                    } else {
+                        return Err(solana_program_error::ProgramError::InvalidAccountData);
+                    }
+                }
             }
         }
-        Ok((count, ptr))
+        Ok((count, cursor.ptr()))
     }
 
     /// Packed flags for [`parse_account_dup`]. Keeps the param count under the
@@ -249,12 +236,10 @@ pub mod __internal {
         // SAFETY: `base.add(offset)` is within the caller-provided output
         // buffer, and `raw` is the current account header.
         unsafe { core::ptr::write(base.add(offset), AccountView::new_unchecked(raw)) };
-        // SAFETY: `raw` is valid for the current non-duplicate account.
+        // SAFETY: `raw` is valid for the current non-duplicate account;
+        // `advance_account_data` advances past header + data + 8-byte padding.
         let data_len = unsafe { (*raw).data_len as usize };
-        // SAFETY: Account entries are serialized as header + data + padding.
-        let input = unsafe { input.add(ACCOUNT_HEADER.wrapping_add(data_len)) };
-        // SAFETY: Advance over the SVM 8-byte alignment padding.
-        let input = unsafe { input.add((input as usize).wrapping_neg() & 7) };
+        let input = unsafe { crate::svm::advance_account_data(input, data_len) };
         Ok(input)
     }
 
@@ -324,12 +309,10 @@ pub mod __internal {
             // SAFETY: `base.add(offset)` is within the caller-provided output
             // buffer, and `raw` is the current account header.
             unsafe { core::ptr::write(base.add(offset), AccountView::new_unchecked(raw)) };
-            // SAFETY: `raw` is valid for the current non-duplicate account.
+            // SAFETY: `raw` is valid for the current non-duplicate account;
+            // `advance_account_data` advances past header + data + 8-byte pad.
             let data_len = unsafe { (*raw).data_len as usize };
-            // SAFETY: Account entries are serialized as header + data + padding.
-            let input = unsafe { input.add(ACCOUNT_HEADER.wrapping_add(data_len)) };
-            // SAFETY: Advance over the SVM 8-byte alignment padding.
-            let input = unsafe { input.add((input as usize).wrapping_neg() & 7) };
+            let input = unsafe { crate::svm::advance_account_data(input, data_len) };
             Ok(input)
         } else {
             // Dup branch: borrow_state != NOT_BORROWED means the SVM
@@ -426,6 +409,8 @@ pub mod prelude;
 pub mod remaining;
 /// `set_return_data` syscall wrapper.
 pub mod return_data;
+/// The single owner of the SVM account-buffer walk (`Cursor`).
+pub(crate) mod svm;
 /// Centralized sBPF ABI facts (entrypoint, input buffer, `SolBytes`).
 pub mod svm_abi;
 /// Core framework traits.

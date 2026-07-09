@@ -1,10 +1,10 @@
 use {
     crate::{
-        __internal::{account_stride, DUP_ENTRY_SIZE},
         account_load::AccountLoad,
         error::QuasarError,
+        svm::{Cursor, RawEntry},
     },
-    solana_account_view::{AccountView, Ref, RefMut, RuntimeAccount, NOT_BORROWED},
+    solana_account_view::{AccountView, Ref, RefMut},
     solana_address::Address,
     solana_program_error::ProgramError,
 };
@@ -72,43 +72,6 @@ fn resolve_dup_index(
 #[inline(always)]
 const fn cache_has_capacity(index: usize) -> bool {
     index < MAX_REMAINING_ACCOUNTS
-}
-
-/// Advance past a non-duplicate account in the SVM input buffer.
-///
-/// # SVM account layout
-///
-/// ```text
-/// [RuntimeAccount header] [data ...] [10 KiB realloc padding] [u64 padding]
-/// stride input = ACCOUNT_HEADER + data_len
-/// ```
-///
-/// The result is aligned up to 8 bytes (SVM alignment requirement).
-///
-/// # Safety
-///
-/// - `ptr` must point to the start of a non-duplicate account entry.
-/// - `ptr` must be 8-byte aligned (SVM guarantees this for the input buffer).
-/// - `raw` must be a valid `RuntimeAccount` at `ptr`.
-#[inline(always)]
-unsafe fn advance_past_account(ptr: *mut u8, raw: *mut RuntimeAccount) -> *mut u8 {
-    // Delegates to `account_stride` so the alignment arithmetic is covered
-    // by Kani proof harnesses (see kani_proofs::account_stride_*).
-    // SAFETY: The caller guarantees `raw` points to a valid `RuntimeAccount`.
-    let data_len = unsafe { (*raw).data_len as usize };
-    // SAFETY: The caller guarantees `ptr` is the start of that account entry.
-    unsafe { ptr.add(account_stride(data_len)) }
-}
-
-/// Advance past a duplicate account entry (u64-sized index).
-///
-/// # Safety
-///
-/// `ptr` must point to the start of a duplicate entry in the SVM buffer.
-#[inline(always)]
-unsafe fn advance_past_dup(ptr: *mut u8) -> *mut u8 {
-    // SAFETY: The caller guarantees `ptr` starts a duplicate-entry payload.
-    unsafe { ptr.add(DUP_ENTRY_SIZE) }
 }
 
 /// Safe handle for one remaining account entry.
@@ -270,31 +233,30 @@ impl<'a> RemainingAccounts<'a> {
     /// Access a single remaining account by index. O(n) walk from buffer
     /// start.
     pub fn get(&self, index: usize) -> Result<Option<RemainingAccount>, ProgramError> {
-        let mut ptr = self.ptr;
+        // SAFETY: `self.ptr`/`self.boundary` delimit the remaining region.
+        let mut cursor = unsafe { Cursor::new(self.ptr, self.boundary) };
         for i in 0..=index {
-            if ptr as *const u8 >= self.boundary {
+            if cursor.at_end() {
                 return Ok(None);
             }
-            let raw = ptr as *mut RuntimeAccount;
-            // SAFETY: `ptr` is within the SVM buffer (checked against boundary).
-            // Reading `borrow_state` (first byte) determines entry type.
-            let borrow = unsafe { (*raw).borrow_state };
-
-            if i == index {
-                return Ok(Some(RemainingAccount::new(if borrow == NOT_BORROWED {
-                    // SAFETY: Non-duplicate entry; `raw` is a valid `RuntimeAccount`.
-                    unsafe { AccountView::new_unchecked(raw) }
-                } else {
-                    resolve_dup_walk(borrow as usize, self.declared, self.ptr, self.boundary)?
-                })));
-            }
-
-            if borrow == NOT_BORROWED {
-                // SAFETY: `raw` is valid; advances past header + data + padding.
-                ptr = unsafe { advance_past_account(ptr, raw) };
-            } else {
-                // SAFETY: Duplicate entry; advances past the u64 index.
-                ptr = unsafe { advance_past_dup(ptr) };
+            // SAFETY: not at end (checked above). Advancing at `i == index` is
+            // harmless: the entry is returned and the cursor discarded.
+            match unsafe { cursor.next() } {
+                // SAFETY: Non-duplicate entry; `raw` is a valid `RuntimeAccount`.
+                RawEntry::Account(raw) if i == index => {
+                    return Ok(Some(RemainingAccount::new(unsafe {
+                        AccountView::new_unchecked(raw)
+                    })));
+                }
+                RawEntry::Dup(borrow) if i == index => {
+                    return Ok(Some(RemainingAccount::new(resolve_dup_walk(
+                        borrow as usize,
+                        self.declared,
+                        self.ptr,
+                        self.boundary,
+                    )?)));
+                }
+                _ => {}
             }
         }
         Ok(None)
@@ -539,31 +501,25 @@ fn resolve_dup_walk(
             Some(target) => target,
             None => return Err(ProgramError::InvalidAccountData),
         };
-        let mut ptr = start;
+        // SAFETY: `start`/`boundary` delimit the remaining region (same buffer
+        // walk as `RemainingAccounts::get`).
+        let mut cursor = unsafe { Cursor::new(start, boundary) };
         for i in 0..=target {
-            if ptr as *const u8 >= boundary {
+            if cursor.at_end() {
                 break;
             }
-            let raw = ptr as *mut RuntimeAccount;
-            // SAFETY: Same buffer walk as `RemainingAccounts::get`.
-            let borrow = unsafe { (*raw).borrow_state };
-
-            if i == target {
-                if borrow == NOT_BORROWED {
-                    // SAFETY: The target entry is inside the walked buffer and
-                    // its borrow marker says it is a full runtime account.
+            // SAFETY: not at end (checked above). At `i == target` the cursor
+            // advances one entry too far, but it is discarded on return/break.
+            match unsafe { cursor.next() } {
+                RawEntry::Account(raw) if i == target => {
+                    // SAFETY: The target entry is a full runtime account.
                     return Ok(unsafe { AccountView::new_unchecked(raw) });
                 }
-                idx = borrow as usize;
-                break;
-            }
-
-            if borrow == NOT_BORROWED {
-                // SAFETY: `raw` is the current non-duplicate runtime account.
-                ptr = unsafe { advance_past_account(ptr, raw) };
-            } else {
-                // SAFETY: Duplicate entries occupy exactly `DUP_ENTRY_SIZE`.
-                ptr = unsafe { advance_past_dup(ptr) };
+                RawEntry::Dup(borrow) if i == target => {
+                    idx = borrow as usize;
+                    break;
+                }
+                _ => {}
             }
         }
     }
@@ -629,8 +585,9 @@ impl<T, const N: usize> Remaining<T, N> {
             return Self::parse_single(accounts);
         }
 
-        let mut ptr = accounts.ptr;
-        while (ptr as *const u8) < accounts.boundary {
+        // SAFETY: `accounts.ptr`/`accounts.boundary` delimit the region.
+        let mut cursor = unsafe { Cursor::new(accounts.ptr, accounts.boundary) };
+        while !cursor.at_end() {
             if out.len >= N {
                 return Err(QuasarError::RemainingAccountsOverflow.into());
             }
@@ -638,17 +595,16 @@ impl<T, const N: usize> Remaining<T, N> {
                 return Err(QuasarError::RemainingAccountsOverflow.into());
             }
 
-            let raw = ptr as *mut RuntimeAccount;
-            // SAFETY: `ptr` is within the SVM buffer (checked against boundary).
-            let borrow = unsafe { (*raw).borrow_state };
-            if borrow != NOT_BORROWED {
-                return Err(QuasarError::RemainingAccountDuplicate.into());
-            }
-
-            // SAFETY: Non-duplicate entry with a valid `RuntimeAccount`.
-            let view = unsafe { AccountView::new_unchecked(raw) };
-            // SAFETY: `raw` is valid; advances past header + data + padding.
-            ptr = unsafe { advance_past_account(ptr, raw) };
+            // The multi-account chunk parser never resolves duplicates: a dup
+            // marker in a fixed-count group is always an error.
+            // SAFETY: not at end (checked above).
+            let view = match unsafe { cursor.next() } {
+                // SAFETY: Non-duplicate entry with a valid `RuntimeAccount`.
+                RawEntry::Account(raw) => unsafe { AccountView::new_unchecked(raw) },
+                RawEntry::Dup(_) => {
+                    return Err(QuasarError::RemainingAccountDuplicate.into());
+                }
+            };
 
             if T::REJECT_DUPLICATES {
                 if accounts
@@ -714,34 +670,28 @@ impl<T, const N: usize> Remaining<T, N> {
         let mut seen = unsafe {
             core::mem::MaybeUninit::<[core::mem::MaybeUninit<Address>; N]>::uninit().assume_init()
         };
-        let mut ptr = accounts.ptr;
-        while (ptr as *const u8) < accounts.boundary {
+        // SAFETY: `accounts.ptr`/`accounts.boundary` delimit the region.
+        let mut cursor = unsafe { Cursor::new(accounts.ptr, accounts.boundary) };
+        while !cursor.at_end() {
             if out.len >= N {
                 return Err(QuasarError::RemainingAccountsOverflow.into());
             }
 
-            let raw = ptr as *mut RuntimeAccount;
-            // SAFETY: `ptr` is within the SVM buffer (checked against boundary).
-            let borrow = unsafe { (*raw).borrow_state };
-            if T::REJECT_DUPLICATES && borrow != NOT_BORROWED {
-                return Err(QuasarError::RemainingAccountDuplicate.into());
-            }
-
-            let view = if borrow == NOT_BORROWED {
+            // SAFETY: not at end (checked above).
+            let view = match unsafe { cursor.next() } {
                 // SAFETY: Non-duplicate entry with a valid `RuntimeAccount`.
-                let view = unsafe { AccountView::new_unchecked(raw) };
-                // SAFETY: `raw` is valid; advances past header + data + padding.
-                ptr = unsafe { advance_past_account(ptr, raw) };
-                view
-            } else {
-                // SAFETY: Duplicate entry; advances past the u64 index.
-                ptr = unsafe { advance_past_dup(ptr) };
-                resolve_dup_walk(
-                    borrow as usize,
-                    accounts.declared,
-                    accounts.ptr,
-                    accounts.boundary,
-                )?
+                RawEntry::Account(raw) => unsafe { AccountView::new_unchecked(raw) },
+                RawEntry::Dup(borrow) => {
+                    if T::REJECT_DUPLICATES {
+                        return Err(QuasarError::RemainingAccountDuplicate.into());
+                    }
+                    resolve_dup_walk(
+                        borrow as usize,
+                        accounts.declared,
+                        accounts.ptr,
+                        accounts.boundary,
+                    )?
+                }
             };
 
             let address = *view.address();
@@ -887,23 +837,17 @@ impl Iterator for RemainingIterImpl<'_> {
             return Some(Err(QuasarError::RemainingAccountsOverflow.into()));
         }
 
-        let raw = self.ptr as *mut RuntimeAccount;
-        // SAFETY: `ptr` is within the SVM buffer (boundary check above).
-        let borrow = unsafe { (*raw).borrow_state };
-
-        let view = if borrow == NOT_BORROWED {
+        // SAFETY: `self.ptr` is within the SVM buffer (boundary check above),
+        // 8-aligned, and delimited by `self.boundary`.
+        let mut cursor = unsafe { Cursor::new(self.ptr, self.boundary) };
+        // SAFETY: the cursor is not at end (boundary check above).
+        let view = match unsafe { cursor.next() } {
             // SAFETY: Non-duplicate entry with a valid `RuntimeAccount`.
-            let view = unsafe { AccountView::new_unchecked(raw) };
-            // SAFETY: `raw` is the current non-duplicate runtime account.
-            self.ptr = unsafe { advance_past_account(self.ptr, raw) };
-            view
-        } else {
-            // SAFETY: Duplicate entries occupy exactly `DUP_ENTRY_SIZE`.
-            self.ptr = unsafe { advance_past_dup(self.ptr) };
-            match self.resolve_dup(borrow as usize) {
+            RawEntry::Account(raw) => unsafe { AccountView::new_unchecked(raw) },
+            RawEntry::Dup(borrow) => match self.resolve_dup(borrow as usize) {
                 Some(v) => v,
                 None => {
-                    // Fuse: an unresolvable dup advances `self.ptr` past the
+                    // Fuse: an unresolvable dup has advanced the cursor past the
                     // entry but skips the cache-index increment below, so the
                     // cache would desync from the buffer position. Jump `ptr`
                     // to `boundary` so the next `next()` returns `None` and
@@ -912,8 +856,9 @@ impl Iterator for RemainingIterImpl<'_> {
                     self.ptr = self.boundary as *mut u8;
                     return Some(Err(QuasarError::RemainingAccountDuplicate.into()));
                 }
-            }
+            },
         };
+        self.ptr = cursor.ptr();
 
         // SAFETY: `self.index < MAX_REMAINING_ACCOUNTS` (checked above),
         // so the write is within the `MaybeUninit` cache allocation.

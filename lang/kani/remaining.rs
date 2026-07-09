@@ -1,6 +1,10 @@
 use {
     super::*,
-    crate::__internal::{align_up_8, ACCOUNT_HEADER, DUP_ENTRY_SIZE},
+    crate::{
+        __internal::{account_stride, align_up_8, ACCOUNT_HEADER, DUP_ENTRY_SIZE},
+        svm::{Cursor, RawEntry},
+    },
+    solana_account_view::{RuntimeAccount, NOT_BORROWED},
 };
 
 #[kani::proof]
@@ -130,7 +134,7 @@ fn resolve_dup_index_none_iff_out_of_range() {
 // Real SVM-buffer walk proofs.
 //
 // The proofs below drive the *actual* unsafe navigation functions
-// (`advance_past_account`, `resolve_dup_walk`, `RemainingIterImpl::next`,
+// (`svm::Cursor::next`, `resolve_dup_walk`, `RemainingIterImpl::next`,
 // `Remaining::parse_single`) over a symbolic-but-well-formed SVM input buffer,
 // rather than restating arithmetic about local variables. Kani's built-in
 // pointer-bounds checks turn "the walk never reads outside the buffer" into a
@@ -195,13 +199,15 @@ impl<const N: usize> SvmBuf<N> {
     }
 }
 
-/// `advance_past_account` never leaves the allocation for a well-formed entry.
+/// `Cursor::next` never leaves the allocation for a well-formed account entry.
 ///
-/// Drives the real `advance_past_account` with a symbolic `data_len`; the
-/// returned pointer must equal the Kani-proven `account_stride` and stay within
-/// the buffer (`ptr.add` would be UB otherwise, which Kani would flag).
+/// Drives the real `svm::Cursor::next` (the single owner of the walk step) over
+/// a symbolic-data non-duplicate account. The advanced pointer must equal the
+/// Kani-proven `account_stride` and stay within the buffer (`ptr.add` would be
+/// UB otherwise, which Kani would flag), and the decoded entry must classify as
+/// an account.
 #[kani::proof]
-fn advance_past_account_stays_in_buffer() {
+fn cursor_next_account_stays_in_buffer() {
     const D: usize = 24;
     const N: usize = account_stride(D);
 
@@ -217,14 +223,46 @@ fn advance_past_account_stays_in_buffer() {
         (*raw).data_len = data_len;
     }
 
-    // SAFETY: `raw` is the freshly written non-duplicate account at `base`.
-    let next = unsafe { advance_past_account(base, raw) };
+    // SAFETY: `base`/`boundary` delimit the one-account region built above.
+    let mut cursor = unsafe { Cursor::new(base, buf.boundary(N)) };
+    // SAFETY: the cursor is not at end (a full account is present).
+    let entry = unsafe { cursor.next() };
+    assert!(matches!(entry, RawEntry::Account(_)));
 
-    let advanced = (next as usize) - (base as usize);
+    let advanced = (cursor.ptr() as usize) - (base as usize);
     assert!(advanced == account_stride(data_len as usize));
     assert!(advanced % 8 == 0);
     // Read pointer never exceeds the buffer end (== boundary for one account).
     assert!(advanced <= N);
+}
+
+/// `Cursor::next` decodes a duplicate marker and advances by `DUP_ENTRY_SIZE`.
+///
+/// Drives the real `svm::Cursor::next` over a single duplicate entry with a
+/// symbolic source index; the entry must classify as `Dup` carrying that index
+/// and the cursor must advance exactly `DUP_ENTRY_SIZE` bytes.
+#[kani::proof]
+fn cursor_next_dup_advances_by_dup_size() {
+    const N: usize = DUP_ENTRY_SIZE;
+
+    let mut buf = SvmBuf::<N>::zeroed();
+    let dup_idx: u8 = kani::any();
+    kani::assume(dup_idx != NOT_BORROWED);
+    // SAFETY: the dup marker fits in the 8-byte buffer.
+    unsafe {
+        buf.write_dup(0, dup_idx);
+    }
+    let base = buf.base();
+
+    // SAFETY: `base`/`boundary` delimit the one-entry region built above.
+    let mut cursor = unsafe { Cursor::new(base, buf.boundary(N)) };
+    // SAFETY: the cursor is not at end (a dup marker is present).
+    match unsafe { cursor.next() } {
+        RawEntry::Dup(idx) => assert!(idx == dup_idx),
+        RawEntry::Account(_) => unreachable!(),
+    }
+    assert!((cursor.ptr() as usize) - (base as usize) == DUP_ENTRY_SIZE);
+    assert!(cursor.at_end());
 }
 
 /// `resolve_dup_walk` only ever produces an in-buffer view (or an error).
