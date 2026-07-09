@@ -31,5 +31,6 @@ rent: NotNeeded
     epilogue: []
 [1]
     pre_load: []
-    post_load: []
+    post_load:
+      - UserCheck(HasOne targets=[authority] error=None)
     epilogue: []

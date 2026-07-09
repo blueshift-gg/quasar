@@ -4,7 +4,10 @@
 //! All protocol behavior is lowered to generic `BehaviorCall` steps that
 //! emit `AccountBehavior` trait calls. No SPL domain knowledge.
 
-use syn::{Expr, Ident, Type};
+use {
+    super::model::UserCheck,
+    syn::{Expr, Ident, Type},
+};
 
 /// A resolved behavior call for one behavior group on one field.
 ///
@@ -178,6 +181,8 @@ pub(crate) enum PostLoadStep {
         phase: PostLoadPhase,
         call: BehaviorCall,
     },
+    /// Structural user assertion (`has_one` / `constraints`), run after load.
+    UserCheck(UserCheck),
     /// Core address verification for non-init fields.
     VerifyExistingAddress(AddressSpec),
     /// Realloc.

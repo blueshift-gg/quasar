@@ -133,6 +133,12 @@ fn plan_field(
         }
     }
 
+    // Post-load: structural user checks (has_one / constraints), emitted after
+    // every other post-load step for the field.
+    for check in &sem.user_checks {
+        post_load.push(PostLoadStep::UserCheck(check.clone()));
+    }
+
     // Epilogue: core program close (lamport drain).
     if let Some(dest) = &sem.close_dest {
         epilogue.push(EpilogueStep::ProgramClose(ProgramCloseSpec {

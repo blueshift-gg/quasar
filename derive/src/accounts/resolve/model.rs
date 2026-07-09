@@ -102,6 +102,7 @@ impl ToTokens for BehaviorArgValue {
 }
 
 /// User-specified structural assertion.
+#[derive(Clone)]
 pub(crate) enum UserCheck {
     HasOne {
         targets: Vec<Ident>,

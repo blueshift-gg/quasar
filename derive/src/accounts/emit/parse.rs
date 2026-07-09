@@ -297,6 +297,10 @@ fn emit_post_load_typed(
                         true,
                     )
                 }
+                PostLoadStep::UserCheck(check) => {
+                    let check_stmts = emit_user_check(sem, check);
+                    (quote! { #(#check_stmts)* }, false)
+                }
                 PostLoadStep::VerifyExistingAddress(addr_spec) => {
                     let bump_var = format_ident!("__bumps_{}", ident);
                     let addr_expr = &addr_spec.expr;
@@ -345,13 +349,6 @@ fn emit_post_load_typed(
             };
 
             stmts.push(wrap_optional(is_optional, ident, &call, needs_mut));
-        }
-
-        // User checks (structural: not behavior-group based).
-        for check in &sem.user_checks {
-            let check_stmts = emit_user_check(sem, check);
-            let combined = quote! { #(#check_stmts)* };
-            stmts.push(wrap_optional(is_optional, ident, &combined, false));
         }
     }
 

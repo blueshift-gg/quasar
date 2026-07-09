@@ -185,25 +185,27 @@ fn dump_user_checks(out: &mut String, checks: &[UserCheck]) {
     }
     let _ = writeln!(out, "    user_checks:");
     for c in checks {
-        match c {
-            UserCheck::HasOne { targets, error } => {
-                let targets: Vec<String> = targets.iter().map(|i| i.to_string()).collect();
-                let _ = writeln!(
-                    out,
-                    "      - HasOne targets=[{}] error={}",
-                    targets.join(", "),
-                    opt_expr(error),
-                );
-            }
-            UserCheck::Constraints { exprs, error } => {
-                let exprs: Vec<String> = exprs.iter().map(|e| format!("`{}`", toks(e))).collect();
-                let _ = writeln!(
-                    out,
-                    "      - Constraints exprs=[{}] error={}",
-                    exprs.join(", "),
-                    opt_expr(error),
-                );
-            }
+        let _ = writeln!(out, "      - {}", user_check_str(c));
+    }
+}
+
+fn user_check_str(c: &UserCheck) -> String {
+    match c {
+        UserCheck::HasOne { targets, error } => {
+            let targets: Vec<String> = targets.iter().map(|i| i.to_string()).collect();
+            format!(
+                "HasOne targets=[{}] error={}",
+                targets.join(", "),
+                opt_expr(error)
+            )
+        }
+        UserCheck::Constraints { exprs, error } => {
+            let exprs: Vec<String> = exprs.iter().map(|e| format!("`{}`", toks(e))).collect();
+            format!(
+                "Constraints exprs=[{}] error={}",
+                exprs.join(", "),
+                opt_expr(error)
+            )
         }
     }
 }
@@ -286,6 +288,7 @@ fn post_load_step(step: &PostLoadStep) -> String {
         PostLoadStep::Behavior { phase, call } => {
             format!("Behavior({})", behavior_call(call, &format!("{phase:?}")))
         }
+        PostLoadStep::UserCheck(check) => format!("UserCheck({})", user_check_str(check)),
         PostLoadStep::VerifyExistingAddress(a) => {
             format!("VerifyExistingAddress({})", addr_spec(a))
         }

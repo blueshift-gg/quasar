@@ -16,5 +16,6 @@ PLAN (1 fields)
 rent: NotNeeded
 [0]
     pre_load: []
-    post_load: []
+    post_load:
+      - UserCheck(Constraints exprs=[`amount > 0 && flag`] error=None)
     epilogue: []
