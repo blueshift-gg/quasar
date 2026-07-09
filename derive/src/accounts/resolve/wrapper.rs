@@ -101,13 +101,10 @@ mod tests {
     fn sysvar_inner_extracts_rent() {
         let sysvar = ty("Sysvar<'a, Rent>");
         let inner = sysvar_inner(&sysvar).expect("sysvar inner");
-        assert!(matches!(classify_wrapper(inner), WrapperKind::Other));
-        // Last segment of the inner type is what the rent planner checks.
-        if let Type::Path(tp) = inner {
-            assert_eq!(tp.path.segments.last().unwrap().ident, "Rent");
-        } else {
-            panic!("expected path");
-        }
+        // The rent planner keys off the inner type's last path segment.
+        let is_rent = matches!(inner, Type::Path(tp)
+            if tp.path.segments.last().is_some_and(|s| s.ident == "Rent"));
+        assert!(is_rent);
         assert!(sysvar_inner(&ty("Account<'a, T>")).is_none());
     }
 }

@@ -12,6 +12,7 @@ use {
 /// The `BehaviorPhase` on the call determines which const, which builder
 /// method, and which trait method to emit.
 pub(crate) fn emit_post_load_behavior(
+    phase: PostLoadPhase,
     call: &BehaviorCall,
     field_ident: &syn::Ident,
     field_ty: &syn::Type,
@@ -20,16 +21,17 @@ pub(crate) fn emit_post_load_behavior(
     let path = &call.path;
     let bhv =
         quote! { <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#field_ty>> };
-    let args_block = emit_args_builder(call, field_ty);
+    let args_block = emit_behavior_args_builder(call, field_ty, phase.as_behavior_phase());
 
-    match call.phase {
-        BehaviorPhase::AfterInit => quote! {
+    // Total match: `PostLoadPhase` cannot be SetInitParam/Exit, so no ICE arm.
+    match phase {
+        PostLoadPhase::AfterInit => quote! {
             if #bhv::RUN_AFTER_INIT {
                 #args_block
                 #bhv::after_init(&mut #field_ident, &__bhv_args)?;
             }
         },
-        BehaviorPhase::Check => {
+        PostLoadPhase::Check => {
             let fresh_init_guard = if let Some(did_init_var) = did_init_var {
                 quote! { !(#did_init_var && #bhv::INIT_SATISFIES_CHECK) }
             } else {
@@ -42,19 +44,12 @@ pub(crate) fn emit_post_load_behavior(
                 }
             }
         }
-        BehaviorPhase::Update => quote! {
+        PostLoadPhase::Update => quote! {
             if #bhv::RUN_UPDATE {
                 #args_block
                 #bhv::update(&mut #field_ident, &__bhv_args)?;
             }
         },
-        // The planner only schedules AfterInit/Check/Update in the post-load
-        // phase; SetInitParam is a pre-load init step and Exit is an epilogue
-        // step. Reaching this arm means the phase model was built wrong -- a
-        // loud ICE beats silently emitting nothing (which would drop the step).
-        phase @ (BehaviorPhase::SetInitParam | BehaviorPhase::Exit) => {
-            unreachable!("ICE: {phase:?} behavior scheduled in the post-load phase")
-        }
     }
 }
 
@@ -68,7 +63,7 @@ pub(crate) fn emit_epilogue_behavior(
     let path = &call.path;
     let bhv =
         quote! { <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#field_ty>> };
-    let args_block = emit_exit_args_builder(call, field_ty);
+    let args_block = emit_behavior_args_builder(call, field_ty, BehaviorPhase::Exit);
 
     quote! {
         if #bhv::RUN_EXIT {
@@ -96,7 +91,7 @@ pub(crate) fn emit_behavior_init(
         .iter()
         .map(|call| {
             let path = &call.path;
-            let args_block = emit_args_builder(call, field_ty);
+            let args_block = emit_behavior_args_builder(call, field_ty, BehaviorPhase::SetInitParam);
             quote! {
                 if <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#field_ty>>::SETS_INIT_PARAMS {
                     #args_block
@@ -244,23 +239,17 @@ pub(crate) fn emit_program_close(
     }
 }
 
-fn emit_args_builder(call: &BehaviorCall, field_ty: &syn::Type) -> proc_macro2::TokenStream {
-    emit_behavior_args_builder(call, field_ty, false)
-}
-
-fn emit_exit_args_builder(call: &BehaviorCall, field_ty: &syn::Type) -> proc_macro2::TokenStream {
-    emit_behavior_args_builder(call, field_ty, true)
-}
-
 fn emit_behavior_args_builder(
     call: &BehaviorCall,
     field_ty: &syn::Type,
-    exit_context: bool,
+    phase: BehaviorPhase,
 ) -> proc_macro2::TokenStream {
+    // Exit args reference `self.field`; every other phase uses local bindings.
+    let exit_context = matches!(phase, BehaviorPhase::Exit);
     let path = &call.path;
     let bhv =
         quote! { <#path::Behavior as quasar_lang::account_behavior::AccountBehavior<#field_ty>> };
-    let phase = emit_arg_phase_const(call.phase);
+    let phase_const = emit_arg_phase_const(phase);
     let setters: Vec<proc_macro2::TokenStream> = call
         .args
         .iter()
@@ -274,7 +263,7 @@ fn emit_behavior_args_builder(
             };
             quote! {
                 let __bhv_builder = if #bhv::uses_arg::<
-                    { #phase },
+                    { #phase_const },
                     { quasar_lang::account_behavior::behavior_arg_key_hash(#key_lit) },
                 >() {
                     __bhv_builder.#key(#val)
@@ -285,7 +274,7 @@ fn emit_behavior_args_builder(
         })
         .collect();
 
-    let build_method = match call.phase {
+    let build_method = match phase {
         BehaviorPhase::SetInitParam | BehaviorPhase::AfterInit => quote! { build_init },
         BehaviorPhase::Check | BehaviorPhase::Update => quote! { build_check },
         BehaviorPhase::Exit => quote! { build_exit },

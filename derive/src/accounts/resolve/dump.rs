@@ -265,7 +265,11 @@ fn pre_load_step(step: &PreLoadStep) -> String {
                 p.idempotent,
             ),
             InitPlan::Behavior(b) => {
-                let calls: Vec<String> = b.init_param_calls.iter().map(behavior_call).collect();
+                let calls: Vec<String> = b
+                    .init_param_calls
+                    .iter()
+                    .map(|c| behavior_call(c, "SetInitParam"))
+                    .collect();
                 format!(
                     "Init::Behavior(payer={} idempotent={} init_param_calls=[{}])",
                     b.payer.ident,
@@ -279,7 +283,9 @@ fn pre_load_step(step: &PreLoadStep) -> String {
 
 fn post_load_step(step: &PostLoadStep) -> String {
     match step {
-        PostLoadStep::Behavior(c) => format!("Behavior({})", behavior_call(c)),
+        PostLoadStep::Behavior { phase, call } => {
+            format!("Behavior({})", behavior_call(call, &format!("{phase:?}")))
+        }
         PostLoadStep::VerifyExistingAddress(a) => {
             format!("VerifyExistingAddress({})", addr_spec(a))
         }
@@ -295,23 +301,23 @@ fn post_load_step(step: &PostLoadStep) -> String {
 
 fn epilogue_step(step: &EpilogueStep) -> String {
     match step {
-        EpilogueStep::Behavior(c) => format!("Behavior({})", behavior_call(c)),
+        EpilogueStep::Behavior(c) => format!("Behavior({})", behavior_call(c, "Exit")),
         EpilogueStep::ProgramClose(c) => {
             format!("ProgramClose(destination_field={})", c.destination_field)
         }
     }
 }
 
-fn behavior_call(call: &BehaviorCall) -> String {
+fn behavior_call(call: &BehaviorCall, phase: &str) -> String {
     let args: Vec<String> = call
         .args
         .iter()
         .map(|LoweredArg { key, lowered }| format!("{key}={}", lowered_value(lowered)))
         .collect();
     format!(
-        "path=`{}` phase={:?} args=[{}]",
+        "path=`{}` phase={} args=[{}]",
         toks(&call.path),
-        call.phase,
+        phase,
         args.join(", "),
     )
 }

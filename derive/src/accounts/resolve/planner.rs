@@ -81,17 +81,15 @@ fn plan_field(
     // behind its associated const.
     for group in &sem.groups {
         if sem.has_init() {
-            post_load.push(PostLoadStep::Behavior(lower_behavior_call(
-                group,
-                BehaviorPhase::AfterInit,
-                optional_fields,
-            )));
+            post_load.push(PostLoadStep::Behavior {
+                phase: PostLoadPhase::AfterInit,
+                call: lower_behavior_call(group, optional_fields),
+            });
         }
-        post_load.push(PostLoadStep::Behavior(lower_behavior_call(
-            group,
-            BehaviorPhase::Check,
-            optional_fields,
-        )));
+        post_load.push(PostLoadStep::Behavior {
+            phase: PostLoadPhase::Check,
+            call: lower_behavior_call(group, optional_fields),
+        });
     }
 
     // Post-load: realloc.
@@ -124,14 +122,12 @@ fn plan_field(
     // Post-load + epilogue: update and exit candidates (writable fields only).
     if sem.is_writable() {
         for group in &sem.groups {
-            post_load.push(PostLoadStep::Behavior(lower_behavior_call(
-                group,
-                BehaviorPhase::Update,
-                optional_fields,
-            )));
+            post_load.push(PostLoadStep::Behavior {
+                phase: PostLoadPhase::Update,
+                call: lower_behavior_call(group, optional_fields),
+            });
             epilogue.push(EpilogueStep::Behavior(lower_behavior_call(
                 group,
-                BehaviorPhase::Exit,
                 optional_fields,
             )));
         }
@@ -171,11 +167,7 @@ fn plan_init(
     // separately in plan_field).
     let mut init_param_calls = Vec::new();
     for group in &sem.groups {
-        init_param_calls.push(lower_behavior_call(
-            group,
-            BehaviorPhase::SetInitParam,
-            optional_fields,
-        ));
+        init_param_calls.push(lower_behavior_call(group, optional_fields));
     }
 
     InitPlan::Behavior(BehaviorInitSpec {
@@ -186,11 +178,8 @@ fn plan_init(
 }
 
 /// Lower a BehaviorGroup directive into a BehaviorCall with lowered values.
-fn lower_behavior_call(
-    group: &BehaviorGroup,
-    phase: BehaviorPhase,
-    optional_fields: &[String],
-) -> BehaviorCall {
+/// The lifecycle phase is supplied by the owning step, not stored here.
+fn lower_behavior_call(group: &BehaviorGroup, optional_fields: &[String]) -> BehaviorCall {
     let args = group
         .args
         .iter()
@@ -203,7 +192,6 @@ fn lower_behavior_call(
     BehaviorCall {
         path: group.path.clone(),
         args,
-        phase,
     }
 }
 

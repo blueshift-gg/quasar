@@ -237,11 +237,10 @@ fn needs_init_state_var(field_plan: &FieldPlan) -> bool {
     let has_behavior_check = field_plan.post_load.iter().any(|step| {
         matches!(
             step,
-            PostLoadStep::Behavior(call)
-                if matches!(
-                    call.phase,
-                    super::super::resolve::specs::BehaviorPhase::Check
-                )
+            PostLoadStep::Behavior {
+                phase: super::super::resolve::specs::PostLoadPhase::Check,
+                ..
+            }
         )
     });
 
@@ -265,14 +264,20 @@ fn emit_post_load_typed(
 
         for step in &fp.post_load {
             let (call, needs_mut) = match step {
-                PostLoadStep::Behavior(bhv) => {
+                PostLoadStep::Behavior { phase, call } => {
                     let needs = matches!(
-                        bhv.phase,
-                        super::super::resolve::specs::BehaviorPhase::AfterInit
-                            | super::super::resolve::specs::BehaviorPhase::Update
+                        phase,
+                        super::super::resolve::specs::PostLoadPhase::AfterInit
+                            | super::super::resolve::specs::PostLoadPhase::Update
                     );
                     (
-                        typed_emit::emit_post_load_behavior(bhv, ident, ty, did_init_var.as_ref()),
+                        typed_emit::emit_post_load_behavior(
+                            *phase,
+                            call,
+                            ident,
+                            ty,
+                            did_init_var.as_ref(),
+                        ),
                         needs,
                     )
                 }
