@@ -4,7 +4,7 @@
 //! is owned by behavior modules via builder errors and trait bounds.
 
 use {
-    super::{BehaviorArgValue, FieldSemantics},
+    super::{BehaviorArgValue, FieldKind, FieldSemantics},
     std::collections::HashSet,
     syn::Ident,
 };
@@ -23,6 +23,45 @@ pub(super) fn validate_semantics(semantics: &[FieldSemantics]) -> syn::Result<()
 
 fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
     let span = &sem.core.field;
+
+    // --- Composite fields accept only `group` ---
+    // A composite field (an `AccountsArray<..>` or a nested `#[account(group)]`
+    // struct) delegates parsing/validation to its own `Accounts` impl. Applying
+    // a lifecycle/constraint directive to the composite itself is meaningless, so
+    // reject everything except the `group` marker.
+    if sem.core.kind == FieldKind::Composite {
+        let offending = if sem.core.declared_mut {
+            Some("mut")
+        } else if sem.has_init() {
+            Some("init")
+        } else if sem.payer.is_some() {
+            Some("payer")
+        } else if sem.address.is_some() {
+            Some("address")
+        } else if sem.realloc.is_some() {
+            Some("realloc")
+        } else if sem.close_dest.is_some() {
+            Some("close")
+        } else if sem.core.dup {
+            Some("dup")
+        } else if !sem.groups.is_empty() {
+            Some("behavior group")
+        } else if !sem.user_checks.is_empty() {
+            Some("has_one/constraints")
+        } else {
+            None
+        };
+        if let Some(directive) = offending {
+            return Err(syn::Error::new_spanned(
+                span,
+                format!(
+                    "`{directive}` is not supported on a composite account field; composite \
+                     fields (`AccountsArray<..>` or nested `#[account(group)]` structs) accept \
+                     only `group`"
+                ),
+            ));
+        }
+    }
 
     // --- Migration exclusivity rules ---
     if sem.is_migration {
@@ -210,5 +249,77 @@ fn check_arg_value(
         }
         BehaviorArgValue::Some(inner) => check_arg_value(inner, key, field_names),
         BehaviorArgValue::None | BehaviorArgValue::Expr(_) => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::super::lower_semantics,
+        quote::quote,
+        syn::{punctuated::Punctuated, token::Comma, Field, Fields, ItemStruct},
+    };
+
+    fn fields(ts: proc_macro2::TokenStream) -> Punctuated<Field, Comma> {
+        let item: ItemStruct = syn::parse2(ts).expect("struct parses");
+        match item.fields {
+            Fields::Named(named) => named.named,
+            _ => Punctuated::new(),
+        }
+    }
+
+    fn lower_err(ts: proc_macro2::TokenStream) -> String {
+        lower_semantics(&fields(ts), &[])
+            .err()
+            .expect("expected a validation error")
+            .to_string()
+    }
+
+    #[test]
+    fn composite_rejects_init() {
+        let err = lower_err(quote! {
+            struct S { #[account(group, init)] bundle: SomeBundle }
+        });
+        assert!(err.contains("`init` is not supported on a composite"), "{err}");
+    }
+
+    #[test]
+    fn composite_rejects_address() {
+        let err = lower_err(quote! {
+            struct S { #[account(group, address = FOO)] bundle: SomeBundle }
+        });
+        assert!(err.contains("`address` is not supported on a composite"), "{err}");
+    }
+
+    #[test]
+    fn composite_rejects_behavior_group() {
+        let err = lower_err(quote! {
+            struct S { #[account(group, min_value(min = 1u64))] bundle: SomeBundle }
+        });
+        assert!(
+            err.contains("`behavior group` is not supported on a composite"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn composite_rejects_dup() {
+        let err = lower_err(quote! {
+            struct S {
+                /// CHECK: test
+                #[account(group, dup)] bundle: SomeBundle
+            }
+        });
+        assert!(err.contains("`dup` is not supported on a composite"), "{err}");
+    }
+
+    #[test]
+    fn composite_group_marker_alone_is_accepted() {
+        let sems = lower_semantics(
+            &fields(quote! { struct S { #[account(group)] bundle: SomeBundle } }),
+            &[],
+        )
+        .expect("bare group lowers");
+        assert_eq!(sems.len(), 1);
     }
 }
