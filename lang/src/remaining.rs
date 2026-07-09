@@ -271,31 +271,30 @@ impl<'a> RemainingAccounts<'a> {
     /// Access a single remaining account by index. O(n) walk from buffer
     /// start.
     pub fn get(&self, index: usize) -> Result<Option<RemainingAccount>, ProgramError> {
-        let mut ptr = self.ptr;
+        // SAFETY: `self.ptr`/`self.boundary` delimit the remaining region.
+        let mut cursor = unsafe { Cursor::new(self.ptr, self.boundary) };
         for i in 0..=index {
-            if ptr as *const u8 >= self.boundary {
+            if cursor.at_end() {
                 return Ok(None);
             }
-            let raw = ptr as *mut RuntimeAccount;
-            // SAFETY: `ptr` is within the SVM buffer (checked against boundary).
-            // Reading `borrow_state` (first byte) determines entry type.
-            let borrow = unsafe { (*raw).borrow_state };
-
-            if i == index {
-                return Ok(Some(RemainingAccount::new(if borrow == NOT_BORROWED {
-                    // SAFETY: Non-duplicate entry; `raw` is a valid `RuntimeAccount`.
-                    unsafe { AccountView::new_unchecked(raw) }
-                } else {
-                    resolve_dup_walk(borrow as usize, self.declared, self.ptr, self.boundary)?
-                })));
-            }
-
-            if borrow == NOT_BORROWED {
-                // SAFETY: `raw` is valid; advances past header + data + padding.
-                ptr = unsafe { advance_past_account(ptr, raw) };
-            } else {
-                // SAFETY: Duplicate entry; advances past the u64 index.
-                ptr = unsafe { advance_past_dup(ptr) };
+            // SAFETY: not at end (checked above). Advancing at `i == index` is
+            // harmless: the entry is returned and the cursor discarded.
+            match unsafe { cursor.next() } {
+                // SAFETY: Non-duplicate entry; `raw` is a valid `RuntimeAccount`.
+                RawEntry::Account(raw) if i == index => {
+                    return Ok(Some(RemainingAccount::new(unsafe {
+                        AccountView::new_unchecked(raw)
+                    })));
+                }
+                RawEntry::Dup(borrow) if i == index => {
+                    return Ok(Some(RemainingAccount::new(resolve_dup_walk(
+                        borrow as usize,
+                        self.declared,
+                        self.ptr,
+                        self.boundary,
+                    )?)));
+                }
+                _ => {}
             }
         }
         Ok(None)
