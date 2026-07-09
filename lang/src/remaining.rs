@@ -216,8 +216,18 @@ pub struct RemainingAccounts<'a> {
 impl<'a> RemainingAccounts<'a> {
     /// Creates a remaining accounts accessor from the SVM buffer
     /// pointers.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` and `boundary` must delimit a valid remaining-account region of
+    /// the SVM input buffer (`ptr <= boundary`, both within the same live
+    /// allocation), and `declared` must be the declared-account slice parsed
+    /// from that same buffer so duplicate resolution stays in bounds. Safe
+    /// callers should obtain a `RemainingAccounts` via
+    /// [`CtxWithRemaining::remaining_accounts`](crate::context::CtxWithRemaining::remaining_accounts)
+    /// instead of constructing one directly.
     #[inline(always)]
-    pub fn new(ptr: *mut u8, boundary: *const u8, declared: &'a [AccountView]) -> Self {
+    pub unsafe fn new(ptr: *mut u8, boundary: *const u8, declared: &'a [AccountView]) -> Self {
         Self {
             ptr,
             boundary,
@@ -229,8 +239,14 @@ impl<'a> RemainingAccounts<'a> {
 
     /// Creates a remaining accounts accessor that can parse typed account
     /// groups requiring program ID and instruction data.
+    ///
+    /// # Safety
+    ///
+    /// Same contract as [`new`](Self::new): `ptr`/`boundary` must delimit a
+    /// valid remaining-account region of the SVM input buffer and `declared`
+    /// must be the matching declared-account slice.
     #[inline(always)]
-    pub fn new_with_context(
+    pub unsafe fn new_with_context(
         ptr: *mut u8,
         boundary: *const u8,
         declared: &'a [AccountView],

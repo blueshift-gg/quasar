@@ -894,7 +894,7 @@ fn bounds_remaining_data_len_sweep() {
             is_signer: false,
             is_writable: true,
         }]);
-        let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
+        let remaining = unsafe { RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]) };
         let v = remaining.get(0).unwrap().unwrap();
         assert_eq!(v.data_len(), data_len);
         assert!(remaining.get(1).unwrap().is_none());
@@ -932,7 +932,7 @@ fn bounds_remaining_walk_varied_data_lengths() {
             is_writable: true,
         },
     ]);
-    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
+    let remaining = unsafe { RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]) };
 
     let v0 = remaining.get(0).unwrap().unwrap();
     assert_eq!(v0.lamports(), 100);
@@ -952,7 +952,7 @@ fn bounds_remaining_max_capacity_64_accounts() {
         .map(|i| MultiAccountEntry::account_with_data(i as u8, vec![i as u8]))
         .collect();
     let mut buf = MultiAccountBuffer::new(&entries);
-    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
+    let remaining = unsafe { RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]) };
 
     let views: Vec<_> = remaining.iter().collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(views.len(), 64);
@@ -989,7 +989,8 @@ fn bounds_remaining_dup_index_sweep() {
             MultiAccountEntry::account(0x10, 0),
             MultiAccountEntry::duplicate(dup_idx),
         ]);
-        let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &declared);
+        let remaining =
+            unsafe { RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &declared) };
         let v = remaining.get(1).unwrap().unwrap();
         assert_eq!(v.address(), &Address::new_from_array([dup_idx as u8; 32]));
     }
@@ -1001,7 +1002,7 @@ fn bounds_remaining_iterator_duplicate_preserved() {
         MultiAccountEntry::account(0x01, 0),
         MultiAccountEntry::duplicate(0),
     ]);
-    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
+    let remaining = unsafe { RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]) };
     let views: Vec<_> = remaining.iter().collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(views.len(), 2);
     assert_eq!(views[0].address(), views[1].address());
@@ -1013,7 +1014,7 @@ fn bounds_remaining_iterator_dup_cache_resolution() {
         MultiAccountEntry::account(0x01, 0),
         MultiAccountEntry::duplicate(0),
     ]);
-    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
+    let remaining = unsafe { RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]) };
     let views: Vec<_> = remaining.iter().collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(views.len(), 2);
     assert_eq!(views[0].address(), views[1].address());
@@ -1025,7 +1026,7 @@ fn bounds_remaining_get_preserves_prior_remaining_duplicate() {
         MultiAccountEntry::account(0x01, 0),
         MultiAccountEntry::duplicate(0),
     ]);
-    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
+    let remaining = unsafe { RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]) };
     let first = remaining.get(0).unwrap().unwrap();
     let second = remaining.get(1).unwrap().unwrap();
     assert_eq!(first.address(), second.address());
@@ -1037,7 +1038,7 @@ fn bounds_remaining_duplicate_checked_borrow_conflicts() {
         MultiAccountEntry::account_with_data(0x01, vec![7]),
         MultiAccountEntry::duplicate(0),
     ]);
-    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
+    let remaining = unsafe { RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]) };
     let mut iter = remaining.iter();
     let mut first = iter.next().unwrap().unwrap();
     let second = iter.next().unwrap().unwrap();
@@ -1054,7 +1055,7 @@ fn bounds_typed_remaining_rejects_remaining_duplicate() {
         MultiAccountEntry::account(0x01, 0),
         MultiAccountEntry::duplicate(0),
     ]);
-    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
+    let remaining = unsafe { RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]) };
 
     let err = match remaining.parse::<UncheckedAccount, 4>() {
         Ok(_) => panic!("typed remaining must reject duplicate aliases"),
@@ -1070,7 +1071,7 @@ fn bounds_typed_remaining_rejects_declared_duplicate() {
     let declared = [unsafe { declared_buf.view() }];
 
     let mut buf = MultiAccountBuffer::new(&[MultiAccountEntry::account(0x01, 0)]);
-    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &declared);
+    let remaining = unsafe { RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &declared) };
 
     let err = match remaining.parse::<UncheckedAccount, 4>() {
         Ok(_) => panic!("typed remaining must reject aliases to declared accounts"),
@@ -1088,13 +1089,9 @@ fn bounds_typed_remaining_group_parses_variable_chunks() {
         MultiAccountEntry::account(0x04, 0),
     ]);
     let program_id = Address::new_from_array([0x55; 32]);
-    let remaining = RemainingAccounts::new_with_context(
-        buf.as_mut_ptr(),
-        buf.boundary(),
-        &[],
-        &program_id,
-        &[],
-    );
+    let remaining = unsafe {
+        RemainingAccounts::new_with_context(buf.as_mut_ptr(), buf.boundary(), &[], &program_id, &[])
+    };
 
     let parsed = remaining
         .parse::<remaining_group_fixture::RemainingPair, 4>()
@@ -1118,13 +1115,9 @@ fn bounds_typed_remaining_group_rejects_partial_chunk() {
         MultiAccountEntry::account(0x03, 0),
     ]);
     let program_id = Address::new_from_array([0x55; 32]);
-    let remaining = RemainingAccounts::new_with_context(
-        buf.as_mut_ptr(),
-        buf.boundary(),
-        &[],
-        &program_id,
-        &[],
-    );
+    let remaining = unsafe {
+        RemainingAccounts::new_with_context(buf.as_mut_ptr(), buf.boundary(), &[], &program_id, &[])
+    };
 
     let err = match remaining.parse::<remaining_group_fixture::RemainingPair, 4>() {
         Ok(_) => panic!("remaining groups must consume complete chunks"),
@@ -1140,7 +1133,7 @@ fn bounds_remaining_iterator_overflow_returns_error() {
         .map(|i| MultiAccountEntry::account(i as u8, 0))
         .collect();
     let mut buf = MultiAccountBuffer::new(&entries);
-    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
+    let remaining = unsafe { RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]) };
 
     let mut iter = remaining.iter();
     for _ in 0..LIMIT {
@@ -1159,7 +1152,7 @@ fn bounds_remaining_empty() {
     let mut buf: Vec<u64> = vec![0; 1];
     let ptr = buf.as_mut_ptr() as *mut u8;
     let boundary = ptr as *const u8;
-    let remaining = RemainingAccounts::new(ptr, boundary, &[]);
+    let remaining = unsafe { RemainingAccounts::new(ptr, boundary, &[]) };
     assert!(remaining.is_empty());
     assert!(remaining.get(0).unwrap().is_none());
     assert_eq!(remaining.iter().count(), 0);
@@ -1197,7 +1190,7 @@ fn bounds_remaining_boundary_pointer_subtraction() {
     let boundary = unsafe { ix_data.as_ptr().sub(size_of::<u64>()) };
     assert_eq!(boundary, unsafe { base.add(ix_len_offset) as *const u8 });
 
-    let remaining = RemainingAccounts::new(base, boundary, &[]);
+    let remaining = unsafe { RemainingAccounts::new(base, boundary, &[]) };
     let v = remaining.get(0).unwrap().unwrap();
     assert_eq!(v.lamports(), 100);
     assert!(remaining.get(1).unwrap().is_none());
@@ -2624,7 +2617,7 @@ fn adversarial_interleaved_close_write_read() {
 fn adversarial_remaining_zero_data_len_all() {
     let entries: Vec<_> = (0..8).map(|i| MultiAccountEntry::account(i, 0)).collect();
     let mut buf = MultiAccountBuffer::new(&entries);
-    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
+    let remaining = unsafe { RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]) };
 
     let views: Vec<_> = remaining.iter().collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(views.len(), 8);
@@ -2640,7 +2633,7 @@ fn adversarial_remaining_all_duplicates_preserved() {
         entries.push(MultiAccountEntry::duplicate(0));
     }
     let mut buf = MultiAccountBuffer::new(&entries);
-    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
+    let remaining = unsafe { RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]) };
 
     let views: Vec<_> = remaining.iter().collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(views.len(), 8);
@@ -2657,7 +2650,7 @@ fn adversarial_remaining_all_duplicates_preserve_order() {
         entries.push(MultiAccountEntry::duplicate(0));
     }
     let mut buf = MultiAccountBuffer::new(&entries);
-    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
+    let remaining = unsafe { RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]) };
 
     let views: Vec<_> = remaining.iter().collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(views.len(), 8);
@@ -2776,7 +2769,7 @@ fn adversarial_remaining_iterator_varied_data_lengths() {
             is_writable: true,
         },
     ]);
-    let remaining = RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]);
+    let remaining = unsafe { RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]) };
 
     let views: Vec<_> = remaining.iter().collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(views.len(), 3);
