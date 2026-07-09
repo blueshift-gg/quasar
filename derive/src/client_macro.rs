@@ -164,13 +164,12 @@ fn emit_account_field(descriptor: &AccountDescriptor) -> TokenStream {
 
 fn emit_account_meta(descriptor: &AccountDescriptor) -> TokenStream {
     let ident = &descriptor.name;
+    let signer = descriptor.signer;
     if descriptor.writable {
-        let signer = descriptor.signer;
         quote! {
             quasar_lang::client::AccountMeta::new(ix.#ident, #signer),
         }
     } else {
-        let signer = descriptor.signer;
         quote! {
             quasar_lang::client::AccountMeta::new_readonly(ix.#ident, #signer),
         }
