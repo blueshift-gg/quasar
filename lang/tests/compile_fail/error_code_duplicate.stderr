@@ -1,0 +1,5 @@
+error: duplicate error code 6000: variants `First` and `Second` both resolve to the same discriminant
+  --> tests/compile_fail/error_code_duplicate.rs:10:5
+   |
+10 |     Second = 6000,
+   |     ^^^^^^

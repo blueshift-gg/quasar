@@ -180,11 +180,12 @@ fn emit_init_phase_typed(
                     let bump_var = format_ident!("__bumps_{}", ident);
                     let addr_var = format_ident!("__addr_{}", ident);
                     let addr_expr = &addr_spec.expr;
+                    let term = address_verify_terminator(&addr_spec.error);
                     stmts.push(quote! {
                         let #addr_var = #addr_expr;
                         #bump_var = quasar_lang::address::AddressVerify::verify(
                             &#addr_var, #ident.address(), __program_id,
-                        )?;
+                        )#term;
                     });
                 }
                 PreLoadStep::Init(init_plan) => {
@@ -294,17 +295,18 @@ fn emit_post_load_typed(
                 PostLoadStep::VerifyExistingAddress(addr_spec) => {
                     let bump_var = format_ident!("__bumps_{}", ident);
                     let addr_expr = &addr_spec.expr;
+                    let term = address_verify_terminator(&addr_spec.error);
                     let verify_existing = if is_validated_account_type(ty) {
                         quote! {
                             #bump_var = quasar_lang::address::AddressVerify::verify_existing(
                                 &__addr, #ident.to_account_view().address(), __program_id,
-                            )?;
+                            )#term;
                         }
                     } else {
                         quote! {
                             #bump_var = quasar_lang::address::AddressVerify::verify(
                                 &__addr, #ident.to_account_view().address(), __program_id,
-                            )?;
+                            )#term;
                         }
                     };
                     let verify = if let Some(bump_offset_expr) = stored_bump_offset_expr(ty) {
@@ -317,7 +319,7 @@ fn emit_post_load_typed(
                                     __program_id,
                                     __view,
                                     __bump_offset,
-                                )?;
+                                )#term;
                             } else {
                                 #verify_existing
                             }
@@ -451,7 +453,7 @@ fn emit_one_load(sem: &FieldSemantics) -> proc_macro2::TokenStream {
 
     if sem.core.dynamic {
         let inner_ty = sem.core.inner_ty.as_ref().unwrap_or(ty);
-        let base = strip_generics(inner_ty);
+        let base = strip_generics(inner_ty).unwrap_or_else(|_| quote! { #inner_ty });
         return quote! { let #ident = #base::from_account_view(#ident)?; };
     }
 
@@ -578,19 +580,6 @@ fn emit_user_check(sem: &FieldSemantics, check: &UserCheck) -> Vec<proc_macro2::
                     )?;
                 });
             }
-        }
-        UserCheck::Address { expr, error } => {
-            let err = match error {
-                Some(e) => quote! { #e.into() },
-                None => quote! { QuasarError::AddressMismatch.into() },
-            };
-            stmts.push(quote! {
-                quasar_lang::validation::check_address_match(
-                    #field_ident.to_account_view().address(),
-                    &#expr,
-                    #err,
-                )?;
-            });
         }
         UserCheck::Constraints { exprs, error } => {
             let err = match error {
@@ -810,7 +799,25 @@ fn composite_assoc_ty(ty: &syn::Type) -> proc_macro2::TokenStream {
             return quote! { #ty };
         }
     }
-    strip_generics(ty)
+    // Composite field types are path types; fall back to the whole type token
+    // (a localized trait error, never a cascade) if that ever fails to hold.
+    strip_generics(ty).unwrap_or_else(|_| quote! { #ty })
+}
+
+/// Trailing operator for an `AddressVerify::verify*` call.
+///
+/// With no custom error it is just `?`; with an `address = expr @ error` custom
+/// error it becomes a `.map_err(..)?` that surfaces the user's error in place
+/// of the verifier's default. All `AddressVerify` methods return
+/// `Result<u8, ProgramError>`, so this works for plain and typed-seeds
+/// addresses alike (hence the reroute branch, not a rejection).
+fn address_verify_terminator(error: &Option<syn::Expr>) -> proc_macro2::TokenStream {
+    match error {
+        Some(e) => quote! {
+            .map_err(|_| -> quasar_lang::prelude::ProgramError { (#e).into() })?
+        },
+        None => quote! { ? },
+    }
 }
 
 /// Returns true for account types with owner + discriminator validation.

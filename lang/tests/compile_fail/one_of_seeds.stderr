@@ -1,0 +1,5 @@
+error: `#[seeds(...)]` is not supported on `#[account(one_of)]` accounts
+  --> tests/compile_fail/one_of_seeds.rs:16:10
+   |
+16 | pub enum ConsensusAccount {
+   |          ^^^^^^^^^^^^^^^^

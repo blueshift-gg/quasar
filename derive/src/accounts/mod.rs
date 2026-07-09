@@ -200,8 +200,9 @@ fn emit_idl_accounts_meta(
         .map(|sem| {
             let field_name = crate::helpers::snake_to_camel(&sem.core.ident.to_string());
             let optional = sem.core.optional;
-            let writable = sem.is_writable();
-            let signer = is_signer_type(&sem.core.effective_ty);
+            let flags = resolve::account_meta_flags(sem);
+            let writable = flags.writable;
+            let signer = flags.signer;
 
             let resolver_tokens = emit_idl_resolver(sem, semantics, ix_args).unwrap_or_else(
                 || quote! { quasar_lang::idl_build::__reexport::IdlResolver::Input {} },
@@ -239,7 +240,7 @@ fn emit_idl_resolver(
     semantics: &[resolve::FieldSemantics],
     instruction_args: &[InstructionArg],
 ) -> Option<proc_macro2::TokenStream> {
-    let Expr::Call(call) = sem.address.as_ref()? else {
+    let Expr::Call(call) = &sem.address.as_ref()?.expr else {
         return None;
     };
     emit_typed_seeds_resolver(call, semantics, instruction_args)
@@ -473,10 +474,14 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
             if !matches!(sem.core.kind, resolve::FieldKind::Single) {
                 return None;
             }
-            if !sem.address.as_ref().is_some_and(is_seed_expr) {
+            if !sem
+                .address
+                .as_ref()
+                .is_some_and(|addr| is_seed_expr(&addr.expr))
+            {
                 return None;
             }
-            let addr_expr = sem.address.as_ref()?;
+            let addr_expr = &sem.address.as_ref()?.expr;
             let method_name = format_ident!("{}_signer", field_name);
             if has_instruction_args {
                 Some(quote! {
@@ -555,7 +560,10 @@ fn composite_event_ty(ty: &Type) -> proc_macro2::TokenStream {
             return quote! { #ty };
         }
     }
-    strip_generics(ty)
+    // Composite field types are always path types; the fallback keeps a valid
+    // type token (no cascade) if that invariant is ever broken -- the invalid
+    // type then fails with a localized trait-bound error.
+    strip_generics(ty).unwrap_or_else(|_| quote! { #ty })
 }
 
 fn is_event_cpi_field(sem: &resolve::FieldSemantics) -> bool {
@@ -574,12 +582,3 @@ fn is_event_cpi_field(sem: &resolve::FieldSemantics) -> bool {
     }
 }
 
-/// Check if the effective type is `Signer` (by last path segment name).
-fn is_signer_type(ty: &syn::Type) -> bool {
-    if let syn::Type::Path(type_path) = ty {
-        if let Some(last) = type_path.path.segments.last() {
-            return last.ident == "Signer";
-        }
-    }
-    false
-}

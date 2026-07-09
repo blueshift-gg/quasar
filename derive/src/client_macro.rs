@@ -183,30 +183,12 @@ fn describe_accounts(
     semantics
         .iter()
         .map(|sem| {
-            let ty = &sem.core.effective_ty;
-            let is_signer = is_signer_type(ty);
-
+            let flags = crate::accounts::resolve::account_meta_flags(sem);
             AccountDescriptor {
                 name: sem.core.ident.clone(),
-                writable: sem.is_writable(),
-                signer: is_signer || client_requires_signer(sem),
+                writable: flags.writable,
+                signer: flags.signer,
             }
         })
         .collect()
-}
-
-fn client_requires_signer(sem: &crate::accounts::resolve::FieldSemantics) -> bool {
-    // init without address = keypair signer (non-PDA init)
-    sem.has_init() && sem.address.is_none()
-}
-
-fn is_signer_type(ty: &syn::Type) -> bool {
-    type_base_name(ty).is_some_and(|n| n == "Signer")
-}
-
-fn type_base_name(ty: &syn::Type) -> Option<&syn::Ident> {
-    match ty {
-        syn::Type::Path(tp) => tp.path.segments.last().map(|s| &s.ident),
-        _ => None,
-    }
 }

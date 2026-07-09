@@ -44,6 +44,33 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Handle enum-backed polymorphic accounts before struct-only validation.
     if args.one_of {
+        // `one_of` accounts dispatch on a variant discriminator and have no
+        // single fixed layout, so the seeds/set_inner/fixed_capacity riders do
+        // not apply. Reject them explicitly instead of silently dropping them.
+        if seeds_impl.is_some() {
+            return syn::Error::new_spanned(
+                name,
+                "`#[seeds(...)]` is not supported on `#[account(one_of)]` accounts",
+            )
+            .to_compile_error()
+            .into();
+        }
+        if args.set_inner {
+            return syn::Error::new_spanned(
+                name,
+                "`set_inner` is not supported on `#[account(one_of)]` accounts",
+            )
+            .to_compile_error()
+            .into();
+        }
+        if args.fixed_capacity {
+            return syn::Error::new_spanned(
+                name,
+                "`fixed_capacity` is not supported on `#[account(one_of)]` accounts",
+            )
+            .to_compile_error()
+            .into();
+        }
         match &input.data {
             Data::Enum(data) => {
                 let variants = match one_of::extract_variants(data) {
@@ -106,6 +133,9 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     let pod_field_infos: Vec<fixed::PodFieldInfo<'_>> = match fields_data
         .iter()
         .map(|f| {
+            // Reject an invalid explicit length-prefix (e.g. `String<16, f32>`)
+            // rather than silently defaulting to a 1-byte prefix.
+            crate::helpers::validate_dynamic_prefix(&f.ty)?;
             if !args.fixed_capacity && classify_option_pod_dynamic(&f.ty).is_some() {
                 return Err(syn::Error::new_spanned(
                     &f.ty,

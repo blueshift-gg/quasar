@@ -1,0 +1,5 @@
+error: `fixed_capacity` is not supported on `#[account(one_of)]` accounts
+  --> tests/compile_fail/one_of_fixed_capacity.rs:15:10
+   |
+15 | pub enum ConsensusAccount {
+   |          ^^^^^^^^^^^^^^^^

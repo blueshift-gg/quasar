@@ -53,7 +53,7 @@ pub(crate) enum LoweredValue {
 
 /// Behavior lifecycle phase. Each phase maps to one associated const guard,
 /// one builder build method, and one trait method call.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum BehaviorPhase {
     /// `SETS_INIT_PARAMS` -> `build_init()` -> `set_init_param()`
     SetInitParam,
@@ -116,6 +116,8 @@ pub(crate) struct ReallocSpec {
 #[derive(Clone)]
 pub(crate) struct AddressSpec {
     pub expr: Expr,
+    /// Optional custom `@ error` mapped onto the verify call's failure.
+    pub error: Option<Expr>,
 }
 
 /// Program-level close (drain lamports). Core lifecycle: not protocol-owned.

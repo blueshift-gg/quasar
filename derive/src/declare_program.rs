@@ -36,6 +36,29 @@ impl Parse for DeclareProgramInput {
     }
 }
 
+/// Turn an IDL-supplied name into a valid Rust identifier.
+///
+/// `Ident::new` panics on reserved words (`type`, `match`, `move`, ...), so
+/// every IDL string must pass through here. Keywords become raw identifiers
+/// (`type` -> `r#type`); the few that cannot be raw (`crate`/`self`/`super`/
+/// `Self`) get a trailing underscore. Anything still unusable is a spanned
+/// error pointing at the macro invocation rather than a proc-macro panic.
+fn sanitize_ident(name: &str, span: Span) -> syn::Result<Ident> {
+    if let Ok(id) = syn::parse_str::<Ident>(name) {
+        return Ok(id);
+    }
+    if let Ok(id) = syn::parse_str::<Ident>(&format!("r#{name}")) {
+        return Ok(id);
+    }
+    if let Ok(id) = syn::parse_str::<Ident>(&format!("{name}_")) {
+        return Ok(id);
+    }
+    Err(syn::Error::new(
+        span,
+        format!("IDL name `{name}` is not a valid Rust identifier"),
+    ))
+}
+
 /// Compute byte sizes for all custom struct types in the IDL.
 /// Returns an error if any type contains dynamic fields, circular references,
 /// or non-struct kinds.
@@ -169,7 +192,7 @@ fn map_idl_type(ty: &IdlType, type_sizes: &HashMap<String, usize>) -> Result<Typ
             if !type_sizes.contains_key(defined.name.as_str()) {
                 return Err(format!("undefined type '{}'", defined.name));
             }
-            let ident = Ident::new(&defined.name, Span::call_site());
+            let ident = sanitize_ident(&defined.name, Span::call_site()).map_err(|e| e.to_string())?;
             Ok(TypeInfo {
                 param_type: quote! { #ident },
                 field_type: quote! { #ident },
@@ -205,7 +228,8 @@ fn generate_data_write(
     }
 
     for field in args {
-        let fname = Ident::new(&pascal_to_snake(&field.name), Span::call_site());
+        let fname = sanitize_ident(&pascal_to_snake(&field.name), Span::call_site())
+            .map_err(|e| e.to_string())?;
         emit_field_write(
             &mut write_stmts,
             &mut offset,
@@ -276,7 +300,8 @@ fn emit_field_write(
                 .find(|t| t.name == defined.name)
                 .ok_or_else(|| format!("undefined type '{}'", defined.name))?;
             for sub_field in &td.fields {
-                let sub_name = Ident::new(&pascal_to_snake(&sub_field.name), Span::call_site());
+                let sub_name = sanitize_ident(&pascal_to_snake(&sub_field.name), Span::call_site())
+                    .map_err(|e| e.to_string())?;
                 let sub_access = quote! { #access.#sub_name };
                 emit_field_write(stmts, offset, &sub_access, &sub_field.ty, idl_types)?;
             }
@@ -313,12 +338,13 @@ fn emit_struct_defs(
         if !referenced.contains(&td.name) {
             continue;
         }
-        let name = Ident::new(&td.name, Span::call_site());
+        let name = sanitize_ident(&td.name, Span::call_site()).map_err(|e| e.to_string())?;
         let fields: Vec<TokenStream2> = td
             .fields
             .iter()
             .map(|f| {
-                let fname = Ident::new(&pascal_to_snake(&f.name), Span::call_site());
+                let fname = sanitize_ident(&pascal_to_snake(&f.name), Span::call_site())
+                    .map_err(|e| e.to_string())?;
                 let info = map_idl_type(&f.ty, type_sizes)?;
                 let fty = &info.field_type;
                 Ok(quote! { pub #fname: #fty })
@@ -420,16 +446,8 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         }
     };
 
-    for ix in &idl.instructions {
-        for arg in &ix.args {
-            if let Err(msg) = map_idl_type(&arg.ty, &type_sizes) {
-                let full_msg = format!("in instruction '{}', arg '{}': {}", ix.name, arg.name, msg);
-                return syn::Error::new(Span::call_site(), full_msg)
-                    .to_compile_error()
-                    .into();
-            }
-        }
-    }
+    // Instruction arg types are validated once, below, where `arg_params` calls
+    // `map_idl_type` with the identical "in instruction '..', arg '..'" message.
 
     let referenced = collect_referenced_types(&idl.instructions, &idl.types);
     let struct_defs = match emit_struct_defs(&idl.types, &referenced, &type_sizes) {
@@ -450,14 +468,21 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
     let mut method_impls = Vec::new();
 
     for ix in &idl.instructions {
-        let fn_name = Ident::new(&pascal_to_snake(&ix.name), Span::call_site());
+        let fn_name = match sanitize_ident(&pascal_to_snake(&ix.name), Span::call_site()) {
+            Ok(id) => id,
+            Err(e) => return e.to_compile_error().into(),
+        };
         let acct_count = ix.accounts.len();
 
-        let acct_idents: Vec<Ident> = ix
+        let acct_idents: Vec<Ident> = match ix
             .accounts
             .iter()
-            .map(|a| Ident::new(&pascal_to_snake(&a.name), Span::call_site()))
-            .collect();
+            .map(|a| sanitize_ident(&pascal_to_snake(&a.name), Span::call_site()))
+            .collect::<syn::Result<Vec<_>>>()
+        {
+            Ok(v) => v,
+            Err(e) => return e.to_compile_error().into(),
+        };
 
         let ia_entries: Vec<TokenStream2> = ix
             .accounts
@@ -479,7 +504,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
                         format!("in instruction '{}', arg '{}': {}", ix.name, a.name, msg),
                     )
                 })?;
-                let name = Ident::new(&pascal_to_snake(&a.name), Span::call_site());
+                let name = sanitize_ident(&pascal_to_snake(&a.name), Span::call_site())?;
                 let ty = &info.param_type;
                 Ok(quote! { #name: #ty })
             })
@@ -533,11 +558,15 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
             .map(|name| quote! { #name.to_account_view() })
             .collect();
 
-        let arg_names: Vec<Ident> = ix
+        let arg_names: Vec<Ident> = match ix
             .args
             .iter()
-            .map(|a| Ident::new(&pascal_to_snake(&a.name), Span::call_site()))
-            .collect();
+            .map(|a| sanitize_ident(&pascal_to_snake(&a.name), Span::call_site()))
+            .collect::<syn::Result<Vec<_>>>()
+        {
+            Ok(v) => v,
+            Err(e) => return e.to_compile_error().into(),
+        };
 
         method_impls.push(quote! {
             #[inline(always)]
@@ -578,4 +607,62 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         }
     }
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_ident_keywords_become_raw() {
+        let sp = Span::call_site();
+        assert_eq!(sanitize_ident("type", sp).unwrap().to_string(), "r#type");
+        assert_eq!(sanitize_ident("match", sp).unwrap().to_string(), "r#match");
+        assert_eq!(sanitize_ident("move", sp).unwrap().to_string(), "r#move");
+        assert_eq!(sanitize_ident("fn", sp).unwrap().to_string(), "r#fn");
+    }
+
+    #[test]
+    fn sanitize_ident_non_raw_keywords_get_suffix() {
+        let sp = Span::call_site();
+        // crate/self/super/Self cannot be raw identifiers.
+        assert_eq!(sanitize_ident("crate", sp).unwrap().to_string(), "crate_");
+        assert_eq!(sanitize_ident("self", sp).unwrap().to_string(), "self_");
+        assert_eq!(sanitize_ident("super", sp).unwrap().to_string(), "super_");
+        assert_eq!(sanitize_ident("Self", sp).unwrap().to_string(), "Self_");
+    }
+
+    #[test]
+    fn sanitize_ident_valid_passthrough() {
+        let sp = Span::call_site();
+        assert_eq!(
+            sanitize_ident("my_account", sp).unwrap().to_string(),
+            "my_account"
+        );
+    }
+
+    #[test]
+    fn sanitize_ident_unusable_errors() {
+        let sp = Span::call_site();
+        assert!(sanitize_ident("has spaces", sp).is_err());
+        assert!(sanitize_ident("1leading", sp).is_err());
+        assert!(sanitize_ident("", sp).is_err());
+    }
+
+    #[test]
+    fn map_idl_type_rejects_unsupported_arg_types() {
+        // The single kept arg-type validation still rejects dynamic/unsupported
+        // types with the same diagnostic the deleted pre-pass emitted.
+        let sizes = HashMap::new();
+        let opt = IdlType::Option {
+            option: Box::new(IdlType::Primitive("u8".to_owned())),
+        };
+        assert!(map_idl_type(&opt, &sizes).is_err());
+        let v = IdlType::Vec {
+            vec: Box::new(IdlType::Primitive("u8".to_owned())),
+        };
+        assert!(map_idl_type(&v, &sizes).is_err());
+        // Supported fixed primitive still maps cleanly.
+        assert!(map_idl_type(&IdlType::Primitive("u64".to_owned()), &sizes).is_ok());
+    }
 }

@@ -163,6 +163,9 @@ fn emit_decode_and_tail(
 
         let mut arg_classes: Vec<ArgClass> = Vec::with_capacity(remaining.len());
         for pt in remaining {
+            // Reject an invalid explicit length-prefix (e.g. `String<16, f32>`)
+            // before it silently defaults to a 1-byte prefix in the schema.
+            crate::helpers::validate_dynamic_prefix(&pt.ty)?;
             if let Some(pd) = classify_pod_dynamic(&pt.ty) {
                 arg_classes.push(ArgClass::PodDyn(pd));
             } else if let Some(pd) = classify_option_pod_dynamic(&pt.ty) {
@@ -303,6 +306,13 @@ fn emit_decode_and_tail(
                 let ty = &remaining[i].ty;
                 match cls {
                     ArgClass::Fixed => {
+                        // Match the fixed-only path: validate each fixed field's
+                        // ZC bytes before reading, so a malformed inline value
+                        // (bad bool/enum/etc.) is rejected rather than decoded.
+                        out.push(syn::parse_quote!(
+                            <#ty as quasar_lang::instruction_arg::InstructionArg>::validate_zc(&__ref.#name)
+                                .map_err(|_| ProgramError::InvalidInstructionData)?;
+                        ));
                         out.push(syn::parse_quote!(
                             let #name = <#ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(&__ref.#name);
                         ));

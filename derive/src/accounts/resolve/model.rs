@@ -76,14 +76,22 @@ pub(crate) enum UserCheck {
         targets: Vec<Ident>,
         error: Option<Expr>,
     },
-    Address {
-        expr: Expr,
-        error: Option<Expr>,
-    },
     Constraints {
         exprs: Vec<Expr>,
         error: Option<Expr>,
     },
+}
+
+/// An `address = expr` constraint with its optional custom `@ error`.
+///
+/// The `@ error` form used to be rerouted into `user_checks`, which dropped the
+/// field from the generated `Bumps` struct, the stored-bump fast path, the
+/// `{field}_signer` helper, and the IDL PDA resolver. Keeping the error on the
+/// address constraint itself preserves all of those while still surfacing the
+/// custom error from the verify call.
+pub(crate) struct AddressConstraint {
+    pub expr: Expr,
+    pub error: Option<Expr>,
 }
 
 pub(crate) struct FieldSemantics {
@@ -92,8 +100,8 @@ pub(crate) struct FieldSemantics {
     pub init: Option<InitDirective>,
     /// Top-level `payer = field`.
     pub payer: Option<Ident>,
-    /// `address = expr`: opaque address constraint.
-    pub address: Option<Expr>,
+    /// `address = expr [@ error]`: address constraint (plain or typed-seeds).
+    pub address: Option<AddressConstraint>,
     /// `realloc = expr`: realloc size expression.
     pub realloc: Option<Expr>,
     /// `close(dest = field)`: core structural close.
@@ -119,6 +127,37 @@ impl FieldSemantics {
     pub fn is_writable(&self) -> bool {
         self.core.is_mut || self.has_init() || self.is_migration || self.is_uninit
     }
+}
+
+/// Resolved `writable`/`signer` account-meta flags for a field.
+///
+/// This is the single source consumed by BOTH the generated client
+/// (`client_macro::describe_accounts`) and the IDL accounts-meta fragment
+/// (`emit_idl_accounts_meta`), so the two can never disagree.
+pub(crate) struct AccountMetaFlags {
+    pub writable: bool,
+    pub signer: bool,
+}
+
+pub(crate) fn account_meta_flags(sem: &FieldSemantics) -> AccountMetaFlags {
+    AccountMetaFlags {
+        writable: sem.is_writable(),
+        // A `Signer<'_>` field is always a signer; a keypair-init account
+        // (`init` without an `address`, i.e. a non-PDA created from a freshly
+        // generated keypair) must also be signed by the client.
+        signer: is_signer_type(&sem.core.effective_ty)
+            || (sem.has_init() && sem.address.is_none()),
+    }
+}
+
+/// True when the effective field type is `Signer` (last-path-segment match).
+fn is_signer_type(ty: &Type) -> bool {
+    if let Type::Path(type_path) = ty {
+        if let Some(last) = type_path.path.segments.last() {
+            return last.ident == "Signer";
+        }
+    }
+    false
 }
 
 /// Parsed `init` / `init(idempotent)` directive.

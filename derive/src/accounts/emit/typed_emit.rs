@@ -48,7 +48,13 @@ pub(crate) fn emit_post_load_behavior(
                 #bhv::update(&mut #field_ident, &__bhv_args)?;
             }
         },
-        _ => quote! {},
+        // The planner only schedules AfterInit/Check/Update in the post-load
+        // phase; SetInitParam is a pre-load init step and Exit is an epilogue
+        // step. Reaching this arm means the phase model was built wrong -- a
+        // loud ICE beats silently emitting nothing (which would drop the step).
+        phase @ (BehaviorPhase::SetInitParam | BehaviorPhase::Exit) => {
+            unreachable!("ICE: {phase:?} behavior scheduled in the post-load phase")
+        }
     }
 }
 

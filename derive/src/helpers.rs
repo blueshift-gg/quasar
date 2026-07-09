@@ -28,6 +28,12 @@ pub(crate) fn parse_max_attr(attrs: &[syn::Attribute]) -> Option<syn::Result<(us
                     let _: Token![=] = stream.parse()?;
                     let p: LitInt = stream.parse()?;
                     pfx = p.base10_parse()?;
+                    if !matches!(pfx, 1 | 2 | 4 | 8) {
+                        return Err(syn::Error::new(
+                            p.span(),
+                            "length-prefix width `pfx` must be `1`, `2`, `4`, or `8`",
+                        ));
+                    }
                 }
                 Ok((max_n, pfx))
             }));
@@ -266,7 +272,11 @@ pub(crate) fn is_unit_type(ty: &Type) -> bool {
     matches!(ty, Type::Tuple(t) if t.elems.is_empty())
 }
 
-pub(crate) fn strip_generics(ty: &Type) -> proc_macro2::TokenStream {
+/// Reduce a path type to its bare segment path, dropping generic arguments
+/// (`foo::Bar<'a, T>` -> `foo::Bar`). Returns an error for non-path types so
+/// callers can surface a clean diagnostic instead of splicing
+/// `to_compile_error()` tokens into a *type* position (which cascades).
+pub(crate) fn strip_generics(ty: &Type) -> syn::Result<proc_macro2::TokenStream> {
     match ty {
         Type::Path(type_path) => {
             let segments: Vec<_> = type_path
@@ -275,11 +285,30 @@ pub(crate) fn strip_generics(ty: &Type) -> proc_macro2::TokenStream {
                 .iter()
                 .map(|seg| &seg.ident)
                 .collect();
-            quote! { #(#segments)::* }
+            Ok(quote! { #(#segments)::* })
         }
-        _ => syn::Error::new_spanned(ty, "unsupported field type: expected a path type")
-            .to_compile_error(),
+        _ => Err(syn::Error::new_spanned(
+            ty,
+            "unsupported field type: expected a path type",
+        )),
     }
+}
+
+/// Last path-segment identifier of a type, ignoring the module path and
+/// generic arguments (`instructions::Deposit<'a>` -> `"Deposit"`). Falls back
+/// to the whitespace-stripped token string for non-path types.
+///
+/// Used to name the IDL/client fragment for `Ctx<T>`: it must equal the bare
+/// accounts-struct ident (`#[derive(Accounts)] struct Deposit`) so the two
+/// sides of the join agree, and must never feed a `::`-bearing string into
+/// `format_ident!` (which panics).
+pub(crate) fn last_type_segment_name(ty: &Type) -> String {
+    if let Type::Path(tp) = ty {
+        if let Some(seg) = tp.path.segments.last() {
+            return seg.ident.to_string();
+        }
+    }
+    quote!(#ty).to_string().replace(' ', "")
 }
 
 fn extract_const_expr(arg: &GenericArgument) -> Option<Expr> {
@@ -324,30 +353,71 @@ pub(crate) fn classify_lifetime_arg(ty: &Type) -> bool {
     false
 }
 
-fn parse_prefix_arg(arg: &GenericArgument) -> Option<usize> {
+/// Resolve an explicit length-prefix generic argument to its byte width.
+///
+/// Returns an error (never a silent default) for anything that is not
+/// `u8`/`u16`/`u32`/`u64` or an integer literal `1`/`2`/`4`/`8`.
+fn parse_prefix_arg(arg: &GenericArgument) -> syn::Result<usize> {
+    let invalid = || {
+        syn::Error::new_spanned(
+            arg,
+            format!(
+                "expected `u8`/`u16`/`u32`/`u64` or an integer literal `1`/`2`/`4`/`8` for the \
+                 length-prefix width, found `{}`",
+                quote!(#arg),
+            ),
+        )
+    };
     match arg {
         GenericArgument::Type(Type::Path(type_path)) => {
-            if let Some(seg) = type_path.path.segments.last() {
-                if seg.ident == "u8" {
-                    Some(1)
-                } else if seg.ident == "u16" {
-                    Some(2)
-                } else if seg.ident == "u32" {
-                    Some(4)
-                } else if seg.ident == "u64" {
-                    Some(8)
-                } else {
-                    None
-                }
-            } else {
-                None
+            match type_path.path.segments.last().map(|seg| &seg.ident) {
+                Some(id) if id == "u8" => Ok(1),
+                Some(id) if id == "u16" => Ok(2),
+                Some(id) if id == "u32" => Ok(4),
+                Some(id) if id == "u64" => Ok(8),
+                _ => Err(invalid()),
             }
         }
         GenericArgument::Const(Expr::Lit(ExprLit {
             lit: Lit::Int(n), ..
-        })) => n.base10_parse::<usize>().ok(),
-        _ => None,
+        })) => match n.base10_parse::<usize>() {
+            Ok(v @ (1 | 2 | 4 | 8)) => Ok(v),
+            _ => Err(invalid()),
+        },
+        _ => Err(invalid()),
     }
+}
+
+/// Validate an explicit length-prefix generic argument on
+/// `String`/`PodString`/`Vec`/`PodVec` (and `Option<..>` of those), rejecting a
+/// prefix that is not `u8`/`u16`/`u32`/`u64` or a literal `1`/`2`/`4`/`8`
+/// instead of silently falling back to the default width. A field with no
+/// explicit prefix keeps the type's default and is accepted.
+pub(crate) fn validate_dynamic_prefix(ty: &Type) -> syn::Result<()> {
+    let ty = extract_generic_inner_type(ty, "Option").unwrap_or(ty);
+    let Type::Path(tp) = ty else {
+        return Ok(());
+    };
+    if tp.path.segments.len() != 1 {
+        return Ok(());
+    }
+    let Some(seg) = tp.path.segments.last() else {
+        return Ok(());
+    };
+    let PathArguments::AngleBracketed(ab) = &seg.arguments else {
+        return Ok(());
+    };
+    let prefix_arg = if seg.ident == "String" || seg.ident == "PodString" {
+        ab.args.iter().nth(1)
+    } else if seg.ident == "Vec" || seg.ident == "PodVec" {
+        ab.args.iter().nth(2)
+    } else {
+        return Ok(());
+    };
+    if let Some(arg) = prefix_arg {
+        parse_prefix_arg(arg)?;
+    }
+    Ok(())
 }
 
 pub(crate) fn classify_pod_string(ty: &Type) -> Option<PodDynField> {
@@ -359,7 +429,13 @@ pub(crate) fn classify_pod_string(ty: &Type) -> Option<PodDynField> {
                 if let PathArguments::AngleBracketed(args) = &seg.arguments {
                     let mut iter = args.args.iter();
                     let max = extract_const_expr(iter.next()?)?;
-                    let prefix_bytes = iter.next().and_then(parse_prefix_arg).unwrap_or(1);
+                    // An invalid explicit prefix is rejected upstream by
+                    // `validate_dynamic_prefix`; the default applies only when
+                    // no prefix arg is present.
+                    let prefix_bytes = iter
+                        .next()
+                        .and_then(|a| parse_prefix_arg(a).ok())
+                        .unwrap_or(1);
                     return Some(PodDynField::Str { max, prefix_bytes });
                 }
             }
@@ -379,7 +455,10 @@ pub(crate) fn classify_pod_vec(ty: &Type) -> Option<PodDynField> {
                         _ => return None,
                     };
                     let max = extract_const_expr(iter.next()?)?;
-                    let prefix_bytes = iter.next().and_then(parse_prefix_arg).unwrap_or(2);
+                    let prefix_bytes = iter
+                        .next()
+                        .and_then(|a| parse_prefix_arg(a).ok())
+                        .unwrap_or(2);
                     return Some(PodDynField::Vec {
                         elem: Box::new(elem),
                         max,
@@ -406,9 +485,19 @@ pub(crate) fn classify_option_pod_dynamic(ty: &Type) -> Option<PodDynField> {
     }
 }
 
-/// Returns true if the type is `Option<T>` where T is a dynamic pod type.
-pub(crate) fn classify_option_dynamic(ty: &Type) -> bool {
-    classify_option_pod_dynamic(ty).is_some()
+/// Does this instruction arg use the compact (dynamic) wire layout?
+///
+/// True for `String<N>`/`Vec<T, N>`, `Option<..>` of those, and borrowed
+/// `&str`/`&[T]` args -- exactly the classes the `#[instruction]` handler
+/// packs into the compact schema (`instruction.rs`). This is the single
+/// predicate consumed by both the generated client
+/// (`has_compact_client_layout`) and the IDL layout (`has_dynamic`), so all
+/// three agree on which args are compact. A grouped borrowed struct
+/// (`Foo<'a>`) is a single arg decoded whole and is deliberately *not* flagged.
+pub(crate) fn instruction_arg_is_compact(ty: &Type) -> bool {
+    classify_pod_dynamic(ty).is_some()
+        || classify_option_pod_dynamic(ty).is_some()
+        || classify_borrowed_as_compact(ty, 0, 0).is_some()
 }
 
 /// Classify a borrowed reference type as a compact schema field.
@@ -494,7 +583,8 @@ fn pod_alias_type(ty: &Type, accept_pod_aliases: bool) -> Option<proc_macro2::To
                 if let PathArguments::AngleBracketed(ab) = &seg.arguments {
                     let mut it = ab.args.iter();
                     if let Some(n_arg) = it.next() {
-                        let pfx: usize = it.next().and_then(parse_prefix_arg).unwrap_or(1);
+                        let pfx: usize =
+                            it.next().and_then(|a| parse_prefix_arg(a).ok()).unwrap_or(1);
                         return Some(quote! { quasar_lang::pod::PodString<#n_arg, #pfx> });
                     }
                 }
@@ -505,7 +595,8 @@ fn pod_alias_type(ty: &Type, accept_pod_aliases: bool) -> Option<proc_macro2::To
                 if let PathArguments::AngleBracketed(ab) = &seg.arguments {
                     let mut it = ab.args.iter();
                     if let (Some(t_arg), Some(n_arg)) = (it.next(), it.next()) {
-                        let pfx: usize = it.next().and_then(parse_prefix_arg).unwrap_or(2);
+                        let pfx: usize =
+                            it.next().and_then(|a| parse_prefix_arg(a).ok()).unwrap_or(2);
                         return Some(quote! { quasar_lang::pod::PodVec<#t_arg, #n_arg, #pfx> });
                     }
                 }
@@ -684,5 +775,78 @@ pub(crate) fn type_to_idl_type_tokens(ty: &Type) -> proc_macro2::TokenStream {
     // Fallback: opaque bytes
     quote! {
         quasar_lang::idl_build::__reexport::IdlType::Primitive(quasar_lang::idl_build::s("bytes"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_dynamic_prefix_accepts_valid_and_absent() {
+        for ty in [
+            syn::parse_quote!(String<16>),
+            syn::parse_quote!(String<16, u8>),
+            syn::parse_quote!(String<16, 2>),
+            syn::parse_quote!(PodString<16, u32>),
+            syn::parse_quote!(Vec<u8, 16>),
+            syn::parse_quote!(Vec<u8, 16, u16>),
+            syn::parse_quote!(PodVec<u8, 16, 8>),
+            syn::parse_quote!(Option<String<16, u16>>),
+            // Non-dynamic / unrelated types are accepted untouched.
+            syn::parse_quote!(u64),
+            syn::parse_quote!(&str),
+        ] {
+            let ty: Type = ty;
+            assert!(validate_dynamic_prefix(&ty).is_ok(), "{}", quote!(#ty));
+        }
+    }
+
+    #[test]
+    fn compact_predicate_matches_handler_for_borrowed_args() {
+        // The client predicate (`has_compact_client_layout`) and the IDL
+        // predicate (`has_dynamic`) both consume `instruction_arg_is_compact`;
+        // the `#[instruction]` handler classifies a borrowed `&str`/`&[T]`
+        // with `#[max]` as a compact arg via `classify_borrowed_as_compact`.
+        // All three must agree these are compact.
+        for ty in [
+            syn::parse_quote!(&str),
+            syn::parse_quote!(&[u8]),
+        ] {
+            let ty: Type = ty;
+            assert!(instruction_arg_is_compact(&ty), "predicate: {}", quote!(#ty));
+            assert!(
+                classify_borrowed_as_compact(&ty, 32, 0).is_some(),
+                "handler: {}",
+                quote!(#ty)
+            );
+            // The pod-dynamic arms alone (the pre-fix predicate) would miss it.
+            assert!(classify_pod_dynamic(&ty).is_none());
+            assert!(classify_option_pod_dynamic(&ty).is_none());
+        }
+
+        // A plain fixed arg is compact under none of the three.
+        let fixed: Type = syn::parse_quote!(u64);
+        assert!(!instruction_arg_is_compact(&fixed));
+        assert!(classify_borrowed_as_compact(&fixed, 32, 0).is_none());
+
+        // A pod-dynamic arg is compact under the predicate (String<N>).
+        let s: Type = syn::parse_quote!(String<32>);
+        assert!(instruction_arg_is_compact(&s));
+    }
+
+    #[test]
+    fn validate_dynamic_prefix_rejects_bad_width() {
+        for ty in [
+            syn::parse_quote!(String<16, f32>),
+            syn::parse_quote!(String<16, u128>),
+            syn::parse_quote!(String<16, 3>),
+            syn::parse_quote!(Vec<u8, 16, f64>),
+            syn::parse_quote!(PodVec<u8, 16, 7>),
+            syn::parse_quote!(Option<String<16, bool>>),
+        ] {
+            let ty: Type = ty;
+            assert!(validate_dynamic_prefix(&ty).is_err(), "{}", quote!(#ty));
+        }
     }
 }

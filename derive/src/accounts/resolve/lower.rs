@@ -10,7 +10,7 @@ use {
             parse_field_attrs,
         },
         rules::validate_semantics,
-        FieldCore, FieldKind, FieldSemantics, InitDirective, UserCheck,
+        AddressConstraint, FieldCore, FieldKind, FieldSemantics, InitDirective,
     },
     crate::helpers::{extract_generic_inner_type, is_composite_type},
     syn::Type,
@@ -138,21 +138,16 @@ fn lower_directives(sem: &mut FieldSemantics, directives: Vec<Directive>) -> syn
                     sem.payer = Some(ident);
                 }
                 CoreDirective::Address(expr, error) => {
-                    let has_address_check = sem
-                        .user_checks
-                        .iter()
-                        .any(|check| matches!(check, UserCheck::Address { .. }));
-                    if sem.address.is_some() || has_address_check {
+                    if sem.address.is_some() {
                         return Err(syn::Error::new_spanned(
                             &expr,
                             "duplicate `address = ...` directive",
                         ));
                     }
-                    if error.is_some() {
-                        sem.user_checks.push(UserCheck::Address { expr, error });
-                    } else {
-                        sem.address = Some(expr);
-                    }
+                    // The `@ error` form stays on the address constraint (not
+                    // user_checks) so the field keeps its Bumps entry, stored-
+                    // bump fast path, signer helper, and IDL PDA resolver.
+                    sem.address = Some(AddressConstraint { expr, error });
                 }
                 CoreDirective::Realloc(expr) => {
                     if sem.realloc.is_some() {
