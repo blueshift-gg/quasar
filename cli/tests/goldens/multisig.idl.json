@@ -1,0 +1,548 @@
+{
+  "spec": "quasar-idl/1.0.0",
+  "name": "quasar_multisig",
+  "version": "0.1.0",
+  "address": "44444444444444444444444444444444444444444444",
+  "metadata": {
+    "crateName": "quasar-multisig",
+    "generatorVersion": "0.0.0",
+    "schemaVersion": "1.0.0"
+  },
+  "instructions": [
+    {
+      "name": "create",
+      "discriminator": [
+        0
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true,
+          "resolver": {
+            "kind": "input"
+          }
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "signer": false,
+          "resolver": {
+            "kind": "pda",
+            "program": {
+              "kind": "programId"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  117,
+                  108,
+                  116,
+                  105,
+                  115,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              }
+            ]
+          }
+        },
+        {
+          "name": "rent",
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "input"
+          }
+        },
+        {
+          "name": "systemProgram",
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "input"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "threshold",
+          "type": "u8"
+        }
+      ],
+      "layout": {
+        "kind": "fixed",
+        "fields": [
+          "threshold"
+        ]
+      },
+      "remainingAccounts": {
+        "kind": "append",
+        "name": "remainingAccounts",
+        "min": 0,
+        "max": null,
+        "item": {
+          "clientType": "accountMeta",
+          "signer": "input",
+          "writable": "input"
+        },
+        "policy": {
+          "position": "afterDeclaredAccounts",
+          "order": "preserveInput"
+        }
+      }
+    },
+    {
+      "name": "deposit",
+      "discriminator": [
+        1
+      ],
+      "accounts": [
+        {
+          "name": "depositor",
+          "writable": true,
+          "signer": true,
+          "resolver": {
+            "kind": "input"
+          }
+        },
+        {
+          "name": "config",
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "input"
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "signer": false,
+          "resolver": {
+            "kind": "pda",
+            "program": {
+              "kind": "programId"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "input"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ],
+      "layout": {
+        "kind": "fixed",
+        "fields": [
+          "amount"
+        ]
+      }
+    },
+    {
+      "name": "set_label",
+      "discriminator": [
+        2
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true,
+          "resolver": {
+            "kind": "input"
+          }
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "signer": false,
+          "resolver": {
+            "kind": "pda",
+            "program": {
+              "kind": "programId"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  117,
+                  108,
+                  116,
+                  105,
+                  115,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "input"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "label",
+          "type": "string",
+          "codec": {
+            "kind": "sizePrefixed",
+            "prefix": {
+              "type": "u8",
+              "endian": "le"
+            },
+            "storage": "tail",
+            "maxBytes": 32,
+            "encoding": "utf8"
+          }
+        }
+      ],
+      "layout": {
+        "kind": "compact",
+        "inlineFields": [],
+        "tailFields": [
+          "label"
+        ],
+        "wire": "inlineFieldsThenTailHeadersThenTailPayloads"
+      }
+    },
+    {
+      "name": "execute_transfer",
+      "discriminator": [
+        3
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "pda",
+            "program": {
+              "kind": "programId"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  117,
+                  108,
+                  116,
+                  105,
+                  115,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "input"
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "signer": false,
+          "resolver": {
+            "kind": "pda",
+            "program": {
+              "kind": "programId"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "recipient",
+          "writable": true,
+          "signer": false,
+          "resolver": {
+            "kind": "input"
+          }
+        },
+        {
+          "name": "systemProgram",
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "input"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ],
+      "layout": {
+        "kind": "fixed",
+        "fields": [
+          "amount"
+        ]
+      },
+      "remainingAccounts": {
+        "kind": "append",
+        "name": "remainingAccounts",
+        "min": 0,
+        "max": null,
+        "item": {
+          "clientType": "accountMeta",
+          "signer": "input",
+          "writable": "input"
+        },
+        "policy": {
+          "position": "afterDeclaredAccounts",
+          "order": "preserveInput"
+        }
+      }
+    }
+  ],
+  "accounts": [
+    {
+      "name": "MultisigConfig",
+      "discriminator": [
+        1
+      ],
+      "space": {
+        "discriminator": 1,
+        "min": 38,
+        "max": null
+      }
+    }
+  ],
+  "types": [
+    {
+      "name": "MultisigConfig",
+      "kind": "struct",
+      "fields": [
+        {
+          "name": "creator",
+          "type": "pubkey"
+        },
+        {
+          "name": "threshold",
+          "type": "u8"
+        },
+        {
+          "name": "bump",
+          "type": "u8"
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "codec": {
+            "kind": "sizePrefixed",
+            "prefix": {
+              "type": "u8",
+              "endian": "le"
+            },
+            "storage": "tail",
+            "maxBytes": 32,
+            "encoding": "utf8"
+          }
+        },
+        {
+          "name": "signers",
+          "type": {
+            "vec": "pubkey"
+          },
+          "codec": {
+            "kind": "sizePrefixed",
+            "prefix": {
+              "type": "u16",
+              "endian": "le"
+            },
+            "storage": "tail",
+            "maxItems": 10
+          }
+        }
+      ],
+      "layout": {
+        "kind": "compact",
+        "inlineFields": [
+          "creator",
+          "threshold",
+          "bump"
+        ],
+        "tailFields": [
+          "label",
+          "signers"
+        ],
+        "wire": "inlineFieldsThenTailHeadersThenTailPayloads"
+      }
+    }
+  ],
+  "errors": [
+    {
+      "code": 3001,
+      "name": "AccountAlreadyInitialized",
+      "msg": "Account discriminator is already set (double-init attempt)."
+    },
+    {
+      "code": 3000,
+      "name": "AccountNotInitialized",
+      "msg": "Account data is all zeros or has no discriminator."
+    },
+    {
+      "code": 3010,
+      "name": "AccountNotMutable",
+      "msg": "Account was not passed as writable."
+    },
+    {
+      "code": 3008,
+      "name": "AccountNotRentExempt",
+      "msg": "Account balance is below the rent-exemption minimum."
+    },
+    {
+      "code": 3011,
+      "name": "AccountNotSigner",
+      "msg": "Account was not passed as a signer."
+    },
+    {
+      "code": 3009,
+      "name": "AccountOwnedByWrongProgram",
+      "msg": "Account owner does not match the expected program."
+    },
+    {
+      "code": 3012,
+      "name": "AddressMismatch",
+      "msg": "Account address does not match the expected value."
+    },
+    {
+      "code": 3014,
+      "name": "CompactWriterFieldNotSet",
+      "msg": "A compact writer commit was attempted before setting every field."
+    },
+    {
+      "code": 3004,
+      "name": "ConstraintViolation",
+      "msg": "A `#[account(constraint = ...)]` expression evaluated to false."
+    },
+    {
+      "code": 3013,
+      "name": "DynamicFieldTooLong",
+      "msg": "A dynamic-length field exceeds its maximum byte length."
+    },
+    {
+      "code": 3005,
+      "name": "HasOneMismatch",
+      "msg": "`#[account(has_one = ...)]` field does not match."
+    },
+    {
+      "code": 3007,
+      "name": "InsufficientSpace",
+      "msg": "Account data is too small for the declared layout."
+    },
+    {
+      "code": 3006,
+      "name": "InvalidDiscriminator",
+      "msg": "Account discriminator does not match the expected value."
+    },
+    {
+      "code": 3002,
+      "name": "InvalidPda",
+      "msg": "PDA derivation does not match the expected address."
+    },
+    {
+      "code": 3019,
+      "name": "InvalidReturnData",
+      "msg": "Return data bytes do not match the expected fixed-size layout."
+    },
+    {
+      "code": 3003,
+      "name": "InvalidSeeds",
+      "msg": "Seeds provided for PDA verification are invalid."
+    },
+    {
+      "code": 3017,
+      "name": "MissingReturnData",
+      "msg": "The callee completed successfully but did not set return data."
+    },
+    {
+      "code": 3016,
+      "name": "RemainingAccountDuplicate",
+      "msg": "A duplicate remaining-account entry could not be resolved."
+    },
+    {
+      "code": 3015,
+      "name": "RemainingAccountsOverflow",
+      "msg": "More remaining accounts than can fit in the buffer."
+    },
+    {
+      "code": 3018,
+      "name": "ReturnDataFromWrongProgram",
+      "msg": "Return data was set by a different program than the one invoked."
+    }
+  ],
+  "hashes": {
+    "idl": "f2fff60902005c7b717def4429b8c9359e45ac10eed38980c995c10d5565ff2e",
+    "abi": "b9a73ab5b29c6bd7d42fdeb8c67f353dac97d4fe0d0c8a530ed6cd38413506c0"
+  }
+}

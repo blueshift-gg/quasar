@@ -41,7 +41,7 @@ fn extract_idl_json(stdout: &str) -> Result<&str, CliError> {
 
 /// Build the IDL by compiling the program crate with `--features idl-build`
 /// and running the `__quasar_emit_idl` test to capture the JSON output.
-pub(crate) fn build(crate_path: &Path) -> Result<Idl, CliError> {
+pub fn build(crate_path: &Path) -> Result<Idl, CliError> {
     // Read the crate name from Cargo.toml
     let cargo_toml_path = crate_path.join("Cargo.toml");
     let cargo_toml_content = std::fs::read_to_string(&cargo_toml_path)
