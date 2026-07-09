@@ -91,12 +91,24 @@ struct AbiInstruction {
 #[derive(serde::Serialize)]
 struct AbiAccountMeta {
     name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "clientType",
+        skip_serializing_if = "Option::is_none"
+    )]
     client_type: Option<String>,
+    optional: bool,
     writable: crate::account::AccountFlag,
     signer: crate::account::AccountFlag,
     resolver: crate::account::IdlResolver,
 }
+
+/// Serde fields of [`crate::account::IdlAccountNode`] that are deliberately
+/// excluded from the ABI hash (they carry no wire/ABI meaning). The
+/// completeness test asserts every serde field is either mirrored in
+/// [`AbiAccountMeta`] or listed here, so a newly added field cannot silently
+/// skip the hash.
+#[cfg(test)]
+const ABI_WAIVED: &[&str] = &["docs"];
 
 #[derive(serde::Serialize)]
 struct AbiAccount {
@@ -175,6 +187,7 @@ fn extract_abi_subset(idl: &Idl) -> AbiSubset {
                     .map(|a| AbiAccountMeta {
                         name: a.name.clone(),
                         client_type: a.client_type.clone(),
+                        optional: a.optional,
                         writable: a.writable.clone(),
                         signer: a.signer.clone(),
                         resolver: a.resolver.clone(),
@@ -341,6 +354,72 @@ mod tests {
         ));
 
         assert_ne!(base_hash, remaining_hash);
+    }
+
+    #[test]
+    fn abi_hash_changes_when_account_optional_changes() {
+        let mut idl = minimal_idl_with_resolver(IdlResolver::Input {});
+        let base_hash = compute_abi_hash(&idl);
+
+        idl.instructions[0].accounts[0].optional = true;
+        let optional_hash = compute_abi_hash(&idl);
+
+        assert_ne!(
+            base_hash, optional_hash,
+            "flipping IdlAccountNode.optional must change the ABI hash"
+        );
+    }
+
+    /// Guard: every serde-serialized field of `IdlAccountNode` must be mirrored
+    /// in the ABI subset (`AbiAccountMeta`) or explicitly waived in
+    /// `ABI_WAIVED`. Without this, a newly added account-meta field would
+    /// silently fall out of the ABI hash and break compatibility detection.
+    #[test]
+    fn abi_account_meta_covers_all_idl_account_node_fields() {
+        // Fully populate every optional/skippable field so none are omitted
+        // from the serialized key set.
+        let node = IdlAccountNode {
+            name: "authority".to_owned(),
+            client_type: Some("publicKey".to_owned()),
+            optional: true,
+            writable: AccountFlag::Fixed(true),
+            signer: AccountFlag::Fixed(true),
+            resolver: IdlResolver::Input {},
+            docs: vec!["doc".to_owned()],
+        };
+        let node_value = serde_json::to_value(&node).expect("node serializes");
+        let node_keys = node_value
+            .as_object()
+            .expect("node is a JSON object")
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let meta = AbiAccountMeta {
+            name: "authority".to_owned(),
+            client_type: Some("publicKey".to_owned()),
+            optional: true,
+            writable: AccountFlag::Fixed(true),
+            signer: AccountFlag::Fixed(true),
+            resolver: IdlResolver::Input {},
+        };
+        let meta_value = serde_json::to_value(&meta).expect("meta serializes");
+        let meta_keys = meta_value
+            .as_object()
+            .expect("meta is a JSON object")
+            .keys()
+            .cloned()
+            .collect::<std::collections::HashSet<_>>();
+
+        for key in node_keys {
+            let covered = meta_keys.contains(&key) || ABI_WAIVED.contains(&key.as_str());
+            assert!(
+                covered,
+                "IdlAccountNode field `{key}` is neither in the ABI subset \
+                 (AbiAccountMeta) nor in ABI_WAIVED; the ABI hash would silently \
+                 ignore it. Add it to AbiAccountMeta or ABI_WAIVED.",
+            );
+        }
     }
 
     #[test]
