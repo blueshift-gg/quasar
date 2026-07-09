@@ -264,12 +264,25 @@ fn emit_behavior_args_builder(
         #(#setters)*
         // Bound check: the builder must implement the stable BehaviorArgsBuilder
         // contract. A plugin whose builder is missing a phase fails here with a
-        // clear diagnostic instead of a "no method" error. Scoped to the
-        // enclosing const-guard block, so multiple behaviors never collide.
-        fn __assert_builder<__B: quasar_lang::account_behavior::BehaviorArgsBuilder>(_: &__B) {}
-        __assert_builder(&__bhv_builder);
+        // clear diagnostic instead of a "no method" error. The assertion helper
+        // is defined once per derive (see `emit_assert_builder_fn`).
+        Self::__assert_builder(&__bhv_builder);
         let __bhv_args =
             quasar_lang::account_behavior::BehaviorArgsBuilder::#build_method(__bhv_builder)?;
+    }
+}
+
+/// Emit the single `__assert_builder` helper on the accounts struct's inherent
+/// impl, used by every behavior-args block to prove the builder implements the
+/// stable `BehaviorArgsBuilder` contract. Empty when the struct has no
+/// behavior groups.
+pub(crate) fn emit_assert_builder_fn(has_behaviors: bool) -> proc_macro2::TokenStream {
+    if !has_behaviors {
+        return quote! {};
+    }
+    quote! {
+        #[inline(always)]
+        fn __assert_builder<__B: quasar_lang::account_behavior::BehaviorArgsBuilder>(_: &__B) {}
     }
 }
 

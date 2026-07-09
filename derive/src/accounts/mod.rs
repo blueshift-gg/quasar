@@ -178,6 +178,9 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
         client_macro,
         ix_arg_extraction: ix_arg_extraction_call,
         extract_ix_args_fn: ix_arg_extraction_fn,
+        assert_builder_fn: emit::typed_emit::emit_assert_builder_fn(
+            typed_plan.fields.iter().any(|fp| !fp.behaviors.is_empty()),
+        ),
     });
 
     quote::quote! {
