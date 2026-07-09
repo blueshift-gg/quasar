@@ -2,7 +2,7 @@
 //! dispatch setup for generated account structs.
 
 use {
-    super::{emit, resolve},
+    super::{super::resolve, EmitCx},
     crate::helpers::strip_generics,
     quote::{format_ident, quote},
 };
@@ -85,7 +85,7 @@ impl HeaderPlan {
 
 pub(crate) fn build_accounts_plan(
     typed_plan: &resolve::specs::AccountsPlanTyped,
-    cx: &emit::EmitCx,
+    cx: &EmitCx,
 ) -> AccountsPlan {
     let fields = build_parse_fields(&typed_plan.fields);
     AccountsPlan {
@@ -256,9 +256,9 @@ fn emit_count_expr(fields: &[ParseFieldPlan]) -> proc_macro2::TokenStream {
 fn emit_full_parse_body(
     typed_plan: &resolve::specs::AccountsPlanTyped,
     fields: &[ParseFieldPlan],
-    cx: &emit::EmitCx,
+    cx: &EmitCx,
 ) -> proc_macro2::TokenStream {
-    let inner_body = emit::parse::emit_parse_body(typed_plan, cx);
+    let inner_body = super::parse::emit_parse_body(typed_plan, cx);
     emit_parse_body_from_inner(fields, inner_body)
 }
 
@@ -332,7 +332,7 @@ fn emit_parse_body_from_inner(
 fn emit_direct_parse_body(
     typed_plan: &resolve::specs::AccountsPlanTyped,
     fields: &[ParseFieldPlan],
-    cx: &emit::EmitCx,
+    cx: &EmitCx,
 ) -> proc_macro2::TokenStream {
     let count_expr = emit_count_expr(fields);
     let fallback_body = emit_parse_body_without_behavior_assertions(typed_plan, fields, cx);
@@ -359,8 +359,8 @@ fn emit_direct_parse_body(
 fn emit_parse_body_without_behavior_assertions(
     typed_plan: &resolve::specs::AccountsPlanTyped,
     fields: &[ParseFieldPlan],
-    cx: &emit::EmitCx,
+    cx: &EmitCx,
 ) -> proc_macro2::TokenStream {
-    let inner_body = emit::parse::emit_parse_body_without_behavior_assertions(typed_plan, cx);
+    let inner_body = super::parse::emit_parse_body_without_behavior_assertions(typed_plan, cx);
     emit_parse_body_from_inner(fields, inner_body)
 }

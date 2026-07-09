@@ -18,14 +18,13 @@
 //! contract.
 
 pub(crate) mod emit;
-mod plan;
 pub(crate) mod resolve;
 mod syntax;
 
 pub(crate) use syntax::{parse_struct_instruction_args, InstructionArg};
 use {
     crate::helpers::strip_generics,
-    plan::build_accounts_plan,
+    emit::entry::build_accounts_plan,
     proc_macro::TokenStream,
     quote::{format_ident, quote},
     syn::{parse_quote, Data, DeriveInput, Fields, GenericParam, Type},
@@ -128,7 +127,7 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
     };
 
     let accounts_plan = build_accounts_plan(&typed_plan, &emit_cx);
-    let plan::AccountsPlan {
+    let emit::entry::AccountsPlan {
         parse_steps,
         count_expr,
         parse_body,

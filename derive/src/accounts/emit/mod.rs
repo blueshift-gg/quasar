@@ -1,3 +1,4 @@
+pub(crate) mod entry;
 mod output;
 pub(super) mod parse;
 mod typed_emit;
