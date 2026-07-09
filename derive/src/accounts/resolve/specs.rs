@@ -333,8 +333,26 @@ impl FieldPlan {
     }
 }
 
+/// One field's contribution to the instruction-wide `NEEDS_EVENT_CPI`
+/// OR-chain.
+#[derive(Clone)]
+pub(crate) enum EventCpiTerm {
+    /// A single field that never enables event CPI: contributes `false`.
+    Never,
+    /// The event-authority field: contributes `true`.
+    EventAuthority,
+    /// A composite: delegates to its inner `AccountCount::NEEDS_EVENT_CPI`.
+    /// Carries the field's effective type (the inner type is derived at emit).
+    Composite(Type),
+}
+
 /// Instruction-wide execution plan.
 pub(crate) struct AccountsPlanTyped {
     pub fields: Vec<FieldPlan>,
     pub rent: RentPlan,
+    /// Whether the instruction declares struct-level `#[instruction(..)]` args
+    /// (the ix-arg-extraction need).
+    pub has_instruction_args: bool,
+    /// Per-field `NEEDS_EVENT_CPI` contributions, in field order.
+    pub event_cpi: Vec<EventCpiTerm>,
 }

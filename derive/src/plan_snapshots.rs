@@ -36,7 +36,7 @@ fn dump_ir(input: proc_macro2::TokenStream) -> String {
         _ => Default::default(),
     };
     let sems = lower_semantics(&fields, &ix_args).expect("lower_semantics succeeds");
-    let plan = build_plan(&sems, &ix_args).expect("build_plan succeeds");
+    let plan = build_plan(&sems, &ix_args, !ix_args.is_empty()).expect("build_plan succeeds");
     format!("{}\n{}", dump_semantics(&sems), dump_plan(&plan))
 }
 

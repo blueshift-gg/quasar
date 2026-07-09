@@ -17,9 +17,9 @@ use {
             FieldSemantics, InitDirective, SeedRef, UserCheck,
         },
         specs::{
-            AccountsPlanTyped, AddressSpec, BehaviorCall, EpilogueStep, FieldPlan, IdlResolverPlan,
-            IdlSeedPlan, InitPlan, LoadStep, LoweredArg, LoweredValue, PostLoadStep, PreLoadStep,
-            ReallocSpec, RentPlan,
+            AccountsPlanTyped, AddressSpec, BehaviorCall, EpilogueStep, EventCpiTerm, FieldPlan,
+            IdlResolverPlan, IdlSeedPlan, InitPlan, LoadStep, LoweredArg, LoweredValue,
+            PostLoadStep, PreLoadStep, ReallocSpec, RentPlan,
         },
     },
     quote::ToTokens,
@@ -221,11 +221,26 @@ pub(crate) fn dump_plan(plan: &AccountsPlanTyped) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "PLAN ({} fields)", plan.fields.len());
     let _ = writeln!(out, "rent: {}", rent_str(&plan.rent));
+    let _ = writeln!(
+        out,
+        "has_instruction_args: {}",
+        plan.has_instruction_args
+    );
+    let event_cpi: Vec<String> = plan.event_cpi.iter().map(event_cpi_term).collect();
+    let _ = writeln!(out, "event_cpi: [{}]", event_cpi.join(", "));
     for (i, field) in plan.fields.iter().enumerate() {
         let _ = writeln!(out, "[{i}]");
         dump_field_plan(&mut out, field);
     }
     out
+}
+
+fn event_cpi_term(term: &EventCpiTerm) -> String {
+    match term {
+        EventCpiTerm::Never => "Never".to_string(),
+        EventCpiTerm::EventAuthority => "EventAuthority".to_string(),
+        EventCpiTerm::Composite(ty) => format!("Composite(`{}`)", toks(ty)),
+    }
 }
 
 fn rent_str(rent: &RentPlan) -> String {

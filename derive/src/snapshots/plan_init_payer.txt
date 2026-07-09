@@ -35,6 +35,8 @@ SEMANTICS (3 fields)
 
 PLAN (3 fields)
 rent: FetchOnce
+has_instruction_args: false
+event_cpi: [Never, Never, Never]
 [0]
     id: ident=payer effective_ty=`Signer` wrapper=Signer kind=Single optional=false dup=false writable=true signer=true
     load: Fixed(validates=[])

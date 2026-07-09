@@ -14,6 +14,8 @@ SEMANTICS (1 fields)
 
 PLAN (1 fields)
 rent: NotNeeded
+has_instruction_args: true
+event_cpi: [Never]
 [0]
     id: ident=account effective_ty=`Account < SimpleAccount >` wrapper=Account kind=Single optional=false dup=false writable=true signer=false
     load: Fixed(validates=[])

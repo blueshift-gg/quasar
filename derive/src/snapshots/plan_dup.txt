@@ -24,6 +24,8 @@ SEMANTICS (2 fields)
 
 PLAN (2 fields)
 rent: NotNeeded
+has_instruction_args: false
+event_cpi: [Never, Never]
 [0]
     id: ident=source effective_ty=`Signer` wrapper=Signer kind=Single optional=false dup=false writable=false signer=true
     load: Fixed(validates=[])

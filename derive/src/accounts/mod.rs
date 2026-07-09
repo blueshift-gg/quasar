@@ -117,6 +117,7 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
     let typed_plan = match resolve::planner::build_plan(
         &semantics,
         instruction_args.as_deref().unwrap_or(&[]),
+        instruction_args.is_some(),
     ) {
         Ok(plan) => plan,
         Err(e) => return e.to_compile_error(),
@@ -150,7 +151,7 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
         ty_generics: &ty_generics_ts,
         where_clause: &where_clause_ts,
         ix_arg_extraction: &ix_arg_extraction,
-        has_instruction_args: instruction_args.is_some(),
+        has_instruction_args: typed_plan.has_instruction_args,
     });
     let epilogue_method = emit::parse::emit_epilogue(&typed_plan);
     let has_epilogue_expr = emit::parse::emit_has_epilogue_typed(&typed_plan);
@@ -309,18 +310,17 @@ fn emit_idl_pda_seed(seed: &resolve::specs::IdlSeedPlan) -> proc_macro2::TokenSt
 }
 
 fn emit_needs_event_cpi_expr(plan: &resolve::specs::AccountsPlanTyped) -> proc_macro2::TokenStream {
+    use resolve::specs::EventCpiTerm;
     let terms: Vec<proc_macro2::TokenStream> = plan
-        .fields
+        .event_cpi
         .iter()
-        .map(|fp| match fp.kind {
-            resolve::FieldKind::Composite => {
-                let inner_ty = composite_event_ty(&fp.effective_ty);
+        .map(|term| match term {
+            EventCpiTerm::Composite(ty) => {
+                let inner_ty = composite_event_ty(ty);
                 quote! { <#inner_ty as AccountCount>::NEEDS_EVENT_CPI }
             }
-            resolve::FieldKind::Single if is_event_cpi_field(fp) => {
-                quote! { true }
-            }
-            resolve::FieldKind::Single => quote! { false },
+            EventCpiTerm::EventAuthority => quote! { true },
+            EventCpiTerm::Never => quote! { false },
         })
         .collect();
 
@@ -424,7 +424,3 @@ fn composite_event_ty(ty: &Type) -> proc_macro2::TokenStream {
     strip_generics(ty).unwrap_or_else(|_| quote! { #ty })
 }
 
-fn is_event_cpi_field(fp: &resolve::specs::FieldPlan) -> bool {
-    fp.ident == resolve::reserved::EVENT_AUTHORITY_FIELD
-        || fp.wrapper == resolve::wrapper::WrapperKind::EventAuthority
-}

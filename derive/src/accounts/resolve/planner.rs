@@ -21,6 +21,7 @@ use {
 pub(crate) fn build_plan(
     semantics: &[FieldSemantics],
     instruction_args: &[InstructionArg],
+    has_instruction_args: bool,
 ) -> syn::Result<AccountsPlanTyped> {
     let optional_fields: Vec<String> = semantics
         .iter()
@@ -44,8 +45,30 @@ pub(crate) fn build_plan(
         .collect::<syn::Result<_>>()?;
 
     let rent = compute_rent_plan(semantics);
+    let event_cpi = fields.iter().map(plan_event_cpi_term).collect();
 
-    Ok(AccountsPlanTyped { fields, rent })
+    Ok(AccountsPlanTyped {
+        fields,
+        rent,
+        has_instruction_args,
+        event_cpi,
+    })
+}
+
+/// One field's contribution to the instruction-wide `NEEDS_EVENT_CPI`
+/// OR-chain: composites delegate to their inner count; the event-authority
+/// field forces `true`; every other single field contributes `false`.
+fn plan_event_cpi_term(fp: &FieldPlan) -> EventCpiTerm {
+    match fp.kind {
+        FieldKind::Composite => EventCpiTerm::Composite(fp.effective_ty.clone()),
+        FieldKind::Single
+            if fp.ident == super::reserved::EVENT_AUTHORITY_FIELD
+                || fp.wrapper == WrapperKind::EventAuthority =>
+        {
+            EventCpiTerm::EventAuthority
+        }
+        FieldKind::Single => EventCpiTerm::Never,
+    }
 }
 
 fn plan_field(
@@ -506,7 +529,7 @@ mod tests {
             _ => Default::default(),
         };
         let sems = crate::accounts::resolve::lower_semantics(&fields, &[]).expect("fixture lowers");
-        build_plan(&sems, &[])
+        build_plan(&sems, &[], false)
             .err()
             .expect("expected a plan error")
             .to_string()

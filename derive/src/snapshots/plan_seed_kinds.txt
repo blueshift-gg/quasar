@@ -35,6 +35,8 @@ SEMANTICS (3 fields)
 
 PLAN (3 fields)
 rent: NotNeeded
+has_instruction_args: true
+event_cpi: [Never, Never, Never]
 [0]
     id: ident=authority effective_ty=`Signer` wrapper=Signer kind=Single optional=false dup=false writable=false signer=true
     load: Fixed(validates=[])
