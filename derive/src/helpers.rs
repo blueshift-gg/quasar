@@ -583,8 +583,10 @@ fn pod_alias_type(ty: &Type, accept_pod_aliases: bool) -> Option<proc_macro2::To
                 if let PathArguments::AngleBracketed(ab) = &seg.arguments {
                     let mut it = ab.args.iter();
                     if let Some(n_arg) = it.next() {
-                        let pfx: usize =
-                            it.next().and_then(|a| parse_prefix_arg(a).ok()).unwrap_or(1);
+                        let pfx: usize = it
+                            .next()
+                            .and_then(|a| parse_prefix_arg(a).ok())
+                            .unwrap_or(1);
                         return Some(quote! { quasar_lang::pod::PodString<#n_arg, #pfx> });
                     }
                 }
@@ -595,8 +597,10 @@ fn pod_alias_type(ty: &Type, accept_pod_aliases: bool) -> Option<proc_macro2::To
                 if let PathArguments::AngleBracketed(ab) = &seg.arguments {
                     let mut it = ab.args.iter();
                     if let (Some(t_arg), Some(n_arg)) = (it.next(), it.next()) {
-                        let pfx: usize =
-                            it.next().and_then(|a| parse_prefix_arg(a).ok()).unwrap_or(2);
+                        let pfx: usize = it
+                            .next()
+                            .and_then(|a| parse_prefix_arg(a).ok())
+                            .unwrap_or(2);
                         return Some(quote! { quasar_lang::pod::PodVec<#t_arg, #n_arg, #pfx> });
                     }
                 }
@@ -809,12 +813,13 @@ mod tests {
         // the `#[instruction]` handler classifies a borrowed `&str`/`&[T]`
         // with `#[max]` as a compact arg via `classify_borrowed_as_compact`.
         // All three must agree these are compact.
-        for ty in [
-            syn::parse_quote!(&str),
-            syn::parse_quote!(&[u8]),
-        ] {
+        for ty in [syn::parse_quote!(&str), syn::parse_quote!(&[u8])] {
             let ty: Type = ty;
-            assert!(instruction_arg_is_compact(&ty), "predicate: {}", quote!(#ty));
+            assert!(
+                instruction_arg_is_compact(&ty),
+                "predicate: {}",
+                quote!(#ty)
+            );
             assert!(
                 classify_borrowed_as_compact(&ty, 32, 0).is_some(),
                 "handler: {}",

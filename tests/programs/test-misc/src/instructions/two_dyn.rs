@@ -8,8 +8,8 @@ use {
 /// referenced in a constraint. Exercises A1: the `#[derive(Accounts)]`
 /// extraction must decode the same compact wire layout the handler and the
 /// generated client use. With two dynamic args the old interleaved walker read
-/// `b`'s length prefix from `a`'s payload, so the constraint saw garbage (or the
-/// instruction was rejected outright) while the handler decoded correctly.
+/// `b`'s length prefix from `a`'s payload, so the constraint saw garbage (or
+/// the instruction was rejected outright) while the handler decoded correctly.
 #[derive(Accounts)]
 #[instruction(tag: u64, a: String<8>, b: String<8>)]
 pub struct TwoDyn {

@@ -192,7 +192,8 @@ fn map_idl_type(ty: &IdlType, type_sizes: &HashMap<String, usize>) -> Result<Typ
             if !type_sizes.contains_key(defined.name.as_str()) {
                 return Err(format!("undefined type '{}'", defined.name));
             }
-            let ident = sanitize_ident(&defined.name, Span::call_site()).map_err(|e| e.to_string())?;
+            let ident =
+                sanitize_ident(&defined.name, Span::call_site()).map_err(|e| e.to_string())?;
             Ok(TypeInfo {
                 param_type: quote! { #ident },
                 field_type: quote! { #ident },

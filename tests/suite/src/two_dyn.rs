@@ -1,10 +1,6 @@
 use {
-    crate::helpers::mollusk_for_program,
-    mollusk_svm::Mollusk,
-    quasar_test_misc::cpi::*,
-    solana_account::Account,
-    solana_address::Address,
-    solana_instruction::Instruction,
+    crate::helpers::mollusk_for_program, mollusk_svm::Mollusk, quasar_test_misc::cpi::*,
+    solana_account::Account, solana_address::Address, solana_instruction::Instruction,
 };
 
 const TWO_DYN_ARGS_DISC: u8 = 22;

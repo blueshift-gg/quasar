@@ -52,13 +52,13 @@ pub(crate) fn parse_struct_instruction_args(
 /// desync every arg after it.
 ///
 /// When every declared arg is fixed, they are read via a zero-copy `#[repr(C)]`
-/// struct pointer cast. When any arg is dynamic (`String<N>` / `Vec<T, N>`), the
-/// whole list is decoded through the canonical zeropod **compact** layout —
+/// struct pointer cast. When any arg is dynamic (`String<N>` / `Vec<T, N>`),
+/// the whole list is decoded through the canonical zeropod **compact** layout —
 /// inline fixed fields, then all tail length-prefixes, then all tail payloads —
-/// which is exactly what the handler macro (`derive/src/instruction.rs`) and the
-/// generated client emit. Decoding an interleaved layout here would make the
-/// accounts-side constraints read different bytes than the handler once two or
-/// more dynamic args are present.
+/// which is exactly what the handler macro (`derive/src/instruction.rs`) and
+/// the generated client emit. Decoding an interleaved layout here would make
+/// the accounts-side constraints read different bytes than the handler once two
+/// or more dynamic args are present.
 pub(crate) fn generate_instruction_arg_extraction(
     ix_args: &[InstructionArg],
 ) -> proc_macro2::TokenStream {

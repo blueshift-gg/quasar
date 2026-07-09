@@ -581,4 +581,3 @@ fn is_event_cpi_field(sem: &resolve::FieldSemantics) -> bool {
         false
     }
 }
-

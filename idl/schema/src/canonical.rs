@@ -91,10 +91,7 @@ struct AbiInstruction {
 #[derive(serde::Serialize)]
 struct AbiAccountMeta {
     name: String,
-    #[serde(
-        rename = "clientType",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(rename = "clientType", skip_serializing_if = "Option::is_none")]
     client_type: Option<String>,
     optional: bool,
     writable: crate::account::AccountFlag,
@@ -415,9 +412,9 @@ mod tests {
             let covered = meta_keys.contains(&key) || ABI_WAIVED.contains(&key.as_str());
             assert!(
                 covered,
-                "IdlAccountNode field `{key}` is neither in the ABI subset \
-                 (AbiAccountMeta) nor in ABI_WAIVED; the ABI hash would silently \
-                 ignore it. Add it to AbiAccountMeta or ABI_WAIVED.",
+                "IdlAccountNode field `{key}` is neither in the ABI subset (AbiAccountMeta) nor \
+                 in ABI_WAIVED; the ABI hash would silently ignore it. Add it to AbiAccountMeta \
+                 or ABI_WAIVED.",
             );
         }
     }

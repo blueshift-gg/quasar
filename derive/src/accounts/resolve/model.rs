@@ -145,8 +145,7 @@ pub(crate) fn account_meta_flags(sem: &FieldSemantics) -> AccountMetaFlags {
         // A `Signer<'_>` field is always a signer; a keypair-init account
         // (`init` without an `address`, i.e. a non-PDA created from a freshly
         // generated keypair) must also be signed by the client.
-        signer: is_signer_type(&sem.core.effective_ty)
-            || (sem.has_init() && sem.address.is_none()),
+        signer: is_signer_type(&sem.core.effective_ty) || (sem.has_init() && sem.address.is_none()),
     }
 }
 
