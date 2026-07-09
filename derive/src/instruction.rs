@@ -303,6 +303,13 @@ fn emit_decode_and_tail(
                 let ty = &remaining[i].ty;
                 match cls {
                     ArgClass::Fixed => {
+                        // Match the fixed-only path: validate each fixed field's
+                        // ZC bytes before reading, so a malformed inline value
+                        // (bad bool/enum/etc.) is rejected rather than decoded.
+                        out.push(syn::parse_quote!(
+                            <#ty as quasar_lang::instruction_arg::InstructionArg>::validate_zc(&__ref.#name)
+                                .map_err(|_| ProgramError::InvalidInstructionData)?;
+                        ));
                         out.push(syn::parse_quote!(
                             let #name = <#ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(&__ref.#name);
                         ));
