@@ -23,9 +23,12 @@ impl quasar_lang::account_load::AccountLoad for ExternalConfig {
     }
 }
 impl Owners for ExternalConfig {
-    fn owners() -> &'static [Address] {
-        static OWNERS: [Address; 1] = [ID];
-        &OWNERS
+    fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
+        if quasar_lang::keys_eq(view.owner(), &ID) {
+            Ok(())
+        } else {
+            Err(ProgramError::IllegalOwner)
+        }
     }
 }
 impl ZeroCopyDeref for ExternalConfig {

@@ -243,34 +243,18 @@ impl<T: Owner> CheckOwner for T {
     }
 }
 
-/// Declares the set of valid on-chain owners for interface account types.
+/// Declares the valid on-chain owners for interface account types.
 ///
-/// Unlike [`Owner`] (single compile-time-known address), `Owners` returns
-/// a static slice of valid owner addresses for runtime multi-owner checking.
+/// Unlike [`Owner`] (single compile-time-known address), `Owners` performs a
+/// runtime check against multiple valid owner addresses (e.g. SPL Token vs
+/// Token-2022). Implementors compare against their small fixed owner set
+/// directly, avoiding the ~20-40 CU cost of slice iteration.
 ///
 /// Implemented by: Manual `impl` for SPL token/mint types in `quasar-spl`.
 /// Used by: `InterfaceAccount<T>` to validate owner during parsing.
 pub trait Owners {
-    /// Static slice of valid owner program addresses.
-    fn owners() -> &'static [Address];
-
     /// Check if an account is owned by one of the accepted owners.
-    ///
-    /// Implementors with a small fixed owner set can override this to avoid
-    /// slice iteration in hot account-parse paths.
-    #[inline(always)]
-    fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
-        let owner = view.owner();
-        let owners = Self::owners();
-        let mut i = 0;
-        while i < owners.len() {
-            if crate::keys_eq(owner, &owners[i]) {
-                return Ok(());
-            }
-            i += 1;
-        }
-        Err(ProgramError::IllegalOwner)
-    }
+    fn check_owner(view: &AccountView) -> Result<(), ProgramError>;
 }
 
 /// Marker trait for account types with a `#[seeds]` definition.

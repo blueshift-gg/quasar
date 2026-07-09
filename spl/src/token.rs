@@ -96,16 +96,7 @@ impl Owner for Mint {
     const OWNER: Address = SPL_TOKEN_ID;
 }
 
-/// Valid owner programs for `InterfaceAccount<Token>` and
-/// `InterfaceAccount<Mint>`.
-static SPL_TOKEN_OWNERS: [Address; 2] = [SPL_TOKEN_ID, TOKEN_2022_ID];
-
 impl quasar_lang::traits::Owners for Token {
-    #[inline(always)]
-    fn owners() -> &'static [Address] {
-        &SPL_TOKEN_OWNERS
-    }
-
     #[inline(always)]
     fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
         let owner = view.owner();
@@ -120,11 +111,6 @@ impl quasar_lang::traits::Owners for Token {
 }
 
 impl quasar_lang::traits::Owners for Mint {
-    #[inline(always)]
-    fn owners() -> &'static [Address] {
-        &SPL_TOKEN_OWNERS
-    }
-
     #[inline(always)]
     fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
         let owner = view.owner();

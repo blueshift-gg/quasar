@@ -1,7 +1,7 @@
 use {crate::prelude::*, core::marker::PhantomData};
 
-/// Account wrapper accepting any owner in `T::owners()` (e.g. SPL Token +
-/// Token-2022).
+/// Account wrapper accepting any owner accepted by `T`'s [`Owners`] impl
+/// (e.g. SPL Token + Token-2022).
 #[repr(transparent)]
 pub struct InterfaceAccount<T> {
     view: AccountView,
