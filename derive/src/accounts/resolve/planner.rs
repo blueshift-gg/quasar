@@ -148,6 +148,7 @@ fn plan_field(
 
     let flags = account_meta_flags(sem);
     let load = plan_load(sem);
+    let bump = sem.address.is_some().then_some(BumpSlot);
 
     Ok(FieldPlan {
         ident: sem.core.ident.clone(),
@@ -159,6 +160,7 @@ fn plan_field(
         writable: flags.writable,
         signer: flags.signer,
         load,
+        bump,
         pre_load,
         post_load,
         epilogue,
@@ -189,12 +191,20 @@ fn plan_init(
     payer: &FieldRef,
     optional_fields: &[String],
 ) -> InitPlan {
+    // A preceding `VerifyAddress` step stored `__addr_{f}`/`__bumps_{f}` when
+    // the field has an `address`; init signs with those seeds.
+    let verified_address = sem.address.as_ref().map(|addr| AddressSpec {
+        expr: addr.expr.clone(),
+        error: addr.error.clone(),
+    });
+
     // If there are behavior groups attached, this is a delegated init.
     if sem.groups.is_empty() {
         return InitPlan::Program(ProgramInitSpec {
             payer: payer.clone(),
             space_ty: sem.core.effective_ty.clone(),
             idempotent,
+            verified_address,
         });
     }
 
@@ -210,6 +220,7 @@ fn plan_init(
         payer: payer.clone(),
         idempotent,
         init_param_calls,
+        verified_address,
     })
 }
 

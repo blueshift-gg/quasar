@@ -38,20 +38,23 @@ rent: FetchOnce
 [0]
     id: ident=payer effective_ty=`Signer` wrapper=Signer kind=Single optional=false dup=false writable=true signer=true
     load: Fixed(validates=[])
+    bump: None
     pre_load: []
     post_load: []
     epilogue: []
 [1]
     id: ident=escrow effective_ty=`Account < Escrow >` wrapper=Account kind=Single optional=false dup=false writable=true signer=false
     load: Fixed(validates=[])
+    bump: Some
     pre_load:
       - VerifyAddress(expr=`Escrow :: seeds (payer . address ())` error=None)
-      - Init::Program(payer=payer space_ty=`Account < Escrow >` idempotent=false)
+      - Init::Program(payer=payer space_ty=`Account < Escrow >` idempotent=false verified_address=Some(expr=`Escrow :: seeds (payer . address ())` error=None))
     post_load: []
     epilogue: []
 [2]
     id: ident=system_program effective_ty=`Program < SystemProgram >` wrapper=Program kind=Single optional=false dup=false writable=false signer=false
     load: Fixed(validates=[])
+    bump: None
     pre_load: []
     post_load: []
     epilogue: []

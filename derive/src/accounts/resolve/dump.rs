@@ -250,6 +250,11 @@ fn dump_field_plan(out: &mut String, field: &FieldPlan) {
         field.signer,
     );
     let _ = writeln!(out, "    load: {}", load_step(&field.load));
+    let _ = writeln!(
+        out,
+        "    bump: {}",
+        if field.bump.is_some() { "Some" } else { "None" },
+    );
     dump_steps(out, "pre_load", &field.pre_load, pre_load_step);
     dump_steps(out, "post_load", &field.post_load, post_load_step);
     dump_steps(out, "epilogue", &field.epilogue, epilogue_step);
@@ -280,15 +285,23 @@ fn addr_spec(a: &AddressSpec) -> String {
     format!("expr=`{}` error={}", toks(&a.expr), opt_expr(&a.error))
 }
 
+fn opt_addr_spec(a: &Option<AddressSpec>) -> String {
+    match a {
+        Some(a) => format!("Some({})", addr_spec(a)),
+        None => "None".to_string(),
+    }
+}
+
 fn pre_load_step(step: &PreLoadStep) -> String {
     match step {
         PreLoadStep::VerifyAddress(a) => format!("VerifyAddress({})", addr_spec(a)),
         PreLoadStep::Init(plan) => match plan {
             InitPlan::Program(p) => format!(
-                "Init::Program(payer={} space_ty=`{}` idempotent={})",
+                "Init::Program(payer={} space_ty=`{}` idempotent={} verified_address={})",
                 p.payer.ident,
                 toks(&p.space_ty),
                 p.idempotent,
+                opt_addr_spec(&p.verified_address),
             ),
             InitPlan::Behavior(b) => {
                 let calls: Vec<String> = b
@@ -297,10 +310,11 @@ fn pre_load_step(step: &PreLoadStep) -> String {
                     .map(|c| behavior_call(c, "SetInitParam"))
                     .collect();
                 format!(
-                    "Init::Behavior(payer={} idempotent={} init_param_calls=[{}])",
+                    "Init::Behavior(payer={} idempotent={} init_param_calls=[{}] verified_address={})",
                     b.payer.ident,
                     b.idempotent,
                     calls.join(", "),
+                    opt_addr_spec(&b.verified_address),
                 )
             }
         },

@@ -80,11 +80,11 @@ pub(crate) fn emit_behavior_init(
     spec: &BehaviorInitSpec,
     field_ident: &syn::Ident,
     field_ty: &syn::Type,
-    has_address: bool,
     did_init_var: Option<&syn::Ident>,
 ) -> proc_macro2::TokenStream {
     let payer_ident = &spec.payer.ident;
     let idempotent = spec.idempotent;
+    let has_address = spec.verified_address.is_some();
 
     let set_params: Vec<proc_macro2::TokenStream> = spec
         .init_param_calls
@@ -160,10 +160,10 @@ pub(crate) fn emit_program_init(
     spec: &ProgramInitSpec,
     field_ident: &syn::Ident,
     field_ty: &syn::Type,
-    has_address: bool,
 ) -> proc_macro2::TokenStream {
     let payer_ident = &spec.payer.ident;
     let idempotent = spec.idempotent;
+    let has_address = spec.verified_address.is_some();
     let space_ty = &spec.space_ty;
     let space = quote! {
         <#space_ty as quasar_lang::traits::Space>::SPACE as u64

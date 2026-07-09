@@ -138,7 +138,7 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
         quote! {}
     };
 
-    let bumps_struct = emit::parse::emit_bump_struct_def(&semantics, &emit_cx);
+    let bumps_struct = emit::parse::emit_bump_struct_def(&typed_plan.fields, &emit_cx);
     let signer_helpers_impl = emit_signer_helpers_impl(SignerHelpersCtx {
         name,
         bumps_name: &bumps_name,

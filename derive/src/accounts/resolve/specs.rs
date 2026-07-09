@@ -112,6 +112,11 @@ pub(crate) struct ProgramInitSpec {
     pub payer: FieldRef,
     pub space_ty: Type,
     pub idempotent: bool,
+    /// When this init field also has an `address` constraint, the preceding
+    /// `VerifyAddress` step stored `__addr_{f}`/`__bumps_{f}`; init then signs
+    /// with those seeds. `Some` records that cross-step dependency (the address
+    /// itself is verified by the `VerifyAddress` step).
+    pub verified_address: Option<AddressSpec>,
 }
 
 /// Delegated init via behavior modules. Pre-load stage only: calls
@@ -124,6 +129,8 @@ pub(crate) struct BehaviorInitSpec {
     pub idempotent: bool,
     /// Behavior calls that contribute init params via `set_init_param`.
     pub init_param_calls: Vec<BehaviorCall>,
+    /// See `ProgramInitSpec::verified_address`.
+    pub verified_address: Option<AddressSpec>,
 }
 
 /// Discriminated init plan.
@@ -150,6 +157,12 @@ pub(crate) struct AddressSpec {
     /// Optional custom `@ error` mapped onto the verify call's failure.
     pub error: Option<Expr>,
 }
+
+/// A field carries a generated stored-bump slot (`__bumps_{f}: u8` and a `u8`
+/// field in the `Bumps` struct) exactly when it has an `address` constraint.
+/// Marker type: the slot's name derives from `FieldPlan::ident`/`optional`.
+#[derive(Clone)]
+pub(crate) struct BumpSlot;
 
 /// Program-level close (drain lamports). Core lifecycle: not protocol-owned.
 #[derive(Clone)]
@@ -241,6 +254,9 @@ pub(crate) struct FieldPlan {
     /// How this field is loaded (single fields only; composites parse via
     /// their own `ParseAccountsUnchecked` impl).
     pub load: LoadStep,
+    /// A stored-bump slot when the field has an `address` constraint. Drives
+    /// the `__bumps_{f}` local and the field's entry in the `Bumps` struct.
+    pub bump: Option<BumpSlot>,
     /// Steps before load (init fields only).
     pub pre_load: Vec<PreLoadStep>,
     /// Steps after load (behavior checks/updates, realloc, address verify).

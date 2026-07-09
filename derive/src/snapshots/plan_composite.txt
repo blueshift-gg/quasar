@@ -27,12 +27,14 @@ rent: NotNeeded
 [0]
     id: ident=payer effective_ty=`Signer` wrapper=Signer kind=Single optional=false dup=false writable=false signer=true
     load: Fixed(validates=[])
+    bump: None
     pre_load: []
     post_load: []
     epilogue: []
 [1]
     id: ident=pairs effective_ty=`AccountsArray < SignerPair , 2 >` wrapper=AccountsArray kind=Composite optional=false dup=false writable=false signer=false
     load: Fixed(validates=[])
+    bump: None
     pre_load: []
     post_load: []
     epilogue: []
