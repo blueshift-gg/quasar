@@ -3,7 +3,11 @@
 //! Protocol-specific validation (required args, arg types, exit ordering)
 //! is owned by behavior modules via builder errors and trait bounds.
 
-use {super::FieldSemantics, std::collections::HashSet, syn::Expr};
+use {
+    super::{BehaviorArgValue, FieldKind, FieldSemantics},
+    std::collections::HashSet,
+    syn::Ident,
+};
 
 pub(super) fn validate_semantics(semantics: &[FieldSemantics]) -> syn::Result<()> {
     let field_names: HashSet<String> = semantics
@@ -19,6 +23,45 @@ pub(super) fn validate_semantics(semantics: &[FieldSemantics]) -> syn::Result<()
 
 fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
     let span = &sem.core.field;
+
+    // --- Composite fields accept only `group` ---
+    // A composite field (an `AccountsArray<..>` or a nested `#[account(group)]`
+    // struct) delegates parsing/validation to its own `Accounts` impl. Applying
+    // a lifecycle/constraint directive to the composite itself is meaningless, so
+    // reject everything except the `group` marker.
+    if sem.core.kind == FieldKind::Composite {
+        let offending = if sem.core.declared_mut {
+            Some("mut")
+        } else if sem.has_init() {
+            Some("init")
+        } else if sem.payer.is_some() {
+            Some("payer")
+        } else if sem.address.is_some() {
+            Some("address")
+        } else if sem.realloc.is_some() {
+            Some("realloc")
+        } else if sem.close_dest.is_some() {
+            Some("close")
+        } else if sem.core.dup {
+            Some("dup")
+        } else if !sem.groups.is_empty() {
+            Some("behavior group")
+        } else if !sem.user_checks.is_empty() {
+            Some("has_one/constraints")
+        } else {
+            None
+        };
+        if let Some(directive) = offending {
+            return Err(syn::Error::new_spanned(
+                span,
+                format!(
+                    "`{directive}` is not supported on a composite account field; composite \
+                     fields (`AccountsArray<..>` or nested `#[account(group)]` structs) accept \
+                     only `group`"
+                ),
+            ));
+        }
+    }
 
     // --- Migration exclusivity rules ---
     if sem.is_migration {
@@ -82,10 +125,7 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
         }
     }
 
-    // init requires mut
-    if sem.has_init() && !sem.core.is_mut {
-        return Err(syn::Error::new_spanned(span, "`init(...)` requires `mut`"));
-    }
+    // `init` implies `mut` (init-implies-mut): no separate requirement.
 
     // init + realloc mutual exclusion
     if sem.has_init() && sem.realloc.is_some() {
@@ -115,7 +155,7 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
                 "`dup` cannot be used with `close`: mutation on aliased accounts is unsound",
             ));
         }
-        if sem.core.is_mut && !sem.groups.is_empty() {
+        if sem.core.declared_mut && !sem.groups.is_empty() {
             return Err(syn::Error::new_spanned(
                 span,
                 "`dup` with `mut` cannot have behavior groups: mutation on aliased accounts is \
@@ -155,13 +195,7 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
         ));
     }
 
-    // realloc requires mut
-    if sem.realloc.is_some() && !sem.core.is_mut {
-        return Err(syn::Error::new_spanned(
-            span,
-            "`realloc = ...` requires `mut`",
-        ));
-    }
+    // `realloc` implies `mut` (realloc-implies-mut): no separate requirement.
 
     // init(idempotent) requires a behavior group or address constraint
     if let Some(init) = &sem.init {
@@ -181,52 +215,111 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
     Ok(())
 }
 
-/// Validate behavior arg values: reject single-segment lowercase identifiers
-/// that don't match any field name (likely typos or instruction args).
+/// Validate behavior arg field references: every `FieldRef` (bare lowercase
+/// ident), at any nesting depth inside `Some(...)`, must name a real field.
+/// The recursion closes the old one-level `Some(Some(typo))` hole.
 fn validate_behavior_field_refs(
     sem: &FieldSemantics,
     field_names: &HashSet<String>,
 ) -> syn::Result<()> {
     for group in &sem.groups {
         for arg in &group.args {
-            validate_single_arg(&arg.value, &arg.key, field_names)?;
-            if let Expr::Call(call) = &arg.value {
-                if let Expr::Path(p) = &*call.func {
-                    if p.path.segments.len() == 1
-                        && p.path.segments[0].ident == "Some"
-                        && call.args.len() == 1
-                    {
-                        validate_single_arg(&call.args[0], &arg.key, field_names)?;
-                    }
-                }
-            }
+            check_arg_value(&arg.value, &arg.key, field_names)?;
         }
     }
     Ok(())
 }
 
-/// Reject a bare lowercase single-segment identifier that isn't a field name.
-fn validate_single_arg(
-    expr: &Expr,
-    key: &syn::Ident,
+/// Recursively reject `FieldRef` idents that aren't field names.
+fn check_arg_value(
+    value: &BehaviorArgValue,
+    key: &Ident,
     field_names: &HashSet<String>,
 ) -> syn::Result<()> {
-    if let Expr::Path(ep) = expr {
-        if ep.qself.is_none() && ep.path.segments.len() == 1 {
-            let name = ep.path.segments[0].ident.to_string();
-            if name == "None" || name == "true" || name == "false" {
-                return Ok(());
-            }
-            if name.starts_with(|c: char| c.is_uppercase()) {
-                return Ok(());
-            }
-            if !field_names.contains(name.as_str()) {
+    match value {
+        BehaviorArgValue::FieldRef(ident) => {
+            let name = ident.to_string();
+            if !field_names.contains(&name) {
                 return Err(syn::Error::new_spanned(
-                    expr,
+                    ident,
                     format!("`{key} = {name}`: no field `{name}` in this accounts struct"),
                 ));
             }
+            Ok(())
+        }
+        BehaviorArgValue::Some(inner) => check_arg_value(inner, key, field_names),
+        BehaviorArgValue::None | BehaviorArgValue::Expr(_) => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::super::lower_semantics,
+        quote::quote,
+        syn::{punctuated::Punctuated, token::Comma, Field, Fields, ItemStruct},
+    };
+
+    fn fields(ts: proc_macro2::TokenStream) -> Punctuated<Field, Comma> {
+        let item: ItemStruct = syn::parse2(ts).expect("struct parses");
+        match item.fields {
+            Fields::Named(named) => named.named,
+            _ => Punctuated::new(),
         }
     }
-    Ok(())
+
+    fn lower_err(ts: proc_macro2::TokenStream) -> String {
+        lower_semantics(&fields(ts), &[])
+            .err()
+            .expect("expected a validation error")
+            .to_string()
+    }
+
+    #[test]
+    fn composite_rejects_init() {
+        let err = lower_err(quote! {
+            struct S { #[account(group, init)] bundle: SomeBundle }
+        });
+        assert!(err.contains("`init` is not supported on a composite"), "{err}");
+    }
+
+    #[test]
+    fn composite_rejects_address() {
+        let err = lower_err(quote! {
+            struct S { #[account(group, address = FOO)] bundle: SomeBundle }
+        });
+        assert!(err.contains("`address` is not supported on a composite"), "{err}");
+    }
+
+    #[test]
+    fn composite_rejects_behavior_group() {
+        let err = lower_err(quote! {
+            struct S { #[account(group, min_value(min = 1u64))] bundle: SomeBundle }
+        });
+        assert!(
+            err.contains("`behavior group` is not supported on a composite"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn composite_rejects_dup() {
+        let err = lower_err(quote! {
+            struct S {
+                /// CHECK: test
+                #[account(group, dup)] bundle: SomeBundle
+            }
+        });
+        assert!(err.contains("`dup` is not supported on a composite"), "{err}");
+    }
+
+    #[test]
+    fn composite_group_marker_alone_is_accepted() {
+        let sems = lower_semantics(
+            &fields(quote! { struct S { #[account(group)] bundle: SomeBundle } }),
+            &[],
+        )
+        .expect("bare group lowers");
+        assert_eq!(sems.len(), 1);
+    }
 }

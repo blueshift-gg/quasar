@@ -1,6 +1,6 @@
 SEMANTICS (3 fields)
 [0] payer
-    core: effective_ty=`Signer` kind=Single optional=false dynamic=false is_mut=true dup=false
+    core: effective_ty=`Signer` kind=Single optional=false dynamic=false declared_mut=true dup=false
           inner_ty=None
     init: None
     payer: None
@@ -9,20 +9,20 @@ SEMANTICS (3 fields)
     close_dest: None
     groups: []
     user_checks: []
-    is_migration=false is_uninit=false
+    is_migration=false is_uninit=false writable=true
 [1] escrow
-    core: effective_ty=`Account < Escrow >` kind=Single optional=false dynamic=false is_mut=true dup=false
+    core: effective_ty=`Account < Escrow >` kind=Single optional=false dynamic=false declared_mut=false dup=false
           inner_ty=`Escrow`
     init: Some(idempotent=false)
     payer: payer
-    address: Some(expr=`Escrow :: seeds (payer . address ())` error=None)
+    address: Some(expr=`Escrow :: seeds (payer . address ())` error=None kind=Seeds(account_ty=`Escrow` seeds=[AccountAddr(payer)]))
     realloc: None
     close_dest: None
     groups: []
     user_checks: []
-    is_migration=false is_uninit=false
+    is_migration=false is_uninit=false writable=true
 [2] system_program
-    core: effective_ty=`Program < SystemProgram >` kind=Single optional=false dynamic=false is_mut=false dup=false
+    core: effective_ty=`Program < SystemProgram >` kind=Single optional=false dynamic=false declared_mut=false dup=false
           inner_ty=`SystemProgram`
     init: None
     payer: None
@@ -31,7 +31,7 @@ SEMANTICS (3 fields)
     close_dest: None
     groups: []
     user_checks: []
-    is_migration=false is_uninit=false
+    is_migration=false is_uninit=false writable=false
 
 PLAN (3 fields)
 rent: FetchOnce

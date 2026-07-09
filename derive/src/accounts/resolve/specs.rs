@@ -4,7 +4,10 @@
 //! All protocol behavior is lowered to generic `BehaviorCall` steps that
 //! emit `AccountBehavior` trait calls. No SPL domain knowledge.
 
-use syn::{Expr, Ident, Type};
+use {
+    super::model::UserCheck,
+    syn::{Expr, Ident, Type},
+};
 
 /// A resolved behavior call for one behavior group on one field.
 ///
@@ -15,6 +18,11 @@ use syn::{Expr, Ident, Type};
 ///     .build_check()?;
 /// <path::Behavior as AccountBehavior<FieldTy>>::check(&field, &__args)?;
 /// ```
+///
+/// The lifecycle phase is NOT stored here — it is carried by the step that owns
+/// the call (`init_param_calls` = SetInitParam, `PostLoadStep::Behavior` =
+/// `PostLoadPhase`, `EpilogueStep::Behavior` = Exit), so an out-of-phase call
+/// is unrepresentable rather than an ICE.
 #[derive(Clone)]
 pub(crate) struct BehaviorCall {
     /// Module path for the behavior (e.g., `token`,
@@ -22,8 +30,6 @@ pub(crate) struct BehaviorCall {
     pub path: syn::Path,
     /// Resolved arguments with lowered values.
     pub args: Vec<LoweredArg>,
-    /// Which lifecycle phase this call participates in.
-    pub phase: BehaviorPhase,
 }
 
 /// A resolved key = value pair with the value already lowered.
@@ -52,7 +58,9 @@ pub(crate) enum LoweredValue {
 }
 
 /// Behavior lifecycle phase. Each phase maps to one associated const guard,
-/// one builder build method, and one trait method call.
+/// one builder build method, and one trait method call. Used by the emitter to
+/// select the builder/method; the plan uses phase-scoped step types instead of
+/// storing this on a call.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum BehaviorPhase {
     /// `SETS_INIT_PARAMS` -> `build_init()` -> `set_init_param()`
@@ -65,6 +73,26 @@ pub(crate) enum BehaviorPhase {
     Update,
     /// `RUN_EXIT` -> `build_exit()` -> `exit()`
     Exit,
+}
+
+/// The subset of behavior phases that can run in the post-load stage. Making
+/// this a distinct type means a SetInitParam/Exit call cannot be scheduled
+/// post-load — the old `unreachable!` ICE (A10) is now unrepresentable.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum PostLoadPhase {
+    AfterInit,
+    Check,
+    Update,
+}
+
+impl PostLoadPhase {
+    pub(crate) fn as_behavior_phase(self) -> BehaviorPhase {
+        match self {
+            PostLoadPhase::AfterInit => BehaviorPhase::AfterInit,
+            PostLoadPhase::Check => BehaviorPhase::Check,
+            PostLoadPhase::Update => BehaviorPhase::Update,
+        }
+    }
 }
 
 /// A reference that is guaranteed to be a field (never an expression).
@@ -149,7 +177,12 @@ pub(crate) enum PreLoadStep {
 pub(crate) enum PostLoadStep {
     /// Behavior phase call (after_init, check, or update). Guarded by the
     /// phase's associated const at compile time.
-    Behavior(BehaviorCall),
+    Behavior {
+        phase: PostLoadPhase,
+        call: BehaviorCall,
+    },
+    /// Structural user assertion (`has_one` / `constraints`), run after load.
+    UserCheck(UserCheck),
     /// Core address verification for non-init fields.
     VerifyExistingAddress(AddressSpec),
     /// Realloc.

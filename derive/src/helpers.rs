@@ -258,12 +258,10 @@ pub(crate) fn is_composite_type(ty: &Type) -> bool {
     if extract_generic_inner_type(ty, "Option").is_some() {
         return false;
     }
-    if let Type::Path(type_path) = ty {
-        if let Some(last) = type_path.path.segments.last() {
-            if last.ident == "AccountsArray" {
-                return true;
-            }
-        }
+    if crate::accounts::resolve::wrapper::classify_wrapper(ty)
+        == crate::accounts::resolve::wrapper::WrapperKind::AccountsArray
+    {
+        return true;
     }
     classify_lifetime_arg(ty)
 }

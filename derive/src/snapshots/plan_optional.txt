@@ -1,6 +1,6 @@
 SEMANTICS (2 fields)
 [0] authority
-    core: effective_ty=`Signer` kind=Single optional=false dynamic=false is_mut=false dup=false
+    core: effective_ty=`Signer` kind=Single optional=false dynamic=false declared_mut=false dup=false
           inner_ty=None
     init: None
     payer: None
@@ -9,9 +9,9 @@ SEMANTICS (2 fields)
     close_dest: None
     groups: []
     user_checks: []
-    is_migration=false is_uninit=false
+    is_migration=false is_uninit=false writable=false
 [1] config
-    core: effective_ty=`Account < Config >` kind=Single optional=true dynamic=false is_mut=false dup=false
+    core: effective_ty=`Account < Config >` kind=Single optional=true dynamic=false declared_mut=false dup=false
           inner_ty=`Config`
     init: None
     payer: None
@@ -21,7 +21,7 @@ SEMANTICS (2 fields)
     groups: []
     user_checks:
       - HasOne targets=[authority] error=None
-    is_migration=false is_uninit=false
+    is_migration=false is_uninit=false writable=false
 
 PLAN (2 fields)
 rent: NotNeeded
@@ -31,5 +31,6 @@ rent: NotNeeded
     epilogue: []
 [1]
     pre_load: []
-    post_load: []
+    post_load:
+      - UserCheck(HasOne targets=[authority] error=None)
     epilogue: []

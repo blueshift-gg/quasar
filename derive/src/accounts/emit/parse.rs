@@ -237,11 +237,10 @@ fn needs_init_state_var(field_plan: &FieldPlan) -> bool {
     let has_behavior_check = field_plan.post_load.iter().any(|step| {
         matches!(
             step,
-            PostLoadStep::Behavior(call)
-                if matches!(
-                    call.phase,
-                    super::super::resolve::specs::BehaviorPhase::Check
-                )
+            PostLoadStep::Behavior {
+                phase: super::super::resolve::specs::PostLoadPhase::Check,
+                ..
+            }
         )
     });
 
@@ -265,14 +264,20 @@ fn emit_post_load_typed(
 
         for step in &fp.post_load {
             let (call, needs_mut) = match step {
-                PostLoadStep::Behavior(bhv) => {
+                PostLoadStep::Behavior { phase, call } => {
                     let needs = matches!(
-                        bhv.phase,
-                        super::super::resolve::specs::BehaviorPhase::AfterInit
-                            | super::super::resolve::specs::BehaviorPhase::Update
+                        phase,
+                        super::super::resolve::specs::PostLoadPhase::AfterInit
+                            | super::super::resolve::specs::PostLoadPhase::Update
                     );
                     (
-                        typed_emit::emit_post_load_behavior(bhv, ident, ty, did_init_var.as_ref()),
+                        typed_emit::emit_post_load_behavior(
+                            *phase,
+                            call,
+                            ident,
+                            ty,
+                            did_init_var.as_ref(),
+                        ),
                         needs,
                     )
                 }
@@ -291,6 +296,10 @@ fn emit_post_load_typed(
                         },
                         true,
                     )
+                }
+                PostLoadStep::UserCheck(check) => {
+                    let check_stmts = emit_user_check(sem, check);
+                    (quote! { #(#check_stmts)* }, false)
                 }
                 PostLoadStep::VerifyExistingAddress(addr_spec) => {
                     let bump_var = format_ident!("__bumps_{}", ident);
@@ -340,13 +349,6 @@ fn emit_post_load_typed(
             };
 
             stmts.push(wrap_optional(is_optional, ident, &call, needs_mut));
-        }
-
-        // User checks (structural: not behavior-group based).
-        for check in &sem.user_checks {
-            let check_stmts = emit_user_check(sem, check);
-            let combined = quote! { #(#check_stmts)* };
-            stmts.push(wrap_optional(is_optional, ident, &combined, false));
         }
     }
 
@@ -449,6 +451,7 @@ fn emit_load_by_ident(
 fn emit_one_load(sem: &FieldSemantics) -> proc_macro2::TokenStream {
     let ident = &sem.core.ident;
     let ty = &sem.core.effective_ty;
+    let writable = sem.is_writable();
     let behavior_validates_account_data = behavior_validates_account_data_expr(sem);
 
     if sem.core.dynamic {
@@ -461,11 +464,11 @@ fn emit_one_load(sem: &FieldSemantics) -> proc_macro2::TokenStream {
         let load = emit_load_expr(
             ident,
             ty,
-            sem.core.is_mut,
+            writable,
             sem.core.dup,
             behavior_validates_account_data.as_ref(),
         );
-        return if sem.core.is_mut {
+        return if writable {
             quote! {
                 let mut #ident = if quasar_lang::keys_eq(#ident.address(), __program_id) {
                     None
@@ -487,11 +490,11 @@ fn emit_one_load(sem: &FieldSemantics) -> proc_macro2::TokenStream {
     let load = emit_load_expr(
         ident,
         ty,
-        sem.core.is_mut,
+        writable,
         sem.core.dup,
         behavior_validates_account_data.as_ref(),
     );
-    if sem.core.is_mut {
+    if writable {
         quote! { let mut #ident = #load; }
     } else {
         quote! { let #ident = #load; }
@@ -501,11 +504,11 @@ fn emit_one_load(sem: &FieldSemantics) -> proc_macro2::TokenStream {
 fn emit_load_expr(
     ident: &syn::Ident,
     ty: &syn::Type,
-    is_mut: bool,
+    writable: bool,
     checked: bool,
     behavior_validates_account_data: Option<&proc_macro2::TokenStream>,
 ) -> proc_macro2::TokenStream {
-    match (is_mut, checked, behavior_validates_account_data) {
+    match (writable, checked, behavior_validates_account_data) {
         (true, true, _) => {
             quote! { <#ty as quasar_lang::account_load::AccountLoad>::load_mut_checked(#ident)? }
         }
@@ -612,9 +615,9 @@ fn emit_behavior_assertions(semantics: &[FieldSemantics]) -> proc_macro2::TokenS
         for group in &sem.groups {
             let path = &group.path;
 
-            // REQUIRES_MUT assertion: if behavior requires mut but field is
-            // not mut, emit a compile error.
-            if !sem.core.is_mut {
+            // REQUIRES_MUT assertion: if behavior requires mut but the field is
+            // not writable, emit a compile error.
+            if !sem.is_writable() {
                 let msg = format!(
                     "behavior `{}` requires `#[account(mut)]` on field `{}`",
                     group.name(),
@@ -807,15 +810,9 @@ pub(crate) fn emit_bump_struct_def(
 }
 
 fn composite_assoc_ty(ty: &syn::Type) -> proc_macro2::TokenStream {
-    if let syn::Type::Path(type_path) = ty {
-        if type_path
-            .path
-            .segments
-            .last()
-            .is_some_and(|segment| segment.ident == "AccountsArray")
-        {
-            return quote! { #ty };
-        }
+    use super::super::resolve::wrapper::{classify_wrapper, WrapperKind};
+    if classify_wrapper(ty) == WrapperKind::AccountsArray {
+        return quote! { #ty };
     }
     // Composite field types are path types; fall back to the whole type token
     // (a localized trait error, never a cascade) if that ever fails to hold.

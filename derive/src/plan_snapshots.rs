@@ -8,31 +8,34 @@
 //! resolve/plan change; regenerate with `UPDATE_EXPECT=1` and review each hunk.
 
 use {
-    crate::accounts::resolve::{
-        dump::{dump_plan, dump_semantics},
-        lower_semantics,
-        planner::build_plan,
+    crate::accounts::{
+        parse_struct_instruction_args,
+        resolve::{
+            dump::{dump_plan, dump_semantics},
+            lower_semantics,
+            planner::build_plan,
+        },
     },
     quote::quote,
-    syn::{punctuated::Punctuated, token::Comma, Data, DeriveInput, Field, Fields},
+    syn::{Data, DeriveInput, Fields},
 };
 
-/// Extract the named fields from a fixture struct token stream.
-fn named_fields(input: proc_macro2::TokenStream) -> Punctuated<Field, Comma> {
+/// Lower + plan a fixture and render both IRs into one dump. Instruction args
+/// are threaded exactly as the real derive does, so typed-seed classification
+/// matches production.
+fn dump_ir(input: proc_macro2::TokenStream) -> String {
     let derive_input: DeriveInput = syn::parse2(input).expect("fixture is a valid struct");
-    match derive_input.data {
+    let ix_args = parse_struct_instruction_args(&derive_input)
+        .expect("instruction args parse")
+        .unwrap_or_default();
+    let fields = match derive_input.data {
         Data::Struct(data) => match data.fields {
             Fields::Named(named) => named.named,
-            _ => Punctuated::new(),
+            _ => Default::default(),
         },
-        _ => Punctuated::new(),
-    }
-}
-
-/// Lower + plan a fixture and render both IRs into one dump.
-fn dump_ir(input: proc_macro2::TokenStream) -> String {
-    let fields = named_fields(input);
-    let sems = lower_semantics(&fields).expect("lower_semantics succeeds");
+        _ => Default::default(),
+    };
+    let sems = lower_semantics(&fields, &ix_args).expect("lower_semantics succeeds");
     let plan = build_plan(&sems).expect("build_plan succeeds");
     format!("{}\n{}", dump_semantics(&sems), dump_plan(&plan))
 }
@@ -65,6 +68,25 @@ fn plan_init_payer() {
 }
 
 #[test]
+fn plan_seed_kinds() {
+    // C2 evidence: the seeds expression is wrapped in parentheses (which the old
+    // signer-helper detector stripped but the IDL resolver did not — they
+    // disagreed). It is now classified once, so both agree, and every `SeedRef`
+    // variant is exercised: account address, account field, instruction arg, and
+    // an opaque const.
+    let input = quote! {
+        #[instruction(index: u64)]
+        pub struct SeedKinds {
+            pub authority: Signer,
+            pub config: Account<Config>,
+            #[account(address = (Item::seeds(authority.address(), config.namespace.into(), index, SIDE_A)))]
+            pub item: Account<Item>,
+        }
+    };
+    expect_test::expect_file!["snapshots/plan_seed_kinds.txt"].assert_eq(&dump_ir(input));
+}
+
+#[test]
 fn plan_close() {
     let input = quote! {
         pub struct CloseAccounts {
@@ -89,6 +111,23 @@ fn plan_realloc() {
         }
     };
     expect_test::expect_file!["snapshots/plan_realloc.txt"].assert_eq(&dump_ir(input));
+}
+
+#[test]
+fn plan_realloc_implies_mut() {
+    // C4 realloc-implies-mut: `realloc` without an explicit `mut` is now accepted
+    // (previously a `realloc = ... requires mut` error). `declared_mut=false` but
+    // the derived `writable=true`, and the realloc step is still planned.
+    let input = quote! {
+        pub struct ReallocNoMut {
+            #[account(mut)]
+            pub payer: Signer,
+            #[account(realloc = 200)]
+            pub data: Account<MyData>,
+            pub system_program: Program<SystemProgram>,
+        }
+    };
+    expect_test::expect_file!["snapshots/plan_realloc_implies_mut.txt"].assert_eq(&dump_ir(input));
 }
 
 #[test]

@@ -22,14 +22,14 @@ mod plan;
 pub(crate) mod resolve;
 mod syntax;
 
-pub(crate) use syntax::InstructionArg;
+pub(crate) use syntax::{parse_struct_instruction_args, InstructionArg};
 use {
     crate::helpers::strip_generics,
     plan::build_accounts_plan,
     proc_macro::TokenStream,
     quote::{format_ident, quote},
-    syn::{parse_quote, Data, DeriveInput, Expr, ExprCall, Fields, GenericParam, Member, Type},
-    syntax::{generate_instruction_arg_extraction, parse_struct_instruction_args},
+    syn::{parse_quote, Data, DeriveInput, Fields, GenericParam, Type},
+    syntax::generate_instruction_arg_extraction,
 };
 
 pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
@@ -108,7 +108,10 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
 
     // --- Pipeline: syntax -> resolve -> plan -> emit ---
 
-    let semantics = match resolve::lower_semantics(fields) {
+    let semantics = match resolve::lower_semantics(
+        fields,
+        instruction_args.as_deref().unwrap_or(&[]),
+    ) {
         Ok(semantics) => semantics,
         Err(e) => return e.to_compile_error(),
     };
@@ -240,172 +243,80 @@ fn emit_idl_resolver(
     semantics: &[resolve::FieldSemantics],
     instruction_args: &[InstructionArg],
 ) -> Option<proc_macro2::TokenStream> {
-    let Expr::Call(call) = &sem.address.as_ref()?.expr else {
+    let resolve::AddressKind::Seeds { account_ty, seeds } = &sem.address.as_ref()?.kind else {
         return None;
     };
-    emit_typed_seeds_resolver(call, semantics, instruction_args)
-}
 
-fn emit_typed_seeds_resolver(
-    call: &ExprCall,
-    semantics: &[resolve::FieldSemantics],
-    instruction_args: &[InstructionArg],
-) -> Option<proc_macro2::TokenStream> {
-    let Expr::Path(path) = call.func.as_ref() else {
-        return None;
-    };
-    let mut segments: Vec<_> = path.path.segments.iter().collect();
-    let last = segments.pop()?;
-    if last.ident != "seeds" || segments.is_empty() {
-        return None;
-    }
-
-    let account_ty_segments = segments.iter().map(|segment| &segment.ident);
-    let account_ty = quote! { #(#account_ty_segments)::* };
-    let mut seeds = Vec::with_capacity(call.args.len() + 1);
-    seeds.push(quote! {
+    let mut seed_tokens = Vec::with_capacity(seeds.len() + 1);
+    seed_tokens.push(quote! {
         quasar_lang::idl_build::__reexport::IdlPdaSeed::Const {
             value: quasar_lang::idl_build::Vec::from(
                 <#account_ty as quasar_lang::traits::HasSeeds>::SEED_PREFIX
             ),
         }
     });
-
-    for arg in &call.args {
-        let seed = emit_idl_pda_seed(arg, semantics, instruction_args)?;
-        seeds.push(seed);
+    for seed in seeds {
+        seed_tokens.push(emit_idl_pda_seed(seed, semantics, instruction_args)?);
     }
 
     Some(quote! {
         quasar_lang::idl_build::__reexport::IdlResolver::Pda {
             program: quasar_lang::idl_build::__reexport::IdlPdaProgram::ProgramId {},
-            seeds: quasar_lang::idl_build::vec![#(#seeds),*],
+            seeds: quasar_lang::idl_build::vec![#(#seed_tokens),*],
             bump: None,
         }
     })
 }
 
+/// Emit one `IdlPdaSeed` from an already-classified `SeedRef`. The reverse
+/// parsing (which idents are account fields / instruction args) happened once
+/// in lowering; this only maps the resolved seed into IDL tokens.
 fn emit_idl_pda_seed(
-    expr: &Expr,
+    seed: &resolve::SeedRef,
     semantics: &[resolve::FieldSemantics],
     instruction_args: &[InstructionArg],
 ) -> Option<proc_macro2::TokenStream> {
-    let expr = strip_seed_into(expr);
-
-    if let Some(path) = account_address_seed_path(expr, semantics) {
-        return Some(quote! {
-            quasar_lang::idl_build::__reexport::IdlPdaSeed::Account {
-                path: quasar_lang::idl_build::s(#path),
-            }
-        });
-    }
-
-    if let Some((path, account, field)) = account_field_seed_path(expr, semantics) {
-        return Some(quote! {
-            quasar_lang::idl_build::__reexport::IdlPdaSeed::AccountField {
-                path: quasar_lang::idl_build::s(#path),
-                account: quasar_lang::idl_build::s(#account),
-                field: quasar_lang::idl_build::s(#field),
-            }
-        });
-    }
-
-    if let Some(arg) = instruction_arg_seed(expr, instruction_args) {
-        let path = arg.name.to_string();
-        let idl_type = crate::helpers::type_to_idl_type_tokens(&arg.ty);
-        return Some(quote! {
-            quasar_lang::idl_build::__reexport::IdlPdaSeed::Arg {
-                path: quasar_lang::idl_build::s(#path),
-                ty: #idl_type,
-                encoding: None,
-            }
-        });
-    }
-
-    Some(quote! {
-        quasar_lang::idl_build::__reexport::IdlPdaSeed::Const {
-            value: quasar_lang::idl_build::Vec::from(
-                quasar_lang::pda::seed_bytes(&(#expr))
-            ),
-        }
-    })
-}
-
-fn strip_seed_into(expr: &Expr) -> &Expr {
-    if let Expr::MethodCall(call) = expr {
-        if call.method == "into" && call.args.is_empty() {
-            return strip_seed_into(&call.receiver);
-        }
-    }
-    expr
-}
-
-fn account_address_seed_path(expr: &Expr, semantics: &[resolve::FieldSemantics]) -> Option<String> {
-    let Expr::MethodCall(call) = expr else {
-        return None;
-    };
-    if call.method != "address" || !call.args.is_empty() {
-        return None;
-    }
-    let Expr::Path(path) = call.receiver.as_ref() else {
-        return None;
-    };
-    if path.path.segments.len() != 1 {
-        return None;
-    }
-    let ident = &path.path.segments.first()?.ident;
-    has_account_field(ident, semantics).then(|| crate::helpers::snake_to_camel(&ident.to_string()))
-}
-
-fn account_field_seed_path(
-    expr: &Expr,
-    semantics: &[resolve::FieldSemantics],
-) -> Option<(String, String, String)> {
-    let mut fields = Vec::new();
-    let mut cur = expr;
-
-    loop {
-        match cur {
-            Expr::Field(field) => {
-                let name = match &field.member {
-                    Member::Named(ident) => ident.to_string(),
-                    Member::Unnamed(_) => return None,
-                };
-                fields.push(name);
-                cur = &field.base;
-            }
-            Expr::Path(path) if path.path.segments.len() == 1 => {
-                let base = &path.path.segments.first()?.ident;
-                let sem = semantics.iter().find(|sem| sem.core.ident == *base)?;
-                if fields.is_empty() {
-                    return None;
+    match seed {
+        resolve::SeedRef::AccountAddr(base) => {
+            let path = crate::helpers::snake_to_camel(&base.to_string());
+            Some(quote! {
+                quasar_lang::idl_build::__reexport::IdlPdaSeed::Account {
+                    path: quasar_lang::idl_build::s(#path),
                 }
-                fields.reverse();
-                let path = crate::helpers::snake_to_camel(&base.to_string());
-                let account = account_type_name(sem.core.inner_ty.as_ref()?)?;
-                return Some((path, account, fields.join(".")));
-            }
-            _ => return None,
+            })
         }
+        resolve::SeedRef::AccountField { base, path: field } => {
+            let path = crate::helpers::snake_to_camel(&base.to_string());
+            let sem = semantics.iter().find(|sem| sem.core.ident == *base)?;
+            let account = account_type_name(sem.core.inner_ty.as_ref()?)?;
+            Some(quote! {
+                quasar_lang::idl_build::__reexport::IdlPdaSeed::AccountField {
+                    path: quasar_lang::idl_build::s(#path),
+                    account: quasar_lang::idl_build::s(#account),
+                    field: quasar_lang::idl_build::s(#field),
+                }
+            })
+        }
+        resolve::SeedRef::IxArg(name) => {
+            let arg = instruction_args.iter().find(|arg| arg.name == *name)?;
+            let path = arg.name.to_string();
+            let idl_type = crate::helpers::type_to_idl_type_tokens(&arg.ty);
+            Some(quote! {
+                quasar_lang::idl_build::__reexport::IdlPdaSeed::Arg {
+                    path: quasar_lang::idl_build::s(#path),
+                    ty: #idl_type,
+                    encoding: None,
+                }
+            })
+        }
+        resolve::SeedRef::Const(expr) => Some(quote! {
+            quasar_lang::idl_build::__reexport::IdlPdaSeed::Const {
+                value: quasar_lang::idl_build::Vec::from(
+                    quasar_lang::pda::seed_bytes(&(#expr))
+                ),
+            }
+        }),
     }
-}
-
-fn instruction_arg_seed<'a>(
-    expr: &Expr,
-    instruction_args: &'a [InstructionArg],
-) -> Option<&'a InstructionArg> {
-    let Expr::Path(path) = expr else {
-        return None;
-    };
-    if path.path.segments.len() != 1 {
-        return None;
-    }
-    let ident = &path.path.segments.first()?.ident;
-    instruction_args.iter().find(|arg| arg.name == *ident)
-}
-
-fn has_account_field(ident: &syn::Ident, semantics: &[resolve::FieldSemantics]) -> bool {
-    semantics.iter().any(|sem| sem.core.ident == *ident)
 }
 
 fn account_type_name(ty: &Type) -> Option<String> {
@@ -477,7 +388,7 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
             if !sem
                 .address
                 .as_ref()
-                .is_some_and(|addr| is_seed_expr(&addr.expr))
+                .is_some_and(|addr| matches!(addr.kind, resolve::AddressKind::Seeds { .. }))
             {
                 return None;
             }
@@ -530,35 +441,9 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
     }
 }
 
-fn is_seed_expr(expr: &Expr) -> bool {
-    match expr {
-        Expr::Call(call) if is_seeds_path(&call.func) => true,
-        Expr::Paren(paren) => is_seed_expr(&paren.expr),
-        Expr::Group(group) => is_seed_expr(&group.expr),
-        _ => false,
-    }
-}
-
-fn is_seeds_path(expr: &Expr) -> bool {
-    let Expr::Path(path) = expr else {
-        return false;
-    };
-    path.path
-        .segments
-        .last()
-        .is_some_and(|segment| segment.ident == "seeds")
-}
-
 fn composite_event_ty(ty: &Type) -> proc_macro2::TokenStream {
-    if let Type::Path(type_path) = ty {
-        if type_path
-            .path
-            .segments
-            .last()
-            .is_some_and(|segment| segment.ident == "AccountsArray")
-        {
-            return quote! { #ty };
-        }
+    if resolve::wrapper::classify_wrapper(ty) == resolve::wrapper::WrapperKind::AccountsArray {
+        return quote! { #ty };
     }
     // Composite field types are always path types; the fallback keeps a valid
     // type token (no cascade) if that invariant is ever broken -- the invalid
@@ -567,17 +452,6 @@ fn composite_event_ty(ty: &Type) -> proc_macro2::TokenStream {
 }
 
 fn is_event_cpi_field(sem: &resolve::FieldSemantics) -> bool {
-    if sem.core.ident == "event_authority" {
-        return true;
-    }
-
-    if let syn::Type::Path(type_path) = &sem.core.effective_ty {
-        type_path
-            .path
-            .segments
-            .last()
-            .is_some_and(|segment| segment.ident == "EventAuthority")
-    } else {
-        false
-    }
+    sem.core.ident == resolve::reserved::EVENT_AUTHORITY_FIELD
+        || sem.core.wrapper == resolve::wrapper::WrapperKind::EventAuthority
 }

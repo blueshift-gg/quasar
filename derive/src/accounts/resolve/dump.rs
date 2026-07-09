@@ -13,8 +13,8 @@
 use {
     super::{
         model::{
-            AddressConstraint, BehaviorArg, BehaviorGroup, FieldCore, FieldKind, FieldSemantics,
-            InitDirective, UserCheck,
+            AddressConstraint, AddressKind, BehaviorArg, BehaviorGroup, FieldCore, FieldKind,
+            FieldSemantics, InitDirective, SeedRef, UserCheck,
         },
         specs::{
             AccountsPlanTyped, AddressSpec, BehaviorCall, EpilogueStep, FieldPlan, InitPlan,
@@ -63,12 +63,12 @@ fn kind_str(k: FieldKind) -> &'static str {
 fn dump_field_core(out: &mut String, core: &FieldCore) {
     let _ = writeln!(
         out,
-        "    core: effective_ty=`{}` kind={} optional={} dynamic={} is_mut={} dup={}",
+        "    core: effective_ty=`{}` kind={} optional={} dynamic={} declared_mut={} dup={}",
         toks(&core.effective_ty),
         kind_str(core.kind),
         core.optional,
         core.dynamic,
-        core.is_mut,
+        core.declared_mut,
         core.dup,
     );
     let inner = core
@@ -110,24 +110,50 @@ fn dump_field_semantics(out: &mut String, sem: &FieldSemantics) {
     dump_user_checks(out, &sem.user_checks);
     let _ = writeln!(
         out,
-        "    is_migration={} is_uninit={}",
-        sem.is_migration, sem.is_uninit,
+        "    is_migration={} is_uninit={} writable={}",
+        sem.is_migration,
+        sem.is_uninit,
+        sem.is_writable(),
     );
 }
 
 fn dump_address_constraint(out: &mut String, addr: &Option<AddressConstraint>) {
     match addr {
-        Some(AddressConstraint { expr, error }) => {
+        Some(AddressConstraint { expr, error, kind }) => {
             let _ = writeln!(
                 out,
-                "    address: Some(expr=`{}` error={})",
+                "    address: Some(expr=`{}` error={} kind={})",
                 toks(expr),
                 opt_expr(error),
+                address_kind(kind),
             );
         }
         None => {
             let _ = writeln!(out, "    address: None");
         }
+    }
+}
+
+fn address_kind(kind: &AddressKind) -> String {
+    match kind {
+        AddressKind::Opaque => "Opaque".to_string(),
+        AddressKind::Seeds { account_ty, seeds } => {
+            let seeds: Vec<String> = seeds.iter().map(seed_ref).collect();
+            format!(
+                "Seeds(account_ty=`{}` seeds=[{}])",
+                toks(account_ty),
+                seeds.join(", "),
+            )
+        }
+    }
+}
+
+fn seed_ref(seed: &SeedRef) -> String {
+    match seed {
+        SeedRef::AccountAddr(i) => format!("AccountAddr({i})"),
+        SeedRef::AccountField { base, path } => format!("AccountField(base={base} path={path})"),
+        SeedRef::IxArg(i) => format!("IxArg({i})"),
+        SeedRef::Const(e) => format!("Const(`{}`)", toks(e)),
     }
 }
 
@@ -159,25 +185,27 @@ fn dump_user_checks(out: &mut String, checks: &[UserCheck]) {
     }
     let _ = writeln!(out, "    user_checks:");
     for c in checks {
-        match c {
-            UserCheck::HasOne { targets, error } => {
-                let targets: Vec<String> = targets.iter().map(|i| i.to_string()).collect();
-                let _ = writeln!(
-                    out,
-                    "      - HasOne targets=[{}] error={}",
-                    targets.join(", "),
-                    opt_expr(error),
-                );
-            }
-            UserCheck::Constraints { exprs, error } => {
-                let exprs: Vec<String> = exprs.iter().map(|e| format!("`{}`", toks(e))).collect();
-                let _ = writeln!(
-                    out,
-                    "      - Constraints exprs=[{}] error={}",
-                    exprs.join(", "),
-                    opt_expr(error),
-                );
-            }
+        let _ = writeln!(out, "      - {}", user_check_str(c));
+    }
+}
+
+fn user_check_str(c: &UserCheck) -> String {
+    match c {
+        UserCheck::HasOne { targets, error } => {
+            let targets: Vec<String> = targets.iter().map(|i| i.to_string()).collect();
+            format!(
+                "HasOne targets=[{}] error={}",
+                targets.join(", "),
+                opt_expr(error)
+            )
+        }
+        UserCheck::Constraints { exprs, error } => {
+            let exprs: Vec<String> = exprs.iter().map(|e| format!("`{}`", toks(e))).collect();
+            format!(
+                "Constraints exprs=[{}] error={}",
+                exprs.join(", "),
+                opt_expr(error)
+            )
         }
     }
 }
@@ -239,7 +267,11 @@ fn pre_load_step(step: &PreLoadStep) -> String {
                 p.idempotent,
             ),
             InitPlan::Behavior(b) => {
-                let calls: Vec<String> = b.init_param_calls.iter().map(behavior_call).collect();
+                let calls: Vec<String> = b
+                    .init_param_calls
+                    .iter()
+                    .map(|c| behavior_call(c, "SetInitParam"))
+                    .collect();
                 format!(
                     "Init::Behavior(payer={} idempotent={} init_param_calls=[{}])",
                     b.payer.ident,
@@ -253,7 +285,10 @@ fn pre_load_step(step: &PreLoadStep) -> String {
 
 fn post_load_step(step: &PostLoadStep) -> String {
     match step {
-        PostLoadStep::Behavior(c) => format!("Behavior({})", behavior_call(c)),
+        PostLoadStep::Behavior { phase, call } => {
+            format!("Behavior({})", behavior_call(call, &format!("{phase:?}")))
+        }
+        PostLoadStep::UserCheck(check) => format!("UserCheck({})", user_check_str(check)),
         PostLoadStep::VerifyExistingAddress(a) => {
             format!("VerifyExistingAddress({})", addr_spec(a))
         }
@@ -269,23 +304,23 @@ fn post_load_step(step: &PostLoadStep) -> String {
 
 fn epilogue_step(step: &EpilogueStep) -> String {
     match step {
-        EpilogueStep::Behavior(c) => format!("Behavior({})", behavior_call(c)),
+        EpilogueStep::Behavior(c) => format!("Behavior({})", behavior_call(c, "Exit")),
         EpilogueStep::ProgramClose(c) => {
             format!("ProgramClose(destination_field={})", c.destination_field)
         }
     }
 }
 
-fn behavior_call(call: &BehaviorCall) -> String {
+fn behavior_call(call: &BehaviorCall, phase: &str) -> String {
     let args: Vec<String> = call
         .args
         .iter()
         .map(|LoweredArg { key, lowered }| format!("{key}={}", lowered_value(lowered)))
         .collect();
     format!(
-        "path=`{}` phase={:?} args=[{}]",
+        "path=`{}` phase={} args=[{}]",
         toks(&call.path),
-        call.phase,
+        phase,
         args.join(", "),
     )
 }
