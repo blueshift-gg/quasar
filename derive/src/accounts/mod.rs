@@ -15,7 +15,8 @@
 //! `path::Args::builder()` + `<path::Behavior as AccountBehavior<T>>`.
 //!
 //! See `quasar_lang::account_behavior::AccountBehavior` for the plugin
-//! contract.
+//! contract, and `ARCHITECTURE.md` (section 2) for how this pipeline fits the
+//! rest of the compiler.
 
 pub(crate) mod emit;
 pub(crate) mod resolve;
