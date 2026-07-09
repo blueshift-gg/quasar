@@ -271,9 +271,15 @@ fn assert_typescript_client_requires_address_constraint_accounts(
             source.contains("  config: Address;"),
             "generated TypeScript client should require the config account"
         );
+        // `vault` carries a typed-seeds resolver, so the client derives it
+        // instead of requiring it as an input.
         assert!(
-            source.contains("  vault: Address;"),
-            "generated TypeScript client should require the vault account"
+            !source.contains("  vault: Address;"),
+            "vault should be resolver-derived, not a required input"
+        );
+        assert!(
+            source.contains("findVaultAddress"),
+            "generated TypeScript client should emit the vault PDA resolver"
         );
     }
 
@@ -392,30 +398,17 @@ pub mod lifecycle_client_flags {
     }
 
     let rust_ix = read_tree_files(
-        &clients_path
-            .join("rust")
-            .join("lifecycle_client_flags-client")
-            .join("src"),
+        &only_child_dir(&clients_path.join("rust"))?.join("src"),
         "rs",
     )?;
     assert!(rust_ix.contains("AccountMeta::new(ix.config, false)"));
     assert!(rust_ix.contains("AccountMeta::new(ix.vault, false)"));
 
-    let ts_web3 = read_file(
-        &clients_path
-            .join("typescript")
-            .join("lifecycle_client_flags")
-            .join("web3.ts"),
-    )?;
+    let ts_web3 = read_file(&only_child_dir(&clients_path.join("typescript"))?.join("web3.ts"))?;
     assert!(ts_web3.contains("{ pubkey: input.config, isSigner: false, isWritable: true },"));
     assert!(ts_web3.contains("{ pubkey: input.vault, isSigner: false, isWritable: true },"));
 
-    let py_client = read_file(
-        &clients_path
-            .join("python")
-            .join("lifecycle_client_flags")
-            .join("client.py"),
-    )?;
+    let py_client = read_file(&only_child_dir(&clients_path.join("python"))?.join("client.py"))?;
     assert!(py_client.contains(
         r#"accounts.append(AccountMeta(accounts_map["config"], is_signer=False, is_writable=True))"#
     ));
@@ -423,26 +416,16 @@ pub mod lifecycle_client_flags {
         r#"accounts.append(AccountMeta(accounts_map["vault"], is_signer=False, is_writable=True))"#
     ));
 
-    let go_client = read_file(
-        &clients_path
-            .join("golang")
-            .join("lifecycle_client_flags")
-            .join("client.go"),
-    )?;
+    let go_client = read_file(&only_child_dir(&clients_path.join("golang"))?.join("client.go"))?;
     assert!(go_client
         .contains(r#"accounts = append(accounts, solana.Meta(accountsMap["config"]).WRITE())"#));
     assert!(go_client
         .contains(r#"accounts = append(accounts, solana.Meta(accountsMap["vault"]).WRITE())"#));
 
-    let c_client = read_file(
-        &clients_path
-            .join("c")
-            .join("lifecycle_client_flags")
-            .join("client.h"),
-    )?;
+    let c_client = read_file(&only_child_dir(&clients_path.join("c"))?.join("client.h"))?;
     assert!(c_client.contains("meta_buf[2] = meta_writable(accounts->config);"));
     assert!(c_client.contains("meta_buf[3] = meta_writable(accounts->vault);"));
-    compile_c_client(&clients_path.join("c").join("lifecycle_client_flags"))?;
+    compile_c_client(&only_child_dir(&clients_path.join("c"))?)?;
 
     Ok(())
 }
@@ -457,7 +440,7 @@ fn generated_clients_compile_from_fresh_project() -> Result<(), Box<dyn Error>> 
 
     // The IDL is generated relative to the workspace; find the rust client dir
     // by convention.
-    let rust_client_dir = clients_path.join("rust").join("quasar-multisig-client");
+    let rust_client_dir = only_child_dir(&clients_path.join("rust"))?;
     if rust_client_dir.exists() {
         // Patch the generated Cargo.toml to use the local workspace `quasar-lang`
         // instead of the GitHub remote, so the smoke test validates against the
@@ -476,7 +459,7 @@ fn generated_clients_compile_from_fresh_project() -> Result<(), Box<dyn Error>> 
         compile_rust_client(&rust_client_dir)?;
     }
 
-    let ts_dir = clients_path.join("typescript").join("quasar-multisig");
+    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
     if ts_dir.exists() {
         assert_typescript_client_requires_address_constraint_accounts(&ts_dir)?;
         let kit = read_file(&ts_dir.join("kit.ts"))?;
@@ -495,12 +478,12 @@ fn generated_clients_compile_from_fresh_project() -> Result<(), Box<dyn Error>> 
         compile_typescript_client(&ts_dir)?;
     }
 
-    let py_dir = clients_path.join("python").join("quasar-multisig");
+    let py_dir = only_child_dir(&clients_path.join("python"))?;
     if py_dir.exists() {
         compile_python_client(&py_dir)?;
     }
 
-    let go_dir = clients_path.join("golang").join("quasar_multisig");
+    let go_dir = only_child_dir(&clients_path.join("golang"))?;
     if go_dir.exists() {
         compile_go_client(&go_dir)?;
     }
@@ -567,7 +550,7 @@ pub struct Submit {
 
     let clients_path = temp.path().join("clients");
     idl::generate(&program_dir, &["typescript"], &clients_path)?;
-    let ts_dir = clients_path.join("typescript").join("fixed_array_args");
+    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
     let kit = fs::read_to_string(ts_dir.join("kit.ts"))?;
     let web3 = fs::read_to_string(ts_dir.join("web3.ts"))?;
 
@@ -645,7 +628,7 @@ pub struct Submit {
 
     let clients_path = temp.path().join("clients");
     idl::generate(&program_dir, &["typescript"], &clients_path)?;
-    let ts_dir = clients_path.join("typescript").join("pod_vec_args");
+    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
     let kit = read_file(&ts_dir.join("kit.ts"))?;
 
     assert!(
@@ -773,7 +756,7 @@ pub struct ResolverHeavy {
     let clients_path = temp.path().join("clients");
     idl::generate(&program_dir, &["typescript"], &clients_path)?;
 
-    let ts_dir = clients_path.join("typescript").join("kit_plugin_boundary");
+    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
     let kit = read_file(&ts_dir.join("kit.ts"))?;
 
     assert!(
@@ -910,7 +893,7 @@ pub struct UseScoped {
         "account field seed should include the source field path: {idl_json}"
     );
 
-    let ts_dir = clients_path.join("typescript").join("account_field_seeds");
+    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
     let kit = read_file(&ts_dir.join("kit.ts"))?;
     let web3 = read_file(&ts_dir.join("web3.ts"))?;
 
