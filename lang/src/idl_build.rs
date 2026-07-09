@@ -157,7 +157,7 @@ pub fn build_idl(address: &str, name: &str, crate_name: &str, version: &str) -> 
     errors.sort_by(|a, b| a.name.cmp(&b.name));
 
     let mut idl = Idl {
-        spec: String::from("quasar-idl/1.0.0"),
+        spec: String::from(CURRENT_SPEC),
         name: String::from(name),
         version: String::from(version),
         address: String::from(address),

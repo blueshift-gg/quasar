@@ -24,7 +24,7 @@ pub fn canonical_json_pretty(idl: &Idl) -> serde_json::Result<Vec<u8>> {
 pub fn compute_idl_hash(idl: &Idl) -> String {
     let mut idl_for_hash = idl.clone();
     idl_for_hash.hashes = None;
-    let bytes = serde_json::to_vec(&idl_for_hash).expect("IDL serialization should not fail");
+    let bytes = canonical_json(&idl_for_hash).expect("IDL serialization should not fail");
     hex_sha256(&bytes)
 }
 
@@ -266,7 +266,7 @@ mod tests {
             },
             codec::{Endian, IdlCodec, ScalarRepr, Storage},
             instruction::IdlInstruction,
-            root::IdlMetadata,
+            root::{IdlHashes, IdlMetadata},
             types::{IdlFieldDef, IdlType, IdlTypeDef, IdlTypeDefKind},
         },
     };
@@ -315,6 +315,33 @@ mod tests {
 
     fn minimal_idl_with_resolver(resolver: IdlResolver) -> Idl {
         minimal_idl(resolver, None, vec![])
+    }
+
+    #[test]
+    fn canonical_json_round_trips_byte_for_byte() {
+        // serialize -> parse -> serialize must be byte-identical (idempotent),
+        // which is what makes committed golden IDLs and hashes stable.
+        let idl = minimal_idl_with_resolver(IdlResolver::Input {});
+        let first = canonical_json(&idl).expect("serialize");
+        let parsed: Idl = serde_json::from_slice(&first).expect("parse");
+        let second = canonical_json(&parsed).expect("reserialize");
+        assert_eq!(first, second, "canonical_json must be idempotent across parse");
+    }
+
+    #[test]
+    fn recomputed_hashes_match_stored_hashes() {
+        // Models `quasar idl verify`: hashes are recomputed on the parsed IDL
+        // (which carries a populated `hashes` field) and must match the stored
+        // values, since the hash excludes the `hashes` field itself.
+        let mut idl = minimal_idl_with_resolver(IdlResolver::Input {});
+        let idl_hash = compute_idl_hash(&idl);
+        let abi_hash = compute_abi_hash(&idl);
+        idl.hashes = Some(IdlHashes {
+            idl: idl_hash.clone(),
+            abi: abi_hash.clone(),
+        });
+        assert_eq!(compute_idl_hash(&idl), idl_hash);
+        assert_eq!(compute_abi_hash(&idl), abi_hash);
     }
 
     #[test]

@@ -428,6 +428,14 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         }
     };
 
+    // Spec-version gate: diagnose an incompatible schema up front so the caller
+    // gets a clear message instead of a confusing field-level parse error.
+    if let Err(msg) = quasar_idl_schema::check_spec(&idl_json) {
+        return syn::Error::new(Span::call_site(), msg)
+            .to_compile_error()
+            .into();
+    }
+
     let idl: Idl = match serde_json::from_str(&idl_json) {
         Ok(idl) => idl,
         Err(e) => {
