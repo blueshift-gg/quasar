@@ -178,16 +178,13 @@ pub fn minimum_balance_raw(
         return Err(ProgramError::InvalidArgument);
     }
 
-    let total_bytes = ACCOUNT_STORAGE_OVERHEAD.wrapping_add(space);
-    if threshold == SIMD0194_EXEMPTION_THRESHOLD {
-        Ok(total_bytes.wrapping_mul(lamports_per_byte))
-    } else {
-        debug_assert!(
-            threshold == CURRENT_EXEMPTION_THRESHOLD,
-            "minimum_balance_raw: unknown exemption threshold"
-        );
-        Ok(total_bytes.wrapping_mul(lamports_per_byte).wrapping_mul(2))
-    }
+    // `space` is bounded by `MAX_PERMITTED_DATA_LENGTH` above, so the `usize`
+    // cast is lossless on every supported (>=32-bit) target.
+    Ok(Rent::minimum_balance_inner(
+        space as usize,
+        lamports_per_byte,
+        threshold,
+    ))
 }
 
 impl Sysvar for Rent {
