@@ -86,10 +86,7 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
         }
     }
 
-    // init requires mut
-    if sem.has_init() && !sem.core.is_mut {
-        return Err(syn::Error::new_spanned(span, "`init(...)` requires `mut`"));
-    }
+    // `init` implies `mut` (init-implies-mut): no separate requirement.
 
     // init + realloc mutual exclusion
     if sem.has_init() && sem.realloc.is_some() {
@@ -119,7 +116,7 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
                 "`dup` cannot be used with `close`: mutation on aliased accounts is unsound",
             ));
         }
-        if sem.core.is_mut && !sem.groups.is_empty() {
+        if sem.core.declared_mut && !sem.groups.is_empty() {
             return Err(syn::Error::new_spanned(
                 span,
                 "`dup` with `mut` cannot have behavior groups: mutation on aliased accounts is \
@@ -159,13 +156,7 @@ fn validate_field(sem: &FieldSemantics) -> syn::Result<()> {
         ));
     }
 
-    // realloc requires mut
-    if sem.realloc.is_some() && !sem.core.is_mut {
-        return Err(syn::Error::new_spanned(
-            span,
-            "`realloc = ...` requires `mut`",
-        ));
-    }
+    // `realloc` implies `mut` (realloc-implies-mut): no separate requirement.
 
     // init(idempotent) requires a behavior group or address constraint
     if let Some(init) = &sem.init {

@@ -109,8 +109,8 @@ fn plan_field(
         }
     }
 
-    // Post-load + epilogue: update and exit candidates (mut fields only).
-    if sem.core.is_mut {
+    // Post-load + epilogue: update and exit candidates (writable fields only).
+    if sem.is_writable() {
         for group in &sem.groups {
             post_load.push(PostLoadStep::Behavior(lower_behavior_call(
                 group,
@@ -308,7 +308,7 @@ mod tests {
                 inner_ty: None,
                 optional: false,
                 dynamic: false,
-                is_mut: false,
+                declared_mut: false,
                 dup: false,
             },
             init: None,

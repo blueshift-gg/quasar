@@ -63,12 +63,12 @@ fn kind_str(k: FieldKind) -> &'static str {
 fn dump_field_core(out: &mut String, core: &FieldCore) {
     let _ = writeln!(
         out,
-        "    core: effective_ty=`{}` kind={} optional={} dynamic={} is_mut={} dup={}",
+        "    core: effective_ty=`{}` kind={} optional={} dynamic={} declared_mut={} dup={}",
         toks(&core.effective_ty),
         kind_str(core.kind),
         core.optional,
         core.dynamic,
-        core.is_mut,
+        core.declared_mut,
         core.dup,
     );
     let inner = core
@@ -110,8 +110,10 @@ fn dump_field_semantics(out: &mut String, sem: &FieldSemantics) {
     dump_user_checks(out, &sem.user_checks);
     let _ = writeln!(
         out,
-        "    is_migration={} is_uninit={}",
-        sem.is_migration, sem.is_uninit,
+        "    is_migration={} is_uninit={} writable={}",
+        sem.is_migration,
+        sem.is_uninit,
+        sem.is_writable(),
     );
 }
 

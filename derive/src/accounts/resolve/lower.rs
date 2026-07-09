@@ -53,9 +53,6 @@ pub(super) fn lower_semantics(
                 is_migration,
                 is_uninit,
             };
-            if sem.is_migration || sem.is_uninit {
-                sem.core.is_mut = true;
-            }
             lower_directives(&mut sem, directives, &scope)?;
             Ok(sem)
         })
@@ -129,7 +126,7 @@ fn lower_core(field: &syn::Field, directives: &[Directive]) -> FieldCore {
         inner_ty,
         optional,
         dynamic,
-        is_mut: directives
+        declared_mut: directives
             .iter()
             .any(|d| matches!(d, Directive::Core(CoreDirective::Mut))),
         dup: directives
@@ -167,7 +164,6 @@ fn lower_directives(
                         ));
                     }
                     sem.init = Some(InitDirective { idempotent });
-                    sem.core.is_mut = true;
                 }
                 CoreDirective::Payer(ident) => {
                     if sem.payer.is_some() {
@@ -208,7 +204,6 @@ fn lower_directives(
                         ));
                     }
                     sem.close_dest = Some(dest);
-                    sem.core.is_mut = true;
                 }
             },
             Directive::Behavior(group) => {
@@ -442,7 +437,7 @@ mod tests {
     #[test]
     fn mut_and_dup_flags_recorded() {
         let core = core_of(quote! { #[account(mut, dup)] account: UncheckedAccount });
-        assert!(core.is_mut);
+        assert!(core.declared_mut);
         assert!(core.dup);
     }
 

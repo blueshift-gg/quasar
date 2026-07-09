@@ -1,6 +1,6 @@
 SEMANTICS (1 fields)
 [0] data
-    core: effective_ty=`Account < MyData >` kind=Single optional=false dynamic=false is_mut=false dup=false
+    core: effective_ty=`Account < MyData >` kind=Single optional=false dynamic=false declared_mut=false dup=false
           inner_ty=`MyData`
     init: None
     payer: None
@@ -10,7 +10,7 @@ SEMANTICS (1 fields)
     groups:
       - path=`min_value` args=[min=`10u64`]
     user_checks: []
-    is_migration=false is_uninit=false
+    is_migration=false is_uninit=false writable=false
 
 PLAN (1 fields)
 rent: NotNeeded

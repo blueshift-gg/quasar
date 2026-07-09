@@ -23,7 +23,10 @@ pub(crate) struct FieldCore {
     pub inner_ty: Option<Type>,
     pub optional: bool,
     pub dynamic: bool,
-    pub is_mut: bool,
+    /// The user's literal `#[account(mut)]` directive. Never mutated by
+    /// lowering: `init`/`close`/`realloc`/`Migration`/`Uninit` imply writability
+    /// through `is_writable()`, not by forging a `mut` the user never wrote.
+    pub declared_mut: bool,
     pub dup: bool,
 }
 
@@ -184,8 +187,16 @@ impl FieldSemantics {
         self.init.is_some()
     }
 
+    /// Derived writability. `init`/`realloc`/`close`/`Migration`/`Uninit` all
+    /// mutate the account, so they imply writability without an explicit `mut`
+    /// (init-implies-mut / realloc-implies-mut).
     pub fn is_writable(&self) -> bool {
-        self.core.is_mut || self.has_init() || self.is_migration || self.is_uninit
+        self.core.declared_mut
+            || self.has_init()
+            || self.is_migration
+            || self.is_uninit
+            || self.close_dest.is_some()
+            || self.realloc.is_some()
     }
 }
 

@@ -1,6 +1,6 @@
 SEMANTICS (3 fields)
 [0] authority
-    core: effective_ty=`Signer` kind=Single optional=false dynamic=false is_mut=false dup=false
+    core: effective_ty=`Signer` kind=Single optional=false dynamic=false declared_mut=false dup=false
           inner_ty=None
     init: None
     payer: None
@@ -9,9 +9,9 @@ SEMANTICS (3 fields)
     close_dest: None
     groups: []
     user_checks: []
-    is_migration=false is_uninit=false
+    is_migration=false is_uninit=false writable=false
 [1] config
-    core: effective_ty=`Account < Config >` kind=Single optional=false dynamic=false is_mut=false dup=false
+    core: effective_ty=`Account < Config >` kind=Single optional=false dynamic=false declared_mut=false dup=false
           inner_ty=`Config`
     init: None
     payer: None
@@ -20,9 +20,9 @@ SEMANTICS (3 fields)
     close_dest: None
     groups: []
     user_checks: []
-    is_migration=false is_uninit=false
+    is_migration=false is_uninit=false writable=false
 [2] item
-    core: effective_ty=`Account < Item >` kind=Single optional=false dynamic=false is_mut=false dup=false
+    core: effective_ty=`Account < Item >` kind=Single optional=false dynamic=false declared_mut=false dup=false
           inner_ty=`Item`
     init: None
     payer: None
@@ -31,7 +31,7 @@ SEMANTICS (3 fields)
     close_dest: None
     groups: []
     user_checks: []
-    is_migration=false is_uninit=false
+    is_migration=false is_uninit=false writable=false
 
 PLAN (3 fields)
 rent: NotNeeded

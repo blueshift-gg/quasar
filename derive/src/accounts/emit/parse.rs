@@ -449,6 +449,7 @@ fn emit_load_by_ident(
 fn emit_one_load(sem: &FieldSemantics) -> proc_macro2::TokenStream {
     let ident = &sem.core.ident;
     let ty = &sem.core.effective_ty;
+    let writable = sem.is_writable();
     let behavior_validates_account_data = behavior_validates_account_data_expr(sem);
 
     if sem.core.dynamic {
@@ -461,11 +462,11 @@ fn emit_one_load(sem: &FieldSemantics) -> proc_macro2::TokenStream {
         let load = emit_load_expr(
             ident,
             ty,
-            sem.core.is_mut,
+            writable,
             sem.core.dup,
             behavior_validates_account_data.as_ref(),
         );
-        return if sem.core.is_mut {
+        return if writable {
             quote! {
                 let mut #ident = if quasar_lang::keys_eq(#ident.address(), __program_id) {
                     None
@@ -487,11 +488,11 @@ fn emit_one_load(sem: &FieldSemantics) -> proc_macro2::TokenStream {
     let load = emit_load_expr(
         ident,
         ty,
-        sem.core.is_mut,
+        writable,
         sem.core.dup,
         behavior_validates_account_data.as_ref(),
     );
-    if sem.core.is_mut {
+    if writable {
         quote! { let mut #ident = #load; }
     } else {
         quote! { let #ident = #load; }
@@ -501,11 +502,11 @@ fn emit_one_load(sem: &FieldSemantics) -> proc_macro2::TokenStream {
 fn emit_load_expr(
     ident: &syn::Ident,
     ty: &syn::Type,
-    is_mut: bool,
+    writable: bool,
     checked: bool,
     behavior_validates_account_data: Option<&proc_macro2::TokenStream>,
 ) -> proc_macro2::TokenStream {
-    match (is_mut, checked, behavior_validates_account_data) {
+    match (writable, checked, behavior_validates_account_data) {
         (true, true, _) => {
             quote! { <#ty as quasar_lang::account_load::AccountLoad>::load_mut_checked(#ident)? }
         }
@@ -612,9 +613,9 @@ fn emit_behavior_assertions(semantics: &[FieldSemantics]) -> proc_macro2::TokenS
         for group in &sem.groups {
             let path = &group.path;
 
-            // REQUIRES_MUT assertion: if behavior requires mut but field is
-            // not mut, emit a compile error.
-            if !sem.core.is_mut {
+            // REQUIRES_MUT assertion: if behavior requires mut but the field is
+            // not writable, emit a compile error.
+            if !sem.is_writable() {
                 let msg = format!(
                     "behavior `{}` requires `#[account(mut)]` on field `{}`",
                     group.name(),

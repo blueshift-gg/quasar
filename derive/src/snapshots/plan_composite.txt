@@ -1,6 +1,6 @@
 SEMANTICS (2 fields)
 [0] payer
-    core: effective_ty=`Signer` kind=Single optional=false dynamic=false is_mut=false dup=false
+    core: effective_ty=`Signer` kind=Single optional=false dynamic=false declared_mut=false dup=false
           inner_ty=None
     init: None
     payer: None
@@ -9,9 +9,9 @@ SEMANTICS (2 fields)
     close_dest: None
     groups: []
     user_checks: []
-    is_migration=false is_uninit=false
+    is_migration=false is_uninit=false writable=false
 [1] pairs
-    core: effective_ty=`AccountsArray < SignerPair , 2 >` kind=Composite optional=false dynamic=false is_mut=false dup=false
+    core: effective_ty=`AccountsArray < SignerPair , 2 >` kind=Composite optional=false dynamic=false declared_mut=false dup=false
           inner_ty=None
     init: None
     payer: None
@@ -20,7 +20,7 @@ SEMANTICS (2 fields)
     close_dest: None
     groups: []
     user_checks: []
-    is_migration=false is_uninit=false
+    is_migration=false is_uninit=false writable=false
 
 PLAN (2 fields)
 rent: NotNeeded

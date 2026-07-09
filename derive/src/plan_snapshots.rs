@@ -114,6 +114,23 @@ fn plan_realloc() {
 }
 
 #[test]
+fn plan_realloc_implies_mut() {
+    // C4 realloc-implies-mut: `realloc` without an explicit `mut` is now accepted
+    // (previously a `realloc = ... requires mut` error). `declared_mut=false` but
+    // the derived `writable=true`, and the realloc step is still planned.
+    let input = quote! {
+        pub struct ReallocNoMut {
+            #[account(mut)]
+            pub payer: Signer,
+            #[account(realloc = 200)]
+            pub data: Account<MyData>,
+            pub system_program: Program<SystemProgram>,
+        }
+    };
+    expect_test::expect_file!["snapshots/plan_realloc_implies_mut.txt"].assert_eq(&dump_ir(input));
+}
+
+#[test]
 fn plan_optional() {
     let input = quote! {
         pub struct OptionalAccounts {

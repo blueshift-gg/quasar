@@ -10,17 +10,17 @@ SEMANTICS (3 fields)
     groups: []
     user_checks: []
     is_migration=false is_uninit=false writable=true
-[1] config
-    core: effective_ty=`Account < TestConfig >` kind=Single optional=false dynamic=false declared_mut=false dup=false
-          inner_ty=`TestConfig`
+[1] data
+    core: effective_ty=`Account < MyData >` kind=Single optional=false dynamic=false declared_mut=false dup=false
+          inner_ty=`MyData`
     init: None
     payer: None
     address: None
-    realloc: None
+    realloc: `200`
     close_dest: None
     groups: []
     user_checks: []
-    is_migration=false is_uninit=false writable=false
+    is_migration=false is_uninit=false writable=true
 [2] system_program
     core: effective_ty=`Program < SystemProgram >` kind=Single optional=false dynamic=false declared_mut=false dup=false
           inner_ty=`SystemProgram`
@@ -34,14 +34,15 @@ SEMANTICS (3 fields)
     is_migration=false is_uninit=false writable=false
 
 PLAN (3 fields)
-rent: NotNeeded
+rent: FetchOnce
 [0]
     pre_load: []
     post_load: []
     epilogue: []
 [1]
     pre_load: []
-    post_load: []
+    post_load:
+      - Realloc(new_space=`200` payer=payer)
     epilogue: []
 [2]
     pre_load: []
