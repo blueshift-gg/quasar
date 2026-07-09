@@ -297,22 +297,28 @@ pub mod __internal {
                     if crate::utils::hint::unlikely(
                         (actual_header & flags.flag_mask) != expected_flags,
                     ) {
-                        return Err(ProgramError::from(crate::decode_header_error(
-                            actual_header,
-                            flags.expected,
-                            flags.mask,
-                        )));
+                        // Mirror `parse_account`: only surface a decodable error.
+                        // `decode_header_error` returns 0 when the mismatched bit
+                        // is outside the required mask, in which case this must
+                        // fall through instead of returning `Err(from(0))`.
+                        let err =
+                            crate::decode_header_error(actual_header, flags.expected, flags.mask);
+                        if err != 0 {
+                            return Err(ProgramError::from(err));
+                        }
                     }
                 }
             } else {
                 let expected_flags = flags.expected & flags.flag_mask;
                 if crate::utils::hint::unlikely((actual_header & flags.flag_mask) != expected_flags)
                 {
-                    return Err(ProgramError::from(crate::decode_header_error(
-                        actual_header,
-                        flags.expected,
-                        flags.mask,
-                    )));
+                    // Mirror `parse_account`: only surface a decodable error so a
+                    // 0 result (mismatch outside the required mask) falls through
+                    // instead of returning `Err(from(0))`.
+                    let err = crate::decode_header_error(actual_header, flags.expected, flags.mask);
+                    if err != 0 {
+                        return Err(ProgramError::from(err));
+                    }
                 }
             }
             // SAFETY: `base.add(offset)` is within the caller-provided output
