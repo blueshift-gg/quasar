@@ -303,5 +303,6 @@ quasar_lang::__private_inventory::submit! {
     quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), signer :
     quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), resolver :
     quasar_lang::idl_build::__reexport::IdlResolver::Input {}, docs :
-    quasar_lang::idl_build::Vec::new(), }],) })
+    quasar_lang::idl_build::vec![quasar_lang::idl_build::s("CHECK: test-only unchecked account used to validate duplicate readonly aliases.")],
+    }],) })
 }
