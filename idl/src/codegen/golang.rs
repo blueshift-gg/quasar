@@ -155,7 +155,14 @@ pub fn generate_go_client(idl: &Idl) -> String {
             ) {
                 continue;
             }
-            writeln!(out, "\t{} solana.PublicKey", snake_to_pascal(&acc.name)).unwrap();
+            // Optional accounts are pointer inputs; a nil pointer is encoded as
+            // the program id sentinel.
+            let acc_ty = if acc.optional {
+                "*solana.PublicKey"
+            } else {
+                "solana.PublicKey"
+            };
+            writeln!(out, "\t{} {}", snake_to_pascal(&acc.name), acc_ty).unwrap();
         }
         for seed in account_field_seed_inputs(ix, idl) {
             writeln!(
@@ -229,6 +236,12 @@ pub fn generate_go_client(idl: &Idl) -> String {
                      solana.FindProgramAddress([][]byte{{{}}}, ProgramID); if err != nil {{ \
                      panic(err) }}; return addr }}()",
                     seed_exprs.join(", ")
+                )
+            } else if acc.optional {
+                format!(
+                    "func() solana.PublicKey {{ if input.{n} != nil {{ return *input.{n} }}; \
+                     return ProgramID }}()",
+                    n = snake_to_pascal(&acc.name)
                 )
             } else {
                 format!("input.{}", snake_to_pascal(&acc.name))

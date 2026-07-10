@@ -340,7 +340,10 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
 
         if !user_accs.is_empty() {
             for acc in &user_accs {
-                writeln!(out, "  {}: Address;", acc.name).expect("write to String");
+                // Optional accounts are optional inputs; an omitted one is
+                // encoded as the program address sentinel.
+                let opt = if acc.optional { "?" } else { "" };
+                writeln!(out, "  {}{}: Address;", acc.name, opt).expect("write to String");
             }
         }
         if !ix.args.is_empty() {
@@ -889,7 +892,11 @@ fn generate_instruction_builders_web3js(
         if !ix.accounts.is_empty() || has_remaining {
             out.push_str("      keys: [\n");
             for acc in &ix.accounts {
-                let pubkey_expr = account_expr(&acc.name);
+                let pubkey_expr = if acc.optional {
+                    format!("{} ?? {class_name}.programId", account_expr(&acc.name))
+                } else {
+                    account_expr(&acc.name)
+                };
                 let is_signer = matches!(acc.signer, AccountFlag::Fixed(true));
                 let is_writable = matches!(acc.writable, AccountFlag::Fixed(true));
                 writeln!(
@@ -1056,7 +1063,11 @@ fn generate_instruction_builders_kit(
         if !ix.accounts.is_empty() || has_remaining {
             out.push_str("      accounts: [\n");
             for acc in &ix.accounts {
-                let addr_expr = account_expr(&acc.name);
+                let addr_expr = if acc.optional {
+                    format!("{} ?? PROGRAM_ADDRESS", account_expr(&acc.name))
+                } else {
+                    account_expr(&acc.name)
+                };
                 let is_signer = matches!(acc.signer, AccountFlag::Fixed(true));
                 let is_writable = matches!(acc.writable, AccountFlag::Fixed(true));
                 let role = account_role(is_signer, is_writable);

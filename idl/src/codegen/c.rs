@@ -223,6 +223,13 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
                 let expr = format!("&pda_keys[{pda_idx}]");
                 pda_idx += 1;
                 expr
+            } else if acc.optional {
+                // Optional accounts are nullable pointers; a NULL pointer is
+                // encoded as the program id sentinel.
+                format!(
+                    "accounts->{n} ? accounts->{n} : (Pubkey *)&{upper}_PROGRAM_ID",
+                    n = acc.name
+                )
             } else {
                 format!("accounts->{}", acc.name)
             };

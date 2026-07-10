@@ -160,7 +160,14 @@ pub fn generate_python_client(idl: &Idl) -> String {
             if matches!(acc.resolver, IdlResolver::Pda { .. }) {
                 continue; // PDAs are derived
             }
-            writeln!(out, "    {}: Pubkey", camel_to_snake(&acc.name)).unwrap();
+            // Optional accounts default to None; an omitted one is encoded as
+            // the program id sentinel.
+            if acc.optional {
+                writeln!(out, "    {}: Optional[Pubkey] = None", camel_to_snake(&acc.name))
+                    .unwrap();
+            } else {
+                writeln!(out, "    {}: Pubkey", camel_to_snake(&acc.name)).unwrap();
+            }
             has_any_fields = true;
         }
 
@@ -248,6 +255,9 @@ pub fn generate_python_client(idl: &Idl) -> String {
                     "Pubkey.find_program_address([{}], PROGRAM_ID)[0]",
                     seed_exprs.join(", ")
                 )
+            } else if acc.optional {
+                let snake = camel_to_snake(&acc.name);
+                format!("input.{snake} if input.{snake} is not None else PROGRAM_ID")
             } else {
                 format!("input.{}", camel_to_snake(&acc.name))
             };

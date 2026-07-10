@@ -1076,3 +1076,162 @@ pub struct Submit {
 
     Ok(())
 }
+
+#[test]
+fn generated_clients_render_optional_accounts_with_program_id_sentinel(
+) -> Result<(), Box<dyn Error>> {
+    let temp = tempdir()?;
+    let program_dir = temp.path().join("programs/optional-accounts");
+
+    write_file(
+        &temp.path().join("Cargo.toml"),
+        r#"[workspace]
+members = ["programs/optional-accounts"]
+resolver = "3"
+"#,
+    )?;
+    write_file(
+        &program_dir.join("Cargo.toml"),
+        format!(
+            r#"[package]
+name = "optional-accounts"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+idl-build = ["quasar-lang/idl-build"]
+
+[dependencies]
+quasar-lang = {{ path = "{}" }}
+"#,
+            workspace_root().join("lang").display()
+        ),
+    )?;
+    write_file(
+        &program_dir.join("src/lib.rs"),
+        r#"#![no_std]
+use quasar_lang::prelude::*;
+
+declare_id!("11111111111111111111111111111111");
+
+#[account(discriminator = 1, set_inner)]
+pub struct Thing {
+    pub owner: Address,
+    pub value: u64,
+}
+
+#[program]
+mod optional_accounts {
+    use super::*;
+
+    #[instruction(discriminator = 0)]
+    pub fn touch(_ctx: Ctx<Touch>) -> Result<(), ProgramError> {
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Touch {
+    #[account(mut)]
+    pub authority: Signer,
+    #[account(mut)]
+    pub required: Account<Thing>,
+    #[account(mut)]
+    pub maybe: Option<Account<Thing>>,
+}
+"#,
+    )?;
+
+    let clients_path = temp.path().join("clients");
+    idl::generate(
+        &program_dir,
+        &["typescript", "python", "golang", "c"],
+        &clients_path,
+    )?;
+
+    // Rust: optional account is an `Option<Address>` input; an absent (None)
+    // slot is encoded as the program id sentinel (`ID`) while a present slot
+    // passes the provided address through.
+    let rust_root = clients_path.join("rust");
+    let rust_client_dir = fs::read_dir(&rust_root)?
+        .next()
+        .ok_or_else(|| format!("no rust client generated under `{}`", rust_root.display()))??
+        .path();
+    let rust_ix = read_file(&rust_client_dir.join("src/instructions/touch.rs"))?;
+    assert!(
+        rust_ix.contains("pub maybe: Option<Address>"),
+        "optional account should be an Option<Address> input"
+    );
+    assert!(
+        rust_ix.contains("pub required: Address,"),
+        "required account should stay a plain Address input"
+    );
+    assert!(
+        rust_ix.contains("AccountMeta::new(ix.maybe.unwrap_or(ID), false)"),
+        "absent optional account should default to the program id sentinel; present passes through"
+    );
+    let cargo_toml_path = rust_client_dir.join("Cargo.toml");
+    let cargo_toml = read_file(&cargo_toml_path)?;
+    let patched = cargo_toml.replace(
+        "quasar-lang = { git = \"https://github.com/blueshift-gg/quasar\", branch = \"master\" }",
+        &format!(
+            "quasar-lang = {{ path = \"{}\" }}",
+            workspace_root().join("lang").display()
+        ),
+    );
+    fs::write(&cargo_toml_path, patched + "\n[workspace]\n")?;
+    compile_rust_client(&rust_client_dir)?;
+
+    // TypeScript (web3.js + kit): optional account is an optional `?` input;
+    // absent defaults to the program address, present passes through.
+    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
+    let web3 = read_file(&ts_dir.join("web3.ts"))?;
+    let kit = read_file(&ts_dir.join("kit.ts"))?;
+    for source in [&web3, &kit] {
+        assert!(
+            source.contains("  maybe?: Address;"),
+            "optional account should be an optional TS input"
+        );
+        assert!(
+            source.contains("  required: Address;"),
+            "required account should stay a mandatory TS input"
+        );
+    }
+    assert!(
+        web3.contains("pubkey: input.maybe ?? "),
+        "web3.js should default an absent optional account to the program id"
+    );
+    assert!(
+        web3.contains("programId, isSigner: false, isWritable: true }"),
+        "web3.js optional sentinel should use the program id with declared flags"
+    );
+    assert!(
+        kit.contains("address: input.maybe ?? PROGRAM_ADDRESS, role:"),
+        "kit should default an absent optional account to the program address"
+    );
+    compile_typescript_client(&ts_dir)?;
+
+    // Python / Go / C: optional inputs are None-default / pointer / nullable
+    // pointer respectively, each defaulting an absent slot to the program id.
+    let py_dir = only_child_dir(&clients_path.join("python"))?;
+    let py = read_file(&py_dir.join("client.py"))?;
+    assert!(py.contains("maybe: Optional[Pubkey] = None"));
+    assert!(py.contains("input.maybe if input.maybe is not None else PROGRAM_ID"));
+    compile_python_client(&py_dir)?;
+
+    let go_dir = only_child_dir(&clients_path.join("golang"))?;
+    let go = read_file(&go_dir.join("client.go"))?;
+    assert!(go.contains("Maybe *solana.PublicKey"));
+    assert!(go.contains("if input.Maybe != nil { return *input.Maybe }; return ProgramID"));
+    compile_go_client(&go_dir)?;
+
+    let c_dir = only_child_dir(&clients_path.join("c"))?;
+    let c = read_file(&c_dir.join("client.h"))?;
+    assert!(c.contains("accounts->maybe ? accounts->maybe : (Pubkey *)&"));
+    compile_c_client(&c_dir)?;
+
+    Ok(())
+}

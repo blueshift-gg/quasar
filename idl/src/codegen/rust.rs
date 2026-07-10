@@ -581,7 +581,14 @@ fn emit_single_instruction(
     writeln!(out, "pub struct {}Instruction {{", struct_name).expect("write to String");
 
     for account in &ix.accounts {
-        writeln!(out, "    pub {}: Address,", camel_to_snake(&account.name))
+        // Optional accounts become `Option<Address>`; an absent (`None`) slot is
+        // encoded as the program id sentinel per the runtime convention.
+        let field_ty = if account.optional {
+            "Option<Address>"
+        } else {
+            "Address"
+        };
+        writeln!(out, "    pub {}: {},", camel_to_snake(&account.name), field_ty)
             .expect("write to String");
     }
 
@@ -1654,10 +1661,16 @@ fn emit_manual_impls(
 fn account_meta_expr(account: &IdlAccountNode) -> String {
     let field_name = camel_to_snake(&account.name);
     let signer = matches!(account.signer, AccountFlag::Fixed(true));
-    if matches!(account.writable, AccountFlag::Fixed(true)) {
-        format!("AccountMeta::new(ix.{}, {})", field_name, signer)
+    // Optional accounts default an absent slot to the program id sentinel.
+    let key = if account.optional {
+        format!("ix.{field_name}.unwrap_or(ID)")
     } else {
-        format!("AccountMeta::new_readonly(ix.{}, {})", field_name, signer)
+        format!("ix.{field_name}")
+    };
+    if matches!(account.writable, AccountFlag::Fixed(true)) {
+        format!("AccountMeta::new({}, {})", key, signer)
+    } else {
+        format!("AccountMeta::new_readonly({}, {})", key, signer)
     }
 }
 
