@@ -1,5 +1,5 @@
 use {
-    super::model::ProgramModel,
+    super::model::{ProgramModel, WireType},
     crate::types::{
         AccountFlag, Idl, IdlAccountNode, IdlCodec, IdlFieldDef, IdlLayout, IdlPdaSeed,
         IdlResolver, IdlType,
@@ -1662,72 +1662,86 @@ fn account_meta_expr(account: &IdlAccountNode) -> String {
 }
 
 /// Map an `IdlType` to its Rust field type for the client struct.
+///
+/// Resolution (scalar widths, size-prefix widths, option tags) is computed once
+/// by [`WireType`]; this function only renders the Rust spelling of the wire
+/// type. Codec-less dynamic types never reach a generated client — the IDL
+/// producer mandates a size-prefix codec for every dynamic (P009) — so the
+/// `Err` arm is dead in practice and renders the legacy bare spelling only so a
+/// hand-authored, codec-omitting IDL stays byte-identical.
 fn rust_field_type(ty: &IdlType, codec: &Option<IdlCodec>) -> String {
-    match ty {
-        IdlType::Primitive(p) => match p.as_str() {
-            "pubkey" => "Address".to_string(),
-            "string" => {
-                // If codec is SizePrefixed, use DynString<PrefixType>
-                if let Some(IdlCodec::SizePrefixed { ref prefix, .. }) = codec {
-                    let pfx_bytes = match prefix.ty.as_str() {
-                        "u8" => 1,
-                        "u16" => 2,
-                        "u32" => 4,
-                        "u64" => 8,
-                        _ => 2,
-                    };
-                    prefix_generic("DynString", pfx_bytes)
-                } else {
-                    "String".to_string()
-                }
-            }
-            other => other.to_string(),
-        },
-        IdlType::Option { option } => {
-            if matches!(codec, Some(IdlCodec::SizePrefixed { .. }))
-                && optional_dynamic_inner(ty).is_some()
-            {
-                format!("Option<{}>", rust_field_type(option, codec))
-            } else {
-                format!("Option<{}>", rust_field_type(option, &None))
-            }
-        }
-        IdlType::Vec { vec } => {
-            // If codec is SizePrefixed, use DynVec<Inner, PrefixType>
-            if let Some(IdlCodec::SizePrefixed { ref prefix, .. }) = codec {
-                let pfx_bytes = match prefix.ty.as_str() {
-                    "u8" => 1,
-                    "u16" => 2,
-                    "u32" => 4,
-                    "u64" => 8,
-                    _ => 2,
-                };
-                let inner = rust_field_type(vec, &None);
-                format!("DynVec<{}, {}>", inner, prefix_rust_type(pfx_bytes))
-            } else {
-                let inner = rust_field_type(vec, &None);
-                format!("Vec<{}>", inner)
-            }
-        }
-        IdlType::Array {
-            array: (inner, size),
-        } => {
-            let inner_ty = rust_field_type(inner, &None);
-            format!("[{}; {}]", inner_ty, size)
-        }
-        IdlType::Defined { defined } => defined.name.clone(),
-        IdlType::Generic { generic } => {
-            // For now, just use the generic name as-is
-            generic.clone()
-        }
+    match WireType::resolve(ty, codec) {
+        Ok(wire) => rust_wire_type(&wire),
+        Err(_) => rust_field_type_codecless(ty),
     }
 }
 
-fn prefix_generic(wrapper: &str, prefix_bytes: usize) -> String {
-    format!("{}<{}>", wrapper, prefix_rust_type(prefix_bytes))
+/// Render a resolved [`WireType`] as its Rust field-type spelling. Pod aliases
+/// (`PodU64`, …) stay as their defined name — the Rust client keeps them, unlike
+/// the TypeScript client which folds them to primitives.
+fn rust_wire_type(wire: &WireType) -> String {
+    match wire {
+        WireType::Bool => "bool".to_string(),
+        WireType::Scalar {
+            width,
+            signed,
+            float,
+        } => rust_scalar(*width, *signed, *float).to_string(),
+        WireType::Pubkey => "Address".to_string(),
+        WireType::Bytes => "bytes".to_string(),
+        WireType::FixedBytes(size) => format!("[u8; {size}]"),
+        WireType::Array { len, item } => format!("[{}; {}]", rust_wire_type(item), len),
+        WireType::Str { prefix } => format!("DynString<{}>", prefix_rust_type(*prefix)),
+        WireType::List { prefix, item } => {
+            format!("DynVec<{}, {}>", rust_wire_type(item), prefix_rust_type(*prefix))
+        }
+        WireType::Option { inner, .. } => format!("Option<{}>", rust_wire_type(inner)),
+        WireType::Defined(name) => name.clone(),
+    }
 }
 
-fn prefix_rust_type(prefix_bytes: usize) -> &'static str {
+/// Rust primitive spelling for a fixed-width scalar.
+fn rust_scalar(width: u8, signed: bool, float: bool) -> &'static str {
+    match (width, signed, float) {
+        (4, _, true) => "f32",
+        (8, _, true) => "f64",
+        (1, false, _) => "u8",
+        (2, false, _) => "u16",
+        (4, false, _) => "u32",
+        (8, false, _) => "u64",
+        (16, false, _) => "u128",
+        (1, true, _) => "i8",
+        (2, true, _) => "i16",
+        (4, true, _) => "i32",
+        (8, true, _) => "i64",
+        (16, true, _) => "i128",
+        _ => "u8",
+    }
+}
+
+/// Legacy spelling for a codec-less dynamic type (dead in practice; see
+/// [`rust_field_type`]).
+fn rust_field_type_codecless(ty: &IdlType) -> String {
+    match ty {
+        IdlType::Primitive(p) if p == "string" => "String".to_string(),
+        IdlType::Vec { vec } => format!("Vec<{}>", rust_field_type(vec, &None)),
+        IdlType::Option { option } => format!("Option<{}>", rust_field_type(option, &None)),
+        _ => ty_to_string(ty),
+    }
+}
+
+/// Fallback rendering for an unexpected non-dynamic type in the codec-less path.
+fn ty_to_string(ty: &IdlType) -> String {
+    match ty {
+        IdlType::Primitive(p) => p.clone(),
+        IdlType::Defined { defined } => defined.name.clone(),
+        IdlType::Generic { generic } => generic.clone(),
+        _ => String::new(),
+    }
+}
+
+/// Map a size-prefix byte width to its Rust unsigned-integer type.
+fn prefix_rust_type(prefix_bytes: u8) -> &'static str {
     match prefix_bytes {
         1 => "u8",
         2 => "u16",
