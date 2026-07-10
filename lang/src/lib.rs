@@ -192,24 +192,26 @@ pub mod __internal {
                     }
                 }
                 RawEntry::Dup(borrow) => {
-                    // Duplicate entry. `borrow` is the index of the source
-                    // non-dup account. The SVM guarantees dup indices always
-                    // point backward to a previously-serialized non-dup entry.
-                    let orig_idx = borrow as usize;
-                    if orig_idx < i {
-                        // SAFETY: `orig_idx < i` ensures the source slot is
-                        // already initialized. `AccountView` does not impl
-                        // `Drop` (verified by static assert in remaining.rs),
-                        // so bitwise copy is safe. Note: the copy creates an
-                        // aliased `AccountView`; both point to the same
-                        // `RuntimeAccount`. The raw handler is responsible for
-                        // avoiding simultaneous `borrow_unchecked_mut()` on
-                        // aliased views.
-                        unsafe {
-                            core::ptr::write(buf.add(i), core::ptr::read(buf.add(orig_idx)));
-                        }
-                    } else {
-                        return Err(solana_program_error::ProgramError::InvalidAccountData);
+                    // Duplicate entry. `borrow` is the loader's global index of
+                    // the source non-dup account; in this flat buffer the slot
+                    // index equals the global index, so it resolves against the
+                    // accounts parsed so far (`buf[0..i]`). The SVM guarantees
+                    // dup indices point backward to a previously-serialized
+                    // non-dup entry (`resolve_dup` rejects a forward index).
+                    // Note: the copy creates an aliased `AccountView` (both
+                    // point at the same `RuntimeAccount`); the raw handler is
+                    // responsible for avoiding simultaneous
+                    // `borrow_unchecked_mut()` on aliased views.
+                    match crate::svm::resolve_dup(
+                        borrow as usize,
+                        crate::svm::DupSources::Buffer {
+                            base: buf,
+                            count: i,
+                        },
+                    ) {
+                        // SAFETY: `buf.add(i)` is within the output buffer.
+                        Some(view) => unsafe { core::ptr::write(buf.add(i), view) },
+                        None => return Err(solana_program_error::ProgramError::InvalidAccountData),
                     }
                 }
             }
@@ -303,7 +305,12 @@ pub mod __internal {
         // SAFETY: `input` points to a valid account or duplicate header.
         let actual_header = unsafe { *(raw as *const u32) };
 
-        if (actual_header & 0xFF) == NOT_BORROWED as u32 {
+        // Decode the dup/non-dup distinction through the single owner in
+        // `svm.rs`. This parser keeps its tuned `advance_account_data` stride
+        // form (see `svm::advance_account_data`) rather than driving a `Cursor`,
+        // so it decodes the low header byte here instead of via `Cursor::next` —
+        // but the `NOT_BORROWED` comparison itself lives in one place.
+        if crate::svm::classify_borrow_state((actual_header & 0xFF) as u8).is_none() {
             // Not a dup; validate flags.
             if flags.is_optional {
                 // Optional: skip flag check if address == program_id (sentinel
@@ -348,8 +355,18 @@ pub mod __internal {
             let input = unsafe { crate::svm::advance_account_data(input, data_len) };
             Ok(input)
         } else {
-            // Dup branch: borrow_state != NOT_BORROWED means the SVM
-            // deduplicated this account slot.
+            // Dup branch: `classify_borrow_state` returned `Some` — the SVM
+            // deduplicated this slot. The low header byte is the loader's global
+            // index; in this flat declared buffer that equals the output slot
+            // index, so it aliases an earlier slot (`base[0..offset]`).
+            //
+            // This copy is NOT routed through `svm::resolve_dup` (which
+            // documents the same flat `Buffer` index space): the interleaved
+            // optional-sentinel / `allow_dup` handling below reads `base[idx]`
+            // lazily and keeps the `unlikely` bounds-check hint, and folding it
+            // through the resolver measurably regressed this path (+3 CU on the
+            // multi-sentinel parse). Kept in its tuned inline form; the decode
+            // above is the single `svm`-owned `NOT_BORROWED` site.
             let idx = (actual_header & 0xFF) as usize;
             if crate::utils::hint::unlikely(idx >= offset) {
                 return Err(ProgramError::InvalidAccountData);

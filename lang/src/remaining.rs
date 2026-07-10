@@ -30,41 +30,6 @@ const _: () = assert!(
 /// the cache array.
 const MAX_REMAINING_ACCOUNTS: usize = 64;
 
-/// Target source for duplicate account resolution.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DupSource {
-    /// Read from the declared accounts slice at this index.
-    Declared(usize),
-    /// Read from the iterator cache at this index.
-    Cached(usize),
-}
-
-/// Pure index computation for duplicate account resolution.
-///
-/// Given the source account index from the SVM buffer, determines which
-/// source (declared accounts or iterator cache) to read from, or returns
-/// `None` if the index is out of range.
-///
-/// Extracted as a pure function so Kani can prove the indexing logic
-/// directly, without needing raw pointers or `MaybeUninit`.
-#[inline(always)]
-fn resolve_dup_index(
-    orig_idx: usize,
-    declared_len: usize,
-    cache_count: usize,
-) -> Option<DupSource> {
-    if orig_idx < declared_len {
-        Some(DupSource::Declared(orig_idx))
-    } else {
-        let cache_idx = orig_idx - declared_len;
-        if cache_idx < cache_count {
-            Some(DupSource::Cached(cache_idx))
-        } else {
-            None
-        }
-    }
-}
-
 /// Returns `true` if the cache has room for another entry.
 ///
 /// The iterator calls this before every cache write. Extracted so Kani
@@ -491,12 +456,14 @@ fn resolve_dup_walk(
 ) -> Result<AccountView, ProgramError> {
     let mut idx = orig_idx;
     for _ in 0..2 {
-        if idx < declared.len() {
-            // SAFETY: `idx < declared.len()` ensures the read is in-bounds.
-            // `AccountView` has no Drop, so bitwise copy is safe.
-            return Ok(unsafe { core::ptr::read(declared.as_ptr().add(idx)) });
+        // First hop: a dup pointing back into the declared accounts resolves
+        // directly (the declared-only prefix of the split index space).
+        if let Some(view) = crate::svm::resolve_dup(idx, crate::svm::DupSources::Declared(declared))
+        {
+            return Ok(view);
         }
 
+        // Otherwise `idx >= declared.len()`; index the remaining region.
         let target = match idx.checked_sub(declared.len()) {
             Some(target) => target,
             None => return Err(ProgramError::InvalidAccountData),
@@ -546,6 +513,17 @@ pub struct Remaining<T, const N: usize> {
 }
 
 impl<T, const N: usize> Remaining<T, N> {
+    /// Parse up to `N` typed remaining items.
+    ///
+    /// # Cost
+    ///
+    /// When `T::REJECT_DUPLICATES` is set, every parsed account is compared for
+    /// address equality against every account already seen (and every declared
+    /// account), so the duplicate scan is **O(n²)** in the number of remaining
+    /// accounts — each new account walks the whole `seen` list. `n` is bounded
+    /// by `N` (the `seen` dedup buffer is sized by `N`, so the multi-account
+    /// path here accepts at most `N` remaining accounts total, `parse_single`
+    /// at most `N`), keeping the worst case `N²` `keys_eq` comparisons.
     #[inline(always)]
     pub fn parse<'input>(accounts: RemainingAccounts<'input>) -> Result<Self, ProgramError>
     where
@@ -558,13 +536,14 @@ impl<T, const N: usize> Remaining<T, N> {
             },
             len: 0,
         };
-        // SAFETY: An uninitialized `[MaybeUninit<Address>; MAX_REMAINING_ACCOUNTS]`
-        // is valid.
+        // Dedup scratch sized by the caller's item budget `N` rather than a
+        // fixed `MAX_REMAINING_ACCOUNTS` (`[MaybeUninit<Address>; 64]` was
+        // ~2 KiB of a 4 KiB SBF frame regardless of how small `N` was). This
+        // matches `parse_single`'s `[_; N]` and bounds the total remaining
+        // accounts accepted on this path to `N`.
+        // SAFETY: An uninitialized `[MaybeUninit<Address>; N]` is valid.
         let mut seen = unsafe {
-            core::mem::MaybeUninit::<
-                [core::mem::MaybeUninit<Address>; MAX_REMAINING_ACCOUNTS],
-            >::uninit()
-            .assume_init()
+            core::mem::MaybeUninit::<[core::mem::MaybeUninit<Address>; N]>::uninit().assume_init()
         };
         // SAFETY: An uninitialized
         // `[MaybeUninit<AccountView>; MAX_REMAINING_ACCOUNTS]` is valid.
@@ -591,7 +570,9 @@ impl<T, const N: usize> Remaining<T, N> {
             if out.len >= N {
                 return Err(QuasarError::RemainingAccountsOverflow.into());
             }
-            if seen_len >= MAX_REMAINING_ACCOUNTS {
+            // `seen` is sized by `N`; guard against overrunning it. (With
+            // `T::COUNT > 1` this bounds total accepted accounts to `N`.)
+            if seen_len >= N {
                 return Err(QuasarError::RemainingAccountsOverflow.into());
             }
 
@@ -804,22 +785,21 @@ impl RemainingIterImpl<'_> {
 
     /// O(1) dup resolution via declared slice or iterator cache.
     ///
-    /// Delegates index logic to [`resolve_dup_index`] so the bounds
-    /// arithmetic is covered by Kani proof harnesses.
+    /// Delegates to the single [`crate::svm::resolve_dup`] over the split
+    /// `[declared ++ cache]` index space; the cache is the prefix of yielded
+    /// views (`0..self.index`).
     #[inline(always)]
     fn resolve_dup(&self, orig_idx: usize) -> Option<AccountView> {
-        match resolve_dup_index(orig_idx, self.declared.len(), self.index)? {
-            DupSource::Declared(idx) => {
-                // SAFETY: `resolve_dup_index` guarantees `idx < declared.len()`.
-                Some(unsafe { core::ptr::read(self.declared.as_ptr().add(idx)) })
-            }
-            DupSource::Cached(idx) => {
-                // SAFETY: `resolve_dup_index` guarantees `idx < self.index`,
-                // and all cache slots `0..self.index` were initialized by
-                // prior `next()` calls.
-                Some(unsafe { core::ptr::read(self.cache_ptr().add(idx)) })
-            }
-        }
+        // SAFETY: cache slots `0..self.index` were initialized by prior
+        // `next()` calls, so this slice is fully initialized.
+        let cache = unsafe { core::slice::from_raw_parts(self.cache_ptr(), self.index) };
+        crate::svm::resolve_dup(
+            orig_idx,
+            crate::svm::DupSources::Cache {
+                declared: self.declared,
+                cache,
+            },
+        )
     }
 }
 

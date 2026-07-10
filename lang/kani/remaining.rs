@@ -2,7 +2,7 @@ use {
     super::*,
     crate::{
         __internal::{account_stride, align_up_8, ACCOUNT_HEADER, DUP_ENTRY_SIZE},
-        svm::{Cursor, RawEntry},
+        svm::{resolve_dup, Cursor, DupSources, RawEntry},
     },
     solana_account_view::{RuntimeAccount, NOT_BORROWED},
 };
@@ -89,45 +89,115 @@ fn cache_capacity_implies_scan_in_bounds() {
     assert!(scan_idx < MAX_REMAINING_ACCOUNTS);
 }
 
-#[kani::proof]
-fn resolve_dup_index_declared_in_bounds() {
-    let orig_idx: usize = kani::any();
-    let declared_len: usize = kani::any();
-    let cache_count: usize = kani::any();
-    kani::assume(declared_len <= 64);
-    kani::assume(cache_count <= MAX_REMAINING_ACCOUNTS);
+// ---------------------------------------------------------------------------
+// Unified dup-resolver (`svm::resolve_dup`) proofs.
+//
+// These replace the former pure-arithmetic `resolve_dup_index` proofs: the
+// index logic now lives in `svm::resolve_dup`. Each proof drives the real
+// resolver over a symbolic index and asserts its resolution BOUNDARY — `Some`
+// iff the index is within the source's addressable range — which is exactly
+// what the old `resolve_dup_index_{declared,cached}_in_bounds` /
+// `_none_iff_out_of_range` proofs pinned. The resolved views' *in-buffer* /
+// exact-account correctness is proven at the real call sites by
+// `remaining_iter_next_in_buffer`, `resolve_dup_walk_reads_in_buffer`, and
+// `remaining_parse_single_in_buffer` below. One proof per `DupSources`
+// variant's documented index space.
 
-    if let Some(DupSource::Declared(idx)) = resolve_dup_index(orig_idx, declared_len, cache_count) {
-        assert!(idx < declared_len);
+/// Fill `views[0..count]` with `AccountView`s over `count` zero-data accounts
+/// written into `buf`, so the resolver's `ptr::read` copies read initialized
+/// slots.
+///
+/// # Safety
+/// `buf` holds `>= count * ZERO_ACCT_STRIDE` bytes and `views` has `>= count`
+/// slots.
+unsafe fn fill_store<const NB: usize>(buf: &mut SvmBuf<NB>, views: *mut AccountView, count: usize) {
+    let mut k = 0;
+    while k < count {
+        // SAFETY: slot `k` fits (caller contract).
+        unsafe {
+            buf.write_account(k * ZERO_ACCT_STRIDE, NOT_BORROWED, (k as u8) + 1, 0);
+            let raw = buf.base().add(k * ZERO_ACCT_STRIDE) as *mut RuntimeAccount;
+            views.add(k).write(AccountView::new_unchecked(raw));
+        }
+        k += 1;
     }
 }
 
+/// `DupSources::Buffer`: `idx` indexes `base[0..count]`; resolves iff
+/// `idx < count`.
 #[kani::proof]
-fn resolve_dup_index_cached_in_bounds() {
-    let orig_idx: usize = kani::any();
-    let declared_len: usize = kani::any();
-    let cache_count: usize = kani::any();
-    kani::assume(declared_len <= 64);
-    kani::assume(cache_count <= MAX_REMAINING_ACCOUNTS);
+#[kani::unwind(6)]
+fn resolve_dup_buffer_bounds() {
+    const TOTAL: usize = 4;
+    const NB: usize = TOTAL * ZERO_ACCT_STRIDE;
 
-    if let Some(DupSource::Cached(idx)) = resolve_dup_index(orig_idx, declared_len, cache_count) {
-        assert!(idx < cache_count);
-        assert!(idx < MAX_REMAINING_ACCOUNTS);
-    }
+    let mut buf = SvmBuf::<NB>::zeroed();
+    // SAFETY: an array of `MaybeUninit` is valid uninitialized.
+    let mut views: [core::mem::MaybeUninit<AccountView>; TOTAL] =
+        unsafe { core::mem::MaybeUninit::uninit().assume_init() };
+    // SAFETY: `buf` holds `TOTAL` accounts; `views` has `TOTAL` slots.
+    unsafe { fill_store(&mut buf, views.as_mut_ptr() as *mut AccountView, TOTAL) };
+    // SAFETY: `[MaybeUninit<AccountView>; TOTAL]` shares layout with
+    // `[AccountView; TOTAL]` and every slot was initialized above.
+    let base = views.as_ptr() as *const AccountView;
+
+    let count: usize = kani::any();
+    kani::assume(count <= TOTAL);
+    let idx: usize = kani::any();
+    kani::assume(idx <= TOTAL + 1);
+
+    assert!(resolve_dup(idx, DupSources::Buffer { base, count }).is_some() == (idx < count));
 }
 
+/// `DupSources::Declared`: `idx` indexes the declared slice; resolves iff
+/// `idx < declared.len()` (a larger index is left to the caller's walk).
 #[kani::proof]
-fn resolve_dup_index_none_iff_out_of_range() {
-    let orig_idx: usize = kani::any();
-    let declared_len: usize = kani::any();
-    let cache_count: usize = kani::any();
-    kani::assume(declared_len <= 64);
-    kani::assume(cache_count <= MAX_REMAINING_ACCOUNTS);
+#[kani::unwind(6)]
+fn resolve_dup_declared_bounds() {
+    const D: usize = 4;
+    const NB: usize = D * ZERO_ACCT_STRIDE;
 
-    if resolve_dup_index(orig_idx, declared_len, cache_count).is_none() {
-        assert!(orig_idx >= declared_len);
-        assert!(orig_idx - declared_len >= cache_count);
-    }
+    let mut buf = SvmBuf::<NB>::zeroed();
+    // SAFETY: an array of `MaybeUninit` is valid uninitialized.
+    let mut views: [core::mem::MaybeUninit<AccountView>; D] =
+        unsafe { core::mem::MaybeUninit::uninit().assume_init() };
+    // SAFETY: `buf` holds `D` accounts; `views` has `D` slots.
+    unsafe { fill_store(&mut buf, views.as_mut_ptr() as *mut AccountView, D) };
+    // SAFETY: all `D` slots initialized above; layout matches `[AccountView; D]`.
+    let declared = unsafe { core::slice::from_raw_parts(views.as_ptr() as *const AccountView, D) };
+
+    let idx: usize = kani::any();
+    kani::assume(idx <= D + 1);
+
+    assert!(resolve_dup(idx, DupSources::Declared(declared)).is_some() == (idx < D));
+}
+
+/// `DupSources::Cache`: `idx` indexes the split `[declared ++ cache]` space;
+/// resolves iff `idx < declared.len() + cache.len()`.
+#[kani::proof]
+#[kani::unwind(6)]
+fn resolve_dup_cache_bounds() {
+    const D: usize = 2;
+    const C: usize = 2;
+    const TOTAL: usize = D + C;
+    const NB: usize = TOTAL * ZERO_ACCT_STRIDE;
+
+    let mut buf = SvmBuf::<NB>::zeroed();
+    // SAFETY: an array of `MaybeUninit` is valid uninitialized.
+    let mut views: [core::mem::MaybeUninit<AccountView>; TOTAL] =
+        unsafe { core::mem::MaybeUninit::uninit().assume_init() };
+    // SAFETY: `buf` holds `TOTAL` accounts; `views` has `TOTAL` slots.
+    unsafe { fill_store(&mut buf, views.as_mut_ptr() as *mut AccountView, TOTAL) };
+    // SAFETY: all `TOTAL` slots initialized above; layout matches
+    // `[AccountView; TOTAL]`, so the two sub-slices are sound.
+    let base = views.as_ptr() as *const AccountView;
+    let declared = unsafe { core::slice::from_raw_parts(base, D) };
+    let cache = unsafe { core::slice::from_raw_parts(base.add(D), C) };
+
+    let idx: usize = kani::any();
+    kani::assume(idx <= TOTAL + 1);
+
+    assert!(resolve_dup(idx, DupSources::Cache { declared, cache }).is_some() == (idx < TOTAL));
 }
 
 // ---------------------------------------------------------------------------
