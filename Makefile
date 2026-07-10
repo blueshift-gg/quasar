@@ -14,7 +14,7 @@ SBF_TEST_PROGRAMS := tests/programs/test-misc tests/programs/test-errors \
 	tests/programs/test-raw tests/programs/test-metadata-validate
 
 # Example programs that produce SBF binaries
-SBF_EXAMPLES := examples/vault examples/escrow examples/multisig
+SBF_EXAMPLES := examples/vault examples/escrow examples/multisig examples/upstream-vault
 
 # All SBF programs
 SBF_ALL := $(SBF_EXAMPLES) $(SBF_TEST_PROGRAMS)
@@ -172,7 +172,7 @@ test:
 	@$(MAKE) build-sbf
 	@cargo test -p quasar-lang -p quasar-derive -p quasar-spl \
 		-p quasar-metadata \
-		-p quasar-vault -p quasar-escrow -p quasar-multisig \
+		-p quasar-vault -p quasar-escrow -p quasar-multisig -p upstream-vault \
 		-p quasar-test-suite \
 		--all-features
 
@@ -184,7 +184,7 @@ test-bless:
 	@$(MAKE) build-sbf
 	@TRYBUILD=overwrite cargo test -p quasar-lang -p quasar-derive -p quasar-spl \
 		-p quasar-metadata \
-		-p quasar-vault -p quasar-escrow -p quasar-multisig \
+		-p quasar-vault -p quasar-escrow -p quasar-multisig -p upstream-vault \
 		-p quasar-test-suite \
 		--all-features
 
