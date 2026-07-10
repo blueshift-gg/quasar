@@ -1116,7 +1116,7 @@ fn bounds_typed_remaining_group_parses_variable_chunks() {
     };
 
     let parsed = remaining
-        .parse::<remaining_group_fixture::RemainingPair, 4>()
+        .parse::<remaining_group_fixture::RemainingPair, 2>()
         .unwrap();
     assert_eq!(parsed.len(), 2);
     assert_eq!(
@@ -1127,6 +1127,48 @@ fn bounds_typed_remaining_group_parses_variable_chunks() {
         parsed.as_slice()[1].second.address(),
         &Address::new_from_array([0x04; 32])
     );
+}
+
+#[test]
+fn bounds_typed_remaining_group_enforces_item_capacity() {
+    let mut buf = MultiAccountBuffer::new(&[
+        MultiAccountEntry::account(0x01, 0),
+        MultiAccountEntry::account(0x02, 0),
+        MultiAccountEntry::account(0x03, 0),
+        MultiAccountEntry::account(0x04, 0),
+        MultiAccountEntry::account(0x05, 0),
+        MultiAccountEntry::account(0x06, 0),
+    ]);
+    let program_id = Address::new_from_array([0x55; 32]);
+    let remaining = unsafe {
+        RemainingAccounts::new_with_context(buf.as_mut_ptr(), buf.boundary(), &[], &program_id, &[])
+    };
+
+    let err = match remaining.parse::<remaining_group_fixture::RemainingPair, 2>() {
+        Ok(_) => panic!("typed remaining must enforce capacity in items"),
+        Err(err) => err,
+    };
+    assert_eq!(err, QuasarError::RemainingAccountsOverflow.into());
+}
+
+#[test]
+fn bounds_typed_remaining_group_rejects_duplicate_addresses_across_chunks() {
+    let mut buf = MultiAccountBuffer::new(&[
+        MultiAccountEntry::account(0x01, 0),
+        MultiAccountEntry::account(0x02, 0),
+        MultiAccountEntry::account(0x03, 0),
+        MultiAccountEntry::account(0x01, 0),
+    ]);
+    let program_id = Address::new_from_array([0x55; 32]);
+    let remaining = unsafe {
+        RemainingAccounts::new_with_context(buf.as_mut_ptr(), buf.boundary(), &[], &program_id, &[])
+    };
+
+    let err = match remaining.parse::<remaining_group_fixture::RemainingPair, 2>() {
+        Ok(_) => panic!("typed remaining must reject duplicate addresses across chunks"),
+        Err(err) => err,
+    };
+    assert_eq!(err, QuasarError::RemainingAccountDuplicate.into());
 }
 
 #[test]

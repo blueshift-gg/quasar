@@ -55,46 +55,55 @@ impl RemainingAccount {
         Self { view }
     }
 
+    /// Returns the account address.
     #[inline(always)]
     pub fn address(&self) -> &Address {
         self.view.address()
     }
 
+    /// Returns whether the transaction signed for this account.
     #[inline(always)]
     pub fn is_signer(&self) -> bool {
         self.view.is_signer()
     }
 
+    /// Returns the account owner.
     #[inline(always)]
     pub fn owner(&self) -> &Address {
         self.view.owner()
     }
 
+    /// Returns whether the account was provided as writable.
     #[inline(always)]
     pub fn is_writable(&self) -> bool {
         self.view.is_writable()
     }
 
+    /// Returns whether the account is executable.
     #[inline(always)]
     pub fn executable(&self) -> bool {
         self.view.executable()
     }
 
+    /// Returns the current lamport balance.
     #[inline(always)]
     pub fn lamports(&self) -> u64 {
         self.view.lamports()
     }
 
+    /// Returns the account-data length in bytes.
     #[inline(always)]
     pub fn data_len(&self) -> usize {
         self.view.data_len()
     }
 
+    /// Immutably borrows the account data through runtime borrow tracking.
     #[inline(always)]
     pub fn try_borrow_data(&self) -> Result<Ref<'_, [u8]>, ProgramError> {
         self.view.try_borrow()
     }
 
+    /// Mutably borrows the account data through runtime borrow tracking.
     #[inline(always)]
     pub fn try_borrow_data_mut(&mut self) -> Result<RefMut<'_, [u8]>, ProgramError> {
         self.view.try_borrow_mut()
@@ -244,6 +253,10 @@ impl<'a> RemainingAccounts<'a> {
         }
     }
 
+    /// Parses all remaining entries into at most `N` typed items.
+    ///
+    /// Composite item types may consume more than one raw account per item;
+    /// `N` always bounds the number of resulting `T` values.
     #[inline(always)]
     pub fn parse<T, const N: usize>(&self) -> Result<Remaining<T, N>, ProgramError>
     where
@@ -520,10 +533,10 @@ impl<T, const N: usize> Remaining<T, N> {
     /// When `T::REJECT_DUPLICATES` is set, every parsed account is compared for
     /// address equality against every account already seen (and every declared
     /// account), so the duplicate scan is **O(n²)** in the number of remaining
-    /// accounts — each new account walks the whole `seen` list. `n` is bounded
-    /// by `N` (the `seen` dedup buffer is sized by `N`, so the multi-account
-    /// path here accepts at most `N` remaining accounts total, `parse_single`
-    /// at most `N`), keeping the worst case `N²` `keys_eq` comparisons.
+    /// accounts — each new account walks the already-consumed prefix. The raw
+    /// account count remains bounded by `MAX_REMAINING_ACCOUNTS`, while `N`
+    /// always means typed items (including when one item consumes multiple raw
+    /// accounts).
     #[inline(always)]
     pub fn parse<'input>(accounts: RemainingAccounts<'input>) -> Result<Self, ProgramError>
     where
@@ -536,15 +549,6 @@ impl<T, const N: usize> Remaining<T, N> {
             },
             len: 0,
         };
-        // Dedup scratch sized by the caller's item budget `N` rather than a
-        // fixed `MAX_REMAINING_ACCOUNTS` (`[MaybeUninit<Address>; 64]` was
-        // ~2 KiB of a 4 KiB SBF frame regardless of how small `N` was). This
-        // matches `parse_single`'s `[_; N]` and bounds the total remaining
-        // accounts accepted on this path to `N`.
-        // SAFETY: An uninitialized `[MaybeUninit<Address>; N]` is valid.
-        let mut seen = unsafe {
-            core::mem::MaybeUninit::<[core::mem::MaybeUninit<Address>; N]>::uninit().assume_init()
-        };
         // SAFETY: An uninitialized
         // `[MaybeUninit<AccountView>; MAX_REMAINING_ACCOUNTS]` is valid.
         let mut chunk = unsafe {
@@ -553,7 +557,7 @@ impl<T, const N: usize> Remaining<T, N> {
             >::uninit()
             .assume_init()
         };
-        let mut seen_len = 0usize;
+        let mut raw_len = 0usize;
         let mut chunk_len = 0usize;
         let chunk_count = T::COUNT;
 
@@ -570,14 +574,13 @@ impl<T, const N: usize> Remaining<T, N> {
             if out.len >= N {
                 return Err(QuasarError::RemainingAccountsOverflow.into());
             }
-            // `seen` is sized by `N`; guard against overrunning it. (With
-            // `T::COUNT > 1` this bounds total accepted accounts to `N`.)
-            if seen_len >= N {
+            if raw_len >= MAX_REMAINING_ACCOUNTS {
                 return Err(QuasarError::RemainingAccountsOverflow.into());
             }
 
             // The multi-account chunk parser never resolves duplicates: a dup
             // marker in a fixed-count group is always an error.
+            let entry_start = cursor.ptr();
             // SAFETY: not at end (checked above).
             let view = match unsafe { cursor.next() } {
                 // SAFETY: Non-duplicate entry with a valid `RuntimeAccount`.
@@ -595,21 +598,20 @@ impl<T, const N: usize> Remaining<T, N> {
                 {
                     return Err(QuasarError::RemainingAccountDuplicate.into());
                 }
-                let mut i = 0usize;
-                while i < seen_len {
-                    // SAFETY: Only slots below `seen_len` have been initialized.
-                    let seen_address = unsafe { seen[i].assume_init_ref() };
-                    if crate::keys_eq(seen_address, view.address()) {
-                        return Err(QuasarError::RemainingAccountDuplicate.into());
-                    }
-                    i += 1;
+                // Re-scan the already-consumed raw prefix instead of reserving
+                // `N * T::COUNT` addresses on the 4 KiB SBF stack. This keeps
+                // `N` as the typed-item capacity and preserves the existing
+                // O(n^2) duplicate-checking cost model.
+                // SAFETY: `accounts.ptr..entry_start` is the valid prefix
+                // consumed by this cursor from the same remaining region.
+                if unsafe { prefix_contains_address(accounts.ptr, entry_start, view.address()) } {
+                    return Err(QuasarError::RemainingAccountDuplicate.into());
                 }
-                seen[seen_len].write(*view.address());
-                seen_len += 1;
             }
 
             chunk[chunk_len].write(view);
             chunk_len += 1;
+            raw_len += 1;
 
             if chunk_len == chunk_count {
                 let chunk_ptr = chunk.as_mut_ptr() as *mut AccountView;
@@ -708,7 +710,35 @@ impl<T, const N: usize> Remaining<T, N> {
     }
 }
 
+/// Return whether a previously consumed remaining-account prefix contains an
+/// address (or a duplicate marker, which is invalid for typed account groups).
+///
+/// # Safety
+///
+/// `start..boundary` must delimit a valid, fully consumed prefix of one SVM
+/// remaining-account region.
+#[inline(always)]
+unsafe fn prefix_contains_address(start: *mut u8, boundary: *const u8, address: &Address) -> bool {
+    // SAFETY: upheld by the caller.
+    let mut cursor = unsafe { Cursor::new(start, boundary) };
+    while !cursor.at_end() {
+        // SAFETY: the cursor is not at the prefix boundary.
+        match unsafe { cursor.next() } {
+            RawEntry::Account(raw) => {
+                // SAFETY: a non-duplicate entry is a valid RuntimeAccount.
+                let view = unsafe { AccountView::new_unchecked(raw) };
+                if crate::keys_eq(view.address(), address) {
+                    return true;
+                }
+            }
+            RawEntry::Dup(_) => return true,
+        }
+    }
+    false
+}
+
 impl<T, const N: usize> Remaining<T, N> {
+    /// Returns the successfully parsed typed items.
     #[inline(always)]
     pub fn as_slice(&self) -> &[T] {
         // SAFETY: Only the first `self.len` entries are initialized, and `len`
@@ -716,21 +746,25 @@ impl<T, const N: usize> Remaining<T, N> {
         unsafe { core::slice::from_raw_parts(self.items.as_ptr() as *const T, self.len) }
     }
 
+    /// Iterates over the successfully parsed typed items.
     #[inline(always)]
     pub fn iter(&self) -> core::slice::Iter<'_, T> {
         self.as_slice().iter()
     }
 
+    /// Returns the number of successfully parsed items.
     #[inline(always)]
     pub const fn len(&self) -> usize {
         self.len
     }
 
+    /// Returns the compile-time typed-item capacity.
     #[inline(always)]
     pub const fn capacity(&self) -> usize {
         N
     }
 
+    /// Returns whether no typed items were parsed.
     #[inline(always)]
     pub const fn is_empty(&self) -> bool {
         self.len == 0
