@@ -24,7 +24,11 @@ pub enum WireType {
     Bool,
     /// Fixed-width integer or float. `width` is the byte width; `float` marks
     /// `f32`/`f64`; `signed` marks the signed integers.
-    Scalar { width: u8, signed: bool, float: bool },
+    Scalar {
+        width: u8,
+        signed: bool,
+        float: bool,
+    },
     /// 32-byte public key / address (distinct from `FixedBytes(32)` so backends
     /// render an address type/codec rather than a raw byte blob).
     Pubkey,
@@ -78,7 +82,9 @@ impl WireType {
                     "vec type `{ty:?}` requires a size-prefix codec; none was declared"
                 )),
             },
-            IdlType::Array { array: (inner, size) } => {
+            IdlType::Array {
+                array: (inner, size),
+            } => {
                 if idl_type_is_byte(inner) {
                     Ok(WireType::FixedBytes(*size))
                 } else {
@@ -96,18 +102,66 @@ impl WireType {
     fn resolve_primitive(p: &str, codec: &Option<IdlCodec>) -> Result<Self, String> {
         Ok(match p {
             "bool" => WireType::Bool,
-            "u8" => WireType::Scalar { width: 1, signed: false, float: false },
-            "u16" => WireType::Scalar { width: 2, signed: false, float: false },
-            "u32" => WireType::Scalar { width: 4, signed: false, float: false },
-            "u64" => WireType::Scalar { width: 8, signed: false, float: false },
-            "u128" => WireType::Scalar { width: 16, signed: false, float: false },
-            "i8" => WireType::Scalar { width: 1, signed: true, float: false },
-            "i16" => WireType::Scalar { width: 2, signed: true, float: false },
-            "i32" => WireType::Scalar { width: 4, signed: true, float: false },
-            "i64" => WireType::Scalar { width: 8, signed: true, float: false },
-            "i128" => WireType::Scalar { width: 16, signed: true, float: false },
-            "f32" => WireType::Scalar { width: 4, signed: false, float: true },
-            "f64" => WireType::Scalar { width: 8, signed: false, float: true },
+            "u8" => WireType::Scalar {
+                width: 1,
+                signed: false,
+                float: false,
+            },
+            "u16" => WireType::Scalar {
+                width: 2,
+                signed: false,
+                float: false,
+            },
+            "u32" => WireType::Scalar {
+                width: 4,
+                signed: false,
+                float: false,
+            },
+            "u64" => WireType::Scalar {
+                width: 8,
+                signed: false,
+                float: false,
+            },
+            "u128" => WireType::Scalar {
+                width: 16,
+                signed: false,
+                float: false,
+            },
+            "i8" => WireType::Scalar {
+                width: 1,
+                signed: true,
+                float: false,
+            },
+            "i16" => WireType::Scalar {
+                width: 2,
+                signed: true,
+                float: false,
+            },
+            "i32" => WireType::Scalar {
+                width: 4,
+                signed: true,
+                float: false,
+            },
+            "i64" => WireType::Scalar {
+                width: 8,
+                signed: true,
+                float: false,
+            },
+            "i128" => WireType::Scalar {
+                width: 16,
+                signed: true,
+                float: false,
+            },
+            "f32" => WireType::Scalar {
+                width: 4,
+                signed: false,
+                float: true,
+            },
+            "f64" => WireType::Scalar {
+                width: 8,
+                signed: false,
+                float: true,
+            },
             "pubkey" => WireType::Pubkey,
             "bytes" => WireType::Bytes,
             "string" => match codec {
@@ -169,10 +223,21 @@ pub struct AccountPlan {
 /// A resolved PDA seed (encoding inferred from the seed's declared type).
 #[derive(Clone, Debug)]
 pub enum ResolvedSeed {
-    Const { value: Vec<u8> },
-    AccountAddress { path: String },
-    AccountField { account: String, field: String, path: String },
-    Arg { path: String, wire: WireType },
+    Const {
+        value: Vec<u8>,
+    },
+    AccountAddress {
+        path: String,
+    },
+    AccountField {
+        account: String,
+        field: String,
+        path: String,
+    },
+    Arg {
+        path: String,
+        wire: WireType,
+    },
 }
 
 /// A PDA derivation plan: resolved seeds plus the generated helper name.
@@ -256,7 +321,8 @@ impl InstructionPlan {
 /// string/vec, or an optional wrapping one.
 fn arg_is_tail(arg: &IdlArg) -> bool {
     matches!(arg.codec, Some(IdlCodec::SizePrefixed { .. }))
-        && (type_is_dynamic(&arg.ty) || matches!(&arg.ty, IdlType::Option { option } if type_is_dynamic(option)))
+        && (type_is_dynamic(&arg.ty)
+            || matches!(&arg.ty, IdlType::Option { option } if type_is_dynamic(option)))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -518,8 +584,10 @@ mod tests {
 
 #[cfg(test)]
 mod wire_tests {
-    use super::*;
-    use crate::types::{Endian, IdlArg, IdlDefinedRef, IdlInstruction, ScalarRepr, Storage};
+    use {
+        super::*,
+        crate::types::{Endian, IdlArg, IdlDefinedRef, IdlInstruction, ScalarRepr, Storage},
+    };
 
     fn prim(name: &str) -> IdlType {
         IdlType::Primitive(name.to_string())
@@ -557,18 +625,36 @@ mod wire_tests {
     fn scalars_resolve_widths_and_signs() {
         assert_eq!(
             WireType::resolve(&prim("u64"), &None).unwrap(),
-            WireType::Scalar { width: 8, signed: false, float: false }
+            WireType::Scalar {
+                width: 8,
+                signed: false,
+                float: false
+            }
         );
         assert_eq!(
             WireType::resolve(&prim("i32"), &None).unwrap(),
-            WireType::Scalar { width: 4, signed: true, float: false }
+            WireType::Scalar {
+                width: 4,
+                signed: true,
+                float: false
+            }
         );
         assert_eq!(
             WireType::resolve(&prim("f64"), &None).unwrap(),
-            WireType::Scalar { width: 8, signed: false, float: true }
+            WireType::Scalar {
+                width: 8,
+                signed: false,
+                float: true
+            }
         );
-        assert_eq!(WireType::resolve(&prim("bool"), &None).unwrap(), WireType::Bool);
-        assert_eq!(WireType::resolve(&prim("pubkey"), &None).unwrap(), WireType::Pubkey);
+        assert_eq!(
+            WireType::resolve(&prim("bool"), &None).unwrap(),
+            WireType::Bool
+        );
+        assert_eq!(
+            WireType::resolve(&prim("pubkey"), &None).unwrap(),
+            WireType::Pubkey
+        );
     }
 
     #[test]
@@ -577,59 +663,96 @@ mod wire_tests {
             WireType::resolve(&prim("string"), &Some(str_codec("u8"))).unwrap(),
             WireType::Str { prefix: 1 }
         );
-        let v = IdlType::Vec { vec: Box::new(prim("pubkey")) };
+        let v = IdlType::Vec {
+            vec: Box::new(prim("pubkey")),
+        };
         assert_eq!(
             WireType::resolve(&v, &Some(vec_codec("u16"))).unwrap(),
-            WireType::List { prefix: 2, item: Box::new(WireType::Pubkey) }
+            WireType::List {
+                prefix: 2,
+                item: Box::new(WireType::Pubkey)
+            }
         );
     }
 
     #[test]
     fn codec_less_dynamic_is_an_error_not_a_default() {
         assert!(WireType::resolve(&prim("string"), &None).is_err());
-        let v = IdlType::Vec { vec: Box::new(prim("u64")) };
+        let v = IdlType::Vec {
+            vec: Box::new(prim("u64")),
+        };
         assert!(WireType::resolve(&v, &None).is_err());
     }
 
     #[test]
     fn optional_dynamic_gets_one_byte_tag_and_inner_prefix() {
-        let opt = IdlType::Option { option: Box::new(prim("string")) };
+        let opt = IdlType::Option {
+            option: Box::new(prim("string")),
+        };
         assert_eq!(
             WireType::resolve(&opt, &Some(str_codec("u8"))).unwrap(),
-            WireType::Option { tag: 1, inner: Box::new(WireType::Str { prefix: 1 }) }
+            WireType::Option {
+                tag: 1,
+                inner: Box::new(WireType::Str { prefix: 1 })
+            }
         );
     }
 
     #[test]
     fn optional_scalar_resolves_inner_without_codec() {
-        let opt = IdlType::Option { option: Box::new(prim("u64")) };
+        let opt = IdlType::Option {
+            option: Box::new(prim("u64")),
+        };
         assert_eq!(
             WireType::resolve(&opt, &None).unwrap(),
             WireType::Option {
                 tag: 1,
-                inner: Box::new(WireType::Scalar { width: 8, signed: false, float: false })
+                inner: Box::new(WireType::Scalar {
+                    width: 8,
+                    signed: false,
+                    float: false
+                })
             }
         );
     }
 
     #[test]
     fn byte_arrays_fold_to_fixed_bytes_but_typed_arrays_do_not() {
-        let bytes = IdlType::Array { array: (Box::new(prim("u8")), 32) };
-        assert_eq!(WireType::resolve(&bytes, &None).unwrap(), WireType::FixedBytes(32));
-        let typed = IdlType::Array { array: (Box::new(prim("u64")), 4) };
+        let bytes = IdlType::Array {
+            array: (Box::new(prim("u8")), 32),
+        };
+        assert_eq!(
+            WireType::resolve(&bytes, &None).unwrap(),
+            WireType::FixedBytes(32)
+        );
+        let typed = IdlType::Array {
+            array: (Box::new(prim("u64")), 4),
+        };
         assert_eq!(
             WireType::resolve(&typed, &None).unwrap(),
             WireType::Array {
                 len: 4,
-                item: Box::new(WireType::Scalar { width: 8, signed: false, float: false })
+                item: Box::new(WireType::Scalar {
+                    width: 8,
+                    signed: false,
+                    float: false
+                })
             }
         );
     }
 
     #[test]
     fn defined_types_carry_their_name() {
-        let d = IdlType::Defined { defined: IdlDefinedRef { name: "Foo".to_string(), generics: vec![] } };
-        assert_eq!(WireType::resolve(&d, &None).unwrap(), WireType::Defined("Foo".to_string()));
+        let d = IdlType::Defined {
+            defined: IdlDefinedRef {
+                name: "Foo".to_string(),
+                generics: vec![],
+            },
+        };
+        assert_eq!(
+            WireType::resolve(&d, &None).unwrap(),
+            WireType::Defined("Foo".to_string())
+        );
     }
 
     #[test]
@@ -641,7 +764,12 @@ mod wire_tests {
             docs: vec![],
             accounts: vec![],
             args: vec![
-                IdlArg { name: "tag".to_string(), ty: prim("u64"), codec: None, docs: vec![] },
+                IdlArg {
+                    name: "tag".to_string(),
+                    ty: prim("u64"),
+                    codec: None,
+                    docs: vec![],
+                },
                 IdlArg {
                     name: "label".to_string(),
                     ty: prim("string"),

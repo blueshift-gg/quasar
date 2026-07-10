@@ -20,8 +20,8 @@ fn rename_consumer_compiles() {
         .expect("failed to spawn `cargo check` for the rename-consumer fixture");
     assert!(
         status.success(),
-        "rename-consumer failed to compile: generated code is not rename-safe \
-         (a `quasar_lang::` path or a bare prelude name leaked into an emitter). \
-         Run `cargo check` in {dir} to see the error."
+        "rename-consumer failed to compile: generated code is not rename-safe (a `quasar_lang::` \
+         path or a bare prelude name leaked into an emitter). Run `cargo check` in {dir} to see \
+         the error."
     );
 }

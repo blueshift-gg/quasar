@@ -45,7 +45,9 @@ fn deny_lang_path_in_emitters() {
         if file.file_name().is_some_and(|n| n == "krate.rs") {
             continue;
         }
-        let rel = file.strip_prefix(env!("CARGO_MANIFEST_DIR")).unwrap_or(file);
+        let rel = file
+            .strip_prefix(env!("CARGO_MANIFEST_DIR"))
+            .unwrap_or(file);
         let content = std::fs::read_to_string(file).unwrap();
         for (line_num, line) in content.lines().enumerate() {
             // Comments may name the canonical crate (rustdoc links, prose).

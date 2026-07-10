@@ -23,8 +23,8 @@
 //! # CPI methods
 //!
 //! `Program<TokenProgram>`, `Program<Token2022Program>`, and
-//! `Interface<TokenInterface>` expose the same CPI methods. All methods return a
-//! `CpiCall` that can be invoked with `.invoke()`
+//! `Interface<TokenInterface>` expose the same CPI methods. All methods return
+//! a `CpiCall` that can be invoked with `.invoke()`
 //! or `.invoke_signed()`:
 //!
 //! ```ignore

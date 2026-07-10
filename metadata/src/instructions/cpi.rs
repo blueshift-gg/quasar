@@ -15,7 +15,8 @@ use {
 /// Trait for types that can execute Metaplex Token Metadata CPI calls.
 ///
 /// Implemented by [`crate::MetadataProgram`] (the checked program wrapper) and,
-/// for raw handles, by `AccountView` — see the impls at the bottom of this file.
+/// for raw handles, by `AccountView` — see the impls at the bottom of this
+/// file.
 pub trait MetadataCpi: AsAccountView {
     /// Create a metadata account for an SPL Token mint.
     ///

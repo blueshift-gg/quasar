@@ -398,7 +398,8 @@ pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> Token
         .is_some_and(|ok_ty| !is_unit_type(ok_ty));
 
     if has_return_data {
-        func.sig.output = syn::parse_quote!(-> Result<(), #krate::__solana_program_error::ProgramError>);
+        func.sig.output =
+            syn::parse_quote!(-> Result<(), #krate::__solana_program_error::ProgramError>);
     }
 
     let remaining: Vec<_> = func

@@ -289,9 +289,7 @@ fn emit_idl_accounts_meta(
                 .idl_resolver
                 .as_ref()
                 .map(emit_idl_resolver)
-                .unwrap_or_else(
-                    || quote! { #krate::idl_build::__reexport::IdlResolver::Input {} },
-                );
+                .unwrap_or_else(|| quote! { #krate::idl_build::__reexport::IdlResolver::Input {} });
             let node_docs = crate::helpers::docs_tokens_from_lines(&fp.docs);
 
             quote! {

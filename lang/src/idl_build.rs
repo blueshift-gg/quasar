@@ -259,11 +259,12 @@ fn assert_dynamic_fields_have_codecs(idl: &Idl) {
 
 /// Account discriminators must be pairwise distinct AND non-prefixing: the
 /// runtime discriminator check reads only the declared-length prefix
-/// (`checks/discriminator.rs`) and every `#[account]` shares `OWNER = crate::ID`,
-/// so a discriminator that is a prefix of another (which includes exact
-/// equality) is silent type confusion at runtime. This is the hard-error half of
-/// lint rule P009; an empty discriminator (`unsafe_no_disc`) is an explicit
-/// opt-out and is skipped. Panics in the missing-fragment/missing-codec style.
+/// (`checks/discriminator.rs`) and every `#[account]` shares `OWNER =
+/// crate::ID`, so a discriminator that is a prefix of another (which includes
+/// exact equality) is silent type confusion at runtime. This is the hard-error
+/// half of lint rule P009; an empty discriminator (`unsafe_no_disc`) is an
+/// explicit opt-out and is skipped. Panics in the
+/// missing-fragment/missing-codec style.
 fn assert_account_discriminators_distinct(idl: &Idl) {
     fn collides(a: &[u8], b: &[u8]) -> bool {
         if a.is_empty() || b.is_empty() {

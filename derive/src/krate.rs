@@ -10,16 +10,19 @@
 //! a `quote!` body; `derive/tests/deny_lang_path.rs` enforces that boundary so
 //! a rename can never be silently defeated by a hard-coded path elsewhere.
 
-use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
-use std::cell::RefCell;
+use {
+    proc_macro2::TokenStream,
+    quote::{format_ident, quote},
+    std::cell::RefCell,
+};
 
 /// Resolution of the runtime crate, cached per proc-macro process.
 #[derive(Clone)]
 enum Resolved {
     /// The consumer *is* `quasar-lang` (its own macro-expanded code).
     Itself,
-    /// The consumer depends on `quasar-lang` under this (possibly renamed) name.
+    /// The consumer depends on `quasar-lang` under this (possibly renamed)
+    /// name.
     Named(String),
     /// Resolution failed (docs.rs, vendored trees) — assume the canonical name.
     Fallback,

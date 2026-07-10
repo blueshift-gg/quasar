@@ -11,13 +11,13 @@ pub struct Take {
     #[account(mut)]
     pub taker: Signer,
     // A compound directive set on one account, evaluated in order:
-    //  - `has_one(maker)` / `has_one(maker_ta_b)`: the stored field must equal
-    //    the same-named account passed in (relationship check).
+    //  - `has_one(maker)` / `has_one(maker_ta_b)`: the stored field must equal the same-named
+    //    account passed in (relationship check).
     //  - `constraints(...)`: an arbitrary boolean the account must satisfy.
-    //  - `close(dest = taker)`: after the handler, zero the account and refund
-    //    its rent lamports to `taker`.
-    //  - `address = Escrow::seeds(maker.address())`: verify this is the expected
-    //    PDA (and populate `bumps.escrow`).
+    //  - `close(dest = taker)`: after the handler, zero the account and refund its rent lamports
+    //    to `taker`.
+    //  - `address = Escrow::seeds(maker.address())`: verify this is the expected PDA (and populate
+    //    `bumps.escrow`).
     #[account(
         mut,
         has_one(maker),

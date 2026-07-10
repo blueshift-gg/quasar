@@ -163,8 +163,12 @@ pub fn generate_python_client(idl: &Idl) -> String {
             // Optional accounts default to None; an omitted one is encoded as
             // the program id sentinel.
             if acc.optional {
-                writeln!(out, "    {}: Optional[Pubkey] = None", camel_to_snake(&acc.name))
-                    .unwrap();
+                writeln!(
+                    out,
+                    "    {}: Optional[Pubkey] = None",
+                    camel_to_snake(&acc.name)
+                )
+                .unwrap();
             } else {
                 writeln!(out, "    {}: Pubkey", camel_to_snake(&acc.name)).unwrap();
             }

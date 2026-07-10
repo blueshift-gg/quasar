@@ -20,8 +20,7 @@ pub(crate) fn emit_post_load_behavior(
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
     let path = &call.path;
-    let bhv =
-        quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
+    let bhv = quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
     let args_block = emit_behavior_args_builder(call, field_ty, phase.as_behavior_phase());
 
     // Total match: `PostLoadPhase` cannot be SetInitParam/Exit, so no ICE arm.
@@ -63,8 +62,7 @@ pub(crate) fn emit_epilogue_behavior(
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
     let path = &call.path;
-    let bhv =
-        quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
+    let bhv = quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
     let args_block = emit_behavior_args_builder(call, field_ty, BehaviorPhase::Exit);
 
     quote! {
@@ -237,8 +235,7 @@ fn emit_behavior_args_builder(
     // Exit args reference `self.field`; every other phase uses local bindings.
     let exit_context = matches!(phase, BehaviorPhase::Exit);
     let path = &call.path;
-    let bhv =
-        quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
+    let bhv = quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
     let phase_const = emit_arg_phase_const(phase);
     let setters: Vec<proc_macro2::TokenStream> = call
         .args

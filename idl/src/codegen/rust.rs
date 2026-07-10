@@ -588,8 +588,13 @@ fn emit_single_instruction(
         } else {
             "Address"
         };
-        writeln!(out, "    pub {}: {},", camel_to_snake(&account.name), field_ty)
-            .expect("write to String");
+        writeln!(
+            out,
+            "    pub {}: {},",
+            camel_to_snake(&account.name),
+            field_ty
+        )
+        .expect("write to String");
     }
 
     for arg in &ix.args {
@@ -1690,8 +1695,8 @@ fn rust_field_type(ty: &IdlType, codec: &Option<IdlCodec>) -> String {
 }
 
 /// Render a resolved [`WireType`] as its Rust field-type spelling. Pod aliases
-/// (`PodU64`, …) stay as their defined name — the Rust client keeps them, unlike
-/// the TypeScript client which folds them to primitives.
+/// (`PodU64`, …) stay as their defined name — the Rust client keeps them,
+/// unlike the TypeScript client which folds them to primitives.
 fn rust_wire_type(wire: &WireType) -> String {
     match wire {
         WireType::Bool => "bool".to_string(),
@@ -1706,7 +1711,11 @@ fn rust_wire_type(wire: &WireType) -> String {
         WireType::Array { len, item } => format!("[{}; {}]", rust_wire_type(item), len),
         WireType::Str { prefix } => format!("DynString<{}>", prefix_rust_type(*prefix)),
         WireType::List { prefix, item } => {
-            format!("DynVec<{}, {}>", rust_wire_type(item), prefix_rust_type(*prefix))
+            format!(
+                "DynVec<{}, {}>",
+                rust_wire_type(item),
+                prefix_rust_type(*prefix)
+            )
         }
         WireType::Option { inner, .. } => format!("Option<{}>", rust_wire_type(inner)),
         WireType::Defined(name) => name.clone(),
@@ -1743,7 +1752,8 @@ fn rust_field_type_codecless(ty: &IdlType) -> String {
     }
 }
 
-/// Fallback rendering for an unexpected non-dynamic type in the codec-less path.
+/// Fallback rendering for an unexpected non-dynamic type in the codec-less
+/// path.
 fn ty_to_string(ty: &IdlType) -> String {
     match ty {
         IdlType::Primitive(p) => p.clone(),
