@@ -149,10 +149,12 @@ pub fn generate_go_client(idl: &Idl) -> String {
         // Input struct
         writeln!(out, "type {}Input struct {{", pascal_name).unwrap();
         for acc in &ix.accounts {
-            if matches!(
-                acc.resolver,
-                IdlResolver::Const { .. } | IdlResolver::Pda { .. }
-            ) {
+            if !acc.optional
+                && matches!(
+                    acc.resolver,
+                    IdlResolver::Const { .. } | IdlResolver::Pda { .. }
+                )
+            {
                 continue;
             }
             // Optional accounts are pointer inputs; a nil pointer is encoded as
@@ -195,7 +197,13 @@ pub fn generate_go_client(idl: &Idl) -> String {
             out.push_str("\taccountsMap := map[string]solana.PublicKey{}\n");
         }
         for acc in &ix.accounts {
-            let key_expr = if let IdlResolver::Const { ref address } = acc.resolver {
+            let key_expr = if acc.optional {
+                format!(
+                    "func() solana.PublicKey {{ if input.{n} != nil {{ return *input.{n} }}; \
+                     return ProgramID }}()",
+                    n = snake_to_pascal(&acc.name)
+                )
+            } else if let IdlResolver::Const { ref address } = acc.resolver {
                 format!("solana.MustPublicKeyFromBase58(\"{}\")", address)
             } else if let IdlResolver::Pda { ref seeds, .. } = acc.resolver {
                 let mut seed_exprs = Vec::new();
@@ -236,12 +244,6 @@ pub fn generate_go_client(idl: &Idl) -> String {
                      solana.FindProgramAddress([][]byte{{{}}}, ProgramID); if err != nil {{ \
                      panic(err) }}; return addr }}()",
                     seed_exprs.join(", ")
-                )
-            } else if acc.optional {
-                format!(
-                    "func() solana.PublicKey {{ if input.{n} != nil {{ return *input.{n} }}; \
-                     return ProgramID }}()",
-                    n = snake_to_pascal(&acc.name)
                 )
             } else {
                 format!("input.{}", snake_to_pascal(&acc.name))
@@ -1107,6 +1109,9 @@ fn account_field_seed_inputs(
 ) -> Vec<AccountFieldSeedInput> {
     let mut inputs = Vec::new();
     for acc in &ix.accounts {
+        if acc.optional {
+            continue;
+        }
         let IdlResolver::Pda { seeds, .. } = &acc.resolver else {
             continue;
         };

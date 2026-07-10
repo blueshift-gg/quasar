@@ -387,6 +387,10 @@ impl ProgramFeatures {
             has_types: !idl.types.is_empty(),
             has_errors: !idl.errors.is_empty(),
             has_args: idl.instructions.iter().any(|ix| !ix.args.is_empty()),
+            has_option: idl
+                .instructions
+                .iter()
+                .any(|ix| ix.accounts.iter().any(|account| account.optional)),
             has_pdas: idl.instructions.iter().any(|ix| {
                 ix.accounts
                     .iter()

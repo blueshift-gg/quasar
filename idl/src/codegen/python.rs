@@ -151,27 +151,21 @@ pub fn generate_python_client(idl: &Idl) -> String {
         writeln!(out, "\n@dataclass").unwrap();
         writeln!(out, "class {}Input:", class_name).unwrap();
 
-        // Account fields
+        // Required account fields. Optional accounts are emitted after every
+        // required field so the generated dataclass never places a defaulted
+        // field before a required account, PDA seed input, or instruction arg.
         let mut has_any_fields = false;
         for acc in &ix.accounts {
+            if acc.optional {
+                continue;
+            }
             if matches!(acc.resolver, IdlResolver::Const { .. }) {
                 continue; // Known addresses are auto-filled
             }
             if matches!(acc.resolver, IdlResolver::Pda { .. }) {
                 continue; // PDAs are derived
             }
-            // Optional accounts default to None; an omitted one is encoded as
-            // the program id sentinel.
-            if acc.optional {
-                writeln!(
-                    out,
-                    "    {}: Optional[Pubkey] = None",
-                    camel_to_snake(&acc.name)
-                )
-                .unwrap();
-            } else {
-                writeln!(out, "    {}: Pubkey", camel_to_snake(&acc.name)).unwrap();
-            }
+            writeln!(out, "    {}: Pubkey", camel_to_snake(&acc.name)).unwrap();
             has_any_fields = true;
         }
 
@@ -193,6 +187,19 @@ pub fn generate_python_client(idl: &Idl) -> String {
                 "    {}: {}",
                 camel_to_snake(&arg.name),
                 python_type(&arg.ty)
+            )
+            .unwrap();
+            has_any_fields = true;
+        }
+
+        // Optional accounts are always caller-controlled, even when the IDL
+        // carries a Const/PDA resolver. `None` selects the program-id sentinel;
+        // callers that want the resolved address pass it explicitly.
+        for acc in ix.accounts.iter().filter(|acc| acc.optional) {
+            writeln!(
+                out,
+                "    {}: Optional[Pubkey] = None",
+                camel_to_snake(&acc.name)
             )
             .unwrap();
             has_any_fields = true;
@@ -222,7 +229,10 @@ pub fn generate_python_client(idl: &Idl) -> String {
         // Build accounts list
         out.push_str("    accounts = []\n");
         for acc in &ix.accounts {
-            let key_expr = if let IdlResolver::Const { ref address } = acc.resolver {
+            let key_expr = if acc.optional {
+                let snake = camel_to_snake(&acc.name);
+                format!("input.{snake} if input.{snake} is not None else PROGRAM_ID")
+            } else if let IdlResolver::Const { ref address } = acc.resolver {
                 format!("Pubkey.from_string(\"{}\")", address)
             } else if let IdlResolver::Pda { ref seeds, .. } = acc.resolver {
                 let mut seed_exprs = Vec::new();
@@ -259,9 +269,6 @@ pub fn generate_python_client(idl: &Idl) -> String {
                     "Pubkey.find_program_address([{}], PROGRAM_ID)[0]",
                     seed_exprs.join(", ")
                 )
-            } else if acc.optional {
-                let snake = camel_to_snake(&acc.name);
-                format!("input.{snake} if input.{snake} is not None else PROGRAM_ID")
             } else {
                 format!("input.{}", camel_to_snake(&acc.name))
             };
@@ -942,6 +949,9 @@ fn account_field_seed_inputs(
 ) -> Vec<AccountFieldSeedInput> {
     let mut inputs = Vec::new();
     for acc in &ix.accounts {
+        if acc.optional {
+            continue;
+        }
         let IdlResolver::Pda { seeds, .. } = &acc.resolver else {
             continue;
         };

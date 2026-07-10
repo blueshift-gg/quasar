@@ -136,7 +136,7 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         let user_accounts: Vec<_> = ix
             .accounts
             .iter()
-            .filter(|a| !matches!(a.resolver, IdlResolver::Pda { .. }))
+            .filter(|a| a.optional || !matches!(a.resolver, IdlResolver::Pda { .. }))
             .collect();
         let account_field_seeds = account_field_seed_inputs(ix);
 
@@ -190,7 +190,7 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         let pda_count = ix
             .accounts
             .iter()
-            .filter(|a| matches!(a.resolver, IdlResolver::Pda { .. }))
+            .filter(|a| !a.optional && matches!(a.resolver, IdlResolver::Pda { .. }))
             .count();
         if pda_count > 0 {
             writeln!(out, "    Pubkey pda_keys[{pda_count}];").unwrap();
@@ -200,7 +200,7 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         {
             let mut idx = 0usize;
             for acc in &ix.accounts {
-                if matches!(acc.resolver, IdlResolver::Pda { .. }) {
+                if !acc.optional && matches!(acc.resolver, IdlResolver::Pda { .. }) {
                     pda_name_to_idx.insert(acc.name.as_str(), idx);
                     idx += 1;
                 }
@@ -210,26 +210,29 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         // derive pdas
         let mut pda_idx = 0usize;
         for acc in &ix.accounts {
-            if let IdlResolver::Pda { ref seeds, .. } = acc.resolver {
-                emit_pda_derivation(out, seeds, &upper, pda_idx, &pda_name_to_idx);
-                pda_idx += 1;
+            if !acc.optional {
+                if let IdlResolver::Pda { ref seeds, .. } = acc.resolver {
+                    emit_pda_derivation(out, seeds, &upper, pda_idx, &pda_name_to_idx);
+                    pda_idx += 1;
+                }
             }
         }
 
         // build account metas
         pda_idx = 0;
         for (i, acc) in ix.accounts.iter().enumerate() {
-            let key_expr = if matches!(acc.resolver, IdlResolver::Pda { .. }) {
-                let expr = format!("&pda_keys[{pda_idx}]");
-                pda_idx += 1;
-                expr
-            } else if acc.optional {
+            let key_expr = if acc.optional {
                 // Optional accounts are nullable pointers; a NULL pointer is
-                // encoded as the program id sentinel.
+                // encoded as the program id sentinel. This takes precedence
+                // over any resolver so absence is always representable.
                 format!(
                     "accounts->{n} ? accounts->{n} : (Pubkey *)&{upper}_PROGRAM_ID",
                     n = acc.name
                 )
+            } else if matches!(acc.resolver, IdlResolver::Pda { .. }) {
+                let expr = format!("&pda_keys[{pda_idx}]");
+                pda_idx += 1;
+                expr
             } else {
                 format!("accounts->{}", acc.name)
             };
@@ -497,6 +500,9 @@ fn emit_raw_arg_seed(out: &mut String, index: usize, path: &str) {
 fn account_field_seed_inputs(ix: &crate::types::IdlInstruction) -> Vec<(String, String)> {
     let mut inputs = Vec::new();
     for acc in &ix.accounts {
+        if acc.optional {
+            continue;
+        }
         let IdlResolver::Pda { seeds, .. } = &acc.resolver else {
             continue;
         };

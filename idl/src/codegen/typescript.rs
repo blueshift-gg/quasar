@@ -327,7 +327,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         let user_accs: Vec<_> = ix
             .accounts
             .iter()
-            .filter(|a| matches!(a.resolver, IdlResolver::Input {}))
+            .filter(|a| a.optional || matches!(a.resolver, IdlResolver::Input {}))
             .collect();
 
         if user_accs.is_empty() && ix.args.is_empty() && !has_remaining {
@@ -734,7 +734,7 @@ fn kit_plugin_instruction_has_input(ix: &IdlInstruction) -> bool {
         || ix
             .accounts
             .iter()
-            .any(|account| matches!(account.resolver, IdlResolver::Input {}))
+            .any(|account| account.optional || matches!(account.resolver, IdlResolver::Input {}))
 }
 
 fn lower_first(s: &str) -> String {
@@ -761,7 +761,7 @@ fn generate_instruction_builders_web3js(
         let mut user_accs = Vec::new();
         let mut has_non_input_accounts = false;
         for acc in &ix.accounts {
-            if matches!(acc.resolver, IdlResolver::Input {}) {
+            if acc.optional || matches!(acc.resolver, IdlResolver::Input {}) {
                 user_accs.push(acc);
             } else {
                 has_non_input_accounts = true;
@@ -770,15 +770,24 @@ fn generate_instruction_builders_web3js(
 
         let input_account_names: HashSet<&str> =
             user_accs.iter().map(|a| a.name.as_str()).collect();
+        let optional_account_names: HashSet<&str> = user_accs
+            .iter()
+            .filter(|account| account.optional)
+            .map(|account| account.name.as_str())
+            .collect();
         let ix_needs_account_resolver = instruction_has_account_field_pda_seeds(ix);
         let ix_has_pdas = ix
             .accounts
             .iter()
-            .any(|a| matches!(a.resolver, IdlResolver::Pda { .. }));
+            .any(|a| !a.optional && matches!(a.resolver, IdlResolver::Pda { .. }));
 
         let account_expr = |name: &str| {
             if input_account_names.contains(name) {
-                format!("input.{name}")
+                if optional_account_names.contains(name) {
+                    format!("(input.{name} ?? {class_name}.programId)")
+                } else {
+                    format!("input.{name}")
+                }
             } else {
                 format!("accountsMap[\"{}\"]", name)
             }
@@ -812,6 +821,9 @@ fn generate_instruction_builders_web3js(
 
         // Derive fixed-address accounts
         for acc in &ix.accounts {
+            if acc.optional {
+                continue;
+            }
             if let IdlResolver::Const { address } = &acc.resolver {
                 writeln!(
                     out,
@@ -824,6 +836,9 @@ fn generate_instruction_builders_web3js(
 
         // Derive PDA accounts
         for acc in &ix.accounts {
+            if acc.optional {
+                continue;
+            }
             if let IdlResolver::Pda { seeds, .. } = &acc.resolver {
                 if let Some(helper_name) = exportable_pda_helpers.get(&format!("{:?}", seeds)) {
                     let args = helper_call_args(seeds, &account_expr);
@@ -892,11 +907,7 @@ fn generate_instruction_builders_web3js(
         if !ix.accounts.is_empty() || has_remaining {
             out.push_str("      keys: [\n");
             for acc in &ix.accounts {
-                let pubkey_expr = if acc.optional {
-                    format!("{} ?? {class_name}.programId", account_expr(&acc.name))
-                } else {
-                    account_expr(&acc.name)
-                };
+                let pubkey_expr = account_expr(&acc.name);
                 let is_signer = matches!(acc.signer, AccountFlag::Fixed(true));
                 let is_writable = matches!(acc.writable, AccountFlag::Fixed(true));
                 writeln!(
@@ -931,7 +942,7 @@ fn generate_instruction_builders_kit(
         let mut user_accs = Vec::new();
         let mut has_non_input_accounts = false;
         for acc in &ix.accounts {
-            if matches!(acc.resolver, IdlResolver::Input {}) {
+            if acc.optional || matches!(acc.resolver, IdlResolver::Input {}) {
                 user_accs.push(acc);
             } else {
                 has_non_input_accounts = true;
@@ -940,11 +951,20 @@ fn generate_instruction_builders_kit(
 
         let input_account_names: HashSet<&str> =
             user_accs.iter().map(|a| a.name.as_str()).collect();
+        let optional_account_names: HashSet<&str> = user_accs
+            .iter()
+            .filter(|account| account.optional)
+            .map(|account| account.name.as_str())
+            .collect();
         let ix_needs_account_resolver = instruction_has_account_field_pda_seeds(ix);
 
         let account_expr = |name: &str| {
             if input_account_names.contains(name) {
-                format!("input.{name}")
+                if optional_account_names.contains(name) {
+                    format!("(input.{name} ?? PROGRAM_ADDRESS)")
+                } else {
+                    format!("input.{name}")
+                }
             } else {
                 format!("accountsMap[\"{}\"]", name)
             }
@@ -954,7 +974,7 @@ fn generate_instruction_builders_kit(
         let ix_has_pdas = ix
             .accounts
             .iter()
-            .any(|a| matches!(a.resolver, IdlResolver::Pda { .. }));
+            .any(|a| !a.optional && matches!(a.resolver, IdlResolver::Pda { .. }));
 
         // Method signature
         let mut method_params = Vec::new();
@@ -983,6 +1003,9 @@ fn generate_instruction_builders_kit(
 
         // Derive fixed-address accounts
         for acc in &ix.accounts {
+            if acc.optional {
+                continue;
+            }
             if let IdlResolver::Const { address } = &acc.resolver {
                 writeln!(
                     out,
@@ -995,6 +1018,9 @@ fn generate_instruction_builders_kit(
 
         // Derive PDA accounts (async in kit)
         for acc in &ix.accounts {
+            if acc.optional {
+                continue;
+            }
             if let IdlResolver::Pda { seeds, .. } = &acc.resolver {
                 if let Some(helper_name) = exportable_pda_helpers.get(&format!("{:?}", seeds)) {
                     let args = helper_call_args(seeds, &account_expr);
@@ -1063,11 +1089,7 @@ fn generate_instruction_builders_kit(
         if !ix.accounts.is_empty() || has_remaining {
             out.push_str("      accounts: [\n");
             for acc in &ix.accounts {
-                let addr_expr = if acc.optional {
-                    format!("{} ?? PROGRAM_ADDRESS", account_expr(&acc.name))
-                } else {
-                    account_expr(&acc.name)
-                };
+                let addr_expr = account_expr(&acc.name);
                 let is_signer = matches!(acc.signer, AccountFlag::Fixed(true));
                 let is_writable = matches!(acc.writable, AccountFlag::Fixed(true));
                 let role = account_role(is_signer, is_writable);
@@ -2186,6 +2208,9 @@ fn has_account_field_pda_seeds(idl: &Idl) -> bool {
 
 fn instruction_has_account_field_pda_seeds(ix: &crate::types::IdlInstruction) -> bool {
     ix.accounts.iter().any(|account| {
+        if account.optional {
+            return false;
+        }
         if let IdlResolver::Pda { seeds, .. } = &account.resolver {
             seeds
                 .iter()

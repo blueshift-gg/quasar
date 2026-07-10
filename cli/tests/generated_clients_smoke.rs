@@ -58,6 +58,62 @@ fn compile_python_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
             .arg("__init__.py")
             .arg("client.py")
             .current_dir(client_dir),
+    )?;
+
+    // `py_compile` only checks syntax. Execute the module with lightweight
+    // solders stubs so dataclass construction and postponed annotations are
+    // validated as well (including required/default field ordering and every
+    // `typing.get_type_hints` name).
+    run_command(
+        Command::new("python3")
+            .arg("-c")
+            .arg(
+                r#"
+import dataclasses
+import importlib.util
+import pathlib
+import sys
+import types
+import typing
+
+solders = types.ModuleType("solders")
+solders.__path__ = []
+pubkey = types.ModuleType("solders.pubkey")
+instruction = types.ModuleType("solders.instruction")
+
+class Pubkey:
+    @classmethod
+    def from_string(cls, _value):
+        return cls()
+
+    @classmethod
+    def find_program_address(cls, _seeds, _program_id):
+        return cls(), 255
+
+class Instruction:
+    pass
+
+class AccountMeta:
+    pass
+
+pubkey.Pubkey = Pubkey
+instruction.Instruction = Instruction
+instruction.AccountMeta = AccountMeta
+sys.modules["solders"] = solders
+sys.modules["solders.pubkey"] = pubkey
+sys.modules["solders.instruction"] = instruction
+
+spec = importlib.util.spec_from_file_location("generated_client", pathlib.Path("client.py"))
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+
+for value in vars(module).values():
+    if isinstance(value, type) and dataclasses.is_dataclass(value):
+        typing.get_type_hints(value, vars(module))
+"#,
+            )
+            .current_dir(client_dir),
     )
 }
 
@@ -1118,6 +1174,7 @@ use quasar_lang::prelude::*;
 declare_id!("11111111111111111111111111111111");
 
 #[account(discriminator = 1, set_inner)]
+#[seeds(b"thing", owner: Address)]
 pub struct Thing {
     pub owner: Address,
     pub value: u64,
@@ -1128,7 +1185,7 @@ mod optional_accounts {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn touch(_ctx: Ctx<Touch>) -> Result<(), ProgramError> {
+    pub fn touch(_ctx: Ctx<Touch>, _value: u64) -> Result<(), ProgramError> {
         Ok(())
     }
 }
@@ -1139,7 +1196,7 @@ pub struct Touch {
     pub authority: Signer,
     #[account(mut)]
     pub required: Account<Thing>,
-    #[account(mut)]
+    #[account(mut, address = Thing::seeds(authority.address()))]
     pub maybe: Option<Account<Thing>>,
 }
 "#,
@@ -1199,17 +1256,21 @@ pub struct Touch {
             source.contains("  required: Address;"),
             "required account should stay a mandatory TS input"
         );
+        assert!(
+            !source.contains("accountsMap[\"maybe\"] ="),
+            "optional resolved accounts must remain caller-controlled"
+        );
     }
     assert!(
-        web3.contains("pubkey: input.maybe ?? "),
+        web3.contains("pubkey: (input.maybe ?? "),
         "web3.js should default an absent optional account to the program id"
     );
     assert!(
-        web3.contains("programId, isSigner: false, isWritable: true }"),
+        web3.contains("programId), isSigner: false, isWritable: true }"),
         "web3.js optional sentinel should use the program id with declared flags"
     );
     assert!(
-        kit.contains("address: input.maybe ?? PROGRAM_ADDRESS, role:"),
+        kit.contains("address: (input.maybe ?? PROGRAM_ADDRESS), role:"),
         "kit should default an absent optional account to the program address"
     );
     compile_typescript_client(&ts_dir)?;
@@ -1218,8 +1279,11 @@ pub struct Touch {
     // pointer respectively, each defaulting an absent slot to the program id.
     let py_dir = only_child_dir(&clients_path.join("python"))?;
     let py = read_file(&py_dir.join("client.py"))?;
+    assert!(py.contains("from typing import Optional"));
+    assert!(py.contains("value: int\n    maybe: Optional[Pubkey] = None"));
     assert!(py.contains("maybe: Optional[Pubkey] = None"));
     assert!(py.contains("input.maybe if input.maybe is not None else PROGRAM_ID"));
+    assert!(!py.contains("accounts_map[\"maybe\"] = Pubkey.find_program_address"));
     compile_python_client(&py_dir)?;
 
     let go_dir = only_child_dir(&clients_path.join("golang"))?;
