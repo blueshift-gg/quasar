@@ -1,5 +1,6 @@
 SHELL := /usr/bin/env bash
-NIGHTLY_TOOLCHAIN := nightly
+# Keep rustfmt, Clippy, and Miri deterministic across local and CI runs.
+NIGHTLY_TOOLCHAIN := nightly-2026-03-27
 KANI_VERSION := 0.67.0
 # platform-tools v1.52 ships Cargo 1.89 which supports Cargo.lock v4.
 # v1.51 ships Cargo 1.84 which does not, causing "duplicate lang item" errors.
@@ -19,11 +20,17 @@ SBF_EXAMPLES := examples/vault examples/escrow examples/multisig examples/upstre
 # All SBF programs
 SBF_ALL := $(SBF_EXAMPLES) $(SBF_TEST_PROGRAMS)
 
+# Public crates in dependency order. Keep this list aligned with the release
+# workflow; `package-check` proves the complete publication graph packages.
+PUBLISH_PACKAGES := quasar-schema quasar-idl-schema quasar-profile \
+	solana-compiler-builtins quasar-derive quasar-idl quasar-lang \
+	quasar-spl quasar-metadata quasar-cli
+
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
 	check-runtime-panics check-workspace-invariants build build-sbf test test-bless \
 	bench-cu bench-tracked compare-tracked test-miri test-miri-strict test-all \
 	nightly-version generated-client-smoke kani help-kani check-kani kani-lang \
-	kani-spl kani-metadata
+	kani-spl kani-metadata package-check audit
 
 # Print the nightly toolchain version for CI
 nightly-version:
@@ -139,6 +146,12 @@ check-workspace-invariants:
 	  echo "expected executable script: scripts/bench-tracked-programs.sh" >&2; \
 	  exit 1; \
 	fi; \
+	for script in scripts/publish-crate.sh scripts/wait-for-crate.sh; do \
+	  if [[ ! -x "$$script" ]]; then \
+	    echo "expected executable script: $$script" >&2; \
+	    exit 1; \
+	  fi; \
+	done; \
 	check_allowed "process::exit" 'std::process::exit|process::exit' \
 	  'cli/src/main.rs:' 'cli/src/init/banner.rs:'; \
 	check_allowed "polling watch loop sleep" \
@@ -170,7 +183,7 @@ build-sbf:
 test:
 	@$(MAKE) build
 	@$(MAKE) build-sbf
-	@cargo test -p quasar-lang -p quasar-derive -p quasar-spl \
+	@CARGO_INCREMENTAL=0 cargo test -p quasar-lang -p quasar-derive -p quasar-spl \
 		-p quasar-metadata \
 		-p quasar-vault -p quasar-escrow -p quasar-multisig -p upstream-vault \
 		-p quasar-test-suite \
@@ -182,14 +195,25 @@ test:
 test-bless:
 	@$(MAKE) build
 	@$(MAKE) build-sbf
-	@TRYBUILD=overwrite cargo test -p quasar-lang -p quasar-derive -p quasar-spl \
+	@CARGO_INCREMENTAL=0 TRYBUILD=overwrite cargo test -p quasar-lang -p quasar-derive -p quasar-spl \
 		-p quasar-metadata \
 		-p quasar-vault -p quasar-escrow -p quasar-multisig -p upstream-vault \
 		-p quasar-test-suite \
 		--all-features
 
 generated-client-smoke:
-	@cargo test -p quasar-cli --test generated_clients_smoke -- --nocapture
+	@cargo test -p quasar-cli --test generated_clients_smoke -- --nocapture --test-threads=1
+
+package-check:
+	@cargo package $(foreach package,$(PUBLISH_PACKAGES),-p $(package)) \
+		--locked --allow-dirty
+
+audit:
+	@command -v cargo-audit >/dev/null 2>&1 || { \
+		echo "cargo-audit is not installed; run: cargo install cargo-audit --locked"; \
+		exit 1; \
+	}
+	@cargo audit
 
 bench-cu:
 	@$(MAKE) build-sbf
@@ -240,8 +264,9 @@ test-all:
 	@$(MAKE) check-workspace-lints
 	@$(MAKE) check-runtime-panics
 	@$(MAKE) check-workspace-invariants
-	@$(MAKE) build-sbf
 	@$(MAKE) test
 	@$(MAKE) generated-client-smoke
+	@$(MAKE) package-check
+	@$(MAKE) audit
 	@$(MAKE) test-miri
 	@echo "All checks passed!"

@@ -159,6 +159,28 @@ jobs:
       - name: Verify runtime panic policy
         run: make check-runtime-panics
 
+  package:
+    name: Package Manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify publishable crates
+        run: make package-check
+
+  security_audit:
+    name: Dependency Security Audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
   cargo_test:
     name: Build & Test
     runs-on: ubuntu-latest
