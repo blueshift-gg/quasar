@@ -24,12 +24,14 @@
 use solana_define_syscall::definitions::{sol_curve_validate_point, sol_sha256};
 use {solana_address::Address, solana_program_error::ProgramError};
 
-#[cfg(any(target_os = "solana", target_arch = "bpf"))]
+// Also compiled under `kani`: `build_pda_input` (below) is pure slice
+// arithmetic and its bounds proofs drive it directly on Kani's host target.
+#[cfg(any(target_os = "solana", target_arch = "bpf", kani))]
 const PDA_MARKER: &[u8; 21] = b"ProgramDerivedAddress";
 
 /// Maximum number of slices in a PDA hash input: up to 17 seeds + bump +
 /// program_id + PDA_MARKER.
-#[cfg(any(target_os = "solana", target_arch = "bpf"))]
+#[cfg(any(target_os = "solana", target_arch = "bpf", kani))]
 const MAX_PDA_SLICES: usize = 19;
 
 /// Build the PDA hash input `[seeds..., (bump?), program_id, PDA_MARKER]` into
@@ -42,16 +44,18 @@ const MAX_PDA_SLICES: usize = 19;
 /// the bump slot keeps the later mutation of that byte Tree-Borrows-clean: the
 /// stored value carries no borrow of `bump_arr`.
 ///
-/// Kani proves the index arithmetic stays in bounds:
-/// `verify_program_address_indices_within_bounds` (no bump, `seeds <= 17`) and
-/// `find_program_address_indices_within_bounds` (bump, `seeds <= 16`).
+/// Kani proves the index arithmetic stays in bounds by driving this function
+/// directly: `verify_program_address_indices_within_bounds` (no bump, `seeds <=
+/// 17`) and `find_program_address_indices_within_bounds` (bump, `seeds <= 16`).
 ///
 /// # Safety
 ///
 /// `out` must point to at least `MAX_PDA_SLICES` writable `SolBytes` slots and
 /// `seeds.len()` must satisfy the caller's bound (`<= 17` without a bump, `<=
 /// 16` with one).
-#[cfg(any(target_os = "solana", target_arch = "bpf"))]
+// Pure slice arithmetic (no syscalls), so it is also compiled under `kani` to
+// let the bounds proofs exercise the real function rather than a restated copy.
+#[cfg(any(target_os = "solana", target_arch = "bpf", kani))]
 #[inline(always)]
 unsafe fn build_pda_input(
     seeds: &[&[u8]],

@@ -22,7 +22,7 @@
 
 use {
     crate::__internal::{account_stride, ACCOUNT_HEADER, DUP_ENTRY_SIZE},
-    solana_account_view::{RuntimeAccount, NOT_BORROWED},
+    solana_account_view::{AccountView, RuntimeAccount, NOT_BORROWED},
 };
 
 /// Advance a buffer pointer past the non-duplicate account whose header starts
@@ -53,6 +53,28 @@ pub(crate) unsafe fn advance_account_data(ptr: *mut u8, data_len: usize) -> *mut
     // SAFETY: rounding up to the next 8-byte boundary stays within the entry's
     // trailing alignment padding.
     unsafe { ptr.add((ptr as usize).wrapping_neg() & 7) }
+}
+
+/// Classify an account entry's `borrow_state` byte (byte 0 of its header).
+///
+/// This is the **sole** `NOT_BORROWED` comparison in the crate — the one place
+/// the non-duplicate/duplicate distinction is decoded. [`Cursor::next`] uses it
+/// for the full walk (reading `borrow_state` off a `RuntimeAccount`); the hot
+/// single-field parser [`crate::__internal::parse_account_dup`] uses it on the
+/// low byte of the `u32` header it already loaded (that parser keeps its tuned
+/// `advance_account_data` stride form rather than driving a `Cursor`, so it
+/// cannot go through `next()` without a size/CU delta — but it shares this one
+/// decode).
+///
+/// Returns `None` for a non-duplicate entry (`borrow_state == NOT_BORROWED`,
+/// `0xFF`) and `Some(idx)` for a duplicate marker aliasing source index `idx`.
+#[inline(always)]
+pub(crate) fn classify_borrow_state(borrow_state: u8) -> Option<u8> {
+    if borrow_state == NOT_BORROWED {
+        None
+    } else {
+        Some(borrow_state)
+    }
 }
 
 /// One decoded entry from the SVM account buffer, produced by
@@ -130,21 +152,114 @@ impl Cursor {
         // struct.
         let borrow = unsafe { (*raw).borrow_state };
 
-        if borrow == NOT_BORROWED {
-            // SAFETY: a non-duplicate entry has a full header; `data_len` is
-            // valid to read.
-            let data_len = unsafe { (*raw).data_len as usize };
-            // SAFETY: a non-duplicate entry occupies exactly
-            // `account_stride(data_len)` bytes (header + data + padding,
-            // rounded up to 8), so the new pointer is at most `boundary`.
-            self.ptr = unsafe { self.ptr.add(account_stride(data_len)) };
-            RawEntry::Account(raw)
-        } else {
-            // SAFETY: a duplicate entry occupies exactly `DUP_ENTRY_SIZE` (8)
-            // bytes.
-            self.ptr = unsafe { self.ptr.add(DUP_ENTRY_SIZE) };
-            RawEntry::Dup(borrow)
+        match classify_borrow_state(borrow) {
+            None => {
+                // SAFETY: a non-duplicate entry has a full header; `data_len` is
+                // valid to read.
+                let data_len = unsafe { (*raw).data_len as usize };
+                // SAFETY: a non-duplicate entry occupies exactly
+                // `account_stride(data_len)` bytes (header + data + padding,
+                // rounded up to 8), so the new pointer is at most `boundary`.
+                self.ptr = unsafe { self.ptr.add(account_stride(data_len)) };
+                RawEntry::Account(raw)
+            }
+            Some(idx) => {
+                // SAFETY: a duplicate entry occupies exactly `DUP_ENTRY_SIZE`
+                // (8) bytes.
+                self.ptr = unsafe { self.ptr.add(DUP_ENTRY_SIZE) };
+                RawEntry::Dup(idx)
+            }
         }
+    }
+}
+
+/// Where a duplicate marker's source index (`idx`) is resolved from.
+///
+/// A duplicate marker carries the loader's **global** account index — the
+/// position of the account it aliases in the flat, in-order sequence of every
+/// account the SVM serialized for the instruction. Each variant materializes a
+/// prefix of that global sequence differently, so `idx`'s meaning ("index
+/// space") differs per variant even though it always denotes the same global
+/// position. Each variant documents its space; [`resolve_dup`] is the single
+/// reader of all three.
+pub(crate) enum DupSources<'a> {
+    /// **Flat buffer space.** `idx` indexes `base[0..count]` directly: the
+    /// declared/raw parsers write each parsed [`AccountView`] to the slot equal
+    /// to its global index, so buffer slot == global index. `Some` iff
+    /// `idx < count` (a dup must alias an *earlier* slot). Used by
+    /// `parse_all_accounts_unchecked` and `parse_account_dup`.
+    Buffer {
+        /// Start of the output slot array (slots `0..count` initialized).
+        base: *const AccountView,
+        /// Number of accounts parsed so far == the current slot's global index.
+        count: usize,
+    },
+    /// **Split declared++cache space.** `idx` indexes the concatenation
+    /// `[declared ++ cache]`: `idx < declared.len()` aliases a declared account
+    /// (a dup pointing back before the remaining region), otherwise
+    /// `idx - declared.len()` indexes `cache` — the remaining accounts already
+    /// yielded, in yield order (yield order == buffer order, so cache slot ==
+    /// remaining-region-local global index). `None` iff `idx` is past both.
+    /// Used by the remaining-account iterator (`RemainingIterImpl`).
+    Cache {
+        /// The instruction's declared accounts (the global-index prefix).
+        declared: &'a [AccountView],
+        /// Remaining accounts yielded so far, in order.
+        cache: &'a [AccountView],
+    },
+    /// **Declared-only prefix** of the split space: `idx < declared.len()`
+    /// aliases a declared account; any larger `idx` returns `None` because it
+    /// is not resolvable from a slice — the caller walks the remaining
+    /// region for it (see `resolve_dup_walk`). Used for the first hop of
+    /// the one-off `get`/`parse_single` walk resolver.
+    Declared(&'a [AccountView]),
+}
+
+/// Resolve a duplicate marker's source index to the aliased [`AccountView`], or
+/// `None` when `idx` is outside the range addressable from `sources`.
+///
+/// This is the single dup-index resolver: every duplicate-account copy in the
+/// crate (declared/raw parsing in `lib.rs`, the remaining-account iterator and
+/// the one-off walk resolver in `remaining.rs`) routes its index arithmetic
+/// through here. The [`DupSources`] variant selects the index space; all three
+/// ultimately address the loader's global account index (see the variant docs).
+///
+/// The returned value is a bitwise copy of the source entry.
+/// [`AccountView`] is not `Copy` (to make aliasing explicit) but implements no
+/// `Drop`, so `ptr::read` is sound — the copy simply aliases the same
+/// [`RuntimeAccount`]; the caller is responsible for borrow discipline across
+/// aliases, exactly as before this was unified.
+#[inline(always)]
+pub(crate) fn resolve_dup(idx: usize, sources: DupSources<'_>) -> Option<AccountView> {
+    match sources {
+        DupSources::Buffer { base, count } => {
+            if idx < count {
+                // SAFETY: `idx < count`, and slots `0..count` were initialized
+                // by the caller as it parsed earlier accounts.
+                Some(unsafe { core::ptr::read(base.add(idx)) })
+            } else {
+                None
+            }
+        }
+        DupSources::Declared(declared) => resolve_from_slice(idx, declared),
+        DupSources::Cache { declared, cache } => match resolve_from_slice(idx, declared) {
+            some @ Some(_) => some,
+            None => resolve_from_slice(idx - declared.len(), cache),
+        },
+    }
+}
+
+/// Read `slice[idx]` as a bitwise [`AccountView`] copy, or `None` if out of
+/// range. Shared by the [`DupSources::Declared`] and [`DupSources::Cache`]
+/// arms.
+#[inline(always)]
+fn resolve_from_slice(idx: usize, slice: &[AccountView]) -> Option<AccountView> {
+    if idx < slice.len() {
+        // SAFETY: `idx < slice.len()`; `AccountView` has no `Drop`, so the
+        // bitwise copy aliases the same `RuntimeAccount` soundly.
+        Some(unsafe { core::ptr::read(slice.as_ptr().add(idx)) })
+    } else {
+        None
     }
 }
 
