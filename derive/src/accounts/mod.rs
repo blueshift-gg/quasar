@@ -15,7 +15,8 @@
 //! `path::Args::builder()` + `<path::Behavior as AccountBehavior<T>>`.
 //!
 //! See `quasar_lang::account_behavior::AccountBehavior` for the plugin
-//! contract.
+//! contract, and `ARCHITECTURE.md` (section 2) for how this pipeline fits the
+//! rest of the compiler.
 
 pub(crate) mod emit;
 pub(crate) mod resolve;
@@ -222,6 +223,7 @@ fn emit_event_cpi_impl(
     ty_generics: &proc_macro2::TokenStream,
     where_clause: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     use resolve::{specs::EventCpiTerm, wrapper::WrapperKind};
 
     let Some(authority_field) = plan
@@ -249,14 +251,14 @@ fn emit_event_cpi_impl(
     };
 
     quote! {
-        impl #impl_generics quasar_lang::event::EventCpi for #name #ty_generics #where_clause {
+        impl #impl_generics #krate::event::EventCpi for #name #ty_generics #where_clause {
             const EVENT_AUTHORITY_BUMP: u8 = crate::EventAuthority::BUMP;
             #[inline(always)]
-            fn event_program(&self) -> &AccountView {
+            fn event_program(&self) -> &#krate::__internal::AccountView {
                 self.#program_field.to_account_view()
             }
             #[inline(always)]
-            fn event_authority(&self) -> &AccountView {
+            fn event_authority(&self) -> &#krate::__internal::AccountView {
                 self.#authority_field.to_account_view()
             }
         }
@@ -269,6 +271,7 @@ fn emit_idl_accounts_meta(
     name: &syn::Ident,
     plan: &resolve::specs::AccountsPlanTyped,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     use quote::quote;
 
     let struct_name_str = name.to_string();
@@ -287,16 +290,16 @@ fn emit_idl_accounts_meta(
                 .as_ref()
                 .map(emit_idl_resolver)
                 .unwrap_or_else(
-                    || quote! { quasar_lang::idl_build::__reexport::IdlResolver::Input {} },
+                    || quote! { #krate::idl_build::__reexport::IdlResolver::Input {} },
                 );
             let node_docs = crate::helpers::docs_tokens_from_lines(&fp.docs);
 
             quote! {
-                quasar_lang::idl_build::__reexport::IdlAccountNode {
-                    name: quasar_lang::idl_build::s(#field_name),
+                #krate::idl_build::__reexport::IdlAccountNode {
+                    name: #krate::idl_build::s(#field_name),
                     optional: #optional,
-                    writable: quasar_lang::idl_build::__reexport::AccountFlag::Fixed(#writable),
-                    signer: quasar_lang::idl_build::__reexport::AccountFlag::Fixed(#signer),
+                    writable: #krate::idl_build::__reexport::AccountFlag::Fixed(#writable),
+                    signer: #krate::idl_build::__reexport::AccountFlag::Fixed(#signer),
                     resolver: #resolver_tokens,
                     docs: #node_docs,
                 }
@@ -306,11 +309,11 @@ fn emit_idl_accounts_meta(
 
     quote! {
         #[cfg(feature = "idl-build")]
-        quasar_lang::__private_inventory::submit! {
-            quasar_lang::idl_build::AccountsMetaFragment(|| {
+        #krate::__private_inventory::submit! {
+            #krate::idl_build::AccountsMetaFragment(|| {
                 (
-                    quasar_lang::idl_build::s(#struct_name_str),
-                    quasar_lang::idl_build::vec![#(#account_nodes),*],
+                    #krate::idl_build::s(#struct_name_str),
+                    #krate::idl_build::vec![#(#account_nodes),*],
                 )
             })
         }
@@ -320,13 +323,14 @@ fn emit_idl_accounts_meta(
 /// Format an already-resolved typed-seeds PDA resolver into IDL tokens. All
 /// seed resolution happened once in the planner; this is a pure formatter.
 fn emit_idl_resolver(resolver: &resolve::specs::IdlResolverPlan) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let account_ty = &resolver.account_ty;
 
     let mut seed_tokens = Vec::with_capacity(resolver.seeds.len() + 1);
     seed_tokens.push(quote! {
-        quasar_lang::idl_build::__reexport::IdlPdaSeed::Const {
-            value: quasar_lang::idl_build::Vec::from(
-                <#account_ty as quasar_lang::traits::HasSeeds>::SEED_PREFIX
+        #krate::idl_build::__reexport::IdlPdaSeed::Const {
+            value: #krate::idl_build::Vec::from(
+                <#account_ty as #krate::traits::HasSeeds>::SEED_PREFIX
             ),
         }
     });
@@ -335,22 +339,23 @@ fn emit_idl_resolver(resolver: &resolve::specs::IdlResolverPlan) -> proc_macro2:
     }
 
     quote! {
-        quasar_lang::idl_build::__reexport::IdlResolver::Pda {
-            program: quasar_lang::idl_build::__reexport::IdlPdaProgram::ProgramId {},
-            seeds: quasar_lang::idl_build::vec![#(#seed_tokens),*],
+        #krate::idl_build::__reexport::IdlResolver::Pda {
+            program: #krate::idl_build::__reexport::IdlPdaProgram::ProgramId {},
+            seeds: #krate::idl_build::vec![#(#seed_tokens),*],
         }
     }
 }
 
 /// Format one resolved `IdlSeedPlan` into IDL tokens.
 fn emit_idl_pda_seed(seed: &resolve::specs::IdlSeedPlan) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     use resolve::specs::IdlSeedPlan;
     match seed {
         IdlSeedPlan::AccountAddr { base } => {
             let path = crate::helpers::snake_to_camel(&base.to_string());
             quote! {
-                quasar_lang::idl_build::__reexport::IdlPdaSeed::Account {
-                    path: quasar_lang::idl_build::s(#path),
+                #krate::idl_build::__reexport::IdlPdaSeed::Account {
+                    path: #krate::idl_build::s(#path),
                 }
             }
         }
@@ -361,10 +366,10 @@ fn emit_idl_pda_seed(seed: &resolve::specs::IdlSeedPlan) -> proc_macro2::TokenSt
         } => {
             let path = crate::helpers::snake_to_camel(&base.to_string());
             quote! {
-                quasar_lang::idl_build::__reexport::IdlPdaSeed::AccountField {
-                    path: quasar_lang::idl_build::s(#path),
-                    account: quasar_lang::idl_build::s(#account),
-                    field: quasar_lang::idl_build::s(#field),
+                #krate::idl_build::__reexport::IdlPdaSeed::AccountField {
+                    path: #krate::idl_build::s(#path),
+                    account: #krate::idl_build::s(#account),
+                    field: #krate::idl_build::s(#field),
                 }
             }
         }
@@ -372,16 +377,16 @@ fn emit_idl_pda_seed(seed: &resolve::specs::IdlSeedPlan) -> proc_macro2::TokenSt
             let path = name.to_string();
             let idl_type = crate::idl::type_to_idl_type_tokens(ty);
             quote! {
-                quasar_lang::idl_build::__reexport::IdlPdaSeed::Arg {
-                    path: quasar_lang::idl_build::s(#path),
+                #krate::idl_build::__reexport::IdlPdaSeed::Arg {
+                    path: #krate::idl_build::s(#path),
                     ty: #idl_type,
                 }
             }
         }
         IdlSeedPlan::Const { expr } => quote! {
-            quasar_lang::idl_build::__reexport::IdlPdaSeed::Const {
-                value: quasar_lang::idl_build::Vec::from(
-                    quasar_lang::pda::seed_bytes(&(#expr))
+            #krate::idl_build::__reexport::IdlPdaSeed::Const {
+                value: #krate::idl_build::Vec::from(
+                    #krate::pda::seed_bytes(&(#expr))
                 ),
             }
         },
@@ -389,6 +394,7 @@ fn emit_idl_pda_seed(seed: &resolve::specs::IdlSeedPlan) -> proc_macro2::TokenSt
 }
 
 fn emit_needs_event_cpi_expr(plan: &resolve::specs::AccountsPlanTyped) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     use resolve::specs::EventCpiTerm;
     // Only fields that can contribute `true` are ORed in; plain single fields
     // (`Never`) would only add redundant `|| false`, so they are dropped.
@@ -398,7 +404,7 @@ fn emit_needs_event_cpi_expr(plan: &resolve::specs::AccountsPlanTyped) -> proc_m
         .filter_map(|term| match term {
             EventCpiTerm::Composite(ty) => {
                 let inner_ty = composite_event_ty(ty);
-                Some(quote! { <#inner_ty as AccountCount>::NEEDS_EVENT_CPI })
+                Some(quote! { <#inner_ty as #krate::traits::AccountCount>::NEEDS_EVENT_CPI })
             }
             EventCpiTerm::EventAuthority => Some(quote! { true }),
             EventCpiTerm::Never => None,
@@ -420,6 +426,7 @@ struct SignerHelpersCtx<'a> {
 }
 
 fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let SignerHelpersCtx {
         name,
         bumps_name,
@@ -457,8 +464,8 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
                         bumps: &'__quasar_seed #bumps_name,
                         data: &'__quasar_seed [u8],
                     ) -> Result<
-                        impl quasar_lang::cpi::CpiSignerSeeds + '__quasar_seed,
-                        quasar_lang::prelude::ProgramError,
+                        impl #krate::cpi::CpiSignerSeeds + '__quasar_seed,
+                        #krate::prelude::ProgramError,
                     > {
                         let __ix_data = data;
                         #ix_arg_extraction
@@ -473,7 +480,7 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
                     pub fn #method_name<'__quasar_seed>(
                         &'__quasar_seed self,
                         bumps: &'__quasar_seed #bumps_name,
-                    ) -> impl quasar_lang::cpi::CpiSignerSeeds + '__quasar_seed {
+                    ) -> impl #krate::cpi::CpiSignerSeeds + '__quasar_seed {
                         #(#field_refs)*
                         #addr_expr.with_bump(bumps.#field_name)
                     }
@@ -487,11 +494,11 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
             #(#signer_methods)*
         }
 
-        impl #impl_generics quasar_lang::traits::AccountBumps for #name #ty_generics #where_clause {
+        impl #impl_generics #krate::traits::AccountBumps for #name #ty_generics #where_clause {
             type Bumps = #bumps_name;
         }
 
-        impl #impl_generics quasar_lang::traits::AccountGroup for #name #ty_generics #where_clause {}
+        impl #impl_generics #krate::traits::AccountGroup for #name #ty_generics #where_clause {}
     }
 }
 

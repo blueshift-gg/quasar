@@ -721,8 +721,9 @@ pub(crate) fn prefix_bytes_to_rust_type(prefix_bytes: usize) -> proc_macro2::Tok
 }
 
 pub(crate) fn map_to_pod_type(ty: &Type) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     pod_alias_type(ty, true)
-        .unwrap_or_else(|| quote! { <#ty as quasar_lang::instruction_arg::InstructionArg>::Zc })
+        .unwrap_or_else(|| quote! { <#ty as #krate::instruction_arg::InstructionArg>::Zc })
 }
 
 pub(crate) fn canonical_instruction_arg_type(ty: &Type) -> proc_macro2::TokenStream {
@@ -730,14 +731,16 @@ pub(crate) fn canonical_instruction_arg_type(ty: &Type) -> proc_macro2::TokenStr
 }
 
 pub(crate) fn zc_assign_from_value(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let canonical = canonical_instruction_arg_type(ty);
     quote! {
         __zc.#field_name =
-            <#canonical as quasar_lang::instruction_arg::InstructionArg>::to_zc(&#field_name);
+            <#canonical as #krate::instruction_arg::InstructionArg>::to_zc(&#field_name);
     }
 }
 
 fn pod_alias_type(ty: &Type, accept_pod_aliases: bool) -> Option<proc_macro2::TokenStream> {
+    let krate = crate::krate::lang_path();
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
             let is_string =
@@ -752,11 +755,11 @@ fn pod_alias_type(ty: &Type, accept_pod_aliases: bool) -> Option<proc_macro2::To
                             .next()
                             .and_then(|a| parse_prefix_arg(a).ok())
                             .unwrap_or(1);
-                        return Some(quote! { quasar_lang::pod::PodString<#n_arg, #pfx> });
+                        return Some(quote! { #krate::pod::PodString<#n_arg, #pfx> });
                     }
                 }
                 if accept_pod_aliases {
-                    return Some(quote! { quasar_lang::pod::PodString });
+                    return Some(quote! { #krate::pod::PodString });
                 }
             } else if is_vec {
                 if let PathArguments::AngleBracketed(ab) = &seg.arguments {
@@ -766,11 +769,11 @@ fn pod_alias_type(ty: &Type, accept_pod_aliases: bool) -> Option<proc_macro2::To
                             .next()
                             .and_then(|a| parse_prefix_arg(a).ok())
                             .unwrap_or(2);
-                        return Some(quote! { quasar_lang::pod::PodVec<#t_arg, #n_arg, #pfx> });
+                        return Some(quote! { #krate::pod::PodVec<#t_arg, #n_arg, #pfx> });
                     }
                 }
                 if accept_pod_aliases {
-                    return Some(quote! { quasar_lang::pod::PodVec });
+                    return Some(quote! { #krate::pod::PodVec });
                 }
             } else if seg.ident == "PodOption" {
                 // PodOption<T, PFX>: map inner type, pass PFX through.
@@ -782,9 +785,9 @@ fn pod_alias_type(ty: &Type, accept_pod_aliases: bool) -> Option<proc_macro2::To
                         let pfx = it.next();
                         return match pfx {
                             Some(pfx_arg) => {
-                                Some(quote! { quasar_lang::pod::PodOption<#mapped, #pfx_arg> })
+                                Some(quote! { #krate::pod::PodOption<#mapped, #pfx_arg> })
                             }
-                            None => Some(quote! { quasar_lang::pod::PodOption<#mapped> }),
+                            None => Some(quote! { #krate::pod::PodOption<#mapped> }),
                         };
                     }
                 }
@@ -826,10 +829,11 @@ pub(crate) fn extract_doc_lines(attrs: &[syn::Attribute]) -> Vec<String> {
 
 /// Tokens constructing an IDL `docs` vec from pre-extracted doc lines.
 pub(crate) fn docs_tokens_from_lines(lines: &[String]) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     if lines.is_empty() {
-        quote! { quasar_lang::idl_build::Vec::new() }
+        quote! { #krate::idl_build::Vec::new() }
     } else {
-        quote! { quasar_lang::idl_build::vec![#(quasar_lang::idl_build::s(#lines)),*] }
+        quote! { #krate::idl_build::vec![#(#krate::idl_build::s(#lines)),*] }
     }
 }
 

@@ -88,7 +88,7 @@ mod tests {
             WrapperKind::Account
         );
         assert_eq!(
-            classify_wrapper(&ty("quasar_lang::Interface<'a, T>")),
+            classify_wrapper(&ty("some_crate::Interface<'a, T>")),
             WrapperKind::Interface
         );
         assert_eq!(classify_wrapper(&ty("Signer")), WrapperKind::Signer);

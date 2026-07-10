@@ -18,6 +18,7 @@ pub(crate) fn error_code(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 pub(crate) fn error_code_inner(_attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
+    let krate = crate::krate::lang_path();
     let input = match syn::parse2::<DeriveInput>(item) {
         Ok(input) => input,
         Err(e) => return e.to_compile_error(),
@@ -111,12 +112,12 @@ pub(crate) fn error_code_inner(_attr: TokenStream2, item: TokenStream2) -> Token
             quote! { None }
         } else {
             let joined = docs.join(" ");
-            quote! { Some(quasar_lang::idl_build::s(#joined)) }
+            quote! { Some(#krate::idl_build::s(#joined)) }
         };
         idl_error_entries.push(quote! {
-            quasar_lang::idl_build::__reexport::IdlErrorDef {
+            #krate::idl_build::__reexport::IdlErrorDef {
                 code: #value,
-                name: quasar_lang::idl_build::s(#variant_name),
+                name: #krate::idl_build::s(#variant_name),
                 msg: #msg_expr,
             }
         });
@@ -124,11 +125,11 @@ pub(crate) fn error_code_inner(_attr: TokenStream2, item: TokenStream2) -> Token
 
     let idl_fragment = quote! {
         #[cfg(feature = "idl-build")]
-        quasar_lang::__private_inventory::submit! {
-            quasar_lang::idl_build::ErrorFragment {
+        #krate::__private_inventory::submit! {
+            #krate::idl_build::ErrorFragment {
                 build: {
-                    fn __build() -> quasar_lang::idl_build::Vec<quasar_lang::idl_build::__reexport::IdlErrorDef> {
-                        quasar_lang::idl_build::vec![#(#idl_error_entries),*]
+                    fn __build() -> #krate::idl_build::Vec<#krate::idl_build::__reexport::IdlErrorDef> {
+                        #krate::idl_build::vec![#(#idl_error_entries),*]
                     }
                     __build
                 },
@@ -140,21 +141,21 @@ pub(crate) fn error_code_inner(_attr: TokenStream2, item: TokenStream2) -> Token
         #[repr(u32)]
         #input
 
-        impl From<#name> for ProgramError {
+        impl From<#name> for #krate::__solana_program_error::ProgramError {
             #[inline(always)]
             fn from(e: #name) -> Self {
-                ProgramError::Custom(e as u32)
+                #krate::__solana_program_error::ProgramError::Custom(e as u32)
             }
         }
 
         impl TryFrom<u32> for #name {
-            type Error = ProgramError;
+            type Error = #krate::__solana_program_error::ProgramError;
 
             #[inline(always)]
             fn try_from(error: u32) -> Result<Self, Self::Error> {
                 match error {
                     #(#match_arms,)*
-                    _ => Err(ProgramError::InvalidArgument),
+                    _ => Err(#krate::__solana_program_error::ProgramError::InvalidArgument),
                 }
             }
         }

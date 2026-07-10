@@ -6,6 +6,7 @@
 //! Metadata program.
 
 #![no_std]
+#![warn(missing_docs)]
 
 mod account_init;
 pub mod accounts;

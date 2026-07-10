@@ -17,6 +17,7 @@ pub fn generate_accounts_macro(
     name: &syn::Ident,
     plan: &crate::accounts::resolve::specs::AccountsPlanTyped,
 ) -> TokenStream {
+    let krate = crate::krate::lang_path();
     let descriptors = describe_accounts(plan);
     let macro_name = format_ident!("__{}_instruction", pascal_to_snake(&name.to_string()));
     let account_fields: Vec<_> = descriptors.iter().map(emit_account_field).collect();
@@ -33,8 +34,8 @@ pub fn generate_accounts_macro(
                     $(pub $arg_name: $arg_ty,)*
                 }
 
-                impl From<$struct_name> for quasar_lang::client::Instruction {
-                    fn from(ix: $struct_name) -> quasar_lang::client::Instruction {
+                impl From<$struct_name> for #krate::client::Instruction {
+                    fn from(ix: $struct_name) -> #krate::client::Instruction {
                         let accounts = ::alloc::vec![
                             #(#account_metas)*
                         ];
@@ -42,12 +43,12 @@ pub fn generate_accounts_macro(
                             let mut _data = ::alloc::vec![$($disc),*];
                             $(
                                 _data.extend_from_slice(
-                                    &<$arg_ty as quasar_lang::client::SerializeArg>::serialize_arg(&ix.$arg_name)
+                                    &<$arg_ty as #krate::client::SerializeArg>::serialize_arg(&ix.$arg_name)
                                 );
                             )*
                             _data
                         };
-                        quasar_lang::client::Instruction {
+                        #krate::client::Instruction {
                             program_id: $crate::ID,
                             accounts,
                             data,
@@ -61,8 +62,8 @@ pub fn generate_accounts_macro(
                     $(pub $arg_name: $arg_ty,)*
                 }
 
-                impl From<$struct_name> for quasar_lang::client::Instruction {
-                    fn from(ix: $struct_name) -> quasar_lang::client::Instruction {
+                impl From<$struct_name> for #krate::client::Instruction {
+                    fn from(ix: $struct_name) -> #krate::client::Instruction {
                         let accounts = ::alloc::vec![
                             #(#account_metas)*
                         ];
@@ -70,17 +71,17 @@ pub fn generate_accounts_macro(
                             let mut _data = ::alloc::vec![$($disc),*];
                             $(
                                 _data.extend_from_slice(
-                                    &<$arg_ty as quasar_lang::client::CompactSerializeArg>::compact_header(&ix.$arg_name)
+                                    &<$arg_ty as #krate::client::CompactSerializeArg>::compact_header(&ix.$arg_name)
                                 );
                             )*
                             $(
                                 _data.extend_from_slice(
-                                    &<$arg_ty as quasar_lang::client::CompactSerializeArg>::compact_tail(&ix.$arg_name)
+                                    &<$arg_ty as #krate::client::CompactSerializeArg>::compact_tail(&ix.$arg_name)
                                 );
                             )*
                             _data
                         };
-                        quasar_lang::client::Instruction {
+                        #krate::client::Instruction {
                             program_id: $crate::ID,
                             accounts,
                             data,
@@ -92,11 +93,11 @@ pub fn generate_accounts_macro(
                 pub struct $struct_name {
                     #(#account_fields)*
                     $(pub $arg_name: $arg_ty,)*
-                    pub remaining_accounts: ::alloc::vec::Vec<quasar_lang::client::AccountMeta>,
+                    pub remaining_accounts: ::alloc::vec::Vec<#krate::client::AccountMeta>,
                 }
 
-                impl From<$struct_name> for quasar_lang::client::Instruction {
-                    fn from(ix: $struct_name) -> quasar_lang::client::Instruction {
+                impl From<$struct_name> for #krate::client::Instruction {
+                    fn from(ix: $struct_name) -> #krate::client::Instruction {
                         let mut accounts = ::alloc::vec![
                             #(#account_metas)*
                         ];
@@ -105,12 +106,12 @@ pub fn generate_accounts_macro(
                             let mut _data = ::alloc::vec![$($disc),*];
                             $(
                                 _data.extend_from_slice(
-                                    &<$arg_ty as quasar_lang::client::SerializeArg>::serialize_arg(&ix.$arg_name)
+                                    &<$arg_ty as #krate::client::SerializeArg>::serialize_arg(&ix.$arg_name)
                                 );
                             )*
                             _data
                         };
-                        quasar_lang::client::Instruction {
+                        #krate::client::Instruction {
                             program_id: $crate::ID,
                             accounts,
                             data,
@@ -122,11 +123,11 @@ pub fn generate_accounts_macro(
                 pub struct $struct_name {
                     #(#account_fields)*
                     $(pub $arg_name: $arg_ty,)*
-                    pub remaining_accounts: ::alloc::vec::Vec<quasar_lang::client::AccountMeta>,
+                    pub remaining_accounts: ::alloc::vec::Vec<#krate::client::AccountMeta>,
                 }
 
-                impl From<$struct_name> for quasar_lang::client::Instruction {
-                    fn from(ix: $struct_name) -> quasar_lang::client::Instruction {
+                impl From<$struct_name> for #krate::client::Instruction {
+                    fn from(ix: $struct_name) -> #krate::client::Instruction {
                         let mut accounts = ::alloc::vec![
                             #(#account_metas)*
                         ];
@@ -135,17 +136,17 @@ pub fn generate_accounts_macro(
                             let mut _data = ::alloc::vec![$($disc),*];
                             $(
                                 _data.extend_from_slice(
-                                    &<$arg_ty as quasar_lang::client::CompactSerializeArg>::compact_header(&ix.$arg_name)
+                                    &<$arg_ty as #krate::client::CompactSerializeArg>::compact_header(&ix.$arg_name)
                                 );
                             )*
                             $(
                                 _data.extend_from_slice(
-                                    &<$arg_ty as quasar_lang::client::CompactSerializeArg>::compact_tail(&ix.$arg_name)
+                                    &<$arg_ty as #krate::client::CompactSerializeArg>::compact_tail(&ix.$arg_name)
                                 );
                             )*
                             _data
                         };
-                        quasar_lang::client::Instruction {
+                        #krate::client::Instruction {
                             program_id: $crate::ID,
                             accounts,
                             data,
@@ -158,20 +159,22 @@ pub fn generate_accounts_macro(
 }
 
 fn emit_account_field(descriptor: &AccountDescriptor) -> TokenStream {
+    let krate = crate::krate::lang_path();
     let ident = &descriptor.name;
-    quote! { pub #ident: quasar_lang::prelude::Address, }
+    quote! { pub #ident: #krate::prelude::Address, }
 }
 
 fn emit_account_meta(descriptor: &AccountDescriptor) -> TokenStream {
+    let krate = crate::krate::lang_path();
     let ident = &descriptor.name;
     let signer = descriptor.signer;
     if descriptor.writable {
         quote! {
-            quasar_lang::client::AccountMeta::new(ix.#ident, #signer),
+            #krate::client::AccountMeta::new(ix.#ident, #signer),
         }
     } else {
         quote! {
-            quasar_lang::client::AccountMeta::new_readonly(ix.#ident, #signer),
+            #krate::client::AccountMeta::new_readonly(ix.#ident, #signer),
         }
     }
 }

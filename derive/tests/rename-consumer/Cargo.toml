@@ -1,0 +1,22 @@
+# Smoke-test crate for H1 (crate-identity / fully-qualified emission).
+#
+# It depends on `quasar-lang` under a RENAMED package (`ql`) and imports NO
+# prelude glob. Generated code must therefore reference the runtime crate by the
+# resolved dependency name and fully qualify every runtime item; a hard-coded
+# `quasar_lang::` path or a bare prelude name fails `cargo check` here.
+#
+# Own `[workspace]` so it is isolated from the parent workspace; the parent never
+# builds it (it is driven by derive/tests/rename_consumer.rs via `cargo check`).
+[package]
+name = "rename-consumer"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[lib]
+doctest = false
+
+[dependencies]
+ql = { package = "quasar-lang", path = "../../../lang" }

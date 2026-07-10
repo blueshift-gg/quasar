@@ -130,6 +130,7 @@ pub(super) fn emit_zc_definition(
     has_dynamic: bool,
     zc: &ZcSpec,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let zc_name = &zc.zc_name;
     let zc_mod = &zc.zc_mod;
     let schema_fields = &zc.schema_fields;
@@ -152,7 +153,7 @@ pub(super) fn emit_zc_definition(
             #[doc(hidden)]
             pub mod #zc_mod {
                 use super::*;
-                use quasar_lang::__zeropod as zeropod;
+                use #krate::__zeropod as zeropod;
 
                 #schema_struct
 
@@ -160,7 +161,7 @@ pub(super) fn emit_zc_definition(
             }
 
             const _: () = assert!(
-                core::mem::size_of::<#name>() == core::mem::size_of::<AccountView>(),
+                core::mem::size_of::<#name>() == core::mem::size_of::<#krate::__internal::AccountView>(),
                 "Pod-dynamic struct must be #[repr(transparent)] over AccountView"
             );
         }
@@ -169,7 +170,7 @@ pub(super) fn emit_zc_definition(
             #[doc(hidden)]
             pub mod #zc_mod {
                 use super::*;
-                use quasar_lang::__zeropod as zeropod;
+                use #krate::__zeropod as zeropod;
 
                 #[derive(zeropod::ZeroPod)]
                 pub struct __Schema {
@@ -189,27 +190,28 @@ pub(super) fn emit_account_wrapper(
     disc_len: usize,
     zc_path: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let data_alias = quote::format_ident!("{}Data", name);
     let data_doc = format!(
         "Raw `#[repr(C)]` data layout for [`{name}`].\n\nUse this type when constructing account \
-         data values (e.g., for [`Migrate`](quasar_lang::traits::Migrate) implementations)."
+         data values (e.g., for `Migrate` implementations)."
     );
 
     quote! {
         #(#attrs)*
         #[repr(transparent)]
         #vis struct #name {
-            __view: AccountView,
+            __view: #krate::__internal::AccountView,
         }
 
         #[doc = #data_doc]
         #vis type #data_alias = #zc_path;
 
-        unsafe impl StaticView for #name {}
+        unsafe impl #krate::traits::StaticView for #name {}
 
-        impl AsAccountView for #name {
+        impl #krate::traits::AsAccountView for #name {
             #[inline(always)]
-            fn to_account_view(&self) -> &AccountView {
+            fn to_account_view(&self) -> &#krate::__internal::AccountView {
                 &self.__view
             }
         }

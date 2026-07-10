@@ -75,11 +75,12 @@ pub(super) fn emit_max_check(
     name: &syn::Ident,
     dyn_field: &PodDynField,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let max = match dyn_field {
         PodDynField::Str { max, .. } | PodDynField::Vec { max, .. } => max,
     };
     quote! {
-        if #name.len() > #max { return Err(QuasarError::DynamicFieldTooLong.into()); }
+        if #name.len() > #max { return Err(#krate::error::QuasarError::DynamicFieldTooLong.into()); }
     }
 }
 
@@ -97,13 +98,14 @@ pub(super) fn emit_dynamic_impl_block(
     zc_mod: &syn::Ident,
     pieces: &DynamicPieces<'_>,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     if has_dynamic {
         let max_space_terms = &pieces.max_space_terms;
         let read_accessors = &pieces.read_accessors;
         quote! {
             impl #name {
                 pub const MIN_SPACE: usize = #disc_len
-                    + <#zc_mod::__Schema as quasar_lang::ZeroPodCompact>::HEADER_SIZE;
+                    + <#zc_mod::__Schema as #krate::ZeroPodCompact>::HEADER_SIZE;
                 pub const MAX_SPACE: usize = Self::MIN_SPACE #(#max_space_terms)*;
 
                 #(#read_accessors)*
@@ -122,6 +124,7 @@ pub(super) fn emit_dyn_writer(
     zc_path: &proc_macro2::TokenStream,
     pieces: &DynamicPieces<'_>,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     if !has_dynamic {
         return quote! {};
     }
@@ -175,7 +178,7 @@ pub(super) fn emit_dyn_writer(
                 .unwrap_or_else(|| ice!("field must be named"));
             let slot = format_ident!("__{}", name);
             quote! {
-                let #name = self.#slot.ok_or(QuasarError::CompactWriterFieldNotSet)?;
+                let #name = self.#slot.ok_or(#krate::error::QuasarError::CompactWriterFieldNotSet)?;
             }
         })
         .collect();
@@ -204,8 +207,8 @@ pub(super) fn emit_dyn_writer(
 
     quote! {
         pub struct #writer_name<'a> {
-            __view: &'a mut AccountView,
-            __payer: &'a AccountView,
+            __view: &'a mut #krate::__internal::AccountView,
+            __payer: &'a #krate::__internal::AccountView,
             __rent_lpb: u64,
             __rent_threshold: u64,
             #(#setter_fields,)*
@@ -235,15 +238,15 @@ pub(super) fn emit_dyn_writer(
         impl<'a> #writer_name<'a> {
             #(#setter_methods)*
 
-            pub fn commit(&mut self) -> Result<(), ProgramError> {
+            pub fn commit(&mut self) -> Result<(), #krate::__solana_program_error::ProgramError> {
                 #(#binding_stmts)*
 
                 let __new_total = #disc_len
-                    + <#zc_mod::__Schema as quasar_lang::ZeroPodCompact>::HEADER_SIZE
+                    + <#zc_mod::__Schema as #krate::ZeroPodCompact>::HEADER_SIZE
                     #(#size_terms)*;
                 let __old_total = self.__view.data_len();
                 if __new_total != __old_total {
-                    quasar_lang::accounts::account::realloc_account_raw(
+                    #krate::accounts::account::realloc_account_raw(
                         self.__view,
                         __new_total,
                         self.__payer,
@@ -263,7 +266,7 @@ pub(super) fn emit_dyn_writer(
                 // SAFETY: the slice spans the full compact schema region.
                 let mut __compact = unsafe { #zc_mod::__SchemaMut::new_unchecked(__compact_data) };
                 #(#compact_set_stmts)*
-                __compact.commit().map_err(|_| ProgramError::InvalidAccountData)?;
+                __compact.commit().map_err(|_| #krate::__solana_program_error::ProgramError::InvalidAccountData)?;
                 Ok(())
             }
         }
@@ -272,7 +275,7 @@ pub(super) fn emit_dyn_writer(
             #[inline(always)]
             pub fn compact_writer<'a>(
                 &'a mut self,
-                payer: &'a AccountView,
+                payer: &'a #krate::__internal::AccountView,
                 rent_lpb: u64,
                 rent_threshold: u64,
             ) -> #writer_name<'a> {
@@ -280,7 +283,7 @@ pub(super) fn emit_dyn_writer(
                 // wrapper. Reborrowing it as `&mut AccountView` is sound here because the
                 // writer exclusively owns `&'a mut self` for its full lifetime and does not
                 // create any competing mutable references.
-                let __view = unsafe { &mut *(&mut self.__view as *mut AccountView) };
+                let __view = unsafe { &mut *(&mut self.__view as *mut #krate::__internal::AccountView) };
                 #writer_name {
                     __view,
                     __payer: payer,
@@ -301,6 +304,7 @@ pub(super) fn emit_compact_mut(
     zc_path: &proc_macro2::TokenStream,
     pieces: &DynamicPieces<'_>,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     if !has_dynamic {
         return quote! {};
     }
@@ -367,8 +371,8 @@ pub(super) fn emit_compact_mut(
     quote! {
         #[must_use = "bind the as_mut() guard to mutate cached fields; changes auto-save on drop"]
         pub struct #guard_name<'a> {
-            __view: &'a mut AccountView,
-            __payer: &'a AccountView,
+            __view: &'a mut #krate::__internal::AccountView,
+            __payer: &'a #krate::__internal::AccountView,
             #(#guard_fields,)*
         }
 
@@ -384,15 +388,15 @@ pub(super) fn emit_compact_mut(
         }
 
         impl<'a> #guard_name<'a> {
-            pub fn save(&mut self) -> Result<(), ProgramError> {
+            pub fn save(&mut self) -> Result<(), #krate::__solana_program_error::ProgramError> {
                 let __tail_size: usize = 0 #(#save_size_terms)*;
                 let __new_total = #disc_len
-                    + <#zc_mod::__Schema as quasar_lang::ZeroPodCompact>::HEADER_SIZE
+                    + <#zc_mod::__Schema as #krate::ZeroPodCompact>::HEADER_SIZE
                     + __tail_size;
 
                 let __old_total = self.__view.data_len();
                 if __new_total != __old_total {
-                    quasar_lang::accounts::account::realloc_account(
+                    #krate::accounts::account::realloc_account(
                         self.__view, __new_total, self.__payer,
                         None,
                     )?;
@@ -409,7 +413,7 @@ pub(super) fn emit_compact_mut(
                 // SAFETY: the slice spans the full compact schema region.
                 let mut __compact = unsafe { #zc_mod::__SchemaMut::new_unchecked(__compact_data) };
                 #(#compact_set_stmts)*
-                __compact.commit().map_err(|_| ProgramError::InvalidAccountData)?;
+                __compact.commit().map_err(|_| #krate::__solana_program_error::ProgramError::InvalidAccountData)?;
                 Ok(())
             }
 
@@ -433,7 +437,7 @@ pub(super) fn emit_compact_mut(
         impl<'a> Drop for #guard_name<'a> {
             fn drop(&mut self) {
                 if self.save().is_err() {
-                    quasar_lang::abort_program();
+                    #krate::abort_program();
                 }
             }
         }
@@ -442,7 +446,7 @@ pub(super) fn emit_compact_mut(
             #[inline(always)]
             pub fn as_mut<'a>(
                 &'a mut self,
-                payer: &'a AccountView,
+                payer: &'a #krate::__internal::AccountView,
             ) -> #guard_name<'a> {
                 let (#(#field_names,)*) = {
                     // SAFETY: `&'a mut self` gives the guard exclusive access to
@@ -460,7 +464,7 @@ pub(super) fn emit_compact_mut(
                 // wrapper. Reborrowing it as `&mut AccountView` is sound here because the
                 // guard exclusively owns `&'a mut self` for its full lifetime and does not
                 // create any competing mutable references.
-                let __view = unsafe { &mut *(&mut self.__view as *mut AccountView) };
+                let __view = unsafe { &mut *(&mut self.__view as *mut #krate::__internal::AccountView) };
                 #guard_name {
                     __view,
                     __payer: payer,
@@ -532,6 +536,7 @@ fn dyn_view_field(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::To
 }
 
 fn dyn_view_setter(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let slot = format_ident!("__{}", name);
     let setter = format_ident!("set_{}", name);
     let max = match dyn_field {
@@ -541,9 +546,9 @@ fn dyn_view_setter(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::T
     match dyn_field {
         PodDynField::Str { .. } => quote! {
             #[inline(always)]
-            pub fn #setter(&mut self, value: &'a str) -> Result<(), ProgramError> {
+            pub fn #setter(&mut self, value: &'a str) -> Result<(), #krate::__solana_program_error::ProgramError> {
                 if value.len() > #max {
-                    return Err(QuasarError::DynamicFieldTooLong.into());
+                    return Err(#krate::error::QuasarError::DynamicFieldTooLong.into());
                 }
                 self.#slot = Some(value);
                 Ok(())
@@ -553,9 +558,9 @@ fn dyn_view_setter(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::T
             let mapped = map_to_pod_type(elem);
             quote! {
                 #[inline(always)]
-                pub fn #setter(&mut self, value: &'a [#mapped]) -> Result<(), ProgramError> {
+                pub fn #setter(&mut self, value: &'a [#mapped]) -> Result<(), #krate::__solana_program_error::ProgramError> {
                     if value.len() > #max {
-                        return Err(QuasarError::DynamicFieldTooLong.into());
+                        return Err(#krate::error::QuasarError::DynamicFieldTooLong.into());
                     }
                     self.#slot = Some(value);
                     Ok(())
@@ -566,16 +571,18 @@ fn dyn_view_setter(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::T
 }
 
 fn writer_compact_set_stmt(name: &syn::Ident) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let setter = format_ident!("set_{}", name);
     quote! {
-        __compact.#setter(#name).map_err(|_| ProgramError::InvalidAccountData)?;
+        __compact.#setter(#name).map_err(|_| #krate::__solana_program_error::ProgramError::InvalidAccountData)?;
     }
 }
 
 fn compact_mut_field(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     match dyn_field {
         PodDynField::Str { max, prefix_bytes } => quote! {
-            pub #name: quasar_lang::pod::PodString<#max, #prefix_bytes>
+            pub #name: #krate::pod::PodString<#max, #prefix_bytes>
         },
         PodDynField::Vec {
             elem,
@@ -584,7 +591,7 @@ fn compact_mut_field(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2:
         } => {
             let mapped = map_to_pod_type(elem);
             quote! {
-                pub #name: quasar_lang::pod::PodVec<#mapped, #max, #prefix_bytes>
+                pub #name: #krate::pod::PodVec<#mapped, #max, #prefix_bytes>
             }
         }
     }
@@ -593,11 +600,12 @@ fn compact_mut_field(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2:
 /// Load a dynamic field from a CompactRef into a PodString/PodVec.
 /// Assumes `__r` (a `__SchemaRef`) is in scope.
 fn compact_mut_load(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     match dyn_field {
         PodDynField::Str { max, prefix_bytes } => quote! {
-            let mut #name = quasar_lang::pod::PodString::<#max, #prefix_bytes>::default();
+            let mut #name = #krate::pod::PodString::<#max, #prefix_bytes>::default();
             if !#name.set(__r.#name()) {
-                quasar_lang::abort_program();
+                #krate::abort_program();
             }
         },
         PodDynField::Vec {
@@ -607,9 +615,9 @@ fn compact_mut_load(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::
         } => {
             let mapped = map_to_pod_type(elem);
             quote! {
-                let mut #name = quasar_lang::pod::PodVec::<#mapped, #max, #prefix_bytes>::default();
+                let mut #name = #krate::pod::PodVec::<#mapped, #max, #prefix_bytes>::default();
                 if !#name.set_from_slice(__r.#name()) {
-                    quasar_lang::abort_program();
+                    #krate::abort_program();
                 }
             }
         }
@@ -623,13 +631,14 @@ fn compact_mut_size_term(name: &syn::Ident, dyn_field: &PodDynField) -> proc_mac
 
 /// Set a dynamic field on a CompactMut from the guard's PodString/PodVec.
 fn compact_mut_set_stmt(name: &syn::Ident, dyn_field: &PodDynField) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let setter = format_ident!("set_{}", name);
     match dyn_field {
         PodDynField::Str { .. } => quote! {
-            __compact.#setter(self.#name.as_str()).map_err(|_| ProgramError::InvalidAccountData)?;
+            __compact.#setter(self.#name.as_str()).map_err(|_| #krate::__solana_program_error::ProgramError::InvalidAccountData)?;
         },
         PodDynField::Vec { .. } => quote! {
-            __compact.#setter(self.#name.as_slice()).map_err(|_| ProgramError::InvalidAccountData)?;
+            __compact.#setter(self.#name.as_slice()).map_err(|_| #krate::__solana_program_error::ProgramError::InvalidAccountData)?;
         },
     }
 }

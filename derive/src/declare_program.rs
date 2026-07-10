@@ -159,6 +159,7 @@ struct TypeInfo {
 }
 
 fn map_idl_type(ty: &IdlType, type_sizes: &HashMap<String, usize>) -> Result<TypeInfo, String> {
+    let krate = crate::krate::lang_path();
     match ty {
         IdlType::Primitive(s) => {
             let rust_type = match s.as_str() {
@@ -177,8 +178,8 @@ fn map_idl_type(ty: &IdlType, type_sizes: &HashMap<String, usize>) -> Result<Typ
                 "f64" => quote! { f64 },
                 "pubkey" => {
                     return Ok(TypeInfo {
-                        param_type: quote! { &quasar_lang::prelude::Address },
-                        field_type: quote! { quasar_lang::prelude::Address },
+                        param_type: quote! { &#krate::prelude::Address },
+                        field_type: quote! { #krate::prelude::Address },
                     });
                 }
                 other => return Err(format!("unsupported primitive type '{other}'")),
@@ -396,6 +397,7 @@ fn collect_type_refs(ty: &IdlType, idl_types: &[IdlTypeDef], out: &mut HashSet<S
 }
 
 pub fn declare_program(input: TokenStream) -> TokenStream {
+    let krate = crate::krate::lang_path();
     let DeclareProgramInput { mod_name, idl_path } =
         parse_macro_input!(input as DeclareProgramInput);
     let idl_path = idl_path.value();
@@ -471,7 +473,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
     let program_type_name =
         format_ident!("{}", crate::helpers::snake_to_pascal(&mod_name.to_string()));
     let address_str = &idl.address;
-    let address_tokens = quote! { quasar_lang::prelude::address!(#address_str) };
+    let address_tokens = quote! { #krate::prelude::address!(#address_str) };
 
     let mut free_functions = Vec::new();
     let mut method_impls = Vec::new();
@@ -499,7 +501,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
             .zip(&acct_idents)
             .map(|(a, name)| {
                 let method = Ident::new(ia_constructor(&a.writable, &a.signer), Span::call_site());
-                quote! { quasar_lang::cpi::InstructionAccount::#method(#name.address()) }
+                quote! { #krate::cpi::InstructionAccount::#method(#name.address()) }
             })
             .collect();
 
@@ -536,18 +538,18 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         // Free function: accounts as &'a AccountView
         let free_acct_params: Vec<TokenStream2> = acct_idents
             .iter()
-            .map(|name| quote! { #name: &'a quasar_lang::prelude::AccountView })
+            .map(|name| quote! { #name: &'a #krate::prelude::AccountView })
             .collect();
 
         free_functions.push(quote! {
             #[inline(always)]
             pub fn #fn_name<'a>(
-                __program: &'a quasar_lang::prelude::AccountView,
+                __program: &'a #krate::prelude::AccountView,
                 #(#free_acct_params,)*
                 #(#arg_params,)*
-            ) -> quasar_lang::cpi::CpiCall<'a, #acct_count, #data_size> {
+            ) -> #krate::cpi::CpiCall<'a, #acct_count, #data_size> {
                 let __data = #data_write;
-                quasar_lang::cpi::CpiCall::new(
+                #krate::cpi::CpiCall::new(
                     __program.address(),
                     [#(#ia_entries),*],
                     [#(#acct_idents),*],
@@ -559,7 +561,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         // Method variant: accounts as &'a impl AsAccountView
         let method_acct_params: Vec<TokenStream2> = acct_idents
             .iter()
-            .map(|name| quote! { #name: &'a impl quasar_lang::traits::AsAccountView })
+            .map(|name| quote! { #name: &'a impl #krate::traits::AsAccountView })
             .collect();
 
         let method_acct_conversions: Vec<TokenStream2> = acct_idents
@@ -583,7 +585,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
                 &'a self,
                 #(#method_acct_params,)*
                 #(#arg_params,)*
-            ) -> quasar_lang::cpi::CpiCall<'a, #acct_count, #data_size> {
+            ) -> #krate::cpi::CpiCall<'a, #acct_count, #data_size> {
                 #fn_name(
                     self.to_account_view(),
                     #(#method_acct_conversions,)*
@@ -595,15 +597,15 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
 
     quote! {
         pub mod #mod_name {
-            pub const ID: quasar_lang::prelude::Address = #address_tokens;
+            pub const ID: #krate::prelude::Address = #address_tokens;
 
-            quasar_lang::define_account!(
+            #krate::define_account!(
                 pub struct #program_type_name =>
-                    [quasar_lang::checks::Executable, quasar_lang::checks::Address]
+                    [#krate::checks::Executable, #krate::checks::Address]
             );
 
-            impl quasar_lang::traits::Id for #program_type_name {
-                const ID: quasar_lang::prelude::Address = ID;
+            impl #krate::traits::Id for #program_type_name {
+                const ID: #krate::prelude::Address = ID;
             }
 
             #(#struct_defs)*

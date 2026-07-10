@@ -54,12 +54,13 @@ pub(super) enum DiscriminatorSource {
 
 impl DiscriminatorSource {
     pub(super) fn idl_tokens(self) -> TokenStream2 {
+        let krate = crate::krate::lang_path();
         match self {
             Self::Auto => quote! {
-                quasar_lang::idl_build::InstructionDiscriminatorSource::Auto
+                #krate::idl_build::InstructionDiscriminatorSource::Auto
             },
             Self::Explicit => quote! {
-                quasar_lang::idl_build::InstructionDiscriminatorSource::Explicit
+                #krate::idl_build::InstructionDiscriminatorSource::Explicit
             },
         }
     }
@@ -104,16 +105,17 @@ pub(super) struct InstructionSpec {
 /// field — the single mapping shared by the dynamic, optional-dynamic, and
 /// borrowed arms of `map_client_arg_type`.
 fn dyn_client_type(pd: &PodDynField) -> Type {
+    let krate = crate::krate::lang_path();
     match pd {
         PodDynField::Str { prefix_bytes, .. } => {
             let pfx_ty = prefix_bytes_to_rust_type(*prefix_bytes);
-            syn::parse_quote!(quasar_lang::client::DynString<#pfx_ty>)
+            syn::parse_quote!(#krate::client::DynString<#pfx_ty>)
         }
         PodDynField::Vec {
             elem, prefix_bytes, ..
         } => {
             let pfx_ty = prefix_bytes_to_rust_type(*prefix_bytes);
-            syn::parse_quote!(quasar_lang::client::DynVec<#elem, #pfx_ty>)
+            syn::parse_quote!(#krate::client::DynVec<#elem, #pfx_ty>)
         }
     }
 }

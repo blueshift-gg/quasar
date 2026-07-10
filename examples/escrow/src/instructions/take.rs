@@ -4,10 +4,20 @@ use {
     quasar_spl::prelude::*,
 };
 
+/// Canonical tutorial for the *validation* directives: the taker fulfills the
+/// escrow. See `make.rs` for the `init`/behavior directives.
 #[derive(Accounts)]
 pub struct Take {
     #[account(mut)]
     pub taker: Signer,
+    // A compound directive set on one account, evaluated in order:
+    //  - `has_one(maker)` / `has_one(maker_ta_b)`: the stored field must equal
+    //    the same-named account passed in (relationship check).
+    //  - `constraints(...)`: an arbitrary boolean the account must satisfy.
+    //  - `close(dest = taker)`: after the handler, zero the account and refund
+    //    its rent lamports to `taker`.
+    //  - `address = Escrow::seeds(maker.address())`: verify this is the expected
+    //    PDA (and populate `bumps.escrow`).
     #[account(
         mut,
         has_one(maker),
@@ -17,6 +27,8 @@ pub struct Take {
         address = Escrow::seeds(maker.address())
     )]
     pub escrow: Account<Escrow>,
+    // `UncheckedAccount`: no owner/type check. Sound here because `has_one(maker)`
+    // above already pinned it to the address stored in `escrow`.
     #[account(mut)]
     pub maker: UncheckedAccount,
     pub mint_a: Account<Mint>,

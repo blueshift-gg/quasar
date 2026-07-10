@@ -14,6 +14,7 @@ pub(crate) fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 pub(crate) fn event_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
+    let krate = crate::krate::lang_path();
     let args = match syn::parse2::<EventArgs>(attr) {
         Ok(args) => args,
         Err(e) => return e.to_compile_error(),
@@ -74,20 +75,20 @@ pub(crate) fn event_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream
                 // SAFETY: `ptr` points to the start of a `#total_buf_size`
                 // byte buffer, which is `disc_len + data_size`.
                 let data_offset = unsafe {
-                    quasar_lang::event::write_log_disc(
+                    #krate::event::write_log_disc(
                         ptr,
-                        <Self as quasar_lang::traits::Event>::DISCRIMINATOR,
+                        <Self as #krate::traits::Event>::DISCRIMINATOR,
                     )
                 };
                 // SAFETY: `write_log_disc` initialized the discriminator bytes
                 // and returned the payload offset. The remaining `#data_size`
                 // bytes fit exactly in the buffer.
-                <Self as quasar_lang::traits::Event>::write_data(self, unsafe {
+                <Self as #krate::traits::Event>::write_data(self, unsafe {
                     core::slice::from_raw_parts_mut(ptr.add(data_offset), #data_size)
                 });
                 // SAFETY: Discriminator and payload bytes were initialized
                 // above before exposing the full buffer as a slice.
-                quasar_lang::log::log_data(&[unsafe { buf.assume_init_ref() }]);
+                #krate::log::log_data(&[unsafe { buf.assume_init_ref() }]);
             }
         }
     };
@@ -108,8 +109,8 @@ pub(crate) fn event_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream
             let fcodec = crate::idl::type_to_idl_codec_tokens(&f.ty);
             let fdocs = crate::helpers::docs_tokens(&f.attrs);
             quote! {
-                quasar_lang::idl_build::__reexport::IdlFieldDef {
-                    name: quasar_lang::idl_build::s(#fname),
+                #krate::idl_build::__reexport::IdlFieldDef {
+                    name: #krate::idl_build::s(#fname),
                     ty: #fty,
                     codec: #fcodec,
                     docs: #fdocs,
@@ -122,26 +123,26 @@ pub(crate) fn event_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream
 
     let idl_fragment = quote! {
         #[cfg(feature = "idl-build")]
-        quasar_lang::__private_inventory::submit! {
-            quasar_lang::idl_build::EventFragment {
+        #krate::__private_inventory::submit! {
+            #krate::idl_build::EventFragment {
                 build: {
                     fn __build() -> (
-                        quasar_lang::idl_build::__reexport::IdlEventDef,
-                        quasar_lang::idl_build::__reexport::IdlTypeDef,
+                        #krate::idl_build::__reexport::IdlEventDef,
+                        #krate::idl_build::__reexport::IdlTypeDef,
                     ) {
                         (
-                            quasar_lang::idl_build::__reexport::IdlEventDef {
-                                name: quasar_lang::idl_build::s(#name_str),
-                                discriminator: quasar_lang::idl_build::vec![#(#disc_values),*],
+                            #krate::idl_build::__reexport::IdlEventDef {
+                                name: #krate::idl_build::s(#name_str),
+                                discriminator: #krate::idl_build::vec![#(#disc_values),*],
                                 docs: #event_docs,
                                 ty: None,
                             },
-                            quasar_lang::idl_build::__reexport::IdlTypeDef {
-                                name: quasar_lang::idl_build::s(#name_str),
-                                kind: quasar_lang::idl_build::__reexport::IdlTypeDefKind::Struct,
-                                docs: quasar_lang::idl_build::Vec::new(),
-                                fields: quasar_lang::idl_build::vec![#(#field_defs),*],
-                                variants: quasar_lang::idl_build::Vec::new(),
+                            #krate::idl_build::__reexport::IdlTypeDef {
+                                name: #krate::idl_build::s(#name_str),
+                                kind: #krate::idl_build::__reexport::IdlTypeDefKind::Struct,
+                                docs: #krate::idl_build::Vec::new(),
+                                fields: #krate::idl_build::vec![#(#field_defs),*],
+                                variants: #krate::idl_build::Vec::new(),
                                 repr: None,
                                 alias: None,
                                 fallback: None,
@@ -167,7 +168,7 @@ pub(crate) fn event_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream
             "event struct has padding; cannot use memcpy serialization"
         );
 
-        impl quasar_lang::traits::Event for #name {
+        impl #krate::traits::Event for #name {
             const DISCRIMINATOR: &'static [u8] = &[#(#disc_bytes),*];
             const DATA_SIZE: usize = #data_size;
 
@@ -186,7 +187,7 @@ pub(crate) fn event_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream
             }
 
             #[inline(always)]
-            fn emit(&self, f: impl FnOnce(&[u8]) -> Result<(), ProgramError>) -> Result<(), ProgramError> {
+            fn emit(&self, f: impl FnOnce(&[u8]) -> Result<(), #krate::__solana_program_error::ProgramError>) -> Result<(), #krate::__solana_program_error::ProgramError> {
                 const __DATA_SIZE: usize = #data_size;
                 const __BUF_SIZE: usize = 1 + #disc_len + __DATA_SIZE;
 
@@ -196,7 +197,7 @@ pub(crate) fn event_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream
                 // SAFETY: `ptr` points to the start of a buffer sized for the
                 // self-CPI sentinel, discriminator, and payload.
                 let data_offset = unsafe {
-                    quasar_lang::event::write_cpi_disc(ptr, Self::DISCRIMINATOR)
+                    #krate::event::write_cpi_disc(ptr, Self::DISCRIMINATOR)
                 };
 
                 // SAFETY: `write_cpi_disc` initialized the prefix bytes and

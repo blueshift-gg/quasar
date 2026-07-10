@@ -2,6 +2,10 @@
 
 Quasar is in beta. The API is unstable and the internals are performance-critical — small changes can have outsized CU impact. We're not accepting pull requests at this time.
 
+To understand how the pieces fit — the compiler front-end (`derive/`), the
+runtime it targets (`lang/`), the accounts pipeline phases, and the enforced
+layer contracts — read [`ARCHITECTURE.md`](./ARCHITECTURE.md) first.
+
 ## How to help
 
 Open an issue if you:

@@ -2,7 +2,8 @@
 //!
 //! The derive is protocol-neutral. NO module in derive/src/accounts/ may
 //! contain literal SPL domain strings. All SPL knowledge lives in
-//! quasar-spl behavior modules.
+//! quasar-spl behavior modules. See `ARCHITECTURE.md` (section 3, the enforced
+//! layer contract) for the rule this test encodes.
 
 /// Domain strings that must never appear in derive/src/accounts/ source.
 const BANNED: &[&str] = &[

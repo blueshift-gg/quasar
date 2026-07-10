@@ -1,49 +1,63 @@
-quasar_lang::define_account!(
-    pub struct QuasarDemo => [quasar_lang::checks::Executable,
-    quasar_lang::checks::Address]
+::quasar_lang::define_account!(
+    pub struct QuasarDemo => [::quasar_lang::checks::Executable,
+    ::quasar_lang::checks::Address]
 );
-impl quasar_lang::traits::Id for QuasarDemo {
-    const ID: Address = crate::ID;
+impl ::quasar_lang::traits::Id for QuasarDemo {
+    const ID: ::quasar_lang::prelude::Address = crate::ID;
 }
 #[repr(transparent)]
 pub struct EventAuthority {
-    view: AccountView,
+    view: ::quasar_lang::__internal::AccountView,
 }
-impl AsAccountView for EventAuthority {
+impl ::quasar_lang::traits::AsAccountView for EventAuthority {
     #[inline(always)]
-    fn to_account_view(&self) -> &AccountView {
+    fn to_account_view(&self) -> &::quasar_lang::__internal::AccountView {
         &self.view
     }
 }
 impl EventAuthority {
-    const __PDA: (Address, u8) = quasar_lang::pda::find_program_address_const(
+    const __PDA: (::quasar_lang::prelude::Address, u8) = ::quasar_lang::pda::find_program_address_const(
         &[b"__event_authority"],
         &crate::ID,
     );
-    pub const ADDRESS: Address = Self::__PDA.0;
+    pub const ADDRESS: ::quasar_lang::prelude::Address = Self::__PDA.0;
     pub const BUMP: u8 = Self::__PDA.1;
     #[inline(always)]
-    pub fn from_account_view(view: &AccountView) -> Result<&Self, ProgramError> {
-        if !quasar_lang::keys_eq(view.address(), &Self::ADDRESS) {
-            return Err(ProgramError::InvalidSeeds);
+    pub fn from_account_view(
+        view: &::quasar_lang::__internal::AccountView,
+    ) -> Result<&Self, ::quasar_lang::__solana_program_error::ProgramError> {
+        if !::quasar_lang::keys_eq(view.address(), &Self::ADDRESS) {
+            return Err(
+                ::quasar_lang::__solana_program_error::ProgramError::InvalidSeeds,
+            );
         }
-        Ok(unsafe { &*(view as *const AccountView as *const Self) })
+        Ok(unsafe {
+            &*(view as *const ::quasar_lang::__internal::AccountView as *const Self)
+        })
     }
     /// Construct without validation.
     ///
     /// # Safety
     /// Caller must ensure account address matches the expected PDA.
     #[inline(always)]
-    pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
-        unsafe { &*(view as *const AccountView as *const Self) }
+    pub unsafe fn from_account_view_unchecked(
+        view: &::quasar_lang::__internal::AccountView,
+    ) -> &Self {
+        unsafe {
+            &*(view as *const ::quasar_lang::__internal::AccountView as *const Self)
+        }
     }
 }
-unsafe impl quasar_lang::traits::StaticView for EventAuthority {}
-impl quasar_lang::account_load::AccountLoad for EventAuthority {
+unsafe impl ::quasar_lang::traits::StaticView for EventAuthority {}
+impl ::quasar_lang::account_load::AccountLoad for EventAuthority {
     #[inline(always)]
-    fn check(view: &AccountView) -> Result<(), ProgramError> {
-        if !quasar_lang::keys_eq(view.address(), &Self::ADDRESS) {
-            return Err(ProgramError::InvalidSeeds);
+    fn check(
+        view: &::quasar_lang::__internal::AccountView,
+    ) -> Result<(), ::quasar_lang::__solana_program_error::ProgramError> {
+        if !::quasar_lang::keys_eq(view.address(), &Self::ADDRESS) {
+            return Err(
+                ::quasar_lang::__solana_program_error::ProgramError::InvalidSeeds,
+            );
         }
         Ok(())
     }
@@ -63,9 +77,9 @@ mod quasar_demo {
     fn __handle_event(
         ptr: *mut u8,
         instruction_data: &[u8],
-    ) -> Result<(), ProgramError> {
+    ) -> Result<(), ::quasar_lang::__solana_program_error::ProgramError> {
         unsafe {
-            quasar_lang::event::handle_event(
+            ::quasar_lang::event::handle_event(
                 ptr,
                 instruction_data,
                 &super::EventAuthority::ADDRESS,
@@ -73,15 +87,20 @@ mod quasar_demo {
         }
     }
     #[inline(always)]
-    fn __dispatch(ptr: *mut u8, instruction_data: &[u8]) -> Result<(), ProgramError> {
+    fn __dispatch(
+        ptr: *mut u8,
+        instruction_data: &[u8],
+    ) -> Result<(), ::quasar_lang::__solana_program_error::ProgramError> {
         const __QUASAR_NEEDS_EVENT_CPI: bool = false
-            || <Initialize as AccountCount>::NEEDS_EVENT_CPI
-            || <Update as AccountCount>::NEEDS_EVENT_CPI;
+            || <Initialize as ::quasar_lang::traits::AccountCount>::NEEDS_EVENT_CPI
+            || <Update as ::quasar_lang::traits::AccountCount>::NEEDS_EVENT_CPI;
         if !instruction_data.is_empty() && instruction_data[0] == 0xFF {
             if __QUASAR_NEEDS_EVENT_CPI {
                 return __handle_event(ptr, instruction_data);
             }
-            return Err(ProgramError::InvalidInstructionData);
+            return Err(
+                ::quasar_lang::__solana_program_error::ProgramError::InvalidInstructionData,
+            );
         }
         {
             let __program_id: &[u8; 32] = unsafe {
@@ -92,17 +111,25 @@ mod quasar_demo {
             let __num_accounts = unsafe { *(ptr as *const u64) };
             let __accounts_start = unsafe { (ptr as *mut u8).add(__U64_SIZE) };
             if instruction_data.len() < 1usize {
-                return Err(ProgramError::InvalidInstructionData);
+                return Err(
+                    ::quasar_lang::__solana_program_error::ProgramError::InvalidInstructionData,
+                );
             }
             let __disc: [u8; 1usize] = unsafe {
                 *(instruction_data.as_ptr() as *const [u8; 1usize])
             };
             match __disc {
                 [0] => {
-                    if (__num_accounts as usize) < <Initialize as AccountCount>::COUNT {
-                        return Err(ProgramError::NotEnoughAccountKeys);
+                    if (__num_accounts as usize)
+                        < <Initialize as ::quasar_lang::traits::AccountCount>::COUNT
+                    {
+                        return Err(
+                            ::quasar_lang::__solana_program_error::ProgramError::NotEnoughAccountKeys,
+                        );
                     }
-                    if <Initialize as AccountCount>::COUNT >= 8usize {
+                    if <Initialize as ::quasar_lang::traits::AccountCount>::COUNT
+                        >= 8usize
+                    {
                         __quasar_direct_initialize(
                             __program_id,
                             __accounts_start,
@@ -111,7 +138,7 @@ mod quasar_demo {
                     } else {
                         {
                             let mut __buf = core::mem::MaybeUninit::<
-                                [AccountView; <Initialize as AccountCount>::COUNT],
+                                [::quasar_lang::__internal::AccountView; <Initialize as ::quasar_lang::traits::AccountCount>::COUNT],
                             >::uninit();
                             let __remaining_ptr = unsafe {
                                 <Initialize>::parse_accounts(
@@ -119,7 +146,7 @@ mod quasar_demo {
                                     &mut __buf,
                                     unsafe {
                                         &*(__program_id as *const [u8; 32]
-                                            as *const quasar_lang::prelude::Address)
+                                            as *const ::quasar_lang::prelude::Address)
                                     },
                                 )?
                             };
@@ -128,7 +155,7 @@ mod quasar_demo {
                                 instruction_data.get_unchecked(1usize..)
                             };
                             initialize(unsafe {
-                                Context::from_raw_parts(
+                                ::quasar_lang::context::Context::from_raw_parts(
                                     __program_id,
                                     &mut __accounts,
                                     __data_after_disc,
@@ -140,10 +167,14 @@ mod quasar_demo {
                     }
                 }
                 [1] => {
-                    if (__num_accounts as usize) < <Update as AccountCount>::COUNT {
-                        return Err(ProgramError::NotEnoughAccountKeys);
+                    if (__num_accounts as usize)
+                        < <Update as ::quasar_lang::traits::AccountCount>::COUNT
+                    {
+                        return Err(
+                            ::quasar_lang::__solana_program_error::ProgramError::NotEnoughAccountKeys,
+                        );
                     }
-                    if <Update as AccountCount>::COUNT >= 8usize {
+                    if <Update as ::quasar_lang::traits::AccountCount>::COUNT >= 8usize {
                         __quasar_direct_update(
                             __program_id,
                             __accounts_start,
@@ -152,7 +183,7 @@ mod quasar_demo {
                     } else {
                         {
                             let mut __buf = core::mem::MaybeUninit::<
-                                [AccountView; <Update as AccountCount>::COUNT],
+                                [::quasar_lang::__internal::AccountView; <Update as ::quasar_lang::traits::AccountCount>::COUNT],
                             >::uninit();
                             let __remaining_ptr = unsafe {
                                 <Update>::parse_accounts(
@@ -160,7 +191,7 @@ mod quasar_demo {
                                     &mut __buf,
                                     unsafe {
                                         &*(__program_id as *const [u8; 32]
-                                            as *const quasar_lang::prelude::Address)
+                                            as *const ::quasar_lang::prelude::Address)
                                     },
                                 )?
                             };
@@ -169,7 +200,7 @@ mod quasar_demo {
                                 instruction_data.get_unchecked(1usize..)
                             };
                             update(unsafe {
-                                Context::from_raw_parts(
+                                ::quasar_lang::context::Context::from_raw_parts(
                                     __program_id,
                                     &mut __accounts,
                                     __data_after_disc,
@@ -180,7 +211,11 @@ mod quasar_demo {
                         }
                     }
                 }
-                _ => Err(ProgramError::InvalidInstructionData),
+                _ => {
+                    Err(
+                        ::quasar_lang::__solana_program_error::ProgramError::InvalidInstructionData,
+                    )
+                }
             }
         }
     }
@@ -226,55 +261,55 @@ pub use quasar_demo::cpi;
 #[cfg(any(target_os = "solana", target_arch = "bpf"))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo<'_>) -> ! {
-    quasar_lang::abort_program()
+    ::quasar_lang::abort_program()
 }
 #[allow(unexpected_cfgs)]
 #[cfg(feature = "alloc")]
-quasar_lang::heap_alloc!();
+::quasar_lang::heap_alloc!();
 #[allow(unexpected_cfgs)]
 #[cfg(not(feature = "alloc"))]
-quasar_lang::no_alloc!();
+::quasar_lang::no_alloc!();
 #[cfg(feature = "idl-build")]
-quasar_lang::__private_inventory::submit! {
-    quasar_lang::idl_build::InstructionFragment { build : { fn __build() ->
-    quasar_lang::idl_build::__reexport::IdlInstruction {
-    quasar_lang::idl_build::__reexport::IdlInstruction { name :
-    quasar_lang::idl_build::s("initialize"), discriminator :
-    quasar_lang::idl_build::vec![0u8], docs : quasar_lang::idl_build::Vec::new(),
-    accounts : quasar_lang::idl_build::Vec::new(), args :
-    quasar_lang::idl_build::vec![quasar_lang::idl_build::__reexport::IdlArg { name :
-    quasar_lang::idl_build::s("amount"), ty :
-    quasar_lang::idl_build::__reexport::IdlType::Primitive(quasar_lang::idl_build::s("u64")),
-    codec : None, docs : quasar_lang::idl_build::Vec::new(), }], layout :
-    Some(quasar_lang::idl_build::__reexport::IdlLayout::Fixed { fields :
-    quasar_lang::idl_build::vec![quasar_lang::idl_build::s("amount")], }),
+::quasar_lang::__private_inventory::submit! {
+    ::quasar_lang::idl_build::InstructionFragment { build : { fn __build() ->
+    ::quasar_lang::idl_build::__reexport::IdlInstruction {
+    ::quasar_lang::idl_build::__reexport::IdlInstruction { name :
+    ::quasar_lang::idl_build::s("initialize"), discriminator :
+    ::quasar_lang::idl_build::vec![0u8], docs : ::quasar_lang::idl_build::Vec::new(),
+    accounts : ::quasar_lang::idl_build::Vec::new(), args :
+    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::__reexport::IdlArg { name :
+    ::quasar_lang::idl_build::s("amount"), ty :
+    ::quasar_lang::idl_build::__reexport::IdlType::Primitive(::quasar_lang::idl_build::s("u64")),
+    codec : None, docs : ::quasar_lang::idl_build::Vec::new(), }], layout :
+    Some(::quasar_lang::idl_build::__reexport::IdlLayout::Fixed { fields :
+    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::s("amount")], }),
     remaining_accounts : None, } } __build }, accounts_struct_name : "Initialize",
     discriminator_source :
-    quasar_lang::idl_build::InstructionDiscriminatorSource::Explicit, }
+    ::quasar_lang::idl_build::InstructionDiscriminatorSource::Explicit, }
 }
 #[cfg(feature = "idl-build")]
-quasar_lang::__private_inventory::submit! {
-    quasar_lang::idl_build::InstructionFragment { build : { fn __build() ->
-    quasar_lang::idl_build::__reexport::IdlInstruction {
-    quasar_lang::idl_build::__reexport::IdlInstruction { name :
-    quasar_lang::idl_build::s("update"), discriminator :
-    quasar_lang::idl_build::vec![1u8], docs : quasar_lang::idl_build::Vec::new(),
-    accounts : quasar_lang::idl_build::Vec::new(), args : quasar_lang::idl_build::vec![],
-    layout : None, remaining_accounts : None, } } __build }, accounts_struct_name :
-    "Update", discriminator_source :
-    quasar_lang::idl_build::InstructionDiscriminatorSource::Explicit, }
+::quasar_lang::__private_inventory::submit! {
+    ::quasar_lang::idl_build::InstructionFragment { build : { fn __build() ->
+    ::quasar_lang::idl_build::__reexport::IdlInstruction {
+    ::quasar_lang::idl_build::__reexport::IdlInstruction { name :
+    ::quasar_lang::idl_build::s("update"), discriminator :
+    ::quasar_lang::idl_build::vec![1u8], docs : ::quasar_lang::idl_build::Vec::new(),
+    accounts : ::quasar_lang::idl_build::Vec::new(), args :
+    ::quasar_lang::idl_build::vec![], layout : None, remaining_accounts : None, } }
+    __build }, accounts_struct_name : "Update", discriminator_source :
+    ::quasar_lang::idl_build::InstructionDiscriminatorSource::Explicit, }
 }
 /// Assemble all IDL fragments and return JSON.
 #[cfg(feature = "idl-build")]
-pub fn __quasar_build_idl() -> quasar_lang::idl_build::String {
-    let address = quasar_lang::idl_build::address_to_base58(&crate::ID);
-    let idl = quasar_lang::idl_build::build_idl(
+pub fn __quasar_build_idl() -> ::quasar_lang::idl_build::String {
+    let address = ::quasar_lang::idl_build::address_to_base58(&crate::ID);
+    let idl = ::quasar_lang::idl_build::build_idl(
         &address,
         "quasar_demo",
         env!("CARGO_PKG_NAME"),
         env!("CARGO_PKG_VERSION"),
     );
-    quasar_lang::idl_build::__reexport::serde_json::to_string_pretty(&idl)
+    ::quasar_lang::idl_build::__reexport::serde_json::to_string_pretty(&idl)
         .expect("generated IDL should serialize")
 }
 #[cfg(

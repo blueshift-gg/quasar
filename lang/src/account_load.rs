@@ -12,6 +12,17 @@ use {
 /// supertrait makes that requirement a compile-time obligation: the
 /// pointer-cast constructors below are only sound because every implementor is
 /// layout-compatible with `AccountView`.
+///
+/// # Validator selection
+///
+/// The derive picks one validator per field (see
+/// `derive/src/accounts/emit/parse.rs`), trading validation for CU:
+///
+/// | Field shape | Loader | Validator |
+/// |-------------|--------|-----------|
+/// | default (unique field) | `load` / `load_mut` | [`check`](Self::check) — unchecked data borrow (the field is unique, so no aliasing) |
+/// | `#[account(dup)]` | `load_checked` / `load_mut_checked` | [`check_checked`](Self::check_checked) — runtime-checked borrow, sound under aliasing |
+/// | a behavior sets `VALIDATES_ACCOUNT_DATA` | `load_intrinsic` / `load_mut_intrinsic` (**unsafe**) | [`check_intrinsic`](Self::check_intrinsic) — intrinsic invariants only; the behavior re-validates the data |
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not a loadable account type",
     label = "not an account wrapper",
@@ -38,10 +49,16 @@ pub trait AccountLoad: AsAccountView + StaticView + Sized {
         Self::check(view)
     }
 
-    /// Validate only intrinsic account invariants.
+    /// Validate only intrinsic account invariants (owner, discriminator),
+    /// skipping the data-schema validation a following behavior will perform.
     ///
-    /// The default preserves normal account loading. Wrapper types may make
-    /// this cheaper for protocol behaviors that validate account data.
+    /// The default preserves normal account loading (equivalent to
+    /// [`Self::check`]). Data-bearing wrappers may override it to skip the
+    /// schema check. Because the returned account is not fully validated, the
+    /// only loaders that call it — [`Self::load_intrinsic`] /
+    /// [`Self::load_mut_intrinsic`] — are `unsafe`, and the derive emits them
+    /// only when a behavior with `VALIDATES_ACCOUNT_DATA` re-validates the data
+    /// before it is observed.
     #[inline(always)]
     fn check_intrinsic(view: &AccountView) -> Result<(), ProgramError> {
         Self::check(view)

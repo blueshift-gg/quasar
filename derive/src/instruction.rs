@@ -32,11 +32,12 @@ fn emit_fixed_schema_stmts(
     field_names: &[Ident],
     field_types: &[&syn::Type],
 ) -> Vec<syn::Stmt> {
+    let krate = crate::krate::lang_path();
     let mut stmts: Vec<syn::Stmt> = Vec::new();
     stmts.push(syn::parse_quote!(
         #[repr(C)]
         struct __InstructionDataZc {
-            #(#field_names: <#field_types as quasar_lang::instruction_arg::InstructionArg>::Zc,)*
+            #(#field_names: <#field_types as #krate::instruction_arg::InstructionArg>::Zc,)*
         }
     ));
     stmts.push(syn::parse_quote!(
@@ -50,7 +51,7 @@ fn emit_fixed_schema_stmts(
     ));
     stmts.push(syn::parse_quote!(
         if #param_ident.data.len() < __INSTRUCTION_DATA_SIZE {
-            return Err(ProgramError::InvalidInstructionData);
+            return Err(#krate::__solana_program_error::ProgramError::InvalidInstructionData);
         }
     ));
     stmts.push(syn::parse_quote!(
@@ -58,11 +59,11 @@ fn emit_fixed_schema_stmts(
     ));
     for (name, ty) in field_names.iter().zip(field_types.iter()) {
         stmts.push(syn::parse_quote!(
-            <#ty as quasar_lang::instruction_arg::InstructionArg>::validate_zc(&__zc.#name)
-                .map_err(|_| ProgramError::InvalidInstructionData)?;
+            <#ty as #krate::instruction_arg::InstructionArg>::validate_zc(&__zc.#name)
+                .map_err(|_| #krate::__solana_program_error::ProgramError::InvalidInstructionData)?;
         ));
         stmts.push(syn::parse_quote!(
-            let #name = <#ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(&__zc.#name);
+            let #name = <#ty as #krate::instruction_arg::InstructionArg>::from_zc(&__zc.#name);
         ));
     }
     stmts
@@ -79,6 +80,7 @@ fn emit_handler_tail(
     has_return_data: bool,
     return_ok_type: Option<&Type>,
 ) -> Vec<syn::Stmt> {
+    let krate = crate::krate::lang_path();
     let user_body: proc_macro2::TokenStream = stmts.iter().map(|s| quote!(#s)).collect();
     let mut tail = Vec::new();
 
@@ -95,25 +97,25 @@ fn emit_handler_tail(
             .unwrap_or_else(|| ice!("return_ok_type must be set when has_return_data is true"));
         tail.push(syn::parse_quote!(
             const _: () = assert!(
-                core::mem::align_of::<<#ok_ty as quasar_lang::instruction_arg::InstructionArg>::Zc>() == 1,
+                core::mem::align_of::<<#ok_ty as #krate::instruction_arg::InstructionArg>::Zc>() == 1,
                 "return data type must implement InstructionArg with an alignment-1 Zc companion"
             );
         ));
         tail.push(syn::parse_quote!(
             {
-                let __result: Result<#ok_ty, ProgramError> = (|| { #user_body })();
+                let __result: Result<#ok_ty, #krate::__solana_program_error::ProgramError> = (|| { #user_body })();
                 match __result {
                     Ok(ref __val) => {
                         #epilogue_call
                         let __zc =
-                            <#ok_ty as quasar_lang::instruction_arg::InstructionArg>::to_zc(__val);
+                            <#ok_ty as #krate::instruction_arg::InstructionArg>::to_zc(__val);
                         let __bytes = unsafe {
                             core::slice::from_raw_parts(
-                                &__zc as *const <#ok_ty as quasar_lang::instruction_arg::InstructionArg>::Zc as *const u8,
-                                core::mem::size_of::<<#ok_ty as quasar_lang::instruction_arg::InstructionArg>::Zc>(),
+                                &__zc as *const <#ok_ty as #krate::instruction_arg::InstructionArg>::Zc as *const u8,
+                                core::mem::size_of::<<#ok_ty as #krate::instruction_arg::InstructionArg>::Zc>(),
                             )
                         };
-                        quasar_lang::return_data::set_return_data(__bytes);
+                        #krate::return_data::set_return_data(__bytes);
                         Ok(())
                     }
                     Err(e) => Err(e),
@@ -122,7 +124,7 @@ fn emit_handler_tail(
         ));
     } else {
         tail.push(syn::parse_quote!({
-            let __user_result: Result<(), ProgramError> = { #user_body };
+            let __user_result: Result<(), #krate::__solana_program_error::ProgramError> = { #user_body };
             __user_result?;
             #epilogue_call
             Ok(())
@@ -158,6 +160,7 @@ fn emit_decode_and_tail(
     has_return_data: bool,
     return_ok_type: Option<&Type>,
 ) -> syn::Result<Vec<syn::Stmt>> {
+    let krate = crate::krate::lang_path();
     let mut out = Vec::new();
 
     if !remaining.is_empty() {
@@ -244,7 +247,7 @@ fn emit_decode_and_tail(
             // Alias quasar_lang's re-export so `zeropod::*` paths emitted by
             // the ZeroPod derive resolve without a direct crate dependency.
             out.push(syn::parse_quote!(
-                use quasar_lang::__zeropod as zeropod;
+                use #krate::__zeropod as zeropod;
             ));
 
             // Build the compact schema IR: inline fixed fields, then dynamic
@@ -274,7 +277,7 @@ fn emit_decode_and_tail(
                     schema_name,
                     ref_name,
                     data: quote!(&#param_ident.data),
-                    err: quote!(ProgramError::InvalidInstructionData),
+                    err: quote!(#krate::__solana_program_error::ProgramError::InvalidInstructionData),
                     validate_fixed: true,
                 },
             ));
@@ -307,6 +310,7 @@ pub(crate) fn instruction(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
+    let krate = crate::krate::lang_path();
     let args = match syn::parse2::<InstructionArgs>(attr) {
         Ok(args) => args,
         Err(e) => return e.to_compile_error(),
@@ -394,7 +398,7 @@ pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> Token
         .is_some_and(|ok_ty| !is_unit_type(ok_ty));
 
     if has_return_data {
-        func.sig.output = syn::parse_quote!(-> Result<(), ProgramError>);
+        func.sig.output = syn::parse_quote!(-> Result<(), #krate::__solana_program_error::ProgramError>);
     }
 
     let remaining: Vec<_> = func
@@ -438,7 +442,7 @@ pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> Token
     let body_fn_name = format_ident!("__{}_body", fn_name);
     let body_fn = quote! {
         #[inline(always)]
-        fn #body_fn_name(mut #param_ident: #param_type) -> Result<(), ProgramError> {
+        fn #body_fn_name(mut #param_ident: #param_type) -> Result<(), #krate::__solana_program_error::ProgramError> {
             #(#decoded_tail)*
         }
     };
@@ -447,7 +451,7 @@ pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> Token
     func.sig.inputs = syn::punctuated::Punctuated::new();
     func.sig
         .inputs
-        .push(syn::parse_quote!(mut context: Context));
+        .push(syn::parse_quote!(mut context: #krate::context::Context));
     // SAFETY: the generated dispatch parsed exactly `COUNT` validated account
     // views into this `Context` before invoking the handler.
     let entry_call: syn::Expr = syn::parse_quote!(
@@ -467,9 +471,9 @@ pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> Token
                 __program_id: &[u8; 32],
                 __accounts_start: *mut u8,
                 __ix_data: &[u8],
-            ) -> Result<(), ProgramError> {
+            ) -> Result<(), #krate::__solana_program_error::ProgramError> {
                 let __program_id_addr = unsafe {
-                    &*(__program_id as *const [u8; 32] as *const quasar_lang::prelude::Address)
+                    &*(__program_id as *const [u8; 32] as *const #krate::prelude::Address)
                 };
                 let (__accounts, __bumps) = unsafe {
                     <#accounts_ty>::parse_direct_with_instruction_data_unchecked(
@@ -478,7 +482,7 @@ pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> Token
                         __program_id_addr,
                     )?
                 };
-                #body_fn_name(quasar_lang::context::Ctx {
+                #body_fn_name(#krate::context::Ctx {
                     accounts: __accounts,
                     bumps: __bumps,
                     program_id: __program_id,

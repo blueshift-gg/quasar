@@ -8,7 +8,10 @@ use {
 
 /// Trait for types that can execute SPL Token CPI calls.
 ///
-/// Implemented by `Program<Token>`, `Program<Token2022>`, and `TokenInterface`.
+/// Implemented by `Program<TokenProgram>` (`token.rs`),
+/// `Program<Token2022Program>` (`token_2022.rs`), and
+/// `Interface<TokenInterface>` (`interface.rs`) — a program field typed as any
+/// of these gets the CPI methods below.
 pub trait TokenCpi: AsAccountView {
     /// Transfer tokens between accounts.
     ///

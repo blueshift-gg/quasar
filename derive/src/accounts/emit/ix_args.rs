@@ -30,6 +30,7 @@ use {
 /// Emit the single `#[inline(always)] fn __extract_ix_args` definition placed
 /// on the accounts struct's inherent impl. Empty when there are no ix args.
 pub(crate) fn emit_extract_ix_args_fn(ix_args: &[InstructionArg]) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     if ix_args.is_empty() {
         return quote! {};
     }
@@ -53,7 +54,7 @@ pub(crate) fn emit_extract_ix_args_fn(ix_args: &[InstructionArg]) -> proc_macro2
         #[allow(unused_variables)]
         fn __extract_ix_args<'a>(
             __ix_data: &'a [u8],
-        ) -> Result<(#(#ret_types),*), ProgramError> {
+        ) -> Result<(#(#ret_types),*), #krate::__solana_program_error::ProgramError> {
             #body
             Ok((#(#names),*))
         }
@@ -93,21 +94,22 @@ fn arg_return_type(arg: &InstructionArg, pd: &Option<PodDynField>) -> proc_macro
 /// `map_to_pod_type`: align-1 primitives map to their `Pod*` companions, and
 /// every other element delegates through `ZcField::Pod`.
 fn pod_elem_type(elem: &Type) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     if let Type::Path(tp) = elem {
         if let Some(seg) = tp.path.segments.last() {
             if seg.arguments.is_none() {
                 let mapped = match seg.ident.to_string().as_str() {
                     "u8" => Some(quote! { u8 }),
                     "i8" => Some(quote! { i8 }),
-                    "u16" => Some(quote! { quasar_lang::__zeropod::pod::PodU16 }),
-                    "u32" => Some(quote! { quasar_lang::__zeropod::pod::PodU32 }),
-                    "u64" => Some(quote! { quasar_lang::__zeropod::pod::PodU64 }),
-                    "u128" => Some(quote! { quasar_lang::__zeropod::pod::PodU128 }),
-                    "i16" => Some(quote! { quasar_lang::__zeropod::pod::PodI16 }),
-                    "i32" => Some(quote! { quasar_lang::__zeropod::pod::PodI32 }),
-                    "i64" => Some(quote! { quasar_lang::__zeropod::pod::PodI64 }),
-                    "i128" => Some(quote! { quasar_lang::__zeropod::pod::PodI128 }),
-                    "bool" => Some(quote! { quasar_lang::__zeropod::pod::PodBool }),
+                    "u16" => Some(quote! { #krate::__zeropod::pod::PodU16 }),
+                    "u32" => Some(quote! { #krate::__zeropod::pod::PodU32 }),
+                    "u64" => Some(quote! { #krate::__zeropod::pod::PodU64 }),
+                    "u128" => Some(quote! { #krate::__zeropod::pod::PodU128 }),
+                    "i16" => Some(quote! { #krate::__zeropod::pod::PodI16 }),
+                    "i32" => Some(quote! { #krate::__zeropod::pod::PodI32 }),
+                    "i64" => Some(quote! { #krate::__zeropod::pod::PodI64 }),
+                    "i128" => Some(quote! { #krate::__zeropod::pod::PodI128 }),
+                    "bool" => Some(quote! { #krate::__zeropod::pod::PodBool }),
                     _ => None,
                 };
                 if let Some(mapped) = mapped {
@@ -116,7 +118,7 @@ fn pod_elem_type(elem: &Type) -> proc_macro2::TokenStream {
             }
         }
     }
-    quote! { <#elem as quasar_lang::__zeropod::ZcField>::Pod }
+    quote! { <#elem as #krate::__zeropod::ZcField>::Pod }
 }
 
 /// The extraction statements that bind every declared arg from `__ix_data`.
@@ -125,6 +127,7 @@ fn extract_body(
     ix_args: &[InstructionArg],
     pod_dyns: &[Option<PodDynField>],
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let has_dynamic = pod_dyns.iter().any(|pd| pd.is_some());
 
     let vec_align_asserts: Vec<proc_macro2::TokenStream> = pod_dyns
@@ -149,7 +152,7 @@ fn extract_body(
             .iter()
             .map(|arg| {
                 let ty = &arg.ty;
-                quote! { <#ty as quasar_lang::instruction_arg::InstructionArg>::Zc }
+                quote! { <#ty as #krate::instruction_arg::InstructionArg>::Zc }
             })
             .collect();
 
@@ -169,7 +172,7 @@ fn extract_body(
 
         stmts.push(quote! {
             if __ix_data.len() < core::mem::size_of::<__IxArgsZc>() {
-                return Err(ProgramError::InvalidInstructionData);
+                return Err(#krate::__solana_program_error::ProgramError::InvalidInstructionData);
             }
         });
 
@@ -183,8 +186,8 @@ fn extract_body(
             let name = &arg.name;
             let ty = &arg.ty;
             stmts.push(quote! {
-                <#ty as quasar_lang::instruction_arg::InstructionArg>::validate_zc(&__ix_zc.#name)?;
-                let #name = <#ty as quasar_lang::instruction_arg::InstructionArg>::from_zc(&__ix_zc.#name);
+                <#ty as #krate::instruction_arg::InstructionArg>::validate_zc(&__ix_zc.#name)?;
+                let #name = <#ty as #krate::instruction_arg::InstructionArg>::from_zc(&__ix_zc.#name);
             });
         }
 
@@ -200,7 +203,7 @@ fn extract_body(
     // Alias quasar_lang's re-export so `zeropod::*` paths emitted by the ZeroPod
     // derive resolve without a direct crate dependency.
     stmts.push(quote! {
-        use quasar_lang::__zeropod as zeropod;
+        use #krate::__zeropod as zeropod;
     });
 
     // Build the compact schema IR (raw `PodVec` element, matching the `&[elem]`
@@ -237,7 +240,7 @@ fn extract_body(
             schema_name,
             ref_name,
             data: quote!(__ix_data),
-            err: quote!(ProgramError::InvalidInstructionData),
+            err: quote!(#krate::__solana_program_error::ProgramError::InvalidInstructionData),
             validate_fixed: true,
         },
     );

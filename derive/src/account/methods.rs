@@ -16,6 +16,7 @@ pub(super) struct SetInnerSpec<'a> {
 }
 
 pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let SetInnerSpec {
         name,
         vis,
@@ -101,7 +102,7 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
                     let setter = format_ident!("set_{}", field_name);
                     quote! {
                         __compact.#setter(#field_name)
-                            .map_err(|_| ProgramError::InvalidAccountData)?;
+                            .map_err(|_| #krate::__solana_program_error::ProgramError::InvalidAccountData)?;
                     }
                 })
             })
@@ -126,10 +127,10 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
                 pub fn set_inner(
                     &mut self,
                     inner: #inner_name<'_>,
-                    payer: &AccountView,
+                    payer: &#krate::__internal::AccountView,
                     rent_lpb: u64,
                     rent_threshold: u64,
-                ) -> Result<(), ProgramError> {
+                ) -> Result<(), #krate::__solana_program_error::ProgramError> {
                     #(let #init_field_names = inner.#init_field_names;)*
                     #(#max_checks)*
 
@@ -137,10 +138,10 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
                     // SAFETY: `#[account]` wrappers are `#[repr(transparent)]`
                     // over `AccountView`; `&mut self` gives exclusive access to
                     // the backing view for this initialization.
-                    let __view = unsafe { &mut *(self as *mut Self as *mut AccountView) };
+                    let __view = unsafe { &mut *(self as *mut Self as *mut #krate::__internal::AccountView) };
 
                     if __space != __view.data_len() {
-                        quasar_lang::accounts::account::realloc_account_raw(
+                        #krate::accounts::account::realloc_account_raw(
                             __view,
                             __space,
                             payer,
@@ -168,7 +169,7 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
                         #zc_mod::__SchemaMut::new_unchecked(__compact_data)
                     };
                     #(#compact_set_stmts)*
-                    __compact.commit().map_err(|_| ProgramError::InvalidAccountData)?;
+                    __compact.commit().map_err(|_| #krate::__solana_program_error::ProgramError::InvalidAccountData)?;
                     Ok(())
                 }
             }

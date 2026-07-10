@@ -18,8 +18,9 @@ pub(crate) enum SeedType {
 impl SeedType {
     /// The field storage type in generated SeedSet structs.
     pub(crate) fn field_type(&self) -> proc_macro2::TokenStream {
+        let krate = crate::krate::lang_path();
         match self {
-            SeedType::Address => quote! { &'__quasar_seed quasar_lang::prelude::Address },
+            SeedType::Address => quote! { &'__quasar_seed #krate::prelude::Address },
             SeedType::U8 => quote! { [u8; 1] },
             SeedType::U16 => quote! { [u8; 2] },
             SeedType::U32 => quote! { [u8; 4] },
@@ -30,8 +31,9 @@ impl SeedType {
 
     /// The public constructor parameter type for a typed seed.
     pub(crate) fn param_type(&self) -> proc_macro2::TokenStream {
+        let krate = crate::krate::lang_path();
         match self {
-            SeedType::Address => quote! { &'__quasar_seed quasar_lang::prelude::Address },
+            SeedType::Address => quote! { &'__quasar_seed #krate::prelude::Address },
             SeedType::U8 => quote! { u8 },
             SeedType::U16 => quote! { u16 },
             SeedType::U32 => quote! { u32 },
