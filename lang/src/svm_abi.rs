@@ -31,9 +31,9 @@
 //! syscall `SolBytes { addr: *const u8, len: u64 }` — a pointer followed by a
 //! `u64` length. Syscalls that take `*const SolBytes` (e.g. `sol_sha256`) are
 //! therefore fed Rust slice arrays directly, without any copy. The
-//! [`SolBytes`] type below makes that layout explicit for code that needs a
-//! *value* with slice layout whose pointee is mutated afterwards — which cannot
-//! be expressed soundly with a real `&[u8]`.
+//! [`crate::svm_abi::SolBytes`] type below makes that layout explicit for code
+//! that needs a *value* with slice layout whose pointee is mutated afterwards —
+//! which cannot be expressed soundly with a real `&[u8]`.
 
 /// A `(pointer, length)` pair with the same layout as a `&[u8]` fat pointer on
 /// the SVM's 64-bit target, carrying no reference/borrow semantics.

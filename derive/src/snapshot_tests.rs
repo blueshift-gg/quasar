@@ -19,6 +19,20 @@ use {
     quote::quote,
 };
 
+// `expect-test` resolves relative paths against Cargo's workspace directory,
+// which points at the primary checkout when this crate is tested from a linked
+// worktree. Shadow its path macro locally so every golden is anchored to this
+// crate's manifest directory instead.
+mod expect_test {
+    macro_rules! expect_file {
+        ($path:literal) => {
+            ::expect_test::expect_file![concat!(env!("CARGO_MANIFEST_DIR"), "/src/", $path)]
+        };
+    }
+
+    pub(crate) use expect_file;
+}
+
 /// Pretty-print a macro expansion. Parses the stream as a whole `syn::File` and
 /// runs `prettyplease`; on a parse failure, emits raw tokens under a `NOTE:`
 /// marker so reviewers (and the harness report) can see the fallback fired.

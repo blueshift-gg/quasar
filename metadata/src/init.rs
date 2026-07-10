@@ -26,6 +26,7 @@ use {
 /// )?;
 /// ```
 pub trait InitMetadata: AsAccountView + Sized {
+    /// Creates metadata with ordinary transaction or account signers.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     fn init(
@@ -62,6 +63,7 @@ pub trait InitMetadata: AsAccountView + Sized {
             .invoke()
     }
 
+    /// Creates metadata using an additional PDA signer seed set.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     fn init_signed(
@@ -119,6 +121,7 @@ pub trait InitMetadata: AsAccountView + Sized {
 /// )?;
 /// ```
 pub trait InitMasterEdition: AsAccountView + Sized {
+    /// Creates a master edition with ordinary transaction or account signers.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     fn init(
@@ -150,6 +153,7 @@ pub trait InitMasterEdition: AsAccountView + Sized {
             .invoke()
     }
 
+    /// Creates a master edition using an additional PDA signer seed set.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     fn init_signed(

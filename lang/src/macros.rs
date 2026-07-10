@@ -8,6 +8,10 @@
 //! - `emit!`: emits an event via `sol_log_data` (~100 CU).
 
 #[macro_export]
+/// Defines a transparent account wrapper and its validation/load behavior.
+///
+/// The schema form additionally implements zero-copy dereferencing for the
+/// supplied `ZeroPodFixed` schema.
 macro_rules! define_account {
     // Schema form: `pub struct Token => [checks::DataLen, checks::ZeroPod]: TokenData`
     //
@@ -159,6 +163,7 @@ macro_rules! define_account {
 }
 
 #[macro_export]
+/// Returns the supplied error when a condition is false.
 macro_rules! require {
     ($condition:expr, $error:expr) => {
         if !($condition) {
@@ -168,6 +173,7 @@ macro_rules! require {
 }
 
 #[macro_export]
+/// Returns the supplied error when two values are not equal.
 macro_rules! require_eq {
     ($left:expr, $right:expr, $error:expr) => {
         if $left != $right {
@@ -177,6 +183,7 @@ macro_rules! require_eq {
 }
 
 #[macro_export]
+/// Returns the supplied error when two Solana addresses are not equal.
 macro_rules! require_keys_eq {
     ($left:expr, $right:expr, $error:expr) => {
         if !$crate::keys_eq(&$left, &$right) {

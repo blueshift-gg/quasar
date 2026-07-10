@@ -120,6 +120,8 @@ pub trait AccountBehavior<A> {
     /// Defaults to `RUN_UPDATE || RUN_EXIT`.
     const REQUIRES_MUT: bool = Self::RUN_UPDATE || Self::RUN_EXIT;
 
+    /// Applies this behavior's values to the account's initialization
+    /// parameters.
     fn set_init_param<'a>(
         _params: &mut <A as crate::account_init::AccountInit>::InitParams<'a>,
         _args: &Self::Args<'a>,
@@ -130,18 +132,22 @@ pub trait AccountBehavior<A> {
         Ok(())
     }
 
+    /// Runs immediately after a new account has been initialized.
     fn after_init<'a>(_account: &mut A, _args: &Self::Args<'a>) -> Result<(), ProgramError> {
         Ok(())
     }
 
+    /// Validates the loaded account against this behavior's arguments.
     fn check<'a>(_account: &A, _args: &Self::Args<'a>) -> Result<(), ProgramError> {
         Ok(())
     }
 
+    /// Applies a behavior-specific mutation after validation.
     fn update<'a>(_account: &mut A, _args: &Self::Args<'a>) -> Result<(), ProgramError> {
         Ok(())
     }
 
+    /// Runs this behavior's epilogue before instruction completion.
     fn exit<'a>(_account: &mut A, _args: &Self::Args<'a>) -> Result<(), ProgramError> {
         Ok(())
     }

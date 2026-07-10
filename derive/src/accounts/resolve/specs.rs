@@ -232,8 +232,8 @@ pub(crate) enum LoadStep {
 
 /// A step that runs before account load (address verify + init CPI).
 pub(crate) enum PreLoadStep {
-    VerifyAddress(AddressSpec),
-    Init(InitPlan),
+    VerifyAddress(Box<AddressSpec>),
+    Init(Box<InitPlan>),
 }
 
 /// A step that runs after account load.
@@ -324,7 +324,7 @@ pub(crate) enum EventCpiTerm {
     EventAuthority,
     /// A composite: delegates to its inner `AccountCount::NEEDS_EVENT_CPI`.
     /// Carries the field's effective type (the inner type is derived at emit).
-    Composite(Type),
+    Composite(Box<Type>),
 }
 
 /// Instruction-wide execution plan.

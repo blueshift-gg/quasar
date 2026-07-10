@@ -5,6 +5,8 @@ use {solana_account_view::AccountView, solana_program_error::ProgramError};
 /// Requires `Self: crate::traits::Discriminator` to provide
 /// `DISCRIMINATOR: &'static [u8]`.
 pub trait Discriminator: crate::traits::Discriminator {
+    /// Validates the discriminator using the unchecked unique-account fast
+    /// path.
     #[inline(always)]
     fn check(view: &AccountView) -> Result<(), ProgramError> {
         // SAFETY: This is the unchecked fast path used when generated parsing
@@ -13,12 +15,14 @@ pub trait Discriminator: crate::traits::Discriminator {
         Self::check_data(data)
     }
 
+    /// Validates the discriminator through a runtime-checked data borrow.
     #[inline(always)]
     fn check_checked(view: &AccountView) -> Result<(), ProgramError> {
         let data = view.try_borrow()?;
         Self::check_data(&data)
     }
 
+    /// Validates the discriminator in an already borrowed data slice.
     #[inline(always)]
     fn check_data(data: &[u8]) -> Result<(), ProgramError> {
         let disc = Self::DISCRIMINATOR;

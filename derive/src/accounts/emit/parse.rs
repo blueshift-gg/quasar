@@ -173,6 +173,7 @@ fn emit_init_phase_typed(
         for step in &fp.pre_load {
             match step {
                 PreLoadStep::VerifyAddress(addr_spec) => {
+                    let addr_spec = addr_spec.as_ref();
                     let bump_var = format_ident!("__bumps_{}", ident);
                     let addr_var = format_ident!("__addr_{}", ident);
                     let addr_expr = &addr_spec.expr;
@@ -187,7 +188,7 @@ fn emit_init_phase_typed(
                 PreLoadStep::Init(init_plan) => {
                     let did_init_var = needs_init_state_var(fp)
                         .then(|| format_ident!("__quasar_did_init_{}", ident));
-                    let ts = match init_plan {
+                    let ts = match init_plan.as_ref() {
                         InitPlan::Program(spec) => typed_emit::emit_program_init(spec, ident, ty),
                         InitPlan::Behavior(spec) => {
                             typed_emit::emit_behavior_init(spec, ident, ty, did_init_var.as_ref())
@@ -214,10 +215,12 @@ fn emit_init_state_vars(field_plans: &[FieldPlan]) -> Vec<proc_macro2::TokenStre
 }
 
 fn needs_init_state_var(field_plan: &FieldPlan) -> bool {
-    let has_behavior_init = field_plan
-        .pre_load
-        .iter()
-        .any(|step| matches!(step, PreLoadStep::Init(InitPlan::Behavior(_))));
+    let has_behavior_init = field_plan.pre_load.iter().any(|step| {
+        matches!(
+            step,
+            PreLoadStep::Init(plan) if matches!(plan.as_ref(), InitPlan::Behavior(_))
+        )
+    });
     let has_behavior_check = field_plan.post_load.iter().any(|step| {
         matches!(
             step,

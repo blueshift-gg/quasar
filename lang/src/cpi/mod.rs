@@ -10,6 +10,7 @@
 //! `invoke_signed_unchecked` with no intermediate borrow checking.
 
 pub mod dyn_cpi;
+/// System Program CPI builders.
 pub mod system;
 
 use {
@@ -32,6 +33,7 @@ pub use {
 /// Generated account-owned signer helpers return values that implement this
 /// trait, so CPI callers do not need to materialize or expose raw seed slices.
 pub trait CpiSignerSeeds {
+    /// Borrows this seed source as the signer array expected by CPI calls.
     fn with_signers<R, F>(&self, f: F) -> R
     where
         F: FnOnce(&[Signer<'_, '_>]) -> R;
@@ -482,6 +484,7 @@ impl<'a, const ACCTS: usize, const DATA: usize> CpiCall<'a, ACCTS, DATA> {
     }
 
     #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
+    /// Returns the encoded instruction data for off-chain inspection and tests.
     pub fn instruction_data(&self) -> &[u8] {
         &self.data
     }

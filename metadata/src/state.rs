@@ -13,67 +13,74 @@ pub(crate) const KEY_METADATA_V1: u8 = 4;
 /// Metaplex Key enum discriminant for MasterEditionV2 accounts.
 pub(crate) const KEY_MASTER_EDITION_V2: u8 = 6;
 
-/// Zero-copy layout for the fixed-size prefix of Metaplex Metadata accounts.
-///
-/// The first 65 bytes of a Metadata account have a stable layout:
-/// - `key` (1 byte): Metaplex account type discriminant (`Key::MetadataV1 = 4`)
-/// - `update_authority` (32 bytes): pubkey authorized to update this metadata
-/// - `mint` (32 bytes): the SPL Token mint this metadata describes
-///
-/// Fields after the prefix (name, symbol, uri, creators, etc.) are
-/// variable-length Borsh-serialized data and require offset walking to access.
-#[derive(quasar_lang::ZeroPod)]
-pub struct MetadataPrefix {
-    pub key: u8,
-    pub update_authority: Address,
-    pub mint: Address,
-}
+// The upstream ZeroPod derive exposes `*Zc` companion items without carrying
+// source docs. Confine that generated-code lint exception to this module.
+#[allow(missing_docs)]
+mod layouts {
+    use super::*;
 
-const _: () = assert!(core::mem::size_of::<MetadataPrefixZc>() == 65);
-const _: () = assert!(core::mem::align_of::<MetadataPrefixZc>() == 1);
-const _: () = assert!(core::mem::offset_of!(MetadataPrefixZc, key) == 0);
-const _: () = assert!(core::mem::offset_of!(MetadataPrefixZc, update_authority) == 1);
-const _: () = assert!(core::mem::offset_of!(MetadataPrefixZc, mint) == 33);
-const _: () = assert!(<MetadataPrefix as quasar_lang::ZeroPodFixed>::SIZE == 65);
-
-/// Zero-copy layout for the fixed-size prefix of Metaplex MasterEdition
-/// accounts.
-///
-/// - `key` (1 byte): Metaplex account type discriminant (`Key::MasterEditionV2
-///   = 6`)
-/// - `supply` (8 bytes, u64 LE): number of editions printed
-/// - `max_supply` (9 bytes): Borsh `Option<u64>` tag + value
-#[derive(quasar_lang::ZeroPod)]
-pub struct MasterEditionPrefix {
-    pub key: u8,
-    pub supply: u64,
-    pub max_supply: zeropod::pod::PodOption<zeropod::pod::PodU64, 1>,
-}
-
-const _: () = assert!(core::mem::size_of::<MasterEditionPrefixZc>() == 18);
-const _: () = assert!(core::mem::align_of::<MasterEditionPrefixZc>() == 1);
-const _: () = assert!(core::mem::offset_of!(MasterEditionPrefixZc, key) == 0);
-const _: () = assert!(core::mem::offset_of!(MasterEditionPrefixZc, supply) == 1);
-const _: () = assert!(core::mem::offset_of!(MasterEditionPrefixZc, max_supply) == 9);
-const _: () = assert!(<MasterEditionPrefix as quasar_lang::ZeroPodFixed>::SIZE == 18);
-
-/// Semantic accessors for MasterEditionPrefixZc.
-impl MasterEditionPrefixZc {
-    #[inline(always)]
-    pub fn max_supply_tag_valid(&self) -> bool {
-        self.max_supply.raw_tag() <= 1
+    /// Zero-copy layout for the fixed-size prefix of Metaplex Metadata
+    /// accounts.
+    ///
+    /// The first 65 bytes contain the account key, update authority, and mint.
+    /// Variable-length Borsh fields follow this prefix.
+    #[derive(quasar_lang::ZeroPod)]
+    pub struct MetadataPrefix {
+        /// Metaplex account-type discriminant.
+        pub key: u8,
+        /// Authority permitted to update this metadata.
+        pub update_authority: Address,
+        /// SPL Token mint described by this metadata.
+        pub mint: Address,
     }
 
-    #[inline(always)]
-    pub fn supply_value(&self) -> u64 {
-        self.supply.get()
+    const _: () = assert!(core::mem::size_of::<MetadataPrefixZc>() == 65);
+    const _: () = assert!(core::mem::align_of::<MetadataPrefixZc>() == 1);
+    const _: () = assert!(core::mem::offset_of!(MetadataPrefixZc, key) == 0);
+    const _: () = assert!(core::mem::offset_of!(MetadataPrefixZc, update_authority) == 1);
+    const _: () = assert!(core::mem::offset_of!(MetadataPrefixZc, mint) == 33);
+    const _: () = assert!(<MetadataPrefix as quasar_lang::ZeroPodFixed>::SIZE == 65);
+
+    /// Zero-copy layout for the fixed-size Metaplex MasterEdition prefix.
+    #[derive(quasar_lang::ZeroPod)]
+    pub struct MasterEditionPrefix {
+        /// Metaplex account-type discriminant.
+        pub key: u8,
+        /// Number of editions printed.
+        pub supply: u64,
+        /// Optional maximum printable-edition supply.
+        pub max_supply: zeropod::pod::PodOption<zeropod::pod::PodU64, 1>,
     }
 
-    #[inline(always)]
-    pub fn max_supply_value(&self) -> Option<u64> {
-        self.max_supply.get_ref().map(|v| v.get())
+    const _: () = assert!(core::mem::size_of::<MasterEditionPrefixZc>() == 18);
+    const _: () = assert!(core::mem::align_of::<MasterEditionPrefixZc>() == 1);
+    const _: () = assert!(core::mem::offset_of!(MasterEditionPrefixZc, key) == 0);
+    const _: () = assert!(core::mem::offset_of!(MasterEditionPrefixZc, supply) == 1);
+    const _: () = assert!(core::mem::offset_of!(MasterEditionPrefixZc, max_supply) == 9);
+    const _: () = assert!(<MasterEditionPrefix as quasar_lang::ZeroPodFixed>::SIZE == 18);
+
+    impl MasterEditionPrefixZc {
+        /// Returns whether the Borsh option tag is zero or one.
+        #[inline(always)]
+        pub fn max_supply_tag_valid(&self) -> bool {
+            self.max_supply.raw_tag() <= 1
+        }
+
+        /// Returns the decoded printed-edition supply.
+        #[inline(always)]
+        pub fn supply_value(&self) -> u64 {
+            self.supply.get()
+        }
+
+        /// Returns the decoded optional maximum supply.
+        #[inline(always)]
+        pub fn max_supply_value(&self) -> Option<u64> {
+            self.max_supply.get_ref().map(|v| v.get())
+        }
     }
 }
+
+pub use layouts::{MasterEditionPrefix, MasterEditionPrefixZc, MetadataPrefix, MetadataPrefixZc};
 
 quasar_lang::define_account!(
     /// Metaplex Metadata account; validates owner is Metadata program.

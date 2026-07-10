@@ -235,7 +235,7 @@ fn event_cpi_term(term: &EventCpiTerm) -> String {
     match term {
         EventCpiTerm::Never => "Never".to_string(),
         EventCpiTerm::EventAuthority => "EventAuthority".to_string(),
-        EventCpiTerm::Composite(ty) => format!("Composite(`{}`)", toks(ty)),
+        EventCpiTerm::Composite(ty) => format!("Composite(`{}`)", toks(ty.as_ref())),
     }
 }
 
@@ -334,7 +334,7 @@ fn load_step(load: &LoadStep) -> String {
     match load {
         LoadStep::Dynamic { base_ty } => format!("Dynamic(base_ty=`{}`)", toks(base_ty)),
         LoadStep::Fixed { validates_paths } => {
-            let paths: Vec<String> = validates_paths.iter().map(|p| toks(p)).collect();
+            let paths: Vec<String> = validates_paths.iter().map(toks).collect();
             format!("Fixed(validates=[{}])", paths.join(", "))
         }
     }
@@ -353,8 +353,8 @@ fn opt_addr_spec(a: &Option<AddressSpec>) -> String {
 
 fn pre_load_step(step: &PreLoadStep) -> String {
     match step {
-        PreLoadStep::VerifyAddress(a) => format!("VerifyAddress({})", addr_spec(a)),
-        PreLoadStep::Init(plan) => match plan {
+        PreLoadStep::VerifyAddress(a) => format!("VerifyAddress({})", addr_spec(a.as_ref())),
+        PreLoadStep::Init(plan) => match plan.as_ref() {
             InitPlan::Program(p) => format!(
                 "Init::Program(payer={} space_ty=`{}` idempotent={} verified_address={})",
                 p.payer.ident,

@@ -10,51 +10,58 @@ where
 }
 #[doc(hidden)]
 pub type PayloadZc = __PayloadSchemaZc;
-#[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
-unsafe impl<__C: wincode::config::ConfigCore> wincode::SchemaWrite<__C>
-for __PayloadSchemaZc
-where
-    <u64 as ::quasar_lang::instruction_arg::InstructionArg>::Zc: ::quasar_lang::__zeropod::ZcValidate,
-    <bool as ::quasar_lang::instruction_arg::InstructionArg>::Zc: ::quasar_lang::__zeropod::ZcValidate,
-{
-    type Src = Self;
-    fn size_of(_src: &Self) -> wincode::error::WriteResult<usize> {
-        Ok(core::mem::size_of::<Self>())
+#[doc(hidden)]
+#[allow(unexpected_cfgs)]
+mod __payload_zc_offchain {
+    use super::*;
+    #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
+    unsafe impl<__C: wincode::config::ConfigCore> wincode::SchemaWrite<__C>
+    for __PayloadSchemaZc
+    where
+        <u64 as ::quasar_lang::instruction_arg::InstructionArg>::Zc: ::quasar_lang::__zeropod::ZcValidate,
+        <bool as ::quasar_lang::instruction_arg::InstructionArg>::Zc: ::quasar_lang::__zeropod::ZcValidate,
+    {
+        type Src = Self;
+        fn size_of(_src: &Self) -> wincode::error::WriteResult<usize> {
+            Ok(core::mem::size_of::<Self>())
+        }
+        fn write(
+            mut __writer: impl wincode::io::Writer,
+            src: &Self,
+        ) -> wincode::error::WriteResult<()> {
+            let __bytes = unsafe {
+                core::slice::from_raw_parts(
+                    src as *const Self as *const u8,
+                    core::mem::size_of::<Self>(),
+                )
+            };
+            __writer.write(__bytes)?;
+            Ok(())
+        }
     }
-    fn write(
-        mut __writer: impl wincode::io::Writer,
-        src: &Self,
-    ) -> wincode::error::WriteResult<()> {
-        let __bytes = unsafe {
-            core::slice::from_raw_parts(
-                src as *const Self as *const u8,
-                core::mem::size_of::<Self>(),
-            )
-        };
-        __writer.write(__bytes)?;
-        Ok(())
-    }
-}
-#[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
-unsafe impl<'__de, __C: wincode::config::ConfigCore> wincode::SchemaRead<'__de, __C>
-for __PayloadSchemaZc
-where
-    <u64 as ::quasar_lang::instruction_arg::InstructionArg>::Zc: ::quasar_lang::__zeropod::ZcValidate,
-    <bool as ::quasar_lang::instruction_arg::InstructionArg>::Zc: ::quasar_lang::__zeropod::ZcValidate,
-{
-    type Dst = Self;
-    fn read(
-        mut __reader: impl wincode::io::Reader<'__de>,
-        __dst: &mut core::mem::MaybeUninit<Self>,
-    ) -> wincode::error::ReadResult<()> {
-        let __bytes = __reader.take_scoped(core::mem::size_of::<Self>())?;
-        let __zc = unsafe { core::ptr::read_unaligned(__bytes.as_ptr() as *const Self) };
-        ::quasar_lang::__zeropod::ZcValidate::validate_ref(&__zc)
-            .map_err(|_| wincode::error::ReadError::InvalidValue(
-                "pod validation failed",
-            ))?;
-        __dst.write(__zc);
-        Ok(())
+    #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
+    unsafe impl<'__de, __C: wincode::config::ConfigCore> wincode::SchemaRead<'__de, __C>
+    for __PayloadSchemaZc
+    where
+        <u64 as ::quasar_lang::instruction_arg::InstructionArg>::Zc: ::quasar_lang::__zeropod::ZcValidate,
+        <bool as ::quasar_lang::instruction_arg::InstructionArg>::Zc: ::quasar_lang::__zeropod::ZcValidate,
+    {
+        type Dst = Self;
+        fn read(
+            mut __reader: impl wincode::io::Reader<'__de>,
+            __dst: &mut core::mem::MaybeUninit<Self>,
+        ) -> wincode::error::ReadResult<()> {
+            let __bytes = __reader.take_scoped(core::mem::size_of::<Self>())?;
+            let __zc = unsafe {
+                core::ptr::read_unaligned(__bytes.as_ptr() as *const Self)
+            };
+            ::quasar_lang::__zeropod::ZcValidate::validate_ref(&__zc)
+                .map_err(|_| wincode::error::ReadError::InvalidValue(
+                    "pod validation failed",
+                ))?;
+            __dst.write(__zc);
+            Ok(())
+        }
     }
 }
 impl ::quasar_lang::instruction_arg::InstructionArg for Payload
@@ -120,56 +127,65 @@ where
     type Pod = PayloadZc;
     const POD_SIZE: usize = core::mem::size_of::<PayloadZc>();
 }
-#[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
-unsafe impl<__C: wincode::config::ConfigCore> wincode::SchemaWrite<__C> for Payload
-where
-    <u64 as ::quasar_lang::instruction_arg::InstructionArg>::Zc: ::quasar_lang::__zeropod::ZcValidate,
-    <bool as ::quasar_lang::instruction_arg::InstructionArg>::Zc: ::quasar_lang::__zeropod::ZcValidate,
-{
-    type Src = Self;
-    fn size_of(_src: &Self) -> wincode::error::WriteResult<usize> {
-        Ok(core::mem::size_of::<PayloadZc>())
-    }
-    fn write(
-        mut __writer: impl wincode::io::Writer,
-        src: &Self,
-    ) -> wincode::error::WriteResult<()> {
-        let __zc = <Self as ::quasar_lang::instruction_arg::InstructionArg>::to_zc(src);
-        let __bytes = unsafe {
-            core::slice::from_raw_parts(
-                &__zc as *const PayloadZc as *const u8,
-                core::mem::size_of::<PayloadZc>(),
-            )
-        };
-        __writer.write(__bytes)?;
-        Ok(())
-    }
-}
-#[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
-unsafe impl<'__de, __C: wincode::config::ConfigCore> wincode::SchemaRead<'__de, __C>
-for Payload
-where
-    <u64 as ::quasar_lang::instruction_arg::InstructionArg>::Zc: ::quasar_lang::__zeropod::ZcValidate,
-    <bool as ::quasar_lang::instruction_arg::InstructionArg>::Zc: ::quasar_lang::__zeropod::ZcValidate,
-{
-    type Dst = Self;
-    fn read(
-        mut __reader: impl wincode::io::Reader<'__de>,
-        __dst: &mut core::mem::MaybeUninit<Self>,
-    ) -> wincode::error::ReadResult<()> {
-        let __bytes = __reader.take_scoped(core::mem::size_of::<PayloadZc>())?;
-        let __zc = unsafe {
-            core::ptr::read_unaligned(__bytes.as_ptr() as *const PayloadZc)
-        };
-        <PayloadZc as ::quasar_lang::__zeropod::ZcValidate>::validate_ref(&__zc)
-            .map_err(|_| wincode::error::ReadError::InvalidValue(
-                "pod validation failed",
-            ))?;
-        __dst
-            .write(
-                <Self as ::quasar_lang::instruction_arg::InstructionArg>::from_zc(&__zc),
+#[doc(hidden)]
+#[allow(unexpected_cfgs)]
+mod __payload_offchain {
+    use super::*;
+    #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
+    unsafe impl<__C: wincode::config::ConfigCore> wincode::SchemaWrite<__C> for Payload
+    where
+        <u64 as ::quasar_lang::instruction_arg::InstructionArg>::Zc: ::quasar_lang::__zeropod::ZcValidate,
+        <bool as ::quasar_lang::instruction_arg::InstructionArg>::Zc: ::quasar_lang::__zeropod::ZcValidate,
+    {
+        type Src = Self;
+        fn size_of(_src: &Self) -> wincode::error::WriteResult<usize> {
+            Ok(core::mem::size_of::<PayloadZc>())
+        }
+        fn write(
+            mut __writer: impl wincode::io::Writer,
+            src: &Self,
+        ) -> wincode::error::WriteResult<()> {
+            let __zc = <Self as ::quasar_lang::instruction_arg::InstructionArg>::to_zc(
+                src,
             );
-        Ok(())
+            let __bytes = unsafe {
+                core::slice::from_raw_parts(
+                    &__zc as *const PayloadZc as *const u8,
+                    core::mem::size_of::<PayloadZc>(),
+                )
+            };
+            __writer.write(__bytes)?;
+            Ok(())
+        }
+    }
+    #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
+    unsafe impl<'__de, __C: wincode::config::ConfigCore> wincode::SchemaRead<'__de, __C>
+    for Payload
+    where
+        <u64 as ::quasar_lang::instruction_arg::InstructionArg>::Zc: ::quasar_lang::__zeropod::ZcValidate,
+        <bool as ::quasar_lang::instruction_arg::InstructionArg>::Zc: ::quasar_lang::__zeropod::ZcValidate,
+    {
+        type Dst = Self;
+        fn read(
+            mut __reader: impl wincode::io::Reader<'__de>,
+            __dst: &mut core::mem::MaybeUninit<Self>,
+        ) -> wincode::error::ReadResult<()> {
+            let __bytes = __reader.take_scoped(core::mem::size_of::<PayloadZc>())?;
+            let __zc = unsafe {
+                core::ptr::read_unaligned(__bytes.as_ptr() as *const PayloadZc)
+            };
+            <PayloadZc as ::quasar_lang::__zeropod::ZcValidate>::validate_ref(&__zc)
+                .map_err(|_| wincode::error::ReadError::InvalidValue(
+                    "pod validation failed",
+                ))?;
+            __dst
+                .write(
+                    <Self as ::quasar_lang::instruction_arg::InstructionArg>::from_zc(
+                        &__zc,
+                    ),
+                );
+            Ok(())
+        }
     }
 }
 #[cfg(feature = "idl-build")]

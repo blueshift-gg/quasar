@@ -17,20 +17,33 @@
 
 use quasar_lang::prelude::*;
 
+/// Resolved arguments for metadata validation or initialization.
 pub struct Args<'a> {
+    /// Token Metadata program account.
     pub program: &'a AccountView,
+    /// Mint described by this metadata.
     pub mint: &'a AccountView,
+    /// Mint authority, required for initialization.
     pub mint_authority: Option<&'a AccountView>,
+    /// Metadata update authority, required for initialization.
     pub update_authority: Option<&'a AccountView>,
+    /// System Program, required for initialization.
     pub system_program: Option<&'a AccountView>,
+    /// Rent sysvar, required for initialization.
     pub rent: Option<&'a AccountView>,
+    /// Display name, required for initialization.
     pub name: Option<&'a str>,
+    /// Token symbol, required for initialization.
     pub symbol: Option<&'a str>,
+    /// Metadata JSON URI, required for initialization.
     pub uri: Option<&'a str>,
+    /// Royalty fee in basis points.
     pub seller_fee_basis_points: Option<u16>,
+    /// Whether future metadata updates are permitted.
     pub is_mutable: Option<bool>,
 }
 
+/// Builder for metadata behavior arguments.
 pub struct ArgsBuilder<'a> {
     program: Option<&'a AccountView>,
     mint: Option<&'a AccountView>,
@@ -46,6 +59,7 @@ pub struct ArgsBuilder<'a> {
 }
 
 impl<'a> Args<'a> {
+    /// Starts an empty argument builder.
     pub fn builder() -> ArgsBuilder<'a> {
         ArgsBuilder {
             program: None,
@@ -64,66 +78,77 @@ impl<'a> Args<'a> {
 }
 
 impl<'a> ArgsBuilder<'a> {
+    /// Sets the Token Metadata program account.
     #[inline(always)]
     pub fn program(mut self, v: &'a AccountView) -> Self {
         self.program = Some(v);
         self
     }
 
+    /// Sets the mint account.
     #[inline(always)]
     pub fn mint(mut self, v: &'a AccountView) -> Self {
         self.mint = Some(v);
         self
     }
 
+    /// Sets the mint authority.
     #[inline(always)]
     pub fn mint_authority(mut self, v: &'a AccountView) -> Self {
         self.mint_authority = Some(v);
         self
     }
 
+    /// Sets the metadata update authority.
     #[inline(always)]
     pub fn update_authority(mut self, v: &'a AccountView) -> Self {
         self.update_authority = Some(v);
         self
     }
 
+    /// Sets the System Program account.
     #[inline(always)]
     pub fn system_program(mut self, v: &'a AccountView) -> Self {
         self.system_program = Some(v);
         self
     }
 
+    /// Sets the Rent sysvar account.
     #[inline(always)]
     pub fn rent(mut self, v: &'a AccountView) -> Self {
         self.rent = Some(v);
         self
     }
 
+    /// Sets the metadata display name.
     #[inline(always)]
     pub fn name(mut self, v: &'a str) -> Self {
         self.name = Some(v);
         self
     }
 
+    /// Sets the metadata token symbol.
     #[inline(always)]
     pub fn symbol(mut self, v: &'a str) -> Self {
         self.symbol = Some(v);
         self
     }
 
+    /// Sets the metadata JSON URI.
     #[inline(always)]
     pub fn uri(mut self, v: &'a str) -> Self {
         self.uri = Some(v);
         self
     }
 
+    /// Sets the royalty fee in basis points.
     #[inline(always)]
     pub fn seller_fee_basis_points(mut self, v: u16) -> Self {
         self.seller_fee_basis_points = Some(v);
         self
     }
 
+    /// Sets whether future metadata updates are permitted.
     #[inline(always)]
     pub fn is_mutable(mut self, v: bool) -> Self {
         self.is_mutable = Some(v);
@@ -178,6 +203,7 @@ impl<'a> quasar_lang::account_behavior::BehaviorArgsBuilder for ArgsBuilder<'a> 
     }
 }
 
+/// Metadata account behavior implementation marker.
 pub struct Behavior;
 
 impl AccountBehavior<Account<crate::MetadataAccount>> for Behavior {

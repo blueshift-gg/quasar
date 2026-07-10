@@ -16,10 +16,15 @@ const CLOCK_ID: Address = Address::new_from_array([
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct Clock {
+    /// Current slot.
     pub slot: PodU64,
+    /// Unix timestamp at the beginning of the current epoch.
     pub epoch_start_timestamp: PodI64,
+    /// Current epoch.
     pub epoch: PodU64,
+    /// Epoch for which the leader schedule is available.
     pub leader_schedule_epoch: PodU64,
+    /// Estimated cluster Unix timestamp.
     pub unix_timestamp: PodI64,
 }
 

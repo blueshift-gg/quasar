@@ -29,8 +29,8 @@ pub fn log_data(data: &[&[u8]]) {
 /// downstream crate's features (a user crate with an unrelated `debug` feature
 /// would otherwise flip it on). Emitting `quasar_lang::debug_log!(...)` moves
 /// the gate here, where `feature = "debug"` refers to quasar-lang. The argument
-/// forwards to [`log`](crate::prelude::log); when the feature is off it expands
-/// to nothing (arguments are not evaluated).
+/// forwards to [`log`](crate::prelude::log()); when the feature is off it
+/// expands to nothing (arguments are not evaluated).
 #[cfg(feature = "debug")]
 #[macro_export]
 macro_rules! debug_log {

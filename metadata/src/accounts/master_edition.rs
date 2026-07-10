@@ -26,18 +26,29 @@ pub enum MaxSupplyArg {
     Limited(u64),
 }
 
+/// Resolved arguments for master-edition validation or initialization.
 pub struct Args<'a> {
+    /// Token Metadata program account.
     pub program: &'a AccountView,
+    /// Mint associated with the edition.
     pub mint: &'a AccountView,
+    /// Metadata update authority, required for initialization.
     pub update_authority: Option<&'a AccountView>,
+    /// Mint authority, required for initialization.
     pub mint_authority: Option<&'a AccountView>,
+    /// Metadata account, required for initialization.
     pub metadata: Option<&'a AccountView>,
+    /// SPL Token program, required for initialization.
     pub token_program: Option<&'a AccountView>,
+    /// System Program, required for initialization.
     pub system_program: Option<&'a AccountView>,
+    /// Rent sysvar, required for initialization.
     pub rent: Option<&'a AccountView>,
+    /// Maximum printable-edition policy.
     pub max_supply: MaxSupplyArg,
 }
 
+/// Builder for master-edition behavior arguments.
 pub struct ArgsBuilder<'a> {
     program: Option<&'a AccountView>,
     mint: Option<&'a AccountView>,
@@ -51,6 +62,7 @@ pub struct ArgsBuilder<'a> {
 }
 
 impl<'a> Args<'a> {
+    /// Starts an empty argument builder.
     pub fn builder() -> ArgsBuilder<'a> {
         ArgsBuilder {
             program: None,
@@ -67,54 +79,63 @@ impl<'a> Args<'a> {
 }
 
 impl<'a> ArgsBuilder<'a> {
+    /// Sets the Token Metadata program account.
     #[inline(always)]
     pub fn program(mut self, v: &'a AccountView) -> Self {
         self.program = Some(v);
         self
     }
 
+    /// Sets the edition mint account.
     #[inline(always)]
     pub fn mint(mut self, v: &'a AccountView) -> Self {
         self.mint = Some(v);
         self
     }
 
+    /// Sets the metadata update authority.
     #[inline(always)]
     pub fn update_authority(mut self, v: &'a AccountView) -> Self {
         self.update_authority = Some(v);
         self
     }
 
+    /// Sets the mint authority.
     #[inline(always)]
     pub fn mint_authority(mut self, v: &'a AccountView) -> Self {
         self.mint_authority = Some(v);
         self
     }
 
+    /// Sets the metadata account.
     #[inline(always)]
     pub fn metadata(mut self, v: &'a AccountView) -> Self {
         self.metadata = Some(v);
         self
     }
 
+    /// Sets the SPL Token program account.
     #[inline(always)]
     pub fn token_program(mut self, v: &'a AccountView) -> Self {
         self.token_program = Some(v);
         self
     }
 
+    /// Sets the System Program account.
     #[inline(always)]
     pub fn system_program(mut self, v: &'a AccountView) -> Self {
         self.system_program = Some(v);
         self
     }
 
+    /// Sets the Rent sysvar account.
     #[inline(always)]
     pub fn rent(mut self, v: &'a AccountView) -> Self {
         self.rent = Some(v);
         self
     }
 
+    /// Sets an optional maximum printable-edition supply.
     #[inline(always)]
     pub fn max_supply(mut self, v: Option<u64>) -> Self {
         self.max_supply = match v {
@@ -168,6 +189,7 @@ impl<'a> quasar_lang::account_behavior::BehaviorArgsBuilder for ArgsBuilder<'a> 
     }
 }
 
+/// Master-edition account behavior implementation marker.
 pub struct Behavior;
 
 impl AccountBehavior<Account<crate::MasterEditionAccount>> for Behavior {

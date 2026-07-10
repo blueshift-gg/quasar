@@ -87,6 +87,7 @@ pub(crate) fn program_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
 
         #module
 
+        #[allow(unexpected_cfgs)]
         #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
         extern crate alloc;
 
@@ -94,9 +95,11 @@ pub(crate) fn program_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
         #[cfg(all(any(target_os = "solana", target_arch = "bpf"), feature = "alloc"))]
         extern crate alloc;
 
+        #[allow(unexpected_cfgs)]
         #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
         pub use #mod_name::cpi;
 
+        #[allow(unexpected_cfgs)]
         #[cfg(any(target_os = "solana", target_arch = "bpf"))]
         #[panic_handler]
         fn panic(_info: &core::panic::PanicInfo<'_>) -> ! {

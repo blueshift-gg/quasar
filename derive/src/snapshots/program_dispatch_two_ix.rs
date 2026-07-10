@@ -220,8 +220,8 @@ mod quasar_demo {
         }
     }
     #[unsafe(no_mangle)]
-    #[cfg(any(target_os = "solana", target_arch = "bpf"))]
     #[allow(unexpected_cfgs)]
+    #[cfg(any(target_os = "solana", target_arch = "bpf"))]
     pub unsafe extern "C" fn entrypoint(
         ptr: *mut u8,
         instruction_data: *const u8,
@@ -244,6 +244,7 @@ mod quasar_demo {
             Err(e) => e.into(),
         }
     }
+    #[allow(unexpected_cfgs)]
     #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
     pub mod cpi {
         use super::*;
@@ -251,13 +252,16 @@ mod quasar_demo {
         __update_instruction!(UpdateInstruction, [1u8], {});
     }
 }
+#[allow(unexpected_cfgs)]
 #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
 extern crate alloc;
 #[allow(unexpected_cfgs)]
 #[cfg(all(any(target_os = "solana", target_arch = "bpf"), feature = "alloc"))]
 extern crate alloc;
+#[allow(unexpected_cfgs)]
 #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
 pub use quasar_demo::cpi;
+#[allow(unexpected_cfgs)]
 #[cfg(any(target_os = "solana", target_arch = "bpf"))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo<'_>) -> ! {
@@ -312,6 +316,7 @@ pub fn __quasar_build_idl() -> ::quasar_lang::idl_build::String {
     ::quasar_lang::idl_build::__reexport::serde_json::to_string_pretty(&idl)
         .expect("generated IDL should serialize")
 }
+#[allow(unexpected_cfgs)]
 #[cfg(
     all(feature = "idl-build", test, not(any(target_os = "solana", target_arch = "bpf")))
 )]

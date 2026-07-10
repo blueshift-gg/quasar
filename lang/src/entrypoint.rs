@@ -10,6 +10,7 @@ pub use solana_account_view::{
 };
 
 #[macro_export]
+/// Installs an allocator that rejects every allocation request.
 macro_rules! no_alloc {
     () => {
         pub mod allocator {
@@ -34,6 +35,7 @@ macro_rules! no_alloc {
 }
 
 #[macro_export]
+/// Installs the SBF panic handler that aborts the current program.
 macro_rules! panic_handler {
     () => {
         #[cfg(any(target_os = "solana", target_arch = "bpf"))]

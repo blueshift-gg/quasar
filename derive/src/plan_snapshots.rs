@@ -20,6 +20,18 @@ use {
     syn::{Data, DeriveInput, Fields},
 };
 
+// See `snapshot_tests`: relative expect-test paths otherwise resolve against
+// the primary checkout when Cargo runs this crate from a linked worktree.
+mod expect_test {
+    macro_rules! expect_file {
+        ($path:literal) => {
+            ::expect_test::expect_file![concat!(env!("CARGO_MANIFEST_DIR"), "/src/", $path)]
+        };
+    }
+
+    pub(crate) use expect_file;
+}
+
 /// Lower + plan a fixture and render both IRs into one dump. Instruction args
 /// are threaded exactly as the real derive does, so typed-seed classification
 /// matches production.

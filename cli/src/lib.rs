@@ -172,7 +172,7 @@ pub struct TestCommand {
 
 #[derive(Args, Debug, Default)]
 pub struct DeployCommand {
-    /// Path to a program keypair (default: target/deploy/<name>-keypair.json)
+    /// Path to a program keypair (default: `target/deploy/<name>-keypair.json`)
     #[arg(long, value_name = "KEYPAIR")]
     pub program_keypair: Option<PathBuf>,
 

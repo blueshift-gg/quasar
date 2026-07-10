@@ -30,7 +30,9 @@ use {
             load"
 )]
 pub trait AccountLoad: AsAccountView + StaticView + Sized {
+    /// Whether the account header must mark this account as a signer.
     const IS_SIGNER: bool = false;
+    /// Whether the account header must mark this account as executable.
     const IS_EXECUTABLE: bool = false;
 
     /// Validate this account after header flag checks pass.
@@ -65,6 +67,7 @@ pub trait AccountLoad: AsAccountView + StaticView + Sized {
     }
 
     #[inline(always)]
+    /// Validates and loads an immutable account wrapper.
     fn load(view: &AccountView) -> Result<Self, ProgramError> {
         Self::check(view)?;
         // SAFETY: `check` validated the account for this wrapper.
@@ -72,6 +75,7 @@ pub trait AccountLoad: AsAccountView + StaticView + Sized {
     }
 
     #[inline(always)]
+    /// Validates and loads a mutable account wrapper.
     fn load_mut(view: &mut AccountView) -> Result<Self, ProgramError> {
         Self::check(view)?;
         // SAFETY: `check` validated the account; mutable load is only used
@@ -80,6 +84,7 @@ pub trait AccountLoad: AsAccountView + StaticView + Sized {
     }
 
     #[inline(always)]
+    /// Validates and loads through runtime-checked data borrows.
     fn load_checked(view: &AccountView) -> Result<Self, ProgramError> {
         Self::check_checked(view)?;
         // SAFETY: `check_checked` validated the account through runtime
@@ -88,6 +93,7 @@ pub trait AccountLoad: AsAccountView + StaticView + Sized {
     }
 
     #[inline(always)]
+    /// Mutably loads through runtime-checked data borrows.
     fn load_mut_checked(view: &mut AccountView) -> Result<Self, ProgramError> {
         Self::check_checked(view)?;
         // SAFETY: `check_checked` validated the account; mutable load is only

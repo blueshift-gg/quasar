@@ -43,6 +43,7 @@ impl<'input> crate::remaining::RemainingItem<'input> for UncheckedAccount {
 /// This keeps the common "write these bytes at this offset" path safe without
 /// exposing a long-lived mutable account-data slice to handlers.
 pub trait AccountDataWrite {
+    /// Writes bytes at `offset`, rejecting immutable or undersized accounts.
     fn write_bytes(&mut self, offset: usize, bytes: &[u8]) -> Result<(), ProgramError>;
 }
 

@@ -14,14 +14,21 @@
 
 use quasar_lang::prelude::*;
 
+/// Resolved arguments for associated-token validation or initialization.
 pub struct Args<'a> {
+    /// Token mint account.
     pub mint: &'a AccountView,
+    /// Wallet or PDA that owns the associated token account.
     pub authority: &'a AccountView,
+    /// Token program used during initialization, when applicable.
     pub token_program: Option<&'a AccountView>,
+    /// System Program used during initialization, when applicable.
     pub system_program: Option<&'a AccountView>,
+    /// Associated Token Program used during initialization, when applicable.
     pub ata_program: Option<&'a AccountView>,
 }
 
+/// Builder for associated-token behavior arguments.
 pub struct ArgsBuilder<'a> {
     mint: Option<&'a AccountView>,
     authority: Option<&'a AccountView>,
@@ -31,6 +38,7 @@ pub struct ArgsBuilder<'a> {
 }
 
 impl<'a> Args<'a> {
+    /// Starts an empty argument builder.
     pub fn builder() -> ArgsBuilder<'a> {
         ArgsBuilder {
             mint: None,
@@ -43,30 +51,35 @@ impl<'a> Args<'a> {
 }
 
 impl<'a> ArgsBuilder<'a> {
+    /// Sets the token mint account.
     #[inline(always)]
     pub fn mint(mut self, v: &'a AccountView) -> Self {
         self.mint = Some(v);
         self
     }
 
+    /// Sets the associated account authority.
     #[inline(always)]
     pub fn authority(mut self, v: &'a AccountView) -> Self {
         self.authority = Some(v);
         self
     }
 
+    /// Sets the Token or Token-2022 program account.
     #[inline(always)]
     pub fn token_program(mut self, v: &'a AccountView) -> Self {
         self.token_program = Some(v);
         self
     }
 
+    /// Sets the System Program account.
     #[inline(always)]
     pub fn system_program(mut self, v: &'a AccountView) -> Self {
         self.system_program = Some(v);
         self
     }
 
+    /// Sets the Associated Token Program account.
     #[inline(always)]
     pub fn ata_program(mut self, v: &'a AccountView) -> Self {
         self.ata_program = Some(v);
@@ -107,6 +120,7 @@ impl<'a> quasar_lang::account_behavior::BehaviorArgsBuilder for ArgsBuilder<'a> 
     }
 }
 
+/// Associated-token account behavior implementation marker.
 pub struct Behavior;
 
 const ATA_PROGRAM_ARG: u64 = quasar_lang::account_behavior::behavior_arg_key_hash("ata_program");
@@ -191,7 +205,7 @@ impl_ata_behavior!(
     validates_account_data = false
 );
 
-/// Check-only behavior for InterfaceAccount<TokenInterface>.
+/// Check-only behavior for `InterfaceAccount<TokenInterface>`.
 impl AccountBehavior<InterfaceAccount<crate::interface::TokenInterface>> for Behavior {
     type Args<'a> = Args<'a>;
 

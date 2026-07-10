@@ -20,14 +20,17 @@ pub fn generate_accounts_macro(
     let krate = crate::krate::lang_path();
     let descriptors = describe_accounts(plan);
     let macro_name = format_ident!("__{}_instruction", pascal_to_snake(&name.to_string()));
+    let module_name = format_ident!("__{}_client_macro", pascal_to_snake(&name.to_string()));
     let account_fields: Vec<_> = descriptors.iter().map(emit_account_field).collect();
     let account_metas: Vec<_> = descriptors.iter().map(emit_account_meta).collect();
 
     quote! {
-        #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
         #[doc(hidden)]
-        #[macro_export]
-        macro_rules! #macro_name {
+        #[allow(unexpected_cfgs)]
+        mod #module_name {
+            #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
+            #[macro_export]
+            macro_rules! #macro_name {
             ($struct_name:ident, [$($disc:expr),*], {$($arg_name:ident : $arg_ty:ty),*}) => {
                 pub struct $struct_name {
                     #(#account_fields)*
@@ -154,6 +157,7 @@ pub fn generate_accounts_macro(
                     }
                 }
             };
+            }
         }
     }
 }

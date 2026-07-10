@@ -16,8 +16,12 @@ impl Owner for Token2022 {
     const OWNER: Address = TOKEN_2022_ID;
 }
 
-// Token-2022 program marker. Use as `Program<Token2022Program>`.
-quasar_lang::define_account!(pub struct Token2022Program => [checks::Executable, checks::Address]);
+quasar_lang::define_account!(
+    /// Token-2022 executable account marker.
+    ///
+    /// Use as `Program<Token2022Program>`.
+    pub struct Token2022Program => [checks::Executable, checks::Address]
+);
 
 impl Id for Token2022Program {
     const ID: Address = Address::new_from_array(TOKEN_2022_BYTES);

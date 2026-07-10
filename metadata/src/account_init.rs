@@ -20,16 +20,27 @@ pub enum MetadataInitParams<'a> {
     Unset,
     /// Create metadata via `create_metadata_accounts_v3` CPI.
     Create {
+        /// Token Metadata program account.
         program: &'a AccountView,
+        /// Mint described by the metadata account.
         mint: &'a AccountView,
+        /// Current mint authority signer.
         mint_authority: &'a AccountView,
+        /// Authority permitted to update the metadata.
         update_authority: &'a AccountView,
+        /// System Program account.
         system_program: &'a AccountView,
+        /// Rent sysvar account required by the CPI interface.
         rent: &'a AccountView,
+        /// Display name written to metadata.
         name: &'a str,
+        /// Token symbol written to metadata.
         symbol: &'a str,
+        /// Metadata JSON URI.
         uri: &'a str,
+        /// Royalty fee in basis points.
         seller_fee_basis_points: u16,
+        /// Whether future metadata updates are permitted.
         is_mutable: bool,
     },
 }
@@ -89,14 +100,23 @@ pub enum MasterEditionInitParams<'a> {
     Unset,
     /// Create master edition via `create_master_edition_v3` CPI.
     Create {
+        /// Token Metadata program account.
         program: &'a AccountView,
+        /// Mint receiving the master edition.
         mint: &'a AccountView,
+        /// Metadata update authority signer.
         update_authority: &'a AccountView,
+        /// Mint authority signer.
         mint_authority: &'a AccountView,
+        /// Existing metadata account for the mint.
         metadata: &'a AccountView,
+        /// SPL Token program account.
         token_program: &'a AccountView,
+        /// System Program account.
         system_program: &'a AccountView,
+        /// Rent sysvar account required by the CPI interface.
         rent: &'a AccountView,
+        /// Optional maximum number of printable editions.
         max_supply: Option<u64>,
     },
 }

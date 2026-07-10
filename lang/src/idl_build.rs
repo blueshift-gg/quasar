@@ -32,27 +32,32 @@ use quasar_idl_schema::*;
 /// Fragment submitted by `#[account]`; uses a fn pointer to avoid static
 /// alloc.
 pub struct AccountFragment {
+    /// Builds the account and corresponding type definitions.
     pub build: fn() -> (IdlAccountDef, IdlTypeDef),
 }
 
 /// Fragment submitted by `#[derive(QuasarSerialize)]` for instruction arg
 /// types.
 pub struct TypeFragment {
+    /// Builds the registered type definition.
     pub build: fn() -> IdlTypeDef,
 }
 
 /// Fragment submitted by `#[event]`.
 pub struct EventFragment {
+    /// Builds the event and corresponding type definitions.
     pub build: fn() -> (IdlEventDef, IdlTypeDef),
 }
 
 /// Fragment submitted by `#[error_code]`.
 pub struct ErrorFragment {
+    /// Builds the registered error definitions.
     pub build: fn() -> Vec<IdlErrorDef>,
 }
 
 /// Fragment submitted by `#[program]` for each `#[instruction]`.
 pub struct InstructionFragment {
+    /// Builds the registered instruction definition.
     pub build: fn() -> IdlInstruction,
     /// Name of the accounts struct used by this instruction (for lookup).
     pub accounts_struct_name: &'static str,
@@ -62,8 +67,11 @@ pub struct InstructionFragment {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+/// Records whether an instruction discriminator was generated or source-pinned.
 pub enum InstructionDiscriminatorSource {
+    /// The program macro assigned the discriminator.
     Auto,
+    /// Source code explicitly supplied the discriminator.
     Explicit,
 }
 

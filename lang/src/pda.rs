@@ -12,7 +12,7 @@
 //!
 //! Each failure class maps to one error, consistently:
 //! - **Malformed seeds** (seed count exceeds the limit): native
-//!   [`ProgramError::InvalidSeeds`].
+//!   [`solana_program_error::ProgramError::InvalidSeeds`].
 //! - **PDA derivation/verification failure** (the derived address or hash does
 //!   not match `expected`, or no valid PDA/bump was found): framework
 //!   [`QuasarError::InvalidPda`](crate::error::QuasarError::InvalidPda).
@@ -473,9 +473,11 @@ pub const fn find_program_address_const(seeds: &[&[u8]], program_id: &Address) -
 
 /// Seed values that can be borrowed as PDA seed bytes without allocation.
 pub trait SeedBytes {
+    /// Borrows this value's canonical PDA seed byte representation.
     fn as_seed_bytes(&self) -> &[u8];
 }
 
+/// Borrows a supported value as PDA seed bytes.
 #[inline(always)]
 pub fn seed_bytes<T: ?Sized + SeedBytes>(value: &T) -> &[u8] {
     value.as_seed_bytes()

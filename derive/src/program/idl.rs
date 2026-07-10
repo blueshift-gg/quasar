@@ -156,6 +156,7 @@ pub(super) fn emit_idl(model: &ProgramModel, mod_name: &Ident) -> TokenStream2 {
                     .expect("generated IDL should serialize")
             }
 
+            #[allow(unexpected_cfgs)]
             #[cfg(all(feature = "idl-build", test, not(any(target_os = "solana", target_arch = "bpf"))))]
             #[test]
             fn __quasar_emit_idl() {

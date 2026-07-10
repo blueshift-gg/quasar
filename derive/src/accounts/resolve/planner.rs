@@ -60,7 +60,7 @@ pub(crate) fn build_plan(
 /// field forces `true`; every other single field contributes `false`.
 fn plan_event_cpi_term(fp: &FieldPlan) -> EventCpiTerm {
     match fp.kind {
-        FieldKind::Composite => EventCpiTerm::Composite(fp.effective_ty.clone()),
+        FieldKind::Composite => EventCpiTerm::Composite(Box::new(fp.effective_ty.clone())),
         FieldKind::Single
             if fp.ident == super::reserved::EVENT_AUTHORITY_FIELD
                 || fp.wrapper == WrapperKind::EventAuthority =>
@@ -97,10 +97,10 @@ fn plan_field(
 
     if sem.has_init() {
         if let Some(addr) = &sem.address {
-            pre_load.push(PreLoadStep::VerifyAddress(AddressSpec {
+            pre_load.push(PreLoadStep::VerifyAddress(Box::new(AddressSpec {
                 expr: addr.expr.clone(),
                 error: addr.error.clone(),
-            }));
+            })));
         }
     }
 
@@ -112,7 +112,7 @@ fn plan_field(
             ));
         };
         let init_plan = plan_init(sem, init.idempotent, payer, optional_fields);
-        pre_load.push(PreLoadStep::Init(init_plan));
+        pre_load.push(PreLoadStep::Init(Box::new(init_plan)));
     }
 
     // Post-load: behavior phase candidates. Each group gets the phases

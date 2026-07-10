@@ -36,6 +36,7 @@ impl<T: Owners + crate::account_load::AccountLoad> InterfaceAccount<T> {
         Ok(unsafe { Self::from_account_view_unchecked(view) })
     }
 
+    /// Validates writability, owner, and data before returning a mutable view.
     #[inline(always)]
     pub fn from_account_view_mut(view: &mut AccountView) -> Result<&mut Self, ProgramError> {
         if crate::utils::hint::unlikely(!view.is_writable()) {

@@ -41,6 +41,7 @@ pub use {
 /// format matches the on-chain zero-copy layout exactly. Dynamic types
 /// (`DynBytes`, `DynString`, `DynVec`) use wincode's standard encoding.
 pub trait SerializeArg {
+    /// Serializes this value into its on-chain instruction wire representation.
     fn serialize_arg(&self) -> Vec<u8>;
 }
 
@@ -62,7 +63,9 @@ where
 /// therefore put their entire serialized representation in the header, while
 /// dynamic fields split their length prefix/tag from their payload.
 pub trait CompactSerializeArg {
+    /// Serializes the fixed header portion of this value.
     fn compact_header(&self) -> Vec<u8>;
+    /// Serializes the dynamic tail portion of this value.
     fn compact_tail(&self) -> Vec<u8>;
 }
 
@@ -89,6 +92,7 @@ where
 pub struct DynBytes<P = u32>(pub Vec<u8>, PhantomData<P>);
 
 impl<P> DynBytes<P> {
+    /// Wraps a raw byte payload with prefix type `P`.
     pub fn new(data: Vec<u8>) -> Self {
         Self(data, PhantomData)
     }
@@ -175,6 +179,7 @@ where
 pub struct DynString<P = u8>(DynBytes<P>);
 
 impl<P> DynString<P> {
+    /// Copies a UTF-8 string into a dynamically encoded client value.
     pub fn new(s: &str) -> Self {
         Self(DynBytes::new(s.as_bytes().to_vec()))
     }
@@ -252,6 +257,7 @@ where
 pub struct DynVec<T, P = u32>(pub Vec<T>, PhantomData<P>);
 
 impl<T, P> DynVec<T, P> {
+    /// Wraps vector elements with count-prefix type `P`.
     pub fn new(data: Vec<T>) -> Self {
         Self(data, PhantomData)
     }

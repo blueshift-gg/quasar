@@ -181,11 +181,11 @@ pub(crate) struct DecodeOpts {
     pub validate_fixed: bool,
 }
 
-/// Emit the shared compact decode statements: `validate` + `Ref::new_unchecked`
-/// + per-field bindings, in schema order. Each dynamic field binds a zero-copy
-/// accessor view; each fixed field decodes via `InstructionArg` (validating
-/// first when `validate_fixed`). Returned as statements so callers can splice
-/// the bindings directly into the enclosing scope.
+/// Emit the shared compact decode statements in schema order: `validate`,
+/// `Ref::new_unchecked`, then the per-field bindings. Each dynamic field binds
+/// a zero-copy accessor view; each fixed field decodes via `InstructionArg`
+/// (validating first when `validate_fixed`). The statements can be spliced
+/// directly into the caller's enclosing scope.
 pub(crate) fn emit_compact_decode(ir: &SchemaIR, opts: &DecodeOpts) -> Vec<syn::Stmt> {
     let krate = crate::krate::lang_path();
     let DecodeOpts {

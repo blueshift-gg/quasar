@@ -20,6 +20,7 @@ use {
     },
     proc_macro::TokenStream,
     proc_macro2::TokenStream as TokenStream2,
+    quasar_schema::pascal_to_snake,
     quote::{format_ident, quote},
     syn::{parse_quote, spanned::Spanned, Data, DeriveInput, Field, Fields, Type},
 };
@@ -96,6 +97,9 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
     let schema_name = format_ident!("__{}Schema", name);
     let schema_zc_name = format_ident!("__{}SchemaZc", name);
     let zc_name = format_ident!("{}Zc", name);
+    let snake_name = pascal_to_snake(&name.to_string());
+    let zc_offchain_mod = format_ident!("__{}_zc_offchain", snake_name);
+    let offchain_mod = format_ident!("__{}_offchain", snake_name);
 
     let field_names: Vec<_> = fields.iter().map(|f| f.ident.as_ref()).collect();
     let field_types: Vec<_> = fields.iter().map(|f| &f.ty).collect();
@@ -188,6 +192,10 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
         #[doc(hidden)]
         pub type #zc_name #schema_generics = #schema_zc_name #schema_ty_generics;
 
+        #[doc(hidden)]
+        #[allow(unexpected_cfgs)]
+        mod #zc_offchain_mod {
+        use super::*;
         #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
         unsafe impl #schema_write_impl_generics wincode::SchemaWrite<__C>
             for #schema_zc_name #schema_ty_generics #schema_where_clause
@@ -231,6 +239,7 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
                 __dst.write(__zc);
                 Ok(())
             }
+        }
         }
 
         impl #schema_impl_generics #krate::instruction_arg::InstructionArg
@@ -292,6 +301,10 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
         // This is critical for types like Option<T> where wincode's built-in
         // encoding is variable-length but the on-chain ZC companion (OptionZc)
         // is fixed-size.
+        #[doc(hidden)]
+        #[allow(unexpected_cfgs)]
+        mod #offchain_mod {
+        use super::*;
         #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
         unsafe impl #schema_write_impl_generics wincode::SchemaWrite<__C>
             for #name #schema_ty_generics #schema_where_clause
@@ -339,6 +352,7 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
                 __dst.write(<Self as #krate::instruction_arg::InstructionArg>::from_zc(&__zc));
                 Ok(())
             }
+        }
         }
 
         #idl_fragment
@@ -532,6 +546,7 @@ fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream2 
     };
 
     let name = &input.ident;
+    let offchain_mod = format_ident!("__{}_offchain", pascal_to_snake(&name.to_string()));
     let generics = &input.generics;
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
@@ -637,6 +652,10 @@ fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream2 
             const POD_SIZE: usize = <#repr_ty as #krate::ZcField>::POD_SIZE;
         }
 
+        #[doc(hidden)]
+        #[allow(unexpected_cfgs)]
+        mod #offchain_mod {
+        use super::*;
         #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
         unsafe impl #schema_write_impl_generics wincode::SchemaWrite<__C>
             for #name #ty_generics #where_clause
@@ -685,6 +704,7 @@ fn derive_enum(input: DeriveInput, variants: Vec<syn::Variant>) -> TokenStream2 
                 __dst.write(<Self as #krate::instruction_arg::InstructionArg>::from_zc(&__zc));
                 Ok(())
             }
+        }
         }
 
         #[cfg(feature = "idl-build")]

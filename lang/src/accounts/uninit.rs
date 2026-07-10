@@ -38,6 +38,7 @@ impl<A> crate::account_load::AccountLoad for Uninit<A> {
 /// program accounts use their generated account data struct; protocol accounts
 /// can implement this for protocol-specific init parameter structs.
 pub trait DeferredInit<A> {
+    /// Initializes `target` as `A` using the supplied payer and PDA signers.
     fn init_uninit<'a>(
         self,
         target: &'a mut AccountView,
@@ -47,6 +48,7 @@ pub trait DeferredInit<A> {
 }
 
 impl<A> Uninit<A> {
+    /// Initializes this slot using an unsigned CPI.
     #[inline(always)]
     pub fn init<P>(&mut self, payer: &impl AsAccountView, params: P) -> Result<&mut A, ProgramError>
     where
@@ -55,6 +57,7 @@ impl<A> Uninit<A> {
         params.init_uninit(&mut self.__view, payer.to_account_view(), &[])
     }
 
+    /// Initializes this slot using the supplied PDA signer seeds.
     #[inline(always)]
     pub fn init_signed<P>(
         &mut self,

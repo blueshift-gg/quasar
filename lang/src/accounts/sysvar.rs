@@ -26,6 +26,7 @@ impl<T: crate::sysvars::Sysvar> Sysvar<T> {
         unsafe { &*(view as *const AccountView as *const Self) }
     }
 
+    /// Returns a zero-copy view of the sysvar account data.
     #[inline(always)]
     pub fn get(&self) -> &T {
         // SAFETY: Checked construction requires the canonical sysvar address;

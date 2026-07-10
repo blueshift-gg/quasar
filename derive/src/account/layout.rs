@@ -58,7 +58,7 @@ pub(super) fn build_zc_spec(
                         ident,
                         vis,
                         attrs: Vec::new(),
-                        class: LayoutClass::from_pod_dyn(pd, |e| map_to_pod_type(e)),
+                        class: LayoutClass::from_pod_dyn(pd, map_to_pod_type),
                     },
                 }
             })

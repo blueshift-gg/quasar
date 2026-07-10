@@ -550,8 +550,8 @@ pub(super) fn push_dispatch_items(
     if !program_args.no_entrypoint {
         items.push(syn::parse_quote! {
             #[unsafe(no_mangle)]
-            #[cfg(any(target_os = "solana", target_arch = "bpf"))]
             #[allow(unexpected_cfgs)]
+            #[cfg(any(target_os = "solana", target_arch = "bpf"))]
             pub unsafe extern "C" fn entrypoint(ptr: *mut u8, instruction_data: *const u8) -> u64 {
                 #cursor_init
                 let instruction_data = unsafe {
@@ -572,6 +572,7 @@ pub(super) fn push_dispatch_items(
     }
 
     let cpi_mod: syn::Item = syn::parse2(quote! {
+        #[allow(unexpected_cfgs)]
         #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
         pub mod cpi {
             use super::*;

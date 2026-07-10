@@ -10,10 +10,15 @@
 
 use quasar_lang::prelude::*;
 
+/// Resolved arguments for mint validation or initialization.
 pub struct Args<'a> {
+    /// Expected mint authority.
     pub authority: &'a AccountView,
+    /// Expected decimals, or `None` to skip that check.
     pub decimals: Option<u8>,
+    /// Expected freeze-authority policy.
     pub freeze_authority: FreezeAuthorityArg<'a>,
+    /// Token program used during initialization or explicit validation.
     pub token_program: Option<&'a AccountView>,
 }
 
@@ -27,6 +32,7 @@ pub enum FreezeAuthorityArg<'a> {
     AssertEquals(&'a AccountView),
 }
 
+/// Builder for mint behavior arguments.
 pub struct ArgsBuilder<'a> {
     authority: Option<&'a AccountView>,
     decimals: Option<u8>,
@@ -35,6 +41,7 @@ pub struct ArgsBuilder<'a> {
 }
 
 impl<'a> Args<'a> {
+    /// Starts an empty argument builder.
     pub fn builder() -> ArgsBuilder<'a> {
         ArgsBuilder {
             authority: None,
@@ -46,18 +53,21 @@ impl<'a> Args<'a> {
 }
 
 impl<'a> ArgsBuilder<'a> {
+    /// Sets the expected mint authority.
     #[inline(always)]
     pub fn authority(mut self, v: &'a AccountView) -> Self {
         self.authority = Some(v);
         self
     }
 
+    /// Sets the expected decimal precision.
     #[inline(always)]
     pub fn decimals(mut self, v: u8) -> Self {
         self.decimals = Some(v);
         self
     }
 
+    /// Sets the expected optional freeze authority.
     #[inline(always)]
     pub fn freeze_authority(mut self, v: Option<&'a AccountView>) -> Self {
         self.freeze_authority = match v {
@@ -67,6 +77,7 @@ impl<'a> ArgsBuilder<'a> {
         self
     }
 
+    /// Sets the Token or Token-2022 program account.
     #[inline(always)]
     pub fn token_program(mut self, v: &'a AccountView) -> Self {
         self.token_program = Some(v);
@@ -105,6 +116,7 @@ impl<'a> quasar_lang::account_behavior::BehaviorArgsBuilder for ArgsBuilder<'a> 
     }
 }
 
+/// Mint account behavior implementation marker.
 pub struct Behavior;
 
 const TOKEN_PROGRAM_ARG: u64 =

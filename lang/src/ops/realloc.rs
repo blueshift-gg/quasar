@@ -12,7 +12,9 @@ use {
 
 /// Runtime form of a `realloc(...)` field directive.
 pub struct Op<'a> {
+    /// Requested account-data length in bytes.
     pub space: usize,
+    /// Account funding any additional rent-exempt balance.
     pub payer: &'a AccountView,
 }
 
