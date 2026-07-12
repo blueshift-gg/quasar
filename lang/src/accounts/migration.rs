@@ -137,10 +137,12 @@ where
     #[inline(always)]
     fn write_target(&mut self, new_data: &To::Target) {
         let disc = <To as crate::traits::Discriminator>::DISCRIMINATOR;
+        let written_len = disc.len() + core::mem::size_of::<To::Target>();
+        let space = <To as crate::traits::Space>::SPACE;
         let data = self.__view.data_mut_ptr();
         // SAFETY: `migrate` reallocates to `To::SPACE` before calling this, and
         // `_TARGET_FITS_SPACE` proves `To::SPACE` covers the discriminator plus
-        // `To::Target`.
+        // `To::Target`, so `written_len <= space == self.__view.data_len()`.
         unsafe {
             core::ptr::copy_nonoverlapping(disc.as_ptr(), data, disc.len());
             core::ptr::copy_nonoverlapping(
@@ -148,6 +150,13 @@ where
                 data.add(disc.len()),
                 core::mem::size_of::<To::Target>(),
             );
+            // `To::SPACE` may reserve bytes beyond the discriminator + target
+            // (e.g. for future fields). Those bytes are never written above,
+            // so without this they'd retain stale `From` data left over from
+            // before the realloc when `To::SPACE <= From::SPACE`.
+            if space > written_len {
+                core::ptr::write_bytes(data.add(written_len), 0, space - written_len);
+            }
         }
     }
 
