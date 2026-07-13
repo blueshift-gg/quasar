@@ -161,9 +161,23 @@ mod tests {
         assert!(output.contains("uint64_t meta_buf_capacity"));
         assert!(output.contains("SEED_TEST_IX_ACCOUNT_BUFFER_TOO_SMALL"));
         assert!(output.contains("SEED_TEST_IX_DATA_BUFFER_TOO_SMALL"));
+        assert!(output.contains("SEED_TEST_IX_PDA_KEY_BUFFER_TOO_SMALL"));
+        assert!(output.contains("uint64_t pda_keys_len;"));
+        assert!(output.contains("Pubkey *pda_key_buf"));
+        assert!(output.contains("uint64_t pda_key_buf_capacity"));
         assert!(output.contains("uint64_t pda_status = find_program_address"));
+        assert!(output.contains("&derived_pda_keys[0]"));
+        assert!(output.contains("meta_buf[0] = meta_writable(&pda_key_buf[0]);"));
         assert!(output.contains(".pda_status = pda_status"));
         assert!(!output.contains("sizeof(args->amount)"));
+    }
+
+    #[test]
+    fn c_non_pda_builder_does_not_require_pda_storage() {
+        let output = generate_c_client(&idl_with_pubkey_arg()).unwrap();
+
+        assert!(!output.contains("Pubkey *pda_key_buf"));
+        assert!(!output.contains("uint64_t pda_key_buf_capacity"));
     }
 
     #[test]

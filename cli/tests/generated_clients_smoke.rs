@@ -234,15 +234,20 @@ const CARAVEL_HOST_SYSCALLS: &str = r#"#include <string.h>
  * provide the host runtime boundary that the validator normally supplies.
  */
 static uint64_t caravel_find_program_address_status = SUCCESS;
+static uint64_t caravel_sha256_call_count = 0;
+static uint8_t caravel_second_seed_first_byte[16] = {0};
 
 uint64_t sol_sha256(
     const SignerSeed *vals,
     uint64_t vals_len,
     uint8_t result[32]
 ) {
-    (void)vals;
-    (void)vals_len;
+    uint64_t call = caravel_sha256_call_count++;
+    if (call < 16 && vals_len > 1 && vals[1].len > 0) {
+        caravel_second_seed_first_byte[call] = vals[1].addr[0];
+    }
     memset(result, 0, 32);
+    result[0] = (uint8_t)(call + 1);
     return SUCCESS;
 }
 
@@ -664,12 +669,16 @@ static void assert_untouched(
     const AccountMeta *metas,
     const AccountMeta *metas_before,
     uint64_t metas_len,
+    const Pubkey *pda_keys,
+    const Pubkey *pda_keys_before,
+    uint64_t pda_keys_len,
     const uint8_t *data,
     const uint8_t *data_before,
     uint64_t data_len
 ) {
     assert(memcmp(ix, ix_before, sizeof(*ix)) == 0);
     assert(memcmp(metas, metas_before, sizeof(*metas) * metas_len) == 0);
+    assert(memcmp(pda_keys, pda_keys_before, sizeof(*pda_keys) * pda_keys_len) == 0);
     assert(memcmp(data, data_before, data_len) == 0);
 }
 
@@ -693,54 +702,75 @@ int main(void) {
     Instruction ix_before;
     AccountMeta metas[6];
     AccountMeta metas_before[6];
+    Pubkey pda_keys[1];
+    Pubkey pda_keys_before[1];
     uint8_t data[2];
     uint8_t data_before[2];
 
     memset(&ix, 0xa5, sizeof(ix));
     memset(metas, 0xa5, sizeof(metas));
+    memset(pda_keys, 0xa5, sizeof(pda_keys));
     memset(data, 0xa5, sizeof(data));
     memcpy(&ix_before, &ix, sizeof(ix));
     memcpy(metas_before, metas, sizeof(metas));
+    memcpy(pda_keys_before, pda_keys, sizeof(pda_keys));
     memcpy(data_before, data, sizeof(data));
 
     quasar_multisig_ix_result_t result = quasar_multisig_create_ix(
-        &accounts, &args, remaining, 2, &ix, metas, 5, data, sizeof(data));
+        &accounts, &args, remaining, 2, &ix, metas, 5, pda_keys, 1, data, sizeof(data));
     assert(result.status == QUASAR_MULTISIG_IX_ACCOUNT_BUFFER_TOO_SMALL);
-    assert(result.accounts_len == 6 && result.data_len == 2);
-    assert_untouched(&ix, &ix_before, metas, metas_before, 6, data, data_before, 2);
+    assert(result.accounts_len == 6 && result.data_len == 2 && result.pda_keys_len == 1);
+    assert_untouched(
+        &ix, &ix_before, metas, metas_before, 6, pda_keys, pda_keys_before, 1,
+        data, data_before, 2);
 
     result = quasar_multisig_create_ix(
-        &accounts, &args, remaining, 2, &ix, metas, 6, data, 1);
+        &accounts, &args, remaining, 2, &ix, metas, 6, pda_keys, 0, data, sizeof(data));
+    assert(result.status == QUASAR_MULTISIG_IX_PDA_KEY_BUFFER_TOO_SMALL);
+    assert(result.accounts_len == 6 && result.data_len == 2 && result.pda_keys_len == 1);
+    assert_untouched(
+        &ix, &ix_before, metas, metas_before, 6, pda_keys, pda_keys_before, 1,
+        data, data_before, 2);
+
+    result = quasar_multisig_create_ix(
+        &accounts, &args, remaining, 2, &ix, metas, 6, pda_keys, 1, data, 1);
     assert(result.status == QUASAR_MULTISIG_IX_DATA_BUFFER_TOO_SMALL);
-    assert(result.accounts_len == 6 && result.data_len == 2);
-    assert_untouched(&ix, &ix_before, metas, metas_before, 6, data, data_before, 2);
+    assert(result.accounts_len == 6 && result.data_len == 2 && result.pda_keys_len == 1);
+    assert_untouched(
+        &ix, &ix_before, metas, metas_before, 6, pda_keys, pda_keys_before, 1,
+        data, data_before, 2);
 
     result = quasar_multisig_create_ix(
-        &accounts, &args, NULL, (uint64_t)-1, &ix, metas, 6, data, sizeof(data));
+        &accounts, &args, NULL, (uint64_t)-1, &ix, metas, 6, pda_keys, 1, data, sizeof(data));
     assert(result.status == QUASAR_MULTISIG_IX_LENGTH_OVERFLOW);
-    assert(result.accounts_len == (uint64_t)-1);
-    assert_untouched(&ix, &ix_before, metas, metas_before, 6, data, data_before, 2);
+    assert(result.accounts_len == (uint64_t)-1 && result.pda_keys_len == 1);
+    assert_untouched(
+        &ix, &ix_before, metas, metas_before, 6, pda_keys, pda_keys_before, 1,
+        data, data_before, 2);
 
     caravel_find_program_address_status = ERROR_INVALID_PDA;
     result = quasar_multisig_create_ix(
-        &accounts, &args, remaining, 2, &ix, metas, 6, data, sizeof(data));
+        &accounts, &args, remaining, 2, &ix, metas, 6, pda_keys, 1, data, sizeof(data));
     assert(result.status == QUASAR_MULTISIG_IX_PDA_DERIVATION_FAILED);
     assert(result.pda_status == ERROR_INVALID_PDA);
-    assert(result.accounts_len == 6 && result.data_len == 2);
-    assert_untouched(&ix, &ix_before, metas, metas_before, 6, data, data_before, 2);
+    assert(result.accounts_len == 6 && result.data_len == 2 && result.pda_keys_len == 1);
+    assert_untouched(
+        &ix, &ix_before, metas, metas_before, 6, pda_keys, pda_keys_before, 1,
+        data, data_before, 2);
 
     caravel_find_program_address_status = SUCCESS;
     result = quasar_multisig_create_ix(
-        &accounts, &args, remaining, 2, &ix, metas, 6, data, sizeof(data));
+        &accounts, &args, remaining, 2, &ix, metas, 6, pda_keys, 1, data, sizeof(data));
     assert(result.status == QUASAR_MULTISIG_IX_OK);
     assert(result.pda_status == SUCCESS);
-    assert(result.accounts_len == 6 && result.data_len == 2);
+    assert(result.accounts_len == 6 && result.data_len == 2 && result.pda_keys_len == 1);
     assert(ix.program_id == (Pubkey *)&QUASAR_MULTISIG_PROGRAM_ID);
     assert(ix.accounts == metas && ix.accounts_len == 6);
     assert(ix.data == data && ix.data_len == 2);
     assert(data[0] == 0 && data[1] == 7);
     assert(metas[0].pubkey == &creator && metas[0].is_signer && metas[0].is_writable);
-    assert(metas[1].pubkey != NULL && !metas[1].is_signer && metas[1].is_writable);
+    assert(metas[1].pubkey == &pda_keys[0] && !metas[1].is_signer && metas[1].is_writable);
+    assert(metas[1].pubkey->bytes[0] == 1);
     assert(metas[2].pubkey == &rent && !metas[2].is_signer && !metas[2].is_writable);
     assert(metas[3].pubkey == &system_program);
     assert(metas[4].pubkey == &extra_a && metas[5].pubkey == &extra_b);
@@ -1426,6 +1456,13 @@ pub struct ScopedItem {
     pub bump: u8,
 }
 
+#[account(discriminator = 3, set_inner)]
+#[seeds(b"linked", config: Address)]
+pub struct LinkedItem {
+    pub config: Address,
+    pub bump: u8,
+}
+
 #[derive(Accounts)]
 pub struct UseScoped {
     #[account(mut)]
@@ -1434,6 +1471,8 @@ pub struct UseScoped {
     pub config: Account<NamespaceConfig>,
     #[account(address = ScopedItem::seeds(config.namespace.into()))]
     pub scoped_item: Account<ScopedItem>,
+    #[account(address = LinkedItem::seeds(config.address()))]
+    pub linked_item: Account<LinkedItem>,
 }
 "#,
     )?;
@@ -1486,12 +1525,51 @@ pub struct UseScoped {
     compile_python_client(&only_child_dir(&clients_path.join("python"))?)?;
     compile_go_client(&only_child_dir(&clients_path.join("golang"))?)?;
 
-    let c_header = read_file(&only_child_dir(&clients_path.join("c"))?.join("client.h"))?;
+    let c_dir = only_child_dir(&clients_path.join("c"))?;
+    let c_header = read_file(&c_dir.join("client.h"))?;
     assert!(
         c_header.contains("config_namespace_seed"),
         "C client should expose account-field PDA seeds as explicit bytes"
     );
-    compile_c_client(&only_child_dir(&clients_path.join("c"))?)?;
+    assert!(
+        c_header.contains("derived_pda_keys[0].bytes"),
+        "chained PDA derivation should use the previously staged key"
+    );
+    compile_c_client(&c_dir)?;
+    run_c_sanitized_test(
+        &c_dir,
+        r#"#include <assert.h>
+#include "client.h"
+
+int main(void) {
+    Pubkey authority = { .bytes = {7} };
+    const uint8_t namespace_seed[] = {9, 0, 0, 0};
+    account_field_seeds_use_scoped_accounts_t accounts = {
+        .authority = &authority,
+        .config_namespace_seed = namespace_seed,
+        .config_namespace_seed_len = sizeof(namespace_seed),
+    };
+    account_field_seeds_use_scoped_args_t args = { ._pad = 0 };
+    Instruction ix;
+    AccountMeta metas[4];
+    Pubkey pda_keys[3];
+    uint8_t data[1];
+
+    account_field_seeds_ix_result_t result = account_field_seeds_use_scoped_ix(
+        &accounts, &args, &ix, metas, 4, pda_keys, 3, data, sizeof(data));
+
+    assert(result.status == ACCOUNT_FIELD_SEEDS_IX_OK);
+    assert(result.accounts_len == 4 && result.data_len == 1 && result.pda_keys_len == 3);
+    assert(ix.accounts == metas && ix.accounts_len == 4);
+    assert(metas[0].pubkey == &authority);
+    assert(metas[1].pubkey == &pda_keys[0] && pda_keys[0].bytes[0] == 1);
+    assert(metas[2].pubkey == &pda_keys[1] && pda_keys[1].bytes[0] == 2);
+    assert(metas[3].pubkey == &pda_keys[2] && pda_keys[2].bytes[0] == 3);
+    assert(caravel_second_seed_first_byte[2] == pda_keys[0].bytes[0]);
+    return 0;
+}
+"#,
+    )?;
 
     Ok(())
 }
@@ -1670,7 +1748,7 @@ int main(void) {
     optional_dynamic_args_ix_result_t result = optional_dynamic_args_submit_ix(
         &accounts, &args, &ix, &meta, 1, data, sizeof(data) - 1);
     assert(result.status == OPTIONAL_DYNAMIC_ARGS_IX_DATA_BUFFER_TOO_SMALL);
-    assert(result.accounts_len == 1 && result.data_len == sizeof(data));
+    assert(result.accounts_len == 1 && result.data_len == sizeof(data) && result.pda_keys_len == 0);
     assert(memcmp(&ix, &ix_before, sizeof(ix)) == 0);
     assert(memcmp(&meta, &meta_before, sizeof(meta)) == 0);
     assert(memcmp(data, data_before, sizeof(data)) == 0);
@@ -1678,7 +1756,7 @@ int main(void) {
     result = optional_dynamic_args_submit_ix(
         &accounts, &args, &ix, &meta, 1, data, sizeof(data));
     assert(result.status == OPTIONAL_DYNAMIC_ARGS_IX_OK);
-    assert(result.accounts_len == 1 && result.data_len == sizeof(data));
+    assert(result.accounts_len == 1 && result.data_len == sizeof(data) && result.pda_keys_len == 0);
     assert(ix.accounts == &meta && ix.accounts_len == 1);
     assert(ix.data == data && ix.data_len == sizeof(data));
     assert(data[0] == 7 && data[1] == 1 && data[2] == 1);

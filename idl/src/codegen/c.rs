@@ -47,13 +47,15 @@ fn emit_instruction_helpers(out: &mut String, prefix: &str, idl: &Idl) {
     {upper}_IX_ACCOUNT_BUFFER_TOO_SMALL,
     {upper}_IX_DATA_BUFFER_TOO_SMALL,
     {upper}_IX_LENGTH_OVERFLOW,
-    {upper}_IX_PDA_DERIVATION_FAILED
+    {upper}_IX_PDA_DERIVATION_FAILED,
+    {upper}_IX_PDA_KEY_BUFFER_TOO_SMALL
 }} {prefix}_ix_status_t;
 
 typedef struct {{
     {prefix}_ix_status_t status;
     uint64_t accounts_len;
     uint64_t data_len;
+    uint64_t pda_keys_len;
     uint64_t pda_status;
 }} {prefix}_ix_result_t;
 
@@ -327,6 +329,16 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
             .args
             .iter()
             .any(|arg| is_dynamic_with_codec(&arg.ty, arg.codec.as_ref()));
+        let pda_count = ix
+            .accounts
+            .iter()
+            .filter(|a| !a.optional && matches!(a.resolver, IdlResolver::Pda { .. }))
+            .count();
+        let pda_key_params = if pda_count > 0 {
+            "    Pubkey *pda_key_buf,\n    uint64_t pda_key_buf_capacity,\n    "
+        } else {
+            "    "
+        };
         if ix.remaining_accounts.is_some() {
             writeln!(
                 out,
@@ -334,7 +346,8 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
                  {prefix}_{ix_snake}_accounts_t *accounts,\n    {prefix}_{ix_snake}_args_t \
                  *args,\n    const AccountMeta *remaining,\n    uint64_t remaining_len,\n    \
                  Instruction *ix_out,\n    AccountMeta *meta_buf,\n    uint64_t \
-                 meta_buf_capacity,\n    uint8_t *data_buf,\n    uint64_t data_buf_capacity\n) {{",
+                 meta_buf_capacity,\n{pda_key_params}uint8_t *data_buf,\n    uint64_t \
+                 data_buf_capacity\n) {{",
             )
             .unwrap();
         } else {
@@ -343,7 +356,8 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
                 "static inline {prefix}_ix_result_t {prefix}_{ix_snake}_ix(\n    \
                  {prefix}_{ix_snake}_accounts_t *accounts,\n    {prefix}_{ix_snake}_args_t \
                  *args,\n    Instruction *ix_out,\n    AccountMeta *meta_buf,\n    uint64_t \
-                 meta_buf_capacity,\n    uint8_t *data_buf,\n    uint64_t data_buf_capacity\n) {{",
+                 meta_buf_capacity,\n{pda_key_params}uint8_t *data_buf,\n    uint64_t \
+                 data_buf_capacity\n) {{",
             )
             .unwrap();
         }
@@ -354,13 +368,15 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         if !has_args {
             writeln!(out, "    (void)args;").unwrap();
         }
+        writeln!(out, "    const uint64_t required_pda_keys = {pda_count};").unwrap();
 
         if ix.remaining_accounts.is_some() {
             writeln!(
                 out,
                 "    if (remaining_len > ((uint64_t)-1) - {num_accounts}) return \
                  ({prefix}_ix_result_t){{ .status = {upper}_IX_LENGTH_OVERFLOW, .accounts_len = \
-                 (uint64_t)-1, .data_len = 0, .pda_status = SUCCESS }};"
+                 (uint64_t)-1, .data_len = 0, .pda_keys_len = required_pda_keys, .pda_status = \
+                 SUCCESS }};"
             )
             .unwrap();
             writeln!(
@@ -389,24 +405,30 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
             out,
             "    if (meta_buf_capacity < required_accounts) return ({prefix}_ix_result_t){{ \
              .status = {upper}_IX_ACCOUNT_BUFFER_TOO_SMALL, .accounts_len = required_accounts, \
-             .data_len = required_data, .pda_status = SUCCESS }};"
+             .data_len = required_data, .pda_keys_len = required_pda_keys, .pda_status = SUCCESS \
+             }};"
         )
         .unwrap();
+        if pda_count > 0 {
+            writeln!(
+                out,
+                "    if (pda_key_buf_capacity < required_pda_keys) return \
+                 ({prefix}_ix_result_t){{ .status = {upper}_IX_PDA_KEY_BUFFER_TOO_SMALL, \
+                 .accounts_len = required_accounts, .data_len = required_data, .pda_keys_len = \
+                 required_pda_keys, .pda_status = SUCCESS }};"
+            )
+            .unwrap();
+        }
         writeln!(
             out,
             "    if (data_buf_capacity < required_data) return ({prefix}_ix_result_t){{ .status = \
              {upper}_IX_DATA_BUFFER_TOO_SMALL, .accounts_len = required_accounts, .data_len = \
-             required_data, .pda_status = SUCCESS }};"
+             required_data, .pda_keys_len = required_pda_keys, .pda_status = SUCCESS }};"
         )
         .unwrap();
 
-        let pda_count = ix
-            .accounts
-            .iter()
-            .filter(|a| !a.optional && matches!(a.resolver, IdlResolver::Pda { .. }))
-            .count();
         if pda_count > 0 {
-            writeln!(out, "    Pubkey pda_keys[{pda_count}];").unwrap();
+            writeln!(out, "    Pubkey derived_pda_keys[{pda_count}];").unwrap();
         }
 
         let mut pda_name_to_idx: HashMap<&str, usize> = HashMap::new();
@@ -430,6 +452,14 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
                 }
             }
         }
+        if pda_count > 0 {
+            writeln!(
+                out,
+                "    for (uint64_t i = 0; i < required_pda_keys; i++) pda_key_buf[i] = \
+                 derived_pda_keys[i];"
+            )
+            .unwrap();
+        }
 
         // build account metas
         pda_idx = 0;
@@ -443,7 +473,7 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
                     n = acc.name
                 )
             } else if matches!(acc.resolver, IdlResolver::Pda { .. }) {
-                let expr = format!("&pda_keys[{pda_idx}]");
+                let expr = format!("&pda_key_buf[{pda_idx}]");
                 pda_idx += 1;
                 expr
             } else {
@@ -538,7 +568,8 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         writeln!(
             out,
             "    return ({prefix}_ix_result_t){{ .status = {upper}_IX_OK, .accounts_len = \
-             required_accounts, .data_len = off, .pda_status = SUCCESS }};"
+             required_accounts, .data_len = off, .pda_keys_len = required_pda_keys, .pda_status = \
+             SUCCESS }};"
         )
         .unwrap();
         out.push_str("}\n\n");
@@ -581,7 +612,8 @@ fn emit_pda_derivation(
                 if let Some(&ref_idx) = pda_name_to_idx.get(path.as_str()) {
                     writeln!(
                         out,
-                        "        seeds[{i}].addr = pda_keys[{ref_idx}].bytes; seeds[{i}].len = 32;"
+                        "        seeds[{i}].addr = derived_pda_keys[{ref_idx}].bytes; \
+                         seeds[{i}].len = 32;"
                     )
                     .unwrap();
                 } else {
@@ -608,14 +640,14 @@ fn emit_pda_derivation(
     writeln!(
         out,
         "        uint64_t pda_status = find_program_address(seeds, {seed_count}, \
-         &{upper_prefix}_PROGRAM_ID, &pda_keys[{pda_idx}], &bump);"
+         &{upper_prefix}_PROGRAM_ID, &derived_pda_keys[{pda_idx}], &bump);"
     )
     .unwrap();
     writeln!(
         out,
         "        if (pda_status != SUCCESS) return ({prefix}_ix_result_t){{ .status = \
          {upper_prefix}_IX_PDA_DERIVATION_FAILED, .accounts_len = required_accounts, .data_len = \
-         required_data, .pda_status = pda_status }};"
+         required_data, .pda_keys_len = required_pda_keys, .pda_status = pda_status }};"
     )
     .unwrap();
     writeln!(out, "    }}").unwrap();
@@ -1028,7 +1060,7 @@ fn emit_size_add(out: &mut String, prefix: &str, upper: &str, amount: &str, t: &
         out,
         "{t}if (!{prefix}_ix_size_add(&required_data, {amount})) return ({prefix}_ix_result_t){{ \
          .status = {upper}_IX_LENGTH_OVERFLOW, .accounts_len = required_accounts, .data_len = \
-         (uint64_t)-1, .pda_status = SUCCESS }};"
+         (uint64_t)-1, .pda_keys_len = required_pda_keys, .pda_status = SUCCESS }};"
     )
     .unwrap();
 }
@@ -1045,7 +1077,8 @@ fn emit_size_add_items(
         out,
         "{t}if (!{prefix}_ix_size_add_items(&required_data, {count}, {item_size})) return \
          ({prefix}_ix_result_t){{ .status = {upper}_IX_LENGTH_OVERFLOW, .accounts_len = \
-         required_accounts, .data_len = (uint64_t)-1, .pda_status = SUCCESS }};"
+         required_accounts, .data_len = (uint64_t)-1, .pda_keys_len = required_pda_keys, \
+         .pda_status = SUCCESS }};"
     )
     .unwrap();
 }
