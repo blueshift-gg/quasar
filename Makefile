@@ -77,6 +77,7 @@ PACKAGE_PATCHES := \
 	check-generated-client-baselines bless-generated-client-baselines \
 	test-audit-policy generated-client-smoke \
 	check-release-dependencies test-release-dependency-policy \
+	check-release-permissions test-release-permission-policy \
 	kani help-kani check-kani kani-lang \
 	kani-spl kani-metadata msrv-check package-check audit
 
@@ -498,6 +499,12 @@ check-release-dependencies: test-release-dependency-policy
 
 test-release-dependency-policy:
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_release_dependency_policy.py
+
+check-release-permissions: test-release-permission-policy
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check-release-permissions.py
+
+test-release-permission-policy:
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_release_permission_policy.py
 
 bench-cu:
 	@$(MAKE) build-sbf
