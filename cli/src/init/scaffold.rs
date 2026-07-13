@@ -306,7 +306,6 @@ declare_id!("{program_id}");
 #[derive(Accounts)]
 pub struct Initialize {{
     pub payer: Signer,
-    pub system_program: Program<SystemProgram>,
 }}
 
 impl Initialize {{
@@ -320,7 +319,7 @@ impl Initialize {{
 mod {module_name} {{
     use super::*;
 
-    #[instruction]
+    #[instruction(discriminator = 0)]
     pub fn initialize(ctx: Ctx<Initialize>) -> Result<(), ProgramError> {{
         ctx.accounts.initialize()
     }}
@@ -345,7 +344,7 @@ declare_id!("{program_id}");
 mod {module_name} {{
     use super::*;
 
-    #[instruction]
+    #[instruction(discriminator = 0)]
     pub fn initialize(ctx: Ctx<Initialize>) -> Result<(), ProgramError> {{
         ctx.accounts.initialize()
     }}
@@ -430,8 +429,7 @@ describe.concurrent("{class_name} Program", async () => {{
     const initializeInstruction = {{
       programAddress,
       accounts: [
-        {{ address: payer.address, role: AccountRole.WRITABLE_SIGNER }},
-        {{ address: address("11111111111111111111111111111111"), role: AccountRole.READONLY }},
+        {{ address: payer.address, role: AccountRole.READONLY_SIGNER }},
       ],
       data: Uint8Array.from([0]),
     }};
@@ -466,8 +464,7 @@ describe.concurrent("{class_name} Program", async () => {{
     const initializeInstruction = new TransactionInstruction({{
       programId: programAddress,
       keys: [
-        {{ pubkey: payer, isSigner: true, isWritable: true }},
-        {{ pubkey: new Address("11111111111111111111111111111111"), isSigner: false, isWritable: false }},
+        {{ pubkey: payer, isSigner: true, isWritable: false }},
       ],
       data: Buffer.from([0]),
     }});
@@ -498,7 +495,7 @@ fn generate_tests_rs(
     match (rust_framework, template) {
         (RustFramework::Mollusk, Template::Minimal | Template::Full) => {
             format!(
-                r#"use mollusk_svm::{{program::keyed_account_for_system_program, Mollusk}};
+                r#"use mollusk_svm::Mollusk;
 use solana_account::Account;
 use solana_address::Address;
 use solana_instruction::{{AccountMeta, Instruction}};
@@ -507,12 +504,11 @@ fn setup() -> Mollusk {{
     Mollusk::new(&crate::ID, "target/deploy/{libname}")
 }}
 
-fn initialize_instruction(payer: Address, system_program: Address) -> Instruction {{
+fn initialize_instruction(payer: Address) -> Instruction {{
     Instruction {{
         program_id: Address::from(crate::ID.to_bytes()),
         accounts: vec![
-            AccountMeta::new(payer, true),
-            AccountMeta::new_readonly(system_program, false),
+            AccountMeta::new_readonly(payer, true),
         ],
         data: vec![0],
     }}
@@ -521,19 +517,14 @@ fn initialize_instruction(payer: Address, system_program: Address) -> Instructio
 #[test]
 fn test_initialize() {{
     let mollusk = setup();
-    let (system_program, system_program_account) = keyed_account_for_system_program();
-
     let payer = Address::new_unique();
-    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+    let payer_account = Account::new(10_000_000_000, 0, &Address::default());
 
-    let instruction = initialize_instruction(payer, system_program);
+    let instruction = initialize_instruction(payer);
 
     let result = mollusk.process_instruction(
         &instruction,
-        &[
-            (payer, payer_account),
-            (system_program, system_program_account),
-        ],
+        &[(payer, payer_account)],
     );
 
     assert!(
@@ -557,12 +548,11 @@ fn setup() -> QuasarSvm {{
         .with_program(&Pubkey::from(crate::ID), &elf)
 }}
 
-fn initialize_instruction(payer: Address, system_program: Address) -> Instruction {{
+fn initialize_instruction(payer: Address) -> Instruction {{
     Instruction {{
         program_id: Address::from(crate::ID.to_bytes()),
         accounts: vec![
-            AccountMeta::new(payer, true),
-            AccountMeta::new_readonly(system_program, false),
+            AccountMeta::new_readonly(payer, true),
         ],
         data: vec![0],
     }}
@@ -574,10 +564,7 @@ fn test_initialize() {{
 
     let payer = Pubkey::new_unique();
 
-    let instruction = initialize_instruction(
-        Address::from(payer.to_bytes()),
-        Address::from(quasar_svm::system_program::ID.to_bytes()),
-    );
+    let instruction = initialize_instruction(Address::from(payer.to_bytes()));
 
     let result = svm.process_instruction(
         &instruction,
