@@ -155,6 +155,8 @@ fn compile_rust_client_from_packages(client_dir: &Path) -> Result<(), Box<dyn Er
 }
 
 fn compile_python_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let solders_version = std::env::var("SOLDERS_VERSION").unwrap_or_else(|_| "0.28.0".into());
+
     run_command(
         Command::new("python3")
             .arg("-m")
@@ -164,59 +166,44 @@ fn compile_python_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
             .current_dir(client_dir),
     )?;
 
-    // `py_compile` only checks syntax. Execute the module with lightweight
-    // solders stubs so dataclass construction and postponed annotations are
-    // validated as well (including required/default field ordering and every
-    // `typing.get_type_hints` name).
+    // `py_compile` only checks syntax. Execute the module against the pinned
+    // real solders package so imports, runtime constructors, dataclass field
+    // ordering, and every postponed annotation are all validated.
     run_command(
         Command::new("python3")
             .arg("-c")
             .arg(
                 r#"
 import dataclasses
+import importlib.metadata
 import importlib.util
 import pathlib
 import sys
-import types
 import typing
 
-solders = types.ModuleType("solders")
-solders.__path__ = []
-pubkey = types.ModuleType("solders.pubkey")
-instruction = types.ModuleType("solders.instruction")
+from solders.instruction import AccountMeta, Instruction
+from solders.pubkey import Pubkey
 
-class Pubkey:
-    @classmethod
-    def from_string(cls, _value):
-        return cls()
-
-    @classmethod
-    def find_program_address(cls, _seeds, _program_id):
-        return cls(), 255
-
-class Instruction:
-    pass
-
-class AccountMeta:
-    pass
-
-pubkey.Pubkey = Pubkey
-instruction.Instruction = Instruction
-instruction.AccountMeta = AccountMeta
-sys.modules["solders"] = solders
-sys.modules["solders.pubkey"] = pubkey
-sys.modules["solders.instruction"] = instruction
+expected_version = sys.argv[1]
+actual_version = importlib.metadata.version("solders")
+assert actual_version == expected_version, (actual_version, expected_version)
 
 spec = importlib.util.spec_from_file_location("generated_client", pathlib.Path("client.py"))
 module = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = module
 spec.loader.exec_module(module)
 
+assert isinstance(module.PROGRAM_ID, Pubkey)
+probe = Instruction(module.PROGRAM_ID, b"\x00", [])
+assert probe.program_id == module.PROGRAM_ID
+assert AccountMeta(module.PROGRAM_ID, False, False).pubkey == module.PROGRAM_ID
+
 for value in vars(module).values():
     if isinstance(value, type) and dataclasses.is_dataclass(value):
         typing.get_type_hints(value, vars(module))
 "#,
             )
+            .arg(solders_version)
             .current_dir(client_dir),
     )
 }
@@ -236,81 +223,55 @@ fn compile_go_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
     )
 }
 
-const CARAVEL_STUB: &str = r#"#ifndef CARAVEL_H
-#define CARAVEL_H
+const CARAVEL_HOST_SYSCALLS: &str = r#"#include <string.h>
+#define strlen caravel_strlen
+#include <caravel.h>
+#undef strlen
 
-#include <stdbool.h>
-#include <stdint.h>
-
-#define SUCCESS 0
-#define ERROR_INVALID_PDA 260
-
-typedef struct {
-    uint8_t bytes[32];
-} Pubkey;
-
-typedef struct {
-    Pubkey *pubkey;
-    bool is_signer;
-    bool is_writable;
-} AccountMeta;
-
-typedef struct {
-    Pubkey *program_id;
-    AccountMeta *accounts;
-    uint64_t accounts_len;
-    uint8_t *data;
-    uint64_t data_len;
-} Instruction;
-
-typedef struct {
-    const uint8_t *addr;
-    uint64_t len;
-} SignerSeed;
-
-static inline AccountMeta meta_readonly(Pubkey *pubkey) {
-    return (AccountMeta){ .pubkey = pubkey, .is_signer = false, .is_writable = false };
-}
-
-static inline AccountMeta meta_readonly_signer(Pubkey *pubkey) {
-    return (AccountMeta){ .pubkey = pubkey, .is_signer = true, .is_writable = false };
-}
-
-static inline AccountMeta meta_writable(Pubkey *pubkey) {
-    return (AccountMeta){ .pubkey = pubkey, .is_signer = false, .is_writable = true };
-}
-
-static inline AccountMeta meta_writable_signer(Pubkey *pubkey) {
-    return (AccountMeta){ .pubkey = pubkey, .is_signer = true, .is_writable = true };
-}
-
+/*
+ * Caravel calls Solana syscalls for PDA derivation. The real headers and real
+ * find_program_address implementation remain under test; these two symbols
+ * provide the host runtime boundary that the validator normally supplies.
+ */
 static uint64_t caravel_find_program_address_status = SUCCESS;
 
-static inline uint64_t find_program_address(
-    const SignerSeed *seeds,
-    int seeds_len,
-    const Pubkey *program_id,
-    Pubkey *out,
-    uint8_t *bump
+uint64_t sol_sha256(
+    const SignerSeed *vals,
+    uint64_t vals_len,
+    uint8_t result[32]
 ) {
-    (void)seeds;
-    (void)seeds_len;
-    (void)program_id;
-    if (caravel_find_program_address_status != SUCCESS) {
-        return caravel_find_program_address_status;
-    }
-    *out = (Pubkey){ .bytes = {0} };
-    *bump = 255;
+    (void)vals;
+    (void)vals_len;
+    memset(result, 0, 32);
     return SUCCESS;
 }
 
-#endif
+uint64_t sol_curve_validate_point(
+    uint64_t curve_id,
+    const uint8_t *point,
+    uint8_t *result
+) {
+    (void)curve_id;
+    (void)point;
+    (void)result;
+    return caravel_find_program_address_status == SUCCESS ? 1 : 0;
+}
+
 "#;
+
+fn caravel_include_dir() -> Result<PathBuf, Box<dyn Error>> {
+    std::env::var_os("CARAVEL_INCLUDE_DIR")
+        .map(PathBuf::from)
+        .ok_or_else(|| {
+            "CARAVEL_INCLUDE_DIR must point to the pinned Caravel checkout's include directory"
+                .into()
+        })
+}
 
 fn compile_c_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
     let temp = tempdir()?;
-    write_file(&temp.path().join("caravel.h"), CARAVEL_STUB)?;
     write_file(&temp.path().join("compile.c"), r#"#include "client.h""#)?;
+    let caravel_include_dir = caravel_include_dir()?;
 
     let cc = std::env::var_os("CC").unwrap_or_else(|| "cc".into());
     run_command(
@@ -320,40 +281,26 @@ fn compile_c_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
             .arg("-Wall")
             .arg("-Wextra")
             .arg("-Werror")
+            .arg("-DNO_HEAP")
+            .arg("-DNO_SYSTEM")
+            .arg("-DNO_TOKEN")
             .arg("-I")
             .arg(client_dir)
             .arg("-I")
-            .arg(temp.path())
+            .arg(caravel_include_dir)
             .arg(temp.path().join("compile.c")),
     )?;
-
-    if let Some(caravel_include_dir) = std::env::var_os("CARAVEL_INCLUDE_DIR") {
-        let cc = std::env::var_os("CC").unwrap_or_else(|| "cc".into());
-        run_command(
-            Command::new(cc)
-                .arg("-std=c11")
-                .arg("-fsyntax-only")
-                .arg("-Wall")
-                .arg("-Wextra")
-                .arg("-Werror")
-                .arg("-DNO_HEAP")
-                .arg("-DNO_SYSTEM")
-                .arg("-DNO_TOKEN")
-                .arg("-I")
-                .arg(client_dir)
-                .arg("-I")
-                .arg(caravel_include_dir)
-                .arg(temp.path().join("compile.c")),
-        )?;
-    }
 
     Ok(())
 }
 
 fn run_c_sanitized_test(client_dir: &Path, source: &str) -> Result<(), Box<dyn Error>> {
     let temp = tempdir()?;
-    write_file(&temp.path().join("caravel.h"), CARAVEL_STUB)?;
-    write_file(&temp.path().join("sanitized_test.c"), source)?;
+    write_file(
+        &temp.path().join("sanitized_test.c"),
+        format!("{CARAVEL_HOST_SYSCALLS}{source}"),
+    )?;
+    let caravel_include_dir = caravel_include_dir()?;
 
     let cc = std::env::var_os("CC").unwrap_or_else(|| "cc".into());
     let binary = temp.path().join("sanitized_test");
@@ -365,10 +312,13 @@ fn run_c_sanitized_test(client_dir: &Path, source: &str) -> Result<(), Box<dyn E
             .arg("-Werror")
             .arg("-fsanitize=address,undefined")
             .arg("-fno-omit-frame-pointer")
+            .arg("-DNO_HEAP")
+            .arg("-DNO_SYSTEM")
+            .arg("-DNO_TOKEN")
             .arg("-I")
             .arg(client_dir)
             .arg("-I")
-            .arg(temp.path())
+            .arg(caravel_include_dir)
             .arg(temp.path().join("sanitized_test.c"))
             .arg("-o")
             .arg(&binary),
@@ -946,27 +896,6 @@ fn malformed_inputs_are_total() {
         r#"import importlib.util
 import pathlib
 import sys
-import types
-
-solders = types.ModuleType("solders")
-solders.__path__ = []
-pubkey = types.ModuleType("solders.pubkey")
-instruction = types.ModuleType("solders.instruction")
-
-class Pubkey:
-    @classmethod
-    def from_string(cls, _value): return cls()
-
-class Instruction: pass
-class AccountMeta: pass
-pubkey.Pubkey = Pubkey
-instruction.Instruction = Instruction
-instruction.AccountMeta = AccountMeta
-sys.modules.update({
-    "solders": solders,
-    "solders.pubkey": pubkey,
-    "solders.instruction": instruction,
-})
 
 spec = importlib.util.spec_from_file_location("client", pathlib.Path("client.py"))
 client = importlib.util.module_from_spec(spec)
