@@ -1,5 +1,5 @@
 use {
-    super::model::{ProgramModel, WireType},
+    super::model::{CodegenResult, ProgramFeatures, ProgramModel, WireType},
     crate::types::{
         AccountFlag, Idl, IdlAccountNode, IdlCodec, IdlFieldDef, IdlLayout, IdlPdaSeed,
         IdlResolver, IdlType,
@@ -46,15 +46,15 @@ pub fn generate_cargo_toml_for_program(model: &ProgramModel<'_>) -> String {
 
 /// Check whether the IDL has any resolvable PDA annotations.
 pub fn has_pdas(idl: &Idl) -> bool {
-    ProgramModel::new(idl).features.has_pdas
+    ProgramFeatures::from_idl(idl).has_pdas
 }
 
 /// Generate a standalone Rust client crate from the IDL.
 ///
 /// Returns a `Vec<(relative_path, file_content)>` where paths are relative to
 /// the client crate `src/` directory.
-pub fn generate_client(idl: &Idl) -> Vec<(String, String)> {
-    let model = ProgramModel::new(idl);
+pub fn generate_client(idl: &Idl) -> CodegenResult<Vec<(String, String)>> {
+    let model = ProgramModel::try_new(idl)?;
     let mut files: Vec<(String, String)> = Vec::new();
 
     // Build type map for custom data types.
@@ -132,14 +132,17 @@ pub fn generate_client(idl: &Idl) -> Vec<(String, String)> {
     }
 
     if has_errors {
-        files.push(("errors.rs".to_string(), emit_errors(idl)));
+        files.push((
+            "errors.rs".to_string(),
+            emit_errors(idl, model.identity.program_name.as_str()),
+        ));
     }
 
     if has_pdas {
         files.push(("pda.rs".to_string(), emit_pda(&pdas)));
     }
 
-    files
+    Ok(files)
 }
 
 fn emit_lib_rs(
@@ -1021,11 +1024,10 @@ fn emit_single_type(
     out
 }
 
-fn emit_errors(idl: &Idl) -> String {
-    let model = ProgramModel::new(idl);
+fn emit_errors(idl: &Idl, program_name: &str) -> String {
     let mut out = String::new();
 
-    let enum_name = format!("{}Error", snake_to_pascal(&model.identity.program_name));
+    let enum_name = format!("{}Error", snake_to_pascal(program_name));
 
     out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n");
     out.push_str("#[repr(u32)]\n");

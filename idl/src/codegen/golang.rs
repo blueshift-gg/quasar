@@ -1,5 +1,5 @@
 use {
-    super::model::{go_field_path, ProgramModel},
+    super::model::{go_field_path, reject_generics, CodegenResult, ProgramModel},
     crate::types::{Idl, IdlArg, IdlCodec, IdlPdaSeed, IdlResolver, IdlType, IdlTypeDef},
     quasar_schema::{snake_to_pascal, to_camel_case},
     std::fmt::Write,
@@ -9,8 +9,9 @@ use {
 ///
 /// Uses `gagliardetto/solana-go` for Solana types (PublicKey, Instruction,
 /// AccountMeta).
-pub fn generate_go_client(idl: &Idl) -> String {
-    let model = ProgramModel::new(idl);
+pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
+    let model = ProgramModel::try_new(idl)?;
+    reject_generics(idl, "Go")?;
     let pkg_name = model.identity.go_package.clone();
     let mut out = String::new();
 
@@ -556,11 +557,11 @@ pub fn generate_go_client(idl: &Idl) -> String {
         out.push_str("}\n\n");
     }
 
-    out
+    Ok(out)
 }
 
 pub fn generate_go_mod_for_program(model: &ProgramModel<'_>) -> String {
-    generate_go_mod(&model.identity.go_package)
+    generate_go_mod(model.identity.go_package.as_str())
 }
 
 /// Generate go.mod content.

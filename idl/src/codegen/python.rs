@@ -1,5 +1,5 @@
 use {
-    super::model::{python_field_path, ProgramModel},
+    super::model::{python_field_path, reject_generics, CodegenResult, ProgramModel},
     crate::types::{Idl, IdlArg, IdlCodec, IdlPdaSeed, IdlResolver, IdlType, IdlTypeDef},
     quasar_schema::{camel_to_snake, snake_to_pascal, to_screaming_snake},
     std::fmt::Write,
@@ -9,8 +9,9 @@ use {
 ///
 /// Uses `solders` for Solana types (Pubkey, Instruction, AccountMeta)
 /// and `struct` for binary serialization.
-pub fn generate_python_client(idl: &Idl) -> String {
-    let model = ProgramModel::new(idl);
+pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
+    let model = ProgramModel::try_new(idl)?;
+    reject_generics(idl, "Python")?;
     let mut out = String::new();
 
     // Module docstring
@@ -503,7 +504,7 @@ pub fn generate_python_client(idl: &Idl) -> String {
         out.push_str("        return decode_event(data)\n\n");
     }
 
-    out
+    Ok(out)
 }
 
 fn python_type(ty: &IdlType) -> String {
