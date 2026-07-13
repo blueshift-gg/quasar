@@ -278,8 +278,18 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
             .filter(|(display, _)| !forced.contains(display))
             .collect();
 
+        let hint = format!(
+            "  {} {} {} {} {} {} {}",
+            style::dim("Use"),
+            style::prompt_accent("\u{2191}/\u{2193}"), // up/down arrow keys
+            style::dim("to move,"),
+            style::prompt_accent("space"),
+            style::dim("to select,"),
+            style::prompt_accent("enter"),
+            style::dim("to confirm"),
+        );
         let prompt = format!(
-            "Additional client languages ({} always included)",
+            "Additional client languages ({} always included):\n{hint}",
             forced.join(", ")
         );
 

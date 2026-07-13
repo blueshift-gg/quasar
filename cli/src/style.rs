@@ -74,6 +74,15 @@ pub fn color(code: u8, s: &str) -> String {
     }
 }
 
+/// Accent text to highlight interactive prompt keywords/controls.
+pub fn prompt_accent(s: &str) -> String {
+    if use_color() {
+        format!("\x1b[33m{s}\x1b[0m")
+    } else {
+        s.to_string()
+    }
+}
+
 /// Format a byte size in a human-readable way.
 pub fn human_size(bytes: u64) -> String {
     if bytes < 1024 {
