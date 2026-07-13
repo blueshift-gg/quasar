@@ -29,12 +29,16 @@
 //!   compile time. Account data is checked against the expected discriminator
 //!   before access.
 //!
-//! Every `unsafe` block reachable off-chain is validated by Miri under Tree
-//! Borrows with symbolic alignment checking. Miri cannot execute the SBF-only
-//! paths, which are therefore excluded and covered by the on-chain test suite
-//! instead: the syscall wrappers gated on `target_os = "solana"` (`pda`, `log`,
-//! `sysvars`, and the `cpi` `invoke_raw`/return-data paths) and the generated
-//! `extern "C"` program entrypoint.
+//! Required CI runs the dedicated `quasar-lang` Miri integration target under
+//! Tree Borrows, symbolic alignment checking, and strict provenance. That suite
+//! exercises the off-chain unsafe paths represented in `tests/miri.rs`; it is
+//! not a complete proof over every reachable `unsafe` operation.
+//!
+//! Miri cannot execute the SBF-only syscall wrappers gated on
+//! `target_os = "solana"` (`pda`, `log`, `sysvars`, and the `cpi`
+//! `invoke_raw`/return-data paths) or the generated `extern "C"` program
+//! entrypoint. The on-chain integration suite exercises additional SBF
+//! behavior, but it is not an undefined-behavior proof for every excluded path.
 
 #![no_std]
 #![warn(missing_docs)]
