@@ -1,0 +1,15 @@
+pub mod quasar_profile
+pub struct quasar_profile::ProfileCommand
+pub quasar_profile::ProfileCommand::diff_program: core::option::Option<alloc::string::String>
+pub quasar_profile::ProfileCommand::elf_path: core::option::Option<std::path::PathBuf>
+pub quasar_profile::ProfileCommand::expand: bool
+pub quasar_profile::ProfileCommand::share: bool
+impl core::marker::Freeze for quasar_profile::ProfileCommand
+impl core::marker::Send for quasar_profile::ProfileCommand
+impl core::marker::Sync for quasar_profile::ProfileCommand
+impl core::marker::Unpin for quasar_profile::ProfileCommand
+impl core::marker::UnsafeUnpin for quasar_profile::ProfileCommand
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_profile::ProfileCommand
+impl core::panic::unwind_safe::UnwindSafe for quasar_profile::ProfileCommand
+pub const quasar_profile::PROFILE_DIR: &str
+pub fn quasar_profile::run(quasar_profile::ProfileCommand)

@@ -1,0 +1,783 @@
+pub mod quasar_cli
+pub mod quasar_cli::build
+pub fn quasar_cli::build::profile_build() -> core::result::Result<std::path::PathBuf, quasar_cli::error::CliError>
+pub fn quasar_cli::build::run(bool, bool, bool, core::option::Option<alloc::string::String>) -> quasar_cli::error::CliResult
+pub mod quasar_cli::cfg
+pub fn quasar_cli::cfg::run(core::option::Option<quasar_cli::ConfigAction>) -> quasar_cli::error::CliResult
+pub mod quasar_cli::clean
+pub fn quasar_cli::clean::run(bool) -> quasar_cli::error::CliResult
+pub mod quasar_cli::client
+pub fn quasar_cli::client::generate_clients(&quasar_idl_schema::root::Idl, &[&str], &std::path::Path) -> quasar_cli::error::CliResult
+pub fn quasar_cli::client::run(quasar_cli::ClientCommand) -> quasar_cli::error::CliResult
+pub mod quasar_cli::config
+pub struct quasar_cli::config::ClientsConfig
+pub quasar_cli::config::ClientsConfig::languages: alloc::vec::Vec<alloc::string::String>
+pub quasar_cli::config::ClientsConfig::path: std::path::PathBuf
+impl core::fmt::Debug for quasar_cli::config::ClientsConfig
+pub fn quasar_cli::config::ClientsConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for quasar_cli::config::ClientsConfig
+pub fn quasar_cli::config::ClientsConfig::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for quasar_cli::config::ClientsConfig
+impl core::marker::Send for quasar_cli::config::ClientsConfig
+impl core::marker::Sync for quasar_cli::config::ClientsConfig
+impl core::marker::Unpin for quasar_cli::config::ClientsConfig
+impl core::marker::UnsafeUnpin for quasar_cli::config::ClientsConfig
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::config::ClientsConfig
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::config::ClientsConfig
+pub struct quasar_cli::config::CommandSpec
+pub quasar_cli::config::CommandSpec::args: alloc::vec::Vec<alloc::string::String>
+pub quasar_cli::config::CommandSpec::program: alloc::string::String
+impl quasar_cli::config::CommandSpec
+pub fn quasar_cli::config::CommandSpec::display(&self) -> alloc::string::String
+pub fn quasar_cli::config::CommandSpec::new(impl core::convert::Into<alloc::string::String>, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
+pub fn quasar_cli::config::CommandSpec::parse(&str) -> core::result::Result<Self, quasar_cli::error::CliError>
+impl core::clone::Clone for quasar_cli::config::CommandSpec
+pub fn quasar_cli::config::CommandSpec::clone(&self) -> quasar_cli::config::CommandSpec
+impl core::cmp::Eq for quasar_cli::config::CommandSpec
+impl core::cmp::PartialEq for quasar_cli::config::CommandSpec
+pub fn quasar_cli::config::CommandSpec::eq(&self, &quasar_cli::config::CommandSpec) -> bool
+impl core::fmt::Debug for quasar_cli::config::CommandSpec
+pub fn quasar_cli::config::CommandSpec::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for quasar_cli::config::CommandSpec
+impl serde_core::ser::Serialize for quasar_cli::config::CommandSpec
+pub fn quasar_cli::config::CommandSpec::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for quasar_cli::config::CommandSpec
+pub fn quasar_cli::config::CommandSpec::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for quasar_cli::config::CommandSpec
+impl core::marker::Send for quasar_cli::config::CommandSpec
+impl core::marker::Sync for quasar_cli::config::CommandSpec
+impl core::marker::Unpin for quasar_cli::config::CommandSpec
+impl core::marker::UnsafeUnpin for quasar_cli::config::CommandSpec
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::config::CommandSpec
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::config::CommandSpec
+pub struct quasar_cli::config::GlobalConfig
+pub quasar_cli::config::GlobalConfig::defaults: quasar_cli::config::GlobalDefaults
+pub quasar_cli::config::GlobalConfig::ui: quasar_cli::config::UiConfig
+impl quasar_cli::config::GlobalConfig
+pub fn quasar_cli::config::GlobalConfig::load() -> core::result::Result<Self, quasar_cli::error::CliError>
+pub fn quasar_cli::config::GlobalConfig::load_from_str(&str) -> core::result::Result<Self, quasar_cli::error::CliError>
+pub fn quasar_cli::config::GlobalConfig::path() -> std::path::PathBuf
+pub fn quasar_cli::config::GlobalConfig::save(&self) -> core::result::Result<(), quasar_cli::error::CliError>
+pub fn quasar_cli::config::GlobalConfig::to_toml(&self) -> alloc::string::String
+impl core::default::Default for quasar_cli::config::GlobalConfig
+pub fn quasar_cli::config::GlobalConfig::default() -> quasar_cli::config::GlobalConfig
+impl core::fmt::Debug for quasar_cli::config::GlobalConfig
+pub fn quasar_cli::config::GlobalConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl serde_core::ser::Serialize for quasar_cli::config::GlobalConfig
+pub fn quasar_cli::config::GlobalConfig::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for quasar_cli::config::GlobalConfig
+pub fn quasar_cli::config::GlobalConfig::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for quasar_cli::config::GlobalConfig
+impl core::marker::Send for quasar_cli::config::GlobalConfig
+impl core::marker::Sync for quasar_cli::config::GlobalConfig
+impl core::marker::Unpin for quasar_cli::config::GlobalConfig
+impl core::marker::UnsafeUnpin for quasar_cli::config::GlobalConfig
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::config::GlobalConfig
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::config::GlobalConfig
+pub struct quasar_cli::config::GlobalDefaults
+pub quasar_cli::config::GlobalDefaults::git: core::option::Option<alloc::string::String>
+pub quasar_cli::config::GlobalDefaults::package_manager: core::option::Option<alloc::string::String>
+pub quasar_cli::config::GlobalDefaults::rust_framework: core::option::Option<alloc::string::String>
+pub quasar_cli::config::GlobalDefaults::template: core::option::Option<alloc::string::String>
+pub quasar_cli::config::GlobalDefaults::test_language: core::option::Option<alloc::string::String>
+pub quasar_cli::config::GlobalDefaults::toolchain: core::option::Option<alloc::string::String>
+pub quasar_cli::config::GlobalDefaults::ts_sdk: core::option::Option<alloc::string::String>
+impl core::default::Default for quasar_cli::config::GlobalDefaults
+pub fn quasar_cli::config::GlobalDefaults::default() -> quasar_cli::config::GlobalDefaults
+impl core::fmt::Debug for quasar_cli::config::GlobalDefaults
+pub fn quasar_cli::config::GlobalDefaults::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl serde_core::ser::Serialize for quasar_cli::config::GlobalDefaults
+pub fn quasar_cli::config::GlobalDefaults::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for quasar_cli::config::GlobalDefaults
+pub fn quasar_cli::config::GlobalDefaults::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for quasar_cli::config::GlobalDefaults
+impl core::marker::Send for quasar_cli::config::GlobalDefaults
+impl core::marker::Sync for quasar_cli::config::GlobalDefaults
+impl core::marker::Unpin for quasar_cli::config::GlobalDefaults
+impl core::marker::UnsafeUnpin for quasar_cli::config::GlobalDefaults
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::config::GlobalDefaults
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::config::GlobalDefaults
+pub struct quasar_cli::config::ProjectConfig
+pub quasar_cli::config::ProjectConfig::name: alloc::string::String
+impl core::fmt::Debug for quasar_cli::config::ProjectConfig
+pub fn quasar_cli::config::ProjectConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for quasar_cli::config::ProjectConfig
+pub fn quasar_cli::config::ProjectConfig::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for quasar_cli::config::ProjectConfig
+impl core::marker::Send for quasar_cli::config::ProjectConfig
+impl core::marker::Sync for quasar_cli::config::ProjectConfig
+impl core::marker::Unpin for quasar_cli::config::ProjectConfig
+impl core::marker::UnsafeUnpin for quasar_cli::config::ProjectConfig
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::config::ProjectConfig
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::config::ProjectConfig
+pub struct quasar_cli::config::QuasarConfig
+pub quasar_cli::config::QuasarConfig::clients: quasar_cli::config::ClientsConfig
+pub quasar_cli::config::QuasarConfig::project: quasar_cli::config::ProjectConfig
+pub quasar_cli::config::QuasarConfig::testing: quasar_cli::config::TestingConfig
+pub quasar_cli::config::QuasarConfig::toolchain: quasar_cli::config::ToolchainConfig
+impl quasar_cli::config::QuasarConfig
+pub fn quasar_cli::config::QuasarConfig::client_languages(&self) -> alloc::vec::Vec<&str>
+pub fn quasar_cli::config::QuasarConfig::client_path(&self) -> std::path::PathBuf
+pub fn quasar_cli::config::QuasarConfig::has_rust_tests(&self) -> bool
+pub fn quasar_cli::config::QuasarConfig::has_typescript_tests(&self) -> bool
+pub fn quasar_cli::config::QuasarConfig::is_solana_toolchain(&self) -> bool
+pub fn quasar_cli::config::QuasarConfig::load() -> core::result::Result<Self, quasar_cli::error::CliError>
+pub fn quasar_cli::config::QuasarConfig::load_from(&std::path::Path) -> core::result::Result<Self, quasar_cli::error::CliError>
+pub fn quasar_cli::config::QuasarConfig::module_name(&self) -> alloc::string::String
+impl core::fmt::Debug for quasar_cli::config::QuasarConfig
+pub fn quasar_cli::config::QuasarConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for quasar_cli::config::QuasarConfig
+pub fn quasar_cli::config::QuasarConfig::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for quasar_cli::config::QuasarConfig
+impl core::marker::Send for quasar_cli::config::QuasarConfig
+impl core::marker::Sync for quasar_cli::config::QuasarConfig
+impl core::marker::Unpin for quasar_cli::config::QuasarConfig
+impl core::marker::UnsafeUnpin for quasar_cli::config::QuasarConfig
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::config::QuasarConfig
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::config::QuasarConfig
+pub struct quasar_cli::config::RustTestingConfig
+pub quasar_cli::config::RustTestingConfig::framework: alloc::string::String
+pub quasar_cli::config::RustTestingConfig::test: quasar_cli::config::CommandSpec
+impl core::fmt::Debug for quasar_cli::config::RustTestingConfig
+pub fn quasar_cli::config::RustTestingConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for quasar_cli::config::RustTestingConfig
+pub fn quasar_cli::config::RustTestingConfig::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for quasar_cli::config::RustTestingConfig
+impl core::marker::Send for quasar_cli::config::RustTestingConfig
+impl core::marker::Sync for quasar_cli::config::RustTestingConfig
+impl core::marker::Unpin for quasar_cli::config::RustTestingConfig
+impl core::marker::UnsafeUnpin for quasar_cli::config::RustTestingConfig
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::config::RustTestingConfig
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::config::RustTestingConfig
+pub struct quasar_cli::config::TestingConfig
+pub quasar_cli::config::TestingConfig::language: alloc::string::String
+pub quasar_cli::config::TestingConfig::rust: core::option::Option<quasar_cli::config::RustTestingConfig>
+pub quasar_cli::config::TestingConfig::typescript: core::option::Option<quasar_cli::config::TypeScriptTestingConfig>
+impl core::fmt::Debug for quasar_cli::config::TestingConfig
+pub fn quasar_cli::config::TestingConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for quasar_cli::config::TestingConfig
+pub fn quasar_cli::config::TestingConfig::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for quasar_cli::config::TestingConfig
+impl core::marker::Send for quasar_cli::config::TestingConfig
+impl core::marker::Sync for quasar_cli::config::TestingConfig
+impl core::marker::Unpin for quasar_cli::config::TestingConfig
+impl core::marker::UnsafeUnpin for quasar_cli::config::TestingConfig
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::config::TestingConfig
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::config::TestingConfig
+pub struct quasar_cli::config::ToolchainConfig
+pub quasar_cli::config::ToolchainConfig::toolchain_type: alloc::string::String
+impl core::fmt::Debug for quasar_cli::config::ToolchainConfig
+pub fn quasar_cli::config::ToolchainConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for quasar_cli::config::ToolchainConfig
+pub fn quasar_cli::config::ToolchainConfig::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for quasar_cli::config::ToolchainConfig
+impl core::marker::Send for quasar_cli::config::ToolchainConfig
+impl core::marker::Sync for quasar_cli::config::ToolchainConfig
+impl core::marker::Unpin for quasar_cli::config::ToolchainConfig
+impl core::marker::UnsafeUnpin for quasar_cli::config::ToolchainConfig
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::config::ToolchainConfig
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::config::ToolchainConfig
+pub struct quasar_cli::config::TypeScriptTestingConfig
+pub quasar_cli::config::TypeScriptTestingConfig::framework: alloc::string::String
+pub quasar_cli::config::TypeScriptTestingConfig::install: quasar_cli::config::CommandSpec
+pub quasar_cli::config::TypeScriptTestingConfig::sdk: alloc::string::String
+pub quasar_cli::config::TypeScriptTestingConfig::test: quasar_cli::config::CommandSpec
+impl core::fmt::Debug for quasar_cli::config::TypeScriptTestingConfig
+pub fn quasar_cli::config::TypeScriptTestingConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'de> serde_core::de::Deserialize<'de> for quasar_cli::config::TypeScriptTestingConfig
+pub fn quasar_cli::config::TypeScriptTestingConfig::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for quasar_cli::config::TypeScriptTestingConfig
+impl core::marker::Send for quasar_cli::config::TypeScriptTestingConfig
+impl core::marker::Sync for quasar_cli::config::TypeScriptTestingConfig
+impl core::marker::Unpin for quasar_cli::config::TypeScriptTestingConfig
+impl core::marker::UnsafeUnpin for quasar_cli::config::TypeScriptTestingConfig
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::config::TypeScriptTestingConfig
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::config::TypeScriptTestingConfig
+pub struct quasar_cli::config::UiConfig
+pub quasar_cli::config::UiConfig::animation: bool
+pub quasar_cli::config::UiConfig::color: bool
+impl core::clone::Clone for quasar_cli::config::UiConfig
+pub fn quasar_cli::config::UiConfig::clone(&self) -> quasar_cli::config::UiConfig
+impl core::default::Default for quasar_cli::config::UiConfig
+pub fn quasar_cli::config::UiConfig::default() -> Self
+impl core::fmt::Debug for quasar_cli::config::UiConfig
+pub fn quasar_cli::config::UiConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for quasar_cli::config::UiConfig
+impl serde_core::ser::Serialize for quasar_cli::config::UiConfig
+pub fn quasar_cli::config::UiConfig::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for quasar_cli::config::UiConfig
+pub fn quasar_cli::config::UiConfig::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for quasar_cli::config::UiConfig
+impl core::marker::Send for quasar_cli::config::UiConfig
+impl core::marker::Sync for quasar_cli::config::UiConfig
+impl core::marker::Unpin for quasar_cli::config::UiConfig
+impl core::marker::UnsafeUnpin for quasar_cli::config::UiConfig
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::config::UiConfig
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::config::UiConfig
+pub fn quasar_cli::config::resolve_client_path() -> core::result::Result<std::path::PathBuf, quasar_cli::error::CliError>
+pub mod quasar_cli::deploy
+pub fn quasar_cli::deploy::run(core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<std::path::PathBuf>, core::option::Option<alloc::string::String>, bool) -> quasar_cli::error::CliResult
+pub mod quasar_cli::dump
+pub fn quasar_cli::dump::run(core::option::Option<std::path::PathBuf>, core::option::Option<alloc::string::String>, bool) -> quasar_cli::error::CliResult
+pub mod quasar_cli::error
+pub enum quasar_cli::error::CliError
+pub quasar_cli::error::CliError::IoError(std::io::error::Error)
+pub quasar_cli::error::CliError::IoPath
+pub quasar_cli::error::CliError::IoPath::action: &'static str
+pub quasar_cli::error::CliError::IoPath::path: std::path::PathBuf
+pub quasar_cli::error::CliError::IoPath::source: std::io::error::Error
+pub quasar_cli::error::CliError::JsonParse
+pub quasar_cli::error::CliError::JsonParse::context: alloc::string::String
+pub quasar_cli::error::CliError::JsonParse::source: serde_json::error::Error
+pub quasar_cli::error::CliError::JsonSerialize
+pub quasar_cli::error::CliError::JsonSerialize::context: &'static str
+pub quasar_cli::error::CliError::JsonSerialize::source: serde_json::error::Error
+pub quasar_cli::error::CliError::Message(alloc::string::String)
+pub quasar_cli::error::CliError::ProcessFailure
+pub quasar_cli::error::CliError::ProcessFailure::code: i32
+pub quasar_cli::error::CliError::ProcessFailure::message: alloc::string::String
+pub quasar_cli::error::CliError::Prompt(dialoguer::error::Error)
+pub quasar_cli::error::CliError::TomlParseError(toml::de::Error)
+pub quasar_cli::error::CliError::TomlSerError(toml::ser::Error)
+impl quasar_cli::error::CliError
+pub fn quasar_cli::error::CliError::exit_code(&self) -> i32
+pub fn quasar_cli::error::CliError::io_path(&'static str, impl core::convert::AsRef<std::path::Path>, std::io::error::Error) -> Self
+pub fn quasar_cli::error::CliError::json_parse(impl core::convert::Into<alloc::string::String>, serde_json::error::Error) -> Self
+pub fn quasar_cli::error::CliError::json_serialize(&'static str, serde_json::error::Error) -> Self
+pub fn quasar_cli::error::CliError::message(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn quasar_cli::error::CliError::process_failure(impl core::convert::Into<alloc::string::String>, i32) -> Self
+impl core::convert::From<dialoguer::error::Error> for quasar_cli::error::CliError
+pub fn quasar_cli::error::CliError::from(dialoguer::error::Error) -> Self
+impl core::convert::From<std::io::error::Error> for quasar_cli::error::CliError
+pub fn quasar_cli::error::CliError::from(std::io::error::Error) -> Self
+impl core::convert::From<toml::de::Error> for quasar_cli::error::CliError
+pub fn quasar_cli::error::CliError::from(toml::de::Error) -> Self
+impl core::convert::From<toml::ser::Error> for quasar_cli::error::CliError
+pub fn quasar_cli::error::CliError::from(toml::ser::Error) -> Self
+impl core::error::Error for quasar_cli::error::CliError
+pub fn quasar_cli::error::CliError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for quasar_cli::error::CliError
+pub fn quasar_cli::error::CliError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for quasar_cli::error::CliError
+pub fn quasar_cli::error::CliError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::error::CliError
+impl core::marker::Send for quasar_cli::error::CliError
+impl core::marker::Sync for quasar_cli::error::CliError
+impl core::marker::Unpin for quasar_cli::error::CliError
+impl core::marker::UnsafeUnpin for quasar_cli::error::CliError
+impl !core::panic::unwind_safe::RefUnwindSafe for quasar_cli::error::CliError
+impl !core::panic::unwind_safe::UnwindSafe for quasar_cli::error::CliError
+pub type quasar_cli::error::CliResult = core::result::Result<(), quasar_cli::error::CliError>
+pub mod quasar_cli::idl
+pub fn quasar_cli::idl::build(&std::path::Path) -> core::result::Result<quasar_idl_schema::root::Idl, quasar_cli::error::CliError>
+pub fn quasar_cli::idl::generate(&std::path::Path, &[&str], &std::path::Path) -> core::result::Result<quasar_idl_schema::root::Idl, quasar_cli::error::CliError>
+pub fn quasar_cli::idl::run(quasar_cli::IdlCommand) -> quasar_cli::error::CliResult
+pub mod quasar_cli::init
+pub fn quasar_cli::init::run(quasar_cli::InitCommand) -> quasar_cli::error::CliResult
+pub mod quasar_cli::keys
+pub fn quasar_cli::keys::list() -> quasar_cli::error::CliResult
+pub fn quasar_cli::keys::new(bool) -> quasar_cli::error::CliResult
+pub fn quasar_cli::keys::sync() -> quasar_cli::error::CliResult
+pub mod quasar_cli::lint
+pub fn quasar_cli::lint::run(quasar_cli::LintCommand) -> quasar_cli::error::CliResult
+pub fn quasar_cli::lint::run_for_build(&std::path::Path, &quasar_idl_schema::root::Idl) -> quasar_cli::error::CliResult
+pub mod quasar_cli::new
+pub fn quasar_cli::new::run_error(&str) -> quasar_cli::error::CliResult
+pub fn quasar_cli::new::run_instruction(&str) -> quasar_cli::error::CliResult
+pub fn quasar_cli::new::run_state(&str) -> quasar_cli::error::CliResult
+pub mod quasar_cli::style
+pub struct quasar_cli::style::Progress
+impl quasar_cli::style::Progress
+pub fn quasar_cli::style::Progress::clear(&mut self)
+pub fn quasar_cli::style::Progress::done(&mut self, impl core::convert::Into<alloc::string::String>)
+pub fn quasar_cli::style::Progress::new(bool) -> Self
+pub fn quasar_cli::style::Progress::step(&mut self, impl core::convert::Into<alloc::string::String>)
+impl core::ops::drop::Drop for quasar_cli::style::Progress
+pub fn quasar_cli::style::Progress::drop(&mut self)
+impl core::marker::Freeze for quasar_cli::style::Progress
+impl core::marker::Send for quasar_cli::style::Progress
+impl core::marker::Sync for quasar_cli::style::Progress
+impl core::marker::Unpin for quasar_cli::style::Progress
+impl core::marker::UnsafeUnpin for quasar_cli::style::Progress
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::style::Progress
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::style::Progress
+pub fn quasar_cli::style::bold(&str) -> alloc::string::String
+pub fn quasar_cli::style::color(u8, &str) -> alloc::string::String
+pub fn quasar_cli::style::dim(&str) -> alloc::string::String
+pub fn quasar_cli::style::fail(&str) -> alloc::string::String
+pub fn quasar_cli::style::human_duration(core::time::Duration) -> alloc::string::String
+pub fn quasar_cli::style::human_size(u64) -> alloc::string::String
+pub fn quasar_cli::style::init(bool)
+pub fn quasar_cli::style::spinner(&str) -> indicatif::progress_bar::ProgressBar
+pub fn quasar_cli::style::step(&str) -> alloc::string::String
+pub fn quasar_cli::style::success(&str) -> alloc::string::String
+pub fn quasar_cli::style::warn(&str) -> alloc::string::String
+pub mod quasar_cli::test
+pub fn quasar_cli::test::run(bool, bool, core::option::Option<alloc::string::String>, bool, bool, core::option::Option<alloc::string::String>, bool) -> quasar_cli::error::CliResult
+pub mod quasar_cli::toolchain
+pub fn quasar_cli::toolchain::check_build_sbf_supports(&str) -> core::result::Result<(), alloc::string::String>
+pub fn quasar_cli::toolchain::has_sbpf_linker() -> bool
+pub mod quasar_cli::utils
+pub fn quasar_cli::utils::find_in_deploy(&str) -> core::option::Option<std::path::PathBuf>
+pub fn quasar_cli::utils::find_program_crate(&quasar_cli::config::QuasarConfig) -> std::path::PathBuf
+pub fn quasar_cli::utils::find_so(&quasar_cli::config::QuasarConfig, bool) -> core::option::Option<std::path::PathBuf>
+pub fn quasar_cli::utils::workspace_target_dir() -> std::path::PathBuf
+pub enum quasar_cli::Command
+pub quasar_cli::Command::Add(quasar_cli::AddCommand)
+pub quasar_cli::Command::Build(quasar_cli::BuildCommand)
+pub quasar_cli::Command::Clean(quasar_cli::CleanCommand)
+pub quasar_cli::Command::Client(quasar_cli::ClientCommand)
+pub quasar_cli::Command::Completions(quasar_cli::CompletionsCommand)
+pub quasar_cli::Command::Config(quasar_cli::ConfigCommand)
+pub quasar_cli::Command::Deploy(quasar_cli::DeployCommand)
+pub quasar_cli::Command::Dump(quasar_cli::DumpCommand)
+pub quasar_cli::Command::Idl(quasar_cli::IdlCommand)
+pub quasar_cli::Command::Init(quasar_cli::InitCommand)
+pub quasar_cli::Command::Keys(quasar_cli::KeysCommand)
+pub quasar_cli::Command::Lint(quasar_cli::LintCommand)
+pub quasar_cli::Command::Profile(quasar_cli::ProfileCommand)
+pub quasar_cli::Command::Test(quasar_cli::TestCommand)
+impl clap_builder::derive::FromArgMatches for quasar_cli::Command
+pub fn quasar_cli::Command::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::Command::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::Command::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::Command::update_from_arg_matches_mut<'b>(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl clap_builder::derive::Subcommand for quasar_cli::Command
+pub fn quasar_cli::Command::augment_subcommands<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::Command::augment_subcommands_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::Command::has_subcommand(&str) -> bool
+impl core::fmt::Debug for quasar_cli::Command
+pub fn quasar_cli::Command::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::Command
+impl core::marker::Send for quasar_cli::Command
+impl core::marker::Sync for quasar_cli::Command
+impl core::marker::Unpin for quasar_cli::Command
+impl core::marker::UnsafeUnpin for quasar_cli::Command
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::Command
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::Command
+pub enum quasar_cli::ConfigAction
+pub quasar_cli::ConfigAction::Get
+pub quasar_cli::ConfigAction::Get::key: alloc::string::String
+pub quasar_cli::ConfigAction::List
+pub quasar_cli::ConfigAction::Reset
+pub quasar_cli::ConfigAction::Set
+pub quasar_cli::ConfigAction::Set::key: alloc::string::String
+pub quasar_cli::ConfigAction::Set::value: alloc::string::String
+impl clap_builder::derive::FromArgMatches for quasar_cli::ConfigAction
+pub fn quasar_cli::ConfigAction::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::ConfigAction::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::ConfigAction::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::ConfigAction::update_from_arg_matches_mut<'b>(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl clap_builder::derive::Subcommand for quasar_cli::ConfigAction
+pub fn quasar_cli::ConfigAction::augment_subcommands<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::ConfigAction::augment_subcommands_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::ConfigAction::has_subcommand(&str) -> bool
+impl core::fmt::Debug for quasar_cli::ConfigAction
+pub fn quasar_cli::ConfigAction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::ConfigAction
+impl core::marker::Send for quasar_cli::ConfigAction
+impl core::marker::Sync for quasar_cli::ConfigAction
+impl core::marker::Unpin for quasar_cli::ConfigAction
+impl core::marker::UnsafeUnpin for quasar_cli::ConfigAction
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::ConfigAction
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::ConfigAction
+pub enum quasar_cli::IdlAction
+pub quasar_cli::IdlAction::Verify
+pub quasar_cli::IdlAction::Verify::idl_path: std::path::PathBuf
+impl clap_builder::derive::FromArgMatches for quasar_cli::IdlAction
+pub fn quasar_cli::IdlAction::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::IdlAction::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::IdlAction::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::IdlAction::update_from_arg_matches_mut<'b>(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl clap_builder::derive::Subcommand for quasar_cli::IdlAction
+pub fn quasar_cli::IdlAction::augment_subcommands<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::IdlAction::augment_subcommands_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::IdlAction::has_subcommand(&str) -> bool
+impl core::fmt::Debug for quasar_cli::IdlAction
+pub fn quasar_cli::IdlAction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::IdlAction
+impl core::marker::Send for quasar_cli::IdlAction
+impl core::marker::Sync for quasar_cli::IdlAction
+impl core::marker::Unpin for quasar_cli::IdlAction
+impl core::marker::UnsafeUnpin for quasar_cli::IdlAction
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::IdlAction
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::IdlAction
+pub enum quasar_cli::KeysAction
+pub quasar_cli::KeysAction::List
+pub quasar_cli::KeysAction::New
+pub quasar_cli::KeysAction::New::force: bool
+pub quasar_cli::KeysAction::Sync
+impl clap_builder::derive::FromArgMatches for quasar_cli::KeysAction
+pub fn quasar_cli::KeysAction::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::KeysAction::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::KeysAction::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::KeysAction::update_from_arg_matches_mut<'b>(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl clap_builder::derive::Subcommand for quasar_cli::KeysAction
+pub fn quasar_cli::KeysAction::augment_subcommands<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::KeysAction::augment_subcommands_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::KeysAction::has_subcommand(&str) -> bool
+impl core::fmt::Debug for quasar_cli::KeysAction
+pub fn quasar_cli::KeysAction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::KeysAction
+impl core::marker::Send for quasar_cli::KeysAction
+impl core::marker::Sync for quasar_cli::KeysAction
+impl core::marker::Unpin for quasar_cli::KeysAction
+impl core::marker::UnsafeUnpin for quasar_cli::KeysAction
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::KeysAction
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::KeysAction
+pub struct quasar_cli::AddCommand
+pub quasar_cli::AddCommand::error: core::option::Option<alloc::string::String>
+pub quasar_cli::AddCommand::instruction: core::option::Option<alloc::string::String>
+pub quasar_cli::AddCommand::state: core::option::Option<alloc::string::String>
+impl clap_builder::derive::Args for quasar_cli::AddCommand
+pub fn quasar_cli::AddCommand::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::AddCommand::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::AddCommand::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for quasar_cli::AddCommand
+pub fn quasar_cli::AddCommand::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::AddCommand::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::AddCommand::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::AddCommand::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::fmt::Debug for quasar_cli::AddCommand
+pub fn quasar_cli::AddCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::AddCommand
+impl core::marker::Send for quasar_cli::AddCommand
+impl core::marker::Sync for quasar_cli::AddCommand
+impl core::marker::Unpin for quasar_cli::AddCommand
+impl core::marker::UnsafeUnpin for quasar_cli::AddCommand
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::AddCommand
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::AddCommand
+pub struct quasar_cli::BuildCommand
+pub quasar_cli::BuildCommand::debug: bool
+pub quasar_cli::BuildCommand::features: core::option::Option<alloc::string::String>
+pub quasar_cli::BuildCommand::verbose: bool
+pub quasar_cli::BuildCommand::watch: bool
+impl clap_builder::derive::Args for quasar_cli::BuildCommand
+pub fn quasar_cli::BuildCommand::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::BuildCommand::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::BuildCommand::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for quasar_cli::BuildCommand
+pub fn quasar_cli::BuildCommand::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::BuildCommand::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::BuildCommand::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::BuildCommand::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::default::Default for quasar_cli::BuildCommand
+pub fn quasar_cli::BuildCommand::default() -> quasar_cli::BuildCommand
+impl core::fmt::Debug for quasar_cli::BuildCommand
+pub fn quasar_cli::BuildCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::BuildCommand
+impl core::marker::Send for quasar_cli::BuildCommand
+impl core::marker::Sync for quasar_cli::BuildCommand
+impl core::marker::Unpin for quasar_cli::BuildCommand
+impl core::marker::UnsafeUnpin for quasar_cli::BuildCommand
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::BuildCommand
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::BuildCommand
+pub struct quasar_cli::CleanCommand
+pub quasar_cli::CleanCommand::all: bool
+impl clap_builder::derive::Args for quasar_cli::CleanCommand
+pub fn quasar_cli::CleanCommand::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::CleanCommand::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::CleanCommand::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for quasar_cli::CleanCommand
+pub fn quasar_cli::CleanCommand::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::CleanCommand::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::CleanCommand::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::CleanCommand::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::default::Default for quasar_cli::CleanCommand
+pub fn quasar_cli::CleanCommand::default() -> quasar_cli::CleanCommand
+impl core::fmt::Debug for quasar_cli::CleanCommand
+pub fn quasar_cli::CleanCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::CleanCommand
+impl core::marker::Send for quasar_cli::CleanCommand
+impl core::marker::Sync for quasar_cli::CleanCommand
+impl core::marker::Unpin for quasar_cli::CleanCommand
+impl core::marker::UnsafeUnpin for quasar_cli::CleanCommand
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::CleanCommand
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::CleanCommand
+pub struct quasar_cli::Cli
+pub quasar_cli::Cli::command: quasar_cli::Command
+impl clap_builder::derive::Args for quasar_cli::Cli
+pub fn quasar_cli::Cli::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::Cli::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::Cli::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::CommandFactory for quasar_cli::Cli
+pub fn quasar_cli::Cli::command<'b>() -> clap_builder::builder::command::Command
+pub fn quasar_cli::Cli::command_for_update<'b>() -> clap_builder::builder::command::Command
+impl clap_builder::derive::FromArgMatches for quasar_cli::Cli
+pub fn quasar_cli::Cli::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::Cli::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::Cli::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::Cli::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl clap_builder::derive::Parser for quasar_cli::Cli
+impl core::fmt::Debug for quasar_cli::Cli
+pub fn quasar_cli::Cli::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::Cli
+impl core::marker::Send for quasar_cli::Cli
+impl core::marker::Sync for quasar_cli::Cli
+impl core::marker::Unpin for quasar_cli::Cli
+impl core::marker::UnsafeUnpin for quasar_cli::Cli
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::Cli
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::Cli
+pub struct quasar_cli::ClientCommand
+pub quasar_cli::ClientCommand::idl_path: std::path::PathBuf
+pub quasar_cli::ClientCommand::lang: alloc::vec::Vec<alloc::string::String>
+impl clap_builder::derive::Args for quasar_cli::ClientCommand
+pub fn quasar_cli::ClientCommand::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::ClientCommand::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::ClientCommand::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for quasar_cli::ClientCommand
+pub fn quasar_cli::ClientCommand::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::ClientCommand::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::ClientCommand::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::ClientCommand::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::fmt::Debug for quasar_cli::ClientCommand
+pub fn quasar_cli::ClientCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::ClientCommand
+impl core::marker::Send for quasar_cli::ClientCommand
+impl core::marker::Sync for quasar_cli::ClientCommand
+impl core::marker::Unpin for quasar_cli::ClientCommand
+impl core::marker::UnsafeUnpin for quasar_cli::ClientCommand
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::ClientCommand
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::ClientCommand
+pub struct quasar_cli::CompletionsCommand
+pub quasar_cli::CompletionsCommand::shell: clap_complete::aot::shells::shell::Shell
+impl clap_builder::derive::Args for quasar_cli::CompletionsCommand
+pub fn quasar_cli::CompletionsCommand::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::CompletionsCommand::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::CompletionsCommand::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for quasar_cli::CompletionsCommand
+pub fn quasar_cli::CompletionsCommand::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::CompletionsCommand::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::CompletionsCommand::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::CompletionsCommand::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::fmt::Debug for quasar_cli::CompletionsCommand
+pub fn quasar_cli::CompletionsCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::CompletionsCommand
+impl core::marker::Send for quasar_cli::CompletionsCommand
+impl core::marker::Sync for quasar_cli::CompletionsCommand
+impl core::marker::Unpin for quasar_cli::CompletionsCommand
+impl core::marker::UnsafeUnpin for quasar_cli::CompletionsCommand
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::CompletionsCommand
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::CompletionsCommand
+pub struct quasar_cli::ConfigCommand
+pub quasar_cli::ConfigCommand::action: core::option::Option<quasar_cli::ConfigAction>
+impl clap_builder::derive::Args for quasar_cli::ConfigCommand
+pub fn quasar_cli::ConfigCommand::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::ConfigCommand::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::ConfigCommand::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for quasar_cli::ConfigCommand
+pub fn quasar_cli::ConfigCommand::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::ConfigCommand::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::ConfigCommand::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::ConfigCommand::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::fmt::Debug for quasar_cli::ConfigCommand
+pub fn quasar_cli::ConfigCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::ConfigCommand
+impl core::marker::Send for quasar_cli::ConfigCommand
+impl core::marker::Sync for quasar_cli::ConfigCommand
+impl core::marker::Unpin for quasar_cli::ConfigCommand
+impl core::marker::UnsafeUnpin for quasar_cli::ConfigCommand
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::ConfigCommand
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::ConfigCommand
+pub struct quasar_cli::DeployCommand
+pub quasar_cli::DeployCommand::keypair: core::option::Option<std::path::PathBuf>
+pub quasar_cli::DeployCommand::program_keypair: core::option::Option<std::path::PathBuf>
+pub quasar_cli::DeployCommand::skip_build: bool
+pub quasar_cli::DeployCommand::upgrade_authority: core::option::Option<std::path::PathBuf>
+pub quasar_cli::DeployCommand::url: core::option::Option<alloc::string::String>
+impl clap_builder::derive::Args for quasar_cli::DeployCommand
+pub fn quasar_cli::DeployCommand::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::DeployCommand::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::DeployCommand::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for quasar_cli::DeployCommand
+pub fn quasar_cli::DeployCommand::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::DeployCommand::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::DeployCommand::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::DeployCommand::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::default::Default for quasar_cli::DeployCommand
+pub fn quasar_cli::DeployCommand::default() -> quasar_cli::DeployCommand
+impl core::fmt::Debug for quasar_cli::DeployCommand
+pub fn quasar_cli::DeployCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::DeployCommand
+impl core::marker::Send for quasar_cli::DeployCommand
+impl core::marker::Sync for quasar_cli::DeployCommand
+impl core::marker::Unpin for quasar_cli::DeployCommand
+impl core::marker::UnsafeUnpin for quasar_cli::DeployCommand
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::DeployCommand
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::DeployCommand
+pub struct quasar_cli::DumpCommand
+pub quasar_cli::DumpCommand::elf_path: core::option::Option<std::path::PathBuf>
+pub quasar_cli::DumpCommand::function: core::option::Option<alloc::string::String>
+pub quasar_cli::DumpCommand::source: bool
+impl clap_builder::derive::Args for quasar_cli::DumpCommand
+pub fn quasar_cli::DumpCommand::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::DumpCommand::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::DumpCommand::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for quasar_cli::DumpCommand
+pub fn quasar_cli::DumpCommand::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::DumpCommand::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::DumpCommand::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::DumpCommand::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::clone::Clone for quasar_cli::DumpCommand
+pub fn quasar_cli::DumpCommand::clone(&self) -> quasar_cli::DumpCommand
+impl core::fmt::Debug for quasar_cli::DumpCommand
+pub fn quasar_cli::DumpCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::DumpCommand
+impl core::marker::Send for quasar_cli::DumpCommand
+impl core::marker::Sync for quasar_cli::DumpCommand
+impl core::marker::Unpin for quasar_cli::DumpCommand
+impl core::marker::UnsafeUnpin for quasar_cli::DumpCommand
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::DumpCommand
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::DumpCommand
+pub struct quasar_cli::IdlCommand
+pub quasar_cli::IdlCommand::action: core::option::Option<quasar_cli::IdlAction>
+pub quasar_cli::IdlCommand::crate_path: core::option::Option<std::path::PathBuf>
+impl clap_builder::derive::Args for quasar_cli::IdlCommand
+pub fn quasar_cli::IdlCommand::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::IdlCommand::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::IdlCommand::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for quasar_cli::IdlCommand
+pub fn quasar_cli::IdlCommand::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::IdlCommand::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::IdlCommand::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::IdlCommand::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::fmt::Debug for quasar_cli::IdlCommand
+pub fn quasar_cli::IdlCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::IdlCommand
+impl core::marker::Send for quasar_cli::IdlCommand
+impl core::marker::Sync for quasar_cli::IdlCommand
+impl core::marker::Unpin for quasar_cli::IdlCommand
+impl core::marker::UnsafeUnpin for quasar_cli::IdlCommand
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::IdlCommand
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::IdlCommand
+pub struct quasar_cli::InitCommand
+pub quasar_cli::InitCommand::name: core::option::Option<alloc::string::String>
+pub quasar_cli::InitCommand::no_git: bool
+pub quasar_cli::InitCommand::rust_framework: core::option::Option<alloc::string::String>
+pub quasar_cli::InitCommand::template: core::option::Option<alloc::string::String>
+pub quasar_cli::InitCommand::test_language: core::option::Option<alloc::string::String>
+pub quasar_cli::InitCommand::toolchain: core::option::Option<alloc::string::String>
+pub quasar_cli::InitCommand::ts_sdk: core::option::Option<alloc::string::String>
+pub quasar_cli::InitCommand::verbose: bool
+pub quasar_cli::InitCommand::yes: bool
+impl clap_builder::derive::Args for quasar_cli::InitCommand
+pub fn quasar_cli::InitCommand::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::InitCommand::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::InitCommand::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for quasar_cli::InitCommand
+pub fn quasar_cli::InitCommand::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::InitCommand::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::InitCommand::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::InitCommand::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::default::Default for quasar_cli::InitCommand
+pub fn quasar_cli::InitCommand::default() -> quasar_cli::InitCommand
+impl core::fmt::Debug for quasar_cli::InitCommand
+pub fn quasar_cli::InitCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::InitCommand
+impl core::marker::Send for quasar_cli::InitCommand
+impl core::marker::Sync for quasar_cli::InitCommand
+impl core::marker::Unpin for quasar_cli::InitCommand
+impl core::marker::UnsafeUnpin for quasar_cli::InitCommand
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::InitCommand
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::InitCommand
+pub struct quasar_cli::KeysCommand
+pub quasar_cli::KeysCommand::action: quasar_cli::KeysAction
+impl clap_builder::derive::Args for quasar_cli::KeysCommand
+pub fn quasar_cli::KeysCommand::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::KeysCommand::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::KeysCommand::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for quasar_cli::KeysCommand
+pub fn quasar_cli::KeysCommand::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::KeysCommand::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::KeysCommand::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::KeysCommand::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::fmt::Debug for quasar_cli::KeysCommand
+pub fn quasar_cli::KeysCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::KeysCommand
+impl core::marker::Send for quasar_cli::KeysCommand
+impl core::marker::Sync for quasar_cli::KeysCommand
+impl core::marker::Unpin for quasar_cli::KeysCommand
+impl core::marker::UnsafeUnpin for quasar_cli::KeysCommand
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::KeysCommand
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::KeysCommand
+pub struct quasar_cli::LintCommand
+pub quasar_cli::LintCommand::no_diff: bool
+pub quasar_cli::LintCommand::strict: bool
+pub quasar_cli::LintCommand::update_lock: bool
+impl clap_builder::derive::Args for quasar_cli::LintCommand
+pub fn quasar_cli::LintCommand::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::LintCommand::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::LintCommand::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for quasar_cli::LintCommand
+pub fn quasar_cli::LintCommand::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::LintCommand::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::LintCommand::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::LintCommand::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::default::Default for quasar_cli::LintCommand
+pub fn quasar_cli::LintCommand::default() -> quasar_cli::LintCommand
+impl core::fmt::Debug for quasar_cli::LintCommand
+pub fn quasar_cli::LintCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::LintCommand
+impl core::marker::Send for quasar_cli::LintCommand
+impl core::marker::Sync for quasar_cli::LintCommand
+impl core::marker::Unpin for quasar_cli::LintCommand
+impl core::marker::UnsafeUnpin for quasar_cli::LintCommand
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::LintCommand
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::LintCommand
+pub struct quasar_cli::ProfileCommand
+pub quasar_cli::ProfileCommand::diff_program: core::option::Option<alloc::string::String>
+pub quasar_cli::ProfileCommand::elf_path: core::option::Option<std::path::PathBuf>
+pub quasar_cli::ProfileCommand::expand: bool
+pub quasar_cli::ProfileCommand::share: bool
+pub quasar_cli::ProfileCommand::watch: bool
+impl clap_builder::derive::Args for quasar_cli::ProfileCommand
+pub fn quasar_cli::ProfileCommand::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::ProfileCommand::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::ProfileCommand::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for quasar_cli::ProfileCommand
+pub fn quasar_cli::ProfileCommand::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::ProfileCommand::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::ProfileCommand::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::ProfileCommand::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::clone::Clone for quasar_cli::ProfileCommand
+pub fn quasar_cli::ProfileCommand::clone(&self) -> quasar_cli::ProfileCommand
+impl core::fmt::Debug for quasar_cli::ProfileCommand
+pub fn quasar_cli::ProfileCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::ProfileCommand
+impl core::marker::Send for quasar_cli::ProfileCommand
+impl core::marker::Sync for quasar_cli::ProfileCommand
+impl core::marker::Unpin for quasar_cli::ProfileCommand
+impl core::marker::UnsafeUnpin for quasar_cli::ProfileCommand
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::ProfileCommand
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::ProfileCommand
+pub struct quasar_cli::TestCommand
+pub quasar_cli::TestCommand::debug: bool
+pub quasar_cli::TestCommand::features: core::option::Option<alloc::string::String>
+pub quasar_cli::TestCommand::filter: core::option::Option<alloc::string::String>
+pub quasar_cli::TestCommand::no_build: bool
+pub quasar_cli::TestCommand::show_output: bool
+pub quasar_cli::TestCommand::verbose: bool
+pub quasar_cli::TestCommand::watch: bool
+impl clap_builder::derive::Args for quasar_cli::TestCommand
+pub fn quasar_cli::TestCommand::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::TestCommand::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::TestCommand::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for quasar_cli::TestCommand
+pub fn quasar_cli::TestCommand::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::TestCommand::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::TestCommand::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::TestCommand::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::default::Default for quasar_cli::TestCommand
+pub fn quasar_cli::TestCommand::default() -> quasar_cli::TestCommand
+impl core::fmt::Debug for quasar_cli::TestCommand
+pub fn quasar_cli::TestCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::TestCommand
+impl core::marker::Send for quasar_cli::TestCommand
+impl core::marker::Sync for quasar_cli::TestCommand
+impl core::marker::Unpin for quasar_cli::TestCommand
+impl core::marker::UnsafeUnpin for quasar_cli::TestCommand
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::TestCommand
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::TestCommand
+pub fn quasar_cli::print_help()
+pub fn quasar_cli::run(quasar_cli::Cli) -> quasar_cli::error::CliResult
+pub type quasar_cli::CliResult = core::result::Result<(), quasar_cli::error::CliError>

@@ -1,0 +1,519 @@
+pub mod quasar_idl
+pub mod quasar_idl::codegen
+pub mod quasar_idl::codegen::c
+pub fn quasar_idl::codegen::c::generate_c_client(&quasar_idl_schema::root::Idl) -> quasar_idl::codegen::model::CodegenResult<alloc::string::String>
+pub mod quasar_idl::codegen::golang
+pub fn quasar_idl::codegen::golang::generate_go_client(&quasar_idl_schema::root::Idl) -> quasar_idl::codegen::model::CodegenResult<alloc::string::String>
+pub fn quasar_idl::codegen::golang::generate_go_mod(&str) -> alloc::string::String
+pub fn quasar_idl::codegen::golang::generate_go_mod_for_program(&quasar_idl::codegen::model::ProgramModel<'_>) -> alloc::string::String
+pub mod quasar_idl::codegen::model
+pub enum quasar_idl::codegen::model::ResolvedSeed
+pub quasar_idl::codegen::model::ResolvedSeed::AccountAddress
+pub quasar_idl::codegen::model::ResolvedSeed::AccountAddress::path: alloc::string::String
+pub quasar_idl::codegen::model::ResolvedSeed::AccountField
+pub quasar_idl::codegen::model::ResolvedSeed::AccountField::account: alloc::string::String
+pub quasar_idl::codegen::model::ResolvedSeed::AccountField::field: alloc::string::String
+pub quasar_idl::codegen::model::ResolvedSeed::AccountField::path: alloc::string::String
+pub quasar_idl::codegen::model::ResolvedSeed::Arg
+pub quasar_idl::codegen::model::ResolvedSeed::Arg::path: alloc::string::String
+pub quasar_idl::codegen::model::ResolvedSeed::Arg::wire: quasar_idl::codegen::model::WireType
+pub quasar_idl::codegen::model::ResolvedSeed::Const
+pub quasar_idl::codegen::model::ResolvedSeed::Const::value: alloc::vec::Vec<u8>
+impl core::clone::Clone for quasar_idl::codegen::model::ResolvedSeed
+pub fn quasar_idl::codegen::model::ResolvedSeed::clone(&self) -> quasar_idl::codegen::model::ResolvedSeed
+impl core::fmt::Debug for quasar_idl::codegen::model::ResolvedSeed
+pub fn quasar_idl::codegen::model::ResolvedSeed::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_idl::codegen::model::ResolvedSeed
+impl core::marker::Send for quasar_idl::codegen::model::ResolvedSeed
+impl core::marker::Sync for quasar_idl::codegen::model::ResolvedSeed
+impl core::marker::Unpin for quasar_idl::codegen::model::ResolvedSeed
+impl core::marker::UnsafeUnpin for quasar_idl::codegen::model::ResolvedSeed
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl::codegen::model::ResolvedSeed
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl::codegen::model::ResolvedSeed
+pub enum quasar_idl::codegen::model::WireLayout
+pub quasar_idl::codegen::model::WireLayout::Compact
+pub quasar_idl::codegen::model::WireLayout::Fixed
+impl core::clone::Clone for quasar_idl::codegen::model::WireLayout
+pub fn quasar_idl::codegen::model::WireLayout::clone(&self) -> quasar_idl::codegen::model::WireLayout
+impl core::cmp::Eq for quasar_idl::codegen::model::WireLayout
+impl core::cmp::PartialEq for quasar_idl::codegen::model::WireLayout
+pub fn quasar_idl::codegen::model::WireLayout::eq(&self, &quasar_idl::codegen::model::WireLayout) -> bool
+impl core::fmt::Debug for quasar_idl::codegen::model::WireLayout
+pub fn quasar_idl::codegen::model::WireLayout::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for quasar_idl::codegen::model::WireLayout
+impl core::marker::StructuralPartialEq for quasar_idl::codegen::model::WireLayout
+impl core::marker::Freeze for quasar_idl::codegen::model::WireLayout
+impl core::marker::Send for quasar_idl::codegen::model::WireLayout
+impl core::marker::Sync for quasar_idl::codegen::model::WireLayout
+impl core::marker::Unpin for quasar_idl::codegen::model::WireLayout
+impl core::marker::UnsafeUnpin for quasar_idl::codegen::model::WireLayout
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl::codegen::model::WireLayout
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl::codegen::model::WireLayout
+pub enum quasar_idl::codegen::model::WireType
+pub quasar_idl::codegen::model::WireType::Array
+pub quasar_idl::codegen::model::WireType::Array::item: alloc::boxed::Box<quasar_idl::codegen::model::WireType>
+pub quasar_idl::codegen::model::WireType::Array::len: usize
+pub quasar_idl::codegen::model::WireType::Bool
+pub quasar_idl::codegen::model::WireType::Bytes
+pub quasar_idl::codegen::model::WireType::Defined(alloc::string::String)
+pub quasar_idl::codegen::model::WireType::FixedBytes(usize)
+pub quasar_idl::codegen::model::WireType::List
+pub quasar_idl::codegen::model::WireType::List::item: alloc::boxed::Box<quasar_idl::codegen::model::WireType>
+pub quasar_idl::codegen::model::WireType::List::prefix: u8
+pub quasar_idl::codegen::model::WireType::Option
+pub quasar_idl::codegen::model::WireType::Option::inner: alloc::boxed::Box<quasar_idl::codegen::model::WireType>
+pub quasar_idl::codegen::model::WireType::Option::tag: u8
+pub quasar_idl::codegen::model::WireType::Pubkey
+pub quasar_idl::codegen::model::WireType::Scalar
+pub quasar_idl::codegen::model::WireType::Scalar::float: bool
+pub quasar_idl::codegen::model::WireType::Scalar::signed: bool
+pub quasar_idl::codegen::model::WireType::Scalar::width: u8
+pub quasar_idl::codegen::model::WireType::Str
+pub quasar_idl::codegen::model::WireType::Str::prefix: u8
+impl quasar_idl::codegen::model::WireType
+pub fn quasar_idl::codegen::model::WireType::resolve(&quasar_idl_schema::types::IdlType, &core::option::Option<quasar_idl_schema::codec::IdlCodec>) -> core::result::Result<Self, alloc::string::String>
+impl core::clone::Clone for quasar_idl::codegen::model::WireType
+pub fn quasar_idl::codegen::model::WireType::clone(&self) -> quasar_idl::codegen::model::WireType
+impl core::cmp::Eq for quasar_idl::codegen::model::WireType
+impl core::cmp::PartialEq for quasar_idl::codegen::model::WireType
+pub fn quasar_idl::codegen::model::WireType::eq(&self, &quasar_idl::codegen::model::WireType) -> bool
+impl core::fmt::Debug for quasar_idl::codegen::model::WireType
+pub fn quasar_idl::codegen::model::WireType::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for quasar_idl::codegen::model::WireType
+impl core::marker::Freeze for quasar_idl::codegen::model::WireType
+impl core::marker::Send for quasar_idl::codegen::model::WireType
+impl core::marker::Sync for quasar_idl::codegen::model::WireType
+impl core::marker::Unpin for quasar_idl::codegen::model::WireType
+impl core::marker::UnsafeUnpin for quasar_idl::codegen::model::WireType
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl::codegen::model::WireType
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl::codegen::model::WireType
+pub struct quasar_idl::codegen::model::AccountPlan
+pub quasar_idl::codegen::model::AccountPlan::name: alloc::string::String
+pub quasar_idl::codegen::model::AccountPlan::optional: bool
+pub quasar_idl::codegen::model::AccountPlan::resolver: quasar_idl_schema::account::IdlResolver
+pub quasar_idl::codegen::model::AccountPlan::signer: quasar_idl_schema::account::AccountFlag
+pub quasar_idl::codegen::model::AccountPlan::writable: quasar_idl_schema::account::AccountFlag
+impl core::clone::Clone for quasar_idl::codegen::model::AccountPlan
+pub fn quasar_idl::codegen::model::AccountPlan::clone(&self) -> quasar_idl::codegen::model::AccountPlan
+impl core::fmt::Debug for quasar_idl::codegen::model::AccountPlan
+pub fn quasar_idl::codegen::model::AccountPlan::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_idl::codegen::model::AccountPlan
+impl core::marker::Send for quasar_idl::codegen::model::AccountPlan
+impl core::marker::Sync for quasar_idl::codegen::model::AccountPlan
+impl core::marker::Unpin for quasar_idl::codegen::model::AccountPlan
+impl core::marker::UnsafeUnpin for quasar_idl::codegen::model::AccountPlan
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl::codegen::model::AccountPlan
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl::codegen::model::AccountPlan
+pub struct quasar_idl::codegen::model::CodegenError(_)
+impl core::clone::Clone for quasar_idl::codegen::model::CodegenError
+pub fn quasar_idl::codegen::model::CodegenError::clone(&self) -> quasar_idl::codegen::model::CodegenError
+impl core::cmp::Eq for quasar_idl::codegen::model::CodegenError
+impl core::cmp::PartialEq for quasar_idl::codegen::model::CodegenError
+pub fn quasar_idl::codegen::model::CodegenError::eq(&self, &quasar_idl::codegen::model::CodegenError) -> bool
+impl core::error::Error for quasar_idl::codegen::model::CodegenError
+impl core::fmt::Debug for quasar_idl::codegen::model::CodegenError
+pub fn quasar_idl::codegen::model::CodegenError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for quasar_idl::codegen::model::CodegenError
+pub fn quasar_idl::codegen::model::CodegenError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for quasar_idl::codegen::model::CodegenError
+impl core::marker::Freeze for quasar_idl::codegen::model::CodegenError
+impl core::marker::Send for quasar_idl::codegen::model::CodegenError
+impl core::marker::Sync for quasar_idl::codegen::model::CodegenError
+impl core::marker::Unpin for quasar_idl::codegen::model::CodegenError
+impl core::marker::UnsafeUnpin for quasar_idl::codegen::model::CodegenError
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl::codegen::model::CodegenError
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl::codegen::model::CodegenError
+pub struct quasar_idl::codegen::model::FieldPlan
+pub quasar_idl::codegen::model::FieldPlan::name: alloc::string::String
+pub quasar_idl::codegen::model::FieldPlan::wire: quasar_idl::codegen::model::WireType
+impl core::clone::Clone for quasar_idl::codegen::model::FieldPlan
+pub fn quasar_idl::codegen::model::FieldPlan::clone(&self) -> quasar_idl::codegen::model::FieldPlan
+impl core::cmp::Eq for quasar_idl::codegen::model::FieldPlan
+impl core::cmp::PartialEq for quasar_idl::codegen::model::FieldPlan
+pub fn quasar_idl::codegen::model::FieldPlan::eq(&self, &quasar_idl::codegen::model::FieldPlan) -> bool
+impl core::fmt::Debug for quasar_idl::codegen::model::FieldPlan
+pub fn quasar_idl::codegen::model::FieldPlan::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for quasar_idl::codegen::model::FieldPlan
+impl core::marker::Freeze for quasar_idl::codegen::model::FieldPlan
+impl core::marker::Send for quasar_idl::codegen::model::FieldPlan
+impl core::marker::Sync for quasar_idl::codegen::model::FieldPlan
+impl core::marker::Unpin for quasar_idl::codegen::model::FieldPlan
+impl core::marker::UnsafeUnpin for quasar_idl::codegen::model::FieldPlan
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl::codegen::model::FieldPlan
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl::codegen::model::FieldPlan
+pub struct quasar_idl::codegen::model::InstructionPlan
+pub quasar_idl::codegen::model::InstructionPlan::accounts: alloc::vec::Vec<quasar_idl::codegen::model::AccountPlan>
+pub quasar_idl::codegen::model::InstructionPlan::disc: alloc::vec::Vec<u8>
+pub quasar_idl::codegen::model::InstructionPlan::has_remaining: bool
+pub quasar_idl::codegen::model::InstructionPlan::inline: alloc::vec::Vec<quasar_idl::codegen::model::FieldPlan>
+pub quasar_idl::codegen::model::InstructionPlan::layout: quasar_idl::codegen::model::WireLayout
+pub quasar_idl::codegen::model::InstructionPlan::name: alloc::string::String
+pub quasar_idl::codegen::model::InstructionPlan::tail: alloc::vec::Vec<quasar_idl::codegen::model::FieldPlan>
+impl quasar_idl::codegen::model::InstructionPlan
+pub fn quasar_idl::codegen::model::InstructionPlan::from_instruction(&quasar_idl_schema::instruction::IdlInstruction) -> core::result::Result<Self, alloc::string::String>
+impl core::clone::Clone for quasar_idl::codegen::model::InstructionPlan
+pub fn quasar_idl::codegen::model::InstructionPlan::clone(&self) -> quasar_idl::codegen::model::InstructionPlan
+impl core::fmt::Debug for quasar_idl::codegen::model::InstructionPlan
+pub fn quasar_idl::codegen::model::InstructionPlan::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_idl::codegen::model::InstructionPlan
+impl core::marker::Send for quasar_idl::codegen::model::InstructionPlan
+impl core::marker::Sync for quasar_idl::codegen::model::InstructionPlan
+impl core::marker::Unpin for quasar_idl::codegen::model::InstructionPlan
+impl core::marker::UnsafeUnpin for quasar_idl::codegen::model::InstructionPlan
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl::codegen::model::InstructionPlan
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl::codegen::model::InstructionPlan
+pub struct quasar_idl::codegen::model::PathComponent(_)
+impl quasar_idl::codegen::model::PathComponent
+pub fn quasar_idl::codegen::model::PathComponent::as_str(&self) -> &str
+impl core::clone::Clone for quasar_idl::codegen::model::PathComponent
+pub fn quasar_idl::codegen::model::PathComponent::clone(&self) -> quasar_idl::codegen::model::PathComponent
+impl core::cmp::Eq for quasar_idl::codegen::model::PathComponent
+impl core::cmp::PartialEq for quasar_idl::codegen::model::PathComponent
+pub fn quasar_idl::codegen::model::PathComponent::eq(&self, &quasar_idl::codegen::model::PathComponent) -> bool
+impl core::convert::AsRef<std::ffi::os_str::OsStr> for quasar_idl::codegen::model::PathComponent
+pub fn quasar_idl::codegen::model::PathComponent::as_ref(&self) -> &std::ffi::os_str::OsStr
+impl core::fmt::Debug for quasar_idl::codegen::model::PathComponent
+pub fn quasar_idl::codegen::model::PathComponent::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for quasar_idl::codegen::model::PathComponent
+pub fn quasar_idl::codegen::model::PathComponent::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for quasar_idl::codegen::model::PathComponent
+pub fn quasar_idl::codegen::model::PathComponent::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for quasar_idl::codegen::model::PathComponent
+impl core::ops::deref::Deref for quasar_idl::codegen::model::PathComponent
+pub type quasar_idl::codegen::model::PathComponent::Target = str
+pub fn quasar_idl::codegen::model::PathComponent::deref(&self) -> &Self::Target
+impl core::marker::Freeze for quasar_idl::codegen::model::PathComponent
+impl core::marker::Send for quasar_idl::codegen::model::PathComponent
+impl core::marker::Sync for quasar_idl::codegen::model::PathComponent
+impl core::marker::Unpin for quasar_idl::codegen::model::PathComponent
+impl core::marker::UnsafeUnpin for quasar_idl::codegen::model::PathComponent
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl::codegen::model::PathComponent
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl::codegen::model::PathComponent
+pub struct quasar_idl::codegen::model::PdaPlan
+pub quasar_idl::codegen::model::PdaPlan::field_name: alloc::string::String
+pub quasar_idl::codegen::model::PdaPlan::helper_name: alloc::string::String
+pub quasar_idl::codegen::model::PdaPlan::seeds: alloc::vec::Vec<quasar_idl::codegen::model::ResolvedSeed>
+impl core::clone::Clone for quasar_idl::codegen::model::PdaPlan
+pub fn quasar_idl::codegen::model::PdaPlan::clone(&self) -> quasar_idl::codegen::model::PdaPlan
+impl core::fmt::Debug for quasar_idl::codegen::model::PdaPlan
+pub fn quasar_idl::codegen::model::PdaPlan::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_idl::codegen::model::PdaPlan
+impl core::marker::Send for quasar_idl::codegen::model::PdaPlan
+impl core::marker::Sync for quasar_idl::codegen::model::PdaPlan
+impl core::marker::Unpin for quasar_idl::codegen::model::PdaPlan
+impl core::marker::UnsafeUnpin for quasar_idl::codegen::model::PdaPlan
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl::codegen::model::PdaPlan
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl::codegen::model::PdaPlan
+pub struct quasar_idl::codegen::model::ProgramFeatures
+pub quasar_idl::codegen::model::ProgramFeatures::has_accounts: bool
+pub quasar_idl::codegen::model::ProgramFeatures::has_args: bool
+pub quasar_idl::codegen::model::ProgramFeatures::has_dynamic: bool
+pub quasar_idl::codegen::model::ProgramFeatures::has_errors: bool
+pub quasar_idl::codegen::model::ProgramFeatures::has_events: bool
+pub quasar_idl::codegen::model::ProgramFeatures::has_float: bool
+pub quasar_idl::codegen::model::ProgramFeatures::has_instructions: bool
+pub quasar_idl::codegen::model::ProgramFeatures::has_option: bool
+pub quasar_idl::codegen::model::ProgramFeatures::has_pda_account_seeds: bool
+pub quasar_idl::codegen::model::ProgramFeatures::has_pdas: bool
+pub quasar_idl::codegen::model::ProgramFeatures::has_public_key: bool
+pub quasar_idl::codegen::model::ProgramFeatures::has_types: bool
+pub quasar_idl::codegen::model::ProgramFeatures::needs_codecs: bool
+impl quasar_idl::codegen::model::ProgramFeatures
+pub fn quasar_idl::codegen::model::ProgramFeatures::from_idl(&quasar_idl_schema::root::Idl) -> Self
+impl core::clone::Clone for quasar_idl::codegen::model::ProgramFeatures
+pub fn quasar_idl::codegen::model::ProgramFeatures::clone(&self) -> quasar_idl::codegen::model::ProgramFeatures
+impl core::cmp::Eq for quasar_idl::codegen::model::ProgramFeatures
+impl core::cmp::PartialEq for quasar_idl::codegen::model::ProgramFeatures
+pub fn quasar_idl::codegen::model::ProgramFeatures::eq(&self, &quasar_idl::codegen::model::ProgramFeatures) -> bool
+impl core::default::Default for quasar_idl::codegen::model::ProgramFeatures
+pub fn quasar_idl::codegen::model::ProgramFeatures::default() -> quasar_idl::codegen::model::ProgramFeatures
+impl core::fmt::Debug for quasar_idl::codegen::model::ProgramFeatures
+pub fn quasar_idl::codegen::model::ProgramFeatures::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for quasar_idl::codegen::model::ProgramFeatures
+impl core::marker::Freeze for quasar_idl::codegen::model::ProgramFeatures
+impl core::marker::Send for quasar_idl::codegen::model::ProgramFeatures
+impl core::marker::Sync for quasar_idl::codegen::model::ProgramFeatures
+impl core::marker::Unpin for quasar_idl::codegen::model::ProgramFeatures
+impl core::marker::UnsafeUnpin for quasar_idl::codegen::model::ProgramFeatures
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl::codegen::model::ProgramFeatures
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl::codegen::model::ProgramFeatures
+pub struct quasar_idl::codegen::model::ProgramModel<'a>
+pub quasar_idl::codegen::model::ProgramModel::features: quasar_idl::codegen::model::ProgramFeatures
+pub quasar_idl::codegen::model::ProgramModel::identity: quasar_idl::codegen::model::ResolvedIdentity
+pub quasar_idl::codegen::model::ProgramModel::idl: &'a quasar_idl_schema::root::Idl
+impl<'a> quasar_idl::codegen::model::ProgramModel<'a>
+pub fn quasar_idl::codegen::model::ProgramModel<'a>::try_new(&'a quasar_idl_schema::root::Idl) -> quasar_idl::codegen::model::CodegenResult<Self>
+impl<'a> core::clone::Clone for quasar_idl::codegen::model::ProgramModel<'a>
+pub fn quasar_idl::codegen::model::ProgramModel<'a>::clone(&self) -> quasar_idl::codegen::model::ProgramModel<'a>
+impl<'a> core::marker::Freeze for quasar_idl::codegen::model::ProgramModel<'a>
+impl<'a> core::marker::Send for quasar_idl::codegen::model::ProgramModel<'a>
+impl<'a> core::marker::Sync for quasar_idl::codegen::model::ProgramModel<'a>
+impl<'a> core::marker::Unpin for quasar_idl::codegen::model::ProgramModel<'a>
+impl<'a> core::marker::UnsafeUnpin for quasar_idl::codegen::model::ProgramModel<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for quasar_idl::codegen::model::ProgramModel<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for quasar_idl::codegen::model::ProgramModel<'a>
+pub struct quasar_idl::codegen::model::ResolvedIdentity
+pub quasar_idl::codegen::model::ResolvedIdentity::client_name: quasar_idl::codegen::model::PathComponent
+pub quasar_idl::codegen::model::ResolvedIdentity::crate_name: core::option::Option<quasar_idl::codegen::model::PathComponent>
+pub quasar_idl::codegen::model::ResolvedIdentity::go_package: quasar_idl::codegen::model::PathComponent
+pub quasar_idl::codegen::model::ResolvedIdentity::program_name: quasar_idl::codegen::model::PathComponent
+pub quasar_idl::codegen::model::ResolvedIdentity::python_package: quasar_idl::codegen::model::PathComponent
+pub quasar_idl::codegen::model::ResolvedIdentity::rust_client_crate: quasar_idl::codegen::model::PathComponent
+pub quasar_idl::codegen::model::ResolvedIdentity::typescript_dir: quasar_idl::codegen::model::PathComponent
+pub quasar_idl::codegen::model::ResolvedIdentity::typescript_package: quasar_idl::codegen::model::PathComponent
+impl quasar_idl::codegen::model::ResolvedIdentity
+pub fn quasar_idl::codegen::model::ResolvedIdentity::from_idl(&quasar_idl_schema::root::Idl) -> quasar_idl::codegen::model::CodegenResult<Self>
+impl core::clone::Clone for quasar_idl::codegen::model::ResolvedIdentity
+pub fn quasar_idl::codegen::model::ResolvedIdentity::clone(&self) -> quasar_idl::codegen::model::ResolvedIdentity
+impl core::cmp::Eq for quasar_idl::codegen::model::ResolvedIdentity
+impl core::cmp::PartialEq for quasar_idl::codegen::model::ResolvedIdentity
+pub fn quasar_idl::codegen::model::ResolvedIdentity::eq(&self, &quasar_idl::codegen::model::ResolvedIdentity) -> bool
+impl core::fmt::Debug for quasar_idl::codegen::model::ResolvedIdentity
+pub fn quasar_idl::codegen::model::ResolvedIdentity::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for quasar_idl::codegen::model::ResolvedIdentity
+impl core::marker::Freeze for quasar_idl::codegen::model::ResolvedIdentity
+impl core::marker::Send for quasar_idl::codegen::model::ResolvedIdentity
+impl core::marker::Sync for quasar_idl::codegen::model::ResolvedIdentity
+impl core::marker::Unpin for quasar_idl::codegen::model::ResolvedIdentity
+impl core::marker::UnsafeUnpin for quasar_idl::codegen::model::ResolvedIdentity
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl::codegen::model::ResolvedIdentity
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl::codegen::model::ResolvedIdentity
+pub fn quasar_idl::codegen::model::go_field_path(&str) -> alloc::string::String
+pub fn quasar_idl::codegen::model::python_field_path(&str) -> alloc::string::String
+pub fn quasar_idl::codegen::model::reject_generics(&quasar_idl_schema::root::Idl, &str) -> quasar_idl::codegen::model::CodegenResult<()>
+pub fn quasar_idl::codegen::model::type_has_float(&quasar_idl_schema::types::IdlType) -> bool
+pub fn quasar_idl::codegen::model::type_has_option(&quasar_idl_schema::types::IdlType) -> bool
+pub fn quasar_idl::codegen::model::type_has_public_key(&quasar_idl_schema::types::IdlType) -> bool
+pub fn quasar_idl::codegen::model::validate_codegen_idl(&quasar_idl_schema::root::Idl) -> quasar_idl::codegen::model::CodegenResult<()>
+pub fn quasar_idl::codegen::model::visit_type(&quasar_idl_schema::types::IdlType, &mut impl core::ops::function::FnMut(&quasar_idl_schema::types::IdlType))
+pub type quasar_idl::codegen::model::CodegenResult<T> = core::result::Result<T, quasar_idl::codegen::model::CodegenError>
+pub mod quasar_idl::codegen::python
+pub fn quasar_idl::codegen::python::generate_python_client(&quasar_idl_schema::root::Idl) -> quasar_idl::codegen::model::CodegenResult<alloc::string::String>
+pub mod quasar_idl::codegen::rust
+pub fn quasar_idl::codegen::rust::generate_cargo_toml(&str, &str, bool) -> alloc::string::String
+pub fn quasar_idl::codegen::rust::generate_cargo_toml_for_program(&quasar_idl::codegen::model::ProgramModel<'_>) -> alloc::string::String
+pub fn quasar_idl::codegen::rust::generate_client(&quasar_idl_schema::root::Idl) -> quasar_idl::codegen::model::CodegenResult<alloc::vec::Vec<(alloc::string::String, alloc::string::String)>>
+pub fn quasar_idl::codegen::rust::has_pdas(&quasar_idl_schema::root::Idl) -> bool
+pub mod quasar_idl::codegen::typescript
+pub enum quasar_idl::codegen::typescript::TsTarget
+pub quasar_idl::codegen::typescript::TsTarget::Kit
+pub quasar_idl::codegen::typescript::TsTarget::Web3js
+impl core::clone::Clone for quasar_idl::codegen::typescript::TsTarget
+pub fn quasar_idl::codegen::typescript::TsTarget::clone(&self) -> quasar_idl::codegen::typescript::TsTarget
+impl core::cmp::PartialEq for quasar_idl::codegen::typescript::TsTarget
+pub fn quasar_idl::codegen::typescript::TsTarget::eq(&self, &quasar_idl::codegen::typescript::TsTarget) -> bool
+impl core::marker::Copy for quasar_idl::codegen::typescript::TsTarget
+impl core::marker::StructuralPartialEq for quasar_idl::codegen::typescript::TsTarget
+impl core::marker::Freeze for quasar_idl::codegen::typescript::TsTarget
+impl core::marker::Send for quasar_idl::codegen::typescript::TsTarget
+impl core::marker::Sync for quasar_idl::codegen::typescript::TsTarget
+impl core::marker::Unpin for quasar_idl::codegen::typescript::TsTarget
+impl core::marker::UnsafeUnpin for quasar_idl::codegen::typescript::TsTarget
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl::codegen::typescript::TsTarget
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl::codegen::typescript::TsTarget
+pub fn quasar_idl::codegen::typescript::client_dependency_version(quasar_idl::codegen::typescript::TsTarget) -> &'static str
+pub fn quasar_idl::codegen::typescript::generate_package_json(&quasar_idl_schema::root::Idl) -> quasar_idl::codegen::model::CodegenResult<alloc::string::String>
+pub fn quasar_idl::codegen::typescript::generate_ts_client(&quasar_idl_schema::root::Idl) -> quasar_idl::codegen::model::CodegenResult<alloc::string::String>
+pub fn quasar_idl::codegen::typescript::generate_ts_client_kit(&quasar_idl_schema::root::Idl) -> quasar_idl::codegen::model::CodegenResult<alloc::string::String>
+pub fn quasar_idl::codegen::format_disc_array(&[u8]) -> alloc::string::String
+pub fn quasar_idl::codegen::format_disc_decimal(&[u8]) -> alloc::string::String
+pub fn quasar_idl::codegen::format_disc_hex(&[u8]) -> alloc::string::String
+pub fn quasar_idl::codegen::parse_fixed_array_size(&str) -> core::option::Option<usize>
+pub mod quasar_idl::lint
+pub enum quasar_idl::lint::LockfileError
+pub quasar_idl::lint::LockfileError::Io
+pub quasar_idl::lint::LockfileError::Io::path: std::path::PathBuf
+pub quasar_idl::lint::LockfileError::Io::source: std::io::error::Error
+pub quasar_idl::lint::LockfileError::Parse
+pub quasar_idl::lint::LockfileError::Parse::path: std::path::PathBuf
+pub quasar_idl::lint::LockfileError::Parse::source: serde_json::error::Error
+pub quasar_idl::lint::LockfileError::VersionMismatch
+pub quasar_idl::lint::LockfileError::VersionMismatch::expected: u32
+pub quasar_idl::lint::LockfileError::VersionMismatch::found: u32
+pub quasar_idl::lint::LockfileError::VersionMismatch::path: std::path::PathBuf
+impl core::error::Error for quasar_idl::lint::LockfileError
+impl core::fmt::Debug for quasar_idl::lint::LockfileError
+pub fn quasar_idl::lint::LockfileError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for quasar_idl::lint::LockfileError
+pub fn quasar_idl::lint::LockfileError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_idl::lint::LockfileError
+impl core::marker::Send for quasar_idl::lint::LockfileError
+impl core::marker::Sync for quasar_idl::lint::LockfileError
+impl core::marker::Unpin for quasar_idl::lint::LockfileError
+impl core::marker::UnsafeUnpin for quasar_idl::lint::LockfileError
+impl !core::panic::unwind_safe::RefUnwindSafe for quasar_idl::lint::LockfileError
+impl !core::panic::unwind_safe::UnwindSafe for quasar_idl::lint::LockfileError
+pub enum quasar_idl::lint::RuleCode
+pub quasar_idl::lint::RuleCode::L001
+pub quasar_idl::lint::RuleCode::P001
+pub quasar_idl::lint::RuleCode::P002
+pub quasar_idl::lint::RuleCode::P005
+pub quasar_idl::lint::RuleCode::P006
+pub quasar_idl::lint::RuleCode::P007
+pub quasar_idl::lint::RuleCode::P008
+pub quasar_idl::lint::RuleCode::P009
+pub quasar_idl::lint::RuleCode::P010
+pub quasar_idl::lint::RuleCode::P011
+pub quasar_idl::lint::RuleCode::R001
+pub quasar_idl::lint::RuleCode::R002
+pub quasar_idl::lint::RuleCode::R003
+pub quasar_idl::lint::RuleCode::R004
+pub quasar_idl::lint::RuleCode::R005
+pub quasar_idl::lint::RuleCode::R006
+pub quasar_idl::lint::RuleCode::R007
+pub quasar_idl::lint::RuleCode::R008
+pub quasar_idl::lint::RuleCode::R009
+pub quasar_idl::lint::RuleCode::R010
+pub quasar_idl::lint::RuleCode::R011
+pub quasar_idl::lint::RuleCode::R012
+pub quasar_idl::lint::RuleCode::R013
+pub quasar_idl::lint::RuleCode::R014
+pub quasar_idl::lint::RuleCode::R015
+pub quasar_idl::lint::RuleCode::R016
+impl quasar_idl::lint::RuleCode
+pub fn quasar_idl::lint::RuleCode::as_str(self) -> &'static str
+pub fn quasar_idl::lint::RuleCode::default_severity(self) -> quasar_idl::lint::Severity
+pub fn quasar_idl::lint::RuleCode::title(self) -> &'static str
+impl core::clone::Clone for quasar_idl::lint::RuleCode
+pub fn quasar_idl::lint::RuleCode::clone(&self) -> quasar_idl::lint::RuleCode
+impl core::cmp::Eq for quasar_idl::lint::RuleCode
+impl core::cmp::PartialEq for quasar_idl::lint::RuleCode
+pub fn quasar_idl::lint::RuleCode::eq(&self, &quasar_idl::lint::RuleCode) -> bool
+impl core::fmt::Debug for quasar_idl::lint::RuleCode
+pub fn quasar_idl::lint::RuleCode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for quasar_idl::lint::RuleCode
+pub fn quasar_idl::lint::RuleCode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for quasar_idl::lint::RuleCode
+pub fn quasar_idl::lint::RuleCode::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for quasar_idl::lint::RuleCode
+impl core::marker::StructuralPartialEq for quasar_idl::lint::RuleCode
+impl core::marker::Freeze for quasar_idl::lint::RuleCode
+impl core::marker::Send for quasar_idl::lint::RuleCode
+impl core::marker::Sync for quasar_idl::lint::RuleCode
+impl core::marker::Unpin for quasar_idl::lint::RuleCode
+impl core::marker::UnsafeUnpin for quasar_idl::lint::RuleCode
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl::lint::RuleCode
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl::lint::RuleCode
+pub enum quasar_idl::lint::Severity
+pub quasar_idl::lint::Severity::Error
+pub quasar_idl::lint::Severity::Info
+pub quasar_idl::lint::Severity::Warning
+impl quasar_idl::lint::Severity
+pub fn quasar_idl::lint::Severity::as_str(self) -> &'static str
+impl core::clone::Clone for quasar_idl::lint::Severity
+pub fn quasar_idl::lint::Severity::clone(&self) -> quasar_idl::lint::Severity
+impl core::cmp::Eq for quasar_idl::lint::Severity
+impl core::cmp::PartialEq for quasar_idl::lint::Severity
+pub fn quasar_idl::lint::Severity::eq(&self, &quasar_idl::lint::Severity) -> bool
+impl core::fmt::Debug for quasar_idl::lint::Severity
+pub fn quasar_idl::lint::Severity::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for quasar_idl::lint::Severity
+impl core::marker::StructuralPartialEq for quasar_idl::lint::Severity
+impl core::marker::Freeze for quasar_idl::lint::Severity
+impl core::marker::Send for quasar_idl::lint::Severity
+impl core::marker::Sync for quasar_idl::lint::Severity
+impl core::marker::Unpin for quasar_idl::lint::Severity
+impl core::marker::UnsafeUnpin for quasar_idl::lint::Severity
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl::lint::Severity
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl::lint::Severity
+pub struct quasar_idl::lint::Diagnostic
+pub quasar_idl::lint::Diagnostic::message: alloc::string::String
+pub quasar_idl::lint::Diagnostic::rule: quasar_idl::lint::RuleCode
+pub quasar_idl::lint::Diagnostic::severity: quasar_idl::lint::Severity
+pub quasar_idl::lint::Diagnostic::suggestion: core::option::Option<alloc::string::String>
+pub quasar_idl::lint::Diagnostic::target: alloc::string::String
+impl quasar_idl::lint::Diagnostic
+pub fn quasar_idl::lint::Diagnostic::new(quasar_idl::lint::RuleCode, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
+impl core::clone::Clone for quasar_idl::lint::Diagnostic
+pub fn quasar_idl::lint::Diagnostic::clone(&self) -> quasar_idl::lint::Diagnostic
+impl core::cmp::Eq for quasar_idl::lint::Diagnostic
+impl core::cmp::PartialEq for quasar_idl::lint::Diagnostic
+pub fn quasar_idl::lint::Diagnostic::eq(&self, &quasar_idl::lint::Diagnostic) -> bool
+impl core::fmt::Debug for quasar_idl::lint::Diagnostic
+pub fn quasar_idl::lint::Diagnostic::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for quasar_idl::lint::Diagnostic
+impl core::marker::Freeze for quasar_idl::lint::Diagnostic
+impl core::marker::Send for quasar_idl::lint::Diagnostic
+impl core::marker::Sync for quasar_idl::lint::Diagnostic
+impl core::marker::Unpin for quasar_idl::lint::Diagnostic
+impl core::marker::UnsafeUnpin for quasar_idl::lint::Diagnostic
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl::lint::Diagnostic
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl::lint::Diagnostic
+pub struct quasar_idl::lint::LintConfig
+pub quasar_idl::lint::LintConfig::lockfile_present: bool
+pub quasar_idl::lint::LintConfig::strict: bool
+impl core::clone::Clone for quasar_idl::lint::LintConfig
+pub fn quasar_idl::lint::LintConfig::clone(&self) -> quasar_idl::lint::LintConfig
+impl core::default::Default for quasar_idl::lint::LintConfig
+pub fn quasar_idl::lint::LintConfig::default() -> quasar_idl::lint::LintConfig
+impl core::fmt::Debug for quasar_idl::lint::LintConfig
+pub fn quasar_idl::lint::LintConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_idl::lint::LintConfig
+impl core::marker::Send for quasar_idl::lint::LintConfig
+impl core::marker::Sync for quasar_idl::lint::LintConfig
+impl core::marker::Unpin for quasar_idl::lint::LintConfig
+impl core::marker::UnsafeUnpin for quasar_idl::lint::LintConfig
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl::lint::LintConfig
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl::lint::LintConfig
+pub struct quasar_idl::lint::LintReport
+pub quasar_idl::lint::LintReport::diagnostics: alloc::vec::Vec<quasar_idl::lint::Diagnostic>
+impl quasar_idl::lint::LintReport
+pub fn quasar_idl::lint::LintReport::contains(&self, quasar_idl::lint::RuleCode) -> bool
+pub fn quasar_idl::lint::LintReport::extend(&mut self, Self)
+pub fn quasar_idl::lint::LintReport::has_errors(&self) -> bool
+pub fn quasar_idl::lint::LintReport::is_empty(&self) -> bool
+pub fn quasar_idl::lint::LintReport::push(&mut self, quasar_idl::lint::Diagnostic)
+pub fn quasar_idl::lint::LintReport::should_fail(&self, &quasar_idl::lint::LintConfig) -> bool
+impl core::clone::Clone for quasar_idl::lint::LintReport
+pub fn quasar_idl::lint::LintReport::clone(&self) -> quasar_idl::lint::LintReport
+impl core::default::Default for quasar_idl::lint::LintReport
+pub fn quasar_idl::lint::LintReport::default() -> quasar_idl::lint::LintReport
+impl core::fmt::Debug for quasar_idl::lint::LintReport
+pub fn quasar_idl::lint::LintReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_idl::lint::LintReport
+impl core::marker::Send for quasar_idl::lint::LintReport
+impl core::marker::Sync for quasar_idl::lint::LintReport
+impl core::marker::Unpin for quasar_idl::lint::LintReport
+impl core::marker::UnsafeUnpin for quasar_idl::lint::LintReport
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl::lint::LintReport
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl::lint::LintReport
+pub struct quasar_idl::lint::ProgramSurface
+pub quasar_idl::lint::ProgramSurface::accounts: alloc::vec::Vec<quasar_idl::lint::surface::AccountSurface>
+pub quasar_idl::lint::ProgramSurface::errors: alloc::vec::Vec<quasar_idl::lint::surface::ErrorSurface>
+pub quasar_idl::lint::ProgramSurface::events: alloc::vec::Vec<quasar_idl::lint::surface::EventSurface>
+pub quasar_idl::lint::ProgramSurface::instructions: alloc::vec::Vec<quasar_idl::lint::surface::InstructionSurface>
+pub quasar_idl::lint::ProgramSurface::name: alloc::string::String
+pub quasar_idl::lint::ProgramSurface::program_id: alloc::string::String
+pub quasar_idl::lint::ProgramSurface::spec: alloc::string::String
+pub quasar_idl::lint::ProgramSurface::types: alloc::vec::Vec<quasar_idl::lint::surface::TypeSurface>
+pub quasar_idl::lint::ProgramSurface::version: u32
+impl quasar_idl::lint::ProgramSurface
+pub fn quasar_idl::lint::ProgramSurface::from_idl(&quasar_idl_schema::root::Idl) -> Self
+impl core::clone::Clone for quasar_idl::lint::ProgramSurface
+pub fn quasar_idl::lint::ProgramSurface::clone(&self) -> quasar_idl::lint::ProgramSurface
+impl core::cmp::Eq for quasar_idl::lint::ProgramSurface
+impl core::cmp::PartialEq for quasar_idl::lint::ProgramSurface
+pub fn quasar_idl::lint::ProgramSurface::eq(&self, &quasar_idl::lint::ProgramSurface) -> bool
+impl core::fmt::Debug for quasar_idl::lint::ProgramSurface
+pub fn quasar_idl::lint::ProgramSurface::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for quasar_idl::lint::ProgramSurface
+impl serde_core::ser::Serialize for quasar_idl::lint::ProgramSurface
+pub fn quasar_idl::lint::ProgramSurface::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for quasar_idl::lint::ProgramSurface
+pub fn quasar_idl::lint::ProgramSurface::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for quasar_idl::lint::ProgramSurface
+impl core::marker::Send for quasar_idl::lint::ProgramSurface
+impl core::marker::Sync for quasar_idl::lint::ProgramSurface
+impl core::marker::Unpin for quasar_idl::lint::ProgramSurface
+impl core::marker::UnsafeUnpin for quasar_idl::lint::ProgramSurface
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl::lint::ProgramSurface
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl::lint::ProgramSurface
+pub const quasar_idl::lint::LOCK_FILE_NAME: &str
+pub fn quasar_idl::lint::diff(&quasar_idl::lint::ProgramSurface, &quasar_idl::lint::ProgramSurface) -> quasar_idl::lint::LintReport
+pub fn quasar_idl::lint::load_lockfile(&std::path::Path) -> core::result::Result<quasar_idl::lint::ProgramSurface, quasar_idl::lint::LockfileError>
+pub fn quasar_idl::lint::lock_path(&std::path::Path) -> std::path::PathBuf
+pub fn quasar_idl::lint::run(&quasar_idl_schema::root::Idl, &quasar_idl::lint::LintConfig) -> quasar_idl::lint::LintReport
+pub fn quasar_idl::lint::run_with_optional_diff(&quasar_idl_schema::root::Idl, core::option::Option<&quasar_idl::lint::ProgramSurface>, &quasar_idl::lint::LintConfig) -> quasar_idl::lint::LintReport
+pub fn quasar_idl::lint::save_lockfile(&std::path::Path, &quasar_idl::lint::ProgramSurface) -> core::result::Result<(), quasar_idl::lint::LockfileError>
+pub mod quasar_idl::types
+pub use quasar_idl::types::<<quasar_idl_schema::*>>
