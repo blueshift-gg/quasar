@@ -12,7 +12,11 @@ from pathlib import Path
 REMOTE_ACTION = re.compile(r"^[^\s/@]+/[^\s/@]+(?:/[^\s@]+)?@[0-9a-f]{40}$")
 USES = re.compile(r"^\s*(?:-\s*)?uses:\s*([^#\s]+)", re.MULTILINE)
 DOCKERFILE = re.compile(r"^\s*(?:--file|-f)\s+([^\s\\]+)", re.MULTILINE)
-FROM = re.compile(r"^\s*FROM(?:\s+--platform=\S+)?\s+(\S+)", re.MULTILINE)
+FROM = re.compile(
+    r"^\s*FROM(?:\s+--platform=\S+)?\s+(\S+)"
+    r"(?:\s+[Aa][Ss]\s+([A-Za-z0-9_.-]+))?\s*$",
+    re.MULTILINE,
+)
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 REVISION = re.compile(r"^[0-9a-f]{40}$")
 VERSION = re.compile(r"^[0-9]+(?:\.[0-9]+)+(?:[-+][0-9A-Za-z.-]+)?$")
@@ -77,13 +81,19 @@ def referenced_dockerfiles(
                 dockerfiles[path] = dockerfile
 
     for path, text in dockerfiles.items():
+        immutable_stages: dict[str, bool] = {}
         for match in FROM.finditer(text):
             image = match.group(1)
-            if not re.search(r"@sha256:[0-9a-f]{64}$", image):
+            immutable = bool(re.search(r"@sha256:[0-9a-f]{64}$", image)) or bool(
+                immutable_stages.get(image.lower())
+            )
+            if not immutable:
                 errors.append(
                     f"{relative(root, path)}:{line_number(text, match.start())}: "
                     f"mutable container image: {image}"
                 )
+            if alias := match.group(2):
+                immutable_stages[alias.lower()] = immutable
     return dockerfiles
 
 
@@ -205,12 +215,15 @@ def check_pinned_inputs(
                 expected = f"snapshot.debian.org/archive/{archive}/${{DEBIAN_SNAPSHOT}}"
                 if expected not in text:
                     errors.append(f"{location}: missing immutable {archive} snapshot source")
-        logical_text = text.replace("\\\n", " ")
-        for match in re.finditer(r"cargo\s+install\s+--path\b[^&\n]*", logical_text):
+        # Keep offsets stable while joining Docker continuation lines.
+        logical_text = text.replace("\\\n", "  ")
+        local_installs = re.compile(
+            r"cargo\b(?=[^&\n]*\binstall\b)(?=[^&\n]*--path\b)[^&\n]*"
+        )
+        for match in local_installs.finditer(logical_text):
             if "--locked" not in match.group(0):
-                original_offset = text.find("cargo install --path")
                 errors.append(
-                    f"{location}:{line_number(text, original_offset)}: "
+                    f"{location}:{line_number(text, match.start())}: "
                     "unlocked local cargo install"
                 )
 

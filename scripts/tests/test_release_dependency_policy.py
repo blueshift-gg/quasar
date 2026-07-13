@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "check-release-dependencies.py"
 INSTALLER = ROOT / "scripts" / "install-solana-tools.sh"
+REHEARSAL_DOCKERFILE = Path(".github/docker/release-package-rehearsal.Dockerfile")
 
 
 class ReleaseDependencyPolicyTests(unittest.TestCase):
@@ -69,7 +70,7 @@ class ReleaseDependencyPolicyTests(unittest.TestCase):
     def test_mutable_container_reports_exact_image(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.fixture(directory)
-            dockerfile = root / ".github" / "docker" / "release-cli-smoke.Dockerfile"
+            dockerfile = root / REHEARSAL_DOCKERFILE
             text = dockerfile.read_text()
             text = text.replace(
                 "rust:1.92.0-slim-trixie@sha256:bf3368a992915f128293ac76917ab6e561e4dda883273c8f5c9f6f8ea37a378e",
@@ -101,7 +102,7 @@ class ReleaseDependencyPolicyTests(unittest.TestCase):
     def test_mutable_debian_snapshot_reports_exact_value(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.fixture(directory)
-            dockerfile = root / ".github" / "docker" / "release-cli-smoke.Dockerfile"
+            dockerfile = root / REHEARSAL_DOCKERFILE
             dockerfile.write_text(
                 dockerfile.read_text().replace(
                     "ARG DEBIAN_SNAPSHOT=20260113T000000Z",
@@ -154,7 +155,7 @@ class ReleaseDependencyPolicyTests(unittest.TestCase):
     def test_container_cargo_install_must_use_workspace_lock(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.fixture(directory)
-            dockerfile = root / ".github" / "docker" / "release-cli-smoke.Dockerfile"
+            dockerfile = root / REHEARSAL_DOCKERFILE
             dockerfile.write_text(dockerfile.read_text().replace(" --locked \\\n", " \\\n"))
             result = self.run_policy(root)
         self.assertNotEqual(result.returncode, 0)
