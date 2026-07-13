@@ -17,6 +17,7 @@ pub mod keys;
 pub mod lint;
 pub mod new;
 mod output;
+mod program_keypair;
 pub mod style;
 pub mod test;
 pub mod toolchain;

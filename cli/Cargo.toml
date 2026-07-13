@@ -32,9 +32,9 @@ dirs = "6"
 indicatif = "0.18.4"
 clap_complete = "4.6.0"
 shlex = "1"
+tempfile = "3"
 
 [dev-dependencies]
-tempfile = "3"
 quasar-idl = { path = "../idl" }
 
 [lib]
