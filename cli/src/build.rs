@@ -300,7 +300,7 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
         Ok(o) if o.status.success() => {
             let elapsed = start.elapsed();
             let program = config.module_name();
-            let profile_dir = PathBuf::from("target").join("profile");
+            let profile_dir = PathBuf::from(quasar_profile::PROFILE_DIR);
             fs::create_dir_all(&profile_dir)?;
 
             // Find the built .so and copy to target/profile/
