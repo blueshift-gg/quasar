@@ -1,6 +1,6 @@
-FROM rust:slim-trixie
+FROM rust:1.92.0-slim-trixie
 
-ARG SOLANA_VERSION=stable
+ARG SOLANA_VERSION=v4.1.1
 
 ENV CARGO_TERM_COLOR=always
 ENV PATH="/opt/quasar-cli/bin:/root/.local/share/solana/install/active_release/bin:${PATH}"

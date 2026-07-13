@@ -215,6 +215,10 @@ static inline bool find_program_address(
 }
 
 fn compile_typescript_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let typescript_version = std::env::var("TYPESCRIPT_VERSION").unwrap_or_else(|_| "5.9.3".into());
+    let node_types_version =
+        std::env::var("NODE_TYPES_VERSION").unwrap_or_else(|_| "22.13.0".into());
+
     fs::write(
         client_dir.join("tsconfig.json"),
         r#"{
@@ -239,8 +243,8 @@ fn compile_typescript_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
             .arg("--ignore-scripts")
             .arg("--no-audit")
             .arg("--no-fund")
-            .arg("typescript")
-            .arg("@types/node")
+            .arg(format!("typescript@{typescript_version}"))
+            .arg(format!("@types/node@{node_types_version}"))
             .current_dir(client_dir),
     )?;
 

@@ -2,6 +2,7 @@
 name = "solana-compiler-builtins"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Compiler runtime builtins required by Quasar SBF programs"
 repository.workspace = true
