@@ -4,6 +4,10 @@ on:
   push:
     tags: ["v*"]
 
+concurrency:
+  group: release-${{ github.run_id }}
+  cancel-in-progress: false
+
 env:
   KANI_VERSION: 0.67.0
   PROGRAM_MSRV: 1.89.0
