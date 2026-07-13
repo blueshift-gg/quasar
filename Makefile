@@ -323,5 +323,5 @@ test-all:
 	@$(MAKE) generated-client-smoke
 	@$(MAKE) package-check
 	@$(MAKE) audit
-	@$(MAKE) test-miri
+	@$(MAKE) test-miri-strict
 	@echo "All checks passed!"
