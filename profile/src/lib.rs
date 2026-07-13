@@ -82,7 +82,7 @@ pub fn run(command: ProfileCommand) {
         DebugLevel::Stripped => {
             eprintln!(
                 "Error: binary is fully stripped. Use the unstripped binary from \
-                 target/sbf-solana-solana/release/ instead of target/deploy/"
+                 target/deploy/debug/<program>.so.debug instead of target/deploy/"
             );
             std::process::exit(1);
         }
