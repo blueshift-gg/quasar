@@ -28,7 +28,8 @@ ENV CARGO_TERM_COLOR=always
 WORKDIR /workspace/quasar
 COPY . /workspace/quasar
 
-RUN make PACKAGE_REHEARSAL_ROOT=/opt/quasar-release-rehearsal package-rehearsal \
+RUN grep -Fx 'cargo install quasar-cli --version 0.1.0 --locked' README.md \
+    && make PACKAGE_REHEARSAL_ROOT=/opt/quasar-release-rehearsal package-rehearsal \
     && cargo --config /opt/quasar-release-rehearsal/cargo-config.toml \
         install \
         --path /opt/quasar-release-rehearsal/packages/quasar-cli-0.1.0 \

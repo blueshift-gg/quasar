@@ -17,7 +17,7 @@ Quasar is a `no_std` Solana program framework. Accounts are pointer-cast directl
 ## Quick Start
 
 ```bash
-cargo install --path cli
+cargo install quasar-cli --version 0.1.0 --locked
 quasar init my-program
 quasar build
 quasar test
