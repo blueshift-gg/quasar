@@ -1,5 +1,9 @@
 use {
     quasar_cli::idl,
+    quasar_idl::{
+        lint::{self, LintConfig, RuleCode},
+        types::IdlResolver,
+    },
     serde_json::Value,
     std::{
         error::Error,
@@ -458,6 +462,12 @@ fn assert_typescript_client_requires_address_constraint_accounts(
             source.contains("findVaultAddress"),
             "generated TypeScript client should emit the vault PDA resolver"
         );
+        assert!(
+            !source.contains("  rent: Address;") && !source.contains("  systemProgram: Address;"),
+            "fixed-address accounts should not remain caller inputs"
+        );
+        assert!(source.contains("SysvarRent111111111111111111111111111111111"));
+        assert!(source.contains("11111111111111111111111111111111"));
     }
 
     Ok(())
@@ -613,17 +623,62 @@ fn generated_clients_compile_from_fresh_project() -> Result<(), Box<dyn Error>> 
 
     let temp = tempdir()?;
     let clients_path = temp.path().join("clients");
-    idl::generate(
+    let generated_idl = idl::generate(
         &fixture,
         &["typescript", "python", "golang", "c"],
         &clients_path,
     )?;
+
+    let create = generated_idl
+        .instructions
+        .iter()
+        .find(|instruction| instruction.name == "create")
+        .ok_or("multisig create instruction should exist")?;
+    for (name, expected_address) in [
+        ("rent", "SysvarRent111111111111111111111111111111111"),
+        ("systemProgram", "11111111111111111111111111111111"),
+    ] {
+        let account = create
+            .accounts
+            .iter()
+            .find(|account| account.name == name)
+            .ok_or_else(|| format!("create.{name} should exist"))?;
+        assert!(
+            matches!(
+                &account.resolver,
+                IdlResolver::Const { address } if address == expected_address
+            ),
+            "create.{name} should carry its canonical fixed address: {:?}",
+            account.resolver,
+        );
+    }
+    let lint_report = lint::run(
+        &generated_idl,
+        &LintConfig {
+            strict: true,
+            lockfile_present: true,
+        },
+    );
+    assert!(
+        !lint_report
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.rule == RuleCode::L001 && diagnostic.target == "create"),
+        "fixed program/sysvar accounts should not disconnect create: {:?}",
+        lint_report.diagnostics,
+    );
 
     // The IDL is generated relative to the workspace; find the rust client dir
     // by convention.
     let rust_client_dir = only_child_dir(&clients_path.join("rust"))?;
     if rust_client_dir.exists() {
         compile_rust_client_from_packages(&rust_client_dir)?;
+        let rust = read_tree_files(&rust_client_dir.join("src"), "rs")?;
+        assert!(!rust.contains("pub rent: Address"));
+        assert!(!rust.contains("pub system_program: Address"));
+        assert!(rust
+            .contains("solana_address::address!(\"SysvarRent111111111111111111111111111111111\")"));
+        assert!(rust.contains("solana_address::address!(\"11111111111111111111111111111111\")"));
     }
 
     let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
@@ -648,15 +703,32 @@ fn generated_clients_compile_from_fresh_project() -> Result<(), Box<dyn Error>> 
     let py_dir = only_child_dir(&clients_path.join("python"))?;
     if py_dir.exists() {
         compile_python_client(&py_dir)?;
+        let python = read_file(&py_dir.join("client.py"))?;
+        assert!(!python.contains("    rent: Pubkey"));
+        assert!(!python.contains("    system_program: Pubkey"));
+        assert!(
+            python.contains("Pubkey.from_string(\"SysvarRent111111111111111111111111111111111\")")
+        );
     }
 
     let go_dir = only_child_dir(&clients_path.join("golang"))?;
     if go_dir.exists() {
         compile_go_client(&go_dir)?;
+        let golang = read_file(&go_dir.join("client.go"))?;
+        assert!(!golang.contains("\tRent solana.PublicKey"));
+        assert!(!golang.contains("\tSystemProgram solana.PublicKey"));
+        assert!(golang.contains(
+            "solana.MustPublicKeyFromBase58(\"SysvarRent111111111111111111111111111111111\")"
+        ));
     }
 
     let c_dir = only_child_dir(&clients_path.join("c"))?;
     compile_c_client(&c_dir)?;
+    let c_header = read_file(&c_dir.join("client.h"))?;
+    assert!(c_header.contains("QUASAR_MULTISIG_CREATE_RENT_ID"));
+    assert!(c_header.contains("QUASAR_MULTISIG_CREATE_SYSTEM_PROGRAM_ID"));
+    assert!(!c_header.contains("Pubkey *rent;"));
+    assert!(!c_header.contains("Pubkey *systemProgram;"));
     run_c_sanitized_test(
         &c_dir,
         r#"#include <assert.h>
@@ -684,14 +756,10 @@ static void assert_untouched(
 
 int main(void) {
     Pubkey creator = { .bytes = {1} };
-    Pubkey rent = { .bytes = {2} };
-    Pubkey system_program = { .bytes = {3} };
     Pubkey extra_a = { .bytes = {4} };
     Pubkey extra_b = { .bytes = {5} };
     quasar_multisig_create_accounts_t accounts = {
         .creator = &creator,
-        .rent = &rent,
-        .systemProgram = &system_program,
     };
     quasar_multisig_create_args_t args = { .threshold = 7 };
     AccountMeta remaining[] = {
@@ -771,8 +839,9 @@ int main(void) {
     assert(metas[0].pubkey == &creator && metas[0].is_signer && metas[0].is_writable);
     assert(metas[1].pubkey == &pda_keys[0] && !metas[1].is_signer && metas[1].is_writable);
     assert(metas[1].pubkey->bytes[0] == 1);
-    assert(metas[2].pubkey == &rent && !metas[2].is_signer && !metas[2].is_writable);
-    assert(metas[3].pubkey == &system_program);
+    assert(metas[2].pubkey == &QUASAR_MULTISIG_CREATE_RENT_ID);
+    assert(!metas[2].is_signer && !metas[2].is_writable);
+    assert(metas[3].pubkey == &QUASAR_MULTISIG_CREATE_SYSTEM_PROGRAM_ID);
     assert(metas[4].pubkey == &extra_a && metas[5].pubkey == &extra_b);
     return 0;
 }
@@ -1826,6 +1895,11 @@ mod optional_accounts {
     pub fn touch(_ctx: Ctx<Touch>, _value: u64) -> Result<(), ProgramError> {
         Ok(())
     }
+
+    #[instruction(discriminator = 1)]
+    pub fn fixed_only(_ctx: Ctx<FixedOnly>) -> Result<(), ProgramError> {
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -1836,6 +1910,12 @@ pub struct Touch {
     pub required: Account<Thing>,
     #[account(mut, address = Thing::seeds(authority.address()))]
     pub maybe: Option<Account<Thing>>,
+    pub maybe_program: Option<Program<SystemProgram>>,
+}
+
+#[derive(Accounts)]
+pub struct FixedOnly {
+    pub system_program: Program<SystemProgram>,
 }
 "#,
     )?;
@@ -1868,6 +1948,11 @@ pub struct Touch {
         rust_ix.contains("AccountMeta::new(ix.maybe.unwrap_or(ID), false)"),
         "absent optional account should default to the program id sentinel; present passes through"
     );
+    assert!(rust_ix.contains("pub maybe_program: Option<Address>"));
+    assert!(rust_ix.contains("AccountMeta::new_readonly(ix.maybe_program.unwrap_or(ID), false)"));
+    let fixed_only_rust_ix = read_file(&rust_client_dir.join("src/instructions/fixed_only.rs"))?;
+    assert!(!fixed_only_rust_ix.contains("pub system_program: Address"));
+    assert!(fixed_only_rust_ix.contains("let _ = ix;"));
     override_rust_client_with_workspace_path(&rust_client_dir)?;
     compile_rust_client(&rust_client_dir)?;
 
@@ -1881,6 +1966,7 @@ pub struct Touch {
             source.contains("  maybe?: Address;"),
             "optional account should be an optional TS input"
         );
+        assert!(source.contains("  maybeProgram?: Address;"));
         assert!(
             source.contains("  required: Address;"),
             "required account should stay a mandatory TS input"
@@ -1889,6 +1975,7 @@ pub struct Touch {
             !source.contains("accountsMap[\"maybe\"] ="),
             "optional resolved accounts must remain caller-controlled"
         );
+        assert!(!source.contains("accountsMap[\"maybeProgram\"] ="));
     }
     assert!(
         web3.contains("pubkey: (input.maybe ?? "),
@@ -1911,6 +1998,7 @@ pub struct Touch {
     assert!(py.contains("from typing import Optional"));
     assert!(py.contains("value: int\n    maybe: Optional[Pubkey] = None"));
     assert!(py.contains("maybe: Optional[Pubkey] = None"));
+    assert!(py.contains("maybe_program: Optional[Pubkey] = None"));
     assert!(py.contains("input.maybe if input.maybe is not None else PROGRAM_ID"));
     assert!(!py.contains("accounts_map[\"maybe\"] = Pubkey.find_program_address"));
     compile_python_client(&py_dir)?;
@@ -1918,12 +2006,14 @@ pub struct Touch {
     let go_dir = only_child_dir(&clients_path.join("golang"))?;
     let go = read_file(&go_dir.join("client.go"))?;
     assert!(go.contains("Maybe *solana.PublicKey"));
+    assert!(go.contains("MaybeProgram *solana.PublicKey"));
     assert!(go.contains("if input.Maybe != nil { return *input.Maybe }; return ProgramID"));
     compile_go_client(&go_dir)?;
 
     let c_dir = only_child_dir(&clients_path.join("c"))?;
     let c = read_file(&c_dir.join("client.h"))?;
     assert!(c.contains("accounts->maybe ? accounts->maybe : (Pubkey *)&"));
+    assert!(c.contains("accounts->maybeProgram ? accounts->maybeProgram : (Pubkey *)&"));
     compile_c_client(&c_dir)?;
 
     Ok(())

@@ -49,7 +49,7 @@ pub struct InstructionSurface {
     pub layout: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct AccountMetaSurface {
     pub name: String,
     pub optional: bool,
@@ -58,6 +58,39 @@ pub struct AccountMetaSurface {
     pub resolver: String,
     pub resolver_refs: Vec<String>,
     pub pda_seeds: Vec<String>,
+    #[serde(skip)]
+    pub(super) graph_relevant: bool,
+}
+
+impl<'de> Deserialize<'de> for AccountMetaSurface {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Wire {
+            name: String,
+            optional: bool,
+            signer: String,
+            writable: String,
+            resolver: String,
+            resolver_refs: Vec<String>,
+            pda_seeds: Vec<String>,
+        }
+
+        let wire = Wire::deserialize(deserializer)?;
+        let resolver = serde_json::from_str(&wire.resolver).map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            name: wire.name,
+            optional: wire.optional,
+            signer: wire.signer,
+            writable: wire.writable,
+            resolver: wire.resolver,
+            resolver_refs: wire.resolver_refs,
+            pda_seeds: wire.pda_seeds,
+            graph_relevant: resolver_is_graph_relevant(&resolver),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -222,6 +255,7 @@ impl AccountMetaSurface {
             resolver: json_key(&account.resolver),
             resolver_refs: resolver_refs(&account.resolver),
             pda_seeds: pda_seeds(&account.resolver),
+            graph_relevant: resolver_is_graph_relevant(&account.resolver),
         }
     }
 
@@ -231,6 +265,20 @@ impl AccountMetaSurface {
 
     pub fn writable_required(&self) -> bool {
         self.writable != "false"
+    }
+}
+
+fn resolver_is_graph_relevant(resolver: &IdlResolver) -> bool {
+    match resolver {
+        IdlResolver::Const { .. }
+        | IdlResolver::KnownProgram { .. }
+        | IdlResolver::Remaining { .. } => false,
+        IdlResolver::Optional { resolver } => resolver_is_graph_relevant(resolver),
+        IdlResolver::Input {}
+        | IdlResolver::Pda { .. }
+        | IdlResolver::AssociatedToken { .. }
+        | IdlResolver::AccountField { .. }
+        | IdlResolver::Arg { .. } => true,
     }
 }
 
@@ -472,4 +520,32 @@ pub fn load_lockfile(path: &Path) -> Result<ProgramSurface, LockfileError> {
         });
     }
     Ok(surface)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lockfile_roundtrip_rebuilds_typed_graph_classification() {
+        let account = AccountMetaSurface {
+            name: "systemProgram".into(),
+            optional: false,
+            signer: "false".into(),
+            writable: "false".into(),
+            resolver: json_key(&IdlResolver::Const {
+                address: "11111111111111111111111111111111".into(),
+            }),
+            resolver_refs: Vec::new(),
+            pda_seeds: Vec::new(),
+            graph_relevant: false,
+        };
+
+        let json = serde_json::to_string(&account).expect("serialize account surface");
+        assert!(!json.contains("graph_relevant"));
+        let restored: AccountMetaSurface =
+            serde_json::from_str(&json).expect("deserialize account surface");
+        assert_eq!(restored, account);
+        assert!(!restored.graph_relevant);
+    }
 }

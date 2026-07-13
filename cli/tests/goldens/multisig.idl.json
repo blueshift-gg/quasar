@@ -65,7 +65,8 @@
           "writable": false,
           "signer": false,
           "resolver": {
-            "kind": "input"
+            "kind": "const",
+            "address": "SysvarRent111111111111111111111111111111111"
           }
         },
         {
@@ -73,7 +74,8 @@
           "writable": false,
           "signer": false,
           "resolver": {
-            "kind": "input"
+            "kind": "const",
+            "address": "11111111111111111111111111111111"
           }
         }
       ],
@@ -159,7 +161,8 @@
           "writable": false,
           "signer": false,
           "resolver": {
-            "kind": "input"
+            "kind": "const",
+            "address": "11111111111111111111111111111111"
           }
         }
       ],
@@ -225,7 +228,8 @@
           "writable": false,
           "signer": false,
           "resolver": {
-            "kind": "input"
+            "kind": "const",
+            "address": "11111111111111111111111111111111"
           }
         }
       ],
@@ -338,7 +342,8 @@
           "writable": false,
           "signer": false,
           "resolver": {
-            "kind": "input"
+            "kind": "const",
+            "address": "11111111111111111111111111111111"
           }
         }
       ],
@@ -555,7 +560,7 @@
     }
   ],
   "hashes": {
-    "idl": "f969b7ac11b04c75e50fb5c86b17a4f9810302428802cbd4d4eac12629c9d914",
-    "abi": "69f0b3ae772f49544aa8c1a329423673a05ca61af23f98e94bd001fbf290f49c"
+    "idl": "7efbbc13016b9671d251234001d16ac2a08a1f3af98ae6f71826febc70bb6e79",
+    "abi": "255332d70136c0c38d5f14ce7ba6795dbd251214096f896e9f18d876b0297c98"
   }
 }

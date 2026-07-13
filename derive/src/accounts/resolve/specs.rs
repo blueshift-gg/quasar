@@ -170,14 +170,29 @@ pub(crate) struct ProgramCloseSpec {
     pub destination_field: Ident,
 }
 
-/// A typed-seeds PDA resolver for the IDL accounts-meta fragment. Built once in
-/// the planner from `AddressKind::Seeds` (resolving each seed against the other
-/// fields / instruction args), so the driver's IDL emitter is a pure formatter
-/// and never reads `FieldSemantics`.
-pub(crate) struct IdlResolverPlan {
-    /// The PDA account type (owns `HasSeeds::SEED_PREFIX`).
-    pub account_ty: Path,
-    pub seeds: Vec<IdlSeedPlan>,
+/// Resolver for one IDL account-meta node. Built once in the planner so the IDL
+/// emitter is a pure formatter and never reclassifies wrapper/address syntax.
+pub(crate) enum IdlResolverPlan {
+    /// A wrapper whose inner type provides one canonical address.
+    FixedAddress {
+        inner_ty: Type,
+        source: FixedAddressSource,
+    },
+    /// A typed-seeds PDA with every seed resolved against accounts/args.
+    Pda {
+        /// The PDA account type (owns `HasSeeds::SEED_PREFIX`).
+        account_ty: Path,
+        seeds: Vec<IdlSeedPlan>,
+    },
+}
+
+/// Trait that owns the canonical ID for a fixed-address wrapper.
+#[derive(Clone, Copy)]
+pub(crate) enum FixedAddressSource {
+    /// `Program<T>` reads `<T as Id>::ID`.
+    Program,
+    /// `Sysvar<T>` reads `<T as Sysvar>::ID`.
+    Sysvar,
 }
 
 /// One resolved IDL PDA seed.
@@ -292,7 +307,7 @@ pub(crate) struct FieldPlan {
     pub behaviors: Vec<BehaviorGroupRef>,
     /// Doc-comment lines for the IDL account node (`/// ...` on the field).
     pub docs: Vec<String>,
-    /// Typed-seeds PDA resolver for the IDL accounts-meta fragment, if any.
+    /// Fixed-address or typed-seeds resolver for the IDL account-meta fragment.
     pub idl_resolver: Option<IdlResolverPlan>,
     /// The `{field}_signer` helper, emitted for Single fields with a
     /// typed-seeds address.

@@ -22,6 +22,7 @@ pub fn generate_c_client(idl: &Idl) -> CodegenResult<String> {
     writeln!(out, "#include <caravel.h>\n").unwrap();
 
     emit_program_id(&mut out, &prefix, &idl.address);
+    emit_fixed_account_ids(&mut out, &prefix, idl);
     emit_discriminators(&mut out, &prefix, idl);
     emit_decoder_helpers(&mut out, &prefix);
     emit_type_defs(&mut out, &prefix, &idl.types);
@@ -156,8 +157,38 @@ static inline bool {prefix}_utf8_valid(const uint8_t *data, uint32_t len) {{
 
 fn emit_program_id(out: &mut String, prefix: &str, address: &str) {
     let upper = prefix.to_ascii_uppercase();
+    emit_pubkey_const(out, &format!("{upper}_PROGRAM_ID"), address);
+}
+
+fn emit_fixed_account_ids(out: &mut String, prefix: &str, idl: &Idl) {
+    for instruction in &idl.instructions {
+        for account in &instruction.accounts {
+            if account.optional {
+                continue;
+            }
+            if let IdlResolver::Const { address } = &account.resolver {
+                emit_pubkey_const(
+                    out,
+                    &fixed_account_id_name(prefix, &instruction.name, &account.name),
+                    address,
+                );
+            }
+        }
+    }
+}
+
+fn fixed_account_id_name(prefix: &str, instruction: &str, account: &str) -> String {
+    format!(
+        "{}_{}_{}_ID",
+        prefix.to_ascii_uppercase(),
+        pascal_to_snake(instruction).to_ascii_uppercase(),
+        pascal_to_snake(account).to_ascii_uppercase(),
+    )
+}
+
+fn emit_pubkey_const(out: &mut String, name: &str, address: &str) {
     let bytes = bs58::decode(address).into_vec().unwrap_or_default();
-    write!(out, "static const Pubkey {upper}_PROGRAM_ID = {{{{").unwrap();
+    write!(out, "static const Pubkey {name} = {{{{").unwrap();
     for (i, b) in bytes.iter().enumerate() {
         if i > 0 {
             out.push_str(", ");
@@ -295,7 +326,13 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         let user_accounts: Vec<_> = ix
             .accounts
             .iter()
-            .filter(|a| a.optional || !matches!(a.resolver, IdlResolver::Pda { .. }))
+            .filter(|a| {
+                a.optional
+                    || !matches!(
+                        a.resolver,
+                        IdlResolver::Const { .. } | IdlResolver::Pda { .. }
+                    )
+            })
             .collect();
         let account_field_seeds = account_field_seed_inputs(ix);
 
@@ -476,6 +513,11 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
                 let expr = format!("&pda_key_buf[{pda_idx}]");
                 pda_idx += 1;
                 expr
+            } else if matches!(acc.resolver, IdlResolver::Const { .. }) {
+                format!(
+                    "(Pubkey *)&{}",
+                    fixed_account_id_name(prefix, &ix.name, &acc.name)
+                )
             } else {
                 format!("accounts->{}", acc.name)
             };

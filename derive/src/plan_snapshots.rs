@@ -60,6 +60,7 @@ fn plan_basic_mut_signer() {
             pub payer: Signer,
             pub config: Account<TestConfig>,
             pub system_program: Program<SystemProgram>,
+            pub rent: Sysvar<Rent>,
         }
     };
     expect_test::expect_file!["snapshots/plan_basic_mut_signer.txt"].assert_eq(&dump_ir(input));

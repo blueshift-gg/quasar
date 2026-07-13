@@ -66,7 +66,7 @@ event_cpi: [Never, Never, Never]
     bump: None
     behaviors: []
     docs: []
-    idl_resolver: None
+    idl_resolver: FixedAddress(inner_ty=`SystemProgram` source=Id::ID)
     signer_helper: None
     pre_load: []
     post_load: []
