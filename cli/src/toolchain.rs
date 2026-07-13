@@ -1,5 +1,9 @@
 use std::process::Command;
 
+/// Actionable recovery guidance shared by every upstream build entry point.
+pub const MISSING_SBPF_LINKER_MESSAGE: &str =
+    "sbpf-linker not found on PATH.\n\n  Install it from crates.io:\n    cargo install sbpf-linker";
+
 /// Check whether sbpf-linker is reachable on PATH.
 pub fn has_sbpf_linker() -> bool {
     Command::new("sbpf-linker")
@@ -44,4 +48,18 @@ fn parse_tools_version(s: &str) -> u32 {
     let s = s.strip_prefix('v').unwrap_or(s);
     let (major, minor) = s.split_once('.').unwrap_or(("0", "0"));
     major.parse::<u32>().unwrap_or(0) * 100 + minor.parse::<u32>().unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MISSING_SBPF_LINKER_MESSAGE;
+
+    #[test]
+    fn missing_linker_message_uses_the_published_crate() {
+        assert_eq!(
+            MISSING_SBPF_LINKER_MESSAGE,
+            "sbpf-linker not found on PATH.\n\n  Install it from crates.io:\n    cargo install \
+             sbpf-linker"
+        );
+    }
 }
