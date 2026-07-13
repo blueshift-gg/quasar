@@ -3,6 +3,7 @@ SHELL := /usr/bin/env bash
 NIGHTLY_TOOLCHAIN := nightly-2026-03-27
 KANI_VERSION := 0.67.0
 CARGO_FUZZ_VERSION := 0.13.2
+CARGO_AUDIT_VERSION := 0.22.1
 PROGRAM_MSRV := 1.89.0
 # platform-tools v1.52 ships Cargo 1.89 which supports Cargo.lock v4.
 # v1.51 ships Cargo 1.84 which does not, causing "duplicate lang item" errors.
@@ -55,7 +56,8 @@ PACKAGE_PATCHES := \
 	test-host-inventory test-host test-sbf-host \
 	bench-cu bench-tracked compare-tracked test-benchmark-policy doc-check \
 	test-miri test-miri-strict test-all \
-	nightly-version cargo-fuzz-version test-fuzz-build generated-client-smoke \
+	nightly-version cargo-fuzz-version cargo-audit-version test-fuzz-build \
+	test-audit-policy generated-client-smoke \
 	kani help-kani check-kani kani-lang \
 	kani-spl kani-metadata msrv-check package-check audit
 
@@ -65,6 +67,9 @@ nightly-version:
 
 cargo-fuzz-version:
 	@echo $(CARGO_FUZZ_VERSION)
+
+cargo-audit-version:
+	@echo $(CARGO_AUDIT_VERSION)
 
 test-fuzz-build:
 	@cd lang && cargo +$(NIGHTLY_TOOLCHAIN) fuzz build
@@ -283,10 +288,20 @@ package-check:
 
 audit:
 	@command -v cargo-audit >/dev/null 2>&1 || { \
-		echo "cargo-audit is not installed; run: cargo install cargo-audit --locked"; \
+		echo "cargo-audit is not installed; run: cargo install cargo-audit --version $(CARGO_AUDIT_VERSION) --locked"; \
 		exit 1; \
 	}
-	@cargo audit
+	@version="$$(cargo audit --version | awk '{print $$2}')"; \
+	if [[ "$$version" != "$(CARGO_AUDIT_VERSION)" ]]; then \
+		echo "unexpected cargo-audit version: $$version"; \
+		echo "expected: $(CARGO_AUDIT_VERSION)"; \
+		exit 1; \
+	fi
+	@$(MAKE) test-audit-policy
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/audit-release-reachability.py
+
+test-audit-policy:
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_audit_release_reachability.py
 
 bench-cu:
 	@$(MAKE) build-sbf
