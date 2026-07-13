@@ -27,6 +27,10 @@ SBF_HOST_PACKAGES = {
     "quasar-test-suite",
 }
 EXCLUDED_TEST_ROOTS = {
+    "compatibility-baselines": (
+        "versioned generated artifacts; executable coverage is enforced by dedicated "
+        "compatibility gates"
+    ),
     "lang/fuzz": "cargo-fuzz crate; fuzz target compilation is tracked by issue #271",
 }
 
@@ -51,6 +55,17 @@ def tracked_rust_files(root: Path) -> list[Path]:
         text=True,
     )
     return [root / line for line in completed.stdout.splitlines() if line]
+
+
+def excluded_test_root(relative: Path) -> str | None:
+    return next(
+        (
+            excluded_root
+            for excluded_root in EXCLUDED_TEST_ROOTS
+            if relative.is_relative_to(excluded_root)
+        ),
+        None,
+    )
 
 
 def runners_for(package: str, target: str) -> list[str]:
@@ -195,14 +210,7 @@ def build_inventory(
         nearest_manifest = nearest_manifest_root(file, root)
         if nearest_manifest not in workspace_package_roots:
             relative = file.relative_to(root)
-            excluded = next(
-                (
-                    excluded_root
-                    for excluded_root in EXCLUDED_TEST_ROOTS
-                    if relative.is_relative_to(excluded_root)
-                ),
-                None,
-            )
+            excluded = excluded_test_root(relative)
             if excluded is not None:
                 continue
             errors.append(

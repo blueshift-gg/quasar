@@ -7,9 +7,9 @@
 //! path as `#krate` (see `derive/src/krate.rs`), which is the ONLY module
 //! allowed to name `quasar_lang` in emitted tokens.
 //!
-//! Doc/line comments are exempt (rustdoc intra-doc links legitimately spell the
-//! canonical name), as are the snapshot goldens under `src/snapshots/` (they
-//! record the *resolved* path the emitters produce).
+//! Doc/line comments are exempt because rustdoc links legitimately spell the
+//! canonical name. Generated compatibility goldens live outside `derive/src`;
+//! the internal plan goldens under `src/snapshots/` are not emitter source.
 
 const BANNED: &str = "quasar_lang::";
 

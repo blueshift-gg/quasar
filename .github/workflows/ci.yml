@@ -243,6 +243,30 @@ jobs:
       - name: Reject Rust public API regressions
         run: make check-public-api
 
+  proc_macro_baseline:
+    name: Proc-macro Expansion Baseline
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-proc-macro-baseline-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-proc-macro-baseline-
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+      - name: Print proc-macro baseline toolchain
+        run: |
+          rustc --version
+          cargo --version
+      - name: Reject proc-macro expansion regressions
+        run: make check-proc-macro-baselines
+
   check_features:
     name: Check Features
     runs-on: ubuntu-24.04
