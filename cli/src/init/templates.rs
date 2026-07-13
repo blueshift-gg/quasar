@@ -37,16 +37,30 @@ pub(super) const INSTRUCTIONS_MOD: &str = r#"mod initialize;
 pub use initialize::*;
 "#;
 
-pub(super) const INSTRUCTION_INITIALIZE: &str = r#"use quasar_lang::prelude::*;
+pub(super) const INSTRUCTION_INITIALIZE: &str = r#"use {
+    crate::state::{MyAccount, MyAccountInner},
+    quasar_lang::prelude::*,
+};
 
 #[derive(Accounts)]
 pub struct Initialize {
+    #[account(mut)]
     pub payer: Signer,
+    #[account(init, payer = payer, address = MyAccount::seeds(payer.address()))]
+    pub my_account: Account<MyAccount>,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl Initialize {
     #[inline(always)]
-    pub fn initialize(&self) -> Result<(), ProgramError> {
+    pub fn initialize(&mut self, value: u64, bumps: &InitializeBumps) -> Result<(), ProgramError> {
+        self.my_account.set_inner(MyAccountInner {
+            version: 1,
+            authority: *self.payer.address(),
+            value,
+            bump: bumps.my_account,
+            _reserved: [0; 64],
+        });
         Ok(())
     }
 }
@@ -54,11 +68,13 @@ impl Initialize {
 
 pub(super) const STATE_RS: &str = r#"use quasar_lang::prelude::*;
 
-#[account(discriminator = 1)]
+#[account(discriminator = 1, set_inner)]
+#[seeds(b"my-account", authority: Address)]
 pub struct MyAccount {
     pub version: u8,
     pub authority: Address,
     pub value: u64,
+    pub bump: u8,
     pub _reserved: [u8; 64],
 }
 "#;
