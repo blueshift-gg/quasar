@@ -1,4 +1,6 @@
-.packages[]
+.packages as $packages
+| ($packages | map(select(.publish != []) | .name)) as $published
+| $packages[]
 | select(.publish != [])
 | . as $package
 | if (($package.description // "") | length) == 0 then "\($package.name): missing description" else empty end,
@@ -9,4 +11,10 @@
   if (($package.keywords | length) < 1 or ($package.keywords | length) > 5) then "\($package.name): expected 1-5 keywords" else empty end,
   if any($package.keywords[]; test("^[A-Za-z0-9][A-Za-z0-9_+\\-]{0,19}$") | not) then "\($package.name): invalid crates.io keyword" else empty end,
   if (($package.categories | length) < 1 or ($package.categories | length) > 5) then "\($package.name): expected 1-5 categories" else empty end,
-  if any($package.categories[]; . as $category | ($allowed | index($category)) == null) then "\($package.name): unknown crates.io category" else empty end
+  if any($package.categories[]; . as $category | ($allowed | index($category)) == null) then "\($package.name): unknown crates.io category" else empty end,
+  ($package.dependencies[]
+    | select((.kind // "normal") != "dev")
+    | select(.name as $dependency | $published | index($dependency))
+    | if .req != ("=" + $package.version) then
+        "\($package.name) -> \(.name): internal dependency must use =\($package.version) (found \(.req))"
+      else empty end)

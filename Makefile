@@ -5,6 +5,7 @@ KANI_VERSION := 0.67.0
 CARGO_FUZZ_VERSION := 0.13.2
 CARGO_AUDIT_VERSION := 0.22.1
 LICENSE_EXPRESSION := Apache-2.0 OR MIT
+RELEASE_WORKFLOW ?= .github/workflows/release.yml
 PROGRAM_MSRV := 1.89.0
 # platform-tools v1.52 ships Cargo 1.89 which supports Cargo.lock v4.
 # v1.51 ships Cargo 1.84 which does not, causing "duplicate lang item" errors.
@@ -54,7 +55,7 @@ PACKAGE_PATCHES := \
 
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
 	check-runtime-panics check-workspace-invariants check-license-policy \
-	check-package-metadata \
+	check-package-metadata check-release-train \
 	build build-sbf test test-bless \
 	test-host-inventory test-host test-sbf-host \
 	bench-cu bench-tracked compare-tracked test-benchmark-policy doc-check \
@@ -180,7 +181,7 @@ check-runtime-panics:
 	  exit 1; \
 	fi
 
-check-workspace-invariants: check-license-policy check-package-metadata
+check-workspace-invariants: check-license-policy check-package-metadata check-release-train
 	@check_allowed() { \
 	  local desc="$$1" pattern="$$2"; shift 2; \
 	  local allowed=("$$@") matches; \
@@ -263,6 +264,43 @@ check-package-metadata:
 	done < <(jq -r \
 	  '.packages[] | select(.publish != []) | (.manifest_path | sub("/Cargo.toml$$"; "")) + "/" + .readme' \
 	  <<<"$$metadata")
+
+check-release-train:
+	@metadata="$$(cargo metadata --locked --no-deps --format-version 1)"; \
+	declared="$$(printf '%s\n' $(PUBLISH_PACKAGES) | LC_ALL=C sort)"; \
+	publishable="$$(jq -r '.packages[] | select(.publish != []) | .name' \
+	  <<<"$$metadata" | LC_ALL=C sort)"; \
+	if [[ "$$declared" != "$$publishable" ]]; then \
+	  echo "PUBLISH_PACKAGES does not match the publishable workspace crates" >&2; \
+	  diff <(printf '%s\n' "$$declared") <(printf '%s\n' "$$publishable") >&2 || true; \
+	  exit 1; \
+	fi; \
+	published="$$(printf '%s\n' $(PUBLISH_PACKAGES) | jq -R . | jq -s .)"; \
+	edges="$$(jq -r --argjson published "$$published" \
+	  '.packages[] \
+	   | select(.name as $$name | $$published | index($$name)) \
+	   | . as $$package \
+	   | .dependencies[] \
+	   | select((.kind // "normal") != "dev") \
+	   | select(.name as $$dependency | $$published | index($$dependency)) \
+	   | [$$package.name, .name] | @tsv' <<<"$$metadata")"; \
+	for package in $(PUBLISH_PACKAGES); do \
+	  publish_count="$$(grep -cF "scripts/publish-crate.sh $$package " "$(RELEASE_WORKFLOW)" || true)"; \
+	  wait_count="$$(grep -cF "scripts/wait-for-crate.sh $$package " "$(RELEASE_WORKFLOW)" || true)"; \
+	  if [[ "$$publish_count" -ne 1 || "$$wait_count" -ne 1 ]]; then \
+	    echo "release workflow must publish and wait for $$package exactly once" >&2; \
+	    exit 1; \
+	  fi; \
+	done; \
+	while IFS=$$'\t' read -r package dependency; do \
+	  [[ -z "$$package" ]] && continue; \
+	  publish_line="$$(grep -nF "scripts/publish-crate.sh $$package " "$(RELEASE_WORKFLOW)" | cut -d: -f1)"; \
+	  wait_line="$$(grep -nF "scripts/wait-for-crate.sh $$dependency " "$(RELEASE_WORKFLOW)" | cut -d: -f1)"; \
+	  if (( wait_line >= publish_line )); then \
+	    echo "release workflow publishes $$package before $$dependency is available" >&2; \
+	    exit 1; \
+	  fi; \
+	done <<<"$$edges"
 
 build:
 	@cargo build
