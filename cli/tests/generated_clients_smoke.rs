@@ -132,11 +132,7 @@ fn compile_go_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
     )
 }
 
-fn compile_c_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
-    let temp = tempdir()?;
-    write_file(
-        &temp.path().join("caravel.h"),
-        r#"#ifndef CARAVEL_H
+const CARAVEL_STUB: &str = r#"#ifndef CARAVEL_H
 #define CARAVEL_H
 
 #include <stdbool.h>
@@ -197,8 +193,11 @@ static inline bool find_program_address(
 }
 
 #endif
-"#,
-    )?;
+"#;
+
+fn compile_c_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let temp = tempdir()?;
+    write_file(&temp.path().join("caravel.h"), CARAVEL_STUB)?;
     write_file(&temp.path().join("compile.c"), r#"#include "client.h""#)?;
 
     let cc = std::env::var_os("CC").unwrap_or_else(|| "cc".into());
@@ -212,6 +211,29 @@ static inline bool find_program_address(
             .arg(temp.path())
             .arg(temp.path().join("compile.c")),
     )
+}
+
+fn run_c_decoder_test(client_dir: &Path, source: &str) -> Result<(), Box<dyn Error>> {
+    let temp = tempdir()?;
+    write_file(&temp.path().join("caravel.h"), CARAVEL_STUB)?;
+    write_file(&temp.path().join("decoder_test.c"), source)?;
+
+    let cc = std::env::var_os("CC").unwrap_or_else(|| "cc".into());
+    let binary = temp.path().join("decoder_test");
+    run_command(
+        Command::new(&cc)
+            .arg("-std=c11")
+            .arg("-fsanitize=address,undefined")
+            .arg("-fno-omit-frame-pointer")
+            .arg("-I")
+            .arg(client_dir)
+            .arg("-I")
+            .arg(temp.path())
+            .arg(temp.path().join("decoder_test.c"))
+            .arg("-o")
+            .arg(&binary),
+    )?;
+    run_command(&mut Command::new(binary))
 }
 
 fn compile_typescript_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
@@ -547,6 +569,345 @@ fn generated_clients_compile_from_fresh_project() -> Result<(), Box<dyn Error>> 
     if go_dir.exists() {
         compile_go_client(&go_dir)?;
     }
+
+    Ok(())
+}
+
+#[test]
+fn generated_decoders_reject_malformed_bytes_in_every_language() -> Result<(), Box<dyn Error>> {
+    let temp = tempdir()?;
+    let program_dir = temp.path().join("programs/decoder-total");
+
+    write_file(
+        &temp.path().join("Cargo.toml"),
+        r#"[workspace]
+members = ["programs/decoder-total"]
+resolver = "3"
+"#,
+    )?;
+    write_file(
+        &program_dir.join("Cargo.toml"),
+        format!(
+            r#"[package]
+name = "decoder-total"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+idl-build = ["quasar-lang/idl-build"]
+
+[dependencies]
+quasar-lang = {{ path = "{}" }}
+"#,
+            workspace_root().join("lang").display()
+        ),
+    )?;
+    write_file(
+        &program_dir.join("src/lib.rs"),
+        r#"#![no_std]
+use quasar_lang::prelude::*;
+
+declare_id!("11111111111111111111111111111111");
+
+#[account(discriminator = 1)]
+pub struct DecodeFixture {
+    pub enabled: bool,
+    pub maybe: Option<u16>,
+    pub label: String<70000, 4>,
+    pub bytes: Vec<u8, 70000, 4>,
+}
+
+#[derive(Accounts)]
+pub struct Noop {
+    pub authority: Signer,
+}
+
+#[program]
+mod decoder_total {
+    use super::*;
+
+    #[instruction(discriminator = 9)]
+    pub fn noop(_ctx: Ctx<Noop>) -> Result<(), ProgramError> {
+        Ok(())
+    }
+}
+"#,
+    )?;
+
+    let clients_path = temp.path().join("clients");
+    idl::generate(
+        &program_dir,
+        &["typescript", "python", "golang", "c"],
+        &clients_path,
+    )?;
+
+    // Account discriminator + fixed fields + both u32 prefixes + both tails.
+    let rust_dir = only_child_dir(&clients_path.join("rust"))?;
+    let cargo_toml_path = rust_dir.join("Cargo.toml");
+    let cargo_toml = read_file(&cargo_toml_path)?;
+    let cargo_toml = cargo_toml.replace(
+        "quasar-lang = { git = \"https://github.com/blueshift-gg/quasar\", branch = \"master\" }",
+        &format!(
+            "quasar-lang = {{ path = \"{}\" }}",
+            workspace_root().join("lang").display()
+        ),
+    );
+    fs::write(&cargo_toml_path, format!("{cargo_toml}\n[workspace]\n"))?;
+    write_file(
+        &rust_dir.join("tests/decoder.rs"),
+        r#"use decoder_total_client::state::{decode_account, ProgramAccount};
+
+const VALID: &[u8] = &[
+    1,
+    1, 1, 0x34, 0x12,
+    2, 0, 0, 0,
+    3, 0, 0, 0,
+    b'o', b'k', 1, 2, 3,
+];
+
+fn reject(bytes: &[u8]) {
+    let result = std::panic::catch_unwind(|| decode_account(bytes));
+    assert!(result.is_ok(), "decoder panicked for {bytes:?}");
+    assert!(result.unwrap().is_none(), "decoder accepted {bytes:?}");
+}
+
+#[test]
+fn malformed_inputs_are_total() {
+    for end in 0..VALID.len() { reject(&VALID[..end]); }
+
+    let mut malformed = VALID.to_vec();
+    malformed[1] = 2;
+    reject(&malformed);
+    malformed.copy_from_slice(VALID);
+    malformed[2] = 2;
+    reject(&malformed);
+    malformed.copy_from_slice(VALID);
+    malformed[5..9].fill(0xff);
+    reject(&malformed);
+    malformed.copy_from_slice(VALID);
+    malformed[13] = 0xff;
+    reject(&malformed);
+    malformed.copy_from_slice(VALID);
+    malformed.push(0);
+    reject(&malformed);
+
+    // Deterministic fuzz-style coverage of forged prefixes and arbitrary bytes.
+    for len in 0..4096usize {
+        let bytes = (0..len)
+            .map(|index| ((index.wrapping_mul(31) ^ len.wrapping_mul(17)) & 0xff) as u8)
+            .collect::<Vec<_>>();
+        assert!(std::panic::catch_unwind(|| decode_account(&bytes)).is_ok());
+    }
+
+    let Some(ProgramAccount::DecodeFixture(value)) = decode_account(VALID) else {
+        panic!("valid vector was rejected");
+    };
+    assert!(value.enabled);
+    assert_eq!(value.maybe, Some(0x1234));
+    assert_eq!(value.label.as_bytes(), b"ok");
+    assert_eq!(value.bytes.iter().copied().collect::<Vec<_>>(), vec![1, 2, 3]);
+}
+"#,
+    )?;
+    run_command(
+        Command::new("cargo")
+            .arg("test")
+            .arg("--quiet")
+            .current_dir(&rust_dir),
+    )?;
+
+    let python_dir = only_child_dir(&clients_path.join("python"))?;
+    compile_python_client(&python_dir)?;
+    write_file(
+        &python_dir.join("decoder_test.py"),
+        r#"import importlib.util
+import pathlib
+import sys
+import types
+
+solders = types.ModuleType("solders")
+solders.__path__ = []
+pubkey = types.ModuleType("solders.pubkey")
+instruction = types.ModuleType("solders.instruction")
+
+class Pubkey:
+    @classmethod
+    def from_string(cls, _value): return cls()
+
+class Instruction: pass
+class AccountMeta: pass
+pubkey.Pubkey = Pubkey
+instruction.Instruction = Instruction
+instruction.AccountMeta = AccountMeta
+sys.modules.update({
+    "solders": solders,
+    "solders.pubkey": pubkey,
+    "solders.instruction": instruction,
+})
+
+spec = importlib.util.spec_from_file_location("client", pathlib.Path("client.py"))
+client = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = client
+spec.loader.exec_module(client)
+
+valid = bytes([1, 1, 0x34, 0x12, 2, 0, 0, 0, 3, 0, 0, 0, 111, 107, 1, 2, 3])
+
+def reject(data):
+    try: client.DecodeFixture.decode(data)
+    except (ValueError, UnicodeDecodeError): return
+    raise AssertionError(f"accepted malformed bytes: {data!r}")
+
+for end in range(len(valid)): reject(valid[:end])
+for index, value in [(0, 2), (1, 2), (12, 0xff)]:
+    malformed = bytearray(valid); malformed[index] = value; reject(bytes(malformed))
+malformed = bytearray(valid); malformed[4:8] = b"\xff" * 4; reject(bytes(malformed))
+reject(valid + b"\x00")
+
+value = client.DecodeFixture.decode(valid)
+assert value.enabled is True
+assert value.maybe == 0x1234
+assert value.label == "ok"
+assert value.bytes == [1, 2, 3]
+"#,
+    )?;
+    run_command(
+        Command::new("python3")
+            .arg("decoder_test.py")
+            .current_dir(&python_dir),
+    )?;
+
+    let go_dir = only_child_dir(&clients_path.join("golang"))?;
+    write_file(
+        &go_dir.join("decoder_test.go"),
+        r#"package decoder_total
+
+import "testing"
+
+var validDecodeFixture = []byte{
+    1, 1, 0x34, 0x12,
+    2, 0, 0, 0,
+    3, 0, 0, 0,
+    'o', 'k', 1, 2, 3,
+}
+
+func reject(t *testing.T, data []byte) {
+    t.Helper()
+    if _, err := DecodeDecodeFixture(data); err == nil { t.Fatalf("accepted malformed bytes: %v", data) }
+}
+
+func TestMalformedDecodeFixture(t *testing.T) {
+    for end := 0; end < len(validDecodeFixture); end++ { reject(t, validDecodeFixture[:end]) }
+    for index, value := range map[int]byte{0: 2, 1: 2, 12: 0xff} {
+        malformed := append([]byte(nil), validDecodeFixture...); malformed[index] = value; reject(t, malformed)
+    }
+    malformed := append([]byte(nil), validDecodeFixture...)
+    copy(malformed[4:8], []byte{0xff, 0xff, 0xff, 0xff})
+    reject(t, malformed)
+    reject(t, append(append([]byte(nil), validDecodeFixture...), 0))
+
+    value, err := DecodeDecodeFixture(validDecodeFixture)
+    if err != nil { t.Fatal(err) }
+    if !value.Enabled || value.Maybe == nil || *value.Maybe != 0x1234 || value.Label != "ok" {
+        t.Fatalf("unexpected value: %#v", value)
+    }
+    if len(value.Bytes) != 3 || value.Bytes[0] != 1 || value.Bytes[1] != 2 || value.Bytes[2] != 3 {
+        t.Fatalf("unexpected bytes: %v", value.Bytes)
+    }
+}
+"#,
+    )?;
+    compile_go_client(&go_dir)?;
+    run_command(
+        Command::new("go")
+            .arg("test")
+            .arg("./...")
+            .current_dir(&go_dir),
+    )?;
+
+    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
+    compile_typescript_client(&ts_dir)?;
+    write_file(
+        &ts_dir.join("decoder_test.ts"),
+        r#"import { DecoderTotalClient } from "./web3.ts";
+
+const client = new DecoderTotalClient();
+const valid = Uint8Array.from([
+  1,
+  1, 1, 0x34, 0x12,
+  2, 0, 0, 0,
+  3, 0, 0, 0,
+  111, 107, 1, 2, 3,
+]);
+
+function reject(data: Uint8Array): void {
+  try { client.decodeDecodeFixture(data); }
+  catch { return; }
+  throw new Error(`accepted malformed bytes: ${data}`);
+}
+
+for (let end = 0; end < valid.length; end++) reject(valid.slice(0, end));
+for (const [index, byte] of [[1, 2], [2, 2], [13, 0xff]] as const) {
+  const malformed = valid.slice(); malformed[index] = byte; reject(malformed);
+}
+const forged = valid.slice(); forged.fill(0xff, 5, 9); reject(forged);
+const trailing = Uint8Array.from([...valid, 0]); reject(trailing);
+
+const value = client.decodeDecodeFixture(valid);
+if (!value.enabled || value.maybe !== 0x1234 || value.label !== "ok") throw new Error("invalid value");
+if (value.bytes.length !== 3 || value.bytes[0] !== 1 || value.bytes[1] !== 2 || value.bytes[2] !== 3) {
+  throw new Error("invalid bytes");
+}
+"#,
+    )?;
+    run_command(
+        Command::new("node")
+            .arg("--experimental-strip-types")
+            .arg("decoder_test.ts")
+            .current_dir(&ts_dir),
+    )?;
+
+    let c_dir = only_child_dir(&clients_path.join("c"))?;
+    compile_c_client(&c_dir)?;
+    run_c_decoder_test(
+        &c_dir,
+        r#"#include <assert.h>
+#include <string.h>
+#include "client.h"
+
+static const uint8_t valid[] = {
+    1, 1, 0x34, 0x12,
+    2, 0, 0, 0,
+    3, 0, 0, 0,
+    'o', 'k', 1, 2, 3,
+};
+
+static void reject(const uint8_t *data, uint64_t len) {
+    decoder_total_decode_fixture_t out;
+    assert(!decoder_total_decode_fixture_decode(data, len, &out));
+}
+
+int main(void) {
+    for (uint64_t len = 0; len < sizeof(valid); len++) reject(valid, len);
+
+    uint8_t malformed[sizeof(valid) + 1];
+    memcpy(malformed, valid, sizeof(valid)); malformed[0] = 2; reject(malformed, sizeof(valid));
+    memcpy(malformed, valid, sizeof(valid)); malformed[1] = 2; reject(malformed, sizeof(valid));
+    memcpy(malformed, valid, sizeof(valid)); memset(&malformed[4], 0xff, 4); reject(malformed, sizeof(valid));
+    memcpy(malformed, valid, sizeof(valid)); malformed[12] = 0xff; reject(malformed, sizeof(valid));
+    memcpy(malformed, valid, sizeof(valid)); malformed[sizeof(valid)] = 0; reject(malformed, sizeof(malformed));
+
+    decoder_total_decode_fixture_t out;
+    assert(decoder_total_decode_fixture_decode(valid, sizeof(valid), &out));
+    assert(out.enabled && out.maybe_present && out.maybe == 0x1234);
+    assert(out.label_len == 2 && memcmp(out.label, "ok", 2) == 0);
+    assert(out.bytes_len == 3 && out.bytes[0] == 1 && out.bytes[1] == 2 && out.bytes[2] == 3);
+    return 0;
+}
+"#,
+    )?;
 
     Ok(())
 }

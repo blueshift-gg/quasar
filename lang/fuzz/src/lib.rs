@@ -19,6 +19,18 @@ use quasar_lang::{
     __zeropod as zeropod, instruction_arg::InstructionArg, prelude::Address, ZeroPodCompact,
 };
 
+/// Exercise the allocating client-side decoders on arbitrary, untrusted bytes.
+/// Length prefixes are allocation-bounded and UTF-8 decoding is strict; no
+/// input may panic or trigger an attacker-sized preallocation.
+pub fn decode_client(data: &[u8]) {
+    use quasar_lang::client::{wincode, DynString, DynVec};
+
+    let string = wincode::deserialize::<DynString<u32>>(data);
+    let bytes = wincode::deserialize::<DynVec<u8, u32>>(data);
+    let words = wincode::deserialize::<DynVec<u64, u32>>(data);
+    let _ = core::hint::black_box((string, bytes, words));
+}
+
 // ---------------------------------------------------------------------------
 // decode_fixed: u64 + bool + Option<u64> + Option<Address>
 // ---------------------------------------------------------------------------

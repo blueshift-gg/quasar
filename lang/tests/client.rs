@@ -1,4 +1,4 @@
-use quasar_lang::client::{wincode, DynBytes, DynVec};
+use quasar_lang::client::{wincode, DynBytes, DynString, DynVec};
 
 // Pin the exact byte representation. The on-chain program
 // deserializes from alignment-1 zero-copy structs that expect THIS
@@ -397,4 +397,22 @@ fn dyn_vec_prefix_sizes() {
     assert_eq!(wire_u8.len(), 1 + 24);
     assert_eq!(wire_u16.len(), 2 + 24);
     assert_eq!(wire_u32.len(), 4 + 24);
+}
+
+#[test]
+fn dyn_string_rejects_invalid_utf8() {
+    let wire = [1, 0, 0, 0, 0xff];
+    assert!(matches!(
+        wincode::deserialize::<DynString<u32>>(&wire),
+        Err(wincode::error::ReadError::InvalidUtf8Encoding(_))
+    ));
+}
+
+#[test]
+fn dyn_vec_rejects_attacker_sized_element_count_before_allocating() {
+    let wire = ((10 * 1024 * 1024) + 1u32).to_le_bytes();
+    assert!(matches!(
+        wincode::deserialize::<DynVec<u8, u32>>(&wire),
+        Err(wincode::error::ReadError::PreallocationSizeLimit { .. })
+    ));
 }

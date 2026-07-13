@@ -1,6 +1,8 @@
 use {
     super::model::{go_field_path, reject_generics, CodegenResult, ProgramModel},
-    crate::types::{Idl, IdlArg, IdlCodec, IdlPdaSeed, IdlResolver, IdlType, IdlTypeDef},
+    crate::types::{
+        Idl, IdlArg, IdlCodec, IdlFieldDef, IdlPdaSeed, IdlResolver, IdlType, IdlTypeDef,
+    },
     quasar_schema::{snake_to_pascal, to_camel_case},
     std::fmt::Write,
 };
@@ -26,6 +28,9 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
     let has_floats = model.features.has_float;
 
     out.push_str("import (\n");
+    if has_types_with_fields || has_events {
+        out.push_str("\t\"errors\"\n");
+    }
     if needs_binary {
         out.push_str("\t\"encoding/binary\"\n");
     }
@@ -34,6 +39,9 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
     }
     if has_floats {
         out.push_str("\t\"math\"\n");
+    }
+    if has_types_with_fields {
+        out.push_str("\t\"unicode/utf8\"\n");
     }
     out.push('\n');
     out.push_str("\tsolana \"github.com/gagliardetto/solana-go\"\n");
@@ -46,6 +54,41 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
         idl.address
     )
     .unwrap();
+
+    if has_types_with_fields {
+        out.push_str(
+            "const maxDecodeElements = 10 * 1024 * 1024\n\ntype quasarDecoder struct {\n\tdata \
+             []byte\n\toffset int\n\terr error\n}\n\nfunc (d *quasarDecoder) fail(message string) \
+             {\n\tif d.err == nil { d.err = errors.New(message) }\n}\n\nfunc (d *quasarDecoder) \
+             take(size int) []byte {\n\tif d.err != nil { return nil }\n\tif size < 0 || d.offset \
+             < 0 || size > len(d.data)-d.offset {\n\t\td.fail(\"truncated input\")\n\t\treturn \
+             nil\n\t}\n\tend := d.offset + size\n\tvalue := d.data[d.offset:end]\n\td.offset = \
+             end\n\treturn value\n}\n\nfunc (d *quasarDecoder) length(width int) int {\n\traw := \
+             d.take(width)\n\tif d.err != nil { return 0 }\n\tvar value uint64\n\tswitch width \
+             {\n\tcase 1: value = uint64(raw[0])\n\tcase 2: value = \
+             uint64(binary.LittleEndian.Uint16(raw))\n\tcase 4: value = \
+             uint64(binary.LittleEndian.Uint32(raw))\n\tcase 8: value = \
+             binary.LittleEndian.Uint64(raw)\n\tdefault: d.fail(\"invalid length prefix width\"); \
+             return 0\n\t}\n\tif value > uint64(^uint(0)>>1) { d.fail(\"length overflows int\"); \
+             return 0 }\n\treturn int(value)\n}\n\nfunc (d *quasarDecoder) u8() uint8 {\n\traw := \
+             d.take(1); if d.err != nil { return 0 }; return raw[0]\n}\n\nfunc (d *quasarDecoder) \
+             u16() uint16 {\n\traw := d.take(2); if d.err != nil { return 0 }; return \
+             binary.LittleEndian.Uint16(raw)\n}\n\nfunc (d *quasarDecoder) u32() uint32 {\n\traw \
+             := d.take(4); if d.err != nil { return 0 }; return \
+             binary.LittleEndian.Uint32(raw)\n}\n\nfunc (d *quasarDecoder) u64() uint64 {\n\traw \
+             := d.take(8); if d.err != nil { return 0 }; return \
+             binary.LittleEndian.Uint64(raw)\n}\n\nfunc (d *quasarDecoder) elements(width int) \
+             int {\n\tcount := d.length(width)\n\tif count > maxDecodeElements || count > \
+             len(d.data)-d.offset { d.fail(\"element count exceeds limit\"); return 0 }\n\treturn \
+             count\n}\n\nfunc (d *quasarDecoder) bool() bool {\n\traw := d.u8()\n\tif d.err != \
+             nil { return false }\n\tif raw > 1 { d.fail(\"invalid bool\"); return false \
+             }\n\treturn raw == 1\n}\n\nfunc (d *quasarDecoder) string(size int) string {\n\traw \
+             := d.take(size)\n\tif d.err != nil { return \"\" }\n\tif !utf8.Valid(raw) { \
+             d.fail(\"invalid UTF-8\"); return \"\" }\n\treturn string(raw)\n}\n\nfunc (d \
+             *quasarDecoder) finish() error {\n\tif d.err != nil { return d.err }\n\tif d.offset \
+             != len(d.data) { return errors.New(\"trailing bytes\") }\n\treturn nil\n}\n\n",
+        );
+    }
 
     // Discriminator variables
     for ix in &idl.instructions {
@@ -111,13 +154,40 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
         if !type_def.fields.is_empty() {
             writeln!(
                 out,
-                "func Decode{}(data []byte) *{} {{",
+                "func Decode{}(data []byte) (*{}, error) {{",
                 type_def.name, type_def.name
             )
             .unwrap();
-            out.push_str("\toffset := 0\n");
-            for field in &type_def.fields {
+            out.push_str("\tdecoder := quasarDecoder{data: data}\n");
+            let fixed_fields: Vec<_> = type_def
+                .fields
+                .iter()
+                .filter(|field| !is_dynamic_field(field))
+                .collect();
+            let dynamic_fields: Vec<_> = type_def
+                .fields
+                .iter()
+                .filter(|field| is_dynamic_field(field))
+                .collect();
+            for field in fixed_fields {
                 out.push_str(&decode_field_expr(
+                    &to_camel_case(&field.name),
+                    &field.ty,
+                    field.codec.as_ref(),
+                    1,
+                    &idl.types,
+                ));
+            }
+            for field in &dynamic_fields {
+                out.push_str(&decode_dynamic_header(
+                    &to_camel_case(&field.name),
+                    &field.ty,
+                    field.codec.as_ref(),
+                    1,
+                ));
+            }
+            for field in dynamic_fields {
+                out.push_str(&decode_dynamic_tail(
                     &to_camel_case(&field.name),
                     &field.ty,
                     field.codec.as_ref(),
@@ -134,11 +204,12 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
                     format!("\t\t{}: {},", pascal, camel)
                 })
                 .collect();
+            out.push_str("\tif err := decoder.finish(); err != nil { return nil, err }\n");
             writeln!(out, "\treturn &{} {{", type_def.name).unwrap();
             for a in &field_assigns {
                 writeln!(out, "{}", a).unwrap();
             }
-            out.push_str("\t}\n");
+            out.push_str("\t}, nil\n");
             out.push_str("}\n\n");
         }
     }
@@ -516,7 +587,7 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
         out.push_str("\tData interface{}\n");
         out.push_str("}\n\n");
 
-        out.push_str("func DecodeEvent(data []byte) *DecodedEvent {\n");
+        out.push_str("func DecodeEvent(data []byte) (*DecodedEvent, error) {\n");
         for ev in &idl.events {
             let name = snake_to_pascal(&ev.name);
             let disc_len = ev.discriminator.len();
@@ -531,29 +602,32 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
                 if td.fields.is_empty() {
                     writeln!(
                         out,
-                        "\t\treturn &DecodedEvent{{Name: \"{}\", Data: nil}}",
-                        ev.name
+                        "\t\tif len(data) != {} {{ return nil, errors.New(\"trailing bytes\") \
+                         }}\n\t\treturn &DecodedEvent{{Name: \"{}\", Data: nil}}, nil",
+                        disc_len, ev.name
                     )
                     .unwrap();
                 } else {
                     writeln!(
                         out,
-                        "\t\treturn &DecodedEvent{{Name: \"{}\", Data: Decode{}(data[{}:])}}",
-                        ev.name, ev.name, disc_len,
+                        "\t\tvalue, err := Decode{}(data[{}:])\n\t\tif err != nil {{ return nil, \
+                         err }}\n\t\treturn &DecodedEvent{{Name: \"{}\", Data: value}}, nil",
+                        ev.name, disc_len, ev.name,
                     )
                     .unwrap();
                 }
             } else {
                 writeln!(
                     out,
-                    "\t\treturn &DecodedEvent{{Name: \"{}\", Data: nil}}",
-                    ev.name
+                    "\t\tif len(data) != {} {{ return nil, errors.New(\"trailing bytes\") \
+                     }}\n\t\treturn &DecodedEvent{{Name: \"{}\", Data: nil}}, nil",
+                    disc_len, ev.name
                 )
                 .unwrap();
             }
             out.push_str("\t}\n");
         }
-        out.push_str("\treturn nil\n");
+        out.push_str("\treturn nil, nil\n");
         out.push_str("}\n\n");
     }
 
@@ -598,7 +672,7 @@ fn go_type(ty: &IdlType) -> String {
             _ => "[]byte".to_string(),
         },
         IdlType::Option { option } => format!("*{}", go_type(option)),
-        IdlType::Vec { .. } => "[]byte".to_string(),
+        IdlType::Vec { vec } => format!("[]{}", go_type(vec)),
         IdlType::Array {
             array: (_inner, size),
         } => format!("[{}]byte", size),
@@ -639,6 +713,10 @@ fn account_meta_expr(key_expr: &str, signer: bool, writable: bool) -> String {
 /// level.
 fn is_direct_dynamic(arg: &IdlArg) -> bool {
     arg.codec.is_some() && dynamic_payload_type(&arg.ty).is_some()
+}
+
+fn is_dynamic_field(field: &IdlFieldDef) -> bool {
+    field.codec.is_some() && dynamic_payload_type(&field.ty).is_some()
 }
 
 fn dynamic_payload_type(ty: &IdlType) -> Option<&IdlType> {
@@ -868,13 +946,83 @@ fn serialize_field_expr(
     }
 }
 
-/// Go float decode expression. Extracted to prevent rustfmt from splitting
-/// the `\n` in the format string across a line continuation.
-fn go_float_decode(t: &str, n: &str, math_fn: &str, le_fn: &str, size: usize) -> String {
-    format!(
-        "{t}{n} := math.{math_fn}(binary.LittleEndian.{le_fn}(data[offset:]))\n{t}offset += \
-         {size}\n"
-    )
+fn decode_dynamic_header(
+    name: &str,
+    ty: &IdlType,
+    codec: Option<&IdlCodec>,
+    depth: usize,
+) -> String {
+    let t = "\t".repeat(depth);
+    if is_optional_dynamic(ty) {
+        return format!(
+            "{t}{name}Tag := decoder.u8()\n{t}if {name}Tag > 1 {{ decoder.fail(\"invalid option \
+             tag\") }}\n"
+        );
+    }
+    let width = codec.expect("dynamic field codec").prefix_bytes();
+    format!("{t}{name}Len := decoder.length({width})\n")
+}
+
+fn decode_dynamic_tail(
+    name: &str,
+    ty: &IdlType,
+    codec: Option<&IdlCodec>,
+    depth: usize,
+    types: &[IdlTypeDef],
+) -> String {
+    let t = "\t".repeat(depth);
+    if let IdlType::Option { option } = ty {
+        let value = decode_dynamic_value(name, option, codec, depth + 1, false, types);
+        return format!(
+            "{t}var {name} *{value_ty}\n{t}if {name}Tag == 1 {{\n{value}{t}\t{name} = \
+             &{name}Value\n{t}}}\n",
+            value_ty = go_type(option),
+        );
+    }
+    decode_dynamic_value(name, ty, codec, depth, true, types)
+}
+
+fn decode_dynamic_value(
+    name: &str,
+    ty: &IdlType,
+    codec: Option<&IdlCodec>,
+    depth: usize,
+    length_is_known: bool,
+    types: &[IdlTypeDef],
+) -> String {
+    let t = "\t".repeat(depth);
+    let len_name = if length_is_known {
+        format!("{name}Len")
+    } else {
+        format!("{name}ValueLen")
+    };
+    let prefix = if length_is_known {
+        String::new()
+    } else {
+        let width = codec.expect("dynamic field codec").prefix_bytes();
+        format!("{t}{len_name} := decoder.length({width})\n")
+    };
+    let value_name = if length_is_known {
+        name.to_string()
+    } else {
+        format!("{name}Value")
+    };
+    match ty {
+        IdlType::Primitive(primitive) if primitive == "string" => {
+            format!("{prefix}{t}{value_name} := decoder.string({len_name})\n")
+        }
+        IdlType::Vec { vec } => {
+            let item = decode_field_expr("item", vec, None, depth + 1, types);
+            format!(
+                "{prefix}{t}if {len_name} > maxDecodeElements {{ decoder.fail(\"element count \
+                 exceeds limit\") }}\n{t}{value_name} := make([]{item_ty}, 0, min({len_name}, \
+                 4096))\n{t}for i := 0; i < {len_name} && decoder.err == nil; i++ \
+                 {{\n{item}{t}\t{value_name} = append({value_name}, item)\n{t}}}\n",
+                item_ty = go_type(vec),
+            )
+        }
+        _ => format!("{t}decoder.fail(\"invalid dynamic field\")\n"),
+    }
 }
 
 fn decode_field_expr(
@@ -891,169 +1039,80 @@ fn decode_field_expr(
         if p == "string" {
             if let Some(c) = codec {
                 let prefix_bytes = c.prefix_bytes();
-                return match prefix_bytes {
-                    1 => format!(
-                        "{t}{n}Len := int(data[offset])\n{t}offset += 1\n{t}{n} := \
-                         string(data[offset:offset+{n}Len])\n{t}offset += {n}Len\n",
-                        t = t,
-                        n = name,
-                    ),
-                    2 => format!(
-                        "{t}{n}Len := int(binary.LittleEndian.Uint16(data[offset:]))\n{t}offset \
-                         += 2\n{t}{n} := string(data[offset:offset+{n}Len])\n{t}offset += {n}Len\n",
-                        t = t,
-                        n = name,
-                    ),
-                    4 => format!(
-                        "{t}{n}Len := int(binary.LittleEndian.Uint32(data[offset:]))\n{t}offset \
-                         += 4\n{t}{n} := string(data[offset:offset+{n}Len])\n{t}offset += {n}Len\n",
-                        t = t,
-                        n = name,
-                    ),
-                    _ => format!(
-                        "{t}{n}Len := int(binary.LittleEndian.Uint64(data[offset:]))\n{t}offset \
-                         += 8\n{t}{n} := string(data[offset:offset+{n}Len])\n{t}offset += {n}Len\n",
-                        t = t,
-                        n = name,
-                    ),
-                };
+                return format!(
+                    "{t}{name}Len := decoder.length({prefix_bytes})\n{t}{name} := \
+                     decoder.string({name}Len)\n"
+                );
             }
         }
     }
 
     // Handle Vec with codec
-    if let IdlType::Vec { .. } = ty {
+    if let IdlType::Vec { vec } = ty {
         if let Some(c) = codec {
             let prefix_bytes = c.prefix_bytes();
-            return match prefix_bytes {
-                1 => format!(
-                    "{t}{n}Len := int(data[offset])\n{t}offset += 1\n{t}{n} := \
-                     data[offset:offset+{n}Len]\n{t}offset += {n}Len\n",
-                    t = t,
-                    n = name,
-                ),
-                2 => format!(
-                    "{t}{n}Len := int(binary.LittleEndian.Uint16(data[offset:]))\n{t}offset += \
-                     2\n{t}{n} := data[offset:offset+{n}Len]\n{t}offset += {n}Len\n",
-                    t = t,
-                    n = name,
-                ),
-                4 => format!(
-                    "{t}{n}Len := int(binary.LittleEndian.Uint32(data[offset:]))\n{t}offset += \
-                     4\n{t}{n} := data[offset:offset+{n}Len]\n{t}offset += {n}Len\n",
-                    t = t,
-                    n = name,
-                ),
-                _ => format!(
-                    "{t}{n}Len := int(binary.LittleEndian.Uint64(data[offset:]))\n{t}offset += \
-                     8\n{t}{n} := data[offset:offset+{n}Len]\n{t}offset += {n}Len\n",
-                    t = t,
-                    n = name,
-                ),
-            };
+            let item = decode_field_expr("item", vec, None, depth + 1, types);
+            return format!(
+                "{t}{name}Len := decoder.elements({prefix_bytes})\n{t}{name} := make([]{item_ty}, \
+                 0, min({name}Len, 4096))\n{t}for i := 0; i < {name}Len && decoder.err == nil; \
+                 i++ {{\n{item}{t}\t{name} = append({name}, item)\n{t}}}\n",
+                item_ty = go_type(vec),
+            );
         }
     }
 
     match ty {
         IdlType::Primitive(p) => match p.as_str() {
-            "bool" => format!(
-                "{t}{n} := data[offset] != 0\n{t}offset += 1\n",
-                t = t,
-                n = name,
-            ),
-            "u8" => format!("{t}{n} := data[offset]\n{t}offset += 1\n", t = t, n = name,),
-            "i8" => format!(
-                "{t}{n} := int8(data[offset])\n{t}offset += 1\n",
-                t = t,
-                n = name,
-            ),
-            "u16" => format!(
-                "{t}{n} := binary.LittleEndian.Uint16(data[offset:])\n{t}offset += 2\n",
-                t = t,
-                n = name,
-            ),
-            "i16" => format!(
-                "{t}{n} := int16(binary.LittleEndian.Uint16(data[offset:]))\n{t}offset += 2\n",
-                t = t,
-                n = name,
-            ),
-            "u32" => format!(
-                "{t}{n} := binary.LittleEndian.Uint32(data[offset:])\n{t}offset += 4\n",
-                t = t,
-                n = name,
-            ),
-            "i32" => format!(
-                "{t}{n} := int32(binary.LittleEndian.Uint32(data[offset:]))\n{t}offset += 4\n",
-                t = t,
-                n = name,
-            ),
-            "u64" => format!(
-                "{t}{n} := binary.LittleEndian.Uint64(data[offset:])\n{t}offset += 8\n",
-                t = t,
-                n = name,
-            ),
-            "i64" => format!(
-                "{t}{n} := int64(binary.LittleEndian.Uint64(data[offset:]))\n{t}offset += 8\n",
-                t = t,
-                n = name,
-            ),
-            "u128" | "i128" => format!(
-                "{t}var {n} [16]byte\n{t}copy({n}[:], data[offset:offset+16])\n{t}offset += 16\n",
-                t = t,
-                n = name,
-            ),
-            "f32" => go_float_decode(&t, name, "Float32frombits", "Uint32", 4),
-            "f64" => go_float_decode(&t, name, "Float64frombits", "Uint64", 8),
-            "pubkey" => format!(
-                "{t}var {n} solana.PublicKey\n{t}copy({n}[:], data[offset:offset+32])\n{t}offset \
-                 += 32\n",
-                t = t,
-                n = name,
-            ),
+            "bool" => format!("{t}{name} := decoder.bool()\n"),
+            "u8" => format!("{t}{name} := decoder.u8()\n"),
+            "i8" => format!("{t}{name} := int8(decoder.u8())\n"),
+            "u16" => format!("{t}{name} := decoder.u16()\n"),
+            "i16" => format!("{t}{name} := int16(decoder.u16())\n"),
+            "u32" => format!("{t}{name} := decoder.u32()\n"),
+            "i32" => format!("{t}{name} := int32(decoder.u32())\n"),
+            "u64" => format!("{t}{name} := decoder.u64()\n"),
+            "i64" => format!("{t}{name} := int64(decoder.u64())\n"),
+            "u128" | "i128" => {
+                format!("{t}var {name} [16]byte\n{t}copy({name}[:], decoder.take(16))\n",)
+            }
+            "f32" => format!("{t}{name} := math.Float32frombits(decoder.u32())\n"),
+            "f64" => format!("{t}{name} := math.Float64frombits(decoder.u64())\n"),
+            "pubkey" => {
+                format!("{t}var {name} solana.PublicKey\n{t}copy({name}[:], decoder.take(32))\n",)
+            }
             "string" => {
                 // Plain string without codec uses a Borsh-style u32 prefix.
                 format!(
-                    "{t}{n}Len := int(binary.LittleEndian.Uint32(data[offset:]))\n{t}offset += \
-                     4\n{t}{n} := string(data[offset:offset+{n}Len])\n{t}offset += {n}Len\n",
-                    t = t,
-                    n = name,
+                    "{t}{name}Len := decoder.length(4)\n{t}{name} := decoder.string({name}Len)\n",
                 )
             }
             _ => format!(
-                "{t}{n} := data[offset:] // unsupported type\n{t}_ = {n}\n",
-                t = t,
-                n = name,
+                "{t}decoder.fail(\"unsupported field type\")\n{t}var {name} {ty}\n",
+                ty = go_type(ty),
             ),
         },
-        IdlType::Vec { .. } => {
+        IdlType::Vec { vec } => {
             // Vec without codec uses a Borsh-style u32 prefix.
+            let item = decode_field_expr("item", vec, None, depth + 1, types);
             format!(
-                "{t}{n}Len := int(binary.LittleEndian.Uint32(data[offset:]))\n{t}offset += \
-                 4\n{t}{n} := data[offset:offset+{n}Len]\n{t}offset += {n}Len\n",
-                t = t,
-                n = name,
+                "{t}{name}Len := decoder.elements(4)\n{t}{name} := make([]{item_ty}, 0, \
+                 min({name}Len, 4096))\n{t}for i := 0; i < {name}Len && decoder.err == nil; i++ \
+                 {{\n{item}{t}\t{name} = append({name}, item)\n{t}}}\n",
+                item_ty = go_type(vec),
             )
         }
         IdlType::Array {
             array: (_inner, size),
         } => {
-            format!(
-                "{t}var {n} [{sz}]byte\n{t}copy({n}[:], data[offset:offset+{sz}])\n{t}offset += \
-                 {sz}\n",
-                t = t,
-                n = name,
-                sz = size,
-            )
+            format!("{t}var {name} [{size}]byte\n{t}copy({name}[:], decoder.take({size}))\n",)
         }
         IdlType::Option { option } => {
-            let inner = decode_field_expr(&format!("{}_val", name), option, None, depth, types);
+            let inner = decode_field_expr(&format!("{}_val", name), option, codec, depth, types);
             format!(
-                "{t}var {n} *{ty}\n{t}if data[offset] != 0 {{\n{t}\toffset += 1\n{inner}{t}\t{n} \
-                 = &{n}_val\n{t}}} else {{\n{t}\toffset += 1\n{t}}}\n",
-                t = t,
-                n = name,
+                "{t}var {name} *{ty}\n{t}{name}Tag := decoder.u8()\n{t}if {name}Tag == 1 \
+                 {{\n{inner}{t}\t{name} = &{name}_val\n{t}}} else if {name}Tag != 0 \
+                 {{\n{t}\tdecoder.fail(\"invalid option tag\")\n{t}}}\n",
                 ty = go_type(option),
-                inner = inner,
             )
         }
         IdlType::Defined { defined } => {
@@ -1086,9 +1145,8 @@ fn decode_field_expr(
                 result
             } else {
                 format!(
-                    "{t}{n} := data[offset:] // unknown type\n{t}_ = {n}\n",
-                    t = t,
-                    n = name,
+                    "{t}decoder.fail(\"unknown defined type\")\n{t}var {name} {ty}\n",
+                    ty = defined.name,
                 )
             }
         }

@@ -1,6 +1,8 @@
 use {
     super::model::{python_field_path, reject_generics, CodegenResult, ProgramModel},
-    crate::types::{Idl, IdlArg, IdlCodec, IdlPdaSeed, IdlResolver, IdlType, IdlTypeDef},
+    crate::types::{
+        Idl, IdlArg, IdlCodec, IdlFieldDef, IdlPdaSeed, IdlResolver, IdlType, IdlTypeDef,
+    },
     quasar_schema::{camel_to_snake, snake_to_pascal, to_screaming_snake},
     std::fmt::Write,
 };
@@ -38,6 +40,17 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
 
     out.push_str("\nfrom solders.pubkey import Pubkey\n");
     out.push_str("from solders.instruction import Instruction, AccountMeta\n\n");
+    out.push_str(
+        "class DecodeError(ValueError):\n\x20   pass\n\n_MAX_DECODE_ELEMENTS = 10 * 1024 * \
+         1024\n\ndef _take(data: bytes, offset: int, size: int) -> tuple[bytes, int]:\n\x20   if \
+         size < 0 or offset < 0 or size > len(data) - offset:\n\x20       raise \
+         DecodeError(\"truncated input\")\n\x20   end = offset + size\n\x20   return \
+         data[offset:end], end\n\ndef _unpack(fmt: str, data: bytes, offset: int) -> \
+         tuple[object, int]:\n\x20   raw, offset = _take(data, offset, \
+         struct.calcsize(fmt))\n\x20   return struct.unpack(fmt, raw)[0], offset\n\ndef \
+         _finish(data: bytes, offset: int) -> None:\n\x20   if offset != len(data):\n\x20       \
+         raise DecodeError(\"trailing bytes\")\n\n",
+    );
 
     // Program ID
     writeln!(
@@ -121,7 +134,17 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
             )
             .unwrap();
             out.push_str("        offset = 0\n");
-            for field in &type_def.fields {
+            let fixed_fields: Vec<_> = type_def
+                .fields
+                .iter()
+                .filter(|field| !is_dynamic_field(field))
+                .collect();
+            let dynamic_fields: Vec<_> = type_def
+                .fields
+                .iter()
+                .filter(|field| is_dynamic_field(field))
+                .collect();
+            for field in fixed_fields {
                 out.push_str(&decode_field_expr(
                     &camel_to_snake(&field.name),
                     &field.ty,
@@ -130,6 +153,24 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
                     &idl.types,
                 ));
             }
+            for field in &dynamic_fields {
+                out.push_str(&decode_dynamic_header(
+                    &camel_to_snake(&field.name),
+                    &field.ty,
+                    field.codec.as_ref(),
+                    8,
+                ));
+            }
+            for field in dynamic_fields {
+                out.push_str(&decode_dynamic_tail(
+                    &camel_to_snake(&field.name),
+                    &field.ty,
+                    field.codec.as_ref(),
+                    8,
+                    &idl.types,
+                ));
+            }
+            out.push_str("        _finish(data, offset)\n");
             let field_names: Vec<String> = type_def
                 .fields
                 .iter()
@@ -536,6 +577,10 @@ fn is_direct_dynamic(arg: &IdlArg) -> bool {
     arg.codec.is_some() && dynamic_payload_type(&arg.ty).is_some()
 }
 
+fn is_dynamic_field(field: &IdlFieldDef) -> bool {
+    field.codec.is_some() && dynamic_payload_type(&field.ty).is_some()
+}
+
 fn dynamic_payload_type(ty: &IdlType) -> Option<&IdlType> {
     match ty {
         IdlType::Primitive(p) if p == "string" => Some(ty),
@@ -688,6 +733,72 @@ fn serialize_field_expr(
     }
 }
 
+fn decode_dynamic_header(
+    name: &str,
+    ty: &IdlType,
+    codec: Option<&IdlCodec>,
+    indent: usize,
+) -> String {
+    let pad = " ".repeat(indent);
+    if is_optional_dynamic(ty) {
+        return format!(
+            "{pad}{name}_tag, offset = _unpack(\"<B\", data, offset)\n{pad}if {name}_tag not in \
+             (0, 1):\n{pad}    raise DecodeError(\"invalid option tag\")\n"
+        );
+    }
+    let (fmt, _) = prefix_fmt(codec.expect("dynamic field codec").prefix_bytes());
+    format!("{pad}{name}_len, offset = _unpack(\"<{fmt}\", data, offset)\n")
+}
+
+fn decode_dynamic_tail(
+    name: &str,
+    ty: &IdlType,
+    codec: Option<&IdlCodec>,
+    indent: usize,
+    types: &[IdlTypeDef],
+) -> String {
+    let pad = " ".repeat(indent);
+    if let IdlType::Option { option } = ty {
+        let value = decode_dynamic_value(name, option, codec, indent + 4, false, types);
+        return format!("{pad}if {name}_tag == 0:\n{pad}    {name} = None\n{pad}else:\n{value}");
+    }
+    decode_dynamic_value(name, ty, codec, indent, true, types)
+}
+
+fn decode_dynamic_value(
+    name: &str,
+    ty: &IdlType,
+    codec: Option<&IdlCodec>,
+    indent: usize,
+    length_is_known: bool,
+    types: &[IdlTypeDef],
+) -> String {
+    let pad = " ".repeat(indent);
+    let prefix = if length_is_known {
+        String::new()
+    } else {
+        let (fmt, _) = prefix_fmt(codec.expect("dynamic field codec").prefix_bytes());
+        format!("{pad}{name}_len, offset = _unpack(\"<{fmt}\", data, offset)\n")
+    };
+    match ty {
+        IdlType::Primitive(primitive) if primitive == "string" => format!(
+            "{prefix}{pad}_raw, offset = _take(data, offset, {name}_len)\n{pad}try:\n{pad}    \
+             {name} = _raw.decode(\"utf-8\")\n{pad}except UnicodeDecodeError as exc:\n{pad}    \
+             raise DecodeError(\"invalid UTF-8\") from exc\n"
+        ),
+        IdlType::Vec { vec } => {
+            let item = decode_field_expr("_item", vec, None, indent + 4, types);
+            format!(
+                "{prefix}{pad}if {name}_len > _MAX_DECODE_ELEMENTS or {name}_len > len(data) - \
+                 offset:\n{pad}    raise DecodeError(\"element count exceeds \
+                 limit\")\n{pad}{name} = []\n{pad}for _ in range({name}_len):\n{item}{pad}    \
+                 {name}.append(_item)\n"
+            )
+        }
+        _ => format!("{pad}raise DecodeError(\"invalid dynamic field\")\n"),
+    }
+}
+
 fn decode_field_expr(
     name: &str,
     ty: &IdlType,
@@ -701,15 +812,12 @@ fn decode_field_expr(
     if let IdlType::Primitive(p) = ty {
         if p == "string" {
             if let Some(c) = codec {
-                let (fmt, sz) = prefix_fmt(c.prefix_bytes());
+                let (fmt, _) = prefix_fmt(c.prefix_bytes());
                 return format!(
-                    "{pad}_len = struct.unpack_from(\"<{fmt}\", data, offset)[0]\n{pad}offset += \
-                     {sz}\n{pad}{n} = data[offset:offset + _len].decode(\"utf-8\")\n{pad}offset \
-                     += _len\n",
-                    pad = pad,
-                    n = name,
-                    fmt = fmt,
-                    sz = sz,
+                    "{pad}_len, offset = _unpack(\"<{fmt}\", data, offset)\n{pad}_raw, offset = \
+                     _take(data, offset, _len)\n{pad}try:\n{pad}    {name} = \
+                     _raw.decode(\"utf-8\")\n{pad}except UnicodeDecodeError as exc:\n{pad}    \
+                     raise DecodeError(\"invalid UTF-8\") from exc\n",
                 );
             }
         }
@@ -718,30 +826,13 @@ fn decode_field_expr(
     // Handle Vec with codec
     if let IdlType::Vec { ref vec } = ty {
         if let Some(c) = codec {
-            let (fmt, sz) = prefix_fmt(c.prefix_bytes());
-            let item_decode = match &**vec {
-                IdlType::Primitive(p) if p == "pubkey" => {
-                    "Pubkey.from_bytes(data[offset:offset + 32]); offset += 32".to_string()
-                }
-                IdlType::Primitive(p) => {
-                    let f = struct_format(p);
-                    let item_sz = primitive_size(p);
-                    format!(
-                        "struct.unpack_from(\"<{}\", data, offset)[0]; offset += {}",
-                        f, item_sz
-                    )
-                }
-                _ => "data[offset:offset + 1]; offset += 1".to_string(),
-            };
+            let (fmt, _) = prefix_fmt(c.prefix_bytes());
+            let item_decode = decode_field_expr("_item", vec, None, indent + 4, types);
             return format!(
-                "{pad}_count = struct.unpack_from(\"<{fmt}\", data, offset)[0]\n{pad}offset += \
-                 {sz}\n{pad}{n} = []\n{pad}for _ in range(_count):\n{pad}    _item = \
-                 {decode}\n{pad}    {n}.append(_item)\n",
-                pad = pad,
-                n = name,
-                fmt = fmt,
-                sz = sz,
-                decode = item_decode,
+                "{pad}_count, offset = _unpack(\"<{fmt}\", data, offset)\n{pad}if _count > \
+                 _MAX_DECODE_ELEMENTS or _count > len(data) - offset:\n{pad}    raise \
+                 DecodeError(\"element count exceeds limit\")\n{pad}{name} = []\n{pad}for _ in \
+                 range(_count):\n{item_decode}{pad}    {name}.append(_item)\n",
             );
         }
     }
@@ -749,104 +840,59 @@ fn decode_field_expr(
     match ty {
         IdlType::Primitive(p) => match p.as_str() {
             "bool" => format!(
-                "{pad}{n} = struct.unpack_from(\"<?\", data, offset)[0]\n{pad}offset += 1\n",
-                pad = pad,
-                n = name,
+                "{pad}_raw, offset = _unpack(\"<B\", data, offset)\n{pad}if _raw not in (0, \
+                 1):\n{pad}    raise DecodeError(\"invalid bool\")\n{pad}{name} = bool(_raw)\n",
             ),
-            "u8" => format!(
-                "{pad}{n} = data[offset]\n{pad}offset += 1\n",
-                pad = pad,
-                n = name,
-            ),
-            "i8" => format!(
-                "{pad}{n} = struct.unpack_from(\"<b\", data, offset)[0]\n{pad}offset += 1\n",
-                pad = pad,
-                n = name,
+            "u8" | "i8" | "u16" | "i16" | "u32" | "i32" | "u64" | "i64" | "f32" | "f64" => format!(
+                "{pad}{name}, offset = _unpack(\"<{fmt}\", data, offset)\n",
+                fmt = struct_format(p),
             ),
             "pubkey" => format!(
-                "{pad}{n} = Pubkey.from_bytes(data[offset:offset + 32])\n{pad}offset += 32\n",
-                pad = pad,
-                n = name,
+                "{pad}_raw, offset = _take(data, offset, 32)\n{pad}{name} = \
+                 Pubkey.from_bytes(_raw)\n",
             ),
             "u128" => format!(
-                "{pad}{n} = int.from_bytes(data[offset:offset + 16], \
-                 byteorder=\"little\")\n{pad}offset += 16\n",
-                pad = pad,
-                n = name,
+                "{pad}_raw, offset = _take(data, offset, 16)\n{pad}{name} = int.from_bytes(_raw, \
+                 byteorder=\"little\")\n",
             ),
             "i128" => format!(
-                "{pad}{n} = int.from_bytes(data[offset:offset + 16], byteorder=\"little\", \
-                 signed=True)\n{pad}offset += 16\n",
-                pad = pad,
-                n = name,
+                "{pad}_raw, offset = _take(data, offset, 16)\n{pad}{name} = int.from_bytes(_raw, \
+                 byteorder=\"little\", signed=True)\n",
             ),
             "string" => {
                 // Plain string without codec uses a Borsh-style u32 prefix.
                 format!(
-                    "{pad}_len = struct.unpack_from(\"<I\", data, offset)[0]\n{pad}offset += \
-                     4\n{pad}{n} = data[offset:offset + _len].decode(\"utf-8\")\n{pad}offset += \
-                     _len\n",
-                    pad = pad,
-                    n = name,
+                    "{pad}_len, offset = _unpack(\"<I\", data, offset)\n{pad}_raw, offset = \
+                     _take(data, offset, _len)\n{pad}try:\n{pad}    {name} = \
+                     _raw.decode(\"utf-8\")\n{pad}except UnicodeDecodeError as exc:\n{pad}    \
+                     raise DecodeError(\"invalid UTF-8\") from exc\n",
                 )
             }
             other => {
                 let fmt = struct_format(other);
-                let size = primitive_size(other);
-                format!(
-                    "{pad}{n} = struct.unpack_from(\"<{fmt}\", data, offset)[0]\n{pad}offset += \
-                     {sz}\n",
-                    pad = pad,
-                    n = name,
-                    fmt = fmt,
-                    sz = size,
-                )
+                format!("{pad}{name}, offset = _unpack(\"<{fmt}\", data, offset)\n",)
             }
         },
         IdlType::Vec { vec } => {
             // Vec without codec uses a Borsh-style u32 prefix.
-            let item_decode = match &**vec {
-                IdlType::Primitive(p) if p == "pubkey" => {
-                    "Pubkey.from_bytes(data[offset:offset + 32]); offset += 32".to_string()
-                }
-                IdlType::Primitive(p) => {
-                    let f = struct_format(p);
-                    let item_sz = primitive_size(p);
-                    format!(
-                        "struct.unpack_from(\"<{}\", data, offset)[0]; offset += {}",
-                        f, item_sz
-                    )
-                }
-                _ => "data[offset:offset + 1]; offset += 1".to_string(),
-            };
+            let item_decode = decode_field_expr("_item", vec, None, indent + 4, types);
             format!(
-                "{pad}_count = struct.unpack_from(\"<I\", data, offset)[0]\n{pad}offset += \
-                 4\n{pad}{n} = []\n{pad}for _ in range(_count):\n{pad}    _item = \
-                 {decode}\n{pad}    {n}.append(_item)\n",
-                pad = pad,
-                n = name,
-                decode = item_decode,
+                "{pad}_count, offset = _unpack(\"<I\", data, offset)\n{pad}if _count > \
+                 _MAX_DECODE_ELEMENTS or _count > len(data) - offset:\n{pad}    raise \
+                 DecodeError(\"element count exceeds limit\")\n{pad}{name} = []\n{pad}for _ in \
+                 range(_count):\n{item_decode}{pad}    {name}.append(_item)\n",
             )
         }
         IdlType::Array {
             array: (_inner, size),
-        } => {
-            format!(
-                "{pad}{n} = data[offset:offset + {sz}]\n{pad}offset += {sz}\n",
-                pad = pad,
-                n = name,
-                sz = size,
-            )
-        }
+        } => format!("{pad}{name}, offset = _take(data, offset, {size})\n"),
         IdlType::Option { option } => {
             let inner =
-                decode_field_expr(&format!("{}_inner", name), option, None, indent + 4, types);
+                decode_field_expr(&format!("{}_inner", name), option, codec, indent + 4, types);
             format!(
-                "{pad}if data[offset] == 0:\n{pad}    {n} = None\n{pad}    offset += \
-                 1\n{pad}else:\n{pad}    offset += 1\n{inner}{pad}    {n} = {n}_inner\n",
-                pad = pad,
-                n = name,
-                inner = inner,
+                "{pad}_tag, offset = _unpack(\"<B\", data, offset)\n{pad}if _tag == 0:\n{pad}    \
+                 {name} = None\n{pad}elif _tag == 1:\n{inner}{pad}    {name} = \
+                 {name}_inner\n{pad}else:\n{pad}    raise DecodeError(\"invalid option tag\")\n",
             )
         }
         IdlType::Defined { defined } => {
@@ -878,11 +924,7 @@ fn decode_field_expr(
                 ));
                 result
             } else {
-                format!(
-                    "{pad}{n} = data[offset:]  # unknown type\n",
-                    pad = pad,
-                    n = name,
-                )
+                format!("{pad}raise DecodeError(\"unknown defined type\")\n")
             }
         }
         IdlType::Generic { generic } => {
@@ -915,18 +957,6 @@ fn struct_format(primitive: &str) -> &'static str {
         "f32" => "f",
         "f64" => "d",
         _ => "B",
-    }
-}
-
-fn primitive_size(p: &str) -> usize {
-    match p {
-        "bool" | "u8" | "i8" => 1,
-        "u16" | "i16" => 2,
-        "u32" | "i32" | "f32" => 4,
-        "u64" | "i64" | "f64" => 8,
-        "u128" | "i128" => 16,
-        "pubkey" => 32,
-        _ => 0,
     }
 }
 
