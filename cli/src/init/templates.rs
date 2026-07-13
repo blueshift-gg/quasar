@@ -13,10 +13,7 @@ node_modules
 .DS_Store
 ";
 
-pub(super) const CARGO_CONFIG: &str = r#"[unstable]
-build-std = ["core", "alloc"]
-
-[target.bpfel-unknown-none]
+pub(super) const CARGO_CONFIG: &str = r#"[target.bpfel-unknown-none]
 rustflags = [
 "--cfg", "feature=\"mem_unaligned\"",
 "-C", "linker=sbpf-linker",
@@ -30,7 +27,7 @@ rustflags = [
 "-C", "overflow-checks=off",
 ]
 [alias]
-build-bpf = "build --release --target bpfel-unknown-none"
+build-bpf = "build -Z build-std=core,alloc --release --target bpfel-unknown-none"
 "#;
 
 pub(super) const INSTRUCTIONS_MOD: &str = r#"mod initialize;
@@ -101,3 +98,19 @@ pub(super) const TS_TEST_TSCONFIG: &str = r#"{
   "include": ["tests/*.test.ts"]
 }
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::CARGO_CONFIG;
+
+    #[test]
+    fn upstream_build_std_is_scoped_to_the_bpf_alias() {
+        let config: toml::Value = CARGO_CONFIG.parse().expect("valid generated Cargo config");
+
+        assert!(config.get("unstable").is_none());
+        assert_eq!(
+            config["alias"]["build-bpf"].as_str(),
+            Some("build -Z build-std=core,alloc --release --target bpfel-unknown-none")
+        );
+    }
+}
