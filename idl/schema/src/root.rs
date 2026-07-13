@@ -117,7 +117,8 @@ pub struct IdlHashes {
     /// except `hashes`; verify with `quasar idl verify` or
     /// `compute_idl_hash`.
     pub idl: String,
-    /// SHA-256 hash of the ABI-affecting subset only.
+    /// SHA-256 hash of the wire ABI and generated-client compatibility subset;
+    /// excludes documentation, error messages, metadata, and extensions.
     pub abi: String,
 }
 
