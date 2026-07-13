@@ -15,18 +15,43 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  fuzz:
-    name: Fuzz (${{ matrix.target }})
+  fuzz_inventory:
+    name: Fuzz Target Inventory
     if: >-
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
        contains(github.event.pull_request.labels.*.name, 'fuzz'))
     runs-on: ubuntu-24.04
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Read maintained targets from the fuzz manifest
+        id: targets
+        run: |
+          targets="$(
+            cargo metadata \
+              --manifest-path lang/fuzz/Cargo.toml \
+              --format-version 1 \
+              --no-deps \
+              --locked \
+              | jq -c '[.packages[].targets[] | select(.kind | index("bin")) | .name] | sort'
+          )"
+          if [ "$(jq 'length' <<< "$targets")" -eq 0 ]; then
+            echo "No maintained fuzz targets found" >&2
+            exit 1
+          fi
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+
+  fuzz:
+    name: Fuzz (${{ matrix.target }})
+    needs: fuzz_inventory
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        target: [decode_fixed, decode_compact]
+        target: ${{ fromJSON(needs.fuzz_inventory.outputs.targets) }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/cache@v5
