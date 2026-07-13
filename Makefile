@@ -53,7 +53,7 @@ PACKAGE_PATCHES := \
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
 	check-runtime-panics check-workspace-invariants build build-sbf test test-bless \
 	test-host-inventory test-host test-sbf-host \
-	bench-cu bench-tracked compare-tracked test-miri test-miri-strict test-all \
+	bench-cu bench-tracked compare-tracked doc-check test-miri test-miri-strict test-all \
 	nightly-version cargo-fuzz-version test-fuzz-build generated-client-smoke \
 	kani help-kani check-kani kani-lang \
 	kani-spl kani-metadata msrv-check package-check audit
@@ -67,6 +67,15 @@ cargo-fuzz-version:
 
 test-fuzz-build:
 	@cd lang && cargo +$(NIGHTLY_TOOLCHAIN) fuzz build
+
+doc-check:
+	@set -euo pipefail; \
+	for package in $(PUBLISH_PACKAGES); do \
+		cargo clean --doc >/dev/null; \
+		echo "Documenting $$package with warnings denied"; \
+		RUSTDOCFLAGS="-D warnings" cargo doc -p "$$package" \
+			--all-features --no-deps --locked; \
+	done
 
 msrv-check:
 	@cargo +$(PROGRAM_MSRV) check \
@@ -331,6 +340,7 @@ test-all:
 	@$(MAKE) generated-client-smoke
 	@$(MAKE) package-check
 	@$(MAKE) audit
+	@$(MAKE) doc-check
 	@$(MAKE) test-fuzz-build
 	@$(MAKE) test-miri-strict
 	@echo "All checks passed!"

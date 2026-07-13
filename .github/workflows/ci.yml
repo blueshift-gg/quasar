@@ -184,6 +184,31 @@ jobs:
       - name: Run clippy
         run: make clippy
 
+  rustdoc:
+    name: Rustdoc
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-rustdoc-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-rustdoc-
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+      - name: Print Rustdoc toolchain
+        run: |
+          rustc --version
+          cargo --version
+          rustdoc --version
+      - name: Build public crate documentation with warnings denied
+        run: make doc-check
+
   check_features:
     name: Check Features
     runs-on: ubuntu-24.04
