@@ -508,34 +508,16 @@ jobs:
       - name: Print benchmark toolchains
         run: rustc --version && cargo --version && solana --version && cargo-build-sbf --version
 
-      - name: Preserve benchmark harness
-        run: |
-          cp scripts/bench-tracked-programs.sh /tmp/bench-tracked-programs.sh
-          mkdir -p \
-            /tmp/benchmark-inputs/examples/vault/src \
-            /tmp/benchmark-inputs/examples/escrow/src \
-            /tmp/benchmark-inputs/examples/multisig/src
-          cp examples/vault/src/tests.rs /tmp/benchmark-inputs/examples/vault/src/tests.rs
-          cp examples/escrow/src/tests.rs /tmp/benchmark-inputs/examples/escrow/src/tests.rs
-          cp examples/multisig/src/tests.rs /tmp/benchmark-inputs/examples/multisig/src/tests.rs
-
-      - name: Capture base metrics
-        run: |
-          git checkout -f ${{ github.event.pull_request.base.sha }}
-          cp /tmp/benchmark-inputs/examples/vault/src/tests.rs examples/vault/src/tests.rs
-          cp /tmp/benchmark-inputs/examples/escrow/src/tests.rs examples/escrow/src/tests.rs
-          cp /tmp/benchmark-inputs/examples/multisig/src/tests.rs examples/multisig/src/tests.rs
-          bash /tmp/bench-tracked-programs.sh capture /tmp/base_metrics.env
+      - name: Test fixed-baseline policy
+        run: make test-benchmark-policy
 
       - name: Capture PR metrics
-        run: |
-          git checkout -f ${{ github.event.pull_request.head.sha }}
-          bash /tmp/bench-tracked-programs.sh capture /tmp/pr_metrics.env
+        run: bash scripts/bench-tracked-programs.sh capture /tmp/pr_metrics.env
 
       - name: Fail on tracked metric regression
         id: perf_guard
         run: |
-          bash /tmp/bench-tracked-programs.sh compare-files /tmp/base_metrics.env /tmp/pr_metrics.env
+          bash scripts/bench-tracked-programs.sh compare-files benchmarks/v0.1.0.env /tmp/pr_metrics.env
 
       - name: Post benchmark comment
         if: always()
@@ -555,10 +537,10 @@ jobs:
               return env;
             }
 
-            const base = readEnv('/tmp/base_metrics.env');
+            const baseline = readEnv('benchmarks/v0.1.0.env');
             const pr = readEnv('/tmp/pr_metrics.env');
-            function delta(base, pr) {
-              const d = pr - base;
+            function delta(baseline, pr) {
+              const d = pr - baseline;
               if (d === 0) return '0 ⚪';
               return d > 0 ? `+${d} 🔴` : `${d} 🟢`;
             }
@@ -575,30 +557,30 @@ jobs:
 
             ### Vault
 
-            | Instruction | Base | PR | Delta |
+            | Instruction | Baseline | PR | Delta |
             |-------------|------|-----|-------|
-            | Deposit | ${fmtNum(metric('VAULT_DEPOSIT_CU', base))} | ${fmtNum(metric('VAULT_DEPOSIT_CU', pr))} | ${delta(metric('VAULT_DEPOSIT_CU', base), metric('VAULT_DEPOSIT_CU', pr))} |
-            | Withdraw | ${fmtNum(metric('VAULT_WITHDRAW_CU', base))} | ${fmtNum(metric('VAULT_WITHDRAW_CU', pr))} | ${delta(metric('VAULT_WITHDRAW_CU', base), metric('VAULT_WITHDRAW_CU', pr))} |
-            | Binary size | ${fmtNum(metric('VAULT_SIZE', base))} | ${fmtNum(metric('VAULT_SIZE', pr))} | ${delta(metric('VAULT_SIZE', base), metric('VAULT_SIZE', pr))} bytes |
+            | Deposit | ${fmtNum(metric('VAULT_DEPOSIT_CU', baseline))} | ${fmtNum(metric('VAULT_DEPOSIT_CU', pr))} | ${delta(metric('VAULT_DEPOSIT_CU', baseline), metric('VAULT_DEPOSIT_CU', pr))} |
+            | Withdraw | ${fmtNum(metric('VAULT_WITHDRAW_CU', baseline))} | ${fmtNum(metric('VAULT_WITHDRAW_CU', pr))} | ${delta(metric('VAULT_WITHDRAW_CU', baseline), metric('VAULT_WITHDRAW_CU', pr))} |
+            | Binary size | ${fmtNum(metric('VAULT_SIZE', baseline))} | ${fmtNum(metric('VAULT_SIZE', pr))} | ${delta(metric('VAULT_SIZE', baseline), metric('VAULT_SIZE', pr))} bytes |
 
             ### Escrow
 
-            | Instruction | Base | PR | Delta |
+            | Instruction | Baseline | PR | Delta |
             |-------------|------|-----|-------|
-            | Make | ${fmtNum(metric('ESCROW_MAKE_CU', base))} | ${fmtNum(metric('ESCROW_MAKE_CU', pr))} | ${delta(metric('ESCROW_MAKE_CU', base), metric('ESCROW_MAKE_CU', pr))} |
-            | Take | ${fmtNum(metric('ESCROW_TAKE_CU', base))} | ${fmtNum(metric('ESCROW_TAKE_CU', pr))} | ${delta(metric('ESCROW_TAKE_CU', base), metric('ESCROW_TAKE_CU', pr))} |
-            | Refund | ${fmtNum(metric('ESCROW_REFUND_CU', base))} | ${fmtNum(metric('ESCROW_REFUND_CU', pr))} | ${delta(metric('ESCROW_REFUND_CU', base), metric('ESCROW_REFUND_CU', pr))} |
-            | Binary size | ${fmtNum(metric('ESCROW_SIZE', base))} | ${fmtNum(metric('ESCROW_SIZE', pr))} | ${delta(metric('ESCROW_SIZE', base), metric('ESCROW_SIZE', pr))} bytes |
+            | Make | ${fmtNum(metric('ESCROW_MAKE_CU', baseline))} | ${fmtNum(metric('ESCROW_MAKE_CU', pr))} | ${delta(metric('ESCROW_MAKE_CU', baseline), metric('ESCROW_MAKE_CU', pr))} |
+            | Take | ${fmtNum(metric('ESCROW_TAKE_CU', baseline))} | ${fmtNum(metric('ESCROW_TAKE_CU', pr))} | ${delta(metric('ESCROW_TAKE_CU', baseline), metric('ESCROW_TAKE_CU', pr))} |
+            | Refund | ${fmtNum(metric('ESCROW_REFUND_CU', baseline))} | ${fmtNum(metric('ESCROW_REFUND_CU', pr))} | ${delta(metric('ESCROW_REFUND_CU', baseline), metric('ESCROW_REFUND_CU', pr))} |
+            | Binary size | ${fmtNum(metric('ESCROW_SIZE', baseline))} | ${fmtNum(metric('ESCROW_SIZE', pr))} | ${delta(metric('ESCROW_SIZE', baseline), metric('ESCROW_SIZE', pr))} bytes |
 
             ### Multisig
 
-            | Instruction | Base | PR | Delta |
+            | Instruction | Baseline | PR | Delta |
             |-------------|------|-----|-------|
-            | Create | ${fmtNum(metric('MULTISIG_CREATE_CU', base))} | ${fmtNum(metric('MULTISIG_CREATE_CU', pr))} | ${delta(metric('MULTISIG_CREATE_CU', base), metric('MULTISIG_CREATE_CU', pr))} |
-            | Deposit | ${fmtNum(metric('MULTISIG_DEPOSIT_CU', base))} | ${fmtNum(metric('MULTISIG_DEPOSIT_CU', pr))} | ${delta(metric('MULTISIG_DEPOSIT_CU', base), metric('MULTISIG_DEPOSIT_CU', pr))} |
-            | Set label | ${fmtNum(metric('MULTISIG_SET_LABEL_CU', base))} | ${fmtNum(metric('MULTISIG_SET_LABEL_CU', pr))} | ${delta(metric('MULTISIG_SET_LABEL_CU', base), metric('MULTISIG_SET_LABEL_CU', pr))} |
-            | Execute transfer | ${fmtNum(metric('MULTISIG_EXECUTE_TRANSFER_CU', base))} | ${fmtNum(metric('MULTISIG_EXECUTE_TRANSFER_CU', pr))} | ${delta(metric('MULTISIG_EXECUTE_TRANSFER_CU', base), metric('MULTISIG_EXECUTE_TRANSFER_CU', pr))} |
-            | Binary size | ${fmtNum(metric('MULTISIG_SIZE', base))} | ${fmtNum(metric('MULTISIG_SIZE', pr))} | ${delta(metric('MULTISIG_SIZE', base), metric('MULTISIG_SIZE', pr))} bytes`.replace(/^            /gm, '');
+            | Create | ${fmtNum(metric('MULTISIG_CREATE_CU', baseline))} | ${fmtNum(metric('MULTISIG_CREATE_CU', pr))} | ${delta(metric('MULTISIG_CREATE_CU', baseline), metric('MULTISIG_CREATE_CU', pr))} |
+            | Deposit | ${fmtNum(metric('MULTISIG_DEPOSIT_CU', baseline))} | ${fmtNum(metric('MULTISIG_DEPOSIT_CU', pr))} | ${delta(metric('MULTISIG_DEPOSIT_CU', baseline), metric('MULTISIG_DEPOSIT_CU', pr))} |
+            | Set label | ${fmtNum(metric('MULTISIG_SET_LABEL_CU', baseline))} | ${fmtNum(metric('MULTISIG_SET_LABEL_CU', pr))} | ${delta(metric('MULTISIG_SET_LABEL_CU', baseline), metric('MULTISIG_SET_LABEL_CU', pr))} |
+            | Execute transfer | ${fmtNum(metric('MULTISIG_EXECUTE_TRANSFER_CU', baseline))} | ${fmtNum(metric('MULTISIG_EXECUTE_TRANSFER_CU', pr))} | ${delta(metric('MULTISIG_EXECUTE_TRANSFER_CU', baseline), metric('MULTISIG_EXECUTE_TRANSFER_CU', pr))} |
+            | Binary size | ${fmtNum(metric('MULTISIG_SIZE', baseline))} | ${fmtNum(metric('MULTISIG_SIZE', pr))} | ${delta(metric('MULTISIG_SIZE', baseline), metric('MULTISIG_SIZE', pr))} bytes`.replace(/^            /gm, '');
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
@@ -685,16 +667,12 @@ jobs:
       - name: Print benchmark toolchains
         run: rustc --version && cargo --version && solana --version && cargo-build-sbf --version
 
-      - name: Capture base metrics
-        run: |
-          git checkout -f ${{ github.sha }}~1
-          bash scripts/bench-tracked-programs.sh capture /tmp/push_base_metrics.env
+      - name: Test fixed-baseline policy
+        run: make test-benchmark-policy
 
       - name: Capture push head metrics
-        run: |
-          git checkout -f ${{ github.sha }}
-          bash scripts/bench-tracked-programs.sh capture /tmp/push_head_metrics.env
+        run: bash scripts/bench-tracked-programs.sh capture /tmp/push_head_metrics.env
 
       - name: Fail on tracked metric regression
         run: |
-          bash scripts/bench-tracked-programs.sh compare-files /tmp/push_base_metrics.env /tmp/push_head_metrics.env
+          bash scripts/bench-tracked-programs.sh compare-files benchmarks/v0.1.0.env /tmp/push_head_metrics.env

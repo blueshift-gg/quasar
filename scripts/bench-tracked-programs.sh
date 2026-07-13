@@ -2,18 +2,32 @@
 set -euo pipefail
 
 PLATFORM_TOOLS_VERSION="${PLATFORM_TOOLS_VERSION:-v1.52}"
+TRACKED_BASELINE_FILE="${TRACKED_BASELINE_FILE:-benchmarks/v0.1.0.env}"
+
+CU_METRICS=(
+  VAULT_DEPOSIT_CU
+  VAULT_WITHDRAW_CU
+  ESCROW_MAKE_CU
+  ESCROW_TAKE_CU
+  ESCROW_REFUND_CU
+  MULTISIG_CREATE_CU
+  MULTISIG_DEPOSIT_CU
+  MULTISIG_SET_LABEL_CU
+  MULTISIG_EXECUTE_TRANSFER_CU
+)
+SIZE_METRICS=(VAULT_SIZE ESCROW_SIZE MULTISIG_SIZE)
+ALL_METRICS=("${CU_METRICS[@]}" "${SIZE_METRICS[@]}")
 
 usage() {
   cat <<'EOF'
 Usage:
   scripts/bench-tracked-programs.sh capture <output-env-file>
-  scripts/bench-tracked-programs.sh compare [<base-ref>]
+  scripts/bench-tracked-programs.sh compare [<baseline-env>]
   scripts/bench-tracked-programs.sh compare-files <baseline-env> <candidate-env>
 
 Commands:
   capture        Build tracked programs, run CU tests, write metrics to file.
-  compare        JIT: build base-ref (default: master) in a worktree, build HEAD,
-                 and compare. Working tree stays untouched.
+  compare        Capture HEAD and compare it to the checked-in v0.1.0 baseline.
   compare-files  Compare two previously captured metric files.
 EOF
 }
@@ -120,71 +134,84 @@ capture() {
     "MULTISIG_EXECUTE_TRANSFER_CU" "EXECUTE_TRANSFER CU:"
 }
 
-metric_value() {
-  local key="$1"
-  local value="${!key-}"
-  printf '%s' "$value"
+is_tracked_metric() {
+  local candidate="$1"
+  local key
+  for key in "${ALL_METRICS[@]}"; do
+    if [[ "$candidate" == "$key" ]]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
-accepted_cu_delta() {
-  local key="$1"
+load_metric_file() {
+  local file="$1"
+  local prefix="$2"
+  local key value variable line line_number=0 seen="|"
 
-  # Narrow budgets for intentional safer typed/runtime paths. Unlisted metrics
-  # still fail on any CU regression.
-  case "$key" in
-    ESCROW_MAKE_CU) echo 7 ;;
-    ESCROW_TAKE_CU) echo 5 ;;
-    ESCROW_REFUND_CU) echo 5 ;;
-    MULTISIG_CREATE_CU) echo 70 ;;
-    MULTISIG_EXECUTE_TRANSFER_CU) echo 55 ;;
-    *) echo 0 ;;
-  esac
-}
+  if [[ ! -f "$file" ]]; then
+    echo "missing metric file: $file" >&2
+    return 1
+  fi
 
-accepted_size_delta() {
-  local key="$1"
+  for key in "${ALL_METRICS[@]}"; do
+    unset "${prefix}${key}"
+  done
 
-  # Match the current accepted branch footprint. Unlisted programs still fail on
-  # any binary size regression.
-  case "$key" in
-    ESCROW_SIZE) echo 168 ;;
-    MULTISIG_SIZE) echo 392 ;;
-    *) echo 0 ;;
-  esac
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line_number=$((line_number + 1))
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    if [[ "$line" != *=* ]]; then
+      echo "$file:$line_number: expected KEY=VALUE" >&2
+      return 1
+    fi
+
+    key="${line%%=*}"
+    value="${line#*=}"
+    if ! is_tracked_metric "$key"; then
+      echo "$file:$line_number: unknown tracked metric: $key" >&2
+      return 1
+    fi
+    case "$seen" in
+      *"|$key|"*)
+        echo "$file:$line_number: duplicate tracked metric: $key" >&2
+        return 1
+        ;;
+    esac
+    if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+      echo "$file:$line_number: non-numeric value for $key: $value" >&2
+      return 1
+    fi
+
+    variable="${prefix}${key}"
+    printf -v "$variable" '%s' "$value"
+    export "$variable"
+    seen="${seen}${key}|"
+  done <"$file"
+
+  for key in "${ALL_METRICS[@]}"; do
+    variable="${prefix}${key}"
+    if [[ -z "${!variable-}" ]]; then
+      echo "$file: missing tracked metric: $key" >&2
+      return 1
+    fi
+  done
 }
 
 compare_metric() {
   local key="$1"
-  local kind="$2"
   local base candidate
-  base="$(metric_value "$key")"
-  candidate="$(metric_value "CANDIDATE_$key")"
-
-  if [[ -z "$base" || -z "$candidate" ]]; then
-    return 0
-  fi
+  base="${!key}"
+  local candidate_key="CANDIDATE_$key"
+  candidate="${!candidate_key}"
 
   local delta=$((candidate - base))
-  printf '%-20s base=%-8s candidate=%-8s delta=%+d\n' "$key" "$base" "$candidate" "$delta"
+  printf '%-28s baseline=%-8s candidate=%-8s delta=%+d\n' \
+    "$key" "$base" "$candidate" "$delta"
 
   if [[ "$delta" -gt 0 ]]; then
-    local allowed label
-    case "$kind" in
-      cu)
-        allowed="$(accepted_cu_delta "$key")"
-        label="CU"
-        ;;
-      size)
-        allowed="$(accepted_size_delta "$key")"
-        label="size"
-        ;;
-      *) return 0 ;;
-    esac
-
-    if [[ "$delta" -gt "$allowed" ]]; then
-      return 1
-    fi
-    printf '%-20s accepted %s delta budget=%+d\n' "$key" "$label" "$allowed"
+    return 1
   fi
 }
 
@@ -193,38 +220,15 @@ compare_files() {
   local candidate_file="$2"
   local failed=0
 
-  set -a
-  # shellcheck disable=SC1090
-  source "$baseline_file"
-  set +a
+  load_metric_file "$baseline_file" ""
+  load_metric_file "$candidate_file" "CANDIDATE_"
 
-  while IFS='=' read -r key value; do
-    [[ -z "$key" ]] && continue
-    [[ "$key" =~ ^# ]] && continue
-    export "CANDIDATE_$key=$value"
-  done <"$candidate_file"
-
-  echo "Comparing tracked CU and size metrics"
+  echo "Comparing tracked metrics to absolute v0.1.0 baselines"
   echo
 
-  for key in \
-    VAULT_DEPOSIT_CU \
-    VAULT_WITHDRAW_CU \
-    ESCROW_MAKE_CU \
-    ESCROW_TAKE_CU \
-    ESCROW_REFUND_CU \
-    MULTISIG_CREATE_CU \
-    MULTISIG_DEPOSIT_CU \
-    MULTISIG_SET_LABEL_CU \
-    MULTISIG_EXECUTE_TRANSFER_CU
-  do
-    if ! compare_metric "$key" "cu"; then
-      failed=1
-    fi
-  done
-
-  for key in VAULT_SIZE ESCROW_SIZE MULTISIG_SIZE; do
-    if ! compare_metric "$key" "size"; then
+  local key
+  for key in "${ALL_METRICS[@]}"; do
+    if ! compare_metric "$key"; then
       failed=1
     fi
   done
@@ -236,39 +240,17 @@ compare_files() {
   fi
 }
 
-copy_benchmark_inputs() {
-  local worktree_dir="$1"
-
-  for path in \
-    examples/vault/src/tests.rs \
-    examples/escrow/src/tests.rs \
-    examples/multisig/src/tests.rs
-  do
-    cp "$path" "$worktree_dir/$path"
-  done
-}
-
 compare() {
-  local base_ref="${1:-master}"
-  local base_env candidate_env worktree_dir
-
-  base_env="$(mktemp)"
+  local baseline_file="${1:-$TRACKED_BASELINE_FILE}"
+  local candidate_env
   candidate_env="$(mktemp)"
-  worktree_dir="$(mktemp -d)"
-
-  trap "rm -f '$base_env' '$candidate_env'; git worktree remove --force '$worktree_dir' 2>/dev/null || true" EXIT
+  trap "rm -f '$candidate_env'" EXIT
 
   echo "=== Capturing candidate (HEAD) ==="
   capture "$candidate_env"
 
   echo ""
-  echo "=== Capturing base ($base_ref) in worktree ==="
-  git worktree add --quiet "$worktree_dir" "$base_ref"
-  copy_benchmark_inputs "$worktree_dir"
-  (cd "$worktree_dir" && capture "$base_env")
-
-  echo ""
-  compare_files "$base_env" "$candidate_env"
+  compare_files "$baseline_file" "$candidate_env"
 }
 
 main() {
@@ -286,7 +268,11 @@ main() {
       capture "$2"
       ;;
     compare)
-      compare "${2:-master}"
+      if (($# > 2)); then
+        usage >&2
+        exit 1
+      fi
+      compare "${2:-$TRACKED_BASELINE_FILE}"
       ;;
     compare-files)
       if (($# != 3)); then
