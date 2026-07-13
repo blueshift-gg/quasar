@@ -1,5 +1,8 @@
 # Generated-client contract baseline
 
+This baseline enforces the [compatibility and versioning
+policy](../../../VERSIONING.md) for generated source surfaces.
+
 These files freeze the v0.1.0 output of Quasar's supported Rust, TypeScript,
 Python, Go, and C client generators. Paths below each fixture preserve the real
 generated language and package layout, so failures identify the affected file

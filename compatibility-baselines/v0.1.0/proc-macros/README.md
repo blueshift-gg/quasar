@@ -1,5 +1,8 @@
 # Proc-macro expansion baseline
 
+This baseline enforces the [compatibility and versioning
+policy](../../../VERSIONING.md) for public macros and their generated code.
+
 These files freeze representative v0.1.0 expansions for every public macro
 exported by `quasar-derive`. `profiles.tsv` maps each macro family to one or
 more named fixtures and makes the coverage auditable against the Rust public
