@@ -5,7 +5,7 @@
   "address": "44444444444444444444444444444444444444444444",
   "metadata": {
     "crateName": "quasar-multisig",
-    "generatorVersion": "0.0.0",
+    "generatorVersion": "0.1.0",
     "schemaVersion": "1.0.0"
   },
   "instructions": [
@@ -555,7 +555,7 @@
     }
   ],
   "hashes": {
-    "idl": "7537d94c8b721dfdc090deb84f05e863291bae700b66be1ca35cc89d317ccd5c",
+    "idl": "96bcd03ea48035d3b17ee8fcfedc0c89004e1481c5e04bd42fa018c658341d17",
     "abi": "b9a73ab5b29c6bd7d42fdeb8c67f353dac97d4fe0d0c8a530ed6cd38413506c0"
   }
 }
