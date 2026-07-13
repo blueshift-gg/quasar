@@ -8,6 +8,14 @@ The `quasar` binary is a project-aware build tool for Solana programs. It wraps 
 cargo install --path cli
 ```
 
+## Host support
+
+Quasar CLI v0.1.0 supports Ubuntu 24.04 x86-64, macOS 15 on Apple Silicon, and
+macOS 15 on Intel. On Windows, use Ubuntu 24.04 x86-64 under WSL2. Native
+Windows is outside the v0.1.0 support contract. See the repository's
+[host support matrix](https://github.com/blueshift-gg/quasar/blob/0.1.0-release/HOST_SUPPORT.md)
+for exact host triples and release CI rows.
+
 ## Commands
 
 ### `quasar init [name] [--yes] [--no-git] [--verbose]`
