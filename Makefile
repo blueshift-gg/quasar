@@ -76,6 +76,7 @@ PACKAGE_PATCHES := \
 	check-idl-wire-baselines bless-idl-wire-baselines \
 	check-generated-client-baselines bless-generated-client-baselines \
 	test-audit-policy generated-client-smoke \
+	check-release-dependencies test-release-dependency-policy \
 	kani help-kani check-kani kani-lang \
 	kani-spl kani-metadata msrv-check package-check audit
 
@@ -249,7 +250,7 @@ check-workspace-invariants: check-license-policy check-package-metadata check-re
 	  echo "expected executable script: scripts/bench-tracked-programs.sh" >&2; \
 	  exit 1; \
 	fi; \
-	for script in scripts/publish-crate.sh scripts/wait-for-crate.sh; do \
+	for script in scripts/publish-crate.sh scripts/wait-for-crate.sh scripts/install-solana-tools.sh; do \
 	  if [[ ! -x "$$script" ]]; then \
 	    echo "expected executable script: $$script" >&2; \
 	    exit 1; \
@@ -491,6 +492,12 @@ audit:
 
 test-audit-policy:
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_audit_release_reachability.py
+
+check-release-dependencies: test-release-dependency-policy
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check-release-dependencies.py
+
+test-release-dependency-policy:
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_release_dependency_policy.py
 
 bench-cu:
 	@$(MAKE) build-sbf
