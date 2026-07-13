@@ -41,6 +41,10 @@ fn generated_test() {}
             ["make generated-client-smoke"],
         )
         self.assertEqual(
+            INVENTORY.runners_for("quasar-cli", "generated_client_baseline"),
+            ["make check-generated-client-baselines"],
+        )
+        self.assertEqual(
             INVENTORY.runners_for("quasar-lang", "miri"),
             ["make test-host", "make test-miri"],
         )

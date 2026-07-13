@@ -52,6 +52,15 @@ projection used by the ABI hash, rebuilt from representative programs. Run
 `make bless-idl-wire-baselines` only after reviewing the compatibility impact;
 documentation-only changes never appear in this projection.
 
+## Generated-client snapshots
+
+The source trees under
+`compatibility-baselines/v0.1.0/generated-clients/outputs/` freeze every
+supported client language for representative programs. Run
+`make check-generated-client-baselines` to compare generated Rust, TypeScript,
+Python, Go, and C files. Run `make bless-generated-client-baselines` only after
+reviewing every source diff and explicitly removing obsolete files.
+
 ## When this changes
 
 Once the API stabilizes and we've been audited, we'll open up contributions. Until then, issues are the best way to shape the project.
