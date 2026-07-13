@@ -396,10 +396,9 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            ~/.cargo/bin/
-          key: ${{ runner.os }}-cargo-fuzz-${{ steps.versions.outputs.cargo_fuzz }}-${{ hashFiles('lang/fuzz/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-fuzz-registry-v1-${{ steps.versions.outputs.cargo_fuzz }}-${{ hashFiles('lang/fuzz/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-fuzz-${{ steps.versions.outputs.cargo_fuzz }}-
+            ${{ runner.os }}-cargo-fuzz-registry-v1-${{ steps.versions.outputs.cargo_fuzz }}-
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ steps.versions.outputs.nightly }}

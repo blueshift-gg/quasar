@@ -60,10 +60,9 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            ~/.cargo/bin/
-          key: ${{ runner.os }}-cargo-fuzz-${{ hashFiles('lang/fuzz/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-fuzz-registry-v1-${{ hashFiles('lang/fuzz/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-fuzz-
+            ${{ runner.os }}-cargo-fuzz-registry-v1-
       - name: Get nightly toolchain version
         id: nightly
         run: echo "version=$(make nightly-version)" >> "$GITHUB_OUTPUT"
