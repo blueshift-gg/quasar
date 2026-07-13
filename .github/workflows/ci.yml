@@ -250,8 +250,6 @@ jobs:
           toolchain: ${{ env.HOST_RUST_VERSION }}
       - name: Print build toolchains
         run: rustc --version && cargo --version && solana --version && cargo-build-sbf --version
-      - name: Build SBF programs
-        run: make build-sbf
       - name: Test
         run: make test
 
