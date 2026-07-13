@@ -94,11 +94,10 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
             return Err(missing_sbpf_linker());
         }
 
-        let mut cmd = Command::new("cargo");
+        let mut cmd = upstream_build_command();
         if debug {
             cmd.env("RUSTFLAGS", "-C link-arg=--btf -C debuginfo=2");
         }
-        cmd.arg("build-bpf");
         if scoped {
             cmd.args(["--manifest-path", &manifest.to_string_lossy()]);
         }
@@ -285,9 +284,8 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
 
         // Use CARGO_ENCODED_RUSTFLAGS (0x1f-separated) which takes priority
         let encoded = all_flags.join("\x1f");
-        let mut cmd = Command::new("cargo");
+        let mut cmd = upstream_build_command();
         cmd.env("CARGO_ENCODED_RUSTFLAGS", encoded);
-        cmd.arg("build-bpf");
         if scoped {
             cmd.args(["--manifest-path", &manifest.to_string_lossy()]);
         }
@@ -355,6 +353,14 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
 
 fn run_watch(debug: bool, verbose: bool, features: Option<String>) -> ! {
     watch_loop(|| run_once(debug, verbose, features.as_deref()))
+}
+
+fn upstream_build_command() -> Command {
+    let mut command = Command::new("cargo");
+    command
+        .arg(format!("+{}", toolchain::UPSTREAM_NIGHTLY_TOOLCHAIN))
+        .arg("build-bpf");
+    command
 }
 
 fn run_build_command(cmd: &mut Command, verbose: bool) -> std::io::Result<BuildResult> {
@@ -431,7 +437,7 @@ fn size_entry_matches(line: &str, key: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_size_entry, size_entry_matches};
+    use super::{parse_size_entry, size_entry_matches, upstream_build_command};
 
     #[test]
     fn size_entry_match_is_exact_even_for_prefix_paths() {
@@ -449,5 +455,13 @@ mod tests {
 
         assert_eq!(parse_size_entry(line, key), Some(1234));
         assert!(size_entry_matches(line, key));
+    }
+
+    #[test]
+    fn upstream_build_uses_the_release_nightly() {
+        let command = upstream_build_command();
+        let args: Vec<_> = command.get_args().collect();
+
+        assert_eq!(args, ["+nightly-2026-03-27", "build-bpf"]);
     }
 }
