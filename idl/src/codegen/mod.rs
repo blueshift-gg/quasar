@@ -155,6 +155,11 @@ mod tests {
 
         assert!(output.contains("uint8_t arg_seed_0[8];"));
         assert!(output.contains("uint64_t arg_seed_0_value = (uint64_t)args->amount;"));
+        assert!(output.contains("uint64_t meta_buf_capacity"));
+        assert!(output.contains("SEED_TEST_IX_ACCOUNT_BUFFER_TOO_SMALL"));
+        assert!(output.contains("SEED_TEST_IX_DATA_BUFFER_TOO_SMALL"));
+        assert!(output.contains("uint64_t pda_status = find_program_address"));
+        assert!(output.contains(".pda_status = pda_status"));
         assert!(!output.contains("sizeof(args->amount)"));
     }
 
