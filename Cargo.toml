@@ -9,6 +9,7 @@ edition = "2021"
 rust-version = "1.89"
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/blueshift-gg/quasar"
+homepage = "https://quasar-lang.com"
 authors = ["Leonardo Donatacci <leo@blueshift.gg>", "Dean Little <dean@blueshift.gg>"]
 
 [workspace.lints.rust]

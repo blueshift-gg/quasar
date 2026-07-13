@@ -6,7 +6,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 authors.workspace = true
+documentation = "https://docs.rs/quasar-profile/0.1.0"
+readme = "README.md"
+keywords = ["solana", "sbf", "profiler", "flamegraph", "quasar"]
+categories = ["development-tools::profiling", "development-tools"]
 
 [lints]
 workspace = true

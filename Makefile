@@ -54,6 +54,7 @@ PACKAGE_PATCHES := \
 
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
 	check-runtime-panics check-workspace-invariants check-license-policy \
+	check-package-metadata \
 	build build-sbf test test-bless \
 	test-host-inventory test-host test-sbf-host \
 	bench-cu bench-tracked compare-tracked test-benchmark-policy doc-check \
@@ -179,7 +180,7 @@ check-runtime-panics:
 	  exit 1; \
 	fi
 
-check-workspace-invariants: check-license-policy
+check-workspace-invariants: check-license-policy check-package-metadata
 	@check_allowed() { \
 	  local desc="$$1" pattern="$$2"; shift 2; \
 	  local allowed=("$$@") matches; \
@@ -239,6 +240,29 @@ check-license-policy:
 	  echo "README license grant does not match $$expected" >&2; \
 	  exit 1; \
 	fi
+
+check-package-metadata:
+	@metadata="$$(cargo metadata --locked --no-deps --format-version 1)"; \
+	allowed_categories='["api-bindings","command-line-utilities","data-structures","development-tools","development-tools::procedural-macro-helpers","development-tools::profiling","embedded","no-std","rust-patterns"]'; \
+	errors="$$(jq -r \
+	  --arg homepage 'https://quasar-lang.com' \
+	  --arg repository 'https://github.com/blueshift-gg/quasar' \
+	  --arg docs 'https://docs.rs' \
+	  --argjson allowed "$$allowed_categories" \
+	  --from-file scripts/check-package-metadata.jq <<<"$$metadata")"; \
+	if [[ -n "$$errors" ]]; then \
+	  echo "incomplete crates.io metadata:" >&2; \
+	  echo "$$errors" >&2; \
+	  exit 1; \
+	fi; \
+	while IFS= read -r readme; do \
+	  if [[ ! -s "$$readme" ]]; then \
+	    echo "missing package README: $$readme" >&2; \
+	    exit 1; \
+	  fi; \
+	done < <(jq -r \
+	  '.packages[] | select(.publish != []) | (.manifest_path | sub("/Cargo.toml$$"; "")) + "/" + .readme' \
+	  <<<"$$metadata")
 
 build:
 	@cargo build
@@ -305,7 +329,7 @@ test-bless:
 generated-client-smoke:
 	@cargo test -p quasar-cli --test generated_clients_smoke -- --nocapture --test-threads=1
 
-package-check:
+package-check: check-package-metadata
 	@# First-release internal dependencies are not on crates.io yet. `msrv-check`
 	@# compiles the source graph; #283 rehearses the packaged graph locally.
 	@cargo package --quiet $(foreach package,$(PUBLISH_PACKAGES),-p $(package)) \
@@ -336,6 +360,32 @@ package-check:
 	    '$$1 == "license" { gsub(/"/, "", $$2); print $$2; exit }' <<<"$$manifest")"; \
 	  if [[ "$$license" != '$(LICENSE_EXPRESSION)' ]]; then \
 	    echo "$$archive declares unexpected license: $$license" >&2; \
+	    exit 1; \
+	  fi; \
+	  readme="$$(awk -F ' = ' \
+	    '$$1 == "readme" { gsub(/"/, "", $$2); print $$2; exit }' <<<"$$manifest")"; \
+	  source_readme="$$(jq -r --arg package "$$package" \
+	    '.packages[] | select(.name == $$package) | (.manifest_path | sub("/Cargo.toml$$"; "")) + "/" + .readme' \
+	    <<<"$$metadata")"; \
+	  if [[ -z "$$readme" ]] \
+	    || ! tar -tzf "$$archive" | grep -x "$$root/$$readme" >/dev/null; then \
+	    echo "$$archive does not contain its configured README" >&2; \
+	    exit 1; \
+	  fi; \
+	  if ! cmp -s "$$source_readme" <(tar -xOzf "$$archive" "$$root/$$readme"); then \
+	    echo "$$archive contains the wrong README text" >&2; \
+	    exit 1; \
+	  fi; \
+	  homepage="$$(awk -F ' = ' \
+	    '$$1 == "homepage" { gsub(/"/, "", $$2); print $$2; exit }' <<<"$$manifest")"; \
+	  documentation="$$(awk -F ' = ' \
+	    '$$1 == "documentation" { gsub(/"/, "", $$2); print $$2; exit }' <<<"$$manifest")"; \
+	  repository="$$(awk -F ' = ' \
+	    '$$1 == "repository" { gsub(/"/, "", $$2); print $$2; exit }' <<<"$$manifest")"; \
+	  if [[ "$$homepage" != 'https://quasar-lang.com' \
+	    || "$$documentation" != "https://docs.rs/$$package/$$version" \
+	    || "$$repository" != 'https://github.com/blueshift-gg/quasar' ]]; then \
+	    echo "$$archive contains inconsistent crates.io links" >&2; \
 	    exit 1; \
 	  fi; \
 	done

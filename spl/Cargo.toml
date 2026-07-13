@@ -6,7 +6,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 authors.workspace = true
+documentation = "https://docs.rs/quasar-spl/0.1.0"
+readme = "README.md"
+keywords = ["solana", "spl-token", "token-2022", "cpi", "zero-copy"]
+categories = ["no-std", "api-bindings"]
 
 [lints]
 workspace = true
