@@ -299,6 +299,8 @@ impl core::marker::UnsafeUnpin for quasar_idl_schema::RemainingAccountPolicy
 impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl_schema::RemainingAccountPolicy
 impl core::panic::unwind_safe::UnwindSafe for quasar_idl_schema::RemainingAccountPolicy
 pub mod quasar_idl_schema::canonical
+pub fn quasar_idl_schema::canonical::canonical_abi_json(&quasar_idl_schema::Idl) -> serde_json::error::Result<alloc::vec::Vec<u8>>
+pub fn quasar_idl_schema::canonical::canonical_abi_json_pretty(&quasar_idl_schema::Idl) -> serde_json::error::Result<alloc::vec::Vec<u8>>
 pub fn quasar_idl_schema::canonical::canonical_json(&quasar_idl_schema::Idl) -> serde_json::error::Result<alloc::vec::Vec<u8>>
 pub fn quasar_idl_schema::canonical::canonical_json_pretty(&quasar_idl_schema::Idl) -> serde_json::error::Result<alloc::vec::Vec<u8>>
 pub fn quasar_idl_schema::canonical::compute_abi_hash(&quasar_idl_schema::Idl) -> alloc::string::String
@@ -1780,6 +1782,8 @@ impl core::panic::unwind_safe::UnwindSafe for quasar_idl_schema::ScalarRepr
 pub const quasar_idl_schema::CURRENT_SPEC: &str
 pub const quasar_idl_schema::SPEC_SCHEME: &str
 pub const quasar_idl_schema::SUPPORTED_SPEC_MAJOR: u64
+pub fn quasar_idl_schema::canonical_abi_json(&quasar_idl_schema::Idl) -> serde_json::error::Result<alloc::vec::Vec<u8>>
+pub fn quasar_idl_schema::canonical_abi_json_pretty(&quasar_idl_schema::Idl) -> serde_json::error::Result<alloc::vec::Vec<u8>>
 pub fn quasar_idl_schema::canonical_json(&quasar_idl_schema::Idl) -> serde_json::error::Result<alloc::vec::Vec<u8>>
 pub fn quasar_idl_schema::canonical_json_pretty(&quasar_idl_schema::Idl) -> serde_json::error::Result<alloc::vec::Vec<u8>>
 pub fn quasar_idl_schema::check_spec(&str) -> core::result::Result<alloc::string::String, alloc::string::String>

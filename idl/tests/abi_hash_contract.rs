@@ -1,5 +1,6 @@
 use quasar_idl::types::{
-    compute_abi_hash, AccountFlag, Idl, IdlHashes, IdlResolver, IdlType, IdlTypeDefKind,
+    canonical_abi_json, compute_abi_hash, AccountFlag, Idl, IdlHashes, IdlResolver, IdlType,
+    IdlTypeDefKind,
 };
 
 const COMPLETE_IDL: &str = r#"{
@@ -93,6 +94,7 @@ fn fixture() -> Idl {
 
 fn assert_abi_changes(label: &str, base: &Idl, mutate: impl FnOnce(&mut Idl)) {
     let base_hash = compute_abi_hash(base);
+    let base_projection = canonical_abi_json(base).unwrap();
     let mut changed = base.clone();
     mutate(&mut changed);
     assert_ne!(
@@ -100,16 +102,27 @@ fn assert_abi_changes(label: &str, base: &Idl, mutate: impl FnOnce(&mut Idl)) {
         base_hash,
         "`{label}` is part of the ABI/client interface"
     );
+    assert_ne!(
+        canonical_abi_json(&changed).unwrap(),
+        base_projection,
+        "`{label}` must appear in the reviewable ABI projection"
+    );
 }
 
 fn assert_abi_unchanged(label: &str, base: &Idl, mutate: impl FnOnce(&mut Idl)) {
     let base_hash = compute_abi_hash(base);
+    let base_projection = canonical_abi_json(base).unwrap();
     let mut changed = base.clone();
     mutate(&mut changed);
     assert_eq!(
         compute_abi_hash(&changed),
         base_hash,
         "`{label}` is outside the ABI/client interface"
+    );
+    assert_eq!(
+        canonical_abi_json(&changed).unwrap(),
+        base_projection,
+        "`{label}` must stay outside the reviewable ABI projection"
     );
 }
 

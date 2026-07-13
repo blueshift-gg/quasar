@@ -43,6 +43,15 @@ every diff hunk like code — each change must be a deliberate, correct emission
 difference, never blessed blindly. Never set `UPDATE_EXPECT` in `make test` or
 CI.
 
+## IDL wire-contract snapshots
+
+The pretty JSON files under
+`compatibility-baselines/v0.1.0/idl-wire/programs/` contain the exact typed
+projection used by the ABI hash, rebuilt from representative programs. Run
+`make check-idl-wire-baselines` to compare generated wire contracts. Run
+`make bless-idl-wire-baselines` only after reviewing the compatibility impact;
+documentation-only changes never appear in this projection.
+
 ## When this changes
 
 Once the API stabilizes and we've been audited, we'll open up contributions. Until then, issues are the best way to shape the project.

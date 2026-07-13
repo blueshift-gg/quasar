@@ -11,6 +11,8 @@ PUBLIC_API_BASELINE_DIR := api-baselines/$(PUBLIC_API_BASELINE_VERSION)
 PUBLIC_API_TARGET := x86_64-unknown-linux-gnu
 PROC_MACRO_BASELINE_VERSION := v0.1.0
 PROC_MACRO_BASELINE_DIR := compatibility-baselines/$(PROC_MACRO_BASELINE_VERSION)/proc-macros
+IDL_WIRE_BASELINE_VERSION := v0.1.0
+IDL_WIRE_BASELINE_DIR := compatibility-baselines/$(IDL_WIRE_BASELINE_VERSION)/idl-wire
 RELEASE_WORKFLOW ?= .github/workflows/release.yml
 PROGRAM_MSRV := 1.89.0
 # platform-tools v1.52 ships Cargo 1.89 which supports Cargo.lock v4.
@@ -69,6 +71,7 @@ PACKAGE_PATCHES := \
 	nightly-version cargo-fuzz-version cargo-audit-version cargo-public-api-version \
 	test-fuzz-build check-public-api bless-public-api \
 	check-proc-macro-baselines bless-proc-macro-baselines \
+	check-idl-wire-baselines bless-idl-wire-baselines \
 	test-audit-policy generated-client-smoke \
 	kani help-kani check-kani kani-lang \
 	kani-spl kani-metadata msrv-check package-check audit
@@ -103,6 +106,12 @@ check-proc-macro-baselines:
 bless-proc-macro-baselines:
 	@scripts/check-proc-macro-baselines.sh bless "$(PROC_MACRO_BASELINE_DIR)" \
 		"$(PUBLIC_API_BASELINE_DIR)/quasar-derive.txt"
+
+check-idl-wire-baselines:
+	@scripts/check-idl-wire-baselines.sh check "$(IDL_WIRE_BASELINE_DIR)"
+
+bless-idl-wire-baselines:
+	@scripts/check-idl-wire-baselines.sh bless "$(IDL_WIRE_BASELINE_DIR)"
 
 test-fuzz-build:
 	@cd lang && cargo +$(NIGHTLY_TOOLCHAIN) fuzz build

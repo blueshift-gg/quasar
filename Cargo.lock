@@ -2041,6 +2041,7 @@ dependencies = [
  "dialoguer",
  "dirs",
  "ed25519-dalek",
+ "expect-test",
  "indicatif",
  "quasar-idl",
  "quasar-profile",

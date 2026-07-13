@@ -1,0 +1,539 @@
+{
+  "name": "quasar_multisig",
+  "address": "44444444444444444444444444444444444444444444",
+  "instructions": [
+    {
+      "name": "create",
+      "discriminator": [
+        0
+      ],
+      "args": [
+        {
+          "name": "threshold",
+          "type": "u8"
+        }
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "optional": false,
+          "writable": true,
+          "signer": true,
+          "resolver": {
+            "kind": "input"
+          }
+        },
+        {
+          "name": "config",
+          "optional": false,
+          "writable": true,
+          "signer": false,
+          "resolver": {
+            "kind": "pda",
+            "program": {
+              "kind": "programId"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  117,
+                  108,
+                  116,
+                  105,
+                  115,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              }
+            ]
+          }
+        },
+        {
+          "name": "rent",
+          "optional": false,
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "const",
+            "address": "SysvarRent111111111111111111111111111111111"
+          }
+        },
+        {
+          "name": "systemProgram",
+          "optional": false,
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "const",
+            "address": "11111111111111111111111111111111"
+          }
+        }
+      ],
+      "remaining_accounts": {
+        "kind": "append",
+        "name": "remainingAccounts",
+        "min": 0,
+        "max": null,
+        "item": {
+          "clientType": "accountMeta",
+          "signer": "input",
+          "writable": "input"
+        },
+        "policy": {
+          "position": "afterDeclaredAccounts",
+          "order": "preserveInput"
+        }
+      },
+      "layout": {
+        "kind": "fixed",
+        "fields": [
+          "threshold"
+        ]
+      }
+    },
+    {
+      "name": "deposit",
+      "discriminator": [
+        1
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ],
+      "accounts": [
+        {
+          "name": "depositor",
+          "optional": false,
+          "writable": true,
+          "signer": true,
+          "resolver": {
+            "kind": "input"
+          }
+        },
+        {
+          "name": "config",
+          "optional": false,
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "input"
+          }
+        },
+        {
+          "name": "vault",
+          "optional": false,
+          "writable": true,
+          "signer": false,
+          "resolver": {
+            "kind": "pda",
+            "program": {
+              "kind": "programId"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "optional": false,
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "const",
+            "address": "11111111111111111111111111111111"
+          }
+        }
+      ],
+      "layout": {
+        "kind": "fixed",
+        "fields": [
+          "amount"
+        ]
+      }
+    },
+    {
+      "name": "set_label",
+      "discriminator": [
+        2
+      ],
+      "args": [
+        {
+          "name": "label",
+          "type": "string",
+          "codec": {
+            "kind": "sizePrefixed",
+            "prefix": {
+              "type": "u8",
+              "endian": "le"
+            },
+            "storage": "tail",
+            "maxBytes": 32,
+            "encoding": "utf8"
+          }
+        }
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "optional": false,
+          "writable": true,
+          "signer": true,
+          "resolver": {
+            "kind": "input"
+          }
+        },
+        {
+          "name": "config",
+          "optional": false,
+          "writable": true,
+          "signer": false,
+          "resolver": {
+            "kind": "pda",
+            "program": {
+              "kind": "programId"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  117,
+                  108,
+                  116,
+                  105,
+                  115,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "optional": false,
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "const",
+            "address": "11111111111111111111111111111111"
+          }
+        }
+      ],
+      "layout": {
+        "kind": "compact",
+        "inlineFields": [],
+        "tailFields": [
+          "label"
+        ],
+        "wire": "inlineFieldsThenTailHeadersThenTailPayloads"
+      }
+    },
+    {
+      "name": "execute_transfer",
+      "discriminator": [
+        3
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "optional": false,
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "pda",
+            "program": {
+              "kind": "programId"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  117,
+                  108,
+                  116,
+                  105,
+                  115,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "optional": false,
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "input"
+          }
+        },
+        {
+          "name": "vault",
+          "optional": false,
+          "writable": true,
+          "signer": false,
+          "resolver": {
+            "kind": "pda",
+            "program": {
+              "kind": "programId"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "recipient",
+          "optional": false,
+          "writable": true,
+          "signer": false,
+          "resolver": {
+            "kind": "input"
+          }
+        },
+        {
+          "name": "systemProgram",
+          "optional": false,
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "const",
+            "address": "11111111111111111111111111111111"
+          }
+        }
+      ],
+      "remaining_accounts": {
+        "kind": "append",
+        "name": "remainingAccounts",
+        "min": 0,
+        "max": null,
+        "item": {
+          "clientType": "accountMeta",
+          "signer": "input",
+          "writable": "input"
+        },
+        "policy": {
+          "position": "afterDeclaredAccounts",
+          "order": "preserveInput"
+        }
+      },
+      "layout": {
+        "kind": "fixed",
+        "fields": [
+          "amount"
+        ]
+      }
+    }
+  ],
+  "accounts": [
+    {
+      "name": "MultisigConfig",
+      "discriminator": [
+        1
+      ],
+      "space": {
+        "discriminator": 1,
+        "min": 38,
+        "max": null
+      }
+    }
+  ],
+  "types": [
+    {
+      "name": "MultisigConfig",
+      "kind": "struct",
+      "fields": [
+        {
+          "name": "creator",
+          "type": "pubkey"
+        },
+        {
+          "name": "threshold",
+          "type": "u8"
+        },
+        {
+          "name": "bump",
+          "type": "u8"
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "codec": {
+            "kind": "sizePrefixed",
+            "prefix": {
+              "type": "u8",
+              "endian": "le"
+            },
+            "storage": "tail",
+            "maxBytes": 32,
+            "encoding": "utf8"
+          }
+        },
+        {
+          "name": "signers",
+          "type": {
+            "vec": "pubkey"
+          },
+          "codec": {
+            "kind": "sizePrefixed",
+            "prefix": {
+              "type": "u16",
+              "endian": "le"
+            },
+            "storage": "tail",
+            "maxItems": 10
+          }
+        }
+      ],
+      "layout": {
+        "kind": "compact",
+        "inlineFields": [
+          "creator",
+          "threshold",
+          "bump"
+        ],
+        "tailFields": [
+          "label",
+          "signers"
+        ],
+        "wire": "inlineFieldsThenTailHeadersThenTailPayloads"
+      }
+    }
+  ],
+  "events": [],
+  "errors": [
+    {
+      "code": 3001,
+      "name": "AccountAlreadyInitialized"
+    },
+    {
+      "code": 3000,
+      "name": "AccountNotInitialized"
+    },
+    {
+      "code": 3010,
+      "name": "AccountNotMutable"
+    },
+    {
+      "code": 3008,
+      "name": "AccountNotRentExempt"
+    },
+    {
+      "code": 3011,
+      "name": "AccountNotSigner"
+    },
+    {
+      "code": 3009,
+      "name": "AccountOwnedByWrongProgram"
+    },
+    {
+      "code": 3012,
+      "name": "AddressMismatch"
+    },
+    {
+      "code": 3014,
+      "name": "CompactWriterFieldNotSet"
+    },
+    {
+      "code": 3004,
+      "name": "ConstraintViolation"
+    },
+    {
+      "code": 3013,
+      "name": "DynamicFieldTooLong"
+    },
+    {
+      "code": 3005,
+      "name": "HasOneMismatch"
+    },
+    {
+      "code": 3007,
+      "name": "InsufficientSpace"
+    },
+    {
+      "code": 3006,
+      "name": "InvalidDiscriminator"
+    },
+    {
+      "code": 3002,
+      "name": "InvalidPda"
+    },
+    {
+      "code": 3019,
+      "name": "InvalidReturnData"
+    },
+    {
+      "code": 3003,
+      "name": "InvalidSeeds"
+    },
+    {
+      "code": 3017,
+      "name": "MissingReturnData"
+    },
+    {
+      "code": 3016,
+      "name": "RemainingAccountDuplicate"
+    },
+    {
+      "code": 3015,
+      "name": "RemainingAccountsOverflow"
+    },
+    {
+      "code": 3018,
+      "name": "ReturnDataFromWrongProgram"
+    }
+  ]
+}
