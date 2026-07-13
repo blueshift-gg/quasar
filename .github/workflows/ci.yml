@@ -34,6 +34,39 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  fuzz_scope:
+    name: Fuzz Build Scope
+    runs-on: ubuntu-24.04
+    outputs:
+      should_run: ${{ steps.scope.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: changed
+        if: github.event_name != 'workflow_call'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            fuzz_build:
+              - 'lang/**'
+              - 'derive/**'
+              - 'schema/**'
+              - 'Cargo.lock'
+              - 'Cargo.toml'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/release.yml'
+              - 'Makefile'
+      - id: scope
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_call" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.changed.outputs.fuzz_build }}" = "true" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   kani_scope:
     name: Kani Scope
     runs-on: ubuntu-24.04
@@ -344,6 +377,43 @@ jobs:
           cargo +${{ steps.nightly.outputs.version }} miri --version
       - name: Run strict-provenance Miri tests
         run: make test-miri-strict
+
+  fuzz_build:
+    name: Fuzz Targets Build
+    needs: fuzz_scope
+    if: needs.fuzz_scope.outputs.should_run == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Get pinned tool versions
+        id: versions
+        run: |
+          echo "nightly=$(make nightly-version)" >> "$GITHUB_OUTPUT"
+          echo "cargo_fuzz=$(make cargo-fuzz-version)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/bin/
+          key: ${{ runner.os }}-cargo-fuzz-${{ steps.versions.outputs.cargo_fuzz }}-${{ hashFiles('lang/fuzz/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-fuzz-${{ steps.versions.outputs.cargo_fuzz }}-
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.versions.outputs.nightly }}
+      - name: Install pinned cargo-fuzz
+        run: >-
+          cargo +${{ steps.versions.outputs.nightly }} install cargo-fuzz
+          --version ${{ steps.versions.outputs.cargo_fuzz }} --locked
+      - name: Print fuzz toolchain
+        run: |
+          rustup run "${{ steps.versions.outputs.nightly }}" rustc --version
+          rustup run "${{ steps.versions.outputs.nightly }}" cargo --version
+          cargo fuzz --version
+      - name: Build every fuzz target
+        run: make test-fuzz-build
 
   kani:
     name: Kani (${{ matrix.crate }})
