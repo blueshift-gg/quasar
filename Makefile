@@ -63,6 +63,8 @@ PACKAGE_PATCHES := \
 	--config 'patch.crates-io.quasar-spl.path="spl"' \
 	--config 'patch.crates-io.quasar-metadata.path="metadata"'
 
+PACKAGE_REHEARSAL_ROOT ?= target/release-rehearsal
+
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
 	check-runtime-panics check-workspace-invariants check-license-policy \
 	check-package-metadata check-release-train \
@@ -79,7 +81,7 @@ PACKAGE_PATCHES := \
 	check-release-dependencies test-release-dependency-policy \
 	check-release-permissions test-release-permission-policy \
 	kani help-kani check-kani kani-lang \
-	kani-spl kani-metadata msrv-check package-check audit
+	kani-spl kani-metadata msrv-check package-check package-rehearsal audit
 
 # Print the nightly toolchain version for CI
 nightly-version:
@@ -476,6 +478,11 @@ package-check: check-package-metadata
 	    exit 1; \
 	  fi; \
 	done
+
+package-rehearsal: package-check
+	@rm -rf "$(PACKAGE_REHEARSAL_ROOT)"
+	@scripts/prepare-package-rehearsal.sh \
+		target/package "$(PACKAGE_REHEARSAL_ROOT)" $(PUBLISH_PACKAGES)
 
 audit:
 	@command -v cargo-audit >/dev/null 2>&1 || { \

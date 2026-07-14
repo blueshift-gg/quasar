@@ -57,31 +57,31 @@ jobs:
       - name: Print Kani toolchain
         run: cargo kani --version
 
-  # ── CLI smoke: verify a fresh Solana project before publishing a tag ──
-  release-cli-smoke:
-    name: Release CLI Smoke
+  # ── Package rehearsal: exercise the unpublished archives before tagging ──
+  package-rehearsal:
+    name: Package Release Rehearsal
     needs: ci
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
-      - name: Build release smoke image
+      - name: Build package rehearsal image
         run: |
           docker build \
             --platform linux/amd64 \
             --build-arg SOLANA_VERSION=${{ env.SOLANA_VERSION }} \
             --build-arg SOLANA_LINUX_SHA256=${{ env.SOLANA_LINUX_SHA256 }} \
-            --file .github/docker/release-cli-smoke.Dockerfile \
-            --tag quasar-release-cli-smoke:${{ github.sha }} \
+            --file .github/docker/release-package-rehearsal.Dockerfile \
+            --tag quasar-release-package-rehearsal:${{ github.sha }} \
             .
 
-      - name: Run release smoke
-        run: docker run --rm quasar-release-cli-smoke:${{ github.sha }}
+      - name: Run package rehearsal
+        run: docker run --rm quasar-release-package-rehearsal:${{ github.sha }}
 
   # ── Publish crates to crates.io in dependency order ──
   publish:
     name: Publish to crates.io
-    needs: [ci, kani, release-cli-smoke]
+    needs: [ci, kani, package-rehearsal]
     runs-on: ubuntu-24.04
     env:
       RUSTUP_TOOLCHAIN: 1.89.0
