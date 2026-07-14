@@ -2,6 +2,7 @@ SHELL := /usr/bin/env bash
 # Keep rustfmt, Clippy, and Miri deterministic across local and CI runs.
 NIGHTLY_TOOLCHAIN := nightly-2026-03-27
 KANI_VERSION := 0.67.0
+CARGO_FUZZ_VERSION := 0.13.2
 PROGRAM_MSRV := 1.89.0
 # platform-tools v1.52 ships Cargo 1.89 which supports Cargo.lock v4.
 # v1.51 ships Cargo 1.84 which does not, causing "duplicate lang item" errors.
@@ -53,12 +54,19 @@ PACKAGE_PATCHES := \
 	check-runtime-panics check-workspace-invariants build build-sbf test test-bless \
 	test-host-inventory test-host test-sbf-host \
 	bench-cu bench-tracked compare-tracked test-miri test-miri-strict test-all \
-	nightly-version generated-client-smoke kani help-kani check-kani kani-lang \
+	nightly-version cargo-fuzz-version test-fuzz-build generated-client-smoke \
+	kani help-kani check-kani kani-lang \
 	kani-spl kani-metadata msrv-check package-check audit
 
 # Print the nightly toolchain version for CI
 nightly-version:
 	@echo $(NIGHTLY_TOOLCHAIN)
+
+cargo-fuzz-version:
+	@echo $(CARGO_FUZZ_VERSION)
+
+test-fuzz-build:
+	@cd lang && cargo +$(NIGHTLY_TOOLCHAIN) fuzz build
 
 msrv-check:
 	@cargo +$(PROGRAM_MSRV) check \
@@ -323,5 +331,6 @@ test-all:
 	@$(MAKE) generated-client-smoke
 	@$(MAKE) package-check
 	@$(MAKE) audit
+	@$(MAKE) test-fuzz-build
 	@$(MAKE) test-miri-strict
 	@echo "All checks passed!"
