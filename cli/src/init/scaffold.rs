@@ -185,7 +185,7 @@ pub(super) fn scaffold(
 
         fs::write(
             tests_dir.join(format!("{}.test.ts", name)),
-            generate_test_ts(name, sdk, toolchain),
+            generate_test_ts(name, sdk, template, toolchain),
         )?;
     }
 
@@ -334,8 +334,8 @@ mod {module_name} {{
 use quasar_lang::prelude::*;
 
 mod errors;
-mod instructions;
-mod state;
+pub mod instructions;
+pub mod state;
 use instructions::*;
 
 declare_id!("{program_id}");
@@ -345,8 +345,8 @@ mod {module_name} {{
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn initialize(ctx: Ctx<Initialize>) -> Result<(), ProgramError> {{
-        ctx.accounts.initialize()
+    pub fn initialize(ctx: Ctx<Initialize>, value: u64) -> Result<(), ProgramError> {{
+        ctx.accounts.initialize(value, &ctx.bumps)
     }}
 }}
 {test_mod}"#
@@ -402,7 +402,19 @@ fn generate_package_json(name: &str, ts_sdk: TypeScriptSdk) -> String {
     )
 }
 
-fn generate_test_ts(name: &str, ts_sdk: TypeScriptSdk, toolchain: Toolchain) -> String {
+fn generate_test_ts(
+    name: &str,
+    ts_sdk: TypeScriptSdk,
+    template: Template,
+    toolchain: Toolchain,
+) -> String {
+    match template {
+        Template::Minimal => generate_minimal_test_ts(name, ts_sdk, toolchain),
+        Template::Full => generate_full_test_ts(name, ts_sdk, toolchain),
+    }
+}
+
+fn generate_minimal_test_ts(name: &str, ts_sdk: TypeScriptSdk, toolchain: Toolchain) -> String {
     let module_name = name.replace('-', "_");
     let so_name = match toolchain {
         Toolchain::Upstream => format!("lib{module_name}"),
@@ -482,6 +494,139 @@ describe.concurrent("{class_name} Program", async () => {{
     }
 }
 
+fn generate_full_test_ts(name: &str, ts_sdk: TypeScriptSdk, toolchain: Toolchain) -> String {
+    let module_name = name.replace('-', "_");
+    let so_name = match toolchain {
+        Toolchain::Upstream => format!("lib{module_name}"),
+        Toolchain::Solana => module_name.clone(),
+    };
+
+    if matches!(ts_sdk, TypeScriptSdk::Kit) {
+        format!(
+            r#"import {{
+  AccountRole,
+  address,
+  generateKeyPairSigner,
+  getAddressEncoder,
+  getProgramDerivedAddress,
+}} from "@solana/kit";
+import {{ readFile }} from "node:fs/promises";
+import {{ describe, it, expect }} from "vitest";
+import {{ QuasarSvm, createKeyedSystemAccount }} from "@blueshift-gg/quasar-svm/kit";
+
+describe.concurrent("{class_name} Program", async () => {{
+  it("initializes state", async () => {{
+    const idl = JSON.parse(await readFile("target/idl/{module_name}.json", "utf8")) as {{ address: string }};
+    const programAddress = address(idl.address);
+    const vm = new QuasarSvm();
+    vm.addProgram(programAddress, await readFile("target/deploy/{so_name}.so"));
+
+    const payer = await generateKeyPairSigner();
+    const [myAccount, bump] = await getProgramDerivedAddress({{
+      programAddress,
+      seeds: [
+        new TextEncoder().encode("my-account"),
+        getAddressEncoder().encode(payer.address),
+      ],
+    }});
+    const value = 42n;
+    const instructionData = new Uint8Array(9);
+    instructionData[0] = 0;
+    new DataView(instructionData.buffer).setBigUint64(1, value, true);
+
+    const initializeInstruction = {{
+      programAddress,
+      accounts: [
+        {{ address: payer.address, role: AccountRole.WRITABLE_SIGNER }},
+        {{ address: myAccount, role: AccountRole.WRITABLE }},
+        {{ address: address("11111111111111111111111111111111"), role: AccountRole.READONLY }},
+      ],
+      data: instructionData,
+    }};
+
+    const result = vm.processInstruction(initializeInstruction, [
+      createKeyedSystemAccount(payer.address),
+      createKeyedSystemAccount(myAccount, 0n),
+    ]);
+
+    expect(result.status.ok, `initialize failed:\n${{result.logs.join("\n")}}`).toBe(true);
+    const stored = result.account(myAccount);
+    if (!stored) throw new Error("initialized state account is missing");
+    expect(stored.programAddress).toBe(programAddress);
+    expect(stored.data).toHaveLength(107);
+    expect(stored.data[0]).toBe(1);
+    expect(stored.data[1]).toBe(1);
+    expect(stored.data.slice(2, 34)).toEqual(getAddressEncoder().encode(payer.address));
+    expect(new DataView(stored.data.buffer, stored.data.byteOffset).getBigUint64(34, true)).toBe(value);
+    expect(stored.data[42]).toBe(bump);
+    expect(stored.data.slice(43).every((byte) => byte === 0)).toBe(true);
+  }});
+}});
+"#,
+            class_name = snake_to_pascal(&module_name)
+        )
+    } else {
+        format!(
+            r#"import {{ Buffer }} from "node:buffer";
+import {{ Address, Keypair, TransactionInstruction }} from "@solana/web3.js";
+import {{ readFile }} from "node:fs/promises";
+import {{ describe, it, expect }} from "vitest";
+import {{ QuasarSvm, createKeyedSystemAccount }} from "@blueshift-gg/quasar-svm/web3.js";
+
+describe.concurrent("{class_name} Program", async () => {{
+  it("initializes state", async () => {{
+    const idl = JSON.parse(await readFile("target/idl/{module_name}.json", "utf8")) as {{ address: string }};
+    const programAddress = new Address(idl.address);
+    const vm = new QuasarSvm();
+    vm.addProgram(programAddress, await readFile("target/deploy/{so_name}.so"));
+
+    const {{ publicKey: payer }} = await Keypair.generate();
+    const [myAccount, bump] = await Address.findProgramAddress(
+      [Buffer.from("my-account"), payer.toBytes()],
+      programAddress,
+    );
+    const value = 42n;
+    const instructionData = Buffer.alloc(9);
+    instructionData[0] = 0;
+    instructionData.writeBigUInt64LE(value, 1);
+
+    const initializeInstruction = new TransactionInstruction({{
+      programId: programAddress,
+      keys: [
+        {{ pubkey: payer, isSigner: true, isWritable: true }},
+        {{ pubkey: myAccount, isSigner: false, isWritable: true }},
+        {{ pubkey: new Address("11111111111111111111111111111111"), isSigner: false, isWritable: false }},
+      ],
+      data: instructionData,
+    }});
+
+    const result = vm.processInstruction(initializeInstruction, [
+      createKeyedSystemAccount(payer),
+      createKeyedSystemAccount(myAccount, 0n),
+    ]);
+
+    expect(result.status.ok, `initialize failed:\n${{result.logs.join("\n")}}`).toBe(true);
+    const stored = result.accounts.find((account) => account.accountId.equals(myAccount));
+    if (!stored) throw new Error("initialized state account is missing");
+    expect(stored.accountInfo.owner.equals(programAddress)).toBe(true);
+    expect(stored.accountInfo.data).toHaveLength(107);
+    expect(stored.accountInfo.data[0]).toBe(1);
+    expect(stored.accountInfo.data[1]).toBe(1);
+    expect(stored.accountInfo.data.subarray(2, 34)).toEqual(Buffer.from(payer.toBytes()));
+    expect(new DataView(
+      stored.accountInfo.data.buffer,
+      stored.accountInfo.data.byteOffset,
+    ).getBigUint64(34, true)).toBe(value);
+    expect(stored.accountInfo.data[42]).toBe(bump);
+    expect(stored.accountInfo.data.subarray(43).every((byte) => byte === 0)).toBe(true);
+  }});
+}});
+"#,
+            class_name = snake_to_pascal(&module_name)
+        )
+    }
+}
+
 fn generate_tests_rs(
     module_name: &str,
     rust_framework: RustFramework,
@@ -493,7 +638,7 @@ fn generate_tests_rs(
         libname = format!("lib{libname}");
     };
     match (rust_framework, template) {
-        (RustFramework::Mollusk, Template::Minimal | Template::Full) => {
+        (RustFramework::Mollusk, Template::Minimal) => {
             format!(
                 r#"use mollusk_svm::Mollusk;
 use solana_account::Account;
@@ -536,7 +681,75 @@ fn test_initialize() {{
 "#
             )
         }
-        (RustFramework::QuasarSVM, Template::Minimal | Template::Full) => {
+        (RustFramework::Mollusk, Template::Full) => {
+            format!(
+                r#"use mollusk_svm::{{program::keyed_account_for_system_program, Mollusk}};
+use solana_account::Account;
+use solana_address::Address;
+use solana_instruction::{{AccountMeta, Instruction}};
+
+const VALUE: u64 = 42;
+const MY_ACCOUNT_SIZE: usize = 107;
+
+fn setup() -> Mollusk {{
+    Mollusk::new(&crate::ID, "target/deploy/{libname}")
+}}
+
+fn initialize_instruction(
+    payer: Address,
+    my_account: Address,
+    system_program: Address,
+) -> Instruction {{
+    let mut data = vec![0];
+    data.extend_from_slice(&VALUE.to_le_bytes());
+    Instruction {{
+        program_id: Address::from(crate::ID.to_bytes()),
+        accounts: vec![
+            AccountMeta::new(payer, true),
+            AccountMeta::new(my_account, false),
+            AccountMeta::new_readonly(system_program, false),
+        ],
+        data,
+    }}
+}}
+
+#[test]
+fn test_initialize() {{
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let payer = Address::new_unique();
+    let (my_account, bump) =
+        Address::find_program_address(&[b"my-account", payer.as_ref()], &crate::ID);
+    let instruction = initialize_instruction(payer, my_account, system_program);
+
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (payer, Account::new(10_000_000_000, 0, &system_program)),
+            (my_account, Account::default()),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "initialize failed: {{:?}}",
+        result.program_result,
+    );
+    let stored = &result.resulting_accounts[1].1;
+    assert_eq!(stored.owner, crate::ID);
+    assert_eq!(stored.data.len(), MY_ACCOUNT_SIZE);
+    assert_eq!(stored.data[0], 1, "discriminator");
+    assert_eq!(stored.data[1], 1, "version");
+    assert_eq!(&stored.data[2..34], payer.as_ref(), "authority");
+    assert_eq!(&stored.data[34..42], &VALUE.to_le_bytes(), "value");
+    assert_eq!(stored.data[42], bump, "bump");
+    assert!(stored.data[43..].iter().all(|byte| *byte == 0), "reserved");
+}}
+"#
+            )
+        }
+        (RustFramework::QuasarSVM, Template::Minimal) => {
             format!(
                 r#"use quasar_svm::{{Account, Pubkey, QuasarSvm}};
 use solana_address::Address;
@@ -582,14 +795,85 @@ fn test_initialize() {{
 "#
             )
         }
+        (RustFramework::QuasarSVM, Template::Full) => {
+            format!(
+                r#"use quasar_svm::{{Account, Pubkey, QuasarSvm}};
+use solana_address::Address;
+use solana_instruction::{{AccountMeta, Instruction}};
+
+const VALUE: u64 = 42;
+const MY_ACCOUNT_SIZE: usize = 107;
+
+fn setup() -> QuasarSvm {{
+    let elf = std::fs::read("target/deploy/{libname}.so").unwrap();
+    QuasarSvm::new()
+        .with_program(&Pubkey::from(crate::ID), &elf)
+}}
+
+fn initialize_instruction(payer: Pubkey, my_account: Pubkey) -> Instruction {{
+    let mut data = vec![0];
+    data.extend_from_slice(&VALUE.to_le_bytes());
+    Instruction {{
+        program_id: Address::from(crate::ID.to_bytes()),
+        accounts: vec![
+            AccountMeta::new(Address::from(payer.to_bytes()), true),
+            AccountMeta::new(Address::from(my_account.to_bytes()), false),
+            AccountMeta::new_readonly(
+                Address::from(quasar_svm::system_program::ID.to_bytes()),
+                false,
+            ),
+        ],
+        data,
+    }}
+}}
+
+fn system_account(address: Pubkey, lamports: u64) -> Account {{
+    Account {{
+        address,
+        lamports,
+        data: vec![],
+        owner: quasar_svm::system_program::ID,
+        executable: false,
+    }}
+}}
+
+#[test]
+fn test_initialize() {{
+    let mut svm = setup();
+    let payer = Pubkey::new_unique();
+    let (my_account, bump) =
+        Pubkey::find_program_address(&[b"my-account", payer.as_ref()], &crate::ID);
+    let instruction = initialize_instruction(payer, my_account);
+
+    let result = svm.process_instruction(
+        &instruction,
+        &[system_account(payer, 10_000_000_000), system_account(my_account, 0)],
+    );
+
+    result.assert_success();
+    let stored = result.account(&my_account).expect("initialized state account");
+    assert_eq!(stored.owner, crate::ID);
+    assert_eq!(stored.data.len(), MY_ACCOUNT_SIZE);
+    assert_eq!(stored.data[0], 1, "discriminator");
+    assert_eq!(stored.data[1], 1, "version");
+    assert_eq!(&stored.data[2..34], payer.as_ref(), "authority");
+    assert_eq!(&stored.data[34..42], &VALUE.to_le_bytes(), "value");
+    assert_eq!(stored.data[42], bump, "bump");
+    assert!(stored.data[43..].iter().all(|byte| *byte == 0), "reserved");
+}}
+"#
+            )
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use {
-        super::scaffold,
-        crate::init::types::{PackageManager, Template, TestLanguage, Toolchain, TypeScriptSdk},
+        super::{generate_test_ts, generate_tests_rs, scaffold},
+        crate::init::types::{
+            PackageManager, RustFramework, Template, TestLanguage, Toolchain, TypeScriptSdk,
+        },
         quasar_idl::codegen::typescript::{client_dependency_version, TsTarget},
         serde_json::Value,
         std::fs,
@@ -639,5 +923,42 @@ mod tests {
             let dependencies = &package_json["dependencies"];
             assert_eq!(dependencies[dep_name], client_dependency_version(target));
         }
+    }
+
+    #[test]
+    fn full_templates_generate_stateful_tests_without_changing_minimal_tests() {
+        for framework in [RustFramework::Mollusk, RustFramework::QuasarSVM] {
+            let full = generate_tests_rs("demo", framework, Template::Full, Toolchain::Solana);
+            assert!(full.contains("my-account"));
+            assert!(full.contains("MY_ACCOUNT_SIZE"));
+            assert!(full.contains("data[42]"));
+
+            let minimal =
+                generate_tests_rs("demo", framework, Template::Minimal, Toolchain::Solana);
+            assert!(!minimal.contains("my-account"));
+            assert!(!minimal.contains("MY_ACCOUNT_SIZE"));
+        }
+
+        for sdk in [TypeScriptSdk::Kit, TypeScriptSdk::Web3js] {
+            let full = generate_test_ts("demo", sdk, Template::Full, Toolchain::Solana);
+            assert!(full.contains("my-account"));
+            assert!(full.contains("initializes state"));
+            assert!(full.contains("data[42]"));
+
+            let minimal = generate_test_ts("demo", sdk, Template::Minimal, Toolchain::Solana);
+            assert!(!minimal.contains("my-account"));
+            assert!(minimal.contains("it(\"initializes\""));
+        }
+
+        let web3 = generate_test_ts(
+            "demo",
+            TypeScriptSdk::Web3js,
+            Template::Full,
+            Toolchain::Solana,
+        );
+        assert!(web3.contains("await Address.findProgramAddress"));
+        assert!(web3.contains("Buffer.from(payer.toBytes())"));
+        assert!(!web3.contains("findProgramAddressSync"));
+        assert!(!web3.contains("toBuffer()"));
     }
 }
