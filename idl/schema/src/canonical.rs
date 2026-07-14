@@ -64,11 +64,13 @@ fn sort_json_objects(value: &mut serde_json::Value) {
 
 /// Compute the ABI hash (SHA-256 of ABI-affecting subset only).
 ///
-/// ABI hash includes: address, discriminators, instruction args/codecs/layouts,
-/// account data types/codecs/layouts, event types, account meta ordering,
-/// resolver requirements.
+/// ABI hash includes: program name/address, discriminators, instruction
+/// args/codecs/layouts, account data types/codecs/layouts, event types, account
+/// meta ordering, resolver requirements, and error codes/names.
 ///
-/// ABI hash excludes: docs, source spans, metadata, non-ABI extension data.
+/// ABI hash excludes: schema/package versions, docs and error messages,
+/// human-readable space formulae, metadata, opaque type semantics, extension
+/// data, and stored hashes.
 pub fn compute_abi_hash(idl: &Idl) -> String {
     let abi_subset = extract_abi_subset(idl);
     let bytes = serde_json::to_vec(&abi_subset).expect("ABI subset serialization should not fail");
@@ -97,27 +99,41 @@ mod hex {
     }
 }
 
-/// Extract the ABI-affecting subset for hashing.
-/// This is a simplified representation that captures only ABI-relevant fields.
+/// Extract the ABI and generated-client compatibility subset for hashing.
+///
+/// Every projection below destructures its source schema type without `..`.
+/// Adding a schema field therefore fails compilation until the field is either
+/// mirrored into the ABI shape or explicitly ignored in that destructure.
 #[derive(serde::Serialize)]
 struct AbiSubset {
+    name: String,
     address: String,
     instructions: Vec<AbiInstruction>,
     accounts: Vec<AbiAccount>,
     types: Vec<AbiType>,
     events: Vec<AbiEvent>,
+    errors: Vec<AbiError>,
 }
 
 #[derive(serde::Serialize)]
 struct AbiInstruction {
     name: String,
     discriminator: Vec<u8>,
-    args: Vec<crate::instruction::IdlArg>,
+    args: Vec<AbiArg>,
     accounts: Vec<AbiAccountMeta>,
     #[serde(skip_serializing_if = "Option::is_none")]
     remaining_accounts: Option<crate::account::IdlRemainingAccounts>,
     #[serde(skip_serializing_if = "Option::is_none")]
     layout: Option<crate::layout::IdlLayout>,
+}
+
+#[derive(serde::Serialize)]
+struct AbiArg {
+    name: String,
+    #[serde(rename = "type")]
+    ty: crate::types::IdlType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    codec: Option<crate::codec::IdlCodec>,
 }
 
 #[derive(serde::Serialize)]
@@ -129,20 +145,12 @@ struct AbiAccountMeta {
     resolver: crate::account::IdlResolver,
 }
 
-/// Serde fields of [`crate::account::IdlAccountNode`] that are deliberately
-/// excluded from the ABI hash (they carry no wire/ABI meaning). The
-/// completeness test asserts every serde field is either mirrored in
-/// [`AbiAccountMeta`] or listed here, so a newly added field cannot silently
-/// skip the hash.
-#[cfg(test)]
-const ABI_WAIVED: &[&str] = &["docs"];
-
 #[derive(serde::Serialize)]
 struct AbiAccount {
     name: String,
     discriminator: Vec<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    space: Option<crate::space::IdlSpace>,
+    space: Option<AbiSpace>,
 }
 
 #[derive(serde::Serialize)]
@@ -164,7 +172,7 @@ struct AbiType {
     #[serde(skip_serializing_if = "Option::is_none")]
     layout: Option<crate::layout::IdlLayout>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    space: Option<crate::space::IdlSpace>,
+    space: Option<AbiSpace>,
 }
 
 #[derive(serde::Serialize)]
@@ -194,86 +202,218 @@ struct AbiEvent {
     ty: Option<crate::types::IdlType>,
 }
 
+#[derive(serde::Serialize)]
+struct AbiError {
+    code: u32,
+    name: String,
+}
+
+#[derive(serde::Serialize)]
+struct AbiSpace {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    discriminator: Option<usize>,
+    min: u64,
+    max: Option<u64>,
+}
+
 fn extract_abi_subset(idl: &Idl) -> AbiSubset {
+    let Idl {
+        spec: _,
+        name,
+        version: _,
+        address,
+        metadata: _,
+        docs: _,
+        instructions,
+        accounts,
+        types,
+        events,
+        errors,
+        extensions: _,
+        hashes: _,
+    } = idl;
+
     AbiSubset {
-        address: idl.address.clone(),
-        instructions: idl
-            .instructions
-            .iter()
-            .map(|ix| AbiInstruction {
-                name: ix.name.clone(),
-                discriminator: ix.discriminator.clone(),
-                args: ix.args.clone(),
-                accounts: ix
-                    .accounts
-                    .iter()
-                    .map(|a| AbiAccountMeta {
-                        name: a.name.clone(),
-                        optional: a.optional,
-                        writable: a.writable.clone(),
-                        signer: a.signer.clone(),
-                        resolver: a.resolver.clone(),
-                    })
-                    .collect(),
-                remaining_accounts: ix.remaining_accounts.clone(),
-                layout: ix.layout.clone(),
-            })
-            .collect(),
-        accounts: idl
-            .accounts
-            .iter()
-            .map(|a| AbiAccount {
-                name: a.name.clone(),
-                discriminator: a.discriminator.clone(),
-                space: a.space.clone(),
-            })
-            .collect(),
-        types: idl
-            .types
-            .iter()
-            .map(|t| AbiType {
-                name: t.name.clone(),
-                kind: t.kind,
-                fields: abi_fields(&t.fields),
-                variants: t
-                    .variants
-                    .iter()
-                    .map(|v| AbiEnumVariant {
-                        name: v.name.clone(),
-                        value: v.value,
-                        fields: abi_fields(&v.fields),
-                        layout: v.layout.clone(),
-                    })
-                    .collect(),
-                repr: t.repr.clone(),
-                alias: t.alias.clone(),
-                fallback: t.fallback.clone(),
-                codec: t.codec.clone(),
-                layout: t.layout.clone(),
-                space: t.space.clone(),
-            })
-            .collect(),
-        events: idl
-            .events
-            .iter()
-            .map(|e| AbiEvent {
-                name: e.name.clone(),
-                discriminator: e.discriminator.clone(),
-                ty: e.ty.clone(),
-            })
-            .collect(),
+        name: name.clone(),
+        address: address.clone(),
+        instructions: instructions.iter().map(abi_instruction).collect(),
+        accounts: accounts.iter().map(abi_account).collect(),
+        types: types.iter().map(abi_type).collect(),
+        events: events.iter().map(abi_event).collect(),
+        errors: errors.iter().map(abi_error).collect(),
+    }
+}
+
+fn abi_instruction(instruction: &crate::instruction::IdlInstruction) -> AbiInstruction {
+    let crate::instruction::IdlInstruction {
+        name,
+        discriminator,
+        docs: _,
+        accounts,
+        args,
+        layout,
+        remaining_accounts,
+    } = instruction;
+
+    AbiInstruction {
+        name: name.clone(),
+        discriminator: discriminator.clone(),
+        args: args.iter().map(abi_arg).collect(),
+        accounts: accounts.iter().map(abi_account_meta).collect(),
+        remaining_accounts: remaining_accounts.clone(),
+        layout: layout.clone(),
+    }
+}
+
+fn abi_arg(arg: &crate::instruction::IdlArg) -> AbiArg {
+    let crate::instruction::IdlArg {
+        name,
+        ty,
+        codec,
+        docs: _,
+    } = arg;
+
+    AbiArg {
+        name: name.clone(),
+        ty: ty.clone(),
+        codec: codec.clone(),
+    }
+}
+
+fn abi_account_meta(account: &crate::account::IdlAccountNode) -> AbiAccountMeta {
+    let crate::account::IdlAccountNode {
+        name,
+        optional,
+        writable,
+        signer,
+        resolver,
+        docs: _,
+    } = account;
+
+    AbiAccountMeta {
+        name: name.clone(),
+        optional: *optional,
+        writable: writable.clone(),
+        signer: signer.clone(),
+        resolver: resolver.clone(),
+    }
+}
+
+fn abi_account(account: &crate::account::IdlAccountDef) -> AbiAccount {
+    let crate::account::IdlAccountDef {
+        name,
+        discriminator,
+        docs: _,
+        space,
+    } = account;
+
+    AbiAccount {
+        name: name.clone(),
+        discriminator: discriminator.clone(),
+        space: space.as_ref().map(abi_space),
+    }
+}
+
+fn abi_type(type_def: &crate::types::IdlTypeDef) -> AbiType {
+    let crate::types::IdlTypeDef {
+        name,
+        kind,
+        docs: _,
+        fields,
+        variants,
+        repr,
+        alias,
+        fallback,
+        codec,
+        layout,
+        space,
+        semantics: _,
+    } = type_def;
+
+    AbiType {
+        name: name.clone(),
+        kind: *kind,
+        fields: abi_fields(fields),
+        variants: variants.iter().map(abi_enum_variant).collect(),
+        repr: repr.clone(),
+        alias: alias.clone(),
+        fallback: fallback.clone(),
+        codec: codec.clone(),
+        layout: layout.clone(),
+        space: space.as_ref().map(abi_space),
     }
 }
 
 fn abi_fields(fields: &[crate::types::IdlFieldDef]) -> Vec<AbiField> {
     fields
         .iter()
-        .map(|f| AbiField {
-            name: f.name.clone(),
-            ty: f.ty.clone(),
-            codec: f.codec.clone(),
+        .map(|field| {
+            let crate::types::IdlFieldDef {
+                name,
+                ty,
+                codec,
+                docs: _,
+            } = field;
+            AbiField {
+                name: name.clone(),
+                ty: ty.clone(),
+                codec: codec.clone(),
+            }
         })
         .collect()
+}
+
+fn abi_enum_variant(variant: &crate::types::IdlEnumVariant) -> AbiEnumVariant {
+    let crate::types::IdlEnumVariant {
+        name,
+        value,
+        fields,
+        layout,
+    } = variant;
+
+    AbiEnumVariant {
+        name: name.clone(),
+        value: *value,
+        fields: abi_fields(fields),
+        layout: layout.clone(),
+    }
+}
+
+fn abi_event(event: &crate::event::IdlEventDef) -> AbiEvent {
+    let crate::event::IdlEventDef {
+        name,
+        discriminator,
+        docs: _,
+        ty,
+    } = event;
+
+    AbiEvent {
+        name: name.clone(),
+        discriminator: discriminator.clone(),
+        ty: ty.clone(),
+    }
+}
+
+fn abi_error(error: &crate::error::IdlErrorDef) -> AbiError {
+    let crate::error::IdlErrorDef { code, name, msg: _ } = error;
+    AbiError {
+        code: *code,
+        name: name.clone(),
+    }
+}
+
+fn abi_space(space: &crate::space::IdlSpace) -> AbiSpace {
+    let crate::space::IdlSpace {
+        discriminator,
+        min,
+        max,
+        formula: _,
+    } = space;
+    AbiSpace {
+        discriminator: *discriminator,
+        min: *min,
+        max: *max,
+    }
 }
 
 #[cfg(test)]
@@ -412,56 +552,6 @@ mod tests {
             base_hash, optional_hash,
             "flipping IdlAccountNode.optional must change the ABI hash"
         );
-    }
-
-    /// Guard: every serde-serialized field of `IdlAccountNode` must be mirrored
-    /// in the ABI subset (`AbiAccountMeta`) or explicitly waived in
-    /// `ABI_WAIVED`. Without this, a newly added account-meta field would
-    /// silently fall out of the ABI hash and break compatibility detection.
-    #[test]
-    fn abi_account_meta_covers_all_idl_account_node_fields() {
-        // Fully populate every optional/skippable field so none are omitted
-        // from the serialized key set.
-        let node = IdlAccountNode {
-            name: "authority".to_owned(),
-            optional: true,
-            writable: AccountFlag::Fixed(true),
-            signer: AccountFlag::Fixed(true),
-            resolver: IdlResolver::Input {},
-            docs: vec!["doc".to_owned()],
-        };
-        let node_value = serde_json::to_value(&node).expect("node serializes");
-        let node_keys = node_value
-            .as_object()
-            .expect("node is a JSON object")
-            .keys()
-            .cloned()
-            .collect::<Vec<_>>();
-
-        let meta = AbiAccountMeta {
-            name: "authority".to_owned(),
-            optional: true,
-            writable: AccountFlag::Fixed(true),
-            signer: AccountFlag::Fixed(true),
-            resolver: IdlResolver::Input {},
-        };
-        let meta_value = serde_json::to_value(&meta).expect("meta serializes");
-        let meta_keys = meta_value
-            .as_object()
-            .expect("meta is a JSON object")
-            .keys()
-            .cloned()
-            .collect::<std::collections::HashSet<_>>();
-
-        for key in node_keys {
-            let covered = meta_keys.contains(&key) || ABI_WAIVED.contains(&key.as_str());
-            assert!(
-                covered,
-                "IdlAccountNode field `{key}` is neither in the ABI subset (AbiAccountMeta) nor \
-                 in ABI_WAIVED; the ABI hash would silently ignore it. Add it to AbiAccountMeta \
-                 or ABI_WAIVED.",
-            );
-        }
     }
 
     #[test]

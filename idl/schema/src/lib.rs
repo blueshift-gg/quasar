@@ -12,6 +12,9 @@
 //! `hashes.idl` is a Quasar-producer integrity hash over every admitted field,
 //! not a language-neutral JSON canonicalization standard. Verify it with this
 //! crate's [`compute_idl_hash`] or with `quasar idl verify`.
+//! `hashes.abi` covers the wire ABI plus generated-client symbol compatibility,
+//! including program and error names and error codes; documentation, error
+//! messages, metadata, opaque semantics, and extensions are excluded.
 
 pub mod account;
 pub mod canonical;
