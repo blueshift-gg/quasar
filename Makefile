@@ -4,6 +4,7 @@ NIGHTLY_TOOLCHAIN := nightly-2026-03-27
 KANI_VERSION := 0.67.0
 CARGO_FUZZ_VERSION := 0.13.2
 CARGO_AUDIT_VERSION := 0.22.1
+LICENSE_EXPRESSION := Apache-2.0 OR MIT
 PROGRAM_MSRV := 1.89.0
 # platform-tools v1.52 ships Cargo 1.89 which supports Cargo.lock v4.
 # v1.51 ships Cargo 1.84 which does not, causing "duplicate lang item" errors.
@@ -52,7 +53,8 @@ PACKAGE_PATCHES := \
 	--config 'patch.crates-io.quasar-metadata.path="metadata"'
 
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
-	check-runtime-panics check-workspace-invariants build build-sbf test test-bless \
+	check-runtime-panics check-workspace-invariants check-license-policy \
+	build build-sbf test test-bless \
 	test-host-inventory test-host test-sbf-host \
 	bench-cu bench-tracked compare-tracked test-benchmark-policy doc-check \
 	test-miri test-miri-strict test-all \
@@ -177,7 +179,7 @@ check-runtime-panics:
 	  exit 1; \
 	fi
 
-check-workspace-invariants:
+check-workspace-invariants: check-license-policy
 	@check_allowed() { \
 	  local desc="$$1" pattern="$$2"; shift 2; \
 	  local allowed=("$$@") matches; \
@@ -212,6 +214,29 @@ check-workspace-invariants:
 	if rg -n 'split_whitespace\(' cli/src >/dev/null; then \
 	  echo "cli command parsing must not use split_whitespace()" >&2; \
 	  rg -n 'split_whitespace\(' cli/src >&2; \
+	  exit 1; \
+	fi
+
+check-license-policy:
+	@expected='$(LICENSE_EXPRESSION)'; \
+	metadata="$$(cargo metadata --locked --no-deps --format-version 1)"; \
+	unexpected="$$(jq -r --arg expected "$$expected" \
+	  '.packages[] | select(.publish != []) | select(.license != $$expected) | [.name, (.license // "missing")] | @tsv' \
+	  <<<"$$metadata")"; \
+	if [[ -n "$$unexpected" ]]; then \
+	  echo "publishable crates must use SPDX license expression $$expected:" >&2; \
+	  echo "$$unexpected" >&2; \
+	  exit 1; \
+	fi; \
+	for file in LICENSE-APACHE LICENSE-MIT; do \
+	  if [[ ! -s "$$file" ]]; then \
+	    echo "missing license grant: $$file" >&2; \
+	    exit 1; \
+	  fi; \
+	done; \
+	if ! grep -Fq '[Apache License, Version 2.0](LICENSE-APACHE)' README.md \
+	  || ! grep -Fq '[MIT License](LICENSE-MIT)' README.md; then \
+	  echo "README license grant does not match $$expected" >&2; \
 	  exit 1; \
 	fi
 
@@ -285,6 +310,35 @@ package-check:
 	@# compiles the source graph; #283 rehearses the packaged graph locally.
 	@cargo package --quiet $(foreach package,$(PUBLISH_PACKAGES),-p $(package)) \
 		--locked --allow-dirty --no-verify $(PACKAGE_PATCHES)
+	@set -euo pipefail; \
+	metadata="$$(cargo metadata --locked --no-deps --format-version 1)"; \
+	for package in $(PUBLISH_PACKAGES); do \
+	  version="$$(jq -r --arg package "$$package" \
+	    '.packages[] | select(.name == $$package) | .version' <<<"$$metadata")"; \
+	  archive="target/package/$$package-$$version.crate"; \
+	  root="$$package-$$version"; \
+	  if [[ ! -f "$$archive" ]]; then \
+	    echo "missing package archive: $$archive" >&2; \
+	    exit 1; \
+	  fi; \
+	  manifest="$$(tar -xOzf "$$archive" "$$root/Cargo.toml")"; \
+	  for file in LICENSE-APACHE LICENSE-MIT; do \
+	    if ! tar -tzf "$$archive" | grep -x "$$root/$$file" >/dev/null; then \
+	      echo "$$archive does not contain $$file" >&2; \
+	      exit 1; \
+	    fi; \
+	    if ! cmp -s "$$file" <(tar -xOzf "$$archive" "$$root/$$file"); then \
+	      echo "$$archive contains the wrong $$file text" >&2; \
+	      exit 1; \
+	    fi; \
+	  done; \
+	  license="$$(awk -F ' = ' \
+	    '$$1 == "license" { gsub(/"/, "", $$2); print $$2; exit }' <<<"$$manifest")"; \
+	  if [[ "$$license" != '$(LICENSE_EXPRESSION)' ]]; then \
+	    echo "$$archive declares unexpected license: $$license" >&2; \
+	    exit 1; \
+	  fi; \
+	done
 
 audit:
 	@command -v cargo-audit >/dev/null 2>&1 || { \

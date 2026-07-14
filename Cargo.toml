@@ -7,7 +7,7 @@ exclude = []
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.89"
-license = "MIT"
+license = "Apache-2.0 OR MIT"
 repository = "https://github.com/blueshift-gg/quasar"
 authors = ["Leonardo Donatacci <leo@blueshift.gg>", "Dean Little <dean@blueshift.gg>"]
 
