@@ -279,9 +279,16 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@v6
-      - uses: rustsec/audit-check@v2.0.0
+      - uses: dtolnay/rust-toolchain@master
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+      - id: audit_version
+        name: Read cargo-audit version
+        run: echo "version=$(make --no-print-directory cargo-audit-version)" >> "$GITHUB_OUTPUT"
+      - name: Install pinned cargo-audit
+        run: cargo install cargo-audit --version "${{ steps.audit_version.outputs.version }}" --locked
+      - name: Report advisories by release reachability
+        run: make audit
 
   cargo_test:
     name: Build & Test
