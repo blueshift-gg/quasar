@@ -16,6 +16,8 @@ use {
     std::{fs, path::Path},
 };
 
+const QUASAR_SVM_TYPESCRIPT_VERSION: &str = "0.1.13";
+
 /// Check that the target directory is usable before prompting the user for
 /// scaffolding parameters.
 pub(super) fn validate_target_dir(dir: &str) -> Result<(), CliError> {
@@ -388,7 +390,7 @@ fn generate_package_json(name: &str, ts_sdk: TypeScriptSdk) -> String {
     "test": "vitest run"
   }},
   "dependencies": {{
-    "@blueshift-gg/quasar-svm": "^0.1.12",
+    "@blueshift-gg/quasar-svm": "{QUASAR_SVM_TYPESCRIPT_VERSION}",
     "@solana/codecs": "^6.0.0",
     {solana_dep}
   }},
@@ -870,7 +872,7 @@ fn test_initialize() {{
 #[cfg(test)]
 mod tests {
     use {
-        super::{generate_test_ts, generate_tests_rs, scaffold},
+        super::{generate_test_ts, generate_tests_rs, scaffold, QUASAR_SVM_TYPESCRIPT_VERSION},
         crate::{
             config::QuasarConfig,
             init::types::{
@@ -1138,6 +1140,12 @@ mod tests {
                 assert_eq!(
                     package_json["dependencies"][dependency],
                     client_dependency_version(target),
+                    "{}",
+                    case.label,
+                );
+                assert_eq!(
+                    package_json["dependencies"]["@blueshift-gg/quasar-svm"],
+                    QUASAR_SVM_TYPESCRIPT_VERSION,
                     "{}",
                     case.label,
                 );
