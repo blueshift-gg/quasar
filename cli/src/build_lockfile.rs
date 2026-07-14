@@ -1,5 +1,5 @@
 use {
-    crate::{error::CliError, style},
+    crate::{error::CliError, style, toolchain},
     serde::Deserialize,
     std::{
         collections::HashSet,
@@ -96,9 +96,7 @@ pub(super) fn ensure_lockfile(sp: &indicatif::ProgressBar) -> Result<(), CliErro
 }
 
 pub(super) fn missing_sbpf_linker() -> CliError {
-    CliError::message(
-        "sbpf-linker not found on PATH.\n\n  Install platform-tools first:\n    git clone https://github.com/anza-xyz/platform-tools\n    cd platform-tools\n    cargo install-with-gallery",
-    )
+    CliError::message(toolchain::MISSING_SBPF_LINKER_MESSAGE)
 }
 
 fn workspace_manifest_paths() -> Result<Vec<PathBuf>, String> {

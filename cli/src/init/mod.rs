@@ -130,9 +130,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
 
     // For upstream: sbpf-linker must be installed
     if matches!(toolchain, Toolchain::Upstream) && !toolchain::has_sbpf_linker() {
-        return Err(CliError::message(
-            "sbpf-linker not found.\n\n  Install platform-tools first:\n    git clone https://github.com/anza-xyz/platform-tools\n    cd platform-tools\n    cargo install-with-gallery",
-        ));
+        return Err(CliError::message(toolchain::MISSING_SBPF_LINKER_MESSAGE));
     }
 
     let lang_default = match test_language_override
