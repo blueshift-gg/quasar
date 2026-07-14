@@ -2,6 +2,7 @@ SHELL := /usr/bin/env bash
 # Keep rustfmt, Clippy, and Miri deterministic across local and CI runs.
 NIGHTLY_TOOLCHAIN := nightly-2026-03-27
 KANI_VERSION := 0.67.0
+PROGRAM_MSRV := 1.89.0
 # platform-tools v1.52 ships Cargo 1.89 which supports Cargo.lock v4.
 # v1.51 ships Cargo 1.84 which does not, causing "duplicate lang item" errors.
 PLATFORM_TOOLS := v1.52
@@ -26,15 +27,33 @@ PUBLISH_PACKAGES := quasar-schema quasar-idl-schema quasar-profile \
 	solana-compiler-builtins quasar-derive quasar-idl quasar-lang \
 	quasar-spl quasar-metadata quasar-cli
 
+# Resolve first-release internal dependencies while checking package manifests.
+# These patches are command-local and never enter the published archives.
+PACKAGE_PATCHES := \
+	--config 'patch.crates-io.quasar-schema.path="schema"' \
+	--config 'patch.crates-io.quasar-idl-schema.path="idl/schema"' \
+	--config 'patch.crates-io.quasar-profile.path="profile"' \
+	--config 'patch.crates-io.solana-compiler-builtins.path="solana-compiler-builtins"' \
+	--config 'patch.crates-io.quasar-derive.path="derive"' \
+	--config 'patch.crates-io.quasar-idl.path="idl"' \
+	--config 'patch.crates-io.quasar-lang.path="lang"' \
+	--config 'patch.crates-io.quasar-spl.path="spl"' \
+	--config 'patch.crates-io.quasar-metadata.path="metadata"'
+
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
 	check-runtime-panics check-workspace-invariants build build-sbf test test-bless \
 	bench-cu bench-tracked compare-tracked test-miri test-miri-strict test-all \
 	nightly-version generated-client-smoke kani help-kani check-kani kani-lang \
-	kani-spl kani-metadata package-check audit
+	kani-spl kani-metadata msrv-check package-check audit
 
 # Print the nightly toolchain version for CI
 nightly-version:
 	@echo $(NIGHTLY_TOOLCHAIN)
+
+msrv-check:
+	@cargo +$(PROGRAM_MSRV) check \
+		$(foreach package,$(PUBLISH_PACKAGES),-p $(package)) \
+		--all-features --locked
 
 help-kani:
 	@echo "Local Kani verification is optional."
@@ -205,8 +224,10 @@ generated-client-smoke:
 	@cargo test -p quasar-cli --test generated_clients_smoke -- --nocapture --test-threads=1
 
 package-check:
-	@cargo package $(foreach package,$(PUBLISH_PACKAGES),-p $(package)) \
-		--locked --allow-dirty
+	@# First-release internal dependencies are not on crates.io yet. `msrv-check`
+	@# compiles the source graph; #283 rehearses the packaged graph locally.
+	@cargo package --quiet $(foreach package,$(PUBLISH_PACKAGES),-p $(package)) \
+		--locked --allow-dirty --no-verify $(PACKAGE_PATCHES)
 
 audit:
 	@command -v cargo-audit >/dev/null 2>&1 || { \

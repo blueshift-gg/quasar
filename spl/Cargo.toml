@@ -3,6 +3,7 @@ name = "quasar-spl"
 description = "SPL Token program CPI and zero-copy account types for the Quasar Solana framework"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true

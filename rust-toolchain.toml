@@ -1,0 +1,4 @@
+[toolchain]
+# Newest stable compiler that matches the committed trybuild diagnostics.
+channel = "1.92.0"
+profile = "minimal"

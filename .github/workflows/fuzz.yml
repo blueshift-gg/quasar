@@ -22,7 +22,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
        contains(github.event.pull_request.labels.*.name, 'fuzz'))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -45,11 +45,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ steps.nightly.outputs.version }}
+      - name: Print fuzz toolchain
+        run: |
+          rustup run "${{ steps.nightly.outputs.version }}" rustc --version
+          rustup run "${{ steps.nightly.outputs.version }}" cargo --version
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --locked
+        run: cargo +${{ steps.nightly.outputs.version }} install cargo-fuzz --locked
       - name: Fuzz ${{ matrix.target }} (300s)
         working-directory: lang
-        run: cargo fuzz run ${{ matrix.target }} -- -max_total_time=300
+        run: cargo +${{ steps.nightly.outputs.version }} fuzz run ${{ matrix.target }} -- -max_total_time=300
       - name: Upload crash artifacts
         if: failure()
         uses: actions/upload-artifact@v4
