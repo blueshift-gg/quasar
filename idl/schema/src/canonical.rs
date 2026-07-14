@@ -5,27 +5,61 @@ use {
 
 /// Serialize an IDL to canonical JSON bytes (deterministic output).
 ///
-/// Canonical JSON rules:
-/// - Struct fields serialize in declaration order (serde default).
-/// - BTreeMap keys serialize in sorted order (BTreeMap guarantee).
-/// - No trailing whitespace, compact format.
+/// This is the byte contract used by [`compute_idl_hash`]:
+/// - serialize the typed [`Idl`] using its Serde field names and omission
+///   rules;
+/// - sort every JSON object's keys recursively by Rust [`String`] order;
+/// - preserve array order;
+/// - emit compact UTF-8 JSON with no insignificant whitespace.
+///
+/// This deliberately defines a Quasar-producer integrity format, not a
+/// language-neutral JSON canonicalization standard such as RFC 8785. External
+/// tools should use this crate or `quasar idl verify` when checking
+/// `hashes.idl`.
 pub fn canonical_json(idl: &Idl) -> serde_json::Result<Vec<u8>> {
-    serde_json::to_vec(idl)
+    let mut value = serde_json::to_value(idl)?;
+    sort_json_objects(&mut value);
+    serde_json::to_vec(&value)
 }
 
-/// Serialize an IDL to canonical pretty-printed JSON (for human-readable
-/// output).
+/// Serialize an IDL in Quasar's stable, human-readable presentation order.
+///
+/// This output is deterministic for a given typed [`Idl`], but its whitespace
+/// and field order are not the byte input to [`compute_idl_hash`].
 pub fn canonical_json_pretty(idl: &Idl) -> serde_json::Result<Vec<u8>> {
     serde_json::to_vec_pretty(idl)
 }
 
-/// Compute the full IDL hash (SHA-256 of canonical JSON, excluding `hashes`
-/// field).
+/// Compute the Quasar-producer integrity hash for the complete admitted IDL.
+///
+/// The hash is lowercase SHA-256 over [`canonical_json`] after omitting the
+/// top-level `hashes` field. Every other field admitted by the typed schema,
+/// including opaque `extensions`, is in scope. Object insertion order and
+/// presentation whitespace are not in scope; array order is.
 pub fn compute_idl_hash(idl: &Idl) -> String {
     let mut idl_for_hash = idl.clone();
     idl_for_hash.hashes = None;
     let bytes = canonical_json(&idl_for_hash).expect("IDL serialization should not fail");
     hex_sha256(&bytes)
+}
+
+fn sort_json_objects(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Array(values) => {
+            for value in values {
+                sort_json_objects(value);
+            }
+        }
+        serde_json::Value::Object(object) => {
+            let mut entries = std::mem::take(object).into_iter().collect::<Vec<_>>();
+            for (_, value) in &mut entries {
+                sort_json_objects(value);
+            }
+            entries.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+            object.extend(entries);
+        }
+        _ => {}
+    }
 }
 
 /// Compute the ABI hash (SHA-256 of ABI-affecting subset only).

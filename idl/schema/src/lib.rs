@@ -8,6 +8,10 @@
 //! build metadata but not prerelease versions. Later compatible 1.x producers
 //! must place additive data below the opaque `extensions` field; unknown root
 //! and leaf fields are rejected.
+//!
+//! `hashes.idl` is a Quasar-producer integrity hash over every admitted field,
+//! not a language-neutral JSON canonicalization standard. Verify it with this
+//! crate's [`compute_idl_hash`] or with `quasar idl verify`.
 
 pub mod account;
 pub mod canonical;

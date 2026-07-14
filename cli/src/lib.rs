@@ -243,8 +243,7 @@ pub struct IdlCommand {
 
 #[derive(Subcommand, Debug)]
 pub enum IdlAction {
-    /// Recompute the IDL/ABI hashes of an IDL JSON and check them against the
-    /// stored `hashes` field.
+    /// Verify Quasar-producer integrity and ABI hashes against `hashes`.
     Verify {
         /// Path to an IDL JSON file (e.g. target/idl/my_program.json)
         #[arg(value_name = "IDL")]

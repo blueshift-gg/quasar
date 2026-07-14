@@ -117,8 +117,8 @@ fn prepare_idl_outputs(idl: &Idl, clients_path: &Path) -> Result<Vec<PreparedOut
 
     let idl_dir = PathBuf::from("target").join("idl");
     let idl_path = idl_dir.join(format!("{}.json", model.identity.program_name));
-    // Single canonical writer: go through `canonical_json_pretty` so the file on
-    // disk and the hashed bytes come from the same serializer.
+    // Single presentation writer. The full-IDL hash separately canonicalizes
+    // object order and whitespace before hashing.
     let json = quasar_idl::types::canonical_json_pretty(idl)
         .map_err(|e| CliError::json_serialize("IDL JSON", e))?;
 

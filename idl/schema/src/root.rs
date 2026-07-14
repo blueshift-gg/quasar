@@ -113,7 +113,9 @@ impl IdlMetadata {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IdlHashes {
-    /// SHA-256 hash of the full canonical IDL (excluding the `hashes` field).
+    /// Quasar-producer SHA-256 integrity hash of every admitted IDL field
+    /// except `hashes`; verify with `quasar idl verify` or
+    /// `compute_idl_hash`.
     pub idl: String,
     /// SHA-256 hash of the ABI-affecting subset only.
     pub abi: String,
