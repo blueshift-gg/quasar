@@ -21,7 +21,6 @@ rustflags = [
 "-C", "relocation-model=static",
 "-C", "link-arg=--disable-memory-builtins",
 "-C", "link-arg=--llvm-args=--bpf-stack-size=4096",
-"-C", "link-arg=--disable-expand-memcpy-in-order",
 "-C", "link-arg=--export=entrypoint",
 "-C", "target-cpu=v2",
 "-C", "overflow-checks=off",
@@ -112,5 +111,10 @@ mod tests {
             config["alias"]["build-bpf"].as_str(),
             Some("build -Z build-std=core,alloc --release --target bpfel-unknown-none")
         );
+    }
+
+    #[test]
+    fn upstream_config_uses_supported_linker_flags() {
+        assert!(!CARGO_CONFIG.contains("--disable-expand-memcpy-in-order"));
     }
 }
