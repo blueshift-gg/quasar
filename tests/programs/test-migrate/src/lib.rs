@@ -17,4 +17,13 @@ mod quasar_test_migrate {
     pub fn migrate_config(ctx: Ctx<MigrateConfig>) -> Result<(), ProgramError> {
         ctx.accounts.handler()
     }
+
+    #[instruction(discriminator = 1)]
+    pub fn migrate_padded(
+        ctx: Ctx<MigratePadded>,
+        authority: Address,
+        value: u64,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler(authority, value)
+    }
 }
