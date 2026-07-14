@@ -305,14 +305,12 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
 
             // Find the built .so and copy to target/profile/
             let src = if config.is_solana_toolchain() {
-                // build-sbf --debug puts it in target/deploy/ or
-                // target/sbf-solana-solana/release/
-                utils::find_so(&config, false).unwrap_or_else(|| {
-                    PathBuf::from("target")
-                        .join("sbf-solana-solana")
-                        .join("release")
-                        .join(format!("{}.so", program))
-                })
+                utils::find_unstripped_sbf(&config).ok_or_else(|| {
+                    CliError::message(
+                        "profile build succeeded but no unstripped SBF artifact was found under \
+                         target/deploy/debug",
+                    )
+                })?
             } else {
                 PathBuf::from("target")
                     .join("bpfel-unknown-none")
