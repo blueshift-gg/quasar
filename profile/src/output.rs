@@ -34,8 +34,6 @@ fn bar_fill(s: &str) -> String {
     cyan(s)
 }
 
-const LAST_PROFILE: &str = "target/profile/.last-profile";
-
 pub(crate) fn print_summary(
     result: &ProfileResult,
     program_name: &str,
@@ -240,7 +238,7 @@ pub(crate) fn print_flamegraph_link(url: &str) {
 }
 
 fn load_previous_profile(program_name: &str) -> Option<HashMap<String, u64>> {
-    let path = format!("{LAST_PROFILE}.{program_name}");
+    let path = last_profile_path(program_name);
     let contents = fs::read_to_string(path).ok()?;
     let mut map = HashMap::new();
     for line in contents.lines() {
@@ -252,8 +250,8 @@ fn load_previous_profile(program_name: &str) -> Option<HashMap<String, u64>> {
 }
 
 fn save_current_profile(program_name: &str, result: &ProfileResult) {
-    let path = format!("{LAST_PROFILE}.{program_name}");
-    if let Some(parent) = Path::new(&path).parent() {
+    let path = last_profile_path(program_name);
+    if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
     let contents: String = result
@@ -263,6 +261,10 @@ fn save_current_profile(program_name: &str, result: &ProfileResult) {
         .collect::<Vec<_>>()
         .join("\n");
     let _ = fs::write(path, contents);
+}
+
+pub(crate) fn last_profile_path(program_name: &str) -> std::path::PathBuf {
+    crate::profile_web_root().join(format!(".last-profile.{program_name}"))
 }
 
 /// Simplify a demangled Rust function name for the terminal.

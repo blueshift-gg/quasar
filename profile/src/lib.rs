@@ -21,6 +21,9 @@ use {
 
 const SERVER_HOST: &str = "127.0.0.1";
 const SERVER_PORT: u16 = 7777;
+const FRONTEND_INDEX: &[u8] = include_bytes!("../index.html");
+/// Project-local ownership root for generated profiler artifacts.
+pub const PROFILE_DIR: &str = "target/profile";
 
 pub struct ProfileCommand {
     pub elf_path: Option<PathBuf>,
@@ -92,15 +95,8 @@ pub fn run(command: ProfileCommand) {
     let version = resolve_program_version(&elf_path, program_name);
     let binary_size = fs::metadata(&elf_path).map(|m| m.len()).unwrap_or(0);
     let profile_root = profile_web_root();
+    ensure_frontend_assets(&profile_root);
     let profiles_dir = profile_root.join("profiles");
-    fs::create_dir_all(&profiles_dir).unwrap_or_else(|e| {
-        eprintln!(
-            "Error: failed to create profile directory {}: {}",
-            profiles_dir.display(),
-            e
-        );
-        std::process::exit(1);
-    });
 
     let result = aggregate::profile(&mmap, &info, &resolver);
 
@@ -126,7 +122,6 @@ pub fn run(command: ProfileCommand) {
         &binary_hash,
     );
     if public_gist {
-        ensure_frontend_assets(&profile_root);
         ensure_gh_installed();
         let desc = format!("{} CU profile v{}", program_name, version);
         let gist_url = create_gist(&local_output_path, &desc);
@@ -135,18 +130,16 @@ pub fn run(command: ProfileCommand) {
     }
 
     // Start the flamegraph server in the background.
-    if has_frontend_assets(&profile_root) {
-        let url = format!(
-            "http://{}:{}/?program={}",
-            SERVER_HOST, SERVER_PORT, program_name
-        );
-        match serve::serve_background(&profile_root, SERVER_PORT, program_name) {
-            Ok(_) => output::print_flamegraph_link(&url),
-            Err(_) => {
-                // Port busy; server is already running, so show the link.
-                if serve::is_alive(SERVER_PORT) {
-                    output::print_flamegraph_link(&url);
-                }
+    let url = format!(
+        "http://{}:{}/?program={}",
+        SERVER_HOST, SERVER_PORT, program_name
+    );
+    match serve::serve_background(&profile_root, SERVER_PORT, program_name) {
+        Ok(_) => output::print_flamegraph_link(&url),
+        Err(_) => {
+            // Port busy; server is already running, so show the link.
+            if serve::is_alive(SERVER_PORT) {
+                output::print_flamegraph_link(&url);
             }
         }
     }
@@ -166,43 +159,29 @@ fn run_diff(program: String) {
     });
 }
 
-fn has_frontend_assets(profile_root: &Path) -> bool {
-    profile_root.join("index.html").exists()
-}
-
 fn ensure_frontend_assets(profile_root: &Path) {
-    fs::create_dir_all(profile_root).unwrap_or_else(|e| {
+    materialize_frontend_assets(profile_root).unwrap_or_else(|e| {
         eprintln!(
-            "Error: failed to create profiler web root {}: {}",
+            "Error: failed to materialize profiler assets under {}: {}",
             profile_root.display(),
             e
         );
         std::process::exit(1);
     });
-
-    let root_index = profile_root.join("index.html");
-    if !root_index.exists() {
-        eprintln!(
-            "Error: missing frontend artifact at {}",
-            root_index.display()
-        );
-        eprintln!("Add the compiled single-file frontend index.html to quasar/profile/.");
-        std::process::exit(1);
-    }
-
-    let profiles_dir = profile_root.join("profiles");
-    fs::create_dir_all(&profiles_dir).unwrap_or_else(|e| {
-        eprintln!(
-            "Error: failed to create profile directory {}: {}",
-            profiles_dir.display(),
-            e
-        );
-        std::process::exit(1);
-    });
 }
 
-fn profile_web_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+fn materialize_frontend_assets(profile_root: &Path) -> io::Result<()> {
+    fs::create_dir_all(profile_root.join("profiles"))?;
+    let root_index = profile_root.join("index.html");
+    let current = fs::read(&root_index).ok();
+    if current.as_deref() != Some(FRONTEND_INDEX) {
+        fs::write(root_index, FRONTEND_INDEX)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn profile_web_root() -> PathBuf {
+    PathBuf::from(PROFILE_DIR)
 }
 
 fn resolve_program_version(elf_path: &std::path::Path, program_name: &str) -> String {
@@ -383,4 +362,45 @@ fn sha256_file(path: &Path) -> io::Result<String> {
     let result = hasher.finalize();
     let hex = hex::encode(result);
     Ok(hex)
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::{materialize_frontend_assets, profile_web_root, FRONTEND_INDEX, PROFILE_DIR},
+        crate::output::last_profile_path,
+        std::{fs, path::PathBuf},
+        tempfile::tempdir,
+    };
+
+    #[test]
+    fn materializes_embedded_frontend_without_runtime_source_lookup() {
+        let temp = tempdir().unwrap();
+        let profile_root = temp.path().join("target/profile");
+
+        materialize_frontend_assets(&profile_root).unwrap();
+        assert_eq!(
+            fs::read(profile_root.join("index.html")).unwrap(),
+            FRONTEND_INDEX
+        );
+        assert!(profile_root.join("profiles").is_dir());
+
+        fs::write(profile_root.join("index.html"), b"stale").unwrap();
+        materialize_frontend_assets(&profile_root).unwrap();
+        assert_eq!(
+            fs::read(profile_root.join("index.html")).unwrap(),
+            FRONTEND_INDEX
+        );
+    }
+
+    #[test]
+    fn keeps_profile_root_and_baseline_under_project_target() {
+        let profile_root = PathBuf::from(PROFILE_DIR);
+
+        assert_eq!(profile_web_root(), profile_root);
+        assert_eq!(
+            last_profile_path("demo"),
+            profile_root.join(".last-profile.demo")
+        );
+    }
 }

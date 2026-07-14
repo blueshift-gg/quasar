@@ -12,7 +12,7 @@ pub fn run(all: bool) -> CliResult {
     let clients_dir = clients_dir.to_string_lossy();
     let dirs = [
         "target/deploy",
-        "target/profile",
+        quasar_profile::PROFILE_DIR,
         "target/idl",
         clients_dir.as_ref(),
     ];
