@@ -72,9 +72,25 @@ fn sort_json_objects(value: &mut serde_json::Value) {
 /// human-readable space formulae, metadata, opaque type semantics, extension
 /// data, and stored hashes.
 pub fn compute_abi_hash(idl: &Idl) -> String {
-    let abi_subset = extract_abi_subset(idl);
-    let bytes = serde_json::to_vec(&abi_subset).expect("ABI subset serialization should not fail");
+    let bytes = canonical_abi_json(idl).expect("ABI subset serialization should not fail");
     hex_sha256(&bytes)
+}
+
+/// Serialize the ABI and generated-client compatibility projection.
+///
+/// The compact bytes are the exact input to [`compute_abi_hash`]. The
+/// projection includes the fields documented there and omits documentation,
+/// build metadata, messages, formulas, extensions, and stored hashes.
+pub fn canonical_abi_json(idl: &Idl) -> serde_json::Result<Vec<u8>> {
+    serde_json::to_vec(&extract_abi_subset(idl))
+}
+
+/// Serialize the ABI projection in a stable, reviewable presentation format.
+///
+/// This contains the same typed projection as [`canonical_abi_json`], with
+/// insignificant whitespace added for compatibility-baseline diffs.
+pub fn canonical_abi_json_pretty(idl: &Idl) -> serde_json::Result<Vec<u8>> {
+    serde_json::to_vec_pretty(&extract_abi_subset(idl))
 }
 
 /// SHA-256 hash as lowercase hex string.

@@ -267,6 +267,30 @@ jobs:
       - name: Reject proc-macro expansion regressions
         run: make check-proc-macro-baselines
 
+  idl_wire_baseline:
+    name: IDL Wire Contract Baseline
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-idl-wire-baseline-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-idl-wire-baseline-
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+      - name: Print IDL wire baseline toolchain
+        run: |
+          rustc --version
+          cargo --version
+      - name: Reject IDL wire-contract regressions
+        run: make check-idl-wire-baselines
+
   check_features:
     name: Check Features
     runs-on: ubuntu-24.04

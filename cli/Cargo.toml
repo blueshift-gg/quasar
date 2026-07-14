@@ -40,6 +40,7 @@ shlex = "1"
 tempfile = "3"
 
 [dev-dependencies]
+expect-test = "1"
 quasar-idl = { path = "../idl" }
 
 [lib]
