@@ -139,7 +139,7 @@ Remove build artifacts from `target/deploy/`, `target/profile/`, `target/idl/`, 
 
 ### `quasar idl <path>`
 
-Generate the IDL for a program crate. Produces JSON, TypeScript client, and Rust client module. See [IDL docs](idl.md) for details.
+Generate the IDL for a program crate. Produces JSON, TypeScript client, and Rust client module. See the [IDL documentation](https://quasar-lang.com/docs/core-concepts/idl) for details.
 
 ### `quasar completions <shell>`
 
