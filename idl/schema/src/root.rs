@@ -3,6 +3,7 @@ use {
         account::IdlAccountDef, error::IdlErrorDef, event::IdlEventDef,
         instruction::IdlInstruction, types::IdlTypeDef,
     },
+    semver::Version,
     serde::{Deserialize, Serialize},
     std::collections::BTreeMap,
 };
@@ -11,12 +12,10 @@ use {
 ///
 /// Schema version: `quasar-idl/1.0.0`
 ///
-/// The root deliberately does NOT `deny_unknown_fields`: it is the additive
-/// extension point, so a v1.0 reader tolerates unknown top-level fields written
-/// by a newer minor spec (compatibility is decided up front by the `spec`
-/// version gate). Leaf types keep `deny_unknown_fields` so precise contracts
-/// still reject typos and stray keys.
+/// The root is closed like every leaf schema. Later 1.x specs can add data only
+/// below `extensions`, which older readers preserve as opaque JSON.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Idl {
     /// Schema version string (e.g., "quasar-idl/1.0.0").
     pub spec: String,
@@ -47,7 +46,7 @@ pub struct Idl {
     /// Error definitions.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub errors: Vec<IdlErrorDef>,
-    /// Extension declarations (reserved for v1.1+).
+    /// Opaque additive data for later compatible 1.x specs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extensions: Option<serde_json::Value>,
     /// Integrity hashes.
@@ -124,6 +123,8 @@ pub struct IdlHashes {
 pub const SPEC_SCHEME: &str = "quasar-idl/";
 /// The full spec string this build produces.
 pub const CURRENT_SPEC: &str = "quasar-idl/1.0.0";
+/// The only schema major this build can read.
+pub const SUPPORTED_SPEC_MAJOR: u64 = 1;
 
 /// Read just the `spec` field of an IDL JSON document, so callers can gate on
 /// the schema version before committing to a full parse.
@@ -135,14 +136,33 @@ pub fn parse_spec(json: &str) -> Result<String, serde_json::Error> {
     serde_json::from_str::<SpecProbe>(json).map(|probe| probe.spec)
 }
 
-/// Whether a `spec` string is one this build can read. The contract is additive
-/// within major version 1 (`quasar-idl/1.x`): the root tolerates unknown
-/// fields, so a v1.0 reader accepts any 1.x document. Other majors or schemes
-/// are rejected.
+fn validate_spec(spec: &str) -> Result<(), String> {
+    let version = spec.strip_prefix(SPEC_SCHEME).ok_or_else(|| {
+        format!("invalid IDL spec scheme in `{spec}`; expected `{SPEC_SCHEME}<semver>`")
+    })?;
+    let version = Version::parse(version)
+        .map_err(|error| format!("malformed IDL spec version in `{spec}`: {error}"))?;
+    if !version.pre.is_empty() {
+        return Err(format!(
+            "unsupported prerelease IDL spec `{spec}`; use a stable `{SPEC_SCHEME}1.x` version"
+        ));
+    }
+    if version.major != SUPPORTED_SPEC_MAJOR {
+        return Err(format!(
+            "unsupported IDL spec `{spec}`; this build reads stable `{SPEC_SCHEME}1.x` versions \
+             (e.g. `{CURRENT_SPEC}`)"
+        ));
+    }
+    Ok(())
+}
+
+/// Whether a `spec` string is one this build can read.
+///
+/// The suffix must be strict SemVer with major 1. Stable versions and build
+/// metadata are accepted; prerelease versions are rejected. Compatible newer
+/// 1.x producers must put additive data below the preserved `extensions` field.
 pub fn spec_is_supported(spec: &str) -> bool {
-    spec.strip_prefix(SPEC_SCHEME)
-        .and_then(|version| version.split('.').next())
-        .is_some_and(|major| major == "1")
+    validate_spec(spec).is_ok()
 }
 
 /// Gate an IDL JSON document on its spec version. Returns the spec string on
@@ -153,14 +173,8 @@ pub fn check_spec(json: &str) -> Result<String, String> {
     let spec = parse_spec(json).map_err(|e| {
         format!("IDL is missing a top-level `spec` field or is not valid JSON: {e}")
     })?;
-    if spec_is_supported(&spec) {
-        Ok(spec)
-    } else {
-        Err(format!(
-            "unsupported IDL spec `{spec}`; this build reads `{SPEC_SCHEME}1.x` (e.g. \
-             `{CURRENT_SPEC}`)"
-        ))
-    }
+    validate_spec(&spec)?;
+    Ok(spec)
 }
 
 #[cfg(test)]
@@ -168,9 +182,9 @@ mod spec_tests {
     use super::{check_spec, spec_is_supported, CURRENT_SPEC};
 
     #[test]
-    fn accepts_current_and_additive_minor_specs() {
+    fn accepts_current_and_stable_additive_minor_specs() {
         assert!(spec_is_supported(CURRENT_SPEC));
-        assert!(spec_is_supported("quasar-idl/1.4.2"));
+        assert!(spec_is_supported("quasar-idl/1.4.2+vendor.7"));
         assert!(check_spec(r#"{"spec":"quasar-idl/1.9.0","name":"x"}"#).is_ok());
     }
 
@@ -180,6 +194,8 @@ mod spec_tests {
         assert!(!spec_is_supported("anchor/0.30.0"));
         let err = check_spec(r#"{"spec":"quasar-idl/2.0.0","name":"x"}"#).unwrap_err();
         assert!(err.contains("unsupported IDL spec"), "{err}");
+        let err = check_spec(r#"{"spec":"anchor/0.30.0","name":"x"}"#).unwrap_err();
+        assert!(err.contains("invalid IDL spec scheme"), "{err}");
     }
 
     #[test]
@@ -201,16 +217,15 @@ mod deny_unknown_tests {
     }"#;
 
     #[test]
-    fn root_tolerates_unknown_top_level_fields() {
-        // Additive policy: a newer minor spec may add root-level fields, and a
-        // v1.0 reader must not reject them.
+    fn root_rejects_unknown_top_level_fields() {
         let json = MINIMAL.replace(
             "\"address\": \"11111111111111111111111111111111\"",
             "\"address\": \"11111111111111111111111111111111\", \"futureTopLevelField\": { \
              \"anything\": true }",
         );
-        let idl: Idl = serde_json::from_str(&json).expect("unknown root field must be tolerated");
-        assert_eq!(idl.name, "demo");
+        let error = serde_json::from_str::<Idl>(&json)
+            .expect_err("additive data outside extensions must be rejected");
+        assert!(error.to_string().contains("futureTopLevelField"), "{error}");
     }
 
     #[test]
