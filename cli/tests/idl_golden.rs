@@ -7,9 +7,11 @@
 //! the diff.
 
 use {
-    quasar_idl::types::canonical_json_pretty,
+    quasar_idl::types::{canonical_json_pretty, Idl},
     std::{fs, path::PathBuf},
 };
+
+const EXPECTED_ABI_HASH: &str = "b9a73ab5b29c6bd7d42fdeb8c67f353dac97d4fe0d0c8a530ed6cd38413506c0";
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -48,6 +50,29 @@ fn multisig_idl_builds_deterministically_and_matches_golden() {
             path.display()
         )
     });
+    let golden_idl: Idl = serde_json::from_slice(&golden).expect("golden must be valid IDL JSON");
+    let expected_generator_version = env!("CARGO_PKG_VERSION");
+    assert_eq!(
+        first.metadata.generator_version.as_deref(),
+        Some(expected_generator_version),
+        "generated metadata.generatorVersion must match the CLI package version"
+    );
+    assert_eq!(
+        golden_idl.metadata.generator_version.as_deref(),
+        Some(expected_generator_version),
+        "committed golden metadata.generatorVersion is stale; regenerate with UPDATE_GOLDEN=1 and \
+         review the full-IDL hash change"
+    );
+    assert_eq!(
+        first.hashes.as_ref().map(|hashes| hashes.abi.as_str()),
+        Some(EXPECTED_ABI_HASH),
+        "the multisig ABI changed; review it separately from generator metadata"
+    );
+    assert_eq!(
+        golden_idl.hashes.as_ref().map(|hashes| hashes.abi.as_str()),
+        Some(EXPECTED_ABI_HASH),
+        "the committed golden ABI hash drifted unexpectedly"
+    );
     assert_eq!(
         String::from_utf8_lossy(&first_bytes),
         String::from_utf8_lossy(&golden),
