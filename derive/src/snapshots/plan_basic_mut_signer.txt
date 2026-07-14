@@ -1,4 +1,4 @@
-SEMANTICS (3 fields)
+SEMANTICS (4 fields)
 [0] payer
     core: effective_ty=`Signer` kind=Single optional=false dynamic=false declared_mut=true dup=false
           inner_ty=None
@@ -32,11 +32,22 @@ SEMANTICS (3 fields)
     groups: []
     user_checks: []
     is_migration=false is_uninit=false writable=false
+[3] rent
+    core: effective_ty=`Sysvar < Rent >` kind=Single optional=false dynamic=false declared_mut=false dup=false
+          inner_ty=`Rent`
+    init: None
+    payer: None
+    address: None
+    realloc: None
+    close_dest: None
+    groups: []
+    user_checks: []
+    is_migration=false is_uninit=false writable=false
 
-PLAN (3 fields)
+PLAN (4 fields)
 rent: NotNeeded
 has_instruction_args: false
-event_cpi: [Never, Never, Never]
+event_cpi: [Never, Never, Never, Never]
 [0]
     id: ident=payer effective_ty=`Signer` wrapper=Signer kind=Single optional=false dup=false writable=true signer=true
     load: Fixed(validates=[])
@@ -65,7 +76,18 @@ event_cpi: [Never, Never, Never]
     bump: None
     behaviors: []
     docs: []
-    idl_resolver: None
+    idl_resolver: FixedAddress(inner_ty=`SystemProgram` source=Id::ID)
+    signer_helper: None
+    pre_load: []
+    post_load: []
+    epilogue: []
+[3]
+    id: ident=rent effective_ty=`Sysvar < Rent >` wrapper=Sysvar kind=Single optional=false dup=false writable=false signer=false
+    load: Fixed(validates=[])
+    bump: None
+    behaviors: []
+    docs: []
+    idl_resolver: FixedAddress(inner_ty=`Rent` source=Sysvar::ID)
     signer_helper: None
     pre_load: []
     post_load: []

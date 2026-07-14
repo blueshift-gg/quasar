@@ -323,9 +323,7 @@ fn connected_components(instruction: &InstructionSurface) -> Vec<Vec<String>> {
 }
 
 fn is_graph_relevant(account: &AccountMetaSurface) -> bool {
-    !(account.resolver.contains("\"kind\":\"knownProgram\"")
-        || account.resolver.contains("\"kind\":\"const\"")
-        || account.resolver.contains("\"kind\":\"remaining\""))
+    account.graph_relevant
 }
 
 fn diff_accounts(old: &ProgramSurface, new: &ProgramSurface, report: &mut LintReport) {

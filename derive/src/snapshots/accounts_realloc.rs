@@ -410,6 +410,8 @@ mod __realloc_accounts_client_macro {
     ::quasar_lang::idl_build::s("systemProgram"), optional : false, writable :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), signer :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), resolver :
-    ::quasar_lang::idl_build::__reexport::IdlResolver::Input {}, docs :
-    ::quasar_lang::idl_build::Vec::new(), }],) })
+    ::quasar_lang::idl_build::__reexport::IdlResolver::Const { address :
+    ::quasar_lang::idl_build::address_to_base58(& < SystemProgram as
+    ::quasar_lang::traits::Id > ::ID), }, docs : ::quasar_lang::idl_build::Vec::new(),
+    }],) })
 }

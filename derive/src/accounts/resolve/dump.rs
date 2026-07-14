@@ -18,8 +18,8 @@ use {
         },
         specs::{
             AccountsPlanTyped, AddressSpec, BehaviorCall, EpilogueStep, EventCpiTerm, FieldPlan,
-            IdlResolverPlan, IdlSeedPlan, InitPlan, LoadStep, LoweredArg, LoweredValue,
-            PostLoadStep, PreLoadStep, ReallocSpec, RentPlan,
+            FixedAddressSource, IdlResolverPlan, IdlSeedPlan, InitPlan, LoadStep, LoweredArg,
+            LoweredValue, PostLoadStep, PreLoadStep, ReallocSpec, RentPlan,
         },
     },
     quote::ToTokens,
@@ -306,11 +306,19 @@ fn dump_steps<S>(out: &mut String, label: &str, steps: &[S], render: fn(&S) -> S
 fn idl_resolver(resolver: &Option<IdlResolverPlan>) -> String {
     match resolver {
         None => "None".to_string(),
-        Some(r) => {
-            let seeds: Vec<String> = r.seeds.iter().map(idl_seed).collect();
+        Some(IdlResolverPlan::FixedAddress { inner_ty, source }) => format!(
+            "FixedAddress(inner_ty=`{}` source={})",
+            toks(inner_ty),
+            match source {
+                FixedAddressSource::Program => "Id::ID",
+                FixedAddressSource::Sysvar => "Sysvar::ID",
+            }
+        ),
+        Some(IdlResolverPlan::Pda { account_ty, seeds }) => {
+            let seeds: Vec<String> = seeds.iter().map(idl_seed).collect();
             format!(
                 "Pda(account_ty=`{}` seeds=[{}])",
-                toks(&r.account_ty),
+                toks(account_ty),
                 seeds.join(", "),
             )
         }

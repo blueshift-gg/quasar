@@ -60,6 +60,7 @@ fn accounts_basic_mut_signer() {
             pub payer: Signer,
             pub config: Account<TestConfig>,
             pub system_program: Program<SystemProgram>,
+            pub rent: Sysvar<Rent>,
         }
     };
     expect_test::expect_file!["snapshots/accounts_basic_mut_signer.rs"]

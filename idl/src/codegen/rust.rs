@@ -582,7 +582,11 @@ fn emit_single_instruction(
     out.push_str("use crate::ID;\n");
 
     let args_need_address = ix.args.iter().any(|arg| field_needs_address(&arg.ty));
-    if !args_need_address && !ix.accounts.is_empty() {
+    let accounts_need_address = ix
+        .accounts
+        .iter()
+        .any(|account| account.optional || !matches!(account.resolver, IdlResolver::Const { .. }));
+    if !args_need_address && accounts_need_address {
         out.push_str("use solana_address::Address;\n");
     }
 
@@ -597,6 +601,9 @@ fn emit_single_instruction(
     writeln!(out, "pub struct {}Instruction {{", struct_name).expect("write to String");
 
     for account in &ix.accounts {
+        if !account.optional && matches!(account.resolver, IdlResolver::Const { .. }) {
+            continue;
+        }
         // Optional accounts become `Option<Address>`; an absent (`None`) slot is
         // encoded as the program id sentinel per the runtime convention.
         let field_ty = if account.optional {
@@ -641,6 +648,9 @@ fn emit_single_instruction(
         struct_name
     )
     .expect("write to String");
+    if !has_remaining && ix.args.is_empty() && !accounts_need_address {
+        out.push_str("        let _ = ix;\n");
+    }
 
     if has_remaining {
         out.push_str("        let mut accounts = vec![\n");
@@ -1723,6 +1733,8 @@ fn account_meta_expr(account: &IdlAccountNode) -> String {
     // Optional accounts default an absent slot to the program id sentinel.
     let key = if account.optional {
         format!("ix.{field_name}.unwrap_or(ID)")
+    } else if let IdlResolver::Const { address } = &account.resolver {
+        format!("solana_address::address!(\"{address}\")")
     } else {
         format!("ix.{field_name}")
     };

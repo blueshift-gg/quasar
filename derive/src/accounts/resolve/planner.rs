@@ -6,8 +6,8 @@
 use {
     super::{
         model::{
-            account_meta_flags, AddressKind, BehaviorArgValue, BehaviorGroup, FieldKind,
-            FieldSemantics, SeedRef,
+            account_meta_flags, AddressConstraint, AddressKind, BehaviorArgValue, BehaviorGroup,
+            FieldKind, FieldSemantics, SeedRef,
         },
         reserved::PAYER_FIELD,
         specs::*,
@@ -221,25 +221,38 @@ fn plan_field(
     })
 }
 
-/// Build the IDL typed-seeds PDA resolver for a field, resolving each seed
-/// against the other fields and the instruction args. Mirrors the old driver's
-/// `?` short-circuit: an unresolvable seed drops the whole resolver (the IDL
-/// then falls back to `IdlResolver::Input`).
+/// Build the field's IDL resolver. Explicit typed seeds take precedence; fixed
+/// `Program<T>`/`Sysvar<T>` wrappers otherwise resolve through the inner type's
+/// canonical ID. An unresolvable PDA seed drops the resolver and preserves the
+/// legacy caller-controlled `Input` fallback.
 fn plan_idl_resolver(
     sem: &FieldSemantics,
     semantics: &[FieldSemantics],
     instruction_args: &[InstructionArg],
 ) -> Option<IdlResolverPlan> {
-    let AddressKind::Seeds { account_ty, seeds } = &sem.address.as_ref()?.kind else {
-        return None;
-    };
-    let mut plan_seeds = Vec::with_capacity(seeds.len());
-    for seed in seeds {
-        plan_seeds.push(plan_idl_seed(seed, semantics, instruction_args)?);
+    if let Some(AddressConstraint {
+        kind: AddressKind::Seeds { account_ty, seeds },
+        ..
+    }) = &sem.address
+    {
+        let mut plan_seeds = Vec::with_capacity(seeds.len());
+        for seed in seeds {
+            plan_seeds.push(plan_idl_seed(seed, semantics, instruction_args)?);
+        }
+        return Some(IdlResolverPlan::Pda {
+            account_ty: account_ty.clone(),
+            seeds: plan_seeds,
+        });
     }
-    Some(IdlResolverPlan {
-        account_ty: account_ty.clone(),
-        seeds: plan_seeds,
+
+    let source = match sem.core.wrapper {
+        WrapperKind::Program => FixedAddressSource::Program,
+        WrapperKind::Sysvar => FixedAddressSource::Sysvar,
+        _ => return None,
+    };
+    Some(IdlResolverPlan::FixedAddress {
+        inner_ty: sem.core.inner_ty.clone()?,
+        source,
     })
 }
 

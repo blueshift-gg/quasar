@@ -20,6 +20,8 @@ pub struct BasicAccounts {
     pub config: Account<TestConfig>,
 
     pub system_program: Program<SystemProgram>,
+
+    pub rent: Sysvar<Rent>,
 }
 
 fn main() {}

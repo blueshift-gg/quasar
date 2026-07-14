@@ -318,28 +318,46 @@ fn emit_idl_accounts_meta(
     }
 }
 
-/// Format an already-resolved typed-seeds PDA resolver into IDL tokens. All
-/// seed resolution happened once in the planner; this is a pure formatter.
+/// Format an already-planned IDL resolver without reclassifying field syntax.
 fn emit_idl_resolver(resolver: &resolve::specs::IdlResolverPlan) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
-    let account_ty = &resolver.account_ty;
+    use resolve::specs::{FixedAddressSource, IdlResolverPlan};
 
-    let mut seed_tokens = Vec::with_capacity(resolver.seeds.len() + 1);
-    seed_tokens.push(quote! {
-        #krate::idl_build::__reexport::IdlPdaSeed::Const {
-            value: #krate::idl_build::Vec::from(
-                <#account_ty as #krate::traits::HasSeeds>::SEED_PREFIX
-            ),
+    match resolver {
+        IdlResolverPlan::FixedAddress { inner_ty, source } => {
+            let address = match source {
+                FixedAddressSource::Program => {
+                    quote! { <#inner_ty as #krate::traits::Id>::ID }
+                }
+                FixedAddressSource::Sysvar => {
+                    quote! { <#inner_ty as #krate::sysvars::Sysvar>::ID }
+                }
+            };
+            quote! {
+                #krate::idl_build::__reexport::IdlResolver::Const {
+                    address: #krate::idl_build::address_to_base58(&#address),
+                }
+            }
         }
-    });
-    for seed in &resolver.seeds {
-        seed_tokens.push(emit_idl_pda_seed(seed));
-    }
+        IdlResolverPlan::Pda { account_ty, seeds } => {
+            let mut seed_tokens = Vec::with_capacity(seeds.len() + 1);
+            seed_tokens.push(quote! {
+                #krate::idl_build::__reexport::IdlPdaSeed::Const {
+                    value: #krate::idl_build::Vec::from(
+                        <#account_ty as #krate::traits::HasSeeds>::SEED_PREFIX
+                    ),
+                }
+            });
+            for seed in seeds {
+                seed_tokens.push(emit_idl_pda_seed(seed));
+            }
 
-    quote! {
-        #krate::idl_build::__reexport::IdlResolver::Pda {
-            program: #krate::idl_build::__reexport::IdlPdaProgram::ProgramId {},
-            seeds: #krate::idl_build::vec![#(#seed_tokens),*],
+            quote! {
+                #krate::idl_build::__reexport::IdlResolver::Pda {
+                    program: #krate::idl_build::__reexport::IdlPdaProgram::ProgramId {},
+                    seeds: #krate::idl_build::vec![#(#seed_tokens),*],
+                }
+            }
         }
     }
 }
