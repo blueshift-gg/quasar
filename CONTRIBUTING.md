@@ -18,6 +18,14 @@ Open an issue if you:
 
 We read every issue. If it's a real bug, we'll fix it. If it's a good idea, we'll track it. If we disagree, we'll explain why.
 
+## Compatibility review
+
+Read the [compatibility and versioning policy](VERSIONING.md) before changing a
+published Rust item, macro expansion, IDL field, wire layout, or generated
+client. Every surface change must state its compatibility impact and include
+the relevant baseline diff. A red baseline is evidence to review, not a reason
+to bless snapshots automatically.
+
 ## Compiler diagnostic goldens
 
 The `.stderr` files under `lang/tests/compile_fail/` and `derive/tests/` are the

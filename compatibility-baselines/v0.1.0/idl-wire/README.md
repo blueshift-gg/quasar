@@ -1,5 +1,8 @@
 # IDL wire-contract baseline
 
+This baseline enforces the [compatibility and versioning
+policy](../../../VERSIONING.md) for IDL wire behavior.
+
 These files freeze the v0.1.0 ABI projection emitted by representative Quasar
 programs. The projection is the exact typed subset hashed by
 `compute_abi_hash`, rendered as pretty JSON for review.

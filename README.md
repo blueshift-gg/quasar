@@ -64,6 +64,14 @@ macOS 15 on Intel. Windows users should run Ubuntu 24.04 x86-64 under WSL2;
 native Windows is unsupported. See the exact [host support
 contract](HOST_SUPPORT.md), including the CI rows and unsupported paths.
 
+## Compatibility
+
+Quasar `0.1.z` releases preserve the published Rust, proc-macro, IDL wire, and
+generated-client contracts. Intentional breaking changes move the lockstep
+release train to `0.2.0`. See the exact [compatibility and versioning
+policy](VERSIONING.md), including the enforceable baseline gates and release
+transition process.
+
 ## Verification
 
 Local Kani verification is optional. Normal builds and tests do not require Kani:

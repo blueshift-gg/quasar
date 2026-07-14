@@ -1,5 +1,8 @@
 # Rust public API baseline
 
+This baseline enforces the [compatibility and versioning
+policy](../../VERSIONING.md) for published Rust items.
+
 These snapshots record the v0.1.0 Rust API for every published library target.
 The gate uses `x86_64-unknown-linux-gnu` as the canonical host target and the
 repository's pinned nightly. It captures each ordinary library's default
