@@ -264,8 +264,16 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       CC: clang-18
+      CARAVEL_INCLUDE_DIR: ${{ github.workspace }}/.caravel/include
     steps:
       - uses: actions/checkout@v6
+      - name: Check out pinned Caravel headers
+        uses: actions/checkout@v6
+        with:
+          repository: joeymeere/caravel
+          ref: ${{ env.CARAVEL_REV }}
+          path: .caravel
+          persist-credentials: false
       - uses: actions/cache@v5
         with:
           path: |

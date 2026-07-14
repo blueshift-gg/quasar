@@ -26,11 +26,54 @@ pub fn generate_c_client(idl: &Idl) -> CodegenResult<String> {
     emit_decoder_helpers(&mut out, &prefix);
     emit_type_defs(&mut out, &prefix, &idl.types);
     emit_decode_fns(&mut out, &prefix, &idl.types);
+    emit_instruction_helpers(&mut out, &prefix, idl);
     emit_instructions(&mut out, &prefix, idl);
     emit_error_codes(&mut out, &prefix, &idl.errors);
 
     writeln!(out, "#endif /* {guard} */").unwrap();
     Ok(out)
+}
+
+fn emit_instruction_helpers(out: &mut String, prefix: &str, idl: &Idl) {
+    if idl.instructions.is_empty() {
+        return;
+    }
+
+    let upper = prefix.to_ascii_uppercase();
+    writeln!(
+        out,
+        r#"typedef enum {{
+    {upper}_IX_OK = 0,
+    {upper}_IX_ACCOUNT_BUFFER_TOO_SMALL,
+    {upper}_IX_DATA_BUFFER_TOO_SMALL,
+    {upper}_IX_LENGTH_OVERFLOW,
+    {upper}_IX_PDA_DERIVATION_FAILED
+}} {prefix}_ix_status_t;
+
+typedef struct {{
+    {prefix}_ix_status_t status;
+    uint64_t accounts_len;
+    uint64_t data_len;
+    uint64_t pda_status;
+}} {prefix}_ix_result_t;
+
+static inline bool {prefix}_ix_size_add(uint64_t *size, uint64_t amount) {{
+    if (amount > ((uint64_t)-1) - *size) return false;
+    *size += amount;
+    return true;
+}}
+
+static inline bool {prefix}_ix_size_add_items(
+    uint64_t *size,
+    uint64_t count,
+    uint64_t item_size
+) {{
+    if (item_size != 0 && count > ((uint64_t)-1) / item_size) return false;
+    return {prefix}_ix_size_add(size, count * item_size);
+}}
+"#
+    )
+    .unwrap();
 }
 
 fn emit_decoder_helpers(out: &mut String, prefix: &str) {
@@ -75,7 +118,7 @@ static inline bool {prefix}_decoder_span(
 ) {{
     uint64_t count64;
     if (!{prefix}_decoder_uint(decoder, width, &count64)) return false;
-    if (count64 > UINT32_MAX || (item_size != 0 && count64 > UINT64_MAX / item_size)) return false;
+    if (count64 > ((uint32_t)-1)) return false;
     uint64_t byte_len = count64 * item_size;
     if (!{prefix}_decoder_take(decoder, byte_len, value)) return false;
     *count = (uint32_t)count64;
@@ -280,26 +323,82 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
 
         let disc_len = ix.discriminator.len();
         let num_accounts = ix.accounts.len();
+        let uses_compact_layout = ix
+            .args
+            .iter()
+            .any(|arg| is_dynamic_with_codec(&arg.ty, arg.codec.as_ref()));
         if ix.remaining_accounts.is_some() {
             writeln!(
                 out,
-                "static inline uint64_t {prefix}_{ix_snake}_ix(\n    \
+                "static inline {prefix}_ix_result_t {prefix}_{ix_snake}_ix(\n    \
                  {prefix}_{ix_snake}_accounts_t *accounts,\n    {prefix}_{ix_snake}_args_t \
                  *args,\n    const AccountMeta *remaining,\n    uint64_t remaining_len,\n    \
-                 Instruction *ix_out,\n    AccountMeta *meta_buf,\n    uint8_t *data_buf,\n    \
-                 uint64_t data_buf_len\n) {{",
+                 Instruction *ix_out,\n    AccountMeta *meta_buf,\n    uint64_t \
+                 meta_buf_capacity,\n    uint8_t *data_buf,\n    uint64_t data_buf_capacity\n) {{",
             )
             .unwrap();
         } else {
             writeln!(
                 out,
-                "static inline uint64_t {prefix}_{ix_snake}_ix(\n    \
+                "static inline {prefix}_ix_result_t {prefix}_{ix_snake}_ix(\n    \
                  {prefix}_{ix_snake}_accounts_t *accounts,\n    {prefix}_{ix_snake}_args_t \
-                 *args,\n    Instruction *ix_out,\n    AccountMeta *meta_buf,\n    uint8_t \
-                 *data_buf,\n    uint64_t data_buf_len\n) {{",
+                 *args,\n    Instruction *ix_out,\n    AccountMeta *meta_buf,\n    uint64_t \
+                 meta_buf_capacity,\n    uint8_t *data_buf,\n    uint64_t data_buf_capacity\n) {{",
             )
             .unwrap();
         }
+
+        if user_accounts.is_empty() && account_field_seeds.is_empty() {
+            writeln!(out, "    (void)accounts;").unwrap();
+        }
+        if !has_args {
+            writeln!(out, "    (void)args;").unwrap();
+        }
+
+        if ix.remaining_accounts.is_some() {
+            writeln!(
+                out,
+                "    if (remaining_len > ((uint64_t)-1) - {num_accounts}) return \
+                 ({prefix}_ix_result_t){{ .status = {upper}_IX_LENGTH_OVERFLOW, .accounts_len = \
+                 (uint64_t)-1, .data_len = 0, .pda_status = SUCCESS }};"
+            )
+            .unwrap();
+            writeln!(
+                out,
+                "    uint64_t required_accounts = {num_accounts} + remaining_len;"
+            )
+            .unwrap();
+        } else {
+            writeln!(out, "    uint64_t required_accounts = {num_accounts};").unwrap();
+        }
+        writeln!(out, "    uint64_t required_data = {disc_len};").unwrap();
+        for arg in &ix.args {
+            emit_required_data_size(
+                out,
+                prefix,
+                &upper,
+                &format!("args->{}", arg.name),
+                &arg.ty,
+                arg.codec.as_ref(),
+                &idl.types,
+                1,
+                uses_compact_layout && is_dynamic_with_codec(&arg.ty, arg.codec.as_ref()),
+            );
+        }
+        writeln!(
+            out,
+            "    if (meta_buf_capacity < required_accounts) return ({prefix}_ix_result_t){{ \
+             .status = {upper}_IX_ACCOUNT_BUFFER_TOO_SMALL, .accounts_len = required_accounts, \
+             .data_len = required_data, .pda_status = SUCCESS }};"
+        )
+        .unwrap();
+        writeln!(
+            out,
+            "    if (data_buf_capacity < required_data) return ({prefix}_ix_result_t){{ .status = \
+             {upper}_IX_DATA_BUFFER_TOO_SMALL, .accounts_len = required_accounts, .data_len = \
+             required_data, .pda_status = SUCCESS }};"
+        )
+        .unwrap();
 
         let pda_count = ix
             .accounts
@@ -326,7 +425,7 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         for acc in &ix.accounts {
             if !acc.optional {
                 if let IdlResolver::Pda { ref seeds, .. } = acc.resolver {
-                    emit_pda_derivation(out, seeds, &upper, pda_idx, &pda_name_to_idx);
+                    emit_pda_derivation(out, prefix, seeds, &upper, pda_idx, &pda_name_to_idx);
                     pda_idx += 1;
                 }
             }
@@ -357,13 +456,6 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
 
         // serialize data
         writeln!(out, "    uint64_t off = 0;").unwrap();
-        let args_overhead: usize = ix
-            .args
-            .iter()
-            .map(|a| static_data_overhead(&a.ty, a.codec.as_ref(), &idl.types))
-            .sum();
-        let min_data = disc_len + args_overhead;
-        writeln!(out, "    if (data_buf_len < {min_data}) return 0;").unwrap();
         writeln!(
             out,
             "    for (uint64_t i = 0; i < {disc_len}; i++) data_buf[off++] = \
@@ -372,11 +464,7 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         )
         .unwrap();
         if has_args {
-            if ix
-                .args
-                .iter()
-                .any(|arg| is_dynamic_with_codec(&arg.ty, arg.codec.as_ref()))
-            {
+            if uses_compact_layout {
                 for arg in ix
                     .args
                     .iter()
@@ -444,18 +532,15 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         )
         .unwrap();
         writeln!(out, "    ix_out->accounts = meta_buf;").unwrap();
-        if ix.remaining_accounts.is_some() {
-            writeln!(
-                out,
-                "    ix_out->accounts_len = {num_accounts} + remaining_len;"
-            )
-            .unwrap();
-        } else {
-            writeln!(out, "    ix_out->accounts_len = {num_accounts};").unwrap();
-        }
+        writeln!(out, "    ix_out->accounts_len = required_accounts;").unwrap();
         writeln!(out, "    ix_out->data = data_buf;").unwrap();
         writeln!(out, "    ix_out->data_len = off;").unwrap();
-        writeln!(out, "    return off;").unwrap();
+        writeln!(
+            out,
+            "    return ({prefix}_ix_result_t){{ .status = {upper}_IX_OK, .accounts_len = \
+             required_accounts, .data_len = off, .pda_status = SUCCESS }};"
+        )
+        .unwrap();
         out.push_str("}\n\n");
     }
 }
@@ -471,6 +556,7 @@ fn meta_helper(writable: bool, signer: bool) -> &'static str {
 
 fn emit_pda_derivation(
     out: &mut String,
+    prefix: &str,
     seeds: &[IdlPdaSeed],
     upper_prefix: &str,
     pda_idx: usize,
@@ -521,8 +607,15 @@ fn emit_pda_derivation(
     writeln!(out, "        uint8_t bump;").unwrap();
     writeln!(
         out,
-        "        find_program_address(seeds, {seed_count}, (Pubkey *)&{upper_prefix}_PROGRAM_ID, \
-         &pda_keys[{pda_idx}], &bump);"
+        "        uint64_t pda_status = find_program_address(seeds, {seed_count}, \
+         &{upper_prefix}_PROGRAM_ID, &pda_keys[{pda_idx}], &bump);"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "        if (pda_status != SUCCESS) return ({prefix}_ix_result_t){{ .status = \
+         {upper_prefix}_IX_PDA_DERIVATION_FAILED, .accounts_len = required_accounts, .data_len = \
+         required_data, .pda_status = pda_status }};"
     )
     .unwrap();
     writeln!(out, "    }}").unwrap();
@@ -795,59 +888,169 @@ fn emit_struct_field(
     }
 }
 
-fn static_data_overhead(ty: &IdlType, codec: Option<&IdlCodec>, types: &[IdlTypeDef]) -> usize {
+#[allow(clippy::too_many_arguments)]
+fn emit_required_data_size(
+    out: &mut String,
+    prefix: &str,
+    upper: &str,
+    name: &str,
+    ty: &IdlType,
+    codec: Option<&IdlCodec>,
+    types: &[IdlTypeDef],
+    indent: usize,
+    compact_dynamic: bool,
+) {
+    let t = "    ".repeat(indent);
+    if compact_dynamic {
+        let payload = dynamic_payload_type(ty).expect("compact dynamic payload");
+        let (item_size, _, _) = dynamic_c_info(payload);
+        if matches!(ty, IdlType::Option { .. }) {
+            emit_size_add(out, prefix, upper, "1", &t);
+            writeln!(out, "{t}if ({name}_present) {{").unwrap();
+            let ti = "    ".repeat(indent + 1);
+            emit_size_add(
+                out,
+                prefix,
+                upper,
+                &codec
+                    .expect("compact dynamic codec")
+                    .prefix_bytes()
+                    .to_string(),
+                &ti,
+            );
+            emit_size_add_items(out, prefix, upper, &format!("{name}_len"), item_size, &ti);
+            writeln!(out, "{t}}}").unwrap();
+        } else {
+            emit_size_add(
+                out,
+                prefix,
+                upper,
+                &codec
+                    .expect("compact dynamic codec")
+                    .prefix_bytes()
+                    .to_string(),
+                &t,
+            );
+            emit_size_add_items(out, prefix, upper, &format!("{name}_len"), item_size, &t);
+        }
+        return;
+    }
+
     match ty {
-        IdlType::Primitive(p) => match p.as_str() {
-            "bool" | "u8" | "i8" => 1,
-            "u16" | "i16" => 2,
-            "u32" | "i32" | "f32" => 4,
-            "u64" | "i64" | "f64" => 8,
-            "u128" | "i128" => 16,
-            "pubkey" => 32,
+        IdlType::Primitive(primitive) => match primitive.as_str() {
+            "bool" | "u8" | "i8" => emit_size_add(out, prefix, upper, "1", &t),
+            "u16" | "i16" => emit_size_add(out, prefix, upper, "2", &t),
+            "u32" | "i32" | "f32" => emit_size_add(out, prefix, upper, "4", &t),
+            "u64" | "i64" | "f64" => emit_size_add(out, prefix, upper, "8", &t),
+            "u128" | "i128" => emit_size_add(out, prefix, upper, "16", &t),
+            "pubkey" => emit_size_add(out, prefix, upper, "32", &t),
             "string" => {
-                if let Some(c) = codec {
-                    c.prefix_bytes()
-                } else {
-                    4 // borsh-style u32 prefix
+                emit_size_add(
+                    out,
+                    prefix,
+                    upper,
+                    &codec.map(IdlCodec::prefix_bytes).unwrap_or(4).to_string(),
+                    &t,
+                );
+                emit_size_add_items(out, prefix, upper, &format!("{name}_len"), 1, &t);
+            }
+            _ => {}
+        },
+        IdlType::Option { option } => {
+            emit_size_add(out, prefix, upper, "1", &t);
+            writeln!(out, "{t}if ({name}_present) {{").unwrap();
+            emit_required_data_size(
+                out,
+                prefix,
+                upper,
+                name,
+                option,
+                None,
+                types,
+                indent + 1,
+                false,
+            );
+            writeln!(out, "{t}}}").unwrap();
+        }
+        IdlType::Defined { defined } => {
+            if let Some(primitive) = builtin_defined_primitive(&defined.name) {
+                emit_required_data_size(
+                    out,
+                    prefix,
+                    upper,
+                    name,
+                    &IdlType::Primitive(primitive.into()),
+                    None,
+                    types,
+                    indent,
+                    false,
+                );
+            } else if let Some(td) = types
+                .iter()
+                .find(|candidate| candidate.name == defined.name)
+            {
+                for field in &td.fields {
+                    emit_required_data_size(
+                        out,
+                        prefix,
+                        upper,
+                        &format!("{name}.{}", field.name),
+                        &field.ty,
+                        field.codec.as_ref(),
+                        types,
+                        indent,
+                        false,
+                    );
                 }
             }
-            _ => 0,
-        },
-        IdlType::Option { .. } if is_dynamic_with_codec(ty, codec) => 1,
-        IdlType::Option { option } => 1 + static_data_overhead(option, None, types),
-        IdlType::Defined { defined } => types
-            .iter()
-            .find(|t| t.name == defined.name)
-            .map(|td| {
-                td.fields
-                    .iter()
-                    .map(|f| static_data_overhead(&f.ty, f.codec.as_ref(), types))
-                    .sum()
-            })
-            .or_else(|| {
-                builtin_defined_primitive(&defined.name).map(|primitive| {
-                    static_data_overhead(&IdlType::Primitive(primitive.into()), None, types)
-                })
-            })
-            .unwrap_or(0),
+        }
         IdlType::Vec { .. } => {
-            if let Some(c) = codec {
-                c.prefix_bytes()
-            } else {
-                4 // borsh-style u32 prefix
-            }
+            emit_size_add(
+                out,
+                prefix,
+                upper,
+                &codec.map(IdlCodec::prefix_bytes).unwrap_or(4).to_string(),
+                &t,
+            );
+            emit_size_add_items(out, prefix, upper, &format!("{name}_len"), 1, &t);
         }
         IdlType::Array {
             array: (_inner, size),
-        } => *size,
+        } => emit_size_add(out, prefix, upper, &size.to_string(), &t),
         IdlType::Generic { generic } => {
             panic!("Generic type '{}' not supported in C codegen", generic)
         }
     }
 }
 
+fn emit_size_add(out: &mut String, prefix: &str, upper: &str, amount: &str, t: &str) {
+    writeln!(
+        out,
+        "{t}if (!{prefix}_ix_size_add(&required_data, {amount})) return ({prefix}_ix_result_t){{ \
+         .status = {upper}_IX_LENGTH_OVERFLOW, .accounts_len = required_accounts, .data_len = \
+         (uint64_t)-1, .pda_status = SUCCESS }};"
+    )
+    .unwrap();
+}
+
+fn emit_size_add_items(
+    out: &mut String,
+    prefix: &str,
+    upper: &str,
+    count: &str,
+    item_size: usize,
+    t: &str,
+) {
+    writeln!(
+        out,
+        "{t}if (!{prefix}_ix_size_add_items(&required_data, {count}, {item_size})) return \
+         ({prefix}_ix_result_t){{ .status = {upper}_IX_LENGTH_OVERFLOW, .accounts_len = \
+         required_accounts, .data_len = (uint64_t)-1, .pda_status = SUCCESS }};"
+    )
+    .unwrap();
+}
+
 fn serialize_dyn_bytes(name: &str, prefix_bytes: usize, t: &str) -> String {
-    let pb = prefix_bytes;
     let write_prefix = match prefix_bytes {
         1 => format!("{t}data_buf[off++] = (uint8_t){name}_len;\n"),
         2 => format!(
@@ -865,8 +1068,7 @@ fn serialize_dyn_bytes(name: &str, prefix_bytes: usize, t: &str) -> String {
         ),
     };
     format!(
-        "{t}if (off + {pb} + {name}_len > data_buf_len) return 0;\n{write_prefix}{t}for (uint32_t \
-         i = 0; i < {name}_len; i++) data_buf[off++] = {name}[i];\n"
+        "{write_prefix}{t}for (uint32_t i = 0; i < {name}_len; i++) data_buf[off++] = {name}[i];\n"
     )
 }
 
@@ -1124,7 +1326,7 @@ fn decode_dynamic_header(
     let width = codec.expect("dynamic field codec").prefix_bytes();
     format!(
         "{t}{{ uint64_t count; if (!{prefix}_decoder_uint(&decoder, {width}, &count) || count > \
-         UINT32_MAX) return false; out->{name}_len = (uint32_t)count; }}\n"
+         ((uint32_t)-1)) return false; out->{name}_len = (uint32_t)count; }}\n"
     )
 }
 
@@ -1160,10 +1362,9 @@ fn decode_dynamic_tail(
         String::new()
     };
     format!(
-        "{t}if (out->{name}_len > UINT64_MAX / {item_size}) return false;\n{t}const uint8_t \
-         *{name}_bytes;\n{t}if (!{prefix}_decoder_take(&decoder, (uint64_t)out->{name}_len * \
-         {item_size}, &{name}_bytes)) return false;\n{utf8_check}{t}out->{name} = \
-         {pointer_cast}{name}_bytes;\n"
+        "{t}const uint8_t *{name}_bytes;\n{t}if (!{prefix}_decoder_take(&decoder, \
+         (uint64_t)out->{name}_len * {item_size}, &{name}_bytes)) return \
+         false;\n{utf8_check}{t}out->{name} = {pointer_cast}{name}_bytes;\n"
     )
 }
 

@@ -138,6 +138,9 @@ const CARAVEL_STUB: &str = r#"#ifndef CARAVEL_H
 #include <stdbool.h>
 #include <stdint.h>
 
+#define SUCCESS 0
+#define ERROR_INVALID_PDA 260
+
 typedef struct {
     uint8_t bytes[32];
 } Pubkey;
@@ -177,19 +180,24 @@ static inline AccountMeta meta_writable_signer(Pubkey *pubkey) {
     return (AccountMeta){ .pubkey = pubkey, .is_signer = true, .is_writable = true };
 }
 
-static inline bool find_program_address(
+static uint64_t caravel_find_program_address_status = SUCCESS;
+
+static inline uint64_t find_program_address(
     const SignerSeed *seeds,
-    uint64_t seeds_len,
-    Pubkey *program_id,
+    int seeds_len,
+    const Pubkey *program_id,
     Pubkey *out,
     uint8_t *bump
 ) {
     (void)seeds;
     (void)seeds_len;
     (void)program_id;
+    if (caravel_find_program_address_status != SUCCESS) {
+        return caravel_find_program_address_status;
+    }
     *out = (Pubkey){ .bytes = {0} };
     *bump = 255;
-    return true;
+    return SUCCESS;
 }
 
 #endif
@@ -205,31 +213,59 @@ fn compile_c_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
         Command::new(cc)
             .arg("-std=c11")
             .arg("-fsyntax-only")
+            .arg("-Wall")
+            .arg("-Wextra")
+            .arg("-Werror")
             .arg("-I")
             .arg(client_dir)
             .arg("-I")
             .arg(temp.path())
             .arg(temp.path().join("compile.c")),
-    )
+    )?;
+
+    if let Some(caravel_include_dir) = std::env::var_os("CARAVEL_INCLUDE_DIR") {
+        let cc = std::env::var_os("CC").unwrap_or_else(|| "cc".into());
+        run_command(
+            Command::new(cc)
+                .arg("-std=c11")
+                .arg("-fsyntax-only")
+                .arg("-Wall")
+                .arg("-Wextra")
+                .arg("-Werror")
+                .arg("-DNO_HEAP")
+                .arg("-DNO_SYSTEM")
+                .arg("-DNO_TOKEN")
+                .arg("-I")
+                .arg(client_dir)
+                .arg("-I")
+                .arg(caravel_include_dir)
+                .arg(temp.path().join("compile.c")),
+        )?;
+    }
+
+    Ok(())
 }
 
-fn run_c_decoder_test(client_dir: &Path, source: &str) -> Result<(), Box<dyn Error>> {
+fn run_c_sanitized_test(client_dir: &Path, source: &str) -> Result<(), Box<dyn Error>> {
     let temp = tempdir()?;
     write_file(&temp.path().join("caravel.h"), CARAVEL_STUB)?;
-    write_file(&temp.path().join("decoder_test.c"), source)?;
+    write_file(&temp.path().join("sanitized_test.c"), source)?;
 
     let cc = std::env::var_os("CC").unwrap_or_else(|| "cc".into());
-    let binary = temp.path().join("decoder_test");
+    let binary = temp.path().join("sanitized_test");
     run_command(
         Command::new(&cc)
             .arg("-std=c11")
+            .arg("-Wall")
+            .arg("-Wextra")
+            .arg("-Werror")
             .arg("-fsanitize=address,undefined")
             .arg("-fno-omit-frame-pointer")
             .arg("-I")
             .arg(client_dir)
             .arg("-I")
             .arg(temp.path())
-            .arg(temp.path().join("decoder_test.c"))
+            .arg(temp.path().join("sanitized_test.c"))
             .arg("-o")
             .arg(&binary),
     )?;
@@ -518,7 +554,11 @@ fn generated_clients_compile_from_fresh_project() -> Result<(), Box<dyn Error>> 
 
     let temp = tempdir()?;
     let clients_path = temp.path().join("clients");
-    idl::generate(&fixture, &["typescript", "python", "golang"], &clients_path)?;
+    idl::generate(
+        &fixture,
+        &["typescript", "python", "golang", "c"],
+        &clients_path,
+    )?;
 
     // The IDL is generated relative to the workspace; find the rust client dir
     // by convention.
@@ -569,6 +609,105 @@ fn generated_clients_compile_from_fresh_project() -> Result<(), Box<dyn Error>> 
     if go_dir.exists() {
         compile_go_client(&go_dir)?;
     }
+
+    let c_dir = only_child_dir(&clients_path.join("c"))?;
+    compile_c_client(&c_dir)?;
+    run_c_sanitized_test(
+        &c_dir,
+        r#"#include <assert.h>
+#include <string.h>
+#include "client.h"
+
+static void assert_untouched(
+    const Instruction *ix,
+    const Instruction *ix_before,
+    const AccountMeta *metas,
+    const AccountMeta *metas_before,
+    uint64_t metas_len,
+    const uint8_t *data,
+    const uint8_t *data_before,
+    uint64_t data_len
+) {
+    assert(memcmp(ix, ix_before, sizeof(*ix)) == 0);
+    assert(memcmp(metas, metas_before, sizeof(*metas) * metas_len) == 0);
+    assert(memcmp(data, data_before, data_len) == 0);
+}
+
+int main(void) {
+    Pubkey creator = { .bytes = {1} };
+    Pubkey rent = { .bytes = {2} };
+    Pubkey system_program = { .bytes = {3} };
+    Pubkey extra_a = { .bytes = {4} };
+    Pubkey extra_b = { .bytes = {5} };
+    quasar_multisig_create_accounts_t accounts = {
+        .creator = &creator,
+        .rent = &rent,
+        .systemProgram = &system_program,
+    };
+    quasar_multisig_create_args_t args = { .threshold = 7 };
+    AccountMeta remaining[] = {
+        meta_readonly(&extra_a),
+        meta_writable_signer(&extra_b),
+    };
+    Instruction ix;
+    Instruction ix_before;
+    AccountMeta metas[6];
+    AccountMeta metas_before[6];
+    uint8_t data[2];
+    uint8_t data_before[2];
+
+    memset(&ix, 0xa5, sizeof(ix));
+    memset(metas, 0xa5, sizeof(metas));
+    memset(data, 0xa5, sizeof(data));
+    memcpy(&ix_before, &ix, sizeof(ix));
+    memcpy(metas_before, metas, sizeof(metas));
+    memcpy(data_before, data, sizeof(data));
+
+    quasar_multisig_ix_result_t result = quasar_multisig_create_ix(
+        &accounts, &args, remaining, 2, &ix, metas, 5, data, sizeof(data));
+    assert(result.status == QUASAR_MULTISIG_IX_ACCOUNT_BUFFER_TOO_SMALL);
+    assert(result.accounts_len == 6 && result.data_len == 2);
+    assert_untouched(&ix, &ix_before, metas, metas_before, 6, data, data_before, 2);
+
+    result = quasar_multisig_create_ix(
+        &accounts, &args, remaining, 2, &ix, metas, 6, data, 1);
+    assert(result.status == QUASAR_MULTISIG_IX_DATA_BUFFER_TOO_SMALL);
+    assert(result.accounts_len == 6 && result.data_len == 2);
+    assert_untouched(&ix, &ix_before, metas, metas_before, 6, data, data_before, 2);
+
+    result = quasar_multisig_create_ix(
+        &accounts, &args, NULL, (uint64_t)-1, &ix, metas, 6, data, sizeof(data));
+    assert(result.status == QUASAR_MULTISIG_IX_LENGTH_OVERFLOW);
+    assert(result.accounts_len == (uint64_t)-1);
+    assert_untouched(&ix, &ix_before, metas, metas_before, 6, data, data_before, 2);
+
+    caravel_find_program_address_status = ERROR_INVALID_PDA;
+    result = quasar_multisig_create_ix(
+        &accounts, &args, remaining, 2, &ix, metas, 6, data, sizeof(data));
+    assert(result.status == QUASAR_MULTISIG_IX_PDA_DERIVATION_FAILED);
+    assert(result.pda_status == ERROR_INVALID_PDA);
+    assert(result.accounts_len == 6 && result.data_len == 2);
+    assert_untouched(&ix, &ix_before, metas, metas_before, 6, data, data_before, 2);
+
+    caravel_find_program_address_status = SUCCESS;
+    result = quasar_multisig_create_ix(
+        &accounts, &args, remaining, 2, &ix, metas, 6, data, sizeof(data));
+    assert(result.status == QUASAR_MULTISIG_IX_OK);
+    assert(result.pda_status == SUCCESS);
+    assert(result.accounts_len == 6 && result.data_len == 2);
+    assert(ix.program_id == (Pubkey *)&QUASAR_MULTISIG_PROGRAM_ID);
+    assert(ix.accounts == metas && ix.accounts_len == 6);
+    assert(ix.data == data && ix.data_len == 2);
+    assert(data[0] == 0 && data[1] == 7);
+    assert(metas[0].pubkey == &creator && metas[0].is_signer && metas[0].is_writable);
+    assert(metas[1].pubkey != NULL && !metas[1].is_signer && metas[1].is_writable);
+    assert(metas[2].pubkey == &rent && !metas[2].is_signer && !metas[2].is_writable);
+    assert(metas[3].pubkey == &system_program);
+    assert(metas[4].pubkey == &extra_a && metas[5].pubkey == &extra_b);
+    return 0;
+}
+"#,
+    )?;
 
     Ok(())
 }
@@ -871,7 +1010,7 @@ if (value.bytes.length !== 3 || value.bytes[0] !== 1 || value.bytes[1] !== 2 || 
 
     let c_dir = only_child_dir(&clients_path.join("c"))?;
     compile_c_client(&c_dir)?;
-    run_c_decoder_test(
+    run_c_sanitized_test(
         &c_dir,
         r#"#include <assert.h>
 #include <string.h>
@@ -1494,6 +1633,61 @@ pub struct Submit {
     assert!(c_header.contains("data_buf[off++] = args->maybe_addrs_present ? 1 : 0;"));
     assert!(c_header.contains("if (args->maybe_addrs_present)"));
     compile_c_client(&c_dir)?;
+    run_c_sanitized_test(
+        &c_dir,
+        r#"#include <assert.h>
+#include <string.h>
+#include "client.h"
+
+int main(void) {
+    Pubkey authority = { .bytes = {1} };
+    Pubkey address = { .bytes = {2} };
+    const uint8_t name[] = {'o', 'k'};
+    optional_dynamic_args_submit_accounts_t accounts = { .authority = &authority };
+    optional_dynamic_args_submit_args_t args = {
+        .maybe_name_present = true,
+        .maybe_name = name,
+        .maybe_name_len = 2,
+        .maybe_addrs_present = true,
+        .maybe_addrs = &address,
+        .maybe_addrs_len = 1,
+    };
+    Instruction ix;
+    Instruction ix_before;
+    AccountMeta meta;
+    AccountMeta meta_before;
+    uint8_t data[40];
+    uint8_t data_before[40];
+
+    memset(&ix, 0xa5, sizeof(ix));
+    memset(&meta, 0xa5, sizeof(meta));
+    memset(data, 0xa5, sizeof(data));
+    memcpy(&ix_before, &ix, sizeof(ix));
+    memcpy(&meta_before, &meta, sizeof(meta));
+    memcpy(data_before, data, sizeof(data));
+
+    optional_dynamic_args_ix_result_t result = optional_dynamic_args_submit_ix(
+        &accounts, &args, &ix, &meta, 1, data, sizeof(data) - 1);
+    assert(result.status == OPTIONAL_DYNAMIC_ARGS_IX_DATA_BUFFER_TOO_SMALL);
+    assert(result.accounts_len == 1 && result.data_len == sizeof(data));
+    assert(memcmp(&ix, &ix_before, sizeof(ix)) == 0);
+    assert(memcmp(&meta, &meta_before, sizeof(meta)) == 0);
+    assert(memcmp(data, data_before, sizeof(data)) == 0);
+
+    result = optional_dynamic_args_submit_ix(
+        &accounts, &args, &ix, &meta, 1, data, sizeof(data));
+    assert(result.status == OPTIONAL_DYNAMIC_ARGS_IX_OK);
+    assert(result.accounts_len == 1 && result.data_len == sizeof(data));
+    assert(ix.accounts == &meta && ix.accounts_len == 1);
+    assert(ix.data == data && ix.data_len == sizeof(data));
+    assert(data[0] == 7 && data[1] == 1 && data[2] == 1);
+    assert(data[3] == 2 && data[4] == 'o' && data[5] == 'k');
+    assert(data[6] == 1 && data[7] == 0);
+    assert(memcmp(&data[8], address.bytes, 32) == 0);
+    return 0;
+}
+"#,
+    )?;
 
     Ok(())
 }
