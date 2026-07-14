@@ -13,11 +13,12 @@
 //! prevents them from drifting apart.
 
 use {
-    super::describe::{
-        epilogue as epilogue_step, load as load_step, post_load as post_load_step,
-        pre_load as pre_load_step, rent as rent_str, tokens as toks, user_check as user_check_str,
-    },
     super::{
+        describe::{
+            epilogue as epilogue_step, load as load_step, post_load as post_load_step,
+            pre_load as pre_load_step, rent as rent_str, tokens as toks,
+            user_check as user_check_str,
+        },
         model::{
             AddressConstraint, AddressKind, BehaviorArg, BehaviorGroup, FieldCore, FieldKind,
             FieldSemantics, InitDirective, SeedRef, UserCheck,

@@ -17,6 +17,23 @@ pub fn run(
     keypair: Option<PathBuf>,
     url: Option<String>,
     skip_build: bool,
+) -> CliResult {
+    run_with_verification(
+        program_keypair,
+        upgrade_authority,
+        keypair,
+        url,
+        skip_build,
+        false,
+    )
+}
+
+pub(crate) fn run_with_verification(
+    program_keypair: Option<PathBuf>,
+    upgrade_authority: Option<PathBuf>,
+    keypair: Option<PathBuf>,
+    url: Option<String>,
+    skip_build: bool,
     skip_verify: bool,
 ) -> CliResult {
     let config = QuasarConfig::load()?;
@@ -42,6 +59,7 @@ pub fn run(
 
     // Validate the signer before handing its path to an external process.
     let program_id = ProgramKeypair::read(&keypair_path)?.program_id();
+    let cluster = crate::verify::resolve_cluster("solana", url.as_deref())?;
 
     if !skip_build {
         crate::build::run(false, false, false, None)?;
@@ -82,9 +100,7 @@ pub fn run(
         cmd.args(["--keypair", payer.to_str().unwrap_or_default()]);
     }
 
-    if let Some(cluster) = &url {
-        cmd.args(["--url", cluster]);
-    }
+    cmd.args(["--url", &cluster]);
 
     let output = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output();
 
@@ -112,7 +128,7 @@ pub fn run(
                     &program_id,
                     &so_path,
                     &idl,
-                    url.as_deref(),
+                    Some(&cluster),
                     upgrade_authority.as_deref(),
                 )?;
             }

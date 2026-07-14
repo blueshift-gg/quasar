@@ -41,8 +41,8 @@ pub(super) fn emit(
         let type_def = account_type(account, idl_types)?;
         if matches!(type_def.layout, Some(IdlLayout::Compact { .. })) {
             return Err(format!(
-                "account '{}' uses a dynamic compact layout; fixed-layout account readers \
-                 cannot decode it",
+                "account '{}' uses a dynamic compact layout; fixed-layout account readers cannot \
+                 decode it",
                 account.name
             ));
         }
@@ -205,10 +205,9 @@ fn emit_field_read(
                 .collect::<Result<_, String>>()?;
             Ok(quote! { [#(#elements),*] })
         }
-        IdlType::Option { .. } => Err(
-            "option uses a dynamic/tagged layout and is unsupported in fixed account readers"
-                .into(),
-        ),
+        IdlType::Option { .. } => Err("option uses a dynamic/tagged layout and is unsupported in \
+                                       fixed account readers"
+            .into()),
         IdlType::Vec { .. } => {
             Err("vec uses a dynamic layout and is unsupported in fixed account readers".into())
         }

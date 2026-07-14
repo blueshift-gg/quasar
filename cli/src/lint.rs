@@ -90,7 +90,9 @@ pub(crate) fn require_deploy_lock(crate_root: &Path, idl: &Idl) -> CliResult {
     let path = lint::lock_path(crate_root);
     if !path.is_file() {
         return Err(CliError::message(format!(
-            "deployment requires {} because this program uses automatic instruction discriminators\n\n  Run `quasar lint --update-lock`, review the generated compatibility surface, and commit it before deployment.",
+            "deployment requires {} because this program uses automatic instruction \
+             discriminators\n\n  Run `quasar lint --update-lock`, review the generated \
+             compatibility surface, and commit it before deployment.",
             path.display()
         )));
     }

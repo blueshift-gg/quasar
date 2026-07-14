@@ -157,7 +157,19 @@ mod tests {
 
         assert_eq!(
             render_human(&idl, &plan),
-            "vault validation plan\n\ninitialize (discriminator [0])\n  rent: FetchOnce\n  state  [writable]  Account (Account < 'a , State >)\n    load: Fixed(validates=[])\n    pre-load:\n      - Init::Program(payer=payer)\n    post-load:\n      - UserCheck(HasOne targets=[authority])\n    epilogue:\n      - ProgramClose(destination_field=payer)\n"
+            concat!(
+                "vault validation plan\n\n",
+                "initialize (discriminator [0])\n",
+                "  rent: FetchOnce\n",
+                "  state  [writable]  Account (Account < 'a , State >)\n",
+                "    load: Fixed(validates=[])\n",
+                "    pre-load:\n",
+                "      - Init::Program(payer=payer)\n",
+                "    post-load:\n",
+                "      - UserCheck(HasOne targets=[authority])\n",
+                "    epilogue:\n",
+                "      - ProgramClose(destination_field=payer)\n",
+            )
         );
     }
 }

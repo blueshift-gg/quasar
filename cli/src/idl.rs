@@ -1,7 +1,6 @@
 use {
     crate::{
-        config::resolve_client_path,
-        config::QuasarConfig,
+        config::{resolve_client_path, QuasarConfig},
         error::{CliError, CliResult},
         output::{commit, PreparedOutput},
         IdlCommand,
@@ -167,7 +166,8 @@ pub(crate) fn load_generated(config: &QuasarConfig) -> Result<(PathBuf, Idl), Cl
     }
 
     Err(CliError::message(
-        "generated IDL not found in target/idl\n\n  Run `quasar build` before deployment or verification.",
+        "generated IDL not found in target/idl\n\n  Run `quasar build` before deployment or \
+         verification.",
     ))
 }
 

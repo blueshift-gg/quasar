@@ -63,6 +63,7 @@ struct VerifyRequest<'a> {
 
 pub fn run(command: VerifyCommand) -> CliResult {
     let config = QuasarConfig::load()?;
+    let cluster = resolve_cluster("solana", command.url.as_deref())?;
     let keypair_path = command
         .program_keypair
         .or_else(|| default_program_keypair_path(&config));
@@ -97,7 +98,7 @@ pub fn run(command: VerifyCommand) -> CliResult {
             program_id: &program_id,
             elf_path: &elf_path,
             idl: &idl,
-            cluster: command.url.as_deref(),
+            cluster: Some(&cluster),
             expected_authority: expected_authority.as_deref(),
         },
         "solana",
@@ -282,6 +283,42 @@ fn run_solana(solana: &str, args: &[OsString], action: &str) -> Result<Output, C
     ))
 }
 
+pub(crate) fn resolve_cluster(solana: &str, requested: Option<&str>) -> Result<String, CliError> {
+    if let Some(cluster) = requested {
+        return Ok(cluster.to_owned());
+    }
+
+    let args = [
+        OsString::from("config"),
+        OsString::from("get"),
+        OsString::from("json_rpc_url"),
+        OsString::from("--output"),
+        OsString::from("json-compact"),
+    ];
+    let output = run_solana(solana, &args, "read the configured RPC URL")?;
+    parse_configured_rpc_url(&output.stdout).ok_or_else(|| {
+        CliError::message("solana config did not report an RPC URL; pass `--url` explicitly")
+    })
+}
+
+fn parse_configured_rpc_url(stdout: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(stdout);
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+        for key in ["jsonRpcUrl", "json_rpc_url"] {
+            if let Some(url) = value.get(key).and_then(serde_json::Value::as_str) {
+                if !url.trim().is_empty() {
+                    return Some(url.trim().to_owned());
+                }
+            }
+        }
+    }
+
+    text.lines().find_map(|line| {
+        let url = line.strip_prefix("RPC URL:")?.trim();
+        (!url.is_empty()).then(|| url.to_owned())
+    })
+}
+
 fn validate_manifest(expected: &DeploymentManifest, observed: &DeploymentManifest) -> CliResult {
     if expected.version != MANIFEST_VERSION {
         return Err(CliError::message(format!(
@@ -423,11 +460,26 @@ fn source_revision() -> Option<String> {
         .stderr(Stdio::null())
         .output()
         .ok()?;
-    output
+    let revision = output
         .status
         .success()
         .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
-        .filter(|revision| !revision.is_empty())
+        .filter(|revision| !revision.is_empty())?;
+    let dirty = Command::new("git")
+        .args(["status", "--porcelain"])
+        .stderr(Stdio::null())
+        .output()
+        .ok()
+        .is_some_and(|status| status.status.success() && !status.stdout.is_empty());
+    Some(source_revision_label(&revision, dirty))
+}
+
+fn source_revision_label(revision: &str, dirty: bool) -> String {
+    if dirty {
+        format!("{revision}-dirty")
+    } else {
+        revision.to_owned()
+    }
 }
 
 #[cfg(test)]
@@ -458,6 +510,24 @@ mod tests {
         assert_eq!(show.program_id, "11111111111111111111111111111111");
         assert_eq!(show.authority, None);
         assert_eq!(show.last_deploy_slot, Some(42));
+    }
+
+    #[test]
+    fn parses_configured_cluster_from_plain_and_json_output() {
+        assert_eq!(
+            parse_configured_rpc_url(b"RPC URL: http://localhost:8899 \n"),
+            Some("http://localhost:8899".to_string())
+        );
+        assert_eq!(
+            parse_configured_rpc_url(br#"{"jsonRpcUrl":"https://api.devnet.solana.com"}"#),
+            Some("https://api.devnet.solana.com".to_string())
+        );
+    }
+
+    #[test]
+    fn source_revision_marks_dirty_worktrees() {
+        assert_eq!(source_revision_label("abc123", false), "abc123");
+        assert_eq!(source_revision_label("abc123", true), "abc123-dirty");
     }
 
     #[test]

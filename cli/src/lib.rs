@@ -211,7 +211,8 @@ pub struct VerifyCommand {
     #[arg(long, value_name = "ADDRESS", conflicts_with = "program_keypair")]
     pub program_id: Option<String>,
 
-    /// Path to the program keypair (default: `target/deploy/<name>-keypair.json`)
+    /// Path to the program keypair (default:
+    /// `target/deploy/<name>-keypair.json`)
     #[arg(long, value_name = "KEYPAIR")]
     pub program_keypair: Option<PathBuf>,
 
@@ -388,7 +389,8 @@ pub struct ProfileCommand {
     #[arg(long, default_value_t = 5, requires = "write_budget")]
     pub headroom: u32,
 
-    /// Print deterministic machine-readable output and skip the flamegraph server
+    /// Print deterministic machine-readable output and skip the flamegraph
+    /// server
     #[arg(
         long,
         action = ArgAction::SetTrue,
@@ -454,7 +456,7 @@ pub fn run(cli: Cli) -> CliResult {
             cmd.features,
             cmd.verbose,
         ),
-        Command::Deploy(cmd) => deploy::run(
+        Command::Deploy(cmd) => deploy::run_with_verification(
             cmd.program_keypair,
             cmd.upgrade_authority,
             cmd.keypair,
