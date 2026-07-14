@@ -24,6 +24,8 @@ quasar test
 ```
 
 ```rust
+use quasar_lang::prelude::*;
+
 declare_id!("22222222222222222222222222222222222222222222");
 
 #[account(discriminator = 1)]
@@ -33,10 +35,10 @@ pub struct Counter {
 }
 
 #[derive(Accounts)]
-pub struct Increment<'info> {
-    #[account(has_one = authority)]
-    pub counter: &'info mut Account<Counter>,
-    pub authority: &'info Signer,
+pub struct Increment {
+    #[account(mut, has_one(authority))]
+    pub counter: Account<Counter>,
+    pub authority: Signer,
 }
 
 #[program]
