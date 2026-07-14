@@ -291,6 +291,30 @@ jobs:
       - name: Reject IDL wire-contract regressions
         run: make check-idl-wire-baselines
 
+  generated_client_baseline:
+    name: Generated Client Contract Baseline
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-generated-client-baseline-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-generated-client-baseline-
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+      - name: Print generated-client baseline toolchain
+        run: |
+          rustc --version
+          cargo --version
+      - name: Reject generated-client contract regressions
+        run: make check-generated-client-baselines
+
   check_features:
     name: Check Features
     runs-on: ubuntu-24.04

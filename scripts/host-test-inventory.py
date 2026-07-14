@@ -14,6 +14,7 @@ from typing import Any
 
 TEST_ATTRIBUTE = re.compile(r"(?m)^\s*#\s*\[\s*test\s*\]")
 GENERATED_CLIENT_TARGET = ("quasar-cli", "generated_clients_smoke")
+GENERATED_CLIENT_BASELINE_TARGET = ("quasar-cli", "generated_client_baseline")
 MIRI_TARGETS = {
     ("quasar-lang", "miri"),
     ("quasar-spl", "miri"),
@@ -72,6 +73,8 @@ def runners_for(package: str, target: str) -> list[str]:
     key = (package, target)
     if key == GENERATED_CLIENT_TARGET:
         return ["make generated-client-smoke"]
+    if key == GENERATED_CLIENT_BASELINE_TARGET:
+        return ["make check-generated-client-baselines"]
     if key in MIRI_TARGETS:
         return ["make test-host", "make test-miri"]
     if package in SBF_HOST_PACKAGES:

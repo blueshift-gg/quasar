@@ -13,6 +13,8 @@ PROC_MACRO_BASELINE_VERSION := v0.1.0
 PROC_MACRO_BASELINE_DIR := compatibility-baselines/$(PROC_MACRO_BASELINE_VERSION)/proc-macros
 IDL_WIRE_BASELINE_VERSION := v0.1.0
 IDL_WIRE_BASELINE_DIR := compatibility-baselines/$(IDL_WIRE_BASELINE_VERSION)/idl-wire
+GENERATED_CLIENT_BASELINE_VERSION := v0.1.0
+GENERATED_CLIENT_BASELINE_DIR := compatibility-baselines/$(GENERATED_CLIENT_BASELINE_VERSION)/generated-clients
 RELEASE_WORKFLOW ?= .github/workflows/release.yml
 PROGRAM_MSRV := 1.89.0
 # platform-tools v1.52 ships Cargo 1.89 which supports Cargo.lock v4.
@@ -72,6 +74,7 @@ PACKAGE_PATCHES := \
 	test-fuzz-build check-public-api bless-public-api \
 	check-proc-macro-baselines bless-proc-macro-baselines \
 	check-idl-wire-baselines bless-idl-wire-baselines \
+	check-generated-client-baselines bless-generated-client-baselines \
 	test-audit-policy generated-client-smoke \
 	kani help-kani check-kani kani-lang \
 	kani-spl kani-metadata msrv-check package-check audit
@@ -112,6 +115,12 @@ check-idl-wire-baselines:
 
 bless-idl-wire-baselines:
 	@scripts/check-idl-wire-baselines.sh bless "$(IDL_WIRE_BASELINE_DIR)"
+
+check-generated-client-baselines:
+	@scripts/check-generated-client-baselines.sh check "$(GENERATED_CLIENT_BASELINE_DIR)"
+
+bless-generated-client-baselines:
+	@scripts/check-generated-client-baselines.sh bless "$(GENERATED_CLIENT_BASELINE_DIR)"
 
 test-fuzz-build:
 	@cd lang && cargo +$(NIGHTLY_TOOLCHAIN) fuzz build
