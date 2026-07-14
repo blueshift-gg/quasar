@@ -79,12 +79,17 @@ pub enum InstructionDiscriminatorSource {
 /// IDL.
 pub struct AccountsMetaFragment(pub fn() -> (String, Vec<IdlAccountNode>));
 
+/// Fragment submitted by `#[derive(Accounts)]`; carries the compiler's
+/// resolved validation and lifecycle plan for audit tooling.
+pub struct AccountsValidationFragment(pub fn() -> (String, IdlAccountsValidation));
+
 inventory::collect!(AccountFragment);
 inventory::collect!(TypeFragment);
 inventory::collect!(EventFragment);
 inventory::collect!(ErrorFragment);
 inventory::collect!(InstructionFragment);
 inventory::collect!(AccountsMetaFragment);
+inventory::collect!(AccountsValidationFragment);
 
 /// Assemble all registered fragments into a complete IDL.
 ///
@@ -98,12 +103,18 @@ pub fn build_idl(address: &str, name: &str, crate_name: &str, version: &str) -> 
     let mut errors = Vec::new();
     let mut instructions = Vec::new();
     let mut auto_discriminator_sources = serde_json::Map::new();
+    let mut validation_instructions = alloc::collections::BTreeMap::new();
 
     // Collect accounts meta fragments into a lookup table.
     let accounts_meta: Vec<(String, Vec<IdlAccountNode>)> = inventory::iter::<AccountsMetaFragment>
         .into_iter()
         .map(|frag| (frag.0)())
         .collect();
+    let accounts_validation: Vec<(String, IdlAccountsValidation)> =
+        inventory::iter::<AccountsValidationFragment>
+            .into_iter()
+            .map(|frag| (frag.0)())
+            .collect();
 
     for frag in inventory::iter::<AccountFragment> {
         let (account_def, type_def) = (frag.build)();
@@ -146,6 +157,19 @@ pub fn build_idl(address: &str, name: &str, crate_name: &str, version: &str) -> 
                 });
             ix.accounts = nodes.clone();
         }
+        if !frag.accounts_struct_name.is_empty() {
+            let (_, validation) = accounts_validation
+                .iter()
+                .find(|(struct_name, _)| struct_name == frag.accounts_struct_name)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "idl-build: instruction `{}` references accounts struct `{}` but no \
+                         AccountsValidationFragment with that name was registered",
+                        ix.name, frag.accounts_struct_name
+                    )
+                });
+            validation_instructions.insert(ix.name.clone(), validation.clone());
+        }
         instructions.push(ix);
     }
 
@@ -181,7 +205,21 @@ pub fn build_idl(address: &str, name: &str, crate_name: &str, version: &str) -> 
         types,
         events,
         errors,
-        extensions: None,
+        extensions: if validation_instructions.is_empty() {
+            None
+        } else {
+            let validation = IdlValidationPlan {
+                version: VALIDATION_EXTENSION_VERSION,
+                instructions: validation_instructions,
+            };
+            let mut extensions = serde_json::Map::new();
+            extensions.insert(
+                String::from(VALIDATION_EXTENSION_KEY),
+                serde_json::to_value(validation)
+                    .expect("validation plan should serialize into the IDL extension"),
+            );
+            Some(serde_json::Value::Object(extensions))
+        },
         hashes: None,
     };
 

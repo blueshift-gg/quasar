@@ -9,6 +9,7 @@
 //! - **Types**: re-export of `quasar-idl-schema` types
 //!
 //! Programs compile with `--features idl-build` to produce IDL.
+pub mod audit;
 pub mod codegen;
 pub mod lint;
 pub mod types;

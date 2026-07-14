@@ -382,3 +382,26 @@ mod __uses_account_array_client_macro {
     ::quasar_lang::idl_build::__reexport::IdlResolver::Input {}, docs :
     ::quasar_lang::idl_build::Vec::new(), }],) })
 }
+#[cfg(feature = "idl-build")]
+::quasar_lang::__private_inventory::submit! {
+    ::quasar_lang::idl_build::AccountsValidationFragment(|| {
+    (::quasar_lang::idl_build::s("UsesAccountArray"),
+    ::quasar_lang::idl_build::__reexport::IdlAccountsValidation { rent :
+    ::quasar_lang::idl_build::s("NotNeeded"), accounts :
+    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::__reexport::IdlAccountValidation
+    { name : ::quasar_lang::idl_build::s("payer"), account_type :
+    ::quasar_lang::idl_build::s("Signer"), wrapper :
+    ::quasar_lang::idl_build::s("Signer"), writable : false, signer : true, optional :
+    false, allow_duplicate : false, load :
+    ::quasar_lang::idl_build::s("Fixed(validates=[])"), pre_load :
+    ::quasar_lang::idl_build::vec![], post_load : ::quasar_lang::idl_build::vec![],
+    epilogue : ::quasar_lang::idl_build::vec![], },
+    ::quasar_lang::idl_build::__reexport::IdlAccountValidation { name :
+    ::quasar_lang::idl_build::s("pairs"), account_type :
+    ::quasar_lang::idl_build::s("AccountsArray < SignerPair , 2 >"), wrapper :
+    ::quasar_lang::idl_build::s("AccountsArray"), writable : false, signer : false,
+    optional : false, allow_duplicate : false, load :
+    ::quasar_lang::idl_build::s("Fixed(validates=[])"), pre_load :
+    ::quasar_lang::idl_build::vec![], post_load : ::quasar_lang::idl_build::vec![],
+    epilogue : ::quasar_lang::idl_build::vec![], }], },) })
+}

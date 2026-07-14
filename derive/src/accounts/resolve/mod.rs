@@ -1,3 +1,4 @@
+pub(crate) mod describe;
 #[cfg(test)]
 pub(crate) mod dump;
 mod lower;

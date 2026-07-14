@@ -326,3 +326,19 @@ mod __two_dyn_client_macro {
     ::quasar_lang::idl_build::__reexport::IdlResolver::Input {}, docs :
     ::quasar_lang::idl_build::Vec::new(), }],) })
 }
+#[cfg(feature = "idl-build")]
+::quasar_lang::__private_inventory::submit! {
+    ::quasar_lang::idl_build::AccountsValidationFragment(|| {
+    (::quasar_lang::idl_build::s("TwoDyn"),
+    ::quasar_lang::idl_build::__reexport::IdlAccountsValidation { rent :
+    ::quasar_lang::idl_build::s("NotNeeded"), accounts :
+    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::__reexport::IdlAccountValidation
+    { name : ::quasar_lang::idl_build::s("account"), account_type :
+    ::quasar_lang::idl_build::s("Account < TwoDynArgsAccount >"), wrapper :
+    ::quasar_lang::idl_build::s("Account"), writable : true, signer : false, optional :
+    false, allow_duplicate : false, load :
+    ::quasar_lang::idl_build::s("Fixed(validates=[])"), pre_load :
+    ::quasar_lang::idl_build::vec![], post_load :
+    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::s("UserCheck(Constraints exprs=[`tag != 0 && a . len () == b . len ()`] error=None)")],
+    epilogue : ::quasar_lang::idl_build::vec![], }], },) })
+}

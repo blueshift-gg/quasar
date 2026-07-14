@@ -367,3 +367,27 @@ mod __optional_accounts_client_macro {
     ::quasar_lang::idl_build::__reexport::IdlResolver::Input {}, docs :
     ::quasar_lang::idl_build::Vec::new(), }],) })
 }
+#[cfg(feature = "idl-build")]
+::quasar_lang::__private_inventory::submit! {
+    ::quasar_lang::idl_build::AccountsValidationFragment(|| {
+    (::quasar_lang::idl_build::s("OptionalAccounts"),
+    ::quasar_lang::idl_build::__reexport::IdlAccountsValidation { rent :
+    ::quasar_lang::idl_build::s("NotNeeded"), accounts :
+    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::__reexport::IdlAccountValidation
+    { name : ::quasar_lang::idl_build::s("authority"), account_type :
+    ::quasar_lang::idl_build::s("Signer"), wrapper :
+    ::quasar_lang::idl_build::s("Signer"), writable : false, signer : true, optional :
+    false, allow_duplicate : false, load :
+    ::quasar_lang::idl_build::s("Fixed(validates=[])"), pre_load :
+    ::quasar_lang::idl_build::vec![], post_load : ::quasar_lang::idl_build::vec![],
+    epilogue : ::quasar_lang::idl_build::vec![], },
+    ::quasar_lang::idl_build::__reexport::IdlAccountValidation { name :
+    ::quasar_lang::idl_build::s("config"), account_type :
+    ::quasar_lang::idl_build::s("Account < Config >"), wrapper :
+    ::quasar_lang::idl_build::s("Account"), writable : false, signer : false, optional :
+    true, allow_duplicate : false, load :
+    ::quasar_lang::idl_build::s("Fixed(validates=[])"), pre_load :
+    ::quasar_lang::idl_build::vec![], post_load :
+    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::s("UserCheck(HasOne targets=[authority] error=None)")],
+    epilogue : ::quasar_lang::idl_build::vec![], }], },) })
+}

@@ -3,6 +3,7 @@ use {
     std::path::PathBuf,
 };
 
+pub mod audit;
 pub mod build;
 pub mod cfg;
 pub mod clean;
@@ -59,6 +60,8 @@ pub enum Command {
     Client(ClientCommand),
     /// Audit the program surface for pre-deploy and upgrade-safety issues
     Lint(LintCommand),
+    /// Print the compiler's resolved per-account validation plan
+    Audit(AuditCommand),
     /// Verify local artifacts against a deployed program
     Verify(VerifyCommand),
     /// Measure compute-unit usage
@@ -313,6 +316,17 @@ pub struct LintCommand {
     pub strict: bool,
 }
 
+#[derive(Args, Debug, Default)]
+pub struct AuditCommand {
+    /// Generated IDL JSON (defaults to the current project's target/idl output)
+    #[arg(value_name = "IDL")]
+    pub idl_path: Option<PathBuf>,
+
+    /// Print the validation plan as JSON
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub json: bool,
+}
+
 #[derive(Args, Debug, Clone)]
 pub struct DumpCommand {
     /// Path to a compiled .so (auto-detected from target/deploy/ if omitted)
@@ -421,6 +435,7 @@ pub fn run(cli: Cli) -> CliResult {
         Command::Idl(cmd) => idl::run(cmd),
         Command::Client(cmd) => client::run(cmd),
         Command::Lint(cmd) => lint::run(cmd),
+        Command::Audit(cmd) => audit::run(cmd),
         Command::Verify(cmd) => verify::run(cmd),
         Command::Dump(cmd) => dump::run(cmd.elf_path, cmd.function, cmd.source),
         Command::Completions(cmd) => {
@@ -510,6 +525,12 @@ pub fn print_help() {
     print_cmd(
         "client  <idl> [--lang ts,py,go]",
         "Generate client code from IDL",
+    );
+    print_cmd("lint    [--update-lock] [--strict]", "Check release safety");
+    print_cmd("audit   [idl] [--json]", "Show compiler validation plans");
+    print_cmd(
+        "verify  [--program-id] [--manifest]",
+        "Verify a deployed program",
     );
     print_cmd(
         "profile [elf] [--expand] [--diff] [-w]",

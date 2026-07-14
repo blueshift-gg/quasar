@@ -444,3 +444,42 @@ mod __basic_accounts_client_macro {
     ::quasar_lang::sysvars::Sysvar > ::ID), }, docs :
     ::quasar_lang::idl_build::Vec::new(), }],) })
 }
+#[cfg(feature = "idl-build")]
+::quasar_lang::__private_inventory::submit! {
+    ::quasar_lang::idl_build::AccountsValidationFragment(|| {
+    (::quasar_lang::idl_build::s("BasicAccounts"),
+    ::quasar_lang::idl_build::__reexport::IdlAccountsValidation { rent :
+    ::quasar_lang::idl_build::s("NotNeeded"), accounts :
+    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::__reexport::IdlAccountValidation
+    { name : ::quasar_lang::idl_build::s("payer"), account_type :
+    ::quasar_lang::idl_build::s("Signer"), wrapper :
+    ::quasar_lang::idl_build::s("Signer"), writable : true, signer : true, optional :
+    false, allow_duplicate : false, load :
+    ::quasar_lang::idl_build::s("Fixed(validates=[])"), pre_load :
+    ::quasar_lang::idl_build::vec![], post_load : ::quasar_lang::idl_build::vec![],
+    epilogue : ::quasar_lang::idl_build::vec![], },
+    ::quasar_lang::idl_build::__reexport::IdlAccountValidation { name :
+    ::quasar_lang::idl_build::s("config"), account_type :
+    ::quasar_lang::idl_build::s("Account < TestConfig >"), wrapper :
+    ::quasar_lang::idl_build::s("Account"), writable : false, signer : false, optional :
+    false, allow_duplicate : false, load :
+    ::quasar_lang::idl_build::s("Fixed(validates=[])"), pre_load :
+    ::quasar_lang::idl_build::vec![], post_load : ::quasar_lang::idl_build::vec![],
+    epilogue : ::quasar_lang::idl_build::vec![], },
+    ::quasar_lang::idl_build::__reexport::IdlAccountValidation { name :
+    ::quasar_lang::idl_build::s("systemProgram"), account_type :
+    ::quasar_lang::idl_build::s("Program < SystemProgram >"), wrapper :
+    ::quasar_lang::idl_build::s("Program"), writable : false, signer : false, optional :
+    false, allow_duplicate : false, load :
+    ::quasar_lang::idl_build::s("Fixed(validates=[])"), pre_load :
+    ::quasar_lang::idl_build::vec![], post_load : ::quasar_lang::idl_build::vec![],
+    epilogue : ::quasar_lang::idl_build::vec![], },
+    ::quasar_lang::idl_build::__reexport::IdlAccountValidation { name :
+    ::quasar_lang::idl_build::s("rent"), account_type :
+    ::quasar_lang::idl_build::s("Sysvar < Rent >"), wrapper :
+    ::quasar_lang::idl_build::s("Sysvar"), writable : false, signer : false, optional :
+    false, allow_duplicate : false, load :
+    ::quasar_lang::idl_build::s("Fixed(validates=[])"), pre_load :
+    ::quasar_lang::idl_build::vec![], post_load : ::quasar_lang::idl_build::vec![],
+    epilogue : ::quasar_lang::idl_build::vec![], }], },) })
+}

@@ -158,6 +158,7 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
 
     // IDL accounts meta fragment (feature-gated behind `idl-build`)
     let idl_accounts_meta = emit_idl_accounts_meta(name, &typed_plan);
+    let idl_validation_meta = emit_idl_validation_meta(name, &typed_plan);
 
     // Typed `EventCpi` impl (only for structs with an event-authority field).
     // Computed before `emit_accounts_output` moves the generics. A missing
@@ -200,7 +201,65 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
     quote::quote! {
         #main_output
         #idl_accounts_meta
+        #idl_validation_meta
         #event_cpi_impl
+    }
+}
+
+/// Emit the compiler's resolved account-validation plan into the opaque IDL
+/// extension channel. The on-chain program never links this host-only data.
+fn emit_idl_validation_meta(
+    name: &syn::Ident,
+    plan: &resolve::specs::AccountsPlanTyped,
+) -> proc_macro2::TokenStream {
+    use resolve::describe::{epilogue, load, post_load, pre_load, rent, tokens};
+
+    let krate = crate::krate::lang_path();
+    let struct_name = name.to_string();
+    let rent = rent(&plan.rent);
+    let accounts = plan.fields.iter().map(|field| {
+        let name = crate::helpers::snake_to_camel(&field.ident.to_string());
+        let account_type = tokens(&field.effective_ty);
+        let wrapper = format!("{:?}", field.wrapper);
+        let writable = field.writable;
+        let signer = field.signer;
+        let optional = field.optional;
+        let allow_duplicate = field.dup;
+        let load = load(&field.load);
+        let pre_load: Vec<String> = field.pre_load.iter().map(pre_load).collect();
+        let post_load: Vec<String> = field.post_load.iter().map(post_load).collect();
+        let epilogue: Vec<String> = field.epilogue.iter().map(epilogue).collect();
+
+        quote! {
+            #krate::idl_build::__reexport::IdlAccountValidation {
+                name: #krate::idl_build::s(#name),
+                account_type: #krate::idl_build::s(#account_type),
+                wrapper: #krate::idl_build::s(#wrapper),
+                writable: #writable,
+                signer: #signer,
+                optional: #optional,
+                allow_duplicate: #allow_duplicate,
+                load: #krate::idl_build::s(#load),
+                pre_load: #krate::idl_build::vec![#(#krate::idl_build::s(#pre_load)),*],
+                post_load: #krate::idl_build::vec![#(#krate::idl_build::s(#post_load)),*],
+                epilogue: #krate::idl_build::vec![#(#krate::idl_build::s(#epilogue)),*],
+            }
+        }
+    });
+
+    quote! {
+        #[cfg(feature = "idl-build")]
+        #krate::__private_inventory::submit! {
+            #krate::idl_build::AccountsValidationFragment(|| {
+                (
+                    #krate::idl_build::s(#struct_name),
+                    #krate::idl_build::__reexport::IdlAccountsValidation {
+                        rent: #krate::idl_build::s(#rent),
+                        accounts: #krate::idl_build::vec![#(#accounts),*],
+                    },
+                )
+            })
+        }
     }
 }
 
