@@ -2150,6 +2150,42 @@ fn ops_close_rejects_lamport_overflow() {
 }
 
 #[test]
+fn ops_close_rejects_self_close() {
+    let data_len = 16usize;
+    let address = [1u8; 32];
+    let initial_data = [
+        0x01, 0xA5, 0x5A, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC,
+        0xDD,
+    ];
+    let mut buf = AccountBuffer::new(data_len);
+    buf.init(
+        address,
+        TEST_OWNER.to_bytes(),
+        1_000_000,
+        data_len as u64,
+        false,
+        true,
+    );
+    buf.write_data(&initial_data);
+
+    let mut src_view = unsafe { buf.view() };
+    let self_view = unsafe { AccountView::new_unchecked(buf.raw()) };
+
+    let account =
+        unsafe { Account::<TestCloseableType>::from_account_view_unchecked_mut(&mut src_view) };
+    let result = account.close(&self_view);
+
+    assert_eq!(result, Err(ProgramError::InvalidArgument));
+    assert_eq!(self_view.address().to_bytes(), address);
+    assert_eq!(self_view.lamports(), 1_000_000);
+    assert_eq!(self_view.data_len(), data_len);
+    assert_eq!(unsafe { self_view.borrow_unchecked() }, initial_data);
+    assert!(self_view.owned_by(&TEST_OWNER));
+    assert!(!self_view.executable());
+    assert!(self_view.is_writable());
+}
+
+#[test]
 fn ops_borrow_unchecked_mut_write_then_read_via_data_ptr() {
     let mut buf = AccountBuffer::new(16);
     buf.init([1u8; 32], [0u8; 32], 100, 16, false, true);
