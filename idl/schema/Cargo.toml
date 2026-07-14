@@ -14,7 +14,6 @@ workspace = true
 [lib]
 name = "quasar_idl_schema"
 path = "src/lib.rs"
-test = false
 doctest = false
 
 [dependencies]

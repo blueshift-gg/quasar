@@ -27,6 +27,15 @@ PUBLISH_PACKAGES := quasar-schema quasar-idl-schema quasar-profile \
 	solana-compiler-builtins quasar-derive quasar-idl quasar-lang \
 	quasar-spl quasar-metadata quasar-cli
 
+# Publishable crates whose ordinary host tests can run without the generated
+# client toolchains. The CLI smoke target is delegated below because it needs
+# pinned Node, Python, Go, Clang, and Caravel dependencies.
+HOST_TEST_PACKAGES := $(filter-out quasar-cli,$(PUBLISH_PACKAGES))
+
+# Host-side tests that consume freshly built SBF artifacts.
+SBF_HOST_TEST_PACKAGES := quasar-vault quasar-escrow quasar-multisig \
+	upstream-vault quasar-test-suite
+
 # Resolve first-release internal dependencies while checking package manifests.
 # These patches are command-local and never enter the published archives.
 PACKAGE_PATCHES := \
@@ -42,6 +51,7 @@ PACKAGE_PATCHES := \
 
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
 	check-runtime-panics check-workspace-invariants build build-sbf test test-bless \
+	test-host-inventory test-host test-sbf-host \
 	bench-cu bench-tracked compare-tracked test-miri test-miri-strict test-all \
 	nightly-version generated-client-smoke kani help-kani check-kani kani-lang \
 	kani-spl kani-metadata msrv-check package-check audit
@@ -197,16 +207,41 @@ build-sbf:
 	@echo "Building test-heap (alloc only, no debug — tests alloc trap)"
 	cargo build-sbf --tools-version $(PLATFORM_TOOLS) --manifest-path tests/programs/test-heap/Cargo.toml --features alloc
 
+# Generates the exact Cargo test-target inventory used by required CI. The
+# checker also maps every tracked #[test] back to an enabled Cargo target and
+# fails on disabled, unassigned, or newly unclassified tests.
+test-host-inventory:
+	@mkdir -p target
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_host_test_inventory.py
+	@python3 scripts/host-test-inventory.py \
+		$(foreach package,$(PUBLISH_PACKAGES),--tested-package $(package)) \
+		$(foreach package,$(SBF_HOST_TEST_PACKAGES),--sbf-package $(package)) \
+		> target/host-test-inventory.json
+	@cat target/host-test-inventory.json
+
+# Runs every ordinary host target in every publishable crate. CLI integration
+# targets are derived from Cargo metadata so a new target cannot silently fall
+# out of this command. generated_clients_smoke remains in its pinned toolchain
+# job and is recorded as delegated in the inventory.
+test-host: test-host-inventory
+	@CARGO_INCREMENTAL=0 cargo test \
+		$(foreach package,$(HOST_TEST_PACKAGES),-p $(package)) \
+		--all-features
+	@CARGO_INCREMENTAL=0 cargo test -p quasar-cli --all-features \
+		$$(python3 scripts/host-test-inventory.py --cli-host-args)
+
+test-sbf-host:
+	@CARGO_INCREMENTAL=0 cargo test \
+		$(foreach package,$(SBF_HOST_TEST_PACKAGES),-p $(package)) \
+		--all-features
+
 # Asserts committed trybuild .stderr goldens (trybuild default mode). A stale
 # golden fails the build — that is the gate. Regenerate with `make test-bless`.
 test:
 	@$(MAKE) build
 	@$(MAKE) build-sbf
-	@CARGO_INCREMENTAL=0 cargo test -p quasar-lang -p quasar-derive -p quasar-spl \
-		-p quasar-metadata \
-		-p quasar-vault -p quasar-escrow -p quasar-multisig -p upstream-vault \
-		-p quasar-test-suite \
-		--all-features
+	@$(MAKE) test-host
+	@$(MAKE) test-sbf-host
 
 # Regenerates trybuild .stderr goldens (TRYBUILD=overwrite). Use only when a
 # diagnostic change is intended; review the regenerated diffs like code before
@@ -214,10 +249,9 @@ test:
 test-bless:
 	@$(MAKE) build
 	@$(MAKE) build-sbf
-	@CARGO_INCREMENTAL=0 TRYBUILD=overwrite cargo test -p quasar-lang -p quasar-derive -p quasar-spl \
-		-p quasar-metadata \
-		-p quasar-vault -p quasar-escrow -p quasar-multisig -p upstream-vault \
-		-p quasar-test-suite \
+	@CARGO_INCREMENTAL=0 TRYBUILD=overwrite cargo test \
+		$(foreach package,$(HOST_TEST_PACKAGES),-p $(package)) \
+		$(foreach package,$(SBF_HOST_TEST_PACKAGES),-p $(package)) \
 		--all-features
 
 generated-client-smoke:
