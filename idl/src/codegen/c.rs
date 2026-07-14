@@ -1,4 +1,5 @@
 use {
+    super::model::{reject_generics, validate_codegen_idl, CodegenResult},
     crate::types::{Idl, IdlCodec, IdlPdaSeed, IdlResolver, IdlType, IdlTypeDef},
     quasar_schema::pascal_to_snake,
     std::{collections::HashMap, fmt::Write},
@@ -8,7 +9,9 @@ use {
 ///
 /// Produces a single header depending on `caravel.h` for Pubkey, AccountMeta,
 /// and Instruction.
-pub fn generate_c_client(idl: &Idl) -> String {
+pub fn generate_c_client(idl: &Idl) -> CodegenResult<String> {
+    validate_codegen_idl(idl)?;
+    reject_generics(idl, "C")?;
     let prefix = idl.metadata.client_name(&idl.name).replace('-', "_");
     let guard = format!("{}_CLIENT_H", prefix.to_ascii_uppercase());
     let mut out = String::new();
@@ -26,7 +29,7 @@ pub fn generate_c_client(idl: &Idl) -> String {
     emit_error_codes(&mut out, &prefix, &idl.errors);
 
     writeln!(out, "#endif /* {guard} */").unwrap();
-    out
+    Ok(out)
 }
 
 fn emit_program_id(out: &mut String, prefix: &str, address: &str) {

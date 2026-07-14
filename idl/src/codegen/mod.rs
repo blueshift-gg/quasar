@@ -134,16 +134,24 @@ mod tests {
         }
     }
 
+    fn idl_with_generic_arg() -> Idl {
+        let mut idl = idl_with_u64_arg_seed();
+        idl.instructions[0].args[0].ty = IdlType::Generic {
+            generic: "T".to_owned(),
+        };
+        idl
+    }
+
     #[test]
     fn go_pda_arg_seed_uses_typed_encoding() {
-        let output = generate_go_client(&idl_with_u64_arg_seed());
+        let output = generate_go_client(&idl_with_u64_arg_seed()).unwrap();
 
         assert!(output.contains("binary.LittleEndian.PutUint64(b, input.Amount)"));
     }
 
     #[test]
     fn c_pda_arg_seed_uses_typed_encoding() {
-        let output = generate_c_client(&idl_with_u64_arg_seed());
+        let output = generate_c_client(&idl_with_u64_arg_seed()).unwrap();
 
         assert!(output.contains("uint8_t arg_seed_0[8];"));
         assert!(output.contains("uint64_t arg_seed_0_value = (uint64_t)args->amount;"));
@@ -152,7 +160,7 @@ mod tests {
 
     #[test]
     fn rust_pda_arg_seed_uses_typed_encoding() {
-        let files = generate_rust_client(&idl_with_u64_arg_seed());
+        let files = generate_rust_client(&idl_with_u64_arg_seed()).unwrap();
         let pda_rs = files
             .iter()
             .find_map(|(path, contents)| (path == "pda.rs").then_some(contents))
@@ -165,15 +173,15 @@ mod tests {
 
     #[test]
     fn python_pda_arg_seed_uses_typed_encoding() {
-        let output = generate_python_client(&idl_with_u64_arg_seed());
+        let output = generate_python_client(&idl_with_u64_arg_seed()).unwrap();
 
         assert!(output.contains("struct.pack(\"<Q\", input.amount)"));
     }
 
     #[test]
     fn typescript_address_codec_is_target_specific() {
-        let web3js = generate_ts_client(&idl_with_pubkey_arg());
-        let kit = generate_ts_client_kit(&idl_with_pubkey_arg());
+        let web3js = generate_ts_client(&idl_with_pubkey_arg()).unwrap();
+        let kit = generate_ts_client_kit(&idl_with_pubkey_arg()).unwrap();
 
         assert!(web3js.contains("function getWeb3jsAddressCodec()"));
         assert!(web3js.contains("[\"authority\", getWeb3jsAddressCodec()]"));
@@ -182,5 +190,18 @@ mod tests {
         assert!(kit.contains("getAddressCodec"));
         assert!(kit.contains("[\"authority\", getAddressCodec()]"));
         assert!(!kit.contains("getWeb3jsAddressCodec()"));
+    }
+
+    #[test]
+    fn unsupported_generics_are_errors_not_backend_panics() {
+        let idl = idl_with_generic_arg();
+
+        let c = std::panic::catch_unwind(|| generate_c_client(&idl));
+        let go = std::panic::catch_unwind(|| generate_go_client(&idl));
+        let python = std::panic::catch_unwind(|| generate_python_client(&idl));
+
+        assert!(c.expect("C backend must not panic").is_err());
+        assert!(go.expect("Go backend must not panic").is_err());
+        assert!(python.expect("Python backend must not panic").is_err());
     }
 }

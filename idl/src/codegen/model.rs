@@ -1,10 +1,124 @@
 use {
     crate::types::{
-        AccountFlag, Idl, IdlArg, IdlCodec, IdlInstruction, IdlLayout, IdlPdaSeed, IdlResolver,
-        IdlType,
+        AccountFlag, Idl, IdlArg, IdlCodec, IdlGenericArg, IdlInstruction, IdlLayout, IdlPdaSeed,
+        IdlResolver, IdlType,
     },
     quasar_schema::{camel_to_pascal, camel_to_snake, snake_to_pascal},
+    std::{
+        error::Error,
+        ffi::OsStr,
+        fmt,
+        ops::Deref,
+        path::{Component, Path},
+    },
 };
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CodegenError(String);
+
+impl CodegenError {
+    fn new(message: impl Into<String>) -> Self {
+        Self(message.into())
+    }
+}
+
+impl fmt::Display for CodegenError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl Error for CodegenError {}
+
+pub type CodegenResult<T> = Result<T, CodegenError>;
+
+/// A portable, validated component used wherever generated output selects a
+/// directory or filename. Construction is intentionally private so callers
+/// cannot bypass the path and identifier checks performed by
+/// [`ResolvedIdentity::from_idl`].
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PathComponent(String);
+
+impl PathComponent {
+    fn new(context: &str, value: String, allow_hyphen: bool) -> CodegenResult<Self> {
+        if value.is_empty() {
+            return Err(CodegenError::new(format!("{context} must not be empty")));
+        }
+        if value.contains(['/', '\\'])
+            || Path::new(&value).is_absolute()
+            || !matches!(
+                Path::new(&value)
+                    .components()
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+                [Component::Normal(_)]
+            )
+        {
+            return Err(CodegenError::new(format!(
+                "{context} `{value}` must be one path component (absolute paths, separators, and \
+                 traversal are not allowed)"
+            )));
+        }
+
+        let mut chars = value.chars();
+        let first = chars.next().expect("non-empty value checked above");
+        let first_is_valid = first.is_ascii_lowercase();
+        let rest_is_valid = chars.all(|ch| {
+            ch.is_ascii_lowercase()
+                || ch.is_ascii_digit()
+                || ch == '_'
+                || (allow_hyphen && ch == '-')
+        });
+        if !first_is_valid || !rest_is_valid {
+            let allowed = if allow_hyphen {
+                "lowercase ASCII letters, digits, `_`, and `-`"
+            } else {
+                "lowercase ASCII letters, digits, and `_`"
+            };
+            return Err(CodegenError::new(format!(
+                "{context} `{value}` is not a portable language identifier; use {allowed}, \
+                 starting with a lowercase letter"
+            )));
+        }
+
+        let upper = value.to_ascii_uppercase();
+        let windows_reserved = matches!(upper.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CLOCK$")
+            || (upper.len() == 4
+                && (upper.starts_with("COM") || upper.starts_with("LPT"))
+                && matches!(upper.as_bytes()[3], b'1'..=b'9'));
+        if windows_reserved {
+            return Err(CodegenError::new(format!(
+                "{context} `{value}` is a reserved filename"
+            )));
+        }
+
+        Ok(Self(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Deref for PathComponent {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
+impl AsRef<OsStr> for PathComponent {
+    fn as_ref(&self) -> &OsStr {
+        OsStr::new(self.as_str())
+    }
+}
+
+impl fmt::Display for PathComponent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Client IR: the lowered wire model
@@ -327,39 +441,98 @@ fn arg_is_tail(arg: &IdlArg) -> bool {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolvedIdentity {
-    pub program_name: String,
-    pub crate_name: String,
-    pub client_name: String,
-    pub typescript_dir: String,
-    pub typescript_package: String,
-    pub python_package: String,
-    pub go_package: String,
-    pub rust_client_crate: String,
+    pub program_name: PathComponent,
+    pub crate_name: Option<PathComponent>,
+    pub client_name: PathComponent,
+    pub typescript_dir: PathComponent,
+    pub typescript_package: PathComponent,
+    pub python_package: PathComponent,
+    pub go_package: PathComponent,
+    pub rust_client_crate: PathComponent,
 }
 
 impl ResolvedIdentity {
-    pub fn from_idl(idl: &Idl) -> Self {
-        let program_name = idl.name.clone();
-        let crate_name = idl.metadata.crate_name.clone().unwrap_or_default();
-        let client_name = if crate_name.is_empty() {
-            program_name.clone()
-        } else {
-            crate_name.clone()
-        };
-        let go_package = client_name.replace('-', "_");
+    pub fn from_idl(idl: &Idl) -> CodegenResult<Self> {
+        let program_name = PathComponent::new("IDL program name", idl.name.clone(), false)?;
+        let crate_name = idl
+            .metadata
+            .crate_name
+            .as_ref()
+            .map(|name| PathComponent::new("IDL metadata.crateName", name.clone(), true))
+            .transpose()?;
+        let client_name = crate_name.clone().unwrap_or_else(|| program_name.clone());
+        let language_package = client_name.as_str().replace('-', "_");
+        let python_package =
+            PathComponent::new("generated Python package", language_package.clone(), false)?;
+        let go_package = PathComponent::new("generated Go package", language_package, false)?;
 
-        Self {
+        validate_package_keyword("Python", python_package.as_str(), PYTHON_KEYWORDS)?;
+        validate_package_keyword("Go", go_package.as_str(), GO_KEYWORDS)?;
+
+        Ok(Self {
             program_name,
             crate_name,
             typescript_dir: client_name.clone(),
-            typescript_package: format!("{client_name}-client"),
-            python_package: client_name.clone(),
-            go_package: go_package.clone(),
-            rust_client_crate: format!("{client_name}-client"),
+            typescript_package: PathComponent::new(
+                "generated TypeScript package",
+                format!("{client_name}-client"),
+                true,
+            )?,
+            python_package,
+            go_package,
+            rust_client_crate: PathComponent::new(
+                "generated Rust client crate",
+                format!("{client_name}-client"),
+                true,
+            )?,
             client_name,
-        }
+        })
     }
 }
+
+fn validate_package_keyword(language: &str, value: &str, keywords: &[&str]) -> CodegenResult<()> {
+    if keywords.contains(&value) {
+        Err(CodegenError::new(format!(
+            "generated {language} package `{value}` is a reserved {language} identifier"
+        )))
+    } else {
+        Ok(())
+    }
+}
+
+const PYTHON_KEYWORDS: &[&str] = &[
+    "and", "as", "assert", "async", "await", "break", "class", "continue", "def", "del", "elif",
+    "else", "except", "finally", "for", "from", "global", "if", "import", "in", "is", "lambda",
+    "nonlocal", "not", "or", "pass", "raise", "return", "try", "while", "with", "yield",
+];
+
+const GO_KEYWORDS: &[&str] = &[
+    "break",
+    "default",
+    "func",
+    "interface",
+    "select",
+    "case",
+    "defer",
+    "go",
+    "map",
+    "struct",
+    "chan",
+    "else",
+    "goto",
+    "package",
+    "switch",
+    "const",
+    "fallthrough",
+    "if",
+    "range",
+    "type",
+    "continue",
+    "for",
+    "import",
+    "return",
+    "var",
+];
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ProgramFeatures {
@@ -453,12 +626,190 @@ pub struct ProgramModel<'a> {
 }
 
 impl<'a> ProgramModel<'a> {
-    pub fn new(idl: &'a Idl) -> Self {
-        Self {
+    pub fn try_new(idl: &'a Idl) -> CodegenResult<Self> {
+        let identity = ResolvedIdentity::from_idl(idl)?;
+        validate_codegen_structure(idl)?;
+        Ok(Self {
             idl,
-            identity: ResolvedIdentity::from_idl(idl),
+            identity,
             features: ProgramFeatures::from_idl(idl),
+        })
+    }
+}
+
+/// Validate every externally supplied value that code generators lower into a
+/// path, language identifier, or wire type before a backend starts rendering.
+pub fn validate_codegen_idl(idl: &Idl) -> CodegenResult<()> {
+    ResolvedIdentity::from_idl(idl)?;
+    validate_codegen_structure(idl)
+}
+
+fn validate_codegen_structure(idl: &Idl) -> CodegenResult<()> {
+    for ix in &idl.instructions {
+        validate_identifier(&format!("instruction `{}`", ix.name), &ix.name)?;
+        for arg in &ix.args {
+            validate_identifier(
+                &format!("instruction `{}` arg `{}`", ix.name, arg.name),
+                &arg.name,
+            )?;
+            validate_type_identifiers(
+                &format!("instruction `{}` arg `{}`", ix.name, arg.name),
+                &arg.ty,
+            )?;
         }
+        InstructionPlan::from_instruction(ix).map_err(CodegenError::new)?;
+        for account in &ix.accounts {
+            validate_identifier(
+                &format!("instruction `{}` account `{}`", ix.name, account.name),
+                &account.name,
+            )?;
+        }
+    }
+    for account in &idl.accounts {
+        validate_identifier(&format!("account `{}`", account.name), &account.name)?;
+    }
+    for event in &idl.events {
+        validate_identifier(&format!("event `{}`", event.name), &event.name)?;
+        if let Some(ty) = &event.ty {
+            validate_type_identifiers(&format!("event `{}` type", event.name), ty)?;
+            WireType::resolve(ty, &None)
+                .map_err(|e| CodegenError::new(format!("event `{}` type: {e}", event.name)))?;
+        }
+    }
+    for type_def in &idl.types {
+        validate_identifier(&format!("type `{}`", type_def.name), &type_def.name)?;
+        for field in &type_def.fields {
+            validate_identifier(
+                &format!("type `{}` field `{}`", type_def.name, field.name),
+                &field.name,
+            )?;
+            validate_type_identifiers(
+                &format!("type `{}` field `{}`", type_def.name, field.name),
+                &field.ty,
+            )?;
+            WireType::resolve(&field.ty, &field.codec).map_err(|e| {
+                CodegenError::new(format!(
+                    "type `{}` field `{}`: {e}",
+                    type_def.name, field.name
+                ))
+            })?;
+        }
+        for variant in &type_def.variants {
+            validate_identifier(
+                &format!("type `{}` variant `{}`", type_def.name, variant.name),
+                &variant.name,
+            )?;
+            for field in &variant.fields {
+                validate_identifier(
+                    &format!(
+                        "type `{}` variant `{}` field `{}`",
+                        type_def.name, variant.name, field.name
+                    ),
+                    &field.name,
+                )?;
+                validate_type_identifiers(
+                    &format!(
+                        "type `{}` variant `{}` field `{}`",
+                        type_def.name, variant.name, field.name
+                    ),
+                    &field.ty,
+                )?;
+                WireType::resolve(&field.ty, &field.codec).map_err(|e| {
+                    CodegenError::new(format!(
+                        "type `{}` variant `{}` field `{}`: {e}",
+                        type_def.name, variant.name, field.name
+                    ))
+                })?;
+            }
+        }
+        if let Some(alias) = &type_def.alias {
+            validate_type_identifiers(&format!("type `{}` alias", type_def.name), alias)?;
+            WireType::resolve(alias, &type_def.codec)
+                .map_err(|e| CodegenError::new(format!("type `{}` alias: {e}", type_def.name)))?;
+        }
+    }
+    for error in &idl.errors {
+        validate_identifier(&format!("error `{}`", error.name), &error.name)?;
+    }
+
+    Ok(())
+}
+
+fn validate_identifier(context: &str, value: &str) -> CodegenResult<()> {
+    if value == "_" {
+        return Err(CodegenError::new(format!(
+            "{context} uses the reserved blank identifier `_`"
+        )));
+    }
+    let mut chars = value.chars();
+    let valid = chars
+        .next()
+        .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_')
+        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_');
+    if !valid {
+        return Err(CodegenError::new(format!(
+            "{context} is not a portable language identifier; use ASCII letters, digits, and `_`, \
+             starting with a letter or `_`"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_type_identifiers(context: &str, ty: &IdlType) -> CodegenResult<()> {
+    match ty {
+        IdlType::Option { option } => validate_type_identifiers(context, option),
+        IdlType::Vec { vec } => validate_type_identifiers(context, vec),
+        IdlType::Array { array } => validate_type_identifiers(context, &array.0),
+        IdlType::Defined { defined } => {
+            validate_identifier(context, &defined.name)?;
+            for generic in &defined.generics {
+                if let IdlGenericArg::Type { r#type } = generic {
+                    validate_type_identifiers(context, r#type)?;
+                }
+            }
+            Ok(())
+        }
+        IdlType::Generic { generic } => validate_identifier(context, generic),
+        IdlType::Primitive(_) => Ok(()),
+    }
+}
+
+pub fn reject_generics(idl: &Idl, language: &str) -> CodegenResult<()> {
+    let mut generic = None;
+    let mut visit = |ty: &IdlType| {
+        if let IdlType::Generic { generic: name } = ty {
+            generic.get_or_insert_with(|| name.clone());
+        }
+    };
+    for ix in &idl.instructions {
+        for arg in &ix.args {
+            visit_type(&arg.ty, &mut visit);
+        }
+    }
+    for type_def in &idl.types {
+        for field in &type_def.fields {
+            visit_type(&field.ty, &mut visit);
+        }
+        for variant in &type_def.variants {
+            for field in &variant.fields {
+                visit_type(&field.ty, &mut visit);
+            }
+        }
+        if let Some(alias) = &type_def.alias {
+            visit_type(alias, &mut visit);
+        }
+    }
+    for event in &idl.events {
+        if let Some(ty) = &event.ty {
+            visit_type(ty, &mut visit);
+        }
+    }
+    if let Some(name) = generic {
+        Err(CodegenError::new(format!(
+            "{language} client generation does not support generic type `{name}`"
+        )))
+    } else {
+        Ok(())
     }
 }
 
@@ -553,24 +904,54 @@ mod tests {
     #[test]
     fn resolved_identity_prefers_crate_name_when_present() {
         let idl = idl_with_names("multisig", "quasar-multisig");
-        let identity = ResolvedIdentity::from_idl(&idl);
+        let identity = ResolvedIdentity::from_idl(&idl).unwrap();
 
-        assert_eq!(identity.client_name, "quasar-multisig");
-        assert_eq!(identity.typescript_dir, "quasar-multisig");
-        assert_eq!(identity.typescript_package, "quasar-multisig-client");
-        assert_eq!(identity.python_package, "quasar-multisig");
-        assert_eq!(identity.go_package, "quasar_multisig");
-        assert_eq!(identity.rust_client_crate, "quasar-multisig-client");
+        assert_eq!(identity.client_name.as_str(), "quasar-multisig");
+        assert_eq!(identity.typescript_dir.as_str(), "quasar-multisig");
+        assert_eq!(
+            identity.typescript_package.as_str(),
+            "quasar-multisig-client"
+        );
+        assert_eq!(identity.python_package.as_str(), "quasar_multisig");
+        assert_eq!(identity.go_package.as_str(), "quasar_multisig");
+        assert_eq!(
+            identity.rust_client_crate.as_str(),
+            "quasar-multisig-client"
+        );
     }
 
     #[test]
     fn resolved_identity_falls_back_to_program_name_when_crate_name_missing() {
         let idl = idl_with_names("vault", "");
-        let identity = ResolvedIdentity::from_idl(&idl);
+        let identity = ResolvedIdentity::from_idl(&idl).unwrap();
 
-        assert_eq!(identity.client_name, "vault");
-        assert_eq!(identity.typescript_package, "vault-client");
-        assert_eq!(identity.go_package, "vault");
+        assert_eq!(identity.client_name.as_str(), "vault");
+        assert_eq!(identity.typescript_package.as_str(), "vault-client");
+        assert_eq!(identity.go_package.as_str(), "vault");
+    }
+
+    #[test]
+    fn resolved_identity_rejects_unsafe_path_components() {
+        for name in ["", "../vault", "/tmp/vault", "vault/client", "con"] {
+            let idl = idl_with_names(name, "");
+            let error = ResolvedIdentity::from_idl(&idl).unwrap_err();
+            assert!(
+                error.to_string().contains("IDL program name"),
+                "unexpected error for {name:?}: {error}"
+            );
+        }
+
+        let mut idl = idl_with_names("vault", "");
+        idl.metadata.crate_name = Some(String::new());
+        let error = ResolvedIdentity::from_idl(&idl).unwrap_err();
+        assert!(error.to_string().contains("crateName must not be empty"));
+    }
+
+    #[test]
+    fn resolved_identity_rejects_invalid_language_packages() {
+        let idl = idl_with_names("vault", "package");
+        let error = ResolvedIdentity::from_idl(&idl).unwrap_err();
+        assert!(error.to_string().contains("reserved Go identifier"));
     }
 
     #[test]

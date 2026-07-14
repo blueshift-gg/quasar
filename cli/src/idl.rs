@@ -2,6 +2,7 @@ use {
     crate::{
         config::resolve_client_path,
         error::{CliError, CliResult},
+        output::{commit, PreparedOutput},
         IdlCommand,
     },
     quasar_idl::{
@@ -102,42 +103,38 @@ pub fn build(crate_path: &Path) -> Result<Idl, CliError> {
 /// Generate IDL JSON and Rust client from the program crate.
 fn generate_idl(crate_path: &Path, clients_path: &Path) -> Result<Idl, CliError> {
     let idl = build(crate_path)?;
+    commit(prepare_idl_outputs(&idl, clients_path)?)?;
+    Ok(idl)
+}
 
-    // Generate client code from the IDL
-    let model = ProgramModel::new(&idl);
-    let client_code = codegen::rust::generate_client(&idl);
+fn prepare_idl_outputs(idl: &Idl, clients_path: &Path) -> Result<Vec<PreparedOutput>, CliError> {
+    let model = ProgramModel::try_new(idl).map_err(|error| {
+        CliError::message(format!("IDL is not safe for client generation: {error}"))
+    })?;
+    let client_code = codegen::rust::generate_client(idl)
+        .map_err(|error| CliError::message(format!("Rust codegen: {error}")))?;
     let client_cargo_toml = codegen::rust::generate_cargo_toml_for_program(&model);
 
-    // Write IDL JSON
     let idl_dir = PathBuf::from("target").join("idl");
-    std::fs::create_dir_all(&idl_dir)?;
-    let idl_path = idl_dir.join(format!("{}.json", idl.name));
+    let idl_path = idl_dir.join(format!("{}.json", model.identity.program_name));
     // Single canonical writer: go through `canonical_json_pretty` so the file on
     // disk and the hashed bytes come from the same serializer.
-    let json = quasar_idl::types::canonical_json_pretty(&idl)
+    let json = quasar_idl::types::canonical_json_pretty(idl)
         .map_err(|e| CliError::json_serialize("IDL JSON", e))?;
-    std::fs::write(&idl_path, &json)?;
 
-    // Write Rust client
     let client_dir = clients_path
         .join("rust")
-        .join(&model.identity.rust_client_crate);
-    std::fs::create_dir_all(&client_dir)?;
-    std::fs::write(client_dir.join("Cargo.toml"), &client_cargo_toml)?;
+        .join(model.identity.rust_client_crate.as_str());
+    let src_files = client_code
+        .into_iter()
+        .map(|(path, contents)| (PathBuf::from(path), contents.into_bytes()))
+        .collect();
 
-    let src_dir = client_dir.join("src");
-    if src_dir.exists() {
-        std::fs::remove_dir_all(&src_dir)?;
-    }
-    for (path, content) in &client_code {
-        let file_path = src_dir.join(path);
-        if let Some(parent) = file_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&file_path, content)?;
-    }
-
-    Ok(idl)
+    Ok(vec![
+        PreparedOutput::file(idl_path, json),
+        PreparedOutput::file(client_dir.join("Cargo.toml"), client_cargo_toml),
+        PreparedOutput::directory(client_dir.join("src"), src_files),
+    ])
 }
 
 /// Called by `quasar idl <path>` (generate) or `quasar idl verify <idl>`.
@@ -222,8 +219,14 @@ pub fn generate(
     languages: &[&str],
     clients_path: &Path,
 ) -> Result<Idl, CliError> {
-    let idl = generate_idl(crate_path, clients_path)?;
-    crate::client::generate_clients(&idl, languages, clients_path)?;
+    let idl = build(crate_path)?;
+    let mut outputs = prepare_idl_outputs(&idl, clients_path)?;
+    outputs.extend(crate::client::prepare_clients(
+        &idl,
+        languages,
+        clients_path,
+    )?);
+    commit(outputs)?;
     Ok(idl)
 }
 

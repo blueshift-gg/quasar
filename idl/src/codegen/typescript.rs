@@ -1,5 +1,5 @@
 use {
-    super::model::ProgramModel,
+    super::model::{CodegenResult, ProgramModel},
     crate::types::{
         AccountFlag, Idl, IdlAccountDef, IdlArg, IdlCodec, IdlFieldDef, IdlInstruction, IdlPdaSeed,
         IdlResolver, IdlType, ScalarRepr,
@@ -52,24 +52,24 @@ impl<'a> InlinePdaTarget<'a> {
 }
 
 /// Generate a TypeScript client targeting @solana/web3.js.
-pub fn generate_ts_client(idl: &Idl) -> String {
+pub fn generate_ts_client(idl: &Idl) -> CodegenResult<String> {
     generate_ts(idl, TsTarget::Web3js)
 }
 
 /// Generate a TypeScript client targeting @solana/kit.
-pub fn generate_ts_client_kit(idl: &Idl) -> String {
+pub fn generate_ts_client_kit(idl: &Idl) -> CodegenResult<String> {
     generate_ts(idl, TsTarget::Kit)
 }
 
-pub fn generate_package_json(idl: &Idl) -> String {
-    let model = ProgramModel::new(idl);
+pub fn generate_package_json(idl: &Idl) -> CodegenResult<String> {
+    let model = ProgramModel::try_new(idl)?;
     let codecs_dep = if model.features.needs_codecs {
         "\n    \"@solana/codecs\": \"^6.2.0\","
     } else {
         ""
     };
 
-    format!(
+    Ok(format!(
         r#"{{
   "name": "{package_name}",
   "version": "{version}",
@@ -88,11 +88,11 @@ pub fn generate_package_json(idl: &Idl) -> String {
         solana_kit_version = client_dependency_version(TsTarget::Kit),
         solana_web3js_version = client_dependency_version(TsTarget::Web3js),
         version = idl.version,
-    )
+    ))
 }
 
-fn generate_ts(idl: &Idl, target: TsTarget) -> String {
-    let model = ProgramModel::new(idl);
+fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
+    let model = ProgramModel::try_new(idl)?;
     let mut out = String::new();
     let pdas = collect_pdas(idl);
     let exportable_pda_helpers = pda_helper_lookup(&pdas);
@@ -623,7 +623,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> String {
         out.push_str("};\n\n");
     }
 
-    out
+    Ok(out)
 }
 
 fn emit_kit_program_plugin(
