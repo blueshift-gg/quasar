@@ -254,8 +254,21 @@ jobs:
         run: make check-runtime-panics
 
   package:
-    name: Package Manifests
-    runs-on: ubuntu-24.04
+    name: Package Graph (${{ matrix.host }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - host: Ubuntu 24.04 x86-64
+            runner: ubuntu-24.04
+            triple: x86_64-unknown-linux-gnu
+          - host: macOS 15 Apple Silicon
+            runner: macos-15
+            triple: aarch64-apple-darwin
+          - host: macOS 15 Intel
+            runner: macos-15-intel
+            triple: x86_64-apple-darwin
     env:
       RUSTUP_TOOLCHAIN: 1.89.0
     steps:
@@ -263,6 +276,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.PROGRAM_MSRV }}
+      - name: Verify host triple
+        run: |
+          actual="$(rustc -vV | sed -n 's/^host: //p')"
+          if [ "$actual" != "${{ matrix.triple }}" ]; then
+            echo "unexpected Rust host triple: $actual" >&2
+            echo "expected: ${{ matrix.triple }}" >&2
+            exit 1
+          fi
       - name: Verify declared MSRV
         run: make msrv-check
       - name: Print publication toolchain
