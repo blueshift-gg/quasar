@@ -17,9 +17,7 @@ env:
   CARGO_TERM_COLOR: always
 
 permissions:
-  contents: write
-  checks: write
-  issues: write
+  contents: read
 
 jobs:
   # ── Gate: full CI must pass before any release action ──
@@ -87,6 +85,8 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       RUSTUP_TOOLCHAIN: 1.89.0
+    # This is the sole job that consumes the v0.1.0 bootstrap token. #330
+    # configures its environment protection; #287 replaces it with OIDC.
     environment: crates-io
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -187,6 +187,9 @@ jobs:
     name: GitHub Release
     needs: publish
     runs-on: ubuntu-24.04
+    permissions:
+      # Required only for `gh release create` below.
+      contents: write
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
