@@ -5,7 +5,7 @@ use {
         IdlResolver, IdlType,
     },
     quasar_schema::{
-        camel_to_pascal, camel_to_snake, pascal_to_snake, snake_to_pascal,
+        camel_to_snake, pascal_to_snake, snake_to_pascal,
         to_screaming_snake as pascal_to_screaming_snake,
     },
     std::{
@@ -244,7 +244,7 @@ fn emit_instructions(
     // ProgramInstruction enum
     mod_rs.push_str("pub enum ProgramInstruction {\n");
     for ix in &idl.instructions {
-        let pascal = camel_to_pascal(&ix.name);
+        let pascal = snake_to_pascal(&ix.name);
         if ix.args.is_empty() {
             writeln!(mod_rs, "    {},", pascal).expect("write to String");
         } else {
@@ -294,7 +294,7 @@ fn emit_instructions(
     }
 
     for ix in &idl.instructions {
-        let pascal = camel_to_pascal(&ix.name);
+        let pascal = snake_to_pascal(&ix.name);
         let disc_str = super::format_disc_decimal(&ix.discriminator);
 
         if disc_len == 1 {
@@ -571,7 +571,7 @@ fn emit_single_instruction(
 ) -> String {
     let mut out = String::new();
 
-    let struct_name = camel_to_pascal(&ix.name);
+    let struct_name = snake_to_pascal(&ix.name);
 
     let has_remaining = ix.remaining_accounts.is_some();
     if has_remaining {

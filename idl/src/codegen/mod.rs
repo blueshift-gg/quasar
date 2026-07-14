@@ -106,6 +106,12 @@ mod tests {
         }
     }
 
+    fn idl_with_snake_case_instruction() -> Idl {
+        let mut idl = idl_with_u64_arg_seed();
+        idl.instructions[0].name = "execute_transfer".to_owned();
+        idl
+    }
+
     fn idl_with_pubkey_arg() -> Idl {
         Idl {
             spec: "quasar-idl/1.0.0".to_owned(),
@@ -200,6 +206,27 @@ mod tests {
         assert!(pda_rs.contains("pub fn find_vault_address(amount: u64, program_id: &Address)"));
         assert!(pda_rs.contains("let amount_seed = amount.to_le_bytes();"));
         assert!(pda_rs.contains("Address::find_program_address(&[amount_seed.as_ref()]"));
+    }
+
+    #[test]
+    fn rust_instruction_symbols_convert_snake_case_to_pascal_case() {
+        let files = generate_rust_client(&idl_with_snake_case_instruction()).unwrap();
+        let mod_rs = files
+            .iter()
+            .find_map(|(path, contents)| (path == "instructions/mod.rs").then_some(contents))
+            .expect("instructions/mod.rs generated");
+        let instruction_rs = files
+            .iter()
+            .find_map(|(path, contents)| {
+                (path == "instructions/execute_transfer.rs").then_some(contents)
+            })
+            .expect("execute_transfer.rs generated");
+
+        assert!(mod_rs.contains("ExecuteTransfer { amount: u64 }"));
+        assert!(mod_rs.contains("ProgramInstruction::ExecuteTransfer { amount }"));
+        assert!(instruction_rs.contains("pub struct ExecuteTransferInstruction"));
+        assert!(!mod_rs.contains("Execute_transfer"));
+        assert!(!instruction_rs.contains("Execute_transfer"));
     }
 
     #[test]
