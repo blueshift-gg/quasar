@@ -1,0 +1,72 @@
+{
+  "spec": "quasar-idl/1.0.0",
+  "name": "external-fixed",
+  "version": "0.1.0",
+  "address": "11111111111111111111111111111111",
+  "instructions": [
+    {
+      "name": "write",
+      "discriminator": [9],
+      "accounts": [
+        {
+          "name": "state",
+          "writable": true,
+          "signer": false,
+          "resolver": { "kind": "input" }
+        }
+      ],
+      "args": [
+        { "name": "values", "type": { "array": ["u16", 2] } },
+        {
+          "name": "records",
+          "type": {
+            "array": [{ "defined": { "name": "Record" } }, 2]
+          }
+        },
+        { "name": "owners", "type": { "array": ["pubkey", 2] } }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "ForeignState",
+      "discriminator": [3, 4],
+      "space": { "discriminator": 2, "min": 72, "max": null }
+    }
+  ],
+  "types": [
+    {
+      "name": "Record",
+      "kind": "struct",
+      "fields": [
+        { "name": "amount", "type": "u64" },
+        { "name": "active", "type": "bool" }
+      ],
+      "layout": { "kind": "fixed", "fields": ["amount", "active"] }
+    },
+    {
+      "name": "ForeignState",
+      "kind": "struct",
+      "fields": [
+        { "name": "authority", "type": "pubkey" },
+        { "name": "counts", "type": { "array": ["u32", 3] } },
+        {
+          "name": "records",
+          "type": {
+            "array": [{ "defined": { "name": "Record" } }, 2]
+          }
+        },
+        {
+          "name": "matrix",
+          "type": {
+            "array": [{ "array": ["u16", 2] }, 2]
+          }
+        }
+      ],
+      "layout": {
+        "kind": "fixed",
+        "fields": ["authority", "counts", "records", "matrix"]
+      }
+    }
+  ]
+}

@@ -7,12 +7,15 @@
 //! Uses canonical schema types from `quasar_idl_schema`: the
 //! `quasar-idl/1.0.0` contract.
 
+mod readers;
+
 use {
     crate::helpers::pascal_to_snake,
     proc_macro::TokenStream,
     proc_macro2::{Ident, Span, TokenStream as TokenStream2},
     quasar_idl_schema::{
-        AccountFlag, Idl, IdlArg, IdlFieldDef, IdlInstruction, IdlType, IdlTypeDef, IdlTypeDefKind,
+        AccountFlag, Idl, IdlArg, IdlFieldDef, IdlInstruction, IdlLayout, IdlType, IdlTypeDef,
+        IdlTypeDefKind,
     },
     quote::{format_ident, quote},
     std::collections::{HashMap, HashSet},
@@ -77,6 +80,23 @@ fn build_type_sizes(types: &[IdlTypeDef]) -> Result<HashMap<String, usize>, Stri
                 td.name, td.kind
             ));
         }
+        if matches!(td.layout, Some(IdlLayout::Compact { .. })) {
+            return Err(format!(
+                "type '{}' uses a dynamic compact layout; `declare_program!` only supports \
+                 fixed-layout CPI arguments and account readers",
+                td.name
+            ));
+        }
+        if let Some(IdlLayout::Fixed { fields }) = &td.layout {
+            let declared: Vec<&str> = td.fields.iter().map(|field| field.name.as_str()).collect();
+            let layout: Vec<&str> = fields.iter().map(String::as_str).collect();
+            if declared != layout {
+                return Err(format!(
+                    "type '{}' fixed layout fields do not match its ordered type definition",
+                    td.name
+                ));
+            }
+        }
     }
 
     let mut sizes: HashMap<String, usize> = HashMap::new();
@@ -105,7 +125,8 @@ fn resolve_size<'a>(
         .ok_or_else(|| format!("undefined type '{name}'"))?;
     let mut total: usize = 0;
     for field in *fields {
-        let field_size = field_byte_size(&field.ty, type_map, sizes, resolving)?;
+        let field_size = field_byte_size(&field.ty, type_map, sizes, resolving)
+            .map_err(|message| format!("type '{name}', field '{}': {message}", field.name))?;
         total = total
             .checked_add(field_size)
             .ok_or_else(|| format!("type '{name}' byte size overflows usize"))?;
@@ -130,7 +151,12 @@ fn field_byte_size<'a>(
         IdlType::Vec { .. } => {
             Err("dynamic vec not supported in CPI: only fixed-size types allowed".into())
         }
-        IdlType::Array { .. } => Err("fixed array not yet supported in CPI".into()),
+        IdlType::Array { array } => {
+            let element = field_byte_size(&array.0, type_map, sizes, resolving)?;
+            element
+                .checked_mul(array.1)
+                .ok_or_else(|| "fixed array byte size overflows usize".to_string())
+        }
         IdlType::Generic { .. } => Err("generic types not supported in CPI".into()),
     }
 }
@@ -206,7 +232,16 @@ fn map_idl_type(ty: &IdlType, type_sizes: &HashMap<String, usize>) -> Result<Typ
         IdlType::Vec { .. } => {
             Err("dynamic vec not supported in CPI: only fixed-size types allowed".into())
         }
-        IdlType::Array { .. } => Err("fixed array not yet supported in CPI".into()),
+        IdlType::Array { array } => {
+            let inner = map_idl_type(&array.0, type_sizes)?;
+            let element = inner.field_type;
+            let len = array.1;
+            let array_type = quote! { [#element; #len] };
+            Ok(TypeInfo {
+                param_type: array_type.clone(),
+                field_type: array_type,
+            })
+        }
         IdlType::Generic { .. } => Err("generic types not supported in CPI".into()),
     }
 }
@@ -308,11 +343,14 @@ fn emit_field_write(
                 emit_field_write(stmts, offset, &sub_access, &sub_field.ty, idl_types)?;
             }
         }
-        IdlType::Option { .. }
-        | IdlType::Vec { .. }
-        | IdlType::Array { .. }
-        | IdlType::Generic { .. } => {
-            return Err("dynamic types not supported in CPI".into());
+        IdlType::Array { array } => {
+            for index in 0..array.1 {
+                let element_access = quote! { #access[#index] };
+                emit_field_write(stmts, offset, &element_access, &array.0, idl_types)?;
+            }
+        }
+        IdlType::Option { .. } | IdlType::Vec { .. } | IdlType::Generic { .. } => {
+            return Err("dynamic or generic types not supported in CPI".into());
         }
     }
     Ok(())
@@ -354,7 +392,7 @@ fn emit_struct_defs(
             .collect::<Result<Vec<_>, String>>()?;
 
         defs.push(quote! {
-            #[derive(Clone, Copy)]
+            #[derive(Clone, Copy, Debug, PartialEq)]
             pub struct #name {
                 #(#fields,)*
             }
@@ -456,11 +494,22 @@ pub(crate) fn declare_program_inner(input: TokenStream2) -> TokenStream2 {
     // Instruction arg types are validated once, below, where `arg_params` calls
     // `map_idl_type` with the identical "in instruction '..', arg '..'" message.
 
-    let referenced = collect_referenced_types(&idl.instructions, &idl.types);
+    let mut referenced = collect_referenced_types(&idl.instructions, &idl.types);
+    if let Err(message) =
+        readers::collect_account_type_refs(&idl.accounts, &idl.types, &mut referenced)
+    {
+        return syn::Error::new(Span::call_site(), message).to_compile_error();
+    }
     let struct_defs = match emit_struct_defs(&idl.types, &referenced, &type_sizes) {
         Ok(defs) => defs,
         Err(msg) => {
             return syn::Error::new(Span::call_site(), msg).to_compile_error();
+        }
+    };
+    let account_readers = match readers::emit(&idl.accounts, &idl.types, &type_sizes) {
+        Ok(readers) => readers,
+        Err(message) => {
+            return syn::Error::new(Span::call_site(), message).to_compile_error();
         }
     };
 
@@ -556,7 +605,7 @@ pub(crate) fn declare_program_inner(input: TokenStream2) -> TokenStream2 {
 
         let method_acct_conversions: Vec<TokenStream2> = acct_idents
             .iter()
-            .map(|name| quote! { #name.to_account_view() })
+            .map(|name| quote! { #krate::traits::AsAccountView::to_account_view(#name) })
             .collect();
 
         let arg_names: Vec<Ident> = match ix
@@ -577,7 +626,7 @@ pub(crate) fn declare_program_inner(input: TokenStream2) -> TokenStream2 {
                 #(#arg_params,)*
             ) -> #krate::cpi::CpiCall<'a, #acct_count, #data_size> {
                 #fn_name(
-                    self.to_account_view(),
+                    #krate::traits::AsAccountView::to_account_view(self),
                     #(#method_acct_conversions,)*
                     #(#arg_names,)*
                 )
@@ -599,6 +648,8 @@ pub(crate) fn declare_program_inner(input: TokenStream2) -> TokenStream2 {
             }
 
             #(#struct_defs)*
+
+            #(#account_readers)*
 
             #(#free_functions)*
 
@@ -664,5 +715,60 @@ mod tests {
         assert!(map_idl_type(&v, &sizes).is_err());
         // Supported fixed primitive still maps cleanly.
         assert!(map_idl_type(&IdlType::Primitive("u64".to_owned()), &sizes).is_ok());
+    }
+
+    #[test]
+    fn fixed_array_sizes_are_recursive_and_checked() {
+        let type_def: IdlTypeDef = serde_json::from_str(
+            r#"{
+                "name": "Matrix",
+                "kind": "struct",
+                "fields": [
+                    { "name": "values", "type": { "array": [
+                        { "array": ["u16", 3] }, 2
+                    ] } }
+                ],
+                "layout": { "kind": "fixed", "fields": ["values"] }
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(build_type_sizes(&[type_def]).unwrap()["Matrix"], 12);
+    }
+
+    #[test]
+    fn compact_and_drifted_layouts_have_targeted_errors() {
+        let compact: IdlTypeDef = serde_json::from_str(
+            r#"{
+                "name": "DynamicState",
+                "kind": "struct",
+                "fields": [{ "name": "label", "type": "string" }],
+                "layout": {
+                    "kind": "compact",
+                    "inlineFields": [],
+                    "tailFields": ["label"],
+                    "wire": "inlineFieldsThenTailHeadersThenTailPayloads"
+                }
+            }"#,
+        )
+        .unwrap();
+        assert!(build_type_sizes(&[compact])
+            .unwrap_err()
+            .contains("uses a dynamic compact layout"));
+
+        let drifted: IdlTypeDef = serde_json::from_str(
+            r#"{
+                "name": "Drifted",
+                "kind": "struct",
+                "fields": [
+                    { "name": "first", "type": "u8" },
+                    { "name": "second", "type": "u8" }
+                ],
+                "layout": { "kind": "fixed", "fields": ["second", "first"] }
+            }"#,
+        )
+        .unwrap();
+        assert!(build_type_sizes(&[drifted])
+            .unwrap_err()
+            .contains("fixed layout fields do not match"));
     }
 }
