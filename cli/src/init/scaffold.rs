@@ -7,7 +7,10 @@ use {
         templates::*,
         types::{PackageManager, RustFramework, Template, TestLanguage, Toolchain, TypeScriptSdk},
     },
-    crate::error::{CliError, CliResult},
+    crate::{
+        error::{CliError, CliResult},
+        program_keypair::{self, ProgramKeypair},
+    },
     quasar_idl::codegen::typescript::{client_dependency_version, TsTarget},
     quasar_schema::snake_to_pascal,
     std::{fs, path::Path},
@@ -129,18 +132,13 @@ pub(super) fn scaffold(
     let deploy_dir = root.join("target").join("deploy");
     fs::create_dir_all(&deploy_dir)?;
 
-    let signing_key = ed25519_dalek::SigningKey::generate(&mut rand::thread_rng());
-    let program_id = bs58::encode(signing_key.verifying_key().as_bytes()).into_string();
-
-    // Write keypair as Solana CLI-compatible JSON (64-byte array: secret + public)
-    let mut keypair_bytes = Vec::with_capacity(64);
-    keypair_bytes.extend_from_slice(signing_key.as_bytes());
-    keypair_bytes.extend_from_slice(signing_key.verifying_key().as_bytes());
-    let keypair_json = serde_json::to_string(&keypair_bytes)
-        .map_err(|e| CliError::json_serialize("program keypair JSON", e))?;
-    fs::write(
-        deploy_dir.join(format!("{name}-keypair.json")),
-        &keypair_json,
+    let keypair = ProgramKeypair::generate();
+    let program_id = keypair.program_id();
+    program_keypair::write(
+        &deploy_dir.join(format!("{name}-keypair.json")),
+        &keypair,
+        false,
+        None,
     )?;
 
     // src/lib.rs

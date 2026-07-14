@@ -2,6 +2,7 @@ use {
     crate::{
         config::QuasarConfig,
         error::{CliError, CliResult},
+        program_keypair::ProgramKeypair,
         style, utils,
     },
     std::{
@@ -19,17 +20,6 @@ pub fn run(
 ) -> CliResult {
     let config = QuasarConfig::load()?;
     let name = &config.project.name;
-
-    if !skip_build {
-        crate::build::run(false, false, false, None)?;
-    }
-
-    let Some(so_path) = utils::find_so(&config, false) else {
-        return Err(CliError::message(format!(
-            "no compiled binary found for \"{name}\"\n\n  Run quasar build first."
-        )));
-    };
-
     let keypair_path = program_keypair.unwrap_or_else(|| {
         let module = config.module_name();
         utils::find_in_deploy(&format!("{name}-keypair.json"))
@@ -48,6 +38,19 @@ pub fn run(
             keypair_path.display()
         )));
     }
+
+    // Validate the signer before handing its path to an external process.
+    ProgramKeypair::read(&keypair_path)?;
+
+    if !skip_build {
+        crate::build::run(false, false, false, None)?;
+    }
+
+    let Some(so_path) = utils::find_so(&config, false) else {
+        return Err(CliError::message(format!(
+            "no compiled binary found for \"{name}\"\n\n  Run quasar build first."
+        )));
+    };
 
     let sp = style::spinner("Deploying...");
 
