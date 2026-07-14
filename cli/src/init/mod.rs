@@ -255,7 +255,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
     // Rust is always generated; TypeScript is also forced on for TS tests.
     let ts_tests = matches!(test_language, TestLanguage::TypeScript);
     let client_languages: Vec<String> = if skip_prompts {
-        let mut langs = vec!["rust".to_string()];
+        let mut langs = Vec::new();
         if ts_tests {
             langs.push("typescript".to_string());
         }
@@ -289,7 +289,7 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
             .items(&display_items)
             .interact()?;
 
-        let mut langs: Vec<String> = vec!["rust".to_string()];
+        let mut langs: Vec<String> = Vec::new();
         if ts_tests {
             langs.push("typescript".to_string());
         }
