@@ -18,7 +18,7 @@ use {
     std::collections::{HashMap, HashSet},
     syn::{
         parse::{Parse, ParseStream},
-        parse_macro_input, LitStr, Token,
+        LitStr, Token,
     },
 };
 
@@ -397,15 +397,19 @@ fn collect_type_refs(ty: &IdlType, idl_types: &[IdlTypeDef], out: &mut HashSet<S
 }
 
 pub fn declare_program(input: TokenStream) -> TokenStream {
+    declare_program_inner(input.into()).into()
+}
+
+pub(crate) fn declare_program_inner(input: TokenStream2) -> TokenStream2 {
     let krate = crate::krate::lang_path();
-    let DeclareProgramInput { mod_name, idl_path } =
-        parse_macro_input!(input as DeclareProgramInput);
+    let DeclareProgramInput { mod_name, idl_path } = match syn::parse2(input) {
+        Ok(input) => input,
+        Err(error) => return error.to_compile_error(),
+    };
     let idl_path = idl_path.value();
 
     if idl_path.is_empty() {
-        return syn::Error::new(Span::call_site(), "IDL path cannot be empty")
-            .to_compile_error()
-            .into();
+        return syn::Error::new(Span::call_site(), "IDL path cannot be empty").to_compile_error();
     };
 
     let idl_json = match std::fs::read_to_string(&idl_path) {
@@ -422,9 +426,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
                         full_path.display(),
                         e,
                     );
-                    return syn::Error::new(Span::call_site(), msg)
-                        .to_compile_error()
-                        .into();
+                    return syn::Error::new(Span::call_site(), msg).to_compile_error();
                 }
             }
         }
@@ -433,27 +435,21 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
     // Spec-version gate: diagnose an incompatible schema up front so the caller
     // gets a clear message instead of a confusing field-level parse error.
     if let Err(msg) = quasar_idl_schema::check_spec(&idl_json) {
-        return syn::Error::new(Span::call_site(), msg)
-            .to_compile_error()
-            .into();
+        return syn::Error::new(Span::call_site(), msg).to_compile_error();
     }
 
     let idl: Idl = match serde_json::from_str(&idl_json) {
         Ok(idl) => idl,
         Err(e) => {
             let msg = format!("failed to parse IDL JSON: {e}");
-            return syn::Error::new(Span::call_site(), msg)
-                .to_compile_error()
-                .into();
+            return syn::Error::new(Span::call_site(), msg).to_compile_error();
         }
     };
 
     let type_sizes = match build_type_sizes(&idl.types) {
         Ok(sizes) => sizes,
         Err(msg) => {
-            return syn::Error::new(Span::call_site(), msg)
-                .to_compile_error()
-                .into();
+            return syn::Error::new(Span::call_site(), msg).to_compile_error();
         }
     };
 
@@ -464,9 +460,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
     let struct_defs = match emit_struct_defs(&idl.types, &referenced, &type_sizes) {
         Ok(defs) => defs,
         Err(msg) => {
-            return syn::Error::new(Span::call_site(), msg)
-                .to_compile_error()
-                .into();
+            return syn::Error::new(Span::call_site(), msg).to_compile_error();
         }
     };
 
@@ -481,7 +475,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
     for ix in &idl.instructions {
         let fn_name = match sanitize_ident(&pascal_to_snake(&ix.name), Span::call_site()) {
             Ok(id) => id,
-            Err(e) => return e.to_compile_error().into(),
+            Err(e) => return e.to_compile_error(),
         };
         let acct_count = ix.accounts.len();
 
@@ -492,7 +486,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
             .collect::<syn::Result<Vec<_>>>()
         {
             Ok(v) => v,
-            Err(e) => return e.to_compile_error().into(),
+            Err(e) => return e.to_compile_error(),
         };
 
         let ia_entries: Vec<TokenStream2> = ix
@@ -522,17 +516,13 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
             .collect::<Result<Vec<_>, syn::Error>>()
         {
             Ok(v) => v,
-            Err(e) => return e.to_compile_error().into(),
+            Err(e) => return e.to_compile_error(),
         };
 
         let (data_write, data_size) =
             match generate_data_write(&ix.args, &ix.discriminator, &idl.types) {
                 Ok(v) => v,
-                Err(msg) => {
-                    return syn::Error::new(Span::call_site(), msg)
-                        .to_compile_error()
-                        .into()
-                }
+                Err(msg) => return syn::Error::new(Span::call_site(), msg).to_compile_error(),
             };
 
         // Free function: accounts as &'a AccountView
@@ -576,7 +566,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
             .collect::<syn::Result<Vec<_>>>()
         {
             Ok(v) => v,
-            Err(e) => return e.to_compile_error().into(),
+            Err(e) => return e.to_compile_error(),
         };
 
         method_impls.push(quote! {
@@ -617,7 +607,6 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
             }
         }
     }
-    .into()
 }
 
 #[cfg(test)]

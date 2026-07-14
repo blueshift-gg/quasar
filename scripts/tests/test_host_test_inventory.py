@@ -13,6 +13,15 @@ SPEC.loader.exec_module(INVENTORY)
 
 
 class HostTestInventoryTests(unittest.TestCase):
+    def test_versioned_compatibility_artifacts_are_explicitly_excluded(self):
+        baseline = Path(
+            "compatibility-baselines/v0.1.0/proc-macros/expansions/example.rs"
+        )
+        self.assertEqual(
+            INVENTORY.excluded_test_root(baseline), "compatibility-baselines"
+        )
+        self.assertIsNone(INVENTORY.excluded_test_root(Path("derive/src/lib.rs")))
+
     def test_raw_template_tests_are_not_counted_as_rust_attributes(self):
         source = '''
 #[test]

@@ -87,12 +87,14 @@ pub fn error_code(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// so its name is not hard-coded here).
 #[proc_macro]
 pub fn emit_cpi(input: TokenStream) -> TokenStream {
+    emit_cpi_inner(input.into()).into()
+}
+
+fn emit_cpi_inner(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
-    let input = proc_macro2::TokenStream::from(input);
     quote::quote! {
         #krate::event::EventCpi::emit(self, &#input)
     }
-    .into()
 }
 
 /// Derive QuasarSerialize for instruction argument types.

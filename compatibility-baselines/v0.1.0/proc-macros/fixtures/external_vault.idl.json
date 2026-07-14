@@ -1,0 +1,59 @@
+{
+  "spec": "quasar-idl/1.0.0",
+  "name": "external-vault",
+  "version": "0.1.0",
+  "address": "11111111111111111111111111111111",
+  "instructions": [
+    {
+      "name": "setVault",
+      "discriminator": [9, 4],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true,
+          "resolver": { "kind": "input" }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "signer": false,
+          "resolver": { "kind": "input" }
+        },
+        {
+          "name": "authority",
+          "writable": false,
+          "signer": true,
+          "resolver": { "kind": "input" }
+        },
+        {
+          "name": "systemProgram",
+          "writable": false,
+          "signer": false,
+          "resolver": {
+            "kind": "const",
+            "address": "11111111111111111111111111111111"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "config",
+          "type": { "defined": { "name": "VaultConfig" } }
+        },
+        { "name": "nonce", "type": "u16" },
+        { "name": "beneficiary", "type": "pubkey" }
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "VaultConfig",
+      "kind": "struct",
+      "fields": [
+        { "name": "limit", "type": "u64" },
+        { "name": "enabled", "type": "bool" }
+      ]
+    }
+  ]
+}

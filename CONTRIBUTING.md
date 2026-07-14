@@ -31,16 +31,17 @@ accidental regression. Never set `TRYBUILD=overwrite` in `make test` or CI.
 
 ## Macro expansion snapshots
 
-The `.rs` files under `derive/src/snapshots/` are pretty-printed goldens of what
-each proc macro expands to — the reviewable spec of the generated code. `cargo
-test -p quasar-derive` (and CI) assert them: an expansion that drifts from its
-golden fails the build.
+The `.rs` files under
+`compatibility-baselines/v0.1.0/proc-macros/expansions/` are pretty-printed
+goldens of what each proc macro expands to — the reviewable spec of the
+generated code. `make check-proc-macro-baselines` and its dedicated CI job
+assert them: an expansion that drifts from its golden fails the build.
 
-A snapshot diff **is** a codegen change. When you intend to change emission, run
-`UPDATE_EXPECT=1 cargo test -p quasar-derive` to regenerate the goldens, then
-review every diff hunk like code — each change must be a deliberate, correct
-emission difference, never blessed blindly. Never set `UPDATE_EXPECT` in `make
-test` or CI.
+A snapshot diff **is** a codegen change. When you intend to change emission,
+run `make bless-proc-macro-baselines` to regenerate the goldens, then review
+every diff hunk like code — each change must be a deliberate, correct emission
+difference, never blessed blindly. Never set `UPDATE_EXPECT` in `make test` or
+CI.
 
 ## When this changes
 

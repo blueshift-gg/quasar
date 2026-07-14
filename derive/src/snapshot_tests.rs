@@ -2,19 +2,22 @@
 //!
 //! Each test drives one macro's `*_inner` entry point with a fixed input token
 //! stream and compares the pretty-printed expansion against a committed golden
-//! under `snapshots/`. These goldens are the reviewable spec of what the
-//! compiler emits: a diff here is a codegen change and must be reviewed as one,
-//! never blessed blindly (regenerate deliberately with `UPDATE_EXPECT=1`).
+//! under the versioned compatibility baseline. These goldens are the reviewable
+//! spec of what the compiler emits: a diff here is a codegen change and must be
+//! reviewed as one, never blessed blindly (regenerate deliberately with
+//! `make bless-proc-macro-baselines`).
 //!
-//! `expand_pretty` prefers `prettyplease` for readable Rust; when the token
-//! stream is not a parseable `syn::File` it falls back to raw stringification
-//! and marks the golden with a `NOTE:` header so the fallback is visible.
+//! File-like expansions must parse as `syn::File` and are normalized by
+//! `prettyplease`; expression-like expansions have a separate normalizer.
 
+#[cfg(feature = "declare-program")]
+use crate::declare_program::declare_program_inner;
 use {
     crate::{
-        account::account_inner, accounts::derive_accounts_inner, error_code::error_code_inner,
-        event::event_inner, instruction::instruction_inner, program::program_inner,
-        seeds::derive_seeds_inner, serialize::derive_quasar_serialize_inner,
+        account::account_inner, accounts::derive_accounts_inner, emit_cpi_inner,
+        error_code::error_code_inner, event::event_inner, instruction::instruction_inner,
+        program::program_inner, seeds::derive_seeds_inner,
+        serialize::derive_quasar_serialize_inner,
     },
     quote::quote,
 };
@@ -26,24 +29,64 @@ use {
 mod expect_test {
     macro_rules! expect_file {
         ($path:literal) => {
-            ::expect_test::expect_file![concat!(env!("CARGO_MANIFEST_DIR"), "/src/", $path)]
+            ::expect_test::expect_file![crate::snapshot_tests::baseline_path($path)]
         };
     }
 
     pub(crate) use expect_file;
 }
 
-/// Pretty-print a macro expansion. Parses the stream as a whole `syn::File` and
-/// runs `prettyplease`; on a parse failure, emits raw tokens under a `NOTE:`
-/// marker so reviewers (and the harness report) can see the fallback fired.
+fn baseline_path(path: &str) -> std::path::PathBuf {
+    let root = std::env::var_os("QUASAR_PROC_MACRO_BASELINE_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../compatibility-baselines/v0.1.0/proc-macros")
+        });
+    root.join(path)
+}
+
+/// Pretty-print a file-like macro expansion. An invalid expansion is a test
+/// failure, never text embedded in the compatibility snapshot.
 fn expand_pretty(ts: proc_macro2::TokenStream) -> String {
-    match syn::parse2::<syn::File>(ts.clone()) {
-        Ok(file) => prettyplease::unparse(&file),
-        Err(err) => format!(
-            "// NOTE: expand_pretty fallback — token stream is not a parseable `syn::File`\n// \
-             parse error: {err}\n// raw `TokenStream::to_string()` output follows:\n{ts}\n",
-        ),
-    }
+    let file = syn::parse2::<syn::File>(ts).expect("macro emits a valid Rust file");
+    prettyplease::unparse(&file)
+}
+
+/// Normalize an expression-like macro expansion without embedding compiler
+/// output or source locations in the golden.
+fn expand_expression(ts: proc_macro2::TokenStream) -> String {
+    let expression = syn::parse2::<syn::Expr>(ts).expect("macro emits a valid Rust expression");
+    format!("{}\n", quote! { #expression })
+}
+
+// ---------------------------------------------------------------------------
+// Function-like macros.
+// ---------------------------------------------------------------------------
+
+/// `emit_cpi!` delegates to the typed event CPI implementation on `self`.
+#[test]
+fn emit_cpi_basic() {
+    expect_test::expect_file!["expansions/emit_cpi_basic.rs"]
+        .assert_eq(&expand_expression(emit_cpi_inner(quote! { event })));
+}
+
+/// `declare_program!` emits a fixed-layout typed CPI module from a checked-in
+/// IDL fixture. The feature gate matches the real macro's implementation.
+#[cfg(feature = "declare-program")]
+#[test]
+fn declare_program_fixed_cpi() {
+    let fixture = baseline_path("fixtures/external_vault.idl.json");
+    let fixture = syn::LitStr::new(
+        fixture.to_str().expect("fixture path is valid UTF-8"),
+        proc_macro2::Span::call_site(),
+    );
+    let input = quote! {
+        external_vault,
+        #fixture
+    };
+    expect_test::expect_file!["expansions/declare_program_fixed_cpi.rs"]
+        .assert_eq(&expand_pretty(declare_program_inner(input)));
 }
 
 // ---------------------------------------------------------------------------
@@ -63,7 +106,7 @@ fn accounts_basic_mut_signer() {
             pub rent: Sysvar<Rent>,
         }
     };
-    expect_test::expect_file!["snapshots/accounts_basic_mut_signer.rs"]
+    expect_test::expect_file!["expansions/accounts_basic_mut_signer.rs"]
         .assert_eq(&expand_pretty(derive_accounts_inner(input)));
 }
 
@@ -79,7 +122,7 @@ fn accounts_init_payer() {
             pub system_program: Program<SystemProgram>,
         }
     };
-    expect_test::expect_file!["snapshots/accounts_init_payer.rs"]
+    expect_test::expect_file!["expansions/accounts_init_payer.rs"]
         .assert_eq(&expand_pretty(derive_accounts_inner(input)));
 }
 
@@ -94,7 +137,7 @@ fn accounts_close() {
             pub old_data: Account<OldData>,
         }
     };
-    expect_test::expect_file!["snapshots/accounts_close.rs"]
+    expect_test::expect_file!["expansions/accounts_close.rs"]
         .assert_eq(&expand_pretty(derive_accounts_inner(input)));
 }
 
@@ -110,7 +153,7 @@ fn accounts_realloc() {
             pub system_program: Program<SystemProgram>,
         }
     };
-    expect_test::expect_file!["snapshots/accounts_realloc.rs"]
+    expect_test::expect_file!["expansions/accounts_realloc.rs"]
         .assert_eq(&expand_pretty(derive_accounts_inner(input)));
 }
 
@@ -124,7 +167,7 @@ fn accounts_optional() {
             pub config: Option<Account<Config>>,
         }
     };
-    expect_test::expect_file!["snapshots/accounts_optional.rs"]
+    expect_test::expect_file!["expansions/accounts_optional.rs"]
         .assert_eq(&expand_pretty(derive_accounts_inner(input)));
 }
 
@@ -140,7 +183,7 @@ fn accounts_dup() {
             pub destination: UncheckedAccount,
         }
     };
-    expect_test::expect_file!["snapshots/accounts_dup.rs"]
+    expect_test::expect_file!["expansions/accounts_dup.rs"]
         .assert_eq(&expand_pretty(derive_accounts_inner(input)));
 }
 
@@ -154,7 +197,7 @@ fn accounts_composite() {
             pub pairs: AccountsArray<SignerPair, 2>,
         }
     };
-    expect_test::expect_file!["snapshots/accounts_composite.rs"]
+    expect_test::expect_file!["expansions/accounts_composite.rs"]
         .assert_eq(&expand_pretty(derive_accounts_inner(input)));
 }
 
@@ -168,7 +211,7 @@ fn accounts_behavior_group() {
             pub data: Account<MyData>,
         }
     };
-    expect_test::expect_file!["snapshots/accounts_behavior_group.rs"]
+    expect_test::expect_file!["expansions/accounts_behavior_group.rs"]
         .assert_eq(&expand_pretty(derive_accounts_inner(input)));
 }
 
@@ -183,7 +226,7 @@ fn accounts_ix_args_fixed() {
             pub account: Account<SimpleAccount>,
         }
     };
-    expect_test::expect_file!["snapshots/accounts_ix_args_fixed.rs"]
+    expect_test::expect_file!["expansions/accounts_ix_args_fixed.rs"]
         .assert_eq(&expand_pretty(derive_accounts_inner(input)));
 }
 
@@ -199,7 +242,7 @@ fn accounts_ix_args_dynamic() {
             pub account: Account<TwoDynArgsAccount>,
         }
     };
-    expect_test::expect_file!["snapshots/accounts_ix_args_dynamic.rs"]
+    expect_test::expect_file!["expansions/accounts_ix_args_dynamic.rs"]
         .assert_eq(&expand_pretty(derive_accounts_inner(input)));
 }
 
@@ -217,7 +260,7 @@ fn instruction_fixed_and_dynamic() {
             ctx.accounts.handler(amount, memo)
         }
     };
-    expect_test::expect_file!["snapshots/instruction_fixed_and_dynamic.rs"]
+    expect_test::expect_file!["expansions/instruction_fixed_and_dynamic.rs"]
         .assert_eq(&expand_pretty(instruction_inner(attr, item)));
 }
 
@@ -244,7 +287,7 @@ fn program_dispatch_two_ix() {
             }
         }
     };
-    expect_test::expect_file!["snapshots/program_dispatch_two_ix.rs"]
+    expect_test::expect_file!["expansions/program_dispatch_two_ix.rs"]
         .assert_eq(&expand_pretty(program_inner(attr, item)));
 }
 
@@ -262,7 +305,7 @@ fn account_fixed() {
             pub value: u64,
         }
     };
-    expect_test::expect_file!["snapshots/account_fixed.rs"]
+    expect_test::expect_file!["expansions/account_fixed.rs"]
         .assert_eq(&expand_pretty(account_inner(attr, item)));
 }
 
@@ -277,7 +320,7 @@ fn account_dynamic() {
             pub tags: Vec<Address, 2>,
         }
     };
-    expect_test::expect_file!["snapshots/account_dynamic.rs"]
+    expect_test::expect_file!["expansions/account_dynamic.rs"]
         .assert_eq(&expand_pretty(account_inner(attr, item)));
 }
 
@@ -298,7 +341,7 @@ fn event_basic() {
             pub receive: u64,
         }
     };
-    expect_test::expect_file!["snapshots/event_basic.rs"]
+    expect_test::expect_file!["expansions/event_basic.rs"]
         .assert_eq(&expand_pretty(event_inner(attr, item)));
 }
 
@@ -313,7 +356,7 @@ fn error_code_basic() {
             CustomConstraint,
         }
     };
-    expect_test::expect_file!["snapshots/error_code_basic.rs"]
+    expect_test::expect_file!["expansions/error_code_basic.rs"]
         .assert_eq(&expand_pretty(error_code_inner(attr, item)));
 }
 
@@ -324,7 +367,7 @@ fn seeds_basic() {
         #[seeds(b"vault", authority: Address)]
         pub struct VaultPda;
     };
-    expect_test::expect_file!["snapshots/seeds_basic.rs"]
+    expect_test::expect_file!["expansions/seeds_basic.rs"]
         .assert_eq(&expand_pretty(derive_seeds_inner(input)));
 }
 
@@ -338,6 +381,6 @@ fn serialize_fixed() {
             pub flag: bool,
         }
     };
-    expect_test::expect_file!["snapshots/serialize_fixed.rs"]
+    expect_test::expect_file!["expansions/serialize_fixed.rs"]
         .assert_eq(&expand_pretty(derive_quasar_serialize_inner(input)));
 }
