@@ -176,12 +176,21 @@ fn test_command_args(
         let mut separator = args.iter().position(|arg| arg == "--");
 
         if let Some(pattern) = filter {
-            match separator {
-                Some(index) => {
-                    args.insert(index, pattern.to_string());
-                    separator = Some(index + 1);
+            let command_arg_end = separator.unwrap_or(args.len());
+            if let Some(index) = args[..command_arg_end]
+                .iter()
+                .position(|arg| arg == "tests::")
+            {
+                let pattern = pattern.strip_prefix("tests::").unwrap_or(pattern);
+                args[index].push_str(pattern);
+            } else {
+                match separator {
+                    Some(index) => {
+                        args.insert(index, pattern.to_string());
+                        separator = Some(index + 1);
+                    }
+                    None => args.push(pattern.to_string()),
                 }
-                None => args.push(pattern.to_string()),
             }
         }
 
@@ -214,14 +223,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cargo_filter_is_inserted_before_existing_separator() {
+    fn cargo_filter_is_combined_with_generated_scope() {
         let cmd = CommandSpec::new("cargo", ["test", "tests::", "--", "--nocapture"]);
         let args = test_command_args(&cmd, Some("my_test"), false);
 
-        assert_eq!(
-            args,
-            vec!["test", "tests::", "my_test", "--", "--nocapture"]
-        );
+        assert_eq!(args, vec!["test", "tests::my_test", "--", "--nocapture"]);
+    }
+
+    #[test]
+    fn fully_scoped_cargo_filter_is_not_duplicated() {
+        let cmd = CommandSpec::new("cargo", ["test", "tests::"]);
+        let args = test_command_args(&cmd, Some("tests::my_test"), false);
+
+        assert_eq!(args, vec!["test", "tests::my_test"]);
+    }
+
+    #[test]
+    fn cargo_filter_without_generated_scope_is_appended() {
+        let cmd = CommandSpec::new("cargo", ["test", "--lib"]);
+        let args = test_command_args(&cmd, Some("my_test"), false);
+
+        assert_eq!(args, vec!["test", "--lib", "my_test"]);
     }
 
     #[test]
@@ -244,8 +266,7 @@ mod tests {
             args,
             vec![
                 "test",
-                "tests::",
-                "my_test",
+                "tests::my_test",
                 "--",
                 "--show-output",
                 "--nocapture"
