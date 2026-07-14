@@ -205,6 +205,10 @@ impl CpiReturn {
         }
         // SAFETY: The previous copy initialized every byte of `T::Zc`.
         let zc = unsafe { zc.assume_init() };
+        // Return data is untrusted: validate before `from_zc`, whose
+        // contract assumes a validated companion (e.g. enum `from_zc` calls
+        // `unreachable_unchecked` on undeclared discriminants).
+        T::validate_zc(&zc)?;
         Ok(T::from_zc(&zc))
     }
 }
@@ -634,6 +638,58 @@ mod tests {
         let zc = <ReturnPayload as InstructionArg>::to_zc(&payload);
         let ret = return_with_data([2u8; 32], zc_bytes::<ReturnPayload>(&zc));
         assert_eq!(ret.decode::<ReturnPayload>().unwrap(), payload);
+    }
+
+    #[test]
+    fn decode_rejects_invalid_bool() {
+        let ret = return_with_data([1u8; 32], &[2u8]);
+        assert_eq!(
+            ret.decode::<bool>(),
+            Err(ProgramError::InvalidInstructionData)
+        );
+    }
+
+    #[test]
+    fn decode_rejects_invalid_option_tag() {
+        let mut bytes = std::vec![0u8; core::mem::size_of::<<Option<u64> as InstructionArg>::Zc>()];
+        bytes[0] = 2;
+        let ret = return_with_data([1u8; 32], &bytes);
+        assert_eq!(
+            ret.decode::<Option<u64>>(),
+            Err(ProgramError::InvalidInstructionData)
+        );
+    }
+
+    #[test]
+    fn decode_rejects_invalid_nested_struct_field() {
+        let payload = ReturnPayload {
+            amount: 55,
+            flag: true,
+        };
+        let zc = <ReturnPayload as InstructionArg>::to_zc(&payload);
+        let mut bytes = zc_bytes::<ReturnPayload>(&zc).to_vec();
+        *bytes.last_mut().unwrap() = 2;
+        let ret = return_with_data([1u8; 32], &bytes);
+        assert_eq!(
+            ret.decode::<ReturnPayload>(),
+            Err(ProgramError::InvalidInstructionData)
+        );
+    }
+
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, QuasarSerialize)]
+    #[repr(u8)]
+    enum Status {
+        Active = 1,
+        Closed = 2,
+    }
+
+    #[test]
+    fn decode_rejects_undeclared_enum_discriminant() {
+        let ret = return_with_data([1u8; 32], &[9u8]);
+        assert_eq!(
+            ret.decode::<Status>(),
+            Err(ProgramError::InvalidInstructionData)
+        );
     }
 
     #[test]
