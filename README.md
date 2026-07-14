@@ -57,6 +57,13 @@ mod counter_program {
 
 Full documentation at **[quasar-lang.com](https://quasar-lang.com)**.
 
+## Host support
+
+Quasar v0.1.0 supports Ubuntu 24.04 x86-64, macOS 15 on Apple Silicon, and
+macOS 15 on Intel. Windows users should run Ubuntu 24.04 x86-64 under WSL2;
+native Windows is unsupported. See the exact [host support
+contract](HOST_SUPPORT.md), including the CI rows and unsupported paths.
+
 ## Verification
 
 Local Kani verification is optional. Normal builds and tests do not require Kani:
