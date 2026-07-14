@@ -139,30 +139,19 @@ fn run_test_cmd(
     show_output: bool,
     verbose: bool,
 ) -> CliResult {
-    let mut cmd = Command::new(&test_cmd.program);
-    cmd.args(test_command_args(test_cmd, filter, show_output));
+    let command = effective_test_command(test_cmd, filter, show_output);
+    run_command(&command, verbose)
+}
 
-    eprintln!(
-        "  {}",
-        style::step(&format!("Running {}...", test_cmd.display()))
-    );
-    if verbose {
-        eprintln!("  {}", style::dim(&format!("$ {}", test_cmd.display())));
-    }
-
-    let status = cmd.status();
-
-    match status {
-        Ok(s) if s.success() => Ok(()),
-        Ok(s) => Err(CliError::process_failure(
-            format!("{} failed", test_cmd.display()),
-            s.code().unwrap_or(1),
-        )),
-        Err(e) => Err(CliError::message(format!(
-            "failed to run {}: {e}",
-            test_cmd.display()
-        ))),
-    }
+fn effective_test_command(
+    test_cmd: &CommandSpec,
+    filter: Option<&str>,
+    show_output: bool,
+) -> CommandSpec {
+    CommandSpec::new(
+        test_cmd.program.clone(),
+        test_command_args(test_cmd, filter, show_output),
+    )
 }
 
 fn test_command_args(
@@ -275,11 +264,30 @@ mod tests {
     }
 
     #[test]
+    fn effective_cargo_test_command_includes_runtime_arguments() {
+        let cmd = CommandSpec::new("cargo", ["test", "tests::", "--", "--nocapture"]);
+        let command = effective_test_command(&cmd, Some("my_test"), true);
+
+        assert_eq!(
+            command.display(),
+            "cargo test tests::my_test -- --show-output --nocapture"
+        );
+    }
+
+    #[test]
     fn non_cargo_filter_uses_t_flag() {
         let cmd = CommandSpec::new("npx", ["vitest", "run"]);
         let args = test_command_args(&cmd, Some("my_test"), true);
 
         assert_eq!(args, vec!["vitest", "run", "-t", "my_test"]);
+    }
+
+    #[test]
+    fn effective_non_cargo_test_command_includes_runtime_filter() {
+        let cmd = CommandSpec::new("npx", ["vitest", "run"]);
+        let command = effective_test_command(&cmd, Some("my_test"), true);
+
+        assert_eq!(command.display(), "npx vitest run -t my_test");
     }
 
     #[test]
