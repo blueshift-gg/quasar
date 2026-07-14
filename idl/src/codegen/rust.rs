@@ -16,6 +16,7 @@ use {
 
 /// Generate Cargo.toml content for the standalone client crate.
 pub fn generate_cargo_toml(name: &str, version: &str, has_pdas: bool) -> String {
+    let quasar_version = env!("CARGO_PKG_VERSION");
     let solana_address = if has_pdas {
         r#"solana-address = { version = "=2.2.0", features = ["curve25519", "wincode"] }"#
     } else {
@@ -28,7 +29,7 @@ version = "{version}"
 edition = "2021"
 
 [dependencies]
-quasar-lang = {{ git = "https://github.com/blueshift-gg/quasar", branch = "master" }}
+quasar-lang = "={quasar_version}"
 wincode = {{ version = "=0.4.9", features = ["derive"] }}
 {solana_address}
 solana-instruction = "3"

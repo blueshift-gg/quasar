@@ -50,6 +50,110 @@ fn compile_rust_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
     )
 }
 
+fn override_rust_client_with_workspace_path(client_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let manifest_path = client_dir.join("Cargo.toml");
+    let manifest = read_file(&manifest_path)?;
+    let exact_dependency = format!("quasar-lang = \"={}\"", env!("CARGO_PKG_VERSION"));
+    let path_dependency = format!(
+        "quasar-lang = {{ path = \"{}\" }}",
+        workspace_root().join("lang").display()
+    );
+    let patched = manifest.replace(&exact_dependency, &path_dependency);
+    if patched == manifest {
+        return Err(format!(
+            "generated manifest did not contain expected dependency `{exact_dependency}`"
+        )
+        .into());
+    }
+    fs::write(manifest_path, format!("{patched}\n[workspace]\n"))?;
+    Ok(())
+}
+
+fn add_package_patches(command: &mut Command, packages: &[(&str, PathBuf)]) {
+    for (name, path) in packages {
+        command.arg("--config").arg(format!(
+            "patch.crates-io.{name}.path=\"{}\"",
+            path.display()
+        ));
+    }
+}
+
+fn compile_rust_client_from_packages(client_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let temp = tempdir()?;
+    let package_target = temp.path().join("package-target");
+    let unpacked_root = temp.path().join("packages");
+    fs::create_dir_all(&unpacked_root)?;
+
+    let source_packages = [
+        ("quasar-schema", workspace_root().join("schema")),
+        ("quasar-idl-schema", workspace_root().join("idl/schema")),
+        (
+            "solana-compiler-builtins",
+            workspace_root().join("solana-compiler-builtins"),
+        ),
+        ("quasar-derive", workspace_root().join("derive")),
+        ("quasar-lang", workspace_root().join("lang")),
+    ];
+    let mut package = Command::new("cargo");
+    package
+        .arg("package")
+        .arg("--locked")
+        .arg("--allow-dirty")
+        .arg("--no-verify")
+        .env("CARGO_TARGET_DIR", &package_target)
+        .current_dir(workspace_root());
+    for (name, _) in &source_packages {
+        package.arg("-p").arg(name);
+    }
+    add_package_patches(&mut package, &source_packages);
+    run_command(&mut package)?;
+
+    let version = env!("CARGO_PKG_VERSION");
+    let mut packaged_dependencies = Vec::new();
+    for (name, _) in &source_packages {
+        let archive = package_target
+            .join("package")
+            .join(format!("{name}-{version}.crate"));
+        run_command(
+            Command::new("tar")
+                .arg("-xzf")
+                .arg(&archive)
+                .arg("-C")
+                .arg(&unpacked_root),
+        )?;
+        let package_dir = unpacked_root.join(format!("{name}-{version}"));
+        if !package_dir.join("Cargo.toml").is_file() {
+            return Err(
+                format!("packaged manifest missing under {}", package_dir.display()).into(),
+            );
+        }
+        packaged_dependencies.push((*name, package_dir));
+    }
+
+    let manifest_path = client_dir.join("Cargo.toml");
+    let manifest_before = fs::read(&manifest_path)?;
+    let mut check = Command::new("cargo");
+    check
+        .arg("check")
+        .arg("--quiet")
+        .arg("--manifest-path")
+        .arg(&manifest_path)
+        .env("CARGO_TARGET_DIR", temp.path().join("client-target"))
+        .current_dir(client_dir);
+    add_package_patches(&mut check, &packaged_dependencies);
+    run_command(&mut check)?;
+
+    if fs::read(&manifest_path)? != manifest_before {
+        return Err("registry-style compilation modified the generated Cargo.toml".into());
+    }
+    let manifest = String::from_utf8(manifest_before)?;
+    assert!(manifest.contains(&format!("quasar-lang = \"={version}\"")));
+    assert!(!manifest.contains("git ="));
+    assert!(!manifest.contains("branch ="));
+
+    Ok(())
+}
+
 fn compile_python_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
     run_command(
         Command::new("python3")
@@ -564,21 +668,7 @@ fn generated_clients_compile_from_fresh_project() -> Result<(), Box<dyn Error>> 
     // by convention.
     let rust_client_dir = only_child_dir(&clients_path.join("rust"))?;
     if rust_client_dir.exists() {
-        // Patch the generated Cargo.toml to use the local workspace `quasar-lang`
-        // instead of the GitHub remote, so the smoke test validates against the
-        // current (possibly unreleased) source.
-        let cargo_toml_path = rust_client_dir.join("Cargo.toml");
-        let cargo_toml = fs::read_to_string(&cargo_toml_path)?;
-        let patched = cargo_toml.replace(
-            "quasar-lang = { git = \"https://github.com/blueshift-gg/quasar\", branch = \
-             \"master\" }",
-            &format!(
-                "quasar-lang = {{ path = \"{}\" }}",
-                workspace_root().join("lang").display()
-            ),
-        );
-        fs::write(&cargo_toml_path, &patched)?;
-        compile_rust_client(&rust_client_dir)?;
+        compile_rust_client_from_packages(&rust_client_dir)?;
     }
 
     let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
@@ -785,16 +875,7 @@ mod decoder_total {
 
     // Account discriminator + fixed fields + both u32 prefixes + both tails.
     let rust_dir = only_child_dir(&clients_path.join("rust"))?;
-    let cargo_toml_path = rust_dir.join("Cargo.toml");
-    let cargo_toml = read_file(&cargo_toml_path)?;
-    let cargo_toml = cargo_toml.replace(
-        "quasar-lang = { git = \"https://github.com/blueshift-gg/quasar\", branch = \"master\" }",
-        &format!(
-            "quasar-lang = {{ path = \"{}\" }}",
-            workspace_root().join("lang").display()
-        ),
-    );
-    fs::write(&cargo_toml_path, format!("{cargo_toml}\n[workspace]\n"))?;
+    override_rust_client_with_workspace_path(&rust_dir)?;
     write_file(
         &rust_dir.join("tests/decoder.rs"),
         r#"use decoder_total_client::state::{decode_account, ProgramAccount};
@@ -1566,16 +1647,7 @@ pub struct Submit {
     assert!(rust_ix.contains("pub maybe_addrs: Option<DynVec<Address, u16>>"));
     assert!(rust_ix.contains("data.push(u8::from(ix.maybe_name.is_some()))"));
     assert!(rust_ix.contains("data.push(u8::from(ix.maybe_addrs.is_some()))"));
-    let cargo_toml_path = rust_client_dir.join("Cargo.toml");
-    let cargo_toml = read_file(&cargo_toml_path)?;
-    let patched = cargo_toml.replace(
-        "quasar-lang = { git = \"https://github.com/blueshift-gg/quasar\", branch = \"master\" }",
-        &format!(
-            "quasar-lang = {{ path = \"{}\" }}",
-            workspace_root().join("lang").display()
-        ),
-    );
-    fs::write(&cargo_toml_path, patched + "\n[workspace]\n")?;
+    override_rust_client_with_workspace_path(&rust_client_dir)?;
     compile_rust_client(&rust_client_dir)?;
 
     let ts_root = clients_path.join("typescript");
@@ -1789,16 +1861,7 @@ pub struct Touch {
         rust_ix.contains("AccountMeta::new(ix.maybe.unwrap_or(ID), false)"),
         "absent optional account should default to the program id sentinel; present passes through"
     );
-    let cargo_toml_path = rust_client_dir.join("Cargo.toml");
-    let cargo_toml = read_file(&cargo_toml_path)?;
-    let patched = cargo_toml.replace(
-        "quasar-lang = { git = \"https://github.com/blueshift-gg/quasar\", branch = \"master\" }",
-        &format!(
-            "quasar-lang = {{ path = \"{}\" }}",
-            workspace_root().join("lang").display()
-        ),
-    );
-    fs::write(&cargo_toml_path, patched + "\n[workspace]\n")?;
+    override_rust_client_with_workspace_path(&rust_client_dir)?;
     compile_rust_client(&rust_client_dir)?;
 
     // TypeScript (web3.js + kit): optional account is an optional `?` input;

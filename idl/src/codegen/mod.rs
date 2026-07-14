@@ -50,7 +50,10 @@ mod tests {
             c::generate_c_client,
             golang::generate_go_client,
             python::generate_python_client,
-            rust::generate_client as generate_rust_client,
+            rust::{
+                generate_cargo_toml as generate_rust_cargo_toml,
+                generate_client as generate_rust_client,
+            },
             typescript::{generate_ts_client, generate_ts_client_kit},
         },
         crate::types::{
@@ -161,6 +164,15 @@ mod tests {
         assert!(output.contains("uint64_t pda_status = find_program_address"));
         assert!(output.contains(".pda_status = pda_status"));
         assert!(!output.contains("sizeof(args->amount)"));
+    }
+
+    #[test]
+    fn rust_client_manifest_pins_the_generator_version() {
+        let manifest = generate_rust_cargo_toml("example", "1.2.3", false);
+
+        assert!(manifest.contains(&format!("quasar-lang = \"={}\"", env!("CARGO_PKG_VERSION"))));
+        assert!(!manifest.contains("git ="));
+        assert!(!manifest.contains("branch ="));
     }
 
     #[test]
