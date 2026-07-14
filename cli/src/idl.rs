@@ -1,6 +1,7 @@
 use {
     crate::{
         config::resolve_client_path,
+        config::QuasarConfig,
         error::{CliError, CliResult},
         output::{commit, PreparedOutput},
         IdlCommand,
@@ -135,6 +136,39 @@ fn prepare_idl_outputs(idl: &Idl, clients_path: &Path) -> Result<Vec<PreparedOut
         PreparedOutput::file(client_dir.join("Cargo.toml"), client_cargo_toml),
         PreparedOutput::directory(client_dir.join("src"), src_files),
     ])
+}
+
+/// Locate and parse the IDL emitted by the most recent build.
+///
+/// Deployment and verification consume the persisted artifact rather than
+/// rebuilding the host-only IDL a second time. Both project and module names
+/// are checked because Cargo package names may contain hyphens while program
+/// modules use underscores.
+pub(crate) fn load_generated(config: &QuasarConfig) -> Result<(PathBuf, Idl), CliError> {
+    let module_name = config.module_name();
+    let names = [&config.project.name, &module_name];
+    let workspace_target = crate::utils::workspace_target_dir();
+    let roots = [PathBuf::from("target"), workspace_target];
+
+    for root in roots {
+        for name in names {
+            let path = root.join("idl").join(format!("{name}.json"));
+            if !path.is_file() {
+                continue;
+            }
+            let json = std::fs::read_to_string(&path)
+                .map_err(|error| CliError::io_path("read", &path, error))?;
+            quasar_idl::types::check_spec(&json).map_err(CliError::message)?;
+            let idl = serde_json::from_str(&json).map_err(|error| {
+                CliError::json_parse(format!("IDL file {}", path.display()), error)
+            })?;
+            return Ok((path, idl));
+        }
+    }
+
+    Err(CliError::message(
+        "generated IDL not found in target/idl\n\n  Run `quasar build` before deployment or verification.",
+    ))
 }
 
 /// Called by `quasar idl <path>` (generate) or `quasar idl verify <idl>`.

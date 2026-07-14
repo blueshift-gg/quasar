@@ -22,6 +22,7 @@ pub mod style;
 pub mod test;
 pub mod toolchain;
 pub mod utils;
+pub mod verify;
 pub use error::CliResult;
 
 #[derive(Parser, Debug)]
@@ -58,6 +59,8 @@ pub enum Command {
     Client(ClientCommand),
     /// Audit the program surface for pre-deploy and upgrade-safety issues
     Lint(LintCommand),
+    /// Verify local artifacts against a deployed program
+    Verify(VerifyCommand),
     /// Measure compute-unit usage
     Profile(ProfileCommand),
     /// Dump sBPF assembly
@@ -193,6 +196,37 @@ pub struct DeployCommand {
     /// Skip the build step
     #[arg(long, action = ArgAction::SetTrue)]
     pub skip_build: bool,
+
+    /// Skip the post-deploy byte and authority verification
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub skip_verify: bool,
+}
+
+#[derive(Args, Debug, Default)]
+pub struct VerifyCommand {
+    /// Program address (defaults to the program keypair address)
+    #[arg(long, value_name = "ADDRESS", conflicts_with = "program_keypair")]
+    pub program_id: Option<String>,
+
+    /// Path to the program keypair (default: `target/deploy/<name>-keypair.json`)
+    #[arg(long, value_name = "KEYPAIR")]
+    pub program_keypair: Option<PathBuf>,
+
+    /// Expected upgrade authority keypair
+    #[arg(long, value_name = "KEYPAIR")]
+    pub upgrade_authority: Option<PathBuf>,
+
+    /// Cluster URL (default: Solana CLI configured cluster)
+    #[arg(long, short, value_name = "URL")]
+    pub url: Option<String>,
+
+    /// Local ELF to compare (default: `target/deploy/<name>.so`)
+    #[arg(long, value_name = "ELF")]
+    pub elf_path: Option<PathBuf>,
+
+    /// Deployment manifest to validate (auto-detected when omitted)
+    #[arg(long, value_name = "MANIFEST")]
+    pub manifest: Option<PathBuf>,
 }
 
 #[derive(Args, Debug, Default)]
@@ -380,12 +414,14 @@ pub fn run(cli: Cli) -> CliResult {
             cmd.keypair,
             cmd.url,
             cmd.skip_build,
+            cmd.skip_verify,
         ),
         Command::Clean(cmd) => clean::run(cmd.all),
         Command::Config(cmd) => cfg::run(cmd.action),
         Command::Idl(cmd) => idl::run(cmd),
         Command::Client(cmd) => client::run(cmd),
         Command::Lint(cmd) => lint::run(cmd),
+        Command::Verify(cmd) => verify::run(cmd),
         Command::Dump(cmd) => dump::run(cmd.elf_path, cmd.function, cmd.source),
         Command::Completions(cmd) => {
             clap_complete::generate(

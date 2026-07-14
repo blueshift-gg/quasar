@@ -17,6 +17,7 @@ pub fn run(
     keypair: Option<PathBuf>,
     url: Option<String>,
     skip_build: bool,
+    skip_verify: bool,
 ) -> CliResult {
     let config = QuasarConfig::load()?;
     let name = &config.project.name;
@@ -40,11 +41,18 @@ pub fn run(
     }
 
     // Validate the signer before handing its path to an external process.
-    ProgramKeypair::read(&keypair_path)?;
+    let program_id = ProgramKeypair::read(&keypair_path)?.program_id();
 
     if !skip_build {
         crate::build::run(false, false, false, None)?;
     }
+
+    let crate_root = utils::find_program_crate(&config);
+    let (_, idl) = crate::idl::load_generated(&config)?;
+    // `--skip-build` still receives the same compatibility checks as a normal
+    // deployment; it must not become a bypass around the wire-identity gate.
+    crate::lint::run_for_build(&crate_root, &idl)?;
+    crate::lint::require_deploy_lock(&crate_root, &idl)?;
 
     let Some(so_path) = utils::find_so(&config, false) else {
         return Err(CliError::message(format!(
@@ -86,18 +94,28 @@ pub fn run(
         Ok(o) if o.status.success() => {
             let stdout = String::from_utf8_lossy(&o.stdout);
 
-            let program_id = stdout
+            let reported_program_id = stdout
                 .lines()
                 .find(|l| l.contains("Program Id:"))
                 .and_then(|l| l.split(':').nth(1))
                 .map(|s| s.trim())
-                .unwrap_or("(unknown)");
+                .unwrap_or(program_id.as_str());
 
             println!(
                 "\n  {}",
-                style::success(&format!("Deployed to {}", style::bold(program_id)))
+                style::success(&format!("Deployed to {}", style::bold(reported_program_id)))
             );
             println!();
+            if !skip_verify {
+                crate::verify::verify_after_deploy(
+                    &config,
+                    &program_id,
+                    &so_path,
+                    &idl,
+                    url.as_deref(),
+                    upgrade_authority.as_deref(),
+                )?;
+            }
             Ok(())
         }
         Ok(o) => {

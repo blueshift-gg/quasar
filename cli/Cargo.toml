@@ -38,6 +38,8 @@ indicatif = "0.18.4"
 clap_complete = "4.6.0"
 shlex = "1"
 tempfile = "3"
+sha2 = "0.10"
+hex = "0.4"
 
 [dev-dependencies]
 expect-test = "1"
