@@ -53,7 +53,8 @@ PACKAGE_PATCHES := \
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
 	check-runtime-panics check-workspace-invariants build build-sbf test test-bless \
 	test-host-inventory test-host test-sbf-host \
-	bench-cu bench-tracked compare-tracked doc-check test-miri test-miri-strict test-all \
+	bench-cu bench-tracked compare-tracked test-benchmark-policy doc-check \
+	test-miri test-miri-strict test-all \
 	nightly-version cargo-fuzz-version test-fuzz-build generated-client-smoke \
 	kani help-kani check-kani kani-lang \
 	kani-spl kani-metadata msrv-check package-check audit
@@ -298,6 +299,9 @@ bench-tracked:
 	@bash scripts/bench-tracked-programs.sh capture target/tracked-metrics.env
 	@cat target/tracked-metrics.env
 
+test-benchmark-policy:
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_bench_tracked_programs.py
+
 compare-tracked:
 	@bash scripts/bench-tracked-programs.sh compare
 
@@ -340,6 +344,7 @@ test-all:
 	@$(MAKE) generated-client-smoke
 	@$(MAKE) package-check
 	@$(MAKE) audit
+	@$(MAKE) test-benchmark-policy
 	@$(MAKE) doc-check
 	@$(MAKE) test-fuzz-build
 	@$(MAKE) test-miri-strict
