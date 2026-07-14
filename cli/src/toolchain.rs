@@ -4,6 +4,9 @@ use std::process::Command;
 pub const MISSING_SBPF_LINKER_MESSAGE: &str =
     "sbpf-linker not found on PATH.\n\n  Install it from crates.io:\n    cargo install sbpf-linker";
 
+/// Nightly toolchain used to compile upstream BPF programs for v0.1.0.
+pub const UPSTREAM_NIGHTLY_TOOLCHAIN: &str = "nightly-2026-03-27";
+
 /// Check whether sbpf-linker is reachable on PATH.
 pub fn has_sbpf_linker() -> bool {
     command_is_reachable(Command::new("sbpf-linker").arg("--version"))

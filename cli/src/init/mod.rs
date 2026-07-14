@@ -113,13 +113,16 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
     let toolchain_idx = if skip_prompts {
         toolchain_default
     } else {
-        let toolchain_items = &[
-            "solana    (cargo build-sbf)",
-            "upstream  (cargo +nightly build-bpf)",
+        let toolchain_items = [
+            "solana    (cargo build-sbf)".to_string(),
+            format!(
+                "upstream  (cargo +{} build-bpf)",
+                toolchain::UPSTREAM_NIGHTLY_TOOLCHAIN
+            ),
         ];
         Select::with_theme(&theme)
             .with_prompt("Toolchain")
-            .items(toolchain_items)
+            .items(&toolchain_items)
             .default(toolchain_default)
             .interact()?
     };
