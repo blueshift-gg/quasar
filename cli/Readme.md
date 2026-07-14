@@ -5,7 +5,7 @@ The `quasar` binary is a project-aware build tool for Solana programs. It wraps 
 ## Install
 
 ```bash
-cargo install --path cli
+cargo install quasar-cli --version 0.1.0 --locked
 ```
 
 ## Host support
