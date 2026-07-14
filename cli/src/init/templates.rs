@@ -42,7 +42,6 @@ pub(super) const INSTRUCTION_INITIALIZE: &str = r#"use quasar_lang::prelude::*;
 #[derive(Accounts)]
 pub struct Initialize {
     pub payer: Signer,
-    pub system_program: Program<SystemProgram>,
 }
 
 impl Initialize {
@@ -57,8 +56,10 @@ pub(super) const STATE_RS: &str = r#"use quasar_lang::prelude::*;
 
 #[account(discriminator = 1)]
 pub struct MyAccount {
+    pub version: u8,
     pub authority: Address,
     pub value: u64,
+    pub _reserved: [u8; 64],
 }
 "#;
 
