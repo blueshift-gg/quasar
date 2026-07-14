@@ -86,6 +86,34 @@ verify_starter() {
     || fail "$template starter manifest changed during lint/build/test"
 }
 
+verify_upstream_starter() {
+  local name="quasar-release-upstream"
+  local project="$rehearsal_root/$name"
+  local manifest_snapshot="/tmp/$name.Cargo.toml"
+
+  cd "$rehearsal_root"
+  quasar init "$name" \
+    --yes \
+    --no-git \
+    --test-language none \
+    --template minimal \
+    --toolchain upstream
+
+  cd "$project"
+  cp Cargo.toml "$manifest_snapshot"
+  grep -Fx 'quasar-lang = "=0.1.0"' Cargo.toml >/dev/null \
+    || fail "upstream starter does not use the packaged quasar-lang version"
+  if grep -Eq 'quasar-lang = .*\b(path|git|branch)\b' Cargo.toml; then
+    fail "upstream starter contains a source override"
+  fi
+
+  RUSTUP_TOOLCHAIN=1.92.0 quasar build
+  find target/bpfel-unknown-none/release -maxdepth 1 -type f -name '*.so' -print -quit \
+    | grep -q . || fail "upstream starter did not emit a program artifact"
+  cmp "$manifest_snapshot" Cargo.toml \
+    || fail "upstream starter manifest changed during build"
+}
+
 [[ ! -e /workspace/quasar ]] || fail "source checkout is present in the runtime image"
 [[ "$(find "$package_root/archives" -type f -name '*.crate' | wc -l | tr -d ' ')" -eq 10 ]] \
   || fail "expected ten package archives"
@@ -100,9 +128,18 @@ fi
 assert_no_credentials
 fingerprint_package_sources "$source_fingerprint_before"
 
+rustc +nightly-2026-03-27 --version
+rustup component list --toolchain nightly-2026-03-27 \
+  | grep -Fx 'rust-src (installed)' \
+  || fail "release nightly rust-src component is not installed"
+linker_version="$(sbpf-linker --version 2>&1 || true)"
+grep -F 'sbpf-linker 0.1.9' <<<"$linker_version" >/dev/null \
+  || fail "sbpf-linker 0.1.9 is not installed"
+
 rm -rf "$rehearsal_root"/*
 verify_starter minimal
 verify_starter full
+verify_upstream_starter
 
 cd "$rehearsal_root/quasar-release-minimal"
 readonly manifest_snapshot="/tmp/quasar-release-minimal.Cargo.toml"
