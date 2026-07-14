@@ -6,11 +6,11 @@ pub const MISSING_SBPF_LINKER_MESSAGE: &str =
 
 /// Check whether sbpf-linker is reachable on PATH.
 pub fn has_sbpf_linker() -> bool {
-    Command::new("sbpf-linker")
-        .arg("--version")
-        .output()
-        .ok()
-        .is_some_and(|o| o.status.success())
+    command_is_reachable(Command::new("sbpf-linker").arg("--version"))
+}
+
+fn command_is_reachable(command: &mut Command) -> bool {
+    command.output().is_ok()
 }
 
 /// Ensure the installed `cargo-build-sbf` supports the given platform-tools
@@ -52,7 +52,10 @@ fn parse_tools_version(s: &str) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::MISSING_SBPF_LINKER_MESSAGE;
+    use {
+        super::{command_is_reachable, MISSING_SBPF_LINKER_MESSAGE},
+        std::process::Command,
+    };
 
     #[test]
     fn missing_linker_message_uses_the_published_crate() {
@@ -61,5 +64,19 @@ mod tests {
             "sbpf-linker not found on PATH.\n\n  Install it from crates.io:\n    cargo install \
              sbpf-linker"
         );
+    }
+
+    #[test]
+    fn reachable_linker_does_not_need_a_successful_version_status() {
+        assert!(command_is_reachable(
+            Command::new("sh").args(["-c", "exit 1"])
+        ));
+    }
+
+    #[test]
+    fn missing_linker_is_not_reachable() {
+        assert!(!command_is_reachable(&mut Command::new(
+            "quasar-definitely-missing-sbpf-linker"
+        )));
     }
 }
