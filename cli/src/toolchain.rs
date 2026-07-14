@@ -1,8 +1,9 @@
 use std::process::Command;
 
 /// Actionable recovery guidance shared by every upstream build entry point.
-pub const MISSING_SBPF_LINKER_MESSAGE: &str =
-    "sbpf-linker not found on PATH.\n\n  Install it from crates.io:\n    cargo install sbpf-linker";
+pub const MISSING_SBPF_LINKER_MESSAGE: &str = "sbpf-linker not found on PATH.\n\n  Install it \
+                                               from crates.io:\n    cargo install sbpf-linker \
+                                               --version 0.1.9 --locked";
 
 /// Nightly toolchain used to compile upstream BPF programs for v0.1.0.
 pub const UPSTREAM_NIGHTLY_TOOLCHAIN: &str = "nightly-2026-03-27";
@@ -65,7 +66,7 @@ mod tests {
         assert_eq!(
             MISSING_SBPF_LINKER_MESSAGE,
             "sbpf-linker not found on PATH.\n\n  Install it from crates.io:\n    cargo install \
-             sbpf-linker"
+             sbpf-linker --version 0.1.9 --locked"
         );
     }
 
