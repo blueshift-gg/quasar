@@ -1,0 +1,10 @@
+proc-macro attr quasar_derive::account
+proc-macro attr quasar_derive::error_code
+proc-macro attr quasar_derive::event
+proc-macro attr quasar_derive::instruction
+proc-macro attr quasar_derive::program
+proc-macro bang quasar_derive::declare_program
+proc-macro bang quasar_derive::emit_cpi
+proc-macro derive quasar_derive::Accounts helpers=[account,instruction]
+proc-macro derive quasar_derive::QuasarSerialize helpers=[max]
+proc-macro derive quasar_derive::Seeds helpers=[seeds]

@@ -1,0 +1,7 @@
+pub mod quasar_schema
+pub fn quasar_schema::camel_to_pascal(&str) -> alloc::string::String
+pub fn quasar_schema::camel_to_snake(&str) -> alloc::string::String
+pub fn quasar_schema::pascal_to_snake(&str) -> alloc::string::String
+pub fn quasar_schema::snake_to_pascal(&str) -> alloc::string::String
+pub fn quasar_schema::to_camel_case(&str) -> alloc::string::String
+pub fn quasar_schema::to_screaming_snake(&str) -> alloc::string::String

@@ -209,6 +209,40 @@ jobs:
       - name: Build public crate documentation with warnings denied
         run: make doc-check
 
+  public_api:
+    name: Public API Baseline
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-public-api-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-public-api-
+      - name: Read pinned public API tools
+        id: versions
+        run: |
+          echo "nightly=$(make nightly-version)" >> "$GITHUB_OUTPUT"
+          echo "public_api=$(make cargo-public-api-version)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.versions.outputs.nightly }}
+          targets: x86_64-unknown-linux-gnu
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-public-api@${{ steps.versions.outputs.public_api }}
+      - name: Print public API toolchain
+        run: |
+          rustc +${{ steps.versions.outputs.nightly }} --version
+          cargo --version
+          cargo public-api --version
+      - name: Reject Rust public API regressions
+        run: make check-public-api
+
   check_features:
     name: Check Features
     runs-on: ubuntu-24.04

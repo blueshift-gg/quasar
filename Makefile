@@ -4,7 +4,11 @@ NIGHTLY_TOOLCHAIN := nightly-2026-03-27
 KANI_VERSION := 0.67.0
 CARGO_FUZZ_VERSION := 0.13.2
 CARGO_AUDIT_VERSION := 0.22.1
+CARGO_PUBLIC_API_VERSION := 0.52.0
 LICENSE_EXPRESSION := Apache-2.0 OR MIT
+PUBLIC_API_BASELINE_VERSION := v0.1.0
+PUBLIC_API_BASELINE_DIR := api-baselines/$(PUBLIC_API_BASELINE_VERSION)
+PUBLIC_API_TARGET := x86_64-unknown-linux-gnu
 RELEASE_WORKFLOW ?= .github/workflows/release.yml
 PROGRAM_MSRV := 1.89.0
 # platform-tools v1.52 ships Cargo 1.89 which supports Cargo.lock v4.
@@ -60,7 +64,8 @@ PACKAGE_PATCHES := \
 	test-host-inventory test-host test-sbf-host \
 	bench-cu bench-tracked compare-tracked test-benchmark-policy doc-check \
 	test-miri test-miri-strict test-all \
-	nightly-version cargo-fuzz-version cargo-audit-version test-fuzz-build \
+	nightly-version cargo-fuzz-version cargo-audit-version cargo-public-api-version \
+	test-fuzz-build check-public-api bless-public-api \
 	test-audit-policy generated-client-smoke \
 	kani help-kani check-kani kani-lang \
 	kani-spl kani-metadata msrv-check package-check audit
@@ -74,6 +79,19 @@ cargo-fuzz-version:
 
 cargo-audit-version:
 	@echo $(CARGO_AUDIT_VERSION)
+
+cargo-public-api-version:
+	@echo $(CARGO_PUBLIC_API_VERSION)
+
+check-public-api:
+	@scripts/check-public-api.sh check "$(PUBLIC_API_BASELINE_DIR)" \
+		"$(NIGHTLY_TOOLCHAIN)" "$(CARGO_PUBLIC_API_VERSION)" \
+		"$(PUBLIC_API_TARGET)" $(PUBLISH_PACKAGES)
+
+bless-public-api:
+	@scripts/check-public-api.sh bless "$(PUBLIC_API_BASELINE_DIR)" \
+		"$(NIGHTLY_TOOLCHAIN)" "$(CARGO_PUBLIC_API_VERSION)" \
+		"$(PUBLIC_API_TARGET)" $(PUBLISH_PACKAGES)
 
 test-fuzz-build:
 	@cd lang && cargo +$(NIGHTLY_TOOLCHAIN) fuzz build
