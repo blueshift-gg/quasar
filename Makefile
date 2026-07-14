@@ -67,7 +67,7 @@ PACKAGE_REHEARSAL_ROOT ?= target/release-rehearsal
 
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
 	check-runtime-panics check-workspace-invariants check-license-policy \
-	check-package-metadata check-release-train \
+	check-package-metadata check-readme-crate-inventory check-release-train \
 	build build-sbf test test-bless \
 	test-host-inventory test-host test-sbf-host \
 	bench-cu bench-tracked compare-tracked test-benchmark-policy doc-check \
@@ -232,7 +232,8 @@ check-runtime-panics:
 	  exit 1; \
 	fi
 
-check-workspace-invariants: check-license-policy check-package-metadata check-release-train
+check-workspace-invariants: check-license-policy check-package-metadata \
+	check-readme-crate-inventory check-release-train
 	@check_allowed() { \
 	  local desc="$$1" pattern="$$2"; shift 2; \
 	  local allowed=("$$@") matches; \
@@ -315,6 +316,9 @@ check-package-metadata:
 	done < <(jq -r \
 	  '.packages[] | select(.publish != []) | (.manifest_path | sub("/Cargo.toml$$"; "")) + "/" + .readme' \
 	  <<<"$$metadata")
+
+check-readme-crate-inventory:
+	@python3 scripts/check-readme-crate-inventory.py
 
 check-release-train:
 	@metadata="$$(cargo metadata --locked --no-deps --format-version 1)"; \

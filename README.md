@@ -107,15 +107,25 @@ CI installs and runs the same Kani version automatically in [`.github/workflows/
 
 The best way to contribute now is playing with Quasar. Build programs, test them and if you found any bug or areas to improve, please open an Issue. We still on a unstable version that will be changing a lot. Check [Contributing](CONTRIBUTING.md)
 
-## Workspace
+## Published crates
 
-| Crate | Path | Purpose |
-|-------|------|---------|
-| `quasar-lang` | `lang/` | Account types, CPI builder, events, sysvars, error handling |
-| `quasar-derive` | `derive/` | Proc macros for accounts, instructions, programs, events, errors |
-| `quasar-spl` | `spl/` | SPL Token / Token-2022 CPI and zero-copy account types |
-| `quasar-profile` | `profile/` | Static CU profiler with flamegraph output |
-| `cli` | `cli/` | `quasar` CLI — init, build, test, deploy, profile, dump |
+The v0.1.0 release publishes these workspace packages. Test programs, examples,
+and their clients are not published.
+
+<!-- published-crate-inventory:start -->
+| Package | Path | Purpose |
+| --- | --- | --- |
+| `quasar-cli` | `cli/` | CLI for the Quasar Solana framework |
+| `quasar-derive` | `derive/` | Proc macros for the Quasar Solana framework |
+| `quasar-idl` | `idl/` | IDL generator for the Quasar Solana framework with discriminator collision detection |
+| `quasar-idl-schema` | `idl/schema/` | Public IDL JSON schema types for the Quasar Solana framework |
+| `quasar-lang` | `lang/` | Zero-copy Solana program framework |
+| `quasar-metadata` | `metadata/` | Metaplex Token Metadata integration for the Quasar Solana framework |
+| `quasar-profile` | `profile/` | SBF binary profiler for the Quasar Solana framework |
+| `quasar-schema` | `schema/` | Shared schema types for Quasar interfaces |
+| `quasar-spl` | `spl/` | SPL Token program CPI and zero-copy account types for the Quasar Solana framework |
+| `solana-compiler-builtins` | `solana-compiler-builtins/` | Compiler runtime builtins required by Quasar SBF programs |
+<!-- published-crate-inventory:end -->
 
 ## License
 
