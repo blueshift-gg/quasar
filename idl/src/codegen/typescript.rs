@@ -236,6 +236,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
         !idl.accounts.is_empty() || !idl.events.is_empty() || !idl.instructions.is_empty();
     if has_decoders {
         out.push_str(MATCH_DISC_HELPER);
+        out.push_str(TOTAL_DECODE_HELPERS);
         out.push('\n');
     }
 
@@ -382,8 +383,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
         if has_dynamic_field_defs(fields) {
             emit_compact_type_codec(&mut out, name, fields, target);
         } else {
-            writeln!(out, "export const {}Codec = getStructCodec([", name)
-                .expect("write to String");
+            writeln!(out, "const {}StructCodec = getStructCodec([", name).expect("write to String");
             for field in fields {
                 writeln!(
                     out,
@@ -393,7 +393,17 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
                 )
                 .expect("write to String");
             }
-            out.push_str("]);\n\n");
+            out.push_str("]);\n");
+            writeln!(out, "export const {name}Codec = {{").expect("write to String");
+            writeln!(out, "  ...{name}StructCodec,").expect("write to String");
+            writeln!(
+                out,
+                "  decode(data: Parameters<typeof {name}StructCodec.decode>[0], offset = 0): \
+                 {name} {{ return decodeExact<{name}>({name}StructCodec, \
+                 Uint8Array.from(data).slice(offset)); }},"
+            )
+            .expect("write to String");
+            out.push_str("};\n\n");
         }
     }
 
@@ -494,8 +504,8 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
         .expect("write to String");
         writeln!(
             out,
-            "    return {}Codec.decode(data.slice({}_DISCRIMINATOR.length));",
-            name, const_name
+            "    return decodeExact<{}>({}Codec, data.slice({}_DISCRIMINATOR.length));",
+            name, name, const_name
         )
         .expect("write to String");
         out.push_str("  }\n");
@@ -511,12 +521,18 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
             if has_type {
                 writeln!(
                     out,
-                    "      return {{ type: ProgramEvent.{0}, data: \
-                     {0}Codec.decode(data.slice({1}.length)) }};",
+                    "      return {{ type: ProgramEvent.{0}, data: decodeExact<{0}>({0}Codec, \
+                     data.slice({1}.length)) }};",
                     event.name, const_name
                 )
                 .expect("write to String");
             } else {
+                writeln!(
+                    out,
+                    "      if (data.length !== {const_name}.length) throw new Error(\"trailing \
+                     bytes\");"
+                )
+                .expect("write to String");
                 writeln!(out, "      return {{ type: ProgramEvent.{} }};", event.name)
                     .expect("write to String");
             }
@@ -535,13 +551,21 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
                 pascal_to_screaming_snake(&pascal)
             );
             if ix.args.is_empty() {
-                writeln!(out, "    if (matchDisc(data, {}))", const_name).expect("write to String");
+                writeln!(out, "    if (matchDisc(data, {})) {{", const_name)
+                    .expect("write to String");
+                writeln!(
+                    out,
+                    "      if (data.length !== {const_name}.length) throw new Error(\"trailing \
+                     bytes\");"
+                )
+                .expect("write to String");
                 writeln!(
                     out,
                     "      return {{ type: ProgramInstruction.{} }};",
                     pascal
                 )
                 .expect("write to String");
+                out.push_str("    }\n");
             } else {
                 let has_dyn = ix.args.iter().any(is_arg_dynamic);
                 writeln!(out, "    if (matchDisc(data, {})) {{", const_name)
@@ -562,8 +586,8 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
                     out.push_str("      ]);\n");
                     writeln!(
                         out,
-                        "      return {{ type: ProgramInstruction.{}, args: \
-                         argsCodec.decode(data.slice({}.length)) }};",
+                        "      return {{ type: ProgramInstruction.{0}, args: \
+                         decodeExact<{0}InstructionArgs>(argsCodec, data.slice({1}.length)) }};",
                         pascal, const_name
                     )
                     .expect("write to String");
@@ -1312,9 +1336,12 @@ fn emit_compact_type_codec(out: &mut String, name: &str, fields: &[IdlFieldDef],
         }
         out.push_str("    ]);\n");
         out.push_str("    const fixedResult = fixedCodec.decode(data.slice(offset));\n");
+        out.push_str("    const fixedSize = codecSize(fixedCodec, fixedResult);\n");
         out.push_str(
-            "    offset += fixedCodec.fixedSize ?? fixedCodec.encode(fixedResult).length;\n",
+            "    if (!bytesEqual(fixedCodec.encode(fixedResult), checkedTake(data, offset, \
+             fixedSize))) throw new Error(\"invalid fixed field encoding\");\n",
         );
+        out.push_str("    offset += fixedSize;\n");
     }
 
     // Phase 2: decode length prefixes
@@ -1324,7 +1351,7 @@ fn emit_compact_type_codec(out: &mut String, name: &str, fields: &[IdlFieldDef],
         if optional_dynamic_inner(&f.ty).is_some() {
             writeln!(
                 out,
-                "    const {name}Tag = getU8Codec().decode(data.slice(offset));",
+                "    const {name}Tag = getU8Codec().decode(checkedTake(data, offset, 1));",
                 name = f.name
             )
             .expect("write to String");
@@ -1339,9 +1366,10 @@ fn emit_compact_type_codec(out: &mut String, name: &str, fields: &[IdlFieldDef],
         } else {
             writeln!(
                 out,
-                "    const {name}Len = {codec}.decode(data.slice(offset));",
+                "    const {name}Len = {codec}.decode(checkedTake(data, offset, {pfx}));",
                 name = f.name,
-                codec = pfx_codec
+                codec = pfx_codec,
+                pfx = pfx,
             )
             .expect("write to String");
             writeln!(out, "    offset += {};", pfx).expect("write to String");
@@ -1360,20 +1388,21 @@ fn emit_compact_type_codec(out: &mut String, name: &str, fields: &[IdlFieldDef],
                     .expect("write to String");
                 writeln!(
                     out,
-                    "      const {name}Len = {codec}.decode(data.slice(offset));",
+                    "      const {name}Len = {codec}.decode(checkedTake(data, offset, {pfx}));",
                     name = f.name,
-                    codec = pfx_codec
+                    codec = pfx_codec,
+                    pfx = pfx,
                 )
                 .expect("write to String");
                 writeln!(out, "      offset += {};", pfx).expect("write to String");
                 writeln!(
                     out,
-                    "      {name} = new TextDecoder().decode(data.slice(offset, offset + \
-                     Number({name}Len)));",
+                    "      const {name}Size = checkedLength({name}Len);\n\x20     {name} = \
+                     decodeUtf8(checkedTake(data, offset, {name}Size));",
                     name = f.name
                 )
                 .expect("write to String");
-                writeln!(out, "      offset += Number({}Len);", f.name).expect("write to String");
+                writeln!(out, "      offset += {}Size;", f.name).expect("write to String");
                 out.push_str("    }\n");
             } else if let IdlType::Vec { vec } = inner {
                 let item_codec = ts_codec(vec, target);
@@ -1388,16 +1417,18 @@ fn emit_compact_type_codec(out: &mut String, name: &str, fields: &[IdlFieldDef],
                     .expect("write to String");
                 writeln!(
                     out,
-                    "      const {name}Len = {codec}.decode(data.slice(offset));",
+                    "      const {name}Len = {codec}.decode(checkedTake(data, offset, {pfx}));",
                     name = f.name,
-                    codec = pfx_codec
+                    codec = pfx_codec,
+                    pfx = pfx,
                 )
                 .expect("write to String");
                 writeln!(out, "      offset += {};", pfx).expect("write to String");
                 writeln!(
                     out,
-                    "      const {name}Codec = getArrayCodec({item_codec}, {{ size: \
-                     Number({name}Len) }});",
+                    "      const {name}Count = checkedElementCount({name}Len, data.length - \
+                     offset);\n\x20     const {name}Codec = getArrayCodec({item_codec}, {{ size: \
+                     {name}Count }});",
                     name = f.name,
                     item_codec = item_codec,
                 )
@@ -1419,18 +1450,19 @@ fn emit_compact_type_codec(out: &mut String, name: &str, fields: &[IdlFieldDef],
         } else if is_string_type(&f.ty) {
             writeln!(
                 out,
-                "    const {name} = new TextDecoder().decode(data.slice(offset, offset + \
-                 Number({name}Len)));",
+                "    const {name}Size = checkedLength({name}Len);\n\x20   const {name} = \
+                 decodeUtf8(checkedTake(data, offset, {name}Size));",
                 name = f.name
             )
             .expect("write to String");
-            writeln!(out, "    offset += Number({}Len);", f.name).expect("write to String");
+            writeln!(out, "    offset += {}Size;", f.name).expect("write to String");
         } else if let IdlType::Vec { vec } = &f.ty {
             let item_codec = ts_codec(vec, target);
             writeln!(
                 out,
-                "    const {name}Codec = getArrayCodec({item_codec}, {{ size: Number({name}Len) \
-                 }});",
+                "    const {name}Count = checkedElementCount({name}Len, data.length - \
+                 offset);\n\x20   const {name}Codec = getArrayCodec({item_codec}, {{ size: \
+                 {name}Count }});",
                 name = f.name,
                 item_codec = item_codec,
             )
@@ -1453,12 +1485,27 @@ fn emit_compact_type_codec(out: &mut String, name: &str, fields: &[IdlFieldDef],
     // Build return object
     let mut field_exprs = Vec::new();
     for f in &fixed_fields {
-        field_exprs.push(format!("{}: fixedResult.{}", f.name, f.name));
+        if let IdlType::Option { option } = &f.ty {
+            field_exprs.push(format!(
+                "{}: unwrapOption<{}>(fixedResult.{})",
+                f.name,
+                ts_type(option),
+                f.name
+            ));
+        } else {
+            field_exprs.push(format!("{}: fixedResult.{}", f.name, f.name));
+        }
     }
     for f in &dyn_fields {
         field_exprs.push(f.name.clone());
     }
-    writeln!(out, "    return {{ {} }};", field_exprs.join(", ")).expect("write to String");
+    writeln!(out, "    const result = {{ {} }};", field_exprs.join(", ")).expect("write to String");
+    out.push_str("    assertFinished(data, offset);\n");
+    out.push_str(
+        "    if (!bytesEqual(this.encode(result), data)) throw new Error(\"invalid field \
+         encoding\");\n",
+    );
+    out.push_str("    return result;\n");
     out.push_str("  },\n");
 
     out.push_str("};\n\n");
@@ -1656,9 +1703,12 @@ fn emit_compact_decode(
         }
         out.push_str("      ]);\n");
         out.push_str("      const fixedResult = fixedCodec.decode(data.slice(offset));\n");
+        out.push_str("      const fixedSize = codecSize(fixedCodec, fixedResult);\n");
         out.push_str(
-            "      offset += fixedCodec.fixedSize ?? fixedCodec.encode(fixedResult).length;\n",
+            "      if (!bytesEqual(fixedCodec.encode(fixedResult), checkedTake(data, offset, \
+             fixedSize))) throw new Error(\"invalid fixed field encoding\");\n",
         );
+        out.push_str("      offset += fixedSize;\n");
     }
 
     // Phase 2: decode length prefixes
@@ -1668,7 +1718,7 @@ fn emit_compact_decode(
         if optional_dynamic_inner(&arg.ty).is_some() {
             writeln!(
                 out,
-                "      const {name}Tag = getU8Codec().decode(data.slice(offset));",
+                "      const {name}Tag = getU8Codec().decode(checkedTake(data, offset, 1));",
                 name = arg.name
             )
             .expect("write to String");
@@ -1683,9 +1733,10 @@ fn emit_compact_decode(
         } else {
             writeln!(
                 out,
-                "      const {name}Len = {codec}.decode(data.slice(offset));",
+                "      const {name}Len = {codec}.decode(checkedTake(data, offset, {pfx}));",
                 name = arg.name,
-                codec = pfx_codec
+                codec = pfx_codec,
+                pfx = pfx,
             )
             .expect("write to String");
             writeln!(out, "      offset += {};", pfx).expect("write to String");
@@ -1708,21 +1759,21 @@ fn emit_compact_decode(
                     .expect("write to String");
                 writeln!(
                     out,
-                    "        const {name}Len = {codec}.decode(data.slice(offset));",
+                    "        const {name}Len = {codec}.decode(checkedTake(data, offset, {pfx}));",
                     name = arg.name,
-                    codec = pfx_codec
+                    codec = pfx_codec,
+                    pfx = pfx,
                 )
                 .expect("write to String");
                 writeln!(out, "        offset += {};", pfx).expect("write to String");
                 writeln!(
                     out,
-                    "        {name} = new TextDecoder().decode(data.slice(offset, offset + \
-                     Number({name}Len)));",
+                    "        const {name}Size = checkedLength({name}Len);\n\x20       {name} = \
+                     decodeUtf8(checkedTake(data, offset, {name}Size));",
                     name = arg.name
                 )
                 .expect("write to String");
-                writeln!(out, "        offset += Number({}Len);", arg.name)
-                    .expect("write to String");
+                writeln!(out, "        offset += {}Size;", arg.name).expect("write to String");
                 out.push_str("      }\n");
             } else if let IdlType::Vec { vec } = inner {
                 let item_codec = ts_codec(vec, target);
@@ -1737,16 +1788,18 @@ fn emit_compact_decode(
                     .expect("write to String");
                 writeln!(
                     out,
-                    "        const {name}Len = {codec}.decode(data.slice(offset));",
+                    "        const {name}Len = {codec}.decode(checkedTake(data, offset, {pfx}));",
                     name = arg.name,
-                    codec = pfx_codec
+                    codec = pfx_codec,
+                    pfx = pfx,
                 )
                 .expect("write to String");
                 writeln!(out, "        offset += {};", pfx).expect("write to String");
                 writeln!(
                     out,
-                    "        const {name}Codec = getArrayCodec({item_codec}, {{ size: \
-                     Number({name}Len) }});",
+                    "        const {name}Count = checkedElementCount({name}Len, data.length - \
+                     offset);\n\x20       const {name}Codec = getArrayCodec({item_codec}, {{ \
+                     size: {name}Count }});",
                     name = arg.name,
                     item_codec = item_codec,
                 )
@@ -1768,18 +1821,19 @@ fn emit_compact_decode(
         } else if is_string_type(&arg.ty) {
             writeln!(
                 out,
-                "      const {name} = new TextDecoder().decode(data.slice(offset, offset + \
-                 Number({name}Len)));",
+                "      const {name}Size = checkedLength({name}Len);\n\x20     const {name} = \
+                 decodeUtf8(checkedTake(data, offset, {name}Size));",
                 name = arg.name
             )
             .expect("write to String");
-            writeln!(out, "      offset += Number({}Len);", arg.name).expect("write to String");
+            writeln!(out, "      offset += {}Size;", arg.name).expect("write to String");
         } else if let IdlType::Vec { vec } = &arg.ty {
             let item_codec = ts_codec(vec, target);
             writeln!(
                 out,
-                "      const {name}Codec = getArrayCodec({item_codec}, {{ size: Number({name}Len) \
-                 }});",
+                "      const {name}Count = checkedElementCount({name}Len, data.length - \
+                 offset);\n\x20     const {name}Codec = getArrayCodec({item_codec}, {{ size: \
+                 {name}Count }});",
                 name = arg.name,
                 item_codec = item_codec,
             )
@@ -1802,11 +1856,21 @@ fn emit_compact_decode(
     // Build the return object
     let mut field_exprs = Vec::new();
     for arg in &fixed_args {
-        field_exprs.push(format!("{}: fixedResult.{}", arg.name, arg.name));
+        if let IdlType::Option { option } = &arg.ty {
+            field_exprs.push(format!(
+                "{}: unwrapOption<{}>(fixedResult.{})",
+                arg.name,
+                ts_type(option),
+                arg.name
+            ));
+        } else {
+            field_exprs.push(format!("{}: fixedResult.{}", arg.name, arg.name));
+        }
     }
     for arg in &dyn_args {
         field_exprs.push(arg.name.clone());
     }
+    out.push_str("      assertFinished(data, offset);\n");
     writeln!(
         out,
         "      return {{ type: ProgramInstruction.{}, args: {{ {} }} }};",
@@ -2606,5 +2670,73 @@ const MATCH_DISC_HELPER: &str = r#"function matchDisc(data: Uint8Array, disc: Ui
     if (data[i] !== disc[i]) return false;
   }
   return true;
+}
+"#;
+
+const TOTAL_DECODE_HELPERS: &str = r#"
+const MAX_DECODE_ELEMENTS = 10 * 1024 * 1024;
+
+function checkedLength(value: number | bigint): number {
+  const result = Number(value);
+  if (!Number.isSafeInteger(result) || result < 0) throw new Error("invalid length prefix");
+  return result;
+}
+
+function checkedElementCount(value: number | bigint, remaining: number): number {
+  const result = checkedLength(value);
+  if (result > MAX_DECODE_ELEMENTS || result > remaining) {
+    throw new Error("element count exceeds limit");
+  }
+  return result;
+}
+
+function checkedTake(data: Uint8Array, offset: number, size: number): Uint8Array {
+  if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(size) || offset < 0 || size < 0 || size > data.length - offset) {
+    throw new Error("truncated input");
+  }
+  return data.slice(offset, offset + size);
+}
+
+function decodeUtf8(data: Uint8Array): string {
+  return new TextDecoder("utf-8", { fatal: true }).decode(data);
+}
+
+function unwrapOption<T>(value: unknown): T | null {
+  if (typeof value === "object" && value !== null && "__option" in value) {
+    const option = value as { __option: string; value?: T };
+    if (option.__option === "None") return null;
+    if (option.__option === "Some") return option.value as T;
+    throw new Error("invalid option tag");
+  }
+  return value as T | null;
+}
+
+function codecSize(
+  codec: { encode(value: any): ArrayLike<number> },
+  value: unknown,
+): number {
+  const fixedSize = (codec as { fixedSize?: unknown }).fixedSize;
+  return typeof fixedSize === "number" ? fixedSize : codec.encode(value).length;
+}
+
+function bytesEqual(left: ArrayLike<number>, right: ArrayLike<number>): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index++) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+function decodeExact<T>(
+  codec: { decode(data: Uint8Array): unknown; encode(value: any): ArrayLike<number> },
+  data: Uint8Array,
+): T {
+  const value = codec.decode(data);
+  if (!bytesEqual(codec.encode(value), data)) throw new Error("invalid or trailing bytes");
+  return value as T;
+}
+
+function assertFinished(data: Uint8Array, offset: number): void {
+  if (offset !== data.length) throw new Error("trailing bytes");
 }
 "#;

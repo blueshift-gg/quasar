@@ -23,6 +23,7 @@ pub fn generate_c_client(idl: &Idl) -> CodegenResult<String> {
 
     emit_program_id(&mut out, &prefix, &idl.address);
     emit_discriminators(&mut out, &prefix, idl);
+    emit_decoder_helpers(&mut out, &prefix);
     emit_type_defs(&mut out, &prefix, &idl.types);
     emit_decode_fns(&mut out, &prefix, &idl.types);
     emit_instructions(&mut out, &prefix, idl);
@@ -30,6 +31,82 @@ pub fn generate_c_client(idl: &Idl) -> CodegenResult<String> {
 
     writeln!(out, "#endif /* {guard} */").unwrap();
     Ok(out)
+}
+
+fn emit_decoder_helpers(out: &mut String, prefix: &str) {
+    writeln!(
+        out,
+        r#"typedef struct {{
+    const uint8_t *data;
+    uint64_t len;
+    uint64_t offset;
+}} {prefix}_decoder_t;
+
+static inline bool {prefix}_decoder_take(
+    {prefix}_decoder_t *decoder,
+    uint64_t size,
+    const uint8_t **value
+) {{
+    if (size > decoder->len - decoder->offset) return false;
+    *value = &decoder->data[decoder->offset];
+    decoder->offset += size;
+    return true;
+}}
+
+static inline bool {prefix}_decoder_uint(
+    {prefix}_decoder_t *decoder,
+    uint8_t width,
+    uint64_t *value
+) {{
+    const uint8_t *bytes;
+    if (width != 1 && width != 2 && width != 4 && width != 8) return false;
+    if (!{prefix}_decoder_take(decoder, width, &bytes)) return false;
+    *value = 0;
+    for (uint8_t i = 0; i < width; i++) *value |= ((uint64_t)bytes[i]) << (i * 8);
+    return true;
+}}
+
+static inline bool {prefix}_decoder_span(
+    {prefix}_decoder_t *decoder,
+    uint8_t width,
+    uint32_t item_size,
+    const uint8_t **value,
+    uint32_t *count
+) {{
+    uint64_t count64;
+    if (!{prefix}_decoder_uint(decoder, width, &count64)) return false;
+    if (count64 > UINT32_MAX || (item_size != 0 && count64 > UINT64_MAX / item_size)) return false;
+    uint64_t byte_len = count64 * item_size;
+    if (!{prefix}_decoder_take(decoder, byte_len, value)) return false;
+    *count = (uint32_t)count64;
+    return true;
+}}
+
+static inline bool {prefix}_utf8_valid(const uint8_t *data, uint32_t len) {{
+    uint32_t i = 0;
+    while (i < len) {{
+        uint8_t c = data[i++];
+        if (c < 0x80) continue;
+        uint32_t needed;
+        uint32_t code;
+        uint32_t minimum;
+        if ((c & 0xe0) == 0xc0) {{ needed = 1; code = c & 0x1f; minimum = 0x80; }}
+        else if ((c & 0xf0) == 0xe0) {{ needed = 2; code = c & 0x0f; minimum = 0x800; }}
+        else if ((c & 0xf8) == 0xf0) {{ needed = 3; code = c & 0x07; minimum = 0x10000; }}
+        else return false;
+        if (needed > len - i) return false;
+        for (uint32_t j = 0; j < needed; j++) {{
+            uint8_t next = data[i++];
+            if ((next & 0xc0) != 0x80) return false;
+            code = (code << 6) | (next & 0x3f);
+        }}
+        if (code < minimum || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return false;
+    }}
+    return true;
+}}
+"#
+    )
+    .unwrap();
 }
 
 fn emit_program_id(out: &mut String, prefix: &str, address: &str) {
@@ -113,13 +190,28 @@ fn emit_decode_fns(out: &mut String, prefix: &str, types: &[IdlTypeDef]) {
         let snake = pascal_to_snake(&td.name);
         writeln!(
             out,
-            "static inline void {prefix}_{snake}_decode(\n    const uint8_t *data, \
-             {prefix}_{snake}_t *out\n) {{",
+            "static inline bool {prefix}_{snake}_decode(\n    const uint8_t *data,\n    uint64_t \
+             data_len,\n    {prefix}_{snake}_t *out\n) {{",
         )
         .unwrap();
-        writeln!(out, "    uint64_t offset = 0;").unwrap();
-        for field in &td.fields {
+        writeln!(
+            out,
+            "    {prefix}_decoder_t decoder = {{ .data = data, .len = data_len, .offset = 0 }};"
+        )
+        .unwrap();
+        let fixed_fields: Vec<_> = td
+            .fields
+            .iter()
+            .filter(|field| !is_dynamic_field(field))
+            .collect();
+        let dynamic_fields: Vec<_> = td
+            .fields
+            .iter()
+            .filter(|field| is_dynamic_field(field))
+            .collect();
+        for field in fixed_fields {
             out.push_str(&decode_field_expr(
+                prefix,
                 &field.name,
                 &field.ty,
                 field.codec.as_ref(),
@@ -127,7 +219,26 @@ fn emit_decode_fns(out: &mut String, prefix: &str, types: &[IdlTypeDef]) {
                 types,
             ));
         }
-        out.push_str("}\n\n");
+        for field in &dynamic_fields {
+            out.push_str(&decode_dynamic_header(
+                prefix,
+                &field.name,
+                &field.ty,
+                field.codec.as_ref(),
+                1,
+            ));
+        }
+        for field in dynamic_fields {
+            out.push_str(&decode_dynamic_tail(
+                prefix,
+                &field.name,
+                &field.ty,
+                field.codec.as_ref(),
+                1,
+                types,
+            ));
+        }
+        out.push_str("    return decoder.offset == decoder.len;\n}\n\n");
     }
 }
 
@@ -622,6 +733,10 @@ fn is_dynamic_with_codec(ty: &IdlType, codec: Option<&IdlCodec>) -> bool {
     codec.is_some() && dynamic_payload_type(ty).is_some()
 }
 
+fn is_dynamic_field(field: &crate::types::IdlFieldDef) -> bool {
+    is_dynamic_with_codec(&field.ty, field.codec.as_ref())
+}
+
 fn dynamic_payload_type(ty: &IdlType) -> Option<&IdlType> {
     match ty {
         IdlType::Primitive(p) if p == "string" => Some(ty),
@@ -831,27 +946,25 @@ fn serialize_payload_bytes(name: &str, ty: &IdlType, t: &str) -> String {
     }
 }
 
-fn decode_dyn_bytes(name: &str, prefix_bytes: usize, t: &str) -> String {
-    match prefix_bytes {
-        1 => format!(
-            "{t}out->{name}_len = data[offset]; offset += 1;\n{t}out->{name} = &data[offset]; \
-             offset += out->{name}_len;\n"
-        ),
-        2 => format!(
-            "{t}out->{name}_len = (uint32_t)((uint16_t)data[offset] | ((uint16_t)data[offset+1] \
-             << 8)); offset += 2;\n{t}out->{name} = &data[offset]; offset += out->{name}_len;\n"
-        ),
-        4 => format!(
-            "{t}out->{name}_len = (uint32_t)data[offset] | ((uint32_t)data[offset+1] << 8) | \
-             ((uint32_t)data[offset+2] << 16) | ((uint32_t)data[offset+3] << 24); offset += \
-             4;\n{t}out->{name} = &data[offset]; offset += out->{name}_len;\n"
-        ),
-        _ => format!(
-            "{t}{{ uint64_t dlen = 0; for (int i = 0; i < 8; i++) dlen |= \
-             ((uint64_t)data[offset+i]) << (i*8); offset += 8; out->{name}_len = (uint32_t)dlen; \
-             out->{name} = &data[offset]; offset += out->{name}_len; }}\n"
-        ),
-    }
+fn decode_dyn_bytes(
+    prefix: &str,
+    name: &str,
+    prefix_bytes: usize,
+    item_size: usize,
+    pointer_cast: &str,
+    utf8: bool,
+    t: &str,
+) -> String {
+    let utf8_check = if utf8 {
+        format!("{t}if (!{prefix}_utf8_valid({name}_bytes, out->{name}_len)) return false;\n")
+    } else {
+        String::new()
+    };
+    format!(
+        "{t}const uint8_t *{name}_bytes;\n{t}if (!{prefix}_decoder_span(&decoder, {prefix_bytes}, \
+         {item_size}, &{name}_bytes, &out->{name}_len)) return false;\n{utf8_check}{t}out->{name} \
+         = {pointer_cast}{name}_bytes;\n"
+    )
 }
 
 fn serialize_field_expr(
@@ -983,7 +1096,79 @@ fn serialize_field_expr(
     }
 }
 
+fn dynamic_c_info(ty: &IdlType) -> (usize, &'static str, bool) {
+    match ty {
+        IdlType::Primitive(primitive) if primitive == "string" => (1, "", true),
+        IdlType::Vec { vec } if matches!(&**vec, IdlType::Primitive(p) if p == "pubkey") => {
+            (32, "(const Pubkey *)", false)
+        }
+        IdlType::Vec { .. } => (1, "", false),
+        _ => (1, "", false),
+    }
+}
+
+fn decode_dynamic_header(
+    prefix: &str,
+    name: &str,
+    ty: &IdlType,
+    codec: Option<&IdlCodec>,
+    depth: usize,
+) -> String {
+    let t = "    ".repeat(depth);
+    if matches!(ty, IdlType::Option { .. }) {
+        return format!(
+            "{t}uint64_t {name}_tag; if (!{prefix}_decoder_uint(&decoder, 1, &{name}_tag) || \
+             {name}_tag > 1) return false;\n"
+        );
+    }
+    let width = codec.expect("dynamic field codec").prefix_bytes();
+    format!(
+        "{t}{{ uint64_t count; if (!{prefix}_decoder_uint(&decoder, {width}, &count) || count > \
+         UINT32_MAX) return false; out->{name}_len = (uint32_t)count; }}\n"
+    )
+}
+
+fn decode_dynamic_tail(
+    prefix: &str,
+    name: &str,
+    ty: &IdlType,
+    codec: Option<&IdlCodec>,
+    depth: usize,
+    _types: &[IdlTypeDef],
+) -> String {
+    let t = "    ".repeat(depth);
+    if let IdlType::Option { option } = ty {
+        let (item_size, pointer_cast, utf8) = dynamic_c_info(option);
+        let inner = decode_dyn_bytes(
+            prefix,
+            name,
+            codec.expect("dynamic field codec").prefix_bytes(),
+            item_size,
+            pointer_cast,
+            utf8,
+            &format!("{t}    "),
+        );
+        return format!(
+            "{t}if ({name}_tag == 0) {{\n{t}    out->{name}_present = 0;\n{t}}} else {{\n{t}    \
+             out->{name}_present = 1;\n{inner}{t}}}\n"
+        );
+    }
+    let (item_size, pointer_cast, utf8) = dynamic_c_info(ty);
+    let utf8_check = if utf8 {
+        format!("{t}if (!{prefix}_utf8_valid({name}_bytes, out->{name}_len)) return false;\n")
+    } else {
+        String::new()
+    };
+    format!(
+        "{t}if (out->{name}_len > UINT64_MAX / {item_size}) return false;\n{t}const uint8_t \
+         *{name}_bytes;\n{t}if (!{prefix}_decoder_take(&decoder, (uint64_t)out->{name}_len * \
+         {item_size}, &{name}_bytes)) return false;\n{utf8_check}{t}out->{name} = \
+         {pointer_cast}{name}_bytes;\n"
+    )
+}
+
 fn decode_field_expr(
+    prefix: &str,
     name: &str,
     ty: &IdlType,
     codec: Option<&IdlCodec>,
@@ -996,96 +1181,123 @@ fn decode_field_expr(
     if let IdlType::Primitive(p) = ty {
         if p == "string" {
             if let Some(c) = codec {
-                return decode_dyn_bytes(name, c.prefix_bytes(), &t);
+                return decode_dyn_bytes(prefix, name, c.prefix_bytes(), 1, "", true, &t);
             }
         }
     }
 
     // Handle Vec with codec
-    if let IdlType::Vec { .. } = ty {
+    if let IdlType::Vec { vec } = ty {
         if let Some(c) = codec {
-            return decode_dyn_bytes(name, c.prefix_bytes(), &t);
+            let is_pubkey = matches!(&**vec, IdlType::Primitive(p) if p == "pubkey");
+            return decode_dyn_bytes(
+                prefix,
+                name,
+                c.prefix_bytes(),
+                if is_pubkey { 32 } else { 1 },
+                if is_pubkey { "(const Pubkey *)" } else { "" },
+                false,
+                &t,
+            );
         }
     }
 
     match ty {
         IdlType::Primitive(p) => match p.as_str() {
-            "bool" => format!("{t}out->{name} = data[offset] != 0; offset += 1;\n"),
-            "u8" => format!("{t}out->{name} = data[offset]; offset += 1;\n"),
-            "i8" => format!("{t}out->{name} = (int8_t)data[offset]; offset += 1;\n"),
+            "bool" => format!(
+                "{t}{{ uint64_t v; if (!{prefix}_decoder_uint(&decoder, 1, &v) || v > 1) return \
+                 false; out->{name} = v == 1; }}\n"
+            ),
+            "u8" => format!(
+                "{t}{{ uint64_t v; if (!{prefix}_decoder_uint(&decoder, 1, &v)) return false; \
+                 out->{name} = (uint8_t)v; }}\n"
+            ),
+            "i8" => format!(
+                "{t}{{ uint64_t v; if (!{prefix}_decoder_uint(&decoder, 1, &v)) return false; \
+                 out->{name} = (int8_t)v; }}\n"
+            ),
             "u16" => format!(
-                "{t}out->{name} = (uint16_t)data[offset] | ((uint16_t)data[offset + 1] << 8); \
-                 offset += 2;\n"
+                "{t}{{ uint64_t v; if (!{prefix}_decoder_uint(&decoder, 2, &v)) return false; \
+                 out->{name} = (uint16_t)v; }}\n"
             ),
             "i16" => format!(
-                "{t}out->{name} = (int16_t)((uint16_t)data[offset] | ((uint16_t)data[offset + 1] \
-                 << 8)); offset += 2;\n"
+                "{t}{{ uint64_t v; if (!{prefix}_decoder_uint(&decoder, 2, &v)) return false; \
+                 out->{name} = (int16_t)v; }}\n"
             ),
             "u32" => format!(
-                "{t}out->{name} = (uint32_t)data[offset] | ((uint32_t)data[offset + 1] << 8) | \
-                 ((uint32_t)data[offset + 2] << 16) | ((uint32_t)data[offset + 3] << 24); offset \
-                 += 4;\n"
+                "{t}{{ uint64_t v; if (!{prefix}_decoder_uint(&decoder, 4, &v)) return false; \
+                 out->{name} = (uint32_t)v; }}\n"
             ),
             "i32" => format!(
-                "{t}out->{name} = (int32_t)((uint32_t)data[offset] | ((uint32_t)data[offset + 1] \
-                 << 8) | ((uint32_t)data[offset + 2] << 16) | ((uint32_t)data[offset + 3] << \
-                 24)); offset += 4;\n"
+                "{t}{{ uint64_t v; if (!{prefix}_decoder_uint(&decoder, 4, &v)) return false; \
+                 out->{name} = (int32_t)v; }}\n"
             ),
             "u64" => format!(
-                "{t}{{ uint64_t v = 0; for (int i = 0; i < 8; i++) v |= ((uint64_t)data[offset + \
-                 i]) << (i * 8); out->{name} = v; offset += 8; }}\n"
+                "{t}{{ uint64_t v; if (!{prefix}_decoder_uint(&decoder, 8, &v)) return false; \
+                 out->{name} = v; }}\n"
             ),
             "i64" => format!(
-                "{t}{{ uint64_t v = 0; for (int i = 0; i < 8; i++) v |= ((uint64_t)data[offset + \
-                 i]) << (i * 8); out->{name} = (int64_t)v; offset += 8; }}\n"
+                "{t}{{ uint64_t v; if (!{prefix}_decoder_uint(&decoder, 8, &v)) return false; \
+                 out->{name} = (int64_t)v; }}\n"
             ),
             "f32" => format!(
-                "{t}{{ union {{ uint32_t u; float f; }} c; c.u = (uint32_t)data[offset] | \
-                 ((uint32_t)data[offset+1] << 8) | ((uint32_t)data[offset+2] << 16) | \
-                 ((uint32_t)data[offset+3] << 24); out->{name} = c.f; offset += 4; }}\n"
+                "{t}{{ uint64_t v; union {{ uint32_t u; float f; }} c; if \
+                 (!{prefix}_decoder_uint(&decoder, 4, &v)) return false; c.u = (uint32_t)v; \
+                 out->{name} = c.f; }}\n"
             ),
             "f64" => format!(
-                "{t}{{ union {{ uint64_t u; double f; }} c; c.u = 0; for (int i = 0; i < 8; i++) \
-                 c.u |= ((uint64_t)data[offset + i]) << (i * 8); out->{name} = c.f; offset += 8; \
-                 }}\n"
+                "{t}{{ union {{ uint64_t u; double f; }} c; if (!{prefix}_decoder_uint(&decoder, \
+                 8, &c.u)) return false; out->{name} = c.f; }}\n"
             ),
             "u128" | "i128" => format!(
-                "{t}for (int i = 0; i < 16; i++) out->{name}[i] = data[offset + i]; offset += \
-                 16;\n"
+                "{t}{{ const uint8_t *bytes; if (!{prefix}_decoder_take(&decoder, 16, &bytes)) \
+                 return false; for (int i = 0; i < 16; i++) out->{name}[i] = bytes[i]; }}\n"
             ),
             "pubkey" => format!(
-                "{t}for (int i = 0; i < 32; i++) out->{name}.bytes[i] = data[offset + i]; offset \
-                 += 32;\n"
+                "{t}{{ const uint8_t *bytes; if (!{prefix}_decoder_take(&decoder, 32, &bytes)) \
+                 return false; for (int i = 0; i < 32; i++) out->{name}.bytes[i] = bytes[i]; }}\n"
             ),
             "string" => {
                 // Plain string without codec uses a Borsh-style u32 prefix.
-                decode_dyn_bytes(name, 4, &t)
+                decode_dyn_bytes(prefix, name, 4, 1, "", true, &t)
             }
             _ => format!("{t}/* unsupported decode for {name} */\n"),
         },
-        IdlType::Vec { .. } => {
+        IdlType::Vec { vec } => {
             // Vec without codec uses a Borsh-style u32 prefix.
-            decode_dyn_bytes(name, 4, &t)
+            let is_pubkey = matches!(&**vec, IdlType::Primitive(p) if p == "pubkey");
+            decode_dyn_bytes(
+                prefix,
+                name,
+                4,
+                if is_pubkey { 32 } else { 1 },
+                if is_pubkey { "(const Pubkey *)" } else { "" },
+                false,
+                &t,
+            )
         }
         IdlType::Array {
             array: (_inner, size),
         } => {
             format!(
-                "{t}for (int i = 0; i < {size}; i++) out->{name}[i] = data[offset + i]; offset += \
-                 {size};\n"
+                "{t}{{ const uint8_t *bytes; if (!{prefix}_decoder_take(&decoder, {size}, \
+                 &bytes)) return false; for (uint64_t i = 0; i < {size}; i++) out->{name}[i] = \
+                 bytes[i]; }}\n"
             )
         }
         IdlType::Option { option } => {
-            let inner = decode_field_expr(name, option, None, depth + 1, types);
+            let inner = decode_field_expr(prefix, name, option, codec, depth + 1, types);
             let ti = "    ".repeat(depth + 1);
             format!(
-                "{t}if (data[offset] != 0) {{\n{ti}offset += 1;\n{ti}out->{name}_present = \
-                 1;\n{inner}{t}}} else {{\n{ti}offset += 1;\n{ti}out->{name}_present = 0;\n{t}}}\n"
+                "{t}{{ uint64_t tag; if (!{prefix}_decoder_uint(&decoder, 1, &tag) || tag > 1) \
+                 return false;\n{ti}if (tag == 1) {{\n{ti}    out->{name}_present = \
+                 1;\n{inner}{ti}}} else {{\n{ti}    out->{name}_present = 0;\n{ti}}}\n{t}}}\n"
             )
         }
         IdlType::Defined { defined } => {
             if let Some(primitive) = builtin_defined_primitive(&defined.name) {
                 return decode_field_expr(
+                    prefix,
                     name,
                     &IdlType::Primitive(primitive.into()),
                     None,
@@ -1097,6 +1309,7 @@ fn decode_field_expr(
                 let mut result = String::new();
                 for field in &td.fields {
                     result.push_str(&decode_field_expr(
+                        prefix,
                         &format!("{name}.{f}", f = field.name),
                         &field.ty,
                         field.codec.as_ref(),

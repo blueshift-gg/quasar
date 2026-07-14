@@ -265,6 +265,16 @@ fn emit_instructions(
     }
     mod_rs.push_str("}\n\n");
 
+    // Total cursor helpers for decoding untrusted instruction bytes.
+    mod_rs.push_str(
+        "fn quasar_take<'a>(data: &'a [u8], offset: &mut usize, len: usize) -> Option<&'a [u8]> \
+         {\n\x20   let end = offset.checked_add(len)?;\n\x20   let bytes = \
+         data.get(*offset..end)?;\n\x20   *offset = end;\n\x20   Some(bytes)\n}\n\nfn \
+         quasar_read_len(data: &[u8], offset: &mut usize, width: usize) -> Option<usize> {\n\x20   \
+         let mut buf = [0u8; 8];\n\x20   buf.get_mut(..width)?.copy_from_slice(quasar_take(data, \
+         offset, width)?);\n\x20   usize::try_from(u64::from_le_bytes(buf)).ok()\n}\n\n",
+    );
+
     // decode_instruction function
     mod_rs.push_str("pub fn decode_instruction(data: &[u8]) -> Option<ProgramInstruction> {\n");
 
@@ -293,7 +303,12 @@ fn emit_instructions(
         }
 
         if ix.args.is_empty() {
-            writeln!(mod_rs, "Some(ProgramInstruction::{}),", pascal).expect("write to String");
+            writeln!(
+                mod_rs,
+                "if data.len() == {disc_len} {{ Some(ProgramInstruction::{pascal}) }} else {{ \
+                 None }},"
+            )
+            .expect("write to String");
         } else {
             mod_rs.push_str("{\n");
             writeln!(mod_rs, "            let payload = &data[{}..];", disc_len)
@@ -324,12 +339,18 @@ fn emit_instructions(
                     writeln!(
                         mod_rs,
                         "            let {name}: {rty} = \
-                         wincode::deserialize(&payload[offset..]).ok()?;",
+                         wincode::deserialize(payload.get(offset..)?).ok()?;",
                     )
                     .expect("write to String");
                     writeln!(
                         mod_rs,
-                        "            offset += wincode::serialized_size(&{name}).ok()? as usize;",
+                        "            let {name}_size = \
+                         usize::try_from(wincode::serialized_size(&{name}).ok()?).ok()?;",
+                    )
+                    .expect("write to String");
+                    writeln!(
+                        mod_rs,
+                        "            quasar_take(payload, &mut offset, {name}_size)?;"
                     )
                     .expect("write to String");
                 }
@@ -348,21 +369,12 @@ fn emit_instructions(
                             .expect("write to String");
                     } else {
                         let pfx = dynamic_prefix_bytes_from_codec(&arg.codec);
-                        writeln!(mod_rs, "            let {name}_len = {{")
-                            .expect("write to String");
-                        writeln!(mod_rs, "                let mut buf = [0u8; 8];")
-                            .expect("write to String");
                         writeln!(
                             mod_rs,
-                            "                buf[..{pfx}].copy_from_slice(&payload[offset..offset \
-                             + {pfx}]);"
+                            "            let {name}_len = quasar_read_len(payload, &mut offset, \
+                             {pfx})?;"
                         )
                         .expect("write to String");
-                        writeln!(mod_rs, "                offset += {pfx};")
-                            .expect("write to String");
-                        writeln!(mod_rs, "                u64::from_le_bytes(buf) as usize")
-                            .expect("write to String");
-                        mod_rs.push_str("            };\n");
                     }
                 }
 
@@ -380,28 +392,22 @@ fn emit_instructions(
                             .expect("write to String");
                             mod_rs.push_str("                None\n");
                             mod_rs.push_str("            } else {\n");
-                            writeln!(mod_rs, "                let {name}_len = {{")
-                                .expect("write to String");
-                            mod_rs.push_str("                    let mut buf = [0u8; 8];\n");
                             writeln!(
                                 mod_rs,
-                                "                    \
-                                 buf[..{pfx}].copy_from_slice(&payload[offset..offset + {pfx}]);"
+                                "                let {name}_len = quasar_read_len(payload, &mut \
+                                 offset, {pfx})?;"
                             )
                             .expect("write to String");
-                            writeln!(mod_rs, "                    offset += {pfx};")
-                                .expect("write to String");
-                            mod_rs
-                                .push_str("                    u64::from_le_bytes(buf) as usize\n");
-                            mod_rs.push_str("                };\n");
                             writeln!(
                                 mod_rs,
-                                "                let value = payload[offset..offset + \
-                                 {name}_len].to_vec().into();"
+                                "                let bytes = quasar_take(payload, &mut offset, \
+                                 {name}_len)?;"
                             )
                             .expect("write to String");
-                            writeln!(mod_rs, "                offset += {name}_len;")
-                                .expect("write to String");
+                            mod_rs.push_str(
+                                "                let value = \
+                                 core::str::from_utf8(bytes).ok()?.into();\n",
+                            );
                             mod_rs.push_str("                Some(value)\n");
                             mod_rs.push_str("            };\n");
                         } else if let Some(vec_inner) = vec_inner_type(inner) {
@@ -413,23 +419,22 @@ fn emit_instructions(
                             .expect("write to String");
                             mod_rs.push_str("                None\n");
                             mod_rs.push_str("            } else {\n");
-                            writeln!(mod_rs, "                let {name}_len = {{")
-                                .expect("write to String");
-                            mod_rs.push_str("                    let mut buf = [0u8; 8];\n");
                             writeln!(
                                 mod_rs,
-                                "                    \
-                                 buf[..{pfx}].copy_from_slice(&payload[offset..offset + {pfx}]);"
+                                "                let {name}_len = quasar_read_len(payload, &mut \
+                                 offset, {pfx})?;"
                             )
                             .expect("write to String");
-                            writeln!(mod_rs, "                    offset += {pfx};")
-                                .expect("write to String");
-                            mod_rs
-                                .push_str("                    u64::from_le_bytes(buf) as usize\n");
-                            mod_rs.push_str("                };\n");
                             writeln!(
                                 mod_rs,
-                                "                let mut items = Vec::with_capacity({name}_len);"
+                                "                if {name}_len > 10 * 1024 * 1024 {{ return None; \
+                                 }}"
+                            )
+                            .expect("write to String");
+                            writeln!(
+                                mod_rs,
+                                "                let mut items = \
+                                 Vec::with_capacity({name}_len.min(4096));"
                             )
                             .expect("write to String");
                             writeln!(mod_rs, "                for _ in 0..{name}_len {{")
@@ -437,12 +442,16 @@ fn emit_instructions(
                             writeln!(
                                 mod_rs,
                                 "                    let item: {item_ty} = \
-                                 wincode::deserialize(&payload[offset..]).ok()?;"
+                                 wincode::deserialize(payload.get(offset..)?).ok()?;"
                             )
                             .expect("write to String");
                             mod_rs.push_str(
-                                "                    offset += \
-                                 wincode::serialized_size(&item).ok()? as usize;\n",
+                                "                    let item_size = \
+                                 usize::try_from(wincode::serialized_size(&item).ok()?).ok()?;\n",
+                            );
+                            mod_rs.push_str(
+                                "                    quasar_take(payload, &mut offset, \
+                                 item_size)?;\n",
                             );
                             mod_rs.push_str("                    items.push(item);\n");
                             mod_rs.push_str("                }\n");
@@ -452,19 +461,25 @@ fn emit_instructions(
                     } else if is_dynamic_string(&arg.ty) {
                         writeln!(
                             mod_rs,
-                            "            let {name}: {rty} = payload[offset..offset + \
-                             {name}_len].to_vec().into();"
+                            "            let {name}_bytes = quasar_take(payload, &mut offset, \
+                             {name}_len)?;"
                         )
                         .expect("write to String");
-                        writeln!(mod_rs, "            offset += {name}_len;")
-                            .expect("write to String");
+                        writeln!(
+                            mod_rs,
+                            "            let {name}: {rty} = \
+                             core::str::from_utf8({name}_bytes).ok()?.into();"
+                        )
+                        .expect("write to String");
                     } else if is_dynamic_vec(&arg.ty) {
                         let item_ty = rust_field_type(vec_inner_type(&arg.ty).unwrap(), &None);
                         writeln!(mod_rs, "            let {name}: {rty} = {{")
                             .expect("write to String");
                         writeln!(
                             mod_rs,
-                            "                let mut items = Vec::with_capacity({name}_len);"
+                            "                if {name}_len > 10 * 1024 * 1024 {{ return None; \
+                             }}\n\x20               let mut items = \
+                             Vec::with_capacity({name}_len.min(4096));"
                         )
                         .expect("write to String");
                         writeln!(mod_rs, "                for _ in 0..{name}_len {{")
@@ -472,15 +487,18 @@ fn emit_instructions(
                         writeln!(
                             mod_rs,
                             "                    let item: {item_ty} = \
-                             wincode::deserialize(&payload[offset..]).ok()?;"
+                             wincode::deserialize(payload.get(offset..)?).ok()?;"
                         )
                         .expect("write to String");
                         writeln!(
                             mod_rs,
-                            "                    offset += wincode::serialized_size(&item).ok()? \
-                             as usize;"
+                            "                    let item_size = \
+                             usize::try_from(wincode::serialized_size(&item).ok()?).ok()?;"
                         )
                         .expect("write to String");
+                        mod_rs.push_str(
+                            "                    quasar_take(payload, &mut offset, item_size)?;\n",
+                        );
                         mod_rs.push_str("                    items.push(item);\n");
                         mod_rs.push_str("                }\n");
                         mod_rs.push_str("                items.into()\n");
@@ -489,37 +507,31 @@ fn emit_instructions(
                 }
             } else {
                 // Fixed fields decode sequentially.
-                let arg_count = ix.args.len();
-                if arg_count > 1 {
-                    mod_rs.push_str("            let mut offset = 0usize;\n");
-                }
-                for (i, arg) in ix.args.iter().enumerate() {
+                mod_rs.push_str("            let mut offset = 0usize;\n");
+                for arg in &ix.args {
                     let name = camel_to_snake(&arg.name);
                     let rty = rust_field_type(&arg.ty, &arg.codec);
-                    if arg_count == 1 {
-                        writeln!(
-                            mod_rs,
-                            "            let {name}: {rty} = wincode::deserialize(payload).ok()?;",
-                        )
-                        .expect("write to String");
-                    } else {
-                        writeln!(
-                            mod_rs,
-                            "            let {name}: {rty} = \
-                             wincode::deserialize(&payload[offset..]).ok()?;",
-                        )
-                        .expect("write to String");
-                        if i + 1 < arg_count {
-                            writeln!(
-                                mod_rs,
-                                "            offset += wincode::serialized_size(&{name}).ok()? as \
-                                 usize;",
-                            )
-                            .expect("write to String");
-                        }
-                    }
+                    writeln!(
+                        mod_rs,
+                        "            let {name}: {rty} = \
+                         wincode::deserialize(payload.get(offset..)?).ok()?;",
+                    )
+                    .expect("write to String");
+                    writeln!(
+                        mod_rs,
+                        "            let {name}_size = \
+                         usize::try_from(wincode::serialized_size(&{name}).ok()?).ok()?;",
+                    )
+                    .expect("write to String");
+                    writeln!(
+                        mod_rs,
+                        "            quasar_take(payload, &mut offset, {name}_size)?;"
+                    )
+                    .expect("write to String");
                 }
             }
+
+            mod_rs.push_str("            if offset != payload.len() { return None; }\n");
 
             write!(
                 mod_rs,
@@ -884,8 +896,19 @@ fn emit_discriminated_module<T: DiscriminatedItem>(
         if has_fields(item) {
             writeln!(
                 mod_rs,
-                "        return wincode::deserialize::<{}>(data).ok().map({}::{});",
-                item.name(),
+                "        let value = wincode::deserialize::<{}>(data).ok()?;",
+                item.name()
+            )
+            .expect("write to String");
+            writeln!(
+                mod_rs,
+                "        if usize::try_from(wincode::serialized_size(&value).ok()?).ok()? != \
+                 data.len() {{ return None; }}"
+            )
+            .expect("write to String");
+            writeln!(
+                mod_rs,
+                "        return Some({}::{}(value));",
                 enum_name,
                 item.name()
             )
@@ -893,7 +916,10 @@ fn emit_discriminated_module<T: DiscriminatedItem>(
         } else {
             writeln!(
                 mod_rs,
-                "        return Some({}::{});",
+                "        return (data.len() == {}_{}_DISCRIMINATOR.len())\n\x20           \
+                 .then_some({}::{});",
+                const_name,
+                kind_upper,
                 enum_name,
                 item.name()
             )
@@ -1616,7 +1642,12 @@ fn emit_manual_impls(
             .expect("write to String");
             writeln!(out, "            buf[..{pfx}].copy_from_slice(pfx_bytes);")
                 .expect("write to String");
-            writeln!(out, "            u64::from_le_bytes(buf) as usize").expect("write to String");
+            writeln!(
+                out,
+                "            usize::try_from(u64::from_le_bytes(buf))\n\x20               \
+                 .map_err(|_| ReadError::PointerSizedReadError)?"
+            )
+            .expect("write to String");
             out.push_str("        };\n");
         }
 
@@ -1625,8 +1656,11 @@ fn emit_manual_impls(
             if is_dynamic_string(&idl_f.ty) {
                 writeln!(
                     out,
-                    "        let {field_name}: {field_type} = \
-                     reader.take_scoped({field_name}_len)?.to_vec().into();"
+                    "        let {field_name}: {field_type} = {{\n\
+                     \x20           let bytes = reader.take_scoped({field_name}_len)?;\n\
+                     \x20           core::str::from_utf8(bytes)?;\n\
+                     \x20           bytes.to_vec().into()\n\
+                     \x20       }};"
                 )
                 .expect("write to String");
             } else if is_dynamic_vec(&idl_f.ty) {
@@ -1635,7 +1669,24 @@ fn emit_manual_impls(
                     .expect("write to String");
                 writeln!(
                     out,
-                    "            let mut items = Vec::with_capacity({field_name}_len);"
+                    "            const MAX_DECODE_ELEMENTS: usize = 10 * 1024 * 1024;"
+                )
+                .expect("write to String");
+                writeln!(
+                    out,
+                    "            if {field_name}_len > MAX_DECODE_ELEMENTS {{"
+                )
+                .expect("write to String");
+                writeln!(
+                    out,
+                    "                return Err(ReadError::PreallocationSizeLimit {{ needed: \
+                     {field_name}_len, limit: MAX_DECODE_ELEMENTS }});"
+                )
+                .expect("write to String");
+                out.push_str("            }\n");
+                writeln!(
+                    out,
+                    "            let mut items = Vec::with_capacity({field_name}_len.min(4096));"
                 )
                 .expect("write to String");
                 writeln!(out, "            for _ in 0..{field_name}_len {{")

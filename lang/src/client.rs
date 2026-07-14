@@ -23,7 +23,7 @@ use {
     core::{marker::PhantomData, mem::MaybeUninit},
     wincode::{
         config::ConfigCore,
-        error::{ReadResult, WriteResult},
+        error::{ReadError, ReadResult, WriteResult},
         io::{Reader, Writer},
         len::{SeqLen, UseIntLen},
         SchemaRead, SchemaWrite,
@@ -239,11 +239,12 @@ where
 {
     type Dst = Self;
 
-    fn read(reader: impl Reader<'de>, dst: &mut MaybeUninit<Self>) -> ReadResult<()> {
-        // SAFETY: DynString is repr-compatible with DynBytes (single field).
-        let inner = dst as *mut MaybeUninit<Self> as *mut MaybeUninit<DynBytes<P>>;
-        let inner = unsafe { &mut *inner };
-        DynBytes::<P>::read(reader, inner)
+    fn read(mut reader: impl Reader<'de>, dst: &mut MaybeUninit<Self>) -> ReadResult<()> {
+        let len = <UseIntLen<P>>::read(reader.by_ref())?;
+        let bytes = reader.take_scoped(len)?;
+        core::str::from_utf8(bytes)?;
+        dst.write(DynString(DynBytes(bytes.to_vec(), PhantomData)));
+        Ok(())
     }
 }
 
@@ -323,6 +324,13 @@ where
 
     fn read(mut reader: impl Reader<'de>, dst: &mut MaybeUninit<Self>) -> ReadResult<()> {
         let len = <UseIntLen<P>>::read(reader.by_ref())?;
+        const MAX_DECODE_ELEMENTS: usize = 10 * 1024 * 1024;
+        if len > MAX_DECODE_ELEMENTS {
+            return Err(ReadError::PreallocationSizeLimit {
+                needed: len,
+                limit: MAX_DECODE_ELEMENTS,
+            });
+        }
         // Cap pre-allocation to avoid OOM from untrusted length prefixes.
         // The actual read loop will fail early if the reader runs out of data.
         let mut vec = Vec::with_capacity(len.min(4096));
