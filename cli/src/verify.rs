@@ -320,6 +320,18 @@ fn validate_manifest(expected: &DeploymentManifest, observed: &DeploymentManifes
         &expected.upgrade_authority,
         &observed.upgrade_authority,
     );
+    compare(
+        &mut mismatches,
+        "program data address",
+        &expected.program_data_address,
+        &observed.program_data_address,
+    );
+    compare(
+        &mut mismatches,
+        "last deploy slot",
+        &expected.last_deploy_slot,
+        &observed.last_deploy_slot,
+    );
     if observed.cluster.is_some() {
         compare(
             &mut mismatches,
@@ -465,10 +477,14 @@ mod tests {
         let mut observed = expected.clone();
         observed.elf_sha256 = "different".to_string();
         observed.abi_sha256 = "different-abi".to_string();
+        observed.program_data_address = Some("different-data".to_string());
+        observed.last_deploy_slot = Some(8);
         let error = validate_manifest(&expected, &observed).unwrap_err();
         let message = error.to_string();
         assert!(message.contains("ELF hash"), "{message}");
         assert!(message.contains("ABI hash"), "{message}");
+        assert!(message.contains("program data address"), "{message}");
+        assert!(message.contains("last deploy slot"), "{message}");
     }
 
     #[test]
