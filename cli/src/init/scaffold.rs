@@ -871,58 +871,309 @@ fn test_initialize() {{
 mod tests {
     use {
         super::{generate_test_ts, generate_tests_rs, scaffold},
-        crate::init::types::{
-            PackageManager, RustFramework, Template, TestLanguage, Toolchain, TypeScriptSdk,
+        crate::{
+            config::QuasarConfig,
+            init::types::{
+                PackageManager, RustFramework, Template, TestLanguage, Toolchain, TypeScriptSdk,
+            },
         },
         quasar_idl::codegen::typescript::{client_dependency_version, TsTarget},
         serde_json::Value,
-        std::fs,
+        std::{collections::BTreeSet, fs},
         tempfile::tempdir,
     };
 
-    #[test]
-    fn scaffold_typescript_projects_use_selected_solana_dependency() {
-        let temp = tempdir().expect("tempdir");
-        let package_manager = PackageManager::Npm;
+    #[derive(Clone, Copy)]
+    enum TestStack {
+        NoTests,
+        QuasarSvm,
+        Mollusk,
+        Kit,
+        Web3,
+    }
 
-        for (dir_name, project_name, sdk, dep_name, target) in [
-            (
-                "kit",
-                "demo-kit",
-                TypeScriptSdk::Kit,
-                "@solana/kit",
-                TsTarget::Kit,
+    impl TestStack {
+        fn label(self) -> &'static str {
+            match self {
+                Self::NoTests => "none",
+                Self::QuasarSvm => "rust/quasar-svm",
+                Self::Mollusk => "rust/mollusk",
+                Self::Kit => "typescript/kit",
+                Self::Web3 => "typescript/web3.js",
+            }
+        }
+
+        fn choices(self) -> (TestLanguage, Option<RustFramework>, Option<TypeScriptSdk>) {
+            match self {
+                Self::NoTests => (TestLanguage::None, None, None),
+                Self::QuasarSvm => (TestLanguage::Rust, Some(RustFramework::QuasarSVM), None),
+                Self::Mollusk => (TestLanguage::Rust, Some(RustFramework::Mollusk), None),
+                Self::Kit => (TestLanguage::TypeScript, None, Some(TypeScriptSdk::Kit)),
+                Self::Web3 => (TestLanguage::TypeScript, None, Some(TypeScriptSdk::Web3js)),
+            }
+        }
+    }
+
+    struct ScaffoldCase {
+        label: &'static str,
+        toolchain: Toolchain,
+        stack: TestStack,
+        template: Template,
+        package_manager: Option<PackageManager>,
+    }
+
+    fn pairwise_cases() -> Vec<ScaffoldCase> {
+        use {
+            PackageManager::{Bun, Npm, Other, Pnpm, Yarn},
+            Template::{Full, Minimal},
+            TestStack::{Kit, Mollusk, NoTests, QuasarSvm, Web3},
+            Toolchain::{Solana, Upstream},
+        };
+
+        let case = |label, toolchain, stack, template, package_manager| ScaffoldCase {
+            label,
+            toolchain,
+            stack,
+            template,
+            package_manager,
+        };
+        let other = || {
+            Some(Other {
+                install: "custom-install --locked".into(),
+                test: "custom-test --ci".into(),
+            })
+        };
+
+        vec![
+            case("none-solana-minimal", Solana, NoTests, Minimal, None),
+            case("none-upstream-full", Upstream, NoTests, Full, None),
+            case("quasar-svm-solana-full", Solana, QuasarSvm, Full, None),
+            case(
+                "quasar-svm-upstream-minimal",
+                Upstream,
+                QuasarSvm,
+                Minimal,
+                None,
             ),
-            (
-                "web3",
-                "demo-web3",
-                TypeScriptSdk::Web3js,
-                "@solana/web3.js",
-                TsTarget::Web3js,
+            case("mollusk-solana-minimal", Solana, Mollusk, Minimal, None),
+            case("mollusk-upstream-full", Upstream, Mollusk, Full, None),
+            case("kit-pnpm-solana-minimal", Solana, Kit, Minimal, Some(Pnpm)),
+            case("web3-pnpm-upstream-full", Upstream, Web3, Full, Some(Pnpm)),
+            case(
+                "kit-bun-upstream-minimal",
+                Upstream,
+                Kit,
+                Minimal,
+                Some(Bun),
             ),
-        ] {
-            let project_dir = temp.path().join(dir_name);
+            case("web3-bun-solana-full", Solana, Web3, Full, Some(Bun)),
+            case("kit-npm-solana-full", Solana, Kit, Full, Some(Npm)),
+            case(
+                "web3-npm-upstream-minimal",
+                Upstream,
+                Web3,
+                Minimal,
+                Some(Npm),
+            ),
+            case("kit-yarn-upstream-full", Upstream, Kit, Full, Some(Yarn)),
+            case(
+                "web3-yarn-solana-minimal",
+                Solana,
+                Web3,
+                Minimal,
+                Some(Yarn),
+            ),
+            case("kit-other-solana-minimal", Solana, Kit, Minimal, other()),
+            case("web3-other-upstream-full", Upstream, Web3, Full, other()),
+        ]
+    }
+    #[test]
+    fn every_scaffold_choice_is_covered_by_a_pairwise_matrix() {
+        let temp = tempdir().expect("tempdir");
+        let mut toolchain_template = BTreeSet::new();
+        let mut toolchain_stack = BTreeSet::new();
+        let mut template_stack = BTreeSet::new();
+        let mut package_managers = BTreeSet::new();
+        let mut toolchain_package_manager = BTreeSet::new();
+        let mut template_package_manager = BTreeSet::new();
+        let mut sdk_package_manager = BTreeSet::new();
+
+        for case in pairwise_cases() {
+            let (language, rust_framework, ts_sdk) = case.stack.choices();
+            let toolchain = case.toolchain.to_string();
+            let template = case.template.to_string();
+            let stack = case.stack.label().to_string();
+            toolchain_template.insert((toolchain.clone(), template.clone()));
+            toolchain_stack.insert((toolchain.clone(), stack.clone()));
+            template_stack.insert((template.clone(), stack));
+
+            let install_command = case
+                .package_manager
+                .as_ref()
+                .map(|manager| manager.install_cmd().to_string());
+            let test_command = case
+                .package_manager
+                .as_ref()
+                .map(|manager| manager.test_cmd().to_string());
+            if let (Some(manager), Some(sdk)) = (&case.package_manager, ts_sdk) {
+                let manager = manager.to_string();
+                let sdk = sdk.to_string();
+                package_managers.insert(manager.clone());
+                toolchain_package_manager.insert((toolchain, manager.clone()));
+                template_package_manager.insert((template, manager.clone()));
+                sdk_package_manager.insert((sdk, manager));
+            }
+
+            let project_dir = temp.path().join(case.label);
+            let clients = if matches!(language, TestLanguage::TypeScript) {
+                vec!["typescript".to_string()]
+            } else {
+                Vec::new()
+            };
             scaffold(
                 project_dir.to_str().expect("utf8 path"),
-                project_name,
-                Toolchain::Upstream,
-                TestLanguage::TypeScript,
-                None,
-                Some(sdk),
-                Template::Minimal,
-                Some(&package_manager),
-                &[],
+                case.label,
+                case.toolchain,
+                language,
+                rust_framework,
+                ts_sdk,
+                case.template,
+                case.package_manager.as_ref(),
+                &clients,
             )
-            .expect("scaffold project");
+            .unwrap_or_else(|error| panic!("{}: scaffold failed: {error}", case.label));
 
-            let package_json: Value = serde_json::from_str(
-                &fs::read_to_string(project_dir.join("package.json")).expect("read package.json"),
+            let config: QuasarConfig = toml::from_str(
+                &fs::read_to_string(project_dir.join("Quasar.toml")).expect("read Quasar.toml"),
             )
-            .expect("valid package.json");
+            .unwrap_or_else(|error| panic!("{}: invalid Quasar.toml: {error}", case.label));
+            assert_eq!(
+                config.toolchain.toolchain_type,
+                case.toolchain.to_string(),
+                "{}",
+                case.label
+            );
+            assert_eq!(
+                config.testing.language,
+                language.to_string(),
+                "{}",
+                case.label
+            );
+            assert_eq!(config.clients.languages, clients, "{}", case.label);
 
-            let dependencies = &package_json["dependencies"];
-            assert_eq!(dependencies[dep_name], client_dependency_version(target));
+            let cargo: toml::Value = toml::from_str(
+                &fs::read_to_string(project_dir.join("Cargo.toml")).expect("read Cargo.toml"),
+            )
+            .unwrap_or_else(|error| panic!("{}: invalid Cargo.toml: {error}", case.label));
+            assert_eq!(
+                cargo["dependencies"].get("solana-instruction").is_some(),
+                matches!(case.toolchain, Toolchain::Solana),
+                "{}",
+                case.label,
+            );
+            assert_eq!(
+                project_dir.join(".cargo/config.toml").exists(),
+                matches!(case.toolchain, Toolchain::Upstream),
+                "{}",
+                case.label,
+            );
+            assert_eq!(
+                project_dir.join("src/state.rs").exists(),
+                matches!(case.template, Template::Full),
+                "{}",
+                case.label,
+            );
+
+            if let Some(framework) = rust_framework {
+                let rust = config
+                    .testing
+                    .rust
+                    .as_ref()
+                    .unwrap_or_else(|| panic!("{}: missing Rust config", case.label));
+                assert_eq!(rust.framework, framework.to_string(), "{}", case.label);
+                let manifest = fs::read_to_string(project_dir.join("Cargo.toml"))
+                    .expect("read generated Cargo.toml");
+                assert!(
+                    manifest.contains(match framework {
+                        RustFramework::QuasarSVM => "quasar-svm =",
+                        RustFramework::Mollusk => "mollusk-svm =",
+                    }),
+                    "{}: missing selected Rust framework dependency",
+                    case.label,
+                );
+                assert!(project_dir.join("src/tests.rs").exists(), "{}", case.label);
+            } else {
+                assert!(config.testing.rust.is_none(), "{}", case.label);
+            }
+
+            if let Some(sdk) = ts_sdk {
+                let typescript = config
+                    .testing
+                    .typescript
+                    .as_ref()
+                    .unwrap_or_else(|| panic!("{}: missing TypeScript config", case.label));
+                assert_eq!(typescript.sdk, sdk.to_string(), "{}", case.label);
+                assert_eq!(
+                    typescript.install.display(),
+                    install_command.expect("TypeScript install command"),
+                    "{}",
+                    case.label,
+                );
+                assert_eq!(
+                    typescript.test.display(),
+                    test_command.expect("TypeScript test command"),
+                    "{}",
+                    case.label,
+                );
+
+                let package_json: Value = serde_json::from_str(
+                    &fs::read_to_string(project_dir.join("package.json"))
+                        .expect("read package.json"),
+                )
+                .unwrap_or_else(|error| panic!("{}: invalid package.json: {error}", case.label));
+                let (dependency, target) = match sdk {
+                    TypeScriptSdk::Kit => ("@solana/kit", TsTarget::Kit),
+                    TypeScriptSdk::Web3js => ("@solana/web3.js", TsTarget::Web3js),
+                };
+                assert_eq!(
+                    package_json["dependencies"][dependency],
+                    client_dependency_version(target),
+                    "{}",
+                    case.label,
+                );
+                assert!(
+                    project_dir
+                        .join("tests")
+                        .join(format!("{}.test.ts", case.label))
+                        .exists(),
+                    "{}",
+                    case.label,
+                );
+            } else {
+                assert!(config.testing.typescript.is_none(), "{}", case.label);
+                assert!(!project_dir.join("package.json").exists(), "{}", case.label);
+            }
         }
+
+        assert_eq!(toolchain_template.len(), 4, "toolchain x template coverage");
+        assert_eq!(toolchain_stack.len(), 10, "toolchain x test stack coverage");
+        assert_eq!(template_stack.len(), 10, "template x test stack coverage");
+        assert_eq!(package_managers.len(), 5, "package-manager choice coverage");
+        assert_eq!(
+            toolchain_package_manager.len(),
+            10,
+            "toolchain x package-manager coverage",
+        );
+        assert_eq!(
+            template_package_manager.len(),
+            10,
+            "template x package-manager coverage",
+        );
+        assert_eq!(
+            sdk_package_manager.len(),
+            10,
+            "TypeScript SDK x package-manager coverage",
+        );
     }
 
     #[test]
