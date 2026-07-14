@@ -49,8 +49,30 @@ its published crates or GitHub release artifacts.
   of scope; a fixture that demonstrates a vulnerability in a published package
   or release process is in scope.
 
-## Unsafe Code
+## Unsafe Code and Verification
 
-Quasar uses `unsafe` for zero-copy access, CPI syscalls, and pointer casts. Every `unsafe` block has a documented soundness invariant and is validated by Miri under Tree Borrows with symbolic alignment checking.
+Quasar uses `unsafe` for zero-copy access, CPI syscalls, and pointer casts. The
+required CI job runs `make test-miri-strict`, which executes the dedicated Miri
+integration suites for `quasar-lang`, `quasar-spl`, and `quasar-metadata` with:
 
-If you find an `unsafe` block that lacks a soundness argument or can be triggered to produce undefined behavior, that qualifies as a security vulnerability.
+- `-Zmiri-tree-borrows`
+- `-Zmiri-symbolic-alignment-check`
+- `-Zmiri-strict-provenance`
+
+Those suites exercise the unsafe paths represented by their tests. A passing
+run is evidence for those paths, not a proof that every unsafe block or every
+published package is sound.
+
+The tag-triggered release workflow separately runs the Kani 0.67.0 proof
+harnesses in `quasar-lang`, `quasar-spl`, and `quasar-metadata`. Kani checks the
+properties encoded by those individual harnesses under their stated bounds and
+assumptions; it does not prove an entire crate or the complete Quasar system.
+
+Miri cannot execute the generated SBF `extern "C"` program entrypoint or other
+SBF-only syscall and FFI paths. Host and on-chain integration tests cover
+additional behavior, but they are not substitutes for an audit or a complete
+undefined behavior proof.
+
+An unsafe operation that lacks an adequate safety argument, violates its stated
+contract, or can be triggered to produce undefined behavior qualifies as a
+security vulnerability.
