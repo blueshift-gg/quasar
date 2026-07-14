@@ -317,7 +317,7 @@ jobs:
         run: make generated-client-smoke
 
   miri:
-    name: Miri (Tree Borrows)
+    name: Miri (Strict Provenance)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -342,8 +342,8 @@ jobs:
           rustup run "${{ steps.nightly.outputs.version }}" rustc --version
           rustup run "${{ steps.nightly.outputs.version }}" cargo --version
           cargo +${{ steps.nightly.outputs.version }} miri --version
-      - name: Run Miri tests
-        run: make test-miri
+      - name: Run strict-provenance Miri tests
+        run: make test-miri-strict
 
   kani:
     name: Kani (${{ matrix.crate }})
