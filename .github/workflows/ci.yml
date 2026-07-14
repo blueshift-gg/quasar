@@ -21,6 +21,8 @@ env:
   HOST_RUST_VERSION: 1.92.0
   PROGRAM_MSRV: 1.89.0
   SOLANA_VERSION: v4.1.1
+  SOLANA_LINUX_SHA256: a5c8e74b8ffa9ce906872b812849057c7fb21cf036ba08f219eb335e20fa4fb3
+  Z3_VERSION: 4.8.12-3.1build1
   NODE_VERSION: 24.18.0
   TYPESCRIPT_VERSION: 5.9.3
   NODE_TYPES_VERSION: 22.13.0
@@ -40,12 +42,12 @@ jobs:
     outputs:
       should_run: ${{ steps.scope.outputs.should_run }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
       - id: changed
         if: github.event_name != 'workflow_call'
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         with:
           filters: |
             fuzz_build:
@@ -73,12 +75,12 @@ jobs:
     outputs:
       should_run: ${{ steps.scope.outputs.should_run }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
       - id: changed
         if: github.event_name != 'workflow_call'
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         with:
           filters: |
             kani:
@@ -106,12 +108,12 @@ jobs:
     outputs:
       should_run: ${{ steps.scope.outputs.should_run }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
       - id: changed
         if: github.event_name != 'workflow_call'
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         with:
           filters: |
             client_codegen:
@@ -139,11 +141,11 @@ jobs:
     name: Rustfmt
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - name: Get nightly toolchain version
         id: nightly
         run: echo "version=$(make nightly-version)" >> $GITHUB_OUTPUT
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: ${{ steps.nightly.outputs.version }}
           components: rustfmt
@@ -159,8 +161,8 @@ jobs:
     name: Clippy
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/cache@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -172,7 +174,7 @@ jobs:
       - name: Get nightly toolchain version
         id: nightly
         run: echo "version=$(make nightly-version)" >> $GITHUB_OUTPUT
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: ${{ steps.nightly.outputs.version }}
           components: clippy
@@ -188,8 +190,8 @@ jobs:
     name: Rustdoc
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/cache@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -198,7 +200,7 @@ jobs:
           key: ${{ runner.os }}-cargo-rustdoc-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-rustdoc-
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: ${{ env.HOST_RUST_VERSION }}
       - name: Print Rustdoc toolchain
@@ -213,8 +215,8 @@ jobs:
     name: Public API Baseline
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/cache@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -228,11 +230,11 @@ jobs:
         run: |
           echo "nightly=$(make nightly-version)" >> "$GITHUB_OUTPUT"
           echo "public_api=$(make cargo-public-api-version)" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: ${{ steps.versions.outputs.nightly }}
           targets: x86_64-unknown-linux-gnu
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@43aecc8d72668fbcfe75c31400bc4f890f1c5853 # v2
         with:
           tool: cargo-public-api@${{ steps.versions.outputs.public_api }}
       - name: Print public API toolchain
@@ -247,8 +249,8 @@ jobs:
     name: Proc-macro Expansion Baseline
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/cache@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -257,7 +259,7 @@ jobs:
           key: ${{ runner.os }}-cargo-proc-macro-baseline-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-proc-macro-baseline-
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: ${{ env.HOST_RUST_VERSION }}
       - name: Print proc-macro baseline toolchain
@@ -271,8 +273,8 @@ jobs:
     name: IDL Wire Contract Baseline
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/cache@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -281,7 +283,7 @@ jobs:
           key: ${{ runner.os }}-cargo-idl-wire-baseline-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-idl-wire-baseline-
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: ${{ env.HOST_RUST_VERSION }}
       - name: Print IDL wire baseline toolchain
@@ -295,8 +297,8 @@ jobs:
     name: Generated Client Contract Baseline
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/cache@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -305,7 +307,7 @@ jobs:
           key: ${{ runner.os }}-cargo-generated-client-baseline-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-generated-client-baseline-
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: ${{ env.HOST_RUST_VERSION }}
       - name: Print generated-client baseline toolchain
@@ -321,8 +323,8 @@ jobs:
     env:
       RUSTUP_TOOLCHAIN: 1.89.0
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/cache@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -331,10 +333,10 @@ jobs:
           key: ${{ runner.os }}-cargo-hack-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-hack-
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: ${{ env.PROGRAM_MSRV }}
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@43aecc8d72668fbcfe75c31400bc4f890f1c5853 # v2
         with:
           tool: cargo-hack@${{ env.CARGO_HACK_VERSION }}
       - name: Print feature-check toolchain
@@ -346,8 +348,8 @@ jobs:
     name: Workspace Policy
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@master
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: ${{ env.HOST_RUST_VERSION }}
       - name: Print workspace-policy toolchain
@@ -356,6 +358,8 @@ jobs:
         run: make check-workspace-lints
       - name: Verify workspace invariants
         run: make check-workspace-invariants
+      - name: Verify immutable release dependencies
+        run: make check-release-dependencies
       - name: Verify runtime panic policy
         run: make check-runtime-panics
 
@@ -378,8 +382,8 @@ jobs:
     env:
       RUSTUP_TOOLCHAIN: 1.89.0
     steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@master
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: ${{ env.PROGRAM_MSRV }}
       - name: Verify host triple
@@ -405,8 +409,8 @@ jobs:
       checks: write
       issues: write
     steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@master
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: ${{ env.HOST_RUST_VERSION }}
       - id: audit_version
@@ -421,19 +425,17 @@ jobs:
     name: Build & Test
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - name: Cache Solana tools
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: ~/.local/share/solana
-          key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}
+          path: ~/.cache/quasar/solana
+          key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}-${{ env.SOLANA_LINUX_SHA256 }}
       - name: Install Solana tools (cargo-build-sbf)
         run: |
-          if [ ! -f "$HOME/.local/share/solana/install/active_release/bin/cargo-build-sbf" ]; then
-            sh -c "$(curl -sSfL https://release.anza.xyz/${{ env.SOLANA_VERSION }}/install)"
-          fi
+          scripts/install-solana-tools.sh "${{ env.SOLANA_VERSION }}" "${{ env.SOLANA_LINUX_SHA256 }}"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-      - uses: actions/cache@v5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -442,7 +444,7 @@ jobs:
           key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-test-
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: ${{ env.HOST_RUST_VERSION }}
       - name: Print build toolchains
@@ -459,15 +461,15 @@ jobs:
       CC: clang-18
       CARAVEL_INCLUDE_DIR: ${{ github.workspace }}/.caravel/include
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - name: Check out pinned Caravel headers
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           repository: joeymeere/caravel
           ref: ${{ env.CARAVEL_REV }}
           path: .caravel
           persist-credentials: false
-      - uses: actions/cache@v5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -476,17 +478,17 @@ jobs:
           key: ${{ runner.os }}-cargo-client-smoke-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-client-smoke-
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: ${{ env.HOST_RUST_VERSION }}
       - name: Install pinned Python client dependency
@@ -512,8 +514,8 @@ jobs:
     name: Miri (Strict Provenance)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/cache@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -525,7 +527,7 @@ jobs:
       - name: Get nightly toolchain version
         id: nightly
         run: echo "version=$(make nightly-version)" >> $GITHUB_OUTPUT
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: ${{ steps.nightly.outputs.version }}
           components: miri
@@ -543,13 +545,13 @@ jobs:
     if: needs.fuzz_scope.outputs.should_run == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - name: Get pinned tool versions
         id: versions
         run: |
           echo "nightly=$(make nightly-version)" >> "$GITHUB_OUTPUT"
           echo "cargo_fuzz=$(make cargo-fuzz-version)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -558,7 +560,7 @@ jobs:
           key: ${{ runner.os }}-cargo-fuzz-registry-v1-${{ steps.versions.outputs.cargo_fuzz }}-${{ hashFiles('lang/fuzz/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-fuzz-registry-v1-${{ steps.versions.outputs.cargo_fuzz }}-
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: ${{ steps.versions.outputs.nightly }}
       - name: Install pinned cargo-fuzz
@@ -583,8 +585,8 @@ jobs:
       matrix:
         crate: [quasar-lang, quasar-spl, quasar-metadata]
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/cache@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -595,9 +597,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-kani-${{ matrix.crate }}-
       - name: Install z3 (SMT solver for wide-type proofs)
-        run: sudo apt-get install -y z3
+        run: sudo apt-get install -y "z3=${{ env.Z3_VERSION }}"
       - name: Verify ${{ matrix.crate }}
-        uses: model-checking/kani-github-action@v1
+        uses: model-checking/kani-github-action@2534b7aeb3c6b4b0a5ecc3981bb3e63d47b5b126 # v1
         with:
           kani-version: ${{ env.KANI_VERSION }}
           command: cargo kani -p ${{ matrix.crate }}
@@ -612,21 +614,19 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
       - name: Cache Solana tools
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: ~/.local/share/solana
-          key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}
+          path: ~/.cache/quasar/solana
+          key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}-${{ env.SOLANA_LINUX_SHA256 }}
       - name: Install Solana tools
         run: |
-          if [ ! -f "$HOME/.local/share/solana/install/active_release/bin/cargo-build-sbf" ]; then
-            sh -c "$(curl -sSfL https://release.anza.xyz/${{ env.SOLANA_VERSION }}/install)"
-          fi
+          scripts/install-solana-tools.sh "${{ env.SOLANA_VERSION }}" "${{ env.SOLANA_LINUX_SHA256 }}"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-      - uses: actions/cache@v5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -635,7 +635,7 @@ jobs:
           key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-bench-
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: ${{ env.HOST_RUST_VERSION }}
 
@@ -655,7 +655,7 @@ jobs:
 
       - name: Post benchmark comment
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const fs = require('fs');
@@ -750,7 +750,7 @@ jobs:
     steps:
       - name: Detect PR-associated push commit
         id: check_pr_commit
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
@@ -771,21 +771,19 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
       - name: Cache Solana tools
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: ~/.local/share/solana
-          key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}
+          path: ~/.cache/quasar/solana
+          key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}-${{ env.SOLANA_LINUX_SHA256 }}
       - name: Install Solana tools
         run: |
-          if [ ! -f "$HOME/.local/share/solana/install/active_release/bin/cargo-build-sbf" ]; then
-            sh -c "$(curl -sSfL https://release.anza.xyz/${{ env.SOLANA_VERSION }}/install)"
-          fi
+          scripts/install-solana-tools.sh "${{ env.SOLANA_VERSION }}" "${{ env.SOLANA_LINUX_SHA256 }}"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-      - uses: actions/cache@v5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -794,7 +792,7 @@ jobs:
           key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-bench-
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: ${{ env.HOST_RUST_VERSION }}
 
