@@ -154,9 +154,13 @@ impl<T: AsAccountView> AsAccountView for Account<T> {
     }
 }
 
+// SAFETY: `Account<T>` is `#[repr(transparent)]` over `T`; when `T: StaticView`
+// (i.e. `T` is itself transparent over `AccountView`), `Account<T>` is
+// transitively transparent over `AccountView`, so the pointer cast is sound.
+unsafe impl<T: crate::traits::StaticView> crate::traits::StaticView for Account<T> {}
+
 impl<T: crate::account_layout::AccountLayout> crate::account_layout::AccountLayout for Account<T> {
     type Schema = T::Schema;
-    type Target = T::Target;
     const DATA_OFFSET: usize = T::DATA_OFFSET;
 }
 
@@ -179,13 +183,17 @@ impl<T: AsAccountView + crate::traits::StaticView + crate::traits::Space> Accoun
     }
 }
 
-impl<T: Owner + AsAccountView + crate::traits::Discriminator> Account<T> {
+impl<T: Owner + AsAccountView + crate::traits::Discriminator + crate::traits::StaticView>
+    Account<T>
+{
     /// Close account: zero disc, drain lamports, reassign to system, resize to
     /// zero.
     #[inline(always)]
     pub fn close(&mut self, destination: &AccountView) -> Result<(), ProgramError> {
-        // SAFETY: Close operates on the runtime account backing this typed
-        // wrapper and does not access `T` after reassigning/resizing it.
+        // SAFETY: `T: StaticView` guarantees `Account<T>` is `#[repr(transparent)]`
+        // over `AccountView`, so this pointer cast is valid. Close operates on the
+        // runtime account backing this typed wrapper and does not access `T` after
+        // reassigning/resizing it.
         let view = unsafe { &mut *(self as *mut Account<T> as *mut AccountView) };
         crate::ops::close::close_account(
             view,

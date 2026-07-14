@@ -1,6 +1,6 @@
 use quasar_lang::prelude::*;
 
-#[event(discriminator = 0)]
+#[event(discriminator = 1)]
 pub struct MakeEvent {
     pub escrow: Address,
     pub maker: Address,
@@ -10,12 +10,12 @@ pub struct MakeEvent {
     pub receive: u64,
 }
 
-#[event(discriminator = 1)]
+#[event(discriminator = 2)]
 pub struct TakeEvent {
     pub escrow: Address,
 }
 
-#[event(discriminator = 2)]
+#[event(discriminator = 3)]
 pub struct RefundEvent {
     pub escrow: Address,
 }

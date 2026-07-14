@@ -45,7 +45,7 @@ impl Id for TestMiscProgram {
     const ID: Address = crate::ID;
 }
 
-#[account(discriminator = 1, set_inner)]
+#[account(discriminator = 2, set_inner)]
 #[seeds(b"simple", authority: Address)]
 pub struct SimpleAccount {
     pub authority: Address,
@@ -69,6 +69,18 @@ pub struct MixedAccount {
     pub authority: Address,
     pub value: u64,
     pub label: String<32>,
+}
+
+/// Fixed-layout scratch account for the two-dynamic-arg wire-format test (A1).
+/// The handler packs the decoded `a`/`b` bytes here so the suite can read them
+/// back and confirm the on-chain decode matched the client's compact layout.
+#[account(discriminator = 22, set_inner)]
+pub struct TwoDynArgsAccount {
+    pub tag: u64,
+    pub a_len: u8,
+    pub a: u64,
+    pub b_len: u8,
+    pub b: u64,
 }
 
 #[account(discriminator = 7)]
@@ -108,7 +120,7 @@ pub struct FixedCapacityAccount {
 
 /// Same shape as SimpleAccount but with a different seed prefix for the
 /// space-override test.
-#[account(discriminator = 1, set_inner)]
+#[account(discriminator = 3, set_inner)]
 #[seeds(b"spacetest", authority: Address)]
 pub struct SpaceTestAccount {
     pub authority: Address,
@@ -118,7 +130,7 @@ pub struct SpaceTestAccount {
 
 /// Same shape as SimpleAccount but with a different seed prefix for the
 /// explicit-payer test.
-#[account(discriminator = 1, set_inner)]
+#[account(discriminator = 4, set_inner)]
 #[seeds(b"explicit", authority: Address)]
 pub struct ExplicitPayerAccount {
     pub authority: Address,
@@ -165,11 +177,17 @@ impl AsAccountView for VaultInterface {
 }
 
 impl quasar_lang::traits::Owners for VaultInterface {
-    fn owners() -> &'static [Address] {
-        static OWNERS: [Address; 1] = [crate::ID];
-        &OWNERS
+    fn check_owner(view: &AccountView) -> Result<(), ProgramError> {
+        if quasar_lang::keys_eq(view.owner(), &crate::ID) {
+            Ok(())
+        } else {
+            Err(ProgramError::IllegalOwner)
+        }
     }
 }
+
+// SAFETY: `VaultInterface` is `#[repr(transparent)]` over `AccountView`.
+unsafe impl quasar_lang::traits::StaticView for VaultInterface {}
 
 impl quasar_lang::account_load::AccountLoad for VaultInterface {
     fn check(view: &AccountView) -> Result<(), ProgramError> {

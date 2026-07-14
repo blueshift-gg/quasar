@@ -1,0 +1,5 @@
+error: `seeds = [...]` is Anchor syntax and is not supported here. Declare the seed layout on the account type with `#[seeds(b"prefix", field: Type, ...)]`, then bind the PDA on this field with `#[account(address = MyAccount::seeds(<args>))]`. The bump is derived and stored automatically.
+  --> tests/compile_fail/anchor_seeds_syntax.rs:19:15
+   |
+19 |     #[account(seeds = [b"vault", authority], bump)]
+   |               ^^^^^

@@ -1,0 +1,51 @@
+SEMANTICS (2 fields)
+[0] authority
+    core: effective_ty=`Signer` kind=Single optional=false dynamic=false declared_mut=true dup=false
+          inner_ty=None
+    init: None
+    payer: None
+    address: None
+    realloc: None
+    close_dest: None
+    groups: []
+    user_checks: []
+    is_migration=false is_uninit=false writable=true
+[1] old_data
+    core: effective_ty=`Account < OldData >` kind=Single optional=false dynamic=false declared_mut=true dup=false
+          inner_ty=`OldData`
+    init: None
+    payer: None
+    address: None
+    realloc: None
+    close_dest: authority
+    groups: []
+    user_checks: []
+    is_migration=false is_uninit=false writable=true
+
+PLAN (2 fields)
+rent: NotNeeded
+has_instruction_args: false
+event_cpi: [Never, Never]
+[0]
+    id: ident=authority effective_ty=`Signer` wrapper=Signer kind=Single optional=false dup=false writable=true signer=true
+    load: Fixed(validates=[])
+    bump: None
+    behaviors: []
+    docs: []
+    idl_resolver: None
+    signer_helper: None
+    pre_load: []
+    post_load: []
+    epilogue: []
+[1]
+    id: ident=old_data effective_ty=`Account < OldData >` wrapper=Account kind=Single optional=false dup=false writable=true signer=false
+    load: Fixed(validates=[])
+    bump: None
+    behaviors: []
+    docs: []
+    idl_resolver: None
+    signer_helper: None
+    pre_load: []
+    post_load: []
+    epilogue:
+      - ProgramClose(destination_field=authority)

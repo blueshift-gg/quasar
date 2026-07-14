@@ -5,6 +5,7 @@ use {
 
 /// Validates that account data is at least `DATA_OFFSET + DATA_SIZE` bytes.
 pub trait DataLen: AccountLayout {
+    /// Checks that the account covers the declared layout range.
     #[inline(always)]
     fn check(view: &AccountView) -> Result<(), ProgramError> {
         let end = Self::DATA_OFFSET + Self::DATA_SIZE;

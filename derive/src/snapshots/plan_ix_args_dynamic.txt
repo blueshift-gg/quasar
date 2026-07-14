@@ -1,0 +1,30 @@
+SEMANTICS (1 fields)
+[0] account
+    core: effective_ty=`Account < TwoDynArgsAccount >` kind=Single optional=false dynamic=false declared_mut=true dup=false
+          inner_ty=`TwoDynArgsAccount`
+    init: None
+    payer: None
+    address: None
+    realloc: None
+    close_dest: None
+    groups: []
+    user_checks:
+      - Constraints exprs=[`tag != 0 && a . len () == b . len ()`] error=None
+    is_migration=false is_uninit=false writable=true
+
+PLAN (1 fields)
+rent: NotNeeded
+has_instruction_args: true
+event_cpi: [Never]
+[0]
+    id: ident=account effective_ty=`Account < TwoDynArgsAccount >` wrapper=Account kind=Single optional=false dup=false writable=true signer=false
+    load: Fixed(validates=[])
+    bump: None
+    behaviors: []
+    docs: []
+    idl_resolver: None
+    signer_helper: None
+    pre_load: []
+    post_load:
+      - UserCheck(Constraints exprs=[`tag != 0 && a . len () == b . len ()`] error=None)
+    epilogue: []

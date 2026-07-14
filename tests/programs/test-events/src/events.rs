@@ -1,7 +1,9 @@
 use quasar_lang::prelude::*;
 
+/// Fires once per handler invocation with the raw input value.
 #[event(discriminator = 1)]
 pub struct SimpleEvent {
+    /// The value passed to the emitting instruction.
     pub value: u64,
 }
 

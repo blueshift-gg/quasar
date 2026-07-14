@@ -1,0 +1,26 @@
+error[E0277]: the trait bound `NotTransparent: StaticView` is not satisfied
+  --> tests/compile_fail_all_features/account_load_not_transparent.rs:19:22
+   |
+19 | impl AccountLoad for NotTransparent {
+   |                      ^^^^^^^^^^^^^^ unsatisfied trait bound
+   |
+help: the trait `StaticView` is not implemented for `NotTransparent`
+  --> tests/compile_fail_all_features/account_load_not_transparent.rs:9:1
+   |
+ 9 | struct NotTransparent {
+   | ^^^^^^^^^^^^^^^^^^^^^
+   = help: the following other types implement trait `StaticView`:
+             Interface<T>
+             InterfaceAccount<T>
+             Migration<From, To>
+             Program<T>
+             SystemAccount
+             UncheckedAccount
+             Uninit<A>
+             quasar_lang::accounts::Account<T>
+           and $N others
+note: required by a bound in `quasar_lang::account_load::AccountLoad`
+  --> src/account_load.rs
+   |
+   | pub trait AccountLoad: AsAccountView + StaticView + Sized {
+   |                                        ^^^^^^^^^^ required by this bound in `AccountLoad`

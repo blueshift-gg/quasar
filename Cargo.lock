@@ -170,9 +170,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.102"
+version = "1.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
+checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "ark-bn254"
@@ -402,7 +402,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94893f1e0c6eeab764ade8dc4c0db24caf4fe7cbbaafc0eba0a9030f447b5185"
 dependencies = [
  "num-traits",
- "rand 0.8.5",
+ "rand 0.8.6",
 ]
 
 [[package]]
@@ -412,7 +412,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "246a225cc6131e9ee4f24619af0f19d67761fff15d7ccc22e42b80846e69449a"
 dependencies = [
  "num-traits",
- "rand 0.8.5",
+ "rand 0.8.6",
 ]
 
 [[package]]
@@ -952,6 +952,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dissimilar"
+version = "1.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aeda16ab4059c5fd2a83f2b9c9e9c981327b18aa8e3b313f7e6563799d4f093e"
+
+[[package]]
 name = "eager"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1116,6 +1122,16 @@ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "expect-test"
+version = "1.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63af43ff4431e848fb47472a920f14fa71c24de13255a5692e93d4e90302acb0"
+dependencies = [
+ "dissimilar",
+ "once_cell",
 ]
 
 [[package]]
@@ -1653,9 +1669,9 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
 name = "memmap2"
-version = "0.9.10"
+version = "0.9.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "714098028fe011992e1c3962653c96b2d578c4b4bce9036e15ff220319b1e0e3"
+checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
 dependencies = [
  "libc",
 ]
@@ -2017,7 +2033,7 @@ dependencies = [
 
 [[package]]
 name = "quasar-cli"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "bs58",
  "clap",
@@ -2029,7 +2045,7 @@ dependencies = [
  "quasar-idl",
  "quasar-profile",
  "quasar-schema",
- "rand 0.8.5",
+ "rand 0.8.6",
  "serde",
  "serde_json",
  "shlex",
@@ -2040,8 +2056,11 @@ dependencies = [
 
 [[package]]
 name = "quasar-derive"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
+ "expect-test",
+ "prettyplease",
+ "proc-macro-crate",
  "proc-macro2",
  "quasar-derive",
  "quasar-idl-schema",
@@ -2078,7 +2097,7 @@ dependencies = [
 
 [[package]]
 name = "quasar-idl"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "bs58",
  "quasar-idl-schema",
@@ -2089,7 +2108,7 @@ dependencies = [
 
 [[package]]
 name = "quasar-idl-schema"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2098,7 +2117,7 @@ dependencies = [
 
 [[package]]
 name = "quasar-lang"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "bs58",
  "const-crypto",
@@ -2121,7 +2140,7 @@ dependencies = [
 
 [[package]]
 name = "quasar-metadata"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "quasar-lang",
  "solana-address 2.2.0",
@@ -2152,7 +2171,7 @@ dependencies = [
 
 [[package]]
 name = "quasar-profile"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "addr2line",
  "chrono",
@@ -2170,11 +2189,11 @@ dependencies = [
 
 [[package]]
 name = "quasar-schema"
-version = "0.0.0"
+version = "0.1.0"
 
 [[package]]
 name = "quasar-spl"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "quasar-lang",
  "solana-address 2.2.0",
@@ -2411,9 +2430,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.8.5"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
+checksum = "5ca0ecfa931c29007047d1bc58e623ab12e5590e8c7cc53200d5202b69266d8a"
 dependencies = [
  "libc",
  "rand_chacha 0.3.1",
@@ -3359,7 +3378,7 @@ dependencies = [
  "itertools 0.12.1",
  "log",
  "percentage",
- "rand 0.8.5",
+ "rand 0.8.6",
  "serde",
  "solana-account",
  "solana-account-info",
@@ -3441,7 +3460,7 @@ dependencies = [
  "hash32",
  "libc",
  "log",
- "rand 0.8.5",
+ "rand 0.8.6",
  "rustc-demangle",
  "thiserror 2.0.18",
  "winapi",
@@ -3630,7 +3649,7 @@ version = "3.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa888be46794b88f130508f694e989fb8802c823b9048acd4d0240e9818502fe"
 dependencies = [
- "rand 0.8.5",
+ "rand 0.8.6",
 ]
 
 [[package]]

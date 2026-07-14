@@ -21,15 +21,29 @@ use {
 /// Init contributors (token, mint, associated token) populate params via
 /// capability traits before this op runs.
 pub struct Op<'a, Params = ()> {
+    /// Account funding the allocation and rent-exempt balance.
     pub payer: &'a AccountView,
+    /// Number of account-data bytes to allocate.
     pub space: u64,
+    /// PDA signer seeds used by the initialization CPI.
     pub signers: &'a [Signer<'a, 'a>],
+    /// Account-type-specific initialization parameters.
     pub params: Params,
+    /// Whether an already initialized account is accepted.
     pub idempotent: bool,
 }
 
 impl<'a, P> Op<'a, P> {
     /// Execute the init operation on a raw account slot.
+    ///
+    /// Unlike [`realloc::Op::apply`](crate::ops::realloc::Op::apply) and
+    /// [`close::Op::apply`](crate::ops::close::Op::apply), `ctx` is bound to
+    /// the op's own lifetime (`&'a OpCtx<'a, R>`) rather than a free
+    /// `&OpCtx<'_, R>`. This is required, not incidental: [`InitCtx<'a>`]
+    /// carries `payer`, `program_id`, `signers`, and `rent` under a single
+    /// lifetime, and `payer`/ `signers` come from `Op<'a>`, so
+    /// `ctx.program_id` and `&ctx.rent` must also outlive `'a`. Relaxing it
+    /// would require decoupling `InitCtx`'s lifetimes.
     #[inline(always)]
     pub fn apply<F, R>(
         &self,

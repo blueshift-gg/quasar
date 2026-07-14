@@ -28,6 +28,7 @@ pub fn preflight(surface: &ProgramSurface, config: &LintConfig) -> LintReport {
     let mut report = LintReport::default();
     preflight_accounts(surface, &mut report);
     preflight_instructions(surface, config, &mut report);
+    preflight_discriminators(surface, &mut report);
     graph_checks(surface, &mut report);
     report
 }
@@ -162,6 +163,80 @@ fn instruction_has_signer(instruction: &InstructionSurface) -> bool {
             .remaining_accounts
             .as_deref()
             .is_some_and(|remaining| remaining.contains("dynamic"))
+}
+
+/// Whole-program discriminator/code collision analysis.
+///
+/// - Account discriminators collide when equal OR when one is a prefix of the
+///   other: the runtime discriminator check reads only the declared-length
+///   prefix (`checks/discriminator.rs`), and every `#[account]` shares `OWNER =
+///   crate::ID`, so a prefix relation is silent type confusion. Empty
+///   discriminators (`unsafe_no_disc`) are an explicit opt-out and are skipped.
+/// - Event discriminators collide on exact duplication.
+/// - Error codes collide on exact duplication (codes are 6000-based).
+fn preflight_discriminators(surface: &ProgramSurface, report: &mut LintReport) {
+    for (i, account) in surface.accounts.iter().enumerate() {
+        for other in &surface.accounts[i + 1..] {
+            if account_discriminators_collide(&account.discriminator, &other.discriminator) {
+                report.push(Diagnostic::new(
+                    RuleCode::P009,
+                    account.name.clone(),
+                    format!(
+                        "accounts `{}` and `{}` have colliding discriminators ({:?} vs {:?}); the \
+                         runtime check is a prefix compare, so one can be decoded as the other",
+                        account.name, other.name, account.discriminator, other.discriminator
+                    ),
+                    "give every account type a distinct discriminator that is not a prefix of \
+                     another",
+                ));
+            }
+        }
+    }
+
+    for (i, event) in surface.events.iter().enumerate() {
+        for other in &surface.events[i + 1..] {
+            if event.discriminator == other.discriminator {
+                report.push(Diagnostic::new(
+                    RuleCode::P010,
+                    event.name.clone(),
+                    format!(
+                        "events `{}` and `{}` share discriminator {:?}; off-chain indexers cannot \
+                         tell their logs apart",
+                        event.name, other.name, event.discriminator
+                    ),
+                    "give every event a distinct discriminator",
+                ));
+            }
+        }
+    }
+
+    for (i, error) in surface.errors.iter().enumerate() {
+        for other in &surface.errors[i + 1..] {
+            if error.code == other.code {
+                report.push(Diagnostic::new(
+                    RuleCode::P011,
+                    error.name.clone(),
+                    format!(
+                        "errors `{}` and `{}` share code {}; clients cannot distinguish the two \
+                         failures",
+                        error.name, other.name, error.code
+                    ),
+                    "give every error variant a distinct code",
+                ));
+            }
+        }
+    }
+}
+
+/// Two account discriminators collide when either is a prefix of the other
+/// (which includes exact equality). Empty discriminators are skipped: they mark
+/// an explicit `unsafe_no_disc` opt-out with no discriminator to compare.
+fn account_discriminators_collide(a: &[u8], b: &[u8]) -> bool {
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+    let shared = a.len().min(b.len());
+    a[..shared] == b[..shared]
 }
 
 fn graph_checks(surface: &ProgramSurface, report: &mut LintReport) {
@@ -588,5 +663,137 @@ fn diff_events(old: &ProgramSurface, new: &ProgramSurface, report: &mut LintRepo
                  logs",
             ));
         }
+    }
+}
+
+#[cfg(test)]
+mod collision_tests {
+    use super::{
+        super::surface::{ErrorSurface, EventSurface},
+        preflight, AccountSurface, LintConfig, ProgramSurface, RuleCode,
+    };
+
+    fn account(name: &str, discriminator: Vec<u8>) -> AccountSurface {
+        AccountSurface {
+            name: name.to_owned(),
+            discriminator,
+            fields: Vec::new(),
+            layout: None,
+            space: None,
+        }
+    }
+
+    fn event(name: &str, discriminator: Vec<u8>) -> EventSurface {
+        EventSurface {
+            name: name.to_owned(),
+            discriminator,
+            fields: Vec::new(),
+        }
+    }
+
+    fn error(name: &str, code: u32) -> ErrorSurface {
+        ErrorSurface {
+            name: name.to_owned(),
+            code,
+        }
+    }
+
+    fn surface(
+        accounts: Vec<AccountSurface>,
+        events: Vec<EventSurface>,
+        errors: Vec<ErrorSurface>,
+    ) -> ProgramSurface {
+        ProgramSurface {
+            version: 2,
+            spec: "quasar-idl/1.0.0".to_owned(),
+            name: "collision_test".to_owned(),
+            program_id: "11111111111111111111111111111111".to_owned(),
+            accounts,
+            instructions: Vec::new(),
+            types: Vec::new(),
+            events,
+            errors,
+        }
+    }
+
+    fn contains(surface: &ProgramSurface, rule: RuleCode) -> bool {
+        preflight(surface, &LintConfig::default()).contains(rule)
+    }
+
+    #[test]
+    fn account_exact_discriminator_pair_collides() {
+        let s = surface(
+            vec![account("A", vec![1]), account("B", vec![1])],
+            vec![],
+            vec![],
+        );
+        assert!(contains(&s, RuleCode::P009));
+    }
+
+    #[test]
+    fn account_prefix_discriminator_pair_collides() {
+        // `[1]` is a prefix of `[1, 2]`; the runtime prefix compare confuses them.
+        let s = surface(
+            vec![account("A", vec![1]), account("B", vec![1, 2])],
+            vec![],
+            vec![],
+        );
+        assert!(contains(&s, RuleCode::P009));
+    }
+
+    #[test]
+    fn account_distinct_discriminators_are_clean() {
+        let s = surface(
+            vec![
+                account("A", vec![1]),
+                account("B", vec![2]),
+                account("C", vec![3, 4]),
+            ],
+            vec![],
+            vec![],
+        );
+        assert!(!contains(&s, RuleCode::P009));
+    }
+
+    #[test]
+    fn account_empty_discriminator_opt_out_is_skipped() {
+        let s = surface(
+            vec![account("NoDisc", vec![]), account("B", vec![1])],
+            vec![],
+            vec![],
+        );
+        assert!(!contains(&s, RuleCode::P009));
+    }
+
+    #[test]
+    fn event_duplicate_discriminator_collides() {
+        let s = surface(
+            vec![],
+            vec![event("A", vec![5]), event("B", vec![5])],
+            vec![],
+        );
+        assert!(contains(&s, RuleCode::P010));
+    }
+
+    #[test]
+    fn event_distinct_discriminators_are_clean() {
+        let s = surface(
+            vec![],
+            vec![event("A", vec![5]), event("B", vec![6])],
+            vec![],
+        );
+        assert!(!contains(&s, RuleCode::P010));
+    }
+
+    #[test]
+    fn error_duplicate_code_collides() {
+        let s = surface(vec![], vec![], vec![error("A", 6000), error("B", 6000)]);
+        assert!(contains(&s, RuleCode::P011));
+    }
+
+    #[test]
+    fn error_distinct_codes_are_clean() {
+        let s = surface(vec![], vec![], vec![error("A", 6000), error("B", 6001)]);
+        assert!(!contains(&s, RuleCode::P011));
     }
 }

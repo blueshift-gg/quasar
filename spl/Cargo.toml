@@ -3,6 +3,7 @@ name = "quasar-spl"
 description = "SPL Token program CPI and zero-copy account types for the Quasar Solana framework"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
@@ -14,7 +15,7 @@ workspace = true
 debug = []
 
 [dependencies]
-quasar-lang = { version = "0.0", path = "../lang" }
+quasar-lang = { version = "0.1", path = "../lang" }
 solana-address = { version = ">=2.2, <2.6", features = ["copy"] }
 
 [dev-dependencies]

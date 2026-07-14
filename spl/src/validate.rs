@@ -230,7 +230,7 @@ pub fn validate_ata(
 ) -> Result<(), ProgramError> {
     // The ATA already exists in the transaction (non-init path), which means
     // the ATA program created it and the runtime verified it's off-curve.
-    // Use find_bump_for_address (keys_eq) instead of based_try_find_program_address
+    // Use find_bump_for_address (keys_eq) instead of try_find_program_address
     // (on-curve check) to save ~90 CU per attempt.
     let seeds = [wallet.as_ref(), token_program.as_ref(), mint.as_ref()];
     quasar_lang::pda::find_bump_for_address(

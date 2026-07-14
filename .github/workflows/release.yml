@@ -5,11 +5,15 @@ on:
     tags: ["v*"]
 
 env:
-  SOLANA_VERSION: stable
+  KANI_VERSION: 0.67.0
+  PROGRAM_MSRV: 1.89.0
+  SOLANA_VERSION: v4.1.1
   CARGO_TERM_COLOR: always
 
 permissions:
   contents: write
+  checks: write
+  issues: write
 
 jobs:
   # ── Gate: full CI must pass before any release action ──
@@ -22,7 +26,7 @@ jobs:
   # ── Miri: verify unsafe soundness under Tree Borrows ──
   miri:
     name: Miri (Tree Borrows)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - uses: actions/cache@v5
@@ -41,17 +45,22 @@ jobs:
         with:
           toolchain: ${{ steps.nightly.outputs.version }}
           components: miri
+      - name: Print Miri toolchain
+        run: |
+          rustup run "${{ steps.nightly.outputs.version }}" rustc --version
+          rustup run "${{ steps.nightly.outputs.version }}" cargo --version
+          cargo +${{ steps.nightly.outputs.version }} miri --version
       - name: Run Miri tests
         run: make test-miri
 
   # ── Kani: formal verification of proof harnesses ──
   kani:
     name: Kani (${{ matrix.crate }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        crate: [quasar-lang, quasar-spl]
+        crate: [quasar-lang, quasar-spl, quasar-metadata]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/cache@v5
@@ -69,13 +78,16 @@ jobs:
       - name: Verify ${{ matrix.crate }}
         uses: model-checking/kani-github-action@v1
         with:
+          kani-version: ${{ env.KANI_VERSION }}
           command: cargo kani -p ${{ matrix.crate }}
+      - name: Print Kani toolchain
+        run: cargo kani --version
 
   # ── CLI smoke: verify a fresh Solana project before publishing a tag ──
   release-cli-smoke:
     name: Release CLI Smoke
     needs: ci
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
 
@@ -95,60 +107,109 @@ jobs:
   publish:
     name: Publish to crates.io
     needs: [ci, miri, kani, release-cli-smoke]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    env:
+      RUSTUP_TOOLCHAIN: 1.89.0
     environment: crates-io
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.PROGRAM_MSRV }}
 
-      # Tier 1: no workspace deps (parallel-safe)
-      - name: Publish quasar-derive
-        run: cargo publish -p quasar-derive
+      - name: Print publication toolchain
+        run: rustc --version && cargo --version
+
+      - name: Validate release tag
+        run: |
+          version="$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "quasar-lang") | .version')"
+          if [ "${{ github.ref_name }}" != "v${version}" ]; then
+            echo "tag ${{ github.ref_name }} does not match workspace version ${version}" >&2
+            exit 1
+          fi
+          echo "QUASAR_VERSION=${version}" >> "$GITHUB_ENV"
+
+      # Tier 0: no internal dependencies.
+      - name: Publish quasar-schema
+        run: scripts/publish-crate.sh quasar-schema "$QUASAR_VERSION"
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      - name: Publish quasar-idl
-        run: cargo publish -p quasar-idl
+      - name: Publish quasar-idl-schema
+        run: scripts/publish-crate.sh quasar-idl-schema "$QUASAR_VERSION"
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
       - name: Publish quasar-profile
-        run: cargo publish -p quasar-profile
+        run: scripts/publish-crate.sh quasar-profile "$QUASAR_VERSION"
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      # Tier 2: depends on tier 1
-      - name: Wait for crates.io index
-        run: sleep 30
-
-      - name: Publish quasar-core
-        run: cargo publish -p quasar-core
+      - name: Publish solana-compiler-builtins
+        run: scripts/publish-crate.sh solana-compiler-builtins "$QUASAR_VERSION"
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      # Tier 3: depends on core
-      - name: Wait for crates.io index
-        run: sleep 30
+      - name: Wait for tier 0
+        run: |
+          scripts/wait-for-crate.sh quasar-schema "$QUASAR_VERSION"
+          scripts/wait-for-crate.sh quasar-idl-schema "$QUASAR_VERSION"
+          scripts/wait-for-crate.sh quasar-profile "$QUASAR_VERSION"
+          scripts/wait-for-crate.sh solana-compiler-builtins "$QUASAR_VERSION"
 
+      # Tier 1: proc macros and IDL generator.
+      - name: Publish quasar-derive
+        run: scripts/publish-crate.sh quasar-derive "$QUASAR_VERSION"
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Publish quasar-idl
+        run: scripts/publish-crate.sh quasar-idl "$QUASAR_VERSION"
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for tier 1
+        run: |
+          scripts/wait-for-crate.sh quasar-derive "$QUASAR_VERSION"
+          scripts/wait-for-crate.sh quasar-idl "$QUASAR_VERSION"
+
+      # Tier 2: runtime and CLI.
+      - name: Publish quasar-lang
+        run: scripts/publish-crate.sh quasar-lang "$QUASAR_VERSION"
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Publish quasar-cli
+        run: scripts/publish-crate.sh quasar-cli "$QUASAR_VERSION"
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for quasar-lang
+        run: scripts/wait-for-crate.sh quasar-lang "$QUASAR_VERSION"
+
+      # Tier 3: runtime integrations.
       - name: Publish quasar-spl
-        run: cargo publish -p quasar-spl
+        run: scripts/publish-crate.sh quasar-spl "$QUASAR_VERSION"
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      # Tier 4: facade crate
-      - name: Wait for crates.io index
-        run: sleep 30
-
-      - name: Publish quasar
-        run: cargo publish -p quasar
+      - name: Publish quasar-metadata
+        run: scripts/publish-crate.sh quasar-metadata "$QUASAR_VERSION"
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for final tier
+        run: |
+          scripts/wait-for-crate.sh quasar-cli "$QUASAR_VERSION"
+          scripts/wait-for-crate.sh quasar-spl "$QUASAR_VERSION"
+          scripts/wait-for-crate.sh quasar-metadata "$QUASAR_VERSION"
 
   # ── GitHub Release with auto-generated notes ──
   github-release:
     name: GitHub Release
-    needs: [ci, miri, kani, release-cli-smoke]
-    runs-on: ubuntu-latest
+    needs: publish
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
         with:

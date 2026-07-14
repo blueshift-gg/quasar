@@ -3,6 +3,7 @@ name = "quasar-lang"
 description = "Zero-copy Solana program framework"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
@@ -12,12 +13,19 @@ workspace = true
 
 [features]
 debug = []
+# Host-only: pulls in serde_json/quasar-idl-schema/inventory/bs58 to assemble the
+# IDL from inventory fragments. Enabled only for the host `__quasar_emit_idl`
+# test run (`cargo test --features idl-build`); it must NOT be enabled for an SBF
+# program build, where the serde/std stack does not compile.
 idl-build = ["dep:inventory", "dep:quasar-idl-schema", "dep:serde_json", "dep:bs58"]
+# Enables `declare_program!` (external-IDL client generation). Off by default so
+# the serde/IDL-schema stack stays out of ordinary program builds.
+declare-program = ["quasar-derive/declare-program"]
 
 [dependencies]
-quasar-derive = { version = "0.0", path = "../derive" }
+quasar-derive = { version = "0.1", path = "../derive" }
 inventory = { version = "0.3", optional = true }
-quasar-idl-schema = { path = "../idl/schema", optional = true }
+quasar-idl-schema = { version = "0.1", path = "../idl/schema", optional = true }
 serde_json = { version = "1", optional = true }
 bs58 = { version = "0.5", optional = true }
 zeropod = { version = "0.3.3", features = ["solana-address", "solana-program-error"] }
@@ -34,7 +42,7 @@ solana-define-syscall = { version = "5.0.0", features = [
 ] }
 
 [target.'cfg(target_arch = "bpf")'.dependencies]
-solana-compiler-builtins = { path = "../solana-compiler-builtins" }
+solana-compiler-builtins = { version = "0.1", path = "../solana-compiler-builtins" }
 
 [target.'cfg(not(any(target_os = "solana", target_arch = "bpf")))'.dependencies]
 zeropod = { version = "0.3.3", features = ["wincode", "solana-address", "solana-program-error"] }

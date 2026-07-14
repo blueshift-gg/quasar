@@ -9,6 +9,9 @@ pub enum RuleCode {
     P006,
     P007,
     P008,
+    P009,
+    P010,
+    P011,
     R001,
     R002,
     R003,
@@ -37,6 +40,9 @@ impl RuleCode {
             Self::P006 => "P006",
             Self::P007 => "P007",
             Self::P008 => "P008",
+            Self::P009 => "P009",
+            Self::P010 => "P010",
+            Self::P011 => "P011",
             Self::R001 => "R001",
             Self::R002 => "R002",
             Self::R003 => "R003",
@@ -65,6 +71,9 @@ impl RuleCode {
             Self::P006 => "instruction missing signer",
             Self::P007 => "unbounded remaining accounts",
             Self::P008 => "auto instruction discriminators without lockfile",
+            Self::P009 => "account discriminator collision",
+            Self::P010 => "event discriminator collision",
+            Self::P011 => "error code collision",
             Self::R001 => "account field reorder",
             Self::R002 => "account field retype",
             Self::R003 => "account field removed",
@@ -99,7 +108,12 @@ impl RuleCode {
             | Self::R013
             | Self::R014
             | Self::R015
-            | Self::R016 => Severity::Error,
+            | Self::R016
+            // Account discriminator collisions are silent type confusion at
+            // runtime (the discriminator check is a prefix compare and every
+            // `#[account]` shares `OWNER = crate::ID`), so they are a hard error
+            // — mirrored by the `build_idl` collision panic.
+            | Self::P009 => Severity::Error,
             Self::R005
             | Self::L001
             | Self::P001
@@ -107,7 +121,9 @@ impl RuleCode {
             | Self::P005
             | Self::P006
             | Self::P007
-            | Self::P008 => Severity::Warning,
+            | Self::P008
+            | Self::P010
+            | Self::P011 => Severity::Warning,
             Self::R012 => Severity::Info,
         }
     }

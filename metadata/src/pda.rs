@@ -15,7 +15,7 @@ const EDITION_SEED: &[u8] = b"edition";
 
 #[inline(always)]
 fn find_metadata_pda(seeds: &[&[u8]]) -> (Address, u8) {
-    quasar_lang::pda::based_try_find_program_address(seeds, &METADATA_PROGRAM_ID)
+    quasar_lang::pda::try_find_program_address(seeds, &METADATA_PROGRAM_ID)
         .expect("metadata PDA must be derivable")
 }
 

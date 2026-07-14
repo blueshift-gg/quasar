@@ -15,7 +15,10 @@ use {
     },
 };
 
-quasar_lang::define_account!(pub struct AssociatedTokenProgram => [checks::Executable, checks::Address]);
+quasar_lang::define_account!(
+    /// Associated Token Program executable account marker.
+    pub struct AssociatedTokenProgram => [checks::Executable, checks::Address]
+);
 
 impl Id for AssociatedTokenProgram {
     const ID: Address = Address::new_from_array(ATA_PROGRAM_BYTES);

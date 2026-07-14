@@ -4,9 +4,10 @@
 //! Solana's built-in `ProgramError` codes (0-29) and leave room for
 //! program-specific `#[error_code]` enums which start at 6000 by default.
 
-use {quasar_derive::error_code, solana_program_error::ProgramError};
+use quasar_derive::error_code;
 
 #[error_code]
+/// Errors emitted by Quasar's runtime validation and account machinery.
 pub enum QuasarError {
     /// Account data is all zeros or has no discriminator.
     AccountNotInitialized = 3000,

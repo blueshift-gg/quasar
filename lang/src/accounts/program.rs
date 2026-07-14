@@ -17,6 +17,10 @@ impl<T: crate::traits::Id> AsAccountView for Program<T> {
     }
 }
 
+// SAFETY: `Program<T>` is `#[repr(transparent)]` over `AccountView` plus
+// `PhantomData<T>`, so the pointer cast preserves layout.
+unsafe impl<T: crate::traits::Id> crate::traits::StaticView for Program<T> {}
+
 impl<T: crate::traits::Id> crate::traits::Id for Program<T> {
     const ID: Address = T::ID;
 }
@@ -27,12 +31,13 @@ impl<T: crate::traits::Id> crate::account_load::AccountLoad for Program<T> {
     #[inline(always)]
     fn check(view: &AccountView) -> Result<(), ProgramError> {
         if crate::utils::hint::unlikely(!crate::keys_eq(view.address(), &T::ID)) {
+            // Alloc-free so the diagnostic works under `no_alloc!`: log a static
+            // message plus the expected/actual address bytes via `log_data`.
             #[cfg(feature = "debug")]
-            crate::prelude::log(&::alloc::format!(
-                "Incorrect program ID: expected {}, got {}",
-                T::ID,
-                view.address()
-            ));
+            {
+                crate::prelude::log("Incorrect program ID (expected, actual):");
+                crate::log::log_data(&[T::ID.as_array(), view.address().as_array()]);
+            }
             return Err(ProgramError::IncorrectProgramId);
         }
         Ok(())

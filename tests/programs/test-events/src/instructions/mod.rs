@@ -13,6 +13,9 @@ pub use emit_multi_field::*;
 pub mod emit_via_cpi;
 pub use emit_via_cpi::*;
 
+pub mod emit_via_cpi_aliased;
+pub use emit_via_cpi_aliased::*;
+
 pub mod emit_empty_event;
 pub use emit_empty_event::*;
 

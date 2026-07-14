@@ -145,3 +145,6 @@ pub use cpi_mut_readback::*;
 
 pub mod optional_mut_accounts;
 pub use optional_mut_accounts::*;
+
+pub mod two_dyn;
+pub use two_dyn::*;

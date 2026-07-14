@@ -3,6 +3,7 @@ name = "quasar-derive"
 description = "Proc macros for the Quasar Solana framework"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
@@ -18,12 +19,23 @@ doctest = false
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
-serde_json = "1"
-quasar-schema = { path = "../schema" }
-quasar-idl-schema = { path = "../idl/schema" }
+proc-macro-crate = "3"
+serde_json = { version = "1", optional = true }
+quasar-schema = { version = "0.1", path = "../schema" }
+quasar-idl-schema = { version = "0.1", path = "../idl/schema", optional = true }
+
+[features]
+# `declare_program!` parses an external IDL JSON at compile time. That path is
+# the only consumer of `serde_json` + `quasar-idl-schema` in this crate; gating
+# it keeps those (and their transitive serde/sha2 stacks) out of every ordinary
+# program build, which only needs the derive macros. Program crates never enable
+# this; only crates that invoke `declare_program!` do.
+declare-program = ["dep:serde_json", "dep:quasar-idl-schema"]
 
 [dev-dependencies]
 trybuild = "1"
+expect-test = "1"
+prettyplease = "0.2"
 quasar-lang = { path = "../lang" }
 quasar-derive = { path = "../derive" }
 quasar-spl = { path = "../spl" }

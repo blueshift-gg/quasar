@@ -24,7 +24,7 @@ pub fn canonical_json_pretty(idl: &Idl) -> serde_json::Result<Vec<u8>> {
 pub fn compute_idl_hash(idl: &Idl) -> String {
     let mut idl_for_hash = idl.clone();
     idl_for_hash.hashes = None;
-    let bytes = serde_json::to_vec(&idl_for_hash).expect("IDL serialization should not fail");
+    let bytes = canonical_json(&idl_for_hash).expect("IDL serialization should not fail");
     hex_sha256(&bytes)
 }
 
@@ -84,19 +84,24 @@ struct AbiInstruction {
     remaining_accounts: Option<crate::account::IdlRemainingAccounts>,
     #[serde(skip_serializing_if = "Option::is_none")]
     layout: Option<crate::layout::IdlLayout>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    returns: Option<crate::instruction::IdlReturnData>,
 }
 
 #[derive(serde::Serialize)]
 struct AbiAccountMeta {
     name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    client_type: Option<String>,
+    optional: bool,
     writable: crate::account::AccountFlag,
     signer: crate::account::AccountFlag,
     resolver: crate::account::IdlResolver,
 }
+
+/// Serde fields of [`crate::account::IdlAccountNode`] that are deliberately
+/// excluded from the ABI hash (they carry no wire/ABI meaning). The
+/// completeness test asserts every serde field is either mirrored in
+/// [`AbiAccountMeta`] or listed here, so a newly added field cannot silently
+/// skip the hash.
+#[cfg(test)]
+const ABI_WAIVED: &[&str] = &["docs"];
 
 #[derive(serde::Serialize)]
 struct AbiAccount {
@@ -110,8 +115,6 @@ struct AbiAccount {
 struct AbiType {
     name: String,
     kind: crate::types::IdlTypeDefKind,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    generics: Vec<crate::types::IdlGenericParam>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     fields: Vec<AbiField>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -155,8 +158,6 @@ struct AbiEvent {
     discriminator: Vec<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     ty: Option<crate::types::IdlType>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    transport: Option<crate::event::EventTransport>,
 }
 
 fn extract_abi_subset(idl: &Idl) -> AbiSubset {
@@ -174,7 +175,7 @@ fn extract_abi_subset(idl: &Idl) -> AbiSubset {
                     .iter()
                     .map(|a| AbiAccountMeta {
                         name: a.name.clone(),
-                        client_type: a.client_type.clone(),
+                        optional: a.optional,
                         writable: a.writable.clone(),
                         signer: a.signer.clone(),
                         resolver: a.resolver.clone(),
@@ -182,7 +183,6 @@ fn extract_abi_subset(idl: &Idl) -> AbiSubset {
                     .collect(),
                 remaining_accounts: ix.remaining_accounts.clone(),
                 layout: ix.layout.clone(),
-                returns: ix.returns.clone(),
             })
             .collect(),
         accounts: idl
@@ -200,7 +200,6 @@ fn extract_abi_subset(idl: &Idl) -> AbiSubset {
             .map(|t| AbiType {
                 name: t.name.clone(),
                 kind: t.kind,
-                generics: t.generics.clone(),
                 fields: abi_fields(&t.fields),
                 variants: t
                     .variants
@@ -227,7 +226,6 @@ fn extract_abi_subset(idl: &Idl) -> AbiSubset {
                 name: e.name.clone(),
                 discriminator: e.discriminator.clone(),
                 ty: e.ty.clone(),
-                transport: e.transport,
             })
             .collect(),
     }
@@ -256,7 +254,7 @@ mod tests {
             },
             codec::{Endian, IdlCodec, ScalarRepr, Storage},
             instruction::IdlInstruction,
-            root::IdlMetadata,
+            root::{IdlHashes, IdlMetadata},
             types::{IdlFieldDef, IdlType, IdlTypeDef, IdlTypeDefKind},
         },
     };
@@ -279,7 +277,6 @@ mod tests {
                 docs: vec![],
                 accounts: vec![IdlAccountNode {
                     name: "authority".to_owned(),
-                    client_type: None,
                     optional: false,
                     writable: AccountFlag::Fixed(false),
                     signer: AccountFlag::Fixed(false),
@@ -288,16 +285,12 @@ mod tests {
                 }],
                 args: vec![],
                 layout: None,
-                returns: None,
-                effects: vec![],
                 remaining_accounts,
             }],
             accounts: vec![],
             types,
             events: vec![],
             errors: vec![],
-            constants: vec![],
-            wrappers: None,
             extensions: None,
             hashes: None,
         }
@@ -305,6 +298,36 @@ mod tests {
 
     fn minimal_idl_with_resolver(resolver: IdlResolver) -> Idl {
         minimal_idl(resolver, None, vec![])
+    }
+
+    #[test]
+    fn canonical_json_round_trips_byte_for_byte() {
+        // serialize -> parse -> serialize must be byte-identical (idempotent),
+        // which is what makes committed golden IDLs and hashes stable.
+        let idl = minimal_idl_with_resolver(IdlResolver::Input {});
+        let first = canonical_json(&idl).expect("serialize");
+        let parsed: Idl = serde_json::from_slice(&first).expect("parse");
+        let second = canonical_json(&parsed).expect("reserialize");
+        assert_eq!(
+            first, second,
+            "canonical_json must be idempotent across parse"
+        );
+    }
+
+    #[test]
+    fn recomputed_hashes_match_stored_hashes() {
+        // Models `quasar idl verify`: hashes are recomputed on the parsed IDL
+        // (which carries a populated `hashes` field) and must match the stored
+        // values, since the hash excludes the `hashes` field itself.
+        let mut idl = minimal_idl_with_resolver(IdlResolver::Input {});
+        let idl_hash = compute_idl_hash(&idl);
+        let abi_hash = compute_abi_hash(&idl);
+        idl.hashes = Some(IdlHashes {
+            idl: idl_hash.clone(),
+            abi: abi_hash.clone(),
+        });
+        assert_eq!(compute_idl_hash(&idl), idl_hash);
+        assert_eq!(compute_abi_hash(&idl), abi_hash);
     }
 
     #[test]
@@ -344,6 +367,70 @@ mod tests {
     }
 
     #[test]
+    fn abi_hash_changes_when_account_optional_changes() {
+        let mut idl = minimal_idl_with_resolver(IdlResolver::Input {});
+        let base_hash = compute_abi_hash(&idl);
+
+        idl.instructions[0].accounts[0].optional = true;
+        let optional_hash = compute_abi_hash(&idl);
+
+        assert_ne!(
+            base_hash, optional_hash,
+            "flipping IdlAccountNode.optional must change the ABI hash"
+        );
+    }
+
+    /// Guard: every serde-serialized field of `IdlAccountNode` must be mirrored
+    /// in the ABI subset (`AbiAccountMeta`) or explicitly waived in
+    /// `ABI_WAIVED`. Without this, a newly added account-meta field would
+    /// silently fall out of the ABI hash and break compatibility detection.
+    #[test]
+    fn abi_account_meta_covers_all_idl_account_node_fields() {
+        // Fully populate every optional/skippable field so none are omitted
+        // from the serialized key set.
+        let node = IdlAccountNode {
+            name: "authority".to_owned(),
+            optional: true,
+            writable: AccountFlag::Fixed(true),
+            signer: AccountFlag::Fixed(true),
+            resolver: IdlResolver::Input {},
+            docs: vec!["doc".to_owned()],
+        };
+        let node_value = serde_json::to_value(&node).expect("node serializes");
+        let node_keys = node_value
+            .as_object()
+            .expect("node is a JSON object")
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let meta = AbiAccountMeta {
+            name: "authority".to_owned(),
+            optional: true,
+            writable: AccountFlag::Fixed(true),
+            signer: AccountFlag::Fixed(true),
+            resolver: IdlResolver::Input {},
+        };
+        let meta_value = serde_json::to_value(&meta).expect("meta serializes");
+        let meta_keys = meta_value
+            .as_object()
+            .expect("meta is a JSON object")
+            .keys()
+            .cloned()
+            .collect::<std::collections::HashSet<_>>();
+
+        for key in node_keys {
+            let covered = meta_keys.contains(&key) || ABI_WAIVED.contains(&key.as_str());
+            assert!(
+                covered,
+                "IdlAccountNode field `{key}` is neither in the ABI subset (AbiAccountMeta) nor \
+                 in ABI_WAIVED; the ABI hash would silently ignore it. Add it to AbiAccountMeta \
+                 or ABI_WAIVED.",
+            );
+        }
+    }
+
+    #[test]
     fn abi_hash_changes_when_type_layout_changes() {
         let fixed_type = type_with_label_codec(Storage::Inline);
         let tail_type = type_with_label_codec(Storage::Tail);
@@ -361,7 +448,6 @@ mod tests {
             name: "Config".to_owned(),
             kind: IdlTypeDefKind::Struct,
             docs: vec![],
-            generics: vec![],
             fields: vec![IdlFieldDef {
                 name: "label".to_owned(),
                 ty: IdlType::Primitive("string".to_owned()),

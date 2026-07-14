@@ -1,6 +1,8 @@
 SHELL := /usr/bin/env bash
-NIGHTLY_TOOLCHAIN := nightly
+# Keep rustfmt, Clippy, and Miri deterministic across local and CI runs.
+NIGHTLY_TOOLCHAIN := nightly-2026-03-27
 KANI_VERSION := 0.67.0
+PROGRAM_MSRV := 1.89.0
 # platform-tools v1.52 ships Cargo 1.89 which supports Cargo.lock v4.
 # v1.51 ships Cargo 1.84 which does not, causing "duplicate lang item" errors.
 PLATFORM_TOOLS := v1.52
@@ -14,19 +16,44 @@ SBF_TEST_PROGRAMS := tests/programs/test-misc tests/programs/test-errors \
 	tests/programs/test-raw tests/programs/test-metadata-validate
 
 # Example programs that produce SBF binaries
-SBF_EXAMPLES := examples/vault examples/escrow examples/multisig
+SBF_EXAMPLES := examples/vault examples/escrow examples/multisig examples/upstream-vault
 
 # All SBF programs
 SBF_ALL := $(SBF_EXAMPLES) $(SBF_TEST_PROGRAMS)
 
+# Public crates in dependency order. Keep this list aligned with the release
+# workflow; `package-check` proves the complete publication graph packages.
+PUBLISH_PACKAGES := quasar-schema quasar-idl-schema quasar-profile \
+	solana-compiler-builtins quasar-derive quasar-idl quasar-lang \
+	quasar-spl quasar-metadata quasar-cli
+
+# Resolve first-release internal dependencies while checking package manifests.
+# These patches are command-local and never enter the published archives.
+PACKAGE_PATCHES := \
+	--config 'patch.crates-io.quasar-schema.path="schema"' \
+	--config 'patch.crates-io.quasar-idl-schema.path="idl/schema"' \
+	--config 'patch.crates-io.quasar-profile.path="profile"' \
+	--config 'patch.crates-io.solana-compiler-builtins.path="solana-compiler-builtins"' \
+	--config 'patch.crates-io.quasar-derive.path="derive"' \
+	--config 'patch.crates-io.quasar-idl.path="idl"' \
+	--config 'patch.crates-io.quasar-lang.path="lang"' \
+	--config 'patch.crates-io.quasar-spl.path="spl"' \
+	--config 'patch.crates-io.quasar-metadata.path="metadata"'
+
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
-	check-runtime-panics check-workspace-invariants build build-sbf test bench-cu \
-	bench-tracked compare-tracked test-miri test-miri-strict test-all nightly-version \
-	generated-client-smoke kani help-kani check-kani kani-lang kani-spl kani-metadata
+	check-runtime-panics check-workspace-invariants build build-sbf test test-bless \
+	bench-cu bench-tracked compare-tracked test-miri test-miri-strict test-all \
+	nightly-version generated-client-smoke kani help-kani check-kani kani-lang \
+	kani-spl kani-metadata msrv-check package-check audit
 
 # Print the nightly toolchain version for CI
 nightly-version:
 	@echo $(NIGHTLY_TOOLCHAIN)
+
+msrv-check:
+	@cargo +$(PROGRAM_MSRV) check \
+		$(foreach package,$(PUBLISH_PACKAGES),-p $(package)) \
+		--all-features --locked
 
 help-kani:
 	@echo "Local Kani verification is optional."
@@ -83,25 +110,37 @@ check-workspace-lints:
 	if [[ "$$missing" -ne 0 ]]; then exit 1; fi
 
 check-runtime-panics:
-	@matches="$$( \
-	  rg -n 'panic!|unreachable!|todo!|unimplemented!' \
-	    lang/src spl/src derive/src \
-	    --glob '!**/tests/**' || true \
-	)"; \
-	violations=(); \
-	while IFS= read -r entry; do \
-	  [[ -z "$$entry" ]] && continue; \
-	  code="$${entry#*:*:}"; \
-	  if [[ "$$code" =~ ^[[:space:]]*// ]]; then continue; fi; \
-	  case "$$entry" in \
-	    *'lang/src/lib.rs:'*'panic!("program aborted")'*) continue ;; \
-	    *'derive/src/accounts/evidence.rs:'*) continue ;; \
-	  esac; \
-	  violations+=("$$entry"); \
-	done <<<"$$matches"; \
-	if (($${#violations[@]} > 0)); then \
+	@# Panic-style macros in production runtime/derive code. Each file is scanned
+	@# only up to its first #[cfg(test)] (test modules trail the file by
+	@# convention), so inline test-module panics are excluded — the previous
+	@# `tests/`-glob only excluded whole test directories. Allowlisted: the
+	@# intentional lib.rs abort, the whole idl_build.rs, and the ice.rs helper.
+	@viol=""; \
+	while IFS= read -r f; do \
+	  hits="$$(awk '/#\[cfg\(test\)\]/{exit} /^[[:space:]]*\/\//{next} /panic!|unreachable!|todo!|unimplemented!/{print FILENAME":"FNR": "$$0}' "$$f")"; \
+	  [[ -n "$$hits" ]] && viol+="$$hits"$$'\n'; \
+	done < <(find lang/src spl/src derive/src -name '*.rs'); \
+	viol="$$(printf '%s' "$$viol" | grep -v 'lang/src/idl_build.rs:' | grep -vF 'panic!("program aborted")' | grep -v 'derive/src/ice.rs:')"; \
+	if [[ -n "$$viol" ]]; then \
 	  echo "unexpected panic-style macro in runtime/derive code:" >&2; \
-	  printf '  %s\n' "$${violations[@]}" >&2; \
+	  echo "$$viol" >&2; \
+	  exit 1; \
+	fi
+	@# No bare unwrap/expect in derive/src production code: front-end invariants
+	@# panic through ice!() instead. Two sites are allowlisted by message: the
+	@# quote!-generated IDL serializer (runs in the user crate) and the
+	@# sibling-owned rent-plan invariant in emit/parse.rs. Test modules (scanned
+	@# only up to the first #[cfg(test)]) and test-only files are excluded.
+	@uw=""; \
+	while IFS= read -r f; do \
+	  if [[ "$$f" == */snapshot_tests.rs || "$$f" == */plan_snapshots.rs || "$$f" == */snapshots/* || "$$f" == */dump.rs ]]; then continue; fi; \
+	  hits="$$(awk '/#\[cfg\(test\)\]/{exit} /^[[:space:]]*\/\//{next} /\.unwrap\(\)|\.expect\(/{print FILENAME":"FNR": "$$0}' "$$f")"; \
+	  [[ -n "$$hits" ]] && uw+="$$hits"$$'\n'; \
+	done < <(find derive/src -name '*.rs'); \
+	uw="$$(printf '%s' "$$uw" | grep -vF 'generated IDL should serialize' | grep -vF 'rent plan field should exist in account semantics')"; \
+	if [[ -n "$$uw" ]]; then \
+	  echo "unexpected bare unwrap/expect in derive/src production code (use ice!() or extend the allowlist with justification):" >&2; \
+	  echo "$$uw" >&2; \
 	  exit 1; \
 	fi
 
@@ -126,6 +165,12 @@ check-workspace-invariants:
 	  echo "expected executable script: scripts/bench-tracked-programs.sh" >&2; \
 	  exit 1; \
 	fi; \
+	for script in scripts/publish-crate.sh scripts/wait-for-crate.sh; do \
+	  if [[ ! -x "$$script" ]]; then \
+	    echo "expected executable script: $$script" >&2; \
+	    exit 1; \
+	  fi; \
+	done; \
 	check_allowed "process::exit" 'std::process::exit|process::exit' \
 	  'cli/src/main.rs:' 'cli/src/init/banner.rs:'; \
 	check_allowed "polling watch loop sleep" \
@@ -152,17 +197,44 @@ build-sbf:
 	@echo "Building test-heap (alloc only, no debug — tests alloc trap)"
 	cargo build-sbf --tools-version $(PLATFORM_TOOLS) --manifest-path tests/programs/test-heap/Cargo.toml --features alloc
 
+# Asserts committed trybuild .stderr goldens (trybuild default mode). A stale
+# golden fails the build — that is the gate. Regenerate with `make test-bless`.
 test:
 	@$(MAKE) build
 	@$(MAKE) build-sbf
-	@TRYBUILD=overwrite cargo test -p quasar-lang -p quasar-derive -p quasar-spl \
+	@CARGO_INCREMENTAL=0 cargo test -p quasar-lang -p quasar-derive -p quasar-spl \
 		-p quasar-metadata \
-		-p quasar-vault -p quasar-escrow -p quasar-multisig \
+		-p quasar-vault -p quasar-escrow -p quasar-multisig -p upstream-vault \
+		-p quasar-test-suite \
+		--all-features
+
+# Regenerates trybuild .stderr goldens (TRYBUILD=overwrite). Use only when a
+# diagnostic change is intended; review the regenerated diffs like code before
+# committing. `make test` (and CI) run in assert mode and never set TRYBUILD.
+test-bless:
+	@$(MAKE) build
+	@$(MAKE) build-sbf
+	@CARGO_INCREMENTAL=0 TRYBUILD=overwrite cargo test -p quasar-lang -p quasar-derive -p quasar-spl \
+		-p quasar-metadata \
+		-p quasar-vault -p quasar-escrow -p quasar-multisig -p upstream-vault \
 		-p quasar-test-suite \
 		--all-features
 
 generated-client-smoke:
-	@cargo test -p quasar-cli --test generated_clients_smoke -- --nocapture
+	@cargo test -p quasar-cli --test generated_clients_smoke -- --nocapture --test-threads=1
+
+package-check:
+	@# First-release internal dependencies are not on crates.io yet. `msrv-check`
+	@# compiles the source graph; #283 rehearses the packaged graph locally.
+	@cargo package --quiet $(foreach package,$(PUBLISH_PACKAGES),-p $(package)) \
+		--locked --allow-dirty --no-verify $(PACKAGE_PATCHES)
+
+audit:
+	@command -v cargo-audit >/dev/null 2>&1 || { \
+		echo "cargo-audit is not installed; run: cargo install cargo-audit --locked"; \
+		exit 1; \
+	}
+	@cargo audit
 
 bench-cu:
 	@$(MAKE) build-sbf
@@ -188,7 +260,7 @@ test-miri:
 
 test-miri-strict:
 	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
-		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri -- --skip remaining
+		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri
 	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri
 	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
@@ -213,8 +285,9 @@ test-all:
 	@$(MAKE) check-workspace-lints
 	@$(MAKE) check-runtime-panics
 	@$(MAKE) check-workspace-invariants
-	@$(MAKE) build-sbf
 	@$(MAKE) test
 	@$(MAKE) generated-client-smoke
+	@$(MAKE) package-check
+	@$(MAKE) audit
 	@$(MAKE) test-miri
 	@echo "All checks passed!"

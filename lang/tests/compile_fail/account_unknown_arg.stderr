@@ -1,0 +1,5 @@
+error: expected `discriminator`, `unsafe_no_disc`, `set_inner`, `fixed_capacity`, `one_of`, or `implements`
+ --> tests/compile_fail/account_unknown_arg.rs:9:30
+  |
+9 | #[account(discriminator = 1, mystery_flag)]
+  |                              ^^^^^^^^^^^^

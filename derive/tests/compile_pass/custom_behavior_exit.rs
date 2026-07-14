@@ -32,15 +32,21 @@ mod bump_counter {
             self.amount = Some(v);
             self
         }
-        pub fn build_check(self) -> Result<Args, ProgramError> {
+    }
+
+    impl quasar_lang::account_behavior::BehaviorArgsBuilder for ArgsBuilder {
+        type Init = Args;
+        type Check = Args;
+        type Exit = Args;
+        fn build_check(self) -> Result<Args, ProgramError> {
             Ok(Args {
                 amount: self.amount.ok_or(ProgramError::InvalidArgument)?,
             })
         }
-        pub fn build_init(self) -> Result<Args, ProgramError> {
+        fn build_init(self) -> Result<Args, ProgramError> {
             self.build_check()
         }
-        pub fn build_exit(self) -> Result<Args, ProgramError> {
+        fn build_exit(self) -> Result<Args, ProgramError> {
             self.build_check()
         }
     }

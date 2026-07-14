@@ -58,6 +58,62 @@ fn compile_python_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
             .arg("__init__.py")
             .arg("client.py")
             .current_dir(client_dir),
+    )?;
+
+    // `py_compile` only checks syntax. Execute the module with lightweight
+    // solders stubs so dataclass construction and postponed annotations are
+    // validated as well (including required/default field ordering and every
+    // `typing.get_type_hints` name).
+    run_command(
+        Command::new("python3")
+            .arg("-c")
+            .arg(
+                r#"
+import dataclasses
+import importlib.util
+import pathlib
+import sys
+import types
+import typing
+
+solders = types.ModuleType("solders")
+solders.__path__ = []
+pubkey = types.ModuleType("solders.pubkey")
+instruction = types.ModuleType("solders.instruction")
+
+class Pubkey:
+    @classmethod
+    def from_string(cls, _value):
+        return cls()
+
+    @classmethod
+    def find_program_address(cls, _seeds, _program_id):
+        return cls(), 255
+
+class Instruction:
+    pass
+
+class AccountMeta:
+    pass
+
+pubkey.Pubkey = Pubkey
+instruction.Instruction = Instruction
+instruction.AccountMeta = AccountMeta
+sys.modules["solders"] = solders
+sys.modules["solders.pubkey"] = pubkey
+sys.modules["solders.instruction"] = instruction
+
+spec = importlib.util.spec_from_file_location("generated_client", pathlib.Path("client.py"))
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+
+for value in vars(module).values():
+    if isinstance(value, type) and dataclasses.is_dataclass(value):
+        typing.get_type_hints(value, vars(module))
+"#,
+            )
+            .current_dir(client_dir),
     )
 }
 
@@ -159,6 +215,10 @@ static inline bool find_program_address(
 }
 
 fn compile_typescript_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let typescript_version = std::env::var("TYPESCRIPT_VERSION").unwrap_or_else(|_| "5.9.3".into());
+    let node_types_version =
+        std::env::var("NODE_TYPES_VERSION").unwrap_or_else(|_| "22.13.0".into());
+
     fs::write(
         client_dir.join("tsconfig.json"),
         r#"{
@@ -183,8 +243,8 @@ fn compile_typescript_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
             .arg("--ignore-scripts")
             .arg("--no-audit")
             .arg("--no-fund")
-            .arg("typescript")
-            .arg("@types/node")
+            .arg(format!("typescript@{typescript_version}"))
+            .arg(format!("@types/node@{node_types_version}"))
             .current_dir(client_dir),
     )?;
 
@@ -271,9 +331,15 @@ fn assert_typescript_client_requires_address_constraint_accounts(
             source.contains("  config: Address;"),
             "generated TypeScript client should require the config account"
         );
+        // `vault` carries a typed-seeds resolver, so the client derives it
+        // instead of requiring it as an input.
         assert!(
-            source.contains("  vault: Address;"),
-            "generated TypeScript client should require the vault account"
+            !source.contains("  vault: Address;"),
+            "vault should be resolver-derived, not a required input"
+        );
+        assert!(
+            source.contains("findVaultAddress"),
+            "generated TypeScript client should emit the vault PDA resolver"
         );
     }
 
@@ -392,30 +458,17 @@ pub mod lifecycle_client_flags {
     }
 
     let rust_ix = read_tree_files(
-        &clients_path
-            .join("rust")
-            .join("lifecycle_client_flags-client")
-            .join("src"),
+        &only_child_dir(&clients_path.join("rust"))?.join("src"),
         "rs",
     )?;
     assert!(rust_ix.contains("AccountMeta::new(ix.config, false)"));
     assert!(rust_ix.contains("AccountMeta::new(ix.vault, false)"));
 
-    let ts_web3 = read_file(
-        &clients_path
-            .join("typescript")
-            .join("lifecycle_client_flags")
-            .join("web3.ts"),
-    )?;
+    let ts_web3 = read_file(&only_child_dir(&clients_path.join("typescript"))?.join("web3.ts"))?;
     assert!(ts_web3.contains("{ pubkey: input.config, isSigner: false, isWritable: true },"));
     assert!(ts_web3.contains("{ pubkey: input.vault, isSigner: false, isWritable: true },"));
 
-    let py_client = read_file(
-        &clients_path
-            .join("python")
-            .join("lifecycle_client_flags")
-            .join("client.py"),
-    )?;
+    let py_client = read_file(&only_child_dir(&clients_path.join("python"))?.join("client.py"))?;
     assert!(py_client.contains(
         r#"accounts.append(AccountMeta(accounts_map["config"], is_signer=False, is_writable=True))"#
     ));
@@ -423,26 +476,16 @@ pub mod lifecycle_client_flags {
         r#"accounts.append(AccountMeta(accounts_map["vault"], is_signer=False, is_writable=True))"#
     ));
 
-    let go_client = read_file(
-        &clients_path
-            .join("golang")
-            .join("lifecycle_client_flags")
-            .join("client.go"),
-    )?;
+    let go_client = read_file(&only_child_dir(&clients_path.join("golang"))?.join("client.go"))?;
     assert!(go_client
         .contains(r#"accounts = append(accounts, solana.Meta(accountsMap["config"]).WRITE())"#));
     assert!(go_client
         .contains(r#"accounts = append(accounts, solana.Meta(accountsMap["vault"]).WRITE())"#));
 
-    let c_client = read_file(
-        &clients_path
-            .join("c")
-            .join("lifecycle_client_flags")
-            .join("client.h"),
-    )?;
+    let c_client = read_file(&only_child_dir(&clients_path.join("c"))?.join("client.h"))?;
     assert!(c_client.contains("meta_buf[2] = meta_writable(accounts->config);"));
     assert!(c_client.contains("meta_buf[3] = meta_writable(accounts->vault);"));
-    compile_c_client(&clients_path.join("c").join("lifecycle_client_flags"))?;
+    compile_c_client(&only_child_dir(&clients_path.join("c"))?)?;
 
     Ok(())
 }
@@ -457,7 +500,7 @@ fn generated_clients_compile_from_fresh_project() -> Result<(), Box<dyn Error>> 
 
     // The IDL is generated relative to the workspace; find the rust client dir
     // by convention.
-    let rust_client_dir = clients_path.join("rust").join("quasar-multisig-client");
+    let rust_client_dir = only_child_dir(&clients_path.join("rust"))?;
     if rust_client_dir.exists() {
         // Patch the generated Cargo.toml to use the local workspace `quasar-lang`
         // instead of the GitHub remote, so the smoke test validates against the
@@ -476,7 +519,7 @@ fn generated_clients_compile_from_fresh_project() -> Result<(), Box<dyn Error>> 
         compile_rust_client(&rust_client_dir)?;
     }
 
-    let ts_dir = clients_path.join("typescript").join("quasar-multisig");
+    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
     if ts_dir.exists() {
         assert_typescript_client_requires_address_constraint_accounts(&ts_dir)?;
         let kit = read_file(&ts_dir.join("kit.ts"))?;
@@ -495,12 +538,12 @@ fn generated_clients_compile_from_fresh_project() -> Result<(), Box<dyn Error>> 
         compile_typescript_client(&ts_dir)?;
     }
 
-    let py_dir = clients_path.join("python").join("quasar-multisig");
+    let py_dir = only_child_dir(&clients_path.join("python"))?;
     if py_dir.exists() {
         compile_python_client(&py_dir)?;
     }
 
-    let go_dir = clients_path.join("golang").join("quasar_multisig");
+    let go_dir = only_child_dir(&clients_path.join("golang"))?;
     if go_dir.exists() {
         compile_go_client(&go_dir)?;
     }
@@ -567,7 +610,7 @@ pub struct Submit {
 
     let clients_path = temp.path().join("clients");
     idl::generate(&program_dir, &["typescript"], &clients_path)?;
-    let ts_dir = clients_path.join("typescript").join("fixed_array_args");
+    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
     let kit = fs::read_to_string(ts_dir.join("kit.ts"))?;
     let web3 = fs::read_to_string(ts_dir.join("web3.ts"))?;
 
@@ -645,7 +688,7 @@ pub struct Submit {
 
     let clients_path = temp.path().join("clients");
     idl::generate(&program_dir, &["typescript"], &clients_path)?;
-    let ts_dir = clients_path.join("typescript").join("pod_vec_args");
+    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
     let kit = read_file(&ts_dir.join("kit.ts"))?;
 
     assert!(
@@ -773,7 +816,7 @@ pub struct ResolverHeavy {
     let clients_path = temp.path().join("clients");
     idl::generate(&program_dir, &["typescript"], &clients_path)?;
 
-    let ts_dir = clients_path.join("typescript").join("kit_plugin_boundary");
+    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
     let kit = read_file(&ts_dir.join("kit.ts"))?;
 
     assert!(
@@ -910,7 +953,7 @@ pub struct UseScoped {
         "account field seed should include the source field path: {idl_json}"
     );
 
-    let ts_dir = clients_path.join("typescript").join("account_field_seeds");
+    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
     let kit = read_file(&ts_dir.join("kit.ts"))?;
     let web3 = read_file(&ts_dir.join("web3.ts"))?;
 
@@ -1089,6 +1132,173 @@ pub struct Submit {
     assert!(c_header.contains("if (args->maybe_name_present)"));
     assert!(c_header.contains("data_buf[off++] = args->maybe_addrs_present ? 1 : 0;"));
     assert!(c_header.contains("if (args->maybe_addrs_present)"));
+    compile_c_client(&c_dir)?;
+
+    Ok(())
+}
+
+#[test]
+fn generated_clients_render_optional_accounts_with_program_id_sentinel(
+) -> Result<(), Box<dyn Error>> {
+    let temp = tempdir()?;
+    let program_dir = temp.path().join("programs/optional-accounts");
+
+    write_file(
+        &temp.path().join("Cargo.toml"),
+        r#"[workspace]
+members = ["programs/optional-accounts"]
+resolver = "3"
+"#,
+    )?;
+    write_file(
+        &program_dir.join("Cargo.toml"),
+        format!(
+            r#"[package]
+name = "optional-accounts"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+idl-build = ["quasar-lang/idl-build"]
+
+[dependencies]
+quasar-lang = {{ path = "{}" }}
+"#,
+            workspace_root().join("lang").display()
+        ),
+    )?;
+    write_file(
+        &program_dir.join("src/lib.rs"),
+        r#"#![no_std]
+use quasar_lang::prelude::*;
+
+declare_id!("11111111111111111111111111111111");
+
+#[account(discriminator = 1, set_inner)]
+#[seeds(b"thing", owner: Address)]
+pub struct Thing {
+    pub owner: Address,
+    pub value: u64,
+}
+
+#[program]
+mod optional_accounts {
+    use super::*;
+
+    #[instruction(discriminator = 0)]
+    pub fn touch(_ctx: Ctx<Touch>, _value: u64) -> Result<(), ProgramError> {
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Touch {
+    #[account(mut)]
+    pub authority: Signer,
+    #[account(mut)]
+    pub required: Account<Thing>,
+    #[account(mut, address = Thing::seeds(authority.address()))]
+    pub maybe: Option<Account<Thing>>,
+}
+"#,
+    )?;
+
+    let clients_path = temp.path().join("clients");
+    idl::generate(
+        &program_dir,
+        &["typescript", "python", "golang", "c"],
+        &clients_path,
+    )?;
+
+    // Rust: optional account is an `Option<Address>` input; an absent (None)
+    // slot is encoded as the program id sentinel (`ID`) while a present slot
+    // passes the provided address through.
+    let rust_root = clients_path.join("rust");
+    let rust_client_dir = fs::read_dir(&rust_root)?
+        .next()
+        .ok_or_else(|| format!("no rust client generated under `{}`", rust_root.display()))??
+        .path();
+    let rust_ix = read_file(&rust_client_dir.join("src/instructions/touch.rs"))?;
+    assert!(
+        rust_ix.contains("pub maybe: Option<Address>"),
+        "optional account should be an Option<Address> input"
+    );
+    assert!(
+        rust_ix.contains("pub required: Address,"),
+        "required account should stay a plain Address input"
+    );
+    assert!(
+        rust_ix.contains("AccountMeta::new(ix.maybe.unwrap_or(ID), false)"),
+        "absent optional account should default to the program id sentinel; present passes through"
+    );
+    let cargo_toml_path = rust_client_dir.join("Cargo.toml");
+    let cargo_toml = read_file(&cargo_toml_path)?;
+    let patched = cargo_toml.replace(
+        "quasar-lang = { git = \"https://github.com/blueshift-gg/quasar\", branch = \"master\" }",
+        &format!(
+            "quasar-lang = {{ path = \"{}\" }}",
+            workspace_root().join("lang").display()
+        ),
+    );
+    fs::write(&cargo_toml_path, patched + "\n[workspace]\n")?;
+    compile_rust_client(&rust_client_dir)?;
+
+    // TypeScript (web3.js + kit): optional account is an optional `?` input;
+    // absent defaults to the program address, present passes through.
+    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
+    let web3 = read_file(&ts_dir.join("web3.ts"))?;
+    let kit = read_file(&ts_dir.join("kit.ts"))?;
+    for source in [&web3, &kit] {
+        assert!(
+            source.contains("  maybe?: Address;"),
+            "optional account should be an optional TS input"
+        );
+        assert!(
+            source.contains("  required: Address;"),
+            "required account should stay a mandatory TS input"
+        );
+        assert!(
+            !source.contains("accountsMap[\"maybe\"] ="),
+            "optional resolved accounts must remain caller-controlled"
+        );
+    }
+    assert!(
+        web3.contains("pubkey: (input.maybe ?? "),
+        "web3.js should default an absent optional account to the program id"
+    );
+    assert!(
+        web3.contains("programId), isSigner: false, isWritable: true }"),
+        "web3.js optional sentinel should use the program id with declared flags"
+    );
+    assert!(
+        kit.contains("address: (input.maybe ?? PROGRAM_ADDRESS), role:"),
+        "kit should default an absent optional account to the program address"
+    );
+    compile_typescript_client(&ts_dir)?;
+
+    // Python / Go / C: optional inputs are None-default / pointer / nullable
+    // pointer respectively, each defaulting an absent slot to the program id.
+    let py_dir = only_child_dir(&clients_path.join("python"))?;
+    let py = read_file(&py_dir.join("client.py"))?;
+    assert!(py.contains("from typing import Optional"));
+    assert!(py.contains("value: int\n    maybe: Optional[Pubkey] = None"));
+    assert!(py.contains("maybe: Optional[Pubkey] = None"));
+    assert!(py.contains("input.maybe if input.maybe is not None else PROGRAM_ID"));
+    assert!(!py.contains("accounts_map[\"maybe\"] = Pubkey.find_program_address"));
+    compile_python_client(&py_dir)?;
+
+    let go_dir = only_child_dir(&clients_path.join("golang"))?;
+    let go = read_file(&go_dir.join("client.go"))?;
+    assert!(go.contains("Maybe *solana.PublicKey"));
+    assert!(go.contains("if input.Maybe != nil { return *input.Maybe }; return ProgramID"));
+    compile_go_client(&go_dir)?;
+
+    let c_dir = only_child_dir(&clients_path.join("c"))?;
+    let c = read_file(&c_dir.join("client.h"))?;
+    assert!(c.contains("accounts->maybe ? accounts->maybe : (Pubkey *)&"));
     compile_c_client(&c_dir)?;
 
     Ok(())

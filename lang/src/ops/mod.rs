@@ -107,6 +107,11 @@ impl<'a, R> OpCtx<'a, R> {
 ///
 /// The `realloc::Op` requires `F: SupportsRealloc` to ensure only
 /// realloc-capable accounts are used with `realloc(...)`.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot be reallocated",
+    label = "`realloc` requires `Account<T>` or `InterfaceAccount<T>`",
+    note = "only program-owned data accounts support `realloc = ...`"
+)]
 pub trait SupportsRealloc {}
 
 #[cfg(test)]

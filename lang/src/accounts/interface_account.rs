@@ -1,7 +1,7 @@
 use {crate::prelude::*, core::marker::PhantomData};
 
-/// Account wrapper accepting any owner in `T::owners()` (e.g. SPL Token +
-/// Token-2022).
+/// Account wrapper accepting any owner accepted by `T`'s [`Owners`] impl
+/// (e.g. SPL Token + Token-2022).
 #[repr(transparent)]
 pub struct InterfaceAccount<T> {
     view: AccountView,
@@ -15,11 +15,14 @@ impl<T> AsAccountView for InterfaceAccount<T> {
     }
 }
 
+// SAFETY: `InterfaceAccount<T>` is `#[repr(transparent)]` over `AccountView`
+// plus `PhantomData<T>`, so the pointer cast preserves layout.
+unsafe impl<T> crate::traits::StaticView for InterfaceAccount<T> {}
+
 impl<T: crate::account_layout::AccountLayout> crate::account_layout::AccountLayout
     for InterfaceAccount<T>
 {
     type Schema = T::Schema;
-    type Target = T::Target;
     const DATA_OFFSET: usize = T::DATA_OFFSET;
 }
 
@@ -33,6 +36,7 @@ impl<T: Owners + crate::account_load::AccountLoad> InterfaceAccount<T> {
         Ok(unsafe { Self::from_account_view_unchecked(view) })
     }
 
+    /// Validates writability, owner, and data before returning a mutable view.
     #[inline(always)]
     pub fn from_account_view_mut(view: &mut AccountView) -> Result<&mut Self, ProgramError> {
         if crate::utils::hint::unlikely(!view.is_writable()) {

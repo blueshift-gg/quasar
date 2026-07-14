@@ -1,10 +1,10 @@
 use {
     crate::{
-        __internal::{account_stride, DUP_ENTRY_SIZE},
         account_load::AccountLoad,
         error::QuasarError,
+        svm::{Cursor, RawEntry},
     },
-    solana_account_view::{AccountView, Ref, RefMut, RuntimeAccount, NOT_BORROWED},
+    solana_account_view::{AccountView, Ref, RefMut},
     solana_address::Address,
     solana_program_error::ProgramError,
 };
@@ -30,41 +30,6 @@ const _: () = assert!(
 /// the cache array.
 const MAX_REMAINING_ACCOUNTS: usize = 64;
 
-/// Target source for duplicate account resolution.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DupSource {
-    /// Read from the declared accounts slice at this index.
-    Declared(usize),
-    /// Read from the iterator cache at this index.
-    Cached(usize),
-}
-
-/// Pure index computation for duplicate account resolution.
-///
-/// Given the source account index from the SVM buffer, determines which
-/// source (declared accounts or iterator cache) to read from, or returns
-/// `None` if the index is out of range.
-///
-/// Extracted as a pure function so Kani can prove the indexing logic
-/// directly, without needing raw pointers or `MaybeUninit`.
-#[inline(always)]
-fn resolve_dup_index(
-    orig_idx: usize,
-    declared_len: usize,
-    cache_count: usize,
-) -> Option<DupSource> {
-    if orig_idx < declared_len {
-        Some(DupSource::Declared(orig_idx))
-    } else {
-        let cache_idx = orig_idx - declared_len;
-        if cache_idx < cache_count {
-            Some(DupSource::Cached(cache_idx))
-        } else {
-            None
-        }
-    }
-}
-
 /// Returns `true` if the cache has room for another entry.
 ///
 /// The iterator calls this before every cache write. Extracted so Kani
@@ -72,43 +37,6 @@ fn resolve_dup_index(
 #[inline(always)]
 const fn cache_has_capacity(index: usize) -> bool {
     index < MAX_REMAINING_ACCOUNTS
-}
-
-/// Advance past a non-duplicate account in the SVM input buffer.
-///
-/// # SVM account layout
-///
-/// ```text
-/// [RuntimeAccount header] [data ...] [10 KiB realloc padding] [u64 padding]
-/// stride input = ACCOUNT_HEADER + data_len
-/// ```
-///
-/// The result is aligned up to 8 bytes (SVM alignment requirement).
-///
-/// # Safety
-///
-/// - `ptr` must point to the start of a non-duplicate account entry.
-/// - `ptr` must be 8-byte aligned (SVM guarantees this for the input buffer).
-/// - `raw` must be a valid `RuntimeAccount` at `ptr`.
-#[inline(always)]
-unsafe fn advance_past_account(ptr: *mut u8, raw: *mut RuntimeAccount) -> *mut u8 {
-    // Delegates to `account_stride` so the alignment arithmetic is covered
-    // by Kani proof harnesses (see kani_proofs::account_stride_*).
-    // SAFETY: The caller guarantees `raw` points to a valid `RuntimeAccount`.
-    let data_len = unsafe { (*raw).data_len as usize };
-    // SAFETY: The caller guarantees `ptr` is the start of that account entry.
-    unsafe { ptr.add(account_stride(data_len)) }
-}
-
-/// Advance past a duplicate account entry (u64-sized index).
-///
-/// # Safety
-///
-/// `ptr` must point to the start of a duplicate entry in the SVM buffer.
-#[inline(always)]
-unsafe fn advance_past_dup(ptr: *mut u8) -> *mut u8 {
-    // SAFETY: The caller guarantees `ptr` starts a duplicate-entry payload.
-    unsafe { ptr.add(DUP_ENTRY_SIZE) }
 }
 
 /// Safe handle for one remaining account entry.
@@ -127,46 +55,55 @@ impl RemainingAccount {
         Self { view }
     }
 
+    /// Returns the account address.
     #[inline(always)]
     pub fn address(&self) -> &Address {
         self.view.address()
     }
 
+    /// Returns whether the transaction signed for this account.
     #[inline(always)]
     pub fn is_signer(&self) -> bool {
         self.view.is_signer()
     }
 
+    /// Returns the account owner.
     #[inline(always)]
     pub fn owner(&self) -> &Address {
         self.view.owner()
     }
 
+    /// Returns whether the account was provided as writable.
     #[inline(always)]
     pub fn is_writable(&self) -> bool {
         self.view.is_writable()
     }
 
+    /// Returns whether the account is executable.
     #[inline(always)]
     pub fn executable(&self) -> bool {
         self.view.executable()
     }
 
+    /// Returns the current lamport balance.
     #[inline(always)]
     pub fn lamports(&self) -> u64 {
         self.view.lamports()
     }
 
+    /// Returns the account-data length in bytes.
     #[inline(always)]
     pub fn data_len(&self) -> usize {
         self.view.data_len()
     }
 
+    /// Immutably borrows the account data through runtime borrow tracking.
     #[inline(always)]
     pub fn try_borrow_data(&self) -> Result<Ref<'_, [u8]>, ProgramError> {
         self.view.try_borrow()
     }
 
+    /// Mutably borrows the account data through runtime borrow tracking.
     #[inline(always)]
     pub fn try_borrow_data_mut(&mut self) -> Result<RefMut<'_, [u8]>, ProgramError> {
         self.view.try_borrow_mut()
@@ -216,8 +153,18 @@ pub struct RemainingAccounts<'a> {
 impl<'a> RemainingAccounts<'a> {
     /// Creates a remaining accounts accessor from the SVM buffer
     /// pointers.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` and `boundary` must delimit a valid remaining-account region of
+    /// the SVM input buffer (`ptr <= boundary`, both within the same live
+    /// allocation), and `declared` must be the declared-account slice parsed
+    /// from that same buffer so duplicate resolution stays in bounds. Safe
+    /// callers should obtain a `RemainingAccounts` via
+    /// [`CtxWithRemaining::remaining_accounts`](crate::context::CtxWithRemaining::remaining_accounts)
+    /// instead of constructing one directly.
     #[inline(always)]
-    pub fn new(ptr: *mut u8, boundary: *const u8, declared: &'a [AccountView]) -> Self {
+    pub unsafe fn new(ptr: *mut u8, boundary: *const u8, declared: &'a [AccountView]) -> Self {
         Self {
             ptr,
             boundary,
@@ -229,8 +176,14 @@ impl<'a> RemainingAccounts<'a> {
 
     /// Creates a remaining accounts accessor that can parse typed account
     /// groups requiring program ID and instruction data.
+    ///
+    /// # Safety
+    ///
+    /// Same contract as [`new`](Self::new): `ptr`/`boundary` must delimit a
+    /// valid remaining-account region of the SVM input buffer and `declared`
+    /// must be the matching declared-account slice.
     #[inline(always)]
-    pub fn new_with_context(
+    pub unsafe fn new_with_context(
         ptr: *mut u8,
         boundary: *const u8,
         declared: &'a [AccountView],
@@ -254,31 +207,30 @@ impl<'a> RemainingAccounts<'a> {
     /// Access a single remaining account by index. O(n) walk from buffer
     /// start.
     pub fn get(&self, index: usize) -> Result<Option<RemainingAccount>, ProgramError> {
-        let mut ptr = self.ptr;
+        // SAFETY: `self.ptr`/`self.boundary` delimit the remaining region.
+        let mut cursor = unsafe { Cursor::new(self.ptr, self.boundary) };
         for i in 0..=index {
-            if ptr as *const u8 >= self.boundary {
+            if cursor.at_end() {
                 return Ok(None);
             }
-            let raw = ptr as *mut RuntimeAccount;
-            // SAFETY: `ptr` is within the SVM buffer (checked against boundary).
-            // Reading `borrow_state` (first byte) determines entry type.
-            let borrow = unsafe { (*raw).borrow_state };
-
-            if i == index {
-                return Ok(Some(RemainingAccount::new(if borrow == NOT_BORROWED {
-                    // SAFETY: Non-duplicate entry; `raw` is a valid `RuntimeAccount`.
-                    unsafe { AccountView::new_unchecked(raw) }
-                } else {
-                    resolve_dup_walk(borrow as usize, self.declared, self.ptr, self.boundary)?
-                })));
-            }
-
-            if borrow == NOT_BORROWED {
-                // SAFETY: `raw` is valid; advances past header + data + padding.
-                ptr = unsafe { advance_past_account(ptr, raw) };
-            } else {
-                // SAFETY: Duplicate entry; advances past the u64 index.
-                ptr = unsafe { advance_past_dup(ptr) };
+            // SAFETY: not at end (checked above). Advancing at `i == index` is
+            // harmless: the entry is returned and the cursor discarded.
+            match unsafe { cursor.next() } {
+                // SAFETY: Non-duplicate entry; `raw` is a valid `RuntimeAccount`.
+                RawEntry::Account(raw) if i == index => {
+                    return Ok(Some(RemainingAccount::new(unsafe {
+                        AccountView::new_unchecked(raw)
+                    })));
+                }
+                RawEntry::Dup(borrow) if i == index => {
+                    return Ok(Some(RemainingAccount::new(resolve_dup_walk(
+                        borrow as usize,
+                        self.declared,
+                        self.ptr,
+                        self.boundary,
+                    )?)));
+                }
+                _ => {}
             }
         }
         Ok(None)
@@ -301,6 +253,10 @@ impl<'a> RemainingAccounts<'a> {
         }
     }
 
+    /// Parses all remaining entries into at most `N` typed items.
+    ///
+    /// Composite item types may consume more than one raw account per item;
+    /// `N` always bounds the number of resulting `T` values.
     #[inline(always)]
     pub fn parse<T, const N: usize>(&self) -> Result<Remaining<T, N>, ProgramError>
     where
@@ -513,41 +469,37 @@ fn resolve_dup_walk(
 ) -> Result<AccountView, ProgramError> {
     let mut idx = orig_idx;
     for _ in 0..2 {
-        if idx < declared.len() {
-            // SAFETY: `idx < declared.len()` ensures the read is in-bounds.
-            // `AccountView` has no Drop, so bitwise copy is safe.
-            return Ok(unsafe { core::ptr::read(declared.as_ptr().add(idx)) });
+        // First hop: a dup pointing back into the declared accounts resolves
+        // directly (the declared-only prefix of the split index space).
+        if let Some(view) = crate::svm::resolve_dup(idx, crate::svm::DupSources::Declared(declared))
+        {
+            return Ok(view);
         }
 
+        // Otherwise `idx >= declared.len()`; index the remaining region.
         let target = match idx.checked_sub(declared.len()) {
             Some(target) => target,
             None => return Err(ProgramError::InvalidAccountData),
         };
-        let mut ptr = start;
+        // SAFETY: `start`/`boundary` delimit the remaining region (same buffer
+        // walk as `RemainingAccounts::get`).
+        let mut cursor = unsafe { Cursor::new(start, boundary) };
         for i in 0..=target {
-            if ptr as *const u8 >= boundary {
+            if cursor.at_end() {
                 break;
             }
-            let raw = ptr as *mut RuntimeAccount;
-            // SAFETY: Same buffer walk as `RemainingAccounts::get`.
-            let borrow = unsafe { (*raw).borrow_state };
-
-            if i == target {
-                if borrow == NOT_BORROWED {
-                    // SAFETY: The target entry is inside the walked buffer and
-                    // its borrow marker says it is a full runtime account.
+            // SAFETY: not at end (checked above). At `i == target` the cursor
+            // advances one entry too far, but it is discarded on return/break.
+            match unsafe { cursor.next() } {
+                RawEntry::Account(raw) if i == target => {
+                    // SAFETY: The target entry is a full runtime account.
                     return Ok(unsafe { AccountView::new_unchecked(raw) });
                 }
-                idx = borrow as usize;
-                break;
-            }
-
-            if borrow == NOT_BORROWED {
-                // SAFETY: `raw` is the current non-duplicate runtime account.
-                ptr = unsafe { advance_past_account(ptr, raw) };
-            } else {
-                // SAFETY: Duplicate entries occupy exactly `DUP_ENTRY_SIZE`.
-                ptr = unsafe { advance_past_dup(ptr) };
+                RawEntry::Dup(borrow) if i == target => {
+                    idx = borrow as usize;
+                    break;
+                }
+                _ => {}
             }
         }
     }
@@ -574,6 +526,17 @@ pub struct Remaining<T, const N: usize> {
 }
 
 impl<T, const N: usize> Remaining<T, N> {
+    /// Parse up to `N` typed remaining items.
+    ///
+    /// # Cost
+    ///
+    /// When `T::REJECT_DUPLICATES` is set, every parsed account is compared for
+    /// address equality against every account already seen (and every declared
+    /// account), so the duplicate scan is **O(n²)** in the number of remaining
+    /// accounts — each new account walks the already-consumed prefix. The raw
+    /// account count remains bounded by `MAX_REMAINING_ACCOUNTS`, while `N`
+    /// always means typed items (including when one item consumes multiple raw
+    /// accounts).
     #[inline(always)]
     pub fn parse<'input>(accounts: RemainingAccounts<'input>) -> Result<Self, ProgramError>
     where
@@ -586,14 +549,6 @@ impl<T, const N: usize> Remaining<T, N> {
             },
             len: 0,
         };
-        // SAFETY: An uninitialized `[MaybeUninit<Address>; MAX_REMAINING_ACCOUNTS]`
-        // is valid.
-        let mut seen = unsafe {
-            core::mem::MaybeUninit::<
-                [core::mem::MaybeUninit<Address>; MAX_REMAINING_ACCOUNTS],
-            >::uninit()
-            .assume_init()
-        };
         // SAFETY: An uninitialized
         // `[MaybeUninit<AccountView>; MAX_REMAINING_ACCOUNTS]` is valid.
         let mut chunk = unsafe {
@@ -602,7 +557,7 @@ impl<T, const N: usize> Remaining<T, N> {
             >::uninit()
             .assume_init()
         };
-        let mut seen_len = 0usize;
+        let mut raw_len = 0usize;
         let mut chunk_len = 0usize;
         let chunk_count = T::COUNT;
 
@@ -613,26 +568,27 @@ impl<T, const N: usize> Remaining<T, N> {
             return Self::parse_single(accounts);
         }
 
-        let mut ptr = accounts.ptr;
-        while (ptr as *const u8) < accounts.boundary {
+        // SAFETY: `accounts.ptr`/`accounts.boundary` delimit the region.
+        let mut cursor = unsafe { Cursor::new(accounts.ptr, accounts.boundary) };
+        while !cursor.at_end() {
             if out.len >= N {
                 return Err(QuasarError::RemainingAccountsOverflow.into());
             }
-            if seen_len >= MAX_REMAINING_ACCOUNTS {
+            if raw_len >= MAX_REMAINING_ACCOUNTS {
                 return Err(QuasarError::RemainingAccountsOverflow.into());
             }
 
-            let raw = ptr as *mut RuntimeAccount;
-            // SAFETY: `ptr` is within the SVM buffer (checked against boundary).
-            let borrow = unsafe { (*raw).borrow_state };
-            if borrow != NOT_BORROWED {
-                return Err(QuasarError::RemainingAccountDuplicate.into());
-            }
-
-            // SAFETY: Non-duplicate entry with a valid `RuntimeAccount`.
-            let view = unsafe { AccountView::new_unchecked(raw) };
-            // SAFETY: `raw` is valid; advances past header + data + padding.
-            ptr = unsafe { advance_past_account(ptr, raw) };
+            // The multi-account chunk parser never resolves duplicates: a dup
+            // marker in a fixed-count group is always an error.
+            let entry_start = cursor.ptr();
+            // SAFETY: not at end (checked above).
+            let view = match unsafe { cursor.next() } {
+                // SAFETY: Non-duplicate entry with a valid `RuntimeAccount`.
+                RawEntry::Account(raw) => unsafe { AccountView::new_unchecked(raw) },
+                RawEntry::Dup(_) => {
+                    return Err(QuasarError::RemainingAccountDuplicate.into());
+                }
+            };
 
             if T::REJECT_DUPLICATES {
                 if accounts
@@ -642,21 +598,20 @@ impl<T, const N: usize> Remaining<T, N> {
                 {
                     return Err(QuasarError::RemainingAccountDuplicate.into());
                 }
-                let mut i = 0usize;
-                while i < seen_len {
-                    // SAFETY: Only slots below `seen_len` have been initialized.
-                    let seen_address = unsafe { seen[i].assume_init_ref() };
-                    if crate::keys_eq(seen_address, view.address()) {
-                        return Err(QuasarError::RemainingAccountDuplicate.into());
-                    }
-                    i += 1;
+                // Re-scan the already-consumed raw prefix instead of reserving
+                // `N * T::COUNT` addresses on the 4 KiB SBF stack. This keeps
+                // `N` as the typed-item capacity and preserves the existing
+                // O(n^2) duplicate-checking cost model.
+                // SAFETY: `accounts.ptr..entry_start` is the valid prefix
+                // consumed by this cursor from the same remaining region.
+                if unsafe { prefix_contains_address(accounts.ptr, entry_start, view.address()) } {
+                    return Err(QuasarError::RemainingAccountDuplicate.into());
                 }
-                seen[seen_len].write(*view.address());
-                seen_len += 1;
             }
 
             chunk[chunk_len].write(view);
             chunk_len += 1;
+            raw_len += 1;
 
             if chunk_len == chunk_count {
                 let chunk_ptr = chunk.as_mut_ptr() as *mut AccountView;
@@ -698,34 +653,28 @@ impl<T, const N: usize> Remaining<T, N> {
         let mut seen = unsafe {
             core::mem::MaybeUninit::<[core::mem::MaybeUninit<Address>; N]>::uninit().assume_init()
         };
-        let mut ptr = accounts.ptr;
-        while (ptr as *const u8) < accounts.boundary {
+        // SAFETY: `accounts.ptr`/`accounts.boundary` delimit the region.
+        let mut cursor = unsafe { Cursor::new(accounts.ptr, accounts.boundary) };
+        while !cursor.at_end() {
             if out.len >= N {
                 return Err(QuasarError::RemainingAccountsOverflow.into());
             }
 
-            let raw = ptr as *mut RuntimeAccount;
-            // SAFETY: `ptr` is within the SVM buffer (checked against boundary).
-            let borrow = unsafe { (*raw).borrow_state };
-            if T::REJECT_DUPLICATES && borrow != NOT_BORROWED {
-                return Err(QuasarError::RemainingAccountDuplicate.into());
-            }
-
-            let view = if borrow == NOT_BORROWED {
+            // SAFETY: not at end (checked above).
+            let view = match unsafe { cursor.next() } {
                 // SAFETY: Non-duplicate entry with a valid `RuntimeAccount`.
-                let view = unsafe { AccountView::new_unchecked(raw) };
-                // SAFETY: `raw` is valid; advances past header + data + padding.
-                ptr = unsafe { advance_past_account(ptr, raw) };
-                view
-            } else {
-                // SAFETY: Duplicate entry; advances past the u64 index.
-                ptr = unsafe { advance_past_dup(ptr) };
-                resolve_dup_walk(
-                    borrow as usize,
-                    accounts.declared,
-                    accounts.ptr,
-                    accounts.boundary,
-                )?
+                RawEntry::Account(raw) => unsafe { AccountView::new_unchecked(raw) },
+                RawEntry::Dup(borrow) => {
+                    if T::REJECT_DUPLICATES {
+                        return Err(QuasarError::RemainingAccountDuplicate.into());
+                    }
+                    resolve_dup_walk(
+                        borrow as usize,
+                        accounts.declared,
+                        accounts.ptr,
+                        accounts.boundary,
+                    )?
+                }
             };
 
             let address = *view.address();
@@ -761,7 +710,35 @@ impl<T, const N: usize> Remaining<T, N> {
     }
 }
 
+/// Return whether a previously consumed remaining-account prefix contains an
+/// address (or a duplicate marker, which is invalid for typed account groups).
+///
+/// # Safety
+///
+/// `start..boundary` must delimit a valid, fully consumed prefix of one SVM
+/// remaining-account region.
+#[inline(always)]
+unsafe fn prefix_contains_address(start: *mut u8, boundary: *const u8, address: &Address) -> bool {
+    // SAFETY: upheld by the caller.
+    let mut cursor = unsafe { Cursor::new(start, boundary) };
+    while !cursor.at_end() {
+        // SAFETY: the cursor is not at the prefix boundary.
+        match unsafe { cursor.next() } {
+            RawEntry::Account(raw) => {
+                // SAFETY: a non-duplicate entry is a valid RuntimeAccount.
+                let view = unsafe { AccountView::new_unchecked(raw) };
+                if crate::keys_eq(view.address(), address) {
+                    return true;
+                }
+            }
+            RawEntry::Dup(_) => return true,
+        }
+    }
+    false
+}
+
 impl<T, const N: usize> Remaining<T, N> {
+    /// Returns the successfully parsed typed items.
     #[inline(always)]
     pub fn as_slice(&self) -> &[T] {
         // SAFETY: Only the first `self.len` entries are initialized, and `len`
@@ -769,21 +746,25 @@ impl<T, const N: usize> Remaining<T, N> {
         unsafe { core::slice::from_raw_parts(self.items.as_ptr() as *const T, self.len) }
     }
 
+    /// Iterates over the successfully parsed typed items.
     #[inline(always)]
     pub fn iter(&self) -> core::slice::Iter<'_, T> {
         self.as_slice().iter()
     }
 
+    /// Returns the number of successfully parsed items.
     #[inline(always)]
     pub const fn len(&self) -> usize {
         self.len
     }
 
+    /// Returns the compile-time typed-item capacity.
     #[inline(always)]
     pub const fn capacity(&self) -> usize {
         N
     }
 
+    /// Returns whether no typed items were parsed.
     #[inline(always)]
     pub const fn is_empty(&self) -> bool {
         self.len == 0
@@ -838,22 +819,21 @@ impl RemainingIterImpl<'_> {
 
     /// O(1) dup resolution via declared slice or iterator cache.
     ///
-    /// Delegates index logic to [`resolve_dup_index`] so the bounds
-    /// arithmetic is covered by Kani proof harnesses.
+    /// Delegates to the single [`crate::svm::resolve_dup`] over the split
+    /// `[declared ++ cache]` index space; the cache is the prefix of yielded
+    /// views (`0..self.index`).
     #[inline(always)]
     fn resolve_dup(&self, orig_idx: usize) -> Option<AccountView> {
-        match resolve_dup_index(orig_idx, self.declared.len(), self.index)? {
-            DupSource::Declared(idx) => {
-                // SAFETY: `resolve_dup_index` guarantees `idx < declared.len()`.
-                Some(unsafe { core::ptr::read(self.declared.as_ptr().add(idx)) })
-            }
-            DupSource::Cached(idx) => {
-                // SAFETY: `resolve_dup_index` guarantees `idx < self.index`,
-                // and all cache slots `0..self.index` were initialized by
-                // prior `next()` calls.
-                Some(unsafe { core::ptr::read(self.cache_ptr().add(idx)) })
-            }
-        }
+        // SAFETY: cache slots `0..self.index` were initialized by prior
+        // `next()` calls, so this slice is fully initialized.
+        let cache = unsafe { core::slice::from_raw_parts(self.cache_ptr(), self.index) };
+        crate::svm::resolve_dup(
+            orig_idx,
+            crate::svm::DupSources::Cache {
+                declared: self.declared,
+                cache,
+            },
+        )
     }
 }
 
@@ -871,24 +851,28 @@ impl Iterator for RemainingIterImpl<'_> {
             return Some(Err(QuasarError::RemainingAccountsOverflow.into()));
         }
 
-        let raw = self.ptr as *mut RuntimeAccount;
-        // SAFETY: `ptr` is within the SVM buffer (boundary check above).
-        let borrow = unsafe { (*raw).borrow_state };
-
-        let view = if borrow == NOT_BORROWED {
+        // SAFETY: `self.ptr` is within the SVM buffer (boundary check above),
+        // 8-aligned, and delimited by `self.boundary`.
+        let mut cursor = unsafe { Cursor::new(self.ptr, self.boundary) };
+        // SAFETY: the cursor is not at end (boundary check above).
+        let view = match unsafe { cursor.next() } {
             // SAFETY: Non-duplicate entry with a valid `RuntimeAccount`.
-            let view = unsafe { AccountView::new_unchecked(raw) };
-            // SAFETY: `raw` is the current non-duplicate runtime account.
-            self.ptr = unsafe { advance_past_account(self.ptr, raw) };
-            view
-        } else {
-            // SAFETY: Duplicate entries occupy exactly `DUP_ENTRY_SIZE`.
-            self.ptr = unsafe { advance_past_dup(self.ptr) };
-            match self.resolve_dup(borrow as usize) {
+            RawEntry::Account(raw) => unsafe { AccountView::new_unchecked(raw) },
+            RawEntry::Dup(borrow) => match self.resolve_dup(borrow as usize) {
                 Some(v) => v,
-                None => return Some(Err(QuasarError::RemainingAccountDuplicate.into())),
-            }
+                None => {
+                    // Fuse: an unresolvable dup has advanced the cursor past the
+                    // entry but skips the cache-index increment below, so the
+                    // cache would desync from the buffer position. Jump `ptr`
+                    // to `boundary` so the next `next()` returns `None` and
+                    // iteration terminates instead of yielding mis-cached
+                    // entries.
+                    self.ptr = self.boundary as *mut u8;
+                    return Some(Err(QuasarError::RemainingAccountDuplicate.into()));
+                }
+            },
         };
+        self.ptr = cursor.ptr();
 
         // SAFETY: `self.index < MAX_REMAINING_ACCOUNTS` (checked above),
         // so the write is within the `MaybeUninit` cache allocation.

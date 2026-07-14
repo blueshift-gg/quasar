@@ -18,21 +18,25 @@ pub struct AccountsArray<T, const N: usize> {
 }
 
 impl<T, const N: usize> AccountsArray<T, N> {
+    /// Returns the parsed groups as a slice.
     #[inline(always)]
     pub fn as_slice(&self) -> &[T] {
         &self.items
     }
 
+    /// Iterates over the parsed groups.
     #[inline(always)]
     pub fn iter(&self) -> core::slice::Iter<'_, T> {
         self.items.iter()
     }
 
+    /// Returns the compile-time number of groups.
     #[inline(always)]
     pub const fn len(&self) -> usize {
         N
     }
 
+    /// Returns whether this array contains no groups.
     #[inline(always)]
     pub const fn is_empty(&self) -> bool {
         N == 0

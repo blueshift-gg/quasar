@@ -1,0 +1,5 @@
+/target
+/artifacts
+/coverage
+# Seed corpora ARE committed (they are the reviewable input spec); only the
+# fuzzer's runtime-discovered inputs live outside git.

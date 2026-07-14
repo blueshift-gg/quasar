@@ -41,7 +41,7 @@ fn extract_idl_json(stdout: &str) -> Result<&str, CliError> {
 
 /// Build the IDL by compiling the program crate with `--features idl-build`
 /// and running the `__quasar_emit_idl` test to capture the JSON output.
-pub(crate) fn build(crate_path: &Path) -> Result<Idl, CliError> {
+pub fn build(crate_path: &Path) -> Result<Idl, CliError> {
     // Read the crate name from Cargo.toml
     let cargo_toml_path = crate_path.join("Cargo.toml");
     let cargo_toml_content = std::fs::read_to_string(&cargo_toml_path)
@@ -112,8 +112,10 @@ fn generate_idl(crate_path: &Path, clients_path: &Path) -> Result<Idl, CliError>
     let idl_dir = PathBuf::from("target").join("idl");
     std::fs::create_dir_all(&idl_dir)?;
     let idl_path = idl_dir.join(format!("{}.json", idl.name));
-    let json =
-        serde_json::to_string_pretty(&idl).map_err(|e| CliError::json_serialize("IDL JSON", e))?;
+    // Single canonical writer: go through `canonical_json_pretty` so the file on
+    // disk and the hashed bytes come from the same serializer.
+    let json = quasar_idl::types::canonical_json_pretty(&idl)
+        .map_err(|e| CliError::json_serialize("IDL JSON", e))?;
     std::fs::write(&idl_path, &json)?;
 
     // Write Rust client
@@ -138,10 +140,16 @@ fn generate_idl(crate_path: &Path, clients_path: &Path) -> Result<Idl, CliError>
     Ok(idl)
 }
 
-/// Called by `quasar idl <path>`; generates IDL JSON and the Rust client only.
+/// Called by `quasar idl <path>` (generate) or `quasar idl verify <idl>`.
 pub fn run(command: IdlCommand) -> CliResult {
+    if let Some(crate::IdlAction::Verify { idl_path }) = &command.action {
+        return verify(idl_path);
+    }
+
     let clients_path = resolve_client_path()?;
-    let crate_path = &command.crate_path;
+    let crate_path = command.crate_path.ok_or_else(|| {
+        CliError::message("missing PATH: pass a program crate directory, or `verify <IDL>`")
+    })?;
     if !crate_path.exists() {
         return Err(CliError::message(format!(
             "path does not exist: {}",
@@ -149,9 +157,62 @@ pub fn run(command: IdlCommand) -> CliResult {
         )));
     }
 
-    generate_idl(crate_path, &clients_path)?;
+    generate_idl(&crate_path, &clients_path)?;
     println!("  {}", crate::style::success("IDL generated"));
     Ok(())
+}
+
+/// Re-read an IDL JSON, recompute its `hashes.idl` / `hashes.abi`, and check
+/// them against the stored values so tampering or drift is caught.
+fn verify(idl_path: &Path) -> CliResult {
+    if !idl_path.exists() {
+        return Err(CliError::message(format!(
+            "IDL file not found: {}",
+            idl_path.display()
+        )));
+    }
+    let json =
+        std::fs::read_to_string(idl_path).map_err(|e| CliError::io_path("read", idl_path, e))?;
+    quasar_idl::types::check_spec(&json).map_err(CliError::message)?;
+    let idl: Idl = serde_json::from_str(&json)
+        .map_err(|e| CliError::json_parse(format!("IDL file {}", idl_path.display()), e))?;
+
+    let stored = idl.hashes.clone().ok_or_else(|| {
+        CliError::message(format!(
+            "IDL `{}` has no `hashes` field to verify",
+            idl_path.display()
+        ))
+    })?;
+    let expected_idl = quasar_idl::types::compute_idl_hash(&idl);
+    let expected_abi = quasar_idl::types::compute_abi_hash(&idl);
+
+    let mut mismatches = Vec::new();
+    if stored.idl != expected_idl {
+        mismatches.push(format!(
+            "  idl: stored {} != recomputed {expected_idl}",
+            stored.idl
+        ));
+    }
+    if stored.abi != expected_abi {
+        mismatches.push(format!(
+            "  abi: stored {} != recomputed {expected_abi}",
+            stored.abi
+        ));
+    }
+
+    if mismatches.is_empty() {
+        println!(
+            "  {}",
+            crate::style::success(&format!("IDL hashes verified: {}", idl_path.display()))
+        );
+        Ok(())
+    } else {
+        Err(CliError::message(format!(
+            "IDL hash mismatch in {}:\n{}",
+            idl_path.display(),
+            mismatches.join("\n")
+        )))
+    }
 }
 
 /// Called by `quasar build`; generates IDL, Rust client, and configured

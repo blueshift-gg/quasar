@@ -1,11 +1,6 @@
-error[E0277]: the trait bound `quasar_lang::accounts::Signer: quasar_lang::prelude::Owner` is not satisfied
-  --> tests/compile_fail/migrate_on_signer.rs:19:17
+error: `Migration<From, To>` requires a program account as its `From` type; `Signer` cannot be migrated
+  --> tests/compile_fail/migrate_on_signer.rs:18:5
    |
-19 |     pub target: Migration<Signer, ConfigV2>,
-   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `quasar_lang::prelude::Owner` is not implemented for `quasar_lang::accounts::Signer`
-   |
-   = help: the following other types implement trait `quasar_lang::prelude::Owner`:
-             ConfigV2
-             SystemAccount
-   = note: required for `quasar_lang::accounts::Signer` to implement `CheckOwner`
-   = note: required for `quasar_lang::accounts::Migration<quasar_lang::accounts::Signer, ConfigV2>` to implement `AccountLoad`
+18 | /     #[account(mut, payer = payer)]
+19 | |     pub target: Migration<Signer, ConfigV2>,
+   | |___________________________________________^

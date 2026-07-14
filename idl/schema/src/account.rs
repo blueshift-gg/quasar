@@ -20,12 +20,6 @@ pub struct IdlAccountDef {
 #[serde(deny_unknown_fields)]
 pub struct IdlAccountNode {
     pub name: String,
-    #[serde(
-        rename = "clientType",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub client_type: Option<String>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub optional: bool,
     #[serde(default)]
@@ -70,8 +64,8 @@ impl AccountFlag {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AccountFlagDynamic {
+    /// The flag's value is supplied by the caller at build time.
     Input,
-    Runtime,
 }
 
 /// How an account address is resolved for client construction.
@@ -87,13 +81,11 @@ pub enum IdlResolver {
     /// Well-known program or sysvar.
     #[serde(rename = "knownProgram")]
     KnownProgram { name: String },
-    /// PDA derived from seeds.
+    /// PDA derived from seeds (canonical bump).
     #[serde(rename = "pda")]
     Pda {
         program: IdlPdaProgram,
         seeds: Vec<IdlPdaSeed>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        bump: Option<IdlPdaBump>,
     },
     /// Associated token account.
     #[serde(rename = "associatedToken")]
@@ -148,43 +140,20 @@ pub enum IdlPdaSeed {
         account: String,
         field: String,
     },
-    /// Derived from an instruction argument.
+    /// Derived from an instruction argument. Encoding to bytes is inferred
+    /// from the seed's declared `type` (LE for integers, raw 32 bytes for
+    /// addresses, UTF-8 for strings).
     #[serde(rename = "arg")]
     Arg {
         path: String,
         #[serde(rename = "type")]
         ty: IdlType,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        encoding: Option<SeedEncoding>,
     },
-}
-
-/// How a seed value is encoded to bytes for PDA derivation.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum SeedEncoding {
-    /// Little-endian bytes (for integers).
-    Le,
-    /// Raw 32 bytes (for pubkeys).
-    Raw,
-    /// UTF-8 bytes without length prefix (for strings).
-    Utf8,
-}
-
-/// How the PDA bump is determined.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "kind")]
-pub enum IdlPdaBump {
-    #[serde(rename = "canonical")]
-    Canonical {},
-    #[serde(rename = "arg")]
-    Arg { path: String },
-    #[serde(rename = "account")]
-    Account { path: String, field: String },
 }
 
 /// Remaining accounts configuration.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct IdlRemainingAccounts {
     pub kind: RemainingAccountsKind,
     pub name: String,
@@ -201,6 +170,7 @@ pub enum RemainingAccountsKind {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RemainingAccountItem {
     #[serde(rename = "clientType")]
     pub client_type: String,
@@ -209,6 +179,7 @@ pub struct RemainingAccountItem {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RemainingAccountPolicy {
     pub position: RemainingPosition,
     pub order: RemainingOrder,

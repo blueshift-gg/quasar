@@ -89,7 +89,7 @@ fn init_cpi_accounts_loop_covers_all_indices() {
 /// Prove `CpiReturn::as_slice` is always in bounds.
 ///
 /// Mirrors `CpiReturn::as_slice()`:
-///   `&self.data[..self.data_len]`
+///   `slice_from_raw_parts(self.data.as_ptr(), self.data_len)`
 /// where `data_len` is set by `get_cpi_return()`:
 ///   `core::cmp::min(size, MAX_RETURN_DATA)`
 #[kani::proof]

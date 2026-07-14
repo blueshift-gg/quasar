@@ -12,6 +12,8 @@ mod remaining;
 mod sysvar;
 #[cfg(test)]
 mod token_state;
+#[cfg(test)]
+mod two_dyn;
 
 // Core account lifecycle
 #[cfg(test)]

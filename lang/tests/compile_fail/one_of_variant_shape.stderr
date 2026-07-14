@@ -1,0 +1,5 @@
+error: one_of variants must have exactly one unnamed field: `Variant(Type)`
+  --> tests/compile_fail/one_of_variant_shape.rs:21:5
+   |
+21 |     Named { settings: Settings },
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^

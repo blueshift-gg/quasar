@@ -11,6 +11,39 @@ use {
     solana_program_error::ProgramError,
 };
 
+/// Typed self-CPI event emission for an accounts struct.
+///
+/// `#[derive(Accounts)]` implements this for any struct that carries both an
+/// event-authority field (typed `EventAuthority` or named `event_authority`)
+/// and a program field. **The program field is detected by TYPE, not name:**
+/// any field typed `Program<T>` supplies the signer, so it may be called
+/// `program`, `emitter`, or anything else. If an event-authority field is
+/// present but no `Program<T>` field is, the derive raises a spanned error
+/// rather than silently skipping the impl.
+///
+/// `emit_cpi!` dispatches through this trait (`EventCpi::emit(self, &event)`),
+/// so the macro hard-codes no field names. The default [`EventCpi::emit`] body
+/// mirrors [`crate::accounts::Program::emit_event`] exactly, so the self-CPI
+/// monomorphizes to identical code and CU.
+pub trait EventCpi {
+    /// This program's `EventAuthority` PDA bump (`EventAuthority::BUMP`).
+    const EVENT_AUTHORITY_BUMP: u8;
+
+    /// The program account that signs the self-CPI (this program itself).
+    fn event_program(&self) -> &AccountView;
+
+    /// The `__event_authority` PDA account.
+    fn event_authority(&self) -> &AccountView;
+
+    /// Emit `event` via self-CPI to this program's `__event_authority` PDA.
+    #[inline(always)]
+    fn emit<E: crate::traits::Event>(&self, event: &E) -> Result<(), ProgramError> {
+        let program = self.event_program();
+        let ea = self.event_authority();
+        event.emit(|data| emit_event_cpi(program, ea, data, Self::EVENT_AUTHORITY_BUMP))
+    }
+}
+
 /// Validate and log an inbound event CPI.
 ///
 /// Called by the generated `__handle_event` dispatch stub. Checks that the
@@ -22,6 +55,7 @@ use {
 /// `ptr` must point to the start of a valid SVM input buffer (account count
 /// at offset 0, followed by serialized `RuntimeAccount` entries).
 #[inline(always)]
+#[doc(hidden)]
 pub unsafe fn handle_event(
     ptr: *mut u8,
     instruction_data: &[u8],
@@ -104,6 +138,7 @@ pub fn emit_event_cpi(
 ///
 /// `buf` must point to at least `disc.len()` writable bytes.
 #[inline(always)]
+#[doc(hidden)]
 pub unsafe fn write_log_disc(buf: *mut u8, disc: &[u8]) -> usize {
     let disc_len = disc.len();
     // SAFETY: Caller guarantees `buf` has at least `disc.len()` writable
@@ -124,6 +159,7 @@ pub unsafe fn write_log_disc(buf: *mut u8, disc: &[u8]) -> usize {
 ///
 /// `buf` must point to at least `1 + disc.len()` writable bytes.
 #[inline(always)]
+#[doc(hidden)]
 pub unsafe fn write_cpi_disc(buf: *mut u8, disc: &[u8]) -> usize {
     let disc_len = disc.len();
     // SAFETY: Caller guarantees `buf` has at least `1 + disc.len()` writable

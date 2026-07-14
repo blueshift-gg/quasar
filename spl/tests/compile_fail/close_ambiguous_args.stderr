@@ -1,9 +1,11 @@
-error[E0277]: the trait bound `quasar_spl::accounts::token_close::Behavior: AccountBehavior<quasar_lang::accounts::Account<Data>>` is not satisfied
+error[E0277]: `quasar_spl::accounts::token_close::Behavior` is not a behavior for `quasar_lang::accounts::Account<Data>`
   --> tests/compile_fail/close_ambiguous_args.rs:12:10
    |
 12 | #[derive(Accounts)]
-   |          ^^^^^^^^ the trait `AccountBehavior<quasar_lang::accounts::Account<Data>>` is not implemented for `quasar_spl::accounts::token_close::Behavior`
+   |          ^^^^^^^^ no `AccountBehavior<quasar_lang::accounts::Account<Data>>` impl
    |
+   = help: the trait `AccountBehavior<quasar_lang::accounts::Account<Data>>` is not implemented for `quasar_spl::accounts::token_close::Behavior`
+   = note: behavior groups like `token(...)` require a module exposing a `Behavior` type that implements `AccountBehavior` for this account
    = help: the following other types implement trait `AccountBehavior<A>`:
              `quasar_spl::accounts::token_close::Behavior` implements `AccountBehavior<InterfaceAccount<quasar_spl::Token>>`
              `quasar_spl::accounts::token_close::Behavior` implements `AccountBehavior<quasar_lang::accounts::Account<Token2022>>`

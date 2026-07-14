@@ -32,15 +32,21 @@ mod my_state_init {
             self.owner = Some(v);
             self
         }
-        pub fn build_init(self) -> Result<Args<'a>, ProgramError> {
+    }
+
+    impl<'a> quasar_lang::account_behavior::BehaviorArgsBuilder for ArgsBuilder<'a> {
+        type Init = Args<'a>;
+        type Check = Args<'a>;
+        type Exit = Args<'a>;
+        fn build_init(self) -> Result<Args<'a>, ProgramError> {
             Ok(Args {
                 owner: self.owner.ok_or(ProgramError::InvalidArgument)?,
             })
         }
-        pub fn build_check(self) -> Result<Args<'a>, ProgramError> {
+        fn build_check(self) -> Result<Args<'a>, ProgramError> {
             self.build_init()
         }
-        pub fn build_exit(self) -> Result<Args<'a>, ProgramError> {
+        fn build_exit(self) -> Result<Args<'a>, ProgramError> {
             self.build_init()
         }
     }

@@ -29,10 +29,15 @@
 //!   compile time. Account data is checked against the expected discriminator
 //!   before access.
 //!
-//! Every `unsafe` block is validated by Miri under Tree Borrows with symbolic
-//! alignment checking.
+//! Every `unsafe` block reachable off-chain is validated by Miri under Tree
+//! Borrows with symbolic alignment checking. Miri cannot execute the SBF-only
+//! paths, which are therefore excluded and covered by the on-chain test suite
+//! instead: the syscall wrappers gated on `target_os = "solana"` (`pda`, `log`,
+//! `sysvars`, and the `cpi` `invoke_raw`/return-data paths) and the generated
+//! `extern "C"` program entrypoint.
 
 #![no_std]
+#![warn(missing_docs)]
 #![cfg_attr(
     any(target_os = "solana", target_arch = "bpf"),
     feature(asm_experimental_arch)
@@ -67,16 +72,44 @@ pub mod __internal {
     // check so that extra permissions (e.g. signer when not required) are
     // silently accepted.
 
+    /// The expected header `u32` for a non-duplicate account with the given
+    /// required flags. The low byte is `NOT_BORROWED` (`0xFF`); each set flag
+    /// bit lands in its byte (signer=byte 1, writable=byte 2, executable=byte
+    /// 3). This is the single source of the header-bit layout: the accounts
+    /// derive emits calls to it instead of open-coding `<< 8`/`<< 16`/`<< 24`.
+    #[inline(always)]
+    pub const fn header_expected(signer: bool, writable: bool, executable: bool) -> u32 {
+        0xFF | (signer as u32) << 8 | (writable as u32) << 16 | (executable as u32) << 24
+    }
+
+    /// The header comparison mask: the borrow byte (`0xFF`) is always compared,
+    /// plus every required flag's full byte. Extra (unrequired) permissions are
+    /// masked out so they are silently accepted.
+    #[inline(always)]
+    pub const fn header_mask(signer: bool, writable: bool, executable: bool) -> u32 {
+        0xFF | header_flag_mask(signer, writable, executable)
+    }
+
+    /// The flag portion of [`header_mask`] without the `0xFF` borrow byte — the
+    /// mask used by the dup-aware parse path, which validates the borrow byte
+    /// separately.
+    #[inline(always)]
+    pub const fn header_flag_mask(signer: bool, writable: bool, executable: bool) -> u32 {
+        (if signer { 0xFFu32 << 8 } else { 0 })
+            | (if writable { 0xFFu32 << 16 } else { 0 })
+            | (if executable { 0xFFu32 << 24 } else { 0 })
+    }
+
     /// Not borrowed, no flags required.
-    pub const NODUP: u32 = 0xFF;
+    pub const NODUP: u32 = header_expected(false, false, false);
     /// Not borrowed + signer.
-    pub const NODUP_SIGNER: u32 = 0xFF | (1 << 8);
+    pub const NODUP_SIGNER: u32 = header_expected(true, false, false);
     /// Not borrowed + writable.
-    pub const NODUP_MUT: u32 = 0xFF | (1 << 16);
+    pub const NODUP_MUT: u32 = header_expected(false, true, false);
     /// Not borrowed + signer + writable.
-    pub const NODUP_MUT_SIGNER: u32 = 0xFF | (1 << 8) | (1 << 16);
+    pub const NODUP_MUT_SIGNER: u32 = header_expected(true, true, false);
     /// Not borrowed + executable.
-    pub const NODUP_EXECUTABLE: u32 = 0xFF | (1 << 24);
+    pub const NODUP_EXECUTABLE: u32 = header_expected(false, false, true);
 
     /// Size of the SVM account header: `RuntimeAccount` struct + 10 KiB
     /// realloc padding + trailing `u64` length.
@@ -133,68 +166,57 @@ pub mod __internal {
         count: usize,
         boundary: *const u8,
     ) -> Result<(usize, *mut u8), solana_program_error::ProgramError> {
-        // SAFETY: The SVM guarantees 8-byte alignment at buffer start and
-        // after each account entry (padded strides).
-        debug_assert!(
-            input as usize & 7 == 0,
-            "parse_all_accounts_unchecked: input pointer is not 8-byte aligned"
-        );
+        use crate::svm::{Cursor, RawEntry};
 
-        let mut ptr = input;
+        // SAFETY: The SVM guarantees 8-byte alignment at buffer start and
+        // after each account entry (padded strides); `boundary` is the end of
+        // the account region in the same allocation.
+        let mut cursor = unsafe { Cursor::new(input, boundary) };
         for i in 0..count {
-            // SAFETY: Early exit if we have reached the accounts boundary.
-            // The SVM guarantees `count` entries fit, but this check is
+            // Early exit if we have reached the accounts boundary. The SVM
+            // guarantees `count` entries fit, but this check is
             // defense-in-depth against a malformed buffer.
-            if (ptr as *const u8) >= boundary {
-                return Ok((i, ptr));
+            if cursor.at_end() {
+                return Ok((i, cursor.ptr()));
             }
 
-            // SAFETY: `ptr` is within the accounts region (checked above)
-            // and points to a valid `RuntimeAccount` header. The
-            // `borrow_state` field is at offset 0 of the `#[repr(C)]`
-            // struct.
-            let raw = ptr as *mut RuntimeAccount;
-            let borrow = unsafe { (*raw).borrow_state };
-
-            if borrow == NOT_BORROWED {
-                // SAFETY: Non-duplicate entry. `raw` is a valid
-                // `RuntimeAccount` pointer. `AccountView::new_unchecked`
-                // wraps it without copying.
-                unsafe {
-                    core::ptr::write(buf.add(i), AccountView::new_unchecked(raw));
-                }
-                // SAFETY: `account_stride` computes header + data_len
-                // rounded to 8-byte alignment, matching the SVM's
-                // serialization layout.
-                let data_len = unsafe { (*raw).data_len as usize };
-                ptr = unsafe { ptr.add(account_stride(data_len)) };
-            } else {
-                // SAFETY: Duplicate entry. `borrow_state` encodes the
-                // index of the source non-dup account. The SVM
-                // guarantees dup indices always point backward to a
-                // previously-serialized non-dup entry.
-                let orig_idx = borrow as usize;
-                if orig_idx < i {
-                    // SAFETY: `orig_idx < i` ensures the source slot is
-                    // already initialized. `AccountView` does not impl
-                    // `Drop` (verified by static assert in remaining.rs),
-                    // so bitwise copy is safe. Note: the copy creates an
-                    // aliased `AccountView`; both point to the same
-                    // `RuntimeAccount`. The raw handler is responsible for
-                    // avoiding simultaneous `borrow_unchecked_mut()` on
-                    // aliased views.
+            // SAFETY: `cursor` is not at end (checked above), so it points at
+            // a valid account entry.
+            match unsafe { cursor.next() } {
+                RawEntry::Account(raw) => {
+                    // SAFETY: Non-duplicate entry. `raw` is a valid
+                    // `RuntimeAccount` pointer. `AccountView::new_unchecked`
+                    // wraps it without copying.
                     unsafe {
-                        core::ptr::write(buf.add(i), core::ptr::read(buf.add(orig_idx)));
+                        core::ptr::write(buf.add(i), AccountView::new_unchecked(raw));
                     }
-                } else {
-                    return Err(solana_program_error::ProgramError::InvalidAccountData);
                 }
-                // SAFETY: Dup entries are exactly `DUP_ENTRY_SIZE` (8)
-                // bytes in the SVM buffer.
-                ptr = unsafe { ptr.add(DUP_ENTRY_SIZE) };
+                RawEntry::Dup(borrow) => {
+                    // Duplicate entry. `borrow` is the loader's global index of
+                    // the source non-dup account; in this flat buffer the slot
+                    // index equals the global index, so it resolves against the
+                    // accounts parsed so far (`buf[0..i]`). The SVM guarantees
+                    // dup indices point backward to a previously-serialized
+                    // non-dup entry (`resolve_dup` rejects a forward index).
+                    // Note: the copy creates an aliased `AccountView` (both
+                    // point at the same `RuntimeAccount`); the raw handler is
+                    // responsible for avoiding simultaneous
+                    // `borrow_unchecked_mut()` on aliased views.
+                    match crate::svm::resolve_dup(
+                        borrow as usize,
+                        crate::svm::DupSources::Buffer {
+                            base: buf,
+                            count: i,
+                        },
+                    ) {
+                        // SAFETY: `buf.add(i)` is within the output buffer.
+                        Some(view) => unsafe { core::ptr::write(buf.add(i), view) },
+                        None => return Err(solana_program_error::ProgramError::InvalidAccountData),
+                    }
+                }
             }
         }
-        Ok((count, ptr))
+        Ok((count, cursor.ptr()))
     }
 
     /// Packed flags for [`parse_account_dup`]. Keeps the param count under the
@@ -249,12 +271,10 @@ pub mod __internal {
         // SAFETY: `base.add(offset)` is within the caller-provided output
         // buffer, and `raw` is the current account header.
         unsafe { core::ptr::write(base.add(offset), AccountView::new_unchecked(raw)) };
-        // SAFETY: `raw` is valid for the current non-duplicate account.
+        // SAFETY: `raw` is valid for the current non-duplicate account;
+        // `advance_account_data` advances past header + data + 8-byte padding.
         let data_len = unsafe { (*raw).data_len as usize };
-        // SAFETY: Account entries are serialized as header + data + padding.
-        let input = unsafe { input.add(ACCOUNT_HEADER.wrapping_add(data_len)) };
-        // SAFETY: Advance over the SVM 8-byte alignment padding.
-        let input = unsafe { input.add((input as usize).wrapping_neg() & 7) };
+        let input = unsafe { crate::svm::advance_account_data(input, data_len) };
         Ok(input)
     }
 
@@ -285,7 +305,12 @@ pub mod __internal {
         // SAFETY: `input` points to a valid account or duplicate header.
         let actual_header = unsafe { *(raw as *const u32) };
 
-        if (actual_header & 0xFF) == NOT_BORROWED as u32 {
+        // Decode the dup/non-dup distinction through the single owner in
+        // `svm.rs`. This parser keeps its tuned `advance_account_data` stride
+        // form (see `svm::advance_account_data`) rather than driving a `Cursor`,
+        // so it decodes the low header byte here instead of via `Cursor::next` —
+        // but the `NOT_BORROWED` comparison itself lives in one place.
+        if crate::svm::classify_borrow_state((actual_header & 0xFF) as u8).is_none() {
             // Not a dup; validate flags.
             if flags.is_optional {
                 // Optional: skip flag check if address == program_id (sentinel
@@ -297,37 +322,51 @@ pub mod __internal {
                     if crate::utils::hint::unlikely(
                         (actual_header & flags.flag_mask) != expected_flags,
                     ) {
-                        return Err(ProgramError::from(crate::decode_header_error(
-                            actual_header,
-                            flags.expected,
-                            flags.mask,
-                        )));
+                        // Mirror `parse_account`: only surface a decodable error.
+                        // `decode_header_error` returns 0 when the mismatched bit
+                        // is outside the required mask, in which case this must
+                        // fall through instead of returning `Err(from(0))`.
+                        let err =
+                            crate::decode_header_error(actual_header, flags.expected, flags.mask);
+                        if err != 0 {
+                            return Err(ProgramError::from(err));
+                        }
                     }
                 }
             } else {
                 let expected_flags = flags.expected & flags.flag_mask;
                 if crate::utils::hint::unlikely((actual_header & flags.flag_mask) != expected_flags)
                 {
-                    return Err(ProgramError::from(crate::decode_header_error(
-                        actual_header,
-                        flags.expected,
-                        flags.mask,
-                    )));
+                    // Mirror `parse_account`: only surface a decodable error so a
+                    // 0 result (mismatch outside the required mask) falls through
+                    // instead of returning `Err(from(0))`.
+                    let err = crate::decode_header_error(actual_header, flags.expected, flags.mask);
+                    if err != 0 {
+                        return Err(ProgramError::from(err));
+                    }
                 }
             }
             // SAFETY: `base.add(offset)` is within the caller-provided output
             // buffer, and `raw` is the current account header.
             unsafe { core::ptr::write(base.add(offset), AccountView::new_unchecked(raw)) };
-            // SAFETY: `raw` is valid for the current non-duplicate account.
+            // SAFETY: `raw` is valid for the current non-duplicate account;
+            // `advance_account_data` advances past header + data + 8-byte pad.
             let data_len = unsafe { (*raw).data_len as usize };
-            // SAFETY: Account entries are serialized as header + data + padding.
-            let input = unsafe { input.add(ACCOUNT_HEADER.wrapping_add(data_len)) };
-            // SAFETY: Advance over the SVM 8-byte alignment padding.
-            let input = unsafe { input.add((input as usize).wrapping_neg() & 7) };
+            let input = unsafe { crate::svm::advance_account_data(input, data_len) };
             Ok(input)
         } else {
-            // Dup branch: borrow_state != NOT_BORROWED means the SVM
-            // deduplicated this account slot.
+            // Dup branch: `classify_borrow_state` returned `Some` — the SVM
+            // deduplicated this slot. The low header byte is the loader's global
+            // index; in this flat declared buffer that equals the output slot
+            // index, so it aliases an earlier slot (`base[0..offset]`).
+            //
+            // This copy is NOT routed through `svm::resolve_dup` (which
+            // documents the same flat `Buffer` index space): the interleaved
+            // optional-sentinel / `allow_dup` handling below reads `base[idx]`
+            // lazily and keeps the `unlikely` bounds-check hint, and folding it
+            // through the resolver measurably regressed this path (+3 CU on the
+            // multi-sentinel parse). Kept in its tuned inline form; the decode
+            // above is the single `svm`-owned `NOT_BORROWED` site.
             let idx = (actual_header & 0xFF) as usize;
             if crate::utils::hint::unlikely(idx >= offset) {
                 return Err(ProgramError::InvalidAccountData);
@@ -396,7 +435,8 @@ pub mod client;
 pub mod context;
 /// Const-generic cross-program invocation with stack-allocated account arrays.
 pub mod cpi;
-/// Program entrypoint macros (`dispatch!`, `no_alloc!`, `panic_handler!`).
+/// Program runtime-environment macros (`no_alloc!`, `heap_alloc!`,
+/// `panic_handler!`); dispatch is generated by `#[program]`.
 pub mod entrypoint;
 /// Framework error types.
 pub mod error;
@@ -420,6 +460,10 @@ pub mod prelude;
 pub mod remaining;
 /// `set_return_data` syscall wrapper.
 pub mod return_data;
+/// The single owner of the SVM account-buffer walk (`Cursor`).
+pub(crate) mod svm;
+/// Centralized sBPF ABI facts (entrypoint, input buffer, `SolBytes`).
+pub mod svm_abi;
 /// Core framework traits.
 pub mod traits;
 /// Utility functions
@@ -444,6 +488,17 @@ pub use solana_program_error as __solana_program_error;
 /// downstream crates adding a direct dependency.
 #[doc(hidden)]
 pub use zeropod as __zeropod;
+/// The `#[derive(ZeroPod)]` macro for defining zero-copy account and
+/// instruction schemas.
+///
+/// This is the stable path for framework plugins that define their own
+/// zero-copy schema types (see [`pod`] for the alignment-1 field types).
+///
+/// Note: the derive expands to unqualified `zeropod::` paths, so a crate using
+/// `#[derive(quasar_lang::ZeroPod)]` must also bring the `zeropod` crate into
+/// scope (e.g. `use quasar_lang::__zeropod as zeropod;`) until the derive
+/// gains a crate-path override.
+pub use zeropod::ZeroPod;
 // Re-export zeropod traits for framework integration.
 pub use zeropod::{
     ZcElem, ZcField, ZcValidate, ZeroPodCompact, ZeroPodError, ZeroPodFixed, ZeroPodSchema,
@@ -455,11 +510,11 @@ pub use zeropod::{
 /// bounds-checked slicing, `Result` construction, and panic paths.
 #[inline(always)]
 pub fn keys_eq(a: &solana_address::Address, b: &solana_address::Address) -> bool {
-    #[cfg(not(target_os = "solana"))]
+    #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
     {
         a == b
     }
-    #[cfg(target_os = "solana")]
+    #[cfg(any(target_os = "solana", target_arch = "bpf"))]
     {
         let a = a.as_array().as_ptr() as *const u64;
         let b = b.as_array().as_ptr() as *const u64;
@@ -522,6 +577,7 @@ pub fn is_system_program(addr: &solana_address::Address) -> bool {
 #[cold]
 #[inline(never)]
 #[allow(unused_variables)]
+#[doc(hidden)]
 pub fn decode_header_error(header: u32, expected: u32, required_mask: u32) -> u64 {
     use solana_program_error::ProgramError;
 
@@ -643,6 +699,47 @@ mod tests {
         bytes[16] = 1;
         let addr = Address::new_from_array(bytes);
         assert!(!is_system_program(&addr));
+    }
+
+    /// The `header_expected` const fn reproduces the five `NODUP_*` constants
+    /// and the raw bit layout for every flag combination, so the derive-emitted
+    /// calls and the runtime constants can never drift apart.
+    #[test]
+    fn header_bits_match_nodup_constants() {
+        use super::__internal::{
+            header_expected, header_flag_mask, header_mask, NODUP, NODUP_EXECUTABLE, NODUP_MUT,
+            NODUP_MUT_SIGNER, NODUP_SIGNER,
+        };
+
+        assert_eq!(header_expected(false, false, false), 0xFF);
+        assert_eq!(header_expected(true, false, false), 0xFF | (1 << 8));
+        assert_eq!(header_expected(false, true, false), 0xFF | (1 << 16));
+        assert_eq!(
+            header_expected(true, true, false),
+            0xFF | (1 << 8) | (1 << 16)
+        );
+        assert_eq!(header_expected(false, false, true), 0xFF | (1 << 24));
+
+        assert_eq!(NODUP, 0xFF);
+        assert_eq!(NODUP_SIGNER, 0xFF | (1 << 8));
+        assert_eq!(NODUP_MUT, 0xFF | (1 << 16));
+        assert_eq!(NODUP_MUT_SIGNER, 0xFF | (1 << 8) | (1 << 16));
+        assert_eq!(NODUP_EXECUTABLE, 0xFF | (1 << 24));
+
+        // mask = borrow byte + flag mask; flag mask = mask without the borrow byte.
+        for &(s, w, e) in &[
+            (false, false, false),
+            (true, false, false),
+            (false, true, false),
+            (false, false, true),
+            (true, true, true),
+        ] {
+            assert_eq!(header_mask(s, w, e), 0xFF | header_flag_mask(s, w, e));
+            let expected_flag = (if s { 0xFFu32 << 8 } else { 0 })
+                | (if w { 0xFFu32 << 16 } else { 0 })
+                | (if e { 0xFFu32 << 24 } else { 0 });
+            assert_eq!(header_flag_mask(s, w, e), expected_flag);
+        }
     }
 }
 

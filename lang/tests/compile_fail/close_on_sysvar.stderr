@@ -1,0 +1,6 @@
+error: `close` requires a program account (`Account<T>` or `InterfaceAccount<T>`); `Sysvar` cannot be closed
+  --> tests/compile_fail/close_on_sysvar.rs:13:5
+   |
+13 | /     #[account(close(dest = payer))]
+14 | |     pub clock: Sysvar<Clock>,
+   | |____________________________^

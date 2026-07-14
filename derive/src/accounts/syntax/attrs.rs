@@ -14,7 +14,7 @@
 //! does not know what `token`, `mint`, or `metadata` mean.
 
 use {
-    super::super::resolve::{BehaviorArg, BehaviorGroup, UserCheck},
+    super::super::resolve::{BehaviorArg, BehaviorArgValue, BehaviorGroup, UserCheck},
     syn::{
         parse::{Parse, ParseStream},
         Expr, Ident, Token,
@@ -82,6 +82,11 @@ impl Parse for ParsedDirective {
                         inner: Directive::Core(CoreDirective::Realloc(expr)),
                     });
                 }
+                // Anchor-migration redirects: `seeds = [...]` and `bump [= ...]`
+                // are Anchor's PDA syntax, not Quasar's. Point at the real
+                // typed-seeds form instead of the opaque "unknown directive".
+                "seeds" => return Err(anchor_seeds_error(&path)),
+                "bump" => return Err(anchor_bump_error(&path)),
                 _ => {
                     return Err(syn::Error::new_spanned(
                         &path,
@@ -148,14 +153,14 @@ impl Parse for ParsedDirective {
                             "`close(...)` accepts only `dest = field`",
                         ));
                     }
-                    let dest = &args[0];
-                    if dest.key != "dest" {
+                    let (dest_key, dest_value) = &args[0];
+                    if dest_key != "dest" {
                         return Err(syn::Error::new_spanned(
                             &path,
                             "`close(...)` requires `dest = field`",
                         ));
                     }
-                    if let Expr::Path(ep) = &dest.value {
+                    if let Expr::Path(ep) = dest_value {
                         if ep.qself.is_none() && ep.path.segments.len() == 1 {
                             return Ok(ParsedDirective {
                                 inner: Directive::Core(CoreDirective::Close(
@@ -165,13 +170,19 @@ impl Parse for ParsedDirective {
                         }
                     }
                     return Err(syn::Error::new_spanned(
-                        &dest.value,
+                        dest_value,
                         "`close(dest = ...)` must be a field name",
                     ));
                 }
 
                 _ => {
-                    let args = parse_group_args(&content)?;
+                    let args = parse_group_args(&content)?
+                        .into_iter()
+                        .map(|(key, value)| {
+                            let value = behavior_arg_value(&key, value)?;
+                            Ok(BehaviorArg { key, value })
+                        })
+                        .collect::<syn::Result<Vec<_>>>()?;
                     return Ok(ParsedDirective {
                         inner: Directive::Behavior(BehaviorGroup { path, args }),
                     });
@@ -190,6 +201,10 @@ impl Parse for ParsedDirective {
             "group" => Ok(ParsedDirective {
                 inner: Directive::Core(CoreDirective::Group),
             }),
+            // Anchor writes a bare `bump` (and, rarely, a bare `seeds`); redirect
+            // both to the typed-seeds form.
+            "bump" => Err(anchor_bump_error(&path)),
+            "seeds" => Err(anchor_seeds_error(&path)),
             _ => Err(syn::Error::new_spanned(
                 &path,
                 format!("unknown bare directive `{name}`; did you mean `{name}(...)`?"),
@@ -198,9 +213,38 @@ impl Parse for ParsedDirective {
     }
 }
 
-/// Parse `key = value` pairs separated by commas.
-fn parse_group_args(input: ParseStream) -> syn::Result<Vec<BehaviorArg>> {
-    let mut args = Vec::new();
+/// Redirect Anchor's `seeds = [...]` to the confirmed in-repo typed-seeds form:
+/// declare `#[seeds(b"prefix", field: Type, ...)]` on the account type (see
+/// `#[derive(Seeds)]`), then bind the PDA on the field with
+/// `#[account(address = MyAccount::seeds(<args>))]`.
+fn anchor_seeds_error(path: &syn::Path) -> syn::Error {
+    syn::Error::new_spanned(
+        path,
+        "`seeds = [...]` is Anchor syntax and is not supported here. Declare the seed layout on \
+         the account type with `#[seeds(b\"prefix\", field: Type, ...)]`, then bind the PDA on \
+         this field with `#[account(address = MyAccount::seeds(<args>))]`. The bump is derived \
+         and stored automatically.",
+    )
+}
+
+/// Redirect Anchor's `bump` / `bump = ...` to the typed-seeds form. Quasar
+/// derives and stores the bump automatically once the field binds a typed-seeds
+/// PDA via `address = MyAccount::seeds(...)`.
+fn anchor_bump_error(path: &syn::Path) -> syn::Error {
+    syn::Error::new_spanned(
+        path,
+        "`bump` is Anchor syntax and is not supported here. Bumps are derived and stored \
+         automatically when a field binds a typed-seeds PDA with `#[account(address = \
+         MyAccount::seeds(<args>))]`; declare the seed layout with `#[seeds(...)]` on the account \
+         type.",
+    )
+}
+
+/// Parse `key = value` pairs separated by commas into raw `(Ident, Expr)`
+/// items. Shared by `close(dest = ...)` and behavior groups; the latter
+/// classifies each value into `BehaviorArgValue`.
+fn parse_group_args(input: ParseStream) -> syn::Result<Vec<(Ident, Expr)>> {
+    let mut args: Vec<(Ident, Expr)> = Vec::new();
     while !input.is_empty() {
         let key: Ident = input.parse()?;
 
@@ -216,13 +260,13 @@ fn parse_group_args(input: ParseStream) -> syn::Result<Vec<BehaviorArg>> {
         input.parse::<Token![=]>()?;
         let value: Expr = input.parse()?;
 
-        if args.iter().any(|a: &BehaviorArg| a.key == key) {
+        if args.iter().any(|(k, _)| *k == key) {
             return Err(syn::Error::new_spanned(
                 &key,
                 format!("duplicate arg `{key}`: each arg may only appear once"),
             ));
         }
-        args.push(BehaviorArg { key, value });
+        args.push((key, value));
 
         if !input.is_empty() {
             input.parse::<Token![,]>()?;
@@ -231,55 +275,65 @@ fn parse_group_args(input: ParseStream) -> syn::Result<Vec<BehaviorArg>> {
     Ok(args)
 }
 
-/// Validate that a behavior arg value conforms to the phase-polymorphic
-/// grammar.
+/// Classify a behavior arg value into the phase-polymorphic grammar.
 ///
 /// Allowed forms (valid in raw-slot, typed, and epilogue contexts):
-/// - Bare field ident: `authority`
-/// - Literal: `true`, `42`, `"str"`
-/// - Const/type path: `MY_CONST`, `module::Type`
+/// - Bare field ident (lowercase): `authority`
+/// - Literal / `true` / `false`: `42`, `"str"`
+/// - Const/type path (uppercase or multi-segment): `MY_CONST`, `module::Type`
 /// - `Some(valid_arg)`: Option wrapper with a valid inner
 /// - `None`: empty option
 ///
-/// Banned: method calls, field paths, casts, arithmetic, instruction args.
-/// These belong in `constraints(...)` or handler code.
-pub(crate) fn validate_behavior_arg(key: &Ident, expr: &Expr) -> syn::Result<()> {
-    if is_valid_behavior_arg(expr) {
-        Ok(())
-    } else {
-        Err(syn::Error::new_spanned(
-            expr,
-            format!(
-                "behavior arg `{}` has a value that is not valid in all lifecycle phases. \
-                 Behavior args must be bare field idents, literals, const paths, `Some(field)`, \
-                 or `None`. Move complex expressions to `constraints(...)` or handler code.",
-                key,
-            ),
-        ))
-    }
-}
-
-/// Check if an expression conforms to the behavior arg grammar.
-fn is_valid_behavior_arg(expr: &Expr) -> bool {
-    match expr {
-        // Path: bare ident (field ref) or multi-segment (const/type path): valid
-        Expr::Path(ep) => ep.qself.is_none(),
-        // Literal: valid
-        Expr::Lit(_) => true,
-        // Some(inner): valid if inner is valid
+/// Banned: method calls, field paths, casts, arithmetic. These belong in
+/// `constraints(...)` or handler code.
+fn behavior_arg_value(key: &Ident, expr: Expr) -> syn::Result<BehaviorArgValue> {
+    match &expr {
+        Expr::Path(ep) if ep.qself.is_none() => {
+            if ep.path.segments.len() == 1 {
+                let ident = &ep.path.segments[0].ident;
+                let name = ident.to_string();
+                if name == "None" {
+                    return Ok(BehaviorArgValue::None);
+                }
+                // Bare lowercase idents are candidate field refs (validated by
+                // rules); `true`/`false` and uppercase consts pass through.
+                if name != "true"
+                    && name != "false"
+                    && !name.starts_with(|c: char| c.is_uppercase())
+                {
+                    return Ok(BehaviorArgValue::FieldRef(ident.clone()));
+                }
+            }
+            Ok(BehaviorArgValue::Expr(expr))
+        }
+        Expr::Lit(_) => Ok(BehaviorArgValue::Expr(expr)),
         Expr::Call(call) => {
             if let Expr::Path(func) = &*call.func {
                 if func.qself.is_none()
                     && func.path.segments.len() == 1
                     && func.path.segments[0].ident == "Some"
+                    && call.args.len() == 1
                 {
-                    return call.args.len() == 1 && call.args.iter().all(is_valid_behavior_arg);
+                    let inner = behavior_arg_value(key, call.args[0].clone())?;
+                    return Ok(BehaviorArgValue::Some(Box::new(inner)));
                 }
             }
-            false
+            Err(invalid_behavior_arg(key, &expr))
         }
-        _ => false,
+        _ => Err(invalid_behavior_arg(key, &expr)),
     }
+}
+
+fn invalid_behavior_arg(key: &Ident, expr: &Expr) -> syn::Error {
+    syn::Error::new_spanned(
+        expr,
+        format!(
+            "behavior arg `{}` has a value that is not valid in all lifecycle phases. Behavior \
+             args must be bare field idents, literals, const paths, `Some(field)`, or `None`. \
+             Move complex expressions to `constraints(...)` or handler code.",
+            key,
+        ),
+    )
 }
 
 /// Parse a comma-separated list of identifiers.
@@ -342,4 +396,125 @@ fn path_to_string(path: &syn::Path) -> String {
         .map(|s| s.ident.to_string())
         .collect::<Vec<_>>()
         .join("::")
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, quote::quote, syn::parse::Parser};
+
+    /// Build a `syn::Field` (with attributes) from tokens.
+    fn field(tokens: proc_macro2::TokenStream) -> syn::Field {
+        syn::Field::parse_named
+            .parse2(tokens)
+            .expect("test field parses")
+    }
+
+    fn directives(tokens: proc_macro2::TokenStream) -> syn::Result<Vec<Directive>> {
+        parse_field_attrs(&field(tokens))
+    }
+
+    #[test]
+    fn parses_core_directives() {
+        let ds = directives(quote! {
+            #[account(mut, init, payer = funder, address = Pda::seeds(funder.address()))]
+            account: Account<Data>
+        })
+        .expect("directives parse");
+        assert_eq!(ds.len(), 4);
+        assert!(matches!(ds[0], Directive::Core(CoreDirective::Mut)));
+        assert!(matches!(
+            ds[1],
+            Directive::Core(CoreDirective::Init { idempotent: false })
+        ));
+        assert!(matches!(&ds[2], Directive::Core(CoreDirective::Payer(id)) if id == "funder"));
+        assert!(matches!(
+            &ds[3],
+            Directive::Core(CoreDirective::Address(_, None))
+        ));
+    }
+
+    #[test]
+    fn parses_idempotent_init_and_realloc() {
+        let ds = directives(quote! {
+            #[account(init(idempotent), realloc = 200)] account: Account<Data>
+        })
+        .expect("directives parse");
+        assert!(matches!(
+            ds[0],
+            Directive::Core(CoreDirective::Init { idempotent: true })
+        ));
+        assert!(matches!(ds[1], Directive::Core(CoreDirective::Realloc(_))));
+    }
+
+    #[test]
+    fn parses_address_with_trailing_error() {
+        let ds = directives(quote! {
+            #[account(address = SOME_ADDR @ MyError::Bad)] account: UncheckedAccount
+        })
+        .expect("directives parse");
+        assert_eq!(ds.len(), 1);
+        assert!(matches!(
+            &ds[0],
+            Directive::Core(CoreDirective::Address(_, Some(_)))
+        ));
+    }
+
+    #[test]
+    fn parses_close_dest() {
+        let ds = directives(quote! {
+            #[account(close(dest = authority))] account: Account<Data>
+        })
+        .expect("directives parse");
+        assert!(matches!(&ds[0], Directive::Core(CoreDirective::Close(id)) if id == "authority"));
+    }
+
+    #[test]
+    fn parses_behavior_group_and_user_checks() {
+        let ds = directives(quote! {
+            #[account(min_value(min = 10u64), has_one(authority), constraints(x > 0))]
+            account: Account<Data>
+        })
+        .expect("directives parse");
+        assert_eq!(ds.len(), 3);
+        assert!(matches!(&ds[0], Directive::Behavior(_)));
+        assert!(matches!(&ds[1], Directive::Check(UserCheck::HasOne { .. })));
+        assert!(matches!(
+            &ds[2],
+            Directive::Check(UserCheck::Constraints { .. })
+        ));
+    }
+
+    #[test]
+    fn dup_and_group_are_bare_flags() {
+        let ds = directives(quote! { #[account(dup, group)] bundle: SomeBundle })
+            .expect("directives parse");
+        assert!(matches!(ds[0], Directive::Core(CoreDirective::Dup)));
+        assert!(matches!(ds[1], Directive::Core(CoreDirective::Group)));
+    }
+
+    #[test]
+    fn rejects_duplicate_account_attribute() {
+        let f = field(quote! { #[account(mut)] #[account(dup)] account: Signer });
+        assert!(parse_field_attrs(&f).is_err());
+    }
+
+    #[test]
+    fn rejects_unknown_bare_directive() {
+        assert!(directives(quote! { #[account(frobnicate)] account: Signer }).is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_behavior_arg() {
+        assert!(directives(
+            quote! { #[account(token(mint = a, mint = b))] account: Account<Data> }
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn no_account_attribute_yields_no_directives() {
+        assert!(directives(quote! { account: Signer })
+            .expect("directives parse")
+            .is_empty());
+    }
 }

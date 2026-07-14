@@ -3,6 +3,7 @@ name = "quasar-profile"
 description = "SBF binary profiler for the Quasar Solana framework"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true

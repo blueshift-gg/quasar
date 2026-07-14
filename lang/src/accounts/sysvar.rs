@@ -10,6 +10,10 @@ pub struct Sysvar<T: crate::sysvars::Sysvar> {
     _marker: PhantomData<T>,
 }
 
+// SAFETY: `Sysvar<T>` is `#[repr(transparent)]` over `AccountView` plus
+// `PhantomData<T>`, so the pointer cast preserves layout.
+unsafe impl<T: crate::sysvars::Sysvar> crate::traits::StaticView for Sysvar<T> {}
+
 impl<T: crate::sysvars::Sysvar> Sysvar<T> {
     /// # Safety
     /// Caller must ensure `view.address() == T::ID` and that the account data
@@ -22,6 +26,7 @@ impl<T: crate::sysvars::Sysvar> Sysvar<T> {
         unsafe { &*(view as *const AccountView as *const Self) }
     }
 
+    /// Returns a zero-copy view of the sysvar account data.
     #[inline(always)]
     pub fn get(&self) -> &T {
         // SAFETY: Checked construction requires the canonical sysvar address;
@@ -34,12 +39,13 @@ impl<T: crate::sysvars::Sysvar> crate::account_load::AccountLoad for Sysvar<T> {
     #[inline(always)]
     fn check(view: &AccountView) -> Result<(), solana_program_error::ProgramError> {
         if crate::utils::hint::unlikely(!crate::keys_eq(view.address(), &T::ID)) {
+            // Alloc-free so the diagnostic works under `no_alloc!`: log a static
+            // message plus the expected/actual address bytes via `log_data`.
             #[cfg(feature = "debug")]
-            crate::prelude::log(&::alloc::format!(
-                "Incorrect sysvar address: expected {}, got {}",
-                T::ID,
-                view.address()
-            ));
+            {
+                crate::prelude::log("Incorrect sysvar address (expected, actual):");
+                crate::log::log_data(&[T::ID.as_array(), view.address().as_array()]);
+            }
             return Err(solana_program_error::ProgramError::IncorrectProgramId);
         }
         Ok(())

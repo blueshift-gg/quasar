@@ -1,0 +1,5 @@
+error: event discriminator must contain at least one non-zero byte; all-zero discriminators are indistinguishable from zeroed event data
+ --> tests/compile_fail/event_zero_discriminator.rs:8:25
+  |
+8 | #[event(discriminator = 0)]
+  |                         ^

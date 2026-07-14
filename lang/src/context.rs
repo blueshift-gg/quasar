@@ -1,4 +1,4 @@
-//! Instruction context types used by the `dispatch!` macro.
+//! Instruction context types used by the generated `#[program]` dispatch.
 //!
 //! Three levels of context exist, each wrapping the previous:
 //!
@@ -39,13 +39,45 @@ pub struct Context<'input> {
     pub accounts: &'input mut [AccountView],
 
     /// Pointer to the first remaining account (past the declared accounts).
-    pub remaining_ptr: *mut u8,
+    /// Private: only entrypoint codegen can supply a valid value, and safe
+    /// methods dereference it.
+    remaining_ptr: *mut u8,
 
-    /// Raw instruction data (discriminator already consumed by `dispatch!`).
+    /// Raw instruction data (discriminator already consumed by dispatch).
     pub data: &'input [u8],
 
-    /// End of accounts region: `ix_data_ptr - sizeof(u64)`.
-    pub accounts_boundary: *const u8,
+    /// End of accounts region: `ix_data_ptr - sizeof(u64)`. Private for the
+    /// same reason as `remaining_ptr`.
+    accounts_boundary: *const u8,
+}
+
+impl<'input> Context<'input> {
+    /// Assemble a `Context` from raw entrypoint parts.
+    ///
+    /// # Safety
+    ///
+    /// `remaining_ptr` must point at the first remaining account entry of the
+    /// SVM input buffer the other parts came from (or at `accounts_boundary`
+    /// when there are none), and `accounts_boundary` must be the end of that
+    /// buffer's account region. Safe code derives `RemainingAccounts` walks
+    /// from these pointers without further checks.
+    #[doc(hidden)]
+    #[inline(always)]
+    pub unsafe fn from_raw_parts(
+        program_id: &'input [u8; 32],
+        accounts: &'input mut [AccountView],
+        data: &'input [u8],
+        remaining_ptr: *mut u8,
+        accounts_boundary: *const u8,
+    ) -> Self {
+        Self {
+            program_id,
+            accounts,
+            remaining_ptr,
+            data,
+            accounts_boundary,
+        }
+    }
 }
 
 /// Parsed instruction context with typed accounts and PDA bumps.
@@ -71,12 +103,39 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
 {
     /// Parse and validate the declared accounts for an instruction that does
     /// not expose remaining accounts.
+    ///
+    /// Length-checked: rejects a `Context` whose account slice does not hold
+    /// `T::COUNT` accounts instead of exhibiting undefined behavior. Generated
+    /// dispatch code uses [`Ctx::new_unchecked`] because the entrypoint parser
+    /// has already proven the count.
     #[inline(always)]
     pub fn new(ctx: Context<'input>) -> Result<Self, ProgramError> {
         // SAFETY: `Context::program_id` points at the runtime-owned 32-byte
         // program id for this instruction.
         let program_id_addr = unsafe { as_address(ctx.program_id) };
-        // SAFETY: Entrypoint code constructed `ctx.accounts` with exactly
+        let (accounts, bumps) =
+            T::parse_with_instruction_data(ctx.accounts, ctx.data, program_id_addr)?;
+        Ok(Self {
+            accounts,
+            bumps,
+            program_id: ctx.program_id,
+            data: ctx.data,
+        })
+    }
+
+    /// Parse without the account-count check.
+    ///
+    /// # Safety
+    ///
+    /// `ctx.accounts` must hold exactly `T::COUNT` validated account views, as
+    /// produced by the generated entrypoint parser.
+    #[doc(hidden)]
+    #[inline(always)]
+    pub unsafe fn new_unchecked(ctx: Context<'input>) -> Result<Self, ProgramError> {
+        // SAFETY: `Context::program_id` points at the runtime-owned 32-byte
+        // program id for this instruction.
+        let program_id_addr = unsafe { as_address(ctx.program_id) };
+        // SAFETY: The caller guarantees `ctx.accounts` holds exactly
         // `T::COUNT` declared account views for this handler.
         let (accounts, bumps) = unsafe {
             T::parse_with_instruction_data_unchecked(ctx.accounts, ctx.data, program_id_addr)?
@@ -133,6 +192,10 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
 {
     /// Parse and validate declared accounts while preserving access to the
     /// trailing remaining-account region.
+    ///
+    /// Length-checked: rejects a `Context` whose account slice does not hold
+    /// `T::COUNT` accounts. Generated dispatch code uses
+    /// [`CtxWithRemaining::new_unchecked`].
     #[inline(always)]
     pub fn new(ctx: Context<'input>) -> Result<Self, ProgramError> {
         // SAFETY: `Context::program_id` points at the runtime-owned 32-byte
@@ -143,11 +206,8 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
         // holds the `&mut [AccountView]` borrow.
         let declared_ptr = ctx.accounts.as_ptr();
         let declared_len = ctx.accounts.len();
-        // SAFETY: Entrypoint code constructed `ctx.accounts` with exactly
-        // `T::COUNT` declared account views for this handler.
-        let (accounts, bumps) = unsafe {
-            T::parse_with_instruction_data_unchecked(ctx.accounts, ctx.data, program_id_addr)?
-        };
+        let (accounts, bumps) =
+            T::parse_with_instruction_data(ctx.accounts, ctx.data, program_id_addr)?;
         // SAFETY: The backing memory is still valid. Parse copies AccountView
         // values out of the slice, it does not deallocate. We construct the
         // shared slice here only for the RemainingAccounts API which uses it
@@ -156,6 +216,42 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
         // the raw pointers inside each AccountView), not into the AccountView
         // slice itself, so under Tree Borrows the shared slice's "Frozen"
         // permission on the AccountView pointer fields does not conflict.
+        let declared = unsafe { core::slice::from_raw_parts(declared_ptr, declared_len) };
+        Ok(Self {
+            accounts,
+            bumps,
+            program_id: ctx.program_id,
+            data: ctx.data,
+            remaining_ptr: ctx.remaining_ptr,
+            declared,
+            accounts_boundary: ctx.accounts_boundary,
+        })
+    }
+
+    /// Parse without the account-count check.
+    ///
+    /// # Safety
+    ///
+    /// `ctx.accounts` must hold exactly `T::COUNT` validated account views, as
+    /// produced by the generated entrypoint parser.
+    #[doc(hidden)]
+    #[inline(always)]
+    pub unsafe fn new_unchecked(ctx: Context<'input>) -> Result<Self, ProgramError> {
+        // SAFETY: `Context::program_id` points at the runtime-owned 32-byte
+        // program id for this instruction.
+        let program_id_addr = unsafe { as_address(ctx.program_id) };
+        // Save pointer + length before parse consumes the mutable slice (see
+        // `new` for the borrow rationale).
+        let declared_ptr = ctx.accounts.as_ptr();
+        let declared_len = ctx.accounts.len();
+        // SAFETY: The caller guarantees `ctx.accounts` holds exactly
+        // `T::COUNT` declared account views for this handler.
+        let (accounts, bumps) = unsafe {
+            T::parse_with_instruction_data_unchecked(ctx.accounts, ctx.data, program_id_addr)?
+        };
+        // SAFETY: Same aliasing argument as `new`: the shared slice is only
+        // read for address comparisons and does not conflict with the parsed
+        // struct's &mut refs into RuntimeAccount data under Tree Borrows.
         let declared = unsafe { core::slice::from_raw_parts(declared_ptr, declared_len) };
         Ok(Self {
             accounts,
@@ -182,14 +278,20 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
     /// runtime borrows, so duplicate entries are safe by default.
     #[inline(always)]
     pub fn remaining_accounts(&self) -> RemainingAccounts<'input> {
-        RemainingAccounts::new_with_context(
-            self.remaining_ptr,
-            self.accounts_boundary,
-            self.declared,
-            // SAFETY: `program_id` is the same runtime-owned 32-byte storage
-            // originally passed through `Context`.
-            unsafe { as_address(self.program_id) },
-            self.data,
-        )
+        // SAFETY: `remaining_ptr`/`accounts_boundary` delimit the remaining
+        // region of the SVM input buffer this `CtxWithRemaining` was built from,
+        // and `declared` is the declared-account slice parsed from that same
+        // buffer, so the `RemainingAccounts` construction contract is upheld.
+        // `program_id` is the same runtime-owned 32-byte storage originally
+        // passed through `Context`.
+        unsafe {
+            RemainingAccounts::new_with_context(
+                self.remaining_ptr,
+                self.accounts_boundary,
+                self.declared,
+                as_address(self.program_id),
+                self.data,
+            )
+        }
     }
 }

@@ -2,7 +2,7 @@
 //! dispatch setup for generated account structs.
 
 use {
-    super::{emit, resolve},
+    super::{super::resolve, EmitCx},
     crate::helpers::strip_generics,
     quote::{format_ident, quote},
 };
@@ -16,7 +16,7 @@ pub(crate) struct AccountsPlan {
 
 struct ParseFieldPlan {
     field_name: syn::Ident,
-    offset_expr: proc_macro2::TokenStream,
+    offset: SlotOffset,
     kind: ParseFieldKind,
 }
 
@@ -25,104 +25,135 @@ enum ParseFieldKind {
     Composite { inner_ty: proc_macro2::TokenStream },
 }
 
+/// The flattened-account-array index of a field: the number of preceding fixed
+/// (single) accounts plus the `AccountCount::COUNT` of every preceding
+/// composite. Emitted as `fixed + Σ <composite>::COUNT` (a const expression).
+struct SlotOffset {
+    fixed: usize,
+    composites: Vec<syn::Type>,
+}
+
+impl SlotOffset {
+    fn to_tokens(&self) -> proc_macro2::TokenStream {
+        let krate = crate::krate::lang_path();
+        let fixed = self.fixed;
+        let terms = self.composites.iter().map(|ty| {
+            let inner = composite_parse_ty(ty);
+            quote! { <#inner as #krate::traits::AccountCount>::COUNT }
+        });
+        quote! { #fixed #(+ #terms)* }
+    }
+
+    /// The offset rendered as a string literal for the debug log.
+    fn debug_string(&self) -> String {
+        self.to_tokens().to_string()
+    }
+}
+
 struct HeaderPlan {
     ty: proc_macro2::TokenStream,
-    account_index: String,
     writable: bool,
     optional: bool,
     allow_dup: bool,
 }
 
 impl HeaderPlan {
-    fn from_semantics(
-        sem: &resolve::FieldSemantics,
-        offset_expr: &proc_macro2::TokenStream,
-    ) -> Self {
+    fn from_field_plan(fp: &resolve::specs::FieldPlan) -> Self {
         Self {
             ty: {
-                let ty = &sem.core.effective_ty;
+                let ty = &fp.effective_ty;
                 quote! { #ty }
             },
-            account_index: offset_expr.to_string(),
-            writable: sem.is_writable(),
-            optional: sem.core.optional,
-            allow_dup: sem.core.dup,
+            writable: fp.writable,
+            optional: fp.optional,
+            allow_dup: fp.dup,
         }
     }
 
+    // The three header expressions reference the single-source const fns in
+    // `quasar_lang::__internal`; the derive supplies the required-writable bit
+    // and the type's `AccountLoad` signer/executable consts.
     fn expected_expr(&self) -> proc_macro2::TokenStream {
+        let krate = crate::krate::lang_path();
         let ty = &self.ty;
-        let writable_bit: u32 = if self.writable { 0x01 << 16 } else { 0 };
-        // IS_SIGNER and IS_EXECUTABLE come from the type's AccountLoad impl:
-        // no domain knowledge needed here.
-        quote! {{
-            const __S: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
-            const __E: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
-            0xFFu32 | (__S as u32) << 8 | #writable_bit | (__E as u32) << 24
-        }}
+        let writable = self.writable;
+        quote! {
+            #krate::__internal::header_expected(
+                <#ty as #krate::account_load::AccountLoad>::IS_SIGNER,
+                #writable,
+                <#ty as #krate::account_load::AccountLoad>::IS_EXECUTABLE,
+            )
+        }
     }
 
     fn mask_expr(&self) -> proc_macro2::TokenStream {
+        let krate = crate::krate::lang_path();
         let ty = &self.ty;
-        let writable_mask: u32 = if self.writable { 0xFF << 16 } else { 0 };
-        quote! {{
-            const __S: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
-            const __E: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
-            0xFFu32 | (if __S { 0xFFu32 << 8 } else { 0u32 }) | #writable_mask | (if __E { 0xFFu32 << 24 } else { 0u32 })
-        }}
+        let writable = self.writable;
+        quote! {
+            #krate::__internal::header_mask(
+                <#ty as #krate::account_load::AccountLoad>::IS_SIGNER,
+                #writable,
+                <#ty as #krate::account_load::AccountLoad>::IS_EXECUTABLE,
+            )
+        }
     }
 
     fn flag_mask_expr(&self) -> proc_macro2::TokenStream {
+        let krate = crate::krate::lang_path();
         let ty = &self.ty;
-        let writable_mask: u32 = if self.writable { 0xFF << 16 } else { 0 };
-        quote! {{
-            const __S: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_SIGNER;
-            const __E: bool = <#ty as quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE;
-            (if __S { 0xFFu32 << 8 } else { 0u32 }) | #writable_mask | (if __E { 0xFFu32 << 24 } else { 0u32 })
-        }}
+        let writable = self.writable;
+        quote! {
+            #krate::__internal::header_flag_mask(
+                <#ty as #krate::account_load::AccountLoad>::IS_SIGNER,
+                #writable,
+                <#ty as #krate::account_load::AccountLoad>::IS_EXECUTABLE,
+            )
+        }
     }
 }
 
 pub(crate) fn build_accounts_plan(
-    semantics: &[resolve::FieldSemantics],
     typed_plan: &resolve::specs::AccountsPlanTyped,
-    cx: &emit::EmitCx,
+    cx: &EmitCx,
 ) -> AccountsPlan {
-    let fields = build_parse_fields(semantics);
+    let fields = build_parse_fields(&typed_plan.fields);
     AccountsPlan {
         parse_steps: emit_parse_account_steps(&fields),
         count_expr: emit_count_expr(&fields),
-        parse_body: emit_full_parse_body(semantics, typed_plan, &fields, cx),
-        direct_parse_body: emit_direct_parse_body(semantics, typed_plan, &fields, cx),
+        parse_body: emit_full_parse_body(typed_plan, &fields, cx),
+        direct_parse_body: emit_direct_parse_body(typed_plan, &fields, cx),
     }
 }
 
-fn build_parse_fields(semantics: &[resolve::FieldSemantics]) -> Vec<ParseFieldPlan> {
+fn build_parse_fields(field_plans: &[resolve::specs::FieldPlan]) -> Vec<ParseFieldPlan> {
     let mut fields = Vec::new();
-    let mut buf_offset_expr = quote! { 0usize };
+    let mut fixed = 0usize;
+    let mut composites: Vec<syn::Type> = Vec::new();
 
-    for sem in semantics {
-        let offset_expr = buf_offset_expr.clone();
+    for fp in field_plans {
+        let offset = SlotOffset {
+            fixed,
+            composites: composites.clone(),
+        };
 
-        match sem.core.kind {
+        match fp.kind {
             resolve::FieldKind::Composite => {
-                let inner_ty = composite_parse_ty(&sem.core.effective_ty);
+                let inner_ty = composite_parse_ty(&fp.effective_ty);
                 fields.push(ParseFieldPlan {
-                    field_name: sem.core.ident.clone(),
-                    offset_expr: offset_expr.clone(),
-                    kind: ParseFieldKind::Composite {
-                        inner_ty: inner_ty.clone(),
-                    },
+                    field_name: fp.ident.clone(),
+                    offset,
+                    kind: ParseFieldKind::Composite { inner_ty },
                 });
-                buf_offset_expr = quote! { #offset_expr + <#inner_ty as AccountCount>::COUNT };
+                composites.push(fp.effective_ty.clone());
             }
             resolve::FieldKind::Single => {
                 fields.push(ParseFieldPlan {
-                    field_name: sem.core.ident.clone(),
-                    offset_expr: offset_expr.clone(),
-                    kind: ParseFieldKind::Single(HeaderPlan::from_semantics(sem, &offset_expr)),
+                    field_name: fp.ident.clone(),
+                    offset,
+                    kind: ParseFieldKind::Single(HeaderPlan::from_field_plan(fp)),
                 });
-                buf_offset_expr = quote! { #offset_expr + 1usize };
+                fixed += 1;
             }
         }
     }
@@ -131,21 +162,12 @@ fn build_parse_fields(semantics: &[resolve::FieldSemantics]) -> Vec<ParseFieldPl
 }
 
 fn composite_parse_ty(ty: &syn::Type) -> proc_macro2::TokenStream {
-    if is_accounts_array_type(ty) {
+    if resolve::wrapper::classify_wrapper(ty) == resolve::wrapper::WrapperKind::AccountsArray {
         return quote! { #ty };
     }
-    strip_generics(ty)
-}
-
-fn is_accounts_array_type(ty: &syn::Type) -> bool {
-    if let syn::Type::Path(type_path) = ty {
-        return type_path
-            .path
-            .segments
-            .last()
-            .is_some_and(|segment| segment.ident == "AccountsArray");
-    }
-    false
+    // Composite field types are path types; fall back to the whole type token
+    // (localized trait error, never a cascade) if that ever fails to hold.
+    strip_generics(ty).unwrap_or_else(|_| quote! { #ty })
 }
 
 fn emit_parse_account_steps(fields: &[ParseFieldPlan]) -> Vec<proc_macro2::TokenStream> {
@@ -153,15 +175,16 @@ fn emit_parse_account_steps(fields: &[ParseFieldPlan]) -> Vec<proc_macro2::Token
 }
 
 fn emit_parse_field_step(field: &ParseFieldPlan) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     match &field.kind {
         ParseFieldKind::Composite { inner_ty } => {
-            let cur_offset = &field.offset_expr;
+            let cur_offset = field.offset.to_tokens();
             quote! {
                 {
                     input = unsafe {
                         // SAFETY: the generated caller passes an input slice with
                         // enough accounts for the statically computed COUNT.
-                        <#inner_ty as quasar_lang::traits::ParseAccountsRaw>::parse_accounts_raw(
+                        <#inner_ty as #krate::traits::ParseAccountsRaw>::parse_accounts_raw(
                             input,
                             base,
                             #cur_offset,
@@ -172,7 +195,7 @@ fn emit_parse_field_step(field: &ParseFieldPlan) -> proc_macro2::TokenStream {
             }
         }
         ParseFieldKind::Single(header) => {
-            emit_single_parse_step(&field.field_name, header, &field.offset_expr)
+            emit_single_parse_step(&field.field_name, header, &field.offset)
         }
     }
 }
@@ -180,9 +203,11 @@ fn emit_parse_field_step(field: &ParseFieldPlan) -> proc_macro2::TokenStream {
 fn emit_single_parse_step(
     field_name: &syn::Ident,
     header: &HeaderPlan,
-    cur_offset: &proc_macro2::TokenStream,
+    offset: &SlotOffset,
 ) -> proc_macro2::TokenStream {
-    let account_index = &header.account_index;
+    let krate = crate::krate::lang_path();
+    let cur_offset = offset.to_tokens();
+    let account_index = offset.debug_string();
     let expected_expr = header.expected_expr();
     let mask_expr = header.mask_expr();
 
@@ -200,12 +225,12 @@ fn emit_single_parse_step(
                 input = unsafe {
                     // SAFETY: parse_account_dup validates the current account
                     // and advances within the pre-counted input slice.
-                    quasar_lang::__internal::parse_account_dup(
+                    #krate::__internal::parse_account_dup(
                         input,
                         base,
                         #cur_offset,
                         __program_id,
-                        quasar_lang::__internal::ParseFlags {
+                        #krate::__internal::ParseFlags {
                             expected: __EXPECTED,
                             mask: __MASK,
                             flag_mask: __FLAG_MASK,
@@ -215,8 +240,7 @@ fn emit_single_parse_step(
                         },
                     )?
                 };
-                #[cfg(feature = "debug")]
-                quasar_lang::prelude::log(concat!(
+                #krate::debug_log!(concat!(
                     "Account '", stringify!(#field_name),
                     "' (index ", #account_index, "): parsed (dup-aware)"
                 ));
@@ -230,12 +254,11 @@ fn emit_single_parse_step(
                 input = unsafe {
                     // SAFETY: parse_account validates the current account and
                     // advances within the pre-counted input slice.
-                    quasar_lang::__internal::parse_account(
+                    #krate::__internal::parse_account(
                         input, base, #cur_offset, __EXPECTED, __MASK,
                     )?
                 };
-                #[cfg(feature = "debug")]
-                quasar_lang::prelude::log(concat!(
+                #krate::debug_log!(concat!(
                     "Account '", stringify!(#field_name),
                     "' (index ", #account_index, "): validation passed"
                 ));
@@ -245,6 +268,7 @@ fn emit_single_parse_step(
 }
 
 fn emit_count_expr(fields: &[ParseFieldPlan]) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     if fields
         .iter()
         .all(|field| matches!(field.kind, ParseFieldKind::Single(_)))
@@ -256,7 +280,7 @@ fn emit_count_expr(fields: &[ParseFieldPlan]) -> proc_macro2::TokenStream {
             .iter()
             .map(|field| match &field.kind {
                 ParseFieldKind::Composite { inner_ty, .. } => {
-                    quote! { <#inner_ty as AccountCount>::COUNT }
+                    quote! { <#inner_ty as #krate::traits::AccountCount>::COUNT }
                 }
                 ParseFieldKind::Single(_) => quote! { 1usize },
             })
@@ -266,12 +290,11 @@ fn emit_count_expr(fields: &[ParseFieldPlan]) -> proc_macro2::TokenStream {
 }
 
 fn emit_full_parse_body(
-    semantics: &[resolve::FieldSemantics],
     typed_plan: &resolve::specs::AccountsPlanTyped,
     fields: &[ParseFieldPlan],
-    cx: &emit::EmitCx,
+    cx: &EmitCx,
 ) -> proc_macro2::TokenStream {
-    let inner_body = emit::parse::emit_parse_body(semantics, typed_plan, cx);
+    let inner_body = super::parse::emit_parse_body(typed_plan, cx);
     emit_parse_body_from_inner(fields, inner_body)
 }
 
@@ -279,13 +302,14 @@ fn emit_parse_body_from_inner(
     fields: &[ParseFieldPlan],
     inner_body: proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     if fields
         .iter()
         .any(|field| matches!(field.kind, ParseFieldKind::Composite { .. }))
     {
         let mut field_lets: Vec<proc_macro2::TokenStream> = Vec::new();
         field_lets.push(quote! {
-            let mut __accounts_rest: &mut [quasar_lang::__internal::AccountView] = accounts;
+            let mut __accounts_rest: &mut [#krate::__internal::AccountView] = accounts;
         });
 
         for field in fields {
@@ -297,12 +321,12 @@ fn emit_parse_body_from_inner(
                         // SAFETY: `parse_accounts_raw` already proved this
                         // composite's COUNT accounts are present.
                         let (__chunk, __rest) = unsafe {
-                            __accounts_rest.split_at_mut_unchecked(<#inner_ty as AccountCount>::COUNT)
+                            __accounts_rest.split_at_mut_unchecked(<#inner_ty as #krate::traits::AccountCount>::COUNT)
                         };
                         __accounts_rest = __rest;
                         // SAFETY: the raw parser above validated this composite
                         // account chunk.
-                        let (#field_name, #bumps_var) = unsafe { <#inner_ty as quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
+                        let (#field_name, #bumps_var) = unsafe { <#inner_ty as #krate::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
                             __chunk,
                             __ix_data,
                             __program_id
@@ -343,17 +367,16 @@ fn emit_parse_body_from_inner(
 }
 
 fn emit_direct_parse_body(
-    semantics: &[resolve::FieldSemantics],
     typed_plan: &resolve::specs::AccountsPlanTyped,
     fields: &[ParseFieldPlan],
-    cx: &emit::EmitCx,
+    cx: &EmitCx,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let count_expr = emit_count_expr(fields);
-    let fallback_body =
-        emit_parse_body_without_behavior_assertions(semantics, typed_plan, fields, cx);
+    let fallback_body = emit_parse_body_without_behavior_assertions(typed_plan, fields, cx);
     quote! {
         let mut __buf = core::mem::MaybeUninit::<
-            [quasar_lang::__internal::AccountView; #count_expr]
+            [#krate::__internal::AccountView; #count_expr]
         >::uninit();
         let _ = Self::parse_accounts(input, &mut __buf, __program_id)?;
         // SAFETY: parse_accounts initializes the whole fixed-size buffer before
@@ -361,8 +384,8 @@ fn emit_direct_parse_body(
         let mut __accounts = unsafe { __buf.assume_init() };
         let accounts = &mut __accounts;
         let __parsed_result: Result<
-            (Self, <Self as quasar_lang::traits::ParseAccounts>::Bumps),
-            ProgramError,
+            (Self, <Self as #krate::traits::ParseAccounts>::Bumps),
+            #krate::__solana_program_error::ProgramError,
         > = {
             #fallback_body
         };
@@ -372,12 +395,10 @@ fn emit_direct_parse_body(
 }
 
 fn emit_parse_body_without_behavior_assertions(
-    semantics: &[resolve::FieldSemantics],
     typed_plan: &resolve::specs::AccountsPlanTyped,
     fields: &[ParseFieldPlan],
-    cx: &emit::EmitCx,
+    cx: &EmitCx,
 ) -> proc_macro2::TokenStream {
-    let inner_body =
-        emit::parse::emit_parse_body_without_behavior_assertions(semantics, typed_plan, cx);
+    let inner_body = super::parse::emit_parse_body_without_behavior_assertions(typed_plan, cx);
     emit_parse_body_from_inner(fields, inner_body)
 }

@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, 0.1.0-release]
   pull_request:
-    branches: [master]
+    branches: [master, 0.1.0-release]
   workflow_call:
     inputs:
       generated_client_smoke:
@@ -14,13 +14,24 @@ on:
         default: true
 
 env:
-  SOLANA_VERSION: stable
+  HOST_RUST_VERSION: 1.92.0
+  PROGRAM_MSRV: 1.89.0
+  SOLANA_VERSION: v4.1.1
+  NODE_VERSION: 24.18.0
+  TYPESCRIPT_VERSION: 5.9.3
+  NODE_TYPES_VERSION: 22.13.0
+  PYTHON_VERSION: 3.14.3
+  GO_VERSION: 1.25.5
+  C_COMPILER_VERSION: 18.1.3
+  CARAVEL_REV: a0a88b705bc888a7ac3e8f7e506a1e997b374b4d
+  CARGO_HACK_VERSION: 0.6.43
+  KANI_VERSION: 0.67.0
   CARGO_TERM_COLOR: always
 
 jobs:
   kani_scope:
     name: Kani Scope
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       should_run: ${{ steps.scope.outputs.should_run }}
     steps:
@@ -35,6 +46,7 @@ jobs:
             kani:
               - 'lang/**'
               - 'spl/**'
+              - 'metadata/**'
               - 'Cargo.lock'
               - 'Cargo.toml'
               - '.github/workflows/ci.yml'
@@ -52,7 +64,7 @@ jobs:
 
   generated_client_scope:
     name: Generated Client Scope
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       should_run: ${{ steps.scope.outputs.should_run }}
     steps:
@@ -87,7 +99,7 @@ jobs:
 
   rust_fmt:
     name: Rustfmt
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - name: Get nightly toolchain version
@@ -97,12 +109,17 @@ jobs:
         with:
           toolchain: ${{ steps.nightly.outputs.version }}
           components: rustfmt
+      - name: Print Rustfmt toolchain
+        run: |
+          rustup run "${{ steps.nightly.outputs.version }}" rustc --version
+          rustup run "${{ steps.nightly.outputs.version }}" cargo --version
+          rustup run "${{ steps.nightly.outputs.version }}" rustfmt --version
       - name: Run format
         run: make format
 
   rust_clippy:
     name: Clippy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - uses: actions/cache@v5
@@ -121,12 +138,19 @@ jobs:
         with:
           toolchain: ${{ steps.nightly.outputs.version }}
           components: clippy
+      - name: Print Clippy toolchain
+        run: |
+          rustup run "${{ steps.nightly.outputs.version }}" rustc --version
+          rustup run "${{ steps.nightly.outputs.version }}" cargo --version
+          cargo +${{ steps.nightly.outputs.version }} clippy --version
       - name: Run clippy
         run: make clippy
 
   check_features:
     name: Check Features
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    env:
+      RUSTUP_TOOLCHAIN: 1.89.0
     steps:
       - uses: actions/checkout@v6
       - uses: actions/cache@v5
@@ -138,19 +162,27 @@ jobs:
           key: ${{ runner.os }}-cargo-hack-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-hack-
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.PROGRAM_MSRV }}
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-hack
+          tool: cargo-hack@${{ env.CARGO_HACK_VERSION }}
+      - name: Print feature-check toolchain
+        run: rustc --version && cargo --version && cargo hack --version
       - name: Check all feature combinations
         run: make check-features
 
   workspace_policy:
     name: Workspace Policy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+      - name: Print workspace-policy toolchain
+        run: rustc --version && cargo --version
       - name: Verify workspace lint opt-in
         run: make check-workspace-lints
       - name: Verify workspace invariants
@@ -158,9 +190,39 @@ jobs:
       - name: Verify runtime panic policy
         run: make check-runtime-panics
 
+  package:
+    name: Package Manifests
+    runs-on: ubuntu-24.04
+    env:
+      RUSTUP_TOOLCHAIN: 1.89.0
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.PROGRAM_MSRV }}
+      - name: Verify declared MSRV
+        run: make msrv-check
+      - name: Print publication toolchain
+        run: rustc --version && cargo --version
+      - name: Verify publishable crates
+        run: make package-check
+
+  security_audit:
+    name: Dependency Security Audit
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      checks: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
   cargo_test:
     name: Build & Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - name: Cache Solana tools
@@ -183,7 +245,11 @@ jobs:
           key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-test-
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+      - name: Print build toolchains
+        run: rustc --version && cargo --version && solana --version && cargo-build-sbf --version
       - name: Build SBF programs
         run: make build-sbf
       - name: Test
@@ -193,7 +259,9 @@ jobs:
     name: Generated Client Smoke
     needs: generated_client_scope
     if: needs.generated_client_scope.outputs.should_run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang-18
     steps:
       - uses: actions/checkout@v6
       - uses: actions/cache@v5
@@ -207,21 +275,36 @@ jobs:
             ${{ runner.os }}-cargo-client-smoke-
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: ${{ env.NODE_VERSION }}
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: ${{ env.PYTHON_VERSION }}
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: ${{ env.GO_VERSION }}
           cache: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+      - name: Print generated-client toolchains
+        run: |
+          rustc --version
+          cargo --version
+          node --version
+          npm --version
+          python --version
+          go version
+          "$CC" --version | head -1 | tee /tmp/quasar-cc-version
+          grep -F "version $C_COMPILER_VERSION" /tmp/quasar-cc-version
+          echo "TypeScript ${{ env.TYPESCRIPT_VERSION }}"
+          echo "@types/node ${{ env.NODE_TYPES_VERSION }}"
+          echo "Caravel ${{ env.CARAVEL_REV }}"
       - name: Run generated client smoke test
         run: make generated-client-smoke
 
   miri:
     name: Miri (Tree Borrows)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - uses: actions/cache@v5
@@ -240,6 +323,11 @@ jobs:
         with:
           toolchain: ${{ steps.nightly.outputs.version }}
           components: miri
+      - name: Print Miri toolchain
+        run: |
+          rustup run "${{ steps.nightly.outputs.version }}" rustc --version
+          rustup run "${{ steps.nightly.outputs.version }}" cargo --version
+          cargo +${{ steps.nightly.outputs.version }} miri --version
       - name: Run Miri tests
         run: make test-miri
 
@@ -247,11 +335,11 @@ jobs:
     name: Kani (${{ matrix.crate }})
     needs: kani_scope
     if: needs.kani_scope.outputs.should_run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        crate: [quasar-lang, quasar-spl]
+        crate: [quasar-lang, quasar-spl, quasar-metadata]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/cache@v5
@@ -269,12 +357,15 @@ jobs:
       - name: Verify ${{ matrix.crate }}
         uses: model-checking/kani-github-action@v1
         with:
+          kani-version: ${{ env.KANI_VERSION }}
           command: cargo kani -p ${{ matrix.crate }}
+      - name: Print Kani toolchain
+        run: cargo kani --version
 
   cu_benchmark_pr:
     name: CU Benchmark Guard (PR)
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: write
@@ -302,7 +393,12 @@ jobs:
           key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-bench-
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+
+      - name: Print benchmark toolchains
+        run: rustc --version && cargo --version && solana --version && cargo-build-sbf --version
 
       - name: Preserve benchmark harness
         run: |
@@ -421,7 +517,7 @@ jobs:
   check_if_pr_commit:
     name: Detect merged PR push
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: read
@@ -447,7 +543,7 @@ jobs:
     name: CU Benchmark Guard (Push)
     needs: [check_if_pr_commit]
     if: github.event_name == 'push' && needs.check_if_pr_commit.outputs.skip_bench != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
@@ -474,7 +570,12 @@ jobs:
           key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-bench-
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+
+      - name: Print benchmark toolchains
+        run: rustc --version && cargo --version && solana --version && cargo-build-sbf --version
 
       - name: Capture base metrics
         run: |

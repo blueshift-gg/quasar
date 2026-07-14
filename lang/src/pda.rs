@@ -7,18 +7,88 @@
 //! On SBF, `&[u8]` has layout `(*const u8, u64)`, identical to `sol_sha256`'s
 //! `SolBytes`. The slice-of-slices cast exploits this to pass seed arrays
 //! directly to the syscall without intermediate copies.
+//!
+//! # Error convention
+//!
+//! Each failure class maps to one error, consistently:
+//! - **Malformed seeds** (seed count exceeds the limit): native
+//!   [`solana_program_error::ProgramError::InvalidSeeds`].
+//! - **PDA derivation/verification failure** (the derived address or hash does
+//!   not match `expected`, or no valid PDA/bump was found): framework
+//!   [`QuasarError::InvalidPda`](crate::error::QuasarError::InvalidPda).
+//!
+//! Note: the framework `QuasarError::InvalidSeeds` variant is currently
+//! unemitted — the malformed-seeds class uses the cheaper native error.
 
 #[cfg(any(target_os = "solana", target_arch = "bpf"))]
 use solana_define_syscall::definitions::{sol_curve_validate_point, sol_sha256};
 use {solana_address::Address, solana_program_error::ProgramError};
 
-#[cfg(any(target_os = "solana", target_arch = "bpf"))]
+// Also compiled under `kani`: `build_pda_input` (below) is pure slice
+// arithmetic and its bounds proofs drive it directly on Kani's host target.
+#[cfg(any(target_os = "solana", target_arch = "bpf", kani))]
 const PDA_MARKER: &[u8; 21] = b"ProgramDerivedAddress";
 
 /// Maximum number of slices in a PDA hash input: up to 17 seeds + bump +
 /// program_id + PDA_MARKER.
-#[cfg(any(target_os = "solana", target_arch = "bpf"))]
+#[cfg(any(target_os = "solana", target_arch = "bpf", kani))]
 const MAX_PDA_SLICES: usize = 19;
+
+/// Build the PDA hash input `[seeds..., (bump?), program_id, PDA_MARKER]` into
+/// `out` as [`SolBytes`](crate::svm_abi::SolBytes) values, returning the number
+/// of slots written.
+///
+/// `bump` is `Some(ptr)` for the derivation loops (the byte behind `ptr`
+/// changes between hashes) and `None` for `verify_program_address` (the bump is
+/// already part of `seeds`). Using a `SolBytes` value rather than a `&[u8]` for
+/// the bump slot keeps the later mutation of that byte Tree-Borrows-clean: the
+/// stored value carries no borrow of `bump_arr`.
+///
+/// Kani proves the index arithmetic stays in bounds by driving this function
+/// directly: `verify_program_address_indices_within_bounds` (no bump, `seeds <=
+/// 17`) and `find_program_address_indices_within_bounds` (bump, `seeds <= 16`).
+///
+/// # Safety
+///
+/// `out` must point to at least `MAX_PDA_SLICES` writable `SolBytes` slots and
+/// `seeds.len()` must satisfy the caller's bound (`<= 17` without a bump, `<=
+/// 16` with one).
+// Pure slice arithmetic (no syscalls), so it is also compiled under `kani` to
+// let the bounds proofs exercise the real function rather than a restated copy.
+#[cfg(any(target_os = "solana", target_arch = "bpf", kani))]
+#[inline(always)]
+unsafe fn build_pda_input(
+    seeds: &[&[u8]],
+    program_id: &Address,
+    bump: Option<*const u8>,
+    out: *mut crate::svm_abi::SolBytes,
+) -> usize {
+    use crate::svm_abi::SolBytes;
+    let n = seeds.len();
+    let mut i = 0;
+    while i < n {
+        // SAFETY: `i < n` and `n` is within the caller's bound, so `out.add(i)`
+        // stays inside the `MAX_PDA_SLICES`-slot array.
+        unsafe { out.add(i).write(SolBytes::from_slice(seeds[i])) };
+        i += 1;
+    }
+    let mut idx = n;
+    if let Some(bump_ptr) = bump {
+        // SAFETY: slot `n` is within bounds. The value carries no borrow, so the
+        // caller mutating the byte behind `bump_ptr` between hashes is sound.
+        unsafe { out.add(idx).write(SolBytes::from_raw(bump_ptr, 1)) };
+        idx += 1;
+    }
+    // SAFETY: slots `idx` and `idx + 1` are within bounds (`n + 2` / `n + 3 <=
+    // MAX_PDA_SLICES`).
+    unsafe {
+        out.add(idx)
+            .write(SolBytes::from_slice(program_id.as_ref()));
+        out.add(idx + 1)
+            .write(SolBytes::from_slice(PDA_MARKER.as_slice()));
+    }
+    idx + 2
+}
 
 /// Verify that `expected` matches `sha256(seeds || program_id ||
 /// "ProgramDerivedAddress")`.
@@ -43,27 +113,18 @@ pub fn verify_program_address(
 
     #[cfg(any(target_os = "solana", target_arch = "bpf"))]
     {
-        let n = seeds.len();
-
         // Build the input array: [seeds..., program_id, PDA_MARKER].
-        // Max 17 seeds + program_id + marker = 19 entries.
-        let mut slices = core::mem::MaybeUninit::<[&[u8]; MAX_PDA_SLICES]>::uninit();
-        let sptr = slices.as_mut_ptr() as *mut &[u8];
+        // Max 17 seeds + program_id + marker = 19 entries. The bump is already
+        // part of `seeds`, so no bump slot is added.
+        let mut slices =
+            core::mem::MaybeUninit::<[crate::svm_abi::SolBytes; MAX_PDA_SLICES]>::uninit();
+        let sptr = slices.as_mut_ptr() as *mut crate::svm_abi::SolBytes;
+        // SAFETY: `seeds.len() <= 17` (checked above), so `build_pda_input`
+        // writes within the 19-slot array.
+        let count = unsafe { build_pda_input(seeds, program_id, None, sptr) };
 
-        let mut i = 0;
-        while i < n {
-            // SAFETY: `i < n <= 17` so `sptr.add(i)` is within the 19-slot array.
-            unsafe { sptr.add(i).write(seeds[i]) };
-            i += 1;
-        }
-        // SAFETY: Slots `n` and `n+1` are within bounds (n <= 17, array has 19).
-        unsafe {
-            sptr.add(n).write(program_id.as_ref());
-            sptr.add(n + 1).write(PDA_MARKER.as_slice());
-        }
-
-        // SAFETY: All `n + 2` elements initialized above.
-        let input = unsafe { core::slice::from_raw_parts(sptr, n + 2) };
+        // SAFETY: `build_pda_input` initialized `count` elements.
+        let input = unsafe { core::slice::from_raw_parts(sptr, count) };
         let mut hash = core::mem::MaybeUninit::<[u8; 32]>::uninit();
 
         // SAFETY: On SBF, `&[u8]` has layout `(*const u8, u64)` which is
@@ -82,7 +143,7 @@ pub fn verify_program_address(
         if crate::keys_eq(unsafe { &*(hash.as_ptr() as *const Address) }, expected) {
             Ok(())
         } else {
-            Err(ProgramError::InvalidSeeds)
+            Err(ProgramError::from(crate::error::QuasarError::InvalidPda))
         }
     }
 
@@ -102,7 +163,7 @@ pub fn verify_program_address(
 ///
 /// Kani proof: `find_program_address_indices_within_bounds`.
 #[inline]
-pub fn based_try_find_program_address(
+pub fn try_find_program_address(
     seeds: &[&[u8]],
     program_id: &Address,
 ) -> Result<(Address, u8), ProgramError> {
@@ -115,39 +176,25 @@ pub fn based_try_find_program_address(
     #[cfg(any(target_os = "solana", target_arch = "bpf"))]
     {
         const CURVE25519_EDWARDS: u64 = 0;
-        let n = seeds.len();
-
         // Build the input array: [seeds..., bump, program_id, PDA_MARKER].
         // Max 16 seeds + bump + program_id + marker = 19 entries.
-        let mut slices = core::mem::MaybeUninit::<[&[u8]; MAX_PDA_SLICES]>::uninit();
-        let sptr = slices.as_mut_ptr() as *mut &[u8];
+        let mut slices =
+            core::mem::MaybeUninit::<[crate::svm_abi::SolBytes; MAX_PDA_SLICES]>::uninit();
+        let sptr = slices.as_mut_ptr() as *mut crate::svm_abi::SolBytes;
 
-        let mut i = 0;
-        while i < n {
-            // SAFETY: `i < n <= 16` so `sptr.add(i)` is within the 19-slot array.
-            unsafe { sptr.add(i).write(seeds[i]) };
-            i += 1;
-        }
-        // SAFETY: Slots `n+1` and `n+2` are within bounds (n <= 16, array has 19).
-        unsafe {
-            sptr.add(n + 1).write(program_id.as_ref());
-            sptr.add(n + 2).write(PDA_MARKER.as_slice());
-        }
-
-        // The bump slot points into bump_arr; only the byte changes per iteration.
+        // The bump slot holds a raw pointer to `bump_arr`; only the byte behind
+        // it changes per iteration.
         let mut bump_arr = [u8::MAX];
         let bump_ptr = bump_arr.as_mut_ptr();
-        // SAFETY: `sptr.add(n)` is within bounds. The `&[u8]` slice stored
-        // here points to `bump_arr` but is never read through Rust code;
-        // it is only consumed by `sol_sha256` as a raw `(*const u8, u64)`
-        // pair (SolBytes). The subsequent mutation of `bump_arr` via
-        // `bump_ptr.write()` is invisible to any Rust reference. This relies
-        // on the SBF ABI layout equivalence between `&[u8]` and `SolBytes`,
-        // which is validated by the module-level documentation.
-        unsafe { sptr.add(n).write(core::slice::from_raw_parts(bump_ptr, 1)) };
+        // SAFETY: `seeds.len() <= 16` (checked above), so `build_pda_input`
+        // writes within the 19-slot array. The bump slot stores a `SolBytes`
+        // value (not a `&[u8]`), so mutating the byte behind `bump_ptr` between
+        // hashes carries no borrow and is Tree-Borrows-clean.
+        let count =
+            unsafe { build_pda_input(seeds, program_id, Some(bump_ptr as *const u8), sptr) };
 
-        // SAFETY: All `n + 3` elements initialized above.
-        let input = unsafe { core::slice::from_raw_parts(sptr, n + 3) };
+        // SAFETY: `build_pda_input` initialized `count` elements.
+        let input = unsafe { core::slice::from_raw_parts(sptr, count) };
         let mut hash = core::mem::MaybeUninit::<[u8; 32]>::uninit();
 
         // u64 counter avoids per-iteration zero-extension on SBF.
@@ -188,7 +235,7 @@ pub fn based_try_find_program_address(
             bump -= 1;
         }
 
-        Err(ProgramError::InvalidSeeds)
+        Err(ProgramError::from(crate::error::QuasarError::InvalidPda))
     }
 
     #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
@@ -200,7 +247,7 @@ pub fn based_try_find_program_address(
 
 /// Verify `expected` is the canonical PDA for `seeds` and return its bump.
 ///
-/// This is the verification form of [`based_try_find_program_address`]. It
+/// This is the verification form of [`try_find_program_address`]. It
 /// avoids materializing the derived `Address` only to compare it at the
 /// callsite.
 #[inline]
@@ -216,31 +263,23 @@ pub fn verify_canonical_program_address(
     #[cfg(any(target_os = "solana", target_arch = "bpf"))]
     {
         const CURVE25519_EDWARDS: u64 = 0;
-        let n = seeds.len();
+        let mut slices =
+            core::mem::MaybeUninit::<[crate::svm_abi::SolBytes; MAX_PDA_SLICES]>::uninit();
+        let sptr = slices.as_mut_ptr() as *mut crate::svm_abi::SolBytes;
 
-        let mut slices = core::mem::MaybeUninit::<[&[u8]; MAX_PDA_SLICES]>::uninit();
-        let sptr = slices.as_mut_ptr() as *mut &[u8];
-
-        let mut i = 0;
-        while i < n {
-            // SAFETY: `i < n <= 16`, so this writes within the 19-slot array.
-            unsafe { sptr.add(i).write(seeds[i]) };
-            i += 1;
-        }
-        // SAFETY: Slots `n+1` and `n+2` are within bounds because `n <= 16`.
-        unsafe {
-            sptr.add(n + 1).write(program_id.as_ref());
-            sptr.add(n + 2).write(PDA_MARKER.as_slice());
-        }
-
+        // The bump slot holds a raw pointer to `bump_arr`; only the byte behind
+        // it changes per iteration.
         let mut bump_arr = [u8::MAX];
         let bump_ptr = bump_arr.as_mut_ptr();
-        // SAFETY: Slot `n` is within bounds; the syscall consumes this as raw
-        // SolBytes and only the byte behind the pointer changes between hashes.
-        unsafe { sptr.add(n).write(core::slice::from_raw_parts(bump_ptr, 1)) };
+        // SAFETY: `seeds.len() <= 16` (checked above), so `build_pda_input`
+        // writes within the 19-slot array. The bump slot stores a `SolBytes`
+        // value (not a `&[u8]`), so mutating the byte behind `bump_ptr` between
+        // hashes carries no borrow and is Tree-Borrows-clean.
+        let count =
+            unsafe { build_pda_input(seeds, program_id, Some(bump_ptr as *const u8), sptr) };
 
-        // SAFETY: All `n + 3` elements are initialized above.
-        let input = unsafe { core::slice::from_raw_parts(sptr, n + 3) };
+        // SAFETY: `build_pda_input` initialized `count` elements.
+        let input = unsafe { core::slice::from_raw_parts(sptr, count) };
         let mut hash = core::mem::MaybeUninit::<[u8; 32]>::uninit();
         let mut bump: u64 = u8::MAX as u64;
 
@@ -248,7 +287,7 @@ pub fn verify_canonical_program_address(
             // SAFETY: `bump_ptr` points to `bump_arr[0]`.
             unsafe { bump_ptr.write(bump as u8) };
 
-            // SAFETY: Same SBF slice layout as `based_try_find_program_address`.
+            // SAFETY: Same SBF slice layout as `try_find_program_address`.
             unsafe {
                 sol_sha256(
                     input as *const _ as *const u8,
@@ -282,7 +321,7 @@ pub fn verify_canonical_program_address(
             bump -= 1;
         }
 
-        Err(ProgramError::InvalidSeeds)
+        Err(ProgramError::from(crate::error::QuasarError::InvalidPda))
     }
 
     #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
@@ -297,7 +336,7 @@ pub fn verify_canonical_program_address(
 /// Iterates bump values from 255 down to 0, hashing with `sol_sha256` and
 /// comparing each hash against `expected` via [`keys_eq`](crate::keys_eq).
 ///
-/// This replaces [`based_try_find_program_address`]'s per-iteration
+/// This replaces [`try_find_program_address`]'s per-iteration
 /// `sol_curve_validate_point` syscall (~100 CU) with a `keys_eq` comparison
 /// (~10 CU), saving ~90 CU per attempt while producing identical results.
 ///
@@ -305,7 +344,7 @@ pub fn verify_canonical_program_address(
 ///
 /// # When to use
 ///
-/// Use this instead of [`based_try_find_program_address`] whenever the
+/// Use this instead of [`try_find_program_address`] whenever the
 /// expected PDA address is already known, which is always the case during
 /// account parsing (the account is passed in the transaction).
 ///
@@ -328,8 +367,9 @@ pub fn verify_canonical_program_address(
 /// that lies on the ed25519 curve would produce a bump value for an
 /// invalid PDA. The framework's codegen never calls this function in
 /// `#[account(init)]` contexts; init paths use
-/// [`based_try_find_program_address`] which includes the on-curve check.
+/// [`try_find_program_address`] which includes the on-curve check.
 #[inline]
+#[doc(hidden)]
 pub fn find_bump_for_address(
     seeds: &[&[u8]],
     program_id: &Address,
@@ -343,39 +383,25 @@ pub fn find_bump_for_address(
 
     #[cfg(any(target_os = "solana", target_arch = "bpf"))]
     {
-        let n = seeds.len();
-
         // Build the input array: [seeds..., bump, program_id, PDA_MARKER].
         // Max 16 seeds + bump + program_id + marker = 19 entries.
-        let mut slices = core::mem::MaybeUninit::<[&[u8]; MAX_PDA_SLICES]>::uninit();
-        let sptr = slices.as_mut_ptr() as *mut &[u8];
+        let mut slices =
+            core::mem::MaybeUninit::<[crate::svm_abi::SolBytes; MAX_PDA_SLICES]>::uninit();
+        let sptr = slices.as_mut_ptr() as *mut crate::svm_abi::SolBytes;
 
-        let mut i = 0;
-        while i < n {
-            // SAFETY: `i < n <= 16` so `sptr.add(i)` is within the 19-slot array.
-            unsafe { sptr.add(i).write(seeds[i]) };
-            i += 1;
-        }
-        // SAFETY: Slots `n+1` and `n+2` are within bounds (n <= 16, array has 19).
-        unsafe {
-            sptr.add(n + 1).write(program_id.as_ref());
-            sptr.add(n + 2).write(PDA_MARKER.as_slice());
-        }
-
-        // The bump slot points into bump_arr; only the byte changes per iteration.
+        // The bump slot holds a raw pointer to `bump_arr`; only the byte behind
+        // it changes per iteration.
         let mut bump_arr = [u8::MAX];
         let bump_ptr = bump_arr.as_mut_ptr();
-        // SAFETY: `sptr.add(n)` is within bounds. The `&[u8]` slice stored
-        // here points to `bump_arr` but is never read through Rust code;
-        // it is only consumed by `sol_sha256` as a raw `(*const u8, u64)`
-        // pair (SolBytes). The subsequent mutation of `bump_arr` via
-        // `bump_ptr.write()` is invisible to any Rust reference. This relies
-        // on the SBF ABI layout equivalence between `&[u8]` and `SolBytes`,
-        // which is validated by the module-level documentation.
-        unsafe { sptr.add(n).write(core::slice::from_raw_parts(bump_ptr, 1)) };
+        // SAFETY: `seeds.len() <= 16` (checked above), so `build_pda_input`
+        // writes within the 19-slot array. The bump slot stores a `SolBytes`
+        // value (not a `&[u8]`), so mutating the byte behind `bump_ptr` between
+        // hashes carries no borrow and is Tree-Borrows-clean.
+        let count =
+            unsafe { build_pda_input(seeds, program_id, Some(bump_ptr as *const u8), sptr) };
 
-        // SAFETY: All `n + 3` elements initialized above.
-        let input = unsafe { core::slice::from_raw_parts(sptr, n + 3) };
+        // SAFETY: `build_pda_input` initialized `count` elements.
+        let input = unsafe { core::slice::from_raw_parts(sptr, count) };
         let mut hash = core::mem::MaybeUninit::<[u8; 32]>::uninit();
 
         // u64 counter avoids per-iteration zero-extension on SBF.
@@ -410,7 +436,7 @@ pub fn find_bump_for_address(
             bump -= 1;
         }
 
-        Err(ProgramError::InvalidSeeds)
+        Err(ProgramError::from(crate::error::QuasarError::InvalidPda))
     }
 
     #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
@@ -447,9 +473,11 @@ pub const fn find_program_address_const(seeds: &[&[u8]], program_id: &Address) -
 
 /// Seed values that can be borrowed as PDA seed bytes without allocation.
 pub trait SeedBytes {
+    /// Borrows this value's canonical PDA seed byte representation.
     fn as_seed_bytes(&self) -> &[u8];
 }
 
+/// Borrows a supported value as PDA seed bytes.
 #[inline(always)]
 pub fn seed_bytes<T: ?Sized + SeedBytes>(value: &T) -> &[u8] {
     value.as_seed_bytes()

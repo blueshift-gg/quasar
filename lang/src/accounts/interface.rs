@@ -17,17 +17,25 @@ impl<T: ProgramInterface> AsAccountView for Interface<T> {
     }
 }
 
+// SAFETY: `Interface<T>` is `#[repr(transparent)]` over `AccountView` plus
+// `PhantomData<T>`, so the pointer cast preserves layout.
+unsafe impl<T: ProgramInterface> crate::traits::StaticView for Interface<T> {}
+
 impl<T: ProgramInterface> crate::account_load::AccountLoad for Interface<T> {
     const IS_EXECUTABLE: bool = true;
 
     #[inline(always)]
     fn check(view: &AccountView) -> Result<(), ProgramError> {
         if crate::utils::hint::unlikely(!T::matches(view.address())) {
+            // Alloc-free so the diagnostic works under `no_alloc!`: log a static
+            // message plus the actual (non-matching) address bytes.
             #[cfg(feature = "debug")]
-            crate::prelude::log(&::alloc::format!(
-                "Program interface mismatch: address {} does not match any allowed programs",
-                view.address()
-            ));
+            {
+                crate::prelude::log(
+                    "Program interface mismatch: address does not match any allowed program:",
+                );
+                crate::log::log_data(&[view.address().as_array()]);
+            }
             return Err(ProgramError::IncorrectProgramId);
         }
         Ok(())

@@ -15,7 +15,10 @@ pub struct Item {
 pub struct Bad {
     #[account(mut)]
     pub payer: Signer,
-    #[account(mut, init, payer = payer, seeds = Item::seeds(item.namespace), bump)]
+    // The PDA is derived from `item.namespace`, but `item` is the account being
+    // initialized — its data does not exist at address-derivation time, so the
+    // self-referential seed must fail to compile.
+    #[account(mut, init, payer = payer, address = Item::seeds(item.namespace))]
     pub item: Account<Item>,
     pub system_program: Program<SystemProgram>,
 }

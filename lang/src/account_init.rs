@@ -34,6 +34,11 @@ pub struct InitCtx<'a, R: RentAccess> {
 /// ```text
 /// <FieldTy as AccountInit>::init(ctx, &params)?;
 /// ```
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot be initialized with `init`",
+    label = "`init` requires `Account<T>` or `InterfaceAccount<T>`",
+    note = "only program-owned data accounts (or SPL Token/Mint) implement `AccountInit`"
+)]
 pub trait AccountInit {
     /// Params assembled by behavior groups before init.
     type InitParams<'a>: Default;

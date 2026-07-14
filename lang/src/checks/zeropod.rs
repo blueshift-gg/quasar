@@ -8,6 +8,7 @@ use {
 /// Self-guarding: includes its own range check before slicing, so it can be
 /// used standalone without `checks::DataLen`.
 pub trait ZeroPod: AccountLayout {
+    /// Validates the schema using the unchecked unique-account fast path.
     #[inline(always)]
     fn check(view: &AccountView) -> Result<(), ProgramError> {
         // SAFETY: This is the unchecked fast path used when generated parsing
@@ -16,12 +17,14 @@ pub trait ZeroPod: AccountLayout {
         Self::check_data(data)
     }
 
+    /// Validates the schema through a runtime-checked data borrow.
     #[inline(always)]
     fn check_checked(view: &AccountView) -> Result<(), ProgramError> {
         let data = view.try_borrow()?;
         Self::check_data(&data)
     }
 
+    /// Validates the schema in an already borrowed data slice.
     #[inline(always)]
     fn check_data(data: &[u8]) -> Result<(), ProgramError> {
         let offset = Self::DATA_OFFSET;

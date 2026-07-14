@@ -15,28 +15,31 @@
 //! `path::Args::builder()` + `<path::Behavior as AccountBehavior<T>>`.
 //!
 //! See `quasar_lang::account_behavior::AccountBehavior` for the plugin
-//! contract.
+//! contract, and `ARCHITECTURE.md` (section 2) for how this pipeline fits the
+//! rest of the compiler.
 
 pub(crate) mod emit;
-mod plan;
 pub(crate) mod resolve;
 mod syntax;
 
-pub(crate) use syntax::InstructionArg;
+pub(crate) use syntax::{parse_struct_instruction_args, InstructionArg};
 use {
     crate::helpers::strip_generics,
-    plan::build_accounts_plan,
+    emit::entry::build_accounts_plan,
     proc_macro::TokenStream,
     quote::{format_ident, quote},
-    syn::{
-        parse_macro_input, parse_quote, Data, DeriveInput, Expr, ExprCall, Fields, GenericParam,
-        Member, Type,
-    },
-    syntax::{generate_instruction_arg_extraction, parse_struct_instruction_args},
+    syn::{parse_quote, Data, DeriveInput, Fields, GenericParam, Type},
 };
 
 pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
+    derive_accounts_inner(input.into()).into()
+}
+
+pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    let input = match syn::parse2::<DeriveInput>(input) {
+        Ok(input) => input,
+        Err(e) => return e.to_compile_error(),
+    };
     let name = &input.ident;
     let bumps_name = format_ident!("{}Bumps", name);
 
@@ -58,9 +61,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
             }
             GenericParam::Lifetime(_) => "",
         };
-        return syn::Error::new_spanned(param, message)
-            .to_compile_error()
-            .into();
+        return syn::Error::new_spanned(param, message).to_compile_error();
     }
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let impl_generics_ts = quote! { #impl_generics };
@@ -90,71 +91,86 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
                     name,
                     "Accounts can only be derived for structs with named fields",
                 )
-                .to_compile_error()
-                .into();
+                .to_compile_error();
             }
         },
         _ => {
             return syn::Error::new_spanned(name, "Accounts can only be derived for structs")
-                .to_compile_error()
-                .into();
+                .to_compile_error();
         }
     };
 
     let instruction_args = match parse_struct_instruction_args(&input) {
         Ok(args) => args,
-        Err(e) => return e.to_compile_error().into(),
+        Err(e) => return e.to_compile_error(),
     };
 
     // --- Pipeline: syntax -> resolve -> plan -> emit ---
 
-    let semantics = match resolve::lower_semantics(fields) {
-        Ok(semantics) => semantics,
-        Err(e) => return e.to_compile_error().into(),
-    };
+    let semantics =
+        match resolve::lower_semantics(fields, instruction_args.as_deref().unwrap_or(&[])) {
+            Ok(semantics) => semantics,
+            Err(e) => return e.to_compile_error(),
+        };
 
-    let typed_plan = match resolve::planner::build_plan(&semantics) {
+    let typed_plan = match resolve::planner::build_plan(
+        &semantics,
+        instruction_args.as_deref().unwrap_or(&[]),
+        instruction_args.is_some(),
+    ) {
         Ok(plan) => plan,
-        Err(e) => return e.to_compile_error().into(),
+        Err(e) => return e.to_compile_error(),
     };
 
     let emit_cx = emit::EmitCx {
         bumps_name: bumps_name.clone(),
     };
 
-    let accounts_plan = build_accounts_plan(&semantics, &typed_plan, &emit_cx);
-    let plan::AccountsPlan {
+    let accounts_plan = build_accounts_plan(&typed_plan, &emit_cx);
+    let emit::entry::AccountsPlan {
         parse_steps,
         count_expr,
         parse_body,
         direct_parse_body,
     } = accounts_plan;
 
-    // Instruction arg extraction
-    let ix_arg_extraction = if let Some(ref ix_args) = instruction_args {
-        generate_instruction_arg_extraction(ix_args)
-    } else {
-        quote! {}
-    };
+    // Instruction arg extraction: emitted ONCE as `Self::__extract_ix_args` and
+    // called (destructured) from each splice site.
+    let ix_args_slice = instruction_args.as_deref().unwrap_or(&[]);
+    let ix_arg_extraction_fn = emit::ix_args::emit_extract_ix_args_fn(ix_args_slice);
+    let ix_arg_extraction_call = emit::ix_args::emit_extract_ix_args_call(ix_args_slice);
 
-    let bumps_struct = emit::parse::emit_bump_struct_def(&semantics, &emit_cx);
+    let bumps_struct = emit::parse::emit_bump_struct_def(&typed_plan.fields, &emit_cx);
     let signer_helpers_impl = emit_signer_helpers_impl(SignerHelpersCtx {
         name,
         bumps_name: &bumps_name,
-        semantics: &semantics,
+        plan: &typed_plan,
         impl_generics: &impl_generics_ts,
         ty_generics: &ty_generics_ts,
         where_clause: &where_clause_ts,
-        ix_arg_extraction: &ix_arg_extraction,
-        has_instruction_args: instruction_args.is_some(),
+        ix_arg_extraction: &ix_arg_extraction_call,
+        has_instruction_args: typed_plan.has_instruction_args,
     });
-    let epilogue_method = emit::parse::emit_epilogue(&semantics, &typed_plan);
-    let has_epilogue_expr = emit::parse::emit_has_epilogue_typed(&typed_plan, &semantics);
+    let epilogue_method = emit::parse::emit_epilogue(&typed_plan);
+    let has_epilogue_expr = emit::parse::emit_has_epilogue_typed(&typed_plan);
 
-    let client_macro = crate::client_macro::generate_accounts_macro(name, &semantics);
+    let client_macro = crate::client_macro::generate_accounts_macro(name, &typed_plan);
 
     // IDL accounts meta fragment (feature-gated behind `idl-build`)
-    let idl_accounts_meta = emit_idl_accounts_meta(name, &semantics, &instruction_args);
+    let idl_accounts_meta = emit_idl_accounts_meta(name, &typed_plan);
+
+    // Typed `EventCpi` impl (only for structs with an event-authority field).
+    // Computed before `emit_accounts_output` moves the generics. A missing
+    // program field yields a `compile_error!` that is appended to (not
+    // substituted for) the account impls, so the single spanned message
+    // surfaces without an E0277 cascade from a struct left without impls.
+    let event_cpi_impl = emit_event_cpi_impl(
+        name,
+        &typed_plan,
+        &impl_generics_ts,
+        &ty_generics_ts,
+        &where_clause_ts,
+    );
 
     let main_output = emit::emit_accounts_output(emit::AccountsOutput {
         name,
@@ -165,7 +181,7 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         parse_impl_generics: parse_impl_generics_ts,
         parse_where_clause: parse_where_clause_ts,
         count_expr,
-        needs_event_cpi_expr: emit_needs_event_cpi_expr(&semantics),
+        needs_event_cpi_expr: emit_needs_event_cpi_expr(&typed_plan),
         parse_steps,
         parse_body,
         direct_parse_body,
@@ -174,48 +190,116 @@ pub(crate) fn derive_accounts(input: TokenStream) -> TokenStream {
         epilogue_method,
         has_epilogue_expr,
         client_macro,
-        ix_arg_extraction,
+        ix_arg_extraction: ix_arg_extraction_call,
+        extract_ix_args_fn: ix_arg_extraction_fn,
+        assert_builder_fn: emit::typed_emit::emit_assert_builder_fn(
+            typed_plan.fields.iter().any(|fp| !fp.behaviors.is_empty()),
+        ),
     });
 
-    TokenStream::from(quote::quote! {
+    quote::quote! {
         #main_output
         #idl_accounts_meta
-    })
+        #event_cpi_impl
+    }
+}
+
+/// Emit the typed `EventCpi` impl for a struct that carries both an
+/// event-authority field and a program field, wiring `emit_cpi!` to the
+/// program's self-CPI. Reads the plan's per-field event-CPI terms and wrapper
+/// kinds (never `FieldSemantics`):
+///
+/// - authority field = the field the plan marked `EventCpiTerm::EventAuthority`
+///   (named `event_authority` or typed `EventAuthority`);
+/// - program field   = the first `Program<T>` field, detected by type so it
+///   need not be named `program`.
+///
+/// A struct with an event-authority field but no program field is a spanned
+/// error (previously this silently generated nothing).
+fn emit_event_cpi_impl(
+    name: &syn::Ident,
+    plan: &resolve::specs::AccountsPlanTyped,
+    impl_generics: &proc_macro2::TokenStream,
+    ty_generics: &proc_macro2::TokenStream,
+    where_clause: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
+    use resolve::{specs::EventCpiTerm, wrapper::WrapperKind};
+
+    let Some(authority_field) = plan
+        .fields
+        .iter()
+        .zip(plan.event_cpi.iter())
+        .find(|(_, term)| matches!(term, EventCpiTerm::EventAuthority))
+        .map(|(fp, _)| &fp.ident)
+    else {
+        // No event authority: this struct does not participate in event CPI.
+        return quote! {};
+    };
+
+    let Some(program_field) = plan
+        .fields
+        .iter()
+        .find(|fp| fp.wrapper == WrapperKind::Program)
+        .map(|fp| &fp.ident)
+    else {
+        return syn::Error::new_spanned(
+            authority_field,
+            "event CPI requires a `program: Program<...>` field alongside `event_authority`",
+        )
+        .to_compile_error();
+    };
+
+    quote! {
+        impl #impl_generics #krate::event::EventCpi for #name #ty_generics #where_clause {
+            const EVENT_AUTHORITY_BUMP: u8 = crate::EventAuthority::BUMP;
+            #[inline(always)]
+            fn event_program(&self) -> &#krate::__internal::AccountView {
+                self.#program_field.to_account_view()
+            }
+            #[inline(always)]
+            fn event_authority(&self) -> &#krate::__internal::AccountView {
+                self.#authority_field.to_account_view()
+            }
+        }
+    }
 }
 
 /// Emit an `AccountsMetaFragment` inventory submission for this accounts
 /// struct.
 fn emit_idl_accounts_meta(
     name: &syn::Ident,
-    semantics: &[resolve::FieldSemantics],
-    instruction_args: &Option<Vec<InstructionArg>>,
+    plan: &resolve::specs::AccountsPlanTyped,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     use quote::quote;
 
     let struct_name_str = name.to_string();
-    let ix_args = instruction_args.as_deref().unwrap_or(&[]);
 
-    let account_nodes: Vec<proc_macro2::TokenStream> = semantics
+    let account_nodes: Vec<proc_macro2::TokenStream> = plan
+        .fields
         .iter()
-        .map(|sem| {
-            let field_name = crate::helpers::snake_to_camel(&sem.core.ident.to_string());
-            let optional = sem.core.optional;
-            let writable = sem.is_writable();
-            let signer = is_signer_type(&sem.core.effective_ty);
+        .map(|fp| {
+            let field_name = crate::helpers::snake_to_camel(&fp.ident.to_string());
+            let optional = fp.optional;
+            let writable = fp.writable;
+            let signer = fp.signer;
 
-            let resolver_tokens = emit_idl_resolver(sem, semantics, ix_args).unwrap_or_else(
-                || quote! { quasar_lang::idl_build::__reexport::IdlResolver::Input {} },
-            );
+            let resolver_tokens = fp
+                .idl_resolver
+                .as_ref()
+                .map(emit_idl_resolver)
+                .unwrap_or_else(|| quote! { #krate::idl_build::__reexport::IdlResolver::Input {} });
+            let node_docs = crate::helpers::docs_tokens_from_lines(&fp.docs);
 
             quote! {
-                quasar_lang::idl_build::__reexport::IdlAccountNode {
-                    name: quasar_lang::idl_build::s(#field_name),
-                    client_type: None,
+                #krate::idl_build::__reexport::IdlAccountNode {
+                    name: #krate::idl_build::s(#field_name),
                     optional: #optional,
-                    writable: quasar_lang::idl_build::__reexport::AccountFlag::Fixed(#writable),
-                    signer: quasar_lang::idl_build::__reexport::AccountFlag::Fixed(#signer),
+                    writable: #krate::idl_build::__reexport::AccountFlag::Fixed(#writable),
+                    signer: #krate::idl_build::__reexport::AccountFlag::Fixed(#signer),
                     resolver: #resolver_tokens,
-                    docs: quasar_lang::idl_build::Vec::new(),
+                    docs: #node_docs,
                 }
             }
         })
@@ -223,212 +307,105 @@ fn emit_idl_accounts_meta(
 
     quote! {
         #[cfg(feature = "idl-build")]
-        quasar_lang::__private_inventory::submit! {
-            quasar_lang::idl_build::AccountsMetaFragment(|| {
+        #krate::__private_inventory::submit! {
+            #krate::idl_build::AccountsMetaFragment(|| {
                 (
-                    quasar_lang::idl_build::s(#struct_name_str),
-                    quasar_lang::idl_build::vec![#(#account_nodes),*],
+                    #krate::idl_build::s(#struct_name_str),
+                    #krate::idl_build::vec![#(#account_nodes),*],
                 )
             })
         }
     }
 }
 
-fn emit_idl_resolver(
-    sem: &resolve::FieldSemantics,
-    semantics: &[resolve::FieldSemantics],
-    instruction_args: &[InstructionArg],
-) -> Option<proc_macro2::TokenStream> {
-    let Expr::Call(call) = sem.address.as_ref()? else {
-        return None;
-    };
-    emit_typed_seeds_resolver(call, semantics, instruction_args)
-}
+/// Format an already-resolved typed-seeds PDA resolver into IDL tokens. All
+/// seed resolution happened once in the planner; this is a pure formatter.
+fn emit_idl_resolver(resolver: &resolve::specs::IdlResolverPlan) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
+    let account_ty = &resolver.account_ty;
 
-fn emit_typed_seeds_resolver(
-    call: &ExprCall,
-    semantics: &[resolve::FieldSemantics],
-    instruction_args: &[InstructionArg],
-) -> Option<proc_macro2::TokenStream> {
-    let Expr::Path(path) = call.func.as_ref() else {
-        return None;
-    };
-    let mut segments: Vec<_> = path.path.segments.iter().collect();
-    let last = segments.pop()?;
-    if last.ident != "seeds" || segments.is_empty() {
-        return None;
-    }
-
-    let account_ty_segments = segments.iter().map(|segment| &segment.ident);
-    let account_ty = quote! { #(#account_ty_segments)::* };
-    let mut seeds = Vec::with_capacity(call.args.len() + 1);
-    seeds.push(quote! {
-        quasar_lang::idl_build::__reexport::IdlPdaSeed::Const {
-            value: quasar_lang::idl_build::Vec::from(
-                <#account_ty as quasar_lang::traits::HasSeeds>::SEED_PREFIX
+    let mut seed_tokens = Vec::with_capacity(resolver.seeds.len() + 1);
+    seed_tokens.push(quote! {
+        #krate::idl_build::__reexport::IdlPdaSeed::Const {
+            value: #krate::idl_build::Vec::from(
+                <#account_ty as #krate::traits::HasSeeds>::SEED_PREFIX
             ),
         }
     });
-
-    for arg in &call.args {
-        let seed = emit_idl_pda_seed(arg, semantics, instruction_args)?;
-        seeds.push(seed);
+    for seed in &resolver.seeds {
+        seed_tokens.push(emit_idl_pda_seed(seed));
     }
 
-    Some(quote! {
-        quasar_lang::idl_build::__reexport::IdlResolver::Pda {
-            program: quasar_lang::idl_build::__reexport::IdlPdaProgram::ProgramId {},
-            seeds: quasar_lang::idl_build::vec![#(#seeds),*],
-            bump: None,
-        }
-    })
-}
-
-fn emit_idl_pda_seed(
-    expr: &Expr,
-    semantics: &[resolve::FieldSemantics],
-    instruction_args: &[InstructionArg],
-) -> Option<proc_macro2::TokenStream> {
-    let expr = strip_seed_into(expr);
-
-    if let Some(path) = account_address_seed_path(expr, semantics) {
-        return Some(quote! {
-            quasar_lang::idl_build::__reexport::IdlPdaSeed::Account {
-                path: quasar_lang::idl_build::s(#path),
-            }
-        });
-    }
-
-    if let Some((path, account, field)) = account_field_seed_path(expr, semantics) {
-        return Some(quote! {
-            quasar_lang::idl_build::__reexport::IdlPdaSeed::AccountField {
-                path: quasar_lang::idl_build::s(#path),
-                account: quasar_lang::idl_build::s(#account),
-                field: quasar_lang::idl_build::s(#field),
-            }
-        });
-    }
-
-    if let Some(arg) = instruction_arg_seed(expr, instruction_args) {
-        let path = arg.name.to_string();
-        let idl_type = crate::helpers::type_to_idl_type_tokens(&arg.ty);
-        return Some(quote! {
-            quasar_lang::idl_build::__reexport::IdlPdaSeed::Arg {
-                path: quasar_lang::idl_build::s(#path),
-                ty: #idl_type,
-                encoding: None,
-            }
-        });
-    }
-
-    Some(quote! {
-        quasar_lang::idl_build::__reexport::IdlPdaSeed::Const {
-            value: quasar_lang::idl_build::Vec::from(
-                quasar_lang::pda::seed_bytes(&(#expr))
-            ),
-        }
-    })
-}
-
-fn strip_seed_into(expr: &Expr) -> &Expr {
-    if let Expr::MethodCall(call) = expr {
-        if call.method == "into" && call.args.is_empty() {
-            return strip_seed_into(&call.receiver);
+    quote! {
+        #krate::idl_build::__reexport::IdlResolver::Pda {
+            program: #krate::idl_build::__reexport::IdlPdaProgram::ProgramId {},
+            seeds: #krate::idl_build::vec![#(#seed_tokens),*],
         }
     }
-    expr
 }
 
-fn account_address_seed_path(expr: &Expr, semantics: &[resolve::FieldSemantics]) -> Option<String> {
-    let Expr::MethodCall(call) = expr else {
-        return None;
-    };
-    if call.method != "address" || !call.args.is_empty() {
-        return None;
-    }
-    let Expr::Path(path) = call.receiver.as_ref() else {
-        return None;
-    };
-    if path.path.segments.len() != 1 {
-        return None;
-    }
-    let ident = &path.path.segments.first()?.ident;
-    has_account_field(ident, semantics).then(|| crate::helpers::snake_to_camel(&ident.to_string()))
-}
-
-fn account_field_seed_path(
-    expr: &Expr,
-    semantics: &[resolve::FieldSemantics],
-) -> Option<(String, String, String)> {
-    let mut fields = Vec::new();
-    let mut cur = expr;
-
-    loop {
-        match cur {
-            Expr::Field(field) => {
-                let name = match &field.member {
-                    Member::Named(ident) => ident.to_string(),
-                    Member::Unnamed(_) => return None,
-                };
-                fields.push(name);
-                cur = &field.base;
-            }
-            Expr::Path(path) if path.path.segments.len() == 1 => {
-                let base = &path.path.segments.first()?.ident;
-                let sem = semantics.iter().find(|sem| sem.core.ident == *base)?;
-                if fields.is_empty() {
-                    return None;
+/// Format one resolved `IdlSeedPlan` into IDL tokens.
+fn emit_idl_pda_seed(seed: &resolve::specs::IdlSeedPlan) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
+    use resolve::specs::IdlSeedPlan;
+    match seed {
+        IdlSeedPlan::AccountAddr { base } => {
+            let path = crate::helpers::snake_to_camel(&base.to_string());
+            quote! {
+                #krate::idl_build::__reexport::IdlPdaSeed::Account {
+                    path: #krate::idl_build::s(#path),
                 }
-                fields.reverse();
-                let path = crate::helpers::snake_to_camel(&base.to_string());
-                let account = account_type_name(sem.core.inner_ty.as_ref()?)?;
-                return Some((path, account, fields.join(".")));
             }
-            _ => return None,
         }
+        IdlSeedPlan::AccountField {
+            base,
+            account,
+            field,
+        } => {
+            let path = crate::helpers::snake_to_camel(&base.to_string());
+            quote! {
+                #krate::idl_build::__reexport::IdlPdaSeed::AccountField {
+                    path: #krate::idl_build::s(#path),
+                    account: #krate::idl_build::s(#account),
+                    field: #krate::idl_build::s(#field),
+                }
+            }
+        }
+        IdlSeedPlan::IxArg { name, ty } => {
+            let path = name.to_string();
+            let idl_type = crate::idl::type_to_idl_type_tokens(ty);
+            quote! {
+                #krate::idl_build::__reexport::IdlPdaSeed::Arg {
+                    path: #krate::idl_build::s(#path),
+                    ty: #idl_type,
+                }
+            }
+        }
+        IdlSeedPlan::Const { expr } => quote! {
+            #krate::idl_build::__reexport::IdlPdaSeed::Const {
+                value: #krate::idl_build::Vec::from(
+                    #krate::pda::seed_bytes(&(#expr))
+                ),
+            }
+        },
     }
 }
 
-fn instruction_arg_seed<'a>(
-    expr: &Expr,
-    instruction_args: &'a [InstructionArg],
-) -> Option<&'a InstructionArg> {
-    let Expr::Path(path) = expr else {
-        return None;
-    };
-    if path.path.segments.len() != 1 {
-        return None;
-    }
-    let ident = &path.path.segments.first()?.ident;
-    instruction_args.iter().find(|arg| arg.name == *ident)
-}
-
-fn has_account_field(ident: &syn::Ident, semantics: &[resolve::FieldSemantics]) -> bool {
-    semantics.iter().any(|sem| sem.core.ident == *ident)
-}
-
-fn account_type_name(ty: &Type) -> Option<String> {
-    let Type::Path(path) = ty else {
-        return None;
-    };
-    path.path
-        .segments
-        .last()
-        .map(|segment| segment.ident.to_string())
-}
-
-fn emit_needs_event_cpi_expr(semantics: &[resolve::FieldSemantics]) -> proc_macro2::TokenStream {
-    let terms: Vec<proc_macro2::TokenStream> = semantics
+fn emit_needs_event_cpi_expr(plan: &resolve::specs::AccountsPlanTyped) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
+    use resolve::specs::EventCpiTerm;
+    // Only fields that can contribute `true` are ORed in; plain single fields
+    // (`Never`) would only add redundant `|| false`, so they are dropped.
+    let terms: Vec<proc_macro2::TokenStream> = plan
+        .event_cpi
         .iter()
-        .map(|sem| match sem.core.kind {
-            resolve::FieldKind::Composite => {
-                let inner_ty = composite_event_ty(&sem.core.effective_ty);
-                quote! { <#inner_ty as AccountCount>::NEEDS_EVENT_CPI }
+        .filter_map(|term| match term {
+            EventCpiTerm::Composite(ty) => {
+                let inner_ty = composite_event_ty(ty);
+                Some(quote! { <#inner_ty as #krate::traits::AccountCount>::NEEDS_EVENT_CPI })
             }
-            resolve::FieldKind::Single if is_event_cpi_field(sem) => {
-                quote! { true }
-            }
-            resolve::FieldKind::Single => quote! { false },
+            EventCpiTerm::EventAuthority => Some(quote! { true }),
+            EventCpiTerm::Never => None,
         })
         .collect();
 
@@ -438,7 +415,7 @@ fn emit_needs_event_cpi_expr(semantics: &[resolve::FieldSemantics]) -> proc_macr
 struct SignerHelpersCtx<'a> {
     name: &'a syn::Ident,
     bumps_name: &'a syn::Ident,
-    semantics: &'a [resolve::FieldSemantics],
+    plan: &'a resolve::specs::AccountsPlanTyped,
     impl_generics: &'a proc_macro2::TokenStream,
     ty_generics: &'a proc_macro2::TokenStream,
     where_clause: &'a proc_macro2::TokenStream,
@@ -447,10 +424,11 @@ struct SignerHelpersCtx<'a> {
 }
 
 fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let SignerHelpersCtx {
         name,
         bumps_name,
-        semantics,
+        plan,
         impl_generics,
         ty_generics,
         where_clause,
@@ -458,25 +436,22 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
         has_instruction_args,
     } = ctx;
 
-    let field_refs: Vec<proc_macro2::TokenStream> = semantics
+    let field_refs: Vec<proc_macro2::TokenStream> = plan
+        .fields
         .iter()
-        .map(|sem| {
-            let field_name = &sem.core.ident;
+        .map(|fp| {
+            let field_name = &fp.ident;
             quote! { let #field_name = &self.#field_name; }
         })
         .collect();
 
-    let signer_methods: Vec<proc_macro2::TokenStream> = semantics
+    let signer_methods: Vec<proc_macro2::TokenStream> = plan
+        .fields
         .iter()
-        .filter_map(|sem| {
-            let field_name = &sem.core.ident;
-            if !matches!(sem.core.kind, resolve::FieldKind::Single) {
-                return None;
-            }
-            if !sem.address.as_ref().is_some_and(is_seed_expr) {
-                return None;
-            }
-            let addr_expr = sem.address.as_ref()?;
+        .filter_map(|fp| {
+            let field_name = &fp.ident;
+            let signer_helper = fp.signer_helper.as_ref()?;
+            let addr_expr = &signer_helper.addr_expr;
             let method_name = format_ident!("{}_signer", field_name);
             if has_instruction_args {
                 Some(quote! {
@@ -487,8 +462,8 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
                         bumps: &'__quasar_seed #bumps_name,
                         data: &'__quasar_seed [u8],
                     ) -> Result<
-                        impl quasar_lang::cpi::CpiSignerSeeds + '__quasar_seed,
-                        quasar_lang::prelude::ProgramError,
+                        impl #krate::cpi::CpiSignerSeeds + '__quasar_seed,
+                        #krate::prelude::ProgramError,
                     > {
                         let __ix_data = data;
                         #ix_arg_extraction
@@ -503,7 +478,7 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
                     pub fn #method_name<'__quasar_seed>(
                         &'__quasar_seed self,
                         bumps: &'__quasar_seed #bumps_name,
-                    ) -> impl quasar_lang::cpi::CpiSignerSeeds + '__quasar_seed {
+                    ) -> impl #krate::cpi::CpiSignerSeeds + '__quasar_seed {
                         #(#field_refs)*
                         #addr_expr.with_bump(bumps.#field_name)
                     }
@@ -517,69 +492,20 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
             #(#signer_methods)*
         }
 
-        impl #impl_generics quasar_lang::traits::AccountBumps for #name #ty_generics #where_clause {
+        impl #impl_generics #krate::traits::AccountBumps for #name #ty_generics #where_clause {
             type Bumps = #bumps_name;
         }
 
-        impl #impl_generics quasar_lang::traits::AccountGroup for #name #ty_generics #where_clause {}
+        impl #impl_generics #krate::traits::AccountGroup for #name #ty_generics #where_clause {}
     }
-}
-
-fn is_seed_expr(expr: &Expr) -> bool {
-    match expr {
-        Expr::Call(call) if is_seeds_path(&call.func) => true,
-        Expr::Paren(paren) => is_seed_expr(&paren.expr),
-        Expr::Group(group) => is_seed_expr(&group.expr),
-        _ => false,
-    }
-}
-
-fn is_seeds_path(expr: &Expr) -> bool {
-    let Expr::Path(path) = expr else {
-        return false;
-    };
-    path.path
-        .segments
-        .last()
-        .is_some_and(|segment| segment.ident == "seeds")
 }
 
 fn composite_event_ty(ty: &Type) -> proc_macro2::TokenStream {
-    if let Type::Path(type_path) = ty {
-        if type_path
-            .path
-            .segments
-            .last()
-            .is_some_and(|segment| segment.ident == "AccountsArray")
-        {
-            return quote! { #ty };
-        }
+    if resolve::wrapper::classify_wrapper(ty) == resolve::wrapper::WrapperKind::AccountsArray {
+        return quote! { #ty };
     }
-    strip_generics(ty)
-}
-
-fn is_event_cpi_field(sem: &resolve::FieldSemantics) -> bool {
-    if sem.core.ident == "event_authority" {
-        return true;
-    }
-
-    if let syn::Type::Path(type_path) = &sem.core.effective_ty {
-        type_path
-            .path
-            .segments
-            .last()
-            .is_some_and(|segment| segment.ident == "EventAuthority")
-    } else {
-        false
-    }
-}
-
-/// Check if the effective type is `Signer` (by last path segment name).
-fn is_signer_type(ty: &syn::Type) -> bool {
-    if let syn::Type::Path(type_path) = ty {
-        if let Some(last) = type_path.path.segments.last() {
-            return last.ident == "Signer";
-        }
-    }
-    false
+    // Composite field types are always path types; the fallback keeps a valid
+    // type token (no cascade) if that invariant is ever broken -- the invalid
+    // type then fails with a localized trait-bound error.
+    strip_generics(ty).unwrap_or_else(|_| quote! { #ty })
 }

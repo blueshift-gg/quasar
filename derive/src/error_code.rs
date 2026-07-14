@@ -1,29 +1,44 @@
 //! `#[error_code]`: generates `ProgramError` conversion for custom error
-//! enums. Each variant is assigned an error code starting at 6000
-//! (Anchor-compatible offset).
+//! enums. Auto-assigned variants start at error code 6000 (the
+//! Anchor-compatible offset); a variant with an explicit integer discriminant
+//! keeps that literal value and re-bases the auto-increment from there. Two
+//! variants that resolve to the same code — explicit, or via an
+//! auto-increment collision — are a hard, spanned error naming both.
 
 use {
     proc_macro::TokenStream,
+    proc_macro2::TokenStream as TokenStream2,
     quote::quote,
-    syn::{parse_macro_input, Data, DeriveInput},
+    std::collections::HashMap,
+    syn::{Data, DeriveInput},
 };
 
-pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(item as DeriveInput);
+pub(crate) fn error_code(attr: TokenStream, item: TokenStream) -> TokenStream {
+    error_code_inner(attr.into(), item.into()).into()
+}
+
+pub(crate) fn error_code_inner(_attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
+    let krate = crate::krate::lang_path();
+    let input = match syn::parse2::<DeriveInput>(item) {
+        Ok(input) => input,
+        Err(e) => return e.to_compile_error(),
+    };
     let name = &input.ident;
 
     let variants = match &input.data {
         Data::Enum(data) => &data.variants,
         _ => {
             return syn::Error::new_spanned(&input, "#[error_code] can only be used on enums")
-                .to_compile_error()
-                .into();
+                .to_compile_error();
         }
     };
 
-    let mut next_discriminant: u32 = 0;
+    let mut next_discriminant: u32 = 6000;
     let mut match_arms = Vec::new();
     let mut idl_error_entries = Vec::new();
+    // Maps an assigned error code back to the variant that claimed it, so a
+    // second variant landing on the same code can name both in the diagnostic.
+    let mut assigned: HashMap<u32, String> = HashMap::new();
     for v in variants.iter() {
         let ident = &v.ident;
         if let Some((_, expr)) = &v.discriminant {
@@ -39,8 +54,7 @@ pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
                             lit_int,
                             "#[error_code] discriminant must be a valid u32",
                         )
-                        .to_compile_error()
-                        .into();
+                        .to_compile_error();
                     }
                 }
             } else {
@@ -48,11 +62,21 @@ pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     expr,
                     "#[error_code] discriminant must be an integer literal",
                 )
-                .to_compile_error()
-                .into();
+                .to_compile_error();
             }
         }
         let value = next_discriminant;
+        if let Some(prev) = assigned.get(&value) {
+            return syn::Error::new_spanned(
+                &v.ident,
+                format!(
+                    "duplicate error code {value}: variants `{prev}` and `{ident}` both resolve \
+                     to the same discriminant",
+                ),
+            )
+            .to_compile_error();
+        }
+        assigned.insert(value, ident.to_string());
         next_discriminant = match next_discriminant.checked_add(1) {
             Some(n) => n,
             None => {
@@ -60,8 +84,7 @@ pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     &v.ident,
                     "error code overflow: discriminant exceeds u32::MAX",
                 )
-                .to_compile_error()
-                .into();
+                .to_compile_error();
             }
         };
         match_arms.push(quote! { #value => Ok(#name::#ident) });
@@ -89,12 +112,12 @@ pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
             quote! { None }
         } else {
             let joined = docs.join(" ");
-            quote! { Some(quasar_lang::idl_build::s(#joined)) }
+            quote! { Some(#krate::idl_build::s(#joined)) }
         };
         idl_error_entries.push(quote! {
-            quasar_lang::idl_build::__reexport::IdlErrorDef {
+            #krate::idl_build::__reexport::IdlErrorDef {
                 code: #value,
-                name: quasar_lang::idl_build::s(#variant_name),
+                name: #krate::idl_build::s(#variant_name),
                 msg: #msg_expr,
             }
         });
@@ -102,11 +125,11 @@ pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let idl_fragment = quote! {
         #[cfg(feature = "idl-build")]
-        quasar_lang::__private_inventory::submit! {
-            quasar_lang::idl_build::ErrorFragment {
+        #krate::__private_inventory::submit! {
+            #krate::idl_build::ErrorFragment {
                 build: {
-                    fn __build() -> quasar_lang::idl_build::Vec<quasar_lang::idl_build::__reexport::IdlErrorDef> {
-                        quasar_lang::idl_build::vec![#(#idl_error_entries),*]
+                    fn __build() -> #krate::idl_build::Vec<#krate::idl_build::__reexport::IdlErrorDef> {
+                        #krate::idl_build::vec![#(#idl_error_entries),*]
                     }
                     __build
                 },
@@ -118,26 +141,25 @@ pub(crate) fn error_code(_attr: TokenStream, item: TokenStream) -> TokenStream {
         #[repr(u32)]
         #input
 
-        impl From<#name> for ProgramError {
+        impl From<#name> for #krate::__solana_program_error::ProgramError {
             #[inline(always)]
             fn from(e: #name) -> Self {
-                ProgramError::Custom(e as u32)
+                #krate::__solana_program_error::ProgramError::Custom(e as u32)
             }
         }
 
         impl TryFrom<u32> for #name {
-            type Error = ProgramError;
+            type Error = #krate::__solana_program_error::ProgramError;
 
             #[inline(always)]
             fn try_from(error: u32) -> Result<Self, Self::Error> {
                 match error {
                     #(#match_arms,)*
-                    _ => Err(ProgramError::InvalidArgument),
+                    _ => Err(#krate::__solana_program_error::ProgramError::InvalidArgument),
                 }
             }
         }
 
         #idl_fragment
     }
-    .into()
 }

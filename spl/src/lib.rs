@@ -17,12 +17,14 @@
 //! | Type | Accepts | Use when |
 //! |------|---------|----------|
 //! | `Program<TokenProgram>` | SPL Token only | CPI to Token program |
-//! | [`TokenInterface`] | SPL Token **or** Token-2022 | CPI to either program |
+//! | `Program<Token2022Program>` | Token-2022 only | CPI to Token-2022 program |
+//! | `Interface<TokenInterface>` | SPL Token **or** Token-2022 | CPI to either program |
 //!
 //! # CPI methods
 //!
-//! Both `Program<TokenProgram>` and [`TokenInterface`] expose the same CPI
-//! methods. All methods return a `CpiCall` that can be invoked with `.invoke()`
+//! `Program<TokenProgram>`, `Program<Token2022Program>`, and
+//! `Interface<TokenInterface>` expose the same CPI methods. All methods return
+//! a `CpiCall` that can be invoked with `.invoke()`
 //! or `.invoke_signed()`:
 //!
 //! ```ignore
@@ -44,6 +46,7 @@
 //! ```
 
 #![no_std]
+#![warn(missing_docs)]
 
 /// Implements `AccountInit` for a token account type (Token / Token2022).
 /// Both dispatch to the same init_token_account / init_ata helpers.
@@ -206,11 +209,7 @@ macro_rules! impl_deferred_init {
                 <$wrapper as quasar_lang::account_load::AccountLoad>::check(target)?;
                 // SAFETY: The account was just initialized and re-checked as the target
                 // wrapper.
-                Ok(unsafe {
-                    <$wrapper as quasar_lang::account_load::AccountLoad>::from_view_unchecked_mut(
-                        target,
-                    )
-                })
+                Ok(unsafe { <$wrapper>::from_account_view_unchecked_mut(target) })
             }
         }
     };

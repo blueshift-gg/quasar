@@ -16,6 +16,7 @@ pub(super) struct SetInnerSpec<'a> {
 }
 
 pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let SetInnerSpec {
         name,
         vis,
@@ -36,7 +37,11 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
         let inner_fields: Vec<proc_macro2::TokenStream> = field_infos
             .iter()
             .map(|fi| {
-                let field_name = fi.field.ident.as_ref().expect("field must be named");
+                let field_name = fi
+                    .field
+                    .ident
+                    .as_ref()
+                    .unwrap_or_else(|| ice!("field must be named"));
                 match &fi.pod_dyn {
                     None => {
                         let field_ty = &fi.field.ty;
@@ -49,7 +54,11 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
         let max_checks: Vec<proc_macro2::TokenStream> = field_infos
             .iter()
             .filter_map(|fi| {
-                let field_name = fi.field.ident.as_ref().expect("field must be named");
+                let field_name = fi
+                    .field
+                    .ident
+                    .as_ref()
+                    .unwrap_or_else(|| ice!("field must be named"));
                 fi.pod_dyn
                     .as_ref()
                     .map(|dyn_field| dynamic::emit_max_check(field_name, dyn_field))
@@ -58,7 +67,11 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
         let space_terms: Vec<proc_macro2::TokenStream> = field_infos
             .iter()
             .filter_map(|fi| {
-                let field_name = fi.field.ident.as_ref().expect("field must be named");
+                let field_name = fi
+                    .field
+                    .ident
+                    .as_ref()
+                    .unwrap_or_else(|| ice!("field must be named"));
                 fi.pod_dyn
                     .as_ref()
                     .map(|dyn_field| dynamic::emit_space_term(field_name, dyn_field))
@@ -69,7 +82,10 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
             .filter(|fi| fi.pod_dyn.is_none())
             .map(|fi| {
                 zc_assign_from_value(
-                    fi.field.ident.as_ref().expect("field must be named"),
+                    fi.field
+                        .ident
+                        .as_ref()
+                        .unwrap_or_else(|| ice!("field must be named")),
                     &fi.field.ty,
                 )
             })
@@ -77,19 +93,28 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
         let compact_set_stmts: Vec<proc_macro2::TokenStream> = field_infos
             .iter()
             .filter_map(|fi| {
-                let field_name = fi.field.ident.as_ref().expect("field must be named");
+                let field_name = fi
+                    .field
+                    .ident
+                    .as_ref()
+                    .unwrap_or_else(|| ice!("field must be named"));
                 fi.pod_dyn.as_ref().map(|_| {
                     let setter = format_ident!("set_{}", field_name);
                     quote! {
                         __compact.#setter(#field_name)
-                            .map_err(|_| ProgramError::InvalidAccountData)?;
+                            .map_err(|_| #krate::__solana_program_error::ProgramError::InvalidAccountData)?;
                     }
                 })
             })
             .collect();
         let init_field_names: Vec<&syn::Ident> = field_infos
             .iter()
-            .map(|fi| fi.field.ident.as_ref().expect("field must be named"))
+            .map(|fi| {
+                fi.field
+                    .ident
+                    .as_ref()
+                    .unwrap_or_else(|| ice!("field must be named"))
+            })
             .collect();
 
         quote! {
@@ -102,10 +127,10 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
                 pub fn set_inner(
                     &mut self,
                     inner: #inner_name<'_>,
-                    payer: &AccountView,
+                    payer: &#krate::__internal::AccountView,
                     rent_lpb: u64,
                     rent_threshold: u64,
-                ) -> Result<(), ProgramError> {
+                ) -> Result<(), #krate::__solana_program_error::ProgramError> {
                     #(let #init_field_names = inner.#init_field_names;)*
                     #(#max_checks)*
 
@@ -113,10 +138,10 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
                     // SAFETY: `#[account]` wrappers are `#[repr(transparent)]`
                     // over `AccountView`; `&mut self` gives exclusive access to
                     // the backing view for this initialization.
-                    let __view = unsafe { &mut *(self as *mut Self as *mut AccountView) };
+                    let __view = unsafe { &mut *(self as *mut Self as *mut #krate::__internal::AccountView) };
 
                     if __space != __view.data_len() {
-                        quasar_lang::accounts::account::realloc_account_raw(
+                        #krate::accounts::account::realloc_account_raw(
                             __view,
                             __space,
                             payer,
@@ -144,7 +169,7 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
                         #zc_mod::__SchemaMut::new_unchecked(__compact_data)
                     };
                     #(#compact_set_stmts)*
-                    __compact.commit().map_err(|_| ProgramError::InvalidAccountData)?;
+                    __compact.commit().map_err(|_| #krate::__solana_program_error::ProgramError::InvalidAccountData)?;
                     Ok(())
                 }
             }
@@ -157,7 +182,7 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
                 fi.field
                     .ident
                     .as_ref()
-                    .expect("account fields are validated as named before codegen")
+                    .unwrap_or_else(|| ice!("account fields are validated as named before codegen"))
             })
             .collect();
         let field_types: Vec<_> = field_infos.iter().map(|fi| &fi.field.ty).collect();
@@ -165,7 +190,10 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
             .iter()
             .map(|fi| {
                 zc_assign_from_value(
-                    fi.field.ident.as_ref().expect("field must be named"),
+                    fi.field
+                        .ident
+                        .as_ref()
+                        .unwrap_or_else(|| ice!("field must be named")),
                     &fi.field.ty,
                 )
             })

@@ -45,22 +45,29 @@ fn write_prefix_offset_correctness() {
     assert!(decoded == value);
 }
 
+/// Realistic upper bound on a dynamic field written through `CpiEncode`, sized
+/// for a full 200-byte metadata URI rather than the earlier `len <= 8` toy
+/// bound. The payload verification uses a single symbolic probe index instead
+/// of an O(len) loop so raising the bound stays tractable for Kani (the
+/// `copy_nonoverlapping` inside `write_to` is modeled directly, without loop
+/// unwinding).
+const MAX_DYN_LEN: usize = 200;
+
 /// Prove `CpiEncode<4>::write_to` for `&str` writes prefix + data within
 /// `offset + encoded_len()`, and doesn't clobber bytes before offset.
 #[kani::proof]
-#[kani::unwind(10)]
 fn str_write_to_bounds_and_roundtrip() {
     let len: usize = kani::any();
-    kani::assume(len <= 8);
+    kani::assume(len <= MAX_DYN_LEN);
 
-    let data = [0x41u8; 8];
+    let data = [0x41u8; MAX_DYN_LEN];
     // SAFETY: `data` is all ASCII `A` bytes, and `len <= data.len()`.
     let s = unsafe { core::str::from_utf8_unchecked(&data[..len]) };
 
-    let mut buf = [0xFFu8; 16];
+    let mut buf = [0xFFu8; MAX_DYN_LEN + 8];
     let offset: usize = kani::any();
     kani::assume(offset <= 4);
-    kani::assume(offset + 4 + len <= 16);
+    kani::assume(offset + 4 + len <= MAX_DYN_LEN + 8);
 
     let new_offset = unsafe { <&str as CpiEncode<4>>::write_to(&s, buf.as_mut_ptr(), offset) };
 
@@ -73,27 +80,28 @@ fn str_write_to_bounds_and_roundtrip() {
     ]);
     assert!(prefix == len as u32);
 
-    let mut i = 0;
-    while i < len {
-        assert!(buf[offset + 4 + i] == 0x41);
-        i += 1;
+    // Symbolic probe: prove *every* payload byte round-trips without unrolling
+    // a `0..len` loop up to `MAX_DYN_LEN` times.
+    if len > 0 {
+        let probe: usize = kani::any();
+        kani::assume(probe < len);
+        assert!(buf[offset + 4 + probe] == 0x41);
     }
 }
 
 /// Prove `CpiEncode<4>::write_to` for `&[u8]` writes correctly.
 #[kani::proof]
-#[kani::unwind(10)]
 fn bytes_write_to_bounds_and_roundtrip() {
     let len: usize = kani::any();
-    kani::assume(len <= 8);
+    kani::assume(len <= MAX_DYN_LEN);
 
-    let data = [0xBBu8; 8];
+    let data = [0xBBu8; MAX_DYN_LEN];
     let slice = &data[..len];
 
-    let mut buf = [0xFFu8; 16];
+    let mut buf = [0xFFu8; MAX_DYN_LEN + 8];
     let offset: usize = kani::any();
     kani::assume(offset <= 4);
-    kani::assume(offset + 4 + len <= 16);
+    kani::assume(offset + 4 + len <= MAX_DYN_LEN + 8);
 
     let new_offset = unsafe { <&[u8] as CpiEncode<4>>::write_to(&slice, buf.as_mut_ptr(), offset) };
 
@@ -106,15 +114,22 @@ fn bytes_write_to_bounds_and_roundtrip() {
         buf[offset + 3],
     ]);
     assert!(prefix == len as u32);
+
+    // Symbolic probe over the payload (see `str_write_to_bounds_and_roundtrip`).
+    if len > 0 {
+        let probe: usize = kani::any();
+        kani::assume(probe < len);
+        assert!(buf[offset + 4 + probe] == 0xBB);
+    }
 }
 
 /// Prove `encoded_len` for `&[u8]` returns prefix + content length.
 #[kani::proof]
 fn encoded_len_matches_written() {
     let len: usize = kani::any();
-    kani::assume(len <= 8);
+    kani::assume(len <= MAX_DYN_LEN);
 
-    let data = [0u8; 8];
+    let data = [0u8; MAX_DYN_LEN];
     let slice: &[u8] = &data[..len];
 
     let encoded_len = <&[u8] as CpiEncode<4>>::encoded_len(&slice);

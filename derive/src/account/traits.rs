@@ -1,4 +1,4 @@
-use {super::fixed::PodFieldInfo, crate::helpers::map_to_pod_type, quote::quote};
+use quote::quote;
 
 pub(super) struct AccountLoadSpec<'a> {
     pub name: &'a syn::Ident,
@@ -13,8 +13,9 @@ pub(super) fn emit_discriminator_impl(
     disc_bytes: &[syn::LitInt],
     bump_offset_impl: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     quote! {
-        impl Discriminator for #name {
+        impl #krate::traits::Discriminator for #name {
             const DISCRIMINATOR: &'static [u8] = &[#(#disc_bytes),*];
             #bump_offset_impl
         }
@@ -22,42 +23,45 @@ pub(super) fn emit_discriminator_impl(
 }
 
 pub(super) fn emit_owner_impl(name: &syn::Ident) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     quote! {
-        impl Owner for #name {
-            const OWNER: Address = crate::ID;
+        impl #krate::traits::Owner for #name {
+            const OWNER: #krate::prelude::Address = crate::ID;
         }
     }
 }
 
 pub(super) fn emit_space_impl(
     name: &syn::Ident,
-    field_infos: &[PodFieldInfo<'_>],
     has_dynamic: bool,
     disc_len: usize,
     zc_mod: &syn::Ident,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     if has_dynamic {
         // Space = discriminator + compact header size (includes length prefixes).
         quote! {
-            impl Space for #name {
+            impl #krate::traits::Space for #name {
                 const SPACE: usize = #disc_len
-                    + <#zc_mod::__Schema as quasar_lang::ZeroPodCompact>::HEADER_SIZE;
+                    + <#zc_mod::__Schema as #krate::ZeroPodCompact>::HEADER_SIZE;
             }
         }
     } else {
-        let field_pod_types: Vec<proc_macro2::TokenStream> = field_infos
-            .iter()
-            .map(|fi| map_to_pod_type(&fi.field.ty))
-            .collect();
+        // Reference the schema's `ZeroPodFixed::SIZE` instead of re-summing the
+        // field pod sizes: the derived `__Schema` is the single source of the
+        // fixed layout (its ZC companion is `#[repr(C)]`, alignment 1, so
+        // `SIZE` equals the old field-size sum).
         quote! {
-            impl Space for #name {
-                const SPACE: usize = #disc_len #(+ core::mem::size_of::<#field_pod_types>())*;
+            impl #krate::traits::Space for #name {
+                const SPACE: usize = #disc_len
+                    + <#zc_mod::__Schema as #krate::__zeropod::ZeroPodFixed>::SIZE;
             }
         }
     }
 }
 
 pub(super) fn emit_dynamic_account_load(spec: AccountLoadSpec<'_>) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let AccountLoadSpec {
         name,
         disc_len,
@@ -71,14 +75,14 @@ pub(super) fn emit_dynamic_account_load(spec: AccountLoadSpec<'_>) -> proc_macro
         emit_account_load_check_body(true, disc_len, disc_indices, disc_bytes, zc_mod);
 
     quote! {
-        impl quasar_lang::account_load::AccountLoad for #name {
+        impl #krate::account_load::AccountLoad for #name {
             #[inline(always)]
-            fn check(view: &quasar_lang::__internal::AccountView) -> Result<(), quasar_lang::__solana_program_error::ProgramError> {
+            fn check(view: &#krate::__internal::AccountView) -> Result<(), #krate::__solana_program_error::ProgramError> {
                 #body
             }
 
             #[inline(always)]
-            fn check_checked(view: &quasar_lang::__internal::AccountView) -> Result<(), quasar_lang::__solana_program_error::ProgramError> {
+            fn check_checked(view: &#krate::__internal::AccountView) -> Result<(), #krate::__solana_program_error::ProgramError> {
                 #checked_body
             }
         }
@@ -92,6 +96,7 @@ fn emit_account_load_check_body(
     disc_bytes: &[syn::LitInt],
     zc_mod: &syn::Ident,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let borrow = if checked {
         quote! {
             let __data_ref = view.try_borrow()?;
@@ -107,22 +112,22 @@ fn emit_account_load_check_body(
 
     let validate = quote! {
         let __min = #disc_len
-            + <#zc_mod::__Schema as quasar_lang::ZeroPodCompact>::HEADER_SIZE;
+            + <#zc_mod::__Schema as #krate::ZeroPodCompact>::HEADER_SIZE;
         if __data.len() < __min {
-            return Err(ProgramError::AccountDataTooSmall);
+            return Err(#krate::__solana_program_error::ProgramError::AccountDataTooSmall);
         }
         #(
             // SAFETY: `__data.len() >= __min` and every discriminator index is
             // strictly less than `disc_len`.
             if unsafe { *__data.get_unchecked(#disc_indices) } != #disc_bytes {
-                return Err(ProgramError::InvalidAccountData);
+                return Err(#krate::__solana_program_error::ProgramError::InvalidAccountData);
             }
         )*
-        <#zc_mod::__Schema as quasar_lang::ZeroPodCompact>::validate(
+        <#zc_mod::__Schema as #krate::ZeroPodCompact>::validate(
             // SAFETY: `__data.len() >= __min`, so the compact payload range
             // starting at `disc_len` is in bounds.
             unsafe { __data.get_unchecked(#disc_len..) }
-        ).map_err(|_| ProgramError::InvalidAccountData)?;
+        ).map_err(|_| #krate::__solana_program_error::ProgramError::InvalidAccountData)?;
         Ok(())
     };
 

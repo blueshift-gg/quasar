@@ -172,7 +172,7 @@ pub struct TestCommand {
 
 #[derive(Args, Debug, Default)]
 pub struct DeployCommand {
-    /// Path to a program keypair (default: target/deploy/<name>-keypair.json)
+    /// Path to a program keypair (default: `target/deploy/<name>-keypair.json`)
     #[arg(long, value_name = "KEYPAIR")]
     pub program_keypair: Option<PathBuf>,
 
@@ -230,10 +230,25 @@ pub enum ConfigAction {
 }
 
 #[derive(Args, Debug)]
+#[command(args_conflicts_with_subcommands = true)]
 pub struct IdlCommand {
-    /// Path to the program crate directory
+    /// Path to the program crate directory (generate IDL + Rust client)
     #[arg(value_name = "PATH")]
-    pub crate_path: PathBuf,
+    pub crate_path: Option<PathBuf>,
+
+    #[command(subcommand)]
+    pub action: Option<IdlAction>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum IdlAction {
+    /// Recompute the IDL/ABI hashes of an IDL JSON and check them against the
+    /// stored `hashes` field.
+    Verify {
+        /// Path to an IDL JSON file (e.g. target/idl/my_program.json)
+        #[arg(value_name = "IDL")]
+        idl_path: PathBuf,
+    },
 }
 
 #[derive(Args, Debug)]

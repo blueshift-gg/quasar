@@ -6,25 +6,33 @@
 
 use {solana_address::Address, solana_program_error::ProgramError};
 
+/// Clock sysvar representation and access.
 pub mod clock;
+/// Rent sysvar representation and access.
 pub mod rent;
 
 const OFFSET_LENGTH_EXCEEDS_SYSVAR: u64 = 1;
-const SYSVAR_NOT_FOUND: u64 = 2;
 
+/// A zero-copy Solana sysvar that can be loaded through `sol_get_sysvar`.
 pub trait Sysvar: Sized {
+    /// Address of the sysvar account.
     const ID: Address;
 
     /// # Safety
     /// `bytes.len()` must be `>= size_of::<Self>()` with valid sysvar data.
     unsafe fn from_bytes_unchecked(bytes: &[u8]) -> &Self;
 
+    /// Loads the current sysvar value.
     fn get() -> Result<Self, ProgramError> {
         Err(ProgramError::UnsupportedSysvar)
     }
 }
 
 #[macro_export]
+/// Implements [`Sysvar`](crate::sysvars::Sysvar) access for a POD sysvar type.
+///
+/// The padding argument is the number of trailing bytes absent from the
+/// syscall representation and therefore zero-initialized by the implementation.
 macro_rules! impl_sysvar_get {
     ($syscall_id:expr, $padding:literal) => {
         const ID: solana_address::Address = $syscall_id;
@@ -81,9 +89,8 @@ macro_rules! impl_sysvar_get {
                 $crate::sysvars::OFFSET_LENGTH_EXCEEDS_SYSVAR => {
                     Err(solana_program_error::ProgramError::InvalidArgument)
                 }
-                $crate::sysvars::SYSVAR_NOT_FOUND => {
-                    Err(solana_program_error::ProgramError::UnsupportedSysvar)
-                }
+                // Any other nonzero code (including SYSVAR_NOT_FOUND == 2)
+                // maps to `UnsupportedSysvar`.
                 _ => Err(solana_program_error::ProgramError::UnsupportedSysvar),
             }
         }

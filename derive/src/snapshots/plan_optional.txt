@@ -1,0 +1,52 @@
+SEMANTICS (2 fields)
+[0] authority
+    core: effective_ty=`Signer` kind=Single optional=false dynamic=false declared_mut=false dup=false
+          inner_ty=None
+    init: None
+    payer: None
+    address: None
+    realloc: None
+    close_dest: None
+    groups: []
+    user_checks: []
+    is_migration=false is_uninit=false writable=false
+[1] config
+    core: effective_ty=`Account < Config >` kind=Single optional=true dynamic=false declared_mut=false dup=false
+          inner_ty=`Config`
+    init: None
+    payer: None
+    address: None
+    realloc: None
+    close_dest: None
+    groups: []
+    user_checks:
+      - HasOne targets=[authority] error=None
+    is_migration=false is_uninit=false writable=false
+
+PLAN (2 fields)
+rent: NotNeeded
+has_instruction_args: false
+event_cpi: [Never, Never]
+[0]
+    id: ident=authority effective_ty=`Signer` wrapper=Signer kind=Single optional=false dup=false writable=false signer=true
+    load: Fixed(validates=[])
+    bump: None
+    behaviors: []
+    docs: []
+    idl_resolver: None
+    signer_helper: None
+    pre_load: []
+    post_load: []
+    epilogue: []
+[1]
+    id: ident=config effective_ty=`Account < Config >` wrapper=Account kind=Single optional=true dup=false writable=false signer=false
+    load: Fixed(validates=[])
+    bump: None
+    behaviors: []
+    docs: []
+    idl_resolver: None
+    signer_helper: None
+    pre_load: []
+    post_load:
+      - UserCheck(HasOne targets=[authority] error=None)
+    epilogue: []

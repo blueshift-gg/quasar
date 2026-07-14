@@ -63,21 +63,22 @@ pub(crate) fn generate_one_of_account(
     variants: &[OneOfVariant],
     implements: Option<&syn::Path>,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let variant_paths: Vec<&syn::Path> = variants.iter().map(|v| &v.inner_ty).collect();
 
     // 1. #[repr(transparent)] struct with __view: AccountView
     let struct_def = quote! {
         #[repr(transparent)]
         pub struct #name {
-            __view: quasar_lang::__internal::AccountView,
+            __view: #krate::__internal::AccountView,
         }
     };
 
     // 2. AsAccountView
     let as_account_view = quote! {
-        impl quasar_lang::traits::AsAccountView for #name {
+        impl #krate::traits::AsAccountView for #name {
             #[inline(always)]
-            fn to_account_view(&self) -> &quasar_lang::__internal::AccountView {
+            fn to_account_view(&self) -> &#krate::__internal::AccountView {
                 &self.__view
             }
         }
@@ -88,7 +89,7 @@ pub(crate) fn generate_one_of_account(
         .iter()
         .map(|v| {
             quote! {
-                <#v as quasar_lang::account_load::AccountLoad>::check(view).is_ok()
+                <#v as #krate::account_load::AccountLoad>::check(view).is_ok()
             }
         })
         .collect();
@@ -96,28 +97,28 @@ pub(crate) fn generate_one_of_account(
         .iter()
         .map(|v| {
             quote! {
-                <#v as quasar_lang::account_load::AccountLoad>::check_checked(view).is_ok()
+                <#v as #krate::account_load::AccountLoad>::check_checked(view).is_ok()
             }
         })
         .collect();
 
     let account_check = quote! {
-        impl quasar_lang::account_load::AccountLoad for #name {
+        impl #krate::account_load::AccountLoad for #name {
             #[inline(always)]
-            fn check(view: &quasar_lang::__internal::AccountView) -> Result<(), quasar_lang::__solana_program_error::ProgramError> {
+            fn check(view: &#krate::__internal::AccountView) -> Result<(), #krate::__solana_program_error::ProgramError> {
                 if #(#variant_checks)||* {
                     Ok(())
                 } else {
-                    Err(quasar_lang::__solana_program_error::ProgramError::InvalidAccountData)
+                    Err(#krate::__solana_program_error::ProgramError::InvalidAccountData)
                 }
             }
 
             #[inline(always)]
-            fn check_checked(view: &quasar_lang::__internal::AccountView) -> Result<(), quasar_lang::__solana_program_error::ProgramError> {
+            fn check_checked(view: &#krate::__internal::AccountView) -> Result<(), #krate::__solana_program_error::ProgramError> {
                 if #(#checked_variant_checks)||* {
                     Ok(())
                 } else {
-                    Err(quasar_lang::__solana_program_error::ProgramError::InvalidAccountData)
+                    Err(#krate::__solana_program_error::ProgramError::InvalidAccountData)
                 }
             }
         }
@@ -132,9 +133,9 @@ pub(crate) fn generate_one_of_account(
         .map(|v| {
             quote! {
                 assert!(
-                    quasar_lang::keys_eq_const(
-                        &<#first_variant as quasar_lang::traits::Owner>::OWNER,
-                        &<#v as quasar_lang::traits::Owner>::OWNER,
+                    #krate::keys_eq_const(
+                        &<#first_variant as #krate::traits::Owner>::OWNER,
+                        &<#v as #krate::traits::Owner>::OWNER,
                     ),
                     "all one_of variants must have the same program owner"
                 );
@@ -147,9 +148,9 @@ pub(crate) fn generate_one_of_account(
             #(#owner_checks)*
         };
 
-        impl quasar_lang::traits::Owner for #name {
-            const OWNER: quasar_lang::prelude::Address =
-                <#first_variant as quasar_lang::traits::Owner>::OWNER;
+        impl #krate::traits::Owner for #name {
+            const OWNER: #krate::prelude::Address =
+                <#first_variant as #krate::traits::Owner>::OWNER;
         }
     };
 
@@ -161,7 +162,7 @@ pub(crate) fn generate_one_of_account(
 
     // 7. StaticView
     let static_view = quote! {
-        unsafe impl quasar_lang::traits::StaticView for #name {}
+        unsafe impl #krate::traits::StaticView for #name {}
     };
 
     // 8. Ref enum for pattern matching
@@ -171,7 +172,7 @@ pub(crate) fn generate_one_of_account(
         .map(|v| {
             let ident = &v.ident;
             let ty = &v.inner_ty;
-            quote! { #ident(&'a quasar_lang::accounts::account::Account<#ty>) }
+            quote! { #ident(&'a #krate::accounts::account::Account<#ty>) }
         })
         .collect();
 
@@ -215,6 +216,7 @@ pub(crate) fn generate_one_of_account(
 }
 
 fn emit_pairwise_disc_assertions(variants: &[&syn::Path]) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let mut assertions = Vec::new();
     for i in 0..variants.len() {
         for j in (i + 1)..variants.len() {
@@ -222,8 +224,8 @@ fn emit_pairwise_disc_assertions(variants: &[&syn::Path]) -> proc_macro2::TokenS
             let b = &variants[j];
             assertions.push(quote! {
                 {
-                    let a = <#a as quasar_lang::traits::Discriminator>::DISCRIMINATOR;
-                    let b = <#b as quasar_lang::traits::Discriminator>::DISCRIMINATOR;
+                    let a = <#a as #krate::traits::Discriminator>::DISCRIMINATOR;
+                    let b = <#b as #krate::traits::Discriminator>::DISCRIMINATOR;
                     let min_len = if a.len() < b.len() { a.len() } else { b.len() };
                     let mut k = 0;
                     let mut prefix_match = true;
@@ -247,20 +249,21 @@ fn emit_pairwise_disc_assertions(variants: &[&syn::Path]) -> proc_macro2::TokenS
 }
 
 fn emit_max_space(name: &syn::Ident, variants: &[&syn::Path]) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let first = &variants[0];
-    let mut max_expr = quote! { <#first as quasar_lang::traits::Space>::SPACE };
+    let mut max_expr = quote! { <#first as #krate::traits::Space>::SPACE };
     for v in &variants[1..] {
         let prev = max_expr;
         max_expr = quote! {
             {
                 let __a = #prev;
-                let __b = <#v as quasar_lang::traits::Space>::SPACE;
+                let __b = <#v as #krate::traits::Space>::SPACE;
                 if __a > __b { __a } else { __b }
             }
         };
     }
     quote! {
-        impl quasar_lang::traits::Space for #name {
+        impl #krate::traits::Space for #name {
             const SPACE: usize = #max_expr;
         }
     }
@@ -271,6 +274,7 @@ fn emit_one_of_accessors(
     variants: &[OneOfVariant],
     ref_enum_name: &syn::Ident,
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let mut methods = Vec::new();
 
     // variant() method
@@ -279,13 +283,13 @@ fn emit_one_of_accessors(
         let ident = &v.ident;
         let ty = &v.inner_ty;
         variant_arms.push(quote! {
-            if __data.starts_with(<#ty as quasar_lang::traits::Discriminator>::DISCRIMINATOR) {
+            if __data.starts_with(<#ty as #krate::traits::Discriminator>::DISCRIMINATOR) {
                 // SAFETY: `#name` and `Account<#ty>` are transparent wrappers
                 // over the same AccountView, and this branch matched `#ty`'s
                 // discriminator.
                 return #ref_enum_name::#ident(unsafe {
-                    &*(&self.__view as *const quasar_lang::__internal::AccountView
-                        as *const quasar_lang::accounts::account::Account<#ty>)
+                    &*(&self.__view as *const #krate::__internal::AccountView
+                        as *const #krate::accounts::account::Account<#ty>)
                 });
             }
         });
@@ -313,18 +317,18 @@ fn emit_one_of_accessors(
             #[inline(always)]
             pub fn #is_accessor(&self) -> bool {
                 let __data = unsafe { self.__view.borrow_unchecked() };
-                __data.starts_with(<#ty as quasar_lang::traits::Discriminator>::DISCRIMINATOR)
+                __data.starts_with(<#ty as #krate::traits::Discriminator>::DISCRIMINATOR)
             }
 
             #[inline(always)]
-            pub fn #accessor(&self) -> Option<&quasar_lang::accounts::account::Account<#ty>> {
+            pub fn #accessor(&self) -> Option<&#krate::accounts::account::Account<#ty>> {
                 let __data = unsafe { self.__view.borrow_unchecked() };
-                if __data.starts_with(<#ty as quasar_lang::traits::Discriminator>::DISCRIMINATOR) {
+                if __data.starts_with(<#ty as #krate::traits::Discriminator>::DISCRIMINATOR) {
                     // SAFETY: the discriminator match proves this transparent
                     // AccountView wrapper is the requested account type.
                     Some(unsafe {
-                        &*(&self.__view as *const quasar_lang::__internal::AccountView
-                            as *const quasar_lang::accounts::account::Account<#ty>)
+                        &*(&self.__view as *const #krate::__internal::AccountView
+                            as *const #krate::accounts::account::Account<#ty>)
                     })
                 } else {
                     None
@@ -332,14 +336,14 @@ fn emit_one_of_accessors(
             }
 
             #[inline(always)]
-            pub fn #accessor_mut(&mut self) -> Option<&mut quasar_lang::accounts::account::Account<#ty>> {
+            pub fn #accessor_mut(&mut self) -> Option<&mut #krate::accounts::account::Account<#ty>> {
                 let __data = unsafe { self.__view.borrow_unchecked() };
-                if __data.starts_with(<#ty as quasar_lang::traits::Discriminator>::DISCRIMINATOR) {
+                if __data.starts_with(<#ty as #krate::traits::Discriminator>::DISCRIMINATOR) {
                     // SAFETY: `&mut self` gives exclusive access and the
                     // discriminator match proves this wrapper's account type.
                     Some(unsafe {
-                        &mut *(&mut self.__view as *mut quasar_lang::__internal::AccountView
-                            as *mut quasar_lang::accounts::account::Account<#ty>)
+                        &mut *(&mut self.__view as *mut #krate::__internal::AccountView
+                            as *mut #krate::accounts::account::Account<#ty>)
                     })
                 } else {
                     None
@@ -362,6 +366,7 @@ fn emit_deref_impl(
     trait_path: &syn::Path,
     variants: &[&syn::Path],
 ) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
     let last_idx = variants.len() - 1;
     let last_variant = variants[last_idx];
 
@@ -370,17 +375,17 @@ fn emit_deref_impl(
         // SAFETY: AccountLoad already proved that one variant matches. After all
         // earlier variants failed, the last variant is the only remaining match.
         unsafe {
-            &*(&self.__view as *const quasar_lang::__internal::AccountView
+            &*(&self.__view as *const #krate::__internal::AccountView
                 as *const #last_variant) as &(dyn #trait_path)
         }
     };
     for variant in variants[..last_idx].iter().rev() {
         deref_body = quote! {
-            if __data.starts_with(<#variant as quasar_lang::traits::Discriminator>::DISCRIMINATOR) {
+            if __data.starts_with(<#variant as #krate::traits::Discriminator>::DISCRIMINATOR) {
                 // SAFETY: the discriminator match proves this transparent
                 // AccountView wrapper is `#variant`.
                 unsafe {
-                    &*(&self.__view as *const quasar_lang::__internal::AccountView
+                    &*(&self.__view as *const #krate::__internal::AccountView
                         as *const #variant) as &(dyn #trait_path)
                 }
             } else {
@@ -395,17 +400,17 @@ fn emit_deref_impl(
         // earlier variants failed, the last variant is the only remaining match;
         // `&mut self` provides exclusive access to the backing view.
         unsafe {
-            &mut *(&mut self.__view as *mut quasar_lang::__internal::AccountView
+            &mut *(&mut self.__view as *mut #krate::__internal::AccountView
                 as *mut #last_variant) as &mut (dyn #trait_path)
         }
     };
     for variant in variants[..last_idx].iter().rev() {
         deref_mut_body = quote! {
-            if __data.starts_with(<#variant as quasar_lang::traits::Discriminator>::DISCRIMINATOR) {
+            if __data.starts_with(<#variant as #krate::traits::Discriminator>::DISCRIMINATOR) {
                 // SAFETY: the discriminator match proves this transparent
                 // AccountView wrapper is `#variant`; `&mut self` is exclusive.
                 unsafe {
-                    &mut *(&mut self.__view as *mut quasar_lang::__internal::AccountView
+                    &mut *(&mut self.__view as *mut #krate::__internal::AccountView
                         as *mut #variant) as &mut (dyn #trait_path)
                 }
             } else {

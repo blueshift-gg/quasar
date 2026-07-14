@@ -1,6 +1,6 @@
 //! Unified codegen for `#[account]` types.
 
-use {proc_macro::TokenStream, syn::DeriveInput};
+use {proc_macro2::TokenStream, syn::DeriveInput};
 
 /// Info about each field needed for codegen.
 pub(super) struct PodFieldInfo<'a> {
@@ -8,17 +8,31 @@ pub(super) struct PodFieldInfo<'a> {
     pub pod_dyn: Option<crate::helpers::PodDynField>,
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn generate_account(
-    name: &syn::Ident,
-    disc_bytes: &[syn::LitInt],
-    disc_values: &[u8],
-    disc_len: usize,
-    disc_indices: &[usize],
-    field_infos: &[PodFieldInfo<'_>],
-    input: &DeriveInput,
-    gen_set_inner: bool,
-) -> TokenStream {
+/// All inputs to `generate_account`, bundled so the entry point takes one spec
+/// instead of eight positional arguments.
+pub(super) struct AccountCodegenSpec<'a> {
+    pub name: &'a syn::Ident,
+    pub disc_bytes: &'a [syn::LitInt],
+    pub disc_values: &'a [u8],
+    pub disc_len: usize,
+    pub disc_indices: &'a [usize],
+    pub field_infos: &'a [PodFieldInfo<'a>],
+    pub input: &'a DeriveInput,
+    pub gen_set_inner: bool,
+}
+
+pub(super) fn generate_account(spec: AccountCodegenSpec<'_>) -> TokenStream {
+    let krate = crate::krate::lang_path();
+    let AccountCodegenSpec {
+        name,
+        disc_bytes,
+        disc_values,
+        disc_len,
+        disc_indices,
+        field_infos,
+        input,
+        gen_set_inner,
+    } = spec;
     let vis = &input.vis;
     let attrs = &input.attrs;
     let has_dynamic = field_infos.iter().any(|fi| fi.pod_dyn.is_some());
@@ -33,8 +47,7 @@ pub(super) fn generate_account(
     let discriminator_impl =
         super::traits::emit_discriminator_impl(name, disc_bytes, &bump_offset_impl);
     let owner_impl = super::traits::emit_owner_impl(name);
-    let space_impl =
-        super::traits::emit_space_impl(name, field_infos, has_dynamic, disc_len, &zc.zc_mod);
+    let space_impl = super::traits::emit_space_impl(name, has_dynamic, disc_len, &zc.zc_mod);
     let account_load_impl = if has_dynamic {
         // Dynamic/compact accounts: inline validation into AccountLoad::check.
         super::traits::emit_dynamic_account_load(super::traits::AccountLoadSpec {
@@ -47,32 +60,31 @@ pub(super) fn generate_account(
     } else {
         // Fixed accounts: emit AccountLayout + composed checks.
         // AccountLoad::check is the single source of truth, composing
-        // Discriminator + DataLen + ZeroPod.
+        // Discriminator + ZeroPod (ZeroPod self-guards its length check, so
+        // checks::DataLen is not emitted here).
         let disc_len_lit = disc_len;
         let zc_mod_ident = &zc.zc_mod;
         quote::quote! {
-            impl quasar_lang::account_layout::AccountLayout for #name {
+            impl #krate::account_layout::AccountLayout for #name {
                 type Schema = #zc_mod_ident::__Schema;
-                type Target = <#zc_mod_ident::__Schema as quasar_lang::__zeropod::ZeroPodFixed>::Zc;
                 const DATA_OFFSET: usize = #disc_len_lit;
             }
 
-            impl quasar_lang::checks::Discriminator for #name {}
-            impl quasar_lang::checks::DataLen for #name {}
-            impl quasar_lang::checks::ZeroPod for #name {}
+            impl #krate::checks::Discriminator for #name {}
+            impl #krate::checks::ZeroPod for #name {}
 
-            impl quasar_lang::account_load::AccountLoad for #name {
+            impl #krate::account_load::AccountLoad for #name {
                 #[inline(always)]
-                fn check(view: &quasar_lang::__internal::AccountView) -> Result<(), quasar_lang::__solana_program_error::ProgramError> {
-                    <#name as quasar_lang::checks::Discriminator>::check(view)?;
-                    <#name as quasar_lang::checks::ZeroPod>::check(view)?;
+                fn check(view: &#krate::__internal::AccountView) -> Result<(), #krate::__solana_program_error::ProgramError> {
+                    <#name as #krate::checks::Discriminator>::check(view)?;
+                    <#name as #krate::checks::ZeroPod>::check(view)?;
                     Ok(())
                 }
 
                 #[inline(always)]
-                fn check_checked(view: &quasar_lang::__internal::AccountView) -> Result<(), quasar_lang::__solana_program_error::ProgramError> {
-                    <#name as quasar_lang::checks::Discriminator>::check_checked(view)?;
-                    <#name as quasar_lang::checks::ZeroPod>::check_checked(view)?;
+                fn check_checked(view: &#krate::__internal::AccountView) -> Result<(), #krate::__solana_program_error::ProgramError> {
+                    <#name as #krate::checks::Discriminator>::check_checked(view)?;
+                    <#name as #krate::checks::ZeroPod>::check_checked(view)?;
                     Ok(())
                 }
             }
@@ -109,34 +121,36 @@ pub(super) fn generate_account(
     });
 
     let lifecycle_impls = quote::quote! {
-        impl quasar_lang::account_init::AccountInit for #name {
+        impl #krate::account_init::AccountInit for #name {
             type InitParams<'a> = ();
 
             #[inline(always)]
-            fn init<'a, R: quasar_lang::ops::RentAccess>(
-                ctx: quasar_lang::account_init::InitCtx<'a, R>,
+            fn init<'a, R: #krate::ops::RentAccess>(
+                ctx: #krate::account_init::InitCtx<'a, R>,
                 _params: &(),
-            ) -> Result<(), quasar_lang::prelude::ProgramError> {
-                quasar_lang::account_init::init_account(
+            ) -> Result<(), #krate::prelude::ProgramError> {
+                #krate::account_init::init_account(
                     ctx.payer,
                     ctx.target,
                     ctx.space,
                     ctx.program_id,
                     ctx.signers,
                     ctx.rent.get()?,
-                    <Self as quasar_lang::traits::Discriminator>::DISCRIMINATOR,
+                    <Self as #krate::traits::Discriminator>::DISCRIMINATOR,
                 )
             }
         }
 
-        impl quasar_lang::ops::SupportsRealloc for #name {}
+        impl #krate::ops::SupportsRealloc for #name {}
     };
 
     // IDL fragment emission (feature-gated)
     let idl_fragment = {
         let name_str = name.to_string();
-        let mut inline_field_names: Vec<String> = Vec::new();
-        let mut tail_field_names: Vec<String> = Vec::new();
+        // Ordered (name, is_dynamic) list — the dynamic flag is the SAME
+        // classification that drives the compact wire schema (`fi.pod_dyn`), so
+        // the projected IDL layout cannot drift from the wire layout.
+        let mut layout_fields: Vec<(String, bool)> = Vec::new();
 
         let field_defs: Vec<proc_macro2::TokenStream> = field_infos
             .iter()
@@ -145,78 +159,67 @@ pub(super) fn generate_account(
                     .field
                     .ident
                     .as_ref()
-                    .expect("account fields are validated as named before codegen")
+                    .unwrap_or_else(|| ice!("account fields are validated as named before codegen"))
                     .to_string();
-                let fty = crate::helpers::type_to_idl_type_tokens(&fi.field.ty);
-                let codec_tokens = crate::helpers::type_to_idl_codec_tokens(&fi.field.ty);
+                let fty = crate::idl::type_to_idl_type_tokens(&fi.field.ty);
+                let codec_tokens = crate::idl::type_to_idl_codec_tokens(&fi.field.ty);
+                let fdocs = crate::helpers::docs_tokens(&fi.field.attrs);
 
-                if fi.pod_dyn.is_some() {
-                    tail_field_names.push(fname.clone());
-                } else {
-                    inline_field_names.push(fname.clone());
-                }
+                layout_fields.push((fname.clone(), fi.pod_dyn.is_some()));
 
                 quote::quote! {
-                    quasar_lang::idl_build::__reexport::IdlFieldDef {
-                        name: quasar_lang::idl_build::s(#fname),
+                    #krate::idl_build::__reexport::IdlFieldDef {
+                        name: #krate::idl_build::s(#fname),
                         ty: #fty,
                         codec: #codec_tokens,
-                        docs: quasar_lang::idl_build::Vec::new(),
+                        docs: #fdocs,
                     }
                 }
             })
             .collect();
 
-        let layout_tokens = if tail_field_names.is_empty() {
-            // All fields are fixed: emit Fixed layout
-            let all_names = inline_field_names.iter().collect::<Vec<_>>();
-            quote::quote! {
-                Some(quasar_lang::idl_build::__reexport::IdlLayout::Fixed {
-                    fields: quasar_lang::idl_build::vec![
-                        #(quasar_lang::idl_build::s(#all_names)),*
-                    ],
-                })
-            }
-        } else {
-            // Has dynamic fields: emit Compact layout
-            let inline_refs = inline_field_names.iter().collect::<Vec<_>>();
-            let tail_refs = tail_field_names.iter().collect::<Vec<_>>();
-            quote::quote! {
-                Some(quasar_lang::idl_build::__reexport::IdlLayout::Compact {
-                    inline_fields: quasar_lang::idl_build::vec![
-                        #(quasar_lang::idl_build::s(#inline_refs)),*
-                    ],
-                    tail_fields: quasar_lang::idl_build::vec![
-                        #(quasar_lang::idl_build::s(#tail_refs)),*
-                    ],
-                    wire: quasar_lang::idl_build::__reexport::CompactWire::InlineFieldsThenTailHeadersThenTailPayloads,
-                })
-            }
+        // Fixed layout when all fields are inline; Compact otherwise — via the
+        // single-source `project_idl_layout` shared with the instruction
+        // fragments.
+        let layout_tokens = crate::idl::project_idl_layout(&layout_fields);
+
+        // Emit the account's on-chain footprint. The fragment builder runs
+        // host-side (in the `__quasar_emit_idl` test), where the account's
+        // `Space::SPACE` associated const is evaluable. `min` is the minimum
+        // byte size including the discriminator.
+        let space_tokens = quote::quote! {
+            Some(#krate::idl_build::__reexport::IdlSpace {
+                discriminator: Some(#disc_len),
+                min: <#name as #krate::traits::Space>::SPACE as u64,
+                max: None,
+                formula: None,
+            })
         };
+
+        let struct_docs = crate::helpers::docs_tokens(attrs);
 
         quote::quote! {
             #[cfg(feature = "idl-build")]
-            quasar_lang::__private_inventory::submit! {
-                quasar_lang::idl_build::AccountFragment {
+            #krate::__private_inventory::submit! {
+                #krate::idl_build::AccountFragment {
                     build: {
                         fn __build() -> (
-                            quasar_lang::idl_build::__reexport::IdlAccountDef,
-                            quasar_lang::idl_build::__reexport::IdlTypeDef,
+                            #krate::idl_build::__reexport::IdlAccountDef,
+                            #krate::idl_build::__reexport::IdlTypeDef,
                         ) {
                             (
-                                quasar_lang::idl_build::__reexport::IdlAccountDef {
-                                    name: quasar_lang::idl_build::s(#name_str),
-                                    discriminator: quasar_lang::idl_build::vec![#(#disc_values),*],
-                                    docs: quasar_lang::idl_build::Vec::new(),
-                                    space: None,
+                                #krate::idl_build::__reexport::IdlAccountDef {
+                                    name: #krate::idl_build::s(#name_str),
+                                    discriminator: #krate::idl_build::vec![#(#disc_values),*],
+                                    docs: #struct_docs,
+                                    space: #space_tokens,
                                 },
-                                quasar_lang::idl_build::__reexport::IdlTypeDef {
-                                    name: quasar_lang::idl_build::s(#name_str),
-                                    kind: quasar_lang::idl_build::__reexport::IdlTypeDefKind::Struct,
-                                    docs: quasar_lang::idl_build::Vec::new(),
-                                    generics: quasar_lang::idl_build::Vec::new(),
-                                    fields: quasar_lang::idl_build::vec![#(#field_defs),*],
-                                    variants: quasar_lang::idl_build::Vec::new(),
+                                #krate::idl_build::__reexport::IdlTypeDef {
+                                    name: #krate::idl_build::s(#name_str),
+                                    kind: #krate::idl_build::__reexport::IdlTypeDefKind::Struct,
+                                    docs: #krate::idl_build::Vec::new(),
+                                    fields: #krate::idl_build::vec![#(#field_defs),*],
+                                    variants: #krate::idl_build::Vec::new(),
                                     repr: None,
                                     alias: None,
                                     fallback: None,
@@ -259,5 +262,4 @@ pub(super) fn generate_account(
 
         #idl_fragment
     }
-    .into()
 }

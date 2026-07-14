@@ -215,10 +215,10 @@ pub fn svm_errors() -> QuasarSvm {
 
 const SIMPLE_ACCOUNT_SIZE: usize = 42; // 1 disc + 32 addr + 8 u64 + 1 u8
 
-/// Build raw data for SimpleAccount (disc=1).
+/// Build raw data for SimpleAccount (disc=2).
 pub fn build_simple_data(authority: Pubkey, value: u64, bump: u8) -> Vec<u8> {
     let mut data = vec![0u8; SIMPLE_ACCOUNT_SIZE];
-    data[0] = 1;
+    data[0] = 2;
     data[1..33].copy_from_slice(authority.as_ref());
     data[33..41].copy_from_slice(&value.to_le_bytes());
     data[41] = bump;

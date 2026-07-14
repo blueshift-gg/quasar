@@ -3,6 +3,7 @@ name = "quasar-idl"
 description = "IDL generator for the Quasar Solana framework with discriminator collision detection"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
@@ -17,7 +18,7 @@ doctest = false
 
 [dependencies]
 bs58 = "0.5.1"
-quasar-schema = { path = "../schema" }
-quasar-idl-schema = { path = "schema" }
+quasar-schema = { version = "0.1", path = "../schema" }
+quasar-idl-schema = { version = "0.1", path = "schema" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

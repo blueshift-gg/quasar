@@ -36,6 +36,29 @@ impl Parse for DeclareProgramInput {
     }
 }
 
+/// Turn an IDL-supplied name into a valid Rust identifier.
+///
+/// `Ident::new` panics on reserved words (`type`, `match`, `move`, ...), so
+/// every IDL string must pass through here. Keywords become raw identifiers
+/// (`type` -> `r#type`); the few that cannot be raw (`crate`/`self`/`super`/
+/// `Self`) get a trailing underscore. Anything still unusable is a spanned
+/// error pointing at the macro invocation rather than a proc-macro panic.
+fn sanitize_ident(name: &str, span: Span) -> syn::Result<Ident> {
+    if let Ok(id) = syn::parse_str::<Ident>(name) {
+        return Ok(id);
+    }
+    if let Ok(id) = syn::parse_str::<Ident>(&format!("r#{name}")) {
+        return Ok(id);
+    }
+    if let Ok(id) = syn::parse_str::<Ident>(&format!("{name}_")) {
+        return Ok(id);
+    }
+    Err(syn::Error::new(
+        span,
+        format!("IDL name `{name}` is not a valid Rust identifier"),
+    ))
+}
+
 /// Compute byte sizes for all custom struct types in the IDL.
 /// Returns an error if any type contains dynamic fields, circular references,
 /// or non-struct kinds.
@@ -136,6 +159,7 @@ struct TypeInfo {
 }
 
 fn map_idl_type(ty: &IdlType, type_sizes: &HashMap<String, usize>) -> Result<TypeInfo, String> {
+    let krate = crate::krate::lang_path();
     match ty {
         IdlType::Primitive(s) => {
             let rust_type = match s.as_str() {
@@ -154,8 +178,8 @@ fn map_idl_type(ty: &IdlType, type_sizes: &HashMap<String, usize>) -> Result<Typ
                 "f64" => quote! { f64 },
                 "pubkey" => {
                     return Ok(TypeInfo {
-                        param_type: quote! { &quasar_lang::prelude::Address },
-                        field_type: quote! { quasar_lang::prelude::Address },
+                        param_type: quote! { &#krate::prelude::Address },
+                        field_type: quote! { #krate::prelude::Address },
                     });
                 }
                 other => return Err(format!("unsupported primitive type '{other}'")),
@@ -169,7 +193,8 @@ fn map_idl_type(ty: &IdlType, type_sizes: &HashMap<String, usize>) -> Result<Typ
             if !type_sizes.contains_key(defined.name.as_str()) {
                 return Err(format!("undefined type '{}'", defined.name));
             }
-            let ident = Ident::new(&defined.name, Span::call_site());
+            let ident =
+                sanitize_ident(&defined.name, Span::call_site()).map_err(|e| e.to_string())?;
             Ok(TypeInfo {
                 param_type: quote! { #ident },
                 field_type: quote! { #ident },
@@ -205,7 +230,8 @@ fn generate_data_write(
     }
 
     for field in args {
-        let fname = Ident::new(&pascal_to_snake(&field.name), Span::call_site());
+        let fname = sanitize_ident(&pascal_to_snake(&field.name), Span::call_site())
+            .map_err(|e| e.to_string())?;
         emit_field_write(
             &mut write_stmts,
             &mut offset,
@@ -276,7 +302,8 @@ fn emit_field_write(
                 .find(|t| t.name == defined.name)
                 .ok_or_else(|| format!("undefined type '{}'", defined.name))?;
             for sub_field in &td.fields {
-                let sub_name = Ident::new(&pascal_to_snake(&sub_field.name), Span::call_site());
+                let sub_name = sanitize_ident(&pascal_to_snake(&sub_field.name), Span::call_site())
+                    .map_err(|e| e.to_string())?;
                 let sub_access = quote! { #access.#sub_name };
                 emit_field_write(stmts, offset, &sub_access, &sub_field.ty, idl_types)?;
             }
@@ -313,12 +340,13 @@ fn emit_struct_defs(
         if !referenced.contains(&td.name) {
             continue;
         }
-        let name = Ident::new(&td.name, Span::call_site());
+        let name = sanitize_ident(&td.name, Span::call_site()).map_err(|e| e.to_string())?;
         let fields: Vec<TokenStream2> = td
             .fields
             .iter()
             .map(|f| {
-                let fname = Ident::new(&pascal_to_snake(&f.name), Span::call_site());
+                let fname = sanitize_ident(&pascal_to_snake(&f.name), Span::call_site())
+                    .map_err(|e| e.to_string())?;
                 let info = map_idl_type(&f.ty, type_sizes)?;
                 let fty = &info.field_type;
                 Ok(quote! { pub #fname: #fty })
@@ -369,6 +397,7 @@ fn collect_type_refs(ty: &IdlType, idl_types: &[IdlTypeDef], out: &mut HashSet<S
 }
 
 pub fn declare_program(input: TokenStream) -> TokenStream {
+    let krate = crate::krate::lang_path();
     let DeclareProgramInput { mod_name, idl_path } =
         parse_macro_input!(input as DeclareProgramInput);
     let idl_path = idl_path.value();
@@ -401,6 +430,14 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         }
     };
 
+    // Spec-version gate: diagnose an incompatible schema up front so the caller
+    // gets a clear message instead of a confusing field-level parse error.
+    if let Err(msg) = quasar_idl_schema::check_spec(&idl_json) {
+        return syn::Error::new(Span::call_site(), msg)
+            .to_compile_error()
+            .into();
+    }
+
     let idl: Idl = match serde_json::from_str(&idl_json) {
         Ok(idl) => idl,
         Err(e) => {
@@ -420,16 +457,8 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         }
     };
 
-    for ix in &idl.instructions {
-        for arg in &ix.args {
-            if let Err(msg) = map_idl_type(&arg.ty, &type_sizes) {
-                let full_msg = format!("in instruction '{}', arg '{}': {}", ix.name, arg.name, msg);
-                return syn::Error::new(Span::call_site(), full_msg)
-                    .to_compile_error()
-                    .into();
-            }
-        }
-    }
+    // Instruction arg types are validated once, below, where `arg_params` calls
+    // `map_idl_type` with the identical "in instruction '..', arg '..'" message.
 
     let referenced = collect_referenced_types(&idl.instructions, &idl.types);
     let struct_defs = match emit_struct_defs(&idl.types, &referenced, &type_sizes) {
@@ -444,20 +473,27 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
     let program_type_name =
         format_ident!("{}", crate::helpers::snake_to_pascal(&mod_name.to_string()));
     let address_str = &idl.address;
-    let address_tokens = quote! { quasar_lang::prelude::address!(#address_str) };
+    let address_tokens = quote! { #krate::prelude::address!(#address_str) };
 
     let mut free_functions = Vec::new();
     let mut method_impls = Vec::new();
 
     for ix in &idl.instructions {
-        let fn_name = Ident::new(&pascal_to_snake(&ix.name), Span::call_site());
+        let fn_name = match sanitize_ident(&pascal_to_snake(&ix.name), Span::call_site()) {
+            Ok(id) => id,
+            Err(e) => return e.to_compile_error().into(),
+        };
         let acct_count = ix.accounts.len();
 
-        let acct_idents: Vec<Ident> = ix
+        let acct_idents: Vec<Ident> = match ix
             .accounts
             .iter()
-            .map(|a| Ident::new(&pascal_to_snake(&a.name), Span::call_site()))
-            .collect();
+            .map(|a| sanitize_ident(&pascal_to_snake(&a.name), Span::call_site()))
+            .collect::<syn::Result<Vec<_>>>()
+        {
+            Ok(v) => v,
+            Err(e) => return e.to_compile_error().into(),
+        };
 
         let ia_entries: Vec<TokenStream2> = ix
             .accounts
@@ -465,7 +501,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
             .zip(&acct_idents)
             .map(|(a, name)| {
                 let method = Ident::new(ia_constructor(&a.writable, &a.signer), Span::call_site());
-                quote! { quasar_lang::cpi::InstructionAccount::#method(#name.address()) }
+                quote! { #krate::cpi::InstructionAccount::#method(#name.address()) }
             })
             .collect();
 
@@ -479,7 +515,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
                         format!("in instruction '{}', arg '{}': {}", ix.name, a.name, msg),
                     )
                 })?;
-                let name = Ident::new(&pascal_to_snake(&a.name), Span::call_site());
+                let name = sanitize_ident(&pascal_to_snake(&a.name), Span::call_site())?;
                 let ty = &info.param_type;
                 Ok(quote! { #name: #ty })
             })
@@ -502,18 +538,18 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         // Free function: accounts as &'a AccountView
         let free_acct_params: Vec<TokenStream2> = acct_idents
             .iter()
-            .map(|name| quote! { #name: &'a quasar_lang::prelude::AccountView })
+            .map(|name| quote! { #name: &'a #krate::prelude::AccountView })
             .collect();
 
         free_functions.push(quote! {
             #[inline(always)]
             pub fn #fn_name<'a>(
-                __program: &'a quasar_lang::prelude::AccountView,
+                __program: &'a #krate::prelude::AccountView,
                 #(#free_acct_params,)*
                 #(#arg_params,)*
-            ) -> quasar_lang::cpi::CpiCall<'a, #acct_count, #data_size> {
+            ) -> #krate::cpi::CpiCall<'a, #acct_count, #data_size> {
                 let __data = #data_write;
-                quasar_lang::cpi::CpiCall::new(
+                #krate::cpi::CpiCall::new(
                     __program.address(),
                     [#(#ia_entries),*],
                     [#(#acct_idents),*],
@@ -525,7 +561,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         // Method variant: accounts as &'a impl AsAccountView
         let method_acct_params: Vec<TokenStream2> = acct_idents
             .iter()
-            .map(|name| quote! { #name: &'a impl quasar_lang::traits::AsAccountView })
+            .map(|name| quote! { #name: &'a impl #krate::traits::AsAccountView })
             .collect();
 
         let method_acct_conversions: Vec<TokenStream2> = acct_idents
@@ -533,11 +569,15 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
             .map(|name| quote! { #name.to_account_view() })
             .collect();
 
-        let arg_names: Vec<Ident> = ix
+        let arg_names: Vec<Ident> = match ix
             .args
             .iter()
-            .map(|a| Ident::new(&pascal_to_snake(&a.name), Span::call_site()))
-            .collect();
+            .map(|a| sanitize_ident(&pascal_to_snake(&a.name), Span::call_site()))
+            .collect::<syn::Result<Vec<_>>>()
+        {
+            Ok(v) => v,
+            Err(e) => return e.to_compile_error().into(),
+        };
 
         method_impls.push(quote! {
             #[inline(always)]
@@ -545,7 +585,7 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
                 &'a self,
                 #(#method_acct_params,)*
                 #(#arg_params,)*
-            ) -> quasar_lang::cpi::CpiCall<'a, #acct_count, #data_size> {
+            ) -> #krate::cpi::CpiCall<'a, #acct_count, #data_size> {
                 #fn_name(
                     self.to_account_view(),
                     #(#method_acct_conversions,)*
@@ -557,15 +597,15 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
 
     quote! {
         pub mod #mod_name {
-            pub const ID: quasar_lang::prelude::Address = #address_tokens;
+            pub const ID: #krate::prelude::Address = #address_tokens;
 
-            quasar_lang::define_account!(
+            #krate::define_account!(
                 pub struct #program_type_name =>
-                    [quasar_lang::checks::Executable, quasar_lang::checks::Address]
+                    [#krate::checks::Executable, #krate::checks::Address]
             );
 
-            impl quasar_lang::traits::Id for #program_type_name {
-                const ID: quasar_lang::prelude::Address = ID;
+            impl #krate::traits::Id for #program_type_name {
+                const ID: #krate::prelude::Address = ID;
             }
 
             #(#struct_defs)*
@@ -578,4 +618,62 @@ pub fn declare_program(input: TokenStream) -> TokenStream {
         }
     }
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_ident_keywords_become_raw() {
+        let sp = Span::call_site();
+        assert_eq!(sanitize_ident("type", sp).unwrap().to_string(), "r#type");
+        assert_eq!(sanitize_ident("match", sp).unwrap().to_string(), "r#match");
+        assert_eq!(sanitize_ident("move", sp).unwrap().to_string(), "r#move");
+        assert_eq!(sanitize_ident("fn", sp).unwrap().to_string(), "r#fn");
+    }
+
+    #[test]
+    fn sanitize_ident_non_raw_keywords_get_suffix() {
+        let sp = Span::call_site();
+        // crate/self/super/Self cannot be raw identifiers.
+        assert_eq!(sanitize_ident("crate", sp).unwrap().to_string(), "crate_");
+        assert_eq!(sanitize_ident("self", sp).unwrap().to_string(), "self_");
+        assert_eq!(sanitize_ident("super", sp).unwrap().to_string(), "super_");
+        assert_eq!(sanitize_ident("Self", sp).unwrap().to_string(), "Self_");
+    }
+
+    #[test]
+    fn sanitize_ident_valid_passthrough() {
+        let sp = Span::call_site();
+        assert_eq!(
+            sanitize_ident("my_account", sp).unwrap().to_string(),
+            "my_account"
+        );
+    }
+
+    #[test]
+    fn sanitize_ident_unusable_errors() {
+        let sp = Span::call_site();
+        assert!(sanitize_ident("has spaces", sp).is_err());
+        assert!(sanitize_ident("1leading", sp).is_err());
+        assert!(sanitize_ident("", sp).is_err());
+    }
+
+    #[test]
+    fn map_idl_type_rejects_unsupported_arg_types() {
+        // The single kept arg-type validation still rejects dynamic/unsupported
+        // types with the same diagnostic the deleted pre-pass emitted.
+        let sizes = HashMap::new();
+        let opt = IdlType::Option {
+            option: Box::new(IdlType::Primitive("u8".to_owned())),
+        };
+        assert!(map_idl_type(&opt, &sizes).is_err());
+        let v = IdlType::Vec {
+            vec: Box::new(IdlType::Primitive("u8".to_owned())),
+        };
+        assert!(map_idl_type(&v, &sizes).is_err());
+        // Supported fixed primitive still maps cleanly.
+        assert!(map_idl_type(&IdlType::Primitive("u64".to_owned()), &sizes).is_ok());
+    }
 }

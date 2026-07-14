@@ -21,3 +21,27 @@ pub fn log_data(data: &[&[u8]]) {
         core::hint::black_box(data);
     }
 }
+
+/// Emit a debug log from generated code, gated on **quasar-lang's own** `debug`
+/// feature.
+///
+/// Generated account-parsing code must not key its debug logging off the
+/// downstream crate's features (a user crate with an unrelated `debug` feature
+/// would otherwise flip it on). Emitting `quasar_lang::debug_log!(...)` moves
+/// the gate here, where `feature = "debug"` refers to quasar-lang. The argument
+/// forwards to [`log`](crate::prelude::log()); when the feature is off it
+/// expands to nothing (arguments are not evaluated).
+#[cfg(feature = "debug")]
+#[macro_export]
+macro_rules! debug_log {
+    ($($arg:tt)*) => {
+        $crate::prelude::log($($arg)*)
+    };
+}
+
+/// No-op form used when quasar-lang is built without the `debug` feature.
+#[cfg(not(feature = "debug"))]
+#[macro_export]
+macro_rules! debug_log {
+    ($($arg:tt)*) => {};
+}

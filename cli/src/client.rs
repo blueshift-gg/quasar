@@ -28,6 +28,9 @@ pub fn run(command: ClientCommand) -> CliResult {
 
     let json =
         std::fs::read_to_string(idl_path).map_err(|e| CliError::io_path("read", idl_path, e))?;
+    // Spec-version gate before the full parse so an incompatible schema fails
+    // with a clear message.
+    quasar_idl::types::check_spec(&json).map_err(CliError::message)?;
     let idl: quasar_idl::types::Idl = serde_json::from_str(&json)
         .map_err(|e| CliError::json_parse(format!("IDL file {}", idl_path.display()), e))?;
 

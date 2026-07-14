@@ -1,0 +1,5 @@
+error: instruction `reserved` has a discriminator starting with 0xFF which is reserved for events
+  --> tests/compile_fail/program_reserved_ff_discriminator.rs:15:9
+   |
+15 | pub mod program_reserved_ff_discriminator {
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

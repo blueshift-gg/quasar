@@ -1,12 +1,33 @@
 //! Close epilogue for program-owned accounts.
 //!
-//! The derive emits direct `close_account(view, dest, disc_len)` calls in the
-//! epilogue.
+//! The derive emits a `close::Op { disc_len }.apply(view, dest)` call in the
+//! epilogue, mirroring the config-vs-slot split of
+//! [`init::Op`](crate::ops::init::Op)
+//! and [`realloc::Op`](crate::ops::realloc::Op).
 
 use {
     solana_account_view::AccountView,
     solana_program_error::{ProgramError, ProgramResult},
 };
+
+/// Runtime form of a `close(destination)` field directive.
+///
+/// The config (`disc_len`) is carried on the struct; `apply` operates on the
+/// account slot, mirroring [`init::Op`](crate::ops::init::Op) and
+/// [`realloc::Op`](crate::ops::realloc::Op). Close needs no
+/// [`OpCtx`](crate::ops::OpCtx): it reads neither rent nor the program id.
+pub struct Op {
+    /// Discriminator length to zero before draining and reassigning.
+    pub disc_len: usize,
+}
+
+impl Op {
+    /// Close `account`, draining its lamports into `destination`.
+    #[inline(always)]
+    pub fn apply(&self, account: &mut AccountView, destination: &AccountView) -> ProgramResult {
+        close_account(account, destination, self.disc_len)
+    }
+}
 
 /// Zero the discriminator, drain lamports, assign to the system program, then
 /// resize the account to zero bytes.

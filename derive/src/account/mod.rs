@@ -12,18 +12,29 @@ mod traits;
 use {
     crate::{
         helpers::{
-            classify_option_pod_dynamic, classify_pod_dynamic, validate_discriminator_not_zero,
-            AccountAttr,
+            classify_option_pod_dynamic, classify_pod_dynamic, validate_discriminator, AccountAttr,
+            DiscCtx,
         },
         seeds,
     },
     proc_macro::TokenStream,
-    syn::{parse_macro_input, Data, DeriveInput, Fields},
+    proc_macro2::TokenStream as TokenStream2,
+    syn::{Data, DeriveInput, Fields},
 };
 
 pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let args = parse_macro_input!(attr as AccountAttr);
-    let mut input = parse_macro_input!(item as DeriveInput);
+    account_inner(attr.into(), item.into()).into()
+}
+
+pub(crate) fn account_inner(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
+    let args = match syn::parse2::<AccountAttr>(attr) {
+        Ok(args) => args,
+        Err(e) => return e.to_compile_error(),
+    };
+    let mut input = match syn::parse2::<DeriveInput>(item) {
+        Ok(input) => input,
+        Err(e) => return e.to_compile_error(),
+    };
 
     // Parse #[seeds(...)] if present, then strip it before downstream processing.
     let seeds_parsed = seeds::parse_seeds_attr(&input.attrs);
@@ -35,7 +46,7 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
             &seed_vis,
             attr,
         )),
-        Some(Err(e)) => return e.to_compile_error().into(),
+        Some(Err(e)) => return e.to_compile_error(),
         None => None,
     };
     input.attrs.retain(|a| !a.path().is_ident("seeds"));
@@ -44,22 +55,44 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Handle enum-backed polymorphic accounts before struct-only validation.
     if args.one_of {
+        // `one_of` accounts dispatch on a variant discriminator and have no
+        // single fixed layout, so the seeds/set_inner/fixed_capacity riders do
+        // not apply. Reject them explicitly instead of silently dropping them.
+        if seeds_impl.is_some() {
+            return syn::Error::new_spanned(
+                name,
+                "`#[seeds(...)]` is not supported on `#[account(one_of)]` accounts",
+            )
+            .to_compile_error();
+        }
+        if args.set_inner {
+            return syn::Error::new_spanned(
+                name,
+                "`set_inner` is not supported on `#[account(one_of)]` accounts",
+            )
+            .to_compile_error();
+        }
+        if args.fixed_capacity {
+            return syn::Error::new_spanned(
+                name,
+                "`fixed_capacity` is not supported on `#[account(one_of)]` accounts",
+            )
+            .to_compile_error();
+        }
         match &input.data {
             Data::Enum(data) => {
                 let variants = match one_of::extract_variants(data) {
                     Ok(v) => v,
-                    Err(e) => return e.to_compile_error().into(),
+                    Err(e) => return e.to_compile_error(),
                 };
-                return one_of::generate_one_of_account(name, &variants, args.implements.as_ref())
-                    .into();
+                return one_of::generate_one_of_account(name, &variants, args.implements.as_ref());
             }
             _ => {
                 return syn::Error::new_spanned(
                     name,
                     "#[account(one_of)] can only be used on enum declarations",
                 )
-                .to_compile_error()
-                .into();
+                .to_compile_error();
             }
         }
     }
@@ -67,9 +100,9 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     let gen_set_inner = args.set_inner;
     let unsafe_no_disc = args.unsafe_no_disc;
     let (disc_bytes, disc_values) = if !args.disc_bytes.is_empty() {
-        let values = match validate_discriminator_not_zero(&args.disc_bytes) {
+        let values = match validate_discriminator(&args.disc_bytes, DiscCtx::Account) {
             Ok(values) => values,
-            Err(e) => return e.to_compile_error().into(),
+            Err(e) => return e.to_compile_error(),
         };
         (args.disc_bytes, values)
     } else {
@@ -87,14 +120,12 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
                     name,
                     "#[account] can only be used on structs with named fields",
                 )
-                .to_compile_error()
-                .into();
+                .to_compile_error();
             }
         },
         _ => {
             return syn::Error::new_spanned(name, "#[account] can only be used on structs")
-                .to_compile_error()
-                .into();
+                .to_compile_error();
         }
     };
 
@@ -106,6 +137,9 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
     let pod_field_infos: Vec<fixed::PodFieldInfo<'_>> = match fields_data
         .iter()
         .map(|f| {
+            // Reject an invalid explicit length-prefix (e.g. `String<16, f32>`)
+            // rather than silently defaulting to a 1-byte prefix.
+            crate::helpers::validate_dynamic_prefix(&f.ty)?;
             if !args.fixed_capacity && classify_option_pod_dynamic(&f.ty).is_some() {
                 return Err(syn::Error::new_spanned(
                     &f.ty,
@@ -124,47 +158,46 @@ pub(crate) fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
         .collect::<syn::Result<_>>()
     {
         Ok(infos) => infos,
-        Err(e) => return e.to_compile_error().into(),
+        Err(e) => return e.to_compile_error(),
     };
 
     let has_pod_dynamic = pod_field_infos.iter().any(|fi| fi.pod_dyn.is_some());
 
     if has_pod_dynamic {
-        // Fixed fields must precede Pod-dynamic fields.
-        let first_pod_dyn = pod_field_infos.iter().position(|fi| fi.pod_dyn.is_some());
-        let last_fixed = pod_field_infos.iter().rposition(|fi| fi.pod_dyn.is_none());
-        if let (Some(fd), Some(lf)) = (first_pod_dyn, last_fixed) {
-            if lf > fd {
-                return syn::Error::new_spanned(
-                    &fields_data[lf],
-                    "fixed fields must precede all PodString/PodVec fields",
-                )
-                .to_compile_error()
-                .into();
-            }
+        // Fixed fields must precede Pod-dynamic fields (shared ordering check).
+        let fields: Vec<&syn::Field> = fields_data.iter().collect();
+        let is_dynamic: Vec<bool> = pod_field_infos
+            .iter()
+            .map(|fi| fi.pod_dyn.is_some())
+            .collect();
+        if let Err(e) = crate::helpers::check_fixed_before_dynamic(
+            &fields,
+            &is_dynamic,
+            "fixed fields must precede all PodString/PodVec fields",
+        ) {
+            return e.to_compile_error();
         }
         if unsafe_no_disc {
             return syn::Error::new_spanned(
                 name,
                 "unsafe_no_disc accounts cannot have PodString/PodVec fields",
             )
-            .to_compile_error()
-            .into();
+            .to_compile_error();
         }
     }
 
-    let mut output = fixed::generate_account(
+    let mut output: TokenStream2 = fixed::generate_account(fixed::AccountCodegenSpec {
         name,
-        &disc_bytes,
-        &disc_values,
+        disc_bytes: &disc_bytes,
+        disc_values: &disc_values,
         disc_len,
-        &disc_indices,
-        &pod_field_infos,
-        &input,
+        disc_indices: &disc_indices,
+        field_infos: &pod_field_infos,
+        input: &input,
         gen_set_inner,
-    );
+    });
     if let Some(seeds_tokens) = seeds_impl {
-        output.extend(TokenStream::from(seeds_tokens));
+        output.extend(seeds_tokens);
     }
     output
 }
