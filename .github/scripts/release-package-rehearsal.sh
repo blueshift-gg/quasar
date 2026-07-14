@@ -86,6 +86,29 @@ verify_starter() {
     || fail "$template starter manifest changed during lint/build/test"
 }
 
+verify_quickstart() {
+  local project="$rehearsal_root/quasar-release-minimal"
+  local manifest_snapshot="/tmp/quasar-release-minimal.Cargo.toml"
+
+  cd "$project"
+  quasar add -i transfer -s vault -e access
+  test -f src/instructions/transfer.rs \
+    || fail "quickstart did not create the transfer instruction"
+  test -f src/state.rs || fail "quickstart did not create the vault state"
+  test -f src/errors.rs || fail "quickstart did not create the access error"
+
+  quasar lint --update-lock
+  test -s quasar.lock.json || fail "quickstart did not write the discriminator lock"
+  quasar lint --strict --no-diff
+
+  quasar build
+  quasar test
+  quasar test -f test_init
+  quasar test --features debug
+  cmp "$manifest_snapshot" Cargo.toml \
+    || fail "quickstart changed the starter manifest"
+}
+
 verify_upstream_starter() {
   local name="quasar-release-upstream"
   local project="$rehearsal_root/$name"
@@ -138,6 +161,7 @@ grep -F 'sbpf-linker 0.1.9' <<<"$linker_version" >/dev/null \
 
 rm -rf "$rehearsal_root"/*
 verify_starter minimal
+verify_quickstart
 verify_starter full
 verify_upstream_starter
 
