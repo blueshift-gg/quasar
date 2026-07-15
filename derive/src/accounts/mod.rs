@@ -154,7 +154,15 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
     let epilogue_method = emit::parse::emit_epilogue(&typed_plan);
     let has_epilogue_expr = emit::parse::emit_has_epilogue_typed(&typed_plan);
 
-    let client_macro = crate::client_macro::generate_accounts_macro(name, &typed_plan);
+    let client_macro =
+        crate::client_macro::generate_accounts_macro(name, &input.generics, &typed_plan);
+    let signer_meta_impl = emit_account_signer_constants(
+        name,
+        &typed_plan,
+        &impl_generics_ts,
+        &ty_generics_ts,
+        &where_clause_ts,
+    );
 
     // IDL accounts meta fragment (feature-gated behind `idl-build`)
     let idl_accounts_meta = emit_idl_accounts_meta(name, &typed_plan);
@@ -200,10 +208,58 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
 
     quote::quote! {
         #main_output
+        #signer_meta_impl
         #idl_accounts_meta
         #idl_validation_meta
         #event_cpi_impl
     }
+}
+
+/// Resolve behavior-defined signer requirements where the behavior paths and
+/// account types are in scope. The exported client macro can then read the
+/// values through the accounts type without leaking those local paths into the
+/// program module where that macro is invoked.
+fn emit_account_signer_constants(
+    name: &syn::Ident,
+    plan: &resolve::specs::AccountsPlanTyped,
+    impl_generics: &proc_macro2::TokenStream,
+    ty_generics: &proc_macro2::TokenStream,
+    where_clause: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    if !plan.fields.iter().any(|field| field.behavior_init_signer) {
+        return quote! {};
+    }
+
+    let signers = plan.fields.iter().map(emit_account_signer);
+    let count = plan.fields.len();
+    quote! {
+        impl #impl_generics #name #ty_generics #where_clause {
+            #[doc(hidden)]
+            pub const __QUASAR_ACCOUNT_SIGNERS: [bool; #count] = [#(#signers),*];
+        }
+    }
+}
+
+/// Emit the account-meta signer expression from the typed plan. Core account
+/// semantics produce a fixed requirement; delegated init can additionally ask
+/// the one behavior that supplies init params whether the account must sign.
+pub(crate) fn emit_account_signer(field: &resolve::specs::FieldPlan) -> proc_macro2::TokenStream {
+    let fixed = field.signer;
+    if !field.behavior_init_signer {
+        return quote! { #fixed };
+    }
+
+    let krate = crate::krate::lang_path();
+    let ty = &field.effective_ty;
+    let behavior_requirements = field.behaviors.iter().map(|behavior| {
+        let path = &behavior.path;
+        quote! {
+            (<#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::SETS_INIT_PARAMS
+                && <#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::INIT_REQUIRES_SIGNER)
+        }
+    });
+
+    quote! { #fixed #(|| #behavior_requirements)* }
 }
 
 /// Emit the compiler's resolved account-validation plan into the opaque IDL
@@ -222,7 +278,7 @@ fn emit_idl_validation_meta(
         let account_type = tokens(&field.effective_ty);
         let wrapper = format!("{:?}", field.wrapper);
         let writable = field.writable;
-        let signer = field.signer;
+        let signer = emit_account_signer(field);
         let optional = field.optional;
         let allow_duplicate = field.dup;
         let load = load(&field.load);
@@ -342,7 +398,7 @@ fn emit_idl_accounts_meta(
             let field_name = crate::helpers::snake_to_camel(&fp.ident.to_string());
             let optional = fp.optional;
             let writable = fp.writable;
-            let signer = fp.signer;
+            let signer = emit_account_signer(fp);
 
             let resolver_tokens = fp
                 .idl_resolver

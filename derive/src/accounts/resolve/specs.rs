@@ -294,8 +294,11 @@ pub(crate) struct FieldPlan {
     /// Derived writability (`FieldSemantics::is_writable`), computed once here.
     pub writable: bool,
     /// Account-meta signer flag (`account_meta_flags().signer`): the single
-    /// source shared by the client macro and the IDL accounts-meta fragment.
+    /// core requirement shared by the client macro and IDL metadata.
     pub signer: bool,
+    /// Whether the signer requirement for a delegated, non-PDA init must be
+    /// resolved from the attached behaviors' `INIT_REQUIRES_SIGNER` contract.
+    pub behavior_init_signer: bool,
     /// How this field is loaded (single fields only; composites parse via
     /// their own `ParseAccountsUnchecked` impl).
     pub load: LoadStep,

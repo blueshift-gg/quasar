@@ -82,6 +82,15 @@ pub trait AccountBehavior<A> {
     /// this set to `true`.
     const SETS_INIT_PARAMS: bool = false;
 
+    /// Whether a non-PDA account initialized through this behavior must sign
+    /// the outer transaction.
+    ///
+    /// Most account creation paths create the passed account directly and
+    /// therefore require its keypair signature. Derived-address protocols,
+    /// such as associated-token accounts, override this to `false` because
+    /// their program creates the account without a client-held keypair.
+    const INIT_REQUIRES_SIGNER: bool = true;
+
     /// Whether `after_init` runs after account creation.
     const RUN_AFTER_INIT: bool = false;
 

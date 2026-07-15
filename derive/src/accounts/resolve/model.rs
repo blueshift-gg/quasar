@@ -207,17 +207,26 @@ impl FieldSemantics {
 /// (`emit_idl_accounts_meta`), so the two can never disagree.
 pub(crate) struct AccountMetaFlags {
     pub writable: bool,
+    /// Signer requirement known entirely from core account semantics.
     pub signer: bool,
+    /// A delegated, non-PDA init whose behavior decides whether the target
+    /// account must sign.
+    pub behavior_init_signer: bool,
 }
 
 pub(crate) fn account_meta_flags(sem: &FieldSemantics) -> AccountMetaFlags {
+    let behavior_init_signer = sem.has_init() && sem.address.is_none() && !sem.groups.is_empty();
     AccountMetaFlags {
         writable: sem.is_writable(),
         // A `Signer<'_>` field is always a signer; a keypair-init account
         // (`init` without an `address`, i.e. a non-PDA created from a freshly
-        // generated keypair) must also be signed by the client.
+        // generated keypair) must also be signed by the client. Delegated init
+        // lets the behavior refine that second rule (for example, an ATA is
+        // derived but intentionally has no `address` constraint in the
+        // accounts declaration).
         signer: sem.core.wrapper == WrapperKind::Signer
-            || (sem.has_init() && sem.address.is_none()),
+            || (sem.has_init() && sem.address.is_none() && sem.groups.is_empty()),
+        behavior_init_signer,
     }
 }
 

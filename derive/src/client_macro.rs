@@ -10,15 +10,16 @@ use {
 struct AccountDescriptor {
     name: syn::Ident,
     writable: bool,
-    signer: bool,
+    signer: TokenStream,
 }
 
 pub fn generate_accounts_macro(
     name: &syn::Ident,
+    generics: &syn::Generics,
     plan: &crate::accounts::resolve::specs::AccountsPlanTyped,
 ) -> TokenStream {
     let krate = crate::krate::lang_path();
-    let descriptors = describe_accounts(plan);
+    let descriptors = describe_accounts(name, generics, plan);
     let macro_name = format_ident!("__{}_instruction", pascal_to_snake(&name.to_string()));
     let module_name = format_ident!("__{}_client_macro", pascal_to_snake(&name.to_string()));
     let account_fields: Vec<_> = descriptors.iter().map(emit_account_field).collect();
@@ -171,7 +172,7 @@ fn emit_account_field(descriptor: &AccountDescriptor) -> TokenStream {
 fn emit_account_meta(descriptor: &AccountDescriptor) -> TokenStream {
     let krate = crate::krate::lang_path();
     let ident = &descriptor.name;
-    let signer = descriptor.signer;
+    let signer = &descriptor.signer;
     if descriptor.writable {
         quote! {
             #krate::client::AccountMeta::new(ix.#ident, #signer),
@@ -184,14 +185,29 @@ fn emit_account_meta(descriptor: &AccountDescriptor) -> TokenStream {
 }
 
 fn describe_accounts(
+    name: &syn::Ident,
+    generics: &syn::Generics,
     plan: &crate::accounts::resolve::specs::AccountsPlanTyped,
 ) -> Vec<AccountDescriptor> {
+    let static_lifetimes = generics.lifetimes().map(|_| quote! { 'static });
+    let account_type = if generics.lifetimes().next().is_some() {
+        quote! { #name::<#(#static_lifetimes),*> }
+    } else {
+        quote! { #name }
+    };
+
     plan.fields
         .iter()
-        .map(|fp| AccountDescriptor {
+        .enumerate()
+        .map(|(index, fp)| AccountDescriptor {
             name: fp.ident.clone(),
             writable: fp.writable,
-            signer: fp.signer,
+            signer: if fp.behavior_init_signer {
+                quote! { #account_type::__QUASAR_ACCOUNT_SIGNERS[#index] }
+            } else {
+                let signer = fp.signer;
+                quote! { #signer }
+            },
         })
         .collect()
 }

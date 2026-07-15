@@ -138,6 +138,7 @@ macro_rules! impl_ata_behavior {
         impl AccountBehavior<$wrapper> for Behavior {
             type Args<'a> = Args<'a>;
             const SETS_INIT_PARAMS: bool = true;
+            const INIT_REQUIRES_SIGNER: bool = false;
             const INIT_SATISFIES_CHECK: bool = true;
             const VALIDATES_ACCOUNT_DATA: bool = $validates_account_data;
 

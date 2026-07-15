@@ -65,10 +65,27 @@ pub fn generate_client(idl: &Idl) -> CodegenResult<Vec<(String, String)>> {
         .map(|td| (td.name.clone(), td.fields.clone()))
         .collect();
 
+    // Account and event payload definitions also appear in `idl.types` so
+    // references to their fields can be resolved during generation. They are
+    // emitted by the dedicated `state` and `events` modules, however, and must
+    // not be emitted a second time under `types`.
+    let discriminated_names: HashSet<&str> = idl
+        .accounts
+        .iter()
+        .map(|item| item.name.as_str())
+        .chain(idl.events.iter().map(|item| item.name.as_str()))
+        .collect();
+    let standalone_type_map: HashMap<String, Vec<IdlFieldDef>> = idl
+        .types
+        .iter()
+        .filter(|item| !discriminated_names.contains(item.name.as_str()))
+        .map(|item| (item.name.clone(), item.fields.clone()))
+        .collect();
+
     let has_instructions = model.features.has_instructions;
     let has_state = model.features.has_accounts;
     let has_events = model.features.has_events;
-    let has_types = model.features.has_types;
+    let has_types = !standalone_type_map.is_empty();
     let has_errors = model.features.has_errors;
 
     // Collect PDA info for pda.rs generation
@@ -125,7 +142,7 @@ pub fn generate_client(idl: &Idl) -> CodegenResult<Vec<(String, String)>> {
     }
 
     if has_types {
-        let (mod_rs, type_files) = emit_types(&type_map);
+        let (mod_rs, type_files) = emit_types(&standalone_type_map);
         files.push(("types/mod.rs".to_string(), mod_rs));
         for (name, content) in type_files {
             files.push((format!("types/{}.rs", name), content));
@@ -266,15 +283,30 @@ fn emit_instructions(
     }
     mod_rs.push_str("}\n\n");
 
-    // Total cursor helpers for decoding untrusted instruction bytes.
-    mod_rs.push_str(
-        "fn quasar_take<'a>(data: &'a [u8], offset: &mut usize, len: usize) -> Option<&'a [u8]> \
-         {\n\x20   let end = offset.checked_add(len)?;\n\x20   let bytes = \
-         data.get(*offset..end)?;\n\x20   *offset = end;\n\x20   Some(bytes)\n}\n\nfn \
-         quasar_read_len(data: &[u8], offset: &mut usize, width: usize) -> Option<usize> {\n\x20   \
-         let mut buf = [0u8; 8];\n\x20   buf.get_mut(..width)?.copy_from_slice(quasar_take(data, \
-         offset, width)?);\n\x20   usize::try_from(u64::from_le_bytes(buf)).ok()\n}\n\n",
-    );
+    // Total cursor helpers for decoding untrusted instruction bytes. Only emit
+    // helpers used by this program so warning-free generated clients remain a
+    // useful release gate.
+    let needs_cursor = idl.instructions.iter().any(|ix| !ix.args.is_empty());
+    let needs_read_len = idl.instructions.iter().any(|ix| {
+        ix.args
+            .iter()
+            .any(|arg| is_direct_dynamic(&arg.ty, &arg.codec))
+    });
+    if needs_cursor {
+        mod_rs.push_str(
+            "fn quasar_take<'a>(data: &'a [u8], offset: &mut usize, len: usize) -> Option<&'a \
+             [u8]> {\n\x20   let end = offset.checked_add(len)?;\n\x20   let bytes = \
+             data.get(*offset..end)?;\n\x20   *offset = end;\n\x20   Some(bytes)\n}\n\n",
+        );
+    }
+    if needs_read_len {
+        mod_rs.push_str(
+            "fn quasar_read_len(data: &[u8], offset: &mut usize, width: usize) -> Option<usize> \
+             {\n\x20   let mut buf = [0u8; 8];\n\x20   \
+             buf.get_mut(..width)?.copy_from_slice(quasar_take(data, offset, width)?);\n\x20   \
+             usize::try_from(u64::from_le_bytes(buf)).ok()\n}\n\n",
+        );
+    }
 
     // decode_instruction function
     mod_rs.push_str("pub fn decode_instruction(data: &[u8]) -> Option<ProgramInstruction> {\n");

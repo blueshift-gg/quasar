@@ -232,6 +232,9 @@ fn dump_field_plan(out: &mut String, field: &FieldPlan) {
         field.writable,
         field.signer,
     );
+    if field.behavior_init_signer {
+        let _ = writeln!(out, "    behavior_init_signer: true");
+    }
     let _ = writeln!(out, "    load: {}", load_step(&field.load));
     let _ = writeln!(
         out,

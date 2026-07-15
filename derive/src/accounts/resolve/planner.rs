@@ -209,6 +209,7 @@ fn plan_field(
         dup: sem.core.dup,
         writable: flags.writable,
         signer: flags.signer,
+        behavior_init_signer: flags.behavior_init_signer,
         load,
         bump,
         behaviors,
