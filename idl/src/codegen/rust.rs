@@ -160,6 +160,15 @@ pub fn generate_client(idl: &Idl) -> CodegenResult<Vec<(String, String)>> {
         files.push(("pda.rs".to_string(), emit_pda(&pdas)));
     }
 
+    for (_, content) in &mut files {
+        while content.ends_with("\n\n") {
+            content.pop();
+        }
+        if !content.ends_with('\n') {
+            content.push('\n');
+        }
+    }
+
     Ok(files)
 }
 

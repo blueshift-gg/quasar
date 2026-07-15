@@ -209,6 +209,15 @@ mod tests {
     }
 
     #[test]
+    fn rust_client_sources_end_in_exactly_one_newline() {
+        let files = generate_rust_client(&idl_with_u64_arg_seed()).unwrap();
+
+        assert!(files
+            .iter()
+            .all(|(_, contents)| { contents.ends_with('\n') && !contents.ends_with("\n\n") }));
+    }
+
+    #[test]
     fn rust_instruction_symbols_convert_snake_case_to_pascal_case() {
         let files = generate_rust_client(&idl_with_snake_case_instruction()).unwrap();
         let mod_rs = files
