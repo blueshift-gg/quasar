@@ -94,12 +94,26 @@ fn has_leading_version(account: &AccountSurface) -> bool {
 
 fn has_trailing_reserved_padding(account: &AccountSurface) -> bool {
     matches!(
-        account.fields.last(),
+        account
+            .fields
+            .iter()
+            .rev()
+            .find(|field| !is_tail_stored(field)),
         Some(field)
             if field.name == "_reserved"
                 && field.ty.starts_with("[u8; ")
                 && field.ty.ends_with(']')
     )
+}
+
+fn is_tail_stored(field: &FieldSurface) -> bool {
+    field
+        .codec
+        .as_deref()
+        .and_then(|codec| serde_json::from_str::<serde_json::Value>(codec).ok())
+        .is_some_and(|codec| {
+            codec.get("storage").and_then(serde_json::Value::as_str) == Some("tail")
+        })
 }
 
 fn preflight_instructions(surface: &ProgramSurface, config: &LintConfig, report: &mut LintReport) {

@@ -16,6 +16,25 @@ fn field(name: &str, ty: IdlType) -> IdlFieldDef {
     }
 }
 
+fn dynamic_field(name: &str, ty: IdlType, storage: Storage) -> IdlFieldDef {
+    IdlFieldDef {
+        name: name.to_owned(),
+        ty,
+        codec: Some(IdlCodec::SizePrefixed {
+            prefix: ScalarRepr {
+                ty: "u8".to_owned(),
+                endian: Endian::Le,
+            },
+            storage,
+            max_bytes: Some(32),
+            max_items: None,
+            encoding: Some("utf8".to_owned()),
+            item: None,
+        }),
+        docs: Vec::new(),
+    }
+}
+
 fn account_type(name: &str, fields: Vec<IdlFieldDef>) -> IdlTypeDef {
     IdlTypeDef {
         name: name.to_owned(),
@@ -193,6 +212,30 @@ fn preflight_flags_upgrade_hostile_account_shapes() {
     assert!(report.contains(RuleCode::P005));
     assert!(report.contains(RuleCode::P006));
     assert!(!report.has_errors());
+}
+
+#[test]
+fn preflight_accepts_reserved_padding_before_dynamic_tail_storage() {
+    let mut idl = base_idl();
+    idl.types[0]
+        .fields
+        .push(dynamic_field("label", primitive("string"), Storage::Tail));
+
+    let report = lint::run(&idl, &lint::LintConfig::default());
+
+    assert!(!report.contains(RuleCode::P002));
+}
+
+#[test]
+fn preflight_rejects_reserved_padding_before_inline_dynamic_storage() {
+    let mut idl = base_idl();
+    idl.types[0]
+        .fields
+        .push(dynamic_field("label", primitive("string"), Storage::Inline));
+
+    let report = lint::run(&idl, &lint::LintConfig::default());
+
+    assert!(report.contains(RuleCode::P002));
 }
 
 #[test]
