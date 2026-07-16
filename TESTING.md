@@ -168,7 +168,8 @@ Mechanical checks do the enforcement; this section defines the human rules.
 - **Cadence.** Quarterly, or before each release, whichever comes first:
   re-run the deep tier, triage every mutation-baseline entry and oracle
   allowlist entry, prune tests that no longer assert anything real, and
-  re-baseline the CU budgets (`accepted_*_delta`) against current numbers.
+  re-capture the tracked CU/size baselines (`benchmarks/*.env`) at the
+  release tag.
 - **Failure routing.** A nightly deep-tier failure is triaged by the author
   of the change that introduced it, or by the release owner when no single
   change is at fault. A fuzz crash or a rejection test that *passes* against
