@@ -83,7 +83,7 @@ TYPESCRIPT_TEST_DIR := testing/typescript
 	test-typescript-package typescript-package-check \
 	check-release-dependencies test-release-dependency-policy \
 	check-release-permissions test-release-permission-policy \
-	kani help-kani check-kani kani-lang \
+	mutants mutants-bless kani help-kani check-kani kani-lang \
 	kani-spl kani-metadata msrv-check package-check package-rehearsal audit
 
 # Print the nightly toolchain version for CI
@@ -581,6 +581,16 @@ test-miri-strict:
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri
 	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-metadata --test miri
+
+# Mutation testing (TESTING.md): per-package cargo-mutants runs, then the
+# missed set is judged against the shrink-only baseline in
+# .ci/mutants-baseline.txt. Deep-tier: nightly CI, not the PR gate.
+mutants:
+	@scripts/mutants.sh run-all
+	@scripts/mutants.sh check-baseline
+
+mutants-bless:
+	@scripts/mutants.sh bless-baseline
 
 kani-lang: check-kani
 	@cargo kani -p quasar-lang

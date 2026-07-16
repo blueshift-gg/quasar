@@ -26,3 +26,6 @@ pub use {
     address::Address, data_len::DataLen, discriminator::Discriminator, executable::Executable,
     mutable::Mutable, owner::Owner, signer::Signer, zeropod::ZeroPod,
 };
+
+#[cfg(test)]
+mod tests;
