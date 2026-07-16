@@ -84,6 +84,7 @@ TYPESCRIPT_TEST_DIR := testing/typescript
 	test-typescript-package typescript-package-check \
 	check-release-dependencies test-release-dependency-policy \
 	check-release-permissions test-release-permission-policy \
+	test-matrix check-test-matrix coverage \
 	mutants mutants-bless kani help-kani check-kani kani-lang \
 	kani-spl kani-metadata msrv-check package-check package-rehearsal audit
 
@@ -590,6 +591,29 @@ test-miri-strict:
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri
 	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-metadata --test miri
+
+# Feature -> test traceability (TESTING.md): the grid of what is tested and
+# how. check mode fails on an empty required cell, manifest drift, or a suite
+# module no feature claims.
+test-matrix:
+	@python3 scripts/test-matrix.py
+
+check-test-matrix:
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_test_matrix.py
+	@python3 scripts/test-matrix.py --check
+
+# Host-side line coverage, informational only: code executed under
+# SBF/Mollusk is invisible here (TESTING.md) — the matrix above and the
+# mutation baseline are the assurance metrics, never a coverage percentage.
+coverage:
+	@command -v cargo-llvm-cov >/dev/null 2>&1 || { \
+		echo "cargo-llvm-cov is not installed; run: cargo install cargo-llvm-cov --locked"; \
+		exit 1; \
+	}
+	@cargo llvm-cov --workspace \
+		$(foreach package,$(SBF_HOST_TEST_PACKAGES),--exclude $(package)) \
+		--all-features --html
+	@echo "HTML report: target/llvm-cov/html/index.html"
 
 # Mutation testing (TESTING.md): per-package cargo-mutants runs, then the
 # missed set is judged against the shrink-only baseline in
