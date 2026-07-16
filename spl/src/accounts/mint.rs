@@ -12,8 +12,8 @@ use quasar_lang::prelude::*;
 
 /// Resolved arguments for mint validation or initialization.
 pub struct Args<'a> {
-    /// Expected mint authority.
-    pub authority: &'a AccountView,
+    /// Expected mint authority, or `None` to skip that check.
+    pub authority: Option<&'a AccountView>,
     /// Expected decimals, or `None` to skip that check.
     pub decimals: Option<u8>,
     /// Expected freeze-authority policy.
@@ -93,7 +93,7 @@ impl<'a> quasar_lang::account_behavior::BehaviorArgsBuilder for ArgsBuilder<'a> 
     #[inline(always)]
     fn build_check(self) -> Result<Args<'a>, ProgramError> {
         Ok(Args {
-            authority: self.authority.ok_or(ProgramError::InvalidArgument)?,
+            authority: self.authority,
             decimals: self.decimals,
             freeze_authority: self.freeze_authority,
             token_program: self.token_program,
@@ -103,7 +103,7 @@ impl<'a> quasar_lang::account_behavior::BehaviorArgsBuilder for ArgsBuilder<'a> 
     #[inline(always)]
     fn build_init(self) -> Result<Args<'a>, ProgramError> {
         Ok(Args {
-            authority: self.authority.ok_or(ProgramError::InvalidArgument)?,
+            authority: Some(self.authority.ok_or(ProgramError::InvalidArgument)?),
             decimals: self.decimals,
             freeze_authority: self.freeze_authority,
             token_program: Some(self.token_program.ok_or(ProgramError::InvalidArgument)?),
@@ -151,7 +151,10 @@ macro_rules! impl_mint_behavior {
                 };
                 *params = crate::token::MintInitParams::Mint {
                     decimals: args.decimals.unwrap_or(6),
-                    authority: args.authority.address(),
+                    authority: args
+                        .authority
+                        .ok_or(ProgramError::InvalidArgument)?
+                        .address(),
                     freeze_authority: freeze,
                     token_program: args.token_program.ok_or(ProgramError::InvalidArgument)?,
                 };
@@ -167,9 +170,9 @@ macro_rules! impl_mint_behavior {
                         crate::validate::FreezeCheck::AssertEquals(view.address())
                     }
                 };
-                crate::validate::validate_mint_with_freeze(
+                crate::validate::validate_mint_constraints(
                     account.to_account_view(),
-                    args.authority.address(),
+                    args.authority.map(AccountView::address),
                     args.decimals,
                     freeze,
                     if $check_token_program {

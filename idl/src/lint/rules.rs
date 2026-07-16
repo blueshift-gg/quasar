@@ -26,7 +26,7 @@ const RESERVED_ACCOUNT_NAMES: &[&str] = &[
 
 pub fn preflight(surface: &ProgramSurface, config: &LintConfig) -> LintReport {
     let mut report = LintReport::default();
-    preflight_accounts(surface, &mut report);
+    preflight_accounts(surface, config, &mut report);
     preflight_instructions(surface, config, &mut report);
     preflight_discriminators(surface, &mut report);
     graph_checks(surface, &mut report);
@@ -42,9 +42,12 @@ pub fn diff(old: &ProgramSurface, new: &ProgramSurface) -> LintReport {
     report
 }
 
-fn preflight_accounts(surface: &ProgramSurface, report: &mut LintReport) {
+fn preflight_accounts(surface: &ProgramSurface, config: &LintConfig, report: &mut LintReport) {
     for account in &surface.accounts {
-        if !has_leading_version(account) {
+        // Versioning and reserved padding are useful release policies, not
+        // correctness requirements. Keep byte-compatible ports quiet by
+        // default and surface this advice only during an explicit strict audit.
+        if config.strict && !has_leading_version(account) {
             report.push(Diagnostic::new(
                 RuleCode::P001,
                 account.name.clone(),
@@ -57,7 +60,7 @@ fn preflight_accounts(surface: &ProgramSurface, report: &mut LintReport) {
             ));
         }
 
-        if !has_trailing_reserved_padding(account) {
+        if config.strict && !has_trailing_reserved_padding(account) {
             report.push(Diagnostic::new(
                 RuleCode::P002,
                 account.name.clone(),
@@ -292,16 +295,13 @@ fn connected_components(instruction: &InstructionSurface) -> Vec<Vec<String>> {
     // Fixed program/sysvar addresses are deliberately excluded: every ATA
     // sharing the Token Program does not make otherwise unrelated state one
     // account group.
-    let referenced: BTreeSet<&str> = instruction
-        .accounts
-        .iter()
-        .filter(|account| is_graph_relevant(account))
-        .flat_map(|account| account.resolver_refs.iter().map(String::as_str))
-        .collect();
+    // Connector nodes are traversal-only: caller inputs and relationship
+    // accounts such as ATAs may join program-state components, but never
+    // become a reported component by themselves.
     let connectors: BTreeSet<&str> = instruction
         .accounts
         .iter()
-        .filter(|account| account.graph_connector && referenced.contains(account.name.as_str()))
+        .filter(|account| account.graph_connector)
         .map(|account| account.name.as_str())
         .collect();
     let graph_names = relevant
@@ -312,7 +312,7 @@ fn connected_components(instruction: &InstructionSurface) -> Vec<Vec<String>> {
 
     let mut edges: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
     for account in &instruction.accounts {
-        if !is_graph_relevant(account) {
+        if !is_graph_relevant(account) && !account.graph_connector {
             continue;
         }
         edges.entry(account.name.as_str()).or_default();

@@ -140,6 +140,20 @@ pub fn validate_mint_with_freeze(
     freeze: FreezeCheck<'_>,
     token_program: Option<&Address>,
 ) -> Result<(), ProgramError> {
+    validate_mint_constraints(view, Some(mint_authority), decimals, freeze, token_program)
+}
+
+/// Internal mint validator used by account behaviors whose constraints may
+/// omit the mint authority while still checking owner, decimals, or freeze
+/// authority.
+#[inline(always)]
+pub(crate) fn validate_mint_constraints(
+    view: &AccountView,
+    mint_authority: Option<&Address>,
+    decimals: Option<u8>,
+    freeze: FreezeCheck<'_>,
+    token_program: Option<&Address>,
+) -> Result<(), ProgramError> {
     if let Some(tp) = token_program {
         validate_token_program(tp)?;
         if unlikely(!quasar_lang::keys_eq(view.owner(), tp)) {
@@ -171,13 +185,15 @@ pub fn validate_mint_with_freeze(
         quasar_lang::prelude::log("validate_mint: not initialized");
         return Err(ProgramError::UninitializedAccount);
     }
-    if unlikely(match state.mint_authority() {
-        Some(authority) => !quasar_lang::keys_eq(authority, mint_authority),
-        None => true,
-    }) {
-        #[cfg(feature = "debug")]
-        quasar_lang::prelude::log("validate_mint: authority mismatch");
-        return Err(ProgramError::InvalidAccountData);
+    if let Some(expected_authority) = mint_authority {
+        if unlikely(match state.mint_authority() {
+            Some(authority) => !quasar_lang::keys_eq(authority, expected_authority),
+            None => true,
+        }) {
+            #[cfg(feature = "debug")]
+            quasar_lang::prelude::log("validate_mint: authority mismatch");
+            return Err(ProgramError::InvalidAccountData);
+        }
     }
     if let Some(expected_decimals) = decimals {
         if unlikely(state.decimals() != expected_decimals) {

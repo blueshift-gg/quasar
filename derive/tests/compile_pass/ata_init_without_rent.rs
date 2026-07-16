@@ -21,14 +21,12 @@ pub struct InitAtaWithoutRent {
         associated_token(
             authority = payer, mint = mint,
             token_program = token_program,
-            system_program = system_program,
-            ata_program = ata_program,
         ),
     )]
     pub ata_vault: Account<Token>,
     pub token_program: Program<TokenProgram>,
     pub system_program: Program<SystemProgram>,
-    pub ata_program: Program<AssociatedTokenProgram>,
+    pub associated_token_program: Program<AssociatedTokenProgram>,
 }
 
 fn main() {}

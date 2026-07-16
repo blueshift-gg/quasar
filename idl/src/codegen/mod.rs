@@ -112,6 +112,32 @@ mod tests {
         idl
     }
 
+    fn idl_with_arg_and_account_field_recipes_for_one_pda() -> Idl {
+        let mut idl = idl_with_u64_arg_seed();
+        idl.types.push(
+            serde_json::from_value(serde_json::json!({
+                "name": "Escrow",
+                "kind": "struct",
+                "fields": [{ "name": "amount", "type": "u64" }]
+            }))
+            .unwrap(),
+        );
+        idl.instructions[0].accounts[0].name = "escrow".to_owned();
+        let mut account_field_instruction = idl.instructions[0].clone();
+        account_field_instruction.name = "take".to_owned();
+        account_field_instruction.args.clear();
+        account_field_instruction.accounts[0].resolver = IdlResolver::Pda {
+            program: IdlPdaProgram::ProgramId {},
+            seeds: vec![IdlPdaSeed::AccountField {
+                path: "escrow".to_owned(),
+                account: "Escrow".to_owned(),
+                field: "amount".to_owned(),
+            }],
+        };
+        idl.instructions.push(account_field_instruction);
+        idl
+    }
+
     fn idl_with_associated_token() -> Idl {
         let mut idl = idl_with_u64_arg_seed();
         idl.instructions[0].accounts = vec![
@@ -336,6 +362,20 @@ mod tests {
         assert!(pda_rs.contains("pub fn find_vault_address(amount: u64, program_id: &Address)"));
         assert!(pda_rs.contains("let amount_seed = amount.to_le_bytes();"));
         assert!(pda_rs.contains("Address::find_program_address(&[amount_seed.as_ref()]"));
+    }
+
+    #[test]
+    fn rust_pda_helpers_dedupe_by_name_and_prefer_typed_arguments() {
+        let files =
+            generate_rust_client(&idl_with_arg_and_account_field_recipes_for_one_pda()).unwrap();
+        let pda_rs = files
+            .iter()
+            .find_map(|(path, contents)| (path == "pda.rs").then_some(contents))
+            .expect("pda.rs generated");
+
+        assert_eq!(pda_rs.matches("pub fn find_escrow_address").count(), 1);
+        assert!(pda_rs.contains("find_escrow_address(amount: u64, program_id: &Address)"));
+        assert!(!pda_rs.contains("escrow_amount_seed: &[u8]"));
     }
 
     #[test]

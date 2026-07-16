@@ -27,7 +27,7 @@ pub(crate) fn emit_post_load_behavior(
     let krate = crate::krate::lang_path();
     let path = &call.path;
     let bhv = quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
-    let args_block = emit_behavior_args_builder(call, field_ty, phase.as_behavior_phase());
+    let args_block = emit_behavior_args_builder(call, field_ty, phase.as_behavior_phase(), &[]);
 
     // Total match: `PostLoadPhase` cannot be SetInitParam/Exit, so no ICE arm.
     match phase {
@@ -72,7 +72,7 @@ pub(crate) fn emit_epilogue_behavior(
     let krate = crate::krate::lang_path();
     let path = &call.path;
     let bhv = quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
-    let args_block = emit_behavior_args_builder(call, field_ty, BehaviorPhase::Exit);
+    let args_block = emit_behavior_args_builder(call, field_ty, BehaviorPhase::Exit, &[]);
 
     let unsigned_exit = quote! {
         if #bhv::RUN_EXIT {
@@ -133,6 +133,7 @@ pub(crate) fn emit_behavior_init(
     field_ident: &syn::Ident,
     field_ty: &syn::Type,
     did_init_var: Option<&syn::Ident>,
+    inferable_accounts: &[&syn::Ident],
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
     let payer_ident = &spec.payer.ident;
@@ -144,7 +145,12 @@ pub(crate) fn emit_behavior_init(
         .iter()
         .map(|call| {
             let path = &call.path;
-            let args_block = emit_behavior_args_builder(call, field_ty, BehaviorPhase::SetInitParam);
+            let args_block = emit_behavior_args_builder(
+                call,
+                field_ty,
+                BehaviorPhase::SetInitParam,
+                inferable_accounts,
+            );
             quote! {
                 if <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>>::SETS_INIT_PARAMS {
                     #args_block
@@ -282,6 +288,7 @@ fn emit_behavior_args_builder(
     call: &BehaviorCall,
     field_ty: &syn::Type,
     phase: BehaviorPhase,
+    inferable_accounts: &[&syn::Ident],
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
     // Exit args reference `self.field`; every other phase uses local bindings.
@@ -289,6 +296,17 @@ fn emit_behavior_args_builder(
     let path = &call.path;
     let bhv = quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
     let phase_const = emit_arg_phase_const(phase);
+    let inferred_accounts = inferable_accounts.iter().map(|account| {
+        let key = account.to_string();
+        quote! {
+            #bhv::infer_init_account::<{
+                #krate::account_behavior::behavior_arg_key_hash(#key)
+            }>(
+                &mut __bhv_args,
+                #krate::traits::AsAccountView::to_account_view(&#account),
+            );
+        }
+    });
     let setters: Vec<proc_macro2::TokenStream> = call
         .args
         .iter()
@@ -315,6 +333,19 @@ fn emit_behavior_args_builder(
         BehaviorPhase::Exit => quote! { build_exit },
     };
 
+    let args_binding = if inferable_accounts.is_empty() {
+        quote! {
+            let __bhv_args =
+                #krate::account_behavior::BehaviorArgsBuilder::#build_method(__bhv_builder)?;
+        }
+    } else {
+        quote! {
+            let mut __bhv_args =
+                #krate::account_behavior::BehaviorArgsBuilder::#build_method(__bhv_builder)?;
+            #(#inferred_accounts)*
+        }
+    };
+
     quote! {
         let __bhv_builder = #path::Args::builder();
         #(#setters)*
@@ -323,8 +354,7 @@ fn emit_behavior_args_builder(
         // clear diagnostic instead of a "no method" error. The assertion helper
         // is defined once per derive (see `emit_assert_builder_fn`).
         Self::__assert_builder(&__bhv_builder);
-        let __bhv_args =
-            #krate::account_behavior::BehaviorArgsBuilder::#build_method(__bhv_builder)?;
+        #args_binding
     }
 }
 

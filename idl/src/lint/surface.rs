@@ -295,12 +295,15 @@ fn resolver_is_graph_relevant(resolver: &IdlResolver) -> bool {
 
 fn resolver_is_graph_connector(resolver: &IdlResolver) -> bool {
     match resolver {
-        IdlResolver::Input {} => true,
+        // Inputs can connect multiple derived accounts that share an
+        // authority. ATAs are bridge nodes: their mint/owner relationships
+        // connect real state without making every client token endpoint a
+        // standalone L001 component.
+        IdlResolver::Input {} | IdlResolver::AssociatedToken { .. } => true,
         IdlResolver::Optional { resolver } => resolver_is_graph_connector(resolver),
         IdlResolver::Const { .. }
         | IdlResolver::KnownProgram { .. }
         | IdlResolver::Pda { .. }
-        | IdlResolver::AssociatedToken { .. }
         | IdlResolver::AccountField { .. }
         | IdlResolver::Arg { .. }
         | IdlResolver::Remaining { .. } => false,
@@ -448,13 +451,13 @@ fn collect_resolver_refs(resolver: &IdlResolver, refs: &mut Vec<String>) {
         IdlResolver::AssociatedToken {
             mint,
             owner,
-            token_program,
+            token_program: _,
         } => {
+            // The mint and owner are semantic relationships. The Token
+            // Program is shared infrastructure and must not merge otherwise
+            // unrelated account groups.
             refs.push(mint.clone());
             refs.push(owner.clone());
-            if let Some(token_program) = token_program {
-                refs.push(token_program.clone());
-            }
         }
         IdlResolver::AccountField { account, .. } => refs.push(account.clone()),
         IdlResolver::Optional { resolver } => collect_resolver_refs(resolver, refs),

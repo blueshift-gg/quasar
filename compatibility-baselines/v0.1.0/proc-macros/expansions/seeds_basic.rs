@@ -1,4 +1,5 @@
 impl ::quasar_lang::traits::HasSeeds for VaultPda {
+    const HAS_SEED_PREFIX: bool = true;
     const SEED_PREFIX: &'static [u8] = &[118u8, 97u8, 117u8, 108u8, 116u8];
     const SEED_DYNAMIC_COUNT: usize = 1usize;
 }

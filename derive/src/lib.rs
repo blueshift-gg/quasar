@@ -54,6 +54,9 @@ pub fn account(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /// Mark a module as a Quasar program entrypoint.
+///
+/// A module named `vault` emits the executable marker `VaultProgram`, leaving
+/// `Vault` available for application state or account-context types.
 #[proc_macro_attribute]
 pub fn program(attr: TokenStream, item: TokenStream) -> TokenStream {
     program::program(attr, item)
@@ -128,6 +131,18 @@ pub fn declare_program(_input: TokenStream) -> TokenStream {
 }
 
 /// Derive typed PDA seed specs from a unit struct.
+///
+/// A constant byte prefix is optional:
+///
+/// ```ignore
+/// #[derive(Seeds)]
+/// #[seeds(b"escrow", maker: Address, seed: u64)]
+/// pub struct EscrowPda;
+///
+/// #[derive(Seeds)]
+/// #[seeds(signer: Address)]
+/// pub struct VaultPda;
+/// ```
 #[proc_macro_derive(Seeds, attributes(seeds))]
 pub fn derive_seeds(input: TokenStream) -> TokenStream {
     seeds::derive_seeds(input)

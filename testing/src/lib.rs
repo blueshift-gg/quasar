@@ -250,11 +250,12 @@ impl QuasarTest {
         self.svm.process_instruction(&instruction, &[])
     }
 
-    /// Execute and commit one instruction with extra one-shot accounts.
+    /// Execute and commit one instruction with extra accounts.
     ///
     /// Most tests should register fixtures on the world and use [`Self::send`].
     /// This escape hatch is useful when the supplied account itself is the
-    /// subject of a test.
+    /// subject of a test. Successful execution commits those accounts to the
+    /// world like every other transaction account.
     pub fn send_with(
         &mut self,
         instruction: impl Into<quasar_svm::Instruction>,

@@ -241,7 +241,7 @@ check-cfg = [
 ]
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "lib"]
 
 [features]
 alloc = []

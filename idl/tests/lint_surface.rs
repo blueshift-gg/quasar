@@ -207,11 +207,21 @@ fn preflight_flags_upgrade_hostile_account_shapes() {
 
     let report = lint::run(&idl, &lint::LintConfig::default());
 
-    assert!(report.contains(RuleCode::P001));
-    assert!(report.contains(RuleCode::P002));
+    assert!(!report.contains(RuleCode::P001));
+    assert!(!report.contains(RuleCode::P002));
     assert!(report.contains(RuleCode::P005));
     assert!(report.contains(RuleCode::P006));
     assert!(!report.has_errors());
+
+    let strict_report = lint::run(
+        &idl,
+        &lint::LintConfig {
+            strict: true,
+            lockfile_present: false,
+        },
+    );
+    assert!(strict_report.contains(RuleCode::P001));
+    assert!(strict_report.contains(RuleCode::P002));
 }
 
 #[test]
@@ -327,13 +337,111 @@ fn graph_check_does_not_treat_associated_tokens_as_program_state_groups() {
 }
 
 #[test]
+fn graph_check_uses_associated_token_relationships_as_edges() {
+    let mut idl = base_idl();
+    idl.instructions[0].accounts = vec![
+        account_node(
+            "pool",
+            false,
+            true,
+            IdlResolver::Pda {
+                program: IdlPdaProgram::ProgramId {},
+                seeds: vec![IdlPdaSeed::Const {
+                    value: b"pool".to_vec(),
+                }],
+            },
+        ),
+        account_node(
+            "mintAuthority",
+            false,
+            false,
+            IdlResolver::Pda {
+                program: IdlPdaProgram::ProgramId {},
+                seeds: vec![IdlPdaSeed::Const {
+                    value: b"mint-authority".to_vec(),
+                }],
+            },
+        ),
+        account_node(
+            "poolTokens",
+            false,
+            true,
+            IdlResolver::AssociatedToken {
+                mint: "mintAuthority".to_owned(),
+                owner: "pool".to_owned(),
+                token_program: None,
+            },
+        ),
+    ];
+
+    let report = lint::run(&idl, &lint::LintConfig::default());
+
+    assert!(!report.contains(RuleCode::L001));
+}
+
+#[test]
+fn graph_check_does_not_connect_groups_through_shared_token_program() {
+    let mut idl = base_idl();
+    let pda = |name: &str| {
+        account_node(
+            name,
+            false,
+            true,
+            IdlResolver::Pda {
+                program: IdlPdaProgram::ProgramId {},
+                seeds: vec![IdlPdaSeed::Const {
+                    value: name.as_bytes().to_vec(),
+                }],
+            },
+        )
+    };
+    idl.instructions[0].accounts = vec![
+        pda("poolA"),
+        pda("poolB"),
+        account_node("mintA", false, false, IdlResolver::Input {}),
+        account_node("mintB", false, false, IdlResolver::Input {}),
+        account_node("tokenProgram", false, false, IdlResolver::Input {}),
+        account_node(
+            "poolATokens",
+            false,
+            true,
+            IdlResolver::AssociatedToken {
+                mint: "mintA".to_owned(),
+                owner: "poolA".to_owned(),
+                token_program: Some("tokenProgram".to_owned()),
+            },
+        ),
+        account_node(
+            "poolBTokens",
+            false,
+            true,
+            IdlResolver::AssociatedToken {
+                mint: "mintB".to_owned(),
+                owner: "poolB".to_owned(),
+                token_program: Some("tokenProgram".to_owned()),
+            },
+        ),
+    ];
+
+    let report = lint::run(&idl, &lint::LintConfig::default());
+
+    assert!(report.contains(RuleCode::L001));
+}
+
+#[test]
 fn preflight_accepts_reserved_padding_before_dynamic_tail_storage() {
     let mut idl = base_idl();
     idl.types[0]
         .fields
         .push(dynamic_field("label", primitive("string"), Storage::Tail));
 
-    let report = lint::run(&idl, &lint::LintConfig::default());
+    let report = lint::run(
+        &idl,
+        &lint::LintConfig {
+            strict: true,
+            lockfile_present: false,
+        },
+    );
 
     assert!(!report.contains(RuleCode::P002));
 }
@@ -345,7 +453,13 @@ fn preflight_rejects_reserved_padding_before_inline_dynamic_storage() {
         .fields
         .push(dynamic_field("label", primitive("string"), Storage::Inline));
 
-    let report = lint::run(&idl, &lint::LintConfig::default());
+    let report = lint::run(
+        &idl,
+        &lint::LintConfig {
+            strict: true,
+            lockfile_present: false,
+        },
+    );
 
     assert!(report.contains(RuleCode::P002));
 }

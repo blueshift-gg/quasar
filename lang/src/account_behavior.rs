@@ -161,6 +161,18 @@ pub trait AccountBehavior<A> {
         Ok(())
     }
 
+    /// Offer a conventionally named account field to init arguments.
+    ///
+    /// The default ignores it. Protocol behaviors may fill omitted
+    /// boilerplate accounts while preserving any value the user supplied
+    /// explicitly through the behavior builder.
+    #[inline(always)]
+    fn infer_init_account<'a, const KEY: u64>(
+        _args: &mut Self::Args<'a>,
+        _account: &'a crate::__internal::AccountView,
+    ) {
+    }
+
     /// Runs immediately after a new account has been initialized.
     fn after_init<'a>(_account: &mut A, _args: &Self::Args<'a>) -> Result<(), ProgramError> {
         Ok(())

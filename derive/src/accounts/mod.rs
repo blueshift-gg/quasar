@@ -479,14 +479,7 @@ fn emit_idl_resolver(resolver: &resolve::specs::IdlResolverPlan) -> proc_macro2:
             }
         }
         IdlResolverPlan::Pda { account_ty, seeds } => {
-            let mut seed_tokens = Vec::with_capacity(seeds.len() + 1);
-            seed_tokens.push(quote! {
-                #krate::idl_build::__reexport::IdlPdaSeed::Const {
-                    value: #krate::idl_build::Vec::from(
-                        <#account_ty as #krate::traits::HasSeeds>::SEED_PREFIX
-                    ),
-                }
-            });
+            let mut seed_tokens = Vec::with_capacity(seeds.len());
             for seed in seeds {
                 seed_tokens.push(emit_idl_pda_seed(seed));
             }
@@ -494,7 +487,18 @@ fn emit_idl_resolver(resolver: &resolve::specs::IdlResolverPlan) -> proc_macro2:
             quote! {
                 #krate::idl_build::__reexport::IdlResolver::Pda {
                     program: #krate::idl_build::__reexport::IdlPdaProgram::ProgramId {},
-                    seeds: #krate::idl_build::vec![#(#seed_tokens),*],
+                    seeds: {
+                        let mut seeds = #krate::idl_build::Vec::new();
+                        if <#account_ty as #krate::traits::HasSeeds>::HAS_SEED_PREFIX {
+                            seeds.push(#krate::idl_build::__reexport::IdlPdaSeed::Const {
+                                value: #krate::idl_build::Vec::from(
+                                    <#account_ty as #krate::traits::HasSeeds>::SEED_PREFIX
+                                ),
+                            });
+                        }
+                        #(seeds.push(#seed_tokens);)*
+                        seeds
+                    },
                 }
             }
         }

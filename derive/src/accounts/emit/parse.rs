@@ -191,7 +191,22 @@ fn emit_init_phase_typed(
                     let ts = match init_plan.as_ref() {
                         InitPlan::Program(spec) => typed_emit::emit_program_init(spec, ident, ty),
                         InitPlan::Behavior(spec) => {
-                            typed_emit::emit_behavior_init(spec, ident, ty, did_init_var.as_ref())
+                            let inferable_accounts = field_plans
+                                .iter()
+                                .filter(|candidate| {
+                                    candidate.kind == FieldKind::Single
+                                        && !candidate.has_init()
+                                        && !candidate.optional
+                                })
+                                .map(|candidate| &candidate.ident)
+                                .collect::<Vec<_>>();
+                            typed_emit::emit_behavior_init(
+                                spec,
+                                ident,
+                                ty,
+                                did_init_var.as_ref(),
+                                &inferable_accounts,
+                            )
                         }
                     };
                     stmts.push(ts);

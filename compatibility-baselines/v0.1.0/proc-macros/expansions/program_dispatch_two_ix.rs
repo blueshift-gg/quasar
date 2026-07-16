@@ -1,8 +1,8 @@
 ::quasar_lang::define_account!(
-    pub struct QuasarDemo => [::quasar_lang::checks::Executable,
+    pub struct QuasarDemoProgram => [::quasar_lang::checks::Executable,
     ::quasar_lang::checks::Address]
 );
-impl ::quasar_lang::traits::Id for QuasarDemo {
+impl ::quasar_lang::traits::Id for QuasarDemoProgram {
     const ID: ::quasar_lang::prelude::Address = crate::ID;
 }
 #[repr(transparent)]

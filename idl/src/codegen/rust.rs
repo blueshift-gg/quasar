@@ -1472,7 +1472,7 @@ struct PdaInfo {
 
 fn collect_pdas(idl: &Idl) -> Vec<PdaInfo> {
     let mut pdas: Vec<PdaInfo> = Vec::new();
-    let mut seen: HashSet<String> = HashSet::new();
+    let mut helper_indices: HashMap<String, usize> = HashMap::new();
 
     for ix in &idl.instructions {
         for account in &ix.accounts {
@@ -1481,21 +1481,36 @@ fn collect_pdas(idl: &Idl) -> Vec<PdaInfo> {
                     continue;
                 }
 
-                // Dedup by seed identity (use debug repr as key)
-                let key = format!("{:?}", seeds);
-                if !seen.insert(key) {
-                    continue;
-                }
-
-                pdas.push(PdaInfo {
-                    field_name: camel_to_snake(&account.name),
+                let field_name = camel_to_snake(&account.name);
+                let candidate = PdaInfo {
+                    field_name: field_name.clone(),
                     seeds: seeds.clone(),
-                });
+                };
+                if let Some(index) = helper_indices.get(&field_name).copied() {
+                    // One field name produces one public Rust function. Prefer
+                    // a recipe supplied by typed instruction arguments over an
+                    // equivalent account-data recipe, which would otherwise
+                    // expose an untyped byte-slice parameter.
+                    if pda_helper_uses_typed_inputs(&candidate.seeds)
+                        && !pda_helper_uses_typed_inputs(&pdas[index].seeds)
+                    {
+                        pdas[index] = candidate;
+                    }
+                } else {
+                    helper_indices.insert(field_name, pdas.len());
+                    pdas.push(candidate);
+                }
             }
         }
     }
 
     pdas
+}
+
+fn pda_helper_uses_typed_inputs(seeds: &[IdlPdaSeed]) -> bool {
+    !seeds
+        .iter()
+        .any(|seed| matches!(seed, IdlPdaSeed::AccountField { .. }))
 }
 
 /// Format a const seed value for display (doc comments or code expressions).

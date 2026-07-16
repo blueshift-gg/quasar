@@ -1,7 +1,7 @@
 //! The program marker type and its `EventAuthority` PDA companion.
 //!
-//! `#[program] mod foo` emits a `Foo` program type (used as `Program<Foo>` in
-//! account structs) plus an `EventAuthority` newtype whose PDA is derived from
+//! `#[program] mod foo` emits a `FooProgram` marker (used as
+//! `Program<FooProgram>` in account structs) plus an `EventAuthority` newtype whose PDA is derived from
 //! the fixed `b"__event_authority"` seed and exposes the `ADDRESS`/`BUMP`
 //! consts. The self-CPI event path is the typed `quasar_lang::event::EventCpi`
 //! trait, whose impl `#[derive(Accounts)]` emits from a struct's

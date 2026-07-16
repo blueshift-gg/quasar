@@ -164,7 +164,10 @@ export class QuasarTest {
     raw: ExecutionResult,
   ): QuasarTestResult<Address, KeyedAccountInfo, ExecutionResult> {
     return new QuasarTestResult(raw, {
-      account: (address) => raw.account(address),
+      // QuasarSVM 0.1.x compares web3.js Address objects by identity. Results
+      // contain freshly decoded instances, so compare their bytes instead.
+      account: (address) =>
+        raw.accounts.find((account) => account.accountId.equals(address)) ?? null,
       isClosed: (account) =>
         account.accountInfo.lamports === 0n &&
         account.accountInfo.data.length === 0 &&

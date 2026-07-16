@@ -17,6 +17,12 @@ pub struct TestPda;
 #[seeds(b"vault", authority: Address)]
 pub struct VaultPda;
 
+// -- Prefixless Address seed -------------------------------------------------
+
+#[derive(Seeds)]
+#[seeds(authority: Address)]
+pub struct AuthorityPda;
+
 // -- With Address + u64 seeds -------------------------------------------------
 
 #[derive(Seeds)]
@@ -50,6 +56,12 @@ fn main() {
     assert_eq!(slices.len(), 2);
     assert_eq!(slices[0], b"vault");
     assert_eq!(slices[1], &[0u8; 32]);
+
+    // Prefixless layouts derive directly from their typed parameters.
+    let set = AuthorityPda::seeds(&addr);
+    let slices = set.as_slices();
+    assert_eq!(slices.len(), 1);
+    assert_eq!(slices[0], &[0u8; 32]);
 
     // IndexedPda::seeds() takes Address ref + u64.
     let set = IndexedPda::seeds(&addr, 42u64);

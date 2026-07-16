@@ -469,12 +469,14 @@ mod __init_escrow_client_macro {
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(true), signer :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), resolver :
     ::quasar_lang::idl_build::__reexport::IdlResolver::Pda { program :
-    ::quasar_lang::idl_build::__reexport::IdlPdaProgram::ProgramId {}, seeds :
-    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::__reexport::IdlPdaSeed::Const
-    { value : ::quasar_lang::idl_build::Vec::from(< Escrow as
-    ::quasar_lang::traits::HasSeeds > ::SEED_PREFIX), },
-    ::quasar_lang::idl_build::__reexport::IdlPdaSeed::Account { path :
-    ::quasar_lang::idl_build::s("payer"), }], }, docs :
+    ::quasar_lang::idl_build::__reexport::IdlPdaProgram::ProgramId {}, seeds : { let mut
+    seeds = ::quasar_lang::idl_build::Vec::new(); if < Escrow as
+    ::quasar_lang::traits::HasSeeds > ::HAS_SEED_PREFIX { seeds
+    .push(::quasar_lang::idl_build::__reexport::IdlPdaSeed::Const { value :
+    ::quasar_lang::idl_build::Vec::from(< Escrow as ::quasar_lang::traits::HasSeeds >
+    ::SEED_PREFIX), }); } seeds
+    .push(::quasar_lang::idl_build::__reexport::IdlPdaSeed::Account { path :
+    ::quasar_lang::idl_build::s("payer"), }); seeds }, }, docs :
     ::quasar_lang::idl_build::Vec::new(), },
     ::quasar_lang::idl_build::__reexport::IdlAccountNode { name :
     ::quasar_lang::idl_build::s("systemProgram"), optional : false, writable :
