@@ -63,10 +63,17 @@ mod tests {
 
     #[test]
     fn missing_linker_message_uses_the_published_crate() {
-        assert_eq!(
-            MISSING_SBPF_LINKER_MESSAGE,
-            "sbpf-linker not found on PATH.\n\n  Install it from crates.io:\n    cargo install \
-             sbpf-linker --version 0.1.9 --locked"
+        // Guard the load-bearing pieces (the crates.io install command and
+        // the version pin), not the whole literal mirrored against itself.
+        assert!(
+            MISSING_SBPF_LINKER_MESSAGE
+                .contains("cargo install sbpf-linker --version 0.1.9 --locked"),
+            "message must give the pinned crates.io install \
+             command:\n{MISSING_SBPF_LINKER_MESSAGE}"
+        );
+        assert!(
+            MISSING_SBPF_LINKER_MESSAGE.starts_with("sbpf-linker not found on PATH."),
+            "message must lead with the diagnosis:\n{MISSING_SBPF_LINKER_MESSAGE}"
         );
     }
 

@@ -188,11 +188,13 @@ fn init_if_needed_mint_spl_existing_valid() {
     }
     .into();
 
+    let existing = mint_account(mint_key, authority, 6, token_program);
+    let existing_data = existing.data.clone();
     let result = svm.process_instruction(
         &instruction,
         &[
             rich_signer_account(payer),
-            mint_account(mint_key, authority, 6, token_program),
+            existing,
             signer_account(authority),
         ],
     );
@@ -200,6 +202,13 @@ fn init_if_needed_mint_spl_existing_valid() {
         result.is_ok(),
         "init_if_needed mint on existing valid mint should succeed (no-op): {:?}",
         result.raw_result
+    );
+    // "No-op" must mean untouched: the existing account's bytes are
+    // byte-identical after the idempotent init.
+    let after = result.account(&mint_key).expect("existing account");
+    assert_eq!(
+        after.data, existing_data,
+        "existing valid account must be left unmodified"
     );
 }
 
@@ -387,11 +396,13 @@ fn init_if_needed_mint_t22_existing_valid() {
     }
     .into();
 
+    let existing = mint_account(mint_key, authority, 6, token_program);
+    let existing_data = existing.data.clone();
     let result = svm.process_instruction(
         &instruction,
         &[
             rich_signer_account(payer),
-            mint_account(mint_key, authority, 6, token_program),
+            existing,
             signer_account(authority),
         ],
     );
@@ -399,6 +410,13 @@ fn init_if_needed_mint_t22_existing_valid() {
         result.is_ok(),
         "init_if_needed mint on existing valid mint should succeed (T22, no-op): {:?}",
         result.raw_result
+    );
+    // "No-op" must mean untouched: the existing account's bytes are
+    // byte-identical after the idempotent init.
+    let after = result.account(&mint_key).expect("existing account");
+    assert_eq!(
+        after.data, existing_data,
+        "existing valid account must be left unmodified"
     );
 }
 
@@ -588,11 +606,13 @@ fn init_if_needed_mint_freeze_spl_existing_valid() {
     }
     .into();
 
+    let existing = mint_account_with_freeze(mint_key, authority, 6, freeze_auth, token_program);
+    let existing_data = existing.data.clone();
     let result = svm.process_instruction(
         &instruction,
         &[
             rich_signer_account(payer),
-            mint_account_with_freeze(mint_key, authority, 6, freeze_auth, token_program),
+            existing,
             signer_account(authority),
             signer_account(freeze_auth),
         ],
@@ -601,6 +621,13 @@ fn init_if_needed_mint_freeze_spl_existing_valid() {
         result.is_ok(),
         "init_if_needed mint with freeze on existing valid mint should succeed (no-op): {:?}",
         result.raw_result
+    );
+    // "No-op" must mean untouched: the existing account's bytes are
+    // byte-identical after the idempotent init.
+    let after = result.account(&mint_key).expect("existing account");
+    assert_eq!(
+        after.data, existing_data,
+        "existing valid account must be left unmodified"
     );
 }
 
@@ -731,11 +758,13 @@ fn init_if_needed_mint_freeze_t22_existing_valid() {
     }
     .into();
 
+    let existing = mint_account_with_freeze(mint_key, authority, 6, freeze_auth, token_program);
+    let existing_data = existing.data.clone();
     let result = svm.process_instruction(
         &instruction,
         &[
             rich_signer_account(payer),
-            mint_account_with_freeze(mint_key, authority, 6, freeze_auth, token_program),
+            existing,
             signer_account(authority),
             signer_account(freeze_auth),
         ],
@@ -744,6 +773,13 @@ fn init_if_needed_mint_freeze_t22_existing_valid() {
         result.is_ok(),
         "init_if_needed mint with freeze on existing valid mint should succeed (T22, no-op): {:?}",
         result.raw_result
+    );
+    // "No-op" must mean untouched: the existing account's bytes are
+    // byte-identical after the idempotent init.
+    let after = result.account(&mint_key).expect("existing account");
+    assert_eq!(
+        after.data, existing_data,
+        "existing valid account must be left unmodified"
     );
 }
 

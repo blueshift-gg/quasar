@@ -169,11 +169,13 @@ fn init_if_needed_token_interface_existing_valid() {
     }
     .into();
 
+    let existing = token_account(token_key, mint_key, payer, 100, token_program);
+    let existing_data = existing.data.clone();
     let result = svm.process_instruction(
         &instruction,
         &[
             rich_signer_account(payer),
-            token_account(token_key, mint_key, payer, 100, token_program),
+            existing,
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
@@ -181,6 +183,13 @@ fn init_if_needed_token_interface_existing_valid() {
         result.is_ok(),
         "init_if_needed InterfaceAccount<Token> existing valid should succeed: {:?}",
         result.raw_result
+    );
+    // "No-op" must mean untouched: the existing account's bytes are
+    // byte-identical after the idempotent init.
+    let after = result.account(&token_key).expect("existing account");
+    assert_eq!(
+        after.data, existing_data,
+        "existing valid account must be left unmodified"
     );
 }
 
@@ -203,11 +212,13 @@ fn init_if_needed_token_interface_t22_existing_valid() {
     }
     .into();
 
+    let existing = token_account(token_key, mint_key, payer, 100, token_program);
+    let existing_data = existing.data.clone();
     let result = svm.process_instruction(
         &instruction,
         &[
             rich_signer_account(payer),
-            token_account(token_key, mint_key, payer, 100, token_program),
+            existing,
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
@@ -215,6 +226,13 @@ fn init_if_needed_token_interface_t22_existing_valid() {
         result.is_ok(),
         "init_if_needed InterfaceAccount<Token> existing T22 should succeed: {:?}",
         result.raw_result
+    );
+    // "No-op" must mean untouched: the existing account's bytes are
+    // byte-identical after the idempotent init.
+    let after = result.account(&token_key).expect("existing account");
+    assert_eq!(
+        after.data, existing_data,
+        "existing valid account must be left unmodified"
     );
 }
 
@@ -409,11 +427,13 @@ fn init_if_needed_mint_interface_existing_valid() {
     }
     .into();
 
+    let existing = mint_account(mint_key, authority, 6, token_program);
+    let existing_data = existing.data.clone();
     let result = svm.process_instruction(
         &instruction,
         &[
             rich_signer_account(payer),
-            mint_account(mint_key, authority, 6, token_program),
+            existing,
             signer_account(authority),
         ],
     );
@@ -421,6 +441,13 @@ fn init_if_needed_mint_interface_existing_valid() {
         result.is_ok(),
         "init_if_needed InterfaceAccount<Mint> existing valid should succeed: {:?}",
         result.raw_result
+    );
+    // "No-op" must mean untouched: the existing account's bytes are
+    // byte-identical after the idempotent init.
+    let after = result.account(&mint_key).expect("existing account");
+    assert_eq!(
+        after.data, existing_data,
+        "existing valid account must be left unmodified"
     );
 }
 
@@ -442,11 +469,13 @@ fn init_if_needed_mint_interface_t22_existing_valid() {
     }
     .into();
 
+    let existing = mint_account(mint_key, authority, 6, token_program);
+    let existing_data = existing.data.clone();
     let result = svm.process_instruction(
         &instruction,
         &[
             rich_signer_account(payer),
-            mint_account(mint_key, authority, 6, token_program),
+            existing,
             signer_account(authority),
         ],
     );
@@ -454,6 +483,13 @@ fn init_if_needed_mint_interface_t22_existing_valid() {
         result.is_ok(),
         "init_if_needed InterfaceAccount<Mint> existing T22 should succeed: {:?}",
         result.raw_result
+    );
+    // "No-op" must mean untouched: the existing account's bytes are
+    // byte-identical after the idempotent init.
+    let after = result.account(&mint_key).expect("existing account");
+    assert_eq!(
+        after.data, existing_data,
+        "existing valid account must be left unmodified"
     );
 }
 

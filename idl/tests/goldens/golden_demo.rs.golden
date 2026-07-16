@@ -1,0 +1,252 @@
+//// lib.rs ////
+use solana_address::Address;
+
+pub const ID: Address = solana_address::address!("11111111111111111111111111111111");
+
+pub mod instructions;
+pub mod state;
+pub mod events;
+pub mod types;
+pub mod errors;
+pub mod pda;
+
+pub use instructions::*;
+pub use state::*;
+pub use events::*;
+pub use types::*;
+pub use errors::*;
+pub use pda::*;
+
+//// instructions/mod.rs ////
+pub mod make;
+
+pub use make::*;
+
+pub enum ProgramInstruction {
+    Make { amount: u64, flag: bool },
+}
+
+fn quasar_take<'a>(data: &'a [u8], offset: &mut usize, len: usize) -> Option<&'a [u8]> {
+    let end = offset.checked_add(len)?;
+    let bytes = data.get(*offset..end)?;
+    *offset = end;
+    Some(bytes)
+}
+
+pub fn decode_instruction(data: &[u8]) -> Option<ProgramInstruction> {
+    let disc = *data.first()?;
+    match disc {
+        0 => {
+            let payload = &data[1..];
+            let mut offset = 0usize;
+            let amount: u64 = wincode::deserialize(payload.get(offset..)?).ok()?;
+            let amount_size = usize::try_from(wincode::serialized_size(&amount).ok()?).ok()?;
+            quasar_take(payload, &mut offset, amount_size)?;
+            let flag: bool = wincode::deserialize(payload.get(offset..)?).ok()?;
+            let flag_size = usize::try_from(wincode::serialized_size(&flag).ok()?).ok()?;
+            quasar_take(payload, &mut offset, flag_size)?;
+            if offset != payload.len() { return None; }
+            Some(ProgramInstruction::Make { amount, flag })
+        }
+        _ => None,
+    }
+}
+
+//// instructions/make.rs ////
+use solana_instruction::{AccountMeta, Instruction};
+use crate::ID;
+use solana_address::Address;
+
+pub struct MakeInstruction {
+    pub authority: Address,
+    pub vault: Address,
+    pub amount: u64,
+    pub flag: bool,
+}
+
+pub struct MakeInstructionInput {
+    pub authority: Address,
+    pub amount: u64,
+    pub flag: bool,
+}
+
+impl From<MakeInstructionInput> for MakeInstruction {
+    fn from(ix: MakeInstructionInput) -> MakeInstruction {
+        let authority = ix.authority;
+        let vault = Address::find_program_address(&[b"vault", authority.as_ref()], &ID).0;
+        MakeInstruction {
+            authority,
+            vault,
+            amount: ix.amount,
+            flag: ix.flag,
+        }
+    }
+}
+
+impl From<MakeInstructionInput> for Instruction {
+    fn from(ix: MakeInstructionInput) -> Instruction {
+        MakeInstruction::from(ix).into()
+    }
+}
+
+impl From<MakeInstruction> for Instruction {
+    fn from(ix: MakeInstruction) -> Instruction {
+        let accounts = vec![
+            AccountMeta::new_readonly(ix.authority, true),
+            AccountMeta::new(ix.vault, false),
+        ];
+        let mut data = vec![0];
+        wincode::serialize_into(&mut data, &ix.amount).expect("serialization into Vec<u8> is infallible");
+        wincode::serialize_into(&mut data, &ix.flag).expect("serialization into Vec<u8> is infallible");
+        Instruction {
+            program_id: ID,
+            accounts,
+            data,
+        }
+    }
+}
+
+//// state/mod.rs ////
+pub mod vault;
+
+pub use vault::*;
+
+pub enum ProgramAccount {
+    Vault(Vault),
+}
+
+pub fn decode_account(data: &[u8]) -> Option<ProgramAccount> {
+    if data.starts_with(VAULT_ACCOUNT_DISCRIMINATOR) {
+        let value = wincode::deserialize::<Vault>(data).ok()?;
+        if usize::try_from(wincode::serialized_size(&value).ok()?).ok()? != data.len() { return None; }
+        return Some(ProgramAccount::Vault(value));
+    }
+    None
+}
+
+//// state/vault.rs ////
+use wincode::{SchemaWrite, SchemaRead};
+use wincode::config::ConfigCore;
+use wincode::error::{ReadError, ReadResult, WriteResult};
+use wincode::io::{Reader, Writer};
+use std::mem::MaybeUninit;
+use solana_address::Address;
+
+pub const VAULT_ACCOUNT_DISCRIMINATOR: &[u8] = &[42];
+
+#[derive(Clone, Copy)]
+pub struct Vault {
+    pub authority: Address,
+    pub amount: u64,
+    pub mode: u8,
+}
+
+unsafe impl<C: ConfigCore> SchemaWrite<C> for Vault
+where
+    Address: SchemaWrite<C, Src = Address>,
+    u64: SchemaWrite<C, Src = u64>,
+    u8: SchemaWrite<C, Src = u8>,
+{
+    type Src = Self;
+
+    fn size_of(src: &Self) -> WriteResult<usize> {
+        Ok(1
+            + <Address as SchemaWrite<C>>::size_of(&src.authority)?
+            + <u64 as SchemaWrite<C>>::size_of(&src.amount)?
+            + <u8 as SchemaWrite<C>>::size_of(&src.mode)?)
+    }
+
+    fn write(mut writer: impl Writer, src: &Self) -> WriteResult<()> {
+        writer.write(VAULT_ACCOUNT_DISCRIMINATOR)?;
+        <Address as SchemaWrite<C>>::write(writer.by_ref(), &src.authority)?;
+        <u64 as SchemaWrite<C>>::write(writer.by_ref(), &src.amount)?;
+        <u8 as SchemaWrite<C>>::write(writer.by_ref(), &src.mode)?;
+        Ok(())
+    }
+}
+
+unsafe impl<'de, C: ConfigCore> SchemaRead<'de, C> for Vault
+where
+    Address: SchemaRead<'de, C, Dst = Address>,
+    u64: SchemaRead<'de, C, Dst = u64>,
+    u8: SchemaRead<'de, C, Dst = u8>,
+{
+    type Dst = Self;
+
+    fn read(mut reader: impl Reader<'de>, dst: &mut MaybeUninit<Self>) -> ReadResult<()> {
+        let disc = reader.take_byte()?;
+        if disc != 42 {
+            return Err(ReadError::InvalidValue("invalid account discriminator"));
+        }
+        dst.write(Self {
+            authority: <Address as SchemaRead<'de, C>>::get(reader.by_ref())?,
+            amount: <u64 as SchemaRead<'de, C>>::get(reader.by_ref())?,
+            mode: <u8 as SchemaRead<'de, C>>::get(reader.by_ref())?,
+        });
+        Ok(())
+    }
+}
+
+//// events/mod.rs ////
+pub const VAULT_MADE_EVENT_DISCRIMINATOR: &[u8] = &[7];
+
+pub enum ProgramEvent {
+    VaultMade,
+}
+
+pub fn decode_event(data: &[u8]) -> Option<ProgramEvent> {
+    if data.starts_with(VAULT_MADE_EVENT_DISCRIMINATOR) {
+        return (data.len() == VAULT_MADE_EVENT_DISCRIMINATOR.len())
+            .then_some(ProgramEvent::VaultMade);
+    }
+    None
+}
+
+//// types/mod.rs ////
+pub mod mode;
+
+pub use mode::*;
+
+//// types/mode.rs ////
+use wincode::{SchemaWrite, SchemaRead};
+
+#[derive(SchemaWrite, SchemaRead)]
+pub struct Mode {
+}
+
+//// errors.rs ////
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum GoldenDemoError {
+    Unauthorized = 6000,
+}
+
+impl GoldenDemoError {
+    pub fn from_code(code: u32) -> Option<Self> {
+        match code {
+            6000 => Some(Self::Unauthorized),
+            _ => None,
+        }
+    }
+
+    pub fn message(&self) -> &'static str {
+        match self {
+            Self::Unauthorized => "caller is not the vault authority",
+        }
+    }
+}
+
+impl From<GoldenDemoError> for u32 {
+    fn from(error: GoldenDemoError) -> Self {
+        error as u32
+    }
+}
+
+//// pda.rs ////
+use solana_address::Address;
+
+/// Seeds: [b"vault", authority]
+pub fn find_vault_address(authority: &Address, program_id: &Address) -> (Address, u8) {
+    Address::find_program_address(&[b"vault", authority.as_ref()], program_id)
+}
+

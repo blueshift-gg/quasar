@@ -2103,6 +2103,7 @@ name = "quasar-idl"
 version = "0.1.0"
 dependencies = [
  "bs58",
+ "expect-test",
  "quasar-idl-schema",
  "quasar-schema",
  "serde",

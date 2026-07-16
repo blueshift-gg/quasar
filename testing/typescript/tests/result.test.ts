@@ -8,6 +8,8 @@ interface TestAccount {
   tokens: bigint;
 }
 
+const EXPECTED_ERROR_CODE = 6000;
+
 function result(status = { ok: true }): QuasarTestResult<string, TestAccount, RawExecutionResult> {
   const accounts = new Map<string, TestAccount>([
     ["wallet", { closed: false, lamports: 42n, supply: 0n, tokens: 0n }],
@@ -20,7 +22,10 @@ function result(status = { ok: true }): QuasarTestResult<string, TestAccount, Ra
     logs: [],
     status,
     assertCustomError(code) {
-      if (code !== 6000) throw new Error(`unexpected code ${code}`);
+      // Mirror the real adapters: a custom-error assertion must reject a
+      // successful execution, not only a wrong code.
+      if (status.ok) throw new Error("execution succeeded");
+      if (code !== EXPECTED_ERROR_CODE) throw new Error(`unexpected code ${code}`);
     },
     assertSuccess() {
       if (!status.ok) throw new Error("execution failed");
@@ -52,8 +57,32 @@ describe("QuasarTestResult", () => {
     ).toBe(execution);
   });
 
-  it("accepts typed numeric program errors", () => {
-    expect(result({ ok: false }).failsWith(6000)).toBeDefined();
+  it("failsWith accepts the exact custom error and returns the chain", () => {
+    const execution = result({ ok: false });
+    expect(execution.failsWith(EXPECTED_ERROR_CODE)).toBe(execution);
+  });
+
+  it("failsWith rejects a wrong error code", () => {
+    expect(() => result({ ok: false }).failsWith(6001)).toThrow("unexpected code 6001");
+  });
+
+  it("failsWith rejects a successful execution", () => {
+    expect(() => result({ ok: true }).failsWith(EXPECTED_ERROR_CODE)).toThrow(
+      "execution succeeded",
+    );
+  });
+
+  it("succeeds rejects a failed execution", () => {
+    expect(() => result({ ok: false }).succeeds()).toThrow("execution failed");
+  });
+
+  it("cuBelow rejects consumption at or above the limit", () => {
+    expect(() => result().cuBelow(99)).toThrow(
+      "expected fewer than 99 compute units, consumed 99",
+    );
+    expect(() => result().cuBelow(50n)).toThrow(
+      "expected fewer than 50 compute units, consumed 99",
+    );
   });
 
   it("reports assertion mismatches without a test-framework dependency", () => {
@@ -66,5 +95,15 @@ describe("QuasarTestResult", () => {
     expect(() => result().isClosed("missing")).toThrow(
       "execution result does not contain missing",
     );
+  });
+
+  it("state assertions reject addresses missing from the result", () => {
+    expect(() => result().hasLamports("missing", 1n)).toThrow(
+      "execution result does not contain missing",
+    );
+  });
+
+  it("isClosed rejects a live account", () => {
+    expect(() => result().isClosed("wallet")).toThrow("expected wallet to be closed");
   });
 });

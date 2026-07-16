@@ -115,6 +115,24 @@ mod tests {
 
     #[test]
     fn upstream_config_uses_supported_linker_flags() {
-        assert!(!CARGO_CONFIG.contains("--disable-expand-memcpy-in-order"));
+        // Anchor on the parsed config so this cannot pass vacuously on an
+        // empty or broken template, then reject the unsupported flag.
+        let config: toml::Value = CARGO_CONFIG.parse().expect("valid generated Cargo config");
+        let rustflags = config["target"]["bpfel-unknown-none"]["rustflags"]
+            .as_array()
+            .expect("rustflags array")
+            .iter()
+            .map(|flag| flag.as_str().expect("string flag").to_owned())
+            .collect::<Vec<_>>();
+        assert!(
+            !rustflags.is_empty(),
+            "generated config must carry linker rustflags"
+        );
+        assert!(
+            !rustflags
+                .iter()
+                .any(|flag| flag.contains("--disable-expand-memcpy-in-order")),
+            "unsupported sbpf-linker flag must not be emitted: {rustflags:?}"
+        );
     }
 }

@@ -26,9 +26,9 @@ sysvars	sysvar.rs	lang/kani/sysvars/*.rs	-	ok,err,kani	syscall + account-based s
 system-cpi	cpi_system.rs	lang/kani/cpi/system.rs	-	ok,err,kani	create/transfer/assign builders
 cpi-return-data	cpi_return.rs	lang/kani/cpi/mod.rs	-	ok,err,kani	invoke_with_return: missing/length/foreign-program rejections
 cpi-pointer-safety	cpi_pointer_safety.rs	lang/kani/cpi/*.rs	-	ok,kani	aliasing invariant: no SVM rejection expressible; adversarial coverage is Kani + Miri
-token-cpi-ops	test_cpi_transfer.rs,test_cpi_mint_burn.rs,test_cpi_approve_revoke.rs,test_cpi_close.rs,test_sweep.rs	spl/kani/instructions.rs	spl/tests/compile_fail/*.rs	ok,err,kani,trybuild	SPL ops wrappers; SPL rejections surface exactly
+token-cpi-ops	test_cpi_transfer.rs,test_cpi_mint_burn.rs,test_cpi_approve_revoke.rs,test_cpi_close.rs,test_sweep.rs	spl/kani/instructions.rs	spl/tests/compile_fail/*.rs	ok,err,kani,trybuild	SPL ops wrappers; SPL rejections surface exactly. Wire payloads proven by spl/kani/instructions.rs; meta order/flags private to CpiCall, proven end-to-end by these SVM ops
 token-init	test_init_mint.rs,test_init_token.rs,test_init_ata.rs,test_init_interface.rs,test_init_mint_pda.rs,test_init_token_pda.rs	-	-	ok,err	mint/token/ATA init incl. existing-branch validation
 token-validate	test_validate_mint.rs,test_validate_token.rs,test_validate_ata.rs,token_state.rs,test_ata_derivation.rs	-	-	ok,err	typed SPL validation; token_state/ata_derivation are decode/derivation positives, negatives live in the validate modules
-metadata-validate	test_validate_metadata.rs	metadata/kani/*.rs	metadata/tests/compile_fail/*.rs	ok,err,kani,trybuild	Metaplex metadata account validation
+metadata-validate	test_validate_metadata.rs	metadata/kani/*.rs	metadata/tests/compile_fail/*.rs	ok,err,kani,trybuild	Metaplex metadata account validation. Fixed payloads proven by metadata/kani/instructions.rs; the dynamic create_metadata serializer is SVM-covered here and tracked by plan 011
 raw-instructions	test_raw.rs	-	-	ok,err	raw instruction escape hatch
 heap	test_heap.rs	-	-	ok,err	opt-in bump allocator incl. beyond-cap abort

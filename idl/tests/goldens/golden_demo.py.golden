@@ -1,0 +1,99 @@
+"""Generated client for the golden_demo program."""
+from __future__ import annotations
+
+import struct
+from dataclasses import dataclass
+from typing import Optional
+
+from solders.pubkey import Pubkey
+from solders.instruction import Instruction, AccountMeta
+
+class DecodeError(ValueError):
+    pass
+
+_MAX_DECODE_ELEMENTS = 10 * 1024 * 1024
+
+def _take(data: bytes, offset: int, size: int) -> tuple[bytes, int]:
+    if size < 0 or offset < 0 or size > len(data) - offset:
+        raise DecodeError("truncated input")
+    end = offset + size
+    return data[offset:end], end
+
+def _unpack(fmt: str, data: bytes, offset: int) -> tuple[object, int]:
+    raw, offset = _take(data, offset, struct.calcsize(fmt))
+    return struct.unpack(fmt, raw)[0], offset
+
+def _finish(data: bytes, offset: int) -> None:
+    if offset != len(data):
+        raise DecodeError("trailing bytes")
+
+PROGRAM_ID = Pubkey.from_string("11111111111111111111111111111111")
+
+MAKE_DISCRIMINATOR = bytes([0])
+
+VAULT_ACCOUNT_DISCRIMINATOR = bytes([42])
+
+VAULT_MADE_EVENT_DISCRIMINATOR = bytes([7])
+
+
+@dataclass
+class Vault:
+    authority: Pubkey
+    amount: int
+    mode: int
+
+    @classmethod
+    def decode(cls, data: bytes) -> Vault:
+        offset = 0
+        _raw, offset = _take(data, offset, 32)
+        authority = Pubkey.from_bytes(_raw)
+        amount, offset = _unpack("<Q", data, offset)
+        mode, offset = _unpack("<B", data, offset)
+        _finish(data, offset)
+        return cls(authority=authority, amount=amount, mode=mode)
+
+
+@dataclass
+class Mode:
+    pass
+
+
+@dataclass
+class MakeInput:
+    authority: Pubkey
+    amount: int
+    flag: bool
+
+
+def create_make_instruction(input: MakeInput) -> Instruction:
+    accounts_map = {}
+    accounts = []
+    accounts_map["authority"] = input.authority
+    accounts.append(AccountMeta(accounts_map["authority"], is_signer=True, is_writable=False))
+    accounts_map["vault"] = Pubkey.find_program_address([bytes([118, 97, 117, 108, 116]), bytes(accounts_map["authority"])], PROGRAM_ID)[0]
+    accounts.append(AccountMeta(accounts_map["vault"], is_signer=False, is_writable=True))
+    data = bytearray(MAKE_DISCRIMINATOR)
+    data += struct.pack("<Q", input.amount)
+    data += struct.pack("<?", input.flag)
+    data = bytes(data)
+    return Instruction(PROGRAM_ID, data, accounts)
+
+
+def decode_event(data: bytes) -> Optional[tuple[str, object]]:
+    """Decode an event from raw log data. Returns (event_name, event_data) or None."""
+    if data[:1] == VAULT_MADE_EVENT_DISCRIMINATOR:
+        return ("VaultMade", None)
+    return None
+
+
+class GoldenDemoClient:
+    program_id = PROGRAM_ID
+
+    @staticmethod
+    def make(input: MakeInput) -> Instruction:
+        return create_make_instruction(input)
+
+    @staticmethod
+    def decode_event(data: bytes) -> Optional[tuple[str, object]]:
+        return decode_event(data)
+

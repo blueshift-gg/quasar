@@ -267,11 +267,11 @@ mod tests {
     }
 
     #[test]
-    fn saved_config_disables_animation() {
-        // Simulates the init flow: default config saved with animation disabled.
+    fn saved_defaults_survive_a_toml_round_trip() {
+        // Simulates the init flow: default config saved with animation
+        // disabled and populated defaults. (Default-state and plain
+        // animation round-trips are covered by the sibling tests.)
         let globals = GlobalConfig::default();
-        assert!(globals.ui.animation);
-
         let saved = GlobalConfig {
             defaults: GlobalDefaults {
                 toolchain: Some("solana".into()),

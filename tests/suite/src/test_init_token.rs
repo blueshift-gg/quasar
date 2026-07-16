@@ -196,11 +196,13 @@ fn init_if_needed_token_spl_existing_valid() {
     }
     .into();
 
+    let existing = token_account(token_key, mint_key, payer, 100, token_program);
+    let existing_data = existing.data.clone();
     let result = svm.process_instruction(
         &instruction,
         &[
             rich_signer_account(payer),
-            token_account(token_key, mint_key, payer, 100, token_program),
+            existing,
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
@@ -208,6 +210,13 @@ fn init_if_needed_token_spl_existing_valid() {
         result.is_ok(),
         "init_if_needed on existing valid token should succeed (no-op): {:?}",
         result.raw_result
+    );
+    // "No-op" must mean untouched: the existing account's bytes are
+    // byte-identical after the idempotent init.
+    let after = result.account(&token_key).expect("existing account");
+    assert_eq!(
+        after.data, existing_data,
+        "existing valid account must be left unmodified"
     );
 }
 
@@ -372,11 +381,13 @@ fn init_if_needed_token_t22_existing_valid() {
     }
     .into();
 
+    let existing = token_account(token_key, mint_key, payer, 100, token_program);
+    let existing_data = existing.data.clone();
     let result = svm.process_instruction(
         &instruction,
         &[
             rich_signer_account(payer),
-            token_account(token_key, mint_key, payer, 100, token_program),
+            existing,
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
@@ -384,6 +395,13 @@ fn init_if_needed_token_t22_existing_valid() {
         result.is_ok(),
         "init_if_needed on existing valid token should succeed (T22, no-op): {:?}",
         result.raw_result
+    );
+    // "No-op" must mean untouched: the existing account's bytes are
+    // byte-identical after the idempotent init.
+    let after = result.account(&token_key).expect("existing account");
+    assert_eq!(
+        after.data, existing_data,
+        "existing valid account must be left unmodified"
     );
 }
 

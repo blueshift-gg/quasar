@@ -1,3 +1,15 @@
+//! Generated-client smoke tests: compile and execute the emitted clients
+//! with real toolchains.
+//!
+//! Deliberately NOT hermetic and NOT skip-gated: these tests hard-require
+//! the pinned toolchains (cargo, `python3` + `solders`, `go`, `node`/`npm`,
+//! a C compiler with `CARAVEL_INCLUDE_DIR` set) and fetch pinned npm/Go
+//! dependencies from the network. A missing toolchain must FAIL the run —
+//! a silent skip would report green while validating nothing. CI provisions
+//! everything in the dedicated `generated_client_smoke` job (see ci.yml);
+//! locally, run via `make generated-client-smoke` with the same setup, or
+//! run only the Rust-leg tests, which need nothing beyond cargo.
+
 use {
     quasar_cli::idl,
     quasar_idl::{
@@ -2108,5 +2120,24 @@ pub struct FixedOnly {
     assert!(c.contains("accounts->maybeProgram ? accounts->maybeProgram : (Pubkey *)&"));
     compile_c_client(&c_dir)?;
 
+    Ok(())
+}
+
+#[test]
+fn escrow_generated_rust_client_compiles() -> Result<(), Box<dyn Error>> {
+    // Escrow's generated clients are byte-baselined
+    // (generated_client_baseline.rs) but historically only multisig's were
+    // ever compiled, so "correct bytes, broken code" was possible for the
+    // second fixture. Compile the Rust leg here; the other languages ride
+    // the same generator front-end and are exercised by the multisig
+    // fresh-project matrix above with the pinned CI toolchains.
+    let fixture = workspace_root().join("examples/escrow");
+
+    let temp = tempdir()?;
+    let clients_path = temp.path().join("clients");
+    idl::generate(&fixture, &[], &clients_path)?;
+
+    let rust_client_dir = only_child_dir(&clients_path.join("rust"))?;
+    compile_rust_client_from_packages(&rust_client_dir)?;
     Ok(())
 }
