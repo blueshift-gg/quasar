@@ -69,8 +69,8 @@ def create_make_instruction(input: MakeInput) -> Instruction:
     accounts_map = {}
     accounts = []
     accounts_map["authority"] = input.authority
-    accounts.append(AccountMeta(accounts_map["authority"], is_signer=True, is_writable=False))
     accounts_map["vault"] = Pubkey.find_program_address([bytes([118, 97, 117, 108, 116]), bytes(accounts_map["authority"])], PROGRAM_ID)[0]
+    accounts.append(AccountMeta(accounts_map["authority"], is_signer=True, is_writable=False))
     accounts.append(AccountMeta(accounts_map["vault"], is_signer=False, is_writable=True))
     data = bytearray(MAKE_DISCRIMINATOR)
     data += struct.pack("<Q", input.amount)

@@ -132,8 +132,8 @@ func NewMakeInstruction(input *MakeInput) *solana.GenericInstruction {
 	accounts := []*solana.AccountMeta{}
 	accountsMap := map[string]solana.PublicKey{}
 	accountsMap["authority"] = input.Authority
-	accounts = append(accounts, solana.Meta(accountsMap["authority"]).SIGNER())
 	accountsMap["vault"] = func() solana.PublicKey { addr, _, err := solana.FindProgramAddress([][]byte{[]byte{0x76, 0x61, 0x75, 0x6c, 0x74}, func() []byte { key := accountsMap["authority"]; return key[:] }()}, ProgramID); if err != nil { panic(err) }; return addr }()
+	accounts = append(accounts, solana.Meta(accountsMap["authority"]).SIGNER())
 	accounts = append(accounts, solana.Meta(accountsMap["vault"]).WRITE())
 	data := make([]byte, 0, 256)
 	data = append(data, MakeDiscriminator[:]...)
