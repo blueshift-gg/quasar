@@ -49,10 +49,6 @@ fn test_read_clock_syscall() {
     assert_eq!(data[0], 1, "discriminator");
     let slot = u64::from_le_bytes(data[1..9].try_into().unwrap());
     assert_eq!(slot, 42, "slot should be 42 after warp_to_slot(42)");
-    println!(
-        "  read_clock (syscall): OK (CU: {})",
-        result.compute_units_consumed
-    );
 }
 
 #[test]
@@ -85,10 +81,6 @@ fn test_read_clock_default_slot() {
     let data = &result.resulting_accounts[1].1.data;
     let slot = u64::from_le_bytes(data[1..9].try_into().unwrap());
     assert_eq!(slot, 0, "default slot should be 0");
-    println!(
-        "  read_clock (default): OK (CU: {})",
-        result.compute_units_consumed
-    );
 }
 
 #[test]
@@ -126,10 +118,6 @@ fn test_read_rent_syscall() {
         min_balance > 0,
         "min_balance for 100 bytes should be > 0, got {}",
         min_balance
-    );
-    println!(
-        "  read_rent (syscall): OK (CU: {}, min_balance_100={})",
-        result.compute_units_consumed, min_balance
     );
 }
 
@@ -173,10 +161,6 @@ fn test_read_clock_from_account() {
     let data = &result.resulting_accounts[1].1.data;
     let slot = u64::from_le_bytes(data[1..9].try_into().unwrap());
     assert_eq!(slot, 100, "slot should be 100 after warp_to_slot(100)");
-    println!(
-        "  read_clock (account): OK (CU: {})",
-        result.compute_units_consumed
-    );
 }
 
 #[test]
@@ -219,10 +203,6 @@ fn test_read_clock_account_after_warp() {
     let data = &result.resulting_accounts[1].1.data;
     let slot = u64::from_le_bytes(data[1..9].try_into().unwrap());
     assert_eq!(slot, 999, "slot should be 999");
-    println!(
-        "  read_clock (account, warp=999): OK (CU: {})",
-        result.compute_units_consumed
-    );
 }
 
 #[test]
@@ -258,10 +238,6 @@ fn test_clock_custom_slot() {
     assert_eq!(data[0], 3, "discriminator");
     let slot = u64::from_le_bytes(data[1..9].try_into().unwrap());
     assert_eq!(slot, 12345, "slot should be 12345");
-    println!(
-        "  clock_custom_slot: OK (CU: {})",
-        result.compute_units_consumed
-    );
 }
 
 #[test]
@@ -295,10 +271,6 @@ fn test_clock_unix_timestamp() {
     let data = &result.resulting_accounts[1].1.data;
     let unix_timestamp = i64::from_le_bytes(data[33..41].try_into().unwrap());
     assert_eq!(unix_timestamp, 1_700_000_000, "unix_timestamp mismatch");
-    println!(
-        "  clock_unix_timestamp: OK (CU: {})",
-        result.compute_units_consumed
-    );
 }
 
 #[test]
@@ -332,7 +304,6 @@ fn test_clock_epoch() {
     let data = &result.resulting_accounts[1].1.data;
     let epoch = u64::from_le_bytes(data[17..25].try_into().unwrap());
     assert_eq!(epoch, 42, "epoch mismatch");
-    println!("  clock_epoch: OK (CU: {})", result.compute_units_consumed);
 }
 
 #[test]
@@ -369,10 +340,6 @@ fn test_clock_epoch_start_timestamp() {
         epoch_start_timestamp, 1_600_000_000,
         "epoch_start_timestamp mismatch"
     );
-    println!(
-        "  clock_epoch_start_timestamp: OK (CU: {})",
-        result.compute_units_consumed
-    );
 }
 
 #[test]
@@ -406,10 +373,6 @@ fn test_clock_leader_schedule_epoch() {
     let data = &result.resulting_accounts[1].1.data;
     let leader_schedule_epoch = u64::from_le_bytes(data[25..33].try_into().unwrap());
     assert_eq!(leader_schedule_epoch, 99, "leader_schedule_epoch mismatch");
-    println!(
-        "  clock_leader_schedule_epoch: OK (CU: {})",
-        result.compute_units_consumed
-    );
 }
 
 #[test]
@@ -460,10 +423,6 @@ fn test_clock_all_fields() {
     assert_eq!(epoch, 10, "epoch");
     assert_eq!(leader_schedule_epoch, 11, "leader_schedule_epoch");
     assert_eq!(unix_timestamp, 1_700_000_000, "unix_timestamp");
-    println!(
-        "  clock_all_fields: OK (CU: {})",
-        result.compute_units_consumed
-    );
 }
 
 #[test]
@@ -509,10 +468,6 @@ fn test_clock_large_values() {
     assert_eq!(leader_schedule_epoch, u64::MAX, "leader_schedule_epoch max");
     assert_eq!(unix_timestamp, i64::MAX, "unix_timestamp max");
     assert_eq!(epoch_start_timestamp, i64::MAX, "epoch_start_timestamp max");
-    println!(
-        "  clock_large_values: OK (CU: {})",
-        result.compute_units_consumed
-    );
 }
 
 #[test]
@@ -549,10 +504,6 @@ fn test_rent_minimum_balance_small() {
     let min_balance = u64::from_le_bytes(data[1..9].try_into().unwrap());
     let expected = mollusk.sysvars.rent.minimum_balance(100);
     assert_eq!(min_balance, expected, "min_balance for 100 bytes");
-    println!(
-        "  rent_minimum_balance_small: OK (CU: {}, min_balance={})",
-        result.compute_units_consumed, min_balance
-    );
 }
 
 #[test]
@@ -587,10 +538,6 @@ fn test_rent_minimum_balance_large() {
     let min_balance = u64::from_le_bytes(data[1..9].try_into().unwrap());
     let expected = mollusk.sysvars.rent.minimum_balance(10_000);
     assert_eq!(min_balance, expected, "min_balance for 10000 bytes");
-    println!(
-        "  rent_minimum_balance_large: OK (CU: {}, min_balance={})",
-        result.compute_units_consumed, min_balance
-    );
 }
 
 #[test]
@@ -629,10 +576,6 @@ fn test_rent_minimum_balance_zero() {
         min_balance > 0,
         "min_balance for 0 bytes should be > 0 due to storage overhead"
     );
-    println!(
-        "  rent_minimum_balance_zero: OK (CU: {}, min_balance={})",
-        result.compute_units_consumed, min_balance
-    );
 }
 
 #[test]
@@ -670,10 +613,6 @@ fn test_rent_lamports_per_byte() {
     assert_eq!(min_balance_1, expected_1, "min_balance for 1 byte");
     let per_byte = expected_1 - expected_0;
     assert!(per_byte > 0, "lamports per byte should be > 0");
-    println!(
-        "  rent_lamports_per_byte: OK (CU: {}, per_byte={})",
-        result.compute_units_consumed, per_byte
-    );
 }
 
 #[test]
@@ -745,9 +684,5 @@ fn test_clock_syscall_vs_account_consistent() {
     assert_eq!(
         syscall_data, *account_data,
         "syscall and account clock data should match"
-    );
-    println!(
-        "  clock_syscall_vs_account_consistent: OK (CU: {})",
-        result.compute_units_consumed
     );
 }

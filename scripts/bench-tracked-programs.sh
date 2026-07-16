@@ -24,11 +24,13 @@ Usage:
   scripts/bench-tracked-programs.sh capture <output-env-file>
   scripts/bench-tracked-programs.sh compare [<baseline-env>]
   scripts/bench-tracked-programs.sh compare-files <baseline-env> <candidate-env>
+  scripts/bench-tracked-programs.sh read-cu <cu-bench-jsonl> <instruction>
 
 Commands:
   capture        Build tracked programs, run CU tests, write metrics to file.
   compare        Capture HEAD and compare it to the checked-in v0.1.0 baseline.
   compare-files  Compare two previously captured metric files.
+  read-cu        Print one instruction's CU from a target/cu-bench JSONL file.
 EOF
 }
 
@@ -46,10 +48,31 @@ capture_metric() {
   printf '%s=%s\n' "$key" "$value" >>"$output_file"
 }
 
-extract_metric() {
-  local label="$1"
-  local file="$2"
-  grep "$label" "$file" | head -1 | grep -oE '[0-9]+'
+# Benchmark tests are silent on stdout; they record CU through
+# examples/cu_bench.rs as JSON lines under target/cu-bench/ and the values are
+# read from there. A missing or non-numeric record is a hard error — never a
+# silently absent metric.
+cu_bench_file() {
+  local package_name="$1"
+  printf 'target/cu-bench/%s.jsonl\n' "$package_name"
+}
+
+read_cu_metric() {
+  local file="$1"
+  local instruction="$2"
+  local value
+
+  if [[ ! -f "$file" ]]; then
+    echo "missing cu-bench record file: $file" >&2
+    return 1
+  fi
+  value="$(jq -r --arg instruction "$instruction" \
+    'select(.instruction == $instruction) | .cu' "$file" | head -1)"
+  if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+    echo "$file: missing or non-numeric cu record for instruction: $instruction" >&2
+    return 1
+  fi
+  printf '%s\n' "$value"
 }
 
 binary_size() {
@@ -72,8 +95,11 @@ capture_program_metrics() {
   local binary_name="$4"
   local size_key="$5"
   shift 5
-  local log_file
-  log_file="$(mktemp)"
+
+  # Stale records from a previous run must never satisfy this capture.
+  local bench_file
+  bench_file="$(cu_bench_file "$package_name")"
+  rm -f "$bench_file"
 
   local rustc
   rustc="$(platform_tools_rustc)"
@@ -85,17 +111,16 @@ capture_program_metrics() {
   else
     cargo build-sbf --tools-version "$PLATFORM_TOOLS_VERSION" --manifest-path "$manifest_path"
   fi
-  cargo test -p "$package_name" -- --nocapture --test-threads=1 2>&1 | tee "$log_file"
+  cargo test -p "$package_name" -- --test-threads=1
 
   while (($#)); do
     local key="$1"
-    local label="$2"
+    local instruction="$2"
     shift 2
-    capture_metric "$output_file" "$key" "$(extract_metric "$label" "$log_file")"
+    capture_metric "$output_file" "$key" "$(read_cu_metric "$bench_file" "$instruction")"
   done
 
   capture_metric "$output_file" "$size_key" "$(binary_size "$binary_name")"
-  rm -f "$log_file"
 }
 
 capture() {
@@ -109,8 +134,8 @@ capture() {
     "quasar-vault" \
     "quasar_vault.so" \
     "VAULT_SIZE" \
-    "VAULT_DEPOSIT_CU" "DEPOSIT CU:" \
-    "VAULT_WITHDRAW_CU" "WITHDRAW CU:"
+    "VAULT_DEPOSIT_CU" "deposit" \
+    "VAULT_WITHDRAW_CU" "withdraw"
 
   capture_program_metrics \
     "$output_file" \
@@ -118,9 +143,9 @@ capture() {
     "quasar-escrow" \
     "quasar_escrow.so" \
     "ESCROW_SIZE" \
-    "ESCROW_MAKE_CU" "MAKE CU:" \
-    "ESCROW_TAKE_CU" "TAKE CU:" \
-    "ESCROW_REFUND_CU" "REFUND CU:"
+    "ESCROW_MAKE_CU" "make" \
+    "ESCROW_TAKE_CU" "take" \
+    "ESCROW_REFUND_CU" "refund"
 
   capture_program_metrics \
     "$output_file" \
@@ -128,10 +153,10 @@ capture() {
     "quasar-multisig" \
     "quasar_multisig.so" \
     "MULTISIG_SIZE" \
-    "MULTISIG_CREATE_CU" "CREATE CU:" \
-    "MULTISIG_DEPOSIT_CU" "DEPOSIT CU:" \
-    "MULTISIG_SET_LABEL_CU" "SET_LABEL CU:" \
-    "MULTISIG_EXECUTE_TRANSFER_CU" "EXECUTE_TRANSFER CU:"
+    "MULTISIG_CREATE_CU" "create" \
+    "MULTISIG_DEPOSIT_CU" "deposit" \
+    "MULTISIG_SET_LABEL_CU" "set_label" \
+    "MULTISIG_EXECUTE_TRANSFER_CU" "execute_transfer"
 }
 
 is_tracked_metric() {
@@ -280,6 +305,13 @@ main() {
         exit 1
       fi
       compare_files "$2" "$3"
+      ;;
+    read-cu)
+      if (($# != 3)); then
+        usage >&2
+        exit 1
+      fi
+      read_cu_metric "$2" "$3"
       ;;
     *)
       usage >&2

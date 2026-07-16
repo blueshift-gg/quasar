@@ -121,7 +121,6 @@ fn test_emit_cu() {
         &[(signer, Account::new(1_000_000, 0, &Address::default()))],
     );
     assert!(result.program_result.is_ok());
-    println!("emit!() CU: {}", result.compute_units_consumed);
     assert!(
         result.compute_units_consumed < 500,
         "emit!() should be under 500 CU, got {}",
@@ -229,7 +228,6 @@ fn test_emit_cpi_cu() {
         &make_cpi_accounts(signer, event_authority, quasar_test_events::ID),
     );
     assert!(result.program_result.is_ok());
-    println!("emit_cpi!() CU: {}", result.compute_units_consumed);
     assert!(
         result.compute_units_consumed < 2_000,
         "emit_cpi!() should be under 2000 CU, got {}",

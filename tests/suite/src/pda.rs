@@ -596,10 +596,6 @@ fn test_pda_cu() {
     );
 
     assert!(result.program_result.is_ok());
-    println!(
-        "PDA init (literal seed) CU: {}",
-        result.compute_units_consumed
-    );
 }
 
 #[test]

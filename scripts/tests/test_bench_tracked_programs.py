@@ -90,5 +90,57 @@ class BenchmarkPolicyTests(unittest.TestCase):
         self.assertIn("non-numeric value for VAULT_DEPOSIT_CU: unbounded", result.stderr)
 
 
+class ReadCuTests(unittest.TestCase):
+    """The capture path reads CU records written by examples/cu_bench.rs as
+    JSON lines under target/cu-bench/ — never from test stdout."""
+
+    def read_cu(self, lines: list[str], instruction: str) -> subprocess.CompletedProcess[str]:
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as record:
+            record.write("\n".join(lines) + "\n")
+            record_path = Path(record.name)
+        try:
+            return subprocess.run(
+                ["bash", str(SCRIPT), "read-cu", str(record_path), instruction],
+                cwd=ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            record_path.unlink()
+
+    def test_reads_recorded_instruction(self) -> None:
+        result = self.read_cu(
+            [
+                '{"instruction":"deposit","cu":1556}',
+                '{"instruction":"withdraw","cu":392}',
+            ],
+            "withdraw",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "392")
+
+    def test_missing_instruction_fails(self) -> None:
+        result = self.read_cu(['{"instruction":"deposit","cu":1556}'], "withdraw")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("missing or non-numeric cu record", result.stderr)
+
+    def test_missing_record_file_fails(self) -> None:
+        result = subprocess.run(
+            ["bash", str(SCRIPT), "read-cu", "/nonexistent/cu.jsonl", "deposit"],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("missing cu-bench record file", result.stderr)
+
+    def test_non_numeric_record_fails(self) -> None:
+        result = self.read_cu(['{"instruction":"deposit","cu":"lots"}'], "deposit")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("missing or non-numeric cu record", result.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

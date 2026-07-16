@@ -5,8 +5,10 @@ use {
     quasar_multisig_client::*,
     quasar_svm::{Account, Instruction, Pubkey, QuasarSvm},
     solana_instruction::AccountMeta,
-    std::println,
 };
+
+#[path = "../../cu_bench.rs"]
+mod cu_bench;
 
 const CREATOR: Pubkey = Pubkey::new_from_array([11; 32]);
 const SIGNER1: Pubkey = Pubkey::new_from_array([12; 32]);
@@ -111,7 +113,7 @@ fn test_create() {
     let signers_count = u16::from_le_bytes([config_data[36], config_data[37]]);
     assert_eq!(signers_count, 3, "signers count should be 3");
 
-    println!("  CREATE CU: {}", result.compute_units_consumed);
+    cu_bench::record_cu("create", result.compute_units_consumed);
 }
 
 #[test]
@@ -153,7 +155,7 @@ fn test_deposit() {
     let vault_after = result.account(&vault).unwrap().lamports;
     assert_eq!(vault_after, deposit_amount, "vault lamports after deposit");
 
-    println!("  DEPOSIT CU: {}", result.compute_units_consumed);
+    cu_bench::record_cu("deposit", result.compute_units_consumed);
 }
 
 #[test]
@@ -199,7 +201,7 @@ fn test_set_label() {
         core::str::from_utf8(&config_data[tail_start..tail_start + label_len]).unwrap();
     assert_eq!(stored_label, label, "label content mismatch");
 
-    println!("  SET_LABEL CU: {}", result.compute_units_consumed);
+    cu_bench::record_cu("set_label", result.compute_units_consumed);
 }
 
 #[test]
@@ -279,7 +281,7 @@ fn test_execute_transfer() {
         "recipient lamports after transfer"
     );
 
-    println!("  EXECUTE_TRANSFER CU: {}", result.compute_units_consumed);
+    cu_bench::record_cu("execute_transfer", result.compute_units_consumed);
 }
 
 #[test]
@@ -334,7 +336,6 @@ fn test_execute_transfer_insufficient_signers() {
     );
 
     assert!(result.is_err(), "should fail with insufficient signers");
-    println!("  INSUFFICIENT_SIGNERS: correctly rejected");
 }
 
 #[test]

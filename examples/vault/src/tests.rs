@@ -2,8 +2,11 @@ extern crate std;
 use {
     quasar_svm::{Account, Instruction, Pubkey, QuasarSvm},
     quasar_vault_client::*,
-    std::{println, vec},
+    std::vec,
 };
+
+#[path = "../../cu_bench.rs"]
+mod cu_bench;
 
 const USER: Pubkey = Pubkey::new_from_array([1; 32]);
 
@@ -58,7 +61,7 @@ fn test_deposit() {
     );
     assert_eq!(vault_after, deposit_amount, "vault lamports after deposit");
 
-    println!("  DEPOSIT CU: {}", result.compute_units_consumed);
+    cu_bench::record_cu("deposit", result.compute_units_consumed);
 }
 
 #[test]
@@ -109,5 +112,5 @@ fn test_withdraw() {
         "vault lamports after withdraw"
     );
 
-    println!("  WITHDRAW CU: {}", result.compute_units_consumed);
+    cu_bench::record_cu("withdraw", result.compute_units_consumed);
 }

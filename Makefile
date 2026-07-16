@@ -68,7 +68,7 @@ PACKAGE_REHEARSAL_ROOT ?= target/release-rehearsal
 TYPESCRIPT_TEST_DIR := testing/typescript
 
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
-	check-runtime-panics check-workspace-invariants check-license-policy \
+	check-runtime-panics check-workspace-invariants check-test-silence check-license-policy \
 	check-package-metadata check-readme-crate-inventory check-release-train \
 	build build-sbf test test-bless \
 	test-host-inventory test-host test-sbf-host test-quasar-test-standalone \
@@ -235,8 +235,22 @@ check-runtime-panics:
 	  exit 1; \
 	fi
 
+# Tests are silent on success (TESTING.md): anything worth printing is worth
+# asserting. Benchmark CU goes to target/cu-bench/*.jsonl via
+# examples/cu_bench.rs, never to stdout.
+check-test-silence:
+	@viol="$$(rg -n 'println!|eprintln!' tests/suite/src \
+	  examples/vault/src/tests.rs examples/escrow/src/tests.rs \
+	  examples/multisig/src/tests.rs examples/upstream-vault/src/tests.rs \
+	  || true)"; \
+	if [[ -n "$$viol" ]]; then \
+	  echo "test code must not print (TESTING.md: assert, don't print):" >&2; \
+	  echo "$$viol" >&2; \
+	  exit 1; \
+	fi
+
 check-workspace-invariants: check-license-policy check-package-metadata \
-	check-readme-crate-inventory check-release-train
+	check-readme-crate-inventory check-release-train check-test-silence
 	@check_allowed() { \
 	  local desc="$$1" pattern="$$2"; shift 2; \
 	  local allowed=("$$@") matches; \
@@ -534,10 +548,13 @@ test-release-permission-policy:
 
 bench-cu:
 	@$(MAKE) build-sbf
+	@rm -f target/cu-bench/quasar-vault.jsonl target/cu-bench/quasar-escrow.jsonl
 	@echo "Running vault CU benchmark..."
-	@cargo test -p quasar-vault -- --nocapture --test-threads=1 2>&1 | grep -E '(DEPOSIT|WITHDRAW) CU:'
+	@cargo test -p quasar-vault -- --test-threads=1
+	@jq -r '"  \(.instruction) CU: \(.cu)"' target/cu-bench/quasar-vault.jsonl
 	@echo "Running escrow CU benchmark..."
-	@cargo test -p quasar-escrow -- --nocapture --test-threads=1 2>&1 | grep -E '(MAKE|TAKE|REFUND) CU:'
+	@cargo test -p quasar-escrow -- --test-threads=1
+	@jq -r '"  \(.instruction) CU: \(.cu)"' target/cu-bench/quasar-escrow.jsonl
 
 bench-tracked:
 	@bash scripts/bench-tracked-programs.sh capture target/tracked-metrics.env
