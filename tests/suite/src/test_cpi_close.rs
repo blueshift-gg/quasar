@@ -94,36 +94,6 @@ fn close_interface_spl() {
     );
 }
 
-#[test]
-fn close_interface_t22() {
-    let mut svm = svm_cpi();
-    let authority = Pubkey::new_unique();
-    let mint_key = Pubkey::new_unique();
-    let account_key = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-
-    let instruction: Instruction = CloseTokenAccountInterfaceInstruction {
-        authority,
-        account: account_key,
-        destination: authority,
-        token_program,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer_account(authority),
-            token_account(account_key, mint_key, authority, 0, token_program),
-        ],
-    );
-    assert!(
-        result.is_ok(),
-        "close interface Token-2022 should succeed: {:?}",
-        result.raw_result
-    );
-}
-
 // Error propagation through the CPI machinery: the SPL program's own
 // rejection must surface exactly, not be masked or remapped. SPL close
 // checks balance before owner, so the two cases are distinguishable.

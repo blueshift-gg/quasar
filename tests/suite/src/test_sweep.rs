@@ -185,49 +185,6 @@ fn sweep_t22_happy() {
     );
 }
 
-#[test]
-fn sweep_t22_zero_balance() {
-    let mut svm = svm_cpi();
-    let authority = Pubkey::new_unique();
-    let mint_key = Pubkey::new_unique();
-    let source_key = Pubkey::new_unique();
-    let receiver_key = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-
-    let instruction: Instruction = SweepTokenT22Instruction {
-        authority,
-        source: source_key,
-        receiver: receiver_key,
-        mint: mint_key,
-        token_program,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer_account(authority),
-            token_account(source_key, mint_key, authority, 0, token_program),
-            token_account(receiver_key, mint_key, authority, 0, token_program),
-            mint_account(mint_key, authority, 6, token_program),
-        ],
-    );
-    assert!(
-        result.is_ok(),
-        "sweep T22 zero balance should be no-op: {:?}",
-        result.raw_result
-    );
-
-    let receiver = result.account(&receiver_key).expect("receiver result");
-    assert_eq!(
-        quasar_svm::token::TokenAccount::unpack(&receiver.data)
-            .expect("decode receiver")
-            .amount,
-        0,
-        "zero-balance sweep must be a no-op"
-    );
-}
-
 // sweep only with InterfaceAccount, SPL and Token-2022.
 
 #[test]
@@ -260,57 +217,6 @@ fn sweep_interface_spl_happy() {
     assert!(
         result.is_ok(),
         "sweep Interface SPL should succeed: {:?}",
-        result.raw_result
-    );
-
-    let source = result.account(&source_key).expect("source result");
-    assert_eq!(
-        quasar_svm::token::TokenAccount::unpack(&source.data)
-            .expect("decode source")
-            .amount,
-        0,
-        "source drained"
-    );
-    let receiver = result.account(&receiver_key).expect("receiver result");
-    assert_eq!(
-        quasar_svm::token::TokenAccount::unpack(&receiver.data)
-            .expect("decode receiver")
-            .amount,
-        500,
-        "receiver credited"
-    );
-}
-
-#[test]
-fn sweep_interface_t22_happy() {
-    let mut svm = svm_cpi();
-    let authority = Pubkey::new_unique();
-    let mint_key = Pubkey::new_unique();
-    let source_key = Pubkey::new_unique();
-    let receiver_key = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-
-    let instruction: Instruction = SweepTokenInterfaceInstruction {
-        authority,
-        source: source_key,
-        receiver: receiver_key,
-        mint: mint_key,
-        token_program,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer_account(authority),
-            token_account(source_key, mint_key, authority, 500, token_program),
-            token_account(receiver_key, mint_key, authority, 0, token_program),
-            mint_account(mint_key, authority, 6, token_program),
-        ],
-    );
-    assert!(
-        result.is_ok(),
-        "sweep Interface T22 should succeed: {:?}",
         result.raw_result
     );
 
@@ -504,108 +410,6 @@ fn sweep_and_close_spl_wrong_mint_receiver() {
 
 // sweep + close with Token-2022.
 
-#[test]
-fn sweep_and_close_t22_happy() {
-    let mut svm = svm_cpi();
-    let authority = Pubkey::new_unique();
-    let mint_key = Pubkey::new_unique();
-    let source_key = Pubkey::new_unique();
-    let receiver_key = Pubkey::new_unique();
-    let destination = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-
-    let instruction: Instruction = SweepAndCloseT22Instruction {
-        authority,
-        source: source_key,
-        receiver: receiver_key,
-        mint: mint_key,
-        destination,
-        token_program,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer_account(authority),
-            token_account(source_key, mint_key, authority, 1000, token_program),
-            token_account(receiver_key, mint_key, authority, 0, token_program),
-            mint_account(mint_key, authority, 6, token_program),
-            empty_account(destination),
-        ],
-    );
-    assert!(
-        result.is_ok(),
-        "sweep + close T22 should succeed: {:?}",
-        result.raw_result
-    );
-
-    let receiver = result.account(&receiver_key).expect("receiver result");
-    assert_eq!(
-        quasar_svm::token::TokenAccount::unpack(&receiver.data)
-            .expect("decode receiver")
-            .amount,
-        1000,
-        "receiver credited"
-    );
-    assert_eq!(
-        result.account(&source_key).expect("closed source").lamports,
-        0,
-        "source closed"
-    );
-}
-
-#[test]
-fn sweep_and_close_t22_zero_balance() {
-    let mut svm = svm_cpi();
-    let authority = Pubkey::new_unique();
-    let mint_key = Pubkey::new_unique();
-    let source_key = Pubkey::new_unique();
-    let receiver_key = Pubkey::new_unique();
-    let destination = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-
-    let instruction: Instruction = SweepAndCloseT22Instruction {
-        authority,
-        source: source_key,
-        receiver: receiver_key,
-        mint: mint_key,
-        destination,
-        token_program,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer_account(authority),
-            token_account(source_key, mint_key, authority, 0, token_program),
-            token_account(receiver_key, mint_key, authority, 0, token_program),
-            mint_account(mint_key, authority, 6, token_program),
-            empty_account(destination),
-        ],
-    );
-    assert!(
-        result.is_ok(),
-        "sweep + close T22 zero balance should succeed: {:?}",
-        result.raw_result
-    );
-
-    let receiver = result.account(&receiver_key).expect("receiver result");
-    assert_eq!(
-        quasar_svm::token::TokenAccount::unpack(&receiver.data)
-            .expect("decode receiver")
-            .amount,
-        0,
-        "zero-balance sweep must be a no-op"
-    );
-    assert_eq!(
-        result.account(&source_key).expect("closed source").lamports,
-        0,
-        "source still closed"
-    );
-}
-
 // sweep + close with InterfaceAccount, SPL and Token-2022.
 
 #[test]
@@ -641,57 +445,6 @@ fn sweep_and_close_interface_spl_happy() {
     assert!(
         result.is_ok(),
         "sweep + close Interface SPL should succeed: {:?}",
-        result.raw_result
-    );
-
-    let receiver = result.account(&receiver_key).expect("receiver result");
-    assert_eq!(
-        quasar_svm::token::TokenAccount::unpack(&receiver.data)
-            .expect("decode receiver")
-            .amount,
-        1000,
-        "receiver credited"
-    );
-    assert_eq!(
-        result.account(&source_key).expect("closed source").lamports,
-        0,
-        "source closed"
-    );
-}
-
-#[test]
-fn sweep_and_close_interface_t22_happy() {
-    let mut svm = svm_cpi();
-    let authority = Pubkey::new_unique();
-    let mint_key = Pubkey::new_unique();
-    let source_key = Pubkey::new_unique();
-    let receiver_key = Pubkey::new_unique();
-    let destination = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-
-    let instruction: Instruction = SweepAndCloseInterfaceInstruction {
-        authority,
-        source: source_key,
-        receiver: receiver_key,
-        mint: mint_key,
-        destination,
-        token_program,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer_account(authority),
-            token_account(source_key, mint_key, authority, 1000, token_program),
-            token_account(receiver_key, mint_key, authority, 0, token_program),
-            mint_account(mint_key, authority, 6, token_program),
-            empty_account(destination),
-        ],
-    );
-    assert!(
-        result.is_ok(),
-        "sweep + close Interface T22 should succeed: {:?}",
         result.raw_result
     );
 

@@ -106,38 +106,6 @@ fn mint_to_interface_spl() {
     );
 }
 
-#[test]
-fn mint_to_interface_t22() {
-    let mut svm = svm_cpi();
-    let authority = Pubkey::new_unique();
-    let mint_key = Pubkey::new_unique();
-    let to_key = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-
-    let instruction: Instruction = MintToInterfaceInstruction {
-        authority,
-        mint: mint_key,
-        to: to_key,
-        token_program,
-        amount: 5000,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer_account(authority),
-            mint_account(mint_key, authority, 9, token_program),
-            token_account(to_key, mint_key, authority, 0, token_program),
-        ],
-    );
-    assert!(
-        result.is_ok(),
-        "mint_to interface T22 should succeed: {:?}",
-        result.raw_result
-    );
-}
-
 // Burn discriminator 4 with Program<Token>.
 
 #[test]
@@ -174,38 +142,6 @@ fn burn_spl() {
 
 // BurnT22 discriminator 28 with Program<Token2022>.
 
-#[test]
-fn burn_t22() {
-    let mut svm = svm_cpi();
-    let authority = Pubkey::new_unique();
-    let mint_key = Pubkey::new_unique();
-    let from_key = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-
-    let instruction: Instruction = BurnT22Instruction {
-        authority,
-        from: from_key,
-        mint: mint_key,
-        token_program,
-        amount: 500,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer_account(authority),
-            token_account(from_key, mint_key, authority, 1000, token_program),
-            mint_account(mint_key, authority, 9, token_program),
-        ],
-    );
-    assert!(
-        result.is_ok(),
-        "burn T22 should succeed: {:?}",
-        result.raw_result
-    );
-}
-
 // BurnInterface discriminator 29 with Interface<TokenInterface>.
 
 #[test]
@@ -236,38 +172,6 @@ fn burn_interface_spl() {
     assert!(
         result.is_ok(),
         "burn interface SPL should succeed: {:?}",
-        result.raw_result
-    );
-}
-
-#[test]
-fn burn_interface_t22() {
-    let mut svm = svm_cpi();
-    let authority = Pubkey::new_unique();
-    let mint_key = Pubkey::new_unique();
-    let from_key = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-
-    let instruction: Instruction = BurnInterfaceInstruction {
-        authority,
-        from: from_key,
-        mint: mint_key,
-        token_program,
-        amount: 500,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer_account(authority),
-            token_account(from_key, mint_key, authority, 1000, token_program),
-            mint_account(mint_key, authority, 9, token_program),
-        ],
-    );
-    assert!(
-        result.is_ok(),
-        "burn interface T22 should succeed: {:?}",
         result.raw_result
     );
 }

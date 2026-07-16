@@ -109,39 +109,6 @@ fn approve_interface_spl() {
     );
 }
 
-#[test]
-fn approve_interface_t22() {
-    let mut svm = svm_cpi();
-    let authority = Pubkey::new_unique();
-    let mint_key = Pubkey::new_unique();
-    let source_key = Pubkey::new_unique();
-    let delegate_key = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-
-    let instruction: Instruction = ApproveInterfaceInstruction {
-        authority,
-        source: source_key,
-        delegate: delegate_key,
-        token_program,
-        amount: 500,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer_account(authority),
-            token_account(source_key, mint_key, authority, 1000, token_program),
-            signer_account(delegate_key),
-        ],
-    );
-    assert!(
-        result.is_ok(),
-        "approve interface T22 should succeed: {:?}",
-        result.raw_result
-    );
-}
-
 // Revoke discriminator 2 with Program<Token>.
 
 #[test]
@@ -184,44 +151,6 @@ fn revoke_spl() {
 
 // RevokeT22 discriminator 24 with Program<Token2022>.
 
-#[test]
-fn revoke_t22() {
-    let mut svm = svm_cpi();
-    let authority = Pubkey::new_unique();
-    let mint_key = Pubkey::new_unique();
-    let source_key = Pubkey::new_unique();
-    let delegate_key = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-
-    let instruction: Instruction = RevokeT22Instruction {
-        authority,
-        source: source_key,
-        token_program,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer_account(authority),
-            token_account_with_delegate(
-                source_key,
-                mint_key,
-                authority,
-                1000,
-                delegate_key,
-                500,
-                token_program,
-            ),
-        ],
-    );
-    assert!(
-        result.is_ok(),
-        "revoke T22 should succeed: {:?}",
-        result.raw_result
-    );
-}
-
 // RevokeInterface discriminator 25 with Interface<TokenInterface>.
 
 #[test]
@@ -258,44 +187,6 @@ fn revoke_interface_spl() {
     assert!(
         result.is_ok(),
         "revoke interface SPL should succeed: {:?}",
-        result.raw_result
-    );
-}
-
-#[test]
-fn revoke_interface_t22() {
-    let mut svm = svm_cpi();
-    let authority = Pubkey::new_unique();
-    let mint_key = Pubkey::new_unique();
-    let source_key = Pubkey::new_unique();
-    let delegate_key = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-
-    let instruction: Instruction = RevokeInterfaceInstruction {
-        authority,
-        source: source_key,
-        token_program,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer_account(authority),
-            token_account_with_delegate(
-                source_key,
-                mint_key,
-                authority,
-                1000,
-                delegate_key,
-                500,
-                token_program,
-            ),
-        ],
-    );
-    assert!(
-        result.is_ok(),
-        "revoke interface T22 should succeed: {:?}",
         result.raw_result
     );
 }

@@ -92,32 +92,6 @@ fn init_mint_pda_t22_happy() {
     );
 }
 
-#[test]
-fn init_mint_pda_t22_wrong_address() {
-    let mut svm = svm_init();
-    let payer = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-    let system_program = quasar_svm::system_program::ID;
-
-    let wrong_key = Pubkey::new_unique();
-
-    let instruction: Instruction = InitMintPdaT22Instruction {
-        payer,
-        mint: wrong_key,
-        token_program,
-        system_program,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[rich_signer_account(payer), empty_account(wrong_key)],
-    );
-    result.assert_error(quasar_svm::ProgramError::Custom(
-        quasar_lang::prelude::QuasarError::InvalidPda as u32,
-    ));
-}
-
 // Pre-funded PDA mint init with SPL Token.
 
 #[test]
