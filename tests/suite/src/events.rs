@@ -483,3 +483,48 @@ fn test_emit_u64_payload_reaches_log() {
         result.logs
     );
 }
+
+#[test]
+fn test_emit_cpi_aliased_program_field_reaches_log() {
+    // The fixture names its program field `emitter` instead of `program`:
+    // beyond compiling (type-based field detection), the aliased wiring must
+    // actually emit — same payload oracle as the plain emit test.
+    let elf = std::fs::read("../../target/deploy/quasar_test_events.so")
+        .expect("run `make build-sbf` first");
+    let mut svm = quasar_svm::QuasarSvm::new().with_program(&quasar_test_events::ID, &elf);
+    let signer = quasar_svm::Pubkey::new_unique();
+    let (event_authority, _) =
+        quasar_svm::Pubkey::find_program_address(&[b"__event_authority"], &quasar_test_events::ID);
+    let instruction: quasar_svm::Instruction = EmitViaCpiAliasedInstruction {
+        signer,
+        event_authority,
+        emitter: quasar_test_events::ID,
+        value: 42,
+    }
+    .into();
+    let result = svm.process_instruction(
+        &instruction,
+        &[
+            crate::helpers::signer_account(signer),
+            crate::helpers::raw_account(
+                event_authority,
+                1_000_000,
+                vec![],
+                quasar_svm::system_program::ID,
+            ),
+        ],
+    );
+    assert!(
+        result.is_ok(),
+        "aliased emit_cpi failed: {:?}",
+        result.raw_result
+    );
+    assert!(
+        result
+            .logs
+            .iter()
+            .any(|line| line == "Program data: ASoAAAAAAAAA"),
+        "expected event payload in logs, got: {:?}",
+        result.logs
+    );
+}
