@@ -63,7 +63,9 @@ fn bare_metadata_wrong_owner() {
             Pubkey::default(),
         )],
     );
-    assert!(result.is_err(), "should fail: wrong owner");
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -84,7 +86,7 @@ fn bare_metadata_wrong_key_byte() {
             metadata_program_id(),
         )],
     );
-    assert!(result.is_err(), "should fail: wrong key discriminant");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -103,7 +105,7 @@ fn bare_metadata_data_too_small() {
             metadata_program_id(),
         )],
     );
-    assert!(result.is_err(), "should fail: data too small");
+    result.assert_error(quasar_svm::ProgramError::AccountDataTooSmall);
 }
 
 #[test]
@@ -122,7 +124,7 @@ fn bare_metadata_all_zeros() {
             metadata_program_id(),
         )],
     );
-    assert!(result.is_err(), "should fail: key=0 is not metadata");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // Bare Account<MasterEditionAccount>, ValidateBareMasterEdition disc=4.
@@ -175,7 +177,9 @@ fn bare_master_edition_wrong_owner() {
             Pubkey::default(),
         )],
     );
-    assert!(result.is_err(), "should fail: wrong owner");
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -194,7 +198,7 @@ fn bare_master_edition_wrong_key() {
         &instruction,
         &[raw_account(me_key, 1_000_000, data, metadata_program_id())],
     );
-    assert!(result.is_err(), "should fail: wrong key discriminant");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -216,7 +220,7 @@ fn bare_master_edition_data_too_small() {
             metadata_program_id(),
         )],
     );
-    assert!(result.is_err(), "should fail: data too small");
+    result.assert_error(quasar_svm::ProgramError::AccountDataTooSmall);
 }
 
 // Metadata with behavior, ValidateMetadataCheck disc=0.
@@ -271,7 +275,7 @@ fn metadata_check_wrong_mint_in_data() {
             metadata_account(meta_key, ua, wrong_mint), // data has wrong mint
         ],
     );
-    assert!(result.is_err(), "should fail: mint in data doesn't match");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -296,7 +300,7 @@ fn metadata_check_wrong_pda() {
             metadata_account(wrong_key, ua, mint),
         ],
     );
-    assert!(result.is_err(), "should fail: address doesn't match PDA");
+    result.assert_error(quasar_svm::ProgramError::InvalidSeeds);
 }
 
 // Metadata with update_authority, ValidateMetadataWithUa disc=1.
@@ -355,7 +359,7 @@ fn metadata_with_ua_wrong_authority() {
             metadata_account(meta_key, wrong_ua, mint), // data has wrong_ua
         ],
     );
-    assert!(result.is_err(), "should fail: update_authority mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // Master Edition with behavior, ValidateMasterEditionCheck disc=2.
@@ -406,7 +410,7 @@ fn master_edition_check_wrong_pda() {
             master_edition_account(wrong_key, 0, Some(0)),
         ],
     );
-    assert!(result.is_err(), "should fail: address doesn't match PDA");
+    result.assert_error(quasar_svm::ProgramError::InvalidSeeds);
 }
 
 // Init Metadata via CPI, InitMetadataTest disc=10.

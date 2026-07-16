@@ -61,7 +61,7 @@ fn ata_spl_wrong_address() {
             signer_account(wallet),
         ],
     );
-    assert!(result.is_err(), "wrong ATA address should fail");
+    result.assert_error(quasar_svm::ProgramError::InvalidSeeds);
 }
 
 #[test]
@@ -91,7 +91,7 @@ fn ata_spl_wrong_mint() {
             signer_account(wallet),
         ],
     );
-    assert!(result.is_err(), "wrong mint in token data should fail");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -121,7 +121,7 @@ fn ata_spl_wrong_authority() {
             signer_account(wallet),
         ],
     );
-    assert!(result.is_err(), "wrong authority in token data should fail");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -155,7 +155,9 @@ fn ata_spl_wrong_owner() {
             signer_account(wallet),
         ],
     );
-    assert!(result.is_err(), "wrong account owner program should fail");
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 // Account<Token2022>, ValidateAta2022Check.
@@ -214,7 +216,7 @@ fn ata_t22_wrong_address() {
             signer_account(wallet),
         ],
     );
-    assert!(result.is_err(), "wrong ATA address should fail");
+    result.assert_error(quasar_svm::ProgramError::InvalidSeeds);
 }
 
 #[test]
@@ -244,7 +246,7 @@ fn ata_t22_wrong_mint() {
             signer_account(wallet),
         ],
     );
-    assert!(result.is_err(), "wrong mint in token data should fail");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -274,7 +276,7 @@ fn ata_t22_wrong_authority() {
             signer_account(wallet),
         ],
     );
-    assert!(result.is_err(), "wrong authority in token data should fail");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -308,7 +310,9 @@ fn ata_t22_wrong_owner() {
             signer_account(wallet),
         ],
     );
-    assert!(result.is_err(), "wrong account owner program should fail");
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 // InterfaceAccount<Token> with SPL Token, ValidateAtaInterfaceCheck.
@@ -367,7 +371,7 @@ fn ata_interface_spl_wrong_address() {
             signer_account(wallet),
         ],
     );
-    assert!(result.is_err(), "wrong ATA address should fail");
+    result.assert_error(quasar_svm::ProgramError::InvalidSeeds);
 }
 
 #[test]
@@ -397,7 +401,7 @@ fn ata_interface_spl_wrong_mint() {
             signer_account(wallet),
         ],
     );
-    assert!(result.is_err(), "wrong mint in token data should fail");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -427,7 +431,7 @@ fn ata_interface_spl_wrong_authority() {
             signer_account(wallet),
         ],
     );
-    assert!(result.is_err(), "wrong authority in token data should fail");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -461,7 +465,9 @@ fn ata_interface_spl_wrong_owner() {
             signer_account(wallet),
         ],
     );
-    assert!(result.is_err(), "wrong account owner program should fail");
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 // InterfaceAccount<Token> with Token-2022, ValidateAtaInterfaceCheck.
@@ -520,7 +526,7 @@ fn ata_interface_t22_wrong_address() {
             signer_account(wallet),
         ],
     );
-    assert!(result.is_err(), "wrong ATA address should fail");
+    result.assert_error(quasar_svm::ProgramError::InvalidSeeds);
 }
 
 #[test]
@@ -550,7 +556,7 @@ fn ata_interface_t22_wrong_mint() {
             signer_account(wallet),
         ],
     );
-    assert!(result.is_err(), "wrong mint in token data should fail");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -580,7 +586,7 @@ fn ata_interface_t22_wrong_authority() {
             signer_account(wallet),
         ],
     );
-    assert!(result.is_err(), "wrong authority in token data should fail");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -614,5 +620,7 @@ fn ata_interface_t22_wrong_owner() {
             signer_account(wallet),
         ],
     );
-    assert!(result.is_err(), "wrong account owner program should fail");
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }

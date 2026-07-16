@@ -67,10 +67,7 @@ fn init_token_spl_already_initialized() {
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init on already-initialized account should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::AccountAlreadyInitialized);
 }
 
 // init with Token-2022.
@@ -136,10 +133,7 @@ fn init_token_t22_already_initialized() {
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init on already-initialized account should fail (T22)"
-    );
+    result.assert_error(quasar_svm::ProgramError::AccountAlreadyInitialized);
 }
 
 // init_if_needed new account with SPL Token.
@@ -247,10 +241,7 @@ fn init_if_needed_token_spl_existing_wrong_mint() {
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed with wrong mint should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -281,10 +272,7 @@ fn init_if_needed_token_spl_existing_wrong_authority() {
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed with wrong authority should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -319,10 +307,9 @@ fn init_if_needed_token_spl_existing_wrong_owner() {
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed with wrong account owner should fail"
-    );
+    // The existing account is system-owned, so init takes the create
+    // branch: SystemError::AccountAlreadyInUse.
+    result.assert_error(quasar_svm::ProgramError::Custom(0));
 }
 
 // init_if_needed new account with Token-2022.
@@ -430,10 +417,7 @@ fn init_if_needed_token_t22_existing_wrong_mint() {
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed with wrong mint should fail (T22)"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -464,10 +448,7 @@ fn init_if_needed_token_t22_existing_wrong_authority() {
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed with wrong authority should fail (T22)"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -502,8 +483,7 @@ fn init_if_needed_token_t22_existing_wrong_owner() {
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed with wrong account owner should fail (T22)"
-    );
+    // The existing account is system-owned, so init takes the create
+    // branch: SystemError::AccountAlreadyInUse.
+    result.assert_error(quasar_svm::ProgramError::Custom(0));
 }

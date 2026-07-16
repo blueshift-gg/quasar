@@ -47,7 +47,7 @@ fn option_u64_some_wrong_value() {
     }
     .into();
     let result = svm.process_instruction(&ix, &[signer_account(signer)]);
-    assert!(result.is_err(), "Option<u64> Some(99) should fail require");
+    result.assert_error(quasar_svm::ProgramError::InvalidInstructionData);
 }
 
 #[test]
@@ -97,7 +97,7 @@ fn option_u64_tag_two_rejected() {
         data,
     };
     let result = svm.process_instruction(&ix, &[signer_account(signer)]);
-    assert!(result.is_err(), "tag=2 should be rejected by validate_zc");
+    result.assert_error(quasar_svm::ProgramError::InvalidInstructionData);
 }
 
 // Adversarial test: tag=0xFF (invalid)
@@ -114,10 +114,7 @@ fn option_u64_tag_0xff_rejected() {
         data,
     };
     let result = svm.process_instruction(&ix, &[signer_account(signer)]);
-    assert!(
-        result.is_err(),
-        "tag=0xFF should be rejected by validate_zc"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidInstructionData);
 }
 
 // Adversarial test: truncated instruction data (disc only, no Option payload)
@@ -132,7 +129,7 @@ fn option_u64_truncated_data_fails() {
         data: vec![52u8], // just discriminator, missing 9 bytes of OptionZc<PodU64>
     };
     let result = svm.process_instruction(&ix, &[signer_account(signer)]);
-    assert!(result.is_err(), "truncated instruction data should fail");
+    result.assert_error(quasar_svm::ProgramError::InvalidInstructionData);
 }
 
 fn optional_dynamic_ix(data: Vec<u8>) -> solana_instruction::Instruction {
@@ -208,10 +205,7 @@ fn optional_dynamic_args_invalid_tag_fails() {
 
     let result = svm.process_instruction(&ix, &[]);
 
-    assert!(
-        result.is_err(),
-        "Option<String>/Option<Vec> tag=2 should be rejected"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidInstructionData);
 }
 
 #[test]
@@ -222,10 +216,7 @@ fn optional_dynamic_args_some_missing_prefix_fails() {
 
     let result = svm.process_instruction(&ix, &[]);
 
-    assert!(
-        result.is_err(),
-        "Some(String) without its tail length prefix should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidInstructionData);
 }
 
 #[test]
@@ -238,8 +229,5 @@ fn optional_dynamic_args_some_truncated_payload_fails() {
 
     let result = svm.process_instruction(&ix, &[]);
 
-    assert!(
-        result.is_err(),
-        "Some(String) with a truncated tail payload should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidInstructionData);
 }

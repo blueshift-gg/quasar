@@ -251,9 +251,11 @@ fn test_emit_cpi_wrong_authority() {
         &instruction,
         &make_cpi_accounts(signer, wrong_authority, quasar_test_events::ID),
     );
-    assert!(
-        result.program_result.is_err(),
-        "Expected failure with wrong event authority"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidSeeds
+        )
     );
 }
 
@@ -402,9 +404,11 @@ fn test_emit_cpi_wrong_program() {
             ),
         ],
     );
-    assert!(
-        result.program_result.is_err(),
-        "Expected failure with wrong program for CPI emit"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::IncorrectProgramId
+        )
     );
 }
 
@@ -424,9 +428,11 @@ fn test_emit_cpi_missing_event_authority() {
         &instruction,
         &make_cpi_accounts(signer, random_account, quasar_test_events::ID),
     );
-    assert!(
-        result.program_result.is_err(),
-        "Expected failure with missing event authority"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidSeeds
+        )
     );
 }
 
@@ -450,9 +456,11 @@ fn test_emit_cpi_authority_not_signer() {
         &instruction,
         &make_cpi_accounts(signer, event_authority, quasar_test_events::ID),
     );
-    assert!(
-        result.program_result.is_err(),
-        "Expected failure when signer account is not signed"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::MissingRequiredSignature
+        )
     );
 }
 

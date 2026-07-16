@@ -246,10 +246,7 @@ fn init_if_needed_token_interface_existing_wrong_mint() {
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed InterfaceAccount<Token> wrong mint should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // init InterfaceAccount<Mint>.
@@ -487,8 +484,5 @@ fn init_if_needed_mint_interface_existing_wrong_authority() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed InterfaceAccount<Mint> wrong authority should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }

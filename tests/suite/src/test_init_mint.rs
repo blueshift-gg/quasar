@@ -65,10 +65,7 @@ fn init_mint_spl_already_initialized() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init mint on already-initialized account should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::AccountAlreadyInitialized);
 }
 
 // init mint with Token-2022.
@@ -132,10 +129,7 @@ fn init_mint_t22_already_initialized() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init mint on already-initialized account should fail (T22)"
-    );
+    result.assert_error(quasar_svm::ProgramError::AccountAlreadyInitialized);
 }
 
 // init_if_needed mint without freeze, SPL Token.
@@ -235,10 +229,7 @@ fn init_if_needed_mint_spl_wrong_decimals() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed mint with wrong decimals should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -268,10 +259,7 @@ fn init_if_needed_mint_spl_wrong_authority() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed mint with wrong authority should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -305,10 +293,9 @@ fn init_if_needed_mint_spl_wrong_owner() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed mint with wrong account owner should fail"
-    );
+    // The existing account is system-owned, so init takes the create
+    // branch: SystemError::AccountAlreadyInUse.
+    result.assert_error(quasar_svm::ProgramError::Custom(0));
 }
 
 #[test]
@@ -341,10 +328,7 @@ fn init_if_needed_mint_spl_unexpected_freeze() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed mint with unexpected freeze_authority should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // init_if_needed mint without freeze, Token-2022.
@@ -444,10 +428,7 @@ fn init_if_needed_mint_t22_wrong_decimals() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed mint with wrong decimals should fail (T22)"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -477,10 +458,7 @@ fn init_if_needed_mint_t22_wrong_authority() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed mint with wrong authority should fail (T22)"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -514,10 +492,9 @@ fn init_if_needed_mint_t22_wrong_owner() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed mint with wrong account owner should fail (T22)"
-    );
+    // The existing account is system-owned, so init takes the create
+    // branch: SystemError::AccountAlreadyInUse.
+    result.assert_error(quasar_svm::ProgramError::Custom(0));
 }
 
 #[test]
@@ -547,10 +524,7 @@ fn init_if_needed_mint_t22_unexpected_freeze() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed mint with unexpected freeze_authority should fail (T22)"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // init_if_needed mint with freeze, SPL Token.
@@ -660,10 +634,7 @@ fn init_if_needed_mint_freeze_spl_wrong_freeze_authority() {
             signer_account(freeze_auth),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed mint with wrong freeze_authority should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -696,10 +667,7 @@ fn init_if_needed_mint_freeze_spl_missing_freeze_authority() {
             signer_account(freeze_auth),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed mint with missing freeze_authority on existing mint should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // init_if_needed mint with freeze, Token-2022.
@@ -809,10 +777,7 @@ fn init_if_needed_mint_freeze_t22_wrong_freeze_authority() {
             signer_account(freeze_auth),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed mint with wrong freeze_authority should fail (T22)"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -844,10 +809,7 @@ fn init_if_needed_mint_freeze_t22_missing_freeze_authority() {
             signer_account(freeze_auth),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed mint with missing freeze_authority on existing mint should fail (T22)"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // init mint with metadata, SPL Token.

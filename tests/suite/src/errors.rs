@@ -111,7 +111,9 @@ fn has_one_default_mismatch() {
         ],
     );
     assert!(result.is_err(), "has_one default mismatch");
-    result.assert_error(ProgramError::Custom(3005)); // HasOneMismatch
+    result.assert_error(ProgramError::Custom(
+        quasar_lang::prelude::QuasarError::HasOneMismatch as u32,
+    ));
 }
 
 #[test]
@@ -125,7 +127,9 @@ fn address_default_mismatch() {
     let result =
         svm.process_instruction(&ix, &[error_test_account(wrong, Pubkey::new_unique(), 42)]);
     assert!(result.is_err(), "address default mismatch");
-    result.assert_error(ProgramError::Custom(3012)); // AddressMismatch
+    result.assert_error(ProgramError::Custom(
+        quasar_lang::prelude::QuasarError::AddressMismatch as u32,
+    ));
 }
 
 #[test]
@@ -137,5 +141,7 @@ fn constraint_default_fail() {
     let ix: Instruction = ConstraintDefaultInstruction { target }.into();
     let result = svm.process_instruction(&ix, &[signer_account(target)]);
     assert!(result.is_err(), "constraint default fail");
-    result.assert_error(ProgramError::Custom(3004)); // ConstraintViolation
+    result.assert_error(ProgramError::Custom(
+        quasar_lang::prelude::QuasarError::ConstraintViolation as u32,
+    ));
 }

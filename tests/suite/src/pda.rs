@@ -215,9 +215,11 @@ fn test_wrong_seeds_fail() {
         ],
     );
 
-    assert!(
-        result.program_result.is_err(),
-        "Expected failure with wrong PDA address"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(quasar_lang::prelude::ProgramError::Custom(
+            quasar_lang::prelude::QuasarError::InvalidPda as u32
+        ))
     );
 }
 
@@ -259,9 +261,11 @@ fn test_wrong_bump_fail() {
         ],
     );
 
-    assert!(
-        result.program_result.is_err(),
-        "wrong stored bump should fail stored-bump PDA verification"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(quasar_lang::prelude::ProgramError::Custom(
+            quasar_lang::prelude::QuasarError::InvalidPda as u32
+        ))
     );
 }
 
@@ -344,9 +348,11 @@ fn test_update_pda_wrong_seeds() {
         ],
     );
 
-    assert!(
-        result.program_result.is_err(),
-        "Expected failure with wrong PDA address for update"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(quasar_lang::prelude::ProgramError::Custom(
+            quasar_lang::prelude::QuasarError::InvalidPda as u32
+        ))
     );
 }
 
@@ -387,9 +393,11 @@ fn test_update_pda_wrong_authority() {
         ],
     );
 
-    assert!(
-        result.program_result.is_err(),
-        "Expected failure with wrong authority"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(quasar_lang::prelude::ProgramError::Custom(
+            quasar_lang::prelude::QuasarError::InvalidPda as u32
+        ))
     );
 }
 
@@ -531,9 +539,11 @@ fn test_pda_signer_wrong_seeds() {
         ],
     );
 
-    assert!(
-        result.program_result.is_err(),
-        "Expected failure with wrong authority for PDA transfer"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(quasar_lang::prelude::ProgramError::Custom(
+            quasar_lang::prelude::QuasarError::InvalidPda as u32
+        ))
     );
 }
 
@@ -728,9 +738,11 @@ fn test_wrong_seeds_different_literal() {
         ],
     );
 
-    assert!(
-        result.program_result.is_err(),
-        "Expected failure with different literal seed PDA"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(quasar_lang::prelude::ProgramError::Custom(
+            quasar_lang::prelude::QuasarError::InvalidPda as u32
+        ))
     );
 }
 
@@ -768,9 +780,11 @@ fn test_wrong_bump_off_by_one() {
         ],
     );
 
-    assert!(
-        result.program_result.is_err(),
-        "off-by-one stored bump should fail stored-bump PDA verification"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(quasar_lang::prelude::ProgramError::Custom(
+            quasar_lang::prelude::QuasarError::InvalidPda as u32
+        ))
     );
 }
 
@@ -807,9 +821,11 @@ fn test_wrong_bump_zero() {
         ],
     );
 
-    assert!(
-        result.program_result.is_err(),
-        "zero stored bump should fail stored-bump PDA verification"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(quasar_lang::prelude::ProgramError::Custom(
+            quasar_lang::prelude::QuasarError::InvalidPda as u32
+        ))
     );
 }
 
@@ -847,9 +863,11 @@ fn test_pda_account_wrong_owner() {
         ],
     );
 
-    assert!(
-        result.program_result.is_err(),
-        "Expected failure with wrong owner"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::IllegalOwner
+        )
     );
 }
 
@@ -878,9 +896,9 @@ fn test_pda_account_not_writable_on_init() {
         ],
     );
 
-    assert!(
-        result.program_result.is_err(),
-        "Expected failure when PDA not writable for init"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(quasar_lang::prelude::ProgramError::Immutable)
     );
 }
 
@@ -1039,9 +1057,11 @@ fn test_multi_seed_order_matters() {
         ],
     );
 
-    assert!(
-        result.program_result.is_err(),
-        "Expected failure when seed order is swapped"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(quasar_lang::prelude::ProgramError::Custom(
+            quasar_lang::prelude::QuasarError::InvalidPda as u32
+        ))
     );
 }
 
@@ -1132,9 +1152,11 @@ fn test_pda_signer_wrong_authority_cpi() {
         ],
     );
 
-    assert!(
-        result.program_result.is_err(),
-        "Expected failure with wrong authority for PDA signer CPI"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(quasar_lang::prelude::ProgramError::Custom(
+            quasar_lang::prelude::QuasarError::InvalidPda as u32
+        ))
     );
 }
 

@@ -207,7 +207,9 @@ fn migrate_wrong_authority_fails() {
             signer_account(wrong_authority),
         ],
     );
-    assert!(result.is_err(), "wrong authority should fail");
+    result.assert_error(quasar_svm::ProgramError::Custom(
+        quasar_lang::prelude::QuasarError::ConstraintViolation as u32,
+    ));
 }
 
 /// Runs the migrate instruction against an arbitrary config account state.

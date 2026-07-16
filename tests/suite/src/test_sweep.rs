@@ -103,7 +103,7 @@ fn sweep_spl_wrong_authority() {
             mint_account(mint_key, authority, 6, token_program),
         ],
     );
-    assert!(result.is_err(), "sweep SPL wrong authority should fail");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // sweep only with Token-2022.
@@ -274,10 +274,7 @@ fn sweep_interface_wrong_authority() {
             mint_account(mint_key, authority, 6, token_program),
         ],
     );
-    assert!(
-        result.is_err(),
-        "sweep Interface wrong authority should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // sweep + close with SPL Token.
@@ -387,10 +384,8 @@ fn sweep_and_close_spl_wrong_mint_receiver() {
             empty_account(destination),
         ],
     );
-    assert!(
-        result.is_err(),
-        "sweep + close SPL wrong mint receiver should fail"
-    );
+    // spl_token::TokenError::MintMismatch
+    result.assert_error(quasar_svm::ProgramError::Custom(3));
 }
 
 // sweep + close with Token-2022.
@@ -576,10 +571,7 @@ fn sweep_and_close_interface_wrong_authority() {
             empty_account(destination),
         ],
     );
-    assert!(
-        result.is_err(),
-        "sweep + close Interface wrong authority should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]

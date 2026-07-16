@@ -139,10 +139,7 @@ fn raw_helper_write_fails_when_write_exceeds_account_data() {
     };
 
     let result = svm.process_instruction(&ix, &[target_account]);
-    assert!(
-        result.raw_result.is_err(),
-        "helper should reject out-of-bounds writes"
-    );
+    result.assert_error(quasar_svm::ProgramError::AccountDataTooSmall);
 }
 
 #[test]
@@ -172,10 +169,7 @@ fn raw_helper_write_fails_when_account_is_not_writable() {
     };
 
     let result = svm.process_instruction(&ix, &[target_account]);
-    assert!(
-        result.raw_result.is_err(),
-        "helper should reject writes to readonly account metas"
-    );
+    result.assert_error(quasar_svm::ProgramError::Immutable);
 }
 
 /// Raw instruction fails when signer check fails because account[1] is not a
@@ -223,10 +217,7 @@ fn raw_write_fails_without_signer() {
     };
 
     let result = svm.process_instruction(&ix, &[target_account, non_signer_account]);
-    assert!(
-        result.raw_result.is_err(),
-        "raw_write should fail without signer"
-    );
+    result.assert_error(quasar_svm::ProgramError::MissingRequiredSignature);
 }
 
 /// Raw + inline asm: the handler uses sBPF ldxdw/stxdw to copy a u64
@@ -319,10 +310,7 @@ fn raw_write_fails_with_short_data() {
     };
 
     let result = svm.process_instruction(&ix, &[target_account, signer_account(signer)]);
-    assert!(
-        result.raw_result.is_err(),
-        "raw_write should fail with short data"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidInstructionData);
 }
 
 // callx dispatch proves the SVM accepts indirect function calls via function

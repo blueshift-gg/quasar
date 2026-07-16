@@ -68,7 +68,8 @@ PACKAGE_REHEARSAL_ROOT ?= target/release-rehearsal
 TYPESCRIPT_TEST_DIR := testing/typescript
 
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
-	check-runtime-panics check-workspace-invariants check-test-silence check-license-policy \
+	check-runtime-panics check-workspace-invariants check-test-silence \
+	check-suite-oracles check-license-policy \
 	check-package-metadata check-readme-crate-inventory check-release-train \
 	build build-sbf test test-bless \
 	test-host-inventory test-host test-sbf-host test-quasar-test-standalone \
@@ -235,6 +236,13 @@ check-runtime-panics:
 	  exit 1; \
 	fi
 
+# Rejection tests pin the exact error (TESTING.md): bare is_err() cannot
+# distinguish "the right check fired" from "an earlier check masked a broken
+# one". Allowlist (with reasons) lives in the script.
+check-suite-oracles:
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_check_suite_oracles.py
+	@python3 scripts/check-suite-oracles.py
+
 # Tests are silent on success (TESTING.md): anything worth printing is worth
 # asserting. Benchmark CU goes to target/cu-bench/*.jsonl via
 # examples/cu_bench.rs, never to stdout.
@@ -250,7 +258,8 @@ check-test-silence:
 	fi
 
 check-workspace-invariants: check-license-policy check-package-metadata \
-	check-readme-crate-inventory check-release-train check-test-silence
+	check-readme-crate-inventory check-release-train check-test-silence \
+	check-suite-oracles
 	@check_allowed() { \
 	  local desc="$$1" pattern="$$2"; shift 2; \
 	  local allowed=("$$@") matches; \

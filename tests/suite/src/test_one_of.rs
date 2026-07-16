@@ -141,10 +141,7 @@ fn rejects_unknown_discriminator() {
         &ix,
         &[signer_account(signer), consensus_account(target, data)],
     );
-    assert!(
-        result.raw_result.is_err(),
-        "unknown discriminator should be rejected"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -161,7 +158,9 @@ fn rejects_wrong_owner() {
     }
     .into();
     let result = svm.process_instruction(&ix, &[signer_account(signer), bad_account]);
-    assert!(result.raw_result.is_err(), "wrong owner should be rejected");
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]

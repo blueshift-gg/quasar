@@ -58,7 +58,7 @@ fn account_token_wrong_mint() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: mint mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -86,7 +86,7 @@ fn account_token_wrong_authority() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: authority mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -119,10 +119,9 @@ fn account_token_wrong_owner() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "should fail: account owner is wrong program"
-    );
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -149,7 +148,7 @@ fn account_token_uninitialized() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: uninitialized token account");
+    result.assert_error(quasar_svm::ProgramError::UninitializedAccount);
 }
 
 #[test]
@@ -176,7 +175,7 @@ fn account_token_data_too_small() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: data too small");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // Account<Token2022>, ValidateToken2022Check.
@@ -233,7 +232,7 @@ fn account_token2022_wrong_mint() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: mint mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -261,7 +260,7 @@ fn account_token2022_wrong_authority() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: authority mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -293,10 +292,9 @@ fn account_token2022_wrong_owner() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "should fail: account owner is wrong program"
-    );
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -323,7 +321,7 @@ fn account_token2022_uninitialized() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: uninitialized token account");
+    result.assert_error(quasar_svm::ProgramError::UninitializedAccount);
 }
 
 #[test]
@@ -350,7 +348,7 @@ fn account_token2022_data_too_small() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: data too small");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // InterfaceAccount<Token> with SPL Token, ValidateTokenInterfaceCheck.
@@ -407,7 +405,7 @@ fn interface_token_spl_wrong_mint() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: mint mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -435,7 +433,7 @@ fn interface_token_spl_wrong_authority() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: authority mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -467,10 +465,9 @@ fn interface_token_spl_wrong_owner() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "should fail: account owner is wrong program"
-    );
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -497,7 +494,7 @@ fn interface_token_spl_uninitialized() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: uninitialized token account");
+    result.assert_error(quasar_svm::ProgramError::UninitializedAccount);
 }
 
 #[test]
@@ -524,7 +521,7 @@ fn interface_token_spl_data_too_small() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: data too small");
+    result.assert_error(quasar_svm::ProgramError::AccountDataTooSmall);
 }
 
 // InterfaceAccount<Token> with Token-2022, ValidateTokenInterfaceCheck.
@@ -581,7 +578,7 @@ fn interface_token_t22_wrong_mint() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: mint mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -609,7 +606,7 @@ fn interface_token_t22_wrong_authority() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: authority mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -641,10 +638,9 @@ fn interface_token_t22_wrong_owner() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "should fail: account owner is wrong program"
-    );
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -671,7 +667,7 @@ fn interface_token_t22_uninitialized() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: uninitialized token account");
+    result.assert_error(quasar_svm::ProgramError::UninitializedAccount);
 }
 
 #[test]
@@ -698,7 +694,7 @@ fn interface_token_t22_data_too_small() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: data too small");
+    result.assert_error(quasar_svm::ProgramError::AccountDataTooSmall);
 }
 
 // InterfaceAccount cross-program mismatch.
@@ -729,7 +725,9 @@ fn interface_token_cross_program_mismatch() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: cross-program mismatch");
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 // No token_program field, ValidateTokenNoProgram.
@@ -786,7 +784,7 @@ fn no_program_wrong_mint() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: mint mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -814,5 +812,5 @@ fn no_program_wrong_authority() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: authority mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }

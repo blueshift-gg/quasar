@@ -91,7 +91,7 @@ fn mint_spl_wrong_authority() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: authority mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -115,7 +115,7 @@ fn mint_spl_wrong_decimals() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: decimals mismatch (9 != 6)");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -144,10 +144,9 @@ fn mint_spl_wrong_owner() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "should fail: account owner is wrong program"
-    );
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -171,7 +170,7 @@ fn mint_spl_uninitialized() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: uninitialized mint account");
+    result.assert_error(quasar_svm::ProgramError::UninitializedAccount);
 }
 
 #[test]
@@ -195,7 +194,7 @@ fn mint_spl_data_too_small() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: data too small");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // Account<Mint2022> with Token-2022, ValidateMint2022Check.
@@ -246,7 +245,7 @@ fn mint_t22_wrong_authority() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: authority mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -270,7 +269,7 @@ fn mint_t22_wrong_decimals() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: decimals mismatch (9 != 6)");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -299,10 +298,9 @@ fn mint_t22_wrong_owner() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "should fail: account owner is wrong program"
-    );
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -326,7 +324,7 @@ fn mint_t22_uninitialized() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: uninitialized mint account");
+    result.assert_error(quasar_svm::ProgramError::UninitializedAccount);
 }
 
 #[test]
@@ -350,7 +348,7 @@ fn mint_t22_data_too_small() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: data too small");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // InterfaceAccount<Mint> with SPL Token, ValidateMintInterfaceCheck.
@@ -401,7 +399,7 @@ fn mint_interface_spl_wrong_authority() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: authority mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -425,7 +423,7 @@ fn mint_interface_spl_wrong_decimals() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: decimals mismatch (9 != 6)");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -454,10 +452,9 @@ fn mint_interface_spl_wrong_owner() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "should fail: account owner is wrong program"
-    );
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -481,7 +478,7 @@ fn mint_interface_spl_uninitialized() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: uninitialized mint account");
+    result.assert_error(quasar_svm::ProgramError::UninitializedAccount);
 }
 
 #[test]
@@ -505,7 +502,7 @@ fn mint_interface_spl_data_too_small() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: data too small");
+    result.assert_error(quasar_svm::ProgramError::AccountDataTooSmall);
 }
 
 // InterfaceAccount<Mint> with Token-2022, ValidateMintInterfaceCheck.
@@ -556,7 +553,7 @@ fn mint_interface_t22_wrong_authority() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: authority mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -580,7 +577,7 @@ fn mint_interface_t22_wrong_decimals() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: decimals mismatch (9 != 6)");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -609,10 +606,9 @@ fn mint_interface_t22_wrong_owner() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "should fail: account owner is wrong program"
-    );
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -636,7 +632,7 @@ fn mint_interface_t22_uninitialized() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: uninitialized mint account");
+    result.assert_error(quasar_svm::ProgramError::UninitializedAccount);
 }
 
 #[test]
@@ -660,7 +656,7 @@ fn mint_interface_t22_data_too_small() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: data too small");
+    result.assert_error(quasar_svm::ProgramError::AccountDataTooSmall);
 }
 
 // No token_program field, ValidateMintNoProgram.
@@ -711,7 +707,7 @@ fn mint_no_program_wrong_authority() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: authority mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -735,7 +731,7 @@ fn mint_no_program_wrong_decimals() {
             signer_account(authority),
         ],
     );
-    assert!(result.is_err(), "should fail: decimals mismatch (9 != 6)");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // Freeze authority, ValidateMintWithFreezeCheck with SPL Token.
@@ -792,7 +788,7 @@ fn mint_spl_freeze_wrong_freeze_authority() {
             signer_account(freeze_auth),
         ],
     );
-    assert!(result.is_err(), "should fail: freeze authority mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -820,10 +816,7 @@ fn mint_spl_freeze_missing_on_chain() {
             signer_account(freeze_auth),
         ],
     );
-    assert!(
-        result.is_err(),
-        "should fail: on-chain mint has no freeze authority"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // Freeze authority, ValidateMintWithFreeze2022Check with Token-2022.
@@ -880,7 +873,7 @@ fn mint_t22_freeze_wrong_freeze_authority() {
             signer_account(freeze_auth),
         ],
     );
-    assert!(result.is_err(), "should fail: freeze authority mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -908,10 +901,7 @@ fn mint_t22_freeze_missing_on_chain() {
             signer_account(freeze_auth),
         ],
     );
-    assert!(
-        result.is_err(),
-        "should fail: on-chain mint has no freeze authority"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // Freeze authority, ValidateMintWithFreezeInterfaceCheck with SPL via
@@ -969,7 +959,7 @@ fn mint_interface_spl_freeze_wrong_freeze_authority() {
             signer_account(freeze_auth),
         ],
     );
-    assert!(result.is_err(), "should fail: freeze authority mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -997,10 +987,7 @@ fn mint_interface_spl_freeze_missing_on_chain() {
             signer_account(freeze_auth),
         ],
     );
-    assert!(
-        result.is_err(),
-        "should fail: on-chain mint has no freeze authority"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // Freeze authority, ValidateMintWithFreezeInterfaceCheck with Token-2022 via
@@ -1058,7 +1045,7 @@ fn mint_interface_t22_freeze_wrong_freeze_authority() {
             signer_account(freeze_auth),
         ],
     );
-    assert!(result.is_err(), "should fail: freeze authority mismatch");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -1086,8 +1073,5 @@ fn mint_interface_t22_freeze_missing_on_chain() {
             signer_account(freeze_auth),
         ],
     );
-    assert!(
-        result.is_err(),
-        "should fail: on-chain mint has no freeze authority"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }

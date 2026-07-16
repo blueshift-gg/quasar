@@ -56,10 +56,9 @@ fn init_mint_pda_spl_wrong_address() {
         &instruction,
         &[rich_signer_account(payer), empty_account(wrong_key)],
     );
-    assert!(
-        result.is_err(),
-        "init mint PDA with wrong address should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::Custom(
+        quasar_lang::prelude::QuasarError::InvalidPda as u32,
+    ));
 }
 
 // PDA init mint with Token-2022.
@@ -114,10 +113,9 @@ fn init_mint_pda_t22_wrong_address() {
         &instruction,
         &[rich_signer_account(payer), empty_account(wrong_key)],
     );
-    assert!(
-        result.is_err(),
-        "init mint PDA (T22) with wrong address should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::Custom(
+        quasar_lang::prelude::QuasarError::InvalidPda as u32,
+    ));
 }
 
 // Pre-funded PDA mint init with SPL Token.
