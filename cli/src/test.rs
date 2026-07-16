@@ -223,8 +223,10 @@ fn test_command_args(
             }
         }
     } else if let Some(pattern) = filter {
-        args.push("-t".to_string());
-        args.push(pattern.to_string());
+        if is_npm_script_command(test_cmd) && !args.iter().any(|arg| arg == "--") {
+            args.push("--".to_string());
+        }
+        args.extend(["-t".to_string(), pattern.to_string()]);
     }
 
     args
@@ -235,6 +237,20 @@ fn is_cargo_program(program: &str) -> bool {
         .file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| name == "cargo" || name == "cargo.exe")
+}
+
+fn is_npm_script_command(command: &CommandSpec) -> bool {
+    let Some(program) = Path::new(&command.program)
+        .file_name()
+        .and_then(|name| name.to_str())
+    else {
+        return false;
+    };
+    matches!(program, "npm" | "npm.cmd")
+        && matches!(
+            command.args.first().map(String::as_str),
+            Some("test" | "run")
+        )
 }
 
 #[cfg(test)]
@@ -318,6 +334,27 @@ mod tests {
         let command = effective_test_command(&cmd, Some("my_test"), true);
 
         assert_eq!(command.display(), "npx vitest run -t my_test");
+    }
+
+    #[test]
+    fn npm_script_filter_is_forwarded_to_the_test_runner() {
+        let cmd = CommandSpec::new("npm", ["test"]);
+        let command = effective_test_command(&cmd, Some("my_test"), false);
+
+        assert_eq!(command.display(), "npm test -- -t my_test");
+    }
+
+    #[test]
+    fn other_package_managers_forward_script_arguments_without_a_separator() {
+        for cmd in [
+            CommandSpec::new("pnpm", ["test"]),
+            CommandSpec::new("yarn", ["test"]),
+            CommandSpec::new("bun", ["run", "test"]),
+        ] {
+            let command = effective_test_command(&cmd, Some("my_test"), false);
+            assert_eq!(command.args.last().map(String::as_str), Some("my_test"));
+            assert!(!command.args.iter().any(|arg| arg == "--"));
+        }
     }
 
     #[test]

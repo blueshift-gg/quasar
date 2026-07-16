@@ -357,12 +357,15 @@ fn emit_field_write(
 }
 
 /// Build an InstructionAccount constructor call for the given account flags.
-fn ia_constructor(writable: &AccountFlag, signer: &AccountFlag) -> &'static str {
-    match (writable.is_true(), signer.is_true()) {
-        (true, true) => "writable_signer",
-        (true, false) => "writable",
-        (false, true) => "readonly_signer",
-        (false, false) => "readonly",
+fn ia_constructor(writable: &AccountFlag, signer: &AccountFlag) -> Result<&'static str, String> {
+    match (writable, signer) {
+        (AccountFlag::Fixed(true), AccountFlag::Fixed(true)) => Ok("writable_signer"),
+        (AccountFlag::Fixed(true), AccountFlag::Fixed(false)) => Ok("writable"),
+        (AccountFlag::Fixed(false), AccountFlag::Fixed(true)) => Ok("readonly_signer"),
+        (AccountFlag::Fixed(false), AccountFlag::Fixed(false)) => Ok("readonly"),
+        _ => Err(
+            "dynamic account flags are unsupported in `declare_program!` CPI helpers".to_string(),
+        ),
     }
 }
 
@@ -538,15 +541,27 @@ pub(crate) fn declare_program_inner(input: TokenStream2) -> TokenStream2 {
             Err(e) => return e.to_compile_error(),
         };
 
-        let ia_entries: Vec<TokenStream2> = ix
+        let ia_entries: Vec<TokenStream2> = match ix
             .accounts
             .iter()
             .zip(&acct_idents)
             .map(|(a, name)| {
-                let method = Ident::new(ia_constructor(&a.writable, &a.signer), Span::call_site());
-                quote! { #krate::cpi::InstructionAccount::#method(#name.address()) }
+                let constructor = ia_constructor(&a.writable, &a.signer).map_err(|message| {
+                    format!(
+                        "in instruction '{}', account '{}': {message}",
+                        ix.name, a.name
+                    )
+                })?;
+                let method = Ident::new(constructor, Span::call_site());
+                Ok(quote! { #krate::cpi::InstructionAccount::#method(#name.address()) })
             })
-            .collect();
+            .collect::<Result<_, String>>()
+        {
+            Ok(entries) => entries,
+            Err(message) => {
+                return syn::Error::new(Span::call_site(), message).to_compile_error();
+            }
+        };
 
         let arg_params: Vec<TokenStream2> = match ix
             .args
@@ -770,5 +785,19 @@ mod tests {
         assert!(build_type_sizes(&[drifted])
             .unwrap_err()
             .contains("fixed layout fields do not match"));
+    }
+
+    #[test]
+    fn cpi_account_flags_must_be_fixed() {
+        assert_eq!(
+            ia_constructor(&AccountFlag::Fixed(true), &AccountFlag::Fixed(false)),
+            Ok("writable")
+        );
+        assert!(ia_constructor(
+            &AccountFlag::Dynamic(quasar_idl_schema::AccountFlagDynamic::Input),
+            &AccountFlag::Fixed(false),
+        )
+        .unwrap_err()
+        .contains("dynamic account flags"));
     }
 }

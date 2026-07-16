@@ -81,23 +81,17 @@ pub(crate) fn run_with_verification(
     let sp = style::spinner("Deploying...");
 
     let mut cmd = Command::new("solana");
-    cmd.args([
-        "program",
-        "deploy",
-        so_path.to_str().unwrap_or_default(),
-        "--program-id",
-        keypair_path.to_str().unwrap_or_default(),
-    ]);
+    cmd.args(["program", "deploy"])
+        .arg(&so_path)
+        .arg("--program-id")
+        .arg(&keypair_path);
 
     if let Some(authority) = &upgrade_authority {
-        cmd.args([
-            "--upgrade-authority",
-            authority.to_str().unwrap_or_default(),
-        ]);
+        cmd.arg("--upgrade-authority").arg(authority);
     }
 
     if let Some(payer) = &keypair {
-        cmd.args(["--keypair", payer.to_str().unwrap_or_default()]);
+        cmd.arg("--keypair").arg(payer);
     }
 
     cmd.args(["--url", &cluster]);
@@ -108,18 +102,9 @@ pub(crate) fn run_with_verification(
 
     match output {
         Ok(o) if o.status.success() => {
-            let stdout = String::from_utf8_lossy(&o.stdout);
-
-            let reported_program_id = stdout
-                .lines()
-                .find(|l| l.contains("Program Id:"))
-                .and_then(|l| l.split(':').nth(1))
-                .map(|s| s.trim())
-                .unwrap_or(program_id.as_str());
-
             println!(
                 "\n  {}",
-                style::success(&format!("Deployed to {}", style::bold(reported_program_id)))
+                style::success(&format!("Deployed to {}", style::bold(&program_id)))
             );
             println!();
             if !skip_verify {

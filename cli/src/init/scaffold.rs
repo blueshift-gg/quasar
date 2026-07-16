@@ -96,7 +96,11 @@ pub(super) fn scaffold(
             },
             typescript: match (test_language, ts_sdk) {
                 (TestLanguage::TypeScript, Some(sdk)) => {
-                    let pm = package_manager.expect("package_manager required for TS");
+                    let pm = package_manager.ok_or_else(|| {
+                        CliError::message(
+                            "TypeScript scaffolding requires a package manager selection",
+                        )
+                    })?;
                     Some(QuasarTypeScriptTesting {
                         framework: "quasar-svm".to_string(),
                         sdk: sdk.to_string(),

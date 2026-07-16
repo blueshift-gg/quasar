@@ -202,7 +202,7 @@ fn validate_version(budget: &BudgetFile, path: &Path) -> Result<(), String> {
 }
 
 fn ceiling_with_headroom(value: u64, percent: u32) -> u64 {
-    let numerator = u128::from(value) * u128::from(100 + percent);
+    let numerator = u128::from(value) * (100 + u128::from(percent));
     let ceiling = numerator.div_ceil(100);
     u64::try_from(ceiling).unwrap_or(u64::MAX)
 }
@@ -233,6 +233,7 @@ mod tests {
     fn headroom_rounds_up_without_floating_point() {
         assert_eq!(ceiling_with_headroom(1_001, 5), 1_052);
         assert_eq!(ceiling_with_headroom(0, 5), 0);
+        assert_eq!(ceiling_with_headroom(u64::MAX, u32::MAX), u64::MAX);
     }
 
     #[test]
