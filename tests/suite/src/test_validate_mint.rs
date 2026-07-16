@@ -40,7 +40,9 @@ fn mint_program_only_rejects_mismatched_owner() {
         &instruction,
         &[mint_account(mint_key, authority, 6, spl_token_program_id())],
     );
-    assert!(result.is_err(), "should fail: token program owner mismatch");
+    // The harness maps InstructionErrors without a dedicated variant to
+    // their Debug string; IllegalOwner is one of those.
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 // Account<Mint> with SPL Token, ValidateMintCheck.
