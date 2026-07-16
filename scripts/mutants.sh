@@ -96,9 +96,10 @@ run_one() {
   echo "=== cargo mutants: $package ${shard:+(shard $shard)} ==="
   # cargo-mutants exits non-zero when mutants are missed; missed mutants are
   # judged against the baseline in check_baseline, not here. MUTANTS_JOBS
-  # trades local wall-clock for memory; CI shards instead.
+  # trades local wall-clock for memory; CI shards instead. (The guarded
+  # expansion keeps empty arrays safe under set -u on bash 3.x.)
   cargo mutants -p "$package" -j "${MUTANTS_JOBS:-1}" --no-shuffle \
-    --output "$out_dir" "${extra[@]}" "${args[@]}" || true
+    --output "$out_dir" ${extra[@]+"${extra[@]}"} ${args[@]+"${args[@]}"} || true
 
   if [[ ! -f "$out_dir/mutants.out/outcomes.json" ]]; then
     echo "$package: cargo-mutants produced no outcomes (baseline build/test failed?)" >&2
