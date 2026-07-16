@@ -112,6 +112,11 @@ macro_rules! impl_token_sweep_behavior {
             const RUN_EXIT: bool = true;
 
             #[inline(always)]
+            fn uses_exit_signer_arg<const KEY: u64>() -> bool {
+                KEY == quasar_lang::account_behavior::behavior_arg_key_hash("authority")
+            }
+
+            #[inline(always)]
             fn exit<'a>(account: &mut $wrapper, args: &Args<'a>) -> Result<(), ProgramError> {
                 crate::exit::sweep_token_account(
                     args.token_program,
@@ -119,6 +124,25 @@ macro_rules! impl_token_sweep_behavior {
                     args.mint,
                     args.receiver,
                     args.authority,
+                )
+            }
+
+            #[inline(always)]
+            fn exit_signed<'a, S>(
+                account: &mut $wrapper,
+                args: &Args<'a>,
+                signer: &S,
+            ) -> Result<(), ProgramError>
+            where
+                S: quasar_lang::cpi::CpiSignerSeeds + ?Sized,
+            {
+                crate::exit::sweep_token_account_signed(
+                    args.token_program,
+                    account.to_account_view(),
+                    args.mint,
+                    args.receiver,
+                    args.authority,
+                    signer,
                 )
             }
         }

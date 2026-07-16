@@ -8,6 +8,12 @@ use {
     quote::{format_ident, quote},
 };
 
+pub(crate) struct EpilogueSignerCandidate<'a> {
+    pub key: &'a syn::Ident,
+    pub field_ident: &'a syn::Ident,
+    pub addr_expr: &'a syn::Expr,
+}
+
 /// Emit a const-guarded behavior phase call for the post-load phase.
 /// The `BehaviorPhase` on the call determines which const, which builder
 /// method, and which trait method to emit.
@@ -59,16 +65,62 @@ pub(crate) fn emit_epilogue_behavior(
     call: &BehaviorCall,
     field_ident: &syn::Ident,
     field_ty: &syn::Type,
+    signer_candidates: &[EpilogueSignerCandidate<'_>],
+    account_fields: &[&syn::Ident],
+    ix_arg_extraction: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
     let path = &call.path;
     let bhv = quote! { <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>> };
     let args_block = emit_behavior_args_builder(call, field_ty, BehaviorPhase::Exit);
 
-    quote! {
+    let unsigned_exit = quote! {
         if #bhv::RUN_EXIT {
             #args_block
             #bhv::exit(&mut self.#field_ident, &__bhv_args)?;
+        }
+    };
+
+    if signer_candidates.is_empty() {
+        return unsigned_exit;
+    }
+
+    let field_refs = account_fields
+        .iter()
+        .map(|ident| quote! { let #ident = &self.#ident; });
+    let mut exit_call = quote! {
+        #args_block
+        #bhv::exit(&mut self.#field_ident, &__bhv_args)?;
+    };
+
+    for candidate in signer_candidates.iter().rev() {
+        let key = candidate.key.to_string();
+        let signer_field = candidate.field_ident;
+        let addr_expr = candidate.addr_expr;
+        let refs = field_refs.clone();
+        let fallback = exit_call;
+        exit_call = quote! {
+            if #bhv::uses_exit_signer_arg::<{
+                #krate::account_behavior::behavior_arg_key_hash(#key)
+            }>() {
+                #ix_arg_extraction
+                #(#refs)*
+                let __bhv_signer = (#addr_expr).with_bump(__bumps.#signer_field);
+                #args_block
+                #bhv::exit_signed(
+                    &mut self.#field_ident,
+                    &__bhv_args,
+                    &__bhv_signer,
+                )?;
+            } else {
+                #fallback
+            }
+        };
+    }
+
+    quote! {
+        if #bhv::RUN_EXIT {
+            #exit_call
         }
     }
 }

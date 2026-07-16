@@ -2,9 +2,9 @@ use {
     crate::{
         config::{CommandSpec, QuasarConfig},
         error::{CliError, CliResult},
-        style,
+        style, utils,
     },
-    std::{path::Path, process::Command},
+    std::{ffi::OsStr, path::Path, process::Command},
 };
 
 pub fn run(
@@ -89,7 +89,13 @@ fn run_typescript_tests(
         run_command(install_cmd, verbose)?;
     }
 
-    run_test_cmd(test_cmd, filter, show_output, verbose)
+    let program_path = compiled_program_path(config)?;
+    let command = effective_test_command(test_cmd, filter, show_output);
+    run_command_with_env(
+        &command,
+        verbose,
+        Some(("QUASAR_PROGRAM_PATH", program_path.as_os_str())),
+    )
 }
 
 fn run_rust_tests(
@@ -106,10 +112,39 @@ fn run_rust_tests(
         .map(|r| &r.test)
         .unwrap_or(&default_test);
 
-    run_test_cmd(test_cmd, filter, show_output, verbose)
+    let program_path = compiled_program_path(config)?;
+    let command = effective_test_command(test_cmd, filter, show_output);
+    run_command_with_env(
+        &command,
+        verbose,
+        Some(("QUASAR_PROGRAM_PATH", program_path.as_os_str())),
+    )
+}
+
+fn compiled_program_path(config: &QuasarConfig) -> Result<std::path::PathBuf, CliError> {
+    let program_path = utils::find_so(config, false).ok_or_else(|| {
+        CliError::message(
+            "compiled program not found; run `quasar test` without `--no-build` or build the \
+             program first",
+        )
+    })?;
+    program_path.canonicalize().map_err(|error| {
+        CliError::message(format!(
+            "failed to resolve compiled program {}: {error}",
+            program_path.display()
+        ))
+    })
 }
 
 fn run_command(command: &CommandSpec, verbose: bool) -> CliResult {
+    run_command_with_env(command, verbose, None)
+}
+
+fn run_command_with_env(
+    command: &CommandSpec,
+    verbose: bool,
+    environment: Option<(&str, &OsStr)>,
+) -> CliResult {
     eprintln!(
         "  {}",
         style::step(&format!("Running {}...", command.display()))
@@ -118,7 +153,12 @@ fn run_command(command: &CommandSpec, verbose: bool) -> CliResult {
         eprintln!("  {}", style::dim(&format!("$ {}", command.display())));
     }
 
-    let status = Command::new(&command.program).args(&command.args).status();
+    let mut process = Command::new(&command.program);
+    process.args(&command.args);
+    if let Some((key, value)) = environment {
+        process.env(key, value);
+    }
+    let status = process.status();
 
     match status {
         Ok(s) if s.success() => Ok(()),
@@ -131,16 +171,6 @@ fn run_command(command: &CommandSpec, verbose: bool) -> CliResult {
             command.display()
         ))),
     }
-}
-
-fn run_test_cmd(
-    test_cmd: &CommandSpec,
-    filter: Option<&str>,
-    show_output: bool,
-    verbose: bool,
-) -> CliResult {
-    let command = effective_test_command(test_cmd, filter, show_output);
-    run_command(&command, verbose)
 }
 
 fn effective_test_command(

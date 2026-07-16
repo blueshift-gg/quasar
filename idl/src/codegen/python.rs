@@ -204,8 +204,11 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
             if matches!(acc.resolver, IdlResolver::Const { .. }) {
                 continue; // Known addresses are auto-filled
             }
-            if matches!(acc.resolver, IdlResolver::Pda { .. }) {
-                continue; // PDAs are derived
+            if matches!(
+                acc.resolver,
+                IdlResolver::Pda { .. } | IdlResolver::AssociatedToken { .. }
+            ) {
+                continue; // Derived addresses are filled by the client
             }
             writeln!(out, "    {}: Pubkey", camel_to_snake(&acc.name)).unwrap();
             has_any_fields = true;
@@ -310,6 +313,24 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
                 format!(
                     "Pubkey.find_program_address([{}], PROGRAM_ID)[0]",
                     seed_exprs.join(", ")
+                )
+            } else if let IdlResolver::AssociatedToken {
+                ref mint,
+                ref owner,
+                ref token_program,
+            } = acc.resolver
+            {
+                let token_program = token_program.as_ref().map_or_else(
+                    || {
+                        "Pubkey.from_string(\"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA\")"
+                            .to_string()
+                    },
+                    |path| format!("accounts_map[\"{path}\"]"),
+                );
+                format!(
+                    "Pubkey.find_program_address([bytes(accounts_map[\"{owner}\"]), \
+                     bytes({token_program}), bytes(accounts_map[\"{mint}\"])], \
+                     Pubkey.from_string(\"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL\"))[0]"
                 )
             } else {
                 format!("input.{}", camel_to_snake(&acc.name))

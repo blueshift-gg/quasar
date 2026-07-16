@@ -2084,7 +2084,7 @@ dependencies = [
  "quasar-escrow-client",
  "quasar-lang",
  "quasar-spl",
- "quasar-svm",
+ "quasar-svm 0.1.0 (git+https://github.com/blueshift-gg/quasar-svm)",
  "spl-token-interface",
  "wincode 0.4.9",
 ]
@@ -2158,7 +2158,7 @@ version = "0.1.0"
 dependencies = [
  "quasar-lang",
  "quasar-multisig-client",
- "quasar-svm",
+ "quasar-svm 0.1.0 (git+https://github.com/blueshift-gg/quasar-svm)",
  "solana-instruction",
  "wincode 0.4.9",
 ]
@@ -2209,6 +2209,47 @@ dependencies = [
 [[package]]
 name = "quasar-svm"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af0a13a3e6712f79c8e6de13ed0a58d23305244503fe145eb265333a59f91bf1"
+dependencies = [
+ "agave-feature-set",
+ "agave-syscalls",
+ "bincode",
+ "solana-account",
+ "solana-bpf-loader-program",
+ "solana-clock",
+ "solana-compute-budget",
+ "solana-epoch-rewards",
+ "solana-epoch-schedule",
+ "solana-hash 3.1.0",
+ "solana-instruction",
+ "solana-instruction-error",
+ "solana-instructions-sysvar",
+ "solana-loader-v3-interface",
+ "solana-message",
+ "solana-precompile-error",
+ "solana-program-pack",
+ "solana-program-runtime",
+ "solana-pubkey 4.2.0",
+ "solana-rent",
+ "solana-sdk-ids",
+ "solana-slot-hashes",
+ "solana-stake-interface",
+ "solana-svm-callback",
+ "solana-svm-log-collector",
+ "solana-svm-timings",
+ "solana-svm-transaction",
+ "solana-system-program",
+ "solana-sysvar",
+ "solana-sysvar-id",
+ "solana-transaction-context",
+ "solana-transaction-error",
+ "spl-token",
+]
+
+[[package]]
+name = "quasar-svm"
+version = "0.1.0"
 source = "git+https://github.com/blueshift-gg/quasar-svm#cf3c06a08a9009631d42d7942a574da1eac6104d"
 dependencies = [
  "agave-feature-set",
@@ -2243,6 +2284,14 @@ dependencies = [
  "solana-sysvar-id",
  "solana-transaction-context",
  "solana-transaction-error",
+ "spl-token",
+]
+
+[[package]]
+name = "quasar-test"
+version = "0.1.0"
+dependencies = [
+ "quasar-svm 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "spl-token",
 ]
 
@@ -2325,7 +2374,7 @@ dependencies = [
  "mollusk-svm",
  "quasar-lang",
  "quasar-spl",
- "quasar-svm",
+ "quasar-svm 0.1.0 (git+https://github.com/blueshift-gg/quasar-svm)",
  "quasar-test-errors",
  "quasar-test-events",
  "quasar-test-heap",
@@ -2386,7 +2435,7 @@ name = "quasar-vault"
 version = "0.1.0"
 dependencies = [
  "quasar-lang",
- "quasar-svm",
+ "quasar-svm 0.1.0 (git+https://github.com/blueshift-gg/quasar-svm)",
  "quasar-vault-client",
 ]
 
@@ -4139,7 +4188,7 @@ name = "upstream-vault"
 version = "0.1.0"
 dependencies = [
  "quasar-lang",
- "quasar-svm",
+ "quasar-svm 0.1.0 (git+https://github.com/blueshift-gg/quasar-svm)",
  "upstream-vault-client",
 ]
 

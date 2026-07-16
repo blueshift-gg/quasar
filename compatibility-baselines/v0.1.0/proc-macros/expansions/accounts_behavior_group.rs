@@ -367,7 +367,11 @@ mod __use_custom_behavior_client_macro {
     name : ::quasar_lang::idl_build::s("data"), optional : false, writable :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), signer :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), resolver :
-    ::quasar_lang::idl_build::__reexport::IdlResolver::Input {}, docs :
+    ::quasar_lang::idl_build::one_behavior_resolver("data",
+    [::quasar_lang::idl_build::behavior_resolver(< min_value::Behavior as
+    ::quasar_lang::account_behavior::AccountBehavior < Account < MyData > >>
+    ::IDL_RESOLVER, & [],)],).unwrap_or_else(|| {
+    ::quasar_lang::idl_build::__reexport::IdlResolver::Input {} }), docs :
     ::quasar_lang::idl_build::Vec::new(), }],) })
 }
 #[cfg(feature = "idl-build")]

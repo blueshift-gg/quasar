@@ -215,6 +215,118 @@ fn preflight_flags_upgrade_hostile_account_shapes() {
 }
 
 #[test]
+fn preflight_accepts_bounded_signer_remaining_policy() {
+    let mut idl = base_idl();
+    idl.instructions[0].accounts.clear();
+    idl.instructions[0].remaining_accounts = Some(IdlRemainingAccounts {
+        kind: RemainingAccountsKind::Append,
+        name: "remainingAccounts".to_owned(),
+        min: 0,
+        max: Some(10),
+        item: RemainingAccountItem {
+            client_type: "accountMeta".to_owned(),
+            signer: AccountFlag::Fixed(true),
+            writable: AccountFlag::Dynamic(AccountFlagDynamic::Input),
+        },
+        policy: RemainingAccountPolicy {
+            position: RemainingPosition::AfterDeclaredAccounts,
+            order: RemainingOrder::PreserveInput,
+        },
+    });
+
+    let report = lint::run(&idl, &lint::LintConfig::default());
+
+    assert!(!report.contains(RuleCode::P006));
+    assert!(!report.contains(RuleCode::P007));
+}
+
+#[test]
+fn graph_check_ignores_independent_caller_controlled_accounts() {
+    let mut idl = base_idl();
+    idl.instructions[0].accounts = vec![
+        account_node("depositor", true, true, IdlResolver::Input {}),
+        account_node("recipient", false, true, IdlResolver::Input {}),
+    ];
+
+    let report = lint::run(&idl, &lint::LintConfig::default());
+
+    assert!(!report.contains(RuleCode::L001));
+}
+
+#[test]
+fn graph_check_uses_input_accounts_as_connectors_for_derived_addresses() {
+    let mut idl = base_idl();
+    idl.instructions[0].accounts = vec![
+        account_node("maker", true, true, IdlResolver::Input {}),
+        account_node(
+            "escrow",
+            false,
+            true,
+            IdlResolver::Pda {
+                program: IdlPdaProgram::ProgramId {},
+                seeds: vec![IdlPdaSeed::Account {
+                    path: "maker".to_owned(),
+                }],
+            },
+        ),
+        account_node(
+            "makerState",
+            false,
+            true,
+            IdlResolver::Pda {
+                program: IdlPdaProgram::ProgramId {},
+                seeds: vec![
+                    IdlPdaSeed::Const {
+                        value: b"maker".to_vec(),
+                    },
+                    IdlPdaSeed::Account {
+                        path: "maker".to_owned(),
+                    },
+                ],
+            },
+        ),
+    ];
+
+    let report = lint::run(&idl, &lint::LintConfig::default());
+
+    assert!(!report.contains(RuleCode::L001));
+}
+
+#[test]
+fn graph_check_does_not_treat_associated_tokens_as_program_state_groups() {
+    let mut idl = base_idl();
+    idl.instructions[0].accounts = vec![
+        account_node("user", true, true, IdlResolver::Input {}),
+        account_node("mint", false, false, IdlResolver::Input {}),
+        account_node(
+            "config",
+            false,
+            true,
+            IdlResolver::Pda {
+                program: IdlPdaProgram::ProgramId {},
+                seeds: vec![IdlPdaSeed::Const {
+                    value: b"config".to_vec(),
+                }],
+            },
+        ),
+        account_node(
+            "userTokens",
+            false,
+            true,
+            IdlResolver::AssociatedToken {
+                mint: "mint".to_owned(),
+                owner: "user".to_owned(),
+                token_program: None,
+            },
+        ),
+    ];
+
+    let report = lint::run(&idl, &lint::LintConfig::default());
+
+    assert!(!report.contains(RuleCode::L001));
+}
+
+#[test]
 fn preflight_accepts_reserved_padding_before_dynamic_tail_storage() {
     let mut idl = base_idl();
     idl.types[0]

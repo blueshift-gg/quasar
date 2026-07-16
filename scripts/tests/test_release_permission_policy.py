@@ -135,6 +135,20 @@ class ReleasePermissionPolicyTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("crates.io token is available to non-publish job kani", result.stderr)
 
+    def test_npm_token_is_confined_to_typescript_publish_job(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.fixture(directory)
+            self.mutate(
+                root,
+                "  kani:\n    name: Kani",
+                "  kani:\n    env:\n"
+                "      LEAKED_TOKEN: ${{ secrets.NPM_TOKEN }}\n"
+                "    name: Kani",
+            )
+            result = self.run_policy(root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("npm token is available to non-TypeScript-publish job kani", result.stderr)
+
     def test_github_token_is_confined_to_release_job(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.fixture(directory)

@@ -12,7 +12,11 @@
 //! - `CtxWithRemaining`: like `Ctx` but also captures the remaining accounts
 //!   region for instructions that inspect or forward trailing accounts.
 
-use crate::{prelude::*, remaining::RemainingAccounts, traits::ParseAccountsUnchecked};
+use crate::{
+    prelude::*,
+    remaining::{Remaining, RemainingAccounts, RemainingItem},
+    traits::ParseAccountsUnchecked,
+};
 
 /// Cast `&[u8; 32]` to `&Address`.
 ///
@@ -156,14 +160,25 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
     }
 }
 
+/// Marker used by the raw, dynamically shaped remaining-account context.
+///
+/// Programs normally refer to it through the default
+/// `CtxWithRemaining<Accounts>` parameters rather than naming it directly.
+#[doc(hidden)]
+pub struct DynamicRemaining;
+
 /// Like [`Ctx`] but also captures the remaining accounts region.
 ///
-/// Use this for instructions that call `remaining_accounts()`, for example when
-/// inspecting trailing accounts in local logic or forwarding a variable number
-/// of accounts to a downstream CPI.
+/// `CtxWithRemaining<Accounts>` preserves the raw compatibility API for
+/// intentionally dynamic or forwarded tails. Prefer
+/// `CtxWithRemaining<Accounts, Item, N>` when the handler consumes a known
+/// account type: dispatch validates the complete tail and exposes it through
+/// [`Self::remaining`].
 pub struct CtxWithRemaining<
     'input,
     T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + AccountCount,
+    R = DynamicRemaining,
+    const N: usize = 0,
 > {
     /// Validated and typed account struct.
     pub accounts: T,
@@ -176,6 +191,12 @@ pub struct CtxWithRemaining<
 
     /// Instruction data with discriminator already consumed.
     pub data: &'input [u8],
+
+    /// Parsed bounded remaining accounts.
+    ///
+    /// This is an empty internal value for the dynamic one-parameter form;
+    /// call [`Self::remaining_accounts`] on that form instead.
+    pub remaining: Remaining<R, N>,
 
     /// Pointer to the first remaining account in the input buffer.
     remaining_ptr: *mut u8,
@@ -222,6 +243,7 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
             bumps,
             program_id: ctx.program_id,
             data: ctx.data,
+            remaining: Remaining::empty(),
             remaining_ptr: ctx.remaining_ptr,
             declared,
             accounts_boundary: ctx.accounts_boundary,
@@ -258,17 +280,11 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
             bumps,
             program_id: ctx.program_id,
             data: ctx.data,
+            remaining: Remaining::empty(),
             remaining_ptr: ctx.remaining_ptr,
             declared,
             accounts_boundary: ctx.accounts_boundary,
         })
-    }
-
-    /// Compile-time check for whether `T` has lifecycle operations
-    /// (close/sweep/migrate). When false, the epilogue call is elided.
-    #[inline(always)]
-    pub const fn has_epilogue(&self) -> bool {
-        T::HAS_EPILOGUE
     }
 
     /// Remaining-account accessor.
@@ -293,5 +309,108 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
                 self.data,
             )
         }
+    }
+}
+
+impl<
+        'input,
+        T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + AccountCount,
+        R: RemainingItem<'input>,
+        const N: usize,
+    > CtxWithRemaining<'input, T, R, N>
+{
+    /// Parse declared accounts and a complete bounded remaining-account tail.
+    #[inline(always)]
+    pub fn new_typed(ctx: Context<'input>) -> Result<Self, ProgramError> {
+        // SAFETY: `Context::program_id` points at runtime-owned storage.
+        let program_id_addr = unsafe { as_address(ctx.program_id) };
+        let declared_ptr = ctx.accounts.as_ptr();
+        let declared_len = ctx.accounts.len();
+        let (accounts, bumps) =
+            T::parse_with_instruction_data(ctx.accounts, ctx.data, program_id_addr)?;
+        // SAFETY: Parsing copies views from this still-live slice. See the raw
+        // constructor above for the aliasing argument.
+        let declared = unsafe { core::slice::from_raw_parts(declared_ptr, declared_len) };
+        // SAFETY: The context owns matching pointers into the same SVM input
+        // buffer and the matching declared-account prefix.
+        let raw = unsafe {
+            RemainingAccounts::new_with_context(
+                ctx.remaining_ptr,
+                ctx.accounts_boundary,
+                declared,
+                program_id_addr,
+                ctx.data,
+            )
+        };
+        let remaining = raw.parse::<R, N>()?;
+
+        Ok(Self {
+            accounts,
+            bumps,
+            program_id: ctx.program_id,
+            data: ctx.data,
+            remaining,
+            remaining_ptr: ctx.remaining_ptr,
+            declared,
+            accounts_boundary: ctx.accounts_boundary,
+        })
+    }
+
+    /// Parse a bounded tail without repeating the declared-account count
+    /// check already performed by generated dispatch.
+    ///
+    /// # Safety
+    ///
+    /// `ctx.accounts` must hold exactly `T::COUNT` validated account views.
+    #[doc(hidden)]
+    #[inline(always)]
+    pub unsafe fn new_typed_unchecked(ctx: Context<'input>) -> Result<Self, ProgramError> {
+        // SAFETY: `Context::program_id` points at runtime-owned storage.
+        let program_id_addr = unsafe { as_address(ctx.program_id) };
+        let declared_ptr = ctx.accounts.as_ptr();
+        let declared_len = ctx.accounts.len();
+        // SAFETY: The caller guarantees the declared account count.
+        let (accounts, bumps) = unsafe {
+            T::parse_with_instruction_data_unchecked(ctx.accounts, ctx.data, program_id_addr)?
+        };
+        // SAFETY: Same live-slice argument as `new_typed`.
+        let declared = unsafe { core::slice::from_raw_parts(declared_ptr, declared_len) };
+        // SAFETY: The context owns matching pointers into the same input.
+        let raw = unsafe {
+            RemainingAccounts::new_with_context(
+                ctx.remaining_ptr,
+                ctx.accounts_boundary,
+                declared,
+                program_id_addr,
+                ctx.data,
+            )
+        };
+        let remaining = raw.parse::<R, N>()?;
+
+        Ok(Self {
+            accounts,
+            bumps,
+            program_id: ctx.program_id,
+            data: ctx.data,
+            remaining,
+            remaining_ptr: ctx.remaining_ptr,
+            declared,
+            accounts_boundary: ctx.accounts_boundary,
+        })
+    }
+}
+
+impl<
+        'input,
+        T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + AccountCount,
+        R,
+        const N: usize,
+    > CtxWithRemaining<'input, T, R, N>
+{
+    /// Compile-time check for whether `T` has lifecycle operations
+    /// (close/sweep/migrate). When false, the epilogue call is elided.
+    #[inline(always)]
+    pub const fn has_epilogue(&self) -> bool {
+        T::HAS_EPILOGUE
     }
 }

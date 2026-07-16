@@ -372,6 +372,23 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
         out.push_str("}\n\n");
     }
 
+    // Deliberate account overrides for adversarial tests and custom routing.
+    for ix in &idl.instructions {
+        if ix.accounts.is_empty() {
+            continue;
+        }
+        let pascal = snake_to_pascal(&ix.name);
+        writeln!(
+            out,
+            "export interface {pascal}InstructionAccountOverrides {{"
+        )
+        .expect("write to String");
+        for account in &ix.accounts {
+            writeln!(out, "  {}?: Address;", account.name).expect("write to String");
+        }
+        out.push_str("}\n\n");
+    }
+
     // === Codecs ===
     if !idl.types.is_empty() {
         out.push_str("/* Codecs */\n");
@@ -625,6 +642,11 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
     // === Errors ===
     if !idl.errors.is_empty() {
         out.push_str("/* Errors */\n");
+        out.push_str("export const PROGRAM_ERROR_CODES = {\n");
+        for err in &idl.errors {
+            writeln!(out, "  {}: {},", err.name, err.code).expect("write to String");
+        }
+        out.push_str("} as const;\n\n");
         out.push_str(
             "export const PROGRAM_ERRORS: Record<number, { name: string; msg?: string }> = {\n",
         );
@@ -800,20 +822,23 @@ fn generate_instruction_builders_web3js(
             .map(|account| account.name.as_str())
             .collect();
         let ix_needs_account_resolver = instruction_has_account_field_pda_seeds(ix);
-        let ix_has_pdas = ix
-            .accounts
-            .iter()
-            .any(|a| !a.optional && matches!(a.resolver, IdlResolver::Pda { .. }));
+        let ix_has_pdas = ix.accounts.iter().any(|a| {
+            !a.optional
+                && matches!(
+                    a.resolver,
+                    IdlResolver::Pda { .. } | IdlResolver::AssociatedToken { .. }
+                )
+        });
 
         let account_expr = |name: &str| {
             if input_account_names.contains(name) {
                 if optional_account_names.contains(name) {
-                    format!("(input.{name} ?? {class_name}.programId)")
+                    format!("(accountOverrides.{name} ?? input.{name} ?? {class_name}.programId)")
                 } else {
-                    format!("input.{name}")
+                    format!("(accountOverrides.{name} ?? input.{name})")
                 }
             } else {
-                format!("accountsMap[\"{}\"]", name)
+                format!("(accountOverrides.{name} ?? accountsMap[\"{name}\"])")
             }
         };
 
@@ -832,9 +857,48 @@ fn generate_instruction_builders_web3js(
         } else {
             "TransactionInstruction"
         };
+        if !ix.accounts.is_empty() {
+            writeln!(
+                out,
+                "  {async_kw}create{pascal}Instruction({}): {return_type} {{",
+                method_params.join(", ")
+            )
+            .expect("write to String");
+            let mut unchecked_args = Vec::new();
+            if !user_accs.is_empty() || !ix.args.is_empty() || has_remaining {
+                unchecked_args.push("input");
+            }
+            unchecked_args.push("{}");
+            if ix_needs_account_resolver {
+                unchecked_args.push("resolver");
+            }
+            writeln!(
+                out,
+                "    return this.create{pascal}InstructionUnchecked({});",
+                unchecked_args.join(", ")
+            )
+            .expect("write to String");
+            out.push_str("  }\n\n");
+
+            let override_position = if !user_accs.is_empty() || !ix.args.is_empty() || has_remaining
+            {
+                1
+            } else {
+                0
+            };
+            method_params.insert(
+                override_position,
+                format!("accountOverrides: {pascal}InstructionAccountOverrides"),
+            );
+        }
         writeln!(
             out,
-            "  {async_kw}create{pascal}Instruction({}): {return_type} {{",
+            "  {async_kw}create{pascal}Instruction{}({}): {return_type} {{",
+            if ix.accounts.is_empty() {
+                ""
+            } else {
+                "Unchecked"
+            },
             method_params.join(", ")
         )
         .expect("write to String");
@@ -886,6 +950,21 @@ fn generate_instruction_builders_web3js(
                         &account_expr,
                     );
                 }
+            } else if let IdlResolver::AssociatedToken {
+                mint,
+                owner,
+                token_program,
+            } = &acc.resolver
+            {
+                emit_associated_token_derivation(
+                    out,
+                    &acc.name,
+                    mint,
+                    owner,
+                    token_program.as_deref(),
+                    TsTarget::Web3js,
+                    &account_expr,
+                );
             }
         }
 
@@ -985,20 +1064,23 @@ fn generate_instruction_builders_kit(
         let account_expr = |name: &str| {
             if input_account_names.contains(name) {
                 if optional_account_names.contains(name) {
-                    format!("(input.{name} ?? PROGRAM_ADDRESS)")
+                    format!("(accountOverrides.{name} ?? input.{name} ?? PROGRAM_ADDRESS)")
                 } else {
-                    format!("input.{name}")
+                    format!("(accountOverrides.{name} ?? input.{name})")
                 }
             } else {
-                format!("accountsMap[\"{}\"]", name)
+                format!("(accountOverrides.{name} ?? accountsMap[\"{name}\"])")
             }
         };
 
         // Check if this instruction has any PDAs (requires async)
-        let ix_has_pdas = ix
-            .accounts
-            .iter()
-            .any(|a| !a.optional && matches!(a.resolver, IdlResolver::Pda { .. }));
+        let ix_has_pdas = ix.accounts.iter().any(|a| {
+            !a.optional
+                && matches!(
+                    a.resolver,
+                    IdlResolver::Pda { .. } | IdlResolver::AssociatedToken { .. }
+                )
+        });
 
         // Method signature
         let mut method_params = Vec::new();
@@ -1014,9 +1096,48 @@ fn generate_instruction_builders_kit(
             "Instruction"
         };
         let async_kw = if ix_has_pdas { "async " } else { "" };
+        if !ix.accounts.is_empty() {
+            writeln!(
+                out,
+                "  {async_kw}create{pascal}Instruction({}): {return_type} {{",
+                method_params.join(", ")
+            )
+            .expect("write to String");
+            let mut unchecked_args = Vec::new();
+            if !user_accs.is_empty() || !ix.args.is_empty() || has_remaining {
+                unchecked_args.push("input");
+            }
+            unchecked_args.push("{}");
+            if ix_needs_account_resolver {
+                unchecked_args.push("resolver");
+            }
+            writeln!(
+                out,
+                "    return this.create{pascal}InstructionUnchecked({});",
+                unchecked_args.join(", ")
+            )
+            .expect("write to String");
+            out.push_str("  }\n\n");
+
+            let override_position = if !user_accs.is_empty() || !ix.args.is_empty() || has_remaining
+            {
+                1
+            } else {
+                0
+            };
+            method_params.insert(
+                override_position,
+                format!("accountOverrides: {pascal}InstructionAccountOverrides"),
+            );
+        }
         writeln!(
             out,
-            "  {async_kw}create{pascal}Instruction({}): {return_type} {{",
+            "  {async_kw}create{pascal}Instruction{}({}): {return_type} {{",
+            if ix.accounts.is_empty() {
+                ""
+            } else {
+                "Unchecked"
+            },
             method_params.join(", ")
         )
         .expect("write to String");
@@ -1068,6 +1189,21 @@ fn generate_instruction_builders_kit(
                         &account_expr,
                     );
                 }
+            } else if let IdlResolver::AssociatedToken {
+                mint,
+                owner,
+                token_program,
+            } = &acc.resolver
+            {
+                emit_associated_token_derivation(
+                    out,
+                    &acc.name,
+                    mint,
+                    owner,
+                    token_program.as_deref(),
+                    TsTarget::Kit,
+                    &account_expr,
+                );
             }
         }
 
@@ -2132,6 +2268,50 @@ fn emit_inline_pda_derivation(
             write_inline_pda_seed_lines(out, seeds, idl, ts_target, arg_types, account_expr);
             out.push_str("      ],\n");
             out.push_str("    }))[0];\n");
+        }
+    }
+}
+
+fn emit_associated_token_derivation(
+    out: &mut String,
+    account_name: &str,
+    mint: &str,
+    owner: &str,
+    token_program: Option<&str>,
+    target: TsTarget,
+    account_expr: &impl Fn(&str) -> String,
+) {
+    let mint = account_expr(mint);
+    let owner = account_expr(owner);
+    let token_program = token_program
+        .map(account_expr)
+        .unwrap_or_else(|| match target {
+            TsTarget::Web3js => {
+                "new Address(\"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA\")".to_string()
+            }
+            TsTarget::Kit => "address(\"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA\")".to_string(),
+        });
+
+    match target {
+        TsTarget::Web3js => {
+            writeln!(
+                out,
+                "    accountsMap[\"{account_name}\"] = (await Address.findProgramAddress(\n      \
+                 [{owner}.toBytes(), {token_program}.toBytes(), {mint}.toBytes()],\n      new \
+                 Address(\"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL\"),\n    ))[0];"
+            )
+            .expect("write to String");
+        }
+        TsTarget::Kit => {
+            writeln!(
+                out,
+                "    accountsMap[\"{account_name}\"] = (await getProgramDerivedAddress({{\n      \
+                 programAddress: address(\"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL\"),\n      \
+                 seeds: [getAddressCodec().encode({owner}), \
+                 getAddressCodec().encode({token_program}), \
+                 getAddressCodec().encode({mint})],\n    }}))[0];"
+            )
+            .expect("write to String");
         }
     }
 }

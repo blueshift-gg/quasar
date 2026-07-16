@@ -63,6 +63,29 @@ impl<'input> ::quasar_lang::traits::ParseAccounts<'input> for CloseAccounts {
         }
         Ok(())
     }
+    #[inline(always)]
+    #[allow(unused_variables)]
+    fn epilogue_with_context(
+        &mut self,
+        __bumps: &Self::Bumps,
+        __ix_data: &[u8],
+    ) -> Result<(), ::quasar_lang::__solana_program_error::ProgramError> {
+        {
+            let __view = unsafe {
+                <Account<
+                    OldData,
+                > as ::quasar_lang::account_load::AccountLoad>::to_account_view_mut(
+                    &mut self.old_data,
+                )
+            };
+            ::quasar_lang::ops::close::Op {
+                disc_len: <OldData as ::quasar_lang::traits::Discriminator>::DISCRIMINATOR
+                    .len(),
+            }
+                .apply(__view, self.authority.to_account_view())?;
+        }
+        Ok(())
+    }
 }
 unsafe impl<'input> ::quasar_lang::traits::ParseAccountsUnchecked<'input>
 for CloseAccounts {

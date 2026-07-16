@@ -17,6 +17,7 @@ use {
 };
 
 const QUASAR_SVM_TYPESCRIPT_VERSION: &str = "0.1.13";
+const QUASAR_TEST_TYPESCRIPT_VERSION: &str = "0.1.0";
 
 /// Check that the target directory is usable before prompting the user for
 /// scaffolding parameters.
@@ -270,11 +271,7 @@ solana-instruction = { version = "3.2.0", features = ["bincode"] }
             out.push_str(
                 r#"
 [dev-dependencies]
-quasar-svm = { version = "0.1" }
-solana-account = { version = "3.4.0" }
-solana-address = { version = "2.2.0", features = ["decode"] }
-solana-instruction = { version = "3.2.0", features = ["bincode"] }
-solana-pubkey = { version = "4.1.0" }
+quasar-test = "=0.1.0"
 "#,
             );
         }
@@ -390,6 +387,7 @@ fn generate_package_json(name: &str, ts_sdk: TypeScriptSdk) -> String {
     "test": "vitest run"
   }},
   "dependencies": {{
+    "@blueshift-gg/quasar-test": "{QUASAR_TEST_TYPESCRIPT_VERSION}",
     "@blueshift-gg/quasar-svm": "{QUASAR_SVM_TYPESCRIPT_VERSION}",
     "@solana/codecs": "^6.0.0",
     {solana_dep}
@@ -418,213 +416,125 @@ fn generate_test_ts(
 
 fn generate_minimal_test_ts(name: &str, ts_sdk: TypeScriptSdk, toolchain: Toolchain) -> String {
     let module_name = name.replace('-', "_");
-    let so_name = match toolchain {
-        Toolchain::Upstream => format!("lib{module_name}"),
-        Toolchain::Solana => module_name.clone(),
-    };
+    let _ = toolchain;
 
     if matches!(ts_sdk, TypeScriptSdk::Kit) {
         format!(
-            r#"import {{ generateKeyPairSigner }} from "@solana/kit";
-import {{ AccountRole, address }} from "@solana/kit";
-import {{ describe, it, expect }} from "vitest";
-import {{ QuasarSvm, createKeyedSystemAccount }} from "@blueshift-gg/quasar-svm/kit";
-import {{ readFile }} from "node:fs/promises";
+            r#"import {{ QuasarTest }} from "@blueshift-gg/quasar-test/kit";
+import {{ describe, it }} from "vitest";
+import {{ PROGRAM_ADDRESS, {class_name}Client }} from "../target/client/typescript/{name}/kit.js";
+
+const client = new {class_name}Client();
 
 describe.concurrent("{class_name} Program", async () => {{
   it("initializes", async () => {{
-    const idl = JSON.parse(await readFile("target/idl/{module_name}.json", "utf8")) as {{ address: string }};
-    const programAddress = address(idl.address);
-    const vm = new QuasarSvm();
-    vm.addProgram(programAddress, await readFile("target/deploy/{so_name}.so"));
+    const q = await QuasarTest.load(PROGRAM_ADDRESS);
+    const payer = await q.actor();
 
-    const payer = await generateKeyPairSigner();
+    const result = await q.send(client.createInitializeInstruction({{ payer }}));
 
-    const initializeInstruction = {{
-      programAddress,
-      accounts: [
-        {{ address: payer.address, role: AccountRole.READONLY_SIGNER }},
-      ],
-      data: Uint8Array.from([0]),
-    }};
-
-    const result = vm.processInstruction(initializeInstruction, [
-      createKeyedSystemAccount(payer.address),
-    ]);
-
-    expect(result.status.ok, `initialize failed:\n${{result.logs.join("\n")}}`).toBe(true);
-    }});
+    result.succeeds().cuBelow(10_000);
+    q.free();
+  }});
 }});
 "#,
-            class_name = snake_to_pascal(&module_name)
+            class_name = snake_to_pascal(&module_name),
         )
     } else {
         format!(
-            r#"import {{ Buffer }} from "buffer";
-import {{ Address, Keypair, TransactionInstruction }} from "@solana/web3.js";
-import {{ readFile }} from "node:fs/promises";
-import {{ describe, it, expect }} from "vitest";
-import {{ QuasarSvm, createKeyedSystemAccount }} from "@blueshift-gg/quasar-svm/web3.js";
+            r#"import {{ QuasarTest }} from "@blueshift-gg/quasar-test/web3.js";
+import {{ describe, it }} from "vitest";
+import {{ {class_name}Client }} from "../target/client/typescript/{name}/web3.js";
+
+const client = new {class_name}Client();
 
 describe.concurrent("{class_name} Program", async () => {{
   it("initializes", async () => {{
-    const idl = JSON.parse(await readFile("target/idl/{module_name}.json", "utf8")) as {{ address: string }};
-    const programAddress = new Address(idl.address);
-    const vm = new QuasarSvm();
-    vm.addProgram(programAddress, await readFile("target/deploy/{so_name}.so"));
+    const q = await QuasarTest.load({class_name}Client.programId);
+    const payer = await q.actor();
 
-    const {{ publicKey: payer }} = await Keypair.generate();
+    const result = await q.send(client.createInitializeInstruction({{ payer }}));
 
-    const initializeInstruction = new TransactionInstruction({{
-      programId: programAddress,
-      keys: [
-        {{ pubkey: payer, isSigner: true, isWritable: false }},
-      ],
-      data: Buffer.from([0]),
-    }});
-
-    const result = vm.processInstruction(initializeInstruction, [
-      createKeyedSystemAccount(payer),
-    ]);
-
-    expect(result.status.ok, `initialize failed:\n${{result.logs.join("\n")}}`).toBe(true);
-    }});
+    result.succeeds().cuBelow(10_000);
+    q.free();
+  }});
 }});
 "#,
-            class_name = snake_to_pascal(&module_name)
+            class_name = snake_to_pascal(&module_name),
         )
     }
 }
 
 fn generate_full_test_ts(name: &str, ts_sdk: TypeScriptSdk, toolchain: Toolchain) -> String {
     let module_name = name.replace('-', "_");
-    let so_name = match toolchain {
-        Toolchain::Upstream => format!("lib{module_name}"),
-        Toolchain::Solana => module_name.clone(),
-    };
+    let _ = toolchain;
 
     if matches!(ts_sdk, TypeScriptSdk::Kit) {
         format!(
-            r#"import {{
-  AccountRole,
-  address,
-  generateKeyPairSigner,
-  getAddressEncoder,
-  getProgramDerivedAddress,
-}} from "@solana/kit";
-import {{ readFile }} from "node:fs/promises";
+            r#"import {{ QuasarTest }} from "@blueshift-gg/quasar-test/kit";
 import {{ describe, it, expect }} from "vitest";
-import {{ QuasarSvm, createKeyedSystemAccount }} from "@blueshift-gg/quasar-svm/kit";
+import {{
+  PROGRAM_ADDRESS,
+  {class_name}Client,
+  findMyAccountAddress,
+}} from "../target/client/typescript/{name}/kit.js";
+
+const client = new {class_name}Client();
 
 describe.concurrent("{class_name} Program", async () => {{
   it("initializes state", async () => {{
-    const idl = JSON.parse(await readFile("target/idl/{module_name}.json", "utf8")) as {{ address: string }};
-    const programAddress = address(idl.address);
-    const vm = new QuasarSvm();
-    vm.addProgram(programAddress, await readFile("target/deploy/{so_name}.so"));
-
-    const payer = await generateKeyPairSigner();
-    const [myAccount, bump] = await getProgramDerivedAddress({{
-      programAddress,
-      seeds: [
-        new TextEncoder().encode("my-account"),
-        getAddressEncoder().encode(payer.address),
-      ],
-    }});
+    const q = await QuasarTest.load(PROGRAM_ADDRESS);
+    const payer = await q.actor();
+    const myAccount = await findMyAccountAddress(payer);
+    q.empty(myAccount);
     const value = 42n;
-    const instructionData = new Uint8Array(9);
-    instructionData[0] = 0;
-    new DataView(instructionData.buffer).setBigUint64(1, value, true);
 
-    const initializeInstruction = {{
-      programAddress,
-      accounts: [
-        {{ address: payer.address, role: AccountRole.WRITABLE_SIGNER }},
-        {{ address: myAccount, role: AccountRole.WRITABLE }},
-        {{ address: address("11111111111111111111111111111111"), role: AccountRole.READONLY }},
-      ],
-      data: instructionData,
-    }};
+    const result = await q.send(client.createInitializeInstruction({{ payer, value }}));
 
-    const result = vm.processInstruction(initializeInstruction, [
-      createKeyedSystemAccount(payer.address),
-      createKeyedSystemAccount(myAccount, 0n),
-    ]);
-
-    expect(result.status.ok, `initialize failed:\n${{result.logs.join("\n")}}`).toBe(true);
+    result.succeeds().cuBelow(10_000);
     const stored = result.account(myAccount);
     if (!stored) throw new Error("initialized state account is missing");
-    expect(stored.programAddress).toBe(programAddress);
-    expect(stored.data).toHaveLength(107);
-    expect(stored.data[0]).toBe(1);
-    expect(stored.data[1]).toBe(1);
-    expect(stored.data.slice(2, 34)).toEqual(getAddressEncoder().encode(payer.address));
-    expect(new DataView(stored.data.buffer, stored.data.byteOffset).getBigUint64(34, true)).toBe(value);
-    expect(stored.data[42]).toBe(bump);
-    expect(stored.data.slice(43).every((byte) => byte === 0)).toBe(true);
+    const state = client.decodeMyAccount(stored.data);
+    expect(state.authority).toBe(payer);
+    expect(state.value).toBe(value);
+    q.free();
   }});
 }});
 "#,
-            class_name = snake_to_pascal(&module_name)
+            class_name = snake_to_pascal(&module_name),
         )
     } else {
         format!(
-            r#"import {{ Buffer }} from "node:buffer";
-import {{ Address, Keypair, TransactionInstruction }} from "@solana/web3.js";
-import {{ readFile }} from "node:fs/promises";
+            r#"import {{ QuasarTest }} from "@blueshift-gg/quasar-test/web3.js";
 import {{ describe, it, expect }} from "vitest";
-import {{ QuasarSvm, createKeyedSystemAccount }} from "@blueshift-gg/quasar-svm/web3.js";
+import {{
+  {class_name}Client,
+  findMyAccountAddress,
+}} from "../target/client/typescript/{name}/web3.js";
+
+const client = new {class_name}Client();
 
 describe.concurrent("{class_name} Program", async () => {{
   it("initializes state", async () => {{
-    const idl = JSON.parse(await readFile("target/idl/{module_name}.json", "utf8")) as {{ address: string }};
-    const programAddress = new Address(idl.address);
-    const vm = new QuasarSvm();
-    vm.addProgram(programAddress, await readFile("target/deploy/{so_name}.so"));
-
-    const {{ publicKey: payer }} = await Keypair.generate();
-    const [myAccount, bump] = await Address.findProgramAddress(
-      [Buffer.from("my-account"), payer.toBytes()],
-      programAddress,
-    );
+    const q = await QuasarTest.load({class_name}Client.programId);
+    const payer = await q.actor();
+    const myAccount = await findMyAccountAddress(payer);
+    q.empty(myAccount);
     const value = 42n;
-    const instructionData = Buffer.alloc(9);
-    instructionData[0] = 0;
-    instructionData.writeBigUInt64LE(value, 1);
 
-    const initializeInstruction = new TransactionInstruction({{
-      programId: programAddress,
-      keys: [
-        {{ pubkey: payer, isSigner: true, isWritable: true }},
-        {{ pubkey: myAccount, isSigner: false, isWritable: true }},
-        {{ pubkey: new Address("11111111111111111111111111111111"), isSigner: false, isWritable: false }},
-      ],
-      data: instructionData,
-    }});
+    const result = await q.send(client.createInitializeInstruction({{ payer, value }}));
 
-    const result = vm.processInstruction(initializeInstruction, [
-      createKeyedSystemAccount(payer),
-      createKeyedSystemAccount(myAccount, 0n),
-    ]);
-
-    expect(result.status.ok, `initialize failed:\n${{result.logs.join("\n")}}`).toBe(true);
-    const stored = result.accounts.find((account) => account.accountId.equals(myAccount));
+    result.succeeds().cuBelow(10_000);
+    const stored = result.account(myAccount);
     if (!stored) throw new Error("initialized state account is missing");
-    expect(stored.accountInfo.owner.equals(programAddress)).toBe(true);
-    expect(stored.accountInfo.data).toHaveLength(107);
-    expect(stored.accountInfo.data[0]).toBe(1);
-    expect(stored.accountInfo.data[1]).toBe(1);
-    expect(stored.accountInfo.data.subarray(2, 34)).toEqual(Buffer.from(payer.toBytes()));
-    expect(new DataView(
-      stored.accountInfo.data.buffer,
-      stored.accountInfo.data.byteOffset,
-    ).getBigUint64(34, true)).toBe(value);
-    expect(stored.accountInfo.data[42]).toBe(bump);
-    expect(stored.accountInfo.data.subarray(43).every((byte) => byte === 0)).toBe(true);
+    const state = client.decodeMyAccount(stored.accountInfo.data);
+    expect(state.authority.equals(payer)).toBe(true);
+    expect(state.value).toBe(value);
+    q.free();
   }});
 }});
 "#,
-            class_name = snake_to_pascal(&module_name)
+            class_name = snake_to_pascal(&module_name),
         )
     }
 }
@@ -751,128 +661,80 @@ fn test_initialize() {{
 "#
             )
         }
-        (RustFramework::QuasarSVM, Template::Minimal) => {
-            format!(
-                r#"use quasar_svm::{{Account, Pubkey, QuasarSvm}};
-use solana_address::Address;
-use solana_instruction::{{AccountMeta, Instruction}};
+        (RustFramework::QuasarSVM, Template::Minimal) => r#"use quasar_test::prelude::*;
 
-fn setup() -> QuasarSvm {{
-    let elf = std::fs::read("target/deploy/{libname}.so").unwrap();
-    QuasarSvm::new()
-        .with_program(&Pubkey::from(crate::ID), &elf)
-}}
-
-fn initialize_instruction(payer: Address) -> Instruction {{
-    Instruction {{
-        program_id: Address::from(crate::ID.to_bytes()),
+fn initialize_instruction(payer: Pubkey) -> Instruction {
+    Instruction {
+        program_id: crate::ID,
         accounts: vec![
             AccountMeta::new_readonly(payer, true),
         ],
         data: vec![0],
-    }}
-}}
+    }
+}
 
-#[test]
-fn test_initialize() {{
-    let mut svm = setup();
-
-    let payer = Pubkey::new_unique();
-
-    let instruction = initialize_instruction(Address::from(payer.to_bytes()));
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[Account {{
-            address: payer,
-            lamports: 10_000_000_000,
-            data: vec![],
-            owner: quasar_svm::system_program::ID,
-            executable: false,
-        }}],
-    );
-
-    result.assert_success();
-}}
+quasar_test! {
+    fn test_initialize(q) {
+        let payer = q.actor();
+        q.send(initialize_instruction(payer)).succeeds();
+    }
+}
 "#
-            )
-        }
-        (RustFramework::QuasarSVM, Template::Full) => {
-            format!(
-                r#"use quasar_svm::{{Account, Pubkey, QuasarSvm}};
-use solana_address::Address;
-use solana_instruction::{{AccountMeta, Instruction}};
+        .to_string(),
+        (RustFramework::QuasarSVM, Template::Full) => r#"use quasar_test::prelude::*;
 
 const VALUE: u64 = 42;
 const MY_ACCOUNT_SIZE: usize = 107;
 
-fn setup() -> QuasarSvm {{
-    let elf = std::fs::read("target/deploy/{libname}.so").unwrap();
-    QuasarSvm::new()
-        .with_program(&Pubkey::from(crate::ID), &elf)
-}}
-
-fn initialize_instruction(payer: Pubkey, my_account: Pubkey) -> Instruction {{
+fn initialize_instruction(payer: Pubkey, my_account: Pubkey) -> Instruction {
     let mut data = vec![0];
     data.extend_from_slice(&VALUE.to_le_bytes());
-    Instruction {{
-        program_id: Address::from(crate::ID.to_bytes()),
+    Instruction {
+        program_id: crate::ID,
         accounts: vec![
-            AccountMeta::new(Address::from(payer.to_bytes()), true),
-            AccountMeta::new(Address::from(my_account.to_bytes()), false),
+            AccountMeta::new(payer, true),
+            AccountMeta::new(my_account, false),
             AccountMeta::new_readonly(
-                Address::from(quasar_svm::system_program::ID.to_bytes()),
+                quasar_test::quasar_svm::system_program::ID,
                 false,
             ),
         ],
         data,
-    }}
-}}
+    }
+}
 
-fn system_account(address: Pubkey, lamports: u64) -> Account {{
-    Account {{
-        address,
-        lamports,
-        data: vec![],
-        owner: quasar_svm::system_program::ID,
-        executable: false,
-    }}
-}}
+quasar_test! {
+    fn test_initialize(q) {
+        let payer = q.actor();
+        let (my_account, bump) =
+            Pubkey::find_program_address(&[b"my-account", payer.as_ref()], &crate::ID);
+        q.empty(my_account);
 
-#[test]
-fn test_initialize() {{
-    let mut svm = setup();
-    let payer = Pubkey::new_unique();
-    let (my_account, bump) =
-        Pubkey::find_program_address(&[b"my-account", payer.as_ref()], &crate::ID);
-    let instruction = initialize_instruction(payer, my_account);
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[system_account(payer, 10_000_000_000), system_account(my_account, 0)],
-    );
-
-    result.assert_success();
-    let stored = result.account(&my_account).expect("initialized state account");
-    assert_eq!(stored.owner, crate::ID);
-    assert_eq!(stored.data.len(), MY_ACCOUNT_SIZE);
-    assert_eq!(stored.data[0], 1, "discriminator");
-    assert_eq!(stored.data[1], 1, "version");
-    assert_eq!(&stored.data[2..34], payer.as_ref(), "authority");
-    assert_eq!(&stored.data[34..42], &VALUE.to_le_bytes(), "value");
-    assert_eq!(stored.data[42], bump, "bump");
-    assert!(stored.data[43..].iter().all(|byte| *byte == 0), "reserved");
-}}
+        let result = q.send(initialize_instruction(payer, my_account));
+        result.succeeds();
+        let stored = result.account(&my_account).expect("initialized state account");
+        assert_eq!(stored.owner, crate::ID);
+        assert_eq!(stored.data.len(), MY_ACCOUNT_SIZE);
+        assert_eq!(stored.data[0], 1, "discriminator");
+        assert_eq!(stored.data[1], 1, "version");
+        assert_eq!(&stored.data[2..34], payer.as_ref(), "authority");
+        assert_eq!(&stored.data[34..42], &VALUE.to_le_bytes(), "value");
+        assert_eq!(stored.data[42], bump, "bump");
+        assert!(stored.data[43..].iter().all(|byte| *byte == 0), "reserved");
+    }
+}
 "#
-            )
-        }
+        .to_string(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use {
-        super::{generate_test_ts, generate_tests_rs, scaffold, QUASAR_SVM_TYPESCRIPT_VERSION},
+        super::{
+            generate_test_ts, generate_tests_rs, scaffold, QUASAR_SVM_TYPESCRIPT_VERSION,
+            QUASAR_TEST_TYPESCRIPT_VERSION,
+        },
         crate::{
             config::QuasarConfig,
             init::types::{
@@ -1097,7 +959,7 @@ mod tests {
                     .expect("read generated Cargo.toml");
                 assert!(
                     manifest.contains(match framework {
-                        RustFramework::QuasarSVM => "quasar-svm =",
+                        RustFramework::QuasarSVM => "quasar-test =",
                         RustFramework::Mollusk => "mollusk-svm =",
                     }),
                     "{}: missing selected Rust framework dependency",
@@ -1149,6 +1011,12 @@ mod tests {
                     "{}",
                     case.label,
                 );
+                assert_eq!(
+                    package_json["dependencies"]["@blueshift-gg/quasar-test"],
+                    QUASAR_TEST_TYPESCRIPT_VERSION,
+                    "{}",
+                    case.label,
+                );
                 assert!(
                     project_dir
                         .join("tests")
@@ -1196,17 +1064,28 @@ mod tests {
                 generate_tests_rs("demo", framework, Template::Minimal, Toolchain::Solana);
             assert!(!minimal.contains("my-account"));
             assert!(!minimal.contains("MY_ACCOUNT_SIZE"));
+
+            if matches!(framework, RustFramework::QuasarSVM) {
+                assert!(full.contains("quasar_test!"));
+                assert!(full.contains("q.send("));
+                assert!(!full.contains("fixtures::"));
+                assert!(minimal.contains("let payer = q.actor();"));
+            }
         }
 
         for sdk in [TypeScriptSdk::Kit, TypeScriptSdk::Web3js] {
             let full = generate_test_ts("demo", sdk, Template::Full, Toolchain::Solana);
-            assert!(full.contains("my-account"));
             assert!(full.contains("initializes state"));
-            assert!(full.contains("data[42]"));
+            assert!(full.contains("QuasarTest.load"));
+            assert!(full.contains("findMyAccountAddress"));
+            assert!(full.contains("q.empty(myAccount)"));
+            assert!(full.contains("q.send(client.createInitializeInstruction"));
+            assert!(full.contains("client.decodeMyAccount"));
 
             let minimal = generate_test_ts("demo", sdk, Template::Minimal, Toolchain::Solana);
-            assert!(!minimal.contains("my-account"));
+            assert!(!minimal.contains("findMyAccountAddress"));
             assert!(minimal.contains("it(\"initializes\""));
+            assert!(minimal.contains("result.succeeds().cuBelow(10_000)"));
         }
 
         let web3 = generate_test_ts(
@@ -1215,9 +1094,8 @@ mod tests {
             Template::Full,
             Toolchain::Solana,
         );
-        assert!(web3.contains("await Address.findProgramAddress"));
-        assert!(web3.contains("Buffer.from(payer.toBytes())"));
-        assert!(!web3.contains("findProgramAddressSync"));
-        assert!(!web3.contains("toBuffer()"));
+        assert!(web3.contains("state.authority.equals(payer)"));
+        assert!(!web3.contains("TransactionInstruction"));
+        assert!(!web3.contains("createKeyedSystemAccount"));
     }
 }

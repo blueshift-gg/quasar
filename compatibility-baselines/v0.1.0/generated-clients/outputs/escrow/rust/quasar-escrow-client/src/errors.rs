@@ -75,3 +75,9 @@ impl QuasarEscrowError {
         }
     }
 }
+
+impl From<QuasarEscrowError> for u32 {
+    fn from(error: QuasarEscrowError) -> Self {
+        error as u32
+    }
+}

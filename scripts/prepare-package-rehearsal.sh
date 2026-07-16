@@ -7,8 +7,8 @@ output_root="${2:?rehearsal output directory is required}"
 shift 2
 packages=("$@")
 
-if [[ "${#packages[@]}" -ne 10 ]]; then
-  echo "expected the ten v0.1.0 release packages, got ${#packages[@]}" >&2
+if [[ "${#packages[@]}" -ne 11 ]]; then
+  echo "expected the eleven v0.1.0 release packages, got ${#packages[@]}" >&2
   exit 1
 fi
 if [[ ! -d "$archive_dir" ]]; then
@@ -69,7 +69,7 @@ done
 
 archive_count="$(find "$output_root/archives" -type f -name '*.crate' | wc -l | tr -d ' ')"
 package_count="$(find "$output_root/packages" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
-if [[ "$archive_count" -ne 10 || "$package_count" -ne 10 ]]; then
-  echo "rehearsal must contain exactly ten archives and ten unpacked packages" >&2
+if [[ "$archive_count" -ne 11 || "$package_count" -ne 11 ]]; then
+  echo "rehearsal must contain exactly eleven archives and eleven unpacked packages" >&2
   exit 1
 fi

@@ -75,8 +75,13 @@ verify_starter() {
   cp Cargo.toml "$manifest_snapshot"
   grep -Fx 'quasar-lang = "=0.1.0"' Cargo.toml >/dev/null \
     || fail "$template starter does not use the packaged quasar-lang version"
+  grep -Fx 'quasar-test = "=0.1.0"' Cargo.toml >/dev/null \
+    || fail "$template starter does not use the packaged quasar-test version"
   if grep -Eq 'quasar-lang = .*\b(path|git|branch)\b' Cargo.toml; then
     fail "$template starter contains a source override"
+  fi
+  if grep -Eq 'quasar-test = .*\b(path|git|branch)\b' Cargo.toml; then
+    fail "$template starter contains a quasar-test source override"
   fi
 
   quasar lint --strict --no-diff
@@ -84,6 +89,50 @@ verify_starter() {
   quasar test --no-build
   cmp "$manifest_snapshot" Cargo.toml \
     || fail "$template starter manifest changed during lint/build/test"
+}
+
+verify_quasar_test_boundary() {
+  local project="$rehearsal_root/quasar-release-minimal"
+  local tree_log="/tmp/quasar-test-tree.log"
+  local ambiguous_log="/tmp/quasar-test-ambiguous.log"
+  local missing_log="/tmp/quasar-test-missing.log"
+
+  cd "$project"
+  cargo tree -p quasar-test --prefix none >"$tree_log"
+  grep -F "quasar-test v0.1.0 ($package_root/packages/quasar-test-0.1.0)" \
+    "$tree_log" >/dev/null \
+    || fail "starter did not resolve quasar-test from the packaged source"
+  grep -F 'quasar-svm v0.1.0' "$tree_log" >/dev/null \
+    || fail "packaged quasar-test does not depend on the public QuasarSVM engine"
+  if grep -Eq '^quasar-(lang|cli|derive|idl|spl|metadata) v' "$tree_log"; then
+    fail "quasar-test depends on an on-chain framework or CLI package"
+  fi
+
+  local program_artifact
+  program_artifact="$(find target/deploy -maxdepth 1 -type f -name '*.so' -print -quit)"
+  [[ -n "$program_artifact" ]] || fail "minimal starter has no compiled program"
+  cp "$program_artifact" target/deploy/decoy.so
+
+  # The CLI must hand the exact configured artifact to quasar-test. If it did
+  # not, direct discovery would reject this deliberately ambiguous directory.
+  quasar test --no-build
+
+  if env -u QUASAR_PROGRAM_PATH cargo test tests:: >"$ambiguous_log" 2>&1; then
+    fail "direct quasar-test discovery accepted multiple program artifacts"
+  fi
+  grep -F 'found multiple program artifacts' "$ambiguous_log" >/dev/null \
+    || fail "ambiguous direct discovery did not return its actionable diagnostic"
+  rm target/deploy/decoy.so
+
+  # Direct cargo test remains useful when exactly one project artifact exists.
+  env -u QUASAR_PROGRAM_PATH cargo test tests::
+
+  if QUASAR_PROGRAM_PATH="$project/target/deploy/missing.so" \
+    cargo test tests:: >"$missing_log" 2>&1; then
+    fail "quasar-test accepted a missing configured program artifact"
+  fi
+  grep -F 'QUASAR_PROGRAM_PATH points to missing program artifact' "$missing_log" >/dev/null \
+    || fail "missing configured artifact did not return its actionable diagnostic"
 }
 
 verify_quickstart() {
@@ -138,10 +187,10 @@ verify_upstream_starter() {
 }
 
 [[ ! -e /workspace/quasar ]] || fail "source checkout is present in the runtime image"
-[[ "$(find "$package_root/archives" -type f -name '*.crate' | wc -l | tr -d ' ')" -eq 10 ]] \
-  || fail "expected ten package archives"
-[[ "$(find "$package_root/packages" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" -eq 10 ]] \
-  || fail "expected ten unpacked packages"
+[[ "$(find "$package_root/archives" -type f -name '*.crate' | wc -l | tr -d ' ')" -eq 11 ]] \
+  || fail "expected eleven package archives"
+[[ "$(find "$package_root/packages" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" -eq 11 ]] \
+  || fail "expected eleven unpacked packages"
 if find "$package_root" -perm -u=w -print -quit | grep -q .; then
   fail "packaged sources are writable"
 fi
@@ -161,6 +210,7 @@ grep -F 'sbpf-linker 0.1.9' <<<"$linker_version" >/dev/null \
 
 rm -rf "$rehearsal_root"/*
 verify_starter minimal
+verify_quasar_test_boundary
 verify_quickstart
 verify_starter full
 verify_upstream_starter

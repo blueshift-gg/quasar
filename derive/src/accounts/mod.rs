@@ -151,7 +151,7 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
         ix_arg_extraction: &ix_arg_extraction_call,
         has_instruction_args: typed_plan.has_instruction_args,
     });
-    let epilogue_method = emit::parse::emit_epilogue(&typed_plan);
+    let epilogue_method = emit::parse::emit_epilogue(&typed_plan, &ix_arg_extraction_call);
     let has_epilogue_expr = emit::parse::emit_has_epilogue_typed(&typed_plan);
 
     let client_macro =
@@ -400,11 +400,35 @@ fn emit_idl_accounts_meta(
             let writable = fp.writable;
             let signer = emit_account_signer(fp);
 
-            let resolver_tokens = fp
-                .idl_resolver
-                .as_ref()
-                .map(emit_idl_resolver)
-                .unwrap_or_else(|| quote! { #krate::idl_build::__reexport::IdlResolver::Input {} });
+            let resolver_tokens = if let Some(resolver) = fp.idl_resolver.as_ref() {
+                emit_idl_resolver(resolver)
+            } else if fp.behaviors.is_empty() {
+                quote! { #krate::idl_build::__reexport::IdlResolver::Input {} }
+            } else {
+                let field_ty = &fp.effective_ty;
+                let candidates = fp.behaviors.iter().map(|behavior| {
+                    let path = &behavior.path;
+                    let args = behavior.idl_account_args.iter().map(|arg| {
+                        let key = &arg.key;
+                        let field = &arg.field;
+                        quote! { (#key, #field) }
+                    });
+                    quote! {
+                        #krate::idl_build::behavior_resolver(
+                            <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>>::IDL_RESOLVER,
+                            &[#(#args),*],
+                        )
+                    }
+                });
+                quote! {
+                    #krate::idl_build::one_behavior_resolver(
+                        #field_name,
+                        [#(#candidates),*],
+                    ).unwrap_or_else(|| {
+                        #krate::idl_build::__reexport::IdlResolver::Input {}
+                    })
+                }
+            };
             let node_docs = crate::helpers::docs_tokens_from_lines(&fp.docs);
 
             quote! {

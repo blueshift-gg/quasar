@@ -2,7 +2,7 @@ use {
     quasar_cli::idl,
     quasar_idl::{
         lint::{self, LintConfig, RuleCode},
-        types::IdlResolver,
+        types::{AccountFlag, IdlResolver},
     },
     serde_json::Value,
     std::{
@@ -634,6 +634,12 @@ fn generated_clients_compile_from_fresh_project() -> Result<(), Box<dyn Error>> 
         .iter()
         .find(|instruction| instruction.name == "create")
         .ok_or("multisig create instruction should exist")?;
+    let remaining = create
+        .remaining_accounts
+        .as_ref()
+        .ok_or("multisig create should publish its bounded signer tail")?;
+    assert_eq!(remaining.max, Some(10));
+    assert_eq!(remaining.item.signer, AccountFlag::Fixed(true));
     for (name, expected_address) in [
         ("rent", "SysvarRent111111111111111111111111111111111"),
         ("systemProgram", "11111111111111111111111111111111"),

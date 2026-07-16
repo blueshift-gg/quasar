@@ -526,6 +526,22 @@ pub struct Remaining<T, const N: usize> {
 }
 
 impl<T, const N: usize> Remaining<T, N> {
+    /// Construct an empty typed tail without inspecting runtime accounts.
+    ///
+    /// Used by the dynamic `CtxWithRemaining<T>` compatibility path, whose
+    /// accounts remain available through `remaining_accounts()` instead.
+    #[inline(always)]
+    pub(crate) fn empty() -> Self {
+        Self {
+            // SAFETY: An uninitialized `[MaybeUninit<T>; N]` is valid, and
+            // `len = 0` ensures no element is read or dropped.
+            items: unsafe {
+                core::mem::MaybeUninit::<[core::mem::MaybeUninit<T>; N]>::uninit().assume_init()
+            },
+            len: 0,
+        }
+    }
+
     /// Parse up to `N` typed remaining items.
     ///
     /// # Cost

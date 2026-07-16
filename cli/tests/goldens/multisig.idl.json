@@ -95,10 +95,10 @@
         "kind": "append",
         "name": "remainingAccounts",
         "min": 0,
-        "max": null,
+        "max": 10,
         "item": {
           "clientType": "accountMeta",
-          "signer": "input",
+          "signer": true,
           "writable": "input"
         },
         "policy": {
@@ -363,10 +363,10 @@
         "kind": "append",
         "name": "remainingAccounts",
         "min": 0,
-        "max": null,
+        "max": 10,
         "item": {
           "clientType": "accountMeta",
-          "signer": "input",
+          "signer": true,
           "writable": "input"
         },
         "policy": {
@@ -808,7 +808,7 @@
     }
   },
   "hashes": {
-    "idl": "a167cdfca9b689525fd9ad6e11abcc03dad1a371e4a91ca35b7d932013e024cb",
-    "abi": "255332d70136c0c38d5f14ce7ba6795dbd251214096f896e9f18d876b0297c98"
+    "idl": "290b2ffee70c390e16ced65834ea10e918b7f5ee044fea23c5410ec58f4f2dea",
+    "abi": "4771408386c22aa8f00a7c97d092b2891fa4919be6e1c71439949a873aaf2383"
   }
 }

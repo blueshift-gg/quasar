@@ -53,7 +53,30 @@ pub(super) fn emit_idl(model: &ProgramModel, mod_name: &Ident) -> TokenStream2 {
                 crate::idl::project_idl_layout(&layout_fields)
             };
 
-            let remaining_tokens = if spec.has_remaining {
+            let remaining_tokens = if let (Some(item), Some(max)) =
+                (&spec.remaining_item, &spec.remaining_max)
+            {
+                let signer = crate::helpers::last_type_segment_name(item) == "Signer";
+                quote! {
+                    Some(#krate::idl_build::__reexport::IdlRemainingAccounts {
+                        kind: #krate::idl_build::__reexport::RemainingAccountsKind::Append,
+                        name: #krate::idl_build::s("remainingAccounts"),
+                        min: 0,
+                        max: Some((#max) as usize),
+                        item: #krate::idl_build::__reexport::RemainingAccountItem {
+                            client_type: #krate::idl_build::s("accountMeta"),
+                            signer: #krate::idl_build::__reexport::AccountFlag::Fixed(#signer),
+                            writable: #krate::idl_build::__reexport::AccountFlag::Dynamic(
+                                #krate::idl_build::__reexport::AccountFlagDynamic::Input,
+                            ),
+                        },
+                        policy: #krate::idl_build::__reexport::RemainingAccountPolicy {
+                            position: #krate::idl_build::__reexport::RemainingPosition::AfterDeclaredAccounts,
+                            order: #krate::idl_build::__reexport::RemainingOrder::PreserveInput,
+                        },
+                    })
+                }
+            } else if spec.has_remaining {
                 quote! {
                     Some(#krate::idl_build::__reexport::IdlRemainingAccounts {
                         kind: #krate::idl_build::__reexport::RemainingAccountsKind::Append,

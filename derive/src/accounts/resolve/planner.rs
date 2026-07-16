@@ -194,6 +194,19 @@ fn plan_field(
         .map(|g| BehaviorGroupRef {
             path: g.path.clone(),
             name: g.name(),
+            idl_account_args: g
+                .args
+                .iter()
+                .filter_map(|arg| match &arg.value {
+                    BehaviorArgValue::FieldRef(field) => Some(BehaviorIdlAccountArg {
+                        key: arg.key.to_string(),
+                        field: crate::helpers::snake_to_camel(&field.to_string()),
+                    }),
+                    BehaviorArgValue::Some(_)
+                    | BehaviorArgValue::None
+                    | BehaviorArgValue::Expr(_) => None,
+                })
+                .collect(),
         })
         .collect();
     let docs = crate::helpers::extract_doc_lines(&sem.core.field.attrs);

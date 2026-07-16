@@ -139,6 +139,34 @@ export interface ExecuteTransferInstructionInput {
   remainingAccounts?: Array<{ pubkey: Address; isSigner: boolean; isWritable: boolean }>;
 }
 
+export interface CreateInstructionAccountOverrides {
+  creator?: Address;
+  config?: Address;
+  rent?: Address;
+  systemProgram?: Address;
+}
+
+export interface DepositInstructionAccountOverrides {
+  depositor?: Address;
+  config?: Address;
+  vault?: Address;
+  systemProgram?: Address;
+}
+
+export interface SetLabelInstructionAccountOverrides {
+  creator?: Address;
+  config?: Address;
+  systemProgram?: Address;
+}
+
+export interface ExecuteTransferInstructionAccountOverrides {
+  config?: Address;
+  creator?: Address;
+  vault?: Address;
+  recipient?: Address;
+  systemProgram?: Address;
+}
+
 /* Codecs */
 export const MultisigConfigCodec = {
   encode(value: MultisigConfig): Uint8Array {
@@ -242,10 +270,14 @@ export class QuasarMultisigClient {
   }
 
   async createCreateInstruction(input: CreateInstructionInput): Promise<TransactionInstruction> {
+    return this.createCreateInstructionUnchecked(input, {});
+  }
+
+  async createCreateInstructionUnchecked(input: CreateInstructionInput, accountOverrides: CreateInstructionAccountOverrides): Promise<TransactionInstruction> {
     const accountsMap: Record<string, Address> = {};
     accountsMap["rent"] = new Address("SysvarRent111111111111111111111111111111111");
     accountsMap["systemProgram"] = new Address("11111111111111111111111111111111");
-    accountsMap["config"] = await findConfigAddress(input.creator);
+    accountsMap["config"] = await findConfigAddress((accountOverrides.creator ?? input.creator));
     const argsCodec = getStructCodec([
       ["threshold", getU8Codec()],
     ]);
@@ -253,10 +285,10 @@ export class QuasarMultisigClient {
     return new TransactionInstruction({
       programId: QuasarMultisigClient.programId,
       keys: [
-        { pubkey: input.creator, isSigner: true, isWritable: true },
-        { pubkey: accountsMap["config"], isSigner: false, isWritable: true },
-        { pubkey: accountsMap["rent"], isSigner: false, isWritable: false },
-        { pubkey: accountsMap["systemProgram"], isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.creator ?? input.creator), isSigner: true, isWritable: true },
+        { pubkey: (accountOverrides.config ?? accountsMap["config"]), isSigner: false, isWritable: true },
+        { pubkey: (accountOverrides.rent ?? accountsMap["rent"]), isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.systemProgram ?? accountsMap["systemProgram"]), isSigner: false, isWritable: false },
         ...(input.remainingAccounts ?? []),
       ],
       data,
@@ -264,9 +296,13 @@ export class QuasarMultisigClient {
   }
 
   async createDepositInstruction(input: DepositInstructionInput): Promise<TransactionInstruction> {
+    return this.createDepositInstructionUnchecked(input, {});
+  }
+
+  async createDepositInstructionUnchecked(input: DepositInstructionInput, accountOverrides: DepositInstructionAccountOverrides): Promise<TransactionInstruction> {
     const accountsMap: Record<string, Address> = {};
     accountsMap["systemProgram"] = new Address("11111111111111111111111111111111");
-    accountsMap["vault"] = await findVaultAddress(input.config);
+    accountsMap["vault"] = await findVaultAddress((accountOverrides.config ?? input.config));
     const argsCodec = getStructCodec([
       ["amount", getU64Codec()],
     ]);
@@ -274,19 +310,23 @@ export class QuasarMultisigClient {
     return new TransactionInstruction({
       programId: QuasarMultisigClient.programId,
       keys: [
-        { pubkey: input.depositor, isSigner: true, isWritable: true },
-        { pubkey: input.config, isSigner: false, isWritable: false },
-        { pubkey: accountsMap["vault"], isSigner: false, isWritable: true },
-        { pubkey: accountsMap["systemProgram"], isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.depositor ?? input.depositor), isSigner: true, isWritable: true },
+        { pubkey: (accountOverrides.config ?? input.config), isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.vault ?? accountsMap["vault"]), isSigner: false, isWritable: true },
+        { pubkey: (accountOverrides.systemProgram ?? accountsMap["systemProgram"]), isSigner: false, isWritable: false },
       ],
       data,
     });
   }
 
   async createSetLabelInstruction(input: SetLabelInstructionInput): Promise<TransactionInstruction> {
+    return this.createSetLabelInstructionUnchecked(input, {});
+  }
+
+  async createSetLabelInstructionUnchecked(input: SetLabelInstructionInput, accountOverrides: SetLabelInstructionAccountOverrides): Promise<TransactionInstruction> {
     const accountsMap: Record<string, Address> = {};
     accountsMap["systemProgram"] = new Address("11111111111111111111111111111111");
-    accountsMap["config"] = await findConfigAddress(input.creator);
+    accountsMap["config"] = await findConfigAddress((accountOverrides.creator ?? input.creator));
     const disc = new Uint8Array([2]);
     const fixedBytes = new Uint8Array(0);
     const labelBytes = new TextEncoder().encode(input.label);
@@ -295,19 +335,23 @@ export class QuasarMultisigClient {
     return new TransactionInstruction({
       programId: QuasarMultisigClient.programId,
       keys: [
-        { pubkey: input.creator, isSigner: true, isWritable: true },
-        { pubkey: accountsMap["config"], isSigner: false, isWritable: true },
-        { pubkey: accountsMap["systemProgram"], isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.creator ?? input.creator), isSigner: true, isWritable: true },
+        { pubkey: (accountOverrides.config ?? accountsMap["config"]), isSigner: false, isWritable: true },
+        { pubkey: (accountOverrides.systemProgram ?? accountsMap["systemProgram"]), isSigner: false, isWritable: false },
       ],
       data,
     });
   }
 
   async createExecuteTransferInstruction(input: ExecuteTransferInstructionInput): Promise<TransactionInstruction> {
+    return this.createExecuteTransferInstructionUnchecked(input, {});
+  }
+
+  async createExecuteTransferInstructionUnchecked(input: ExecuteTransferInstructionInput, accountOverrides: ExecuteTransferInstructionAccountOverrides): Promise<TransactionInstruction> {
     const accountsMap: Record<string, Address> = {};
     accountsMap["systemProgram"] = new Address("11111111111111111111111111111111");
-    accountsMap["config"] = await findConfigAddress(input.creator);
-    accountsMap["vault"] = await findVaultAddress(accountsMap["config"]);
+    accountsMap["config"] = await findConfigAddress((accountOverrides.creator ?? input.creator));
+    accountsMap["vault"] = await findVaultAddress((accountOverrides.config ?? accountsMap["config"]));
     const argsCodec = getStructCodec([
       ["amount", getU64Codec()],
     ]);
@@ -315,11 +359,11 @@ export class QuasarMultisigClient {
     return new TransactionInstruction({
       programId: QuasarMultisigClient.programId,
       keys: [
-        { pubkey: accountsMap["config"], isSigner: false, isWritable: false },
-        { pubkey: input.creator, isSigner: false, isWritable: false },
-        { pubkey: accountsMap["vault"], isSigner: false, isWritable: true },
-        { pubkey: input.recipient, isSigner: false, isWritable: true },
-        { pubkey: accountsMap["systemProgram"], isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.config ?? accountsMap["config"]), isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.creator ?? input.creator), isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.vault ?? accountsMap["vault"]), isSigner: false, isWritable: true },
+        { pubkey: (accountOverrides.recipient ?? input.recipient), isSigner: false, isWritable: true },
+        { pubkey: (accountOverrides.systemProgram ?? accountsMap["systemProgram"]), isSigner: false, isWritable: false },
         ...(input.remainingAccounts ?? []),
       ],
       data,
@@ -349,6 +393,29 @@ export async function findVaultAddress(config: Address): Promise<Address> {
 }
 
 /* Errors */
+export const PROGRAM_ERROR_CODES = {
+  AccountAlreadyInitialized: 3001,
+  AccountNotInitialized: 3000,
+  AccountNotMutable: 3010,
+  AccountNotRentExempt: 3008,
+  AccountNotSigner: 3011,
+  AccountOwnedByWrongProgram: 3009,
+  AddressMismatch: 3012,
+  CompactWriterFieldNotSet: 3014,
+  ConstraintViolation: 3004,
+  DynamicFieldTooLong: 3013,
+  HasOneMismatch: 3005,
+  InsufficientSpace: 3007,
+  InvalidDiscriminator: 3006,
+  InvalidPda: 3002,
+  InvalidReturnData: 3019,
+  InvalidSeeds: 3003,
+  MissingReturnData: 3017,
+  RemainingAccountDuplicate: 3016,
+  RemainingAccountsOverflow: 3015,
+  ReturnDataFromWrongProgram: 3018,
+} as const;
+
 export const PROGRAM_ERRORS: Record<number, { name: string; msg?: string }> = {
   3001: { name: "AccountAlreadyInitialized", msg: "Account discriminator is already set (double-init attempt)." },
   3000: { name: "AccountNotInitialized", msg: "Account data is all zeros or has no discriminator." },

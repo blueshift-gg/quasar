@@ -224,7 +224,9 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
             if !acc.optional
                 && matches!(
                     acc.resolver,
-                    IdlResolver::Const { .. } | IdlResolver::Pda { .. }
+                    IdlResolver::Const { .. }
+                        | IdlResolver::Pda { .. }
+                        | IdlResolver::AssociatedToken { .. }
                 )
             {
                 continue;
@@ -316,6 +318,28 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
                      solana.FindProgramAddress([][]byte{{{}}}, ProgramID); if err != nil {{ \
                      panic(err) }}; return addr }}()",
                     seed_exprs.join(", ")
+                )
+            } else if let IdlResolver::AssociatedToken {
+                ref mint,
+                ref owner,
+                ref token_program,
+            } = acc.resolver
+            {
+                let token_program = token_program.as_ref().map_or_else(
+                    || {
+                        "solana.MustPublicKeyFromBase58(\"\
+                         TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA\")"
+                            .to_string()
+                    },
+                    |path| format!("accountsMap[\"{path}\"]"),
+                );
+                format!(
+                    "func() solana.PublicKey {{ owner := accountsMap[\"{owner}\"]; token := \
+                     {token_program}; mint := accountsMap[\"{mint}\"]; addr, _, err := \
+                     solana.FindProgramAddress([][]byte{{owner[:], token[:], mint[:]}}, \
+                     solana.MustPublicKeyFromBase58(\"\
+                     ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL\")); if err != nil {{ \
+                     panic(err) }}; return addr }}()"
                 )
             } else {
                 format!("input.{}", snake_to_pascal(&acc.name))

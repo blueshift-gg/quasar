@@ -11,7 +11,7 @@ use {
     std::{fs, path::PathBuf},
 };
 
-const EXPECTED_ABI_HASH: &str = "255332d70136c0c38d5f14ce7ba6795dbd251214096f896e9f18d876b0297c98";
+const EXPECTED_ABI_HASH: &str = "4771408386c22aa8f00a7c97d092b2891fa4919be6e1c71439949a873aaf2383";
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

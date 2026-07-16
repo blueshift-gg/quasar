@@ -29,6 +29,50 @@ pub mod __reexport {
 
 use quasar_idl_schema::*;
 
+/// Resolve one protocol behavior's address metadata against the account-field
+/// arguments used by a concrete `#[account(...)]` declaration.
+pub fn behavior_resolver(
+    resolver: Option<crate::account_behavior::BehaviorIdlResolver>,
+    account_args: &[(&str, &str)],
+) -> Option<IdlResolver> {
+    let account = |argument: &str| {
+        account_args
+            .iter()
+            .find_map(|(key, field)| (*key == argument).then(|| String::from(*field)))
+    };
+
+    match resolver? {
+        crate::account_behavior::BehaviorIdlResolver::AssociatedToken {
+            mint,
+            owner,
+            token_program,
+        } => Some(IdlResolver::AssociatedToken {
+            mint: account(mint)?,
+            owner: account(owner)?,
+            token_program: token_program.and_then(account),
+        }),
+    }
+}
+
+/// Select the only behavior-defined address recipe for an account field.
+///
+/// Multiple recipes are ambiguous and indicate conflicting behavior metadata,
+/// so IDL generation fails instead of silently picking one.
+pub fn one_behavior_resolver<const N: usize>(
+    field: &str,
+    resolvers: [Option<IdlResolver>; N],
+) -> Option<IdlResolver> {
+    let mut selected = None;
+    for resolver in resolvers.into_iter().flatten() {
+        assert!(
+            selected.is_none(),
+            "idl-build: account field `{field}` has multiple behavior-defined address resolvers"
+        );
+        selected = Some(resolver);
+    }
+    selected
+}
+
 /// Fragment submitted by `#[account]`; uses a fn pointer to avoid static
 /// alloc.
 pub struct AccountFragment {

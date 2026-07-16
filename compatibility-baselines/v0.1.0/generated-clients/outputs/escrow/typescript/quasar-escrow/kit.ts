@@ -147,6 +147,45 @@ export interface RefundInstructionInput {
   vaultTaA: Address;
 }
 
+export interface MakeInstructionAccountOverrides {
+  maker?: Address;
+  escrow?: Address;
+  mintA?: Address;
+  mintB?: Address;
+  makerTaA?: Address;
+  makerTaB?: Address;
+  vaultTaA?: Address;
+  rent?: Address;
+  tokenProgram?: Address;
+  systemProgram?: Address;
+}
+
+export interface TakeInstructionAccountOverrides {
+  taker?: Address;
+  escrow?: Address;
+  maker?: Address;
+  mintA?: Address;
+  mintB?: Address;
+  takerTaA?: Address;
+  takerTaB?: Address;
+  makerTaB?: Address;
+  vaultTaA?: Address;
+  rent?: Address;
+  tokenProgram?: Address;
+  systemProgram?: Address;
+}
+
+export interface RefundInstructionAccountOverrides {
+  maker?: Address;
+  escrow?: Address;
+  mintA?: Address;
+  makerTaA?: Address;
+  vaultTaA?: Address;
+  rent?: Address;
+  tokenProgram?: Address;
+  systemProgram?: Address;
+}
+
 /* Codecs */
 const EscrowStructCodec = getStructCodec([
   ["maker", getAddressCodec()],
@@ -257,11 +296,15 @@ export class QuasarEscrowClient {
   }
 
   async createMakeInstruction(input: MakeInstructionInput): Promise<Instruction> {
+    return this.createMakeInstructionUnchecked(input, {});
+  }
+
+  async createMakeInstructionUnchecked(input: MakeInstructionInput, accountOverrides: MakeInstructionAccountOverrides): Promise<Instruction> {
     const accountsMap: Record<string, Address> = {};
     accountsMap["rent"] = address("SysvarRent111111111111111111111111111111111");
     accountsMap["tokenProgram"] = address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
     accountsMap["systemProgram"] = address("11111111111111111111111111111111");
-    accountsMap["escrow"] = await findEscrowAddress(input.maker);
+    accountsMap["escrow"] = await findEscrowAddress((accountOverrides.maker ?? input.maker));
     const argsCodec = getStructCodec([
       ["deposit", getU64Codec()],
       ["receive", getU64Codec()],
@@ -270,66 +313,74 @@ export class QuasarEscrowClient {
     return {
       programAddress: PROGRAM_ADDRESS,
       accounts: [
-        { address: input.maker, role: AccountRole.WRITABLE_SIGNER },
-        { address: accountsMap["escrow"], role: AccountRole.WRITABLE },
-        { address: input.mintA, role: AccountRole.READONLY },
-        { address: input.mintB, role: AccountRole.READONLY },
-        { address: input.makerTaA, role: AccountRole.WRITABLE },
-        { address: input.makerTaB, role: AccountRole.WRITABLE_SIGNER },
-        { address: input.vaultTaA, role: AccountRole.WRITABLE_SIGNER },
-        { address: accountsMap["rent"], role: AccountRole.READONLY },
-        { address: accountsMap["tokenProgram"], role: AccountRole.READONLY },
-        { address: accountsMap["systemProgram"], role: AccountRole.READONLY },
+        { address: (accountOverrides.maker ?? input.maker), role: AccountRole.WRITABLE_SIGNER },
+        { address: (accountOverrides.escrow ?? accountsMap["escrow"]), role: AccountRole.WRITABLE },
+        { address: (accountOverrides.mintA ?? input.mintA), role: AccountRole.READONLY },
+        { address: (accountOverrides.mintB ?? input.mintB), role: AccountRole.READONLY },
+        { address: (accountOverrides.makerTaA ?? input.makerTaA), role: AccountRole.WRITABLE },
+        { address: (accountOverrides.makerTaB ?? input.makerTaB), role: AccountRole.WRITABLE_SIGNER },
+        { address: (accountOverrides.vaultTaA ?? input.vaultTaA), role: AccountRole.WRITABLE_SIGNER },
+        { address: (accountOverrides.rent ?? accountsMap["rent"]), role: AccountRole.READONLY },
+        { address: (accountOverrides.tokenProgram ?? accountsMap["tokenProgram"]), role: AccountRole.READONLY },
+        { address: (accountOverrides.systemProgram ?? accountsMap["systemProgram"]), role: AccountRole.READONLY },
       ],
       data,
     };
   }
 
   async createTakeInstruction(input: TakeInstructionInput): Promise<Instruction> {
+    return this.createTakeInstructionUnchecked(input, {});
+  }
+
+  async createTakeInstructionUnchecked(input: TakeInstructionInput, accountOverrides: TakeInstructionAccountOverrides): Promise<Instruction> {
     const accountsMap: Record<string, Address> = {};
     accountsMap["rent"] = address("SysvarRent111111111111111111111111111111111");
     accountsMap["tokenProgram"] = address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
     accountsMap["systemProgram"] = address("11111111111111111111111111111111");
-    accountsMap["escrow"] = await findEscrowAddress(input.maker);
+    accountsMap["escrow"] = await findEscrowAddress((accountOverrides.maker ?? input.maker));
     const data = Uint8Array.from([1]);
     return {
       programAddress: PROGRAM_ADDRESS,
       accounts: [
-        { address: input.taker, role: AccountRole.WRITABLE_SIGNER },
-        { address: accountsMap["escrow"], role: AccountRole.WRITABLE },
-        { address: input.maker, role: AccountRole.WRITABLE },
-        { address: input.mintA, role: AccountRole.READONLY },
-        { address: input.mintB, role: AccountRole.READONLY },
-        { address: input.takerTaA, role: AccountRole.WRITABLE_SIGNER },
-        { address: input.takerTaB, role: AccountRole.WRITABLE },
-        { address: input.makerTaB, role: AccountRole.WRITABLE_SIGNER },
-        { address: input.vaultTaA, role: AccountRole.WRITABLE },
-        { address: accountsMap["rent"], role: AccountRole.READONLY },
-        { address: accountsMap["tokenProgram"], role: AccountRole.READONLY },
-        { address: accountsMap["systemProgram"], role: AccountRole.READONLY },
+        { address: (accountOverrides.taker ?? input.taker), role: AccountRole.WRITABLE_SIGNER },
+        { address: (accountOverrides.escrow ?? accountsMap["escrow"]), role: AccountRole.WRITABLE },
+        { address: (accountOverrides.maker ?? input.maker), role: AccountRole.WRITABLE },
+        { address: (accountOverrides.mintA ?? input.mintA), role: AccountRole.READONLY },
+        { address: (accountOverrides.mintB ?? input.mintB), role: AccountRole.READONLY },
+        { address: (accountOverrides.takerTaA ?? input.takerTaA), role: AccountRole.WRITABLE_SIGNER },
+        { address: (accountOverrides.takerTaB ?? input.takerTaB), role: AccountRole.WRITABLE },
+        { address: (accountOverrides.makerTaB ?? input.makerTaB), role: AccountRole.WRITABLE_SIGNER },
+        { address: (accountOverrides.vaultTaA ?? input.vaultTaA), role: AccountRole.WRITABLE },
+        { address: (accountOverrides.rent ?? accountsMap["rent"]), role: AccountRole.READONLY },
+        { address: (accountOverrides.tokenProgram ?? accountsMap["tokenProgram"]), role: AccountRole.READONLY },
+        { address: (accountOverrides.systemProgram ?? accountsMap["systemProgram"]), role: AccountRole.READONLY },
       ],
       data,
     };
   }
 
   async createRefundInstruction(input: RefundInstructionInput): Promise<Instruction> {
+    return this.createRefundInstructionUnchecked(input, {});
+  }
+
+  async createRefundInstructionUnchecked(input: RefundInstructionInput, accountOverrides: RefundInstructionAccountOverrides): Promise<Instruction> {
     const accountsMap: Record<string, Address> = {};
     accountsMap["rent"] = address("SysvarRent111111111111111111111111111111111");
     accountsMap["tokenProgram"] = address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
     accountsMap["systemProgram"] = address("11111111111111111111111111111111");
-    accountsMap["escrow"] = await findEscrowAddress(input.maker);
+    accountsMap["escrow"] = await findEscrowAddress((accountOverrides.maker ?? input.maker));
     const data = Uint8Array.from([2]);
     return {
       programAddress: PROGRAM_ADDRESS,
       accounts: [
-        { address: input.maker, role: AccountRole.WRITABLE_SIGNER },
-        { address: accountsMap["escrow"], role: AccountRole.WRITABLE },
-        { address: input.mintA, role: AccountRole.READONLY },
-        { address: input.makerTaA, role: AccountRole.WRITABLE_SIGNER },
-        { address: input.vaultTaA, role: AccountRole.WRITABLE },
-        { address: accountsMap["rent"], role: AccountRole.READONLY },
-        { address: accountsMap["tokenProgram"], role: AccountRole.READONLY },
-        { address: accountsMap["systemProgram"], role: AccountRole.READONLY },
+        { address: (accountOverrides.maker ?? input.maker), role: AccountRole.WRITABLE_SIGNER },
+        { address: (accountOverrides.escrow ?? accountsMap["escrow"]), role: AccountRole.WRITABLE },
+        { address: (accountOverrides.mintA ?? input.mintA), role: AccountRole.READONLY },
+        { address: (accountOverrides.makerTaA ?? input.makerTaA), role: AccountRole.WRITABLE_SIGNER },
+        { address: (accountOverrides.vaultTaA ?? input.vaultTaA), role: AccountRole.WRITABLE },
+        { address: (accountOverrides.rent ?? accountsMap["rent"]), role: AccountRole.READONLY },
+        { address: (accountOverrides.tokenProgram ?? accountsMap["tokenProgram"]), role: AccountRole.READONLY },
+        { address: (accountOverrides.systemProgram ?? accountsMap["systemProgram"]), role: AccountRole.READONLY },
       ],
       data,
     };
@@ -371,6 +422,29 @@ export async function findEscrowAddress(maker: Address): Promise<Address> {
 }
 
 /* Errors */
+export const PROGRAM_ERROR_CODES = {
+  AccountAlreadyInitialized: 3001,
+  AccountNotInitialized: 3000,
+  AccountNotMutable: 3010,
+  AccountNotRentExempt: 3008,
+  AccountNotSigner: 3011,
+  AccountOwnedByWrongProgram: 3009,
+  AddressMismatch: 3012,
+  CompactWriterFieldNotSet: 3014,
+  ConstraintViolation: 3004,
+  DynamicFieldTooLong: 3013,
+  HasOneMismatch: 3005,
+  InsufficientSpace: 3007,
+  InvalidDiscriminator: 3006,
+  InvalidPda: 3002,
+  InvalidReturnData: 3019,
+  InvalidSeeds: 3003,
+  MissingReturnData: 3017,
+  RemainingAccountDuplicate: 3016,
+  RemainingAccountsOverflow: 3015,
+  ReturnDataFromWrongProgram: 3018,
+} as const;
+
 export const PROGRAM_ERRORS: Record<number, { name: string; msg?: string }> = {
   3001: { name: "AccountAlreadyInitialized", msg: "Account discriminator is already set (double-init attempt)." },
   3000: { name: "AccountNotInitialized", msg: "Account data is all zeros or has no discriminator." },

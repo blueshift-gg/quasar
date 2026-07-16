@@ -19,14 +19,14 @@ pub(crate) fn error_code(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 pub(crate) fn error_code_inner(_attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
     let krate = crate::krate::lang_path();
-    let input = match syn::parse2::<DeriveInput>(item) {
+    let mut input = match syn::parse2::<DeriveInput>(item) {
         Ok(input) => input,
         Err(e) => return e.to_compile_error(),
     };
-    let name = &input.ident;
+    let name = input.ident.clone();
 
-    let variants = match &input.data {
-        Data::Enum(data) => &data.variants,
+    let variants = match &mut input.data {
+        Data::Enum(data) => &mut data.variants,
         _ => {
             return syn::Error::new_spanned(&input, "#[error_code] can only be used on enums")
                 .to_compile_error();
@@ -39,7 +39,7 @@ pub(crate) fn error_code_inner(_attr: TokenStream2, item: TokenStream2) -> Token
     // Maps an assigned error code back to the variant that claimed it, so a
     // second variant landing on the same code can name both in the diagnostic.
     let mut assigned: HashMap<u32, String> = HashMap::new();
-    for v in variants.iter() {
+    for v in variants.iter_mut() {
         let ident = &v.ident;
         if let Some((_, expr)) = &v.discriminant {
             if let syn::Expr::Lit(syn::ExprLit {
@@ -77,6 +77,10 @@ pub(crate) fn error_code_inner(_attr: TokenStream2, item: TokenStream2) -> Token
             .to_compile_error();
         }
         assigned.insert(value, ident.to_string());
+        // `#[repr(u32)]` alone does not change Rust's implicit 0-based enum
+        // discriminants. Materialize every resolved value so the runtime
+        // `From` conversion, `TryFrom`, and generated IDL all use one code.
+        v.discriminant = Some((Default::default(), syn::parse_quote!(#value)));
         next_discriminant = match next_discriminant.checked_add(1) {
             Some(n) => n,
             None => {

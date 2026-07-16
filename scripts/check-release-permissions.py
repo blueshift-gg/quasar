@@ -173,22 +173,27 @@ def check(root: Path) -> list[str]:
                 f"unauthorized write permissions: {writes}"
             )
 
-    publish = blocks.get("publish")
-    if publish is None:
-        errors.append(".github/workflows/release.yml: missing publish job")
-    else:
-        environment = job_environment(lines, publish)
-        if environment is None or environment[0] != "crates-io":
-            line = environment[1] + 1 if environment else publish.start + 1
+    publisher_environments = {
+        "publish": "crates-io",
+        "publish-typescript": "npmjs",
+    }
+    for job, expected_environment in publisher_environments.items():
+        publisher = blocks.get(job)
+        if publisher is None:
+            errors.append(f".github/workflows/release.yml: missing {job} job")
+            continue
+        environment = job_environment(lines, publisher)
+        if environment is None or environment[0] != expected_environment:
+            line = environment[1] + 1 if environment else publisher.start + 1
             value = environment[0] if environment else "<missing>"
             errors.append(
-                f".github/workflows/release.yml:{line}: publish job must use the "
-                f"crates-io environment; found {value}"
+                f".github/workflows/release.yml:{line}: {job} job must use the "
+                f"{expected_environment} environment; found {value}"
             )
 
     for block in blocks.values():
         environment = job_environment(lines, block)
-        if environment and block.name != "publish":
+        if environment and block.name not in publisher_environments:
             errors.append(
                 f".github/workflows/release.yml:{environment[1] + 1}: "
                 f"publisher environment is attached to non-publish job {block.name}"
@@ -207,6 +212,16 @@ def check(root: Path) -> list[str]:
                 f"available to non-publish job {job}"
             )
 
+    npm_tokens = [reference for reference in secrets if reference[1] == "NPM_TOKEN"]
+    if not npm_tokens:
+        errors.append(".github/workflows/release.yml: publish-typescript job lacks npm token")
+    for job, _, line in npm_tokens:
+        if job != "publish-typescript":
+            errors.append(
+                f".github/workflows/release.yml:{line + 1}: npm token is "
+                f"available to non-TypeScript-publish job {job}"
+            )
+
     github_tokens = [reference for reference in secrets if reference[1] == "GITHUB_TOKEN"]
     if not github_tokens:
         errors.append(".github/workflows/release.yml: github-release lacks GITHUB_TOKEN")
@@ -220,6 +235,7 @@ def check(root: Path) -> list[str]:
     for job, name, line in secrets:
         expected = {
             "publish": {"CARGO_REGISTRY_TOKEN"},
+            "publish-typescript": {"NPM_TOKEN"},
             "github-release": {"GITHUB_TOKEN"},
         }.get(job, set())
         if name not in expected:
@@ -250,6 +266,7 @@ def main() -> int:
     print("release permission audit:")
     print("  default and verification jobs: contents: read")
     print("  publish: crates-io environment boundary and bootstrap token")
+    print("  publish-typescript: npmjs environment boundary and npm token")
     print("  github-release: contents: write for gh release create")
     return 0
 

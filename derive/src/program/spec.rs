@@ -17,7 +17,7 @@ use {
     },
     proc_macro2::TokenStream as TokenStream2,
     quote::{format_ident, quote},
-    syn::{FnArg, Ident, LitInt, Pat, Type},
+    syn::{Expr, FnArg, Ident, LitInt, Pat, Type},
 };
 
 /// Parsed attributes from `#[program(...)]`.
@@ -98,6 +98,8 @@ pub(super) struct InstructionSpec {
     pub client_args: Vec<ArgSpec>,
     pub idl_args: Vec<ArgSpec>,
     pub has_remaining: bool,
+    pub remaining_item: Option<Type>,
+    pub remaining_max: Option<Expr>,
     pub docs: Vec<String>,
 }
 
@@ -198,6 +200,11 @@ impl InstructionSpec {
             client_args.push(ArgSpec { name, ty });
         }
 
+        let (remaining_item, remaining_max) = ctx_kind
+            .bounded_remaining()
+            .map(|(item, max)| (Some(item.clone()), Some(max.clone())))
+            .unwrap_or((None, None));
+
         Ok(InstructionSpec {
             fn_name: fn_name.clone(),
             disc_bytes,
@@ -211,6 +218,8 @@ impl InstructionSpec {
             client_args,
             idl_args,
             has_remaining: ctx_kind.has_remaining(),
+            remaining_item,
+            remaining_max,
             docs: crate::helpers::extract_doc_lines(&func.attrs),
         })
     }

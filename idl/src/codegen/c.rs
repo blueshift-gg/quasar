@@ -1,6 +1,6 @@
 use {
     super::model::{reject_generics, validate_codegen_idl, CodegenResult},
-    crate::types::{Idl, IdlCodec, IdlPdaSeed, IdlResolver, IdlType, IdlTypeDef},
+    crate::types::{Idl, IdlAccountNode, IdlCodec, IdlPdaSeed, IdlResolver, IdlType, IdlTypeDef},
     quasar_schema::pascal_to_snake,
     std::{collections::HashMap, fmt::Write},
 };
@@ -175,6 +175,25 @@ fn emit_fixed_account_ids(out: &mut String, prefix: &str, idl: &Idl) {
             }
         }
     }
+
+    let has_associated_tokens = idl.instructions.iter().any(|instruction| {
+        instruction.accounts.iter().any(|account| {
+            !account.optional && matches!(account.resolver, IdlResolver::AssociatedToken { .. })
+        })
+    });
+    if has_associated_tokens {
+        let upper = prefix.to_ascii_uppercase();
+        emit_pubkey_const(
+            out,
+            &format!("{upper}_ASSOCIATED_TOKEN_PROGRAM_ID"),
+            "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        );
+        emit_pubkey_const(
+            out,
+            &format!("{upper}_TOKEN_PROGRAM_ID"),
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        );
+    }
 }
 
 fn fixed_account_id_name(prefix: &str, instruction: &str, account: &str) -> String {
@@ -330,7 +349,9 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
                 a.optional
                     || !matches!(
                         a.resolver,
-                        IdlResolver::Const { .. } | IdlResolver::Pda { .. }
+                        IdlResolver::Const { .. }
+                            | IdlResolver::Pda { .. }
+                            | IdlResolver::AssociatedToken { .. }
                     )
             })
             .collect();
@@ -369,7 +390,7 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         let pda_count = ix
             .accounts
             .iter()
-            .filter(|a| !a.optional && matches!(a.resolver, IdlResolver::Pda { .. }))
+            .filter(|a| !a.optional && c_resolver_is_derived(&a.resolver))
             .count();
         let pda_key_params = if pda_count > 0 {
             "    Pubkey *pda_key_buf,\n    uint64_t pda_key_buf_capacity,\n    "
@@ -472,7 +493,7 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         {
             let mut idx = 0usize;
             for acc in &ix.accounts {
-                if !acc.optional && matches!(acc.resolver, IdlResolver::Pda { .. }) {
+                if !acc.optional && c_resolver_is_derived(&acc.resolver) {
                     pda_name_to_idx.insert(acc.name.as_str(), idx);
                     idx += 1;
                 }
@@ -483,9 +504,23 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         let mut pda_idx = 0usize;
         for acc in &ix.accounts {
             if !acc.optional {
-                if let IdlResolver::Pda { ref seeds, .. } = acc.resolver {
-                    emit_pda_derivation(out, prefix, seeds, &upper, pda_idx, &pda_name_to_idx);
-                    pda_idx += 1;
+                match &acc.resolver {
+                    IdlResolver::Pda { seeds, .. } => {
+                        emit_pda_derivation(out, prefix, seeds, &upper, pda_idx, &pda_name_to_idx);
+                        pda_idx += 1;
+                    }
+                    IdlResolver::AssociatedToken { .. } => {
+                        emit_associated_token_derivation(
+                            out,
+                            prefix,
+                            ix,
+                            acc,
+                            pda_idx,
+                            &pda_name_to_idx,
+                        );
+                        pda_idx += 1;
+                    }
+                    _ => {}
                 }
             }
         }
@@ -509,7 +544,7 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
                     "accounts->{n} ? accounts->{n} : (Pubkey *)&{upper}_PROGRAM_ID",
                     n = acc.name
                 )
-            } else if matches!(acc.resolver, IdlResolver::Pda { .. }) {
+            } else if c_resolver_is_derived(&acc.resolver) {
                 let expr = format!("&pda_key_buf[{pda_idx}]");
                 pda_idx += 1;
                 expr
@@ -616,6 +651,81 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         .unwrap();
         out.push_str("}\n\n");
     }
+}
+
+fn c_resolver_is_derived(resolver: &IdlResolver) -> bool {
+    matches!(
+        resolver,
+        IdlResolver::Pda { .. } | IdlResolver::AssociatedToken { .. }
+    )
+}
+
+fn emit_associated_token_derivation(
+    out: &mut String,
+    prefix: &str,
+    ix: &crate::types::IdlInstruction,
+    account: &IdlAccountNode,
+    pda_idx: usize,
+    pda_name_to_idx: &HashMap<&str, usize>,
+) {
+    let IdlResolver::AssociatedToken {
+        mint,
+        owner,
+        token_program,
+    } = &account.resolver
+    else {
+        unreachable!("associated-token emitter called for a different resolver")
+    };
+    let upper_prefix = prefix.to_ascii_uppercase();
+    let owner = c_account_seed_expr(prefix, ix, owner, pda_name_to_idx);
+    let mint = c_account_seed_expr(prefix, ix, mint, pda_name_to_idx);
+    let token_program = token_program.as_deref().map_or_else(
+        || format!("{upper_prefix}_TOKEN_PROGRAM_ID.bytes"),
+        |path| c_account_seed_expr(prefix, ix, path, pda_name_to_idx),
+    );
+
+    writeln!(out, "    {{").unwrap();
+    writeln!(out, "        SignerSeed seeds[3];").unwrap();
+    writeln!(out, "        seeds[0].addr = {owner}; seeds[0].len = 32;").unwrap();
+    writeln!(
+        out,
+        "        seeds[1].addr = {token_program}; seeds[1].len = 32;"
+    )
+    .unwrap();
+    writeln!(out, "        seeds[2].addr = {mint}; seeds[2].len = 32;").unwrap();
+    writeln!(out, "        uint8_t bump;").unwrap();
+    writeln!(
+        out,
+        "        uint64_t pda_status = find_program_address(seeds, 3, \
+         &{upper_prefix}_ASSOCIATED_TOKEN_PROGRAM_ID, &derived_pda_keys[{pda_idx}], &bump);"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "        if (pda_status != SUCCESS) return ({prefix}_ix_result_t){{ .status = \
+         {upper_prefix}_IX_PDA_DERIVATION_FAILED, .accounts_len = required_accounts, .data_len = \
+         required_data, .pda_keys_len = required_pda_keys, .pda_status = pda_status }};"
+    )
+    .unwrap();
+    writeln!(out, "    }}").unwrap();
+}
+
+fn c_account_seed_expr(
+    prefix: &str,
+    ix: &crate::types::IdlInstruction,
+    path: &str,
+    pda_name_to_idx: &HashMap<&str, usize>,
+) -> String {
+    if let Some(index) = pda_name_to_idx.get(path) {
+        return format!("derived_pda_keys[{index}].bytes");
+    }
+
+    let account = ix.accounts.iter().find(|account| account.name == path);
+    if account.is_some_and(|account| matches!(account.resolver, IdlResolver::Const { .. })) {
+        return format!("{}.bytes", fixed_account_id_name(prefix, &ix.name, path));
+    }
+
+    format!("accounts->{path}->bytes")
 }
 
 fn meta_helper(writable: bool, signer: bool) -> &'static str {

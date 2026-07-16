@@ -12,6 +12,36 @@ pub struct ExecuteTransferInstruction {
     pub remaining_accounts: Vec<AccountMeta>,
 }
 
+pub struct ExecuteTransferInstructionInput {
+    pub creator: Address,
+    pub recipient: Address,
+    pub amount: u64,
+    pub remaining_accounts: Vec<AccountMeta>,
+}
+
+impl From<ExecuteTransferInstructionInput> for ExecuteTransferInstruction {
+    fn from(ix: ExecuteTransferInstructionInput) -> ExecuteTransferInstruction {
+        let creator = ix.creator;
+        let recipient = ix.recipient;
+        let config = Address::find_program_address(&[b"multisig", creator.as_ref()], &ID).0;
+        let vault = Address::find_program_address(&[b"vault", config.as_ref()], &ID).0;
+        ExecuteTransferInstruction {
+            config,
+            creator,
+            vault,
+            recipient,
+            amount: ix.amount,
+            remaining_accounts: ix.remaining_accounts,
+        }
+    }
+}
+
+impl From<ExecuteTransferInstructionInput> for Instruction {
+    fn from(ix: ExecuteTransferInstructionInput) -> Instruction {
+        ExecuteTransferInstruction::from(ix).into()
+    }
+}
+
 impl From<ExecuteTransferInstruction> for Instruction {
     fn from(ix: ExecuteTransferInstruction) -> Instruction {
         let mut accounts = vec![

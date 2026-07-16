@@ -233,4 +233,9 @@ mod quasar_test_token_cpi {
     pub fn sweep_and_close_interface(ctx: Ctx<SweepAndCloseInterface>) -> Result<(), ProgramError> {
         ctx.accounts.handler()
     }
+
+    #[instruction(discriminator = 41)]
+    pub fn pda_sweep_and_close(ctx: Ctx<PdaSweepAndClose>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
 }

@@ -17,7 +17,7 @@ use {
 pub struct CodegenError(String);
 
 impl CodegenError {
-    fn new(message: impl Into<String>) -> Self {
+    pub(super) fn new(message: impl Into<String>) -> Self {
         Self(message.into())
     }
 }
@@ -565,22 +565,23 @@ impl ProgramFeatures {
                 .iter()
                 .any(|ix| ix.accounts.iter().any(|account| account.optional)),
             has_pdas: idl.instructions.iter().any(|ix| {
-                ix.accounts
-                    .iter()
-                    .any(|account| matches!(account.resolver, IdlResolver::Pda { .. }))
+                ix.accounts.iter().any(|account| {
+                    matches!(
+                        account.resolver,
+                        IdlResolver::Pda { .. } | IdlResolver::AssociatedToken { .. }
+                    )
+                })
             }),
             has_pda_account_seeds: idl.instructions.iter().any(|ix| {
-                ix.accounts.iter().any(|account| {
-                    if let IdlResolver::Pda { seeds, .. } = &account.resolver {
-                        seeds.iter().any(|seed| {
-                            matches!(
-                                seed,
-                                IdlPdaSeed::Account { .. } | IdlPdaSeed::AccountField { .. }
-                            )
-                        })
-                    } else {
-                        false
-                    }
+                ix.accounts.iter().any(|account| match &account.resolver {
+                    IdlResolver::Pda { seeds, .. } => seeds.iter().any(|seed| {
+                        matches!(
+                            seed,
+                            IdlPdaSeed::Account { .. } | IdlPdaSeed::AccountField { .. }
+                        )
+                    }),
+                    IdlResolver::AssociatedToken { .. } => true,
+                    _ => false,
                 })
             }),
             ..Self::default()

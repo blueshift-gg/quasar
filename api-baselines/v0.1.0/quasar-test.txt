@@ -1,0 +1,205 @@
+pub mod quasar_test
+pub use quasar_test::Account
+pub use quasar_test::Pubkey
+pub use quasar_test::QuasarSvm
+pub use quasar_test::QuasarSvmConfig
+pub use quasar_test::quasar_svm
+pub mod quasar_test::fixtures
+pub fn quasar_test::fixtures::associated_token_account(solana_address::Address, solana_address::Address, u64) -> quasar_svm::Account
+pub fn quasar_test::fixtures::empty_account(solana_address::Address) -> quasar_svm::Account
+pub fn quasar_test::fixtures::mint_account(solana_address::Address, solana_address::Address, u8) -> quasar_svm::Account
+pub fn quasar_test::fixtures::mint_account_with_supply(solana_address::Address, solana_address::Address, u64, u8) -> quasar_svm::Account
+pub fn quasar_test::fixtures::program_account(solana_address::Address, solana_address::Address, alloc::vec::Vec<u8>) -> quasar_svm::Account
+pub fn quasar_test::fixtures::system_account(solana_address::Address, u64) -> quasar_svm::Account
+pub fn quasar_test::fixtures::token_account(solana_address::Address, solana_address::Address, solana_address::Address, u64) -> quasar_svm::Account
+pub mod quasar_test::prelude
+pub use quasar_test::prelude::Account
+pub use quasar_test::prelude::AccountMeta
+pub use quasar_test::prelude::ExecutionResult
+pub use quasar_test::prelude::Instruction
+pub use quasar_test::prelude::ProgramError
+pub use quasar_test::prelude::Pubkey
+pub use quasar_test::prelude::QuasarSvmConfig
+pub macro quasar_test::prelude::quasar_test!
+pub struct quasar_test::prelude::QuasarTest
+impl quasar_test::QuasarTest
+pub fn quasar_test::QuasarTest::actor(&mut self) -> solana_address::Address
+pub fn quasar_test::QuasarTest::actor_at(&mut self, solana_address::Address) -> solana_address::Address
+pub fn quasar_test::QuasarTest::actor_with_lamports(&mut self, u64) -> solana_address::Address
+pub fn quasar_test::QuasarTest::actors<const N: usize>(&mut self) -> [solana_address::Address; N]
+pub fn quasar_test::QuasarTest::ata(&mut self, solana_address::Address, solana_address::Address, u64) -> solana_address::Address
+pub fn quasar_test::QuasarTest::empty(&mut self, solana_address::Address) -> solana_address::Address
+pub fn quasar_test::QuasarTest::from_program_path(impl core::convert::Into<solana_address::Address>, impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, quasar_test::ProjectError>
+pub fn quasar_test::QuasarTest::from_program_path_with_config(impl core::convert::Into<solana_address::Address>, impl core::convert::AsRef<std::path::Path>, quasar_svm::svm::QuasarSvmConfig) -> core::result::Result<Self, quasar_test::ProjectError>
+pub fn quasar_test::QuasarTest::fund(&mut self, solana_address::Address, u64) -> solana_address::Address
+pub fn quasar_test::QuasarTest::into_inner(self) -> quasar_svm::svm::QuasarSvm
+pub fn quasar_test::QuasarTest::mint(&mut self, solana_address::Address) -> solana_address::Address
+pub fn quasar_test::QuasarTest::mint_at(&mut self, solana_address::Address, solana_address::Address, u64, u8) -> solana_address::Address
+pub fn quasar_test::QuasarTest::mint_with_supply(&mut self, solana_address::Address, u64) -> solana_address::Address
+pub fn quasar_test::QuasarTest::new(impl core::convert::Into<solana_address::Address>) -> Self
+pub fn quasar_test::QuasarTest::new_with_config(impl core::convert::Into<solana_address::Address>, quasar_svm::svm::QuasarSvmConfig) -> Self
+pub fn quasar_test::QuasarTest::program_path(&self) -> &std::path::Path
+pub fn quasar_test::QuasarTest::send(&mut self, impl core::convert::Into<solana_instruction::Instruction>) -> quasar_svm::svm::ExecutionResult
+pub fn quasar_test::QuasarTest::send_with(&mut self, impl core::convert::Into<solana_instruction::Instruction>, impl core::iter::traits::collect::IntoIterator<Item = quasar_svm::Account>) -> quasar_svm::svm::ExecutionResult
+pub fn quasar_test::QuasarTest::simulate(&mut self, impl core::convert::Into<solana_instruction::Instruction>) -> quasar_svm::svm::ExecutionResult
+pub fn quasar_test::QuasarTest::token_account(&mut self, solana_address::Address, solana_address::Address, u64) -> solana_address::Address
+pub fn quasar_test::QuasarTest::token_account_at(&mut self, solana_address::Address, solana_address::Address, solana_address::Address, u64) -> solana_address::Address
+pub fn quasar_test::QuasarTest::try_new(impl core::convert::Into<solana_address::Address>) -> core::result::Result<Self, quasar_test::ProjectError>
+pub fn quasar_test::QuasarTest::try_new_with_config(impl core::convert::Into<solana_address::Address>, quasar_svm::svm::QuasarSvmConfig) -> core::result::Result<Self, quasar_test::ProjectError>
+pub fn quasar_test::QuasarTest::with_account(self, quasar_svm::Account) -> Self
+pub fn quasar_test::QuasarTest::with_airdrop(self, &solana_address::Address, u64) -> Self
+pub fn quasar_test::QuasarTest::with_compute_budget(self, u64) -> Self
+pub fn quasar_test::QuasarTest::with_create_account(self, &solana_address::Address, usize, &solana_address::Address) -> Self
+pub fn quasar_test::QuasarTest::with_program(self, &solana_address::Address, &[u8]) -> Self
+pub fn quasar_test::QuasarTest::with_program_loader(self, &solana_address::Address, &solana_address::Address, &[u8]) -> Self
+pub fn quasar_test::QuasarTest::with_slot(self, u64) -> Self
+impl core::ops::deref::Deref for quasar_test::QuasarTest
+pub type quasar_test::QuasarTest::Target = quasar_svm::svm::QuasarSvm
+pub fn quasar_test::QuasarTest::deref(&self) -> &Self::Target
+impl core::ops::deref::DerefMut for quasar_test::QuasarTest
+pub fn quasar_test::QuasarTest::deref_mut(&mut self) -> &mut Self::Target
+impl core::marker::Freeze for quasar_test::QuasarTest
+impl !core::marker::Send for quasar_test::QuasarTest
+impl !core::marker::Sync for quasar_test::QuasarTest
+impl core::marker::Unpin for quasar_test::QuasarTest
+impl core::marker::UnsafeUnpin for quasar_test::QuasarTest
+impl !core::panic::unwind_safe::RefUnwindSafe for quasar_test::QuasarTest
+impl !core::panic::unwind_safe::UnwindSafe for quasar_test::QuasarTest
+pub trait quasar_test::prelude::ExecutionResultExt
+pub fn quasar_test::prelude::ExecutionResultExt::assert_compute_units_below(&self, u64)
+pub fn quasar_test::prelude::ExecutionResultExt::assert_custom_error<E>(&self, E) where E: core::convert::Into<u32>
+pub fn quasar_test::prelude::ExecutionResultExt::assert_lamports(&self, &solana_address::Address, u64)
+pub fn quasar_test::prelude::ExecutionResultExt::assert_mint_supply(&self, &solana_address::Address, u64)
+pub fn quasar_test::prelude::ExecutionResultExt::assert_token_balance(&self, &solana_address::Address, u64)
+pub fn quasar_test::prelude::ExecutionResultExt::cu_below(&self, u64) -> &Self
+pub fn quasar_test::prelude::ExecutionResultExt::fails_with<E>(&self, E) -> &Self where E: core::convert::Into<u32>
+pub fn quasar_test::prelude::ExecutionResultExt::has_lamports(&self, solana_address::Address, u64) -> &Self
+pub fn quasar_test::prelude::ExecutionResultExt::has_supply(&self, solana_address::Address, u64) -> &Self
+pub fn quasar_test::prelude::ExecutionResultExt::has_tokens(&self, solana_address::Address, u64) -> &Self
+pub fn quasar_test::prelude::ExecutionResultExt::is_closed(&self, solana_address::Address) -> &Self
+pub fn quasar_test::prelude::ExecutionResultExt::lamports(&self, &solana_address::Address) -> u64
+pub fn quasar_test::prelude::ExecutionResultExt::mint_supply(&self, &solana_address::Address) -> u64
+pub fn quasar_test::prelude::ExecutionResultExt::succeeds(&self) -> &Self
+pub fn quasar_test::prelude::ExecutionResultExt::token_balance(&self, &solana_address::Address) -> u64
+impl quasar_test::ExecutionResultExt for quasar_svm::svm::ExecutionResult
+pub fn quasar_svm::svm::ExecutionResult::assert_compute_units_below(&self, u64)
+pub fn quasar_svm::svm::ExecutionResult::assert_custom_error<E>(&self, E) where E: core::convert::Into<u32>
+pub fn quasar_svm::svm::ExecutionResult::assert_lamports(&self, &solana_address::Address, u64)
+pub fn quasar_svm::svm::ExecutionResult::assert_mint_supply(&self, &solana_address::Address, u64)
+pub fn quasar_svm::svm::ExecutionResult::assert_token_balance(&self, &solana_address::Address, u64)
+pub fn quasar_svm::svm::ExecutionResult::cu_below(&self, u64) -> &Self
+pub fn quasar_svm::svm::ExecutionResult::fails_with<E>(&self, E) -> &Self where E: core::convert::Into<u32>
+pub fn quasar_svm::svm::ExecutionResult::has_lamports(&self, solana_address::Address, u64) -> &Self
+pub fn quasar_svm::svm::ExecutionResult::has_supply(&self, solana_address::Address, u64) -> &Self
+pub fn quasar_svm::svm::ExecutionResult::has_tokens(&self, solana_address::Address, u64) -> &Self
+pub fn quasar_svm::svm::ExecutionResult::is_closed(&self, solana_address::Address) -> &Self
+pub fn quasar_svm::svm::ExecutionResult::lamports(&self, &solana_address::Address) -> u64
+pub fn quasar_svm::svm::ExecutionResult::mint_supply(&self, &solana_address::Address) -> u64
+pub fn quasar_svm::svm::ExecutionResult::succeeds(&self) -> &Self
+pub fn quasar_svm::svm::ExecutionResult::token_balance(&self, &solana_address::Address) -> u64
+pub macro quasar_test::quasar_test!
+#[non_exhaustive] pub enum quasar_test::ProjectError
+pub quasar_test::ProjectError::AmbiguousPrograms
+pub quasar_test::ProjectError::AmbiguousPrograms::deploy: std::path::PathBuf
+pub quasar_test::ProjectError::AmbiguousPrograms::programs: alloc::vec::Vec<std::path::PathBuf>
+pub quasar_test::ProjectError::ConfiguredProgramMissing
+pub quasar_test::ProjectError::ConfiguredProgramMissing::path: std::path::PathBuf
+pub quasar_test::ProjectError::CurrentDirectory(std::io::error::Error)
+pub quasar_test::ProjectError::ProgramNotFound
+pub quasar_test::ProjectError::ProgramNotFound::checked: alloc::vec::Vec<std::path::PathBuf>
+pub quasar_test::ProjectError::ProgramNotFound::start: std::path::PathBuf
+pub quasar_test::ProjectError::ReadProgram
+pub quasar_test::ProjectError::ReadProgram::path: std::path::PathBuf
+pub quasar_test::ProjectError::ReadProgram::source: std::io::error::Error
+impl core::error::Error for quasar_test::ProjectError
+pub fn quasar_test::ProjectError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for quasar_test::ProjectError
+pub fn quasar_test::ProjectError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for quasar_test::ProjectError
+pub fn quasar_test::ProjectError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_test::ProjectError
+impl core::marker::Send for quasar_test::ProjectError
+impl core::marker::Sync for quasar_test::ProjectError
+impl core::marker::Unpin for quasar_test::ProjectError
+impl core::marker::UnsafeUnpin for quasar_test::ProjectError
+impl !core::panic::unwind_safe::RefUnwindSafe for quasar_test::ProjectError
+impl !core::panic::unwind_safe::UnwindSafe for quasar_test::ProjectError
+pub struct quasar_test::QuasarTest
+impl quasar_test::QuasarTest
+pub fn quasar_test::QuasarTest::actor(&mut self) -> solana_address::Address
+pub fn quasar_test::QuasarTest::actor_at(&mut self, solana_address::Address) -> solana_address::Address
+pub fn quasar_test::QuasarTest::actor_with_lamports(&mut self, u64) -> solana_address::Address
+pub fn quasar_test::QuasarTest::actors<const N: usize>(&mut self) -> [solana_address::Address; N]
+pub fn quasar_test::QuasarTest::ata(&mut self, solana_address::Address, solana_address::Address, u64) -> solana_address::Address
+pub fn quasar_test::QuasarTest::empty(&mut self, solana_address::Address) -> solana_address::Address
+pub fn quasar_test::QuasarTest::from_program_path(impl core::convert::Into<solana_address::Address>, impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, quasar_test::ProjectError>
+pub fn quasar_test::QuasarTest::from_program_path_with_config(impl core::convert::Into<solana_address::Address>, impl core::convert::AsRef<std::path::Path>, quasar_svm::svm::QuasarSvmConfig) -> core::result::Result<Self, quasar_test::ProjectError>
+pub fn quasar_test::QuasarTest::fund(&mut self, solana_address::Address, u64) -> solana_address::Address
+pub fn quasar_test::QuasarTest::into_inner(self) -> quasar_svm::svm::QuasarSvm
+pub fn quasar_test::QuasarTest::mint(&mut self, solana_address::Address) -> solana_address::Address
+pub fn quasar_test::QuasarTest::mint_at(&mut self, solana_address::Address, solana_address::Address, u64, u8) -> solana_address::Address
+pub fn quasar_test::QuasarTest::mint_with_supply(&mut self, solana_address::Address, u64) -> solana_address::Address
+pub fn quasar_test::QuasarTest::new(impl core::convert::Into<solana_address::Address>) -> Self
+pub fn quasar_test::QuasarTest::new_with_config(impl core::convert::Into<solana_address::Address>, quasar_svm::svm::QuasarSvmConfig) -> Self
+pub fn quasar_test::QuasarTest::program_path(&self) -> &std::path::Path
+pub fn quasar_test::QuasarTest::send(&mut self, impl core::convert::Into<solana_instruction::Instruction>) -> quasar_svm::svm::ExecutionResult
+pub fn quasar_test::QuasarTest::send_with(&mut self, impl core::convert::Into<solana_instruction::Instruction>, impl core::iter::traits::collect::IntoIterator<Item = quasar_svm::Account>) -> quasar_svm::svm::ExecutionResult
+pub fn quasar_test::QuasarTest::simulate(&mut self, impl core::convert::Into<solana_instruction::Instruction>) -> quasar_svm::svm::ExecutionResult
+pub fn quasar_test::QuasarTest::token_account(&mut self, solana_address::Address, solana_address::Address, u64) -> solana_address::Address
+pub fn quasar_test::QuasarTest::token_account_at(&mut self, solana_address::Address, solana_address::Address, solana_address::Address, u64) -> solana_address::Address
+pub fn quasar_test::QuasarTest::try_new(impl core::convert::Into<solana_address::Address>) -> core::result::Result<Self, quasar_test::ProjectError>
+pub fn quasar_test::QuasarTest::try_new_with_config(impl core::convert::Into<solana_address::Address>, quasar_svm::svm::QuasarSvmConfig) -> core::result::Result<Self, quasar_test::ProjectError>
+pub fn quasar_test::QuasarTest::with_account(self, quasar_svm::Account) -> Self
+pub fn quasar_test::QuasarTest::with_airdrop(self, &solana_address::Address, u64) -> Self
+pub fn quasar_test::QuasarTest::with_compute_budget(self, u64) -> Self
+pub fn quasar_test::QuasarTest::with_create_account(self, &solana_address::Address, usize, &solana_address::Address) -> Self
+pub fn quasar_test::QuasarTest::with_program(self, &solana_address::Address, &[u8]) -> Self
+pub fn quasar_test::QuasarTest::with_program_loader(self, &solana_address::Address, &solana_address::Address, &[u8]) -> Self
+pub fn quasar_test::QuasarTest::with_slot(self, u64) -> Self
+impl core::ops::deref::Deref for quasar_test::QuasarTest
+pub type quasar_test::QuasarTest::Target = quasar_svm::svm::QuasarSvm
+pub fn quasar_test::QuasarTest::deref(&self) -> &Self::Target
+impl core::ops::deref::DerefMut for quasar_test::QuasarTest
+pub fn quasar_test::QuasarTest::deref_mut(&mut self) -> &mut Self::Target
+impl core::marker::Freeze for quasar_test::QuasarTest
+impl !core::marker::Send for quasar_test::QuasarTest
+impl !core::marker::Sync for quasar_test::QuasarTest
+impl core::marker::Unpin for quasar_test::QuasarTest
+impl core::marker::UnsafeUnpin for quasar_test::QuasarTest
+impl !core::panic::unwind_safe::RefUnwindSafe for quasar_test::QuasarTest
+impl !core::panic::unwind_safe::UnwindSafe for quasar_test::QuasarTest
+pub const quasar_test::DEFAULT_ACTOR_LAMPORTS: u64
+pub const quasar_test::PROGRAM_PATH_ENV: &str
+pub trait quasar_test::ExecutionResultExt
+pub fn quasar_test::ExecutionResultExt::assert_compute_units_below(&self, u64)
+pub fn quasar_test::ExecutionResultExt::assert_custom_error<E>(&self, E) where E: core::convert::Into<u32>
+pub fn quasar_test::ExecutionResultExt::assert_lamports(&self, &solana_address::Address, u64)
+pub fn quasar_test::ExecutionResultExt::assert_mint_supply(&self, &solana_address::Address, u64)
+pub fn quasar_test::ExecutionResultExt::assert_token_balance(&self, &solana_address::Address, u64)
+pub fn quasar_test::ExecutionResultExt::cu_below(&self, u64) -> &Self
+pub fn quasar_test::ExecutionResultExt::fails_with<E>(&self, E) -> &Self where E: core::convert::Into<u32>
+pub fn quasar_test::ExecutionResultExt::has_lamports(&self, solana_address::Address, u64) -> &Self
+pub fn quasar_test::ExecutionResultExt::has_supply(&self, solana_address::Address, u64) -> &Self
+pub fn quasar_test::ExecutionResultExt::has_tokens(&self, solana_address::Address, u64) -> &Self
+pub fn quasar_test::ExecutionResultExt::is_closed(&self, solana_address::Address) -> &Self
+pub fn quasar_test::ExecutionResultExt::lamports(&self, &solana_address::Address) -> u64
+pub fn quasar_test::ExecutionResultExt::mint_supply(&self, &solana_address::Address) -> u64
+pub fn quasar_test::ExecutionResultExt::succeeds(&self) -> &Self
+pub fn quasar_test::ExecutionResultExt::token_balance(&self, &solana_address::Address) -> u64
+impl quasar_test::ExecutionResultExt for quasar_svm::svm::ExecutionResult
+pub fn quasar_svm::svm::ExecutionResult::assert_compute_units_below(&self, u64)
+pub fn quasar_svm::svm::ExecutionResult::assert_custom_error<E>(&self, E) where E: core::convert::Into<u32>
+pub fn quasar_svm::svm::ExecutionResult::assert_lamports(&self, &solana_address::Address, u64)
+pub fn quasar_svm::svm::ExecutionResult::assert_mint_supply(&self, &solana_address::Address, u64)
+pub fn quasar_svm::svm::ExecutionResult::assert_token_balance(&self, &solana_address::Address, u64)
+pub fn quasar_svm::svm::ExecutionResult::cu_below(&self, u64) -> &Self
+pub fn quasar_svm::svm::ExecutionResult::fails_with<E>(&self, E) -> &Self where E: core::convert::Into<u32>
+pub fn quasar_svm::svm::ExecutionResult::has_lamports(&self, solana_address::Address, u64) -> &Self
+pub fn quasar_svm::svm::ExecutionResult::has_supply(&self, solana_address::Address, u64) -> &Self
+pub fn quasar_svm::svm::ExecutionResult::has_tokens(&self, solana_address::Address, u64) -> &Self
+pub fn quasar_svm::svm::ExecutionResult::is_closed(&self, solana_address::Address) -> &Self
+pub fn quasar_svm::svm::ExecutionResult::lamports(&self, &solana_address::Address) -> u64
+pub fn quasar_svm::svm::ExecutionResult::mint_supply(&self, &solana_address::Address) -> u64
+pub fn quasar_svm::svm::ExecutionResult::succeeds(&self) -> &Self
+pub fn quasar_svm::svm::ExecutionResult::token_balance(&self, &solana_address::Address) -> u64
+pub fn quasar_test::resolve_program_path() -> core::result::Result<std::path::PathBuf, quasar_test::ProjectError>

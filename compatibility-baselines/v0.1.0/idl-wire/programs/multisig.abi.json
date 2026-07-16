@@ -79,10 +79,10 @@
         "kind": "append",
         "name": "remainingAccounts",
         "min": 0,
-        "max": null,
+        "max": 10,
         "item": {
           "clientType": "accountMeta",
-          "signer": "input",
+          "signer": true,
           "writable": "input"
         },
         "policy": {
@@ -359,10 +359,10 @@
         "kind": "append",
         "name": "remainingAccounts",
         "min": 0,
-        "max": null,
+        "max": 10,
         "item": {
           "clientType": "accountMeta",
-          "signer": "input",
+          "signer": true,
           "writable": "input"
         },
         "policy": {

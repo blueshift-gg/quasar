@@ -41,6 +41,8 @@ impl<'a> core::panic::unwind_safe::UnwindSafe for quasar_spl::accounts::associat
 pub struct quasar_spl::accounts::associated_token::Behavior
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::account::Account<quasar_spl::Token2022>> for quasar_spl::accounts::associated_token::Behavior
 pub type quasar_spl::accounts::associated_token::Behavior::Args<'a> = quasar_spl::accounts::associated_token::Args<'a>
+pub const quasar_spl::accounts::associated_token::Behavior::IDL_RESOLVER: core::option::Option<quasar_lang::account_behavior::BehaviorIdlResolver>
+pub const quasar_spl::accounts::associated_token::Behavior::INIT_REQUIRES_SIGNER: bool
 pub const quasar_spl::accounts::associated_token::Behavior::INIT_SATISFIES_CHECK: bool
 pub const quasar_spl::accounts::associated_token::Behavior::SETS_INIT_PARAMS: bool
 pub const quasar_spl::accounts::associated_token::Behavior::VALIDATES_ACCOUNT_DATA: bool
@@ -49,6 +51,8 @@ pub fn quasar_spl::accounts::associated_token::Behavior::set_init_param<'a>(&mut
 pub fn quasar_spl::accounts::associated_token::Behavior::uses_arg<const PHASE: u8, const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::account::Account<quasar_spl::Token>> for quasar_spl::accounts::associated_token::Behavior
 pub type quasar_spl::accounts::associated_token::Behavior::Args<'a> = quasar_spl::accounts::associated_token::Args<'a>
+pub const quasar_spl::accounts::associated_token::Behavior::IDL_RESOLVER: core::option::Option<quasar_lang::account_behavior::BehaviorIdlResolver>
+pub const quasar_spl::accounts::associated_token::Behavior::INIT_REQUIRES_SIGNER: bool
 pub const quasar_spl::accounts::associated_token::Behavior::INIT_SATISFIES_CHECK: bool
 pub const quasar_spl::accounts::associated_token::Behavior::SETS_INIT_PARAMS: bool
 pub const quasar_spl::accounts::associated_token::Behavior::VALIDATES_ACCOUNT_DATA: bool
@@ -57,6 +61,8 @@ pub fn quasar_spl::accounts::associated_token::Behavior::set_init_param<'a>(&mut
 pub fn quasar_spl::accounts::associated_token::Behavior::uses_arg<const PHASE: u8, const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token>> for quasar_spl::accounts::associated_token::Behavior
 pub type quasar_spl::accounts::associated_token::Behavior::Args<'a> = quasar_spl::accounts::associated_token::Args<'a>
+pub const quasar_spl::accounts::associated_token::Behavior::IDL_RESOLVER: core::option::Option<quasar_lang::account_behavior::BehaviorIdlResolver>
+pub const quasar_spl::accounts::associated_token::Behavior::INIT_REQUIRES_SIGNER: bool
 pub const quasar_spl::accounts::associated_token::Behavior::INIT_SATISFIES_CHECK: bool
 pub const quasar_spl::accounts::associated_token::Behavior::SETS_INIT_PARAMS: bool
 pub const quasar_spl::accounts::associated_token::Behavior::VALIDATES_ACCOUNT_DATA: bool
@@ -65,6 +71,7 @@ pub fn quasar_spl::accounts::associated_token::Behavior::set_init_param<'a>(&mut
 pub fn quasar_spl::accounts::associated_token::Behavior::uses_arg<const PHASE: u8, const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::TokenInterface>> for quasar_spl::accounts::associated_token::Behavior
 pub type quasar_spl::accounts::associated_token::Behavior::Args<'a> = quasar_spl::accounts::associated_token::Args<'a>
+pub const quasar_spl::accounts::associated_token::Behavior::IDL_RESOLVER: core::option::Option<quasar_lang::account_behavior::BehaviorIdlResolver>
 pub fn quasar_spl::accounts::associated_token::Behavior::check<'a>(&quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::TokenInterface>, &quasar_spl::accounts::associated_token::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
 impl core::marker::Freeze for quasar_spl::accounts::associated_token::Behavior
 impl core::marker::Send for quasar_spl::accounts::associated_token::Behavior
@@ -255,16 +262,22 @@ pub type quasar_spl::accounts::token_close::Behavior::Args<'a> = quasar_spl::acc
 pub const quasar_spl::accounts::token_close::Behavior::RUN_CHECK: bool
 pub const quasar_spl::accounts::token_close::Behavior::RUN_EXIT: bool
 pub fn quasar_spl::accounts::token_close::Behavior::exit<'a>(&mut quasar_lang::accounts::account::Account<quasar_spl::Token2022>, &quasar_spl::accounts::token_close::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_spl::accounts::token_close::Behavior::exit_signed<'a, S>(&mut quasar_lang::accounts::account::Account<quasar_spl::Token2022>, &quasar_spl::accounts::token_close::Args<'a>, &S) -> core::result::Result<(), solana_program_error::ProgramError> where S: quasar_lang::cpi::CpiSignerSeeds + ?core::marker::Sized
+pub fn quasar_spl::accounts::token_close::Behavior::uses_exit_signer_arg<const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::account::Account<quasar_spl::Token>> for quasar_spl::accounts::token_close::Behavior
 pub type quasar_spl::accounts::token_close::Behavior::Args<'a> = quasar_spl::accounts::token_close::Args<'a>
 pub const quasar_spl::accounts::token_close::Behavior::RUN_CHECK: bool
 pub const quasar_spl::accounts::token_close::Behavior::RUN_EXIT: bool
 pub fn quasar_spl::accounts::token_close::Behavior::exit<'a>(&mut quasar_lang::accounts::account::Account<quasar_spl::Token>, &quasar_spl::accounts::token_close::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_spl::accounts::token_close::Behavior::exit_signed<'a, S>(&mut quasar_lang::accounts::account::Account<quasar_spl::Token>, &quasar_spl::accounts::token_close::Args<'a>, &S) -> core::result::Result<(), solana_program_error::ProgramError> where S: quasar_lang::cpi::CpiSignerSeeds + ?core::marker::Sized
+pub fn quasar_spl::accounts::token_close::Behavior::uses_exit_signer_arg<const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token>> for quasar_spl::accounts::token_close::Behavior
 pub type quasar_spl::accounts::token_close::Behavior::Args<'a> = quasar_spl::accounts::token_close::Args<'a>
 pub const quasar_spl::accounts::token_close::Behavior::RUN_CHECK: bool
 pub const quasar_spl::accounts::token_close::Behavior::RUN_EXIT: bool
 pub fn quasar_spl::accounts::token_close::Behavior::exit<'a>(&mut quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token>, &quasar_spl::accounts::token_close::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_spl::accounts::token_close::Behavior::exit_signed<'a, S>(&mut quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token>, &quasar_spl::accounts::token_close::Args<'a>, &S) -> core::result::Result<(), solana_program_error::ProgramError> where S: quasar_lang::cpi::CpiSignerSeeds + ?core::marker::Sized
+pub fn quasar_spl::accounts::token_close::Behavior::uses_exit_signer_arg<const KEY: u64>() -> bool
 impl core::marker::Freeze for quasar_spl::accounts::token_close::Behavior
 impl core::marker::Send for quasar_spl::accounts::token_close::Behavior
 impl core::marker::Sync for quasar_spl::accounts::token_close::Behavior
@@ -313,16 +326,22 @@ pub type quasar_spl::accounts::token_sweep::Behavior::Args<'a> = quasar_spl::acc
 pub const quasar_spl::accounts::token_sweep::Behavior::RUN_CHECK: bool
 pub const quasar_spl::accounts::token_sweep::Behavior::RUN_EXIT: bool
 pub fn quasar_spl::accounts::token_sweep::Behavior::exit<'a>(&mut quasar_lang::accounts::account::Account<quasar_spl::Token2022>, &quasar_spl::accounts::token_sweep::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_spl::accounts::token_sweep::Behavior::exit_signed<'a, S>(&mut quasar_lang::accounts::account::Account<quasar_spl::Token2022>, &quasar_spl::accounts::token_sweep::Args<'a>, &S) -> core::result::Result<(), solana_program_error::ProgramError> where S: quasar_lang::cpi::CpiSignerSeeds + ?core::marker::Sized
+pub fn quasar_spl::accounts::token_sweep::Behavior::uses_exit_signer_arg<const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::account::Account<quasar_spl::Token>> for quasar_spl::accounts::token_sweep::Behavior
 pub type quasar_spl::accounts::token_sweep::Behavior::Args<'a> = quasar_spl::accounts::token_sweep::Args<'a>
 pub const quasar_spl::accounts::token_sweep::Behavior::RUN_CHECK: bool
 pub const quasar_spl::accounts::token_sweep::Behavior::RUN_EXIT: bool
 pub fn quasar_spl::accounts::token_sweep::Behavior::exit<'a>(&mut quasar_lang::accounts::account::Account<quasar_spl::Token>, &quasar_spl::accounts::token_sweep::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_spl::accounts::token_sweep::Behavior::exit_signed<'a, S>(&mut quasar_lang::accounts::account::Account<quasar_spl::Token>, &quasar_spl::accounts::token_sweep::Args<'a>, &S) -> core::result::Result<(), solana_program_error::ProgramError> where S: quasar_lang::cpi::CpiSignerSeeds + ?core::marker::Sized
+pub fn quasar_spl::accounts::token_sweep::Behavior::uses_exit_signer_arg<const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token>> for quasar_spl::accounts::token_sweep::Behavior
 pub type quasar_spl::accounts::token_sweep::Behavior::Args<'a> = quasar_spl::accounts::token_sweep::Args<'a>
 pub const quasar_spl::accounts::token_sweep::Behavior::RUN_CHECK: bool
 pub const quasar_spl::accounts::token_sweep::Behavior::RUN_EXIT: bool
 pub fn quasar_spl::accounts::token_sweep::Behavior::exit<'a>(&mut quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token>, &quasar_spl::accounts::token_sweep::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_spl::accounts::token_sweep::Behavior::exit_signed<'a, S>(&mut quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token>, &quasar_spl::accounts::token_sweep::Args<'a>, &S) -> core::result::Result<(), solana_program_error::ProgramError> where S: quasar_lang::cpi::CpiSignerSeeds + ?core::marker::Sized
+pub fn quasar_spl::accounts::token_sweep::Behavior::uses_exit_signer_arg<const KEY: u64>() -> bool
 impl core::marker::Freeze for quasar_spl::accounts::token_sweep::Behavior
 impl core::marker::Send for quasar_spl::accounts::token_sweep::Behavior
 impl core::marker::Sync for quasar_spl::accounts::token_sweep::Behavior
@@ -371,6 +390,8 @@ impl<'a> core::panic::unwind_safe::UnwindSafe for quasar_spl::accounts::associat
 pub struct quasar_spl::prelude::associated_token::Behavior
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::account::Account<quasar_spl::Token2022>> for quasar_spl::accounts::associated_token::Behavior
 pub type quasar_spl::accounts::associated_token::Behavior::Args<'a> = quasar_spl::accounts::associated_token::Args<'a>
+pub const quasar_spl::accounts::associated_token::Behavior::IDL_RESOLVER: core::option::Option<quasar_lang::account_behavior::BehaviorIdlResolver>
+pub const quasar_spl::accounts::associated_token::Behavior::INIT_REQUIRES_SIGNER: bool
 pub const quasar_spl::accounts::associated_token::Behavior::INIT_SATISFIES_CHECK: bool
 pub const quasar_spl::accounts::associated_token::Behavior::SETS_INIT_PARAMS: bool
 pub const quasar_spl::accounts::associated_token::Behavior::VALIDATES_ACCOUNT_DATA: bool
@@ -379,6 +400,8 @@ pub fn quasar_spl::accounts::associated_token::Behavior::set_init_param<'a>(&mut
 pub fn quasar_spl::accounts::associated_token::Behavior::uses_arg<const PHASE: u8, const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::account::Account<quasar_spl::Token>> for quasar_spl::accounts::associated_token::Behavior
 pub type quasar_spl::accounts::associated_token::Behavior::Args<'a> = quasar_spl::accounts::associated_token::Args<'a>
+pub const quasar_spl::accounts::associated_token::Behavior::IDL_RESOLVER: core::option::Option<quasar_lang::account_behavior::BehaviorIdlResolver>
+pub const quasar_spl::accounts::associated_token::Behavior::INIT_REQUIRES_SIGNER: bool
 pub const quasar_spl::accounts::associated_token::Behavior::INIT_SATISFIES_CHECK: bool
 pub const quasar_spl::accounts::associated_token::Behavior::SETS_INIT_PARAMS: bool
 pub const quasar_spl::accounts::associated_token::Behavior::VALIDATES_ACCOUNT_DATA: bool
@@ -387,6 +410,8 @@ pub fn quasar_spl::accounts::associated_token::Behavior::set_init_param<'a>(&mut
 pub fn quasar_spl::accounts::associated_token::Behavior::uses_arg<const PHASE: u8, const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token>> for quasar_spl::accounts::associated_token::Behavior
 pub type quasar_spl::accounts::associated_token::Behavior::Args<'a> = quasar_spl::accounts::associated_token::Args<'a>
+pub const quasar_spl::accounts::associated_token::Behavior::IDL_RESOLVER: core::option::Option<quasar_lang::account_behavior::BehaviorIdlResolver>
+pub const quasar_spl::accounts::associated_token::Behavior::INIT_REQUIRES_SIGNER: bool
 pub const quasar_spl::accounts::associated_token::Behavior::INIT_SATISFIES_CHECK: bool
 pub const quasar_spl::accounts::associated_token::Behavior::SETS_INIT_PARAMS: bool
 pub const quasar_spl::accounts::associated_token::Behavior::VALIDATES_ACCOUNT_DATA: bool
@@ -395,6 +420,7 @@ pub fn quasar_spl::accounts::associated_token::Behavior::set_init_param<'a>(&mut
 pub fn quasar_spl::accounts::associated_token::Behavior::uses_arg<const PHASE: u8, const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::TokenInterface>> for quasar_spl::accounts::associated_token::Behavior
 pub type quasar_spl::accounts::associated_token::Behavior::Args<'a> = quasar_spl::accounts::associated_token::Args<'a>
+pub const quasar_spl::accounts::associated_token::Behavior::IDL_RESOLVER: core::option::Option<quasar_lang::account_behavior::BehaviorIdlResolver>
 pub fn quasar_spl::accounts::associated_token::Behavior::check<'a>(&quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::TokenInterface>, &quasar_spl::accounts::associated_token::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
 impl core::marker::Freeze for quasar_spl::accounts::associated_token::Behavior
 impl core::marker::Send for quasar_spl::accounts::associated_token::Behavior
@@ -585,16 +611,22 @@ pub type quasar_spl::accounts::token_close::Behavior::Args<'a> = quasar_spl::acc
 pub const quasar_spl::accounts::token_close::Behavior::RUN_CHECK: bool
 pub const quasar_spl::accounts::token_close::Behavior::RUN_EXIT: bool
 pub fn quasar_spl::accounts::token_close::Behavior::exit<'a>(&mut quasar_lang::accounts::account::Account<quasar_spl::Token2022>, &quasar_spl::accounts::token_close::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_spl::accounts::token_close::Behavior::exit_signed<'a, S>(&mut quasar_lang::accounts::account::Account<quasar_spl::Token2022>, &quasar_spl::accounts::token_close::Args<'a>, &S) -> core::result::Result<(), solana_program_error::ProgramError> where S: quasar_lang::cpi::CpiSignerSeeds + ?core::marker::Sized
+pub fn quasar_spl::accounts::token_close::Behavior::uses_exit_signer_arg<const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::account::Account<quasar_spl::Token>> for quasar_spl::accounts::token_close::Behavior
 pub type quasar_spl::accounts::token_close::Behavior::Args<'a> = quasar_spl::accounts::token_close::Args<'a>
 pub const quasar_spl::accounts::token_close::Behavior::RUN_CHECK: bool
 pub const quasar_spl::accounts::token_close::Behavior::RUN_EXIT: bool
 pub fn quasar_spl::accounts::token_close::Behavior::exit<'a>(&mut quasar_lang::accounts::account::Account<quasar_spl::Token>, &quasar_spl::accounts::token_close::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_spl::accounts::token_close::Behavior::exit_signed<'a, S>(&mut quasar_lang::accounts::account::Account<quasar_spl::Token>, &quasar_spl::accounts::token_close::Args<'a>, &S) -> core::result::Result<(), solana_program_error::ProgramError> where S: quasar_lang::cpi::CpiSignerSeeds + ?core::marker::Sized
+pub fn quasar_spl::accounts::token_close::Behavior::uses_exit_signer_arg<const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token>> for quasar_spl::accounts::token_close::Behavior
 pub type quasar_spl::accounts::token_close::Behavior::Args<'a> = quasar_spl::accounts::token_close::Args<'a>
 pub const quasar_spl::accounts::token_close::Behavior::RUN_CHECK: bool
 pub const quasar_spl::accounts::token_close::Behavior::RUN_EXIT: bool
 pub fn quasar_spl::accounts::token_close::Behavior::exit<'a>(&mut quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token>, &quasar_spl::accounts::token_close::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_spl::accounts::token_close::Behavior::exit_signed<'a, S>(&mut quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token>, &quasar_spl::accounts::token_close::Args<'a>, &S) -> core::result::Result<(), solana_program_error::ProgramError> where S: quasar_lang::cpi::CpiSignerSeeds + ?core::marker::Sized
+pub fn quasar_spl::accounts::token_close::Behavior::uses_exit_signer_arg<const KEY: u64>() -> bool
 impl core::marker::Freeze for quasar_spl::accounts::token_close::Behavior
 impl core::marker::Send for quasar_spl::accounts::token_close::Behavior
 impl core::marker::Sync for quasar_spl::accounts::token_close::Behavior
@@ -643,16 +675,22 @@ pub type quasar_spl::accounts::token_sweep::Behavior::Args<'a> = quasar_spl::acc
 pub const quasar_spl::accounts::token_sweep::Behavior::RUN_CHECK: bool
 pub const quasar_spl::accounts::token_sweep::Behavior::RUN_EXIT: bool
 pub fn quasar_spl::accounts::token_sweep::Behavior::exit<'a>(&mut quasar_lang::accounts::account::Account<quasar_spl::Token2022>, &quasar_spl::accounts::token_sweep::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_spl::accounts::token_sweep::Behavior::exit_signed<'a, S>(&mut quasar_lang::accounts::account::Account<quasar_spl::Token2022>, &quasar_spl::accounts::token_sweep::Args<'a>, &S) -> core::result::Result<(), solana_program_error::ProgramError> where S: quasar_lang::cpi::CpiSignerSeeds + ?core::marker::Sized
+pub fn quasar_spl::accounts::token_sweep::Behavior::uses_exit_signer_arg<const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::account::Account<quasar_spl::Token>> for quasar_spl::accounts::token_sweep::Behavior
 pub type quasar_spl::accounts::token_sweep::Behavior::Args<'a> = quasar_spl::accounts::token_sweep::Args<'a>
 pub const quasar_spl::accounts::token_sweep::Behavior::RUN_CHECK: bool
 pub const quasar_spl::accounts::token_sweep::Behavior::RUN_EXIT: bool
 pub fn quasar_spl::accounts::token_sweep::Behavior::exit<'a>(&mut quasar_lang::accounts::account::Account<quasar_spl::Token>, &quasar_spl::accounts::token_sweep::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_spl::accounts::token_sweep::Behavior::exit_signed<'a, S>(&mut quasar_lang::accounts::account::Account<quasar_spl::Token>, &quasar_spl::accounts::token_sweep::Args<'a>, &S) -> core::result::Result<(), solana_program_error::ProgramError> where S: quasar_lang::cpi::CpiSignerSeeds + ?core::marker::Sized
+pub fn quasar_spl::accounts::token_sweep::Behavior::uses_exit_signer_arg<const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token>> for quasar_spl::accounts::token_sweep::Behavior
 pub type quasar_spl::accounts::token_sweep::Behavior::Args<'a> = quasar_spl::accounts::token_sweep::Args<'a>
 pub const quasar_spl::accounts::token_sweep::Behavior::RUN_CHECK: bool
 pub const quasar_spl::accounts::token_sweep::Behavior::RUN_EXIT: bool
 pub fn quasar_spl::accounts::token_sweep::Behavior::exit<'a>(&mut quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token>, &quasar_spl::accounts::token_sweep::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_spl::accounts::token_sweep::Behavior::exit_signed<'a, S>(&mut quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token>, &quasar_spl::accounts::token_sweep::Args<'a>, &S) -> core::result::Result<(), solana_program_error::ProgramError> where S: quasar_lang::cpi::CpiSignerSeeds + ?core::marker::Sized
+pub fn quasar_spl::accounts::token_sweep::Behavior::uses_exit_signer_arg<const KEY: u64>() -> bool
 impl core::marker::Freeze for quasar_spl::accounts::token_sweep::Behavior
 impl core::marker::Send for quasar_spl::accounts::token_sweep::Behavior
 impl core::marker::Sync for quasar_spl::accounts::token_sweep::Behavior

@@ -14,6 +14,46 @@ pub struct MakeInstruction {
     pub receive: u64,
 }
 
+pub struct MakeInstructionInput {
+    pub maker: Address,
+    pub mint_a: Address,
+    pub mint_b: Address,
+    pub maker_ta_a: Address,
+    pub maker_ta_b: Address,
+    pub vault_ta_a: Address,
+    pub deposit: u64,
+    pub receive: u64,
+}
+
+impl From<MakeInstructionInput> for MakeInstruction {
+    fn from(ix: MakeInstructionInput) -> MakeInstruction {
+        let maker = ix.maker;
+        let mint_a = ix.mint_a;
+        let mint_b = ix.mint_b;
+        let maker_ta_a = ix.maker_ta_a;
+        let maker_ta_b = ix.maker_ta_b;
+        let vault_ta_a = ix.vault_ta_a;
+        let escrow = Address::find_program_address(&[b"escrow", maker.as_ref()], &ID).0;
+        MakeInstruction {
+            maker,
+            escrow,
+            mint_a,
+            mint_b,
+            maker_ta_a,
+            maker_ta_b,
+            vault_ta_a,
+            deposit: ix.deposit,
+            receive: ix.receive,
+        }
+    }
+}
+
+impl From<MakeInstructionInput> for Instruction {
+    fn from(ix: MakeInstructionInput) -> Instruction {
+        MakeInstruction::from(ix).into()
+    }
+}
+
 impl From<MakeInstruction> for Instruction {
     fn from(ix: MakeInstruction) -> Instruction {
         let accounts = vec![

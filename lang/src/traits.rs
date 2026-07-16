@@ -158,10 +158,35 @@ pub trait ParseAccounts<'input>: Sized {
     /// sBPF.
     const HAS_EPILOGUE: bool = false;
 
+    /// Return [`Self::HAS_EPILOGUE`] through a field-level borrow.
+    ///
+    /// Generated dispatch uses this method so other context fields, including
+    /// a typed remaining-account tail, may be moved into the handler before
+    /// the accounts epilogue runs.
+    #[inline(always)]
+    fn has_epilogue(&self) -> bool {
+        Self::HAS_EPILOGUE
+    }
+
     /// Runs lifecycle epilogue operations such as close or sweep.
     #[inline(always)]
     fn epilogue(&mut self) -> Result<(), ProgramError> {
         Ok(())
+    }
+
+    /// Runs lifecycle epilogue operations with the account group's verified
+    /// PDA bumps and the instruction data used during parsing.
+    ///
+    /// Derived account groups use this context to sign lifecycle CPIs for
+    /// typed PDA authorities. The default preserves hand-written
+    /// `ParseAccounts` implementations by delegating to [`Self::epilogue`].
+    #[inline(always)]
+    fn epilogue_with_context(
+        &mut self,
+        _bumps: &Self::Bumps,
+        _data: &[u8],
+    ) -> Result<(), ProgramError> {
+        self.epilogue()
     }
 }
 

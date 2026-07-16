@@ -110,6 +110,14 @@ pub(crate) struct FieldRef {
 pub(crate) struct BehaviorGroupRef {
     pub path: Path,
     pub name: String,
+    /// Behavior argument names mapped to concrete account fields for host-only
+    /// IDL address resolution.
+    pub idl_account_args: Vec<BehaviorIdlAccountArg>,
+}
+
+pub(crate) struct BehaviorIdlAccountArg {
+    pub key: String,
+    pub field: String,
 }
 
 /// Plain program account init (no behavior: system program create +

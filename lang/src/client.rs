@@ -113,6 +113,13 @@ impl<P> DynBytes<P> {
     }
 }
 
+impl<P> crate::pda::SeedBytes for DynBytes<P> {
+    #[inline(always)]
+    fn as_seed_bytes(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
 impl<P> From<Vec<u8>> for DynBytes<P> {
     fn from(data: Vec<u8>) -> Self {
         Self::new(data)
@@ -200,6 +207,13 @@ impl<P> DynString<P> {
     }
 }
 
+impl<P> crate::pda::SeedBytes for DynString<P> {
+    #[inline(always)]
+    fn as_seed_bytes(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
 impl<P> From<&str> for DynString<P> {
     fn from(s: &str) -> Self {
         Self::new(s)
@@ -276,6 +290,13 @@ impl<T, P> DynVec<T, P> {
     /// Iterate over the elements.
     pub fn iter(&self) -> core::slice::Iter<'_, T> {
         self.0.iter()
+    }
+}
+
+impl<P> crate::pda::SeedBytes for DynVec<u8, P> {
+    #[inline(always)]
+    fn as_seed_bytes(&self) -> &[u8] {
+        self.0.as_slice()
     }
 }
 

@@ -1,8 +1,8 @@
 #[repr(u32)]
 pub enum TestError {
-    Unauthorized,
-    InvalidAddress,
-    CustomConstraint,
+    Unauthorized = 6000u32,
+    InvalidAddress = 6001u32,
+    CustomConstraint = 6002u32,
 }
 impl From<TestError> for ::quasar_lang::__solana_program_error::ProgramError {
     #[inline(always)]

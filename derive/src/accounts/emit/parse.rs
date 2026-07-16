@@ -22,8 +22,8 @@ use {
     super::{
         super::resolve::{
             specs::{
-                AccountsPlanTyped, EpilogueStep, FieldPlan, InitPlan, LoadStep, PostLoadStep,
-                PreLoadStep, RentPlan,
+                AccountsPlanTyped, EpilogueStep, FieldPlan, InitPlan, LoadStep, LoweredValue,
+                PostLoadStep, PreLoadStep, RentPlan,
             },
             FieldKind, UserCheck,
         },
@@ -344,20 +344,74 @@ fn emit_post_load_typed(
 
 // Epilogue from the typed plan.
 
-pub(crate) fn emit_epilogue(plan: &AccountsPlanTyped) -> proc_macro2::TokenStream {
+pub(crate) fn emit_epilogue(
+    plan: &AccountsPlanTyped,
+    ix_arg_extraction: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
     let mut exit_stmts = Vec::new();
+    let mut contextual_exit_stmts = Vec::new();
+    let account_fields: Vec<&syn::Ident> = plan.fields.iter().map(|field| &field.ident).collect();
 
-    for fp in &plan.fields {
-        let ident = &fp.ident;
-        let ty = &fp.effective_ty;
+    // Behavior exits may use a program-owned PDA as their CPI authority. Run
+    // every behavior before any core program-account close, regardless of the
+    // fields' declaration order, so a signer cannot be drained/reassigned
+    // before its final CPI.
+    for emit_program_closes in [false, true] {
+        for fp in &plan.fields {
+            let ident = &fp.ident;
+            let ty = &fp.effective_ty;
 
-        for step in &fp.epilogue {
-            let stmt = match step {
-                EpilogueStep::Behavior(call) => typed_emit::emit_epilogue_behavior(call, ident, ty),
-                EpilogueStep::ProgramClose(spec) => typed_emit::emit_program_close(spec, ident, ty),
-            };
-            exit_stmts.push(stmt);
+            for step in &fp.epilogue {
+                if matches!(step, EpilogueStep::ProgramClose(_)) != emit_program_closes {
+                    continue;
+                }
+                let (stmt, contextual_stmt) = match step {
+                    EpilogueStep::Behavior(call) => {
+                        let signer_candidates: Vec<_> = call
+                            .args
+                            .iter()
+                            .filter_map(|arg| {
+                                let LoweredValue::FieldView(signer_field) = &arg.lowered else {
+                                    return None;
+                                };
+                                let signer_plan = plan.fields.iter().find(|field| {
+                                    field.ident == *signer_field && field.signer_helper.is_some()
+                                })?;
+                                Some(typed_emit::EpilogueSignerCandidate {
+                                    key: &arg.key,
+                                    field_ident: &signer_plan.ident,
+                                    addr_expr: &signer_plan.signer_helper.as_ref()?.addr_expr,
+                                })
+                            })
+                            .collect();
+                        (
+                            typed_emit::emit_epilogue_behavior(
+                                call,
+                                ident,
+                                ty,
+                                &[],
+                                &account_fields,
+                                ix_arg_extraction,
+                            ),
+                            typed_emit::emit_epilogue_behavior(
+                                call,
+                                ident,
+                                ty,
+                                &signer_candidates,
+                                &account_fields,
+                                ix_arg_extraction,
+                            ),
+                        )
+                    }
+                    EpilogueStep::ProgramClose(spec) => {
+                        let stmt = typed_emit::emit_program_close(spec, ident, ty);
+                        (stmt.clone(), stmt)
+                    }
+                };
+                exit_stmts.push(stmt);
+                contextual_exit_stmts.push(contextual_stmt);
+            }
         }
     }
 
@@ -369,6 +423,17 @@ pub(crate) fn emit_epilogue(plan: &AccountsPlanTyped) -> proc_macro2::TokenStrea
         #[inline(always)]
         fn epilogue(&mut self) -> Result<(), #krate::__solana_program_error::ProgramError> {
             #(#exit_stmts)*
+            Ok(())
+        }
+
+        #[inline(always)]
+        #[allow(unused_variables)]
+        fn epilogue_with_context(
+            &mut self,
+            __bumps: &Self::Bumps,
+            __ix_data: &[u8],
+        ) -> Result<(), #krate::__solana_program_error::ProgramError> {
+            #(#contextual_exit_stmts)*
             Ok(())
         }
     }

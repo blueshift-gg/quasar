@@ -57,8 +57,8 @@ mod tests {
             typescript::{generate_ts_client, generate_ts_client_kit},
         },
         crate::types::{
-            AccountFlag, Idl, IdlAccountNode, IdlArg, IdlInstruction, IdlMetadata, IdlPdaProgram,
-            IdlPdaSeed, IdlResolver, IdlType,
+            AccountFlag, Idl, IdlAccountNode, IdlArg, IdlErrorDef, IdlInstruction, IdlMetadata,
+            IdlPdaProgram, IdlPdaSeed, IdlResolver, IdlType,
         },
     };
 
@@ -109,6 +109,98 @@ mod tests {
     fn idl_with_snake_case_instruction() -> Idl {
         let mut idl = idl_with_u64_arg_seed();
         idl.instructions[0].name = "execute_transfer".to_owned();
+        idl
+    }
+
+    fn idl_with_associated_token() -> Idl {
+        let mut idl = idl_with_u64_arg_seed();
+        idl.instructions[0].accounts = vec![
+            IdlAccountNode {
+                name: "owner".to_owned(),
+                optional: false,
+                writable: AccountFlag::Fixed(false),
+                signer: AccountFlag::Fixed(true),
+                resolver: IdlResolver::Input {},
+                docs: vec![],
+            },
+            IdlAccountNode {
+                name: "mint".to_owned(),
+                optional: false,
+                writable: AccountFlag::Fixed(false),
+                signer: AccountFlag::Fixed(false),
+                resolver: IdlResolver::Input {},
+                docs: vec![],
+            },
+            IdlAccountNode {
+                name: "tokenProgram".to_owned(),
+                optional: false,
+                writable: AccountFlag::Fixed(false),
+                signer: AccountFlag::Fixed(false),
+                resolver: IdlResolver::Const {
+                    address: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_owned(),
+                },
+                docs: vec![],
+            },
+            IdlAccountNode {
+                name: "ownerTokens".to_owned(),
+                optional: false,
+                writable: AccountFlag::Fixed(true),
+                signer: AccountFlag::Fixed(false),
+                resolver: IdlResolver::AssociatedToken {
+                    mint: "mint".to_owned(),
+                    owner: "owner".to_owned(),
+                    token_program: Some("tokenProgram".to_owned()),
+                },
+                docs: vec![],
+            },
+        ];
+        idl
+    }
+
+    fn idl_with_out_of_order_external_program_pdas() -> Idl {
+        let mut idl = idl_with_u64_arg_seed();
+        let instruction = &mut idl.instructions[0];
+        instruction.accounts = vec![
+            IdlAccountNode {
+                name: "child".to_owned(),
+                optional: false,
+                writable: AccountFlag::Fixed(true),
+                signer: AccountFlag::Fixed(false),
+                resolver: IdlResolver::Pda {
+                    program: IdlPdaProgram::Account {
+                        path: "tokenProgram".to_owned(),
+                    },
+                    seeds: vec![IdlPdaSeed::Account {
+                        path: "parent".to_owned(),
+                    }],
+                },
+                docs: vec![],
+            },
+            IdlAccountNode {
+                name: "tokenProgram".to_owned(),
+                optional: false,
+                writable: AccountFlag::Fixed(false),
+                signer: AccountFlag::Fixed(false),
+                resolver: IdlResolver::Const {
+                    address: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_owned(),
+                },
+                docs: vec![],
+            },
+            IdlAccountNode {
+                name: "parent".to_owned(),
+                optional: false,
+                writable: AccountFlag::Fixed(true),
+                signer: AccountFlag::Fixed(false),
+                resolver: IdlResolver::Pda {
+                    program: IdlPdaProgram::ProgramId {},
+                    seeds: vec![IdlPdaSeed::Arg {
+                        path: "amount".to_owned(),
+                        ty: IdlType::Primitive("u64".to_owned()),
+                    }],
+                },
+                docs: vec![],
+            },
+        ];
         idl
     }
 
@@ -206,6 +298,112 @@ mod tests {
         assert!(pda_rs.contains("pub fn find_vault_address(amount: u64, program_id: &Address)"));
         assert!(pda_rs.contains("let amount_seed = amount.to_le_bytes();"));
         assert!(pda_rs.contains("Address::find_program_address(&[amount_seed.as_ref()]"));
+    }
+
+    #[test]
+    fn rust_instruction_input_resolves_pdas_without_removing_raw_builder() {
+        let files = generate_rust_client(&idl_with_u64_arg_seed()).unwrap();
+        let instruction_rs = files
+            .iter()
+            .find_map(|(path, contents)| (path == "instructions/create.rs").then_some(contents))
+            .expect("create instruction generated");
+
+        assert!(instruction_rs.contains("pub struct CreateInstruction {"));
+        assert!(instruction_rs.contains("pub vault: Address,"));
+        assert!(instruction_rs.contains("pub struct CreateInstructionInput {"));
+        assert!(!instruction_rs
+            .split("pub struct CreateInstructionInput {")
+            .nth(1)
+            .expect("resolved input body")
+            .split('}')
+            .next()
+            .expect("resolved input fields")
+            .contains("pub vault:"));
+        assert!(instruction_rs.contains("ix.amount.to_le_bytes().as_ref()"));
+        assert!(instruction_rs.contains("impl From<CreateInstructionInput> for Instruction"));
+    }
+
+    #[test]
+    fn rust_instruction_input_orders_pda_dependencies_and_resolves_const_programs() {
+        let files = generate_rust_client(&idl_with_out_of_order_external_program_pdas()).unwrap();
+        let instruction_rs = files
+            .iter()
+            .find_map(|(path, contents)| (path == "instructions/create.rs").then_some(contents))
+            .expect("create instruction generated");
+
+        let const_program = instruction_rs
+            .find("let token_program = solana_address::address!")
+            .expect("constant program binding");
+        let parent = instruction_rs
+            .find("let parent = Address::find_program_address")
+            .expect("parent PDA derivation");
+        let child = instruction_rs
+            .find("let child = Address::find_program_address")
+            .expect("child PDA derivation");
+        assert!(const_program < parent && parent < child);
+        assert!(instruction_rs.contains("parent.as_ref()"));
+        assert!(instruction_rs.contains("&token_program"));
+    }
+
+    #[test]
+    fn generated_clients_resolve_associated_token_accounts() {
+        let idl = idl_with_associated_token();
+        let rust_files = generate_rust_client(&idl).unwrap();
+        let rust = rust_files
+            .iter()
+            .find_map(|(path, contents)| (path == "instructions/create.rs").then_some(contents))
+            .expect("create instruction generated");
+        let typescript = generate_ts_client(&idl).unwrap();
+        let kit = generate_ts_client_kit(&idl).unwrap();
+        let python = generate_python_client(&idl).unwrap();
+        let go = generate_go_client(&idl).unwrap();
+        let c = generate_c_client(&idl).unwrap();
+
+        let rust_input = rust
+            .split("pub struct CreateInstructionInput {")
+            .nth(1)
+            .expect("resolved Rust input")
+            .split('}')
+            .next()
+            .expect("resolved Rust input body");
+        assert!(!rust_input.contains("owner_tokens"));
+        assert!(rust.contains("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"));
+        assert!(typescript.contains("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"));
+        assert!(kit.contains("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"));
+        for output in [&typescript, &kit] {
+            assert!(output.contains("export interface CreateInstructionAccountOverrides"));
+            assert!(output.contains("return this.createCreateInstructionUnchecked(input, {});"));
+            assert!(output.contains("createCreateInstructionUnchecked("));
+            assert!(output.contains("accountOverrides.ownerTokens ?? accountsMap[\"ownerTokens\"]"));
+        }
+        assert!(python.contains("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"));
+        assert!(go.contains("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"));
+        assert!(c.contains("SEED_TEST_ASSOCIATED_TOKEN_PROGRAM_ID"));
+        assert!(!c.contains("Pubkey *ownerTokens;"));
+    }
+
+    #[test]
+    fn rust_errors_convert_to_custom_error_codes() {
+        let mut idl = idl_with_u64_arg_seed();
+        idl.errors.push(IdlErrorDef {
+            code: 6_000,
+            name: "Unauthorized".to_owned(),
+            msg: Some("unauthorized".to_owned()),
+        });
+        let files = generate_rust_client(&idl).unwrap();
+        let errors_rs = files
+            .iter()
+            .find_map(|(path, contents)| (path == "errors.rs").then_some(contents))
+            .expect("errors generated");
+        let web3 = generate_ts_client(&idl).unwrap();
+        let kit = generate_ts_client_kit(&idl).unwrap();
+
+        assert!(errors_rs.contains("impl From<SeedTestError> for u32"));
+        assert!(errors_rs.contains("error as u32"));
+        for typescript in [web3, kit] {
+            assert!(typescript.contains("export const PROGRAM_ERROR_CODES = {"));
+            assert!(typescript.contains("Unauthorized: 6000,"));
+        }
     }
 
     #[test]

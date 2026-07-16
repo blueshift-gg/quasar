@@ -277,15 +277,38 @@ fn graph_checks(surface: &ProgramSurface, report: &mut LintReport) {
 }
 
 fn connected_components(instruction: &InstructionSurface) -> Vec<Vec<String>> {
-    let names: BTreeSet<&str> = instruction
+    let relevant: BTreeSet<&str> = instruction
         .accounts
         .iter()
         .filter(|account| is_graph_relevant(account))
         .map(|account| account.name.as_str())
         .collect();
-    if names.len() < 2 {
+    if relevant.len() < 2 {
         return Vec::new();
     }
+
+    // Caller-controlled inputs are not components by themselves, but they can
+    // connect derived accounts that share an authority or data dependency.
+    // Fixed program/sysvar addresses are deliberately excluded: every ATA
+    // sharing the Token Program does not make otherwise unrelated state one
+    // account group.
+    let referenced: BTreeSet<&str> = instruction
+        .accounts
+        .iter()
+        .filter(|account| is_graph_relevant(account))
+        .flat_map(|account| account.resolver_refs.iter().map(String::as_str))
+        .collect();
+    let connectors: BTreeSet<&str> = instruction
+        .accounts
+        .iter()
+        .filter(|account| account.graph_connector && referenced.contains(account.name.as_str()))
+        .map(|account| account.name.as_str())
+        .collect();
+    let graph_names = relevant
+        .iter()
+        .chain(connectors.iter())
+        .copied()
+        .collect::<BTreeSet<_>>();
 
     let mut edges: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
     for account in &instruction.accounts {
@@ -294,7 +317,7 @@ fn connected_components(instruction: &InstructionSurface) -> Vec<Vec<String>> {
         }
         edges.entry(account.name.as_str()).or_default();
         for reference in &account.resolver_refs {
-            if names.contains(reference.as_str()) {
+            if graph_names.contains(reference.as_str()) {
                 edges
                     .entry(account.name.as_str())
                     .or_default()
@@ -309,7 +332,7 @@ fn connected_components(instruction: &InstructionSurface) -> Vec<Vec<String>> {
 
     let mut seen = BTreeSet::new();
     let mut components = Vec::new();
-    for name in names {
+    for name in relevant.iter().copied() {
         if seen.contains(name) {
             continue;
         }
@@ -317,7 +340,9 @@ fn connected_components(instruction: &InstructionSurface) -> Vec<Vec<String>> {
         let mut queue = VecDeque::from([name]);
         seen.insert(name);
         while let Some(current) = queue.pop_front() {
-            component.push(current.to_owned());
+            if relevant.contains(current) {
+                component.push(current.to_owned());
+            }
             if let Some(neighbors) = edges.get(current) {
                 for neighbor in neighbors {
                     if seen.insert(neighbor) {

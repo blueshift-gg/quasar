@@ -1,4 +1,6 @@
 pub mod quasar_idl
+pub mod quasar_idl::audit
+pub fn quasar_idl::audit::validation_plan(&quasar_idl_schema::root::Idl) -> core::result::Result<quasar_idl_schema::validation::IdlValidationPlan, alloc::string::String>
 pub mod quasar_idl::codegen
 pub mod quasar_idl::codegen::c
 pub fn quasar_idl::codegen::c::generate_c_client(&quasar_idl_schema::root::Idl) -> quasar_idl::codegen::model::CodegenResult<alloc::string::String>

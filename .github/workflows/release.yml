@@ -123,6 +123,11 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
+      - name: Publish quasar-test
+        run: scripts/publish-crate.sh quasar-test "$QUASAR_VERSION"
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
       - name: Publish solana-compiler-builtins
         run: scripts/publish-crate.sh solana-compiler-builtins "$QUASAR_VERSION"
         env:
@@ -133,6 +138,7 @@ jobs:
           scripts/wait-for-crate.sh quasar-schema "$QUASAR_VERSION"
           scripts/wait-for-crate.sh quasar-idl-schema "$QUASAR_VERSION"
           scripts/wait-for-crate.sh quasar-profile "$QUASAR_VERSION"
+          scripts/wait-for-crate.sh quasar-test "$QUASAR_VERSION"
           scripts/wait-for-crate.sh solana-compiler-builtins "$QUASAR_VERSION"
 
       # Tier 1: proc macros and IDL generator.
@@ -182,10 +188,40 @@ jobs:
           scripts/wait-for-crate.sh quasar-spl "$QUASAR_VERSION"
           scripts/wait-for-crate.sh quasar-metadata "$QUASAR_VERSION"
 
+  # ── Publish the TypeScript test SDK ──
+  publish-typescript:
+    name: Publish TypeScript SDK to npm
+    needs: [ci, kani, package-rehearsal]
+    runs-on: ubuntu-24.04
+    environment: npmjs
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.18.0
+          registry-url: https://registry.npmjs.org
+
+      - name: Validate release tag
+        run: |
+          version="$(jq -r '.version' testing/typescript/package.json)"
+          if [ "${{ github.ref_name }}" != "v${version}" ]; then
+            echo "tag ${{ github.ref_name }} does not match TypeScript SDK version ${version}" >&2
+            exit 1
+          fi
+          echo "QUASAR_VERSION=${version}" >> "$GITHUB_ENV"
+
+      - name: Install and verify TypeScript SDK
+        run: make test-typescript-package typescript-package-check
+
+      - name: Publish @blueshift-gg/quasar-test
+        run: scripts/publish-npm-package.sh testing/typescript "$QUASAR_VERSION"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
   # ── GitHub Release with auto-generated notes ──
   github-release:
     name: GitHub Release
-    needs: publish
+    needs: [publish, publish-typescript]
     runs-on: ubuntu-24.04
     permissions:
       # Required only for `gh release create` below.

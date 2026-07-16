@@ -141,6 +141,13 @@ macro_rules! impl_ata_behavior {
             const INIT_REQUIRES_SIGNER: bool = false;
             const INIT_SATISFIES_CHECK: bool = true;
             const VALIDATES_ACCOUNT_DATA: bool = $validates_account_data;
+            const IDL_RESOLVER: Option<quasar_lang::account_behavior::BehaviorIdlResolver> = Some(
+                quasar_lang::account_behavior::BehaviorIdlResolver::AssociatedToken {
+                    mint: "mint",
+                    owner: "authority",
+                    token_program: Some("token_program"),
+                },
+            );
 
             #[inline(always)]
             fn uses_arg<const PHASE: u8, const KEY: u64>() -> bool {
@@ -209,6 +216,13 @@ impl_ata_behavior!(
 /// Check-only behavior for `InterfaceAccount<TokenInterface>`.
 impl AccountBehavior<InterfaceAccount<crate::interface::TokenInterface>> for Behavior {
     type Args<'a> = Args<'a>;
+    const IDL_RESOLVER: Option<quasar_lang::account_behavior::BehaviorIdlResolver> = Some(
+        quasar_lang::account_behavior::BehaviorIdlResolver::AssociatedToken {
+            mint: "mint",
+            owner: "authority",
+            token_program: Some("token_program"),
+        },
+    );
 
     #[inline(always)]
     fn check<'a>(

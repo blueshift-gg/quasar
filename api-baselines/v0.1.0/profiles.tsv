@@ -2,6 +2,7 @@
 quasar-schema	default	quasar-schema.txt
 quasar-idl-schema	default	quasar-idl-schema.txt
 quasar-profile	default	quasar-profile.txt
+quasar-test	default	quasar-test.txt
 solana-compiler-builtins	default	solana-compiler-builtins.txt
 quasar-derive	proc-macro	quasar-derive.txt
 quasar-idl	default	quasar-idl.txt
