@@ -341,6 +341,24 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
 impl<
         'input,
         T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + AccountCount,
+        R: RemainingItem<'input>,
+        const N: usize,
+    > CtxWithRemaining<'input, T, R, N>
+{
+    /// Parse declared accounts and a complete bounded remaining-account tail.
+    ///
+    /// Generated dispatch decodes instruction arguments before converting its
+    /// tail, but this constructor remains useful to callers that already have
+    /// a [`Context`] and preserves the original typed-context API.
+    #[inline(always)]
+    pub fn new_typed(ctx: Context<'input>) -> Result<Self, ProgramError> {
+        CtxWithRemaining::<T>::new(ctx)?.into_typed()
+    }
+}
+
+impl<
+        'input,
+        T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + AccountCount,
         R,
         const N: usize,
     > CtxWithRemaining<'input, T, R, N>

@@ -52,6 +52,7 @@ pub fn quasar_lang::account_behavior::AccountBehavior::after_init<'a>(&mut A, &S
 pub fn quasar_lang::account_behavior::AccountBehavior::check<'a>(&A, &Self::Args) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::account_behavior::AccountBehavior::exit<'a>(&mut A, &Self::Args) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::account_behavior::AccountBehavior::exit_signed<'a, S>(&mut A, &Self::Args, &S) -> core::result::Result<(), solana_program_error::ProgramError> where S: quasar_lang::cpi::CpiSignerSeeds + ?core::marker::Sized
+pub fn quasar_lang::account_behavior::AccountBehavior::infer_init_account<'a, const KEY: u64>(&mut Self::Args, &'a solana_account_view::AccountView)
 pub fn quasar_lang::account_behavior::AccountBehavior::set_init_param<'a>(&mut <A as quasar_lang::account_init::AccountInit>::InitParams, &Self::Args) -> core::result::Result<(), solana_program_error::ProgramError> where A: quasar_lang::account_init::AccountInit
 pub fn quasar_lang::account_behavior::AccountBehavior::update<'a>(&mut A, &Self::Args) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::account_behavior::AccountBehavior::uses_arg<const PHASE: u8, const KEY: u64>() -> bool
@@ -1849,6 +1850,7 @@ pub trait quasar_lang::prelude::internal::Discriminator
 pub const quasar_lang::prelude::internal::Discriminator::BUMP_OFFSET: core::option::Option<usize>
 pub const quasar_lang::prelude::internal::Discriminator::DISCRIMINATOR: &'static [u8]
 pub trait quasar_lang::prelude::internal::HasSeeds
+pub const quasar_lang::prelude::internal::HasSeeds::HAS_SEED_PREFIX: bool
 pub const quasar_lang::prelude::internal::HasSeeds::SEED_DYNAMIC_COUNT: usize
 pub const quasar_lang::prelude::internal::HasSeeds::SEED_PREFIX: &'static [u8]
 pub trait quasar_lang::prelude::internal::Owners
@@ -2747,6 +2749,7 @@ pub fn quasar_lang::prelude::AccountBehavior::after_init<'a>(&mut A, &Self::Args
 pub fn quasar_lang::prelude::AccountBehavior::check<'a>(&A, &Self::Args) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::prelude::AccountBehavior::exit<'a>(&mut A, &Self::Args) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::prelude::AccountBehavior::exit_signed<'a, S>(&mut A, &Self::Args, &S) -> core::result::Result<(), solana_program_error::ProgramError> where S: quasar_lang::cpi::CpiSignerSeeds + ?core::marker::Sized
+pub fn quasar_lang::prelude::AccountBehavior::infer_init_account<'a, const KEY: u64>(&mut Self::Args, &'a solana_account_view::AccountView)
 pub fn quasar_lang::prelude::AccountBehavior::set_init_param<'a>(&mut <A as quasar_lang::account_init::AccountInit>::InitParams, &Self::Args) -> core::result::Result<(), solana_program_error::ProgramError> where A: quasar_lang::account_init::AccountInit
 pub fn quasar_lang::prelude::AccountBehavior::update<'a>(&mut A, &Self::Args) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::prelude::AccountBehavior::uses_arg<const PHASE: u8, const KEY: u64>() -> bool
@@ -2981,6 +2984,7 @@ pub const quasar_lang::prelude::Event::DISCRIMINATOR: &'static [u8]
 pub fn quasar_lang::prelude::Event::emit(&self, impl core::ops::function::FnOnce(&[u8]) -> core::result::Result<(), solana_program_error::ProgramError>) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::prelude::Event::write_data(&self, &mut [u8])
 pub trait quasar_lang::prelude::HasSeeds
+pub const quasar_lang::prelude::HasSeeds::HAS_SEED_PREFIX: bool
 pub const quasar_lang::prelude::HasSeeds::SEED_DYNAMIC_COUNT: usize
 pub const quasar_lang::prelude::HasSeeds::SEED_PREFIX: &'static [u8]
 pub trait quasar_lang::prelude::Id
@@ -3111,6 +3115,7 @@ impl<'a> core::marker::Unpin for quasar_lang::remaining::RemainingAccounts<'a>
 impl<'a> core::marker::UnsafeUnpin for quasar_lang::remaining::RemainingAccounts<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for quasar_lang::remaining::RemainingAccounts<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for quasar_lang::remaining::RemainingAccounts<'a>
+pub const quasar_lang::remaining::MAX_REMAINING_ACCOUNTS: usize
 pub type quasar_lang::remaining::RemainingIter<'a> = RemainingIterImpl<'a>
 pub mod quasar_lang::return_data
 pub fn quasar_lang::return_data::set_return_data(&[u8])
@@ -3247,6 +3252,7 @@ pub const quasar_lang::traits::Event::DISCRIMINATOR: &'static [u8]
 pub fn quasar_lang::traits::Event::emit(&self, impl core::ops::function::FnOnce(&[u8]) -> core::result::Result<(), solana_program_error::ProgramError>) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::traits::Event::write_data(&self, &mut [u8])
 pub trait quasar_lang::traits::HasSeeds
+pub const quasar_lang::traits::HasSeeds::HAS_SEED_PREFIX: bool
 pub const quasar_lang::traits::HasSeeds::SEED_DYNAMIC_COUNT: usize
 pub const quasar_lang::traits::HasSeeds::SEED_PREFIX: &'static [u8]
 pub trait quasar_lang::traits::Id

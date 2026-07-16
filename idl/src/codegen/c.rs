@@ -505,31 +505,21 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
             }
         }
 
+        let derivation = CAccountDerivation {
+            prefix,
+            instruction: ix,
+            pda_name_to_idx: &pda_name_to_idx,
+        };
+
         // derive pdas
         for acc in resolved_account_order(ix).expect("validated derived-account order") {
             let pda_idx = pda_name_to_idx[acc.name.as_str()];
             match &acc.resolver {
                 IdlResolver::Pda { program, seeds } => {
-                    emit_pda_derivation(
-                        out,
-                        prefix,
-                        ix,
-                        program,
-                        seeds,
-                        &upper,
-                        pda_idx,
-                        &pda_name_to_idx,
-                    );
+                    emit_pda_derivation(out, &derivation, program, seeds, pda_idx);
                 }
                 IdlResolver::AssociatedToken { .. } => {
-                    emit_associated_token_derivation(
-                        out,
-                        prefix,
-                        ix,
-                        acc,
-                        pda_idx,
-                        &pda_name_to_idx,
-                    );
+                    emit_associated_token_derivation(out, &derivation, acc, pda_idx);
                 }
                 _ => unreachable!("resolved account order only contains derived accounts"),
             }
@@ -663,13 +653,17 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
     }
 }
 
+struct CAccountDerivation<'a> {
+    prefix: &'a str,
+    instruction: &'a crate::types::IdlInstruction,
+    pda_name_to_idx: &'a HashMap<&'a str, usize>,
+}
+
 fn emit_associated_token_derivation(
     out: &mut String,
-    prefix: &str,
-    ix: &crate::types::IdlInstruction,
+    context: &CAccountDerivation<'_>,
     account: &IdlAccountNode,
     pda_idx: usize,
-    pda_name_to_idx: &HashMap<&str, usize>,
 ) {
     let IdlResolver::AssociatedToken {
         mint,
@@ -679,12 +673,13 @@ fn emit_associated_token_derivation(
     else {
         unreachable!("associated-token emitter called for a different resolver")
     };
+    let prefix = context.prefix;
     let upper_prefix = prefix.to_ascii_uppercase();
-    let owner = c_account_seed_expr(prefix, ix, owner, pda_name_to_idx);
-    let mint = c_account_seed_expr(prefix, ix, mint, pda_name_to_idx);
+    let owner = c_account_seed_expr(prefix, context.instruction, owner, context.pda_name_to_idx);
+    let mint = c_account_seed_expr(prefix, context.instruction, mint, context.pda_name_to_idx);
     let token_program = token_program.as_deref().map_or_else(
         || format!("{upper_prefix}_TOKEN_PROGRAM_ID.bytes"),
-        |path| c_account_seed_expr(prefix, ix, path, pda_name_to_idx),
+        |path| c_account_seed_expr(prefix, context.instruction, path, context.pda_name_to_idx),
     );
 
     writeln!(out, "    {{").unwrap();
@@ -748,14 +743,13 @@ fn meta_helper(writable: bool, signer: bool) -> &'static str {
 
 fn emit_pda_derivation(
     out: &mut String,
-    prefix: &str,
-    ix: &crate::types::IdlInstruction,
+    context: &CAccountDerivation<'_>,
     program: &IdlPdaProgram,
     seeds: &[IdlPdaSeed],
-    upper_prefix: &str,
     pda_idx: usize,
-    pda_name_to_idx: &HashMap<&str, usize>,
 ) {
+    let prefix = context.prefix;
+    let upper_prefix = prefix.to_ascii_uppercase();
     let seed_count = seeds.len();
     writeln!(out, "    {{").unwrap();
     writeln!(out, "        SignerSeed seeds[{seed_count}];").unwrap();
@@ -772,7 +766,8 @@ fn emit_pda_derivation(
                 .unwrap();
             }
             IdlPdaSeed::Account { path } => {
-                let address = c_account_seed_expr(prefix, ix, path, pda_name_to_idx);
+                let address =
+                    c_account_seed_expr(prefix, context.instruction, path, context.pda_name_to_idx);
                 writeln!(
                     out,
                     "        seeds[{i}].addr = {address}; seeds[{i}].len = 32;"
@@ -795,7 +790,7 @@ fn emit_pda_derivation(
     let program = match program {
         IdlPdaProgram::ProgramId {} => format!("&{upper_prefix}_PROGRAM_ID"),
         IdlPdaProgram::Account { path } => {
-            c_account_address_expr(prefix, ix, path, pda_name_to_idx)
+            c_account_address_expr(prefix, context.instruction, path, context.pda_name_to_idx)
         }
     };
     writeln!(

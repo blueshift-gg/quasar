@@ -25,10 +25,12 @@ const _: () = assert!(
     "AccountView must not implement Drop; ptr::read copies rely on this"
 );
 
-/// Maximum number of remaining accounts the iterator will yield
-/// before returning an error. Prevents unbounded stack usage in
-/// the cache array.
-const MAX_REMAINING_ACCOUNTS: usize = 64;
+/// Maximum number of raw remaining accounts a bounded parser or iterator will
+/// accept.
+///
+/// This caps stack-backed parsing caches and the runtime input accepted by
+/// `Remaining<T, N>`, independently of the logical item capacity `N`.
+pub const MAX_REMAINING_ACCOUNTS: usize = 64;
 
 /// Returns `true` if the cache has room for another entry.
 ///
@@ -587,10 +589,7 @@ impl<T, const N: usize> Remaining<T, N> {
         // SAFETY: `accounts.ptr`/`accounts.boundary` delimit the region.
         let mut cursor = unsafe { Cursor::new(accounts.ptr, accounts.boundary) };
         while !cursor.at_end() {
-            if out.len >= N {
-                return Err(QuasarError::RemainingAccountsOverflow.into());
-            }
-            if raw_len >= MAX_REMAINING_ACCOUNTS {
+            if out.len >= N || raw_len >= MAX_REMAINING_ACCOUNTS {
                 return Err(QuasarError::RemainingAccountsOverflow.into());
             }
 
@@ -665,17 +664,14 @@ impl<T, const N: usize> Remaining<T, N> {
             },
             len: 0,
         };
-        // SAFETY: An uninitialized `[MaybeUninit<Address>; N]` is valid.
-        let mut seen = unsafe {
-            core::mem::MaybeUninit::<[core::mem::MaybeUninit<Address>; N]>::uninit().assume_init()
-        };
         // SAFETY: `accounts.ptr`/`accounts.boundary` delimit the region.
         let mut cursor = unsafe { Cursor::new(accounts.ptr, accounts.boundary) };
         while !cursor.at_end() {
-            if out.len >= N {
+            if out.len >= N || out.len >= MAX_REMAINING_ACCOUNTS {
                 return Err(QuasarError::RemainingAccountsOverflow.into());
             }
 
+            let entry_start = cursor.ptr();
             // SAFETY: not at end (checked above).
             let view = match unsafe { cursor.next() } {
                 // SAFETY: Non-duplicate entry with a valid `RuntimeAccount`.
@@ -693,26 +689,21 @@ impl<T, const N: usize> Remaining<T, N> {
                 }
             };
 
-            let address = *view.address();
             if T::REJECT_DUPLICATES {
                 if accounts
                     .declared
                     .iter()
-                    .any(|declared| crate::keys_eq(declared.address(), &address))
+                    .any(|declared| crate::keys_eq(declared.address(), view.address()))
                 {
                     return Err(QuasarError::RemainingAccountDuplicate.into());
                 }
-                let mut i = 0usize;
-                while i < out.len {
-                    // SAFETY: The first `out.len` seen-address slots were
-                    // initialized alongside parsed output items.
-                    let seen_address = unsafe { seen[i].assume_init_ref() };
-                    if crate::keys_eq(seen_address, &address) {
-                        return Err(QuasarError::RemainingAccountDuplicate.into());
-                    }
-                    i += 1;
+                // Re-scan the consumed prefix instead of allocating an
+                // address cache proportional to the caller-selected `N`.
+                // SAFETY: `accounts.ptr..entry_start` is the valid prefix
+                // consumed by this cursor from the same remaining region.
+                if unsafe { prefix_contains_address(accounts.ptr, entry_start, view.address()) } {
+                    return Err(QuasarError::RemainingAccountDuplicate.into());
                 }
-                seen[out.len].write(address);
             }
 
             // SAFETY: `view` is initialized and duplicate policy checks have

@@ -47,6 +47,7 @@ pub const quasar_spl::accounts::associated_token::Behavior::INIT_SATISFIES_CHECK
 pub const quasar_spl::accounts::associated_token::Behavior::SETS_INIT_PARAMS: bool
 pub const quasar_spl::accounts::associated_token::Behavior::VALIDATES_ACCOUNT_DATA: bool
 pub fn quasar_spl::accounts::associated_token::Behavior::check<'a>(&quasar_lang::accounts::account::Account<quasar_spl::Token2022>, &quasar_spl::accounts::associated_token::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_spl::accounts::associated_token::Behavior::infer_init_account<'a, const KEY: u64>(&mut quasar_spl::accounts::associated_token::Args<'a>, &'a solana_account_view::AccountView)
 pub fn quasar_spl::accounts::associated_token::Behavior::set_init_param<'a>(&mut <quasar_lang::accounts::account::Account<quasar_spl::Token2022> as quasar_lang::account_init::AccountInit>::InitParams, &quasar_spl::accounts::associated_token::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_spl::accounts::associated_token::Behavior::uses_arg<const PHASE: u8, const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::account::Account<quasar_spl::Token>> for quasar_spl::accounts::associated_token::Behavior
@@ -57,6 +58,7 @@ pub const quasar_spl::accounts::associated_token::Behavior::INIT_SATISFIES_CHECK
 pub const quasar_spl::accounts::associated_token::Behavior::SETS_INIT_PARAMS: bool
 pub const quasar_spl::accounts::associated_token::Behavior::VALIDATES_ACCOUNT_DATA: bool
 pub fn quasar_spl::accounts::associated_token::Behavior::check<'a>(&quasar_lang::accounts::account::Account<quasar_spl::Token>, &quasar_spl::accounts::associated_token::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_spl::accounts::associated_token::Behavior::infer_init_account<'a, const KEY: u64>(&mut quasar_spl::accounts::associated_token::Args<'a>, &'a solana_account_view::AccountView)
 pub fn quasar_spl::accounts::associated_token::Behavior::set_init_param<'a>(&mut <quasar_lang::accounts::account::Account<quasar_spl::Token> as quasar_lang::account_init::AccountInit>::InitParams, &quasar_spl::accounts::associated_token::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_spl::accounts::associated_token::Behavior::uses_arg<const PHASE: u8, const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token>> for quasar_spl::accounts::associated_token::Behavior
@@ -67,6 +69,7 @@ pub const quasar_spl::accounts::associated_token::Behavior::INIT_SATISFIES_CHECK
 pub const quasar_spl::accounts::associated_token::Behavior::SETS_INIT_PARAMS: bool
 pub const quasar_spl::accounts::associated_token::Behavior::VALIDATES_ACCOUNT_DATA: bool
 pub fn quasar_spl::accounts::associated_token::Behavior::check<'a>(&quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token>, &quasar_spl::accounts::associated_token::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_spl::accounts::associated_token::Behavior::infer_init_account<'a, const KEY: u64>(&mut quasar_spl::accounts::associated_token::Args<'a>, &'a solana_account_view::AccountView)
 pub fn quasar_spl::accounts::associated_token::Behavior::set_init_param<'a>(&mut <quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token> as quasar_lang::account_init::AccountInit>::InitParams, &quasar_spl::accounts::associated_token::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_spl::accounts::associated_token::Behavior::uses_arg<const PHASE: u8, const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::TokenInterface>> for quasar_spl::accounts::associated_token::Behavior
@@ -93,7 +96,7 @@ impl<'a> core::marker::UnsafeUnpin for quasar_spl::accounts::mint::FreezeAuthori
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for quasar_spl::accounts::mint::FreezeAuthorityArg<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for quasar_spl::accounts::mint::FreezeAuthorityArg<'a>
 pub struct quasar_spl::accounts::mint::Args<'a>
-pub quasar_spl::accounts::mint::Args::authority: &'a solana_account_view::AccountView
+pub quasar_spl::accounts::mint::Args::authority: core::option::Option<&'a solana_account_view::AccountView>
 pub quasar_spl::accounts::mint::Args::decimals: core::option::Option<u8>
 pub quasar_spl::accounts::mint::Args::freeze_authority: quasar_spl::accounts::mint::FreezeAuthorityArg<'a>
 pub quasar_spl::accounts::mint::Args::token_program: core::option::Option<&'a solana_account_view::AccountView>
@@ -396,6 +399,7 @@ pub const quasar_spl::accounts::associated_token::Behavior::INIT_SATISFIES_CHECK
 pub const quasar_spl::accounts::associated_token::Behavior::SETS_INIT_PARAMS: bool
 pub const quasar_spl::accounts::associated_token::Behavior::VALIDATES_ACCOUNT_DATA: bool
 pub fn quasar_spl::accounts::associated_token::Behavior::check<'a>(&quasar_lang::accounts::account::Account<quasar_spl::Token2022>, &quasar_spl::accounts::associated_token::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_spl::accounts::associated_token::Behavior::infer_init_account<'a, const KEY: u64>(&mut quasar_spl::accounts::associated_token::Args<'a>, &'a solana_account_view::AccountView)
 pub fn quasar_spl::accounts::associated_token::Behavior::set_init_param<'a>(&mut <quasar_lang::accounts::account::Account<quasar_spl::Token2022> as quasar_lang::account_init::AccountInit>::InitParams, &quasar_spl::accounts::associated_token::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_spl::accounts::associated_token::Behavior::uses_arg<const PHASE: u8, const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::account::Account<quasar_spl::Token>> for quasar_spl::accounts::associated_token::Behavior
@@ -406,6 +410,7 @@ pub const quasar_spl::accounts::associated_token::Behavior::INIT_SATISFIES_CHECK
 pub const quasar_spl::accounts::associated_token::Behavior::SETS_INIT_PARAMS: bool
 pub const quasar_spl::accounts::associated_token::Behavior::VALIDATES_ACCOUNT_DATA: bool
 pub fn quasar_spl::accounts::associated_token::Behavior::check<'a>(&quasar_lang::accounts::account::Account<quasar_spl::Token>, &quasar_spl::accounts::associated_token::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_spl::accounts::associated_token::Behavior::infer_init_account<'a, const KEY: u64>(&mut quasar_spl::accounts::associated_token::Args<'a>, &'a solana_account_view::AccountView)
 pub fn quasar_spl::accounts::associated_token::Behavior::set_init_param<'a>(&mut <quasar_lang::accounts::account::Account<quasar_spl::Token> as quasar_lang::account_init::AccountInit>::InitParams, &quasar_spl::accounts::associated_token::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_spl::accounts::associated_token::Behavior::uses_arg<const PHASE: u8, const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token>> for quasar_spl::accounts::associated_token::Behavior
@@ -416,6 +421,7 @@ pub const quasar_spl::accounts::associated_token::Behavior::INIT_SATISFIES_CHECK
 pub const quasar_spl::accounts::associated_token::Behavior::SETS_INIT_PARAMS: bool
 pub const quasar_spl::accounts::associated_token::Behavior::VALIDATES_ACCOUNT_DATA: bool
 pub fn quasar_spl::accounts::associated_token::Behavior::check<'a>(&quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token>, &quasar_spl::accounts::associated_token::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_spl::accounts::associated_token::Behavior::infer_init_account<'a, const KEY: u64>(&mut quasar_spl::accounts::associated_token::Args<'a>, &'a solana_account_view::AccountView)
 pub fn quasar_spl::accounts::associated_token::Behavior::set_init_param<'a>(&mut <quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::Token> as quasar_lang::account_init::AccountInit>::InitParams, &quasar_spl::accounts::associated_token::Args<'a>) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_spl::accounts::associated_token::Behavior::uses_arg<const PHASE: u8, const KEY: u64>() -> bool
 impl quasar_lang::account_behavior::AccountBehavior<quasar_lang::accounts::interface_account::InterfaceAccount<quasar_spl::TokenInterface>> for quasar_spl::accounts::associated_token::Behavior
@@ -442,7 +448,7 @@ impl<'a> core::marker::UnsafeUnpin for quasar_spl::accounts::mint::FreezeAuthori
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for quasar_spl::accounts::mint::FreezeAuthorityArg<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for quasar_spl::accounts::mint::FreezeAuthorityArg<'a>
 pub struct quasar_spl::prelude::mint::Args<'a>
-pub quasar_spl::prelude::mint::Args::authority: &'a solana_account_view::AccountView
+pub quasar_spl::prelude::mint::Args::authority: core::option::Option<&'a solana_account_view::AccountView>
 pub quasar_spl::prelude::mint::Args::decimals: core::option::Option<u8>
 pub quasar_spl::prelude::mint::Args::freeze_authority: quasar_spl::accounts::mint::FreezeAuthorityArg<'a>
 pub quasar_spl::prelude::mint::Args::token_program: core::option::Option<&'a solana_account_view::AccountView>

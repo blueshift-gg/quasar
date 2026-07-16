@@ -283,6 +283,9 @@ impl core::panic::unwind_safe::UnwindSafe for quasar_idl::codegen::model::Resolv
 pub fn quasar_idl::codegen::model::go_field_path(&str) -> alloc::string::String
 pub fn quasar_idl::codegen::model::python_field_path(&str) -> alloc::string::String
 pub fn quasar_idl::codegen::model::reject_generics(&quasar_idl_schema::root::Idl, &str) -> quasar_idl::codegen::model::CodegenResult<()>
+pub fn quasar_idl::codegen::model::resolved_account_dependencies(&quasar_idl_schema::account::IdlAccountNode) -> alloc::vec::Vec<&str>
+pub fn quasar_idl::codegen::model::resolved_account_order(&quasar_idl_schema::instruction::IdlInstruction) -> quasar_idl::codegen::model::CodegenResult<alloc::vec::Vec<&quasar_idl_schema::account::IdlAccountNode>>
+pub fn quasar_idl::codegen::model::resolver_is_derived(&quasar_idl_schema::account::IdlResolver) -> bool
 pub fn quasar_idl::codegen::model::type_has_float(&quasar_idl_schema::types::IdlType) -> bool
 pub fn quasar_idl::codegen::model::type_has_option(&quasar_idl_schema::types::IdlType) -> bool
 pub fn quasar_idl::codegen::model::type_has_public_key(&quasar_idl_schema::types::IdlType) -> bool

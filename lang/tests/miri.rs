@@ -1212,6 +1212,22 @@ fn bounds_remaining_iterator_overflow_returns_error() {
 }
 
 #[test]
+fn bounds_typed_single_remaining_overflow_returns_error() {
+    const LIMIT: usize = quasar_lang::remaining::MAX_REMAINING_ACCOUNTS;
+    let entries: Vec<_> = (0..=LIMIT)
+        .map(|i| MultiAccountEntry::account(i as u8, 0))
+        .collect();
+    let mut buf = MultiAccountBuffer::new(&entries);
+    let remaining = unsafe { RemainingAccounts::new(buf.as_mut_ptr(), buf.boundary(), &[]) };
+
+    let err = match remaining.parse::<UncheckedAccount, { LIMIT + 1 }>() {
+        Ok(_) => panic!("typed remaining must enforce the raw account cap"),
+        Err(err) => err,
+    };
+    assert_eq!(err, QuasarError::RemainingAccountsOverflow.into());
+}
+
+#[test]
 fn bounds_remaining_empty() {
     let mut buf: Vec<u64> = vec![0; 1];
     let ptr = buf.as_mut_ptr() as *mut u8;

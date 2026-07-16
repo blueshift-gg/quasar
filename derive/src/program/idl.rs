@@ -72,13 +72,18 @@ pub(super) fn emit_idl(model: &ProgramModel, mod_name: &Ident) -> TokenStream2 {
                         kind: #krate::idl_build::__reexport::RemainingAccountsKind::Append,
                         name: #krate::idl_build::s("remainingAccounts"),
                         min: 0,
-                        max: Some(
-                            ((#max) as usize)
-                                .checked_mul(
-                                    <#item as #krate::remaining::RemainingItem<'static>>::COUNT,
-                                )
-                                .expect("typed remaining-account IDL maximum overflows usize"),
-                        ),
+                        max: Some({
+                            let item_accounts =
+                                <#item as #krate::remaining::RemainingItem<'static>>::COUNT;
+                            if item_accounts == 0 {
+                                0
+                            } else {
+                                core::cmp::min(
+                                    (#max) as usize,
+                                    #krate::remaining::MAX_REMAINING_ACCOUNTS / item_accounts,
+                                ) * item_accounts
+                            }
+                        }),
                         item: #krate::idl_build::__reexport::RemainingAccountItem {
                             client_type: #krate::idl_build::s("accountMeta"),
                             signer: #signer,
