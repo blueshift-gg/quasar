@@ -4,7 +4,10 @@ Quasar is in beta. The API is unstable and the internals are performance-critica
 
 To understand how the pieces fit — the compiler front-end (`derive/`), the
 runtime it targets (`lang/`), the accounts pipeline phases, and the enforced
-layer contracts — read [`ARCHITECTURE.md`](./ARCHITECTURE.md) first.
+layer contracts — read [`ARCHITECTURE.md`](./ARCHITECTURE.md) first. Test
+requirements — the suite layers, the per-feature test contract, and the
+assertion rules every test must follow — live in
+[`TESTING.md`](./TESTING.md).
 
 ## How to help
 
