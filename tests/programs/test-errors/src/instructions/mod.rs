@@ -81,3 +81,17 @@ pub use address_default::*;
 
 pub mod constraint_default;
 pub use constraint_default::*;
+pub mod remaining_typed_check;
+pub use remaining_typed_check::*;
+pub mod err_plain_ok;
+pub use err_plain_ok::*;
+pub mod return_pair;
+pub use return_pair::*;
+pub mod cpi_missing_return;
+pub use cpi_missing_return::*;
+pub mod cpi_decode_mismatch;
+pub use cpi_decode_mismatch::*;
+pub mod cpi_nested_misc_return;
+pub use cpi_nested_misc_return::*;
+pub mod cpi_wrong_return_program;
+pub use cpi_wrong_return_program::*;

@@ -686,3 +686,92 @@ fn test_clock_syscall_vs_account_consistent() {
         "syscall and account clock data should match"
     );
 }
+
+/// Builds the standard payer + snapshot accounts for the account-based
+/// clock instructions, with the clock account left to the caller.
+fn spoof_setup(
+    snapshot_size: usize,
+    snapshot_disc: u8,
+) -> (Mollusk, Address, Account, Address, Account) {
+    let mollusk = setup();
+    let (system_program, _) = keyed_account_for_system_program();
+    let payer = Address::new_unique();
+    let payer_account = Account::new(1_000_000_000, 0, &system_program);
+    let (snapshot, _) = Address::find_program_address(&[b"clock"], &quasar_test_sysvar::ID);
+    let mut snapshot_data = vec![0u8; snapshot_size];
+    snapshot_data[0] = snapshot_disc;
+    let snapshot_account = Account {
+        lamports: 1_000_000,
+        data: snapshot_data,
+        owner: quasar_test_sysvar::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    (mollusk, payer, payer_account, snapshot, snapshot_account)
+}
+
+#[test]
+fn test_read_clock_rejects_spoofed_sysvar_account() {
+    // A Sysvar<Clock> field must reject an account at a non-canonical
+    // address: accepting it would let a caller inject arbitrary time.
+    let (mollusk, payer, payer_account, snapshot, snapshot_account) =
+        spoof_setup(CLOCK_SNAPSHOT_SIZE, 1);
+    let fake_clock = Address::new_unique();
+    let (_, real_clock_account) = mollusk.sysvars.keyed_account_for_clock_sysvar();
+
+    let instruction: Instruction = ReadClockFromAccountInstruction {
+        _payer: payer,
+        snapshot,
+        clock: fake_clock,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (payer, payer_account),
+            (snapshot, snapshot_account),
+            // Genuine clock *contents* at a non-canonical address: only the
+            // address check can catch this spoof.
+            (fake_clock, real_clock_account),
+        ],
+    );
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::IncorrectProgramId
+        ),
+        "spoofed clock sysvar account must be rejected by the address check"
+    );
+}
+
+#[test]
+fn test_read_clock_full_rejects_spoofed_sysvar_account() {
+    // Same spoof against the second Sysvar<Clock> field
+    // (read_clock_full_from_account).
+    let (mollusk, payer, payer_account, snapshot, snapshot_account) =
+        spoof_setup(CLOCK_FULL_SNAPSHOT_SIZE, 3);
+    let fake_clock = Address::new_unique();
+    let (_, real_clock_account) = mollusk.sysvars.keyed_account_for_clock_sysvar();
+
+    let instruction: Instruction = ReadClockFullFromAccountInstruction {
+        _payer: payer,
+        snapshot,
+        clock: fake_clock,
+    }
+    .into();
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (payer, payer_account),
+            (snapshot, snapshot_account),
+            (fake_clock, real_clock_account),
+        ],
+    );
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::IncorrectProgramId
+        ),
+        "spoofed clock sysvar account must be rejected by the address check"
+    );
+}

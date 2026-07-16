@@ -529,3 +529,27 @@ fn test_different_events_different_discriminators() {
     );
     assert!(result_empty.program_result.is_ok());
 }
+
+#[test]
+fn test_emit_u64_payload_reaches_log() {
+    // Beyond the CU proxy above: prove the emitted bytes actually reach the
+    // log stream. sol_log_data surfaces as a "Program data: <base64>" line;
+    // SimpleEvent { value: 42 } is discriminator 1 followed by 42u64 LE,
+    // i.e. [1, 42, 0, 0, 0, 0, 0, 0, 0] == base64 "ASoAAAAAAAAA".
+    // (QuasarSvm here because Mollusk's result does not expose logs.)
+    let elf = std::fs::read("../../target/deploy/quasar_test_events.so")
+        .expect("run `make build-sbf` first");
+    let mut svm = quasar_svm::QuasarSvm::new().with_program(&quasar_test_events::ID, &elf);
+    let signer = quasar_svm::Pubkey::new_unique();
+    let instruction: quasar_svm::Instruction = EmitU64EventInstruction { signer, value: 42 }.into();
+    let result = svm.process_instruction(&instruction, &[crate::helpers::signer_account(signer)]);
+    assert!(result.is_ok(), "emit failed: {:?}", result.raw_result);
+    assert!(
+        result
+            .logs
+            .iter()
+            .any(|line| line == "Program data: ASoAAAAAAAAA"),
+        "expected event payload in logs, got: {:?}",
+        result.logs
+    );
+}

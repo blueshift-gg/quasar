@@ -1,6 +1,6 @@
 use {
     crate::helpers::*,
-    quasar_svm::{Instruction, Pubkey},
+    quasar_svm::{Instruction, ProgramError, Pubkey},
     quasar_test_migrate::cpi::*,
 };
 
@@ -208,4 +208,80 @@ fn migrate_wrong_authority_fails() {
         ],
     );
     assert!(result.is_err(), "wrong authority should fail");
+}
+
+/// Runs the migrate instruction against an arbitrary config account state.
+fn migrate_with_config(config_state: quasar_svm::Account) -> quasar_svm::ExecutionResult {
+    let mut svm = svm_migrate();
+    let payer = Pubkey::new_unique();
+    let config = config_state.address;
+    let authority = Pubkey::new_unique();
+
+    let ix: Instruction = MigrateConfigInstruction {
+        payer,
+        system_program: quasar_svm::system_program::ID,
+        config,
+        authority,
+    }
+    .into();
+    svm.process_instruction(
+        &ix,
+        &[
+            rich_signer_account(payer),
+            config_state,
+            signer_account(authority),
+        ],
+    )
+}
+
+#[test]
+fn migrate_rejects_wrong_owner() {
+    // Valid V1 bytes but the account is owned by the system program, not this
+    // program: Migration parses the source as ConfigV1, whose owner check must
+    // fire before the type is trusted (type confusion on a live account).
+    let config = Pubkey::new_unique();
+    let authority = Pubkey::new_unique();
+    let result = migrate_with_config(raw_account(
+        config,
+        1_000_000,
+        build_config_v1_data(authority, 100),
+        Pubkey::default(),
+    ));
+    // The harness maps InstructionErrors without a dedicated variant to their
+    // Debug string; IllegalOwner is one of those.
+    result.assert_error(ProgramError::Runtime("IllegalOwner".into()));
+}
+
+#[test]
+fn migrate_rejects_wrong_discriminator() {
+    // Correct owner and size, but the discriminator is neither V1 nor V2: the
+    // source-type discriminator check must reject before any rewrite.
+    let config = Pubkey::new_unique();
+    let authority = Pubkey::new_unique();
+    let mut data = build_config_v1_data(authority, 100);
+    data[0] = 99;
+    let result = migrate_with_config(raw_account(
+        config,
+        1_000_000,
+        data,
+        quasar_test_migrate::ID,
+    ));
+    result.assert_error(ProgramError::InvalidAccountData);
+}
+
+#[test]
+fn migrate_rejects_too_small() {
+    // Valid V1 discriminator but one byte short of the V1 layout: the length
+    // check must reject before the schema window is read.
+    let config = Pubkey::new_unique();
+    let authority = Pubkey::new_unique();
+    let mut data = build_config_v1_data(authority, 100);
+    data.truncate(CONFIG_V1_SIZE - 1);
+    let result = migrate_with_config(raw_account(
+        config,
+        1_000_000,
+        data,
+        quasar_test_migrate::ID,
+    ));
+    result.assert_error(ProgramError::AccountDataTooSmall);
 }

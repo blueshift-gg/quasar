@@ -7,6 +7,7 @@ mod instructions;
 use instructions::*;
 pub mod errors;
 pub mod state;
+use state::ReturnPair;
 declare_id!("55555555555555555555555555555555555555555555");
 
 #[program]
@@ -154,6 +155,50 @@ mod quasar_test_errors {
 
     #[instruction(discriminator = 29)]
     pub fn constraint_default(ctx: Ctx<ConstraintDefault>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    /// Typed remaining-accounts parse: duplicate/owner/length rejection.
+    #[instruction(discriminator = 30)]
+    pub fn remaining_typed_check(
+        ctx: CtxWithRemaining<RemainingTypedCheck>,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler(ctx.remaining_accounts())
+    }
+
+    /// Succeeds without setting return data (MissingReturnData callee).
+    #[instruction(discriminator = 31)]
+    pub fn err_plain_ok(ctx: Ctx<ErrPlainOk>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    /// Returns a 12-byte payload (InvalidReturnData callee).
+    #[instruction(discriminator = 32)]
+    pub fn return_pair(ctx: Ctx<ReturnPairInstruction>) -> Result<ReturnPair, ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    /// Propagates MissingReturnData (3017) to the transaction level.
+    #[instruction(discriminator = 33)]
+    pub fn cpi_missing_return(ctx: Ctx<CpiMissingReturn>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    /// Propagates InvalidReturnData (3019) to the transaction level.
+    #[instruction(discriminator = 34)]
+    pub fn cpi_decode_mismatch(ctx: Ctx<CpiDecodeMismatch>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    /// Propagates ReturnDataFromWrongProgram (3018) to the transaction level.
+    #[instruction(discriminator = 35)]
+    pub fn cpi_wrong_return_program(ctx: Ctx<CpiWrongReturnProgram>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
+
+    /// Middle hop: leaves return data stamped by the foreign test-misc program.
+    #[instruction(discriminator = 36)]
+    pub fn cpi_nested_misc_return(ctx: Ctx<CpiNestedMiscReturn>) -> Result<(), ProgramError> {
         ctx.accounts.handler()
     }
 }

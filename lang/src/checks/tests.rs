@@ -11,8 +11,8 @@ extern crate alloc;
 
 use {
     super::{
-        Address as AddressCheck, DataLen, Discriminator as DiscriminatorCheck, Executable,
-        Mutable, Owner as OwnerCheck, Signer as SignerCheck, ZeroPod as ZeroPodCheck,
+        Address as AddressCheck, DataLen, Discriminator as DiscriminatorCheck, Executable, Mutable,
+        Owner as OwnerCheck, Signer as SignerCheck, ZeroPod as ZeroPodCheck,
     },
     crate::{
         __internal::{AccountView, RuntimeAccount, MAX_PERMITTED_DATA_INCREASE, NOT_BORROWED},
@@ -49,8 +49,10 @@ impl AccountBuffer {
         is_writable: bool,
         executable: bool,
     ) -> Self {
-        let byte_len =
-            size_of::<RuntimeAccount>() + data.len() + MAX_PERMITTED_DATA_INCREASE + size_of::<u64>();
+        let byte_len = size_of::<RuntimeAccount>()
+            + data.len()
+            + MAX_PERMITTED_DATA_INCREASE
+            + size_of::<u64>();
         let mut buf = Self {
             inner: vec![0; byte_len.div_ceil(8)],
         };
@@ -93,7 +95,14 @@ impl AccountBuffer {
 }
 
 fn header_account(is_signer: bool, is_writable: bool, executable: bool) -> AccountBuffer {
-    AccountBuffer::build(PROGRAM_ID, OWNER_ID, &[], is_signer, is_writable, executable)
+    AccountBuffer::build(
+        PROGRAM_ID,
+        OWNER_ID,
+        &[],
+        is_signer,
+        is_writable,
+        executable,
+    )
 }
 
 // --- fixture types -------------------------------------------------------
@@ -274,7 +283,10 @@ fn data_len_boundary_is_exact() {
 #[test]
 fn discriminator_accepts_exact_and_prefixed_data() {
     assert_eq!(MultiDisc::check_data(&[0xAB, 0xCD, 0xEF]), Ok(()));
-    assert_eq!(MultiDisc::check_data(&[0xAB, 0xCD, 0xEF, 0x00, 0x42]), Ok(()));
+    assert_eq!(
+        MultiDisc::check_data(&[0xAB, 0xCD, 0xEF, 0x00, 0x42]),
+        Ok(())
+    );
 }
 
 #[test]

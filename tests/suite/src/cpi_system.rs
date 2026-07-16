@@ -1,6 +1,6 @@
 use {
     crate::helpers::*,
-    quasar_svm::{Account, Instruction, Pubkey},
+    quasar_svm::{Account, Instruction, ProgramError, Pubkey},
     quasar_test_misc::cpi::*,
 };
 
@@ -114,7 +114,8 @@ fn create_insufficient_funds() {
             empty_account(new_account),
         ],
     );
-    assert!(result.is_err(), "insufficient funds");
+    // SystemError::ResultWithNegativeLamports = Custom(1)
+    result.assert_error(ProgramError::Custom(1));
 }
 
 // transfer.
@@ -248,4 +249,58 @@ fn assign_to_system_program() {
 
     let result = svm.process_instruction(&ix, &[signer_account(account)]);
     assert!(result.is_ok(), "assign to system: {:?}", result.raw_result);
+}
+
+#[test]
+fn transfer_rejects_insufficient_funds() {
+    let mut svm = svm_misc();
+    let from = Pubkey::new_unique();
+    let to = Pubkey::new_unique();
+
+    let ix: Instruction = TransferTestInstruction {
+        from,
+        to,
+        system_program: quasar_svm::system_program::ID,
+        amount: 500_000,
+    }
+    .into();
+    let result = svm.process_instruction(
+        &ix,
+        &[
+            Account {
+                address: from,
+                lamports: 100,
+                data: vec![],
+                owner: quasar_svm::system_program::ID,
+                executable: false,
+            },
+            signer_account(to),
+        ],
+    );
+    // SystemError::ResultWithNegativeLamports = Custom(1)
+    result.assert_error(ProgramError::Custom(1));
+}
+
+#[test]
+fn transfer_rejects_missing_signer() {
+    let mut svm = svm_misc();
+    let from = Pubkey::new_unique();
+    let to = Pubkey::new_unique();
+
+    let mut ix: Instruction = TransferTestInstruction {
+        from,
+        to,
+        system_program: quasar_svm::system_program::ID,
+        amount: 500_000,
+    }
+    .into();
+    // Strip the signer flag from `from`: the framework's header check must
+    // reject before the system CPI is reached.
+    for meta in &mut ix.accounts {
+        if meta.pubkey == from {
+            meta.is_signer = false;
+        }
+    }
+    let result = svm.process_instruction(&ix, &[rich_signer_account(from), signer_account(to)]);
+    result.assert_error(ProgramError::MissingRequiredSignature);
 }

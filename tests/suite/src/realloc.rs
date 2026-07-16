@@ -137,3 +137,65 @@ fn shrink_below_struct_rejects() {
     assert!(r1.is_err(), "shrink below struct size should fail");
     r1.assert_error(ProgramError::AccountDataTooSmall);
 }
+
+#[test]
+fn realloc_rejects_wrong_owner() {
+    // Valid SimpleAccount bytes but owned by a random program. Realloc itself
+    // performs no owner check; this exercises the Account<SimpleAccount>
+    // owner guard at parse time, which must fire before realloc runs.
+    let mut svm = svm_misc();
+    let payer = Pubkey::new_unique();
+    let account = Pubkey::new_unique();
+
+    let hostile = raw_account(
+        account,
+        1_000_000,
+        build_simple_data(payer, 42, 0),
+        Pubkey::new_unique(),
+    );
+    let ix: Instruction = ReallocCheckInstruction {
+        account,
+        payer,
+        system_program: quasar_svm::system_program::ID,
+        new_space: 100,
+    }
+    .into();
+    let result = svm.process_instruction(&ix, &[hostile, rich_signer_account(payer)]);
+    // The harness maps InstructionErrors without a dedicated variant to their
+    // Debug string; IllegalOwner is one of those.
+    result.assert_error(ProgramError::Runtime("IllegalOwner".into()));
+}
+
+#[test]
+fn realloc_rejects_underfunded_grow() {
+    // Growing requires topping the account up to the new rent-exempt minimum
+    // via a system transfer from the payer; a payer with 1 lamport cannot
+    // fund it. The failure surfaces from the system-program CPI:
+    // SystemError::ResultWithNegativeLamports = Custom(1).
+    let mut svm = svm_misc();
+    let payer = Pubkey::new_unique();
+    let account = Pubkey::new_unique();
+
+    let broke_payer = quasar_svm::Account {
+        address: payer,
+        lamports: 1,
+        data: vec![],
+        owner: quasar_svm::system_program::ID,
+        executable: false,
+    };
+    let target = raw_account(
+        account,
+        1_000_000,
+        build_simple_data(payer, 42, 0),
+        quasar_test_misc::ID,
+    );
+    let ix: Instruction = ReallocCheckInstruction {
+        account,
+        payer,
+        system_program: quasar_svm::system_program::ID,
+        new_space: 10_000,
+    }
+    .into();
+    let result = svm.process_instruction(&ix, &[target, broke_payer]);
+    result.assert_error(ProgramError::Custom(1));
+}

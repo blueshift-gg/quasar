@@ -163,3 +163,30 @@ fn rejects_wrong_owner() {
     let result = svm.process_instruction(&ix, &[signer_account(signer), bad_account]);
     assert!(result.raw_result.is_err(), "wrong owner should be rejected");
 }
+
+#[test]
+fn rejects_truncated_matching_discriminator() {
+    // Discriminator matches the Settings variant but the data is one byte
+    // short of Settings' fixed size: the per-variant length check must reject.
+    // one_of tries each variant's full check and reports the blanket
+    // InvalidAccountData when none matches (the underlying rejection is the
+    // length check; the variant-specific error is deliberately not surfaced).
+    let mut svm = svm_one_of();
+    let signer = Pubkey::new_unique();
+    let target = Pubkey::new_unique();
+
+    let mut data = vec![0u8; SETTINGS_SIZE - 1];
+    data[0] = 10; // Settings discriminator
+    data[1..33].copy_from_slice(signer.as_ref());
+
+    let ix: Instruction = CheckConsensusInstruction {
+        signer,
+        consensus: target,
+    }
+    .into();
+    let result = svm.process_instruction(
+        &ix,
+        &[signer_account(signer), consensus_account(target, data)],
+    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+}

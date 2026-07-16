@@ -35,4 +35,10 @@ mod quasar_test_heap {
     pub fn emit_event_ok(ctx: Ctx<EmitEventOk>) -> Result<(), ProgramError> {
         ctx.accounts.handler()
     }
+
+    /// Heap-enabled instruction allocating past the 256 KiB cap: must abort.
+    #[instruction(discriminator = 4, heap)]
+    pub fn heap_alloc_beyond_cap(ctx: Ctx<HeapAllocBeyondCap>) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
 }
