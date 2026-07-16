@@ -12,11 +12,13 @@
 # function, and mutation description.
 #
 # Usage:
-#   scripts/mutants.sh run <package>     Run one package, leave results in target/mutants/<package>.
-#   scripts/mutants.sh run-all           Run every configured package.
-#   scripts/mutants.sh check-baseline    Fail if any missed mutant is not in the baseline.
-#   scripts/mutants.sh bless-baseline    Rewrite the baseline from the last run's results.
-#   scripts/mutants.sh packages          List configured packages (for CI matrix fan-out).
+#   scripts/mutants.sh run <package> [k/n]   Run one package (optionally one shard of n).
+#   scripts/mutants.sh run-all               Run every configured package.
+#   scripts/mutants.sh run-diff <package> <diff-file>
+#                                            Run only mutants touched by a diff (PR mode).
+#   scripts/mutants.sh check-baseline        Fail if any missed mutant is not in the baseline.
+#   scripts/mutants.sh bless-baseline        Rewrite the baseline from the last run's results.
+#   scripts/mutants.sh packages              List configured packages (for CI matrix fan-out).
 set -euo pipefail
 
 CARGO_MUTANTS_VERSION_EXPECTED="27"
@@ -78,19 +80,25 @@ normalize() {
 
 run_one() {
   local package="$1"
+  local shard="${2:-}"
   local out_dir="$OUT_ROOT/$package"
+  local extra=()
+  if [[ -n "$shard" ]]; then
+    out_dir="$OUT_ROOT/$package-shard-${shard//\//-of-}"
+    extra+=("--shard" "$shard")
+  fi
   local args=()
   while IFS= read -r arg; do
     args+=("$arg")
   done < <(mutants_args_for "$package")
 
   mkdir -p "$out_dir"
-  echo "=== cargo mutants: $package ==="
+  echo "=== cargo mutants: $package ${shard:+(shard $shard)} ==="
   # cargo-mutants exits non-zero when mutants are missed; missed mutants are
   # judged against the baseline in check_baseline, not here. MUTANTS_JOBS
   # trades local wall-clock for memory; CI shards instead.
   cargo mutants -p "$package" -j "${MUTANTS_JOBS:-1}" --no-shuffle \
-    --output "$out_dir" "${args[@]}" || true
+    --output "$out_dir" "${extra[@]}" "${args[@]}" || true
 
   if [[ ! -f "$out_dir/mutants.out/outcomes.json" ]]; then
     echo "$package: cargo-mutants produced no outcomes (baseline build/test failed?)" >&2
@@ -98,13 +106,34 @@ run_one() {
   fi
 }
 
+run_diff() {
+  local package="$1"
+  local diff_file="$2"
+  local out_dir="$OUT_ROOT/diff-$package"
+  local args=()
+  while IFS= read -r arg; do
+    args+=("$arg")
+  done < <(mutants_args_for "$package")
+
+  mkdir -p "$out_dir"
+  echo "=== cargo mutants (in-diff): $package ==="
+  cargo mutants -p "$package" -j "${MUTANTS_JOBS:-1}" --no-shuffle \
+    --in-diff "$diff_file" --output "$out_dir" "${args[@]}" || true
+  if [[ -f "$out_dir/mutants.out/missed.txt" ]]; then
+    cat "$out_dir/mutants.out/missed.txt"
+  fi
+}
+
+# Union of every missed list under target/mutants (covers plain, sharded, and
+# CI-artifact layouts alike). In-diff PR results (diff-*) are advisory and
+# never judged against the baseline.
 collect_missed() {
-  local package missed
-  for package in "${PACKAGES[@]}"; do
-    missed="$OUT_ROOT/$package/mutants.out/missed.txt"
-    if [[ -f "$missed" ]]; then
-      cat "$missed"
-    fi
+  local missed dir
+  for missed in "$OUT_ROOT"/*/mutants.out/missed.txt; do
+    [[ -f "$missed" ]] || continue
+    dir="$(basename "$(dirname "$(dirname "$missed")")")"
+    [[ "$dir" == diff-* ]] && continue
+    cat "$missed"
   done | normalize
 }
 
@@ -150,9 +179,14 @@ main() {
   fi
   case "$1" in
     run)
-      (($# == 2)) || { echo "usage: scripts/mutants.sh run <package>" >&2; exit 1; }
+      (($# == 2 || $# == 3)) || { echo "usage: scripts/mutants.sh run <package> [k/n]" >&2; exit 1; }
       check_tool
-      run_one "$2"
+      run_one "$2" "${3:-}"
+      ;;
+    run-diff)
+      (($# == 3)) || { echo "usage: scripts/mutants.sh run-diff <package> <diff-file>" >&2; exit 1; }
+      check_tool
+      run_diff "$2" "$3"
       ;;
     run-all)
       check_tool

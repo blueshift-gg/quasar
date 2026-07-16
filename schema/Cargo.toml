@@ -19,5 +19,4 @@ workspace = true
 [lib]
 name = "quasar_schema"
 path = "src/lib.rs"
-test = false
 doctest = false

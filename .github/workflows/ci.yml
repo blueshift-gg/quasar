@@ -19,6 +19,7 @@ concurrency:
 
 env:
   HOST_RUST_VERSION: 1.92.0
+  CARGO_MUTANTS_VERSION: 27.1.0
   PROGRAM_MSRV: 1.89.0
   SOLANA_VERSION: v4.1.1
   SOLANA_LINUX_SHA256: a5c8e74b8ffa9ce906872b812849057c7fb21cf036ba08f219eb335e20fa4fb3
@@ -358,12 +359,67 @@ jobs:
         run: make check-workspace-lints
       - name: Verify workspace invariants
         run: make check-workspace-invariants
+      - name: Verify feature-test matrix
+        run: make check-test-matrix
       - name: Verify immutable release dependencies
         run: make check-release-dependencies
       - name: Verify least-privilege release permissions
         run: make check-release-permissions
       - name: Verify runtime panic policy
         run: make check-runtime-panics
+
+  # Informational (continue-on-error): mutants limited to the PR's own diff,
+  # per package with that package's oracle. A surviving mutant on changed
+  # lines is a strong review signal but not yet a blocker; the full nightly
+  # run judges everything against the shrink-only baseline.
+  mutants_in_diff:
+    name: Mutants In Diff (informational)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+        with:
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/bin/cargo-mutants
+          key: ${{ runner.os }}-cargo-mutants-${{ env.CARGO_MUTANTS_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-mutants-${{ env.CARGO_MUTANTS_VERSION }}-
+      - name: Install cargo-mutants
+        run: |
+          command -v cargo-mutants >/dev/null 2>&1 \
+            || cargo install cargo-mutants --version "$CARGO_MUTANTS_VERSION" --locked
+          cargo mutants --version
+      - name: Mutate the PR diff
+        run: |
+          git diff "origin/${{ github.base_ref }}...HEAD" > /tmp/pr.diff
+          missed=""
+          for package in $(scripts/mutants.sh packages); do
+            missed+="$(scripts/mutants.sh run-diff "$package" /tmp/pr.diff)"$'\n'
+          done
+          missed="$(printf '%s' "$missed" | grep -v '^$' || true)"
+          if [[ -n "$missed" ]]; then
+            {
+              echo '### Surviving mutants on this PR'\''s changed lines'
+              echo
+              echo 'No test catches these mutations of your changes (TESTING.md):'
+              echo '```'
+              echo "$missed"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo 'No surviving mutants on changed lines.' >> "$GITHUB_STEP_SUMMARY"
 
   package:
     name: Package Graph (${{ matrix.host }})

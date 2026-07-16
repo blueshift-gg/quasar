@@ -42,9 +42,21 @@ the layer where its failure would occur.
 | Mutation testing | tests that execute code without constraining it | `.cargo/mutants.toml` + `.ci/mutants-baseline.txt` | `make mutants` |
 | Feature matrix | features shipped without their required tests | `tests/feature-matrix.tsv` + `scripts/test-matrix.py` | `make check-test-matrix` |
 
-The full gate is `make test`; the deep tier (mutation, coverage, unconditional
-Kani, extended fuzz) runs nightly in CI. `make test-host-inventory` proves every
-host `#[test]` maps to a Cargo target that required CI actually runs.
+The full gate is `make test`. CI runs three tiers:
+
+- **PR tier** (`ci.yml`, required): everything in the layer table above except
+  Kani-full/mutation/fuzz, plus the matrix, silence, and oracle policies via
+  the workspace-invariants job — and an informational `mutants_in_diff` job
+  that mutates only the PR's changed lines and reports survivors in the job
+  summary.
+- **Nightly tier** (`nightly.yml`): full mutation runs judged against the
+  shrink-only baseline, the host-coverage artifact, and unconditional Kani on
+  all three proof crates (closing the path-gating hole where a lang-adjacent
+  PR skips proofs). Fuzzing runs nightly at 300s per target (`fuzz.yml`).
+- **Weekly**: an 1800s-per-target fuzz soak (Saturday schedule in `fuzz.yml`).
+
+`make test-host-inventory` proves every host `#[test]` maps to a Cargo target
+that required CI actually runs.
 
 Bless/regen commands (`make test-bless`, `bless-proc-macro-baselines`,
 `bless-idl-wire-baselines`, `bless-generated-client-baselines`,
@@ -103,10 +115,11 @@ a reason to skip the rejection test.
 
   A bare `is_err()` cannot distinguish "the has_one check fired" from "an
   earlier owner check masked a broken has_one" — the regression it exists to
-  catch. Bare `is_err()` is allowed only where the exact error genuinely
-  cannot be pinned (e.g. it varies across SPL program revisions), and each
-  such site carries a one-line comment saying why. `make check-suite-oracles`
-  holds the count of justified sites at its current level.
+  catch. `make check-suite-oracles` enforces this: every suite test that
+  asserts `is_err()` must also pin the exact error in the same test
+  (`assert_error`, `ProgramResult::Failure`, or a raw `InstructionError`
+  comparison). The allowlist in `scripts/check-suite-oracles.py` names the
+  exempt modules with their reasons and only shrinks.
 - **Success tests assert resulting state.** Decode and compare fields; for
   lamport-moving instructions, assert both sides of the transfer.
 - **A new rejection test must fail when its assertion is inverted.** If you
@@ -117,13 +130,13 @@ a reason to skip the rejection test.
 
 - Rejection tests are named `<feature>_rejects_<attack>` (or `_fails_` where
   the actor is the framework, e.g. `migrate_rejects_wrong_discriminator`).
-  Reviewers and `scripts/test-matrix.py` count negative coverage by this
-  convention.
+  The matrix counts negative coverage by oracle presence, not by name — but
+  reviewers read by name.
 - **Tests are silent on success.** No `println!` — anything worth printing is
   worth asserting; progress decoration belongs to the harness. CU
-  measurements are written to `target/cu-bench/*.json` by the bench harness,
-  never printed for a human to eyeball. `make check-test-silence` enforces
-  this.
+  measurements are written to `target/cu-bench/*.jsonl` through
+  `examples/cu_bench.rs`, never printed for a human to eyeball.
+  `make check-test-silence` enforces this.
 
 ## Adding a new framework feature — definition of done
 

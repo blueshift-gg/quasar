@@ -1,0 +1,168 @@
+# Deep assurance tier (TESTING.md). Runs nightly, off the required PR path:
+# - full mutation testing per package, judged against the shrink-only
+#   baseline in .ci/mutants-baseline.txt (a new missed mutant fails the run)
+# - host-side line coverage report (informational artifact; SBF-executed
+#   code is invisible to it by design)
+# - unconditional Kani on all three proof crates, closing the hole where the
+#   required-path job is skipped by kani_scope path-gating
+# Extended fuzzing is owned by fuzz.yml (nightly 300s, weekly long run).
+# A failure here is triaged by the author of the change that introduced it,
+# or by the release owner when no single change is at fault.
+name: Nightly Deep Tier
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  HOST_RUST_VERSION: 1.92.0
+  CARGO_MUTANTS_VERSION: 27.1.0
+  CARGO_LLVM_COV_VERSION: 0.8.7
+
+jobs:
+  mutants:
+    name: Mutants (${{ matrix.package }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Keep in sync with PACKAGES in scripts/mutants.sh; the fan-in job
+          # fails if a configured package produced no results.
+          - package: quasar-lang
+          - package: quasar-schema
+          - package: quasar-idl-schema
+          - package: quasar-derive
+            shard: 1/2
+          - package: quasar-derive
+            shard: 2/2
+          - package: quasar-idl
+            shard: 1/4
+          - package: quasar-idl
+            shard: 2/4
+          - package: quasar-idl
+            shard: 3/4
+          - package: quasar-idl
+            shard: 4/4
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+        with:
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/bin/cargo-mutants
+          key: ${{ runner.os }}-cargo-mutants-${{ env.CARGO_MUTANTS_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-mutants-${{ env.CARGO_MUTANTS_VERSION }}-
+      - name: Install cargo-mutants
+        run: |
+          command -v cargo-mutants >/dev/null 2>&1 \
+            || cargo install cargo-mutants --version "$CARGO_MUTANTS_VERSION" --locked
+          cargo mutants --version
+      - name: Run mutants
+        run: scripts/mutants.sh run ${{ matrix.package }} ${{ matrix.shard }}
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutants-${{ matrix.package }}${{ matrix.shard && format('-shard-{0}', matrix.shard) || '' }}
+          path: target/mutants/*/mutants.out/*.txt
+          include-hidden-files: true
+
+  mutants_baseline:
+    name: Mutation Baseline Gate
+    needs: mutants
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - name: Download all mutation results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mutants-*
+          path: target/mutants
+          merge-multiple: false
+      - name: Normalize artifact layout
+        run: |
+          # download-artifact nests each artifact under its name; the checker
+          # only needs some target/mutants/*/mutants.out/missed.txt layout.
+          find target/mutants -name missed.txt | head -50
+          test -n "$(find target/mutants -name missed.txt)" \
+            || { echo "no mutation results downloaded" >&2; exit 1; }
+          i=0
+          while IFS= read -r missed; do
+            i=$((i + 1))
+            mkdir -p "target/mutants/result-$i/mutants.out"
+            cp "$missed" "target/mutants/result-$i/mutants.out/missed.txt"
+          done < <(find target/mutants -name missed.txt -not -path 'target/mutants/result-*')
+      - name: Judge against the shrink-only baseline
+        run: scripts/mutants.sh check-baseline
+
+  coverage:
+    name: Host Coverage (informational)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+        with:
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+          components: llvm-tools-preview
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/bin/cargo-llvm-cov
+          key: ${{ runner.os }}-cargo-llvm-cov-${{ env.CARGO_LLVM_COV_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-llvm-cov-${{ env.CARGO_LLVM_COV_VERSION }}-
+      - name: Install cargo-llvm-cov
+        run: |
+          command -v cargo-llvm-cov >/dev/null 2>&1 \
+            || cargo install cargo-llvm-cov --version "$CARGO_LLVM_COV_VERSION" --locked
+          cargo llvm-cov --version
+      - name: Generate host coverage report
+        run: make coverage
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-coverage-html
+          path: target/llvm-cov/html/
+
+  kani_full:
+    name: Kani Full (${{ matrix.crate }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [quasar-lang, quasar-spl, quasar-metadata]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-kani-${{ matrix.crate }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-kani-${{ matrix.crate }}-
+      - name: Install z3 (SMT solver for wide-type proofs)
+        run: sudo apt-get install -y z3
+      - name: Verify ${{ matrix.crate }}
+        uses: model-checking/kani-github-action@v1
+        with:
+          command: cargo kani -p ${{ matrix.crate }}
