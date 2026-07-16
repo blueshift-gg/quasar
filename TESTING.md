@@ -138,6 +138,38 @@ a reason to skip the rejection test.
   `examples/cu_bench.rs`, never printed for a human to eyeball.
   `make check-test-silence` enforces this.
 
+## What earns a test its place
+
+The contract above says what must exist; this says what must NOT — volume is
+not rigor, and every test is maintenance the team pays forever. Apply these
+when writing and when reviewing; the quarterly triage applies them
+retroactively.
+
+- **Unique failure story.** State, in one sentence, a bug that only this test
+  catches. If you cannot, merge it into the test that owns that story or
+  delete it.
+- **Test the branch, not the wrapper.** A boundary pair (size-1/size, 64/65
+  accounts) proves a shared framework check once, in the module that owns the
+  check. Re-proving it through every account type that reuses the same check
+  adds symmetry, not coverage.
+- **Matrix cells earn their place by divergent implementation.** Duplicating
+  a scenario across SPL / Token-2022 / Interface is justified only where the
+  path actually forks: a different trait impl, or a different deployed binary
+  whose behavior can drift independently (which is why T22 *rejection* cells
+  stay even where T22 validation cells collapse).
+- **Value diversity without branch diversity is one test.** Inputs that flow
+  through the same arm belong in one table-driven test, not sibling fns.
+- **One layout test, not per-field tests.** Decode the whole struct once and
+  assert every field together.
+- **A proxy oracle dies when the real oracle exists.** Once the actual
+  payload/state is asserted somewhere, "it consumed plausible CU" variants of
+  the same scenario lose their reason to exist.
+
+The objective backstop for all of this is the mutation baseline: a test that
+kills no mutant another test doesn't also kill, and fills no required matrix
+cell, is provably dead weight — prune on that evidence when taste is
+contested.
+
 ## Adding a new framework feature — definition of done
 
 - [ ] Fixture instruction(s) in the owning `tests/programs/*` crate
