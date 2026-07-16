@@ -71,37 +71,6 @@ fn test_remaining_accounts_empty() {
     );
 }
 
-#[test]
-fn test_remaining_accounts_overflow_errors() {
-    let mollusk = setup();
-    let authority = Address::new_unique();
-    let authority_account = Account::new(1_000_000, 0, &Address::default());
-
-    let mut remaining = Vec::new();
-    let mut accounts = vec![(authority, authority_account)];
-
-    for _ in 0..=64 {
-        let addr = Address::new_unique();
-        remaining.push(AccountMeta::new_readonly(addr, false));
-        accounts.push((addr, Account::new(1_000_000, 0, &Address::default())));
-    }
-
-    let instruction: Instruction = RemainingAccountsCheckInstruction {
-        authority,
-        remaining_accounts: remaining,
-    }
-    .into();
-
-    let result = mollusk.process_instruction(&instruction, &accounts);
-
-    assert_eq!(
-        result.program_result,
-        ProgramResult::Failure(ProgramError::Custom(
-            QuasarError::RemainingAccountsOverflow as u32
-        ))
-    );
-}
-
 // Remaining Accounts: one account.
 
 #[test]

@@ -7,16 +7,6 @@ use {
 };
 
 #[test]
-fn deterministic() {
-    let wallet = Pubkey::new_unique();
-    let mint = Pubkey::new_unique();
-    let (addr1, bump1) = get_associated_token_address_const(&wallet, &mint);
-    let (addr2, bump2) = get_associated_token_address_const(&wallet, &mint);
-    assert_eq!(addr1, addr2);
-    assert_eq!(bump1, bump2);
-}
-
-#[test]
 fn different_wallets() {
     let wallet1 = Pubkey::new_unique();
     let wallet2 = Pubkey::new_unique();

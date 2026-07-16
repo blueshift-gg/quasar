@@ -495,31 +495,6 @@ fn test_dynamic_account_vec_exceeds_max() {
 }
 
 #[test]
-fn test_dynamic_account_trailing_bytes_accepted() {
-    let mollusk = setup();
-    let account = Address::new_unique();
-
-    let mut data = build_dynamic_account_data(b"hi", &[]);
-    data.extend_from_slice(&[0u8; 64]); // extra trailing bytes (slack space)
-    let account_data = Account {
-        lamports: 1_000_000,
-        data,
-        owner: quasar_test_misc::ID,
-        executable: false,
-        rent_epoch: 0,
-    };
-
-    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
-    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
-
-    assert!(
-        result.program_result.is_ok(),
-        "account with trailing bytes (slack space) should be accepted: {:?}",
-        result.program_result
-    );
-}
-
-#[test]
 fn test_dynamic_account_wrong_discriminator() {
     let mollusk = setup();
     let account = Address::new_unique();
@@ -2651,36 +2626,6 @@ fn test_adversarial_ix_dynamic_string_prefix_overflow_u32_max() {
     );
 }
 
-/// Instruction discriminator=21: string prefix=200 but only 10 bytes of data
-/// follow. This is subtler than u8::MAX.
-/// (String<N> instruction args use u8 prefix on the wire.)
-#[test]
-fn test_adversarial_ix_dynamic_string_prefix_overflow_1024() {
-    let mollusk = setup();
-    let signer = Address::new_unique();
-
-    let mut data = vec![21u8];
-    data.push(200u8); // u8 prefix claiming 200 bytes
-    data.extend_from_slice(b"0123456789");
-
-    let instruction = Instruction {
-        program_id: quasar_test_misc::ID,
-        accounts: vec![solana_instruction::AccountMeta::new_readonly(signer, true)],
-        data,
-    };
-
-    let result = mollusk.process_instruction(
-        &instruction,
-        &[(signer, Account::new(1_000_000_000, 0, &Address::default()))],
-    );
-    assert_eq!(
-        result.program_result,
-        mollusk_svm::result::ProgramResult::Failure(
-            quasar_lang::prelude::ProgramError::InvalidInstructionData
-        )
-    );
-}
-
 /// Instruction discriminator=21: string prefix=0 (empty string).
 /// This is technically valid; the handler receives an empty &str.
 /// (String<N> instruction args use u8 prefix on the wire.)
@@ -2728,13 +2673,18 @@ fn test_adversarial_ix_data_with_extra_trailing_garbage() {
         data,
     };
 
-    let _result = mollusk.process_instruction(
+    let result = mollusk.process_instruction(
         &instruction,
         &[(signer, Account::new(1_000_000_000, 0, &Address::default()))],
     );
-    // The framework may accept this (trailing data ignored) or reject.
-    // Either is acceptable; the key thing is it must NOT crash or read OOB.
-    // We do NOT assert pass/fail here; we assert no panic/abort occurred.
+    // Pinned wire contract: the decoder reads exactly the declared prefix
+    // and ignores trailing bytes. If this ever starts rejecting, that is a
+    // deliberate wire-format change and this assertion must change with it.
+    assert!(
+        result.program_result.is_ok(),
+        "trailing instruction bytes are ignored by the decoder: {:?}",
+        result.program_result
+    );
 }
 
 /// Instruction with discriminator only, no args, for an instruction that

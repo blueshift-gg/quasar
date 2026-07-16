@@ -39,6 +39,23 @@ fn sweep_spl_happy() {
         "sweep SPL should succeed: {:?}",
         result.raw_result
     );
+
+    let source = result.account(&source_key).expect("source result");
+    assert_eq!(
+        quasar_svm::token::TokenAccount::unpack(&source.data)
+            .expect("decode source")
+            .amount,
+        0,
+        "source drained"
+    );
+    let receiver = result.account(&receiver_key).expect("receiver result");
+    assert_eq!(
+        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+            .expect("decode receiver")
+            .amount,
+        500,
+        "receiver credited"
+    );
 }
 
 #[test]
@@ -72,6 +89,15 @@ fn sweep_spl_zero_balance() {
         result.is_ok(),
         "sweep SPL zero balance should be no-op: {:?}",
         result.raw_result
+    );
+
+    let receiver = result.account(&receiver_key).expect("receiver result");
+    assert_eq!(
+        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+            .expect("decode receiver")
+            .amount,
+        0,
+        "zero-balance sweep must be a no-op"
     );
 }
 
@@ -140,6 +166,23 @@ fn sweep_t22_happy() {
         "sweep T22 should succeed: {:?}",
         result.raw_result
     );
+
+    let source = result.account(&source_key).expect("source result");
+    assert_eq!(
+        quasar_svm::token::TokenAccount::unpack(&source.data)
+            .expect("decode source")
+            .amount,
+        0,
+        "source drained"
+    );
+    let receiver = result.account(&receiver_key).expect("receiver result");
+    assert_eq!(
+        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+            .expect("decode receiver")
+            .amount,
+        500,
+        "receiver credited"
+    );
 }
 
 #[test]
@@ -173,6 +216,15 @@ fn sweep_t22_zero_balance() {
         result.is_ok(),
         "sweep T22 zero balance should be no-op: {:?}",
         result.raw_result
+    );
+
+    let receiver = result.account(&receiver_key).expect("receiver result");
+    assert_eq!(
+        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+            .expect("decode receiver")
+            .amount,
+        0,
+        "zero-balance sweep must be a no-op"
     );
 }
 
@@ -210,6 +262,23 @@ fn sweep_interface_spl_happy() {
         "sweep Interface SPL should succeed: {:?}",
         result.raw_result
     );
+
+    let source = result.account(&source_key).expect("source result");
+    assert_eq!(
+        quasar_svm::token::TokenAccount::unpack(&source.data)
+            .expect("decode source")
+            .amount,
+        0,
+        "source drained"
+    );
+    let receiver = result.account(&receiver_key).expect("receiver result");
+    assert_eq!(
+        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+            .expect("decode receiver")
+            .amount,
+        500,
+        "receiver credited"
+    );
 }
 
 #[test]
@@ -243,6 +312,23 @@ fn sweep_interface_t22_happy() {
         result.is_ok(),
         "sweep Interface T22 should succeed: {:?}",
         result.raw_result
+    );
+
+    let source = result.account(&source_key).expect("source result");
+    assert_eq!(
+        quasar_svm::token::TokenAccount::unpack(&source.data)
+            .expect("decode source")
+            .amount,
+        0,
+        "source drained"
+    );
+    let receiver = result.account(&receiver_key).expect("receiver result");
+    assert_eq!(
+        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+            .expect("decode receiver")
+            .amount,
+        500,
+        "receiver credited"
     );
 }
 
@@ -314,6 +400,20 @@ fn sweep_and_close_spl_happy() {
         "sweep + close SPL should succeed: {:?}",
         result.raw_result
     );
+
+    let receiver = result.account(&receiver_key).expect("receiver result");
+    assert_eq!(
+        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+            .expect("decode receiver")
+            .amount,
+        1000,
+        "receiver credited"
+    );
+    assert_eq!(
+        result.account(&source_key).expect("closed source").lamports,
+        0,
+        "source closed"
+    );
 }
 
 #[test]
@@ -350,6 +450,20 @@ fn sweep_and_close_spl_zero_balance() {
         result.is_ok(),
         "sweep + close SPL zero balance should succeed: {:?}",
         result.raw_result
+    );
+
+    let receiver = result.account(&receiver_key).expect("receiver result");
+    assert_eq!(
+        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+            .expect("decode receiver")
+            .amount,
+        0,
+        "zero-balance sweep must be a no-op"
+    );
+    assert_eq!(
+        result.account(&source_key).expect("closed source").lamports,
+        0,
+        "source still closed"
     );
 }
 
@@ -425,6 +539,20 @@ fn sweep_and_close_t22_happy() {
         "sweep + close T22 should succeed: {:?}",
         result.raw_result
     );
+
+    let receiver = result.account(&receiver_key).expect("receiver result");
+    assert_eq!(
+        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+            .expect("decode receiver")
+            .amount,
+        1000,
+        "receiver credited"
+    );
+    assert_eq!(
+        result.account(&source_key).expect("closed source").lamports,
+        0,
+        "source closed"
+    );
 }
 
 #[test]
@@ -461,6 +589,20 @@ fn sweep_and_close_t22_zero_balance() {
         result.is_ok(),
         "sweep + close T22 zero balance should succeed: {:?}",
         result.raw_result
+    );
+
+    let receiver = result.account(&receiver_key).expect("receiver result");
+    assert_eq!(
+        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+            .expect("decode receiver")
+            .amount,
+        0,
+        "zero-balance sweep must be a no-op"
+    );
+    assert_eq!(
+        result.account(&source_key).expect("closed source").lamports,
+        0,
+        "source still closed"
     );
 }
 
@@ -501,6 +643,20 @@ fn sweep_and_close_interface_spl_happy() {
         "sweep + close Interface SPL should succeed: {:?}",
         result.raw_result
     );
+
+    let receiver = result.account(&receiver_key).expect("receiver result");
+    assert_eq!(
+        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+            .expect("decode receiver")
+            .amount,
+        1000,
+        "receiver credited"
+    );
+    assert_eq!(
+        result.account(&source_key).expect("closed source").lamports,
+        0,
+        "source closed"
+    );
 }
 
 #[test]
@@ -537,6 +693,20 @@ fn sweep_and_close_interface_t22_happy() {
         result.is_ok(),
         "sweep + close Interface T22 should succeed: {:?}",
         result.raw_result
+    );
+
+    let receiver = result.account(&receiver_key).expect("receiver result");
+    assert_eq!(
+        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+            .expect("decode receiver")
+            .amount,
+        1000,
+        "receiver credited"
+    );
+    assert_eq!(
+        result.account(&source_key).expect("closed source").lamports,
+        0,
+        "source closed"
     );
 }
 
