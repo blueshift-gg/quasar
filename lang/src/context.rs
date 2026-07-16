@@ -310,92 +310,30 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
             )
         }
     }
-}
 
-impl<
-        'input,
-        T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + AccountCount,
-        R: RemainingItem<'input>,
-        const N: usize,
-    > CtxWithRemaining<'input, T, R, N>
-{
-    /// Parse declared accounts and a complete bounded remaining-account tail.
-    #[inline(always)]
-    pub fn new_typed(ctx: Context<'input>) -> Result<Self, ProgramError> {
-        // SAFETY: `Context::program_id` points at runtime-owned storage.
-        let program_id_addr = unsafe { as_address(ctx.program_id) };
-        let declared_ptr = ctx.accounts.as_ptr();
-        let declared_len = ctx.accounts.len();
-        let (accounts, bumps) =
-            T::parse_with_instruction_data(ctx.accounts, ctx.data, program_id_addr)?;
-        // SAFETY: Parsing copies views from this still-live slice. See the raw
-        // constructor above for the aliasing argument.
-        let declared = unsafe { core::slice::from_raw_parts(declared_ptr, declared_len) };
-        // SAFETY: The context owns matching pointers into the same SVM input
-        // buffer and the matching declared-account prefix.
-        let raw = unsafe {
-            RemainingAccounts::new_with_context(
-                ctx.remaining_ptr,
-                ctx.accounts_boundary,
-                declared,
-                program_id_addr,
-                ctx.data,
-            )
-        };
-        let remaining = raw.parse::<R, N>()?;
-
-        Ok(Self {
-            accounts,
-            bumps,
-            program_id: ctx.program_id,
-            data: ctx.data,
-            remaining,
-            remaining_ptr: ctx.remaining_ptr,
-            declared,
-            accounts_boundary: ctx.accounts_boundary,
-        })
-    }
-
-    /// Parse a bounded tail without repeating the declared-account count
-    /// check already performed by generated dispatch.
+    /// Convert a dynamic tail into a fully validated bounded tail.
     ///
-    /// # Safety
-    ///
-    /// `ctx.accounts` must hold exactly `T::COUNT` validated account views.
+    /// Generated dispatch calls this after decoding instruction arguments, so
+    /// a decode failure cannot require cleanup for typed account wrappers that
+    /// were never exposed to the handler.
     #[doc(hidden)]
     #[inline(always)]
-    pub unsafe fn new_typed_unchecked(ctx: Context<'input>) -> Result<Self, ProgramError> {
-        // SAFETY: `Context::program_id` points at runtime-owned storage.
-        let program_id_addr = unsafe { as_address(ctx.program_id) };
-        let declared_ptr = ctx.accounts.as_ptr();
-        let declared_len = ctx.accounts.len();
-        // SAFETY: The caller guarantees the declared account count.
-        let (accounts, bumps) = unsafe {
-            T::parse_with_instruction_data_unchecked(ctx.accounts, ctx.data, program_id_addr)?
-        };
-        // SAFETY: Same live-slice argument as `new_typed`.
-        let declared = unsafe { core::slice::from_raw_parts(declared_ptr, declared_len) };
-        // SAFETY: The context owns matching pointers into the same input.
-        let raw = unsafe {
-            RemainingAccounts::new_with_context(
-                ctx.remaining_ptr,
-                ctx.accounts_boundary,
-                declared,
-                program_id_addr,
-                ctx.data,
-            )
-        };
-        let remaining = raw.parse::<R, N>()?;
-
-        Ok(Self {
-            accounts,
-            bumps,
-            program_id: ctx.program_id,
-            data: ctx.data,
+    pub fn into_typed<R, const N: usize>(
+        self,
+    ) -> Result<CtxWithRemaining<'input, T, R, N>, ProgramError>
+    where
+        R: RemainingItem<'input>,
+    {
+        let remaining = self.remaining_accounts().parse::<R, N>()?;
+        Ok(CtxWithRemaining {
+            accounts: self.accounts,
+            bumps: self.bumps,
+            program_id: self.program_id,
+            data: self.data,
             remaining,
-            remaining_ptr: ctx.remaining_ptr,
-            declared,
-            accounts_boundary: ctx.accounts_boundary,
+            remaining_ptr: self.remaining_ptr,
+            declared: self.declared,
+            accounts_boundary: self.accounts_boundary,
         })
     }
 }

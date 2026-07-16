@@ -80,8 +80,8 @@ def runtime_inventory(runtime_advisory: bool = False) -> dict:
     return {"packages": packages}
 
 
-def policy(review_by: str = "2026-10-13") -> dict:
-    return {
+def policy(review_by: str = "2026-10-13", dev_test_root: bool = False) -> dict:
+    result = {
         "schema": 1,
         "exceptions": [
             {
@@ -100,6 +100,19 @@ def policy(review_by: str = "2026-10-13") -> dict:
             }
         ],
     }
+    if dev_test_root:
+        result["dev_test_roots"] = [
+            {
+                "package": "runtime",
+                "version": "0.1.0",
+                "reason": "fixture package only runs local program tests",
+            }
+        ]
+        result["exceptions"][0]["dependency_path"] = [
+            {"package": "runtime", "version": "0.1.0"},
+            {"package": "advised", "version": "2.0.0"},
+        ]
+    return result
 
 
 class AuditReachabilityTests(unittest.TestCase):
@@ -162,6 +175,59 @@ class AuditReachabilityTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("BLOCKED runtime-reachable", result.stdout)
         self.assertIn("runtime-reachable advisory", result.stderr)
+
+    def test_reviewed_dev_test_tool_runtime_advisory_passes(self) -> None:
+        result = self.run_policy(
+            metadata(runtime_advisory=True),
+            audit(),
+            policy(dev_test_root=True),
+            runtime_inventory(runtime_advisory=True),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("ACCEPTED dev/test-tool runtime", result.stdout)
+        self.assertIn("dev/test roots: runtime", result.stdout)
+
+    def test_mixed_production_and_dev_test_roots_still_fails(self) -> None:
+        report = runtime_inventory(runtime_advisory=True)
+        report["packages"][-1]["roots"].append("production")
+        result = self.run_policy(
+            metadata(runtime_advisory=True),
+            audit(),
+            policy(dev_test_root=True),
+            report,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("production roots: production", result.stdout)
+
+    def test_dev_test_tool_exception_path_must_start_at_reachable_root(self) -> None:
+        invalid_policy = policy(dev_test_root=True)
+        invalid_policy["exceptions"][0]["dependency_path"][0] = {
+            "package": "tests",
+            "version": "0.1.0",
+        }
+        result = self.run_policy(
+            metadata(runtime_advisory=True),
+            audit(),
+            invalid_policy,
+            runtime_inventory(runtime_advisory=True),
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            "dependency_path must start at a reachable dev/test root", result.stderr
+        )
+
+    def test_unknown_dev_test_root_fails_policy_validation(self) -> None:
+        invalid_policy = policy()
+        invalid_policy["dev_test_roots"] = [
+            {
+                "package": "missing",
+                "version": "0.1.0",
+                "reason": "fixture",
+            }
+        ]
+        result = self.run_policy(metadata(), audit(), invalid_policy)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not a publishable workspace package", result.stderr)
 
     def test_unreviewed_dev_only_advisory_fails(self) -> None:
         result = self.run_policy(metadata(), audit(), {"schema": 1, "exceptions": []})

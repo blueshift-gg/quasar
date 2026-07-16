@@ -1,5 +1,8 @@
 use {
-    super::model::{CodegenError, CodegenResult, ProgramFeatures, ProgramModel, WireType},
+    super::model::{
+        resolved_account_dependencies, resolved_account_order, resolver_is_derived, CodegenError,
+        CodegenResult, ProgramFeatures, ProgramModel, WireType,
+    },
     crate::types::{
         AccountFlag, Idl, IdlAccountNode, IdlCodec, IdlFieldDef, IdlLayout, IdlPdaSeed,
         IdlResolver, IdlType,
@@ -950,7 +953,7 @@ fn emit_resolved_instruction_input(
     // Bind every caller-controlled account before deriving PDAs. A PDA may
     // appear before one of its input seed accounts in the IDL account list.
     for account in &ix.accounts {
-        if !account.optional && rust_resolver_is_derived(&account.resolver) {
+        if !account.optional && resolver_is_derived(&account.resolver) {
             continue;
         }
         let field_name = camel_to_snake(&account.name);
@@ -959,7 +962,7 @@ fn emit_resolved_instruction_input(
                 let is_pda_dependency = ix
                     .accounts
                     .iter()
-                    .flat_map(rust_resolved_account_dependencies)
+                    .flat_map(resolved_account_dependencies)
                     .any(|dependency| dependency == account.name);
                 if is_pda_dependency {
                     writeln!(
@@ -971,10 +974,21 @@ fn emit_resolved_instruction_input(
                 continue;
             }
         }
-        writeln!(out, "        let {field_name} = ix.{field_name};").expect("write to String");
+        if account.optional {
+            // Optional accounts use the program id as their wire sentinel.
+            // Normalize to that address for any downstream PDA/ATA recipe,
+            // while preserving the caller's Option in the final raw builder.
+            writeln!(
+                out,
+                "        let {field_name} = ix.{field_name}.unwrap_or(ID);"
+            )
+            .expect("write to String");
+        } else {
+            writeln!(out, "        let {field_name} = ix.{field_name};").expect("write to String");
+        }
     }
 
-    for account in rust_resolved_account_order(ix)? {
+    for account in resolved_account_order(ix)? {
         let field_name = camel_to_snake(&account.name);
         match &account.resolver {
             IdlResolver::Pda { program, seeds } => {
@@ -1027,7 +1041,12 @@ fn emit_resolved_instruction_input(
     for account in &ix.accounts {
         if !matches!(account.resolver, IdlResolver::Const { .. }) {
             let field_name = camel_to_snake(&account.name);
-            writeln!(out, "            {field_name},").expect("write to String");
+            if account.optional {
+                writeln!(out, "            {field_name}: ix.{field_name},")
+                    .expect("write to String");
+            } else {
+                writeln!(out, "            {field_name},").expect("write to String");
+            }
         }
     }
     for arg in &ix.args {
@@ -1048,84 +1067,6 @@ fn emit_resolved_instruction_input(
     out.push_str("}\n\n");
 
     Ok(())
-}
-
-fn rust_resolved_account_order(
-    ix: &crate::types::IdlInstruction,
-) -> CodegenResult<Vec<&IdlAccountNode>> {
-    let mut available = ix
-        .accounts
-        .iter()
-        .filter(|account| !account.optional && !rust_resolver_is_derived(&account.resolver))
-        .map(|account| account.name.as_str())
-        .collect::<HashSet<_>>();
-    let mut pending = ix
-        .accounts
-        .iter()
-        .filter(|account| !account.optional && rust_resolver_is_derived(&account.resolver))
-        .collect::<Vec<_>>();
-    let mut ordered = Vec::with_capacity(pending.len());
-
-    while !pending.is_empty() {
-        let Some(index) = pending.iter().position(|account| {
-            rust_resolved_account_dependencies(account)
-                .iter()
-                .all(|dependency| available.contains(dependency))
-        }) else {
-            let names = pending
-                .iter()
-                .map(|account| account.name.as_str())
-                .collect::<Vec<_>>()
-                .join(", ");
-            return Err(CodegenError::new(format!(
-                "instruction `{}` has unresolved or cyclic Rust client derived-account \
-                 dependencies: {names}",
-                ix.name
-            )));
-        };
-        let account = pending.remove(index);
-        available.insert(account.name.as_str());
-        ordered.push(account);
-    }
-
-    Ok(ordered)
-}
-
-fn rust_resolver_is_derived(resolver: &IdlResolver) -> bool {
-    matches!(
-        resolver,
-        IdlResolver::Pda { .. } | IdlResolver::AssociatedToken { .. }
-    )
-}
-
-fn rust_resolved_account_dependencies(account: &IdlAccountNode) -> Vec<&str> {
-    match &account.resolver {
-        IdlResolver::Pda { program, seeds } => {
-            let mut dependencies = Vec::new();
-            if let crate::types::IdlPdaProgram::Account { path } = program {
-                dependencies.push(path.as_str());
-            }
-            dependencies.extend(seeds.iter().filter_map(|seed| match seed {
-                IdlPdaSeed::Account { path } => Some(path.as_str()),
-                IdlPdaSeed::Const { .. }
-                | IdlPdaSeed::AccountField { .. }
-                | IdlPdaSeed::Arg { .. } => None,
-            }));
-            dependencies
-        }
-        IdlResolver::AssociatedToken {
-            mint,
-            owner,
-            token_program,
-        } => {
-            let mut dependencies = vec![mint.as_str(), owner.as_str()];
-            if let Some(token_program) = token_program {
-                dependencies.push(token_program.as_str());
-            }
-            dependencies
-        }
-        _ => Vec::new(),
-    }
 }
 
 struct RustAccountFieldSeed<'a> {

@@ -49,7 +49,10 @@ pub fn behavior_resolver(
         } => Some(IdlResolver::AssociatedToken {
             mint: account(mint)?,
             owner: account(owner)?,
-            token_program: token_program.and_then(account),
+            token_program: match token_program {
+                Some(argument) => Some(account(argument)?),
+                None => None,
+            },
         }),
     }
 }
@@ -455,6 +458,33 @@ mod codec_tests {
     #[should_panic(expected = "no codec")]
     fn dynamic_arg_without_codec_panics() {
         assert_dynamic_fields_have_codecs(&idl_with_arg(arg(u8_vec(), None)));
+    }
+
+    #[test]
+    fn behavior_resolver_requires_every_declared_recipe_argument() {
+        let recipe = Some(
+            crate::account_behavior::BehaviorIdlResolver::AssociatedToken {
+                mint: "mint",
+                owner: "owner",
+                token_program: Some("token_program"),
+            },
+        );
+        let incomplete = [("mint", "mint"), ("owner", "wallet")];
+        assert!(behavior_resolver(recipe, &incomplete).is_none());
+
+        let complete = [
+            ("mint", "mint"),
+            ("owner", "wallet"),
+            ("token_program", "tokenProgram"),
+        ];
+        assert!(matches!(
+            behavior_resolver(recipe, &complete),
+            Some(IdlResolver::AssociatedToken {
+                mint,
+                owner,
+                token_program: Some(token_program),
+            }) if mint == "mint" && owner == "wallet" && token_program == "tokenProgram"
+        ));
     }
 
     fn idl_with_account_discs(discs: &[(&str, Vec<u8>)]) -> Idl {

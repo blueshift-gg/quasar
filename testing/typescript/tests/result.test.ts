@@ -61,4 +61,10 @@ describe("QuasarTestResult", () => {
       "unexpected token balance for tokens: expected 90, got 89",
     );
   });
+
+  it("does not mistake a missing account for a closed account", () => {
+    expect(() => result().isClosed("missing")).toThrow(
+      "execution result does not contain missing",
+    );
+  });
 });

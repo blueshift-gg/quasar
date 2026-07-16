@@ -61,8 +61,8 @@ export class QuasarTestResult<Address, Account, Raw extends RawExecutionResult> 
   }
 
   isClosed(address: Address): this {
-    const account = this.adapter.account(address);
-    if (account !== null && !this.adapter.isClosed(account)) {
+    const account = this.requireAccount(address);
+    if (!this.adapter.isClosed(account)) {
       throw new Error(`expected ${this.adapter.renderAddress(address)} to be closed`);
     }
     return this;

@@ -2,7 +2,7 @@ use {
     quasar_cli::idl,
     quasar_idl::{
         lint::{self, LintConfig, RuleCode},
-        types::{AccountFlag, IdlResolver},
+        types::{AccountFlag, AccountFlagDynamic, IdlResolver},
     },
     serde_json::Value,
     std::{
@@ -592,8 +592,12 @@ pub mod lifecycle_client_flags {
     assert!(rust_ix.contains("AccountMeta::new(ix.vault, false)"));
 
     let ts_web3 = read_file(&only_child_dir(&clients_path.join("typescript"))?.join("web3.ts"))?;
-    assert!(ts_web3.contains("{ pubkey: input.config, isSigner: false, isWritable: true },"));
-    assert!(ts_web3.contains("{ pubkey: input.vault, isSigner: false, isWritable: true },"));
+    assert!(ts_web3.contains(
+        "{ pubkey: (accountOverrides.config ?? input.config), isSigner: false, isWritable: true },"
+    ));
+    assert!(ts_web3.contains(
+        "{ pubkey: (accountOverrides.vault ?? input.vault), isSigner: false, isWritable: true },"
+    ));
 
     let py_client = read_file(&only_child_dir(&clients_path.join("python"))?.join("client.py"))?;
     assert!(py_client.contains(
@@ -613,6 +617,86 @@ pub mod lifecycle_client_flags {
     assert!(c_client.contains("meta_buf[2] = meta_writable(accounts->config);"));
     assert!(c_client.contains("meta_buf[3] = meta_writable(accounts->vault);"));
     compile_c_client(&only_child_dir(&clients_path.join("c"))?)?;
+
+    Ok(())
+}
+
+#[test]
+fn typed_remaining_groups_publish_raw_account_bounds() -> Result<(), Box<dyn Error>> {
+    let temp = tempdir()?;
+    let program_dir = temp.path().join("programs/typed-remaining-idl");
+
+    write_file(
+        &temp.path().join("Cargo.toml"),
+        r#"[workspace]
+members = ["programs/typed-remaining-idl"]
+resolver = "3"
+"#,
+    )?;
+    write_file(
+        &program_dir.join("Cargo.toml"),
+        format!(
+            r#"[package]
+name = "typed-remaining-idl"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+idl-build = ["quasar-lang/idl-build"]
+
+[dependencies]
+quasar-lang = {{ path = "{}" }}
+"#,
+            workspace_root().join("lang").display()
+        ),
+    )?;
+    write_file(
+        &program_dir.join("src/lib.rs"),
+        r#"#![no_std]
+use quasar_lang::prelude::*;
+
+declare_id!("11111111111111111111111111111113");
+
+#[derive(Accounts)]
+pub struct Declared {
+    pub authority: Signer,
+}
+
+#[derive(Accounts)]
+pub struct RemainingPair {
+    pub signer: Signer,
+    pub account: UncheckedAccount,
+}
+
+#[program]
+mod typed_remaining_idl {
+    use super::*;
+
+    #[instruction(discriminator = 0)]
+    pub fn check(
+        ctx: CtxWithRemaining<Declared, RemainingPair, 3>,
+    ) -> Result<(), ProgramError> {
+        let _ = ctx.remaining.len();
+        Ok(())
+    }
+}
+"#,
+    )?;
+
+    let idl = idl::build(&program_dir)?;
+    let remaining = idl.instructions[0]
+        .remaining_accounts
+        .as_ref()
+        .ok_or("typed remaining-account policy should be present")?;
+
+    assert_eq!(remaining.max, Some(6));
+    assert_eq!(
+        remaining.item.signer,
+        AccountFlag::Dynamic(AccountFlagDynamic::Input)
+    );
 
     Ok(())
 }
@@ -1984,15 +2068,17 @@ pub struct FixedOnly {
         assert!(!source.contains("accountsMap[\"maybeProgram\"] ="));
     }
     assert!(
-        web3.contains("pubkey: (input.maybe ?? "),
+        web3.contains(
+            "pubkey: (accountOverrides.maybe ?? input.maybe ?? OptionalAccountsClient.programId)"
+        ),
         "web3.js should default an absent optional account to the program id"
     );
     assert!(
-        web3.contains("programId), isSigner: false, isWritable: true }"),
+        web3.contains("OptionalAccountsClient.programId), isSigner: false, isWritable: true }"),
         "web3.js optional sentinel should use the program id with declared flags"
     );
     assert!(
-        kit.contains("address: (input.maybe ?? PROGRAM_ADDRESS), role:"),
+        kit.contains("address: (accountOverrides.maybe ?? input.maybe ?? PROGRAM_ADDRESS), role:"),
         "kit should default an absent optional account to the program address"
     );
     compile_typescript_client(&ts_dir)?;

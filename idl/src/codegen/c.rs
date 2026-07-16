@@ -1,6 +1,11 @@
 use {
-    super::model::{reject_generics, validate_codegen_idl, CodegenResult},
-    crate::types::{Idl, IdlAccountNode, IdlCodec, IdlPdaSeed, IdlResolver, IdlType, IdlTypeDef},
+    super::model::{
+        reject_generics, resolved_account_order, resolver_is_derived, validate_codegen_idl,
+        CodegenResult,
+    },
+    crate::types::{
+        Idl, IdlAccountNode, IdlCodec, IdlPdaProgram, IdlPdaSeed, IdlResolver, IdlType, IdlTypeDef,
+    },
     quasar_schema::pascal_to_snake,
     std::{collections::HashMap, fmt::Write},
 };
@@ -390,7 +395,7 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         let pda_count = ix
             .accounts
             .iter()
-            .filter(|a| !a.optional && c_resolver_is_derived(&a.resolver))
+            .filter(|a| !a.optional && resolver_is_derived(&a.resolver))
             .count();
         let pda_key_params = if pda_count > 0 {
             "    Pubkey *pda_key_buf,\n    uint64_t pda_key_buf_capacity,\n    "
@@ -493,7 +498,7 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         {
             let mut idx = 0usize;
             for acc in &ix.accounts {
-                if !acc.optional && c_resolver_is_derived(&acc.resolver) {
+                if !acc.optional && resolver_is_derived(&acc.resolver) {
                     pda_name_to_idx.insert(acc.name.as_str(), idx);
                     idx += 1;
                 }
@@ -501,27 +506,32 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         }
 
         // derive pdas
-        let mut pda_idx = 0usize;
-        for acc in &ix.accounts {
-            if !acc.optional {
-                match &acc.resolver {
-                    IdlResolver::Pda { seeds, .. } => {
-                        emit_pda_derivation(out, prefix, seeds, &upper, pda_idx, &pda_name_to_idx);
-                        pda_idx += 1;
-                    }
-                    IdlResolver::AssociatedToken { .. } => {
-                        emit_associated_token_derivation(
-                            out,
-                            prefix,
-                            ix,
-                            acc,
-                            pda_idx,
-                            &pda_name_to_idx,
-                        );
-                        pda_idx += 1;
-                    }
-                    _ => {}
+        for acc in resolved_account_order(ix).expect("validated derived-account order") {
+            let pda_idx = pda_name_to_idx[acc.name.as_str()];
+            match &acc.resolver {
+                IdlResolver::Pda { program, seeds } => {
+                    emit_pda_derivation(
+                        out,
+                        prefix,
+                        ix,
+                        program,
+                        seeds,
+                        &upper,
+                        pda_idx,
+                        &pda_name_to_idx,
+                    );
                 }
+                IdlResolver::AssociatedToken { .. } => {
+                    emit_associated_token_derivation(
+                        out,
+                        prefix,
+                        ix,
+                        acc,
+                        pda_idx,
+                        &pda_name_to_idx,
+                    );
+                }
+                _ => unreachable!("resolved account order only contains derived accounts"),
             }
         }
         if pda_count > 0 {
@@ -534,7 +544,7 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         }
 
         // build account metas
-        pda_idx = 0;
+        let mut pda_idx = 0usize;
         for (i, acc) in ix.accounts.iter().enumerate() {
             let key_expr = if acc.optional {
                 // Optional accounts are nullable pointers; a NULL pointer is
@@ -544,7 +554,7 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
                     "accounts->{n} ? accounts->{n} : (Pubkey *)&{upper}_PROGRAM_ID",
                     n = acc.name
                 )
-            } else if c_resolver_is_derived(&acc.resolver) {
+            } else if resolver_is_derived(&acc.resolver) {
                 let expr = format!("&pda_key_buf[{pda_idx}]");
                 pda_idx += 1;
                 expr
@@ -653,13 +663,6 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
     }
 }
 
-fn c_resolver_is_derived(resolver: &IdlResolver) -> bool {
-    matches!(
-        resolver,
-        IdlResolver::Pda { .. } | IdlResolver::AssociatedToken { .. }
-    )
-}
-
 fn emit_associated_token_derivation(
     out: &mut String,
     prefix: &str,
@@ -724,6 +727,12 @@ fn c_account_seed_expr(
     if account.is_some_and(|account| matches!(account.resolver, IdlResolver::Const { .. })) {
         return format!("{}.bytes", fixed_account_id_name(prefix, &ix.name, path));
     }
+    if account.is_some_and(|account| account.optional) {
+        let upper = prefix.to_ascii_uppercase();
+        return format!(
+            "(accounts->{path} ? accounts->{path} : (Pubkey *)&{upper}_PROGRAM_ID)->bytes"
+        );
+    }
 
     format!("accounts->{path}->bytes")
 }
@@ -740,6 +749,8 @@ fn meta_helper(writable: bool, signer: bool) -> &'static str {
 fn emit_pda_derivation(
     out: &mut String,
     prefix: &str,
+    ix: &crate::types::IdlInstruction,
+    program: &IdlPdaProgram,
     seeds: &[IdlPdaSeed],
     upper_prefix: &str,
     pda_idx: usize,
@@ -761,20 +772,12 @@ fn emit_pda_derivation(
                 .unwrap();
             }
             IdlPdaSeed::Account { path } => {
-                if let Some(&ref_idx) = pda_name_to_idx.get(path.as_str()) {
-                    writeln!(
-                        out,
-                        "        seeds[{i}].addr = derived_pda_keys[{ref_idx}].bytes; \
-                         seeds[{i}].len = 32;"
-                    )
-                    .unwrap();
-                } else {
-                    writeln!(
-                        out,
-                        "        seeds[{i}].addr = accounts->{path}->bytes; seeds[{i}].len = 32;"
-                    )
-                    .unwrap();
-                }
+                let address = c_account_seed_expr(prefix, ix, path, pda_name_to_idx);
+                writeln!(
+                    out,
+                    "        seeds[{i}].addr = {address}; seeds[{i}].len = 32;"
+                )
+                .unwrap();
             }
             IdlPdaSeed::AccountField { path, field, .. } => {
                 let name = account_field_seed_input_name(path, field);
@@ -789,10 +792,16 @@ fn emit_pda_derivation(
         }
     }
     writeln!(out, "        uint8_t bump;").unwrap();
+    let program = match program {
+        IdlPdaProgram::ProgramId {} => format!("&{upper_prefix}_PROGRAM_ID"),
+        IdlPdaProgram::Account { path } => {
+            c_account_address_expr(prefix, ix, path, pda_name_to_idx)
+        }
+    };
     writeln!(
         out,
-        "        uint64_t pda_status = find_program_address(seeds, {seed_count}, \
-         &{upper_prefix}_PROGRAM_ID, &derived_pda_keys[{pda_idx}], &bump);"
+        "        uint64_t pda_status = find_program_address(seeds, {seed_count}, {program}, \
+         &derived_pda_keys[{pda_idx}], &bump);"
     )
     .unwrap();
     writeln!(
@@ -803,6 +812,31 @@ fn emit_pda_derivation(
     )
     .unwrap();
     writeln!(out, "    }}").unwrap();
+}
+
+fn c_account_address_expr(
+    prefix: &str,
+    ix: &crate::types::IdlInstruction,
+    path: &str,
+    pda_name_to_idx: &HashMap<&str, usize>,
+) -> String {
+    if let Some(index) = pda_name_to_idx.get(path) {
+        return format!("&derived_pda_keys[{index}]");
+    }
+
+    let account = ix.accounts.iter().find(|account| account.name == path);
+    if account.is_some_and(|account| matches!(account.resolver, IdlResolver::Const { .. })) {
+        return format!(
+            "(Pubkey *)&{}",
+            fixed_account_id_name(prefix, &ix.name, path)
+        );
+    }
+    if account.is_some_and(|account| account.optional) {
+        let upper = prefix.to_ascii_uppercase();
+        return format!("accounts->{path} ? accounts->{path} : (Pubkey *)&{upper}_PROGRAM_ID");
+    }
+
+    format!("accounts->{path}")
 }
 
 fn emit_arg_seed(out: &mut String, index: usize, path: &str, ty: &IdlType) {

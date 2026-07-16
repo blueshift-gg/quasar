@@ -158,16 +158,6 @@ pub trait ParseAccounts<'input>: Sized {
     /// sBPF.
     const HAS_EPILOGUE: bool = false;
 
-    /// Return [`Self::HAS_EPILOGUE`] through a field-level borrow.
-    ///
-    /// Generated dispatch uses this method so other context fields, including
-    /// a typed remaining-account tail, may be moved into the handler before
-    /// the accounts epilogue runs.
-    #[inline(always)]
-    fn has_epilogue(&self) -> bool {
-        Self::HAS_EPILOGUE
-    }
-
     /// Runs lifecycle epilogue operations such as close or sweep.
     #[inline(always)]
     fn epilogue(&mut self) -> Result<(), ProgramError> {

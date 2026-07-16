@@ -204,6 +204,44 @@ mod tests {
         idl
     }
 
+    fn idl_with_optional_pda_dependencies() -> Idl {
+        let mut idl = idl_with_u64_arg_seed();
+        idl.instructions[0].accounts = vec![
+            IdlAccountNode {
+                name: "child".to_owned(),
+                optional: false,
+                writable: AccountFlag::Fixed(true),
+                signer: AccountFlag::Fixed(false),
+                resolver: IdlResolver::Pda {
+                    program: IdlPdaProgram::Account {
+                        path: "maybeProgram".to_owned(),
+                    },
+                    seeds: vec![IdlPdaSeed::Account {
+                        path: "maybeSeed".to_owned(),
+                    }],
+                },
+                docs: vec![],
+            },
+            IdlAccountNode {
+                name: "maybeSeed".to_owned(),
+                optional: true,
+                writable: AccountFlag::Fixed(false),
+                signer: AccountFlag::Fixed(false),
+                resolver: IdlResolver::Input {},
+                docs: vec![],
+            },
+            IdlAccountNode {
+                name: "maybeProgram".to_owned(),
+                optional: true,
+                writable: AccountFlag::Fixed(false),
+                signer: AccountFlag::Fixed(false),
+                resolver: IdlResolver::Input {},
+                docs: vec![],
+            },
+        ];
+        idl
+    }
+
     fn idl_with_pubkey_arg() -> Idl {
         Idl {
             spec: "quasar-idl/1.0.0".to_owned(),
@@ -324,8 +362,9 @@ mod tests {
     }
 
     #[test]
-    fn rust_instruction_input_orders_pda_dependencies_and_resolves_const_programs() {
-        let files = generate_rust_client(&idl_with_out_of_order_external_program_pdas()).unwrap();
+    fn generated_clients_order_pda_dependencies_and_resolve_external_programs() {
+        let idl = idl_with_out_of_order_external_program_pdas();
+        let files = generate_rust_client(&idl).unwrap();
         let instruction_rs = files
             .iter()
             .find_map(|(path, contents)| (path == "instructions/create.rs").then_some(contents))
@@ -343,6 +382,108 @@ mod tests {
         assert!(const_program < parent && parent < child);
         assert!(instruction_rs.contains("parent.as_ref()"));
         assert!(instruction_rs.contains("&token_program"));
+
+        for typescript in [
+            generate_ts_client(&idl).unwrap(),
+            generate_ts_client_kit(&idl).unwrap(),
+        ] {
+            let const_program = typescript
+                .find("accountsMap[\"tokenProgram\"] =")
+                .expect("constant program binding");
+            let parent = typescript
+                .find("accountsMap[\"parent\"] =")
+                .expect("parent PDA derivation");
+            let child = typescript
+                .find("accountsMap[\"child\"] =")
+                .expect("child PDA derivation");
+            assert!(const_program < parent && parent < child);
+            assert!(typescript.contains("accountsMap[\"parent\"]"));
+            assert!(typescript.contains("accountsMap[\"tokenProgram\"]"));
+            assert!(typescript.contains("export async function findParentAddress"));
+            assert!(!typescript.contains("export async function findChildAddress"));
+        }
+
+        let python = generate_python_client(&idl).unwrap();
+        let python_parent = python
+            .find("accounts_map[\"parent\"] =")
+            .expect("Python parent PDA derivation");
+        let python_child = python
+            .find("accounts_map[\"child\"] =")
+            .expect("Python child PDA derivation");
+        assert!(python_parent < python_child);
+        assert!(python.contains(
+            "Pubkey.find_program_address([bytes(accounts_map[\"parent\"])], \
+             accounts_map[\"tokenProgram\"])[0]"
+        ));
+
+        let go = generate_go_client(&idl).unwrap();
+        let go_parent = go
+            .find("accountsMap[\"parent\"] =")
+            .expect("Go parent PDA derivation");
+        let go_child = go
+            .find("accountsMap[\"child\"] =")
+            .expect("Go child PDA derivation");
+        assert!(go_parent < go_child);
+        assert!(go.contains("accountsMap[\"tokenProgram\"]"));
+
+        let c = generate_c_client(&idl).unwrap();
+        let c_parent = c
+            .find("&derived_pda_keys[1]")
+            .expect("C parent PDA derivation");
+        let c_child = c
+            .rfind("&derived_pda_keys[0]")
+            .expect("C child PDA derivation");
+        assert!(c_parent < c_child);
+        assert!(c.contains("derived_pda_keys[1].bytes"));
+        assert!(c.contains("SEED_TEST_CREATE_TOKEN_PROGRAM_ID"));
+    }
+
+    #[test]
+    fn generated_clients_use_program_sentinels_for_optional_pda_dependencies() {
+        let idl = idl_with_optional_pda_dependencies();
+        let rust = generate_rust_client(&idl)
+            .unwrap()
+            .into_iter()
+            .find_map(|(path, contents)| (path == "instructions/create.rs").then_some(contents))
+            .expect("create instruction generated");
+        assert!(rust.contains("let maybe_seed = ix.maybe_seed.unwrap_or(ID);"));
+        assert!(rust.contains("let maybe_program = ix.maybe_program.unwrap_or(ID);"));
+        assert!(rust.contains("maybe_seed.as_ref()], &maybe_program"));
+        assert!(rust.contains("maybe_seed: ix.maybe_seed"));
+
+        for typescript in [
+            generate_ts_client(&idl).unwrap(),
+            generate_ts_client_kit(&idl).unwrap(),
+        ] {
+            assert!(typescript.contains("accountOverrides.maybeSeed ?? input.maybeSeed ??"));
+            assert!(typescript.contains("accountOverrides.maybeProgram ?? input.maybeProgram ??"));
+        }
+
+        let python = generate_python_client(&idl).unwrap();
+        assert!(python.contains(
+            "accounts_map[\"maybeSeed\"] = input.maybe_seed if input.maybe_seed is not None else \
+             PROGRAM_ID"
+        ));
+        assert!(python.contains(
+            "accounts_map[\"maybeProgram\"] = input.maybe_program if input.maybe_program is not \
+             None else PROGRAM_ID"
+        ));
+
+        let go = generate_go_client(&idl).unwrap();
+        assert!(
+            go.contains("if input.MaybeSeed != nil { return *input.MaybeSeed }; return ProgramID")
+        );
+        assert!(go.contains(
+            "if input.MaybeProgram != nil { return *input.MaybeProgram }; return ProgramID"
+        ));
+
+        let c = generate_c_client(&idl).unwrap();
+        assert!(c.contains(
+            "(accounts->maybeSeed ? accounts->maybeSeed : (Pubkey *)&SEED_TEST_PROGRAM_ID)->bytes"
+        ));
+        assert!(c.contains(
+            "accounts->maybeProgram ? accounts->maybeProgram : (Pubkey *)&SEED_TEST_PROGRAM_ID"
+        ));
     }
 
     #[test]

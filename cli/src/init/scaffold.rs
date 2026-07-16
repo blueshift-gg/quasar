@@ -188,7 +188,7 @@ pub(super) fn scaffold(
 
         fs::write(
             tests_dir.join(format!("{}.test.ts", name)),
-            generate_test_ts(name, sdk, template, toolchain),
+            generate_test_ts(name, sdk, template),
         )?;
     }
 
@@ -402,21 +402,15 @@ fn generate_package_json(name: &str, ts_sdk: TypeScriptSdk) -> String {
     )
 }
 
-fn generate_test_ts(
-    name: &str,
-    ts_sdk: TypeScriptSdk,
-    template: Template,
-    toolchain: Toolchain,
-) -> String {
+fn generate_test_ts(name: &str, ts_sdk: TypeScriptSdk, template: Template) -> String {
     match template {
-        Template::Minimal => generate_minimal_test_ts(name, ts_sdk, toolchain),
-        Template::Full => generate_full_test_ts(name, ts_sdk, toolchain),
+        Template::Minimal => generate_minimal_test_ts(name, ts_sdk),
+        Template::Full => generate_full_test_ts(name, ts_sdk),
     }
 }
 
-fn generate_minimal_test_ts(name: &str, ts_sdk: TypeScriptSdk, toolchain: Toolchain) -> String {
+fn generate_minimal_test_ts(name: &str, ts_sdk: TypeScriptSdk) -> String {
     let module_name = name.replace('-', "_");
-    let _ = toolchain;
 
     if matches!(ts_sdk, TypeScriptSdk::Kit) {
         format!(
@@ -465,9 +459,8 @@ describe.concurrent("{class_name} Program", async () => {{
     }
 }
 
-fn generate_full_test_ts(name: &str, ts_sdk: TypeScriptSdk, toolchain: Toolchain) -> String {
+fn generate_full_test_ts(name: &str, ts_sdk: TypeScriptSdk) -> String {
     let module_name = name.replace('-', "_");
-    let _ = toolchain;
 
     if matches!(ts_sdk, TypeScriptSdk::Kit) {
         format!(
@@ -1074,7 +1067,7 @@ mod tests {
         }
 
         for sdk in [TypeScriptSdk::Kit, TypeScriptSdk::Web3js] {
-            let full = generate_test_ts("demo", sdk, Template::Full, Toolchain::Solana);
+            let full = generate_test_ts("demo", sdk, Template::Full);
             assert!(full.contains("initializes state"));
             assert!(full.contains("QuasarTest.load"));
             assert!(full.contains("findMyAccountAddress"));
@@ -1082,18 +1075,13 @@ mod tests {
             assert!(full.contains("q.send(client.createInitializeInstruction"));
             assert!(full.contains("client.decodeMyAccount"));
 
-            let minimal = generate_test_ts("demo", sdk, Template::Minimal, Toolchain::Solana);
+            let minimal = generate_test_ts("demo", sdk, Template::Minimal);
             assert!(!minimal.contains("findMyAccountAddress"));
             assert!(minimal.contains("it(\"initializes\""));
             assert!(minimal.contains("result.succeeds().cuBelow(10_000)"));
         }
 
-        let web3 = generate_test_ts(
-            "demo",
-            TypeScriptSdk::Web3js,
-            Template::Full,
-            Toolchain::Solana,
-        );
+        let web3 = generate_test_ts("demo", TypeScriptSdk::Web3js, Template::Full);
         assert!(web3.contains("state.authority.equals(payer)"));
         assert!(!web3.contains("TransactionInstruction"));
         assert!(!web3.contains("createKeyedSystemAccount"));

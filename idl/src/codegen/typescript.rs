@@ -1,8 +1,8 @@
 use {
-    super::model::{CodegenResult, ProgramModel},
+    super::model::{resolved_account_order, CodegenResult, ProgramModel},
     crate::types::{
-        AccountFlag, Idl, IdlAccountDef, IdlArg, IdlCodec, IdlFieldDef, IdlInstruction, IdlPdaSeed,
-        IdlResolver, IdlType, ScalarRepr,
+        AccountFlag, Idl, IdlAccountDef, IdlArg, IdlCodec, IdlFieldDef, IdlInstruction,
+        IdlPdaProgram, IdlPdaSeed, IdlResolver, IdlType, ScalarRepr,
     },
     quasar_schema::{
         snake_to_pascal, to_camel_case, to_screaming_snake as pascal_to_screaming_snake,
@@ -923,12 +923,12 @@ fn generate_instruction_builders_web3js(
         }
 
         // Derive PDA accounts
-        for acc in &ix.accounts {
-            if acc.optional {
-                continue;
-            }
-            if let IdlResolver::Pda { seeds, .. } = &acc.resolver {
-                if let Some(helper_name) = exportable_pda_helpers.get(&format!("{:?}", seeds)) {
+        for acc in resolved_account_order(ix).expect("validated derived-account order") {
+            if let IdlResolver::Pda { program, seeds } = &acc.resolver {
+                let helper_name = matches!(program, IdlPdaProgram::ProgramId {})
+                    .then(|| exportable_pda_helpers.get(&format!("{:?}", seeds)))
+                    .flatten();
+                if let Some(helper_name) = helper_name {
                     let args = helper_call_args(seeds, &account_expr);
                     writeln!(
                         out,
@@ -938,13 +938,17 @@ fn generate_instruction_builders_web3js(
                     .expect("write to String");
                 } else {
                     emit_account_field_seed_resolvers(out, seeds, idl, &account_expr);
+                    let program_expr = match program {
+                        IdlPdaProgram::ProgramId {} => format!("{class_name}.programId"),
+                        IdlPdaProgram::Account { path } => account_expr(path),
+                    };
                     emit_inline_pda_derivation(
                         out,
                         &acc.name,
                         seeds,
                         idl,
                         InlinePdaTarget::Web3js {
-                            program_expr: &format!("{class_name}.programId"),
+                            program_expr: &program_expr,
                         },
                         &arg_types,
                         &account_expr,
@@ -1162,12 +1166,12 @@ fn generate_instruction_builders_kit(
         }
 
         // Derive PDA accounts (async in kit)
-        for acc in &ix.accounts {
-            if acc.optional {
-                continue;
-            }
-            if let IdlResolver::Pda { seeds, .. } = &acc.resolver {
-                if let Some(helper_name) = exportable_pda_helpers.get(&format!("{:?}", seeds)) {
+        for acc in resolved_account_order(ix).expect("validated derived-account order") {
+            if let IdlResolver::Pda { program, seeds } = &acc.resolver {
+                let helper_name = matches!(program, IdlPdaProgram::ProgramId {})
+                    .then(|| exportable_pda_helpers.get(&format!("{:?}", seeds)))
+                    .flatten();
+                if let Some(helper_name) = helper_name {
                     let args = helper_call_args(seeds, &account_expr);
                     writeln!(
                         out,
@@ -1177,13 +1181,17 @@ fn generate_instruction_builders_kit(
                     .expect("write to String");
                 } else {
                     emit_account_field_seed_resolvers(out, seeds, idl, &account_expr);
+                    let program_expr = match program {
+                        IdlPdaProgram::ProgramId {} => "PROGRAM_ADDRESS".to_string(),
+                        IdlPdaProgram::Account { path } => account_expr(path),
+                    };
                     emit_inline_pda_derivation(
                         out,
                         &acc.name,
                         seeds,
                         idl,
                         InlinePdaTarget::Kit {
-                            program_expr: "PROGRAM_ADDRESS",
+                            program_expr: &program_expr,
                         },
                         &arg_types,
                         &account_expr,
@@ -2053,7 +2061,10 @@ fn collect_pdas(idl: &Idl) -> Vec<PdaInfo> {
         let arg_types = instruction_arg_types(ix);
         for account in &ix.accounts {
             let seeds = match &account.resolver {
-                IdlResolver::Pda { seeds, .. } => seeds,
+                IdlResolver::Pda {
+                    program: IdlPdaProgram::ProgramId {},
+                    seeds,
+                } => seeds,
                 _ => continue,
             };
             if seeds.is_empty() || !pda_is_exportable(seeds, &arg_types) {
