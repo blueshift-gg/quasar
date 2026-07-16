@@ -246,11 +246,15 @@ check-suite-oracles:
 
 # Tests are silent on success (TESTING.md): anything worth printing is worth
 # asserting. Benchmark CU goes to target/cu-bench/*.jsonl via
-# examples/cu_bench.rs, never to stdout.
+# examples/cu_bench.rs, never to stdout. Covers the SVM suite, the example
+# benches, every crate's host test directory, and the quasar-test harness.
 check-test-silence:
 	@viol="$$(rg -n 'println!|eprintln!' tests/suite/src \
 	  examples/vault/src/tests.rs examples/escrow/src/tests.rs \
 	  examples/multisig/src/tests.rs examples/upstream-vault/src/tests.rs \
+	  lang/tests derive/tests spl/tests metadata/tests idl/tests cli/tests \
+	  testing/src \
+	  -g '!compile_fail/**' -g '!compile_pass/**' \
 	  || true)"; \
 	if [[ -n "$$viol" ]]; then \
 	  echo "test code must not print (TESTING.md: assert, don't print):" >&2; \
