@@ -193,83 +193,6 @@ fn test_multi_seed_init() {
 }
 
 #[test]
-fn test_wrong_seeds_fail() {
-    let mollusk = setup();
-    let (system_program, system_program_account) = keyed_account_for_system_program();
-    let payer = Address::new_unique();
-    let wrong_pda = Address::new_unique();
-
-    let instruction: Instruction = InitLiteralSeedInstruction {
-        payer,
-        config: wrong_pda,
-        system_program,
-    }
-    .into();
-
-    let result = mollusk.process_instruction(
-        &instruction,
-        &[
-            (payer, Account::new(1_000_000_000, 0, &system_program)),
-            (wrong_pda, Account::default()),
-            (system_program, system_program_account),
-        ],
-    );
-
-    assert_eq!(
-        result.program_result,
-        mollusk_svm::result::ProgramResult::Failure(quasar_lang::prelude::ProgramError::Custom(
-            quasar_lang::prelude::QuasarError::InvalidPda as u32
-        ))
-    );
-}
-
-#[test]
-fn test_wrong_bump_fail() {
-    let mollusk = setup();
-    let authority = Address::new_unique();
-    let (pda, correct_bump) =
-        Address::find_program_address(&[b"user", authority.as_ref()], &quasar_test_pda::ID);
-
-    let wrong_bump = if correct_bump == 0 {
-        1
-    } else {
-        correct_bump - 1
-    };
-    let account_data = build_user_account_data(authority, 42, wrong_bump);
-
-    let instruction: Instruction = UpdatePdaInstruction {
-        authority,
-        user: pda,
-        new_value: 100,
-    }
-    .into();
-
-    let result = mollusk.process_instruction(
-        &instruction,
-        &[
-            (authority, Account::new(1_000_000, 0, &Address::default())),
-            (
-                pda,
-                Account {
-                    lamports: 1_000_000,
-                    data: account_data,
-                    owner: quasar_test_pda::ID,
-                    executable: false,
-                    rent_epoch: 0,
-                },
-            ),
-        ],
-    );
-
-    assert_eq!(
-        result.program_result,
-        mollusk_svm::result::ProgramResult::Failure(quasar_lang::prelude::ProgramError::Custom(
-            quasar_lang::prelude::QuasarError::InvalidPda as u32
-        ))
-    );
-}
-
-#[test]
 fn test_update_pda_success() {
     let mollusk = setup();
     let authority = Address::new_unique();
@@ -713,120 +636,6 @@ fn test_seed_with_special_chars() {
     let account = &result.resulting_accounts[2].1;
     assert_eq!(account.data.len(), ITEM_SIZE);
     assert_eq!(account.owner, quasar_test_pda::ID);
-}
-
-#[test]
-fn test_wrong_seeds_different_literal() {
-    let mollusk = setup();
-    let (system_program, system_program_account) = keyed_account_for_system_program();
-    let payer = Address::new_unique();
-    let (wrong_pda, _) = Address::find_program_address(&[b"not-config"], &quasar_test_pda::ID);
-
-    let instruction: Instruction = InitLiteralSeedInstruction {
-        payer,
-        config: wrong_pda,
-        system_program,
-    }
-    .into();
-
-    let result = mollusk.process_instruction(
-        &instruction,
-        &[
-            (payer, Account::new(1_000_000_000, 0, &system_program)),
-            (wrong_pda, Account::default()),
-            (system_program, system_program_account),
-        ],
-    );
-
-    assert_eq!(
-        result.program_result,
-        mollusk_svm::result::ProgramResult::Failure(quasar_lang::prelude::ProgramError::Custom(
-            quasar_lang::prelude::QuasarError::InvalidPda as u32
-        ))
-    );
-}
-
-#[test]
-fn test_wrong_bump_off_by_one() {
-    let mollusk = setup();
-    let authority = Address::new_unique();
-    let (pda, correct_bump) =
-        Address::find_program_address(&[b"user", authority.as_ref()], &quasar_test_pda::ID);
-
-    let wrong_bump = correct_bump.wrapping_add(1);
-    let account_data = build_user_account_data(authority, 42, wrong_bump);
-
-    let instruction: Instruction = UpdatePdaInstruction {
-        authority,
-        user: pda,
-        new_value: 100,
-    }
-    .into();
-
-    let result = mollusk.process_instruction(
-        &instruction,
-        &[
-            (authority, Account::new(1_000_000, 0, &Address::default())),
-            (
-                pda,
-                Account {
-                    lamports: 1_000_000,
-                    data: account_data,
-                    owner: quasar_test_pda::ID,
-                    executable: false,
-                    rent_epoch: 0,
-                },
-            ),
-        ],
-    );
-
-    assert_eq!(
-        result.program_result,
-        mollusk_svm::result::ProgramResult::Failure(quasar_lang::prelude::ProgramError::Custom(
-            quasar_lang::prelude::QuasarError::InvalidPda as u32
-        ))
-    );
-}
-
-#[test]
-fn test_wrong_bump_zero() {
-    let mollusk = setup();
-    let authority = Address::new_unique();
-    let (pda, _correct_bump) =
-        Address::find_program_address(&[b"user", authority.as_ref()], &quasar_test_pda::ID);
-
-    let account_data = build_user_account_data(authority, 42, 0);
-
-    let instruction: Instruction = UpdatePdaInstruction {
-        authority,
-        user: pda,
-        new_value: 100,
-    }
-    .into();
-
-    let result = mollusk.process_instruction(
-        &instruction,
-        &[
-            (authority, Account::new(1_000_000, 0, &Address::default())),
-            (
-                pda,
-                Account {
-                    lamports: 1_000_000,
-                    data: account_data,
-                    owner: quasar_test_pda::ID,
-                    executable: false,
-                    rent_epoch: 0,
-                },
-            ),
-        ],
-    );
-
-    assert_eq!(
-        result.program_result,
-        mollusk_svm::result::ProgramResult::Failure(quasar_lang::prelude::ProgramError::Custom(
-            quasar_lang::prelude::QuasarError::InvalidPda as u32
-        ))
-    );
 }
 
 #[test]
@@ -1364,4 +1173,97 @@ fn test_init_typed_seed_from_account_field() {
     assert_eq!(item_account.data[0], 10); // discriminator
                                           // namespace field is at bytes 1..5 (u32 le)
     assert_eq!(&item_account.data[1..5], &namespace.to_le_bytes());
+}
+
+#[test]
+fn test_wrong_seed_addresses_rejected() {
+    // Two flavors of the same corruption class: an arbitrary address and a
+    // genuine PDA derived from a different literal. Both must fail the
+    // seed re-derivation, not just "not be the account we expected".
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let (different_literal, _) =
+        Address::find_program_address(&[b"not-config"], &quasar_test_pda::ID);
+
+    for (label, wrong_pda) in [
+        ("arbitrary address", Address::new_unique()),
+        ("pda of a different literal", different_literal),
+    ] {
+        let payer = Address::new_unique();
+        let instruction: Instruction = InitLiteralSeedInstruction {
+            payer,
+            config: wrong_pda,
+            system_program,
+        }
+        .into();
+        let result = mollusk.process_instruction(
+            &instruction,
+            &[
+                (payer, Account::new(1_000_000_000, 0, &system_program)),
+                (wrong_pda, Account::default()),
+                (system_program, system_program_account.clone()),
+            ],
+        );
+        assert_eq!(
+            result.program_result,
+            mollusk_svm::result::ProgramResult::Failure(
+                quasar_lang::prelude::ProgramError::Custom(
+                    quasar_lang::prelude::QuasarError::InvalidPda as u32
+                )
+            ),
+            "{label} must fail PDA verification"
+        );
+    }
+}
+
+#[test]
+fn test_wrong_stored_bumps_rejected() {
+    // Every corruption of the stored bump lands in the same verification
+    // arm: one below, one above (wrapping), and zero.
+    let mollusk = setup();
+    let authority = Address::new_unique();
+    let (pda, correct_bump) =
+        Address::find_program_address(&[b"user", authority.as_ref()], &quasar_test_pda::ID);
+
+    for wrong_bump in [
+        correct_bump.wrapping_sub(1),
+        correct_bump.wrapping_add(1),
+        0,
+    ] {
+        if wrong_bump == correct_bump {
+            continue;
+        }
+        let account_data = build_user_account_data(authority, 42, wrong_bump);
+        let instruction: Instruction = UpdatePdaInstruction {
+            authority,
+            user: pda,
+            new_value: 100,
+        }
+        .into();
+        let result = mollusk.process_instruction(
+            &instruction,
+            &[
+                (authority, Account::new(1_000_000, 0, &Address::default())),
+                (
+                    pda,
+                    Account {
+                        lamports: 1_000_000,
+                        data: account_data,
+                        owner: quasar_test_pda::ID,
+                        executable: false,
+                        rent_epoch: 0,
+                    },
+                ),
+            ],
+        );
+        assert_eq!(
+            result.program_result,
+            mollusk_svm::result::ProgramResult::Failure(
+                quasar_lang::prelude::ProgramError::Custom(
+                    quasar_lang::prelude::QuasarError::InvalidPda as u32
+                )
+            ),
+            "stored bump {wrong_bump} (correct {correct_bump}) must fail verification"
+        );
+    }
 }
