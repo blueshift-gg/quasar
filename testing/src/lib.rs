@@ -37,6 +37,7 @@ pub struct QuasarTest {
     svm: QuasarSvm,
     program_id: Pubkey,
     program_path: PathBuf,
+    fresh_addresses: u64,
 }
 
 impl QuasarTest {
@@ -121,6 +122,7 @@ impl QuasarTest {
             svm,
             program_id,
             program_path: path,
+            fresh_addresses: 0,
         })
     }
 
@@ -207,8 +209,21 @@ impl QuasarTest {
 
     /// Create a funded actor at a fresh address with an explicit balance.
     pub fn actor_with_lamports(&mut self, lamports: u64) -> Pubkey {
-        let address = Pubkey::new_unique();
+        let address = self.fresh_address();
         self.fund(address, lamports)
+    }
+
+    /// A fresh address no earlier fixture in this world has used.
+    ///
+    /// Addresses derive from a per-world counter, not a process-global one,
+    /// so a test sees the same addresses on every run regardless of which
+    /// other tests exist or run first. Compute-unit records stay comparable
+    /// without hand-pinned address constants.
+    pub fn fresh_address(&mut self) -> Pubkey {
+        self.fresh_addresses += 1;
+        let mut bytes = *b"quasar-test/fresh-address\0\0\0\0\0\0\0";
+        bytes[24..].copy_from_slice(&self.fresh_addresses.to_le_bytes());
+        Pubkey::new_from_array(bytes)
     }
 
     /// Create or replace a system account and return its address.
@@ -231,7 +246,7 @@ impl QuasarTest {
 
     /// Create a six-decimal mint with an explicit supply at a fresh address.
     pub fn mint_with_supply(&mut self, authority: Pubkey, supply: u64) -> Pubkey {
-        let address = Pubkey::new_unique();
+        let address = self.fresh_address();
         self.mint_at(address, authority, supply, 6)
     }
 
@@ -251,7 +266,7 @@ impl QuasarTest {
 
     /// Create an SPL Token account at a fresh address.
     pub fn token_account(&mut self, owner: Pubkey, mint: Pubkey, amount: u64) -> Pubkey {
-        let address = Pubkey::new_unique();
+        let address = self.fresh_address();
         self.token_account_at(address, owner, mint, amount)
     }
 

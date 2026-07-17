@@ -117,7 +117,10 @@ pub(crate) struct BehaviorGroupRef {
 
 pub(crate) struct BehaviorIdlAccountArg {
     pub key: String,
+    /// camelCase field name for IDL resolution.
     pub field: String,
+    /// The referenced field's original identifier, for client codegen.
+    pub field_ident: Ident,
 }
 
 /// Plain program account init (no behavior: system program create +

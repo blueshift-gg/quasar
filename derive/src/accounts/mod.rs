@@ -306,23 +306,27 @@ fn emit_pda_address_fns(
         .fields
         .iter()
         .filter_map(|field| {
+            use crate::client_macro::DerivedSeed;
             let (account_ty, seeds) = crate::client_macro::client_derivable_pda(plan, field)?;
             let fn_ident = crate::client_macro::pda_address_fn(&field.ident);
             let params: Vec<proc_macro2::TokenStream> = seeds
                 .iter()
                 .filter_map(|seed| match seed {
-                    resolve::specs::IdlSeedPlan::AccountAddr { base } => {
+                    DerivedSeed::AccountRef(base) => {
                         Some(quote! { #base: &#krate::prelude::Address })
                     }
-                    _ => None,
+                    DerivedSeed::ArgRef(name) => Some(quote! { #name: &#krate::prelude::Address }),
+                    DerivedSeed::ArgValue(name, ty) => Some(quote! { #name: #ty }),
+                    DerivedSeed::Const(_) => None,
                 })
                 .collect();
             let args: Vec<proc_macro2::TokenStream> = seeds
                 .iter()
                 .map(|seed| match seed {
-                    resolve::specs::IdlSeedPlan::AccountAddr { base } => quote! { #base },
-                    resolve::specs::IdlSeedPlan::Const { expr } => quote! { #expr },
-                    _ => unreachable!("client_derivable_pda rejects other seed plans"),
+                    DerivedSeed::AccountRef(base) => quote! { #base },
+                    DerivedSeed::ArgRef(name) => quote! { #name },
+                    DerivedSeed::ArgValue(name, _) => quote! { #name },
+                    DerivedSeed::Const(expr) => quote! { #expr },
                 })
                 .collect();
             Some(quote! {
@@ -337,6 +341,31 @@ fn emit_pda_address_fns(
                 }
             })
         })
+        .chain(plan.fields.iter().filter_map(|field| {
+            let ata = crate::client_macro::client_derivable_ata(plan, field)?;
+            let fn_ident = crate::client_macro::pda_address_fn(&field.ident);
+            let path = ata.behavior_path;
+            let authority = ata.authority;
+            let mint = ata.mint;
+            let token_program = match ata.token_program {
+                Some(field) => {
+                    let const_ident = crate::client_macro::fixed_address_const(field);
+                    quote! { Some(&Self::#const_ident) }
+                }
+                None => quote! { None },
+            };
+            Some(quote! {
+                #[doc(hidden)]
+                #[inline]
+                pub fn #fn_ident(
+                    #authority: &#krate::prelude::Address,
+                    #mint: &#krate::prelude::Address,
+                    _program_id: &#krate::prelude::Address,
+                ) -> #krate::prelude::Address {
+                    #path::client_address(#authority, #mint, #token_program)
+                }
+            })
+        }))
         .collect();
     if fns.is_empty() {
         return quote! {};

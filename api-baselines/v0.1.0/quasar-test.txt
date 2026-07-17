@@ -31,6 +31,7 @@ pub fn quasar_test::QuasarTest::actor_with_lamports(&mut self, u64) -> solana_ad
 pub fn quasar_test::QuasarTest::actors<const N: usize>(&mut self) -> [solana_address::Address; N]
 pub fn quasar_test::QuasarTest::ata(&mut self, solana_address::Address, solana_address::Address, u64) -> solana_address::Address
 pub fn quasar_test::QuasarTest::empty(&mut self, solana_address::Address) -> solana_address::Address
+pub fn quasar_test::QuasarTest::fresh_address(&mut self) -> solana_address::Address
 pub fn quasar_test::QuasarTest::from_program_path(impl core::convert::Into<solana_address::Address>, impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, quasar_test::ProjectError>
 pub fn quasar_test::QuasarTest::from_program_path_with_config(impl core::convert::Into<solana_address::Address>, impl core::convert::AsRef<std::path::Path>, quasar_svm::svm::QuasarSvmConfig) -> core::result::Result<Self, quasar_test::ProjectError>
 pub fn quasar_test::QuasarTest::fund(&mut self, solana_address::Address, u64) -> solana_address::Address
@@ -160,6 +161,7 @@ pub fn quasar_test::QuasarTest::actor_with_lamports(&mut self, u64) -> solana_ad
 pub fn quasar_test::QuasarTest::actors<const N: usize>(&mut self) -> [solana_address::Address; N]
 pub fn quasar_test::QuasarTest::ata(&mut self, solana_address::Address, solana_address::Address, u64) -> solana_address::Address
 pub fn quasar_test::QuasarTest::empty(&mut self, solana_address::Address) -> solana_address::Address
+pub fn quasar_test::QuasarTest::fresh_address(&mut self) -> solana_address::Address
 pub fn quasar_test::QuasarTest::from_program_path(impl core::convert::Into<solana_address::Address>, impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, quasar_test::ProjectError>
 pub fn quasar_test::QuasarTest::from_program_path_with_config(impl core::convert::Into<solana_address::Address>, impl core::convert::AsRef<std::path::Path>, quasar_svm::svm::QuasarSvmConfig) -> core::result::Result<Self, quasar_test::ProjectError>
 pub fn quasar_test::QuasarTest::fund(&mut self, solana_address::Address, u64) -> solana_address::Address

@@ -201,6 +201,7 @@ fn plan_field(
                     BehaviorArgValue::FieldRef(field) => Some(BehaviorIdlAccountArg {
                         key: arg.key.to_string(),
                         field: crate::helpers::snake_to_camel(&field.to_string()),
+                        field_ident: field.clone(),
                     }),
                     BehaviorArgValue::Some(_)
                     | BehaviorArgValue::None

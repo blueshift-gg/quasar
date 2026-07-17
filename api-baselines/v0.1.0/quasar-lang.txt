@@ -1410,6 +1410,8 @@ pub quasar_lang::error::QuasarError::RemainingAccountsOverflow = 3015
 pub quasar_lang::error::QuasarError::ReturnDataFromWrongProgram = 3018
 impl core::convert::From<quasar_lang::error::QuasarError> for solana_program_error::ProgramError
 pub fn solana_program_error::ProgramError::from(quasar_lang::error::QuasarError) -> Self
+impl core::convert::From<quasar_lang::error::QuasarError> for u32
+pub fn u32::from(quasar_lang::error::QuasarError) -> Self
 impl core::convert::TryFrom<u32> for quasar_lang::error::QuasarError
 pub type quasar_lang::error::QuasarError::Error = solana_program_error::ProgramError
 pub fn quasar_lang::error::QuasarError::try_from(u32) -> core::result::Result<Self, Self::Error>
@@ -2144,6 +2146,8 @@ pub quasar_lang::prelude::QuasarError::RemainingAccountsOverflow = 3015
 pub quasar_lang::prelude::QuasarError::ReturnDataFromWrongProgram = 3018
 impl core::convert::From<quasar_lang::error::QuasarError> for solana_program_error::ProgramError
 pub fn solana_program_error::ProgramError::from(quasar_lang::error::QuasarError) -> Self
+impl core::convert::From<quasar_lang::error::QuasarError> for u32
+pub fn u32::from(quasar_lang::error::QuasarError) -> Self
 impl core::convert::TryFrom<u32> for quasar_lang::error::QuasarError
 pub type quasar_lang::error::QuasarError::Error = solana_program_error::ProgramError
 pub fn quasar_lang::error::QuasarError::try_from(u32) -> core::result::Result<Self, Self::Error>

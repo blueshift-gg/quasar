@@ -66,5 +66,5 @@ fn close_rejects_a_foreign_authority(q: &mut QuasarTest) {
         }
         .swap_account(intruder_pda, account),
     )
-    .fails_with(QuasarError::InvalidPda as u32);
+    .fails_with(QuasarError::InvalidPda);
 }

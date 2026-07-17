@@ -71,7 +71,6 @@ fn associated_token_init_does_not_require_the_derived_account_to_sign() {
     let instruction: quasar_lang::client::Instruction = InitAssociatedTokenInstruction {
         payer: address(1),
         mint: address(2),
-        ata: address(3),
     }
     .into();
 

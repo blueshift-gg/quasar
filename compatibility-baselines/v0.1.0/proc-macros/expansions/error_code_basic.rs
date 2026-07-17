@@ -10,6 +10,12 @@ impl From<TestError> for ::quasar_lang::__solana_program_error::ProgramError {
         ::quasar_lang::__solana_program_error::ProgramError::Custom(e as u32)
     }
 }
+impl From<TestError> for u32 {
+    #[inline(always)]
+    fn from(e: TestError) -> Self {
+        e as u32
+    }
+}
 impl TryFrom<u32> for TestError {
     type Error = ::quasar_lang::__solana_program_error::ProgramError;
     #[inline(always)]

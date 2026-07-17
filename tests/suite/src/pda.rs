@@ -935,7 +935,6 @@ fn test_typed_seed_ix_data_init() {
     let instruction: Instruction = InitIxDataSeedInstruction {
         payer,
         authority,
-        item: item_pda,
         index,
     }
     .into();
@@ -1002,12 +1001,7 @@ fn test_typed_seed_deserialized_field() {
     let (item_pda, _) =
         Address::find_program_address(&[b"scoped", &namespace.to_le_bytes()], &quasar_test_pda::ID);
 
-    let init_item_ix: Instruction = InitScopedItemInstruction {
-        payer,
-        item: item_pda,
-        namespace,
-    }
-    .into();
+    let init_item_ix: Instruction = InitScopedItemInstruction { payer, namespace }.into();
 
     let payer_after_config = result.resulting_accounts[0].1.clone();
     let result2 = mollusk.process_instruction(

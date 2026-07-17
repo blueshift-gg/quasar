@@ -17,6 +17,25 @@
 
 use quasar_lang::prelude::*;
 
+/// Derive the canonical associated token address for a generated client.
+///
+/// Called by client codegen for `associated_token` fields, so the
+/// instruction struct can drop them. `token_program` defaults to SPL Token
+/// when the accounts struct does not pin one.
+pub fn client_address(
+    authority: &Address,
+    mint: &Address,
+    token_program: Option<&Address>,
+) -> Address {
+    let token_program = token_program.unwrap_or(&crate::SPL_TOKEN_ID);
+    crate::associated_token::get_associated_token_address_with_program_const(
+        authority,
+        mint,
+        token_program,
+    )
+    .0
+}
+
 /// Resolved arguments for associated-token validation or initialization.
 pub struct Args<'a> {
     /// Token mint account.

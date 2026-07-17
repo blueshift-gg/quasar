@@ -20,7 +20,6 @@ fn init_ata_spl_happy() {
 
     let instruction: Instruction = InitAtaInstruction {
         payer,
-        ata: ata_key,
         wallet,
         mint: mint_key,
     }
@@ -55,7 +54,6 @@ fn init_ata_spl_already_initialized() {
 
     let instruction: Instruction = InitAtaInstruction {
         payer,
-        ata: ata_key,
         wallet,
         mint: mint_key,
     }
@@ -88,7 +86,6 @@ fn init_ata_t22_happy() {
 
     let instruction: Instruction = InitAtaT22Instruction {
         payer,
-        ata: ata_key,
         wallet,
         mint: mint_key,
     }
@@ -123,7 +120,6 @@ fn init_ata_t22_already_initialized() {
 
     let instruction: Instruction = InitAtaT22Instruction {
         payer,
-        ata: ata_key,
         wallet,
         mint: mint_key,
     }
@@ -156,7 +152,6 @@ fn init_if_needed_ata_spl_happy_new() {
 
     let instruction: Instruction = InitIfNeededAtaInstruction {
         payer,
-        ata: ata_key,
         wallet,
         mint: mint_key,
     }
@@ -193,7 +188,6 @@ fn init_if_needed_ata_spl_existing_valid() {
 
     let instruction: Instruction = InitIfNeededAtaInstruction {
         payer,
-        ata: ata_key,
         wallet,
         mint: mint_key,
     }
@@ -240,7 +234,6 @@ fn init_if_needed_ata_spl_existing_wrong_mint() {
 
     let instruction: Instruction = InitIfNeededAtaInstruction {
         payer,
-        ata: ata_key,
         wallet,
         mint: mint_key,
     }
@@ -272,7 +265,6 @@ fn init_if_needed_ata_spl_existing_wrong_authority() {
 
     let instruction: Instruction = InitIfNeededAtaInstruction {
         payer,
-        ata: ata_key,
         wallet,
         mint: mint_key,
     }
@@ -303,7 +295,6 @@ fn init_if_needed_ata_spl_existing_wrong_owner() {
 
     let instruction: Instruction = InitIfNeededAtaInstruction {
         payer,
-        ata: ata_key,
         wallet,
         mint: mint_key,
     }
@@ -343,7 +334,6 @@ fn init_if_needed_ata_t22_happy_new() {
 
     let instruction: Instruction = InitIfNeededAtaT22Instruction {
         payer,
-        ata: ata_key,
         wallet,
         mint: mint_key,
     }

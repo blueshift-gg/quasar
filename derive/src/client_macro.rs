@@ -224,12 +224,17 @@ fn describe_accounts(
             } else if let Some((_, seeds)) = client_derivable_pda(plan, fp) {
                 let fn_ident = pda_address_fn(&fp.ident);
                 let args = seeds.iter().filter_map(|seed| match seed {
-                    crate::accounts::resolve::specs::IdlSeedPlan::AccountAddr { base } => {
-                        Some(quote! { &ix.#base })
-                    }
-                    _ => None,
+                    DerivedSeed::AccountRef(base) => Some(quote! { &ix.#base }),
+                    DerivedSeed::ArgRef(name) => Some(quote! { &ix.#name }),
+                    DerivedSeed::ArgValue(name, _) => Some(quote! { ix.#name }),
+                    DerivedSeed::Const(_) => None,
                 });
                 Some(quote! { #account_type::#fn_ident(#(#args,)* &$crate::ID) })
+            } else if let Some(ata) = client_derivable_ata(plan, fp) {
+                let fn_ident = pda_address_fn(&fp.ident);
+                let authority = ata.authority;
+                let mint = ata.mint;
+                Some(quote! { #account_type::#fn_ident(&ix.#authority, &ix.#mint, &$crate::ID) })
             } else {
                 None
             };
@@ -253,10 +258,7 @@ fn describe_accounts(
 pub(crate) fn client_derivable_pda<'p>(
     plan: &'p crate::accounts::resolve::specs::AccountsPlanTyped,
     fp: &'p crate::accounts::resolve::specs::FieldPlan,
-) -> Option<(
-    &'p syn::Path,
-    &'p [crate::accounts::resolve::specs::IdlSeedPlan],
-)> {
+) -> Option<(&'p syn::Path, Vec<DerivedSeed<'p>>)> {
     use crate::accounts::resolve::specs::{IdlResolverPlan, IdlSeedPlan};
     let IdlResolverPlan::Pda { account_ty, seeds } = fp.idl_resolver.as_ref()? else {
         return None;
@@ -268,17 +270,121 @@ pub(crate) fn client_derivable_pda<'p>(
                 && !matches!(other.idl_resolver, Some(IdlResolverPlan::Pda { .. }))
         })
     };
-    let derivable = seeds.iter().all(|seed| match seed {
-        IdlSeedPlan::AccountAddr { base } => plain_field(base),
-        IdlSeedPlan::Const { .. } => true,
-        IdlSeedPlan::AccountField { .. } | IdlSeedPlan::IxArg { .. } => false,
-    });
-    derivable.then_some((account_ty, seeds.as_slice()))
+    let mut classified = Vec::with_capacity(seeds.len());
+    for seed in seeds {
+        classified.push(match seed {
+            IdlSeedPlan::AccountAddr { base } if plain_field(base) => DerivedSeed::AccountRef(base),
+            IdlSeedPlan::Const { expr } => DerivedSeed::Const(expr),
+            IdlSeedPlan::IxArg { name, ty } => {
+                if is_address_type(ty) {
+                    DerivedSeed::ArgRef(name)
+                } else if is_value_seed_type(ty) {
+                    DerivedSeed::ArgValue(name, ty)
+                } else {
+                    return None;
+                }
+            }
+            _ => return None,
+        });
+    }
+    Some((account_ty, classified))
+}
+
+/// One client-resolvable seed of a derived PDA field.
+pub(crate) enum DerivedSeed<'p> {
+    /// The address of another (plain) account field: passed as `&ix.base`.
+    AccountRef(&'p syn::Ident),
+    /// An `Address`-typed instruction arg: passed as `&ix.name`.
+    ArgRef(&'p syn::Ident),
+    /// A by-value primitive instruction arg: passed as `ix.name`.
+    ArgValue(&'p syn::Ident, &'p syn::Type),
+    /// A constant expression, baked in at the definition site.
+    Const(&'p syn::Expr),
+}
+
+fn is_address_type(ty: &syn::Type) -> bool {
+    matches!(ty, syn::Type::Path(p) if p.path.is_ident("Address"))
+}
+
+/// Seed arg types `T::seeds` takes by value: the integer set and `[u8; N]`.
+fn is_value_seed_type(ty: &syn::Type) -> bool {
+    match ty {
+        syn::Type::Path(p) => ["u8", "u16", "u32", "u64"]
+            .iter()
+            .any(|name| p.path.is_ident(name)),
+        syn::Type::Array(array) => {
+            matches!(array.elem.as_ref(), syn::Type::Path(p) if p.path.is_ident("u8"))
+        }
+        _ => false,
+    }
 }
 
 /// The hidden associated fn deriving one PDA field's address.
 pub(crate) fn pda_address_fn(field: &syn::Ident) -> syn::Ident {
     format_ident!("__quasar_pda_{}", field)
+}
+
+/// A client-derivable associated token account field.
+///
+/// The derive stays protocol-neutral on-chain; this is a client-codegen
+/// convention: a behavior group whose path ends in `associated_token` and
+/// maps `authority` + `mint` to plain account fields derives the address
+/// through the behavior module's `client_address` fn. `token_program` joins
+/// when it maps to a `Program<T>` field (its canonical const), and defaults
+/// inside the behavior otherwise.
+pub(crate) struct DerivableAta<'p> {
+    pub behavior_path: &'p syn::Path,
+    pub authority: &'p syn::Ident,
+    pub mint: &'p syn::Ident,
+    pub token_program: Option<&'p syn::Ident>,
+}
+
+pub(crate) fn client_derivable_ata<'p>(
+    plan: &'p crate::accounts::resolve::specs::AccountsPlanTyped,
+    fp: &'p crate::accounts::resolve::specs::FieldPlan,
+) -> Option<DerivableAta<'p>> {
+    use crate::accounts::resolve::specs::IdlResolverPlan;
+    if fp.idl_resolver.is_some() {
+        return None;
+    }
+    let group = fp
+        .behaviors
+        .iter()
+        .find(|group| group.name.ends_with("associated_token"))?;
+    let arg = |key: &str| {
+        group
+            .idl_account_args
+            .iter()
+            .find(|arg| arg.key == key)
+            .map(|arg| &arg.field_ident)
+    };
+    let plain_field = |ident: &syn::Ident| {
+        plan.fields.iter().any(|other| {
+            other.ident == *ident
+                && fixed_address_expr(other).is_none()
+                && !matches!(other.idl_resolver, Some(IdlResolverPlan::Pda { .. }))
+        })
+    };
+    let fixed_field = |ident: &syn::Ident| {
+        plan.fields
+            .iter()
+            .any(|other| other.ident == *ident && fixed_address_expr(other).is_some())
+    };
+    let authority = arg("authority").filter(|f| plain_field(f))?;
+    let mint = arg("mint").filter(|f| plain_field(f))?;
+    let token_program = match arg("token_program") {
+        Some(field) if fixed_field(field) => Some(field),
+        // An explicit token program the client cannot resolve statically
+        // (e.g. an interface field) keeps the ATA field.
+        Some(_) => return None,
+        None => None,
+    };
+    Some(DerivableAta {
+        behavior_path: &group.path,
+        authority,
+        mint,
+        token_program,
+    })
 }
 
 /// The canonical-address expression for a `Program<T>`/`Sysvar<T>` field,

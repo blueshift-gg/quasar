@@ -83,6 +83,7 @@ impl core::marker::Unpin for quasar_spl::accounts::associated_token::Behavior
 impl core::marker::UnsafeUnpin for quasar_spl::accounts::associated_token::Behavior
 impl core::panic::unwind_safe::RefUnwindSafe for quasar_spl::accounts::associated_token::Behavior
 impl core::panic::unwind_safe::UnwindSafe for quasar_spl::accounts::associated_token::Behavior
+pub fn quasar_spl::accounts::associated_token::client_address(&solana_address::Address, &solana_address::Address, core::option::Option<&solana_address::Address>) -> solana_address::Address
 pub mod quasar_spl::accounts::mint
 pub enum quasar_spl::accounts::mint::FreezeAuthorityArg<'a>
 pub quasar_spl::accounts::mint::FreezeAuthorityArg::AssertEquals(&'a solana_account_view::AccountView)
@@ -435,6 +436,7 @@ impl core::marker::Unpin for quasar_spl::accounts::associated_token::Behavior
 impl core::marker::UnsafeUnpin for quasar_spl::accounts::associated_token::Behavior
 impl core::panic::unwind_safe::RefUnwindSafe for quasar_spl::accounts::associated_token::Behavior
 impl core::panic::unwind_safe::UnwindSafe for quasar_spl::accounts::associated_token::Behavior
+pub fn quasar_spl::prelude::associated_token::client_address(&solana_address::Address, &solana_address::Address, core::option::Option<&solana_address::Address>) -> solana_address::Address
 pub mod quasar_spl::prelude::mint
 pub enum quasar_spl::prelude::mint::FreezeAuthorityArg<'a>
 pub quasar_spl::prelude::mint::FreezeAuthorityArg::AssertEquals(&'a solana_account_view::AccountView)
