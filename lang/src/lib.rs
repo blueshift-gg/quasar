@@ -318,8 +318,6 @@ pub mod __internal {
         program_id: &solana_address::Address,
         flags: ParseFlags,
     ) -> Result<*mut u8, solana_program_error::ProgramError> {
-        use solana_program_error::ProgramError;
-
         debug_assert!(
             input as usize & 7 == 0,
             "parse_account_dup: input pointer is not 8-byte aligned"
@@ -334,106 +332,97 @@ pub mod __internal {
         // form (see `svm::advance_account_data`) rather than driving a `Cursor`,
         // so it decodes the low header byte here instead of via `Cursor::next` —
         // but the `NOT_BORROWED` comparison itself lives in one place.
-        if crate::svm::classify_borrow_state((actual_header & 0xFF) as u8).is_none() {
-            // Not a dup; validate flags.
-            if flags.is_optional {
-                // Optional: skip flag check if address == program_id (sentinel
-                // for None).
-                // SAFETY: Non-duplicate account header contains the address.
-                let address = unsafe { &(*raw).address };
-                if !crate::keys_eq(address, program_id) {
-                    let expected_flags = flags.expected & flags.flag_mask;
-                    if crate::utils::hint::unlikely(
-                        (actual_header & flags.flag_mask) != expected_flags,
-                    ) {
-                        // Mirror `parse_account`: only surface a decodable error.
-                        // `decode_header_error` returns 0 when the mismatched bit
-                        // is outside the required mask, in which case this must
-                        // fall through instead of returning `Err(from(0))`.
-                        let err =
-                            crate::decode_header_error(actual_header, flags.expected, flags.mask);
-                        if err != 0 {
-                            return Err(ProgramError::from(err));
-                        }
-                    }
-                }
-            } else {
-                let expected_flags = flags.expected & flags.flag_mask;
-                if crate::utils::hint::unlikely((actual_header & flags.flag_mask) != expected_flags)
-                {
-                    // Mirror `parse_account`: only surface a decodable error so a
-                    // 0 result (mismatch outside the required mask) falls through
-                    // instead of returning `Err(from(0))`.
-                    let err = crate::decode_header_error(actual_header, flags.expected, flags.mask);
-                    if err != 0 {
-                        return Err(ProgramError::from(err));
-                    }
-                }
-            }
-            // SAFETY: `base.add(offset)` is within the caller-provided output
-            // buffer, and `raw` is the current account header.
-            unsafe { core::ptr::write(base.add(offset), AccountView::new_unchecked(raw)) };
-            // SAFETY: `raw` is the current non-dup account, so `data_len` is
-            // valid and `input` meets `advance_account_data`'s entry contract.
-            let data_len = unsafe { (*raw).data_len as usize };
-            let input = unsafe { crate::svm::advance_account_data(input, data_len) };
-            Ok(input)
-        } else {
-            // Dup branch: `classify_borrow_state` returned `Some` — the SVM
-            // deduplicated this slot. The low header byte is the loader's global
-            // index; in this flat declared buffer that equals the output slot
-            // index, so it aliases an earlier slot (`base[0..offset]`).
-            //
-            // This copy is NOT routed through `svm::resolve_dup` (which
-            // documents the same flat `Buffer` index space): the interleaved
-            // optional-sentinel / `allow_dup` handling below reads `base[idx]`
-            // lazily and keeps the `unlikely` bounds-check hint, and folding it
-            // through the resolver measurably regressed this path (+3 CU on the
-            // multi-sentinel parse). Kept in its tuned inline form; the decode
-            // above is the single `svm`-owned `NOT_BORROWED` site.
-            let idx = (actual_header & 0xFF) as usize;
-            if crate::utils::hint::unlikely(idx >= offset) {
-                return Err(ProgramError::InvalidAccountData);
-            }
-
-            if flags.is_optional {
-                // Optional None uses the program id as a sentinel. Repeated
-                // sentinels may be serialized as SVM duplicate entries, but
-                // they are not aliases of a real user account.
-                //
-                // SAFETY: `idx < offset` (checked above), so `base[idx]` is
-                // an initialized slot per this fn's contract; `base[offset]`
-                // is writable; a dup entry is exactly `DUP_ENTRY_SIZE` bytes.
-                let orig_view = unsafe { core::ptr::read(base.add(idx)) };
-                if crate::keys_eq(orig_view.address(), program_id) {
-                    unsafe { core::ptr::write(base.add(offset), orig_view) };
-                    let input = unsafe { input.add(DUP_ENTRY_SIZE) };
-                    return Ok(input);
-                }
-
-                if !flags.allow_dup {
-                    return Err(ProgramError::AccountBorrowFailed);
-                }
-
-                // SAFETY: `base[offset]` is writable per this fn's contract;
-                // a dup entry is exactly `DUP_ENTRY_SIZE` bytes.
-                unsafe { core::ptr::write(base.add(offset), orig_view) };
-                let input = unsafe { input.add(DUP_ENTRY_SIZE) };
-                return Ok(input);
-            }
-
-            if !flags.allow_dup {
-                // Dups are only accepted for explicit #[account(dup)] fields.
-                return Err(ProgramError::AccountBorrowFailed);
-            }
-
-            // SAFETY: `idx < offset` means the source slot is already
-            // initialized; the destination slot is within the output buffer.
-            unsafe { core::ptr::write(base.add(offset), core::ptr::read(base.add(idx))) };
-            // SAFETY: a duplicate entry occupies exactly `DUP_ENTRY_SIZE` bytes.
-            let input = unsafe { input.add(DUP_ENTRY_SIZE) };
-            Ok(input)
+        if crate::svm::classify_borrow_state((actual_header & 0xFF) as u8).is_some() {
+            // SAFETY: a dup entry at this 8-aligned input; the caller's
+            // contract covers `base[0..=offset]`.
+            return unsafe { copy_dup_slot(input, base, offset, actual_header, program_id, flags) };
         }
+
+        // Optional None uses the program id as a sentinel and skips the flag
+        // check.
+        // SAFETY: a non-duplicate account header contains the address.
+        let is_none_sentinel =
+            flags.is_optional && crate::keys_eq(unsafe { &(*raw).address }, program_id);
+        if !is_none_sentinel {
+            check_header_flags(actual_header, flags)?;
+        }
+
+        // SAFETY: `base.add(offset)` is within the caller-provided output
+        // buffer, and `raw` is the current account header.
+        unsafe { core::ptr::write(base.add(offset), AccountView::new_unchecked(raw)) };
+        // SAFETY: `raw` is the current non-dup account, so `data_len` is
+        // valid and `input` meets `advance_account_data`'s entry contract.
+        let data_len = unsafe { (*raw).data_len as usize };
+        let input = unsafe { crate::svm::advance_account_data(input, data_len) };
+        Ok(input)
+    }
+
+    /// Validate a non-duplicate account header against the field's expected
+    /// flags, surfacing only decodable mismatches.
+    #[inline(always)]
+    fn check_header_flags(
+        actual_header: u32,
+        flags: ParseFlags,
+    ) -> Result<(), solana_program_error::ProgramError> {
+        let expected_flags = flags.expected & flags.flag_mask;
+        if crate::utils::hint::unlikely((actual_header & flags.flag_mask) != expected_flags) {
+            // `decode_header_error` returns 0 when the mismatched bit is
+            // outside the required mask; that must fall through rather than
+            // become `Err(from(0))`.
+            let err = crate::decode_header_error(actual_header, flags.expected, flags.mask);
+            if err != 0 {
+                return Err(solana_program_error::ProgramError::from(err));
+            }
+        }
+        Ok(())
+    }
+
+    /// Resolve one SVM duplicate entry against an earlier slot.
+    ///
+    /// The low header byte is the loader's global index; in this flat declared
+    /// buffer that equals the output slot index, so it aliases an earlier
+    /// slot. Kept in its tuned inline form rather than routed through
+    /// `svm::resolve_dup` (which documents the same flat `Buffer` index
+    /// space): reading `base[idx]` lazily with the `unlikely` bounds hint
+    /// measured 3 CU cheaper on the multi-sentinel parse.
+    ///
+    /// # Safety
+    ///
+    /// `input` must point at a dup entry; slots `base[0..offset]` must be
+    /// initialized and `base[offset]` writable (the `parse_account_dup`
+    /// contract).
+    #[inline(always)]
+    unsafe fn copy_dup_slot(
+        input: *mut u8,
+        base: *mut AccountView,
+        offset: usize,
+        actual_header: u32,
+        program_id: &solana_address::Address,
+        flags: ParseFlags,
+    ) -> Result<*mut u8, solana_program_error::ProgramError> {
+        use solana_program_error::ProgramError;
+
+        let idx = (actual_header & 0xFF) as usize;
+        if crate::utils::hint::unlikely(idx >= offset) {
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        // SAFETY: `idx < offset` (checked above), so `base[idx]` is an
+        // initialized slot per the caller's contract.
+        let orig_view = unsafe { core::ptr::read(base.add(idx)) };
+
+        // Repeated optional-None sentinels may be serialized as duplicate
+        // entries; they are not aliases of a real user account, so they copy
+        // without requiring `#[account(dup)]`.
+        let is_none_sentinel = flags.is_optional && crate::keys_eq(orig_view.address(), program_id);
+        if !is_none_sentinel && !flags.allow_dup {
+            return Err(ProgramError::AccountBorrowFailed);
+        }
+
+        // SAFETY: `base[offset]` is writable per the caller's contract; a dup
+        // entry is exactly `DUP_ENTRY_SIZE` bytes.
+        unsafe { core::ptr::write(base.add(offset), orig_view) };
+        Ok(unsafe { input.add(DUP_ENTRY_SIZE) })
     }
 }
 
