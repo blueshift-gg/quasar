@@ -29,16 +29,44 @@ pub mod __reexport {
 
 use quasar_idl_schema::*;
 
+/// camelCase form of a snake_case behavior-arg name.
+fn snake_to_camel(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut upper_next = false;
+    for c in name.chars() {
+        if c == '_' {
+            upper_next = true;
+        } else if upper_next {
+            out.extend(c.to_uppercase());
+            upper_next = false;
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 /// Resolve one protocol behavior's address metadata against the account-field
 /// arguments used by a concrete `#[account(...)]` declaration.
 pub fn behavior_resolver(
     resolver: Option<crate::account_behavior::BehaviorIdlResolver>,
     account_args: &[(&str, &str)],
+    fields: &[&str],
 ) -> Option<IdlResolver> {
+    // An unmapped behavior arg resolves to the same-named account field
+    // (mirroring the runtime init inference); `fields` carries camelCase
+    // names, so compare the argument camelized.
     let account = |argument: &str| {
         account_args
             .iter()
             .find_map(|(key, field)| (*key == argument).then(|| String::from(*field)))
+            .or_else(|| {
+                let camel = snake_to_camel(argument);
+                fields
+                    .iter()
+                    .find(|field| **field == camel)
+                    .map(|field| String::from(*field))
+            })
     };
 
     match resolver? {
@@ -470,7 +498,13 @@ mod codec_tests {
             },
         );
         let incomplete = [("mint", "mint"), ("owner", "wallet")];
-        assert!(behavior_resolver(recipe, &incomplete).is_none());
+        assert!(behavior_resolver(recipe, &incomplete, &[]).is_none());
+
+        // An unmapped declared argument resolves to a same-named field.
+        assert!(matches!(
+            behavior_resolver(recipe, &incomplete, &["tokenProgram"]),
+            Some(IdlResolver::AssociatedToken { .. })
+        ));
 
         let complete = [
             ("mint", "mint"),
@@ -478,7 +512,7 @@ mod codec_tests {
             ("token_program", "tokenProgram"),
         ];
         assert!(matches!(
-            behavior_resolver(recipe, &complete),
+            behavior_resolver(recipe, &complete, &[]),
             Some(IdlResolver::AssociatedToken {
                 mint,
                 owner,

@@ -428,12 +428,20 @@ pub(crate) fn field_derivation<'p>(
             .behaviors
             .iter()
             .find(|group| group.name.ends_with("associated_token"))?;
+        // An unmapped behavior arg resolves to the same-named account field
+        // (mirroring the runtime init inference).
         let arg = |key: &str| {
             group
                 .idl_account_args
                 .iter()
                 .find(|arg| arg.key == key)
                 .map(|arg| &arg.field_ident)
+                .or_else(|| {
+                    plan.fields
+                        .iter()
+                        .find(|field| field.ident == key)
+                        .map(|field| &field.ident)
+                })
         };
         let authority = account_source(plan, arg("authority")?, stack)?;
         let mint = account_source(plan, arg("mint")?, stack)?;

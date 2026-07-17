@@ -590,6 +590,11 @@ fn emit_idl_accounts_meta(
                 quote! { #krate::idl_build::__reexport::IdlResolver::Input {} }
             } else {
                 let field_ty = &fp.effective_ty;
+                let field_names: Vec<String> = plan
+                    .fields
+                    .iter()
+                    .map(|other| crate::helpers::snake_to_camel(&other.ident.to_string()))
+                    .collect();
                 let candidates = fp.behaviors.iter().map(|behavior| {
                     let path = &behavior.path;
                     let args = behavior.idl_account_args.iter().map(|arg| {
@@ -601,6 +606,7 @@ fn emit_idl_accounts_meta(
                         #krate::idl_build::behavior_resolver(
                             <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>>::IDL_RESOLVER,
                             &[#(#args),*],
+                            &[#(#field_names),*],
                         )
                     }
                 });

@@ -1526,7 +1526,7 @@ impl core::marker::UnsafeUnpin for quasar_lang::idl_build::TypeFragment
 impl core::panic::unwind_safe::RefUnwindSafe for quasar_lang::idl_build::TypeFragment
 impl core::panic::unwind_safe::UnwindSafe for quasar_lang::idl_build::TypeFragment
 pub fn quasar_lang::idl_build::address_to_base58(&solana_address::Address) -> alloc::string::String
-pub fn quasar_lang::idl_build::behavior_resolver(core::option::Option<quasar_lang::account_behavior::BehaviorIdlResolver>, &[(&str, &str)]) -> core::option::Option<quasar_idl_schema::account::IdlResolver>
+pub fn quasar_lang::idl_build::behavior_resolver(core::option::Option<quasar_lang::account_behavior::BehaviorIdlResolver>, &[(&str, &str)], &[&str]) -> core::option::Option<quasar_idl_schema::account::IdlResolver>
 pub fn quasar_lang::idl_build::build_idl(&str, &str, &str, &str) -> quasar_idl_schema::root::Idl
 pub fn quasar_lang::idl_build::one_behavior_resolver<const N: usize>(&str, [core::option::Option<quasar_idl_schema::account::IdlResolver>; N]) -> core::option::Option<quasar_idl_schema::account::IdlResolver>
 pub fn quasar_lang::idl_build::s(&str) -> alloc::string::String
