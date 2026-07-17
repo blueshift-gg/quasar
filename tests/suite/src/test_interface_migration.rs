@@ -91,7 +91,9 @@ fn wrong_owner_rejected() {
             wrong_owner,
         )],
     );
-    assert!(result.is_err(), "wrong owner should be rejected");
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -102,7 +104,7 @@ fn wrong_discriminator_rejected() {
     data[0] = 99; // neither 20 nor 21
     let ix: Instruction = InterfaceMigrationCheckInstruction { vault }.into();
     let result = svm.process_instruction(&ix, &[raw_account(vault, 1_000_000, data, program_id())]);
-    assert!(result.is_err(), "unknown discriminator should be rejected");
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -113,7 +115,7 @@ fn v1_data_too_small_rejected() {
     data[0] = 20;
     let ix: Instruction = InterfaceMigrationCheckInstruction { vault }.into();
     let result = svm.process_instruction(&ix, &[raw_account(vault, 1_000_000, data, program_id())]);
-    assert!(result.is_err(), "undersized VaultV1 should be rejected");
+    result.assert_error(quasar_svm::ProgramError::AccountDataTooSmall);
 }
 
 #[test]
@@ -125,5 +127,5 @@ fn v2_data_too_small_rejected() {
     data[0] = 21;
     let ix: Instruction = InterfaceMigrationCheckInstruction { vault }.into();
     let result = svm.process_instruction(&ix, &[raw_account(vault, 1_000_000, data, program_id())]);
-    assert!(result.is_err(), "undersized VaultV2 should be rejected");
+    result.assert_error(quasar_svm::ProgramError::AccountDataTooSmall);
 }

@@ -314,7 +314,8 @@ fn payer_insufficient_funds() {
             empty_account(account),
         ],
     );
-    assert!(result.is_err(), "should reject insufficient funds");
+    // spl_token::TokenError::InsufficientFunds
+    result.assert_error(quasar_svm::ProgramError::Custom(1));
 }
 
 #[test]
@@ -335,7 +336,9 @@ fn wrong_pda_seeds() {
         &ix,
         &[rich_signer_account(payer), empty_account(wrong_account)],
     );
-    assert!(result.is_err(), "should reject wrong PDA");
+    result.assert_error(quasar_svm::ProgramError::Custom(
+        quasar_lang::prelude::QuasarError::InvalidPda as u32,
+    ));
 }
 
 #[test]

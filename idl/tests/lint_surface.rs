@@ -597,3 +597,133 @@ fn diff_rules_cover_instruction_meta_breaks() {
     discriminator.instructions[0].discriminator = vec![44];
     assert!(lint::diff(&old, &ProgramSurface::from_idl(&discriminator)).contains(RuleCode::R014));
 }
+
+#[test]
+fn graph_check_flags_disconnected_derived_groups() {
+    // Two PDAs, each anchored to a different caller input and sharing
+    // nothing: two disconnected account groups, so L001 must fire.
+    let mut idl = base_idl();
+    idl.instructions[0].accounts = vec![
+        account_node("authority_a", true, false, IdlResolver::Input {}),
+        account_node(
+            "vault_a",
+            false,
+            true,
+            IdlResolver::Pda {
+                program: IdlPdaProgram::ProgramId {},
+                seeds: vec![
+                    IdlPdaSeed::Const {
+                        value: b"a".to_vec(),
+                    },
+                    IdlPdaSeed::Account {
+                        path: "authority_a".to_owned(),
+                    },
+                ],
+            },
+        ),
+        account_node("authority_b", true, false, IdlResolver::Input {}),
+        account_node(
+            "vault_b",
+            false,
+            true,
+            IdlResolver::Pda {
+                program: IdlPdaProgram::ProgramId {},
+                seeds: vec![
+                    IdlPdaSeed::Const {
+                        value: b"b".to_vec(),
+                    },
+                    IdlPdaSeed::Account {
+                        path: "authority_b".to_owned(),
+                    },
+                ],
+            },
+        ),
+    ];
+
+    let report = lint::run(&idl, &lint::LintConfig::default());
+
+    assert!(
+        report.contains(RuleCode::L001),
+        "disconnected derived groups must emit L001"
+    );
+}
+
+#[test]
+fn preflight_flags_unbounded_remaining_accounts() {
+    let mut idl = base_idl();
+    idl.instructions[0].remaining_accounts = Some(IdlRemainingAccounts {
+        kind: RemainingAccountsKind::Append,
+        name: "remainingAccounts".to_owned(),
+        min: 0,
+        max: None,
+        item: RemainingAccountItem {
+            client_type: "accountMeta".to_owned(),
+            signer: AccountFlag::Fixed(false),
+            writable: AccountFlag::Fixed(false),
+        },
+        policy: RemainingAccountPolicy {
+            position: RemainingPosition::AfterDeclaredAccounts,
+            order: RemainingOrder::PreserveInput,
+        },
+    });
+
+    let report = lint::run(&idl, &lint::LintConfig::default());
+
+    assert!(
+        report.contains(RuleCode::P007),
+        "unbounded remaining accounts must emit P007"
+    );
+}
+
+#[test]
+fn report_should_fail_gates_on_severity_and_strictness() {
+    // The upgrade-hostile fixture produces warnings/info but no errors
+    // (asserted by preflight_flags_upgrade_hostile_account_shapes), so it
+    // must pass by default and fail under strict.
+    let mut idl = base_idl();
+    idl.accounts[0].name = "Mint".to_owned();
+    idl.types[0].name = "Mint".to_owned();
+    idl.types[0].fields = vec![field("amount", primitive("u64"))];
+    idl.instructions[0].accounts = vec![account_node("vault", false, true, IdlResolver::Input {})];
+
+    let report = lint::run(&idl, &lint::LintConfig::default());
+
+    assert!(!report.is_empty());
+    assert!(!report.should_fail(&lint::LintConfig::default()));
+    assert!(report.should_fail(&lint::LintConfig {
+        strict: true,
+        lockfile_present: false,
+    }));
+}
+
+#[test]
+fn lockfile_round_trips_and_rejects_version_mismatch() {
+    let dir = std::env::temp_dir().join(format!("quasar-idl-lock-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let path = lint::lock_path(&dir);
+    assert!(path.ends_with(lint::LOCK_FILE_NAME));
+
+    let surface = ProgramSurface::from_idl(&base_idl());
+    lint::save_lockfile(&path, &surface).expect("save lockfile");
+    let loaded = lint::load_lockfile(&path).expect("load lockfile");
+    assert_eq!(loaded, surface, "lockfile round-trip must be lossless");
+
+    // Corrupt the stored surface version: load must reject with the exact
+    // mismatch error, not silently accept a foreign schema.
+    let json = std::fs::read_to_string(&path).expect("read lockfile");
+    let mut value: serde_json::Value = serde_json::from_str(&json).expect("parse lockfile");
+    let expected_version = value["version"].as_u64().expect("version field") as u32;
+    value["version"] = serde_json::json!(99);
+    std::fs::write(&path, value.to_string()).expect("rewrite lockfile");
+    match lint::load_lockfile(&path) {
+        Err(lint::LockfileError::VersionMismatch {
+            expected, found, ..
+        }) => {
+            assert_eq!(expected, expected_version);
+            assert_eq!(found, 99);
+        }
+        other => panic!("expected VersionMismatch, got {other:?}"),
+    }
+
+    std::fs::remove_dir_all(&dir).expect("clean temp dir");
+}

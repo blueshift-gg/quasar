@@ -47,3 +47,56 @@ fn is_system_program_nonzero() {
     let addr = Address::new_from_array(bytes);
     assert!(!is_system_program(&addr));
 }
+
+// AddressVerify for plain Address values: exact match yields bump 0, any
+// mismatch yields AddressMismatch, and &Address delegates. (This is the
+// terminal address check behind `address = expr` constraints.)
+
+#[test]
+fn address_verify_accepts_exact_match() {
+    use quasar_lang::{address::AddressVerify, prelude::ProgramError};
+    let expected = solana_address::Address::new_from_array([7; 32]);
+    let actual = solana_address::Address::new_from_array([7; 32]);
+    assert_eq!(expected.verify(&actual, &expected), Ok(0));
+    let _ = ProgramError::Custom(0);
+}
+
+#[test]
+fn address_verify_rejects_any_corrupted_word() {
+    use quasar_lang::{
+        address::AddressVerify,
+        prelude::{ProgramError, QuasarError},
+    };
+    let expected = solana_address::Address::new_from_array([7; 32]);
+    for pos in [0usize, 7, 8, 15, 16, 23, 24, 31] {
+        let mut bytes = [7u8; 32];
+        bytes[pos] ^= 0x01;
+        let actual = solana_address::Address::new_from_array(bytes);
+        assert_eq!(
+            expected.verify(&actual, &expected),
+            Err(ProgramError::Custom(QuasarError::AddressMismatch as u32)),
+            "corrupted byte {pos} must be detected"
+        );
+    }
+}
+
+#[test]
+fn address_verify_reference_delegates() {
+    use quasar_lang::{
+        address::AddressVerify,
+        prelude::{ProgramError, QuasarError},
+    };
+    let expected = solana_address::Address::new_from_array([9; 32]);
+    let matching = solana_address::Address::new_from_array([9; 32]);
+    let mismatched = solana_address::Address::new_from_array([8; 32]);
+    // Fully qualified: plain method syntax would auto-deref to the base
+    // Address impl and never exercise the &Address delegation.
+    assert_eq!(
+        <&solana_address::Address as AddressVerify>::verify(&&expected, &matching, &expected),
+        Ok(0)
+    );
+    assert_eq!(
+        <&solana_address::Address as AddressVerify>::verify(&&expected, &mismatched, &expected),
+        Err(ProgramError::Custom(QuasarError::AddressMismatch as u32))
+    );
+}

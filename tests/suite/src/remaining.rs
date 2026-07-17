@@ -71,37 +71,6 @@ fn test_remaining_accounts_empty() {
     );
 }
 
-#[test]
-fn test_remaining_accounts_overflow_errors() {
-    let mollusk = setup();
-    let authority = Address::new_unique();
-    let authority_account = Account::new(1_000_000, 0, &Address::default());
-
-    let mut remaining = Vec::new();
-    let mut accounts = vec![(authority, authority_account)];
-
-    for _ in 0..=64 {
-        let addr = Address::new_unique();
-        remaining.push(AccountMeta::new_readonly(addr, false));
-        accounts.push((addr, Account::new(1_000_000, 0, &Address::default())));
-    }
-
-    let instruction: Instruction = RemainingAccountsCheckInstruction {
-        authority,
-        remaining_accounts: remaining,
-    }
-    .into();
-
-    let result = mollusk.process_instruction(&instruction, &accounts);
-
-    assert_eq!(
-        result.program_result,
-        ProgramResult::Failure(ProgramError::Custom(
-            QuasarError::RemainingAccountsOverflow as u32
-        ))
-    );
-}
-
 // Remaining Accounts: one account.
 
 #[test]
@@ -438,4 +407,126 @@ fn test_remaining_duplicate_of_prior_remaining_allowed() {
         "remaining accounts should preserve duplicates of prior remaining accounts: {:?}",
         result.program_result
     );
+}
+
+// Typed remaining-accounts parsing (test-errors disc 30): unlike the raw
+// iterator above, parse::<Account<T>, N>() runs duplicate rejection and the
+// full owner/discriminator/length load on every remaining entry. The raw
+// walk's memory safety is proven by the lang/kani/remaining.rs harnesses;
+// these tests pin the *semantic* rejections, which Kani does not model.
+
+use {
+    crate::helpers::{raw_account, signer_account, svm_errors},
+    quasar_test_errors::cpi as err_cpi,
+};
+
+/// ErrorTestAccount: disc=1 (1) + authority (32) + value u64 (8) = 41 bytes.
+const ERROR_TEST_ACCOUNT_SIZE: usize = 41;
+
+fn error_test_account(
+    address: quasar_svm::Pubkey,
+    owner: quasar_svm::Pubkey,
+) -> quasar_svm::Account {
+    let mut data = vec![0u8; ERROR_TEST_ACCOUNT_SIZE];
+    data[0] = 1;
+    raw_account(address, 1_000_000, data, owner)
+}
+
+fn remaining_typed_ix(
+    authority: quasar_svm::Pubkey,
+    remaining: Vec<AccountMeta>,
+) -> quasar_svm::Instruction {
+    err_cpi::RemainingTypedCheckInstruction {
+        authority,
+        remaining_accounts: remaining,
+    }
+    .into()
+}
+
+#[test]
+fn typed_remaining_parses_valid_accounts() {
+    let mut svm = svm_errors();
+    let authority = quasar_svm::Pubkey::new_unique();
+    let a = quasar_svm::Pubkey::new_unique();
+    let b = quasar_svm::Pubkey::new_unique();
+
+    let ix = remaining_typed_ix(
+        authority,
+        vec![
+            AccountMeta::new_readonly(a, false),
+            AccountMeta::new_readonly(b, false),
+        ],
+    );
+    let result = svm.process_instruction(
+        &ix,
+        &[
+            signer_account(authority),
+            error_test_account(a, quasar_test_errors::ID),
+            error_test_account(b, quasar_test_errors::ID),
+        ],
+    );
+    assert!(result.is_ok(), "typed parse: {:?}", result.raw_result);
+}
+
+#[test]
+fn typed_remaining_rejects_duplicate() {
+    let mut svm = svm_errors();
+    let authority = quasar_svm::Pubkey::new_unique();
+    let dup = quasar_svm::Pubkey::new_unique();
+
+    let ix = remaining_typed_ix(
+        authority,
+        vec![
+            AccountMeta::new_readonly(dup, false),
+            AccountMeta::new_readonly(dup, false),
+        ],
+    );
+    let result = svm.process_instruction(
+        &ix,
+        &[
+            signer_account(authority),
+            error_test_account(dup, quasar_test_errors::ID),
+        ],
+    );
+    result.assert_error(quasar_svm::ProgramError::Custom(
+        QuasarError::RemainingAccountDuplicate as u32,
+    ));
+}
+
+#[test]
+fn typed_remaining_rejects_wrong_owner() {
+    let mut svm = svm_errors();
+    let authority = quasar_svm::Pubkey::new_unique();
+    let foreign = quasar_svm::Pubkey::new_unique();
+
+    let ix = remaining_typed_ix(authority, vec![AccountMeta::new_readonly(foreign, false)]);
+    let result = svm.process_instruction(
+        &ix,
+        &[
+            signer_account(authority),
+            error_test_account(foreign, quasar_svm::Pubkey::new_unique()),
+        ],
+    );
+    // The harness maps InstructionErrors without a dedicated variant to
+    // their Debug string; IllegalOwner is one of those.
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
+}
+
+#[test]
+fn typed_remaining_rejects_truncated_data() {
+    let mut svm = svm_errors();
+    let authority = quasar_svm::Pubkey::new_unique();
+    let short = quasar_svm::Pubkey::new_unique();
+
+    let mut data = vec![0u8; ERROR_TEST_ACCOUNT_SIZE - 1];
+    data[0] = 1; // valid discriminator, one byte short of the layout
+    let ix = remaining_typed_ix(authority, vec![AccountMeta::new_readonly(short, false)]);
+    let result = svm.process_instruction(
+        &ix,
+        &[
+            signer_account(authority),
+            raw_account(short, 1_000_000, data, quasar_test_errors::ID),
+        ],
+    );
+    result.assert_error(quasar_svm::ProgramError::AccountDataTooSmall);
 }

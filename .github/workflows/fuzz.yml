@@ -6,7 +6,10 @@ name: Fuzz
 # finding — STOP, `cargo fuzz tmin`, and report before merging.
 on:
   schedule:
+    # Nightly short run (300s per target) and a weekly long soak (Saturday,
+    # 1800s per target); the run length is selected per-schedule below.
     - cron: '0 4 * * *'
+    - cron: '0 6 * * 6'
   workflow_dispatch: {}
   pull_request:
     types: [labeled, synchronize, reopened]
@@ -80,9 +83,19 @@ jobs:
           rustup run "${{ steps.versions.outputs.nightly }}" rustc --version
           rustup run "${{ steps.versions.outputs.nightly }}" cargo --version
           cargo fuzz --version
-      - name: Fuzz ${{ matrix.target }} (300s)
+      - name: Select fuzz duration
+        id: duration
+        run: |
+          if [[ "${{ github.event.schedule }}" == '0 6 * * 6' ]]; then
+            echo "seconds=1800" >> "$GITHUB_OUTPUT"
+          else
+            echo "seconds=300" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Fuzz ${{ matrix.target }} (${{ steps.duration.outputs.seconds }}s)
         working-directory: lang
-        run: cargo +${{ steps.versions.outputs.nightly }} fuzz run ${{ matrix.target }} -- -max_total_time=300
+        run: >-
+          cargo +${{ steps.versions.outputs.nightly }} fuzz run ${{ matrix.target }}
+          -- -max_total_time=${{ steps.duration.outputs.seconds }}
       - name: Upload crash artifacts
         if: failure()
         uses: actions/upload-artifact@v4

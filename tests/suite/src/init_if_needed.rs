@@ -159,7 +159,9 @@ fn wrong_owner() {
             raw_account(account, 1_000_000, vec![1u8; 42], Pubkey::new_unique()),
         ],
     );
-    assert!(result.is_err(), "should reject wrong owner");
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -272,7 +274,8 @@ fn payer_insufficient_funds() {
             empty_account(account),
         ],
     );
-    assert!(result.is_err(), "should reject insufficient funds");
+    // spl_token::TokenError::InsufficientFunds
+    result.assert_error(quasar_svm::ProgramError::Custom(1));
 }
 
 // Front-running scenario.

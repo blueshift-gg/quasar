@@ -47,3 +47,54 @@ fn cpi_invoke_with_return_detects_missing_return_after_prior_success() {
     let result = svm.process_instruction(&ix, &[]);
     assert!(result.is_ok(), "missing return: {:?}", result.raw_result);
 }
+
+// Rejection paths, driven through the test-errors fixtures so the framework
+// error propagates to the transaction level instead of being caught
+// in-program (compare cpi_invoke_with_return_detects_missing_return_...).
+
+use {
+    quasar_lang::prelude::QuasarError, quasar_svm::ProgramError, quasar_test_errors::cpi as err_cpi,
+};
+
+#[test]
+fn cpi_missing_return_data_rejects() {
+    // Callee succeeds but sets no return data: invoke_with_return must fail
+    // with MissingReturnData rather than hand back stale bytes.
+    let mut svm = svm_errors();
+    let ix: Instruction = err_cpi::CpiMissingReturnInstruction {
+        program: quasar_test_errors::ID,
+    }
+    .into();
+    let result = svm.process_instruction(&ix, &[]);
+    result.assert_error(ProgramError::Custom(QuasarError::MissingReturnData as u32));
+}
+
+#[test]
+fn cpi_return_length_mismatch_rejects() {
+    // Callee returns 12 bytes; caller decodes u64 (8 bytes): the typed decode
+    // must fail with InvalidReturnData rather than read a prefix.
+    let mut svm = svm_errors();
+    let ix: Instruction = err_cpi::CpiDecodeMismatchInstruction {
+        program: quasar_test_errors::ID,
+    }
+    .into();
+    let result = svm.process_instruction(&ix, &[]);
+    result.assert_error(ProgramError::Custom(QuasarError::InvalidReturnData as u32));
+}
+
+#[test]
+fn cpi_return_data_from_wrong_program_rejects() {
+    // The invoked callee leaves return data stamped by a different program
+    // (its own nested CPI): the program-id check on returned data must fail
+    // with ReturnDataFromWrongProgram rather than trust foreign bytes.
+    let mut svm = svm_errors_with_misc();
+    let ix: Instruction = err_cpi::CpiWrongReturnProgramInstruction {
+        program: quasar_test_errors::ID,
+        misc_program: quasar_test_misc::ID,
+    }
+    .into();
+    let result = svm.process_instruction(&ix, &[]);
+    result.assert_error(ProgramError::Custom(
+        QuasarError::ReturnDataFromWrongProgram as u32,
+    ));
+}

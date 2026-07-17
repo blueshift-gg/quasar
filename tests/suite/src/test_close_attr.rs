@@ -68,10 +68,7 @@ fn close_attr_spl_wrong_authority() {
             empty_account(destination),
         ],
     );
-    assert!(
-        result.is_err(),
-        "close attr SPL with wrong authority should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -102,10 +99,7 @@ fn close_attr_spl_wrong_mint() {
             empty_account(destination),
         ],
     );
-    assert!(
-        result.is_err(),
-        "close attr SPL with wrong mint should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // close attribute with Token-2022.
@@ -172,10 +166,7 @@ fn close_attr_t22_wrong_authority() {
             empty_account(destination),
         ],
     );
-    assert!(
-        result.is_err(),
-        "close attr T22 with wrong authority should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // close attribute with InterfaceAccount.
@@ -276,8 +267,5 @@ fn close_attr_interface_wrong_authority() {
             empty_account(destination),
         ],
     );
-    assert!(
-        result.is_err(),
-        "close attr InterfaceAccount wrong authority should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }

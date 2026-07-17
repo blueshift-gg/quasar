@@ -224,7 +224,11 @@ fn three_accounts_no_dup_rejects_same() {
             signer_account(shared), // just needs some account
         ],
     );
-    assert!(result.is_err(), "should reject dup without #[account(dup)]");
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime(
+        "AccountBorrowFailed".into(),
+    ));
 }
 
 // Double mut with two separate &mut fields in one instruction.

@@ -45,9 +45,12 @@ fn has_one_mismatch() {
         ],
     );
     assert!(result.is_err(), "has_one mismatch");
-    // v3: has_one now runs before PDA verification, so HasOneMismatch (3002)
-    // is caught first.
-    result.assert_error(ProgramError::Custom(3002));
+    // The account address is derived from the real authority, so PDA
+    // verification (against the passed wrong authority) fails before the
+    // has_one comparison is reached.
+    result.assert_error(ProgramError::Custom(
+        quasar_lang::prelude::QuasarError::InvalidPda as u32,
+    ));
 }
 
 #[test]
@@ -68,7 +71,9 @@ fn has_one_zeroed_authority() {
         ],
     );
     assert!(result.is_err(), "zeroed stored authority should fail");
-    result.assert_error(ProgramError::Custom(3005));
+    result.assert_error(ProgramError::Custom(
+        quasar_lang::prelude::QuasarError::HasOneMismatch as u32,
+    ));
 }
 
 #[test]
@@ -92,7 +97,9 @@ fn has_one_single_bit_diff() {
         ],
     );
     assert!(result.is_err(), "single bit diff");
-    result.assert_error(ProgramError::Custom(3005));
+    result.assert_error(ProgramError::Custom(
+        quasar_lang::prelude::QuasarError::HasOneMismatch as u32,
+    ));
 }
 
 #[test]
@@ -116,7 +123,9 @@ fn has_one_last_byte_diff() {
         ],
     );
     assert!(result.is_err(), "last byte diff");
-    result.assert_error(ProgramError::Custom(3005));
+    result.assert_error(ProgramError::Custom(
+        quasar_lang::prelude::QuasarError::HasOneMismatch as u32,
+    ));
 }
 
 #[test]
@@ -143,7 +152,9 @@ fn has_one_default_passed() {
         ],
     );
     assert!(result.is_err(), "default authority passed");
-    result.assert_error(ProgramError::Custom(3005));
+    result.assert_error(ProgramError::Custom(
+        quasar_lang::prelude::QuasarError::HasOneMismatch as u32,
+    ));
 }
 
 // has_one custom errors.
@@ -214,7 +225,9 @@ fn address_mismatch() {
     let result =
         svm.process_instruction(&ix, &[simple_account(wrong, Pubkey::new_unique(), 42, 0)]);
     assert!(result.is_err(), "address mismatch");
-    result.assert_error(ProgramError::Custom(3012)); // AddressMismatch
+    result.assert_error(ProgramError::Custom(
+        quasar_lang::prelude::QuasarError::AddressMismatch as u32,
+    ));
 }
 
 // address custom errors.
@@ -276,7 +289,9 @@ fn constraint_fail() {
         ],
     );
     assert!(result.is_err(), "constraint fail");
-    result.assert_error(ProgramError::Custom(3004)); // ConstraintViolation
+    result.assert_error(ProgramError::Custom(
+        quasar_lang::prelude::QuasarError::ConstraintViolation as u32,
+    ));
 }
 
 // constraint custom errors.
@@ -345,7 +360,9 @@ fn has_one_and_owner_wrong_authority() {
         ],
     );
     assert!(result.is_err(), "wrong authority");
-    result.assert_error(ProgramError::Custom(3005)); // HasOneMismatch
+    result.assert_error(ProgramError::Custom(
+        quasar_lang::prelude::QuasarError::HasOneMismatch as u32,
+    ));
 }
 
 #[test]
@@ -367,6 +384,8 @@ fn has_one_and_owner_wrong_owner() {
             ),
         ],
     );
-    assert!(result.is_err(), "wrong owner");
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
     // SVM returns Runtime("IllegalOwner") for owner mismatches
 }

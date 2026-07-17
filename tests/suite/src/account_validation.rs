@@ -57,7 +57,9 @@ fn wrong_owner() {
             Pubkey::new_unique(), // wrong owner
         )],
     );
-    assert!(result.is_err(), "wrong owner");
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
     // SVM returns Runtime("IllegalOwner") for owner mismatches
 }
 
@@ -77,7 +79,9 @@ fn system_program_owner() {
             quasar_svm::system_program::ID,
         )],
     );
-    assert!(result.is_err(), "system program owner");
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 // Discriminator checks.
@@ -201,7 +205,11 @@ fn duplicate_same_address() {
     }
     .into();
     let result = svm.process_instruction(&ix, &[error_test_account(account, authority, 42)]);
-    assert!(result.is_err(), "duplicate should fail");
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime(
+        "AccountBorrowFailed".into(),
+    ));
 }
 
 #[test]
@@ -246,7 +254,9 @@ fn system_account_wrong_owner() {
         &ix,
         &[raw_account(target, 1_000_000, vec![], Pubkey::new_unique())],
     );
-    assert!(result.is_err(), "wrong owner");
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -265,7 +275,9 @@ fn system_account_owned_by_program() {
             quasar_test_errors::ID,
         )],
     );
-    assert!(result.is_err(), "owned by program");
+    // the harness maps InstructionErrors without a dedicated variant to their Debug
+    // string
+    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 // Program<T> validation.

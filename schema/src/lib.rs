@@ -89,3 +89,72 @@ pub fn camel_to_pascal(s: &str) -> String {
         Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pascal_to_snake_words_and_acronyms() {
+        assert_eq!(pascal_to_snake(""), "");
+        assert_eq!(pascal_to_snake("A"), "a");
+        assert_eq!(pascal_to_snake("Simple"), "simple");
+        assert_eq!(pascal_to_snake("TwoWords"), "two_words");
+        // acronym handling: separators only at case boundaries
+        assert_eq!(pascal_to_snake("HTTPServer"), "http_server");
+        assert_eq!(pascal_to_snake("MyHTTPServer"), "my_http_server");
+        assert_eq!(pascal_to_snake("ABC"), "abc");
+        assert_eq!(pascal_to_snake("parseURL"), "parse_url");
+    }
+
+    #[test]
+    fn snake_to_pascal_words() {
+        assert_eq!(snake_to_pascal(""), "");
+        assert_eq!(snake_to_pascal("word"), "Word");
+        assert_eq!(snake_to_pascal("two_words"), "TwoWords");
+        assert_eq!(snake_to_pascal("a_b_c"), "ABC");
+        // empty segments collapse rather than panic
+        assert_eq!(snake_to_pascal("double__underscore"), "DoubleUnderscore");
+    }
+
+    #[test]
+    fn to_camel_case_words() {
+        assert_eq!(to_camel_case(""), "");
+        assert_eq!(to_camel_case("word"), "word");
+        assert_eq!(to_camel_case("two_words"), "twoWords");
+        assert_eq!(to_camel_case("a_b_c"), "aBC");
+        // a leading underscore capitalizes the first letter and is dropped
+        assert_eq!(to_camel_case("_x"), "X");
+    }
+
+    #[test]
+    fn camel_to_snake_simple_rule() {
+        assert_eq!(camel_to_snake(""), "");
+        assert_eq!(camel_to_snake("abc"), "abc");
+        assert_eq!(camel_to_snake("camelCase"), "camel_case");
+        // no separator before index 0
+        assert_eq!(camel_to_snake("Upper"), "upper");
+        assert_eq!(camel_to_snake("aB"), "a_b");
+    }
+
+    #[test]
+    fn camel_and_snake_round_trip() {
+        assert_eq!(to_camel_case(&camel_to_snake("fooBarBaz")), "fooBarBaz");
+        assert_eq!(camel_to_snake(&to_camel_case("foo_bar_baz")), "foo_bar_baz");
+    }
+
+    #[test]
+    fn to_screaming_snake_cases() {
+        assert_eq!(to_screaming_snake(""), "");
+        assert_eq!(to_screaming_snake("abc"), "ABC");
+        assert_eq!(to_screaming_snake("camelCase"), "CAMEL_CASE");
+        assert_eq!(to_screaming_snake("Pascal"), "PASCAL");
+    }
+
+    #[test]
+    fn camel_to_pascal_first_char_only() {
+        assert_eq!(camel_to_pascal(""), "");
+        assert_eq!(camel_to_pascal("x"), "X");
+        assert_eq!(camel_to_pascal("camelCase"), "CamelCase");
+    }
+}

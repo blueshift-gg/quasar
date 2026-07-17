@@ -136,7 +136,9 @@ fn wrong_authority() {
     );
     assert!(result.is_err(), "should reject wrong authority");
     // has_one rejects before PDA verification.
-    result.assert_error(ProgramError::Custom(3002));
+    result.assert_error(ProgramError::Custom(
+        quasar_lang::prelude::QuasarError::InvalidPda as u32,
+    ));
 }
 
 #[test]

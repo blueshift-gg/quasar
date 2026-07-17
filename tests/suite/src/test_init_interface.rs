@@ -169,11 +169,13 @@ fn init_if_needed_token_interface_existing_valid() {
     }
     .into();
 
+    let existing = token_account(token_key, mint_key, payer, 100, token_program);
+    let existing_data = existing.data.clone();
     let result = svm.process_instruction(
         &instruction,
         &[
             rich_signer_account(payer),
-            token_account(token_key, mint_key, payer, 100, token_program),
+            existing,
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
@@ -182,39 +184,12 @@ fn init_if_needed_token_interface_existing_valid() {
         "init_if_needed InterfaceAccount<Token> existing valid should succeed: {:?}",
         result.raw_result
     );
-}
-
-#[test]
-fn init_if_needed_token_interface_t22_existing_valid() {
-    let mut svm = svm_init();
-    let payer = Pubkey::new_unique();
-    let token_key = Pubkey::new_unique();
-    let mint_key = Pubkey::new_unique();
-    let mint_authority = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-    let system_program = quasar_svm::system_program::ID;
-
-    let instruction: Instruction = InitIfNeededTokenInterfaceInstruction {
-        payer,
-        token_account: token_key,
-        mint: mint_key,
-        token_program,
-        system_program,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            rich_signer_account(payer),
-            token_account(token_key, mint_key, payer, 100, token_program),
-            mint_account(mint_key, mint_authority, 6, token_program),
-        ],
-    );
-    assert!(
-        result.is_ok(),
-        "init_if_needed InterfaceAccount<Token> existing T22 should succeed: {:?}",
-        result.raw_result
+    // "No-op" must mean untouched: the existing account's bytes are
+    // byte-identical after the idempotent init.
+    let after = result.account(&token_key).expect("existing account");
+    assert_eq!(
+        after.data, existing_data,
+        "existing valid account must be left unmodified"
     );
 }
 
@@ -246,10 +221,7 @@ fn init_if_needed_token_interface_existing_wrong_mint() {
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed InterfaceAccount<Token> wrong mint should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }
 
 // init InterfaceAccount<Mint>.
@@ -412,11 +384,13 @@ fn init_if_needed_mint_interface_existing_valid() {
     }
     .into();
 
+    let existing = mint_account(mint_key, authority, 6, token_program);
+    let existing_data = existing.data.clone();
     let result = svm.process_instruction(
         &instruction,
         &[
             rich_signer_account(payer),
-            mint_account(mint_key, authority, 6, token_program),
+            existing,
             signer_account(authority),
         ],
     );
@@ -425,38 +399,12 @@ fn init_if_needed_mint_interface_existing_valid() {
         "init_if_needed InterfaceAccount<Mint> existing valid should succeed: {:?}",
         result.raw_result
     );
-}
-
-#[test]
-fn init_if_needed_mint_interface_t22_existing_valid() {
-    let mut svm = svm_init();
-    let payer = Pubkey::new_unique();
-    let mint_key = Pubkey::new_unique();
-    let authority = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-    let system_program = quasar_svm::system_program::ID;
-
-    let instruction: Instruction = InitIfNeededMintInterfaceInstruction {
-        payer,
-        mint: mint_key,
-        mint_authority: authority,
-        token_program,
-        system_program,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            rich_signer_account(payer),
-            mint_account(mint_key, authority, 6, token_program),
-            signer_account(authority),
-        ],
-    );
-    assert!(
-        result.is_ok(),
-        "init_if_needed InterfaceAccount<Mint> existing T22 should succeed: {:?}",
-        result.raw_result
+    // "No-op" must mean untouched: the existing account's bytes are
+    // byte-identical after the idempotent init.
+    let after = result.account(&mint_key).expect("existing account");
+    assert_eq!(
+        after.data, existing_data,
+        "existing valid account must be left unmodified"
     );
 }
 
@@ -487,8 +435,5 @@ fn init_if_needed_mint_interface_existing_wrong_authority() {
             signer_account(authority),
         ],
     );
-    assert!(
-        result.is_err(),
-        "init_if_needed InterfaceAccount<Mint> wrong authority should fail"
-    );
+    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
 }

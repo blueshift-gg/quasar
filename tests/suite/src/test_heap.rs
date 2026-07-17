@@ -64,3 +64,19 @@ fn emit_event_works_with_any_heap() {
         result.raw_result
     );
 }
+
+#[test]
+fn heap_alloc_beyond_cap_aborts() {
+    let mut svm = svm_heap();
+    let signer = Pubkey::new_unique();
+    let ix: Instruction = HeapAllocBeyondCapInstruction { signer }.into();
+    let result = svm.process_instruction(&ix, &[signer_account(signer)]);
+    // A heap-enabled arm allocating 256 KiB + 1 exceeds MAX_HEAP_LENGTH: the
+    // bump allocator returns null -> handle_alloc_error -> abort. Unlike
+    // no_heap_alloc_aborts (poisoned cursor), this exercises the cap guard.
+    assert_eq!(
+        result.raw_result,
+        Err(InstructionError::ProgramFailedToComplete),
+        "allocation beyond the 256 KiB heap cap must abort",
+    );
+}

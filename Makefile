@@ -68,7 +68,8 @@ PACKAGE_REHEARSAL_ROOT ?= target/release-rehearsal
 TYPESCRIPT_TEST_DIR := testing/typescript
 
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
-	check-runtime-panics check-workspace-invariants check-license-policy \
+	check-runtime-panics check-workspace-invariants check-test-silence \
+	check-suite-oracles check-license-policy \
 	check-package-metadata check-readme-crate-inventory check-release-train \
 	build build-sbf test test-bless \
 	test-host-inventory test-host test-sbf-host test-quasar-test-standalone \
@@ -83,7 +84,8 @@ TYPESCRIPT_TEST_DIR := testing/typescript
 	test-typescript-package typescript-package-check \
 	check-release-dependencies test-release-dependency-policy \
 	check-release-permissions test-release-permission-policy \
-	kani help-kani check-kani kani-lang \
+	test-matrix check-test-matrix coverage \
+	mutants mutants-bless kani help-kani check-kani kani-lang \
 	kani-spl kani-metadata msrv-check package-check package-rehearsal audit
 
 # Print the nightly toolchain version for CI
@@ -235,8 +237,34 @@ check-runtime-panics:
 	  exit 1; \
 	fi
 
+# Rejection tests pin the exact error (TESTING.md): bare is_err() cannot
+# distinguish "the right check fired" from "an earlier check masked a broken
+# one". Allowlist (with reasons) lives in the script.
+check-suite-oracles:
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_check_suite_oracles.py
+	@python3 scripts/check-suite-oracles.py
+
+# Tests are silent on success (TESTING.md): anything worth printing is worth
+# asserting. Benchmark CU goes to target/cu-bench/*.jsonl via
+# examples/cu_bench.rs, never to stdout. Covers the SVM suite, the example
+# benches, every crate's host test directory, and the quasar-test harness.
+check-test-silence:
+	@viol="$$(rg -n 'println!|eprintln!' tests/suite/src \
+	  examples/vault/src/tests.rs examples/escrow/src/tests.rs \
+	  examples/multisig/src/tests.rs examples/upstream-vault/src/tests.rs \
+	  lang/tests derive/tests spl/tests metadata/tests idl/tests cli/tests \
+	  testing/src \
+	  -g '!compile_fail/**' -g '!compile_pass/**' \
+	  || true)"; \
+	if [[ -n "$$viol" ]]; then \
+	  echo "test code must not print (TESTING.md: assert, don't print):" >&2; \
+	  echo "$$viol" >&2; \
+	  exit 1; \
+	fi
+
 check-workspace-invariants: check-license-policy check-package-metadata \
-	check-readme-crate-inventory check-release-train
+	check-readme-crate-inventory check-release-train check-test-silence \
+	check-suite-oracles
 	@check_allowed() { \
 	  local desc="$$1" pattern="$$2"; shift 2; \
 	  local allowed=("$$@") matches; \
@@ -534,10 +562,13 @@ test-release-permission-policy:
 
 bench-cu:
 	@$(MAKE) build-sbf
+	@rm -f target/cu-bench/quasar-vault.jsonl target/cu-bench/quasar-escrow.jsonl
 	@echo "Running vault CU benchmark..."
-	@cargo test -p quasar-vault -- --nocapture --test-threads=1 2>&1 | grep -E '(DEPOSIT|WITHDRAW) CU:'
+	@cargo test -p quasar-vault -- --test-threads=1
+	@jq -r '"  \(.instruction) CU: \(.cu)"' target/cu-bench/quasar-vault.jsonl
 	@echo "Running escrow CU benchmark..."
-	@cargo test -p quasar-escrow -- --nocapture --test-threads=1 2>&1 | grep -E '(MAKE|TAKE|REFUND) CU:'
+	@cargo test -p quasar-escrow -- --test-threads=1
+	@jq -r '"  \(.instruction) CU: \(.cu)"' target/cu-bench/quasar-escrow.jsonl
 
 bench-tracked:
 	@bash scripts/bench-tracked-programs.sh capture target/tracked-metrics.env
@@ -564,6 +595,39 @@ test-miri-strict:
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri
 	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-metadata --test miri
+
+# Feature -> test traceability (TESTING.md): the grid of what is tested and
+# how. check mode fails on an empty required cell, manifest drift, or a suite
+# module no feature claims.
+test-matrix:
+	@python3 scripts/test-matrix.py
+
+check-test-matrix:
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_test_matrix.py
+	@python3 scripts/test-matrix.py --check
+
+# Host-side line coverage, informational only: code executed under
+# SBF/Mollusk is invisible here (TESTING.md) — the matrix above and the
+# mutation baseline are the assurance metrics, never a coverage percentage.
+coverage:
+	@command -v cargo-llvm-cov >/dev/null 2>&1 || { \
+		echo "cargo-llvm-cov is not installed; run: cargo install cargo-llvm-cov --locked"; \
+		exit 1; \
+	}
+	@cargo llvm-cov --workspace \
+		$(foreach package,$(SBF_HOST_TEST_PACKAGES),--exclude $(package)) \
+		--all-features --html
+	@echo "HTML report: target/llvm-cov/html/index.html"
+
+# Mutation testing (TESTING.md): per-package cargo-mutants runs, then the
+# missed set is judged against the shrink-only baseline in
+# .ci/mutants-baseline.txt. Deep-tier: nightly CI, not the PR gate.
+mutants:
+	@scripts/mutants.sh run-all
+	@scripts/mutants.sh check-baseline
+
+mutants-bless:
+	@scripts/mutants.sh bless-baseline
 
 kani-lang: check-kani
 	@cargo kani -p quasar-lang

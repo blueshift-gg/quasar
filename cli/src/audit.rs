@@ -155,21 +155,21 @@ mod tests {
             )]),
         };
 
-        assert_eq!(
-            render_human(&idl, &plan),
-            concat!(
-                "vault validation plan\n\n",
-                "initialize (discriminator [0])\n",
-                "  rent: FetchOnce\n",
-                "  state  [writable]  Account (Account < 'a , State >)\n",
-                "    load: Fixed(validates=[])\n",
-                "    pre-load:\n",
-                "      - Init::Program(payer=payer)\n",
-                "    post-load:\n",
-                "      - UserCheck(HasOne targets=[authority])\n",
-                "    epilogue:\n",
-                "      - ProgramClose(destination_field=payer)\n",
-            )
+        let expected = concat!(
+            "vault validation plan\n\n",
+            "initialize (discriminator [0])\n",
+            "  rent: FetchOnce\n",
+            "  state  [writable]  Account (Account < 'a , State >)\n",
+            "    load: Fixed(validates=[])\n",
+            "    pre-load:\n",
+            "      - Init::Program(payer=payer)\n",
+            "    post-load:\n",
+            "      - UserCheck(HasOne targets=[authority])\n",
+            "    epilogue:\n",
+            "      - ProgramClose(destination_field=payer)\n",
         );
+        assert_eq!(render_human(&idl, &plan), expected);
+        // Determinism: a second render over the same plan is byte-identical.
+        assert_eq!(render_human(&idl, &plan), expected);
     }
 }

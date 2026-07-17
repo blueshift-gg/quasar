@@ -10,84 +10,6 @@ fn setup() -> Mollusk {
 const EMIT_MIN_CU: u64 = 200;
 
 #[test]
-fn test_emit_u64() {
-    let mollusk = setup();
-    let signer = Address::new_unique();
-    let instruction = EmitU64EventInstruction { signer, value: 42 }.into();
-    let result = mollusk.process_instruction(
-        &instruction,
-        &[(signer, Account::new(1_000_000, 0, &Address::default()))],
-    );
-    assert!(result.program_result.is_ok());
-    assert!(
-        result.compute_units_consumed > EMIT_MIN_CU,
-        "emit should consume CU for sol_log_data syscall, got {}",
-        result.compute_units_consumed
-    );
-}
-
-#[test]
-fn test_emit_address() {
-    let mollusk = setup();
-    let signer = Address::new_unique();
-    let addr = Address::new_unique();
-    let instruction = EmitAddressEventInstruction {
-        signer,
-        addr,
-        value: 100,
-    }
-    .into();
-    let result = mollusk.process_instruction(
-        &instruction,
-        &[(signer, Account::new(1_000_000, 0, &Address::default()))],
-    );
-    assert!(result.program_result.is_ok());
-    assert!(
-        result.compute_units_consumed > EMIT_MIN_CU,
-        "emit should consume CU for sol_log_data syscall, got {}",
-        result.compute_units_consumed
-    );
-}
-
-#[test]
-fn test_emit_bool_true() {
-    let mollusk = setup();
-    let signer = Address::new_unique();
-    let instruction = EmitBoolEventInstruction { signer, flag: true }.into();
-    let result = mollusk.process_instruction(
-        &instruction,
-        &[(signer, Account::new(1_000_000, 0, &Address::default()))],
-    );
-    assert!(result.program_result.is_ok());
-    assert!(
-        result.compute_units_consumed > EMIT_MIN_CU,
-        "emit should consume CU for sol_log_data syscall, got {}",
-        result.compute_units_consumed
-    );
-}
-
-#[test]
-fn test_emit_bool_false() {
-    let mollusk = setup();
-    let signer = Address::new_unique();
-    let instruction = EmitBoolEventInstruction {
-        signer,
-        flag: false,
-    }
-    .into();
-    let result = mollusk.process_instruction(
-        &instruction,
-        &[(signer, Account::new(1_000_000, 0, &Address::default()))],
-    );
-    assert!(result.program_result.is_ok());
-    assert!(
-        result.compute_units_consumed > EMIT_MIN_CU,
-        "emit should consume CU for sol_log_data syscall, got {}",
-        result.compute_units_consumed
-    );
-}
-
-#[test]
 fn test_emit_multi_field() {
     let mollusk = setup();
     let signer = Address::new_unique();
@@ -121,7 +43,6 @@ fn test_emit_cu() {
         &[(signer, Account::new(1_000_000, 0, &Address::default()))],
     );
     assert!(result.program_result.is_ok());
-    println!("emit!() CU: {}", result.compute_units_consumed);
     assert!(
         result.compute_units_consumed < 500,
         "emit!() should be under 500 CU, got {}",
@@ -229,7 +150,6 @@ fn test_emit_cpi_cu() {
         &make_cpi_accounts(signer, event_authority, quasar_test_events::ID),
     );
     assert!(result.program_result.is_ok());
-    println!("emit_cpi!() CU: {}", result.compute_units_consumed);
     assert!(
         result.compute_units_consumed < 2_000,
         "emit_cpi!() should be under 2000 CU, got {}",
@@ -253,9 +173,11 @@ fn test_emit_cpi_wrong_authority() {
         &instruction,
         &make_cpi_accounts(signer, wrong_authority, quasar_test_events::ID),
     );
-    assert!(
-        result.program_result.is_err(),
-        "Expected failure with wrong event authority"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidSeeds
+        )
     );
 }
 
@@ -404,9 +326,11 @@ fn test_emit_cpi_wrong_program() {
             ),
         ],
     );
-    assert!(
-        result.program_result.is_err(),
-        "Expected failure with wrong program for CPI emit"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::IncorrectProgramId
+        )
     );
 }
 
@@ -426,9 +350,11 @@ fn test_emit_cpi_missing_event_authority() {
         &instruction,
         &make_cpi_accounts(signer, random_account, quasar_test_events::ID),
     );
-    assert!(
-        result.program_result.is_err(),
-        "Expected failure with missing event authority"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidSeeds
+        )
     );
 }
 
@@ -452,9 +378,11 @@ fn test_emit_cpi_authority_not_signer() {
         &instruction,
         &make_cpi_accounts(signer, event_authority, quasar_test_events::ID),
     );
-    assert!(
-        result.program_result.is_err(),
-        "Expected failure when signer account is not signed"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::MissingRequiredSignature
+        )
     );
 }
 
@@ -530,4 +458,73 @@ fn test_different_events_different_discriminators() {
         &[(signer, Account::new(1_000_000, 0, &Address::default()))],
     );
     assert!(result_empty.program_result.is_ok());
+}
+
+#[test]
+fn test_emit_u64_payload_reaches_log() {
+    // Beyond the CU proxy above: prove the emitted bytes actually reach the
+    // log stream. sol_log_data surfaces as a "Program data: <base64>" line;
+    // SimpleEvent { value: 42 } is discriminator 1 followed by 42u64 LE,
+    // i.e. [1, 42, 0, 0, 0, 0, 0, 0, 0] == base64 "ASoAAAAAAAAA".
+    // (QuasarSvm here because Mollusk's result does not expose logs.)
+    let elf = std::fs::read("../../target/deploy/quasar_test_events.so")
+        .expect("run `make build-sbf` first");
+    let mut svm = quasar_svm::QuasarSvm::new().with_program(&quasar_test_events::ID, &elf);
+    let signer = quasar_svm::Pubkey::new_unique();
+    let instruction: quasar_svm::Instruction = EmitU64EventInstruction { signer, value: 42 }.into();
+    let result = svm.process_instruction(&instruction, &[crate::helpers::signer_account(signer)]);
+    assert!(result.is_ok(), "emit failed: {:?}", result.raw_result);
+    assert!(
+        result
+            .logs
+            .iter()
+            .any(|line| line == "Program data: ASoAAAAAAAAA"),
+        "expected event payload in logs, got: {:?}",
+        result.logs
+    );
+}
+
+#[test]
+fn test_emit_cpi_aliased_program_field_reaches_log() {
+    // The fixture names its program field `emitter` instead of `program`:
+    // beyond compiling (type-based field detection), the aliased wiring must
+    // actually emit — same payload oracle as the plain emit test.
+    let elf = std::fs::read("../../target/deploy/quasar_test_events.so")
+        .expect("run `make build-sbf` first");
+    let mut svm = quasar_svm::QuasarSvm::new().with_program(&quasar_test_events::ID, &elf);
+    let signer = quasar_svm::Pubkey::new_unique();
+    let (event_authority, _) =
+        quasar_svm::Pubkey::find_program_address(&[b"__event_authority"], &quasar_test_events::ID);
+    let instruction: quasar_svm::Instruction = EmitViaCpiAliasedInstruction {
+        signer,
+        event_authority,
+        emitter: quasar_test_events::ID,
+        value: 42,
+    }
+    .into();
+    let result = svm.process_instruction(
+        &instruction,
+        &[
+            crate::helpers::signer_account(signer),
+            crate::helpers::raw_account(
+                event_authority,
+                1_000_000,
+                vec![],
+                quasar_svm::system_program::ID,
+            ),
+        ],
+    );
+    assert!(
+        result.is_ok(),
+        "aliased emit_cpi failed: {:?}",
+        result.raw_result
+    );
+    assert!(
+        result
+            .logs
+            .iter()
+            .any(|line| line == "Program data: ASoAAAAAAAAA"),
+        "expected event payload in logs, got: {:?}",
+        result.logs
+    );
 }

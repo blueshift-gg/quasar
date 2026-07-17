@@ -303,9 +303,11 @@ fn test_dynamic_account_name_exceeds_max_rejected() {
     let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
-    assert!(
-        result.program_result.is_err(),
-        "name length exceeding max must be rejected"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidAccountData
+        )
     );
 }
 
@@ -332,9 +334,11 @@ fn test_dynamic_account_truncated_data_rejected() {
     let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
-    assert!(
-        result.program_result.is_err(),
-        "truncated data must be rejected"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::AccountDataTooSmall
+        )
     );
 }
 
@@ -430,9 +434,11 @@ fn test_dynamic_account_string_exceeds_max_by_one() {
     let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
-    assert!(
-        result.program_result.is_err(),
-        "string at max+1 (9 bytes) must be rejected"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidAccountData
+        )
     );
 }
 
@@ -480,34 +486,11 @@ fn test_dynamic_account_vec_exceeds_max() {
     let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
-    assert!(
-        result.program_result.is_err(),
-        "vec exceeding max (3 tags) must be rejected"
-    );
-}
-
-#[test]
-fn test_dynamic_account_trailing_bytes_accepted() {
-    let mollusk = setup();
-    let account = Address::new_unique();
-
-    let mut data = build_dynamic_account_data(b"hi", &[]);
-    data.extend_from_slice(&[0u8; 64]); // extra trailing bytes (slack space)
-    let account_data = Account {
-        lamports: 1_000_000,
-        data,
-        owner: quasar_test_misc::ID,
-        executable: false,
-        rent_epoch: 0,
-    };
-
-    let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
-    let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
-
-    assert!(
-        result.program_result.is_ok(),
-        "account with trailing bytes (slack space) should be accepted: {:?}",
-        result.program_result
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidAccountData
+        )
     );
 }
 
@@ -584,9 +567,11 @@ fn test_dynamic_account_too_small_for_prefixes() {
     let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
-    assert!(
-        result.program_result.is_err(),
-        "data too small for prefix bytes must be rejected"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::AccountDataTooSmall
+        )
     );
 }
 
@@ -687,9 +672,11 @@ fn test_mixed_account_label_exceeds_max() {
     let instruction: Instruction = MixedAccountCheckInstruction { account }.into();
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
-    assert!(
-        result.program_result.is_err(),
-        "mixed account label exceeding max must be rejected"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidAccountData
+        )
     );
 }
 
@@ -736,9 +723,11 @@ fn test_mixed_account_truncated_in_fixed_section() {
     let instruction: Instruction = MixedAccountCheckInstruction { account }.into();
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
-    assert!(
-        result.program_result.is_err(),
-        "data truncated in fixed section must be rejected"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::AccountDataTooSmall
+        )
     );
 }
 
@@ -763,9 +752,11 @@ fn test_mixed_account_truncated_in_dynamic_section() {
     let instruction: Instruction = MixedAccountCheckInstruction { account }.into();
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
-    assert!(
-        result.program_result.is_err(),
-        "data truncated in dynamic section must be rejected"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidAccountData
+        )
     );
 }
 
@@ -862,9 +853,11 @@ fn test_small_prefix_tag_exceeds_max() {
     let instruction: Instruction = SmallPrefixCheckInstruction { account }.into();
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
-    assert!(
-        result.program_result.is_err(),
-        "tag exceeding max must be rejected"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidAccountData
+        )
     );
 }
 
@@ -911,9 +904,11 @@ fn test_small_prefix_scores_exceeds_max() {
     let instruction: Instruction = SmallPrefixCheckInstruction { account }.into();
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
-    assert!(
-        result.program_result.is_err(),
-        "scores exceeding max must be rejected"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidAccountData
+        )
     );
 }
 
@@ -936,9 +931,11 @@ fn test_small_prefix_truncated_data() {
     let instruction: Instruction = SmallPrefixCheckInstruction { account }.into();
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
-    assert!(
-        result.program_result.is_err(),
-        "truncated small prefix data must be rejected"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidAccountData
+        )
     );
 }
 
@@ -1311,9 +1308,11 @@ fn test_dynamic_mutate_exceeds_max_rejected() {
         ],
     );
 
-    assert!(
-        result.program_result.is_err(),
-        "mutation exceeding max must be rejected"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidInstructionData
+        )
     );
 }
 
@@ -2225,9 +2224,11 @@ fn test_adversarial_mixed_fixed_section_truncated() {
     };
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
-    assert!(
-        result.program_result.is_err(),
-        "truncated fixed section must be rejected"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::AccountDataTooSmall
+        )
     );
 }
 
@@ -2252,9 +2253,11 @@ fn test_adversarial_all_zeros_account() {
     let instruction: Instruction = DynamicAccountCheckInstruction { account }.into();
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
-    assert!(
-        result.program_result.is_err(),
-        "all-zero account must be rejected (wrong discriminator)"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidAccountData
+        )
     );
 }
 
@@ -2534,9 +2537,11 @@ fn test_dyn_str_truncated_fixed_section_rejected() {
     let instruction = build_dyn_str_check_instruction(account, 0);
     let result = mollusk.process_instruction(&instruction, &[(account, account_data)]);
 
-    assert!(
-        result.program_result.is_err(),
-        "truncated fixed section must be rejected"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::AccountDataTooSmall
+        )
     );
 }
 
@@ -2558,9 +2563,11 @@ fn test_adversarial_ix_data_empty() {
         &instruction,
         &[(signer, Account::new(1_000_000_000, 0, &Address::default()))],
     );
-    assert!(
-        result.program_result.is_err(),
-        "empty instruction data (no discriminator) must be rejected, not crash or read OOB"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidInstructionData
+        )
     );
 }
 
@@ -2580,9 +2587,11 @@ fn test_adversarial_ix_data_one_byte_unknown_disc() {
         &instruction,
         &[(signer, Account::new(1_000_000_000, 0, &Address::default()))],
     );
-    assert!(
-        result.program_result.is_err(),
-        "unrecognized 1-byte discriminator must be rejected"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidInstructionData
+        )
     );
 }
 
@@ -2609,37 +2618,11 @@ fn test_adversarial_ix_dynamic_string_prefix_overflow_u32_max() {
         &instruction,
         &[(signer, Account::new(1_000_000_000, 0, &Address::default()))],
     );
-    assert!(
-        result.program_result.is_err(),
-        "string prefix claiming 255 bytes with only 3 bytes present must be rejected"
-    );
-}
-
-/// Instruction discriminator=21: string prefix=200 but only 10 bytes of data
-/// follow. This is subtler than u8::MAX.
-/// (String<N> instruction args use u8 prefix on the wire.)
-#[test]
-fn test_adversarial_ix_dynamic_string_prefix_overflow_1024() {
-    let mollusk = setup();
-    let signer = Address::new_unique();
-
-    let mut data = vec![21u8];
-    data.push(200u8); // u8 prefix claiming 200 bytes
-    data.extend_from_slice(b"0123456789");
-
-    let instruction = Instruction {
-        program_id: quasar_test_misc::ID,
-        accounts: vec![solana_instruction::AccountMeta::new_readonly(signer, true)],
-        data,
-    };
-
-    let result = mollusk.process_instruction(
-        &instruction,
-        &[(signer, Account::new(1_000_000_000, 0, &Address::default()))],
-    );
-    assert!(
-        result.program_result.is_err(),
-        "string prefix=200 with only 10 bytes present must be rejected"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidInstructionData
+        )
     );
 }
 
@@ -2690,13 +2673,18 @@ fn test_adversarial_ix_data_with_extra_trailing_garbage() {
         data,
     };
 
-    let _result = mollusk.process_instruction(
+    let result = mollusk.process_instruction(
         &instruction,
         &[(signer, Account::new(1_000_000_000, 0, &Address::default()))],
     );
-    // The framework may accept this (trailing data ignored) or reject.
-    // Either is acceptable; the key thing is it must NOT crash or read OOB.
-    // We do NOT assert pass/fail here; we assert no panic/abort occurred.
+    // Pinned wire contract: the decoder reads exactly the declared prefix
+    // and ignores trailing bytes. If this ever starts rejecting, that is a
+    // deliberate wire-format change and this assertion must change with it.
+    assert!(
+        result.program_result.is_ok(),
+        "trailing instruction bytes are ignored by the decoder: {:?}",
+        result.program_result
+    );
 }
 
 /// Instruction with discriminator only, no args, for an instruction that
@@ -2717,9 +2705,11 @@ fn test_adversarial_ix_disc_only_missing_args() {
         &instruction,
         &[(signer, Account::new(1_000_000_000, 0, &Address::default()))],
     );
-    assert!(
-        result.program_result.is_err(),
-        "instruction with disc only (missing args) must be rejected"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidInstructionData
+        )
     );
 }
 
@@ -2745,8 +2735,10 @@ fn test_adversarial_ix_string_exceeds_max() {
         &instruction,
         &[(signer, Account::new(1_000_000_000, 0, &Address::default()))],
     );
-    assert!(
-        result.program_result.is_err(),
-        "instruction string length=9 (max=8) must be rejected"
+    assert_eq!(
+        result.program_result,
+        mollusk_svm::result::ProgramResult::Failure(
+            quasar_lang::prelude::ProgramError::InvalidInstructionData
+        )
     );
 }

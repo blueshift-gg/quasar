@@ -213,6 +213,15 @@ pub fn svm_errors() -> QuasarSvm {
     QuasarSvm::new().with_program(&quasar_test_errors::ID, &elf)
 }
 
+/// test-errors plus test-misc, for cross-program return-data tests.
+pub fn svm_errors_with_misc() -> QuasarSvm {
+    let errors_elf = read_deploy_elf("quasar_test_errors");
+    let misc_elf = read_deploy_elf("quasar_test_misc");
+    QuasarSvm::new()
+        .with_program(&quasar_test_errors::ID, &errors_elf)
+        .with_program(&quasar_test_misc::ID, &misc_elf)
+}
+
 const SIMPLE_ACCOUNT_SIZE: usize = 42; // 1 disc + 32 addr + 8 u64 + 1 u8
 
 /// Build raw data for SimpleAccount (disc=2).

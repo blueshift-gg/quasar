@@ -4,8 +4,10 @@ use {
     quasar_escrow_client::*,
     quasar_svm::{Account, Instruction, Pubkey, QuasarSvm},
     spl_token_interface::state::{Account as TokenAccount, AccountState, Mint},
-    std::println,
 };
+
+#[path = "../../cu_bench.rs"]
+mod cu_bench;
 
 // Deterministic addresses avoid Pubkey::new_unique(), whose global counter
 // produces different values depending on test binary layout / discovery order.
@@ -151,7 +153,7 @@ fn test_make_cu() {
     assert_eq!(&escrow_data[129..137], &1337u64.to_le_bytes(), "receive");
     assert_eq!(escrow_data[137], escrow_bump, "bump");
 
-    println!("  MAKE CU: {}", result.compute_units_consumed);
+    cu_bench::record_cu("make", result.compute_units_consumed);
 }
 
 #[test]
@@ -199,7 +201,7 @@ fn test_take_cu() {
     );
 
     assert!(result.is_ok(), "take failed: {:?}", result.raw_result);
-    println!("  TAKE CU: {}", result.compute_units_consumed);
+    cu_bench::record_cu("take", result.compute_units_consumed);
 }
 
 #[test]
@@ -239,7 +241,7 @@ fn test_refund_cu() {
     );
 
     assert!(result.is_ok(), "refund failed: {:?}", result.raw_result);
-    println!("  REFUND CU: {}", result.compute_units_consumed);
+    cu_bench::record_cu("refund", result.compute_units_consumed);
 }
 
 #[test]
@@ -284,10 +286,6 @@ fn test_make_existing_token_accounts() {
         result.is_ok(),
         "make with existing token accounts failed: {:?}",
         result.raw_result
-    );
-    println!(
-        "  make with existing token accounts: OK (CU: {})",
-        result.compute_units_consumed
     );
 }
 
@@ -425,10 +423,6 @@ fn test_take_existing_token_accounts() {
         "take with existing token accounts failed: {:?}",
         result.raw_result
     );
-    println!(
-        "  take with existing token accounts: OK (CU: {})",
-        result.compute_units_consumed
-    );
 }
 
 #[test]
@@ -468,9 +462,5 @@ fn test_refund_existing_maker_ta_a() {
         result.is_ok(),
         "refund with existing maker_ta_a failed: {:?}",
         result.raw_result
-    );
-    println!(
-        "  refund with existing maker_ta_a: OK (CU: {})",
-        result.compute_units_consumed
     );
 }

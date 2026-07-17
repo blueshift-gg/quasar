@@ -300,7 +300,17 @@ fn dyn_bytes_u8_data_rejected_by_u32_decode() {
     // Attempt to read as u32-prefixed: reads 4 bytes as length = 0x03020103
     // which is way beyond the buffer
     let result = wincode::deserialize::<DynBytes<u32>>(&wire);
-    assert!(result.is_err());
+    // The bogus u32 length (0x03020103) trips the reader's size guard with
+    // the exact attempted length.
+    assert!(
+        matches!(
+            result,
+            Err(wincode::error::ReadError::Io(
+                wincode::io::ReadError::ReadSizeLimit(0x0302_0103)
+            ))
+        ),
+        "bogus length must trip the read-size guard: {result:?}"
+    );
 }
 
 #[test]

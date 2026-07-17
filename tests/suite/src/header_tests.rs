@@ -42,9 +42,6 @@ fn test_header_nodup_mut_signer_success() {
     let result = mollusk.process_instruction(&instruction, &[(account, Account::default())]);
 
     assert_eq!(result.program_result, MolluskResult::Success);
-
-    #[cfg(feature = "debug")]
-    println!("[ok] writable signer account validated correctly");
 }
 
 #[test]
@@ -62,9 +59,6 @@ fn test_header_nodup_mut_success() {
     let result = mollusk.process_instruction(&instruction, &[(account, Account::default())]);
 
     assert_eq!(result.program_result, MolluskResult::Success);
-
-    #[cfg(feature = "debug")]
-    println!("[ok] writable account validated correctly");
 }
 
 #[test]
@@ -83,9 +77,6 @@ fn test_header_nodup_signer_success() {
     let result = mollusk.process_instruction(&instruction, &[(account, Account::default())]);
 
     assert_eq!(result.program_result, MolluskResult::Success);
-
-    #[cfg(feature = "debug")]
-    println!("[ok] signer account validated correctly");
 }
 
 #[test]
@@ -114,9 +105,6 @@ fn test_header_executable_success() {
     );
 
     assert_eq!(result.program_result, MolluskResult::Success);
-
-    #[cfg(feature = "debug")]
-    println!("[ok] executable program validated correctly");
 }
 
 #[test]

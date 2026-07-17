@@ -1,3 +1,10 @@
+//! Zero-copy layout decode tests for the SPL token/mint state readers.
+//!
+//! One test per population state of each layout (fully populated, absent
+//! options, state-byte matrix) asserting every accessor together, plus the
+//! size pins. Adversarial/malformed-account rejection for these same types
+//! lives in test_validate_token.rs / test_validate_mint.rs.
+
 use {
     quasar_spl::{MintDataZc, TokenDataZc},
     solana_address::Address,
@@ -66,242 +73,95 @@ fn cast_mint(data: &[u8; 82]) -> &MintDataZc {
 }
 
 #[test]
-fn test_token_state_mint() {
-    let mint = Address::new_unique();
-    let owner = Address::new_unique();
-    let bytes = build_token_account_bytes(&mint, &owner, 0, None, 1, None, 0, None);
-    let state = cast_token(&bytes);
-    assert_eq!(state.mint(), &mint);
-}
-
-#[test]
-fn test_token_state_owner() {
-    let mint = Address::new_unique();
-    let owner = Address::new_unique();
-    let bytes = build_token_account_bytes(&mint, &owner, 0, None, 1, None, 0, None);
-    let state = cast_token(&bytes);
-    assert_eq!(state.owner(), &owner);
-}
-
-#[test]
-fn test_token_state_amount() {
-    let mint = Address::new_unique();
-    let owner = Address::new_unique();
-    let bytes = build_token_account_bytes(&mint, &owner, 123_456_789, None, 1, None, 0, None);
-    let state = cast_token(&bytes);
-    assert_eq!(state.amount(), 123_456_789);
-}
-
-#[test]
-fn test_token_state_amount_max() {
-    let mint = Address::new_unique();
-    let owner = Address::new_unique();
-    let bytes = build_token_account_bytes(&mint, &owner, u64::MAX, None, 1, None, 0, None);
-    let state = cast_token(&bytes);
-    assert_eq!(state.amount(), u64::MAX);
-}
-
-#[test]
-fn test_token_state_amount_zero() {
-    let mint = Address::new_unique();
-    let owner = Address::new_unique();
-    let bytes = build_token_account_bytes(&mint, &owner, 0, None, 1, None, 0, None);
-    let state = cast_token(&bytes);
-    assert_eq!(state.amount(), 0);
-}
-
-#[test]
-fn test_token_state_delegate_present() {
+fn token_layout_decodes_every_field_when_fully_populated() {
+    // Boundary values in every slot with all COptions Some: each accessor
+    // must read exactly its own offsets even with maximal adjacent data.
     let mint = Address::new_unique();
     let owner = Address::new_unique();
     let delegate = Address::new_unique();
-    let bytes = build_token_account_bytes(&mint, &owner, 1000, Some(&delegate), 1, None, 500, None);
+    let close_auth = Address::new_unique();
+    let bytes = build_token_account_bytes(
+        &mint,
+        &owner,
+        u64::MAX,
+        Some(&delegate),
+        2, // frozen
+        Some(1_000_000),
+        7_777,
+        Some(&close_auth),
+    );
     let state = cast_token(&bytes);
-    assert!(state.delegate().is_some());
+
+    assert_eq!(state.mint(), &mint);
+    assert_eq!(state.owner(), &owner);
+    assert_eq!(state.amount(), u64::MAX);
     assert_eq!(state.delegate(), Some(&delegate));
-}
-
-#[test]
-fn test_token_state_delegate_absent() {
-    let mint = Address::new_unique();
-    let owner = Address::new_unique();
-    let bytes = build_token_account_bytes(&mint, &owner, 1000, None, 1, None, 0, None);
-    let state = cast_token(&bytes);
-    assert!(state.delegate().is_none());
-    assert_eq!(state.delegate(), None);
-}
-
-#[test]
-fn test_token_state_initialized() {
-    let mint = Address::new_unique();
-    let owner = Address::new_unique();
-    let bytes = build_token_account_bytes(&mint, &owner, 0, None, 1, None, 0, None);
-    let state = cast_token(&bytes);
-    assert!(state.is_initialized());
-    assert!(!state.is_frozen());
-}
-
-#[test]
-fn test_token_state_frozen() {
-    let mint = Address::new_unique();
-    let owner = Address::new_unique();
-    let bytes = build_token_account_bytes(&mint, &owner, 0, None, 2, None, 0, None);
-    let state = cast_token(&bytes);
     assert!(state.is_initialized());
     assert!(state.is_frozen());
-}
-
-#[test]
-fn test_token_state_uninitialized() {
-    let mint = Address::new_unique();
-    let owner = Address::new_unique();
-    let bytes = build_token_account_bytes(&mint, &owner, 0, None, 0, None, 0, None);
-    let state = cast_token(&bytes);
-    assert!(!state.is_initialized());
-    assert!(!state.is_frozen());
-}
-
-#[test]
-fn test_token_state_native() {
-    let mint = Address::new_unique();
-    let owner = Address::new_unique();
-    let bytes = build_token_account_bytes(&mint, &owner, 500, None, 1, Some(1_000_000), 0, None);
-    let state = cast_token(&bytes);
     assert!(state.native().is_some());
     assert_eq!(state.native_amount(), Some(1_000_000));
-}
-
-#[test]
-fn test_token_state_not_native() {
-    let mint = Address::new_unique();
-    let owner = Address::new_unique();
-    let bytes = build_token_account_bytes(&mint, &owner, 500, None, 1, None, 0, None);
-    let state = cast_token(&bytes);
-    assert!(state.native().is_none());
-    assert_eq!(state.native_amount(), None);
-}
-
-#[test]
-fn test_token_state_delegated_amount() {
-    let mint = Address::new_unique();
-    let owner = Address::new_unique();
-    let delegate = Address::new_unique();
-    let bytes =
-        build_token_account_bytes(&mint, &owner, 10_000, Some(&delegate), 1, None, 7_777, None);
-    let state = cast_token(&bytes);
     assert_eq!(state.delegated_amount(), 7_777);
-}
-
-#[test]
-fn test_token_state_close_authority_present() {
-    let mint = Address::new_unique();
-    let owner = Address::new_unique();
-    let close_auth = Address::new_unique();
-    let bytes = build_token_account_bytes(&mint, &owner, 0, None, 1, None, 0, Some(&close_auth));
-    let state = cast_token(&bytes);
-    assert!(state.close_authority().is_some());
     assert_eq!(state.close_authority(), Some(&close_auth));
 }
 
 #[test]
-fn test_token_state_close_authority_absent() {
+fn token_layout_decodes_absent_options() {
+    // All COptions None with zero amounts: every optional accessor must
+    // report absence, not read stale bytes.
     let mint = Address::new_unique();
     let owner = Address::new_unique();
     let bytes = build_token_account_bytes(&mint, &owner, 0, None, 1, None, 0, None);
     let state = cast_token(&bytes);
-    assert!(state.close_authority().is_none());
+
+    assert_eq!(state.mint(), &mint);
+    assert_eq!(state.owner(), &owner);
+    assert_eq!(state.amount(), 0);
+    assert_eq!(state.delegate(), None);
+    assert!(state.is_initialized());
+    assert!(!state.is_frozen());
+    assert!(state.native().is_none());
+    assert_eq!(state.native_amount(), None);
+    assert_eq!(state.delegated_amount(), 0);
     assert_eq!(state.close_authority(), None);
 }
 
 #[test]
-fn test_mint_state_has_authority() {
-    let authority = Address::new_unique();
-    let bytes = build_mint_account_bytes(Some(&authority), 1_000_000, 9, 1, None);
-    let state = cast_mint(&bytes);
-    assert!(state.mint_authority().is_some());
-    assert_eq!(state.mint_authority(), Some(&authority));
+fn token_layout_distinguishes_account_states() {
+    let mint = Address::new_unique();
+    let owner = Address::new_unique();
+    for (state_byte, initialized, frozen) in [(0, false, false), (1, true, false), (2, true, true)]
+    {
+        let bytes = build_token_account_bytes(&mint, &owner, 0, None, state_byte, None, 0, None);
+        let state = cast_token(&bytes);
+        assert_eq!(state.is_initialized(), initialized, "state {state_byte}");
+        assert_eq!(state.is_frozen(), frozen, "state {state_byte}");
+    }
 }
 
 #[test]
-fn test_mint_state_no_authority() {
-    let bytes = build_mint_account_bytes(None, 1_000_000, 9, 1, None);
-    let state = cast_mint(&bytes);
-    assert!(state.mint_authority().is_none());
-    assert_eq!(state.mint_authority(), None);
-}
-
-#[test]
-fn test_mint_state_supply() {
-    let authority = Address::new_unique();
-    let bytes = build_mint_account_bytes(Some(&authority), 42_000_000_000, 9, 1, None);
-    let state = cast_mint(&bytes);
-    assert_eq!(state.supply(), 42_000_000_000);
-}
-
-#[test]
-fn test_mint_state_decimals() {
-    let authority = Address::new_unique();
-    let bytes = build_mint_account_bytes(Some(&authority), 0, 6, 1, None);
-    let state = cast_mint(&bytes);
-    assert_eq!(state.decimals(), 6);
-}
-
-#[test]
-fn test_mint_state_initialized() {
-    let authority = Address::new_unique();
-    let bytes = build_mint_account_bytes(Some(&authority), 0, 9, 1, None);
-    let state = cast_mint(&bytes);
-    assert!(state.is_initialized());
-}
-
-#[test]
-fn test_mint_state_uninitialized() {
-    let bytes = build_mint_account_bytes(None, 0, 0, 0, None);
-    let state = cast_mint(&bytes);
-    assert!(!state.is_initialized());
-}
-
-#[test]
-fn test_mint_state_freeze_authority_present() {
+fn mint_layout_decodes_every_field_when_fully_populated() {
     let authority = Address::new_unique();
     let freeze = Address::new_unique();
-    let bytes = build_mint_account_bytes(Some(&authority), 0, 9, 1, Some(&freeze));
+    let bytes = build_mint_account_bytes(Some(&authority), u64::MAX, 255, 1, Some(&freeze));
     let state = cast_mint(&bytes);
-    assert!(state.freeze_authority().is_some());
+
+    assert_eq!(state.mint_authority(), Some(&authority));
+    assert_eq!(state.supply(), u64::MAX);
+    assert_eq!(state.decimals(), 255);
+    assert!(state.is_initialized());
     assert_eq!(state.freeze_authority(), Some(&freeze));
 }
 
 #[test]
-fn test_mint_state_freeze_authority_absent() {
-    let authority = Address::new_unique();
-    let bytes = build_mint_account_bytes(Some(&authority), 0, 9, 1, None);
+fn mint_layout_decodes_absent_options() {
+    let bytes = build_mint_account_bytes(None, 0, 0, 0, None);
     let state = cast_mint(&bytes);
-    assert!(state.freeze_authority().is_none());
-    assert_eq!(state.freeze_authority(), None);
-}
 
-#[test]
-fn test_mint_state_zero_supply() {
-    let authority = Address::new_unique();
-    let bytes = build_mint_account_bytes(Some(&authority), 0, 9, 1, None);
-    let state = cast_mint(&bytes);
+    assert_eq!(state.mint_authority(), None);
     assert_eq!(state.supply(), 0);
-}
-
-#[test]
-fn test_mint_state_max_supply() {
-    let authority = Address::new_unique();
-    let bytes = build_mint_account_bytes(Some(&authority), u64::MAX, 9, 1, None);
-    let state = cast_mint(&bytes);
-    assert_eq!(state.supply(), u64::MAX);
-}
-
-#[test]
-fn test_mint_state_max_decimals() {
-    let authority = Address::new_unique();
-    let bytes = build_mint_account_bytes(Some(&authority), 0, 255, 1, None);
-    let state = cast_mint(&bytes);
-    assert_eq!(state.decimals(), 255);
+    assert_eq!(state.decimals(), 0);
+    assert!(!state.is_initialized());
+    assert_eq!(state.freeze_authority(), None);
 }
 
 #[test]

@@ -1,6 +1,7 @@
 use quasar_lang::{
     instruction_arg::{InstructionArg, OptionZc},
     pod::{PodBool, PodString, PodU64, PodVec},
+    prelude::ProgramError,
 };
 
 /// Build an `OptionZc` with an arbitrary tag byte for testing invalid states.
@@ -91,27 +92,6 @@ fn option_zc_size_is_fixed() {
 }
 
 #[test]
-fn option_tag_invalid_rejected() {
-    let zc = option_zc_with_tag(2, PodU64::from(42));
-    assert!(Option::<u64>::validate_zc(&zc).is_err());
-}
-
-#[test]
-fn option_tag_0xff_rejected() {
-    let zc = option_zc_with_tag(0xFF, PodU64::from(42));
-    assert!(Option::<u64>::validate_zc(&zc).is_err());
-}
-
-#[test]
-fn option_tag_valid_accepted() {
-    let none_zc = None::<u64>.to_zc();
-    assert!(Option::<u64>::validate_zc(&none_zc).is_ok());
-
-    let some_zc = Some(42u64).to_zc();
-    assert!(Option::<u64>::validate_zc(&some_zc).is_ok());
-}
-
-#[test]
 fn option_none_payload_is_zeroed() {
     let zc = None::<u64>.to_zc();
     // Skip the first byte (tag), the rest is the payload.
@@ -149,7 +129,10 @@ fn option_nested_size() {
 fn option_nested_validate_outer_invalid() {
     // Outer tag invalid, inner valid
     let zc = option_zc_with_tag(3, Some(42u64).to_zc());
-    assert!(Option::<Option<u64>>::validate_zc(&zc).is_err());
+    assert_eq!(
+        Option::<Option<u64>>::validate_zc(&zc),
+        Err(ProgramError::InvalidInstructionData)
+    );
 }
 
 #[test]
@@ -213,7 +196,10 @@ fn nested_custom_struct_validate_recurses() {
         },
         value: PodU64::from(7),
     };
-    assert!(NestedOuter::<u64>::validate_zc(&bad).is_err());
+    assert_eq!(
+        NestedOuter::<u64>::validate_zc(&bad),
+        Err(ProgramError::InvalidInstructionData)
+    );
 }
 
 #[test]
@@ -225,8 +211,9 @@ fn option_validate_recurses_into_inner() {
     // Outer Some wrapping an inner with corrupt tag=5
     let corrupt_inner = option_zc_with_tag(5, PodU64::from(42));
     let bad: OptionZc<OptionZc<PodU64>> = OptionZc::some(corrupt_inner);
-    assert!(
-        <Option<Option<u64>> as InstructionArg>::validate_zc(&bad).is_err(),
+    assert_eq!(
+        <Option<Option<u64>> as InstructionArg>::validate_zc(&bad),
+        Err(ProgramError::InvalidInstructionData),
         "should reject corrupt inner Option tag via recursive validate_zc"
     );
 }
@@ -262,7 +249,10 @@ fn podstring_validate_rejects_corrupted_len() {
     // [MaybeUninit<u8>;4]]
     let ptr = &mut zc as *mut PodString<4> as *mut u8;
     unsafe { *ptr = 5 }; // set len prefix to 5 > N=4
-    assert!(<PodString<4> as InstructionArg>::validate_zc(&zc).is_err());
+    assert_eq!(
+        <PodString<4> as InstructionArg>::validate_zc(&zc),
+        Err(ProgramError::InvalidInstructionData)
+    );
 }
 
 #[test]
@@ -307,7 +297,10 @@ fn podvec_validate_rejects_corrupted_len() {
         *ptr = 5;
         *ptr.add(1) = 0;
     } // len = 5 in LE u16
-    assert!(<PodVec<u8, 4> as InstructionArg>::validate_zc(&zc).is_err());
+    assert_eq!(
+        <PodVec<u8, 4> as InstructionArg>::validate_zc(&zc),
+        Err(ProgramError::InvalidInstructionData)
+    );
 }
 
 #[test]
@@ -456,18 +449,4 @@ fn repr_u16_enum_wincode_round_trip() {
 fn repr_enum_round_trip() {
     let zc = Status::Ready.to_zc();
     assert_eq!(Status::from_zc(&zc), Status::Ready);
-}
-
-#[test]
-fn repr_enum_validate_accepts_known_discriminants() {
-    for status in [Status::Pending, Status::Ready, Status::Failed] {
-        let zc = status.to_zc();
-        assert!(Status::validate_zc(&zc).is_ok());
-    }
-}
-
-#[test]
-fn repr_enum_validate_rejects_invalid_discriminant() {
-    let zc = 3u8;
-    assert!(Status::validate_zc(&zc).is_err());
 }

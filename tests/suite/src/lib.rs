@@ -1,3 +1,9 @@
+//! SVM integration suite: every module asserts the behavior of one framework
+//! feature area against the fixture programs in `tests/programs/*`, executed
+//! as real SBF binaries under Mollusk. Test requirements — the per-feature
+//! contract, oracle rules, and naming — are defined in `TESTING.md` at the
+//! repository root.
+
 #[cfg(test)]
 mod dynamic;
 #[cfg(test)]

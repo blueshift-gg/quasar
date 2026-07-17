@@ -219,3 +219,80 @@ compile_error!("IDL generation compiled an unrelated unit test");
 
     Ok(())
 }
+
+#[test]
+fn idl_command_rejects_nonexistent_path() -> Result<(), Box<dyn Error>> {
+    let temp = tempdir()?;
+    let output = Command::new(env!("CARGO_BIN_EXE_quasar"))
+        .arg("idl")
+        .arg("does-not-exist")
+        .current_dir(temp.path())
+        .output()?;
+
+    assert!(
+        !output.status.success(),
+        "quasar idl on a nonexistent path must fail\nstdout:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("does-not-exist"),
+        "error must name the missing path so the user can act on it:\n{stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn idl_verify_rejects_invalid_json() -> Result<(), Box<dyn Error>> {
+    let temp = tempdir()?;
+    let idl_path = temp.path().join("broken.json");
+    write_file(&idl_path, "{ this is not json")?;
+
+    let output = Command::new(env!("CARGO_BIN_EXE_quasar"))
+        .arg("idl")
+        .arg("verify")
+        .arg(&idl_path)
+        .output()?;
+
+    assert!(
+        !output.status.success(),
+        "quasar idl verify on invalid JSON must fail\nstdout:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    Ok(())
+}
+
+#[test]
+fn idl_verify_rejects_idl_without_hashes() -> Result<(), Box<dyn Error>> {
+    let temp = tempdir()?;
+    let idl_path = temp.path().join("unhashed.json");
+    write_file(
+        &idl_path,
+        serde_json::json!({
+            "spec": "quasar-idl/1.0.0",
+            "name": "unhashed",
+            "version": "0.1.0",
+            "address": "11111111111111111111111111111111",
+            "metadata": {},
+            "instructions": [],
+            "accounts": [],
+            "types": [],
+            "events": [],
+            "errors": []
+        })
+        .to_string(),
+    )?;
+
+    let output = Command::new(env!("CARGO_BIN_EXE_quasar"))
+        .arg("idl")
+        .arg("verify")
+        .arg(&idl_path)
+        .output()?;
+
+    assert!(
+        !output.status.success(),
+        "quasar idl verify must fail when the IDL carries no hashes block\nstdout:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    Ok(())
+}

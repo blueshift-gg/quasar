@@ -1,0 +1,34 @@
+# Feature -> test traceability manifest (TESTING.md). Tab-separated:
+# feature	suite_modules	kani_globs	trybuild_globs	required	notes
+# - suite_modules: files under tests/suite/src ("-" = none). Every suite
+#   module must be claimed by at least one row; scripts/test-matrix.py
+#   enforces both directions.
+# - required: cells that must be non-zero for the feature to count as
+#   tested (ok = state-asserting positives, err = exact-error rejections,
+#   kani = proofs, trybuild = compile-fail diagnostics).
+account-headers	header_tests.rs,account_flags.rs	-	lang/tests/compile_fail/duplicate_account_attr.rs	ok,err	signer/writable/executable header checks
+account-validation	account_validation.rs,discriminator.rs	lang/kani/validation.rs,lang/kani/accounts/*.rs	lang/tests/compile_fail/account_*.rs	ok,err,kani,trybuild	owner/discriminator/length on typed accounts
+constraints	constraints.rs	-	-	ok,err	has_one / address / custom constraint expressions
+error-codes	errors.rs	-	lang/tests/compile_fail/error_code_*.rs	ok,err,trybuild	#[error_code] enums and require! family
+pda-seeds	pda.rs	lang/kani/pda.rs	lang/tests/compile_fail/*seeds*.rs	ok,err,kani,trybuild	#[seeds] derivation and stored-bump verification
+init	init.rs	-	-	ok,err	#[account(init)] account creation
+init-if-needed	init_if_needed.rs	-	-	ok,err	idempotent init; existing-branch validation also under token-init
+realloc	realloc.rs	-	-	ok,err	Account::realloc grow/shrink and rent top-up
+close	close.rs,test_close_attr.rs	-	lang/tests/compile_fail/close_*.rs	ok,err,trybuild	#[account(close)] and close attribute on token accounts
+migration	test_migrate.rs,test_interface_migration.rs	-	-	ok,err	Migration<Old,New> source-type guards and padding zeroing
+one-of	test_one_of.rs	-	-	ok,err	polymorphic one_of account dispatch
+remaining-accounts	remaining.rs	lang/kani/remaining.rs	-	ok,err,kani	raw iter overflow + typed parse dup/owner/length rejections
+optional-accounts	optional_accounts.rs	-	-	ok,err	in-flight module (oracle allowlist, see check-suite-oracles)
+optional-args	optional_args.rs	-	-	ok,err	Option<T> instruction arguments
+dynamic-data	dynamic.rs,two_dyn.rs	-	lang/tests/compile_fail/account_string_bad_prefix.rs	ok,err,trybuild	dynamic string/vec fields, compact wire layout
+events	events.rs	lang/kani/event.rs	-	ok,err,kani	emit! / emit_cpi! including payload-in-logs assertion
+sysvars	sysvar.rs	lang/kani/sysvars/*.rs	-	ok,err,kani	syscall + account-based sysvar reads, spoof rejection
+system-cpi	cpi_system.rs	lang/kani/cpi/system.rs	-	ok,err,kani	create/transfer/assign builders
+cpi-return-data	cpi_return.rs	lang/kani/cpi/mod.rs	-	ok,err,kani	invoke_with_return: missing/length/foreign-program rejections
+cpi-pointer-safety	cpi_pointer_safety.rs	lang/kani/cpi/*.rs	-	ok,kani	aliasing invariant: no SVM rejection expressible; adversarial coverage is Kani + Miri
+token-cpi-ops	test_cpi_transfer.rs,test_cpi_mint_burn.rs,test_cpi_approve_revoke.rs,test_cpi_close.rs,test_sweep.rs	spl/kani/instructions.rs	spl/tests/compile_fail/*.rs	ok,err,kani,trybuild	SPL ops wrappers; SPL rejections surface exactly. Wire payloads proven by spl/kani/instructions.rs; meta order/flags private to CpiCall, proven end-to-end by these SVM ops
+token-init	test_init_mint.rs,test_init_token.rs,test_init_ata.rs,test_init_interface.rs,test_init_mint_pda.rs,test_init_token_pda.rs	-	-	ok,err	mint/token/ATA init incl. existing-branch validation
+token-validate	test_validate_mint.rs,test_validate_token.rs,test_validate_ata.rs,token_state.rs,test_ata_derivation.rs	-	-	ok,err	typed SPL validation; token_state/ata_derivation are decode/derivation positives, negatives live in the validate modules
+metadata-validate	test_validate_metadata.rs	metadata/kani/*.rs	metadata/tests/compile_fail/*.rs	ok,err,kani,trybuild	Metaplex metadata account validation. Fixed payloads proven by metadata/kani/instructions.rs; the dynamic create_metadata serializer is SVM-covered here and tracked by plan 011
+raw-instructions	test_raw.rs	-	-	ok,err	raw instruction escape hatch
+heap	test_heap.rs	-	-	ok,err	opt-in bump allocator incl. beyond-cap abort

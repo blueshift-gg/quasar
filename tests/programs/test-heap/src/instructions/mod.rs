@@ -6,3 +6,5 @@ pub mod no_heap_alloc_attempt;
 pub use no_heap_alloc_attempt::*;
 pub mod emit_event_ok;
 pub use emit_event_ok::*;
+pub mod heap_alloc_beyond_cap;
+pub use heap_alloc_beyond_cap::*;

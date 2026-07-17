@@ -1,0 +1,239 @@
+import { type Address, address, AccountRole, type Instruction, getProgramDerivedAddress, getAddressCodec, type ClientWithRpc, type GetAccountInfoApi, type GetMultipleAccountsApi, type ClientWithPayer, type ClientWithTransactionPlanning, type ClientWithTransactionSending } from "@solana/kit";
+import { addSelfFetchFunctions, addSelfPlanAndSendFunctions } from "@solana/kit/program-client-core";
+import { getBooleanCodec, getStructCodec, getU64Codec, getU8Codec } from "@solana/codecs";
+
+function matchDisc(data: Uint8Array, disc: Uint8Array): boolean {
+  if (data.length < disc.length) return false;
+  for (let i = 0; i < disc.length; i++) {
+    if (data[i] !== disc[i]) return false;
+  }
+  return true;
+}
+
+const MAX_DECODE_ELEMENTS = 10 * 1024 * 1024;
+
+function checkedLength(value: number | bigint): number {
+  const result = Number(value);
+  if (!Number.isSafeInteger(result) || result < 0) throw new Error("invalid length prefix");
+  return result;
+}
+
+function checkedElementCount(value: number | bigint, remaining: number): number {
+  const result = checkedLength(value);
+  if (result > MAX_DECODE_ELEMENTS || result > remaining) {
+    throw new Error("element count exceeds limit");
+  }
+  return result;
+}
+
+function checkedTake(data: Uint8Array, offset: number, size: number): Uint8Array {
+  if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(size) || offset < 0 || size < 0 || size > data.length - offset) {
+    throw new Error("truncated input");
+  }
+  return data.slice(offset, offset + size);
+}
+
+function decodeUtf8(data: Uint8Array): string {
+  return new TextDecoder("utf-8", { fatal: true }).decode(data);
+}
+
+function unwrapOption<T>(value: unknown): T | null {
+  if (typeof value === "object" && value !== null && "__option" in value) {
+    const option = value as { __option: string; value?: T };
+    if (option.__option === "None") return null;
+    if (option.__option === "Some") return option.value as T;
+    throw new Error("invalid option tag");
+  }
+  return value as T | null;
+}
+
+function codecSize(
+  codec: { encode(value: any): ArrayLike<number> },
+  value: unknown,
+): number {
+  const fixedSize = (codec as { fixedSize?: unknown }).fixedSize;
+  return typeof fixedSize === "number" ? fixedSize : codec.encode(value).length;
+}
+
+function bytesEqual(left: ArrayLike<number>, right: ArrayLike<number>): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index++) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+function decodeExact<T>(
+  codec: { decode(data: Uint8Array): unknown; encode(value: any): ArrayLike<number> },
+  data: Uint8Array,
+): T {
+  const value = codec.decode(data);
+  if (!bytesEqual(codec.encode(value), data)) throw new Error("invalid or trailing bytes");
+  return value as T;
+}
+
+function assertFinished(data: Uint8Array, offset: number): void {
+  if (offset !== data.length) throw new Error("trailing bytes");
+}
+
+/* Constants */
+export const PROGRAM_ADDRESS = address("11111111111111111111111111111111");
+export const VAULT_DISCRIMINATOR = new Uint8Array([42]);
+export const VAULT_MADE_DISCRIMINATOR = new Uint8Array([7]);
+export const MAKE_INSTRUCTION_DISCRIMINATOR = new Uint8Array([0]);
+
+/* Interfaces */
+export interface Vault {
+  authority: Address;
+  amount: bigint;
+  mode: number;
+}
+
+export interface Mode {
+}
+
+export interface MakeInstructionArgs {
+  amount: bigint;
+  flag: boolean;
+}
+
+export interface MakeInstructionInput {
+  authority: Address;
+  amount: bigint;
+  flag: boolean;
+}
+
+export interface MakeInstructionAccountOverrides {
+  authority?: Address;
+  vault?: Address;
+}
+
+/* Codecs */
+const VaultStructCodec = getStructCodec([
+  ["authority", getAddressCodec()],
+  ["amount", getU64Codec()],
+  ["mode", getU8Codec()],
+]);
+export const VaultCodec = {
+  ...VaultStructCodec,
+  decode(data: Parameters<typeof VaultStructCodec.decode>[0], offset = 0): Vault { return decodeExact<Vault>(VaultStructCodec, Uint8Array.from(data).slice(offset)); },
+};
+
+const ModeStructCodec = getStructCodec([
+]);
+export const ModeCodec = {
+  ...ModeStructCodec,
+  decode(data: Parameters<typeof ModeStructCodec.decode>[0], offset = 0): Mode { return decodeExact<Mode>(ModeStructCodec, Uint8Array.from(data).slice(offset)); },
+};
+
+/* Enums */
+export const ProgramEvent = {
+  VaultMade: "VaultMade",
+} as const;
+
+export type ProgramEvent =
+  (typeof ProgramEvent)[keyof typeof ProgramEvent];
+
+export type DecodedEvent =
+  | { type: typeof ProgramEvent.VaultMade };
+
+export const ProgramInstruction = {
+  Make: "Make",
+} as const;
+
+export type ProgramInstruction =
+  (typeof ProgramInstruction)[keyof typeof ProgramInstruction];
+
+export type DecodedInstruction =
+  | { type: typeof ProgramInstruction.Make; args: MakeInstructionArgs };
+
+/* Client */
+export class GoldenDemoClient {
+
+  decodeVault(data: Uint8Array): Vault {
+    if (!matchDisc(data, VAULT_DISCRIMINATOR)) throw new Error("Invalid Vault discriminator");
+    return decodeExact<Vault>(VaultCodec, data.slice(VAULT_DISCRIMINATOR.length));
+  }
+
+  decodeEvent(data: Uint8Array): DecodedEvent | null {
+    if (matchDisc(data, VAULT_MADE_DISCRIMINATOR))
+      if (data.length !== VAULT_MADE_DISCRIMINATOR.length) throw new Error("trailing bytes");
+      return { type: ProgramEvent.VaultMade };
+    return null;
+  }
+
+  decodeInstruction(data: Uint8Array): DecodedInstruction | null {
+    if (matchDisc(data, MAKE_INSTRUCTION_DISCRIMINATOR)) {
+      const argsCodec = getStructCodec([
+        ["amount", getU64Codec()],
+        ["flag", getBooleanCodec()],
+      ]);
+      return { type: ProgramInstruction.Make, args: decodeExact<MakeInstructionArgs>(argsCodec, data.slice(MAKE_INSTRUCTION_DISCRIMINATOR.length)) };
+    }
+    return null;
+  }
+
+  async createMakeInstruction(input: MakeInstructionInput): Promise<Instruction> {
+    return this.createMakeInstructionUnchecked(input, {});
+  }
+
+  async createMakeInstructionUnchecked(input: MakeInstructionInput, accountOverrides: MakeInstructionAccountOverrides): Promise<Instruction> {
+    const accountsMap: Record<string, Address> = {};
+    accountsMap["vault"] = await findVaultAddress((accountOverrides.authority ?? input.authority));
+    const argsCodec = getStructCodec([
+      ["amount", getU64Codec()],
+      ["flag", getBooleanCodec()],
+    ]);
+    const data = Uint8Array.from([0, ...argsCodec.encode({ amount: input.amount, flag: input.flag })]);
+    return {
+      programAddress: PROGRAM_ADDRESS,
+      accounts: [
+        { address: (accountOverrides.authority ?? input.authority), role: AccountRole.READONLY_SIGNER },
+        { address: (accountOverrides.vault ?? accountsMap["vault"]), role: AccountRole.WRITABLE },
+      ],
+      data,
+    };
+  }
+}
+
+/* Program Plugin */
+export type GoldenDemoPluginRequirements = ClientWithRpc<GetAccountInfoApi & GetMultipleAccountsApi> &
+  ClientWithPayer &
+  ClientWithTransactionPlanning &
+  ClientWithTransactionSending;
+
+export function goldenDemoProgram() {
+  const __client = new GoldenDemoClient();
+  return <T extends GoldenDemoPluginRequirements>(client: T) => ({
+    ...client,
+    goldenDemo: {
+      accounts: {
+        vault: addSelfFetchFunctions(client, VaultCodec),
+      },
+      instructions: {
+        make: (input: MakeInstructionInput) => addSelfPlanAndSendFunctions(client, __client.createMakeInstruction(input)),
+      },
+    },
+  });
+}
+
+/* PDA Helpers */
+export async function findVaultAddress(authority: Address): Promise<Address> {
+  return (await getProgramDerivedAddress({
+    programAddress: PROGRAM_ADDRESS,
+    seeds: [
+        new Uint8Array([118, 97, 117, 108, 116]),
+      getAddressCodec().encode(authority),
+    ],
+  }))[0];
+}
+
+/* Errors */
+export const PROGRAM_ERROR_CODES = {
+  Unauthorized: 6000,
+} as const;
+
+export const PROGRAM_ERRORS: Record<number, { name: string; msg?: string }> = {
+  6000: { name: "Unauthorized", msg: "caller is not the vault authority" },
+};
+
