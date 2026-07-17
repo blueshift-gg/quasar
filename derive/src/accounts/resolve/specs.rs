@@ -229,6 +229,9 @@ pub(crate) enum IdlSeedPlan {
 /// `FieldPlan::ident`.
 pub(crate) struct SignerHelperPlan {
     pub addr_expr: Expr,
+    /// The seeds-owning account type; the helper returns its concrete
+    /// `HasSeeds::WithBump` set so callers reach `signer_seeds`.
+    pub set_ty: Path,
 }
 
 /// Instruction-wide rent resolution.

@@ -382,11 +382,14 @@ fn emit_pda_address_fns(
                     let authority = source_arg(authority);
                     let mint = source_arg(mint);
                     let token_program = match token_program {
-                        Some(field) => {
+                        crate::client_macro::BehaviorProgramArg::Fixed(field) => {
                             let const_ident = crate::client_macro::fixed_address_const(field);
                             quote! { Some(&Self::#const_ident) }
                         }
-                        None => quote! { None },
+                        crate::client_macro::BehaviorProgramArg::Field(field) => {
+                            quote! { Some(#field) }
+                        }
+                        crate::client_macro::BehaviorProgramArg::Default => quote! { None },
                     };
                     quote! { #behavior_path::client_address(#authority, #mint, #token_program) }
                 }
@@ -794,6 +797,7 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
             let field_name = &fp.ident;
             let signer_helper = fp.signer_helper.as_ref()?;
             let addr_expr = &signer_helper.addr_expr;
+            let set_ty = &signer_helper.set_ty;
             let method_name = format_ident!("{}_signer", field_name);
             if has_instruction_args {
                 Some(quote! {
@@ -804,7 +808,7 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
                         bumps: &'__quasar_seed #bumps_name,
                         data: &'__quasar_seed [u8],
                     ) -> Result<
-                        impl #krate::cpi::CpiSignerSeeds + '__quasar_seed,
+                        <#set_ty as #krate::traits::HasSeeds>::WithBump<'__quasar_seed>,
                         #krate::prelude::ProgramError,
                     > {
                         let __ix_data = data;
@@ -820,7 +824,7 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
                     pub fn #method_name<'__quasar_seed>(
                         &'__quasar_seed self,
                         bumps: &'__quasar_seed #bumps_name,
-                    ) -> impl #krate::cpi::CpiSignerSeeds + '__quasar_seed {
+                    ) -> <#set_ty as #krate::traits::HasSeeds>::WithBump<'__quasar_seed> {
                         #(#field_refs)*
                         #addr_expr.with_bump(bumps.#field_name)
                     }

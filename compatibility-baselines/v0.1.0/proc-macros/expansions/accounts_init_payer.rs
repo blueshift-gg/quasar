@@ -8,7 +8,7 @@ impl InitEscrow {
     pub fn escrow_signer<'__quasar_seed>(
         &'__quasar_seed self,
         bumps: &'__quasar_seed InitEscrowBumps,
-    ) -> impl ::quasar_lang::cpi::CpiSignerSeeds + '__quasar_seed {
+    ) -> <Escrow as ::quasar_lang::traits::HasSeeds>::WithBump<'__quasar_seed> {
         let payer = &self.payer;
         let escrow = &self.escrow;
         let system_program = &self.system_program;

@@ -317,6 +317,9 @@ pub trait HasSeeds {
     const SEED_PREFIX: &'static [u8];
     /// Number of dynamic seed arguments (excluding prefix and bump).
     const SEED_DYNAMIC_COUNT: usize;
+    /// The generated `{Name}SeedSetWithBump` type, nameable through the
+    /// account type from any scope (generated signer helpers return it).
+    type WithBump<'seed>;
 }
 
 /// Owned type of one `#[seeds(...)]` dynamic parameter, by position.

@@ -1953,6 +1953,7 @@ pub trait quasar_lang::prelude::internal::Discriminator
 pub const quasar_lang::prelude::internal::Discriminator::BUMP_OFFSET: core::option::Option<usize>
 pub const quasar_lang::prelude::internal::Discriminator::DISCRIMINATOR: &'static [u8]
 pub trait quasar_lang::prelude::internal::HasSeeds
+pub type quasar_lang::prelude::internal::HasSeeds::WithBump<'seed>
 pub const quasar_lang::prelude::internal::HasSeeds::HAS_SEED_PREFIX: bool
 pub const quasar_lang::prelude::internal::HasSeeds::SEED_DYNAMIC_COUNT: usize
 pub const quasar_lang::prelude::internal::HasSeeds::SEED_PREFIX: &'static [u8]
@@ -3089,6 +3090,7 @@ pub const quasar_lang::prelude::Event::DISCRIMINATOR: &'static [u8]
 pub fn quasar_lang::prelude::Event::emit(&self, impl core::ops::function::FnOnce(&[u8]) -> core::result::Result<(), solana_program_error::ProgramError>) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::prelude::Event::write_data(&self, &mut [u8])
 pub trait quasar_lang::prelude::HasSeeds
+pub type quasar_lang::prelude::HasSeeds::WithBump<'seed>
 pub const quasar_lang::prelude::HasSeeds::HAS_SEED_PREFIX: bool
 pub const quasar_lang::prelude::HasSeeds::SEED_DYNAMIC_COUNT: usize
 pub const quasar_lang::prelude::HasSeeds::SEED_PREFIX: &'static [u8]
@@ -3357,6 +3359,7 @@ pub const quasar_lang::traits::Event::DISCRIMINATOR: &'static [u8]
 pub fn quasar_lang::traits::Event::emit(&self, impl core::ops::function::FnOnce(&[u8]) -> core::result::Result<(), solana_program_error::ProgramError>) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::traits::Event::write_data(&self, &mut [u8])
 pub trait quasar_lang::traits::HasSeeds
+pub type quasar_lang::traits::HasSeeds::WithBump<'seed>
 pub const quasar_lang::traits::HasSeeds::HAS_SEED_PREFIX: bool
 pub const quasar_lang::traits::HasSeeds::SEED_DYNAMIC_COUNT: usize
 pub const quasar_lang::traits::HasSeeds::SEED_PREFIX: &'static [u8]

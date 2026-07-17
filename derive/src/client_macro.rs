@@ -357,8 +357,19 @@ pub(crate) enum FieldDerivation<'p> {
         behavior_path: &'p syn::Path,
         authority: SeedSource<'p>,
         mint: SeedSource<'p>,
-        token_program: Option<&'p syn::Ident>,
+        token_program: BehaviorProgramArg<'p>,
     },
+}
+
+/// Where an ATA derivation's token program comes from.
+pub(crate) enum BehaviorProgramArg<'p> {
+    /// A `Program<T>` field: its canonical const.
+    Fixed(&'p syn::Ident),
+    /// A plain field (e.g. `Interface<TokenInterface>`): the caller-supplied
+    /// value, read off the instruction struct at build time.
+    Field(&'p syn::Ident),
+    /// No mapping: the behavior's default (SPL Token).
+    Default,
 }
 
 pub(crate) fn field_derivation<'p>(
@@ -430,12 +441,20 @@ pub(crate) fn field_derivation<'p>(
             Some(field)
                 if find_field(plan, field).is_some_and(|f| fixed_address_expr(f).is_some()) =>
             {
-                Some(field)
+                BehaviorProgramArg::Fixed(field)
             }
-            // An explicit token program the client cannot resolve statically
-            // (e.g. an interface field) keeps the ATA field.
+            // An interface or otherwise caller-chosen token program stays an
+            // input field; the derivation reads its value at build time.
+            Some(field)
+                if matches!(
+                    account_source(plan, field, stack)?,
+                    SeedSource::PlainAccount(_)
+                ) =>
+            {
+                BehaviorProgramArg::Field(field)
+            }
             Some(_) => return None,
-            None => None,
+            None => BehaviorProgramArg::Default,
         };
         Some(FieldDerivation::Ata {
             behavior_path: &group.path,
@@ -563,10 +582,18 @@ fn collect_roots<'p>(
             }
         }
         FieldDerivation::Ata {
-            authority, mint, ..
+            authority,
+            mint,
+            token_program,
+            ..
         } => {
             source(authority, roots);
             source(mint, roots);
+            if let BehaviorProgramArg::Field(ident) = token_program {
+                if !roots.iter().any(|seen| seen.ident() == *ident) {
+                    roots.push(DeriveRoot::Account(ident));
+                }
+            }
         }
     }
 }

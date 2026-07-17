@@ -244,6 +244,7 @@ pub(crate) fn generate_seeds_impl(
             const HAS_SEED_PREFIX: bool = #has_prefix;
             const SEED_PREFIX: &'static [u8] = &[#(#prefix_bytes),*];
             const SEED_DYNAMIC_COUNT: usize = #dynamic_count;
+            type WithBump<'__quasar_seed> = #seed_set_bump<'__quasar_seed>;
         }
 
         /// Zero-copy seed storage (without bump).
