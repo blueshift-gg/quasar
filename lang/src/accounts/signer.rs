@@ -1,3 +1,10 @@
+//! Transaction-signer account wrapper.
+//!
+//! `Signer` (via `define_account!`) validates only the `is_signer` header flag,
+//! checked during parsing before `check` runs; owner, data, and writability are
+//! left untouched. Construction follows the shared check-then-cast model in the
+//! module header.
+
 use crate::prelude::*;
 
 define_account!(

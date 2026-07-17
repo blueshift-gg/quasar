@@ -1,3 +1,8 @@
+//! Shared instruction-data encoders for fixed-layout Metaplex CPIs.
+//!
+//! Helpers that emit a discriminator byte followed by a `u64` or an
+//! `Option<u64>`, reused by the individual instruction builders.
+
 // Metaplex-enforced maximum field lengths.
 pub(super) const MAX_NAME_LEN: usize = 32;
 pub(super) const MAX_SYMBOL_LEN: usize = 10;

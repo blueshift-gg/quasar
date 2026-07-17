@@ -1,3 +1,6 @@
+//! Builds the Metaplex `FreezeDelegatedAccount` (discriminator 26) and
+//! `ThawDelegatedAccount` (discriminator 27) instructions.
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,
@@ -6,6 +9,19 @@ use quasar_lang::{
 const FREEZE_DELEGATED_ACCOUNT: u8 = 26;
 const THAW_DELEGATED_ACCOUNT: u8 = 27;
 
+/// Freeze a delegated token account via the edition's freeze authority.
+///
+/// ### Accounts:
+///   0. `[SIGNER]` Delegate authority
+///   1. `[WRITE]` Token account to freeze
+///   2. `[]`      Master edition account
+///   3. `[]`      Token mint
+///   4. `[]`      SPL Token program
+///
+/// ### Instruction data (1 byte):
+/// ```text
+/// [0] discriminator (26)
+/// ```
 #[inline(always)]
 pub(super) fn freeze_delegated_account<'a>(
     program: &'a AccountView,
@@ -29,6 +45,19 @@ pub(super) fn freeze_delegated_account<'a>(
     )
 }
 
+/// Thaw a delegated token account via the edition's freeze authority.
+///
+/// ### Accounts:
+///   0. `[SIGNER]` Delegate authority
+///   1. `[WRITE]` Token account to thaw
+///   2. `[]`      Master edition account
+///   3. `[]`      Token mint
+///   4. `[]`      SPL Token program
+///
+/// ### Instruction data (1 byte):
+/// ```text
+/// [0] discriminator (27)
+/// ```
 #[inline(always)]
 pub(super) fn thaw_delegated_account<'a>(
     program: &'a AccountView,

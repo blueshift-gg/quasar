@@ -1,3 +1,8 @@
+//! Token program interface marker.
+//!
+//! `TokenInterface` matches either the SPL Token or Token-2022 program, letting
+//! `Interface<TokenInterface>` accept both and issue their shared CPI methods.
+
 use {
     crate::{
         constants::{SPL_TOKEN_ID, TOKEN_2022_ID},

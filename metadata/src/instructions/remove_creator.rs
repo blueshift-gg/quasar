@@ -1,3 +1,6 @@
+//! Builds the Metaplex `RemoveCreatorVerification` instruction
+//! (discriminator 28).
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,
@@ -5,6 +8,16 @@ use quasar_lang::{
 
 const REMOVE_CREATOR_VERIFICATION: u8 = 28;
 
+/// Clear a creator's verified flag on a metadata account.
+///
+/// ### Accounts:
+///   0. `[SIGNER]` Creator revoking their verification
+///   1. `[WRITE]` Metadata account
+///
+/// ### Instruction data (1 byte):
+/// ```text
+/// [0] discriminator (28)
+/// ```
 #[inline(always)]
 pub(super) fn remove_creator_verification<'a>(
     program: &'a AccountView,

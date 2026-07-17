@@ -1,3 +1,10 @@
+//! `init` extension traits for metadata and master edition accounts.
+//!
+//! [`InitMetadata`] and [`InitMasterEdition`] wrap the
+//! `create_metadata_accounts_v3` and `create_master_edition_v3` CPIs;
+//! the Metaplex program derives and funds each PDA internally, so no
+//! separate `SystemProgram::create_account` is required.
+
 use {
     super::instructions::MetadataCpi,
     crate::codec::BorshCpiEncode,

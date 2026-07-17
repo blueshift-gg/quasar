@@ -1,3 +1,8 @@
+//! Epilogue CPI helpers for closing and sweeping token accounts.
+//!
+//! Backs the `token_close` and `token_sweep` behaviors: close an account to
+//! reclaim its rent, or transfer its full balance out before closing.
+
 use {
     crate::instructions,
     quasar_lang::{cpi::CpiCall, prelude::*},

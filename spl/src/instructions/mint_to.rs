@@ -1,3 +1,5 @@
+//! SPL Token `MintTo` instruction (discriminator 7).
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,

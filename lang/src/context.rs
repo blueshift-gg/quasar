@@ -24,7 +24,7 @@ use crate::{
 /// instruction, so the returned reference is valid for `'input`. This avoids
 /// copying the program ID into a stack-local `Address` on every dispatch path.
 #[inline(always)]
-unsafe fn as_address(bytes: &[u8; 32]) -> &Address {
+fn as_address(bytes: &[u8; 32]) -> &Address {
     // SAFETY: `Address` is a transparent 32-byte address type and `bytes`
     // lives for the returned reference.
     unsafe { &*(bytes as *const [u8; 32] as *const Address) }
@@ -116,7 +116,7 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
     pub fn new(ctx: Context<'input>) -> Result<Self, ProgramError> {
         // SAFETY: `Context::program_id` points at the runtime-owned 32-byte
         // program id for this instruction.
-        let program_id_addr = unsafe { as_address(ctx.program_id) };
+        let program_id_addr = as_address(ctx.program_id);
         let (accounts, bumps) =
             T::parse_with_instruction_data(ctx.accounts, ctx.data, program_id_addr)?;
         Ok(Self {
@@ -138,7 +138,7 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
     pub unsafe fn new_unchecked(ctx: Context<'input>) -> Result<Self, ProgramError> {
         // SAFETY: `Context::program_id` points at the runtime-owned 32-byte
         // program id for this instruction.
-        let program_id_addr = unsafe { as_address(ctx.program_id) };
+        let program_id_addr = as_address(ctx.program_id);
         // SAFETY: The caller guarantees `ctx.accounts` holds exactly
         // `T::COUNT` declared account views for this handler.
         let (accounts, bumps) = unsafe {
@@ -221,7 +221,7 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
     pub fn new(ctx: Context<'input>) -> Result<Self, ProgramError> {
         // SAFETY: `Context::program_id` points at the runtime-owned 32-byte
         // program id for this instruction.
-        let program_id_addr = unsafe { as_address(ctx.program_id) };
+        let program_id_addr = as_address(ctx.program_id);
         // Save pointer + length before parse consumes the mutable slice. This
         // avoids creating a shared declared-account slice while parsing still
         // holds the `&mut [AccountView]` borrow.
@@ -261,7 +261,7 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
     pub unsafe fn new_unchecked(ctx: Context<'input>) -> Result<Self, ProgramError> {
         // SAFETY: `Context::program_id` points at the runtime-owned 32-byte
         // program id for this instruction.
-        let program_id_addr = unsafe { as_address(ctx.program_id) };
+        let program_id_addr = as_address(ctx.program_id);
         // Save pointer + length before parse consumes the mutable slice (see
         // `new` for the borrow rationale).
         let declared_ptr = ctx.accounts.as_ptr();

@@ -47,10 +47,13 @@ pub struct CpiDynamic<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> {
 impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS, MAX_DATA> {
     // Compile-time stack overflow guard; fires at monomorphization time.
     // InstructionAccount is 24 bytes, CpiAccount is 56 bytes, plus data +
-    // bookkeeping.
+    // bookkeeping. The whole builder lives on the caller's frame while it
+    // is filled and invoked, so 1 KiB of the frame is reserved for the
+    // rest of the caller and the invoke path.
     const _STACK_CHECK: () = assert!(
-        56 * MAX_ACCTS + 24 * MAX_ACCTS + MAX_DATA + 24 <= 3072,
-        "CpiDynamic exceeds safe 3 KiB stack budget for SVM 4 KiB frames"
+        56 * MAX_ACCTS + 24 * MAX_ACCTS + MAX_DATA + 24
+            <= crate::__internal::SBF_STACK_FRAME - 1024,
+        "CpiDynamic exceeds the sBPF stack budget (frame minus 1 KiB headroom)"
     );
 
     /// Create a new builder targeting the given program.
@@ -74,14 +77,14 @@ impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS
         }
     }
 
-    /// Create a new builder **without** the compile-time stack budget check.
+    /// Create a new builder, skipping the compile-time stack-budget check.
     ///
-    /// Use this when you know your call site has sufficient stack headroom
-    /// (e.g., the CPI is the only large stack allocation in the frame, or you
-    /// have explicitly verified the frame fits within the SVM 4 KiB limit).
+    /// Safe despite the `_unchecked` suffix: the only thing bypassed is the
+    /// static stack-budget assertion of [`new`](Self::new) — never a memory or
+    /// bounds check. Behavior is otherwise identical to [`new`](Self::new).
     ///
-    /// The resulting `CpiDynamic` behaves identically to one created by
-    /// [`new`](Self::new); only the static assertion is skipped.
+    /// Use it when the call site has verified stack headroom, e.g. this CPI is
+    /// the frame's only large allocation.
     #[inline(always)]
     pub fn new_unchecked(program_id: &'a Address) -> Self {
         Self {

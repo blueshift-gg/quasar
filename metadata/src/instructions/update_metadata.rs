@@ -1,3 +1,6 @@
+//! Builds the Metaplex `UpdateMetadataAccountV2` instruction
+//! (discriminator 15).
+
 use {
     crate::codec::CpiEncode,
     quasar_lang::{cpi::CpiDynamic, prelude::*},
@@ -11,6 +14,35 @@ fn metadata_field_too_long() -> ProgramError {
     ProgramError::InvalidInstructionData
 }
 
+/// Update mutable fields of an existing metadata account.
+///
+/// Each argument serializes as a Borsh `Option`: `None` writes a single
+/// zero tag byte. The `DataV2` block is emitted only when `name`,
+/// `symbol`, and `uri` are all `Some`; if any is missing the entire
+/// `DataV2` is written as `None` and the other three are ignored.
+///
+/// ### Accounts:
+///   0. `[WRITE]` Metadata account
+///   1. `[SIGNER]` Update authority
+///
+/// ### Instruction data (dynamic, 5-byte minimum):
+/// ```text
+/// discriminator                u8 = 15
+/// Option<DataV2>               tag 0x01 iff name+symbol+uri all set,
+///                              else 0x00
+///   name                       Borsh string: u32 LE len + UTF-8 bytes
+///   symbol                     Borsh string: u32 LE len + UTF-8 bytes
+///   uri                        Borsh string: u32 LE len + UTF-8 bytes
+///   seller_fee_basis_points    u16 LE (0 when unset)
+///   creators                   Option<..> = None (tag 0x00)
+///   collection                 Option<..> = None (tag 0x00)
+///   uses                       Option<..> = None (tag 0x00)
+/// Option<Pubkey> new_update_authority
+///                              0x01 + 32-byte address, else 0x00
+/// Option<bool> primary_sale_happened
+///                              0x01 + 1-byte bool, else 0x00
+/// Option<bool> is_mutable      0x01 + 1-byte bool, else 0x00
+/// ```
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn update_metadata_accounts_v2<'a>(

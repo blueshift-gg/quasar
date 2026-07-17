@@ -1,3 +1,9 @@
+//! Account-creation CPI helpers for `#[account(init)]`.
+//!
+//! Allocate and initialize token accounts, mints, and ATAs: a system-program
+//! `create_account` paired with the matching SPL initialize instruction, or the
+//! ATA program's create.
+
 use {
     crate::{associated_token, instructions},
     quasar_lang::{

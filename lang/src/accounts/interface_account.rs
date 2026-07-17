@@ -1,3 +1,11 @@
+//! The [`InterfaceAccount`] wrapper for accounts owned by any program in `T`'s
+//! [`Owners`] set (e.g. SPL Token and Token-2022).
+//!
+//! `InterfaceAccount<T>` is `#[repr(transparent)]` over [`AccountView`] and
+//! is constructed only after owner and data validation, so every `Deref`
+//! re-relies on that construction invariant to reach the account data
+//! through a pointer cast.
+
 use {crate::prelude::*, core::marker::PhantomData};
 
 /// Account wrapper accepting any owner accepted by `T`'s [`Owners`] impl

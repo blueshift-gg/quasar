@@ -38,12 +38,8 @@ pub trait Owner {
 
 /// Declares the on-chain address (ID) for a program type.
 ///
-/// This trait simply provides the program's address constant. The `Program<T>`
-/// wrapper type requires `T: Id` to validate that accounts match the expected
-/// address.
-///
 /// Implemented by: Program marker types (e.g., `System`, `Token`).
-/// Used by: `Program<T>` wrapper for address validation.
+/// Used by: `Program<T>` wrapper to validate that accounts match the address.
 pub trait Id {
     /// Canonical program address.
     const ID: Address;
@@ -236,6 +232,12 @@ pub unsafe trait ParseAccountsUnchecked<'input>: ParseAccounts<'input> {
 /// Implemented by `#[derive(Accounts)]` and fixed-size account group wrappers.
 /// This preserves header/duplicate parsing for nested account groups before the
 /// typed `ParseAccountsUnchecked` pass loads account wrappers.
+///
+/// # Safety
+///
+/// Implementations must initialize all `Self::COUNT` slots at
+/// `base[offset..]` before returning `Ok`, and advance `input` exactly past
+/// the consumed buffer entries; generated dispatch relies on both.
 #[doc(hidden)]
 pub unsafe trait ParseAccountsRaw: AccountCount {
     /// # Safety

@@ -1,3 +1,9 @@
+//! Owner check: an account's on-chain owner must match the expected program.
+//!
+//! Returns `Err(IllegalOwner)` when the owner does not match `Owner::OWNER`.
+//! A thin delegate to `CheckOwner`, composed into a `check(view)` by the
+//! `define_account!` check-list.
+
 use crate::prelude::*;
 
 /// Validates that an account is owned by the expected program

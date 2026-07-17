@@ -1,3 +1,5 @@
+//! Instruction-data encoders shared by the SPL Token CPI builders.
+
 use quasar_lang::prelude::Address;
 
 #[inline(always)]

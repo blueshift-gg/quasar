@@ -1,3 +1,6 @@
+//! Builds the Metaplex `VerifyCollection` (discriminator 18) and
+//! `VerifySizedCollectionItem` (discriminator 30) instructions.
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,
@@ -6,6 +9,20 @@ use quasar_lang::{
 const VERIFY_COLLECTION: u8 = 18;
 const VERIFY_SIZED_COLLECTION_ITEM: u8 = 30;
 
+/// Mark an item as a verified member of an unsized collection.
+///
+/// ### Accounts:
+///   0. `[WRITE]` Item metadata account
+///   1. `[SIGNER]` Collection update authority or delegate
+///   2. `[WRITE, SIGNER]` Payer
+///   3. `[]`      Collection mint
+///   4. `[]`      Collection metadata account
+///   5. `[]`      Collection master edition account
+///
+/// ### Instruction data (1 byte):
+/// ```text
+/// [0] discriminator (18)
+/// ```
 #[inline(always)]
 pub(super) fn verify_collection<'a>(
     program: &'a AccountView,
@@ -38,6 +55,20 @@ pub(super) fn verify_collection<'a>(
     )
 }
 
+/// Mark an item as a verified member of a sized collection.
+///
+/// ### Accounts:
+///   0. `[WRITE]` Item metadata account
+///   1. `[SIGNER]` Collection update authority or delegate
+///   2. `[WRITE, SIGNER]` Payer
+///   3. `[]`      Collection mint
+///   4. `[]`      Collection metadata account
+///   5. `[]`      Collection master edition account
+///
+/// ### Instruction data (1 byte):
+/// ```text
+/// [0] discriminator (30)
+/// ```
 #[inline(always)]
 pub(super) fn verify_sized_collection_item<'a>(
     program: &'a AccountView,

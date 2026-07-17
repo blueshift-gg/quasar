@@ -1,3 +1,6 @@
+//! `TokenCpi`: CPI methods shared by the Token, Token-2022, and interface
+//! program wrappers.
+
 use {
     super::{
         approve, burn, close_account, initialize_account, initialize_mint, mint_to, revoke,

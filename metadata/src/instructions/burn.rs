@@ -1,3 +1,6 @@
+//! Builds the Metaplex `BurnNft` (discriminator 29) and `BurnEditionNft`
+//! (discriminator 37) instructions.
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,
@@ -6,6 +9,20 @@ use quasar_lang::{
 const BURN_NFT: u8 = 29;
 const BURN_EDITION_NFT: u8 = 37;
 
+/// Burn an NFT and close its metadata, edition, token, and mint.
+///
+/// ### Accounts:
+///   0. `[WRITE]` Metadata account
+///   1. `[WRITE, SIGNER]` NFT owner
+///   2. `[WRITE]` NFT mint
+///   3. `[WRITE]` Token account holding the NFT
+///   4. `[WRITE]` Master edition account
+///   5. `[]`      SPL Token program
+///
+/// ### Instruction data (1 byte):
+/// ```text
+/// [0] discriminator (29)
+/// ```
 #[inline(always)]
 pub(super) fn burn_nft<'a>(
     program: &'a AccountView,
@@ -31,6 +48,24 @@ pub(super) fn burn_nft<'a>(
     )
 }
 
+/// Burn a printed edition NFT and update its master edition.
+///
+/// ### Accounts:
+///   0. `[WRITE]` Print edition metadata account
+///   1. `[WRITE, SIGNER]` Owner of the print edition NFT
+///   2. `[WRITE]` Print edition mint
+///   3. `[]`      Master edition mint
+///   4. `[WRITE]` Print edition token account
+///   5. `[WRITE]` Master edition token account
+///   6. `[WRITE]` Master edition account
+///   7. `[WRITE]` Print edition account
+///   8. `[WRITE]` Edition marker PDA
+///   9. `[]`      SPL Token program
+///
+/// ### Instruction data (1 byte):
+/// ```text
+/// [0] discriminator (37)
+/// ```
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn burn_edition_nft<'a>(

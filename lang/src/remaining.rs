@@ -1,3 +1,15 @@
+//! Accessors for an instruction's remaining accounts — the SVM account-region
+//! tail past the declared accounts.
+//!
+//! Every raw walk is driven through the single-owner
+//! [`Cursor`](crate::svm::Cursor), so this module never decodes a buffer entry
+//! itself. Duplicate markers alias an earlier account: the iterator resolves
+//! them in O(1) against the split `[declared ++ yielded]` index space via
+//! [`resolve_dup`](crate::svm::resolve_dup), while one-off `get`/`parse_single`
+//! access re-walks the region ([`resolve_dup_walk`]).
+//!
+//! In-bounds proofs for every walk live in `lang/kani/remaining.rs`.
+
 use {
     crate::{
         account_load::AccountLoad,
@@ -9,9 +21,9 @@ use {
     solana_program_error::ProgramError,
 };
 
-// `data_len` (u64) -> usize cast in `advance_past_account` is lossless on
-// 64-bit targets (SBF, x86-64, aarch64). Fail compilation on 32-bit where
-// the cast would silently truncate.
+// The `data_len` (u64) -> usize cast in the Cursor walk is lossless on 64-bit
+// targets (SBF, x86-64, aarch64). Fail compilation on 32-bit where the cast
+// would silently truncate.
 const _: () = assert!(
     core::mem::size_of::<usize>() >= core::mem::size_of::<u64>(),
     "remaining accounts buffer navigation requires 64-bit usize"
@@ -614,9 +626,8 @@ impl<T, const N: usize> Remaining<T, N> {
                     return Err(QuasarError::RemainingAccountDuplicate.into());
                 }
                 // Re-scan the already-consumed raw prefix instead of reserving
-                // `N * T::COUNT` addresses on the 4 KiB SBF stack. This keeps
-                // `N` as the typed-item capacity and preserves the existing
-                // O(n^2) duplicate-checking cost model.
+                // `N * T::COUNT` addresses on the 4 KiB SBF stack; the `# Cost`
+                // doc above owns the O(n^2) rationale.
                 // SAFETY: `accounts.ptr..entry_start` is the valid prefix
                 // consumed by this cursor from the same remaining region.
                 if unsafe { prefix_contains_address(accounts.ptr, entry_start, view.address()) } {
@@ -851,8 +862,6 @@ impl Iterator for RemainingIterImpl<'_> {
         if self.ptr as *const u8 >= self.boundary {
             return None;
         }
-        // `cache_has_capacity` is extracted so Kani can prove the capacity
-        // guard implies all subsequent cache writes are in bounds.
         if crate::utils::hint::unlikely(!cache_has_capacity(self.index)) {
             self.ptr = self.boundary as *mut u8;
             return Some(Err(QuasarError::RemainingAccountsOverflow.into()));
@@ -881,9 +890,9 @@ impl Iterator for RemainingIterImpl<'_> {
         };
         self.ptr = cursor.ptr();
 
-        // SAFETY: `self.index < MAX_REMAINING_ACCOUNTS` (checked above),
-        // so the write is within the `MaybeUninit` cache allocation.
-        // `ptr::read` creates a bitwise copy (AccountView is not Copy).
+        // SAFETY: `self.index < MAX_REMAINING_ACCOUNTS`, checked by
+        // `cache_has_capacity` above, so the write is in bounds. `ptr::read`
+        // bitwise-copies (`AccountView` is not `Copy`).
         unsafe {
             let copy = core::ptr::read(&view);
             core::ptr::write(self.cache_mut_ptr().add(self.index), copy);

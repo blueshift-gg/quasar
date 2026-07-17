@@ -1,3 +1,5 @@
+//! SPL Token `Transfer` instruction (discriminator 3).
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,

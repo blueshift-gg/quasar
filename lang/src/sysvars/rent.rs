@@ -62,23 +62,22 @@ impl Rent {
         self.lamports_per_byte.get()
     }
 
-    /// Returns the raw exemption threshold as a `u64` (bit representation
-    /// of the f64 threshold). Compare against [`CURRENT_EXEMPTION_THRESHOLD`]
-    /// or [`SIMD0194_EXEMPTION_THRESHOLD`].
-    ///
-    /// # Safety (internal)
-    ///
-    /// `exemption_threshold` is a `[u8; 8]`; reading it as u64 via
-    /// `read_unaligned` is always valid. The f64 threshold lives in the
-    /// sysvar but is reinterpreted as u64 for bit-exact comparison.
+    /// Returns the exemption threshold as its raw `u64` bit pattern. Compare
+    /// against [`CURRENT_EXEMPTION_THRESHOLD`] or
+    /// [`SIMD0194_EXEMPTION_THRESHOLD`]; the stored `f64` is reinterpreted as
+    /// `u64` for bit-exact comparison, avoiding on-chain floating point.
     #[inline(always)]
     pub fn exemption_threshold_raw(&self) -> u64 {
+        // SAFETY: `exemption_threshold` is 8 valid bytes at alignment 1; with
+        // no `u64` alignment guarantee, an unaligned read is the correct
+        // reinterpretation.
         unsafe { core::ptr::read_unaligned(self.exemption_threshold.as_ptr() as *const u64) }
     }
 
     /// Return the minimum lamport balance for rent exemption.
     ///
-    /// Performs no overflow or length validation; prefer
+    /// `_unchecked` is arithmetic, not memory: this is a safe function that
+    /// skips overflow and length validation. Prefer
     /// [`try_minimum_balance`](Self::try_minimum_balance) unless you have
     /// already verified that `data_len <= 10 MiB` and the sysvar's
     /// `lamports_per_byte` is within safe bounds.

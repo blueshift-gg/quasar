@@ -1,3 +1,6 @@
+//! Builds the Metaplex `UnverifyCollection` (discriminator 22) and
+//! `UnverifySizedCollectionItem` (discriminator 31) instructions.
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,
@@ -6,6 +9,19 @@ use quasar_lang::{
 const UNVERIFY_COLLECTION: u8 = 22;
 const UNVERIFY_SIZED_COLLECTION_ITEM: u8 = 31;
 
+/// Remove an item's verified membership in an unsized collection.
+///
+/// ### Accounts:
+///   0. `[WRITE]` Item metadata account
+///   1. `[SIGNER]` Collection update authority or delegate
+///   2. `[]`      Collection mint
+///   3. `[]`      Collection metadata account
+///   4. `[]`      Collection master edition account
+///
+/// ### Instruction data (1 byte):
+/// ```text
+/// [0] discriminator (22)
+/// ```
 #[inline(always)]
 pub(super) fn unverify_collection<'a>(
     program: &'a AccountView,
@@ -35,6 +51,20 @@ pub(super) fn unverify_collection<'a>(
     )
 }
 
+/// Remove an item's verified membership in a sized collection.
+///
+/// ### Accounts:
+///   0. `[WRITE]` Item metadata account
+///   1. `[SIGNER]` Collection update authority or delegate
+///   2. `[WRITE, SIGNER]` Payer
+///   3. `[]`      Collection mint
+///   4. `[]`      Collection metadata account
+///   5. `[]`      Collection master edition account
+///
+/// ### Instruction data (1 byte):
+/// ```text
+/// [0] discriminator (31)
+/// ```
 #[inline(always)]
 pub(super) fn unverify_sized_collection_item<'a>(
     program: &'a AccountView,

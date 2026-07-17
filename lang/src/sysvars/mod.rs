@@ -37,6 +37,10 @@ macro_rules! impl_sysvar_get {
     ($syscall_id:expr, $padding:literal) => {
         const ID: solana_address::Address = $syscall_id;
 
+        /// # Safety
+        ///
+        /// The caller must ensure `bytes` holds at least
+        /// `size_of::<Self>()` bytes of valid sysvar data.
         #[inline(always)]
         unsafe fn from_bytes_unchecked(bytes: &[u8]) -> &Self {
             // SAFETY: Caller guarantees `bytes` contains valid sysvar data
@@ -47,7 +51,6 @@ macro_rules! impl_sysvar_get {
 
         #[inline(always)]
         fn get() -> Result<Self, solana_program_error::ProgramError> {
-            // Guard: padding must not exceed the struct size.
             const {
                 let padding = $padding;
                 assert!(
@@ -60,9 +63,9 @@ macro_rules! impl_sysvar_get {
             let var_addr = var.as_mut_ptr() as *mut _ as *mut u8;
 
             #[cfg(any(target_os = "solana", target_arch = "bpf"))]
-            // SAFETY: `var_addr` points to `MaybeUninit<Self>` which has
-            // enough space. The syscall writes `length` bytes; we zero the
-            // trailing `$padding` bytes so the full struct is initialized.
+            // SAFETY: `var_addr` is backed by `MaybeUninit<Self>` (enough
+            // space); the syscall fills `length` bytes and the trailing
+            // `$padding` bytes are zeroed, initializing the whole struct.
             let result = unsafe {
                 let length = core::mem::size_of::<Self>() - $padding;
                 var_addr.add(length).write_bytes(0, $padding);
@@ -76,7 +79,8 @@ macro_rules! impl_sysvar_get {
 
             #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
             let result = {
-                // SAFETY: Zero-init the full struct for off-chain use.
+                // SAFETY: `var_addr` is backed by `MaybeUninit<Self>`, valid
+                // for a full `size_of::<Self>()` zero-fill.
                 unsafe { var_addr.write_bytes(0, core::mem::size_of::<Self>()) };
                 core::hint::black_box(var_addr as *const _ as u64)
             };

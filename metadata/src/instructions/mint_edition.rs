@@ -1,3 +1,6 @@
+//! Builds the Metaplex `MintNewEditionFromMasterEditionViaToken`
+//! instruction (discriminator 11).
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,
@@ -5,6 +8,29 @@ use quasar_lang::{
 
 const MINT_NEW_EDITION_FROM_MASTER_EDITION_VIA_TOKEN: u8 = 11;
 
+/// Print a new numbered edition from a master edition NFT.
+///
+/// ### Accounts:
+///   0. `[WRITE]` New print edition metadata PDA
+///   1. `[WRITE]` New print edition PDA
+///   2. `[WRITE]` Master edition account
+///   3. `[WRITE]` New edition mint
+///   4. `[WRITE]` Edition marker PDA
+///   5. `[SIGNER]` New mint authority
+///   6. `[WRITE, SIGNER]` Payer
+///   7. `[SIGNER]` Owner of the master edition token
+///   8. `[]`      Token account holding the master edition
+///   9. `[]`      Update authority for the new metadata
+///   10. `[]`      Master edition metadata account
+///   11. `[]`      SPL Token program
+///   12. `[]`      System program
+///   13. `[]`      Rent sysvar
+///
+/// ### Instruction data (9 bytes):
+/// ```text
+/// [0]    discriminator (11)
+/// [1..9] edition (u64 LE)
+/// ```
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn mint_new_edition_from_master_edition_via_token<'a>(

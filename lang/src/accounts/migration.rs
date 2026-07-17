@@ -1,3 +1,11 @@
+//! The [`Migration`] wrapper for typed on-chain schema migration.
+//!
+//! `Migration<From, To>` is `#[repr(transparent)]` over [`AccountView`] and
+//! is constructed only after the `From` account is validated, so its `Deref`
+//! to `From::Target` re-relies on that construction invariant. `migrate`
+//! rewrites the account to the `To` layout, revalidates it, and returns an
+//! `&mut Account<To>`.
+
 use {crate::prelude::*, core::marker::PhantomData};
 
 /// Account wrapper for type-safe on-chain migration from `From` to `To`.
@@ -52,7 +60,9 @@ where
     fn deref(&self) -> &Self::Target {
         let disc_len = <From as crate::traits::Discriminator>::DISCRIMINATOR.len();
         // SAFETY: `AccountLoad::check` validated the source discriminator and
-        // account length before this wrapper was constructed.
+        // account length before this wrapper was constructed. `From::Target`
+        // is a `#[repr(C)]` zero-copy companion with alignment 1, so the
+        // offset read is validly typed.
         unsafe { &*(self.__view.data_ptr().add(disc_len) as *const From::Target) }
     }
 }
@@ -97,9 +107,11 @@ where
             "migration source and target discriminators must not be prefixes of each other"
         );
     };
+    // The target moves by value through one call layer, so 512 bytes of
+    // the frame are reserved for that layer's locals.
     const _STACK_BUDGET: () = assert!(
-        core::mem::size_of::<To::Target>() < 3584,
-        "migration target type too large for sBPF 4KB stack frame"
+        core::mem::size_of::<To::Target>() < crate::__internal::SBF_STACK_FRAME - 512,
+        "migration target type too large for the sBPF stack budget"
     );
     const _TARGET_FITS_SPACE: () = assert!(
         <To as crate::traits::Space>::SPACE

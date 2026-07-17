@@ -1,3 +1,5 @@
+//! Builds the Metaplex `SignMetadata` instruction (discriminator 7).
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,
@@ -5,6 +7,16 @@ use quasar_lang::{
 
 const SIGN_METADATA: u8 = 7;
 
+/// Mark a creator as verified on a metadata account.
+///
+/// ### Accounts:
+///   0. `[SIGNER]` Creator signing off on the metadata
+///   1. `[WRITE]` Metadata account
+///
+/// ### Instruction data (1 byte):
+/// ```text
+/// [0] discriminator (7)
+/// ```
 #[inline(always)]
 pub(super) fn sign_metadata<'a>(
     program: &'a AccountView,
