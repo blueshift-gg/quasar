@@ -221,20 +221,15 @@ fn describe_accounts(
             let fixed_address = if fixed_address_expr(fp).is_some() {
                 let const_ident = fixed_address_const(&fp.ident);
                 Some(quote! { #account_type::#const_ident })
-            } else if let Some((_, seeds)) = client_derivable_pda(plan, fp) {
+            } else if let Some(derivation) = field_derivation(plan, fp, &mut Vec::new()) {
                 let fn_ident = pda_address_fn(&fp.ident);
-                let args = seeds.iter().filter_map(|seed| match seed {
-                    DerivedSeed::AccountRef(base) => Some(quote! { &ix.#base }),
-                    DerivedSeed::ArgRef(name) => Some(quote! { &ix.#name }),
-                    DerivedSeed::ArgValue(name, _) => Some(quote! { ix.#name }),
-                    DerivedSeed::Const(_) => None,
-                });
+                let args = derivation_roots(plan, &derivation)
+                    .into_iter()
+                    .map(|root| match root {
+                        DeriveRoot::Account(i) | DeriveRoot::ArgRef(i) => quote! { &ix.#i },
+                        DeriveRoot::ArgValue(i, _) => quote! { ix.#i },
+                    });
                 Some(quote! { #account_type::#fn_ident(#(#args,)* &$crate::ID) })
-            } else if let Some(ata) = client_derivable_ata(plan, fp) {
-                let fn_ident = pda_address_fn(&fp.ident);
-                let authority = ata.authority;
-                let mint = ata.mint;
-                Some(quote! { #account_type::#fn_ident(&ix.#authority, &ix.#mint, &$crate::ID) })
             } else {
                 None
             };
@@ -253,53 +248,230 @@ fn describe_accounts(
         .collect()
 }
 
-/// A PDA field the client can derive: every seed is either the address of a
-/// plain (non-derived) account field or a constant expression.
-pub(crate) fn client_derivable_pda<'p>(
-    plan: &'p crate::accounts::resolve::specs::AccountsPlanTyped,
-    fp: &'p crate::accounts::resolve::specs::FieldPlan,
-) -> Option<(&'p syn::Path, Vec<DerivedSeed<'p>>)> {
-    use crate::accounts::resolve::specs::{IdlResolverPlan, IdlSeedPlan};
-    let IdlResolverPlan::Pda { account_ty, seeds } = fp.idl_resolver.as_ref()? else {
-        return None;
-    };
-    let plain_field = |base: &syn::Ident| {
-        plan.fields.iter().any(|other| {
-            other.ident == *base
-                && fixed_address_expr(other).is_none()
-                && !matches!(other.idl_resolver, Some(IdlResolverPlan::Pda { .. }))
-        })
-    };
-    let mut classified = Vec::with_capacity(seeds.len());
-    for seed in seeds {
-        classified.push(match seed {
-            IdlSeedPlan::AccountAddr { base } if plain_field(base) => DerivedSeed::AccountRef(base),
-            IdlSeedPlan::Const { expr } => DerivedSeed::Const(expr),
-            IdlSeedPlan::IxArg { name, ty } => {
-                if is_address_type(ty) {
-                    DerivedSeed::ArgRef(name)
-                } else if is_value_seed_type(ty) {
-                    DerivedSeed::ArgValue(name, ty)
-                } else {
-                    return None;
-                }
-            }
-            _ => return None,
-        });
-    }
-    Some((account_ty, classified))
+/// How one input to a client-side address derivation resolves.
+pub(crate) enum SeedSource<'p> {
+    /// A plain account field that stays in the instruction struct: a
+    /// `&Address` fn parameter, `&ix.field` at the call site.
+    PlainAccount(&'p syn::Ident),
+    /// Another derived field: a `let` local inside the derivation fn.
+    DerivedAccount(&'p syn::Ident),
+    /// An `Address`-typed instruction arg: `&Address` parameter, `&ix.name`.
+    ArgRef(&'p syn::Ident),
+    /// A by-value primitive instruction arg: `ty` parameter, `ix.name`.
+    ArgValue(&'p syn::Ident, &'p syn::Type),
+    /// A constant expression, resolvable at the definition site.
+    Const(&'p syn::Expr),
 }
 
-/// One client-resolvable seed of a derived PDA field.
-pub(crate) enum DerivedSeed<'p> {
-    /// The address of another (plain) account field: passed as `&ix.base`.
-    AccountRef(&'p syn::Ident),
-    /// An `Address`-typed instruction arg: passed as `&ix.name`.
+/// A field's client-side address derivation, when one exists.
+///
+/// The derive stays protocol-neutral on-chain; both forms are client-codegen
+/// conventions. Typed-seeds PDAs derive from `address = T::seeds(..)`.
+/// Associated token accounts derive when a behavior group whose path ends in
+/// `associated_token` maps `authority` + `mint` to resolvable fields, through
+/// the behavior module's `client_address` fn; `token_program` joins when it
+/// maps to a `Program<T>` field (its canonical const) and defaults inside the
+/// behavior otherwise. Derivations chain: a seed may itself be a derived
+/// field, so `vault` seeded by the derived `config` still resolves down to
+/// `config`'s own plain roots.
+pub(crate) enum FieldDerivation<'p> {
+    Pda {
+        account_ty: &'p syn::Path,
+        seeds: Vec<SeedSource<'p>>,
+    },
+    Ata {
+        behavior_path: &'p syn::Path,
+        authority: SeedSource<'p>,
+        mint: SeedSource<'p>,
+        token_program: Option<&'p syn::Ident>,
+    },
+}
+
+pub(crate) fn field_derivation<'p>(
+    plan: &'p crate::accounts::resolve::specs::AccountsPlanTyped,
+    fp: &'p crate::accounts::resolve::specs::FieldPlan,
+    stack: &mut Vec<syn::Ident>,
+) -> Option<FieldDerivation<'p>> {
+    use crate::accounts::resolve::specs::{IdlResolverPlan, IdlSeedPlan};
+    if stack.contains(&fp.ident) {
+        return None;
+    }
+    stack.push(fp.ident.clone());
+    let derivation = (|| {
+        if let Some(IdlResolverPlan::Pda { account_ty, seeds }) = fp.idl_resolver.as_ref() {
+            let mut classified = Vec::with_capacity(seeds.len());
+            for seed in seeds {
+                classified.push(match seed {
+                    IdlSeedPlan::AccountAddr { base } => account_source(plan, base, stack)?,
+                    IdlSeedPlan::Const { expr } => SeedSource::Const(expr),
+                    IdlSeedPlan::IxArg { name, ty } => {
+                        if is_address_type(ty) {
+                            SeedSource::ArgRef(name)
+                        } else if is_value_seed_type(ty) {
+                            SeedSource::ArgValue(name, ty)
+                        } else {
+                            return None;
+                        }
+                    }
+                    IdlSeedPlan::AccountField { .. } => return None,
+                });
+            }
+            return Some(FieldDerivation::Pda {
+                account_ty,
+                seeds: classified,
+            });
+        }
+        if fp.idl_resolver.is_some() {
+            return None;
+        }
+        let group = fp
+            .behaviors
+            .iter()
+            .find(|group| group.name.ends_with("associated_token"))?;
+        let arg = |key: &str| {
+            group
+                .idl_account_args
+                .iter()
+                .find(|arg| arg.key == key)
+                .map(|arg| &arg.field_ident)
+        };
+        let authority = account_source(plan, arg("authority")?, stack)?;
+        let mint = account_source(plan, arg("mint")?, stack)?;
+        let token_program = match arg("token_program") {
+            Some(field)
+                if find_field(plan, field).is_some_and(|f| fixed_address_expr(f).is_some()) =>
+            {
+                Some(field)
+            }
+            // An explicit token program the client cannot resolve statically
+            // (e.g. an interface field) keeps the ATA field.
+            Some(_) => return None,
+            None => None,
+        };
+        Some(FieldDerivation::Ata {
+            behavior_path: &group.path,
+            authority,
+            mint,
+            token_program,
+        })
+    })();
+    stack.pop();
+    derivation
+}
+
+fn find_field<'p>(
+    plan: &'p crate::accounts::resolve::specs::AccountsPlanTyped,
+    ident: &syn::Ident,
+) -> Option<&'p crate::accounts::resolve::specs::FieldPlan> {
+    plan.fields.iter().find(|field| field.ident == *ident)
+}
+
+/// Resolve an account-field reference used as a derivation input.
+fn account_source<'p>(
+    plan: &'p crate::accounts::resolve::specs::AccountsPlanTyped,
+    ident: &'p syn::Ident,
+    stack: &mut Vec<syn::Ident>,
+) -> Option<SeedSource<'p>> {
+    let field = find_field(plan, ident)?;
+    if fixed_address_expr(field).is_some() {
+        return None;
+    }
+    if field_derivation(plan, field, stack).is_some() {
+        return Some(SeedSource::DerivedAccount(ident));
+    }
+    Some(SeedSource::PlainAccount(ident))
+}
+
+/// A derivation's transitive inputs: the fn parameters at the definition
+/// site and the `ix.*` arguments at the call site, deduplicated in
+/// first-use order.
+pub(crate) enum DeriveRoot<'p> {
+    Account(&'p syn::Ident),
     ArgRef(&'p syn::Ident),
-    /// A by-value primitive instruction arg: passed as `ix.name`.
     ArgValue(&'p syn::Ident, &'p syn::Type),
-    /// A constant expression, baked in at the definition site.
-    Const(&'p syn::Expr),
+}
+
+impl<'p> DeriveRoot<'p> {
+    pub(crate) fn ident(&self) -> &'p syn::Ident {
+        match self {
+            DeriveRoot::Account(i) | DeriveRoot::ArgRef(i) | DeriveRoot::ArgValue(i, _) => i,
+        }
+    }
+}
+
+pub(crate) fn derivation_roots<'p>(
+    plan: &'p crate::accounts::resolve::specs::AccountsPlanTyped,
+    derivation: &FieldDerivation<'p>,
+) -> Vec<DeriveRoot<'p>> {
+    let mut roots: Vec<DeriveRoot<'p>> = Vec::new();
+    collect_roots(plan, derivation, &mut roots);
+    roots
+}
+
+fn collect_roots<'p>(
+    plan: &'p crate::accounts::resolve::specs::AccountsPlanTyped,
+    derivation: &FieldDerivation<'p>,
+    roots: &mut Vec<DeriveRoot<'p>>,
+) {
+    let source = |source: &SeedSource<'p>, roots: &mut Vec<DeriveRoot<'p>>| match source {
+        SeedSource::PlainAccount(ident) => {
+            if !roots.iter().any(|seen| seen.ident() == *ident) {
+                roots.push(DeriveRoot::Account(ident));
+            }
+        }
+        SeedSource::ArgRef(name) => {
+            if !roots.iter().any(|seen| seen.ident() == *name) {
+                roots.push(DeriveRoot::ArgRef(name));
+            }
+        }
+        SeedSource::ArgValue(name, ty) => {
+            if !roots.iter().any(|seen| seen.ident() == *name) {
+                roots.push(DeriveRoot::ArgValue(name, ty));
+            }
+        }
+        SeedSource::DerivedAccount(ident) => {
+            let field = find_field(plan, ident).expect("derived field exists");
+            let nested =
+                field_derivation(plan, field, &mut Vec::new()).expect("derived field re-resolves");
+            collect_roots(plan, &nested, roots);
+        }
+        SeedSource::Const(_) => {}
+    };
+    match derivation {
+        FieldDerivation::Pda { seeds, .. } => {
+            for seed in seeds {
+                source(seed, roots);
+            }
+        }
+        FieldDerivation::Ata {
+            authority, mint, ..
+        } => {
+            source(authority, roots);
+            source(mint, roots);
+        }
+    }
+}
+
+/// The derived fields a derivation reads directly, in first-use order.
+pub(crate) fn direct_derived_deps<'p>(derivation: &FieldDerivation<'p>) -> Vec<&'p syn::Ident> {
+    let mut deps: Vec<&'p syn::Ident> = Vec::new();
+    let mut visit = |source: &SeedSource<'p>| {
+        if let SeedSource::DerivedAccount(ident) = source {
+            if !deps.contains(ident) {
+                deps.push(ident);
+            }
+        }
+    };
+    match derivation {
+        FieldDerivation::Pda { seeds, .. } => seeds.iter().for_each(&mut visit),
+        FieldDerivation::Ata {
+            authority, mint, ..
+        } => {
+            visit(authority);
+            visit(mint);
+        }
+    }
+    deps
 }
 
 fn is_address_type(ty: &syn::Type) -> bool {
@@ -319,72 +491,9 @@ fn is_value_seed_type(ty: &syn::Type) -> bool {
     }
 }
 
-/// The hidden associated fn deriving one PDA field's address.
+/// The hidden associated fn deriving one field's address.
 pub(crate) fn pda_address_fn(field: &syn::Ident) -> syn::Ident {
     format_ident!("__quasar_pda_{}", field)
-}
-
-/// A client-derivable associated token account field.
-///
-/// The derive stays protocol-neutral on-chain; this is a client-codegen
-/// convention: a behavior group whose path ends in `associated_token` and
-/// maps `authority` + `mint` to plain account fields derives the address
-/// through the behavior module's `client_address` fn. `token_program` joins
-/// when it maps to a `Program<T>` field (its canonical const), and defaults
-/// inside the behavior otherwise.
-pub(crate) struct DerivableAta<'p> {
-    pub behavior_path: &'p syn::Path,
-    pub authority: &'p syn::Ident,
-    pub mint: &'p syn::Ident,
-    pub token_program: Option<&'p syn::Ident>,
-}
-
-pub(crate) fn client_derivable_ata<'p>(
-    plan: &'p crate::accounts::resolve::specs::AccountsPlanTyped,
-    fp: &'p crate::accounts::resolve::specs::FieldPlan,
-) -> Option<DerivableAta<'p>> {
-    use crate::accounts::resolve::specs::IdlResolverPlan;
-    if fp.idl_resolver.is_some() {
-        return None;
-    }
-    let group = fp
-        .behaviors
-        .iter()
-        .find(|group| group.name.ends_with("associated_token"))?;
-    let arg = |key: &str| {
-        group
-            .idl_account_args
-            .iter()
-            .find(|arg| arg.key == key)
-            .map(|arg| &arg.field_ident)
-    };
-    let plain_field = |ident: &syn::Ident| {
-        plan.fields.iter().any(|other| {
-            other.ident == *ident
-                && fixed_address_expr(other).is_none()
-                && !matches!(other.idl_resolver, Some(IdlResolverPlan::Pda { .. }))
-        })
-    };
-    let fixed_field = |ident: &syn::Ident| {
-        plan.fields
-            .iter()
-            .any(|other| other.ident == *ident && fixed_address_expr(other).is_some())
-    };
-    let authority = arg("authority").filter(|f| plain_field(f))?;
-    let mint = arg("mint").filter(|f| plain_field(f))?;
-    let token_program = match arg("token_program") {
-        Some(field) if fixed_field(field) => Some(field),
-        // An explicit token program the client cannot resolve statically
-        // (e.g. an interface field) keeps the ATA field.
-        Some(_) => return None,
-        None => None,
-    };
-    Some(DerivableAta {
-        behavior_path: &group.path,
-        authority,
-        mint,
-        token_program,
-    })
 }
 
 /// The canonical-address expression for a `Program<T>`/`Sysvar<T>` field,
