@@ -137,6 +137,8 @@ impl<P> From<&str> for DynBytes<P> {
     }
 }
 
+// SAFETY: `size_of` returns exactly the byte count `write` emits
+// (prefix plus payload), which is wincode's `SchemaWrite` contract.
 unsafe impl<P, C: ConfigCore> SchemaWrite<C> for DynBytes<P>
 where
     UseIntLen<P>: SeqLen<C>,
@@ -154,6 +156,8 @@ where
     }
 }
 
+// SAFETY: `read` fully initializes `dst` before returning Ok, which is
+// wincode's `SchemaRead` contract.
 unsafe impl<'de, P, C: ConfigCore> SchemaRead<'de, C> for DynBytes<P>
 where
     UseIntLen<P>: SeqLen<C>,
@@ -230,6 +234,8 @@ impl<P> From<Vec<u8>> for DynString<P> {
     }
 }
 
+// SAFETY: `size_of` returns exactly the byte count `write` emits
+// (prefix plus payload), which is wincode's `SchemaWrite` contract.
 unsafe impl<P, C: ConfigCore> SchemaWrite<C> for DynString<P>
 where
     UseIntLen<P>: SeqLen<C>,
@@ -245,6 +251,8 @@ where
     }
 }
 
+// SAFETY: `read` fully initializes `dst` before returning Ok, which is
+// wincode's `SchemaRead` contract.
 unsafe impl<'de, P, C: ConfigCore> SchemaRead<'de, C> for DynString<P>
 where
     UseIntLen<P>: SeqLen<C>,
@@ -309,6 +317,8 @@ impl<T: Clone, P> From<&[T]> for DynVec<T, P> {
     }
 }
 
+// SAFETY: `size_of` returns exactly the byte count `write` emits
+// (prefix plus payload), which is wincode's `SchemaWrite` contract.
 unsafe impl<T, P, C: ConfigCore> SchemaWrite<C> for DynVec<T, P>
 where
     T: SchemaWrite<C, Src = T>,
@@ -333,6 +343,8 @@ where
     }
 }
 
+// SAFETY: `read` fully initializes `dst` before returning Ok, which is
+// wincode's `SchemaRead` contract.
 unsafe impl<'de, T, P, C: ConfigCore> SchemaRead<'de, C> for DynVec<T, P>
 where
     T: SchemaRead<'de, C, Dst = T>,

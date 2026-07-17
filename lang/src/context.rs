@@ -23,6 +23,11 @@ use crate::{
 /// The entrypoint owns the 32-byte program-id storage for the entire
 /// instruction, so the returned reference is valid for `'input`. This avoids
 /// copying the program ID into a stack-local `Address` on every dispatch path.
+///
+/// # Safety
+///
+/// The caller must ensure the borrow of `bytes` outlives every use of the
+/// returned `&Address`.
 #[inline(always)]
 unsafe fn as_address(bytes: &[u8; 32]) -> &Address {
     // SAFETY: `Address` is a transparent 32-byte address type and `bytes`

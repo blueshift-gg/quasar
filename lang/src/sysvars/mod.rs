@@ -37,6 +37,10 @@ macro_rules! impl_sysvar_get {
     ($syscall_id:expr, $padding:literal) => {
         const ID: solana_address::Address = $syscall_id;
 
+        /// # Safety
+        ///
+        /// The caller must ensure `bytes` holds at least
+        /// `size_of::<Self>()` bytes of valid sysvar data.
         #[inline(always)]
         unsafe fn from_bytes_unchecked(bytes: &[u8]) -> &Self {
             // SAFETY: Caller guarantees `bytes` contains valid sysvar data

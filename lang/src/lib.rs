@@ -325,7 +325,7 @@ pub mod __internal {
             "parse_account_dup: input pointer is not 8-byte aligned"
         );
         let raw = input as *mut RuntimeAccount;
-        // SAFETY: the header is the four flag bytes at the 8-aligned start of a
+        // SAFETY: the header is the first four bytes at the 8-aligned start of a
         // valid account/dup entry, so the aligned u32 read is in-bounds.
         let actual_header = unsafe { *(raw as *const u32) };
 
@@ -400,6 +400,10 @@ pub mod __internal {
                 // Optional None uses the program id as a sentinel. Repeated
                 // sentinels may be serialized as SVM duplicate entries, but
                 // they are not aliases of a real user account.
+                //
+                // SAFETY: `idx < offset` (checked above), so `base[idx]` is
+                // an initialized slot per this fn's contract; `base[offset]`
+                // is writable; a dup entry is exactly `DUP_ENTRY_SIZE` bytes.
                 let orig_view = unsafe { core::ptr::read(base.add(idx)) };
                 if crate::keys_eq(orig_view.address(), program_id) {
                     unsafe { core::ptr::write(base.add(offset), orig_view) };
@@ -411,6 +415,8 @@ pub mod __internal {
                     return Err(ProgramError::AccountBorrowFailed);
                 }
 
+                // SAFETY: `base[offset]` is writable per this fn's contract;
+                // a dup entry is exactly `DUP_ENTRY_SIZE` bytes.
                 unsafe { core::ptr::write(base.add(offset), orig_view) };
                 let input = unsafe { input.add(DUP_ENTRY_SIZE) };
                 return Ok(input);

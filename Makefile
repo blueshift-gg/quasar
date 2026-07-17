@@ -69,7 +69,7 @@ TYPESCRIPT_TEST_DIR := testing/typescript
 
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
 	check-runtime-panics check-workspace-invariants check-test-silence \
-	check-suite-oracles check-license-policy \
+	check-suite-oracles check-unsafe-policy check-license-policy \
 	check-package-metadata check-readme-crate-inventory check-release-train \
 	build build-sbf test test-bless \
 	test-host-inventory test-host test-sbf-host test-quasar-test-standalone \
@@ -237,6 +237,12 @@ check-runtime-panics:
 	  exit 1; \
 	fi
 
+# Every unsafe site carries its soundness argument (STYLE.md): SAFETY
+# comments name preconditions, unsafe fns carry # Safety contracts.
+check-unsafe-policy:
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_check_unsafe_policy.py
+	@python3 scripts/check-unsafe-policy.py
+
 # Rejection tests pin the exact error (TESTING.md): bare is_err() cannot
 # distinguish "the right check fired" from "an earlier check masked a broken
 # one". Allowlist (with reasons) lives in the script.
@@ -264,7 +270,7 @@ check-test-silence:
 
 check-workspace-invariants: check-license-policy check-package-metadata \
 	check-readme-crate-inventory check-release-train check-test-silence \
-	check-suite-oracles
+	check-suite-oracles check-unsafe-policy
 	@check_allowed() { \
 	  local desc="$$1" pattern="$$2"; shift 2; \
 	  local allowed=("$$@") matches; \

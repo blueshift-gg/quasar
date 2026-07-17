@@ -7,7 +7,9 @@ runtime it targets (`lang/`), the accounts pipeline phases, and the enforced
 layer contracts — read [`ARCHITECTURE.md`](./ARCHITECTURE.md) first. Test
 requirements — the suite layers, the per-feature test contract, and the
 assertion rules every test must follow — live in
-[`TESTING.md`](./TESTING.md).
+[`TESTING.md`](./TESTING.md). Code style — the unsafe discipline, layout
+and constant rules, and the register runtime code is written in — lives in
+[`STYLE.md`](./STYLE.md).
 
 ## How to help
 

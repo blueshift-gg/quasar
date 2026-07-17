@@ -75,6 +75,8 @@ where
     const NEEDS_EVENT_CPI: bool = N > 0 && T::NEEDS_EVENT_CPI;
 }
 
+// SAFETY: delegates group-by-group to `T`'s impl, initializing all
+// `T::COUNT * N` slots and advancing `input` past every consumed entry.
 unsafe impl<T, const N: usize> ParseAccountsRaw for AccountsArray<T, N>
 where
     T: ParseAccountsRaw,
@@ -152,6 +154,9 @@ where
     }
 }
 
+// SAFETY: splits the exact-length slice into `N` chunks of `T::COUNT`
+// and delegates each to `T`'s impl; the caller's length contract makes
+// every split in-bounds.
 unsafe impl<'input, T, const N: usize> ParseAccountsUnchecked<'input> for AccountsArray<T, N>
 where
     T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + AccountCount,

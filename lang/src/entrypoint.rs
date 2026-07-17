@@ -89,11 +89,10 @@ macro_rules! heap_alloc {
             /// - `self.start` must point to a valid heap cursor (usize at heap start).
             /// - The SVM zero-inits the heap region and the entrypoint writes the
             ///   initial cursor value before any allocation.
-            /// - Re-entrancy is forbidden by the SVM, so no aliasing can occur.
-            /// - `alloc_zeroed` delegates to `alloc` because the SVM heap is
-            ///   pre-zeroed.
-            /// - `dealloc` is a no-op; bump allocators do not free individual
-            ///   allocations.
+            // SAFETY:
+            // - Re-entrancy is forbidden by the SVM, so no aliasing can occur.
+            // - `alloc_zeroed` delegates to `alloc` because the SVM heap is pre-zeroed.
+            // - `dealloc` is a no-op; bump allocators do not free individual allocations.
             #[allow(clippy::arithmetic_side_effects)]
             unsafe impl alloc::alloc::GlobalAlloc for BumpAllocator {
                 #[inline]
