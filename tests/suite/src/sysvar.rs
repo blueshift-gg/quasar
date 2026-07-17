@@ -25,12 +25,7 @@ fn test_read_clock_syscall() {
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
     let (snapshot, _) = Address::find_program_address(&[b"clock"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
-    let instruction: Instruction = ReadClockInstruction {
-        payer,
-        snapshot,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = ReadClockInstruction { payer }.into();
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -59,12 +54,7 @@ fn test_read_clock_default_slot() {
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
     let (snapshot, _) = Address::find_program_address(&[b"clock"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
-    let instruction: Instruction = ReadClockInstruction {
-        payer,
-        snapshot,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = ReadClockInstruction { payer }.into();
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -91,12 +81,7 @@ fn test_read_rent_syscall() {
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
     let (snapshot, _) = Address::find_program_address(&[b"rent"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
-    let instruction: Instruction = ReadRentInstruction {
-        payer,
-        snapshot,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = ReadRentInstruction { payer }.into();
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -142,7 +127,6 @@ fn test_read_clock_from_account() {
     let instruction: Instruction = ReadClockFromAccountInstruction {
         _payer: payer,
         snapshot,
-        clock,
     }
     .into();
     let result = mollusk.process_instruction(
@@ -172,12 +156,7 @@ fn test_clock_custom_slot() {
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
     let (snapshot, _) = Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
-    let instruction: Instruction = ReadClockFullInstruction {
-        payer,
-        snapshot,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = ReadClockFullInstruction { payer }.into();
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -207,12 +186,7 @@ fn test_clock_unix_timestamp() {
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
     let (snapshot, _) = Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
-    let instruction: Instruction = ReadClockFullInstruction {
-        payer,
-        snapshot,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = ReadClockFullInstruction { payer }.into();
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -240,12 +214,7 @@ fn test_clock_epoch() {
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
     let (snapshot, _) = Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
-    let instruction: Instruction = ReadClockFullInstruction {
-        payer,
-        snapshot,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = ReadClockFullInstruction { payer }.into();
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -273,12 +242,7 @@ fn test_clock_epoch_start_timestamp() {
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
     let (snapshot, _) = Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
-    let instruction: Instruction = ReadClockFullInstruction {
-        payer,
-        snapshot,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = ReadClockFullInstruction { payer }.into();
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -309,12 +273,7 @@ fn test_clock_leader_schedule_epoch() {
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
     let (snapshot, _) = Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
-    let instruction: Instruction = ReadClockFullInstruction {
-        payer,
-        snapshot,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = ReadClockFullInstruction { payer }.into();
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -346,12 +305,7 @@ fn test_clock_all_fields() {
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
     let (snapshot, _) = Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
-    let instruction: Instruction = ReadClockFullInstruction {
-        payer,
-        snapshot,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = ReadClockFullInstruction { payer }.into();
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -396,12 +350,7 @@ fn test_clock_large_values() {
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
     let (snapshot, _) = Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
-    let instruction: Instruction = ReadClockFullInstruction {
-        payer,
-        snapshot,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = ReadClockFullInstruction { payer }.into();
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -436,13 +385,7 @@ fn test_rent_lamports_per_byte() {
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
     let (snapshot, _) = Address::find_program_address(&[b"rent_calc"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
-    let instruction: Instruction = ReadRentCalcInstruction {
-        payer,
-        snapshot,
-        system_program,
-        data_len: 1,
-    }
-    .into();
+    let instruction: Instruction = ReadRentCalcInstruction { payer, data_len: 1 }.into();
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -479,12 +422,7 @@ fn test_clock_syscall_vs_account_consistent() {
     let payer_account = Account::new(1_000_000_000, 0, &system_program);
     let (snapshot, _) = Address::find_program_address(&[b"clock_full"], &quasar_test_sysvar::ID);
     let snapshot_account = Account::default();
-    let instruction: Instruction = ReadClockFullInstruction {
-        payer,
-        snapshot,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = ReadClockFullInstruction { payer }.into();
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -513,7 +451,6 @@ fn test_clock_syscall_vs_account_consistent() {
     let instruction: Instruction = ReadClockFullFromAccountInstruction {
         _payer: payer,
         snapshot,
-        clock,
     }
     .into();
     let result = mollusk.process_instruction(
@@ -567,14 +504,20 @@ fn test_read_clock_rejects_spoofed_sysvar_account() {
     let (mollusk, payer, payer_account, snapshot, snapshot_account) =
         spoof_setup(CLOCK_SNAPSHOT_SIZE, 1);
     let fake_clock = Address::new_unique();
-    let (_, real_clock_account) = mollusk.sysvars.keyed_account_for_clock_sysvar();
+    let (real_clock, real_clock_account) = mollusk.sysvars.keyed_account_for_clock_sysvar();
 
-    let instruction: Instruction = ReadClockFromAccountInstruction {
+    // The client fills the canonical sysvar address; spoof the meta on
+    // purpose.
+    let mut instruction: Instruction = ReadClockFromAccountInstruction {
         _payer: payer,
         snapshot,
-        clock: fake_clock,
     }
     .into();
+    for meta in &mut instruction.accounts {
+        if meta.pubkey == real_clock {
+            meta.pubkey = fake_clock;
+        }
+    }
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -601,14 +544,20 @@ fn test_read_clock_full_rejects_spoofed_sysvar_account() {
     let (mollusk, payer, payer_account, snapshot, snapshot_account) =
         spoof_setup(CLOCK_FULL_SNAPSHOT_SIZE, 3);
     let fake_clock = Address::new_unique();
-    let (_, real_clock_account) = mollusk.sysvars.keyed_account_for_clock_sysvar();
+    let (real_clock, real_clock_account) = mollusk.sysvars.keyed_account_for_clock_sysvar();
 
-    let instruction: Instruction = ReadClockFullFromAccountInstruction {
+    // The client fills the canonical sysvar address; spoof the meta on
+    // purpose.
+    let mut instruction: Instruction = ReadClockFullFromAccountInstruction {
         _payer: payer,
         snapshot,
-        clock: fake_clock,
     }
     .into();
+    for meta in &mut instruction.accounts {
+        if meta.pubkey == real_clock {
+            meta.pubkey = fake_clock;
+        }
+    }
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -636,13 +585,7 @@ fn test_rent_minimum_balance_matches_rent_sysvar() {
 
     for data_len in [0u64, 100, 10_000] {
         let payer = Address::new_unique();
-        let instruction: Instruction = ReadRentCalcInstruction {
-            payer,
-            snapshot,
-            system_program,
-            data_len,
-        }
-        .into();
+        let instruction: Instruction = ReadRentCalcInstruction { payer, data_len }.into();
         let result = mollusk.process_instruction(
             &instruction,
             &[

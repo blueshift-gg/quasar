@@ -1,10 +1,12 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 #![allow(dead_code)]
 
 use quasar_lang::prelude::*;
 
 mod instructions;
 use instructions::*;
+#[cfg(test)]
+mod dx_tests;
 pub mod errors;
 pub mod state;
 declare_id!("44444444444444444444444444444444444444444444");

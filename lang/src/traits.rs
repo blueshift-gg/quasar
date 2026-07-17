@@ -317,6 +317,29 @@ pub trait HasSeeds {
     const SEED_PREFIX: &'static [u8];
     /// Number of dynamic seed arguments (excluding prefix and bump).
     const SEED_DYNAMIC_COUNT: usize;
+    /// The generated `{Name}SeedSetWithBump` type, nameable through the
+    /// account type from any scope (generated signer helpers return it).
+    type WithBump<'seed>;
+}
+
+/// Owned type of one `#[seeds(...)]` dynamic parameter, by position.
+///
+/// Implemented by: seeds codegen for each dynamic seed.
+/// Used by: generated clients to type stored-data seed inputs.
+pub trait SeedParam<const INDEX: usize> {
+    /// The parameter's owned form (`Address`, integer, or byte array).
+    type Ty;
+}
+
+/// Generic access to a seed set's raw slices (prefix + dynamic seeds, no
+/// bump).
+///
+/// Implemented by: the `{Name}SeedSet` type generated from `#[seeds(...)]`.
+/// Used by: off-chain helpers (`quasar-test`) to derive PDA addresses from
+/// the same seed definition the program validates against.
+pub trait SeedSlices {
+    /// Call `f` with this seed set's slices.
+    fn with_slices<R>(&self, f: impl FnOnce(&[&[u8]]) -> R) -> R;
 }
 
 /// Marker trait for account view types that are `#[repr(transparent)]` over

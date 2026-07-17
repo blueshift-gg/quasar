@@ -152,6 +152,13 @@ pub(crate) fn error_code_inner(_attr: TokenStream2, item: TokenStream2) -> Token
             }
         }
 
+        impl From<#name> for u32 {
+            #[inline(always)]
+            fn from(e: #name) -> Self {
+                e as u32
+            }
+        }
+
         impl TryFrom<u32> for #name {
             type Error = #krate::__solana_program_error::ProgramError;
 

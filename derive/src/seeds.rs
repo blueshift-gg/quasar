@@ -180,6 +180,19 @@ pub(crate) fn generate_seeds_impl(
         .iter()
         .map(|param| param.ty.to_stored_expr(&param.name))
         .collect();
+    let owned_param_types: Vec<_> = seeds_attr
+        .params
+        .iter()
+        .map(|param| param.ty.owned_param_type())
+        .collect();
+    let owned_seed_args: Vec<_> = seeds_attr
+        .params
+        .iter()
+        .map(|param| param.ty.owned_to_seed_arg(&param.name))
+        .collect();
+    let seed_indices: Vec<_> = (0..seeds_attr.params.len())
+        .map(|index| quote! { #index })
+        .collect();
 
     let slice_exprs: Vec<_> = {
         let mut slices = Vec::new();
@@ -231,6 +244,7 @@ pub(crate) fn generate_seeds_impl(
             const HAS_SEED_PREFIX: bool = #has_prefix;
             const SEED_PREFIX: &'static [u8] = &[#(#prefix_bytes),*];
             const SEED_DYNAMIC_COUNT: usize = #dynamic_count;
+            type WithBump<'__quasar_seed> = #seed_set_bump<'__quasar_seed>;
         }
 
         /// Zero-copy seed storage (without bump).
@@ -255,7 +269,23 @@ pub(crate) fn generate_seeds_impl(
                     #phantom_init
                 }
             }
+
+            /// Derive this PDA's canonical address from owned seed values.
+            #[inline]
+            #vis fn find_address(
+                #( #param_names: #owned_param_types, )*
+                program_id: &#krate::prelude::Address,
+            ) -> #krate::prelude::Address {
+                let seeds = Self::seeds(#(#owned_seed_args),*);
+                #krate::pda::find_program_address_const(&seeds.as_slices(), program_id).0
+            }
         }
+
+        #(
+            impl #impl_generics #krate::traits::SeedParam<#seed_indices> for #name #ty_generics #where_clause {
+                type Ty = #owned_param_types;
+            }
+        )*
 
         impl<'__quasar_seed> #seed_set<'__quasar_seed> {
             #[inline(always)]
@@ -272,10 +302,28 @@ pub(crate) fn generate_seeds_impl(
             }
         }
 
+        impl<'__quasar_seed> #krate::traits::SeedSlices for #seed_set<'__quasar_seed> {
+            #[inline(always)]
+            fn with_slices<R>(&self, f: impl FnOnce(&[&[u8]]) -> R) -> R {
+                f(&self.as_slices())
+            }
+        }
+
         impl<'__quasar_seed> #seed_set_bump<'__quasar_seed> {
             #[inline(always)]
             pub fn as_slices(&self) -> [&[u8]; #n_slices_with_bump] {
                 [ #( #slice_exprs_bump ),* ]
+            }
+
+            /// Materialize the signer-seed array once.
+            ///
+            /// `invoke_signed(&set)` rebuilds the array on every call (the
+            /// pointer escapes into the syscall, so the rebuild cannot be
+            /// elided). Bind this before signing several CPIs to pay the
+            /// construction cost once.
+            #[inline(always)]
+            pub fn signer_seeds(&self) -> [#krate::cpi::Seed<'_>; #n_slices_with_bump] {
+                [ #( #krate::cpi::Seed::from(#slice_exprs_bump) ),* ]
             }
         }
 

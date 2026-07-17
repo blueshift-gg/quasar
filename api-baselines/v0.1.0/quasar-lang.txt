@@ -1410,6 +1410,8 @@ pub quasar_lang::error::QuasarError::RemainingAccountsOverflow = 3015
 pub quasar_lang::error::QuasarError::ReturnDataFromWrongProgram = 3018
 impl core::convert::From<quasar_lang::error::QuasarError> for solana_program_error::ProgramError
 pub fn solana_program_error::ProgramError::from(quasar_lang::error::QuasarError) -> Self
+impl core::convert::From<quasar_lang::error::QuasarError> for u32
+pub fn u32::from(quasar_lang::error::QuasarError) -> Self
 impl core::convert::TryFrom<u32> for quasar_lang::error::QuasarError
 pub type quasar_lang::error::QuasarError::Error = solana_program_error::ProgramError
 pub fn quasar_lang::error::QuasarError::try_from(u32) -> core::result::Result<Self, Self::Error>
@@ -1850,6 +1852,7 @@ pub trait quasar_lang::prelude::internal::Discriminator
 pub const quasar_lang::prelude::internal::Discriminator::BUMP_OFFSET: core::option::Option<usize>
 pub const quasar_lang::prelude::internal::Discriminator::DISCRIMINATOR: &'static [u8]
 pub trait quasar_lang::prelude::internal::HasSeeds
+pub type quasar_lang::prelude::internal::HasSeeds::WithBump<'seed>
 pub const quasar_lang::prelude::internal::HasSeeds::HAS_SEED_PREFIX: bool
 pub const quasar_lang::prelude::internal::HasSeeds::SEED_DYNAMIC_COUNT: usize
 pub const quasar_lang::prelude::internal::HasSeeds::SEED_PREFIX: &'static [u8]
@@ -2144,6 +2147,8 @@ pub quasar_lang::prelude::QuasarError::RemainingAccountsOverflow = 3015
 pub quasar_lang::prelude::QuasarError::ReturnDataFromWrongProgram = 3018
 impl core::convert::From<quasar_lang::error::QuasarError> for solana_program_error::ProgramError
 pub fn solana_program_error::ProgramError::from(quasar_lang::error::QuasarError) -> Self
+impl core::convert::From<quasar_lang::error::QuasarError> for u32
+pub fn u32::from(quasar_lang::error::QuasarError) -> Self
 impl core::convert::TryFrom<u32> for quasar_lang::error::QuasarError
 pub type quasar_lang::error::QuasarError::Error = solana_program_error::ProgramError
 pub fn quasar_lang::error::QuasarError::try_from(u32) -> core::result::Result<Self, Self::Error>
@@ -2984,6 +2989,7 @@ pub const quasar_lang::prelude::Event::DISCRIMINATOR: &'static [u8]
 pub fn quasar_lang::prelude::Event::emit(&self, impl core::ops::function::FnOnce(&[u8]) -> core::result::Result<(), solana_program_error::ProgramError>) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::prelude::Event::write_data(&self, &mut [u8])
 pub trait quasar_lang::prelude::HasSeeds
+pub type quasar_lang::prelude::HasSeeds::WithBump<'seed>
 pub const quasar_lang::prelude::HasSeeds::HAS_SEED_PREFIX: bool
 pub const quasar_lang::prelude::HasSeeds::SEED_DYNAMIC_COUNT: usize
 pub const quasar_lang::prelude::HasSeeds::SEED_PREFIX: &'static [u8]
@@ -3252,6 +3258,7 @@ pub const quasar_lang::traits::Event::DISCRIMINATOR: &'static [u8]
 pub fn quasar_lang::traits::Event::emit(&self, impl core::ops::function::FnOnce(&[u8]) -> core::result::Result<(), solana_program_error::ProgramError>) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::traits::Event::write_data(&self, &mut [u8])
 pub trait quasar_lang::traits::HasSeeds
+pub type quasar_lang::traits::HasSeeds::WithBump<'seed>
 pub const quasar_lang::traits::HasSeeds::HAS_SEED_PREFIX: bool
 pub const quasar_lang::traits::HasSeeds::SEED_DYNAMIC_COUNT: usize
 pub const quasar_lang::traits::HasSeeds::SEED_PREFIX: &'static [u8]
@@ -3285,6 +3292,10 @@ pub fn quasar_lang::accounts::AccountsArray<T, N>::parse(&'input mut [solana_acc
 pub fn quasar_lang::accounts::AccountsArray<T, N>::parse_with_instruction_data(&'input mut [solana_account_view::AccountView], &[u8], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 pub trait quasar_lang::traits::ProgramInterface
 pub fn quasar_lang::traits::ProgramInterface::matches(&solana_address::Address) -> bool
+pub trait quasar_lang::traits::SeedParam<const INDEX: usize>
+pub type quasar_lang::traits::SeedParam::Ty
+pub trait quasar_lang::traits::SeedSlices
+pub fn quasar_lang::traits::SeedSlices::with_slices<R>(&self, impl core::ops::function::FnOnce(&[&[u8]]) -> R) -> R
 pub trait quasar_lang::traits::Space
 pub const quasar_lang::traits::Space::SPACE: usize
 impl<T: quasar_lang::traits::Space> quasar_lang::traits::Space for quasar_lang::accounts::Account<T>

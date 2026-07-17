@@ -14,14 +14,11 @@ fn init_token_spl_happy() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitTokenInstruction {
         payer,
         token_account: token_key,
         mint: mint_key,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -48,14 +45,11 @@ fn init_token_spl_already_initialized() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitTokenInstruction {
         payer,
         token_account: token_key,
         mint: mint_key,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -80,14 +74,11 @@ fn init_token_t22_happy() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = token_2022_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitTokenT22Instruction {
         payer,
         token_account: token_key,
         mint: mint_key,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -114,14 +105,11 @@ fn init_token_t22_already_initialized() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = token_2022_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitTokenT22Instruction {
         payer,
         token_account: token_key,
         mint: mint_key,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -146,15 +134,12 @@ fn init_if_needed_token_spl_happy_new() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction = with_signers(
         InitIfNeededTokenInstruction {
             payer,
             token_account: token_key,
             mint: mint_key,
-            token_program,
-            system_program,
         }
         .into(),
         &[1],
@@ -185,14 +170,11 @@ fn init_if_needed_token_spl_existing_valid() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitIfNeededTokenInstruction {
         payer,
         token_account: token_key,
         mint: mint_key,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -231,14 +213,11 @@ fn init_if_needed_token_spl_existing_wrong_mint() {
     let wrong_mint = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitIfNeededTokenInstruction {
         payer,
         token_account: token_key,
         mint: mint_key,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -262,14 +241,11 @@ fn init_if_needed_token_spl_existing_wrong_authority() {
     let wrong_authority = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitIfNeededTokenInstruction {
         payer,
         token_account: token_key,
         mint: mint_key,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -292,14 +268,11 @@ fn init_if_needed_token_spl_existing_wrong_owner() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitIfNeededTokenInstruction {
         payer,
         token_account: token_key,
         mint: mint_key,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -331,15 +304,12 @@ fn init_if_needed_token_t22_happy_new() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = token_2022_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction = with_signers(
         InitIfNeededTokenT22Instruction {
             payer,
             token_account: token_key,
             mint: mint_key,
-            token_program,
-            system_program,
         }
         .into(),
         &[1],

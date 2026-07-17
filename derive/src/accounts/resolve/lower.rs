@@ -342,6 +342,21 @@ fn resolve_seed_ref(expr: &Expr, scope: &SeedScope) -> SeedRef {
         }
     }
 
+    // `field.accessor()` — a no-arg zero-copy accessor reading stored data
+    // off an account field, equivalent to the `field.member` form below.
+    if let Expr::MethodCall(call) = expr {
+        if call.args.is_empty() && call.method != "address" {
+            if let Some(base) = single_ident(&call.receiver) {
+                if scope.field_with_inner.contains(&base.to_string()) {
+                    return SeedRef::AccountField {
+                        base,
+                        path: call.method.to_string(),
+                    };
+                }
+            }
+        }
+    }
+
     // `field.member` (possibly nested) read off an account field that carries an
     // inner type; without an inner type the IDL cannot name the account, so it
     // degrades to `Const` exactly as the old resolver did.

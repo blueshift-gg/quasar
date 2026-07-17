@@ -16,7 +16,6 @@ fn close_spl() {
         authority,
         account: account_key,
         destination: authority,
-        token_program,
     }
     .into();
 
@@ -46,7 +45,6 @@ fn close_t22() {
         authority,
         account: account_key,
         destination: authority,
-        token_program,
     }
     .into();
 
@@ -110,7 +108,6 @@ fn close_rejects_non_zero_balance() {
         authority,
         account: account_key,
         destination: authority,
-        token_program,
     }
     .into();
     let result = svm.process_instruction(
@@ -137,7 +134,6 @@ fn close_rejects_wrong_owner() {
         authority,
         account: account_key,
         destination: authority,
-        token_program,
     }
     .into();
     let result = svm.process_instruction(

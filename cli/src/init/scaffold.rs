@@ -658,67 +658,36 @@ fn test_initialize() {{
 "#
             )
         }
-        (RustFramework::QuasarSVM, Template::Minimal) => r#"use quasar_test::prelude::*;
+        (RustFramework::QuasarSVM, Template::Minimal) => {
+            r#"use {crate::cpi::InitializeInstruction, quasar_test::prelude::*};
 
-fn initialize_instruction(payer: Pubkey) -> Instruction {
-    Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            AccountMeta::new_readonly(payer, true),
-        ],
-        data: vec![0],
-    }
-}
-
-quasar_test! {
-    fn test_initialize(q) {
-        let payer = q.actor();
-        q.send(initialize_instruction(payer)).succeeds();
-    }
+#[quasar_test]
+fn initialize(q: &mut QuasarTest) {
+    let payer = q.actor();
+    q.send(InitializeInstruction { payer }).succeeds();
 }
 "#
-        .to_string(),
-        (RustFramework::QuasarSVM, Template::Full) => r#"use quasar_test::prelude::*;
+            .to_string()
+        }
+        (RustFramework::QuasarSVM, Template::Full) => r#"use {
+    crate::{cpi::InitializeInstruction, state::MyAccount},
+    quasar_test::prelude::*,
+};
 
 const VALUE: u64 = 42;
-const MY_ACCOUNT_SIZE: usize = 107;
 
-fn initialize_instruction(payer: Pubkey, my_account: Pubkey) -> Instruction {
-    let mut data = vec![0];
-    data.extend_from_slice(&VALUE.to_le_bytes());
-    Instruction {
-        program_id: crate::ID,
-        accounts: vec![
-            AccountMeta::new(payer, true),
-            AccountMeta::new(my_account, false),
-            AccountMeta::new_readonly(
-                quasar_test::quasar_svm::system_program::ID,
-                false,
-            ),
-        ],
-        data,
-    }
-}
+#[quasar_test]
+fn initialize(q: &mut QuasarTest) {
+    let payer = q.actor();
+    let (my_account, bump) = q.pda_with_bump(MyAccount::seeds(&payer));
 
-quasar_test! {
-    fn test_initialize(q) {
-        let payer = q.actor();
-        let (my_account, bump) =
-            Pubkey::find_program_address(&[b"my-account", payer.as_ref()], &crate::ID);
-        q.empty(my_account);
+    q.send(InitializeInstruction { payer, value: VALUE }).succeeds();
 
-        let result = q.send(initialize_instruction(payer, my_account));
-        result.succeeds();
-        let stored = result.account(&my_account).expect("initialized state account");
-        assert_eq!(stored.owner, crate::ID);
-        assert_eq!(stored.data.len(), MY_ACCOUNT_SIZE);
-        assert_eq!(stored.data[0], 1, "discriminator");
-        assert_eq!(stored.data[1], 1, "version");
-        assert_eq!(&stored.data[2..34], payer.as_ref(), "authority");
-        assert_eq!(&stored.data[34..42], &VALUE.to_le_bytes(), "value");
-        assert_eq!(stored.data[42], bump, "bump");
-        assert!(stored.data[43..].iter().all(|byte| *byte == 0), "reserved");
-    }
+    let state = q.read::<MyAccount>(my_account);
+    assert_eq!(state.version, 1);
+    assert_eq!(state.authority, payer);
+    assert_eq!(state.value, VALUE);
+    assert_eq!(state.bump, bump);
 }
 "#
         .to_string(),
@@ -1051,7 +1020,8 @@ mod tests {
 
     #[test]
     fn full_templates_generate_stateful_tests_without_changing_minimal_tests() {
-        for framework in [RustFramework::Mollusk, RustFramework::QuasarSVM] {
+        {
+            let framework = RustFramework::Mollusk;
             let full = generate_tests_rs("demo", framework, Template::Full, Toolchain::Solana);
             assert!(full.contains("my-account"));
             assert!(full.contains("MY_ACCOUNT_SIZE"));
@@ -1061,13 +1031,23 @@ mod tests {
                 generate_tests_rs("demo", framework, Template::Minimal, Toolchain::Solana);
             assert!(!minimal.contains("my-account"));
             assert!(!minimal.contains("MY_ACCOUNT_SIZE"));
+        }
 
-            if matches!(framework, RustFramework::QuasarSVM) {
-                assert!(full.contains("quasar_test!"));
-                assert!(full.contains("q.send("));
-                assert!(!full.contains("fixtures::"));
-                assert!(minimal.contains("let payer = q.actor();"));
-            }
+        {
+            let framework = RustFramework::QuasarSVM;
+            let full = generate_tests_rs("demo", framework, Template::Full, Toolchain::Solana);
+            assert!(full.contains("#[quasar_test]"));
+            assert!(full.contains("q.pda_with_bump(MyAccount::seeds(&payer))"));
+            assert!(full.contains("q.send(InitializeInstruction {"));
+            assert!(full.contains("q.read::<MyAccount>(my_account)"));
+            assert!(!full.contains("fixtures::"));
+            assert!(!full.contains("data["), "no raw-byte state assertions");
+
+            let minimal =
+                generate_tests_rs("demo", framework, Template::Minimal, Toolchain::Solana);
+            assert!(minimal.contains("#[quasar_test]"));
+            assert!(minimal.contains("let payer = q.actor();"));
+            assert!(!minimal.contains("MyAccount"));
         }
 
         for sdk in [TypeScriptSdk::Kit, TypeScriptSdk::Web3js] {

@@ -13,7 +13,7 @@ fn has_one_success() {
     let (account, bump) =
         Pubkey::find_program_address(&[b"simple", authority.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = UpdateHasOneInstruction { authority, account }.into();
+    let ix: Instruction = UpdateHasOneInstruction { authority }.into();
     let result = svm.process_instruction(
         &ix,
         &[
@@ -32,11 +32,13 @@ fn has_one_mismatch() {
     let (account, bump) =
         Pubkey::find_program_address(&[b"simple", real_authority.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = UpdateHasOneInstruction {
+    // The client derives the PDA from the passed authority; point the meta
+    // back at the real account.
+    let mut ix: Instruction = UpdateHasOneInstruction {
         authority: wrong_authority,
-        account,
     }
     .into();
+    ix.accounts[1].pubkey = account;
     let result = svm.process_instruction(
         &ix,
         &[
@@ -61,7 +63,7 @@ fn has_one_zeroed_authority() {
     let (account, bump) =
         Pubkey::find_program_address(&[b"simple", authority.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = UpdateHasOneInstruction { authority, account }.into();
+    let ix: Instruction = UpdateHasOneInstruction { authority }.into();
     // Stored authority is zeroed
     let result = svm.process_instruction(
         &ix,
@@ -88,7 +90,7 @@ fn has_one_single_bit_diff() {
     bad_bytes[0] ^= 1;
     let bad_authority = Pubkey::from(bad_bytes);
 
-    let ix: Instruction = UpdateHasOneInstruction { authority, account }.into();
+    let ix: Instruction = UpdateHasOneInstruction { authority }.into();
     let result = svm.process_instruction(
         &ix,
         &[
@@ -114,7 +116,7 @@ fn has_one_last_byte_diff() {
     bad_bytes[31] ^= 0xFF;
     let bad_authority = Pubkey::from(bad_bytes);
 
-    let ix: Instruction = UpdateHasOneInstruction { authority, account }.into();
+    let ix: Instruction = UpdateHasOneInstruction { authority }.into();
     let result = svm.process_instruction(
         &ix,
         &[
@@ -139,11 +141,13 @@ fn has_one_default_passed() {
     );
 
     // Passed authority = default, stored = real
-    let ix: Instruction = UpdateHasOneInstruction {
+    // The client derives the PDA from the passed authority; point the meta
+    // back at the real account.
+    let mut ix: Instruction = UpdateHasOneInstruction {
         authority: default_authority,
-        account,
     }
     .into();
+    ix.accounts[1].pubkey = account;
     let result = svm.process_instruction(
         &ix,
         &[

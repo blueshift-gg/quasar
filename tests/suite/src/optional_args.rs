@@ -180,7 +180,6 @@ fn optional_dynamic_args_some_some_use_compact_tail_payloads() {
 #[test]
 fn optional_dynamic_generated_client_uses_compact_header_then_tail_layout() {
     let ix: Instruction = OptionalDynamicArgInstruction {
-        program: quasar_test_misc::ID,
         maybe_name: Some(DynString::<u8>::from("quasar")),
         maybe_addrs: Some(DynVec::<Pubkey, u16>::from(vec![
             quasar_test_misc::EXPECTED_ADDRESS,

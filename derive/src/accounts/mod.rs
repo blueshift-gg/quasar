@@ -163,6 +163,20 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
         &ty_generics_ts,
         &where_clause_ts,
     );
+    let fixed_address_impl = emit_fixed_address_constants(
+        name,
+        &typed_plan,
+        &impl_generics_ts,
+        &ty_generics_ts,
+        &where_clause_ts,
+    );
+    let pda_address_impl = emit_pda_address_fns(
+        name,
+        &typed_plan,
+        &impl_generics_ts,
+        &ty_generics_ts,
+        &where_clause_ts,
+    );
 
     // IDL accounts meta fragment (feature-gated behind `idl-build`)
     let idl_accounts_meta = emit_idl_accounts_meta(name, &typed_plan);
@@ -209,6 +223,8 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
     quote::quote! {
         #main_output
         #signer_meta_impl
+        #fixed_address_impl
+        #pda_address_impl
         #idl_accounts_meta
         #idl_validation_meta
         #event_cpi_impl
@@ -236,6 +252,174 @@ fn emit_account_signer_constants(
         impl #impl_generics #name #ty_generics #where_clause {
             #[doc(hidden)]
             pub const __QUASAR_ACCOUNT_SIGNERS: [bool; #count] = [#(#signers),*];
+        }
+    }
+}
+
+/// Resolve `Program<T>`/`Sysvar<T>` canonical addresses where those types are
+/// in scope. The exported client macro reads them through the accounts type
+/// (same mechanism as `__QUASAR_ACCOUNT_SIGNERS`), so its instruction struct
+/// can drop the fields entirely.
+fn emit_fixed_address_constants(
+    name: &syn::Ident,
+    plan: &resolve::specs::AccountsPlanTyped,
+    impl_generics: &proc_macro2::TokenStream,
+    ty_generics: &proc_macro2::TokenStream,
+    where_clause: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
+    let consts: Vec<proc_macro2::TokenStream> = plan
+        .fields
+        .iter()
+        .filter_map(|field| {
+            let expr = crate::client_macro::fixed_address_expr(field)?;
+            let ident = crate::client_macro::fixed_address_const(&field.ident);
+            Some(quote! {
+                #[doc(hidden)]
+                pub const #ident: #krate::prelude::Address = #expr;
+            })
+        })
+        .collect();
+    if consts.is_empty() {
+        return quote! {};
+    }
+    quote! {
+        #[allow(non_upper_case_globals)]
+        impl #impl_generics #name #ty_generics #where_clause {
+            #(#consts)*
+        }
+    }
+}
+
+/// Resolve typed-seeds PDA addresses where the seed types are in scope. The
+/// exported client macro calls these through the accounts type, so its
+/// instruction struct can drop every client-derivable PDA field.
+fn emit_pda_address_fns(
+    name: &syn::Ident,
+    plan: &resolve::specs::AccountsPlanTyped,
+    impl_generics: &proc_macro2::TokenStream,
+    ty_generics: &proc_macro2::TokenStream,
+    where_clause: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    use crate::client_macro::{
+        derivation_roots, direct_derived_deps, field_derivation, DeriveRoot, FieldDerivation,
+        SeedSource,
+    };
+    let krate = crate::krate::lang_path();
+    let source_arg = |source: &SeedSource| match source {
+        // Plain accounts and Address args are `&Address` parameters; derived
+        // accounts are `let` locals holding an owned `Address`.
+        SeedSource::PlainAccount(i) | SeedSource::ArgRef(i) => quote! { #i },
+        SeedSource::DerivedAccount(i) => quote! { &#i },
+        SeedSource::ArgValue(i, _) => quote! { #i },
+        SeedSource::Const(expr) => quote! { #expr },
+        SeedSource::FieldValue { .. } => unreachable!("FieldValue routes through find_address"),
+    };
+    // `find_address` takes every seed by value.
+    let owned_source_arg = |source: &SeedSource| match source {
+        SeedSource::PlainAccount(i) | SeedSource::ArgRef(i) => quote! { *#i },
+        SeedSource::DerivedAccount(i) => quote! { #i },
+        SeedSource::ArgValue(i, _) => quote! { #i },
+        SeedSource::FieldValue { input, .. } => quote! { #input },
+        SeedSource::Const(_) => unreachable!("Const excluded when FieldValue present"),
+    };
+    let fns: Vec<proc_macro2::TokenStream> = plan
+        .fields
+        .iter()
+        .filter_map(|field| {
+            let derivation = field_derivation(plan, field, &mut Vec::new())?;
+            let fn_ident = crate::client_macro::pda_address_fn(&field.ident);
+            let roots = derivation_roots(plan, &derivation);
+            let params = roots.iter().map(|root| match root {
+                DeriveRoot::Account(i) | DeriveRoot::ArgRef(i) => {
+                    quote! { #i: &#krate::prelude::Address }
+                }
+                DeriveRoot::ArgValue(i, ty) => quote! { #i: #ty },
+                DeriveRoot::SeedInput { input, alias } => quote! { #input: #alias },
+            });
+            // Chained derivations: materialize each directly-read derived
+            // field by calling its own fn with the shared root parameters.
+            let deps = direct_derived_deps(&derivation);
+            let lets = deps.iter().map(|dep| {
+                let dep_field = plan
+                    .fields
+                    .iter()
+                    .find(|other| other.ident == **dep)
+                    .expect("derived dep exists");
+                let dep_derivation = field_derivation(plan, dep_field, &mut Vec::new())
+                    .expect("derived dep re-resolves");
+                let dep_fn = crate::client_macro::pda_address_fn(dep);
+                let dep_args = derivation_roots(plan, &dep_derivation)
+                    .into_iter()
+                    .map(|root| {
+                        let ident = root.ident();
+                        quote! { #ident }
+                    });
+                quote! { let #dep = Self::#dep_fn(#(#dep_args,)* program_id); }
+            });
+            let tail = match &derivation {
+                FieldDerivation::Pda { account_ty, seeds } => {
+                    if seeds
+                        .iter()
+                        .any(|seed| matches!(seed, SeedSource::FieldValue { .. }))
+                    {
+                        let args = seeds.iter().map(owned_source_arg);
+                        quote! { <#account_ty>::find_address(#(#args,)* program_id) }
+                    } else {
+                        let args = seeds.iter().map(source_arg);
+                        quote! {
+                            let seeds = <#account_ty>::seeds(#(#args),*);
+                            #krate::pda::find_program_address_const(&seeds.as_slices(), program_id).0
+                        }
+                    }
+                }
+                FieldDerivation::Ata {
+                    behavior_path,
+                    authority,
+                    mint,
+                    token_program,
+                } => {
+                    let authority = source_arg(authority);
+                    let mint = source_arg(mint);
+                    let token_program = match token_program {
+                        crate::client_macro::BehaviorProgramArg::Fixed(field) => {
+                            let const_ident = crate::client_macro::fixed_address_const(field);
+                            quote! { Some(&Self::#const_ident) }
+                        }
+                        crate::client_macro::BehaviorProgramArg::Field(field) => {
+                            quote! { Some(#field) }
+                        }
+                        crate::client_macro::BehaviorProgramArg::Default => quote! { None },
+                    };
+                    quote! { #behavior_path::client_address(#authority, #mint, #token_program) }
+                }
+            };
+            // A leaf ATA never reads `program_id`; chained and PDA forms do.
+            let program_param =
+                if deps.is_empty() && matches!(derivation, FieldDerivation::Ata { .. }) {
+                    quote! { _program_id: &#krate::prelude::Address }
+                } else {
+                    quote! { program_id: &#krate::prelude::Address }
+                };
+            Some(quote! {
+                #[doc(hidden)]
+                #[inline]
+                pub fn #fn_ident(
+                    #(#params,)*
+                    #program_param,
+                ) -> #krate::prelude::Address {
+                    #(#lets)*
+                    #tail
+                }
+            })
+        })
+        .collect();
+    if fns.is_empty() {
+        return quote! {};
+    }
+    quote! {
+        impl #impl_generics #name #ty_generics #where_clause {
+            #(#fns)*
         }
     }
 }
@@ -406,6 +590,11 @@ fn emit_idl_accounts_meta(
                 quote! { #krate::idl_build::__reexport::IdlResolver::Input {} }
             } else {
                 let field_ty = &fp.effective_ty;
+                let field_names: Vec<String> = plan
+                    .fields
+                    .iter()
+                    .map(|other| crate::helpers::snake_to_camel(&other.ident.to_string()))
+                    .collect();
                 let candidates = fp.behaviors.iter().map(|behavior| {
                     let path = &behavior.path;
                     let args = behavior.idl_account_args.iter().map(|arg| {
@@ -417,6 +606,7 @@ fn emit_idl_accounts_meta(
                         #krate::idl_build::behavior_resolver(
                             <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>>::IDL_RESOLVER,
                             &[#(#args),*],
+                            &[#(#field_names),*],
                         )
                     }
                 });
@@ -613,6 +803,7 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
             let field_name = &fp.ident;
             let signer_helper = fp.signer_helper.as_ref()?;
             let addr_expr = &signer_helper.addr_expr;
+            let set_ty = &signer_helper.set_ty;
             let method_name = format_ident!("{}_signer", field_name);
             if has_instruction_args {
                 Some(quote! {
@@ -623,7 +814,7 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
                         bumps: &'__quasar_seed #bumps_name,
                         data: &'__quasar_seed [u8],
                     ) -> Result<
-                        impl #krate::cpi::CpiSignerSeeds + '__quasar_seed,
+                        <#set_ty as #krate::traits::HasSeeds>::WithBump<'__quasar_seed>,
                         #krate::prelude::ProgramError,
                     > {
                         let __ix_data = data;
@@ -639,7 +830,7 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
                     pub fn #method_name<'__quasar_seed>(
                         &'__quasar_seed self,
                         bumps: &'__quasar_seed #bumps_name,
-                    ) -> impl #krate::cpi::CpiSignerSeeds + '__quasar_seed {
+                    ) -> <#set_ty as #krate::traits::HasSeeds>::WithBump<'__quasar_seed> {
                         #(#field_refs)*
                         #addr_expr.with_bump(bumps.#field_name)
                     }

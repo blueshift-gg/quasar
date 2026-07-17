@@ -117,7 +117,10 @@ pub(crate) struct BehaviorGroupRef {
 
 pub(crate) struct BehaviorIdlAccountArg {
     pub key: String,
+    /// camelCase field name for IDL resolution.
     pub field: String,
+    /// The referenced field's original identifier, for client codegen.
+    pub field_ident: Ident,
 }
 
 /// Plain program account init (no behavior: system program create +
@@ -226,6 +229,9 @@ pub(crate) enum IdlSeedPlan {
 /// `FieldPlan::ident`.
 pub(crate) struct SignerHelperPlan {
     pub addr_expr: Expr,
+    /// The seeds-owning account type; the helper returns its concrete
+    /// `HasSeeds::WithBump` set so callers reach `signer_seeds`.
+    pub set_ty: Path,
 }
 
 /// Instruction-wide rent resolution.

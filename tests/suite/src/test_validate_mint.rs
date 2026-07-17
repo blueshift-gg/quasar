@@ -57,7 +57,6 @@ fn mint_spl_happy() {
     let instruction: Instruction = ValidateMintCheckInstruction {
         mint: mint_key,
         mint_authority: authority,
-        token_program,
     }
     .into();
 
@@ -82,7 +81,6 @@ fn mint_spl_wrong_authority() {
     let instruction: Instruction = ValidateMintCheckInstruction {
         mint: mint_key,
         mint_authority: authority,
-        token_program,
     }
     .into();
 
@@ -106,7 +104,6 @@ fn mint_spl_wrong_decimals() {
     let instruction: Instruction = ValidateMintCheckInstruction {
         mint: mint_key,
         mint_authority: authority,
-        token_program,
     }
     .into();
 
@@ -125,12 +122,10 @@ fn mint_spl_wrong_owner() {
     let mut svm = svm_validate();
     let authority = Pubkey::new_unique();
     let mint_key = Pubkey::new_unique();
-    let token_program = spl_token_program_id();
 
     let instruction: Instruction = ValidateMintCheckInstruction {
         mint: mint_key,
         mint_authority: authority,
-        token_program,
     }
     .into();
 
@@ -161,7 +156,6 @@ fn mint_spl_uninitialized() {
     let instruction: Instruction = ValidateMintCheckInstruction {
         mint: mint_key,
         mint_authority: authority,
-        token_program,
     }
     .into();
 
@@ -185,7 +179,6 @@ fn mint_spl_data_too_small() {
     let instruction: Instruction = ValidateMintCheckInstruction {
         mint: mint_key,
         mint_authority: authority,
-        token_program,
     }
     .into();
 
@@ -211,7 +204,6 @@ fn mint_t22_happy() {
     let instruction: Instruction = ValidateMint2022CheckInstruction {
         mint: mint_key,
         mint_authority: authority,
-        token_program,
     }
     .into();
 
@@ -417,7 +409,6 @@ fn mint_no_program_happy() {
     let instruction: Instruction = ValidateMintNoProgramInstruction {
         mint: mint_key,
         mint_authority: authority,
-        token_program: quasar_spl::SPL_TOKEN_ID,
     }
     .into();
 
@@ -442,7 +433,6 @@ fn mint_no_program_wrong_authority() {
     let instruction: Instruction = ValidateMintNoProgramInstruction {
         mint: mint_key,
         mint_authority: authority,
-        token_program: quasar_spl::SPL_TOKEN_ID,
     }
     .into();
 
@@ -466,7 +456,6 @@ fn mint_no_program_wrong_decimals() {
     let instruction: Instruction = ValidateMintNoProgramInstruction {
         mint: mint_key,
         mint_authority: authority,
-        token_program: quasar_spl::SPL_TOKEN_ID,
     }
     .into();
 
@@ -494,7 +483,6 @@ fn mint_spl_freeze_happy() {
         mint: mint_key,
         mint_authority: authority,
         freeze_authority: freeze_auth,
-        token_program,
     }
     .into();
 
@@ -522,7 +510,6 @@ fn mint_spl_freeze_wrong_freeze_authority() {
         mint: mint_key,
         mint_authority: authority,
         freeze_authority: freeze_auth,
-        token_program,
     }
     .into();
 
@@ -549,7 +536,6 @@ fn mint_spl_freeze_missing_on_chain() {
         mint: mint_key,
         mint_authority: authority,
         freeze_authority: freeze_auth,
-        token_program,
     }
     .into();
 
@@ -579,7 +565,6 @@ fn mint_t22_freeze_happy() {
         mint: mint_key,
         mint_authority: authority,
         freeze_authority: freeze_auth,
-        token_program,
     }
     .into();
 

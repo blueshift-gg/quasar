@@ -13,13 +13,7 @@ fn fresh_account() {
     let (account, _bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = InitializeInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let ix: Instruction = InitializeInstruction { payer, value: 42 }.into();
 
     let result =
         svm.process_instruction(&ix, &[rich_signer_account(payer), empty_account(account)]);
@@ -40,13 +34,7 @@ fn prefunded_partial_rent() {
     let (account, _bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = InitializeInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 7,
-    }
-    .into();
+    let ix: Instruction = InitializeInstruction { payer, value: 7 }.into();
 
     // Account has some lamports but less than rent-exempt minimum
     let prefund = 500_000u64;
@@ -92,13 +80,7 @@ fn prefunded_excess_rent() {
     let (account, _bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = InitializeInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 7,
-    }
-    .into();
+    let ix: Instruction = InitializeInstruction { payer, value: 7 }.into();
 
     // Account already has more than enough lamports
     let result = svm.process_instruction(
@@ -123,33 +105,17 @@ fn after_close() {
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
     // First init
-    let ix1: Instruction = InitializeInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let ix1: Instruction = InitializeInstruction { payer, value: 42 }.into();
     let r1 = svm.process_instruction(&ix1, &[rich_signer_account(payer), empty_account(account)]);
     assert!(r1.is_ok(), "first init: {:?}", r1.raw_result);
 
     // Close
-    let ix2: Instruction = CloseAccountInstruction {
-        authority: payer,
-        account,
-    }
-    .into();
+    let ix2: Instruction = CloseAccountInstruction { authority: payer }.into();
     let r2 = svm.process_instruction(&ix2, &[]);
     assert!(r2.is_ok(), "close: {:?}", r2.raw_result);
 
     // Re-init
-    let ix3: Instruction = InitializeInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 99,
-    }
-    .into();
+    let ix3: Instruction = InitializeInstruction { payer, value: 99 }.into();
     let r3 = svm.process_instruction(&ix3, &[]);
     assert!(r3.is_ok(), "re-init: {:?}", r3.raw_result);
 
@@ -164,13 +130,7 @@ fn space_override() {
     let (account, _bump) =
         Pubkey::find_program_address(&[b"spacetest", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = SpaceOverrideInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let ix: Instruction = SpaceOverrideInstruction { payer, value: 42 }.into();
 
     let result =
         svm.process_instruction(&ix, &[rich_signer_account(payer), empty_account(account)]);
@@ -187,13 +147,7 @@ fn explicit_payer() {
     let (account, _bump) =
         Pubkey::find_program_address(&[b"explicit", funder.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = ExplicitPayerInstruction {
-        funder,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let ix: Instruction = ExplicitPayerInstruction { funder, value: 42 }.into();
 
     let result =
         svm.process_instruction(&ix, &[rich_signer_account(funder), empty_account(account)]);
@@ -213,13 +167,7 @@ fn already_initialized() {
     let (account, bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = InitializeInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let ix: Instruction = InitializeInstruction { payer, value: 42 }.into();
 
     // Account already owned by program with valid data
     let result = svm.process_instruction(
@@ -240,13 +188,7 @@ fn owned_by_other_program() {
     let (account, _bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = InitializeInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let ix: Instruction = InitializeInstruction { payer, value: 42 }.into();
 
     // Account owned by random program
     let result = svm.process_instruction(
@@ -270,13 +212,7 @@ fn payer_not_signer() {
     let (account, _bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let mut ix: Instruction = InitializeInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let mut ix: Instruction = InitializeInstruction { payer, value: 42 }.into();
     ix.accounts[0].is_signer = false;
 
     let result =
@@ -292,13 +228,7 @@ fn payer_insufficient_funds() {
     let (account, _bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = InitializeInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let ix: Instruction = InitializeInstruction { payer, value: 42 }.into();
 
     // Payer with only 1 lamport
     let result = svm.process_instruction(
@@ -324,13 +254,10 @@ fn wrong_pda_seeds() {
     let payer = Pubkey::new_unique();
     let wrong_account = Pubkey::new_unique(); // not a valid PDA
 
-    let ix: Instruction = InitializeInstruction {
-        payer,
-        account: wrong_account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let mut ix: Instruction = InitializeInstruction { payer, value: 42 }.into();
+    // The client derives the canonical PDA meta; repoint it at the address
+    // under test.
+    ix.accounts[1].pubkey = wrong_account;
 
     let result = svm.process_instruction(
         &ix,
@@ -348,13 +275,7 @@ fn zero_data_owned_by_program() {
     let (account, _bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = InitializeInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let ix: Instruction = InitializeInstruction { payer, value: 42 }.into();
 
     // All-zero data but owned by our program
     let result = svm.process_instruction(
@@ -378,13 +299,7 @@ fn prefunded_exact_no_topup() {
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
     let payer_lamports = 10_000_000_000u64;
-    let ix: Instruction = InitializeInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 7,
-    }
-    .into();
+    let ix: Instruction = InitializeInstruction { payer, value: 7 }.into();
 
     // Pre-fund with 10 SOL, well above rent-exempt minimum, so no transfer CPI.
     let result = svm.process_instruction(
@@ -418,13 +333,7 @@ fn prefunded_one_lamport() {
     let (account, _bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = InitializeInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 7,
-    }
-    .into();
+    let ix: Instruction = InitializeInstruction { payer, value: 7 }.into();
 
     // Pre-fund with just 1 lamport; payer must top up almost all rent.
     let result = svm.process_instruction(

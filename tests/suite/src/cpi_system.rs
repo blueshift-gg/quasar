@@ -16,7 +16,6 @@ fn create_success() {
     let ix: Instruction = CreateAccountTestInstruction {
         payer,
         new_account,
-        system_program: quasar_svm::system_program::ID,
         lamports: 1_000_000,
         space: 100,
         owner,
@@ -45,7 +44,6 @@ fn create_zero_space() {
     let ix: Instruction = CreateAccountTestInstruction {
         payer,
         new_account,
-        system_program: quasar_svm::system_program::ID,
         lamports: 890_880, // rent for 0 bytes
         space: 0,
         owner,
@@ -69,7 +67,6 @@ fn create_large_space() {
     let ix: Instruction = CreateAccountTestInstruction {
         payer,
         new_account,
-        system_program: quasar_svm::system_program::ID,
         lamports: 100_000_000,
         space: 10_000,
         owner,
@@ -94,7 +91,6 @@ fn create_insufficient_funds() {
     let ix: Instruction = CreateAccountTestInstruction {
         payer,
         new_account,
-        system_program: quasar_svm::system_program::ID,
         lamports: 100_000_000,
         space: 100,
         owner: Pubkey::new_unique(),
@@ -129,7 +125,6 @@ fn transfer_success() {
     let ix: Instruction = TransferTestInstruction {
         from,
         to,
-        system_program: quasar_svm::system_program::ID,
         amount: 500_000,
     }
     .into();
@@ -147,7 +142,6 @@ fn transfer_zero() {
     let ix: Instruction = TransferTestInstruction {
         from,
         to,
-        system_program: quasar_svm::system_program::ID,
         amount: 0,
     }
     .into();
@@ -166,7 +160,6 @@ fn transfer_full_balance() {
     let ix: Instruction = TransferTestInstruction {
         from,
         to,
-        system_program: quasar_svm::system_program::ID,
         amount: balance,
     }
     .into();
@@ -198,7 +191,6 @@ fn transfer_to_self_borrow_fail() {
     let ix: Instruction = TransferTestInstruction {
         from: account,
         to: account,
-        system_program: quasar_svm::system_program::ID,
         amount: 100,
     }
     .into();
@@ -224,7 +216,6 @@ fn assign_success() {
 
     let ix: Instruction = AssignTestInstruction {
         account,
-        system_program: quasar_svm::system_program::ID,
         owner: new_owner,
     }
     .into();
@@ -243,7 +234,6 @@ fn assign_to_system_program() {
 
     let ix: Instruction = AssignTestInstruction {
         account,
-        system_program: quasar_svm::system_program::ID,
         owner: quasar_svm::system_program::ID,
     }
     .into();
@@ -261,7 +251,6 @@ fn transfer_rejects_insufficient_funds() {
     let ix: Instruction = TransferTestInstruction {
         from,
         to,
-        system_program: quasar_svm::system_program::ID,
         amount: 500_000,
     }
     .into();
@@ -291,7 +280,6 @@ fn transfer_rejects_missing_signer() {
     let mut ix: Instruction = TransferTestInstruction {
         from,
         to,
-        system_program: quasar_svm::system_program::ID,
         amount: 500_000,
     }
     .into();

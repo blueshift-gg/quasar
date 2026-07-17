@@ -6,7 +6,6 @@ edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-test = false
 doctest = false
 
 [lints]
@@ -21,3 +20,6 @@ idl-build = ["quasar-lang/idl-build"]
 [dependencies]
 quasar-lang = { path = "../../../lang" }
 quasar-derive = { path = "../../../derive" }
+
+[dev-dependencies]
+quasar-test = { path = "../../../testing" }

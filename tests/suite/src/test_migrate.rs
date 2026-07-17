@@ -45,7 +45,6 @@ fn migrate_v1_to_v2() {
 
     let ix: Instruction = MigrateConfigInstruction {
         payer,
-        system_program: quasar_svm::system_program::ID,
         config,
         authority,
     }
@@ -112,7 +111,6 @@ fn assert_migration_zeroes_padding(source_size: usize) {
 
     let ix: Instruction = MigratePaddedInstruction {
         payer,
-        system_program: quasar_svm::system_program::ID,
         config,
         authority: new_authority,
         value: 777,
@@ -194,7 +192,6 @@ fn migrate_wrong_authority_fails() {
 
     let ix: Instruction = MigrateConfigInstruction {
         payer,
-        system_program: quasar_svm::system_program::ID,
         config,
         authority: wrong_authority,
     }
@@ -221,7 +218,6 @@ fn migrate_with_config(config_state: quasar_svm::Account) -> quasar_svm::Executi
 
     let ix: Instruction = MigrateConfigInstruction {
         payer,
-        system_program: quasar_svm::system_program::ID,
         config,
         authority,
     }

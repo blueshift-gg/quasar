@@ -17,10 +17,6 @@ fn derive_metadata_pda(mint: &Pubkey) -> Pubkey {
     Pubkey::from(addr.to_bytes())
 }
 
-fn rent_sysvar() -> Pubkey {
-    Pubkey::from(Address::from_str_const("SysvarRent111111111111111111111111111111111").to_bytes())
-}
-
 fn derive_master_edition_pda(mint: &Pubkey) -> Pubkey {
     let program = Address::new_from_array(METADATA_PROGRAM_BYTES);
     let (addr, _) = Address::find_program_address(
@@ -234,7 +230,6 @@ fn metadata_check_happy() {
     let meta_key = derive_metadata_pda(&mint);
 
     let instruction: Instruction = ValidateMetadataCheckInstruction {
-        metadata_program: metadata_program_id(),
         mint,
         metadata: meta_key,
     }
@@ -261,7 +256,6 @@ fn metadata_check_wrong_mint_in_data() {
     let meta_key = derive_metadata_pda(&mint);
 
     let instruction: Instruction = ValidateMetadataCheckInstruction {
-        metadata_program: metadata_program_id(),
         mint,
         metadata: meta_key,
     }
@@ -286,7 +280,6 @@ fn metadata_check_wrong_pda() {
     let wrong_key = Pubkey::new_unique();
 
     let instruction: Instruction = ValidateMetadataCheckInstruction {
-        metadata_program: metadata_program_id(),
         mint,
         metadata: wrong_key,
     }
@@ -314,7 +307,6 @@ fn metadata_with_ua_happy() {
     let meta_key = derive_metadata_pda(&mint);
 
     let instruction: Instruction = ValidateMetadataWithUaInstruction {
-        metadata_program: metadata_program_id(),
         mint,
         update_authority: ua,
         metadata: meta_key,
@@ -343,7 +335,6 @@ fn metadata_with_ua_wrong_authority() {
     let meta_key = derive_metadata_pda(&mint);
 
     let instruction: Instruction = ValidateMetadataWithUaInstruction {
-        metadata_program: metadata_program_id(),
         mint,
         update_authority: ua,
         metadata: meta_key,
@@ -372,7 +363,6 @@ fn master_edition_check_happy() {
     let me_key = derive_master_edition_pda(&mint);
 
     let instruction: Instruction = ValidateMasterEditionCheckInstruction {
-        metadata_program: metadata_program_id(),
         mint,
         master_edition: me_key,
     }
@@ -396,7 +386,6 @@ fn master_edition_check_wrong_pda() {
     let wrong_key = Pubkey::new_unique();
 
     let instruction: Instruction = ValidateMasterEditionCheckInstruction {
-        metadata_program: metadata_program_id(),
         mint,
         master_edition: wrong_key,
     }
@@ -429,9 +418,6 @@ fn init_metadata_happy() {
 
     let instruction: Instruction = InitMetadataTestInstruction {
         payer,
-        metadata_program: metadata_program_id(),
-        system_program: quasar_svm::system_program::ID,
-        rent: rent_sysvar(),
         mint: mint_key,
         mint_authority,
         update_authority,
@@ -474,13 +460,9 @@ fn init_master_edition_happy() {
     // Both metadata_account and master_edition are init'd by derive behaviors.
     let instruction: Instruction = InitMasterEditionTestInstruction {
         payer,
-        metadata_program: metadata_program_id(),
-        system_program: quasar_svm::system_program::ID,
-        rent: rent_sysvar(),
         mint: mint_key,
         update_authority,
         mint_authority,
-        token_program,
         metadata_account: meta_key,
         master_edition: me_key,
     }

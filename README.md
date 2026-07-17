@@ -125,6 +125,7 @@ and their clients are not published.
 | `quasar-schema` | `schema/` | Shared schema types for Quasar interfaces |
 | `quasar-spl` | `spl/` | SPL Token program CPI and zero-copy account types for the Quasar Solana framework |
 | `quasar-test` | `testing/` | Project-aware QuasarSVM testing utilities for Quasar programs |
+| `quasar-test-derive` | `testing/derive/` | Attribute macros for quasar-test |
 | `solana-compiler-builtins` | `solana-compiler-builtins/` | Compiler runtime builtins required by Quasar SBF programs |
 <!-- published-crate-inventory:end -->
 

@@ -11,7 +11,7 @@ fn success() {
     let (account, bump) =
         Pubkey::find_program_address(&[b"simple", authority.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = CloseAccountInstruction { authority, account }.into();
+    let ix: Instruction = CloseAccountInstruction { authority }.into();
 
     let result = svm.process_instruction(
         &ix,
@@ -45,7 +45,7 @@ fn lamports_transferred() {
     let account_lamports = 2_000_000u64;
     let authority_lamports = 1_000_000u64;
 
-    let ix: Instruction = CloseAccountInstruction { authority, account }.into();
+    let ix: Instruction = CloseAccountInstruction { authority }.into();
 
     let result = svm.process_instruction(
         &ix,
@@ -86,7 +86,7 @@ fn destination_balance_additive() {
     let x = 50_000_000u64;
     let y = 3_000_000u64;
 
-    let ix: Instruction = CloseAccountInstruction { authority, account }.into();
+    let ix: Instruction = CloseAccountInstruction { authority }.into();
 
     let result = svm.process_instruction(
         &ix,
@@ -121,11 +121,14 @@ fn wrong_authority() {
     let (account, bump) =
         Pubkey::find_program_address(&[b"simple", real_authority.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = CloseAccountInstruction {
+    // The client derives the PDA from the passed authority; point the meta
+    // back at the real account: wrong authority against it is the case under
+    // test.
+    let mut ix: Instruction = CloseAccountInstruction {
         authority: wrong_authority,
-        account,
     }
     .into();
+    ix.accounts[1].pubkey = account;
 
     let result = svm.process_instruction(
         &ix,
@@ -148,7 +151,7 @@ fn authority_not_signer() {
     let (account, bump) =
         Pubkey::find_program_address(&[b"simple", authority.as_ref()], &quasar_test_misc::ID);
 
-    let mut ix: Instruction = CloseAccountInstruction { authority, account }.into();
+    let mut ix: Instruction = CloseAccountInstruction { authority }.into();
     ix.accounts[0].is_signer = false;
 
     let result = svm.process_instruction(

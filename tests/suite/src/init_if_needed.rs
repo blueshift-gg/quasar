@@ -13,13 +13,7 @@ fn new_account() {
     let (account, _bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = InitIfNeededInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let ix: Instruction = InitIfNeededInstruction { payer, value: 42 }.into();
 
     let result =
         svm.process_instruction(&ix, &[rich_signer_account(payer), empty_account(account)]);
@@ -38,13 +32,7 @@ fn existing_valid() {
     let (account, bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = InitIfNeededInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 99,
-    }
-    .into();
+    let ix: Instruction = InitIfNeededInstruction { payer, value: 99 }.into();
 
     // Already initialized with correct owner/disc/size
     let result = svm.process_instruction(
@@ -64,13 +52,7 @@ fn existing_value_updated() {
     let (account, bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = InitIfNeededInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 99,
-    }
-    .into();
+    let ix: Instruction = InitIfNeededInstruction { payer, value: 99 }.into();
 
     let payer_lamports_before = 100_000_000_000u64;
     let account_lamports_before = 1_000_000u64;
@@ -111,13 +93,7 @@ fn new_prefunded() {
     let (account, _bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = InitIfNeededInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let ix: Instruction = InitIfNeededInstruction { payer, value: 42 }.into();
 
     // System-owned with lamports uses the pre-funded init path.
     let result = svm.process_instruction(
@@ -143,13 +119,7 @@ fn wrong_owner() {
     let (account, _bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = InitIfNeededInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let ix: Instruction = InitIfNeededInstruction { payer, value: 42 }.into();
 
     // Owned by random program (not system, not ours)
     let result = svm.process_instruction(
@@ -171,13 +141,7 @@ fn wrong_discriminator() {
     let (account, _bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = InitIfNeededInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let ix: Instruction = InitIfNeededInstruction { payer, value: 42 }.into();
 
     // Correct owner, wrong discriminator
     let mut data = vec![0u8; 42];
@@ -200,13 +164,7 @@ fn data_too_small() {
     let (account, _bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = InitIfNeededInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let ix: Instruction = InitIfNeededInstruction { payer, value: 42 }.into();
 
     // Correct owner + disc but data too small
     let mut data = vec![0u8; 10]; // too small (42 needed)
@@ -229,13 +187,7 @@ fn not_writable() {
     let (account, _bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let mut ix: Instruction = InitIfNeededInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let mut ix: Instruction = InitIfNeededInstruction { payer, value: 42 }.into();
     ix.accounts[1].is_writable = false;
 
     let result =
@@ -253,13 +205,7 @@ fn payer_insufficient_funds() {
     let (account, _bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = InitIfNeededInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let ix: Instruction = InitIfNeededInstruction { payer, value: 42 }.into();
 
     let result = svm.process_instruction(
         &ix,
@@ -294,13 +240,7 @@ fn front_running_attacker_data() {
     let (account, bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = InitIfNeededInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 99,
-    }
-    .into();
+    let ix: Instruction = InitIfNeededInstruction { payer, value: 99 }.into();
 
     // Account already initialized by "attacker" with correct owner, disc, and
     // size, but authority = attacker (not payer).

@@ -18,7 +18,6 @@ fn account_token_happy() {
         token_account: token_key,
         mint: mint_key,
         authority,
-        token_program,
     }
     .into();
 
@@ -46,7 +45,6 @@ fn account_token_wrong_mint() {
         token_account: token_key,
         mint: mint_key,
         authority,
-        token_program,
     }
     .into();
 
@@ -74,7 +72,6 @@ fn account_token_wrong_authority() {
         token_account: token_key,
         mint: mint_key,
         authority,
-        token_program,
     }
     .into();
 
@@ -101,7 +98,6 @@ fn account_token_wrong_owner() {
         token_account: token_key,
         mint: mint_key,
         authority,
-        token_program,
     }
     .into();
 
@@ -136,7 +132,6 @@ fn account_token_uninitialized() {
         token_account: token_key,
         mint: mint_key,
         authority,
-        token_program,
     }
     .into();
 
@@ -163,7 +158,6 @@ fn account_token_data_too_small() {
         token_account: token_key,
         mint: mint_key,
         authority,
-        token_program,
     }
     .into();
 
@@ -192,7 +186,6 @@ fn account_token2022_happy() {
         token_account: token_key,
         mint: mint_key,
         authority,
-        token_program,
     }
     .into();
 
@@ -456,7 +449,6 @@ fn no_program_happy() {
         token_account: token_key,
         mint: mint_key,
         authority,
-        token_program: quasar_spl::SPL_TOKEN_ID,
     }
     .into();
 
@@ -484,7 +476,6 @@ fn no_program_wrong_mint() {
         token_account: token_key,
         mint: mint_key,
         authority,
-        token_program: quasar_spl::SPL_TOKEN_ID,
     }
     .into();
 
@@ -512,7 +503,6 @@ fn no_program_wrong_authority() {
         token_account: token_key,
         mint: mint_key,
         authority,
-        token_program: quasar_spl::SPL_TOKEN_ID,
     }
     .into();
 

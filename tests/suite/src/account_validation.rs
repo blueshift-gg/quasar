@@ -285,9 +285,8 @@ fn system_account_owned_by_program() {
 #[test]
 fn program_success() {
     let mut svm = svm_errors();
-    let program = quasar_svm::system_program::ID;
+    let ix: Instruction = ProgramCheckInstruction {}.into();
 
-    let ix: Instruction = ProgramCheckInstruction { program }.into();
     let result = svm.process_instruction(&ix, &[]);
     assert!(result.is_ok(), "program check: {:?}", result.raw_result);
 }
@@ -296,8 +295,11 @@ fn program_success() {
 fn program_wrong_id() {
     let mut svm = svm_errors();
     let wrong = Pubkey::new_unique();
+    // The client fills the canonical Program<T> address; point the meta at a
+    // wrong executable on purpose.
+    let mut ix: Instruction = ProgramCheckInstruction {}.into();
+    ix.accounts[0].pubkey = wrong;
 
-    let ix: Instruction = ProgramCheckInstruction { program: wrong }.into();
     let result = svm.process_instruction(
         &ix,
         &[Account {
@@ -316,8 +318,8 @@ fn program_wrong_id() {
 fn program_not_executable() {
     let mut svm = svm_errors();
     let system = quasar_svm::system_program::ID;
+    let ix: Instruction = ProgramCheckInstruction {}.into();
 
-    let ix: Instruction = ProgramCheckInstruction { program: system }.into();
     let result = svm.process_instruction(
         &ix,
         &[Account {

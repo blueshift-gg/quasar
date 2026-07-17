@@ -2,6 +2,7 @@ impl ::quasar_lang::traits::HasSeeds for VaultPda {
     const HAS_SEED_PREFIX: bool = true;
     const SEED_PREFIX: &'static [u8] = &[118u8, 97u8, 117u8, 108u8, 116u8];
     const SEED_DYNAMIC_COUNT: usize = 1usize;
+    type WithBump<'__quasar_seed> = VaultPdaSeedSetWithBump<'__quasar_seed>;
 }
 /// Zero-copy seed storage (without bump).
 pub struct VaultPdaSeedSet<'__quasar_seed> {
@@ -21,6 +22,18 @@ impl VaultPda {
             _authority: authority,
         }
     }
+    /// Derive this PDA's canonical address from owned seed values.
+    #[inline]
+    pub fn find_address(
+        authority: ::quasar_lang::prelude::Address,
+        program_id: &::quasar_lang::prelude::Address,
+    ) -> ::quasar_lang::prelude::Address {
+        let seeds = Self::seeds(&authority);
+        ::quasar_lang::pda::find_program_address_const(&seeds.as_slices(), program_id).0
+    }
+}
+impl ::quasar_lang::traits::SeedParam<0usize> for VaultPda {
+    type Ty = ::quasar_lang::prelude::Address;
 }
 impl<'__quasar_seed> VaultPdaSeedSet<'__quasar_seed> {
     #[inline(always)]
@@ -35,10 +48,31 @@ impl<'__quasar_seed> VaultPdaSeedSet<'__quasar_seed> {
         [b"vault", self._authority.as_ref()]
     }
 }
+impl<'__quasar_seed> ::quasar_lang::traits::SeedSlices
+for VaultPdaSeedSet<'__quasar_seed> {
+    #[inline(always)]
+    fn with_slices<R>(&self, f: impl FnOnce(&[&[u8]]) -> R) -> R {
+        f(&self.as_slices())
+    }
+}
 impl<'__quasar_seed> VaultPdaSeedSetWithBump<'__quasar_seed> {
     #[inline(always)]
     pub fn as_slices(&self) -> [&[u8]; 3usize] {
         [b"vault", self.inner._authority.as_ref(), &self._bump]
+    }
+    /// Materialize the signer-seed array once.
+    ///
+    /// `invoke_signed(&set)` rebuilds the array on every call (the
+    /// pointer escapes into the syscall, so the rebuild cannot be
+    /// elided). Bind this before signing several CPIs to pay the
+    /// construction cost once.
+    #[inline(always)]
+    pub fn signer_seeds(&self) -> [::quasar_lang::cpi::Seed<'_>; 3usize] {
+        [
+            ::quasar_lang::cpi::Seed::from(b"vault"),
+            ::quasar_lang::cpi::Seed::from(self.inner._authority.as_ref()),
+            ::quasar_lang::cpi::Seed::from(&self._bump),
+        ]
     }
 }
 impl<'__quasar_seed> ::quasar_lang::cpi::CpiSignerSeeds

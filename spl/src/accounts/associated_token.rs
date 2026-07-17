@@ -11,11 +11,31 @@
 //! pub ata: Account<Token>,
 //! ```
 //!
-//! During initialization, fields named `system_program`, `ata_program`, or
-//! `associated_token_program` are inferred from the accounts struct. Explicit
-//! arguments remain available for non-standard field names.
+//! During initialization, fields named `token_program`, `system_program`,
+//! `ata_program`, or `associated_token_program` are inferred from the
+//! accounts struct. Explicit arguments remain available for non-standard
+//! field names.
 
 use quasar_lang::prelude::*;
+
+/// Derive the canonical associated token address for a generated client.
+///
+/// Called by client codegen for `associated_token` fields, so the
+/// instruction struct can drop them. `token_program` defaults to SPL Token
+/// when the accounts struct does not pin one.
+pub fn client_address(
+    authority: &Address,
+    mint: &Address,
+    token_program: Option<&Address>,
+) -> Address {
+    let token_program = token_program.unwrap_or(&crate::SPL_TOKEN_ID);
+    crate::associated_token::get_associated_token_address_with_program_const(
+        authority,
+        mint,
+        token_program,
+    )
+    .0
+}
 
 /// Resolved arguments for associated-token validation or initialization.
 pub struct Args<'a> {
@@ -111,7 +131,9 @@ impl<'a> quasar_lang::account_behavior::BehaviorArgsBuilder for ArgsBuilder<'a> 
         Ok(Args {
             mint: self.mint.ok_or(ProgramError::InvalidArgument)?,
             authority: self.authority.ok_or(ProgramError::InvalidArgument)?,
-            token_program: Some(self.token_program.ok_or(ProgramError::InvalidArgument)?),
+            // Left open for field-name inference; `set_init_param` rejects a
+            // still-unresolved token program.
+            token_program: self.token_program,
             system_program: self.system_program,
             ata_program: self.ata_program,
         })
@@ -167,9 +189,24 @@ macro_rules! impl_ata_behavior {
                 params: &mut <$wrapper as AccountInit>::InitParams<'a>,
                 args: &Args<'a>,
             ) -> Result<(), ProgramError> {
-                let tp = args.token_program.ok_or(ProgramError::InvalidArgument)?;
-                let sp = args.system_program.ok_or(ProgramError::InvalidArgument)?;
-                let ap = args.ata_program.ok_or(ProgramError::InvalidArgument)?;
+                let tp = args.token_program.ok_or_else(|| {
+                    #[cfg(feature = "debug")]
+                    quasar_lang::prelude::log(
+                        "associated_token init: no token_program (name a token_program field or \
+                         pass token_program = ...)",
+                    );
+                    ProgramError::InvalidArgument
+                })?;
+                let sp = args.system_program.ok_or_else(|| {
+                    #[cfg(feature = "debug")]
+                    quasar_lang::prelude::log("associated_token init: no system_program field");
+                    ProgramError::InvalidArgument
+                })?;
+                let ap = args.ata_program.ok_or_else(|| {
+                    #[cfg(feature = "debug")]
+                    quasar_lang::prelude::log("associated_token init: no ata_program field");
+                    ProgramError::InvalidArgument
+                })?;
                 *params = crate::token::TokenInitKind::AssociatedToken {
                     mint: args.mint,
                     authority: args.authority,
@@ -188,6 +225,9 @@ macro_rules! impl_ata_behavior {
             ) {
                 if KEY == SYSTEM_PROGRAM_ARG && args.system_program.is_none() {
                     args.system_program = Some(account);
+                }
+                if KEY == TOKEN_PROGRAM_ARG && args.token_program.is_none() {
+                    args.token_program = Some(account);
                 }
                 if (KEY == ATA_PROGRAM_ARG || KEY == ASSOCIATED_TOKEN_PROGRAM_ARG)
                     && args.ata_program.is_none()

@@ -18,10 +18,8 @@ fn ata_spl_happy() {
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
     let instruction: Instruction = ValidateAtaCheckInstruction {
-        ata: ata_key,
         mint: mint_key,
         wallet,
-        token_program,
     }
     .into();
 
@@ -45,13 +43,14 @@ fn ata_spl_wrong_address() {
     let token_program = spl_token_program_id();
     let wrong_ata = Pubkey::new_unique();
 
-    let instruction: Instruction = ValidateAtaCheckInstruction {
-        ata: wrong_ata,
+    let mut instruction: Instruction = ValidateAtaCheckInstruction {
         mint: mint_key,
         wallet,
-        token_program,
     }
     .into();
+    // The client derives the canonical ATA meta; repoint it at the address
+    // under test.
+    instruction.accounts[0].pubkey = wrong_ata;
 
     let result = svm.process_instruction(
         &instruction,
@@ -76,10 +75,8 @@ fn ata_spl_wrong_mint() {
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
     let instruction: Instruction = ValidateAtaCheckInstruction {
-        ata: ata_key,
         mint: mint_key,
         wallet,
-        token_program,
     }
     .into();
 
@@ -106,10 +103,8 @@ fn ata_spl_wrong_authority() {
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
     let instruction: Instruction = ValidateAtaCheckInstruction {
-        ata: ata_key,
         mint: mint_key,
         wallet,
-        token_program,
     }
     .into();
 
@@ -135,10 +130,8 @@ fn ata_spl_wrong_owner() {
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
     let instruction: Instruction = ValidateAtaCheckInstruction {
-        ata: ata_key,
         mint: mint_key,
         wallet,
-        token_program,
     }
     .into();
 
@@ -173,10 +166,8 @@ fn ata_t22_happy() {
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
     let instruction: Instruction = ValidateAta2022CheckInstruction {
-        ata: ata_key,
         mint: mint_key,
         wallet,
-        token_program,
     }
     .into();
 
@@ -204,7 +195,6 @@ fn ata_interface_spl_happy() {
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
     let instruction: Instruction = ValidateAtaInterfaceCheckInstruction {
-        ata: ata_key,
         mint: mint_key,
         wallet,
         token_program,
@@ -231,13 +221,15 @@ fn ata_interface_spl_wrong_address() {
     let token_program = spl_token_program_id();
     let wrong_ata = Pubkey::new_unique();
 
-    let instruction: Instruction = ValidateAtaInterfaceCheckInstruction {
-        ata: wrong_ata,
+    let mut instruction: Instruction = ValidateAtaInterfaceCheckInstruction {
         mint: mint_key,
         wallet,
         token_program,
     }
     .into();
+    // The client derives the canonical ATA meta; repoint it at the address
+    // under test.
+    instruction.accounts[0].pubkey = wrong_ata;
 
     let result = svm.process_instruction(
         &instruction,
@@ -262,7 +254,6 @@ fn ata_interface_spl_wrong_mint() {
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
     let instruction: Instruction = ValidateAtaInterfaceCheckInstruction {
-        ata: ata_key,
         mint: mint_key,
         wallet,
         token_program,
@@ -292,7 +283,6 @@ fn ata_interface_spl_wrong_authority() {
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
     let instruction: Instruction = ValidateAtaInterfaceCheckInstruction {
-        ata: ata_key,
         mint: mint_key,
         wallet,
         token_program,
@@ -321,7 +311,6 @@ fn ata_interface_spl_wrong_owner() {
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
     let instruction: Instruction = ValidateAtaInterfaceCheckInstruction {
-        ata: ata_key,
         mint: mint_key,
         wallet,
         token_program,
@@ -359,7 +348,6 @@ fn ata_interface_t22_happy() {
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
     let instruction: Instruction = ValidateAtaInterfaceCheckInstruction {
-        ata: ata_key,
         mint: mint_key,
         wallet,
         token_program,

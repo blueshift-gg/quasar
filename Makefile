@@ -37,9 +37,9 @@ SBF_ALL := $(SBF_EXAMPLES) $(SBF_TEST_PROGRAMS)
 
 # Public crates in dependency order. Keep this list aligned with the release
 # workflow; `package-check` proves the complete publication graph packages.
-PUBLISH_PACKAGES := quasar-schema quasar-idl-schema quasar-profile quasar-test \
-	solana-compiler-builtins quasar-derive quasar-idl quasar-lang \
-	quasar-spl quasar-metadata quasar-cli
+PUBLISH_PACKAGES := quasar-schema quasar-idl-schema quasar-profile \
+	quasar-test-derive solana-compiler-builtins quasar-derive quasar-idl \
+	quasar-lang quasar-test quasar-spl quasar-metadata quasar-cli
 
 # Publishable crates whose ordinary host tests can run without the generated
 # client toolchains. The CLI smoke target is delegated below because it needs
@@ -333,7 +333,7 @@ check-license-policy:
 
 check-package-metadata:
 	@metadata="$$(cargo metadata --locked --no-deps --format-version 1)"; \
-	allowed_categories='["api-bindings","command-line-utilities","data-structures","development-tools","development-tools::procedural-macro-helpers","development-tools::profiling","embedded","no-std","rust-patterns"]'; \
+	allowed_categories='["api-bindings","command-line-utilities","data-structures","development-tools","development-tools::procedural-macro-helpers","development-tools::profiling","development-tools::testing","embedded","no-std","rust-patterns"]'; \
 	errors="$$(jq -r \
 	  --arg homepage 'https://quasar-lang.com' \
 	  --arg repository 'https://github.com/blueshift-gg/quasar' \

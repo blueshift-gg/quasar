@@ -201,6 +201,7 @@ fn plan_field(
                     BehaviorArgValue::FieldRef(field) => Some(BehaviorIdlAccountArg {
                         key: arg.key.to_string(),
                         field: crate::helpers::snake_to_camel(&field.to_string()),
+                        field_ident: field.clone(),
                     }),
                     BehaviorArgValue::Some(_)
                     | BehaviorArgValue::None
@@ -316,11 +317,12 @@ fn plan_signer_helper(sem: &FieldSemantics) -> Option<SignerHelperPlan> {
         return None;
     }
     let addr = sem.address.as_ref()?;
-    if !matches!(addr.kind, AddressKind::Seeds { .. }) {
+    let AddressKind::Seeds { account_ty, .. } = &addr.kind else {
         return None;
-    }
+    };
     Some(SignerHelperPlan {
         addr_expr: addr.expr.clone(),
+        set_ty: account_ty.clone(),
     })
 }
 

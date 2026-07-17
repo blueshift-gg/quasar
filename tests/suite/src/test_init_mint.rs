@@ -12,15 +12,11 @@ fn init_mint_spl_happy() {
     let payer = Pubkey::new_unique();
     let mint_key = Pubkey::new_unique();
     let authority = Pubkey::new_unique();
-    let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitMintInstruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -46,14 +42,11 @@ fn init_mint_spl_already_initialized() {
     let mint_key = Pubkey::new_unique();
     let authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitMintInstruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -76,15 +69,11 @@ fn init_mint_t22_happy() {
     let payer = Pubkey::new_unique();
     let mint_key = Pubkey::new_unique();
     let authority = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitMintT22Instruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -110,14 +99,11 @@ fn init_mint_t22_already_initialized() {
     let mint_key = Pubkey::new_unique();
     let authority = Pubkey::new_unique();
     let token_program = token_2022_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitMintT22Instruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -140,16 +126,12 @@ fn init_if_needed_mint_spl_happy_new() {
     let payer = Pubkey::new_unique();
     let mint_key = Pubkey::new_unique();
     let authority = Pubkey::new_unique();
-    let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction = with_signers(
         InitIfNeededMintInstruction {
             payer,
             mint: mint_key,
             mint_authority: authority,
-            token_program,
-            system_program,
         }
         .into(),
         &[1],
@@ -177,14 +159,11 @@ fn init_if_needed_mint_spl_existing_valid() {
     let mint_key = Pubkey::new_unique();
     let authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitIfNeededMintInstruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -219,14 +198,11 @@ fn init_if_needed_mint_spl_wrong_decimals() {
     let mint_key = Pubkey::new_unique();
     let authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitIfNeededMintInstruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -249,14 +225,11 @@ fn init_if_needed_mint_spl_wrong_authority() {
     let authority = Pubkey::new_unique();
     let wrong_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitIfNeededMintInstruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -277,15 +250,11 @@ fn init_if_needed_mint_spl_wrong_owner() {
     let payer = Pubkey::new_unique();
     let mint_key = Pubkey::new_unique();
     let authority = Pubkey::new_unique();
-    let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitIfNeededMintInstruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -315,7 +284,6 @@ fn init_if_needed_mint_spl_unexpected_freeze() {
     let authority = Pubkey::new_unique();
     let freeze_auth = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     // Use the no-freeze handler but provide a mint that has freeze_authority set.
     // validate_mint with freeze_authority=None rejects mints that have one
@@ -324,8 +292,6 @@ fn init_if_needed_mint_spl_unexpected_freeze() {
         payer,
         mint: mint_key,
         mint_authority: authority,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -348,16 +314,12 @@ fn init_if_needed_mint_t22_happy_new() {
     let payer = Pubkey::new_unique();
     let mint_key = Pubkey::new_unique();
     let authority = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction = with_signers(
         InitIfNeededMintT22Instruction {
             payer,
             mint: mint_key,
             mint_authority: authority,
-            token_program,
-            system_program,
         }
         .into(),
         &[1],
@@ -387,8 +349,6 @@ fn init_if_needed_mint_freeze_spl_happy_new() {
     let mint_key = Pubkey::new_unique();
     let authority = Pubkey::new_unique();
     let freeze_auth = Pubkey::new_unique();
-    let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction = with_signers(
         InitIfNeededMintWithFreezeInstruction {
@@ -396,8 +356,6 @@ fn init_if_needed_mint_freeze_spl_happy_new() {
             mint: mint_key,
             mint_authority: authority,
             freeze_authority: freeze_auth,
-            token_program,
-            system_program,
         }
         .into(),
         &[1],
@@ -427,15 +385,12 @@ fn init_if_needed_mint_freeze_spl_existing_valid() {
     let authority = Pubkey::new_unique();
     let freeze_auth = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitIfNeededMintWithFreezeInstruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
         freeze_authority: freeze_auth,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -473,15 +428,12 @@ fn init_if_needed_mint_freeze_spl_wrong_freeze_authority() {
     let freeze_auth = Pubkey::new_unique();
     let wrong_freeze = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitIfNeededMintWithFreezeInstruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
         freeze_authority: freeze_auth,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -505,7 +457,6 @@ fn init_if_needed_mint_freeze_spl_missing_freeze_authority() {
     let authority = Pubkey::new_unique();
     let freeze_auth = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     // Existing mint has no freeze_authority, but the handler expects one.
     let instruction: Instruction = InitIfNeededMintWithFreezeInstruction {
@@ -513,8 +464,6 @@ fn init_if_needed_mint_freeze_spl_missing_freeze_authority() {
         mint: mint_key,
         mint_authority: authority,
         freeze_authority: freeze_auth,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -539,8 +488,6 @@ fn init_if_needed_mint_freeze_t22_happy_new() {
     let mint_key = Pubkey::new_unique();
     let authority = Pubkey::new_unique();
     let freeze_auth = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction = with_signers(
         InitIfNeededMintWithFreezeT22Instruction {
@@ -548,8 +495,6 @@ fn init_if_needed_mint_freeze_t22_happy_new() {
             mint: mint_key,
             mint_authority: authority,
             freeze_authority: freeze_auth,
-            token_program,
-            system_program,
         }
         .into(),
         &[1],

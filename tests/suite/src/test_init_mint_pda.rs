@@ -10,19 +10,11 @@ use {
 fn init_mint_pda_spl_happy() {
     let mut svm = svm_init();
     let payer = Pubkey::new_unique();
-    let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let (mint_pda, _bump) =
         Pubkey::find_program_address(&[b"mint", payer.as_ref()], &quasar_test_token_init::ID);
 
-    let instruction: Instruction = InitMintPdaInstruction {
-        payer,
-        mint: mint_pda,
-        token_program,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = InitMintPdaInstruction { payer }.into();
 
     let result = svm.process_instruction(
         &instruction,
@@ -39,18 +31,13 @@ fn init_mint_pda_spl_happy() {
 fn init_mint_pda_spl_wrong_address() {
     let mut svm = svm_init();
     let payer = Pubkey::new_unique();
-    let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let wrong_key = Pubkey::new_unique();
 
-    let instruction: Instruction = InitMintPdaInstruction {
-        payer,
-        mint: wrong_key,
-        token_program,
-        system_program,
-    }
-    .into();
+    let mut instruction: Instruction = InitMintPdaInstruction { payer }.into();
+    // The client derives the canonical PDA meta; repoint it at the address
+    // under test.
+    instruction.accounts[1].pubkey = wrong_key;
 
     let result = svm.process_instruction(
         &instruction,
@@ -67,19 +54,11 @@ fn init_mint_pda_spl_wrong_address() {
 fn init_mint_pda_t22_happy() {
     let mut svm = svm_init();
     let payer = Pubkey::new_unique();
-    let token_program = token_2022_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let (mint_pda, _bump) =
         Pubkey::find_program_address(&[b"mint", payer.as_ref()], &quasar_test_token_init::ID);
 
-    let instruction: Instruction = InitMintPdaT22Instruction {
-        payer,
-        mint: mint_pda,
-        token_program,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = InitMintPdaT22Instruction { payer }.into();
 
     let result = svm.process_instruction(
         &instruction,
@@ -98,19 +77,11 @@ fn init_mint_pda_t22_happy() {
 fn init_mint_pda_spl_prefunded_partial() {
     let mut svm = svm_init();
     let payer = Pubkey::new_unique();
-    let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let (mint_pda, _bump) =
         Pubkey::find_program_address(&[b"mint", payer.as_ref()], &quasar_test_token_init::ID);
 
-    let instruction: Instruction = InitMintPdaInstruction {
-        payer,
-        mint: mint_pda,
-        token_program,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = InitMintPdaInstruction { payer }.into();
 
     let prefund = 500_000u64;
     let payer_lamports = 100_000_000_000u64;
@@ -145,20 +116,12 @@ fn init_mint_pda_spl_prefunded_partial() {
 fn init_mint_pda_spl_prefunded_excess() {
     let mut svm = svm_init();
     let payer = Pubkey::new_unique();
-    let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let (mint_pda, _bump) =
         Pubkey::find_program_address(&[b"mint", payer.as_ref()], &quasar_test_token_init::ID);
 
     let payer_lamports = 100_000_000_000u64;
-    let instruction: Instruction = InitMintPdaInstruction {
-        payer,
-        mint: mint_pda,
-        token_program,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = InitMintPdaInstruction { payer }.into();
 
     let result = svm.process_instruction(
         &instruction,

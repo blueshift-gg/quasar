@@ -10,13 +10,7 @@ fn setup_account(svm: &mut quasar_svm::QuasarSvm) -> (Pubkey, Pubkey, Pubkey) {
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
 
     // Init first
-    let ix: Instruction = InitializeInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let ix: Instruction = InitializeInstruction { payer, value: 42 }.into();
     let r = svm.process_instruction(&ix, &[rich_signer_account(payer), empty_account(account)]);
     assert!(r.is_ok(), "setup init: {:?}", r.raw_result);
     (payer, account, quasar_svm::system_program::ID)
@@ -31,7 +25,6 @@ fn realloc(
     let ix: Instruction = ReallocCheckInstruction {
         account,
         payer,
-        system_program: quasar_svm::system_program::ID,
         new_space,
     }
     .into();
@@ -156,7 +149,6 @@ fn realloc_rejects_wrong_owner() {
     let ix: Instruction = ReallocCheckInstruction {
         account,
         payer,
-        system_program: quasar_svm::system_program::ID,
         new_space: 100,
     }
     .into();
@@ -192,7 +184,6 @@ fn realloc_rejects_underfunded_grow() {
     let ix: Instruction = ReallocCheckInstruction {
         account,
         payer,
-        system_program: quasar_svm::system_program::ID,
         new_space: 10_000,
     }
     .into();

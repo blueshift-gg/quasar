@@ -20,7 +20,6 @@ fn transfer_checked_spl() {
         from: from_key,
         mint: mint_key,
         to: to_key,
-        token_program,
         amount: 200,
         decimals: 9,
     }
@@ -58,7 +57,6 @@ fn transfer_checked_t22() {
         from: from_key,
         mint: mint_key,
         to: to_key,
-        token_program,
         amount: 200,
         decimals: 9,
     }
@@ -170,7 +168,6 @@ fn transfer_checked_rejects_insufficient_funds() {
         from: from_key,
         mint: mint_key,
         to: to_key,
-        token_program,
         amount: 200,
         decimals: 9,
     }

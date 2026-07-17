@@ -21,7 +21,6 @@ fn sweep_spl_happy() {
         source: source_key,
         receiver: receiver_key,
         mint: mint_key,
-        token_program,
     }
     .into();
 
@@ -72,7 +71,6 @@ fn sweep_spl_zero_balance() {
         source: source_key,
         receiver: receiver_key,
         mint: mint_key,
-        token_program,
     }
     .into();
 
@@ -116,7 +114,6 @@ fn sweep_spl_wrong_authority() {
         source: source_key,
         receiver: receiver_key,
         mint: mint_key,
-        token_program,
     }
     .into();
 
@@ -148,7 +145,6 @@ fn sweep_t22_happy() {
         source: source_key,
         receiver: receiver_key,
         mint: mint_key,
-        token_program,
     }
     .into();
 
@@ -287,7 +283,6 @@ fn sweep_and_close_spl_happy() {
         receiver: receiver_key,
         mint: mint_key,
         destination,
-        token_program,
     }
     .into();
 
@@ -338,7 +333,6 @@ fn sweep_and_close_spl_zero_balance() {
         receiver: receiver_key,
         mint: mint_key,
         destination,
-        token_program,
     }
     .into();
 
@@ -390,7 +384,6 @@ fn sweep_and_close_spl_wrong_mint_receiver() {
         receiver: receiver_key,
         mint: mint_key,
         destination,
-        token_program,
     }
     .into();
 
@@ -510,11 +503,9 @@ fn pda_sweep_and_close_runs_token_exits_before_authority_close() {
 
     let instruction: Instruction = PdaSweepAndCloseInstruction {
         owner,
-        authority,
         source: source_key,
         receiver: receiver_key,
         mint: mint_key,
-        token_program,
     }
     .into();
 
