@@ -15,6 +15,9 @@ struct AccountDescriptor {
     /// accounts have exactly one canonical address, so the client fills it
     /// in and the instruction struct drops the field.
     fixed_address: Option<TokenStream>,
+    /// Synthetic typed inputs replacing a derived field whose seeds read
+    /// stored account data: `(input ident, definition-site type tokens)`.
+    seed_inputs: Vec<(syn::Ident, TokenStream)>,
 }
 
 pub fn generate_accounts_macro(
@@ -26,10 +29,29 @@ pub fn generate_accounts_macro(
     let descriptors = describe_accounts(name, generics, plan);
     let macro_name = format_ident!("__{}_instruction", pascal_to_snake(&name.to_string()));
     let module_name = format_ident!("__{}_client_macro", pascal_to_snake(&name.to_string()));
-    let account_fields: Vec<_> = descriptors.iter().map(emit_account_field).collect();
+    let account_fields: Vec<_> = descriptors
+        .iter()
+        .map(|descriptor| emit_account_field(name, descriptor))
+        .collect();
     let account_metas: Vec<_> = descriptors.iter().map(emit_account_meta).collect();
+    let seed_input_aliases: Vec<_> = descriptors
+        .iter()
+        .flat_map(|descriptor| {
+            descriptor.seed_inputs.iter().map(|(input, alias)| {
+                let realias = seed_input_realias(name, &descriptor.name, input);
+                quote! {
+                    #[doc(hidden)]
+                    #[allow(unexpected_cfgs)]
+                    #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
+                    pub type #realias = #alias;
+                }
+            })
+        })
+        .collect();
 
     quote! {
+        #(#seed_input_aliases)*
+
         #[doc(hidden)]
         #[allow(unexpected_cfgs)]
         mod #module_name {
@@ -171,13 +193,36 @@ pub fn generate_accounts_macro(
     }
 }
 
-fn emit_account_field(descriptor: &AccountDescriptor) -> TokenStream {
+fn emit_account_field(name: &syn::Ident, descriptor: &AccountDescriptor) -> TokenStream {
     if descriptor.fixed_address.is_some() {
-        return TokenStream::new();
+        // A derived field whose seeds read stored account data is replaced by
+        // typed inputs carrying those values (via definition-site re-aliases,
+        // so the type resolves inside the cpi module).
+        let inputs = descriptor.seed_inputs.iter().map(|(input, _)| {
+            let realias = seed_input_realias(name, &descriptor.name, input);
+            quote! { pub #input: #realias, }
+        });
+        return quote! { #(#inputs)* };
     }
     let krate = crate::krate::lang_path();
     let ident = &descriptor.name;
     quote! { pub #ident: #krate::prelude::Address, }
+}
+
+/// The definition-site re-alias for one synthetic seed input, scoped by the
+/// accounts struct so sibling structs with identical fields don't collide in
+/// the program module's glob imports.
+fn seed_input_realias(
+    accounts_struct: &syn::Ident,
+    field: &syn::Ident,
+    input: &syn::Ident,
+) -> syn::Ident {
+    format_ident!(
+        "__QuasarSeedInput{}{}{}",
+        accounts_struct,
+        crate::helpers::snake_to_camel(&field.to_string()),
+        crate::helpers::snake_to_camel(&input.to_string())
+    )
 }
 
 fn emit_account_meta(descriptor: &AccountDescriptor) -> TokenStream {
@@ -218,17 +263,27 @@ fn describe_accounts(
         .iter()
         .enumerate()
         .map(|(index, fp)| {
+            let mut seed_inputs: Vec<(syn::Ident, TokenStream)> = Vec::new();
             let fixed_address = if fixed_address_expr(fp).is_some() {
                 let const_ident = fixed_address_const(&fp.ident);
                 Some(quote! { #account_type::#const_ident })
             } else if let Some(derivation) = field_derivation(plan, fp, &mut Vec::new()) {
                 let fn_ident = pda_address_fn(&fp.ident);
-                let args = derivation_roots(plan, &derivation)
-                    .into_iter()
-                    .map(|root| match root {
-                        DeriveRoot::Account(i) | DeriveRoot::ArgRef(i) => quote! { &ix.#i },
-                        DeriveRoot::ArgValue(i, _) => quote! { ix.#i },
-                    });
+                let roots = derivation_roots(plan, &derivation);
+                seed_inputs = roots
+                    .iter()
+                    .filter_map(|root| match root {
+                        DeriveRoot::SeedInput { input, alias } => {
+                            Some((input.clone(), alias.clone()))
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                let args = roots.iter().map(|root| match root {
+                    DeriveRoot::Account(i) | DeriveRoot::ArgRef(i) => quote! { &ix.#i },
+                    DeriveRoot::ArgValue(i, _) => quote! { ix.#i },
+                    DeriveRoot::SeedInput { input, .. } => quote! { ix.#input },
+                });
                 Some(quote! { #account_type::#fn_ident(#(#args,)* &$crate::ID) })
             } else {
                 None
@@ -243,6 +298,7 @@ fn describe_accounts(
                     quote! { #signer }
                 },
                 fixed_address,
+                seed_inputs,
             }
         })
         .collect()
@@ -261,6 +317,16 @@ pub(crate) enum SeedSource<'p> {
     ArgValue(&'p syn::Ident, &'p syn::Type),
     /// A constant expression, resolvable at the definition site.
     Const(&'p syn::Expr),
+    /// A value read from another account's stored data on-chain; the client
+    /// takes it as a typed input field and derives with it (the same
+    /// convention as the standalone IDL clients).
+    FieldValue {
+        /// The synthetic instruction-struct input, `{base}_{path}_seed`.
+        input: syn::Ident,
+        /// Type tokens naming the parameter's owned form through
+        /// `SeedParam<INDEX>`, valid wherever the account type resolves.
+        alias: TokenStream,
+    },
 }
 
 /// A field's client-side address derivation, when one exists.
@@ -300,7 +366,7 @@ pub(crate) fn field_derivation<'p>(
     let derivation = (|| {
         if let Some(IdlResolverPlan::Pda { account_ty, seeds }) = fp.idl_resolver.as_ref() {
             let mut classified = Vec::with_capacity(seeds.len());
-            for seed in seeds {
+            for (index, seed) in seeds.iter().enumerate() {
                 classified.push(match seed {
                     IdlSeedPlan::AccountAddr { base } => account_source(plan, base, stack)?,
                     IdlSeedPlan::Const { expr } => SeedSource::Const(expr),
@@ -313,8 +379,23 @@ pub(crate) fn field_derivation<'p>(
                             return None;
                         }
                     }
-                    IdlSeedPlan::AccountField { .. } => return None,
+                    IdlSeedPlan::AccountField { base, field, .. } => SeedSource::FieldValue {
+                        input: seed_input_ident(base, field),
+                        alias: seed_alias_path(account_ty, index),
+                    },
                 });
+            }
+            // `find_address` (the owned-value path FieldValue requires) cannot
+            // take a Const expr of unknown ownedness.
+            let has_field_value = classified
+                .iter()
+                .any(|seed| matches!(seed, SeedSource::FieldValue { .. }));
+            if has_field_value
+                && classified
+                    .iter()
+                    .any(|seed| matches!(seed, SeedSource::Const(_)))
+            {
+                return None;
             }
             return Some(FieldDerivation::Pda {
                 account_ty,
@@ -359,6 +440,22 @@ pub(crate) fn field_derivation<'p>(
     derivation
 }
 
+/// The synthetic client input carrying a stored-data seed value.
+fn seed_input_ident(base: &syn::Ident, path: &str) -> syn::Ident {
+    let sanitized: String = path
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '_' })
+        .collect();
+    format_ident!("{}_{}_seed", base, sanitized)
+}
+
+/// The owned seed-parameter type, named through the `SeedParam` trait so it
+/// resolves wherever the account type does.
+fn seed_alias_path(account_ty: &syn::Path, index: usize) -> TokenStream {
+    let krate = crate::krate::lang_path();
+    quote! { <#account_ty as #krate::traits::SeedParam<#index>>::Ty }
+}
+
 fn find_field<'p>(
     plan: &'p crate::accounts::resolve::specs::AccountsPlanTyped,
     ident: &syn::Ident,
@@ -389,12 +486,18 @@ pub(crate) enum DeriveRoot<'p> {
     Account(&'p syn::Ident),
     ArgRef(&'p syn::Ident),
     ArgValue(&'p syn::Ident, &'p syn::Type),
+    /// A stored-data seed value: a synthetic owned input field.
+    SeedInput {
+        input: syn::Ident,
+        alias: TokenStream,
+    },
 }
 
 impl<'p> DeriveRoot<'p> {
-    pub(crate) fn ident(&self) -> &'p syn::Ident {
+    pub(crate) fn ident(&self) -> &syn::Ident {
         match self {
             DeriveRoot::Account(i) | DeriveRoot::ArgRef(i) | DeriveRoot::ArgValue(i, _) => i,
+            DeriveRoot::SeedInput { input, .. } => input,
         }
     }
 }
@@ -434,6 +537,14 @@ fn collect_roots<'p>(
             let nested =
                 field_derivation(plan, field, &mut Vec::new()).expect("derived field re-resolves");
             collect_roots(plan, &nested, roots);
+        }
+        SeedSource::FieldValue { input, alias } => {
+            if !roots.iter().any(|seen| seen.ident() == input) {
+                roots.push(DeriveRoot::SeedInput {
+                    input: input.clone(),
+                    alias: alias.clone(),
+                });
+            }
         }
         SeedSource::Const(_) => {}
     };

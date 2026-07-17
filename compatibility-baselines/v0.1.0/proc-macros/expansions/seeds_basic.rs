@@ -21,6 +21,18 @@ impl VaultPda {
             _authority: authority,
         }
     }
+    /// Derive this PDA's canonical address from owned seed values.
+    #[inline]
+    pub fn find_address(
+        authority: ::quasar_lang::prelude::Address,
+        program_id: &::quasar_lang::prelude::Address,
+    ) -> ::quasar_lang::prelude::Address {
+        let seeds = Self::seeds(&authority);
+        ::quasar_lang::pda::find_program_address_const(&seeds.as_slices(), program_id).0
+    }
+}
+impl ::quasar_lang::traits::SeedParam<0usize> for VaultPda {
+    type Ty = ::quasar_lang::prelude::Address;
 }
 impl<'__quasar_seed> VaultPdaSeedSet<'__quasar_seed> {
     #[inline(always)]

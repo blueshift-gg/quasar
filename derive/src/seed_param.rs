@@ -42,6 +42,28 @@ impl SeedType {
         }
     }
 
+    /// The owned form of the constructor parameter type, for derivation
+    /// helpers that take every seed by value.
+    pub(crate) fn owned_param_type(&self) -> proc_macro2::TokenStream {
+        let krate = crate::krate::lang_path();
+        match self {
+            SeedType::Address => quote! { #krate::prelude::Address },
+            SeedType::U8 => quote! { u8 },
+            SeedType::U16 => quote! { u16 },
+            SeedType::U32 => quote! { u32 },
+            SeedType::U64 => quote! { u64 },
+            SeedType::Bytes(len) => quote! { [u8; #len] },
+        }
+    }
+
+    /// Expression converting an owned parameter into `seeds()`'s form.
+    pub(crate) fn owned_to_seed_arg(&self, param: &Ident) -> proc_macro2::TokenStream {
+        match self {
+            SeedType::Address => quote! { &#param },
+            _ => quote! { #param },
+        }
+    }
+
     /// Expression to store the constructor parameter in the SeedSet field.
     pub(crate) fn to_stored_expr(&self, param: &Ident) -> proc_macro2::TokenStream {
         match self {

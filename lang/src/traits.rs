@@ -319,6 +319,15 @@ pub trait HasSeeds {
     const SEED_DYNAMIC_COUNT: usize;
 }
 
+/// Owned type of one `#[seeds(...)]` dynamic parameter, by position.
+///
+/// Implemented by: seeds codegen for each dynamic seed.
+/// Used by: generated clients to type stored-data seed inputs.
+pub trait SeedParam<const INDEX: usize> {
+    /// The parameter's owned form (`Address`, integer, or byte array).
+    type Ty;
+}
+
 /// Generic access to a seed set's raw slices (prefix + dynamic seeds, no
 /// bump).
 ///

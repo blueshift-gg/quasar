@@ -180,6 +180,19 @@ pub(crate) fn generate_seeds_impl(
         .iter()
         .map(|param| param.ty.to_stored_expr(&param.name))
         .collect();
+    let owned_param_types: Vec<_> = seeds_attr
+        .params
+        .iter()
+        .map(|param| param.ty.owned_param_type())
+        .collect();
+    let owned_seed_args: Vec<_> = seeds_attr
+        .params
+        .iter()
+        .map(|param| param.ty.owned_to_seed_arg(&param.name))
+        .collect();
+    let seed_indices: Vec<_> = (0..seeds_attr.params.len())
+        .map(|index| quote! { #index })
+        .collect();
 
     let slice_exprs: Vec<_> = {
         let mut slices = Vec::new();
@@ -255,7 +268,23 @@ pub(crate) fn generate_seeds_impl(
                     #phantom_init
                 }
             }
+
+            /// Derive this PDA's canonical address from owned seed values.
+            #[inline]
+            #vis fn find_address(
+                #( #param_names: #owned_param_types, )*
+                program_id: &#krate::prelude::Address,
+            ) -> #krate::prelude::Address {
+                let seeds = Self::seeds(#(#owned_seed_args),*);
+                #krate::pda::find_program_address_const(&seeds.as_slices(), program_id).0
+            }
         }
+
+        #(
+            impl #impl_generics #krate::traits::SeedParam<#seed_indices> for #name #ty_generics #where_clause {
+                type Ty = #owned_param_types;
+            }
+        )*
 
         impl<'__quasar_seed> #seed_set<'__quasar_seed> {
             #[inline(always)]

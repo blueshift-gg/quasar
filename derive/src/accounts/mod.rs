@@ -313,6 +313,15 @@ fn emit_pda_address_fns(
         SeedSource::DerivedAccount(i) => quote! { &#i },
         SeedSource::ArgValue(i, _) => quote! { #i },
         SeedSource::Const(expr) => quote! { #expr },
+        SeedSource::FieldValue { .. } => unreachable!("FieldValue routes through find_address"),
+    };
+    // `find_address` takes every seed by value.
+    let owned_source_arg = |source: &SeedSource| match source {
+        SeedSource::PlainAccount(i) | SeedSource::ArgRef(i) => quote! { *#i },
+        SeedSource::DerivedAccount(i) => quote! { #i },
+        SeedSource::ArgValue(i, _) => quote! { #i },
+        SeedSource::FieldValue { input, .. } => quote! { #input },
+        SeedSource::Const(_) => unreachable!("Const excluded when FieldValue present"),
     };
     let fns: Vec<proc_macro2::TokenStream> = plan
         .fields
@@ -326,6 +335,7 @@ fn emit_pda_address_fns(
                     quote! { #i: &#krate::prelude::Address }
                 }
                 DeriveRoot::ArgValue(i, ty) => quote! { #i: #ty },
+                DeriveRoot::SeedInput { input, alias } => quote! { #input: #alias },
             });
             // Chained derivations: materialize each directly-read derived
             // field by calling its own fn with the shared root parameters.
@@ -349,10 +359,18 @@ fn emit_pda_address_fns(
             });
             let tail = match &derivation {
                 FieldDerivation::Pda { account_ty, seeds } => {
-                    let args = seeds.iter().map(source_arg);
-                    quote! {
-                        let seeds = <#account_ty>::seeds(#(#args),*);
-                        #krate::pda::find_program_address_const(&seeds.as_slices(), program_id).0
+                    if seeds
+                        .iter()
+                        .any(|seed| matches!(seed, SeedSource::FieldValue { .. }))
+                    {
+                        let args = seeds.iter().map(owned_source_arg);
+                        quote! { <#account_ty>::find_address(#(#args,)* program_id) }
+                    } else {
+                        let args = seeds.iter().map(source_arg);
+                        quote! {
+                            let seeds = <#account_ty>::seeds(#(#args),*);
+                            #krate::pda::find_program_address_const(&seeds.as_slices(), program_id).0
+                        }
                     }
                 }
                 FieldDerivation::Ata {
