@@ -21,6 +21,9 @@ pub use quasar_test::prelude::Instruction
 pub use quasar_test::prelude::ProgramError
 pub use quasar_test::prelude::Pubkey
 pub use quasar_test::prelude::QuasarSvmConfig
+pub use quasar_test::prelude::SPL_ASSOCIATED_TOKEN_PROGRAM_ID
+pub use quasar_test::prelude::SPL_TOKEN_2022_PROGRAM_ID
+pub use quasar_test::prelude::SPL_TOKEN_PROGRAM_ID
 pub use quasar_test::prelude::quasar_test
 pub use quasar_test::prelude::system_program
 pub struct quasar_test::prelude::QuasarTest
@@ -30,6 +33,7 @@ pub fn quasar_test::QuasarTest::actor_at(&mut self, solana_address::Address) -> 
 pub fn quasar_test::QuasarTest::actor_with_lamports(&mut self, u64) -> solana_address::Address
 pub fn quasar_test::QuasarTest::actors<const N: usize>(&mut self) -> [solana_address::Address; N]
 pub fn quasar_test::QuasarTest::ata(&mut self, solana_address::Address, solana_address::Address, u64) -> solana_address::Address
+pub fn quasar_test::QuasarTest::ata_address(&self, solana_address::Address, solana_address::Address) -> solana_address::Address
 pub fn quasar_test::QuasarTest::empty(&mut self, solana_address::Address) -> solana_address::Address
 pub fn quasar_test::QuasarTest::fresh_address(&mut self) -> solana_address::Address
 pub fn quasar_test::QuasarTest::from_program_path(impl core::convert::Into<solana_address::Address>, impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, quasar_test::ProjectError>
@@ -160,6 +164,7 @@ pub fn quasar_test::QuasarTest::actor_at(&mut self, solana_address::Address) -> 
 pub fn quasar_test::QuasarTest::actor_with_lamports(&mut self, u64) -> solana_address::Address
 pub fn quasar_test::QuasarTest::actors<const N: usize>(&mut self) -> [solana_address::Address; N]
 pub fn quasar_test::QuasarTest::ata(&mut self, solana_address::Address, solana_address::Address, u64) -> solana_address::Address
+pub fn quasar_test::QuasarTest::ata_address(&self, solana_address::Address, solana_address::Address) -> solana_address::Address
 pub fn quasar_test::QuasarTest::empty(&mut self, solana_address::Address) -> solana_address::Address
 pub fn quasar_test::QuasarTest::fresh_address(&mut self) -> solana_address::Address
 pub fn quasar_test::QuasarTest::from_program_path(impl core::convert::Into<solana_address::Address>, impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, quasar_test::ProjectError>

@@ -283,6 +283,22 @@ impl QuasarTest {
         address
     }
 
+    /// Derive an associated token address without registering an account.
+    ///
+    /// Use this for init targets: [`Self::ata`] would register an existing
+    /// account, which is exactly what an init instruction must not find.
+    pub fn ata_address(&self, owner: Pubkey, mint: Pubkey) -> Pubkey {
+        Pubkey::find_program_address(
+            &[
+                owner.as_ref(),
+                quasar_svm::SPL_TOKEN_PROGRAM_ID.as_ref(),
+                mint.as_ref(),
+            ],
+            &quasar_svm::SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
+        )
+        .0
+    }
+
     /// Create an associated token account and return its derived address.
     pub fn ata(&mut self, owner: Pubkey, mint: Pubkey, amount: u64) -> Pubkey {
         let account = fixtures::associated_token_account(owner, mint, amount);
@@ -962,7 +978,8 @@ pub mod prelude {
         },
         quasar_svm::{
             system_program, Account, AccountMeta, ExecutionResult, Instruction, ProgramError,
-            Pubkey,
+            Pubkey, SPL_ASSOCIATED_TOKEN_PROGRAM_ID, SPL_TOKEN_2022_PROGRAM_ID,
+            SPL_TOKEN_PROGRAM_ID,
         },
     };
 }
