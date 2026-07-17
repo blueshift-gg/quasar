@@ -1,3 +1,6 @@
+//! Builds the Metaplex `SetCollectionSize` (discriminator 34) and
+//! `BubblegumSetCollectionSize` (discriminator 36) instructions.
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,
@@ -6,6 +9,18 @@ use quasar_lang::{
 const SET_COLLECTION_SIZE: u8 = 34;
 const BUBBLEGUM_SET_COLLECTION_SIZE: u8 = 36;
 
+/// Set the recorded size of a sized collection.
+///
+/// ### Accounts:
+///   0. `[WRITE]` Collection metadata account
+///   1. `[SIGNER]` Update authority
+///   2. `[]`      Collection mint
+///
+/// ### Instruction data (9 bytes):
+/// ```text
+/// [0]    discriminator (34)
+/// [1..9] size (u64 LE)
+/// ```
 #[inline(always)]
 pub(super) fn set_collection_size<'a>(
     program: &'a AccountView,
@@ -28,6 +43,19 @@ pub(super) fn set_collection_size<'a>(
     )
 }
 
+/// Set the collection size on behalf of the Bubblegum program.
+///
+/// ### Accounts:
+///   0. `[WRITE]` Collection metadata account
+///   1. `[SIGNER]` Update authority
+///   2. `[]`      Collection mint
+///   3. `[SIGNER]` Bubblegum program PDA signer
+///
+/// ### Instruction data (9 bytes):
+/// ```text
+/// [0]    discriminator (36)
+/// [1..9] size (u64 LE)
+/// ```
 #[inline(always)]
 pub(super) fn bubblegum_set_collection_size<'a>(
     program: &'a AccountView,

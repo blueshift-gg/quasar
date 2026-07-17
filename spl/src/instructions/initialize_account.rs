@@ -1,3 +1,5 @@
+//! SPL Token `InitializeAccount3` instruction (discriminator 18).
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,

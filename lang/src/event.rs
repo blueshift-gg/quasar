@@ -61,11 +61,15 @@ pub unsafe fn handle_event(
     instruction_data: &[u8],
     event_authority: &solana_address::Address,
 ) -> Result<(), ProgramError> {
-    // SAFETY: The SVM places the account count (u64) at offset 0.
+    // SAFETY: `ptr` is the SVM input buffer start, 8-byte aligned per the SVM
+    // ABI, and holds `num_accounts` (u64) at offset 0, so the aligned read is
+    // sound.
     if unsafe { *(ptr as *const u64) } == 0 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
-    // SAFETY: Pointer arithmetic follows the SVM input buffer layout.
+    // SAFETY: `num_accounts >= 1` (checked above), so the first account entry
+    // follows the count word; 8 bytes past the 8-aligned buffer start is that
+    // entry's 8-aligned `RuntimeAccount` header.
     let raw = unsafe {
         &*(ptr.add(core::mem::size_of::<u64>()) as *const crate::__internal::RuntimeAccount)
     };

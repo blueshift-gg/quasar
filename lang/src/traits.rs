@@ -38,12 +38,8 @@ pub trait Owner {
 
 /// Declares the on-chain address (ID) for a program type.
 ///
-/// This trait simply provides the program's address constant. The `Program<T>`
-/// wrapper type requires `T: Id` to validate that accounts match the expected
-/// address.
-///
 /// Implemented by: Program marker types (e.g., `System`, `Token`).
-/// Used by: `Program<T>` wrapper for address validation.
+/// Used by: `Program<T>` wrapper to validate that accounts match the address.
 pub trait Id {
     /// Canonical program address.
     const ID: Address;

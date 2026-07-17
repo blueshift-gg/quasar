@@ -1,3 +1,9 @@
+//! System-owned account wrapper.
+//!
+//! `SystemAccount` (via `define_account!`) validates during parsing that the
+//! account's owner is the System program (the all-zeros address). Construction
+//! follows the shared check-then-cast model in the module header.
+
 use crate::prelude::*;
 
 define_account!(

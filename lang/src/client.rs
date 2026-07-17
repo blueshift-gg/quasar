@@ -114,7 +114,6 @@ impl<P> DynBytes<P> {
 }
 
 impl<P> crate::pda::SeedBytes for DynBytes<P> {
-    #[inline(always)]
     fn as_seed_bytes(&self) -> &[u8] {
         self.as_bytes()
     }
@@ -208,7 +207,6 @@ impl<P> DynString<P> {
 }
 
 impl<P> crate::pda::SeedBytes for DynString<P> {
-    #[inline(always)]
     fn as_seed_bytes(&self) -> &[u8] {
         self.as_bytes()
     }
@@ -294,7 +292,6 @@ impl<T, P> DynVec<T, P> {
 }
 
 impl<P> crate::pda::SeedBytes for DynVec<u8, P> {
-    #[inline(always)]
     fn as_seed_bytes(&self) -> &[u8] {
         self.0.as_slice()
     }

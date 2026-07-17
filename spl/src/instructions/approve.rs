@@ -1,3 +1,5 @@
+//! SPL Token `Approve` instruction (discriminator 4).
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,

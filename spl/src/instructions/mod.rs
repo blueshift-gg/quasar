@@ -1,3 +1,7 @@
+//! SPL Token instruction CPI builders, one module per instruction.
+//!
+//! [`TokenCpi`] re-exposes them as methods on the program wrappers.
+
 mod approve;
 mod burn;
 mod close_account;

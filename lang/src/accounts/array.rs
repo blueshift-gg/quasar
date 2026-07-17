@@ -1,3 +1,11 @@
+//! Fixed-size repeated account group.
+//!
+//! `AccountsArray<T, N>` parses `N` back-to-back `T` groups into `[T; N]`. The
+//! checked entry points verify the account count, then delegate to the
+//! unchecked path, which fills a `MaybeUninit<[T; N]>` slot by slot. On a
+//! mid-loop parse error the initialized prefix is dropped by hand; the final
+//! `assume_init` relies on every slot having been written.
+
 use {
     crate::{
         prelude::*,
@@ -80,8 +88,8 @@ where
     ) -> Result<*mut u8, ProgramError> {
         let mut i = 0usize;
         while i < N {
-            // SAFETY: Caller guarantees the raw account buffer covers
-            // `Self::COUNT`; each iteration advances by one `T` group.
+            // SAFETY: caller guarantees the raw buffer covers `Self::COUNT`
+            // accounts.
             input =
                 unsafe { T::parse_accounts_raw(input, base, offset + i * T::COUNT, program_id)? };
             i += 1;
@@ -180,9 +188,8 @@ where
                     Err(err) => {
                         let mut j = 0usize;
                         while j < i {
-                            // SAFETY: Slots below `i` were initialized by
-                            // earlier loop iterations and must be dropped on
-                            // early return.
+                            // SAFETY: slots below `i` were initialized by
+                            // earlier iterations; drop them before the error.
                             unsafe {
                                 core::ptr::drop_in_place(items_ptr.add(j));
                                 core::ptr::drop_in_place(bumps_ptr.add(j));

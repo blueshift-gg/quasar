@@ -1,3 +1,11 @@
+//! Unvalidated account wrapper.
+//!
+//! `UncheckedAccount` (via `define_account!`) performs no owner, signer,
+//! writability, or data checks; handlers using it own their constraints.
+//! `AccountDataWrite::write_bytes` is the one guarded path: it verifies
+//! writability and bounds before the raw copy, so no long-lived `&mut [u8]`
+//! escapes to callers.
+
 use crate::prelude::*;
 
 define_account!(

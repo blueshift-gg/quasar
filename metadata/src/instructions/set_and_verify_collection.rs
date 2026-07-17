@@ -1,3 +1,6 @@
+//! Builds the Metaplex `SetAndVerifyCollection` (discriminator 25) and
+//! `SetAndVerifySizedCollectionItem` (discriminator 32) instructions.
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,
@@ -6,6 +9,21 @@ use quasar_lang::{
 const SET_AND_VERIFY_COLLECTION: u8 = 25;
 const SET_AND_VERIFY_SIZED_COLLECTION_ITEM: u8 = 32;
 
+/// Set an item's collection and verify it in one unsized-collection call.
+///
+/// ### Accounts:
+///   0. `[WRITE]` Item metadata account
+///   1. `[SIGNER]` Collection update authority or delegate
+///   2. `[WRITE, SIGNER]` Payer
+///   3. `[]`      Update authority of the item
+///   4. `[]`      Collection mint
+///   5. `[]`      Collection metadata account
+///   6. `[]`      Collection master edition account
+///
+/// ### Instruction data (1 byte):
+/// ```text
+/// [0] discriminator (25)
+/// ```
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn set_and_verify_collection<'a>(
@@ -42,6 +60,21 @@ pub(super) fn set_and_verify_collection<'a>(
     )
 }
 
+/// Set an item's collection and verify it in one sized-collection call.
+///
+/// ### Accounts:
+///   0. `[WRITE]` Item metadata account
+///   1. `[SIGNER]` Collection update authority or delegate
+///   2. `[WRITE, SIGNER]` Payer
+///   3. `[]`      Update authority of the item
+///   4. `[]`      Collection mint
+///   5. `[]`      Collection metadata account
+///   6. `[]`      Collection master edition account
+///
+/// ### Instruction data (1 byte):
+/// ```text
+/// [0] discriminator (32)
+/// ```
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn set_and_verify_sized_collection_item<'a>(

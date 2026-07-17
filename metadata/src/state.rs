@@ -1,3 +1,10 @@
+//! Metaplex account layouts and validated account wrappers.
+//!
+//! Zero-copy fixed prefixes for Metadata (65 bytes) and MasterEdition
+//! (18 bytes), plus `MetadataAccount` / `MasterEditionAccount` wrappers
+//! that check owner, data length, and Metaplex key byte. Variable-length
+//! Borsh fields (name, symbol, uri, creators) are not decoded here.
+
 // The `#[derive(quasar_lang::ZeroPod)]` expansion emits unqualified `zeropod::`
 // paths and has no crate-path override, so alias the framework's re-export as
 // `zeropod` to resolve them. Everything else uses the stable

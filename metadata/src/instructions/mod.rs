@@ -1,3 +1,9 @@
+//! Metaplex Token Metadata CPI instruction builders.
+//!
+//! One module per instruction (or per closely related pair). The
+//! [`MetadataCpi`] trait in `cpi` dispatches to these builders, each of
+//! which returns a ready-to-invoke CPI call.
+
 mod approve_collection;
 mod burn;
 mod cpi;

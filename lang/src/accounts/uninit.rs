@@ -1,3 +1,11 @@
+//! Deferred-initialization account slot.
+//!
+//! `Uninit<A>` is a `#[repr(transparent)]` parse-time marker; `check` accepts
+//! only System-owned (still-uninitialized) slots. `.init(...)` runs the
+//! lifecycle transition — allocate, write discriminator, copy payload,
+//! re-validate as `A`. A compile-time `Space` guard proves the data covers
+//! discriminator + payload, so the payload copy cannot overrun.
+
 use {crate::prelude::*, core::marker::PhantomData};
 
 /// Account slot that must be initialized explicitly by the handler.
@@ -90,10 +98,9 @@ where
         payer: &AccountView,
         signers: &[crate::cpi::Signer<'_, '_>],
     ) -> Result<&'a mut Account<T>, ProgramError> {
-        // Compile-time guard (mirrors migration.rs `_TARGET_FITS_SPACE`): the
-        // account's declared `Space` must cover the discriminator plus the
-        // copied `T::Target` payload, otherwise the `copy_nonoverlapping` below
-        // would write past the allocated account data.
+        // Space guard (mirrors migration.rs `_TARGET_FITS_SPACE`): declared
+        // `Space` must cover discriminator + `T::Target`, or the copy below
+        // overruns the account data.
         const {
             assert!(
                 <T as crate::traits::Space>::SPACE

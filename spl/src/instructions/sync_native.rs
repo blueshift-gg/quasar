@@ -1,9 +1,10 @@
+//! SPL Token `SyncNative` instruction (discriminator 17).
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,
 };
 
-/// SPL Token `SyncNative` instruction discriminator.
 const SYNC_NATIVE: u8 = 17;
 
 /// Sync the lamport balance of a native SOL token account via CPI.

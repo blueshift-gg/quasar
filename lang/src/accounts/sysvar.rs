@@ -1,3 +1,10 @@
+//! Sysvar account wrapper.
+//!
+//! `Sysvar<T>` is `#[repr(transparent)]` over `AccountView`. Parsing's `check`
+//! rejects any address other than the canonical `T::ID`. `get` then
+//! reinterprets the account data as `T` with no further check, trusting the
+//! canonical address to guarantee the runtime-populated sysvar layout.
+
 use {crate::traits::AsAccountView, core::marker::PhantomData, solana_account_view::AccountView};
 
 /// Sysvar account wrapper.
@@ -20,8 +27,7 @@ impl<T: crate::sysvars::Sysvar> Sysvar<T> {
     /// contains a valid `T` sysvar layout.
     #[inline(always)]
     pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
-        // SAFETY: `Sysvar<T>` is `repr(transparent)` over `AccountView` plus
-        // `PhantomData<T>`, so the reference cast preserves layout. The caller
+        // SAFETY: transparent layout (see the `StaticView` impl); the caller
         // upholds the sysvar address/data invariant.
         unsafe { &*(view as *const AccountView as *const Self) }
     }

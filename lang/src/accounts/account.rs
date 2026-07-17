@@ -1,3 +1,11 @@
+//! The typed [`Account`] wrapper and the raw account-mutation helpers
+//! (`resize`, `set_lamports`, `realloc_account`) it is built on.
+//!
+//! `Account<T>` is `#[repr(transparent)]` over [`AccountView`] (through `T:
+//! StaticView`) and is constructed only after owner and data validation, so
+//! every `Deref`, `close`, and `realloc` re-relies on that construction
+//! invariant to reach the backing account through a pointer cast.
+
 use {
     crate::prelude::*,
     solana_account_view::{RuntimeAccount, MAX_PERMITTED_DATA_INCREASE},
@@ -37,7 +45,7 @@ pub fn resize(view: &mut AccountView, new_len: usize) -> Result<(), ProgramError
 
     // SAFETY: `raw` is valid and `padding` is the runtime realloc delta field.
     let delta_ptr = unsafe { core::ptr::addr_of_mut!((*raw).padding) as *mut i32 };
-    // SAFETY: `padding` may be unaligned for `i32`, so use unaligned access.
+    // SAFETY: the `padding` field may be unaligned for `i32`.
     let accumulated = unsafe { delta_ptr.read_unaligned() }
         .checked_add(difference)
         .ok_or(ProgramError::InvalidRealloc)?;
@@ -46,15 +54,14 @@ pub fn resize(view: &mut AccountView, new_len: usize) -> Result<(), ProgramError
         return Err(ProgramError::InvalidRealloc);
     }
 
-    // SAFETY: `raw` and `delta_ptr` both refer to the same live runtime
-    // account. `delta_ptr` uses unaligned access for the i32 padding field.
+    // SAFETY: `raw` and `delta_ptr` both address the same live runtime account.
     unsafe {
         (*raw).data_len = new_len as u64;
         delta_ptr.write_unaligned(accumulated);
     }
 
     if difference > 0 {
-        // Zero-fill extended region (within MAX_PERMITTED_DATA_INCREASE).
+        // Zero the newly exposed bytes.
         // SAFETY: `data_len` was updated above, so the newly exposed range
         // `[current_len, new_len)` is within the account data allocation.
         unsafe {
@@ -69,13 +76,22 @@ pub fn resize(view: &mut AccountView, new_len: usize) -> Result<(), ProgramError
     Ok(())
 }
 
-/// Set lamports on a shared `&AccountView` via raw pointer cast.
-/// Sound on sBPF (no alias-based optimizations); used for cross-account
-/// mutations.
+/// Set the lamport balance of an account held through a shared `&AccountView`.
+///
+/// # Invariant
+///
+/// The write goes through a raw `*mut RuntimeAccount` that aliases the shared
+/// `view`, so the caller must not hold a live `&mut AccountView` to the same
+/// account while this runs. Every call site upholds this on a distinct
+/// account: `close_account` writes the `destination` (rejected as an alias of
+/// the closed account by a prior pointer-identity check) and `realloc_account`
+/// writes the `payer` (distinct from the resized account). Sound on sBPF, where
+/// the account buffer is genuine mutable runtime state and the target performs
+/// no alias-based optimizations.
 #[inline(always)]
 pub fn set_lamports(view: &AccountView, lamports: u64) {
-    // SAFETY: The SVM account backing `view` is mutable runtime state. This is
-    // the same raw lamport write used by account close/realloc paths.
+    // SAFETY: `view` aliases mutable SVM runtime state; the # Invariant above
+    // rules out a concurrent `&mut` to the same account.
     unsafe { (*(view.account_ptr() as *mut RuntimeAccount)).lamports = lamports };
 }
 
@@ -176,8 +192,8 @@ impl<T: AsAccountView + crate::traits::StaticView + crate::traits::Space> Accoun
         if new_space < <T as crate::traits::Space>::SPACE {
             return Err(ProgramError::AccountDataTooSmall);
         }
-        // SAFETY: `Account<T>` is only constructed for account-view-backed
-        // wrappers in this impl family; realloc needs the underlying view.
+        // SAFETY: `T: StaticView` makes `Account<T>` `#[repr(transparent)]`
+        // over `AccountView`, so the cast to the backing view is sound.
         let view = unsafe { &mut *(self as *mut Account<T> as *mut AccountView) };
         realloc_account(view, new_space, payer, rent)
     }

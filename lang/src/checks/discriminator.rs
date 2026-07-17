@@ -9,8 +9,8 @@ pub trait Discriminator: crate::traits::Discriminator {
     /// path.
     #[inline(always)]
     fn check(view: &AccountView) -> Result<(), ProgramError> {
-        // SAFETY: This is the unchecked fast path used when generated parsing
-        // has ruled out aliasing that requires runtime borrow tracking.
+        // SAFETY: unique-account fast path — generated parsing has ruled out
+        // the aliasing that would require runtime borrow tracking.
         let data = unsafe { view.borrow_unchecked() };
         Self::check_data(data)
     }

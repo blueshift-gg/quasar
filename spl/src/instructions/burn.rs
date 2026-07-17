@@ -1,3 +1,5 @@
+//! SPL Token `Burn` instruction (discriminator 8).
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,

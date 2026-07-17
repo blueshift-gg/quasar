@@ -1,3 +1,9 @@
+//! Token-2022 account, mint, and program wrapper types.
+//!
+//! Mirrors [`crate::token`] against the Token-2022 program: `Token2022`,
+//! `Mint2022`, and `Token2022Program` reuse the SPL `TokenData`/`MintData`
+//! schemas but trust only accounts owned by the Token-2022 program.
+
 use {
     crate::{
         constants::{TOKEN_2022_BYTES, TOKEN_2022_ID},

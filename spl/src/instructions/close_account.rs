@@ -1,9 +1,10 @@
+//! SPL Token `CloseAccount` instruction (discriminator 9).
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,
 };
 
-/// SPL Token `CloseAccount` instruction discriminator.
 const CLOSE_ACCOUNT: u8 = 9;
 
 /// Close a token account and reclaim its lamports via CPI.

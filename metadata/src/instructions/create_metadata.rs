@@ -1,3 +1,6 @@
+//! Builds the Metaplex `CreateMetadataAccountV3` instruction
+//! (discriminator 33).
+
 use {
     crate::codec::{BorshCpiEncode, BORSH_PREFIX_LEN},
     quasar_lang::{cpi::CpiDynamic, prelude::*},
@@ -19,6 +22,35 @@ fn borsh_payload_len(field: &impl BorshCpiEncode) -> Result<usize, ProgramError>
         .ok_or_else(metadata_field_too_long)
 }
 
+/// Create a metadata account for an SPL Token mint.
+///
+/// `name`, `symbol`, and `uri` are bounded by the Metaplex maximums
+/// (32 / 10 / 200 bytes); `creators`, `collection`, `uses`, and
+/// `collection_details` are always serialized as `None`.
+///
+/// ### Accounts:
+///   0. `[WRITE]` Metadata PDA (initialized)
+///   1. `[]`      SPL Token mint
+///   2. `[SIGNER]` Mint authority
+///   3. `[WRITE, SIGNER]` Payer funding the metadata account
+///   4. `[]`      Update authority; becomes `[SIGNER]` when
+///      `update_authority_is_signer` is set
+///   5. `[]`      System program
+///   6. `[]`      Rent sysvar
+///
+/// ### Instruction data (20 + name + symbol + uri bytes):
+/// ```text
+/// discriminator          u8 = 33
+/// DataV2.name            Borsh string: u32 LE len + UTF-8 bytes
+/// DataV2.symbol          Borsh string: u32 LE len + UTF-8 bytes
+/// DataV2.uri             Borsh string: u32 LE len + UTF-8 bytes
+/// DataV2.seller_fee      u16 LE
+/// DataV2.creators        Option<Vec<Creator>> = None (tag 0x00)
+/// DataV2.collection      Option<Collection>   = None (tag 0x00)
+/// DataV2.uses            Option<Uses>         = None (tag 0x00)
+/// is_mutable             bool (1 byte)
+/// collection_details     Option<..>           = None (tag 0x00)
+/// ```
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn create_metadata_accounts_v3<'a>(

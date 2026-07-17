@@ -1,3 +1,6 @@
+//! Builds the Metaplex `RevokeCollectionAuthority` instruction
+//! (discriminator 24).
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,
@@ -5,6 +8,19 @@ use quasar_lang::{
 
 const REVOKE_COLLECTION_AUTHORITY: u8 = 24;
 
+/// Revoke a previously delegated collection authority.
+///
+/// ### Accounts:
+///   0. `[WRITE]` Collection authority record PDA (closed)
+///   1. `[]`      Delegated authority being revoked
+///   2. `[SIGNER]` Update authority or the delegate itself
+///   3. `[]`      Collection metadata account
+///   4. `[]`      Collection mint
+///
+/// ### Instruction data (1 byte):
+/// ```text
+/// [0] discriminator (24)
+/// ```
 #[inline(always)]
 pub(super) fn revoke_collection_authority<'a>(
     program: &'a AccountView,

@@ -1,9 +1,10 @@
+//! SPL Token `Revoke` instruction (discriminator 5).
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,
 };
 
-/// SPL Token `Revoke` instruction discriminator.
 const REVOKE: u8 = 5;
 
 /// Revoke a delegate's authority via CPI.

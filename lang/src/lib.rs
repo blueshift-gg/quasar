@@ -124,6 +124,10 @@ pub mod __internal {
     /// Size of a duplicate account entry in the SVM input buffer.
     pub const DUP_ENTRY_SIZE: usize = core::mem::size_of::<u64>();
 
+    /// sBPF stack frame size. Compile-time stack budgets subtract a
+    /// per-site headroom from this; each site documents its margin.
+    pub const SBF_STACK_FRAME: usize = 4096;
+
     /// Round `n` up to the next multiple of 8.
     #[inline(always)]
     pub const fn align_up_8(n: usize) -> usize {
@@ -202,7 +206,7 @@ pub mod __internal {
                     // accounts parsed so far (`buf[0..i]`). The SVM guarantees
                     // dup indices point backward to a previously-serialized
                     // non-dup entry (`resolve_dup` rejects a forward index).
-                    // Note: the copy creates an aliased `AccountView` (both
+                    // The copy creates an aliased `AccountView` (both
                     // point at the same `RuntimeAccount`); the raw handler is
                     // responsible for avoiding simultaneous
                     // `borrow_unchecked_mut()` on aliased views.
@@ -249,6 +253,13 @@ pub mod __internal {
     /// checks minimum requirements.
     ///
     /// Returns the updated input pointer on success.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure `input` is 8-byte aligned and points at a
+    /// non-duplicate account entry whose full `RuntimeAccount` header
+    /// (including `data_len`) is readable, and that `base.add(offset)` is a
+    /// writable `AccountView` slot.
     #[inline(always)]
     pub unsafe fn parse_account(
         input: *mut u8,
@@ -262,7 +273,8 @@ pub mod __internal {
             "parse_account: input pointer is not 8-byte aligned"
         );
         let raw = input as *mut RuntimeAccount;
-        // SAFETY: `input` points to a valid `RuntimeAccount` header.
+        // SAFETY: the header is the four flag bytes at the 8-aligned start of a
+        // valid `RuntimeAccount`, so the aligned u32 read is in-bounds.
         let header = unsafe { *(raw as *const u32) };
 
         if crate::utils::hint::unlikely(header != expected) {
@@ -275,8 +287,8 @@ pub mod __internal {
         // SAFETY: `base.add(offset)` is within the caller-provided output
         // buffer, and `raw` is the current account header.
         unsafe { core::ptr::write(base.add(offset), AccountView::new_unchecked(raw)) };
-        // SAFETY: `raw` is valid for the current non-duplicate account;
-        // `advance_account_data` advances past header + data + 8-byte padding.
+        // SAFETY: `raw` is the current non-dup account, so `data_len` is valid
+        // and `input` meets `advance_account_data`'s entry contract.
         let data_len = unsafe { (*raw).data_len as usize };
         let input = unsafe { crate::svm::advance_account_data(input, data_len) };
         Ok(input)
@@ -291,6 +303,13 @@ pub mod __internal {
     /// - Mask-based flag checks
     ///
     /// Returns the updated input pointer on success.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure `input` is 8-byte aligned and points at an
+    /// account or duplicate entry, that slots `base[0..offset]` are already
+    /// initialized (the dup branch reads an earlier slot), and that
+    /// `base.add(offset)` is a writable `AccountView` slot.
     #[inline(always)]
     pub unsafe fn parse_account_dup(
         input: *mut u8,
@@ -306,7 +325,8 @@ pub mod __internal {
             "parse_account_dup: input pointer is not 8-byte aligned"
         );
         let raw = input as *mut RuntimeAccount;
-        // SAFETY: `input` points to a valid account or duplicate header.
+        // SAFETY: the header is the four flag bytes at the 8-aligned start of a
+        // valid account/dup entry, so the aligned u32 read is in-bounds.
         let actual_header = unsafe { *(raw as *const u32) };
 
         // Decode the dup/non-dup distinction through the single owner in
@@ -353,8 +373,8 @@ pub mod __internal {
             // SAFETY: `base.add(offset)` is within the caller-provided output
             // buffer, and `raw` is the current account header.
             unsafe { core::ptr::write(base.add(offset), AccountView::new_unchecked(raw)) };
-            // SAFETY: `raw` is valid for the current non-duplicate account;
-            // `advance_account_data` advances past header + data + 8-byte pad.
+            // SAFETY: `raw` is the current non-dup account, so `data_len` is
+            // valid and `input` meets `advance_account_data`'s entry contract.
             let data_len = unsafe { (*raw).data_len as usize };
             let input = unsafe { crate::svm::advance_account_data(input, data_len) };
             Ok(input)
@@ -383,7 +403,7 @@ pub mod __internal {
                 let orig_view = unsafe { core::ptr::read(base.add(idx)) };
                 if crate::keys_eq(orig_view.address(), program_id) {
                     unsafe { core::ptr::write(base.add(offset), orig_view) };
-                    let input = unsafe { input.add(core::mem::size_of::<u64>()) };
+                    let input = unsafe { input.add(DUP_ENTRY_SIZE) };
                     return Ok(input);
                 }
 
@@ -392,7 +412,7 @@ pub mod __internal {
                 }
 
                 unsafe { core::ptr::write(base.add(offset), orig_view) };
-                let input = unsafe { input.add(core::mem::size_of::<u64>()) };
+                let input = unsafe { input.add(DUP_ENTRY_SIZE) };
                 return Ok(input);
             }
 
@@ -404,8 +424,8 @@ pub mod __internal {
             // SAFETY: `idx < offset` means the source slot is already
             // initialized; the destination slot is within the output buffer.
             unsafe { core::ptr::write(base.add(offset), core::ptr::read(base.add(idx))) };
-            // SAFETY: Duplicate entries are exactly one u64 in the SVM input.
-            let input = unsafe { input.add(core::mem::size_of::<u64>()) };
+            // SAFETY: a duplicate entry occupies exactly `DUP_ENTRY_SIZE` bytes.
+            let input = unsafe { input.add(DUP_ENTRY_SIZE) };
             Ok(input)
         }
     }
@@ -580,6 +600,7 @@ pub fn is_system_program(addr: &solana_address::Address) -> bool {
 /// - non-zero: actual error (dup, missing signer, etc.)
 #[cold]
 #[inline(never)]
+// `exec`/`exp_exec` are read only on the `debug` logging path.
 #[allow(unused_variables)]
 #[doc(hidden)]
 pub fn decode_header_error(header: u32, expected: u32, required_mask: u32) -> u64 {

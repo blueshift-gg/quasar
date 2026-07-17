@@ -1,3 +1,6 @@
+//! The [`MetadataCpi`] dispatch trait, wiring each account handle to the
+//! Metaplex Token Metadata instruction builders.
+
 use {
     super::{
         approve_collection, burn, create_master_edition, create_metadata, freeze_thaw,

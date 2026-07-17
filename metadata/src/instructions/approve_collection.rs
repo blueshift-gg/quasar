@@ -1,3 +1,6 @@
+//! Builds the Metaplex `ApproveCollectionAuthority` instruction
+//! (discriminator 23).
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,
@@ -5,6 +8,20 @@ use quasar_lang::{
 
 const APPROVE_COLLECTION_AUTHORITY: u8 = 23;
 
+/// Delegate a new authority allowed to verify the collection.
+///
+/// ### Accounts:
+///   0. `[WRITE]` Collection authority record PDA (initialized)
+///   1. `[]`      New collection authority to delegate
+///   2. `[SIGNER]` Collection update authority
+///   3. `[WRITE, SIGNER]` Payer funding the record account
+///   4. `[]`      Collection metadata account
+///   5. `[]`      Collection mint
+///
+/// ### Instruction data (1 byte):
+/// ```text
+/// [0] discriminator (23)
+/// ```
 #[inline(always)]
 pub(super) fn approve_collection_authority<'a>(
     program: &'a AccountView,

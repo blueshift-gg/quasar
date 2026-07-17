@@ -1,3 +1,10 @@
+//! System-program CPI builders.
+//!
+//! Each builder documents its fixed wire layout per instruction and serializes
+//! the data with unaligned writes into a `MaybeUninit` stack buffer, fully
+//! initialized before `assume_init`. Constructed calls are dispatched through
+//! [`CpiCall`](super::CpiCall).
+
 use {
     super::{CpiCall, InstructionAccount, Signer},
     crate::traits::{AsAccountView, Id},

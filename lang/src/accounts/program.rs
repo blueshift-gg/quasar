@@ -1,3 +1,10 @@
+//! Executable program account wrapper.
+//!
+//! `Program<T>` is `#[repr(transparent)]` over `AccountView`. Parsing checks
+//! the executable flag (`IS_EXECUTABLE`); `check` then rejects any address that
+//! is not `T::ID`. The later pointer-cast construction trusts those two
+//! invariants (see the module header).
+
 use crate::prelude::*;
 
 /// Program account wrapper.
@@ -49,8 +56,7 @@ impl<T: crate::traits::Id> Program<T> {
     /// Caller must ensure the executable flag and program address are valid.
     #[inline(always)]
     pub unsafe fn from_account_view_unchecked(view: &AccountView) -> &Self {
-        // SAFETY: `Program<T>` is `repr(transparent)` over `AccountView` plus
-        // `PhantomData<T>`, so the reference cast preserves layout. The caller
+        // SAFETY: transparent layout (see the `StaticView` impl); the caller
         // upholds the executable/address invariants.
         unsafe { &*(view as *const AccountView as *const Self) }
     }

@@ -122,7 +122,6 @@ pub unsafe fn invoke_raw(
     #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
     {
         // SAFETY: Caller guarantees all pointer/length pairs are valid.
-        // Reconstructs safe Rust types for the off-chain invoke path.
         let instruction = unsafe {
             InstructionView {
                 program_id: &*program_id,
@@ -234,11 +233,9 @@ fn get_cpi_return() -> Result<CpiReturn, ProgramError> {
             return Err(QuasarError::MissingReturnData.into());
         }
 
-        // `sol_get_return_data` initialized `min(size, MAX_RETURN_DATA)` bytes;
-        // the tail stays uninitialized. The buffer is kept as `MaybeUninit`
-        // (never `assume_init`ed) so moving it into `CpiReturn` is well-defined,
-        // and both consumers (`as_slice`, `decode`) read only the `data_len`
-        // prefix.
+        // Kept as `MaybeUninit` (never `assume_init`ed), so moving the
+        // partially-initialized buffer into `CpiReturn` is well-defined; the
+        // init bounds and consumer contract are the SAFETY note above.
         return Ok(CpiReturn {
             // SAFETY: sol_get_return_data wrote the 32-byte program id.
             program_id: unsafe { program_id.assume_init() },

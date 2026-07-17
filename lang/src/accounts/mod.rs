@@ -4,6 +4,13 @@
 //! to on-chain account data: `Account<T>` for program-owned data accounts,
 //! `Program<T>` for executable program accounts, `Sysvar<T>` for sysvar
 //! accounts, and `UncheckedAccount` for unvalidated passthrough.
+//!
+//! Every wrapper is `#[repr(transparent)]` over `AccountView` and shares one
+//! model: generated dispatch runs `AccountLoad::check` (after the header
+//! signer/writable/executable flags) first, then reinterprets the validated
+//! `&AccountView` as the wrapper by pointer read or cast. Later zero-copy
+//! access trusts that validation already ran; the `StaticView` marker vouches
+//! for the transparent layout that makes the reinterpretation sound.
 
 /// Program-owned typed account wrappers.
 pub mod account;

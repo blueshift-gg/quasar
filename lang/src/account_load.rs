@@ -1,3 +1,11 @@
+//! Validation and construction for account wrapper types.
+//!
+//! [`AccountLoad`] turns a validated [`AccountView`] into a typed wrapper.
+//! Every wrapper is `#[repr(transparent)]` over `AccountView` — enforced by
+//! the [`StaticView`] supertrait — so each loader validates the account
+//! first, then constructs the wrapper with a pointer cast relying on that
+//! layout.
+
 use {
     crate::traits::{AsAccountView, StaticView},
     solana_account_view::AccountView,
@@ -70,7 +78,8 @@ pub trait AccountLoad: AsAccountView + StaticView + Sized {
     /// Validates and loads an immutable account wrapper.
     fn load(view: &AccountView) -> Result<Self, ProgramError> {
         Self::check(view)?;
-        // SAFETY: `check` validated the account for this wrapper.
+        // SAFETY: `check` validated the account; `Self: StaticView` makes it
+        // layout-compatible with `AccountView`, so the pointer read is sound.
         Ok(unsafe { core::ptr::read(view as *const AccountView as *const Self) })
     }
 
@@ -78,8 +87,9 @@ pub trait AccountLoad: AsAccountView + StaticView + Sized {
     /// Validates and loads a mutable account wrapper.
     fn load_mut(view: &mut AccountView) -> Result<Self, ProgramError> {
         Self::check(view)?;
-        // SAFETY: `check` validated the account; mutable load is only used
-        // after generated writable checks.
+        // SAFETY: `check` validated the account and `Self: StaticView` gives
+        // layout compatibility; mutable load runs only after generated
+        // writable checks.
         Ok(unsafe { core::ptr::read(view as *mut AccountView as *const Self) })
     }
 
@@ -87,8 +97,9 @@ pub trait AccountLoad: AsAccountView + StaticView + Sized {
     /// Validates and loads through runtime-checked data borrows.
     fn load_checked(view: &AccountView) -> Result<Self, ProgramError> {
         Self::check_checked(view)?;
-        // SAFETY: `check_checked` validated the account through runtime
-        // borrow-checked access.
+        // SAFETY: `check_checked` validated the account through runtime-checked
+        // borrows; `Self: StaticView` gives layout compatibility with
+        // `AccountView`.
         Ok(unsafe { core::ptr::read(view as *const AccountView as *const Self) })
     }
 
@@ -96,8 +107,9 @@ pub trait AccountLoad: AsAccountView + StaticView + Sized {
     /// Mutably loads through runtime-checked data borrows.
     fn load_mut_checked(view: &mut AccountView) -> Result<Self, ProgramError> {
         Self::check_checked(view)?;
-        // SAFETY: `check_checked` validated the account; mutable load is only
-        // used after generated writable checks.
+        // SAFETY: `check_checked` validated the account and `Self: StaticView`
+        // gives layout compatibility; mutable load runs only after generated
+        // writable checks.
         Ok(unsafe { core::ptr::read(view as *mut AccountView as *const Self) })
     }
 

@@ -1,3 +1,5 @@
+//! Builds the Metaplex `Utilize` instruction (discriminator 19).
+
 use quasar_lang::{
     cpi::{CpiCall, InstructionAccount},
     prelude::*,
@@ -5,6 +7,20 @@ use quasar_lang::{
 
 const UTILIZE: u8 = 19;
 
+/// Consume one or more uses from a utility NFT.
+///
+/// ### Accounts:
+///   0. `[WRITE]` Metadata account
+///   1. `[WRITE]` Token account holding the NFT
+///   2. `[WRITE]` NFT mint
+///   3. `[SIGNER]` Use authority
+///   4. `[]`      NFT owner
+///
+/// ### Instruction data (9 bytes):
+/// ```text
+/// [0]    discriminator (19)
+/// [1..9] number_of_uses (u64 LE)
+/// ```
 #[inline(always)]
 pub(super) fn utilize<'a>(
     program: &'a AccountView,

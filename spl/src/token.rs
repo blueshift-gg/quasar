@@ -1,3 +1,10 @@
+//! SPL Token account, mint, and program wrapper types.
+//!
+//! Defines the zero-copy `TokenData`/`MintData` schemas and the `Token`,
+//! `Mint`, and `TokenProgram` wrappers. `Account<Token>`/`Account<Mint>` trust
+//! only accounts owned by the SPL Token program; the `Owners` impls also accept
+//! Token-2022 so the same schema can back `InterfaceAccount`.
+
 // The `#[derive(quasar_lang::ZeroPod)]` expansion emits unqualified `zeropod::`
 // paths and has no crate-path override, so alias the framework's re-export as
 // `zeropod` to resolve them. Everything else uses the stable
