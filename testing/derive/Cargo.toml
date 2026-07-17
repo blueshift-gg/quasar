@@ -1,0 +1,28 @@
+[package]
+name = "quasar-test-derive"
+description = "Attribute macros for quasar-test"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+documentation = "https://docs.rs/quasar-test-derive/0.1.0"
+readme = "README.md"
+keywords = ["solana", "quasar", "testing", "proc-macro"]
+categories = ["development-tools::procedural-macro-helpers", "development-tools::testing"]
+
+include = ["/src/**", "/README.md", "/LICENSE-APACHE", "/LICENSE-MIT"]
+
+[lints]
+workspace = true
+
+[lib]
+proc-macro = true
+doctest = false
+
+[dependencies]
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"

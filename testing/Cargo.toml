@@ -19,6 +19,8 @@ workspace = true
 
 [dependencies]
 quasar-svm = "=0.1.0"
+quasar-lang = { path = "../lang", version = "=0.1.0" }
+quasar-test-derive = { path = "derive", version = "=0.1.0" }
 spl-token = { version = "=9.0.0", default-features = false, features = ["no-entrypoint"] }
 
 [lib]

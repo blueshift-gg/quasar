@@ -1,0 +1,1 @@
+proc-macro attr quasar_test_derive::quasar_test

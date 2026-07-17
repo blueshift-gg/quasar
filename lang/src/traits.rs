@@ -319,6 +319,17 @@ pub trait HasSeeds {
     const SEED_DYNAMIC_COUNT: usize;
 }
 
+/// Generic access to a seed set's raw slices (prefix + dynamic seeds, no
+/// bump).
+///
+/// Implemented by: the `{Name}SeedSet` type generated from `#[seeds(...)]`.
+/// Used by: off-chain helpers (`quasar-test`) to derive PDA addresses from
+/// the same seed definition the program validates against.
+pub trait SeedSlices {
+    /// Call `f` with this seed set's slices.
+    fn with_slices<R>(&self, f: impl FnOnce(&[&[u8]]) -> R) -> R;
+}
+
 /// Marker trait for account view types that are `#[repr(transparent)]` over
 /// `AccountView` and therefore safe to construct via pointer cast.
 ///

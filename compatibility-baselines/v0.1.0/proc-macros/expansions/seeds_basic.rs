@@ -35,6 +35,13 @@ impl<'__quasar_seed> VaultPdaSeedSet<'__quasar_seed> {
         [b"vault", self._authority.as_ref()]
     }
 }
+impl<'__quasar_seed> ::quasar_lang::traits::SeedSlices
+for VaultPdaSeedSet<'__quasar_seed> {
+    #[inline(always)]
+    fn with_slices<R>(&self, f: impl FnOnce(&[&[u8]]) -> R) -> R {
+        f(&self.as_slices())
+    }
+}
 impl<'__quasar_seed> VaultPdaSeedSetWithBump<'__quasar_seed> {
     #[inline(always)]
     pub fn as_slices(&self) -> [&[u8]; 3usize] {

@@ -2292,8 +2292,19 @@ dependencies = [
 name = "quasar-test"
 version = "0.1.0"
 dependencies = [
+ "quasar-lang",
  "quasar-svm 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "quasar-test-derive",
  "spl-token",
+]
+
+[[package]]
+name = "quasar-test-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -2342,6 +2353,7 @@ version = "0.1.0"
 dependencies = [
  "quasar-derive",
  "quasar-lang",
+ "quasar-test",
 ]
 
 [[package]]

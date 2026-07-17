@@ -3386,6 +3386,8 @@ pub fn quasar_lang::accounts::AccountsArray<T, N>::parse(&'input mut [solana_acc
 pub fn quasar_lang::accounts::AccountsArray<T, N>::parse_with_instruction_data(&'input mut [solana_account_view::AccountView], &[u8], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 pub trait quasar_lang::traits::ProgramInterface
 pub fn quasar_lang::traits::ProgramInterface::matches(&solana_address::Address) -> bool
+pub trait quasar_lang::traits::SeedSlices
+pub fn quasar_lang::traits::SeedSlices::with_slices<R>(&self, impl core::ops::function::FnOnce(&[&[u8]]) -> R) -> R
 pub trait quasar_lang::traits::Space
 pub const quasar_lang::traits::Space::SPACE: usize
 impl<T: quasar_lang::traits::Space> quasar_lang::traits::Space for quasar_lang::accounts::Account<T>

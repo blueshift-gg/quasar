@@ -272,6 +272,13 @@ pub(crate) fn generate_seeds_impl(
             }
         }
 
+        impl<'__quasar_seed> #krate::traits::SeedSlices for #seed_set<'__quasar_seed> {
+            #[inline(always)]
+            fn with_slices<R>(&self, f: impl FnOnce(&[&[u8]]) -> R) -> R {
+                f(&self.as_slices())
+            }
+        }
+
         impl<'__quasar_seed> #seed_set_bump<'__quasar_seed> {
             #[inline(always)]
             pub fn as_slices(&self) -> [&[u8]; #n_slices_with_bump] {
