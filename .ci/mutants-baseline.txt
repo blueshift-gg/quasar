@@ -1,0 +1,960 @@
+# Missed mutants accepted as debt (normalized: no line:col).
+# Shrink-only: additions require justification in the PR (TESTING.md).
+derive/src/account/layout.rs replace && with || in emit_bump_offset_impl
+derive/src/account/layout.rs replace == with != in emit_bump_offset_impl
+derive/src/account/layout.rs replace emit_bump_offset_impl -> proc_macro2::TokenStream with Default::default()
+derive/src/account/mod.rs delete ! in account_inner
+derive/src/account/mod.rs delete match arm Data::Enum(data) in account_inner
+derive/src/account/mod.rs replace account -> TokenStream with Default::default()
+derive/src/account/one_of.rs delete match arm syn::Type::Path(tp) in extract_variants
+derive/src/account/one_of.rs replace + with * in emit_pairwise_disc_assertions
+derive/src/account/one_of.rs replace + with - in emit_pairwise_disc_assertions
+derive/src/account/one_of.rs replace - with + in emit_deref_impl
+derive/src/account/one_of.rs replace - with / in emit_deref_impl
+derive/src/account/one_of.rs replace < with <= in extract_variants
+derive/src/account/one_of.rs replace < with == in extract_variants
+derive/src/account/one_of.rs replace < with > in extract_variants
+derive/src/account/one_of.rs replace == with != in extract_variants
+derive/src/account/one_of.rs replace emit_deref_impl -> proc_macro2::TokenStream with Default::default()
+derive/src/account/one_of.rs replace emit_max_space -> proc_macro2::TokenStream with Default::default()
+derive/src/account/one_of.rs replace emit_one_of_accessors -> proc_macro2::TokenStream with Default::default()
+derive/src/account/one_of.rs replace emit_pairwise_disc_assertions -> proc_macro2::TokenStream with Default::default()
+derive/src/account/one_of.rs replace extract_variants -> syn::Result<Vec<OneOfVariant>> with Ok(vec![])
+derive/src/account/one_of.rs replace generate_one_of_account -> proc_macro2::TokenStream with Default::default()
+derive/src/account/one_of.rs replace match guard fields.unnamed.len() == 1 with false in extract_variants
+derive/src/account/one_of.rs replace match guard fields.unnamed.len() == 1 with true in extract_variants
+derive/src/accounts/emit/ix_args.rs delete match arm "bool" in pod_elem_type
+derive/src/accounts/emit/ix_args.rs delete match arm "i128" in pod_elem_type
+derive/src/accounts/emit/ix_args.rs delete match arm "i16" in pod_elem_type
+derive/src/accounts/emit/ix_args.rs delete match arm "i32" in pod_elem_type
+derive/src/accounts/emit/ix_args.rs delete match arm "i64" in pod_elem_type
+derive/src/accounts/emit/ix_args.rs delete match arm "i8" in pod_elem_type
+derive/src/accounts/emit/ix_args.rs delete match arm "u128" in pod_elem_type
+derive/src/accounts/emit/ix_args.rs delete match arm "u16" in pod_elem_type
+derive/src/accounts/emit/ix_args.rs delete match arm "u32" in pod_elem_type
+derive/src/accounts/emit/ix_args.rs delete match arm "u64" in pod_elem_type
+derive/src/accounts/emit/ix_args.rs delete match arm "u8" in pod_elem_type
+derive/src/accounts/emit/ix_args.rs delete match arm Some(PodDynField::Vec{elem, ..}) in extract_body
+derive/src/accounts/emit/ix_args.rs replace pod_elem_type -> proc_macro2::TokenStream with Default::default()
+derive/src/accounts/emit/parse.rs delete ! in emit_init_phase_typed
+derive/src/accounts/emit/parse.rs replace != with == in emit_epilogue
+derive/src/accounts/emit/parse.rs replace != with == in emit_load_filtered_excluding
+derive/src/accounts/emit/parse.rs replace && with || in emit_epilogue
+derive/src/accounts/emit/parse.rs replace && with || in emit_load_by_ident
+derive/src/accounts/emit/parse.rs replace == with != in emit_epilogue
+derive/src/accounts/emit/parse.rs replace == with != in emit_init_phase_typed
+derive/src/accounts/emit/parse.rs replace == with != in emit_load_by_ident
+derive/src/accounts/emit/parse.rs replace emit_load_by_ident -> proc_macro2::TokenStream with Default::default()
+derive/src/accounts/emit/parse.rs replace is_validated_account_type -> bool with false
+derive/src/accounts/emit/parse.rs replace is_validated_account_type -> bool with true
+derive/src/accounts/emit/parse.rs replace needs_init_state_var -> bool with false
+derive/src/accounts/emit/parse.rs replace stored_bump_offset_expr -> Option<proc_macro2::TokenStream> with None
+derive/src/accounts/emit/parse.rs replace stored_bump_offset_expr -> Option<proc_macro2::TokenStream> with Some(Default::default())
+derive/src/accounts/emit/parse.rs replace || with && in is_validated_account_type
+derive/src/accounts/emit/typed_emit.rs replace emit_behavior_init -> proc_macro2::TokenStream with Default::default()
+derive/src/accounts/emit/typed_emit.rs replace emit_epilogue_behavior -> proc_macro2::TokenStream with Default::default()
+derive/src/accounts/mod.rs delete ! in derive_accounts_inner
+derive/src/accounts/mod.rs replace == with != in emit_event_cpi_impl
+derive/src/accounts/mod.rs replace emit_event_cpi_impl -> proc_macro2::TokenStream with Default::default()
+derive/src/accounts/resolve/lower.rs delete match arm Expr::Group(g) in as_seeds_call
+derive/src/accounts/resolve/lower.rs replace && with || in as_seeds_call
+derive/src/accounts/resolve/lower.rs replace && with || in resolve_seed_ref
+derive/src/accounts/resolve/lower.rs replace && with || in single_ident
+derive/src/accounts/resolve/lower.rs replace detect_dynamic -> bool with false
+derive/src/accounts/resolve/model.rs delete ! in account_meta_flags
+derive/src/accounts/resolve/model.rs replace || with && in FieldSemantics::is_writable
+derive/src/accounts/resolve/planner.rs replace match guard fp.ident == super::reserved::EVENT_AUTHORITY_FIELD || fp.wrapper == WrapperKind::EventAuthority with false in plan_event_cpi_term
+derive/src/accounts/resolve/planner.rs replace || with && in plan_event_cpi_term
+derive/src/accounts/resolve/rules.rs delete ! in validate_field
+derive/src/accounts/resolve/rules.rs delete match arm WrapperKind::EventAuthority in denied_op_target
+derive/src/accounts/resolve/rules.rs delete match arm WrapperKind::Interface in denied_op_target
+derive/src/accounts/resolve/rules.rs delete match arm WrapperKind::Program in denied_op_target
+derive/src/accounts/resolve/rules.rs delete match arm WrapperKind::Signer in denied_op_target
+derive/src/accounts/resolve/rules.rs delete match arm WrapperKind::Sysvar in denied_op_target
+derive/src/accounts/resolve/rules.rs delete match arm WrapperKind::UncheckedAccount in denied_op_target
+derive/src/accounts/resolve/rules.rs replace && with || in validate_field
+derive/src/accounts/resolve/rules.rs replace check_arg_value -> syn::Result<()> with Ok(())
+derive/src/accounts/resolve/rules.rs replace denied_op_target -> Option<&'static str> with None
+derive/src/accounts/resolve/rules.rs replace validate_behavior_field_refs -> syn::Result<()> with Ok(())
+derive/src/accounts/resolve/rules.rs replace validate_op_target -> syn::Result<()> with Ok(())
+derive/src/accounts/resolve/wrapper.rs delete match arm "EventAuthority" in classify_wrapper
+derive/src/accounts/resolve/wrapper.rs delete match arm "InterfaceAccount" in classify_wrapper
+derive/src/accounts/resolve/wrapper.rs delete match arm "Migration" in classify_wrapper
+derive/src/accounts/resolve/wrapper.rs delete match arm "Uninit" in classify_wrapper
+derive/src/accounts/syntax/attrs.rs delete match arm "bump" in <impl Parse for ParsedDirective>::parse
+derive/src/accounts/syntax/attrs.rs delete match arm "seeds" in <impl Parse for ParsedDirective>::parse
+derive/src/accounts/syntax/attrs.rs delete match arm Expr::Call(call) in behavior_arg_value
+derive/src/accounts/syntax/attrs.rs replace && with || in <impl Parse for ParsedDirective>::parse
+derive/src/accounts/syntax/attrs.rs replace && with || in behavior_arg_value
+derive/src/accounts/syntax/attrs.rs replace == with != in behavior_arg_value
+derive/src/accounts/syntax/attrs.rs replace match guard ep.qself.is_none() with true in behavior_arg_value
+derive/src/ctx.rs delete match arm [GenericArgument::Type(inner)] in CtxKind<'a>::classify
+derive/src/declare_program.rs delete ! in emit_struct_defs
+derive/src/declare_program.rs delete ! in map_idl_type
+derive/src/declare_program.rs delete ! in resolve_size
+derive/src/declare_program.rs delete match arm (AccountFlag::Fixed(false), AccountFlag::Fixed(false)) in ia_constructor
+derive/src/declare_program.rs delete match arm (AccountFlag::Fixed(false), AccountFlag::Fixed(true)) in ia_constructor
+derive/src/declare_program.rs delete match arm (AccountFlag::Fixed(true), AccountFlag::Fixed(false)) in ia_constructor
+derive/src/declare_program.rs delete match arm (AccountFlag::Fixed(true), AccountFlag::Fixed(true)) in ia_constructor
+derive/src/declare_program.rs replace != with == in build_type_sizes
+derive/src/declare_program.rs replace <impl Parse for DeclareProgramInput>::parse -> syn::Result<Self> with Ok(Default::default())
+derive/src/declare_program.rs replace == with != in build_type_sizes
+derive/src/declare_program.rs replace == with != in collect_type_refs
+derive/src/declare_program.rs replace == with != in emit_field_write
+derive/src/declare_program.rs replace build_type_sizes -> Result<HashMap<String, usize>, String> with Ok(HashMap::from_iter([("xyzzy".into(), 0)]))
+derive/src/declare_program.rs replace build_type_sizes -> Result<HashMap<String, usize>, String> with Ok(HashMap::from_iter([("xyzzy".into(), 1)]))
+derive/src/declare_program.rs replace build_type_sizes -> Result<HashMap<String, usize>, String> with Ok(HashMap::from_iter([(String::new(), 0)]))
+derive/src/declare_program.rs replace build_type_sizes -> Result<HashMap<String, usize>, String> with Ok(HashMap::from_iter([(String::new(), 1)]))
+derive/src/declare_program.rs replace build_type_sizes -> Result<HashMap<String, usize>, String> with Ok(HashMap::new())
+derive/src/declare_program.rs replace collect_referenced_types -> HashSet<String> with HashSet::from_iter(["xyzzy".into()])
+derive/src/declare_program.rs replace collect_referenced_types -> HashSet<String> with HashSet::from_iter([String::new()])
+derive/src/declare_program.rs replace collect_referenced_types -> HashSet<String> with HashSet::new()
+derive/src/declare_program.rs replace collect_type_refs with ()
+derive/src/declare_program.rs replace declare_program -> TokenStream with Default::default()
+derive/src/declare_program.rs replace declare_program_inner -> TokenStream2 with Default::default()
+derive/src/declare_program.rs replace emit_field_write -> Result<(), String> with Ok(())
+derive/src/declare_program.rs replace emit_struct_defs -> Result<Vec<TokenStream2>, String> with Ok(vec![Default::default()])
+derive/src/declare_program.rs replace emit_struct_defs -> Result<Vec<TokenStream2>, String> with Ok(vec![])
+derive/src/declare_program.rs replace field_byte_size -> Result<usize, String> with Ok(0)
+derive/src/declare_program.rs replace field_byte_size -> Result<usize, String> with Ok(1)
+derive/src/declare_program.rs replace generate_data_write -> Result<(TokenStream2, usize), String> with Ok((Default::default(), 0))
+derive/src/declare_program.rs replace generate_data_write -> Result<(TokenStream2, usize), String> with Ok((Default::default(), 1))
+derive/src/declare_program.rs replace ia_constructor -> Result<&'static str, String> with Ok("")
+derive/src/declare_program.rs replace ia_constructor -> Result<&'static str, String> with Ok("xyzzy")
+derive/src/declare_program.rs replace map_idl_type -> Result<TypeInfo, String> with Ok(Default::default())
+derive/src/declare_program.rs replace match guard out.insert(defined.name.clone()) with false in collect_type_refs
+derive/src/declare_program.rs replace match guard out.insert(defined.name.clone()) with true in collect_type_refs
+derive/src/declare_program.rs replace primitive_size -> Result<usize, String> with Ok(0)
+derive/src/declare_program.rs replace primitive_size -> Result<usize, String> with Ok(1)
+derive/src/declare_program.rs replace resolve_size -> Result<usize, String> with Ok(0)
+derive/src/declare_program.rs replace resolve_size -> Result<usize, String> with Ok(1)
+derive/src/declare_program.rs replace sanitize_ident -> syn::Result<Ident> with Ok(Default::default())
+derive/src/declare_program/readers.rs delete ! in emit
+derive/src/declare_program/readers.rs replace != with == in account_data_len
+derive/src/declare_program/readers.rs replace != with == in emit
+derive/src/declare_program/readers.rs replace < with <= in account_data_len
+derive/src/declare_program/readers.rs replace < with == in account_data_len
+derive/src/declare_program/readers.rs replace < with > in account_data_len
+derive/src/declare_program/readers.rs replace == with != in account_type
+derive/src/declare_program/readers.rs replace == with != in emit_field_read
+derive/src/declare_program/readers.rs replace account_data_len -> Result<usize, String> with Ok(0)
+derive/src/declare_program/readers.rs replace account_data_len -> Result<usize, String> with Ok(1)
+derive/src/declare_program/readers.rs replace account_type -> Result<&'a IdlTypeDef, String> with Ok(Box::leak(Box::new(Default::default())))
+derive/src/declare_program/readers.rs replace collect_account_type_refs -> Result<(), String> with Ok(())
+derive/src/declare_program/readers.rs replace emit -> Result<Vec<TokenStream2>, String> with Ok(vec![Default::default()])
+derive/src/declare_program/readers.rs replace emit -> Result<Vec<TokenStream2>, String> with Ok(vec![])
+derive/src/declare_program/readers.rs replace emit_field_read -> Result<TokenStream2, String> with Ok(Default::default())
+derive/src/declare_program/readers.rs replace emit_primitive_read -> Result<TokenStream2, String> with Ok(Default::default())
+derive/src/event.rs replace event -> TokenStream with Default::default()
+derive/src/helpers.rs delete ! in <impl Parse for AccountAttr>::parse
+derive/src/helpers.rs delete ! in parse_max_attr
+derive/src/helpers.rs delete match arm 1 in prefix_bytes_to_rust_type
+derive/src/helpers.rs delete match arm 2 in prefix_bytes_to_rust_type
+derive/src/helpers.rs delete match arm 4 in prefix_bytes_to_rust_type
+derive/src/helpers.rs delete match arm 8 in prefix_bytes_to_rust_type
+derive/src/helpers.rs delete match arm Type::Path(type_path) in strip_generics
+derive/src/helpers.rs replace != with == in parse_max_attr
+derive/src/helpers.rs replace && with || in classify_pod_vec
+derive/src/helpers.rs replace && with || in extract_const_expr
+derive/src/helpers.rs replace && with || in validate_discriminator
+derive/src/helpers.rs replace == with != in <impl Parse for AccountAttr>::parse
+derive/src/helpers.rs replace == with != in classify_borrowed_as_compact
+derive/src/helpers.rs replace == with != in classify_pod_vec
+derive/src/helpers.rs replace == with != in extract_const_expr
+derive/src/helpers.rs replace == with != in pod_alias_type
+derive/src/helpers.rs replace > with < in validate_discriminator
+derive/src/helpers.rs replace > with == in check_fixed_before_dynamic
+derive/src/helpers.rs replace > with == in validate_discriminator
+derive/src/helpers.rs replace > with >= in check_fixed_before_dynamic
+derive/src/helpers.rs replace > with >= in validate_discriminator
+derive/src/helpers.rs replace check_fixed_before_dynamic -> syn::Result<()> with Ok(())
+derive/src/helpers.rs replace classify_lifetime_arg -> bool with false
+derive/src/helpers.rs replace classify_option_pod_dynamic -> Option<PodDynField> with None
+derive/src/helpers.rs replace is_unit_type -> bool with true
+derive/src/helpers.rs replace match guard id == "u64" with false in parse_prefix_arg
+derive/src/helpers.rs replace match guard type_path.qself.is_none() && type_path.path.leading_colon.is_none() && type_path.path.segments.len() == 1 with false in extract_const_expr
+derive/src/helpers.rs replace match guard type_path.qself.is_none() && type_path.path.leading_colon.is_none() && type_path.path.segments.len() == 1 with true in extract_const_expr
+derive/src/helpers.rs replace missing_max_message -> &'static str with ""
+derive/src/helpers.rs replace missing_max_message -> &'static str with "xyzzy"
+derive/src/helpers.rs replace parse_max_attr -> Option<syn::Result<(usize, usize)>> with None
+derive/src/helpers.rs replace parse_max_attr -> Option<syn::Result<(usize, usize)>> with Some(Ok((0, 0)))
+derive/src/helpers.rs replace parse_max_attr -> Option<syn::Result<(usize, usize)>> with Some(Ok((0, 1)))
+derive/src/helpers.rs replace parse_max_attr -> Option<syn::Result<(usize, usize)>> with Some(Ok((1, 0)))
+derive/src/helpers.rs replace parse_max_attr -> Option<syn::Result<(usize, usize)>> with Some(Ok((1, 1)))
+derive/src/helpers.rs replace pod_alias_type -> Option<proc_macro2::TokenStream> with None
+derive/src/helpers.rs replace prefix_bytes_to_rust_type -> proc_macro2::TokenStream with Default::default()
+derive/src/helpers.rs replace strip_generics -> syn::Result<proc_macro2::TokenStream> with Ok(Default::default())
+derive/src/helpers.rs replace zc_assign_from_value -> proc_macro2::TokenStream with Default::default()
+derive/src/helpers.rs replace || with && in <impl Parse for AccountAttr>::parse
+derive/src/helpers.rs replace || with && in pod_alias_type
+derive/src/idl.rs delete match arm 1 in prefix_type_name
+derive/src/idl.rs delete match arm 2 in prefix_type_name
+derive/src/idl.rs delete match arm 4 in prefix_type_name
+derive/src/idl.rs delete match arm 8 in prefix_type_name
+derive/src/idl.rs replace == with != in type_to_idl_type_tokens
+derive/src/instruction.rs delete ! in instruction_inner
+derive/src/instruction.rs delete match arm ReturnType::Type(_, ty) in instruction_inner
+derive/src/instruction.rs delete match arm Type::Path(tp) in instruction_inner
+derive/src/instruction.rs replace != with == in emit_decode_and_tail
+derive/src/instruction.rs replace == with != in instruction_inner
+derive/src/instruction.rs replace > with < in instruction_inner
+derive/src/instruction.rs replace > with == in instruction_inner
+derive/src/instruction.rs replace > with >= in instruction_inner
+derive/src/instruction.rs replace instruction -> TokenStream with Default::default()
+derive/src/lib.rs replace account -> TokenStream with Default::default()
+derive/src/lib.rs replace declare_program -> TokenStream with Default::default()
+derive/src/lib.rs replace derive_quasar_serialize -> TokenStream with Default::default()
+derive/src/lib.rs replace derive_seeds -> TokenStream with Default::default()
+derive/src/lib.rs replace emit_cpi -> TokenStream with Default::default()
+derive/src/lib.rs replace event -> TokenStream with Default::default()
+derive/src/lib.rs replace instruction -> TokenStream with Default::default()
+derive/src/lib.rs replace program -> TokenStream with Default::default()
+derive/src/program/dispatch.rs replace && with || in emit_raw_dispatch_block
+derive/src/program/dispatch.rs replace + with * in emit_raw_dispatch_block
+derive/src/program/dispatch.rs replace + with - in emit_raw_dispatch_block
+derive/src/program/dispatch.rs replace - with + in emit_raw_dispatch_block
+derive/src/program/dispatch.rs replace - with / in emit_raw_dispatch_block
+derive/src/program/dispatch.rs replace == with != in emit_raw_dispatch_block
+derive/src/program/dispatch.rs replace emit_heap_cursor_block -> TokenStream2 with Default::default()
+derive/src/program/dispatch.rs replace emit_raw_context_setup -> TokenStream2 with Default::default()
+derive/src/program/dispatch.rs replace emit_raw_dispatch_block -> TokenStream2 with Default::default()
+derive/src/program/dispatch.rs replace || with && in emit_raw_dispatch_block
+derive/src/program/idl.rs replace == with != in emit_idl
+derive/src/program/mod.rs replace program -> TokenStream with Default::default()
+derive/src/program/model.rs replace != with == in ProgramModel::build
+derive/src/program/model.rs replace += with *= in auto_discriminator
+derive/src/program/model.rs replace += with -= in auto_discriminator
+derive/src/program/model.rs replace <= with > in auto_discriminator
+derive/src/program/model.rs replace auto_discriminator -> syn::Result<(Vec<LitInt>, Vec<u8>)> with Ok((vec![], vec![0]))
+derive/src/program/model.rs replace auto_discriminator -> syn::Result<(Vec<LitInt>, Vec<u8>)> with Ok((vec![], vec![1]))
+derive/src/program/model.rs replace auto_discriminator -> syn::Result<(Vec<LitInt>, Vec<u8>)> with Ok((vec![], vec![]))
+derive/src/program/model.rs replace combine_err with ()
+derive/src/program/model.rs replace || with && in ProgramModel::build
+derive/src/program/spec.rs replace == with != in <impl syn::parse::Parse for ProgramArgs>::parse
+derive/src/program/spec.rs replace InstructionSpec::has_compact_client_layout -> bool with false
+derive/src/schema_ir.rs delete match arm "u128" | "i128" in event_field_size
+derive/src/schema_ir.rs delete match arm "u16" | "i16" in event_field_size
+derive/src/schema_ir.rs delete match arm "u32" | "i32" in event_field_size
+derive/src/schema_ir.rs delete match arm "u8" | "i8" | "bool" in event_field_size
+derive/src/seed_param.rs delete ! in parse_seed_type
+derive/src/seed_param.rs delete match arm "u16" in parse_seed_type
+derive/src/seed_param.rs delete match arm "u32" in parse_seed_type
+derive/src/seed_param.rs delete match arm "u64" in parse_seed_type
+derive/src/seed_param.rs delete match arm "u8" in parse_seed_type
+derive/src/seed_param.rs replace > with < in parse_seed_type
+derive/src/seed_param.rs replace > with == in parse_seed_type
+derive/src/seed_param.rs replace > with >= in parse_seed_type
+derive/src/seeds.rs replace + with * in <impl Parse for SeedsAttr>::parse
+derive/src/seeds.rs replace + with - in <impl Parse for SeedsAttr>::parse
+derive/src/seeds.rs replace > with == in <impl Parse for SeedsAttr>::parse
+derive/src/seeds.rs replace > with >= in <impl Parse for SeedsAttr>::parse
+derive/src/seeds.rs replace derive_seeds -> proc_macro::TokenStream with Default::default()
+derive/src/serialize.rs delete ! in derive_enum
+derive/src/serialize.rs delete ! in parse_repr_type
+derive/src/serialize.rs delete match arm Data::Enum(data) in derive_quasar_serialize_inner
+derive/src/serialize.rs replace derive_borrowed_compact -> TokenStream2 with Default::default()
+derive/src/serialize.rs replace derive_enum -> TokenStream2 with Default::default()
+derive/src/serialize.rs replace derive_quasar_serialize -> TokenStream with Default::default()
+idl/schema/src/account.rs delete ! in is_false
+idl/schema/src/account.rs replace AccountFlag::is_false -> bool with false
+idl/schema/src/account.rs replace AccountFlag::is_false -> bool with true
+idl/schema/src/account.rs replace AccountFlag::is_true -> bool with false
+idl/schema/src/account.rs replace AccountFlag::is_true -> bool with true
+idl/schema/src/account.rs replace is_false -> bool with false
+idl/schema/src/account.rs replace is_false -> bool with true
+idl/schema/src/canonical.rs delete match arm serde_json::Value::Array(values) in sort_json_objects
+idl/schema/src/canonical.rs delete match arm serde_json::Value::Object(object) in sort_json_objects
+idl/schema/src/canonical.rs replace canonical_abi_json_pretty -> serde_json::Result<Vec<u8>> with Ok(vec![0])
+idl/schema/src/canonical.rs replace canonical_abi_json_pretty -> serde_json::Result<Vec<u8>> with Ok(vec![1])
+idl/schema/src/canonical.rs replace canonical_abi_json_pretty -> serde_json::Result<Vec<u8>> with Ok(vec![])
+idl/schema/src/canonical.rs replace canonical_json_pretty -> serde_json::Result<Vec<u8>> with Ok(vec![0])
+idl/schema/src/canonical.rs replace canonical_json_pretty -> serde_json::Result<Vec<u8>> with Ok(vec![1])
+idl/schema/src/canonical.rs replace canonical_json_pretty -> serde_json::Result<Vec<u8>> with Ok(vec![])
+idl/schema/src/canonical.rs replace compute_idl_hash -> String with "xyzzy".into()
+idl/schema/src/canonical.rs replace compute_idl_hash -> String with String::new()
+idl/schema/src/canonical.rs replace sort_json_objects with ()
+idl/schema/src/codec.rs delete match arm "u128" | "i128" in ScalarRepr::byte_width
+idl/schema/src/codec.rs delete match arm "u16" in IdlCodec::prefix_bytes
+idl/schema/src/codec.rs delete match arm "u16" | "i16" in ScalarRepr::byte_width
+idl/schema/src/codec.rs delete match arm "u32" in IdlCodec::prefix_bytes
+idl/schema/src/codec.rs delete match arm "u32" | "i32" | "f32" in ScalarRepr::byte_width
+idl/schema/src/codec.rs delete match arm "u64" in IdlCodec::prefix_bytes
+idl/schema/src/codec.rs delete match arm "u64" | "i64" | "f64" in ScalarRepr::byte_width
+idl/schema/src/codec.rs delete match arm "u8" in IdlCodec::prefix_bytes
+idl/schema/src/codec.rs delete match arm "u8" | "i8" in ScalarRepr::byte_width
+idl/schema/src/codec.rs delete match arm Self::SizePrefixed{max_bytes, ..} in IdlCodec::max_bytes
+idl/schema/src/codec.rs delete match arm Self::SizePrefixed{max_items, ..} in IdlCodec::max_items
+idl/schema/src/codec.rs delete match arm Self::SizePrefixed{prefix, ..} in IdlCodec::prefix_bytes
+idl/schema/src/codec.rs replace IdlCodec::max_bytes -> Option<usize> with None
+idl/schema/src/codec.rs replace IdlCodec::max_bytes -> Option<usize> with Some(0)
+idl/schema/src/codec.rs replace IdlCodec::max_bytes -> Option<usize> with Some(1)
+idl/schema/src/codec.rs replace IdlCodec::max_items -> Option<usize> with None
+idl/schema/src/codec.rs replace IdlCodec::max_items -> Option<usize> with Some(0)
+idl/schema/src/codec.rs replace IdlCodec::max_items -> Option<usize> with Some(1)
+idl/schema/src/codec.rs replace IdlCodec::prefix_bytes -> usize with 0
+idl/schema/src/codec.rs replace IdlCodec::prefix_bytes -> usize with 1
+idl/schema/src/codec.rs replace ScalarRepr::byte_width -> usize with 0
+idl/schema/src/codec.rs replace ScalarRepr::byte_width -> usize with 1
+idl/schema/src/root.rs delete ! in IdlMetadata::client_name
+idl/schema/src/root.rs replace && with || in IdlMetadata::is_empty
+idl/schema/src/root.rs replace IdlMetadata::client_name -> String with "xyzzy".into()
+idl/schema/src/root.rs replace IdlMetadata::client_name -> String with String::new()
+idl/schema/src/root.rs replace IdlMetadata::is_empty -> bool with false
+idl/schema/src/root.rs replace IdlMetadata::is_empty -> bool with true
+idl/src/audit.rs replace && with || in validation_plan
+idl/src/codegen/c.rs delete ! in account_field_seed_inputs
+idl/src/codegen/c.rs delete ! in emit_fixed_account_ids
+idl/src/codegen/c.rs delete ! in emit_instructions
+idl/src/codegen/c.rs delete match arm "PodBool" in builtin_defined_primitive
+idl/src/codegen/c.rs delete match arm "PodI128" in builtin_defined_primitive
+idl/src/codegen/c.rs delete match arm "PodI16" in builtin_defined_primitive
+idl/src/codegen/c.rs delete match arm "PodI32" in builtin_defined_primitive
+idl/src/codegen/c.rs delete match arm "PodI64" in builtin_defined_primitive
+idl/src/codegen/c.rs delete match arm "PodI8" in builtin_defined_primitive
+idl/src/codegen/c.rs delete match arm "PodU128" in builtin_defined_primitive
+idl/src/codegen/c.rs delete match arm "PodU16" in builtin_defined_primitive
+idl/src/codegen/c.rs delete match arm "PodU32" in builtin_defined_primitive
+idl/src/codegen/c.rs delete match arm "PodU64" in builtin_defined_primitive
+idl/src/codegen/c.rs delete match arm "PodU8" in builtin_defined_primitive
+idl/src/codegen/c.rs delete match arm "bool" in decode_field_expr
+idl/src/codegen/c.rs delete match arm "bool" in emit_arg_seed
+idl/src/codegen/c.rs delete match arm "f32" in decode_field_expr
+idl/src/codegen/c.rs delete match arm "f32" in primitive_c_type
+idl/src/codegen/c.rs delete match arm "f64" in decode_field_expr
+idl/src/codegen/c.rs delete match arm "f64" in primitive_c_type
+idl/src/codegen/c.rs delete match arm "i16" in decode_field_expr
+idl/src/codegen/c.rs delete match arm "i16" in primitive_c_type
+idl/src/codegen/c.rs delete match arm "i16" in serialize_field_expr
+idl/src/codegen/c.rs delete match arm "i32" in decode_field_expr
+idl/src/codegen/c.rs delete match arm "i32" in primitive_c_type
+idl/src/codegen/c.rs delete match arm "i64" in decode_field_expr
+idl/src/codegen/c.rs delete match arm "i64" in primitive_c_type
+idl/src/codegen/c.rs delete match arm "i8" in decode_field_expr
+idl/src/codegen/c.rs delete match arm "i8" in primitive_c_type
+idl/src/codegen/c.rs delete match arm "i8" in serialize_field_expr
+idl/src/codegen/c.rs delete match arm "pubkey" in emit_arg_seed
+idl/src/codegen/c.rs delete match arm "pubkey" in emit_required_data_size
+idl/src/codegen/c.rs delete match arm "pubkey" in serialize_field_expr
+idl/src/codegen/c.rs delete match arm "string" in decode_field_expr
+idl/src/codegen/c.rs delete match arm "string" in emit_required_data_size
+idl/src/codegen/c.rs delete match arm "string" in primitive_c_type
+idl/src/codegen/c.rs delete match arm "string" in serialize_field_expr
+idl/src/codegen/c.rs delete match arm "u128" | "i128" in decode_field_expr
+idl/src/codegen/c.rs delete match arm "u128" | "i128" in emit_arg_seed
+idl/src/codegen/c.rs delete match arm "u128" | "i128" in emit_required_data_size
+idl/src/codegen/c.rs delete match arm "u128" | "i128" in primitive_c_type
+idl/src/codegen/c.rs delete match arm "u128" | "i128" in serialize_field_expr
+idl/src/codegen/c.rs delete match arm "u16" in decode_field_expr
+idl/src/codegen/c.rs delete match arm "u16" in primitive_c_type
+idl/src/codegen/c.rs delete match arm "u16" in serialize_field_expr
+idl/src/codegen/c.rs delete match arm "u16" | "i16" in emit_arg_seed
+idl/src/codegen/c.rs delete match arm "u16" | "i16" in emit_required_data_size
+idl/src/codegen/c.rs delete match arm "u32" in decode_field_expr
+idl/src/codegen/c.rs delete match arm "u32" in primitive_c_type
+idl/src/codegen/c.rs delete match arm "u32" | "f32" in serialize_field_expr
+idl/src/codegen/c.rs delete match arm "u32" | "i32" in emit_arg_seed
+idl/src/codegen/c.rs delete match arm "u32" | "i32" | "f32" in emit_required_data_size
+idl/src/codegen/c.rs delete match arm "u8" in serialize_field_expr
+idl/src/codegen/c.rs delete match arm "u8" | "i8" in emit_arg_seed
+idl/src/codegen/c.rs delete match arm 1 in serialize_dyn_bytes
+idl/src/codegen/c.rs delete match arm 1 in serialize_prefix_expr
+idl/src/codegen/c.rs delete match arm 2 in serialize_dyn_bytes
+idl/src/codegen/c.rs delete match arm 2 in serialize_prefix_expr
+idl/src/codegen/c.rs delete match arm 4 in serialize_dyn_bytes
+idl/src/codegen/c.rs delete match arm 4 in serialize_prefix_expr
+idl/src/codegen/c.rs delete match arm IdlType::Array{array:(_inner, size),} in emit_arg_seed
+idl/src/codegen/c.rs delete match arm IdlType::Array{array:(_inner, size),} in fixed_array_size
+idl/src/codegen/c.rs delete match arm IdlType::Option{option} in dynamic_payload_type
+idl/src/codegen/c.rs delete match arm IdlType::Vec{..} in dynamic_c_info
+idl/src/codegen/c.rs delete match arm IdlType::Vec{..} in dynamic_payload_type
+idl/src/codegen/c.rs replace && with || in account_field_seed_inputs
+idl/src/codegen/c.rs replace && with || in emit_instructions
+idl/src/codegen/c.rs replace && with || in is_dynamic_with_codec
+idl/src/codegen/c.rs replace + with * in decode_field_expr
+idl/src/codegen/c.rs replace + with * in emit_required_data_size
+idl/src/codegen/c.rs replace + with * in serialize_compact_tail_expr
+idl/src/codegen/c.rs replace + with * in serialize_field_expr
+idl/src/codegen/c.rs replace + with - in decode_field_expr
+idl/src/codegen/c.rs replace + with - in emit_required_data_size
+idl/src/codegen/c.rs replace + with - in serialize_compact_tail_expr
+idl/src/codegen/c.rs replace + with - in serialize_field_expr
+idl/src/codegen/c.rs replace += with *= in emit_instructions
+idl/src/codegen/c.rs replace == with != in account_field_seed_inputs
+idl/src/codegen/c.rs replace == with != in c_account_address_expr
+idl/src/codegen/c.rs replace == with != in decode_field_expr
+idl/src/codegen/c.rs replace == with != in dynamic_c_info
+idl/src/codegen/c.rs replace == with != in dynamic_payload_type
+idl/src/codegen/c.rs replace == with != in emit_required_data_size
+idl/src/codegen/c.rs replace == with != in emit_struct_field
+idl/src/codegen/c.rs replace == with != in serialize_field_expr
+idl/src/codegen/c.rs replace > with >= in emit_instructions
+idl/src/codegen/c.rs replace account_field_seed_input_name -> String with "xyzzy".into()
+idl/src/codegen/c.rs replace account_field_seed_input_name -> String with String::new()
+idl/src/codegen/c.rs replace account_field_seed_inputs -> Vec<(String, String)> with vec![]
+idl/src/codegen/c.rs replace builtin_defined_primitive -> Option<&'static str> with None
+idl/src/codegen/c.rs replace builtin_defined_primitive -> Option<&'static str> with Some("")
+idl/src/codegen/c.rs replace builtin_defined_primitive -> Option<&'static str> with Some("xyzzy")
+idl/src/codegen/c.rs replace c_account_address_expr -> String with "xyzzy".into()
+idl/src/codegen/c.rs replace c_account_address_expr -> String with String::new()
+idl/src/codegen/c.rs replace decode_dyn_bytes -> String with "xyzzy".into()
+idl/src/codegen/c.rs replace decode_dyn_bytes -> String with String::new()
+idl/src/codegen/c.rs replace decode_dynamic_header -> String with "xyzzy".into()
+idl/src/codegen/c.rs replace decode_dynamic_header -> String with String::new()
+idl/src/codegen/c.rs replace decode_dynamic_tail -> String with "xyzzy".into()
+idl/src/codegen/c.rs replace decode_dynamic_tail -> String with String::new()
+idl/src/codegen/c.rs replace dynamic_c_info -> (usize, &'static str, bool) with (0, "", false)
+idl/src/codegen/c.rs replace dynamic_c_info -> (usize, &'static str, bool) with (0, "", true)
+idl/src/codegen/c.rs replace dynamic_c_info -> (usize, &'static str, bool) with (0, "xyzzy", false)
+idl/src/codegen/c.rs replace dynamic_c_info -> (usize, &'static str, bool) with (0, "xyzzy", true)
+idl/src/codegen/c.rs replace dynamic_c_info -> (usize, &'static str, bool) with (1, "", false)
+idl/src/codegen/c.rs replace dynamic_c_info -> (usize, &'static str, bool) with (1, "", true)
+idl/src/codegen/c.rs replace dynamic_c_info -> (usize, &'static str, bool) with (1, "xyzzy", false)
+idl/src/codegen/c.rs replace dynamic_c_info -> (usize, &'static str, bool) with (1, "xyzzy", true)
+idl/src/codegen/c.rs replace dynamic_payload_type -> Option<&IdlType> with None
+idl/src/codegen/c.rs replace emit_associated_token_derivation with ()
+idl/src/codegen/c.rs replace emit_fixed_account_ids with ()
+idl/src/codegen/c.rs replace emit_raw_arg_seed with ()
+idl/src/codegen/c.rs replace emit_size_add_items with ()
+idl/src/codegen/c.rs replace fixed_array_size -> usize with 0
+idl/src/codegen/c.rs replace fixed_array_size -> usize with 1
+idl/src/codegen/c.rs replace is_128bit -> bool with false
+idl/src/codegen/c.rs replace is_dynamic_field -> bool with false
+idl/src/codegen/c.rs replace is_dynamic_with_codec -> bool with false
+idl/src/codegen/c.rs replace is_fixed_array_type -> bool with false
+idl/src/codegen/c.rs replace match guard matches!(&**vec, IdlType::Primitive(p) if p == "pubkey") with false in dynamic_c_info
+idl/src/codegen/c.rs replace match guard matches!(&**vec, IdlType::Primitive(p) if p == "pubkey") with false in emit_struct_field
+idl/src/codegen/c.rs replace match guard matches!(&**vec, IdlType::Primitive(p) if p == "pubkey") with false in serialize_payload_bytes
+idl/src/codegen/c.rs replace match guard matches!(&**vec, IdlType::Primitive(p) if p == "pubkey") with true in dynamic_c_info
+idl/src/codegen/c.rs replace match guard matches!(&**vec, IdlType::Primitive(p) if p == "pubkey") with true in emit_struct_field
+idl/src/codegen/c.rs replace match guard matches!(&**vec, IdlType::Primitive(p) if p == "pubkey") with true in serialize_payload_bytes
+idl/src/codegen/c.rs replace match guard p == "string" with false in dynamic_payload_type
+idl/src/codegen/c.rs replace match guard p == "string" with true in dynamic_payload_type
+idl/src/codegen/c.rs replace match guard primitive == "string" with false in dynamic_c_info
+idl/src/codegen/c.rs replace match guard primitive == "string" with true in dynamic_c_info
+idl/src/codegen/c.rs replace serialize_compact_header_expr -> String with "xyzzy".into()
+idl/src/codegen/c.rs replace serialize_compact_header_expr -> String with String::new()
+idl/src/codegen/c.rs replace serialize_compact_tail_expr -> String with "xyzzy".into()
+idl/src/codegen/c.rs replace serialize_compact_tail_expr -> String with String::new()
+idl/src/codegen/c.rs replace serialize_dyn_bytes -> String with "xyzzy".into()
+idl/src/codegen/c.rs replace serialize_dyn_bytes -> String with String::new()
+idl/src/codegen/c.rs replace serialize_payload_bytes -> String with "xyzzy".into()
+idl/src/codegen/c.rs replace serialize_payload_bytes -> String with String::new()
+idl/src/codegen/c.rs replace serialize_prefix_expr -> String with "xyzzy".into()
+idl/src/codegen/c.rs replace serialize_prefix_expr -> String with String::new()
+idl/src/codegen/c.rs replace || with && in emit_struct_field
+idl/src/codegen/golang.rs delete ! in generate_go_client
+idl/src/codegen/golang.rs delete match arm "bool" in decode_field_expr
+idl/src/codegen/golang.rs delete match arm "bool" in go_pda_seed_expr
+idl/src/codegen/golang.rs delete match arm "bool" | "u8" | "i8" in primitive_size
+idl/src/codegen/golang.rs delete match arm "f32" in decode_field_expr
+idl/src/codegen/golang.rs delete match arm "f32" in go_type
+idl/src/codegen/golang.rs delete match arm "f32" in serialize_field_expr
+idl/src/codegen/golang.rs delete match arm "f64" in decode_field_expr
+idl/src/codegen/golang.rs delete match arm "f64" in go_type
+idl/src/codegen/golang.rs delete match arm "f64" in serialize_field_expr
+idl/src/codegen/golang.rs delete match arm "i128" in go_type
+idl/src/codegen/golang.rs delete match arm "i16" in decode_field_expr
+idl/src/codegen/golang.rs delete match arm "i16" in go_pda_seed_expr
+idl/src/codegen/golang.rs delete match arm "i16" in go_type
+idl/src/codegen/golang.rs delete match arm "i16" in serialize_field_expr
+idl/src/codegen/golang.rs delete match arm "i32" in decode_field_expr
+idl/src/codegen/golang.rs delete match arm "i32" in go_pda_seed_expr
+idl/src/codegen/golang.rs delete match arm "i32" in go_type
+idl/src/codegen/golang.rs delete match arm "i32" in serialize_field_expr
+idl/src/codegen/golang.rs delete match arm "i64" in decode_field_expr
+idl/src/codegen/golang.rs delete match arm "i64" in go_pda_seed_expr
+idl/src/codegen/golang.rs delete match arm "i64" in go_type
+idl/src/codegen/golang.rs delete match arm "i64" in serialize_field_expr
+idl/src/codegen/golang.rs delete match arm "i8" in decode_field_expr
+idl/src/codegen/golang.rs delete match arm "i8" in go_type
+idl/src/codegen/golang.rs delete match arm "i8" in serialize_field_expr
+idl/src/codegen/golang.rs delete match arm "pubkey" in go_pda_seed_expr
+idl/src/codegen/golang.rs delete match arm "pubkey" in primitive_size
+idl/src/codegen/golang.rs delete match arm "pubkey" in serialize_field_expr
+idl/src/codegen/golang.rs delete match arm "string" in decode_field_expr
+idl/src/codegen/golang.rs delete match arm "string" in go_type
+idl/src/codegen/golang.rs delete match arm "string" in serialize_field_expr
+idl/src/codegen/golang.rs delete match arm "u128" in go_type
+idl/src/codegen/golang.rs delete match arm "u128" | "i128" in decode_field_expr
+idl/src/codegen/golang.rs delete match arm "u128" | "i128" in go_pda_seed_expr
+idl/src/codegen/golang.rs delete match arm "u128" | "i128" in primitive_size
+idl/src/codegen/golang.rs delete match arm "u128" | "i128" in serialize_field_expr
+idl/src/codegen/golang.rs delete match arm "u16" in decode_field_expr
+idl/src/codegen/golang.rs delete match arm "u16" in go_pda_seed_expr
+idl/src/codegen/golang.rs delete match arm "u16" in go_type
+idl/src/codegen/golang.rs delete match arm "u16" in serialize_field_expr
+idl/src/codegen/golang.rs delete match arm "u16" | "i16" in primitive_size
+idl/src/codegen/golang.rs delete match arm "u32" in decode_field_expr
+idl/src/codegen/golang.rs delete match arm "u32" in go_pda_seed_expr
+idl/src/codegen/golang.rs delete match arm "u32" in go_type
+idl/src/codegen/golang.rs delete match arm "u32" in serialize_field_expr
+idl/src/codegen/golang.rs delete match arm "u32" | "i32" | "f32" in primitive_size
+idl/src/codegen/golang.rs delete match arm "u64" | "i64" | "f64" in primitive_size
+idl/src/codegen/golang.rs delete match arm "u8" in serialize_field_expr
+idl/src/codegen/golang.rs delete match arm "u8" | "i8" in go_pda_seed_expr
+idl/src/codegen/golang.rs delete match arm 1 in generate_go_client
+idl/src/codegen/golang.rs delete match arm 1 in go_vec_item_append
+idl/src/codegen/golang.rs delete match arm 1 in serialize_field_expr
+idl/src/codegen/golang.rs delete match arm 2 in generate_go_client
+idl/src/codegen/golang.rs delete match arm 2 in go_vec_item_append
+idl/src/codegen/golang.rs delete match arm 2 in serialize_field_expr
+idl/src/codegen/golang.rs delete match arm 4 in generate_go_client
+idl/src/codegen/golang.rs delete match arm 4 in go_vec_item_append
+idl/src/codegen/golang.rs delete match arm 4 in serialize_field_expr
+idl/src/codegen/golang.rs delete match arm 8 in go_vec_item_append
+idl/src/codegen/golang.rs delete match arm IdlResolver::Const{address} in go_account_key_expr
+idl/src/codegen/golang.rs delete match arm IdlType::Option{option} in dynamic_payload_type
+idl/src/codegen/golang.rs delete match arm IdlType::Primitive(p) in go_vec_item_append
+idl/src/codegen/golang.rs delete match arm IdlType::Vec{..} in dynamic_payload_type
+idl/src/codegen/golang.rs delete match arm IdlType::Vec{..} in generate_go_client
+idl/src/codegen/golang.rs delete match arm IdlType::Vec{vec} in decode_dynamic_value
+idl/src/codegen/golang.rs delete match arm IdlType::Vec{vec} in generate_go_client
+idl/src/codegen/golang.rs delete match arm Some(IdlType::Array{..}) in go_pda_seed_expr
+idl/src/codegen/golang.rs replace && with || in account_field_seed_inputs
+idl/src/codegen/golang.rs replace && with || in is_direct_dynamic
+idl/src/codegen/golang.rs replace && with || in is_dynamic_field
+idl/src/codegen/golang.rs replace + with * in decode_dynamic_tail
+idl/src/codegen/golang.rs replace + with * in decode_dynamic_value
+idl/src/codegen/golang.rs replace + with * in decode_field_expr
+idl/src/codegen/golang.rs replace + with - in decode_dynamic_tail
+idl/src/codegen/golang.rs replace + with - in decode_dynamic_value
+idl/src/codegen/golang.rs replace + with - in decode_field_expr
+idl/src/codegen/golang.rs replace == with != in account_field_seed_inputs
+idl/src/codegen/golang.rs replace == with != in account_field_type
+idl/src/codegen/golang.rs replace == with != in decode_dynamic_value
+idl/src/codegen/golang.rs replace == with != in decode_field_expr
+idl/src/codegen/golang.rs replace == with != in dynamic_payload_type
+idl/src/codegen/golang.rs replace == with != in generate_go_client
+idl/src/codegen/golang.rs replace == with != in go_vec_item_append
+idl/src/codegen/golang.rs replace == with != in serialize_field_expr
+idl/src/codegen/golang.rs replace account_field_seed_input_name -> String with "xyzzy".into()
+idl/src/codegen/golang.rs replace account_field_seed_input_name -> String with String::new()
+idl/src/codegen/golang.rs replace account_field_seed_inputs -> Vec<AccountFieldSeedInput> with vec![]
+idl/src/codegen/golang.rs replace account_field_type -> Option<IdlType> with None
+idl/src/codegen/golang.rs replace decode_dynamic_header -> String with "xyzzy".into()
+idl/src/codegen/golang.rs replace decode_dynamic_header -> String with String::new()
+idl/src/codegen/golang.rs replace decode_dynamic_tail -> String with "xyzzy".into()
+idl/src/codegen/golang.rs replace decode_dynamic_tail -> String with String::new()
+idl/src/codegen/golang.rs replace decode_dynamic_value -> String with "xyzzy".into()
+idl/src/codegen/golang.rs replace decode_dynamic_value -> String with String::new()
+idl/src/codegen/golang.rs replace dynamic_payload_type -> Option<&IdlType> with None
+idl/src/codegen/golang.rs replace generate_go_mod -> String with "xyzzy".into()
+idl/src/codegen/golang.rs replace generate_go_mod -> String with String::new()
+idl/src/codegen/golang.rs replace generate_go_mod_for_program -> String with "xyzzy".into()
+idl/src/codegen/golang.rs replace generate_go_mod_for_program -> String with String::new()
+idl/src/codegen/golang.rs replace go_vec_item_append -> String with "xyzzy".into()
+idl/src/codegen/golang.rs replace go_vec_item_append -> String with String::new()
+idl/src/codegen/golang.rs replace is_direct_dynamic -> bool with false
+idl/src/codegen/golang.rs replace is_dynamic_field -> bool with false
+idl/src/codegen/golang.rs replace is_optional_dynamic -> bool with false
+idl/src/codegen/golang.rs replace is_optional_dynamic -> bool with true
+idl/src/codegen/golang.rs replace match guard p == "pubkey" with false in go_vec_item_append
+idl/src/codegen/golang.rs replace match guard p == "pubkey" with true in go_vec_item_append
+idl/src/codegen/golang.rs replace match guard p == "string" with false in dynamic_payload_type
+idl/src/codegen/golang.rs replace match guard p == "string" with false in generate_go_client
+idl/src/codegen/golang.rs replace match guard p == "string" with true in dynamic_payload_type
+idl/src/codegen/golang.rs replace match guard p == "string" with true in generate_go_client
+idl/src/codegen/golang.rs replace match guard primitive == "string" with false in decode_dynamic_value
+idl/src/codegen/golang.rs replace match guard primitive == "string" with true in decode_dynamic_value
+idl/src/codegen/golang.rs replace primitive_size -> usize with 0
+idl/src/codegen/golang.rs replace primitive_size -> usize with 1
+idl/src/codegen/golang.rs replace || with && in generate_go_client
+idl/src/codegen/mod.rs replace > with < in format_disc_array
+idl/src/codegen/mod.rs replace parse_fixed_array_size -> Option<usize> with None
+idl/src/codegen/mod.rs replace parse_fixed_array_size -> Option<usize> with Some(0)
+idl/src/codegen/mod.rs replace parse_fixed_array_size -> Option<usize> with Some(1)
+idl/src/codegen/model.rs delete ! in ProgramFeatures::from_idl
+idl/src/codegen/model.rs delete field has_args from struct Self expression in ProgramFeatures::from_idl
+idl/src/codegen/model.rs delete field has_option from struct Self expression in ProgramFeatures::from_idl
+idl/src/codegen/model.rs delete field has_pda_account_seeds from struct Self expression in ProgramFeatures::from_idl
+idl/src/codegen/model.rs delete field has_types from struct Self expression in ProgramFeatures::from_idl
+idl/src/codegen/model.rs delete match arm IdlResolver::AssociatedToken{..} in ProgramFeatures::from_idl
+idl/src/codegen/model.rs delete match arm IdlResolver::AssociatedToken{mint, owner, token_program,} in resolved_account_dependencies
+idl/src/codegen/model.rs delete match arm IdlResolver::Pda{seeds, ..} in ProgramFeatures::from_idl
+idl/src/codegen/model.rs delete match arm IdlType::Array{array} in type_has_float
+idl/src/codegen/model.rs delete match arm IdlType::Array{array} in type_has_option
+idl/src/codegen/model.rs delete match arm IdlType::Array{array} in type_has_public_key
+idl/src/codegen/model.rs delete match arm IdlType::Array{array} in visit_type
+idl/src/codegen/model.rs delete match arm IdlType::Option{..} in type_has_option
+idl/src/codegen/model.rs delete match arm IdlType::Option{option} in type_has_float
+idl/src/codegen/model.rs delete match arm IdlType::Option{option} in type_has_public_key
+idl/src/codegen/model.rs delete match arm IdlType::Option{option} in visit_type
+idl/src/codegen/model.rs delete match arm IdlType::Primitive(p) in type_has_float
+idl/src/codegen/model.rs delete match arm IdlType::Primitive(p) in type_has_public_key
+idl/src/codegen/model.rs delete match arm IdlType::Vec{vec} in type_has_float
+idl/src/codegen/model.rs delete match arm IdlType::Vec{vec} in type_has_option
+idl/src/codegen/model.rs delete match arm IdlType::Vec{vec} in type_has_public_key
+idl/src/codegen/model.rs delete match arm IdlType::Vec{vec} in visit_type
+idl/src/codegen/model.rs replace && with || in InstructionPlan::from_instruction
+idl/src/codegen/model.rs replace && with || in arg_is_tail
+idl/src/codegen/model.rs replace && with || in validate_identifier
+idl/src/codegen/model.rs replace == with != in type_has_public_key
+idl/src/codegen/model.rs replace == with != in validate_identifier
+idl/src/codegen/model.rs replace type_has_float -> bool with false
+idl/src/codegen/model.rs replace type_has_option -> bool with false
+idl/src/codegen/model.rs replace type_has_option -> bool with true
+idl/src/codegen/model.rs replace type_has_public_key -> bool with false
+idl/src/codegen/model.rs replace type_has_public_key -> bool with true
+idl/src/codegen/model.rs replace type_is_dynamic -> bool with true
+idl/src/codegen/model.rs replace || with && in ProgramFeatures::from_idl
+idl/src/codegen/model.rs replace || with && in type_has_float
+idl/src/codegen/python.rs delete ! in generate_python_client
+idl/src/codegen/python.rs delete match arm "bool" in python_pda_seed_expr
+idl/src/codegen/python.rs delete match arm "bool" in struct_format
+idl/src/codegen/python.rs delete match arm "f32" in serialize_field_expr
+idl/src/codegen/python.rs delete match arm "f32" in struct_format
+idl/src/codegen/python.rs delete match arm "f32" | "f64" in python_type
+idl/src/codegen/python.rs delete match arm "f64" in serialize_field_expr
+idl/src/codegen/python.rs delete match arm "f64" in struct_format
+idl/src/codegen/python.rs delete match arm "i128" in serialize_field_expr
+idl/src/codegen/python.rs delete match arm "i16" in python_pda_seed_expr
+idl/src/codegen/python.rs delete match arm "i16" in serialize_field_expr
+idl/src/codegen/python.rs delete match arm "i16" in struct_format
+idl/src/codegen/python.rs delete match arm "i32" in python_pda_seed_expr
+idl/src/codegen/python.rs delete match arm "i32" in serialize_field_expr
+idl/src/codegen/python.rs delete match arm "i32" in struct_format
+idl/src/codegen/python.rs delete match arm "i64" in python_pda_seed_expr
+idl/src/codegen/python.rs delete match arm "i64" in serialize_field_expr
+idl/src/codegen/python.rs delete match arm "i64" in struct_format
+idl/src/codegen/python.rs delete match arm "i8" in python_pda_seed_expr
+idl/src/codegen/python.rs delete match arm "i8" in serialize_field_expr
+idl/src/codegen/python.rs delete match arm "i8" in struct_format
+idl/src/codegen/python.rs delete match arm "pubkey" in python_pda_seed_expr
+idl/src/codegen/python.rs delete match arm "pubkey" in serialize_field_expr
+idl/src/codegen/python.rs delete match arm "string" in python_type
+idl/src/codegen/python.rs delete match arm "string" in serialize_field_expr
+idl/src/codegen/python.rs delete match arm "u128" in serialize_field_expr
+idl/src/codegen/python.rs delete match arm "u128" | "i128" in python_pda_seed_expr
+idl/src/codegen/python.rs delete match arm "u16" in python_pda_seed_expr
+idl/src/codegen/python.rs delete match arm "u16" in serialize_field_expr
+idl/src/codegen/python.rs delete match arm "u16" in struct_format
+idl/src/codegen/python.rs delete match arm "u32" in python_pda_seed_expr
+idl/src/codegen/python.rs delete match arm "u32" in serialize_field_expr
+idl/src/codegen/python.rs delete match arm "u32" in struct_format
+idl/src/codegen/python.rs delete match arm "u64" in python_pda_seed_expr
+idl/src/codegen/python.rs delete match arm "u8" in python_pda_seed_expr
+idl/src/codegen/python.rs delete match arm "u8" in serialize_field_expr
+idl/src/codegen/python.rs delete match arm "u8" in struct_format
+idl/src/codegen/python.rs delete match arm 1 in prefix_fmt
+idl/src/codegen/python.rs delete match arm 2 in prefix_fmt
+idl/src/codegen/python.rs delete match arm 4 in prefix_fmt
+idl/src/codegen/python.rs delete match arm IdlResolver::Const{address} in python_account_key_expr
+idl/src/codegen/python.rs delete match arm IdlType::Option{option} in dynamic_payload_type
+idl/src/codegen/python.rs delete match arm IdlType::Primitive(p) in python_vec_item_expr
+idl/src/codegen/python.rs delete match arm IdlType::Primitive(p) in serialize_field_expr
+idl/src/codegen/python.rs delete match arm IdlType::Vec{..} in dynamic_payload_type
+idl/src/codegen/python.rs delete match arm IdlType::Vec{..} in generate_python_client
+idl/src/codegen/python.rs delete match arm IdlType::Vec{vec} in decode_dynamic_value
+idl/src/codegen/python.rs delete match arm IdlType::Vec{vec} in generate_python_client
+idl/src/codegen/python.rs delete match arm Some(IdlType::Array{..}) in python_pda_seed_expr
+idl/src/codegen/python.rs delete match arm Some(IdlType::Primitive(p)) in python_pda_seed_expr
+idl/src/codegen/python.rs replace && with || in account_field_seed_inputs
+idl/src/codegen/python.rs replace && with || in generate_python_client
+idl/src/codegen/python.rs replace && with || in is_direct_dynamic
+idl/src/codegen/python.rs replace && with || in is_dynamic_field
+idl/src/codegen/python.rs replace + with * in decode_dynamic_tail
+idl/src/codegen/python.rs replace + with * in decode_dynamic_value
+idl/src/codegen/python.rs replace + with * in decode_field_expr
+idl/src/codegen/python.rs replace + with - in decode_dynamic_tail
+idl/src/codegen/python.rs replace + with - in decode_dynamic_value
+idl/src/codegen/python.rs replace + with - in decode_field_expr
+idl/src/codegen/python.rs replace == with != in account_field_seed_inputs
+idl/src/codegen/python.rs replace == with != in account_field_type
+idl/src/codegen/python.rs replace == with != in decode_dynamic_value
+idl/src/codegen/python.rs replace == with != in decode_field_expr
+idl/src/codegen/python.rs replace == with != in dynamic_payload_type
+idl/src/codegen/python.rs replace == with != in generate_python_client
+idl/src/codegen/python.rs replace == with != in python_vec_item_expr
+idl/src/codegen/python.rs replace == with != in serialize_field_expr
+idl/src/codegen/python.rs replace account_field_seed_input_name -> String with "xyzzy".into()
+idl/src/codegen/python.rs replace account_field_seed_input_name -> String with String::new()
+idl/src/codegen/python.rs replace account_field_seed_inputs -> Vec<AccountFieldSeedInput> with vec![]
+idl/src/codegen/python.rs replace account_field_type -> Option<IdlType> with None
+idl/src/codegen/python.rs replace decode_dynamic_header -> String with "xyzzy".into()
+idl/src/codegen/python.rs replace decode_dynamic_header -> String with String::new()
+idl/src/codegen/python.rs replace decode_dynamic_tail -> String with "xyzzy".into()
+idl/src/codegen/python.rs replace decode_dynamic_tail -> String with String::new()
+idl/src/codegen/python.rs replace decode_dynamic_value -> String with "xyzzy".into()
+idl/src/codegen/python.rs replace decode_dynamic_value -> String with String::new()
+idl/src/codegen/python.rs replace dynamic_payload_type -> Option<&IdlType> with None
+idl/src/codegen/python.rs replace is_direct_dynamic -> bool with false
+idl/src/codegen/python.rs replace is_dynamic_field -> bool with false
+idl/src/codegen/python.rs replace is_optional_dynamic -> bool with false
+idl/src/codegen/python.rs replace is_optional_dynamic -> bool with true
+idl/src/codegen/python.rs replace match guard p == "pubkey" with false in python_vec_item_expr
+idl/src/codegen/python.rs replace match guard p == "pubkey" with false in serialize_field_expr
+idl/src/codegen/python.rs replace match guard p == "pubkey" with true in python_vec_item_expr
+idl/src/codegen/python.rs replace match guard p == "pubkey" with true in serialize_field_expr
+idl/src/codegen/python.rs replace match guard p == "string" with false in dynamic_payload_type
+idl/src/codegen/python.rs replace match guard p == "string" with false in generate_python_client
+idl/src/codegen/python.rs replace match guard p == "string" with true in dynamic_payload_type
+idl/src/codegen/python.rs replace match guard p == "string" with true in generate_python_client
+idl/src/codegen/python.rs replace match guard primitive == "string" with false in decode_dynamic_value
+idl/src/codegen/python.rs replace match guard primitive == "string" with true in decode_dynamic_value
+idl/src/codegen/python.rs replace prefix_fmt -> (&'static str, usize) with ("", 0)
+idl/src/codegen/python.rs replace prefix_fmt -> (&'static str, usize) with ("", 1)
+idl/src/codegen/python.rs replace prefix_fmt -> (&'static str, usize) with ("xyzzy", 0)
+idl/src/codegen/python.rs replace prefix_fmt -> (&'static str, usize) with ("xyzzy", 1)
+idl/src/codegen/python.rs replace python_pda_seed_expr -> String with "xyzzy".into()
+idl/src/codegen/python.rs replace python_pda_seed_expr -> String with String::new()
+idl/src/codegen/python.rs replace python_vec_item_expr -> String with "xyzzy".into()
+idl/src/codegen/python.rs replace python_vec_item_expr -> String with String::new()
+idl/src/codegen/python.rs replace || with && in generate_python_client
+idl/src/codegen/rust.rs delete ! in collect_pdas
+idl/src/codegen/rust.rs delete ! in emit_instructions
+idl/src/codegen/rust.rs delete ! in emit_single_instruction
+idl/src/codegen/rust.rs delete ! in emit_type_use_imports
+idl/src/codegen/rust.rs delete match arm "PodBool" in pda_scalar_type
+idl/src/codegen/rust.rs delete match arm "PodI128" in pda_scalar_type
+idl/src/codegen/rust.rs delete match arm "PodI16" in pda_scalar_type
+idl/src/codegen/rust.rs delete match arm "PodI32" in pda_scalar_type
+idl/src/codegen/rust.rs delete match arm "PodI64" in pda_scalar_type
+idl/src/codegen/rust.rs delete match arm "PodI8" in pda_scalar_type
+idl/src/codegen/rust.rs delete match arm "PodU128" in pda_scalar_type
+idl/src/codegen/rust.rs delete match arm "PodU16" in pda_scalar_type
+idl/src/codegen/rust.rs delete match arm "PodU32" in pda_scalar_type
+idl/src/codegen/rust.rs delete match arm "PodU64" in pda_scalar_type
+idl/src/codegen/rust.rs delete match arm "PodU8" in pda_scalar_type
+idl/src/codegen/rust.rs delete match arm "u16" in dynamic_prefix_bytes_from_codec
+idl/src/codegen/rust.rs delete match arm "u32" in dynamic_prefix_bytes_from_codec
+idl/src/codegen/rust.rs delete match arm "u64" in dynamic_prefix_bytes_from_codec
+idl/src/codegen/rust.rs delete match arm "u8" in dynamic_prefix_bytes_from_codec
+idl/src/codegen/rust.rs delete match arm (1, false, _) in rust_scalar
+idl/src/codegen/rust.rs delete match arm (1, true, _) in rust_scalar
+idl/src/codegen/rust.rs delete match arm (16, false, _) in rust_scalar
+idl/src/codegen/rust.rs delete match arm (16, true, _) in rust_scalar
+idl/src/codegen/rust.rs delete match arm (2, false, _) in rust_scalar
+idl/src/codegen/rust.rs delete match arm (2, true, _) in rust_scalar
+idl/src/codegen/rust.rs delete match arm (4, _, true) in rust_scalar
+idl/src/codegen/rust.rs delete match arm (4, false, _) in rust_scalar
+idl/src/codegen/rust.rs delete match arm (4, true, _) in rust_scalar
+idl/src/codegen/rust.rs delete match arm (8, _, true) in rust_scalar
+idl/src/codegen/rust.rs delete match arm (8, true, _) in rust_scalar
+idl/src/codegen/rust.rs delete match arm 1 in prefix_rust_type
+idl/src/codegen/rust.rs delete match arm 2 in prefix_rust_type
+idl/src/codegen/rust.rs delete match arm 4 in prefix_rust_type
+idl/src/codegen/rust.rs delete match arm IdlPdaSeed::AccountField{path, field, ..} in emit_pda
+idl/src/codegen/rust.rs delete match arm IdlType::Array{..} in rust_pda_arg_seed_expr
+idl/src/codegen/rust.rs delete match arm IdlType::Array{..} in rust_resolved_value_seed_expr
+idl/src/codegen/rust.rs delete match arm IdlType::Array{array:(_inner, size),} in rust_pda_arg_type
+idl/src/codegen/rust.rs delete match arm IdlType::Array{array:(inner, _)} in emit_type_use_imports
+idl/src/codegen/rust.rs delete match arm IdlType::Array{array:(inner, _)} in field_needs_address
+idl/src/codegen/rust.rs delete match arm IdlType::Defined{defined} in pda_scalar_type
+idl/src/codegen/rust.rs delete match arm IdlType::Defined{defined} in ty_to_string
+idl/src/codegen/rust.rs delete match arm IdlType::Generic{generic} in ty_to_string
+idl/src/codegen/rust.rs delete match arm IdlType::Option{option} in collect_wrapper_needs
+idl/src/codegen/rust.rs delete match arm IdlType::Option{option} in emit_type_use_imports
+idl/src/codegen/rust.rs delete match arm IdlType::Option{option} in field_needs_address
+idl/src/codegen/rust.rs delete match arm IdlType::Option{option} in rust_field_type_codecless
+idl/src/codegen/rust.rs delete match arm IdlType::Primitive(p) in ty_to_string
+idl/src/codegen/rust.rs delete match arm IdlType::Vec{vec} in collect_wrapper_needs
+idl/src/codegen/rust.rs delete match arm IdlType::Vec{vec} in emit_type_use_imports
+idl/src/codegen/rust.rs delete match arm IdlType::Vec{vec} in field_needs_address
+idl/src/codegen/rust.rs delete match arm IdlType::Vec{vec} in rust_field_type_codecless
+idl/src/codegen/rust.rs delete match arm IdlType::Vec{vec} in vec_inner_type
+idl/src/codegen/rust.rs delete match arm Some("bool") in rust_pda_arg_seed_setup
+idl/src/codegen/rust.rs delete match arm Some("bool") in rust_resolved_value_seed_expr
+idl/src/codegen/rust.rs delete match arm Some("pubkey") in rust_pda_arg_seed_expr
+idl/src/codegen/rust.rs delete match arm Some("pubkey") in rust_pda_arg_type
+idl/src/codegen/rust.rs delete match arm Some("pubkey") in rust_resolved_value_seed_expr
+idl/src/codegen/rust.rs delete match arm Some("u8" | "i8") in rust_resolved_value_seed_expr
+idl/src/codegen/rust.rs delete match arm Some("u8") | Some("i8") in rust_pda_arg_seed_setup
+idl/src/codegen/rust.rs replace && with || in collect_pdas
+idl/src/codegen/rust.rs replace && with || in emit_instructions
+idl/src/codegen/rust.rs replace && with || in emit_single_instruction
+idl/src/codegen/rust.rs replace && with || in is_direct_dynamic
+idl/src/codegen/rust.rs replace && with || in rust_resolved_seed_expr
+idl/src/codegen/rust.rs replace == with != in collect_wrapper_needs
+idl/src/codegen/rust.rs replace == with != in disc_base_name
+idl/src/codegen/rust.rs replace == with != in emit_resolved_instruction_input
+idl/src/codegen/rust.rs replace == with != in format_const_seed_display
+idl/src/codegen/rust.rs replace == with != in rust_field_type_codecless
+idl/src/codegen/rust.rs replace collect_wrapper_needs with ()
+idl/src/codegen/rust.rs replace dynamic_prefix_bytes_from_codec -> usize with 0
+idl/src/codegen/rust.rs replace dynamic_prefix_bytes_from_codec -> usize with 1
+idl/src/codegen/rust.rs replace emit_type_use_imports with ()
+idl/src/codegen/rust.rs replace emit_wrapper_imports with ()
+idl/src/codegen/rust.rs replace generate_cargo_toml_for_program -> String with "xyzzy".into()
+idl/src/codegen/rust.rs replace generate_cargo_toml_for_program -> String with String::new()
+idl/src/codegen/rust.rs replace has_pdas -> bool with false
+idl/src/codegen/rust.rs replace has_pdas -> bool with true
+idl/src/codegen/rust.rs replace is_direct_dynamic -> bool with false
+idl/src/codegen/rust.rs replace is_dynamic_string -> bool with false
+idl/src/codegen/rust.rs replace is_dynamic_string -> bool with true
+idl/src/codegen/rust.rs replace is_dynamic_vec -> bool with false
+idl/src/codegen/rust.rs replace is_dynamic_vec -> bool with true
+idl/src/codegen/rust.rs replace match guard is_dynamic_string(option) || matches!(**option, IdlType::Vec { .. }) with false in optional_dynamic_inner
+idl/src/codegen/rust.rs replace match guard is_dynamic_string(option) || matches!(**option, IdlType::Vec { .. }) with true in optional_dynamic_inner
+idl/src/codegen/rust.rs replace match guard p == "string" with false in collect_wrapper_needs
+idl/src/codegen/rust.rs replace match guard p == "string" with false in rust_field_type_codecless
+idl/src/codegen/rust.rs replace match guard p == "string" with true in collect_wrapper_needs
+idl/src/codegen/rust.rs replace match guard p == "string" with true in rust_field_type_codecless
+idl/src/codegen/rust.rs replace match guard type_map.contains_key(&defined.name) with false in emit_type_use_imports
+idl/src/codegen/rust.rs replace match guard type_map.contains_key(&defined.name) with true in emit_type_use_imports
+idl/src/codegen/rust.rs replace optional_dynamic_inner -> Option<&IdlType> with None
+idl/src/codegen/rust.rs replace pda_helper_uses_typed_inputs -> bool with false
+idl/src/codegen/rust.rs replace pda_helper_uses_typed_inputs -> bool with true
+idl/src/codegen/rust.rs replace prefix_rust_type -> &'static str with ""
+idl/src/codegen/rust.rs replace prefix_rust_type -> &'static str with "xyzzy"
+idl/src/codegen/rust.rs replace rust_field_type_codecless -> String with "xyzzy".into()
+idl/src/codegen/rust.rs replace rust_field_type_codecless -> String with String::new()
+idl/src/codegen/rust.rs replace ty_to_string -> String with "xyzzy".into()
+idl/src/codegen/rust.rs replace ty_to_string -> String with String::new()
+idl/src/codegen/rust.rs replace vec_inner_type -> Option<&IdlType> with None
+idl/src/codegen/rust.rs replace || with && in is_direct_dynamic
+idl/src/codegen/rust.rs replace || with && in optional_dynamic_inner
+idl/src/codegen/typescript.rs delete ! in emit_account_field_seed_resolvers
+idl/src/codegen/typescript.rs delete ! in emit_compact_decode
+idl/src/codegen/typescript.rs delete ! in emit_compact_encoding
+idl/src/codegen/typescript.rs delete ! in emit_compact_type_codec
+idl/src/codegen/typescript.rs delete ! in generate_instruction_builders_kit
+idl/src/codegen/typescript.rs delete ! in generate_instruction_builders_web3js
+idl/src/codegen/typescript.rs delete ! in generate_ts
+idl/src/codegen/typescript.rs delete ! in kit_plugin_instruction_has_input
+idl/src/codegen/typescript.rs delete match arm "PodBool" in builtin_defined_primitive
+idl/src/codegen/typescript.rs delete match arm "PodI128" in builtin_defined_primitive
+idl/src/codegen/typescript.rs delete match arm "PodI16" in builtin_defined_primitive
+idl/src/codegen/typescript.rs delete match arm "PodI32" in builtin_defined_primitive
+idl/src/codegen/typescript.rs delete match arm "PodI64" in builtin_defined_primitive
+idl/src/codegen/typescript.rs delete match arm "PodI8" in builtin_defined_primitive
+idl/src/codegen/typescript.rs delete match arm "PodU128" in builtin_defined_primitive
+idl/src/codegen/typescript.rs delete match arm "PodU16" in builtin_defined_primitive
+idl/src/codegen/typescript.rs delete match arm "PodU32" in builtin_defined_primitive
+idl/src/codegen/typescript.rs delete match arm "PodU64" in builtin_defined_primitive
+idl/src/codegen/typescript.rs delete match arm "PodU8" in builtin_defined_primitive
+idl/src/codegen/typescript.rs delete match arm "bool" in ts_pda_arg_seed_expr
+idl/src/codegen/typescript.rs delete match arm "i128" in ts_pda_arg_seed_expr
+idl/src/codegen/typescript.rs delete match arm "i16" in ts_pda_arg_seed_expr
+idl/src/codegen/typescript.rs delete match arm "i32" in ts_pda_arg_seed_expr
+idl/src/codegen/typescript.rs delete match arm "i64" in ts_pda_arg_seed_expr
+idl/src/codegen/typescript.rs delete match arm "i8" in ts_pda_arg_seed_expr
+idl/src/codegen/typescript.rs delete match arm "pubkey" in ts_pda_arg_seed_expr
+idl/src/codegen/typescript.rs delete match arm "u128" in ts_pda_arg_seed_expr
+idl/src/codegen/typescript.rs delete match arm "u16" in scalar_repr_bytes
+idl/src/codegen/typescript.rs delete match arm "u16" in ts_pda_arg_seed_expr
+idl/src/codegen/typescript.rs delete match arm "u32" in scalar_repr_bytes
+idl/src/codegen/typescript.rs delete match arm "u32" in ts_pda_arg_seed_expr
+idl/src/codegen/typescript.rs delete match arm "u64" in scalar_repr_bytes
+idl/src/codegen/typescript.rs delete match arm "u64" in ts_pda_arg_seed_expr
+idl/src/codegen/typescript.rs delete match arm "u8" in scalar_repr_bytes
+idl/src/codegen/typescript.rs delete match arm "u8" in ts_pda_arg_seed_expr
+idl/src/codegen/typescript.rs delete match arm 1 in prefix_codec
+idl/src/codegen/typescript.rs delete match arm 1 in prefix_int_type
+idl/src/codegen/typescript.rs delete match arm 2 in prefix_codec
+idl/src/codegen/typescript.rs delete match arm 2 in prefix_int_type
+idl/src/codegen/typescript.rs delete match arm 4 in prefix_codec
+idl/src/codegen/typescript.rs delete match arm 4 in prefix_int_type
+idl/src/codegen/typescript.rs delete match arm IdlType::Primitive(p) in ts_pda_arg_seed_expr
+idl/src/codegen/typescript.rs delete match arm Some(IdlCodec::SizePrefixed{prefix, ..}) in codec_prefix_bytes
+idl/src/codegen/typescript.rs delete match arm Some(IdlCodec::SizePrefixed{prefix, item, ..}) in ts_codec_for_arg
+idl/src/codegen/typescript.rs delete match arm Some(IdlCodec::SizePrefixed{prefix, item, ..}) in ts_codec_for_field_def
+idl/src/codegen/typescript.rs replace && with || in generate_instruction_builders_kit
+idl/src/codegen/typescript.rs replace && with || in generate_instruction_builders_web3js
+idl/src/codegen/typescript.rs replace && with || in generate_ts
+idl/src/codegen/typescript.rs replace && with || in is_identifier
+idl/src/codegen/typescript.rs replace && with || in pda_is_exportable
+idl/src/codegen/typescript.rs replace + with * in unique_pda_helper_name
+idl/src/codegen/typescript.rs replace + with - in unique_pda_helper_name
+idl/src/codegen/typescript.rs replace < with > in generate_ts
+idl/src/codegen/typescript.rs replace == with != in account_field_type
+idl/src/codegen/typescript.rs replace == with != in collect_pdas
+idl/src/codegen/typescript.rs replace == with != in eligible_plugin_accounts
+idl/src/codegen/typescript.rs replace == with != in is_identifier
+idl/src/codegen/typescript.rs replace InlinePdaTarget<'a>::program_expr -> &'a str with ""
+idl/src/codegen/typescript.rs replace InlinePdaTarget<'a>::program_expr -> &'a str with "xyzzy"
+idl/src/codegen/typescript.rs replace account_field_account_var -> String with "xyzzy".into()
+idl/src/codegen/typescript.rs replace account_field_account_var -> String with String::new()
+idl/src/codegen/typescript.rs replace account_field_data_var -> String with "xyzzy".into()
+idl/src/codegen/typescript.rs replace account_field_data_var -> String with String::new()
+idl/src/codegen/typescript.rs replace account_field_seed_var -> String with "xyzzy".into()
+idl/src/codegen/typescript.rs replace account_field_seed_var -> String with String::new()
+idl/src/codegen/typescript.rs replace account_field_type -> Option<IdlType> with None
+idl/src/codegen/typescript.rs replace account_field_var_stem -> String with "xyzzy".into()
+idl/src/codegen/typescript.rs replace account_field_var_stem -> String with String::new()
+idl/src/codegen/typescript.rs replace builtin_defined_primitive -> Option<&'static str> with None
+idl/src/codegen/typescript.rs replace builtin_defined_primitive -> Option<&'static str> with Some("")
+idl/src/codegen/typescript.rs replace builtin_defined_primitive -> Option<&'static str> with Some("xyzzy")
+idl/src/codegen/typescript.rs replace client_dependency_version -> &'static str with ""
+idl/src/codegen/typescript.rs replace client_dependency_version -> &'static str with "xyzzy"
+idl/src/codegen/typescript.rs replace codec_prefix_bytes -> usize with 0
+idl/src/codegen/typescript.rs replace codec_prefix_bytes -> usize with 1
+idl/src/codegen/typescript.rs replace collect_used_codecs::visit_codec_into with ()
+idl/src/codegen/typescript.rs replace emit_account_field_seed_resolvers with ()
+idl/src/codegen/typescript.rs replace emit_compact_decode with ()
+idl/src/codegen/typescript.rs replace emit_compact_encoding with ()
+idl/src/codegen/typescript.rs replace emit_compact_type_codec with ()
+idl/src/codegen/typescript.rs replace has_account_field_pda_seeds -> bool with false
+idl/src/codegen/typescript.rs replace has_dynamic_field_defs -> bool with false
+idl/src/codegen/typescript.rs replace instruction_has_account_field_pda_seeds -> bool with false
+idl/src/codegen/typescript.rs replace is_arg_dynamic -> bool with false
+idl/src/codegen/typescript.rs replace is_field_def_dynamic -> bool with false
+idl/src/codegen/typescript.rs replace is_identifier -> bool with true
+idl/src/codegen/typescript.rs replace is_optional_dynamic_string -> bool with false
+idl/src/codegen/typescript.rs replace is_optional_dynamic_string -> bool with true
+idl/src/codegen/typescript.rs replace is_optional_dynamic_vec -> bool with false
+idl/src/codegen/typescript.rs replace is_optional_dynamic_vec -> bool with true
+idl/src/codegen/typescript.rs replace is_string_type -> bool with false
+idl/src/codegen/typescript.rs replace is_string_type -> bool with true
+idl/src/codegen/typescript.rs replace is_u8_type -> bool with false
+idl/src/codegen/typescript.rs replace is_u8_type -> bool with true
+idl/src/codegen/typescript.rs replace kit_plugin_instruction_has_input -> bool with true
+idl/src/codegen/typescript.rs replace match guard is_string_type(option) || matches!(**option, IdlType::Vec { .. }) with false in optional_dynamic_inner
+idl/src/codegen/typescript.rs replace match guard is_string_type(option) || matches!(**option, IdlType::Vec { .. }) with true in optional_dynamic_inner
+idl/src/codegen/typescript.rs replace match guard other.starts_with('[') with false in primitive_ts_codec
+idl/src/codegen/typescript.rs replace match guard other.starts_with('[') with false in primitive_ts_type
+idl/src/codegen/typescript.rs replace match guard other.starts_with('[') with false in ts_pda_arg_seed_expr
+idl/src/codegen/typescript.rs replace match guard other.starts_with('[') with true in primitive_ts_codec
+idl/src/codegen/typescript.rs replace match guard other.starts_with('[') with true in primitive_ts_type
+idl/src/codegen/typescript.rs replace match guard other.starts_with('[') with true in ts_pda_arg_seed_expr
+idl/src/codegen/typescript.rs replace optional_dynamic_inner -> Option<&IdlType> with None
+idl/src/codegen/typescript.rs replace pda_arg_types -> HashMap<String, IdlType> with HashMap::new()
+idl/src/codegen/typescript.rs replace pda_is_exportable -> bool with true
+idl/src/codegen/typescript.rs replace prefix_codec -> &'static str with ""
+idl/src/codegen/typescript.rs replace prefix_codec -> &'static str with "xyzzy"
+idl/src/codegen/typescript.rs replace prefix_int_type -> &'static str with ""
+idl/src/codegen/typescript.rs replace prefix_int_type -> &'static str with "xyzzy"
+idl/src/codegen/typescript.rs replace scalar_repr_bytes -> usize with 0
+idl/src/codegen/typescript.rs replace scalar_repr_bytes -> usize with 1
+idl/src/codegen/typescript.rs replace ts_field_access -> String with "xyzzy".into()
+idl/src/codegen/typescript.rs replace ts_field_access -> String with String::new()
+idl/src/codegen/typescript.rs replace ts_pda_arg_seed_expr -> String with "xyzzy".into()
+idl/src/codegen/typescript.rs replace ts_pda_arg_seed_expr -> String with String::new()
+idl/src/codegen/typescript.rs replace write_inline_pda_seed_lines with ()
+idl/src/codegen/typescript.rs replace || with && in collect_pdas
+idl/src/codegen/typescript.rs replace || with && in emit_compact_type_codec
+idl/src/codegen/typescript.rs replace || with && in generate_instruction_builders_kit
+idl/src/codegen/typescript.rs replace || with && in generate_instruction_builders_web3js
+idl/src/codegen/typescript.rs replace || with && in generate_ts
+idl/src/codegen/typescript.rs replace || with && in is_u8_type
+idl/src/codegen/typescript.rs replace || with && in kit_plugin_instruction_has_input
+idl/src/codegen/typescript.rs replace || with && in optional_dynamic_inner
+idl/src/lint/mod.rs replace run_with_optional_diff -> LintReport with Default::default()
+idl/src/lint/report.rs replace <impl fmt::Display for RuleCode>::fmt -> fmt::Result with Ok(Default::default())
+idl/src/lint/report.rs replace LintReport::extend with ()
+idl/src/lint/report.rs replace LintReport::is_empty -> bool with false
+idl/src/lint/report.rs replace RuleCode::as_str -> &'static str with ""
+idl/src/lint/report.rs replace RuleCode::as_str -> &'static str with "xyzzy"
+idl/src/lint/report.rs replace RuleCode::title -> &'static str with ""
+idl/src/lint/report.rs replace RuleCode::title -> &'static str with "xyzzy"
+idl/src/lint/report.rs replace Severity::as_str -> &'static str with ""
+idl/src/lint/report.rs replace Severity::as_str -> &'static str with "xyzzy"
+idl/src/lint/rules.rs replace && with || in diff_enums
+idl/src/lint/rules.rs replace + with * in diff_account_fields
+idl/src/lint/rules.rs replace < with > in connected_components
+idl/src/lint/rules.rs replace > with >= in connected_components
+idl/src/lint/rules.rs replace > with >= in graph_checks
+idl/src/lint/rules.rs replace has_leading_version -> bool with false
+idl/src/lint/rules.rs replace is_enum -> bool with true
+idl/src/lint/rules.rs replace render_fields -> String with "xyzzy".into()
+idl/src/lint/rules.rs replace render_fields -> String with String::new()
+idl/src/lint/rules.rs replace || with && in diff_instructions
+idl/src/lint/surface.rs delete match arm IdlResolver::Optional{resolver} in pda_seeds
+idl/src/lint/surface.rs replace != with == in AccountMetaSurface::writable_required
+idl/src/lint/surface.rs replace <impl fmt::Display for LockfileError>::fmt -> fmt::Result with Ok(Default::default())
+idl/src/lint/surface.rs replace AccountMetaSurface::signer_required -> bool with false
+idl/src/lint/surface.rs replace AccountMetaSurface::writable_required -> bool with false
+idl/src/lint/surface.rs replace AccountMetaSurface::writable_required -> bool with true
+idl/src/lint/surface.rs replace event_type_name -> Option<&str> with None
+idl/src/lint/surface.rs replace event_type_name -> Option<&str> with Some("")
+idl/src/lint/surface.rs replace render_generic_arg -> String with "xyzzy".into()
+idl/src/lint/surface.rs replace render_generic_arg -> String with String::new()
