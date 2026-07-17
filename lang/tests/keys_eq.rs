@@ -89,9 +89,14 @@ fn address_verify_reference_delegates() {
     let expected = solana_address::Address::new_from_array([9; 32]);
     let matching = solana_address::Address::new_from_array([9; 32]);
     let mismatched = solana_address::Address::new_from_array([8; 32]);
-    assert_eq!((&expected).verify(&matching, &expected), Ok(0));
+    // Fully qualified: plain method syntax would auto-deref to the base
+    // Address impl and never exercise the &Address delegation.
     assert_eq!(
-        (&expected).verify(&mismatched, &expected),
+        <&solana_address::Address as AddressVerify>::verify(&&expected, &matching, &expected),
+        Ok(0)
+    );
+    assert_eq!(
+        <&solana_address::Address as AddressVerify>::verify(&&expected, &mismatched, &expected),
         Err(ProgramError::Custom(QuasarError::AddressMismatch as u32))
     );
 }

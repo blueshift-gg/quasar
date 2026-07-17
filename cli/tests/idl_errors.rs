@@ -246,7 +246,7 @@ fn idl_command_rejects_nonexistent_path() -> Result<(), Box<dyn Error>> {
 fn idl_verify_rejects_invalid_json() -> Result<(), Box<dyn Error>> {
     let temp = tempdir()?;
     let idl_path = temp.path().join("broken.json");
-    write_file(&idl_path, "{ this is not json".to_owned())?;
+    write_file(&idl_path, "{ this is not json")?;
 
     let output = Command::new(env!("CARGO_BIN_EXE_quasar"))
         .arg("idl")
