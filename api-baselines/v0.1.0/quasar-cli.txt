@@ -1,4 +1,6 @@
 pub mod quasar_cli
+pub mod quasar_cli::audit
+pub fn quasar_cli::audit::run(quasar_cli::AuditCommand) -> quasar_cli::error::CliResult
 pub mod quasar_cli::build
 pub fn quasar_cli::build::profile_build() -> core::result::Result<std::path::PathBuf, quasar_cli::error::CliError>
 pub fn quasar_cli::build::run(bool, bool, bool, core::option::Option<alloc::string::String>) -> quasar_cli::error::CliResult
@@ -315,15 +317,21 @@ pub fn quasar_cli::style::warn(&str) -> alloc::string::String
 pub mod quasar_cli::test
 pub fn quasar_cli::test::run(bool, bool, core::option::Option<alloc::string::String>, bool, bool, core::option::Option<alloc::string::String>, bool) -> quasar_cli::error::CliResult
 pub mod quasar_cli::toolchain
+pub const quasar_cli::toolchain::MISSING_SBPF_LINKER_MESSAGE: &str
+pub const quasar_cli::toolchain::UPSTREAM_NIGHTLY_TOOLCHAIN: &str
 pub fn quasar_cli::toolchain::check_build_sbf_supports(&str) -> core::result::Result<(), alloc::string::String>
 pub fn quasar_cli::toolchain::has_sbpf_linker() -> bool
 pub mod quasar_cli::utils
 pub fn quasar_cli::utils::find_in_deploy(&str) -> core::option::Option<std::path::PathBuf>
 pub fn quasar_cli::utils::find_program_crate(&quasar_cli::config::QuasarConfig) -> std::path::PathBuf
 pub fn quasar_cli::utils::find_so(&quasar_cli::config::QuasarConfig, bool) -> core::option::Option<std::path::PathBuf>
+pub fn quasar_cli::utils::find_unstripped_sbf(&quasar_cli::config::QuasarConfig) -> core::option::Option<std::path::PathBuf>
 pub fn quasar_cli::utils::workspace_target_dir() -> std::path::PathBuf
+pub mod quasar_cli::verify
+pub fn quasar_cli::verify::run(quasar_cli::VerifyCommand) -> quasar_cli::error::CliResult
 pub enum quasar_cli::Command
 pub quasar_cli::Command::Add(quasar_cli::AddCommand)
+pub quasar_cli::Command::Audit(quasar_cli::AuditCommand)
 pub quasar_cli::Command::Build(quasar_cli::BuildCommand)
 pub quasar_cli::Command::Clean(quasar_cli::CleanCommand)
 pub quasar_cli::Command::Client(quasar_cli::ClientCommand)
@@ -337,6 +345,7 @@ pub quasar_cli::Command::Keys(quasar_cli::KeysCommand)
 pub quasar_cli::Command::Lint(quasar_cli::LintCommand)
 pub quasar_cli::Command::Profile(quasar_cli::ProfileCommand)
 pub quasar_cli::Command::Test(quasar_cli::TestCommand)
+pub quasar_cli::Command::Verify(quasar_cli::VerifyCommand)
 impl clap_builder::derive::FromArgMatches for quasar_cli::Command
 pub fn quasar_cli::Command::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
 pub fn quasar_cli::Command::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
@@ -447,6 +456,29 @@ impl core::marker::Unpin for quasar_cli::AddCommand
 impl core::marker::UnsafeUnpin for quasar_cli::AddCommand
 impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::AddCommand
 impl core::panic::unwind_safe::UnwindSafe for quasar_cli::AddCommand
+pub struct quasar_cli::AuditCommand
+pub quasar_cli::AuditCommand::idl_path: core::option::Option<std::path::PathBuf>
+pub quasar_cli::AuditCommand::json: bool
+impl clap_builder::derive::Args for quasar_cli::AuditCommand
+pub fn quasar_cli::AuditCommand::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::AuditCommand::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::AuditCommand::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for quasar_cli::AuditCommand
+pub fn quasar_cli::AuditCommand::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::AuditCommand::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::AuditCommand::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::AuditCommand::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::default::Default for quasar_cli::AuditCommand
+pub fn quasar_cli::AuditCommand::default() -> quasar_cli::AuditCommand
+impl core::fmt::Debug for quasar_cli::AuditCommand
+pub fn quasar_cli::AuditCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::AuditCommand
+impl core::marker::Send for quasar_cli::AuditCommand
+impl core::marker::Sync for quasar_cli::AuditCommand
+impl core::marker::Unpin for quasar_cli::AuditCommand
+impl core::marker::UnsafeUnpin for quasar_cli::AuditCommand
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::AuditCommand
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::AuditCommand
 pub struct quasar_cli::BuildCommand
 pub quasar_cli::BuildCommand::debug: bool
 pub quasar_cli::BuildCommand::features: core::option::Option<alloc::string::String>
@@ -583,6 +615,7 @@ pub struct quasar_cli::DeployCommand
 pub quasar_cli::DeployCommand::keypair: core::option::Option<std::path::PathBuf>
 pub quasar_cli::DeployCommand::program_keypair: core::option::Option<std::path::PathBuf>
 pub quasar_cli::DeployCommand::skip_build: bool
+pub quasar_cli::DeployCommand::skip_verify: bool
 pub quasar_cli::DeployCommand::upgrade_authority: core::option::Option<std::path::PathBuf>
 pub quasar_cli::DeployCommand::url: core::option::Option<alloc::string::String>
 impl clap_builder::derive::Args for quasar_cli::DeployCommand
@@ -725,11 +758,16 @@ impl core::marker::UnsafeUnpin for quasar_cli::LintCommand
 impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::LintCommand
 impl core::panic::unwind_safe::UnwindSafe for quasar_cli::LintCommand
 pub struct quasar_cli::ProfileCommand
+pub quasar_cli::ProfileCommand::assert_budget: bool
+pub quasar_cli::ProfileCommand::budget: std::path::PathBuf
 pub quasar_cli::ProfileCommand::diff_program: core::option::Option<alloc::string::String>
 pub quasar_cli::ProfileCommand::elf_path: core::option::Option<std::path::PathBuf>
 pub quasar_cli::ProfileCommand::expand: bool
+pub quasar_cli::ProfileCommand::headroom: u32
+pub quasar_cli::ProfileCommand::json: bool
 pub quasar_cli::ProfileCommand::share: bool
 pub quasar_cli::ProfileCommand::watch: bool
+pub quasar_cli::ProfileCommand::write_budget: bool
 impl clap_builder::derive::Args for quasar_cli::ProfileCommand
 pub fn quasar_cli::ProfileCommand::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
 pub fn quasar_cli::ProfileCommand::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
@@ -778,6 +816,33 @@ impl core::marker::Unpin for quasar_cli::TestCommand
 impl core::marker::UnsafeUnpin for quasar_cli::TestCommand
 impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::TestCommand
 impl core::panic::unwind_safe::UnwindSafe for quasar_cli::TestCommand
+pub struct quasar_cli::VerifyCommand
+pub quasar_cli::VerifyCommand::elf_path: core::option::Option<std::path::PathBuf>
+pub quasar_cli::VerifyCommand::manifest: core::option::Option<std::path::PathBuf>
+pub quasar_cli::VerifyCommand::program_id: core::option::Option<alloc::string::String>
+pub quasar_cli::VerifyCommand::program_keypair: core::option::Option<std::path::PathBuf>
+pub quasar_cli::VerifyCommand::upgrade_authority: core::option::Option<std::path::PathBuf>
+pub quasar_cli::VerifyCommand::url: core::option::Option<alloc::string::String>
+impl clap_builder::derive::Args for quasar_cli::VerifyCommand
+pub fn quasar_cli::VerifyCommand::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::VerifyCommand::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn quasar_cli::VerifyCommand::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for quasar_cli::VerifyCommand
+pub fn quasar_cli::VerifyCommand::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::VerifyCommand::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn quasar_cli::VerifyCommand::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn quasar_cli::VerifyCommand::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::default::Default for quasar_cli::VerifyCommand
+pub fn quasar_cli::VerifyCommand::default() -> quasar_cli::VerifyCommand
+impl core::fmt::Debug for quasar_cli::VerifyCommand
+pub fn quasar_cli::VerifyCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for quasar_cli::VerifyCommand
+impl core::marker::Send for quasar_cli::VerifyCommand
+impl core::marker::Sync for quasar_cli::VerifyCommand
+impl core::marker::Unpin for quasar_cli::VerifyCommand
+impl core::marker::UnsafeUnpin for quasar_cli::VerifyCommand
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_cli::VerifyCommand
+impl core::panic::unwind_safe::UnwindSafe for quasar_cli::VerifyCommand
 pub fn quasar_cli::print_help()
 pub fn quasar_cli::run(quasar_cli::Cli) -> quasar_cli::error::CliResult
 pub type quasar_cli::CliResult = core::result::Result<(), quasar_cli::error::CliError>

@@ -3,6 +3,7 @@ use {
     std::path::PathBuf,
 };
 
+pub mod audit;
 pub mod build;
 pub mod cfg;
 pub mod clean;
@@ -22,6 +23,7 @@ pub mod style;
 pub mod test;
 pub mod toolchain;
 pub mod utils;
+pub mod verify;
 pub use error::CliResult;
 
 #[derive(Parser, Debug)]
@@ -58,6 +60,10 @@ pub enum Command {
     Client(ClientCommand),
     /// Audit the program surface for pre-deploy and upgrade-safety issues
     Lint(LintCommand),
+    /// Print the compiler's resolved per-account validation plan
+    Audit(AuditCommand),
+    /// Verify local artifacts against a deployed program
+    Verify(VerifyCommand),
     /// Measure compute-unit usage
     Profile(ProfileCommand),
     /// Dump sBPF assembly
@@ -193,6 +199,38 @@ pub struct DeployCommand {
     /// Skip the build step
     #[arg(long, action = ArgAction::SetTrue)]
     pub skip_build: bool,
+
+    /// Skip the post-deploy byte and authority verification
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub skip_verify: bool,
+}
+
+#[derive(Args, Debug, Default)]
+pub struct VerifyCommand {
+    /// Program address (defaults to the program keypair address)
+    #[arg(long, value_name = "ADDRESS", conflicts_with = "program_keypair")]
+    pub program_id: Option<String>,
+
+    /// Path to the program keypair (default:
+    /// `target/deploy/<name>-keypair.json`)
+    #[arg(long, value_name = "KEYPAIR")]
+    pub program_keypair: Option<PathBuf>,
+
+    /// Expected upgrade authority keypair
+    #[arg(long, value_name = "KEYPAIR")]
+    pub upgrade_authority: Option<PathBuf>,
+
+    /// Cluster URL (default: Solana CLI configured cluster)
+    #[arg(long, short, value_name = "URL")]
+    pub url: Option<String>,
+
+    /// Local ELF to compare (default: `target/deploy/<name>.so`)
+    #[arg(long, value_name = "ELF")]
+    pub elf_path: Option<PathBuf>,
+
+    /// Deployment manifest to validate (auto-detected when omitted)
+    #[arg(long, value_name = "MANIFEST")]
+    pub manifest: Option<PathBuf>,
 }
 
 #[derive(Args, Debug, Default)]
@@ -279,6 +317,17 @@ pub struct LintCommand {
     pub strict: bool,
 }
 
+#[derive(Args, Debug, Default)]
+pub struct AuditCommand {
+    /// Generated IDL JSON (defaults to the current project's target/idl output)
+    #[arg(value_name = "IDL")]
+    pub idl_path: Option<PathBuf>,
+
+    /// Print the validation plan as JSON
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub json: bool,
+}
+
 #[derive(Args, Debug, Clone)]
 pub struct DumpCommand {
     /// Path to a compiled .so (auto-detected from target/deploy/ if omitted)
@@ -315,6 +364,39 @@ pub struct ProfileCommand {
     /// Watch src/ for changes and re-profile automatically
     #[arg(long, short, action = ArgAction::SetTrue)]
     pub watch: bool,
+
+    /// Budget file used by --write-budget or --assert-budget
+    #[arg(long, value_name = "FILE", default_value = "quasar-budget.toml")]
+    pub budget: PathBuf,
+
+    /// Write current ceilings to the budget file
+    #[arg(
+        long,
+        action = ArgAction::SetTrue,
+        conflicts_with_all = ["assert_budget", "diff_program", "share", "watch"]
+    )]
+    pub write_budget: bool,
+
+    /// Fail with exit code 2 when a budget ceiling is exceeded
+    #[arg(
+        long,
+        action = ArgAction::SetTrue,
+        conflicts_with_all = ["write_budget", "diff_program", "share", "watch"]
+    )]
+    pub assert_budget: bool,
+
+    /// Percentage added to ceilings written by --write-budget
+    #[arg(long, default_value_t = 5, requires = "write_budget")]
+    pub headroom: u32,
+
+    /// Print deterministic machine-readable output and skip the flamegraph
+    /// server
+    #[arg(
+        long,
+        action = ArgAction::SetTrue,
+        conflicts_with_all = ["diff_program", "share", "watch"]
+    )]
+    pub json: bool,
 }
 
 #[derive(Args, Debug)]
@@ -374,18 +456,21 @@ pub fn run(cli: Cli) -> CliResult {
             cmd.features,
             cmd.verbose,
         ),
-        Command::Deploy(cmd) => deploy::run(
+        Command::Deploy(cmd) => deploy::run_with_verification(
             cmd.program_keypair,
             cmd.upgrade_authority,
             cmd.keypair,
             cmd.url,
             cmd.skip_build,
+            cmd.skip_verify,
         ),
         Command::Clean(cmd) => clean::run(cmd.all),
         Command::Config(cmd) => cfg::run(cmd.action),
         Command::Idl(cmd) => idl::run(cmd),
         Command::Client(cmd) => client::run(cmd),
         Command::Lint(cmd) => lint::run(cmd),
+        Command::Audit(cmd) => audit::run(cmd),
+        Command::Verify(cmd) => verify::run(cmd),
         Command::Dump(cmd) => dump::run(cmd.elf_path, cmd.function, cmd.source),
         Command::Completions(cmd) => {
             clap_complete::generate(
@@ -425,6 +510,11 @@ pub fn run(cli: Cli) -> CliResult {
                 diff_program: cmd.diff_program,
                 share: cmd.share,
                 expand: cmd.expand,
+                budget_path: cmd.budget,
+                write_budget: cmd.write_budget,
+                assert_budget: cmd.assert_budget,
+                headroom_percent: cmd.headroom,
+                json: cmd.json,
             });
             Ok(())
         }
@@ -475,8 +565,14 @@ pub fn print_help() {
         "client  <idl> [--lang ts,py,go]",
         "Generate client code from IDL",
     );
+    print_cmd("lint    [--update-lock] [--strict]", "Check release safety");
+    print_cmd("audit   [idl] [--json]", "Show compiler validation plans");
     print_cmd(
-        "profile [elf] [--expand] [--diff] [-w]",
+        "verify  [--program-id] [--manifest]",
+        "Verify a deployed program",
+    );
+    print_cmd(
+        "profile [elf] [--write-budget|--assert-budget] [--json]",
         "Measure compute-unit usage",
     );
     print_cmd("keys    [list|sync|new]", "Manage program keypair");
@@ -505,7 +601,47 @@ fn profile_watch(expand: bool) -> CliResult {
             diff_program: None,
             share: false,
             expand,
+            budget_path: PathBuf::from("quasar-budget.toml"),
+            write_budget: false,
+            assert_budget: false,
+            headroom_percent: 5,
+            json: false,
         });
         Ok(())
     })
+}
+
+#[cfg(test)]
+mod profile_cli_tests {
+    use {
+        super::{Cli, Command},
+        clap::Parser,
+        std::path::PathBuf,
+    };
+
+    #[test]
+    fn profile_budget_flags_have_safe_defaults() {
+        let cli = Cli::try_parse_from(["quasar", "profile", "program.so"])
+            .expect("plain profile command");
+        let Command::Profile(profile) = cli.command else {
+            panic!("expected profile command");
+        };
+        assert_eq!(profile.budget, PathBuf::from("quasar-budget.toml"));
+        assert_eq!(profile.headroom, 5);
+        assert!(!profile.write_budget);
+        assert!(!profile.assert_budget);
+    }
+
+    #[test]
+    fn profile_rejects_conflicting_budget_modes() {
+        let error = Cli::try_parse_from([
+            "quasar",
+            "profile",
+            "program.so",
+            "--write-budget",
+            "--assert-budget",
+        ])
+        .expect_err("budget modes must conflict");
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
 }

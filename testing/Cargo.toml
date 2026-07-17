@@ -1,0 +1,25 @@
+[package]
+name = "quasar-test"
+description = "Project-aware QuasarSVM testing utilities for Quasar programs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+documentation = "https://docs.rs/quasar-test/0.1.0"
+readme = "README.md"
+keywords = ["solana", "testing", "svm", "quasar", "blockchain"]
+categories = ["development-tools"]
+include = ["/src/**", "/README.md", "/LICENSE-APACHE", "/LICENSE-MIT"]
+
+[lints]
+workspace = true
+
+[dependencies]
+quasar-svm = "=0.1.0"
+spl-token = { version = "=9.0.0", default-features = false, features = ["no-entrypoint"] }
+
+[lib]
+doctest = false

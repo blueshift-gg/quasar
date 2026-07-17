@@ -16,6 +16,9 @@ use {
     std::{fs, path::Path},
 };
 
+const QUASAR_SVM_TYPESCRIPT_VERSION: &str = "0.1.13";
+const QUASAR_TEST_TYPESCRIPT_VERSION: &str = "0.1.0";
+
 /// Check that the target directory is usable before prompting the user for
 /// scaffolding parameters.
 pub(super) fn validate_target_dir(dir: &str) -> Result<(), CliError> {
@@ -93,7 +96,11 @@ pub(super) fn scaffold(
             },
             typescript: match (test_language, ts_sdk) {
                 (TestLanguage::TypeScript, Some(sdk)) => {
-                    let pm = package_manager.expect("package_manager required for TS");
+                    let pm = package_manager.ok_or_else(|| {
+                        CliError::message(
+                            "TypeScript scaffolding requires a package manager selection",
+                        )
+                    })?;
                     Some(QuasarTypeScriptTesting {
                         framework: "quasar-svm".to_string(),
                         sdk: sdk.to_string(),
@@ -185,7 +192,7 @@ pub(super) fn scaffold(
 
         fs::write(
             tests_dir.join(format!("{}.test.ts", name)),
-            generate_test_ts(name, sdk, template, toolchain),
+            generate_test_ts(name, sdk, template),
         )?;
     }
 
@@ -234,7 +241,7 @@ check-cfg = [
 ]
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "lib"]
 
 [features]
 alloc = []
@@ -268,11 +275,7 @@ solana-instruction = { version = "3.2.0", features = ["bincode"] }
             out.push_str(
                 r#"
 [dev-dependencies]
-quasar-svm = { version = "0.1" }
-solana-account = { version = "3.4.0" }
-solana-address = { version = "2.2.0", features = ["decode"] }
-solana-instruction = { version = "3.2.0", features = ["bincode"] }
-solana-pubkey = { version = "4.1.0" }
+quasar-test = "=0.1.0"
 "#,
             );
         }
@@ -388,7 +391,8 @@ fn generate_package_json(name: &str, ts_sdk: TypeScriptSdk) -> String {
     "test": "vitest run"
   }},
   "dependencies": {{
-    "@blueshift-gg/quasar-svm": "^0.1.12",
+    "@blueshift-gg/quasar-test": "{QUASAR_TEST_TYPESCRIPT_VERSION}",
+    "@blueshift-gg/quasar-svm": "{QUASAR_SVM_TYPESCRIPT_VERSION}",
     "@solana/codecs": "^6.0.0",
     {solana_dep}
   }},
@@ -402,227 +406,132 @@ fn generate_package_json(name: &str, ts_sdk: TypeScriptSdk) -> String {
     )
 }
 
-fn generate_test_ts(
-    name: &str,
-    ts_sdk: TypeScriptSdk,
-    template: Template,
-    toolchain: Toolchain,
-) -> String {
+fn generate_test_ts(name: &str, ts_sdk: TypeScriptSdk, template: Template) -> String {
     match template {
-        Template::Minimal => generate_minimal_test_ts(name, ts_sdk, toolchain),
-        Template::Full => generate_full_test_ts(name, ts_sdk, toolchain),
+        Template::Minimal => generate_minimal_test_ts(name, ts_sdk),
+        Template::Full => generate_full_test_ts(name, ts_sdk),
     }
 }
 
-fn generate_minimal_test_ts(name: &str, ts_sdk: TypeScriptSdk, toolchain: Toolchain) -> String {
+fn generate_minimal_test_ts(name: &str, ts_sdk: TypeScriptSdk) -> String {
     let module_name = name.replace('-', "_");
-    let so_name = match toolchain {
-        Toolchain::Upstream => format!("lib{module_name}"),
-        Toolchain::Solana => module_name.clone(),
-    };
 
     if matches!(ts_sdk, TypeScriptSdk::Kit) {
         format!(
-            r#"import {{ generateKeyPairSigner }} from "@solana/kit";
-import {{ AccountRole, address }} from "@solana/kit";
-import {{ describe, it, expect }} from "vitest";
-import {{ QuasarSvm, createKeyedSystemAccount }} from "@blueshift-gg/quasar-svm/kit";
-import {{ readFile }} from "node:fs/promises";
+            r#"import {{ QuasarTest }} from "@blueshift-gg/quasar-test/kit";
+import {{ describe, it }} from "vitest";
+import {{ PROGRAM_ADDRESS, {class_name}Client }} from "../target/client/typescript/{name}/kit.js";
+
+const client = new {class_name}Client();
 
 describe.concurrent("{class_name} Program", async () => {{
   it("initializes", async () => {{
-    const idl = JSON.parse(await readFile("target/idl/{module_name}.json", "utf8")) as {{ address: string }};
-    const programAddress = address(idl.address);
-    const vm = new QuasarSvm();
-    vm.addProgram(programAddress, await readFile("target/deploy/{so_name}.so"));
+    const q = await QuasarTest.load(PROGRAM_ADDRESS);
+    const payer = await q.actor();
 
-    const payer = await generateKeyPairSigner();
+    const result = await q.send(client.createInitializeInstruction({{ payer }}));
 
-    const initializeInstruction = {{
-      programAddress,
-      accounts: [
-        {{ address: payer.address, role: AccountRole.READONLY_SIGNER }},
-      ],
-      data: Uint8Array.from([0]),
-    }};
-
-    const result = vm.processInstruction(initializeInstruction, [
-      createKeyedSystemAccount(payer.address),
-    ]);
-
-    expect(result.status.ok, `initialize failed:\n${{result.logs.join("\n")}}`).toBe(true);
-    }});
+    result.succeeds().cuBelow(10_000);
+    q.free();
+  }});
 }});
 "#,
-            class_name = snake_to_pascal(&module_name)
+            class_name = snake_to_pascal(&module_name),
         )
     } else {
         format!(
-            r#"import {{ Buffer }} from "buffer";
-import {{ Address, Keypair, TransactionInstruction }} from "@solana/web3.js";
-import {{ readFile }} from "node:fs/promises";
-import {{ describe, it, expect }} from "vitest";
-import {{ QuasarSvm, createKeyedSystemAccount }} from "@blueshift-gg/quasar-svm/web3.js";
+            r#"import {{ QuasarTest }} from "@blueshift-gg/quasar-test/web3.js";
+import {{ describe, it }} from "vitest";
+import {{ {class_name}Client }} from "../target/client/typescript/{name}/web3.js";
+
+const client = new {class_name}Client();
 
 describe.concurrent("{class_name} Program", async () => {{
   it("initializes", async () => {{
-    const idl = JSON.parse(await readFile("target/idl/{module_name}.json", "utf8")) as {{ address: string }};
-    const programAddress = new Address(idl.address);
-    const vm = new QuasarSvm();
-    vm.addProgram(programAddress, await readFile("target/deploy/{so_name}.so"));
+    const q = await QuasarTest.load({class_name}Client.programId);
+    const payer = await q.actor();
 
-    const {{ publicKey: payer }} = await Keypair.generate();
+    const result = await q.send(client.createInitializeInstruction({{ payer }}));
 
-    const initializeInstruction = new TransactionInstruction({{
-      programId: programAddress,
-      keys: [
-        {{ pubkey: payer, isSigner: true, isWritable: false }},
-      ],
-      data: Buffer.from([0]),
-    }});
-
-    const result = vm.processInstruction(initializeInstruction, [
-      createKeyedSystemAccount(payer),
-    ]);
-
-    expect(result.status.ok, `initialize failed:\n${{result.logs.join("\n")}}`).toBe(true);
-    }});
+    result.succeeds().cuBelow(10_000);
+    q.free();
+  }});
 }});
 "#,
-            class_name = snake_to_pascal(&module_name)
+            class_name = snake_to_pascal(&module_name),
         )
     }
 }
 
-fn generate_full_test_ts(name: &str, ts_sdk: TypeScriptSdk, toolchain: Toolchain) -> String {
+fn generate_full_test_ts(name: &str, ts_sdk: TypeScriptSdk) -> String {
     let module_name = name.replace('-', "_");
-    let so_name = match toolchain {
-        Toolchain::Upstream => format!("lib{module_name}"),
-        Toolchain::Solana => module_name.clone(),
-    };
 
     if matches!(ts_sdk, TypeScriptSdk::Kit) {
         format!(
-            r#"import {{
-  AccountRole,
-  address,
-  generateKeyPairSigner,
-  getAddressEncoder,
-  getProgramDerivedAddress,
-}} from "@solana/kit";
-import {{ readFile }} from "node:fs/promises";
+            r#"import {{ QuasarTest }} from "@blueshift-gg/quasar-test/kit";
 import {{ describe, it, expect }} from "vitest";
-import {{ QuasarSvm, createKeyedSystemAccount }} from "@blueshift-gg/quasar-svm/kit";
+import {{
+  PROGRAM_ADDRESS,
+  {class_name}Client,
+  findMyAccountAddress,
+}} from "../target/client/typescript/{name}/kit.js";
+
+const client = new {class_name}Client();
 
 describe.concurrent("{class_name} Program", async () => {{
   it("initializes state", async () => {{
-    const idl = JSON.parse(await readFile("target/idl/{module_name}.json", "utf8")) as {{ address: string }};
-    const programAddress = address(idl.address);
-    const vm = new QuasarSvm();
-    vm.addProgram(programAddress, await readFile("target/deploy/{so_name}.so"));
-
-    const payer = await generateKeyPairSigner();
-    const [myAccount, bump] = await getProgramDerivedAddress({{
-      programAddress,
-      seeds: [
-        new TextEncoder().encode("my-account"),
-        getAddressEncoder().encode(payer.address),
-      ],
-    }});
+    const q = await QuasarTest.load(PROGRAM_ADDRESS);
+    const payer = await q.actor();
+    const myAccount = await findMyAccountAddress(payer);
+    q.empty(myAccount);
     const value = 42n;
-    const instructionData = new Uint8Array(9);
-    instructionData[0] = 0;
-    new DataView(instructionData.buffer).setBigUint64(1, value, true);
 
-    const initializeInstruction = {{
-      programAddress,
-      accounts: [
-        {{ address: payer.address, role: AccountRole.WRITABLE_SIGNER }},
-        {{ address: myAccount, role: AccountRole.WRITABLE }},
-        {{ address: address("11111111111111111111111111111111"), role: AccountRole.READONLY }},
-      ],
-      data: instructionData,
-    }};
+    const result = await q.send(client.createInitializeInstruction({{ payer, value }}));
 
-    const result = vm.processInstruction(initializeInstruction, [
-      createKeyedSystemAccount(payer.address),
-      createKeyedSystemAccount(myAccount, 0n),
-    ]);
-
-    expect(result.status.ok, `initialize failed:\n${{result.logs.join("\n")}}`).toBe(true);
+    result.succeeds().cuBelow(10_000);
     const stored = result.account(myAccount);
     if (!stored) throw new Error("initialized state account is missing");
-    expect(stored.programAddress).toBe(programAddress);
-    expect(stored.data).toHaveLength(107);
-    expect(stored.data[0]).toBe(1);
-    expect(stored.data[1]).toBe(1);
-    expect(stored.data.slice(2, 34)).toEqual(getAddressEncoder().encode(payer.address));
-    expect(new DataView(stored.data.buffer, stored.data.byteOffset).getBigUint64(34, true)).toBe(value);
-    expect(stored.data[42]).toBe(bump);
-    expect(stored.data.slice(43).every((byte) => byte === 0)).toBe(true);
+    const state = client.decodeMyAccount(stored.data);
+    expect(state.authority).toBe(payer);
+    expect(state.value).toBe(value);
+    q.free();
   }});
 }});
 "#,
-            class_name = snake_to_pascal(&module_name)
+            class_name = snake_to_pascal(&module_name),
         )
     } else {
         format!(
-            r#"import {{ Buffer }} from "node:buffer";
-import {{ Address, Keypair, TransactionInstruction }} from "@solana/web3.js";
-import {{ readFile }} from "node:fs/promises";
+            r#"import {{ QuasarTest }} from "@blueshift-gg/quasar-test/web3.js";
 import {{ describe, it, expect }} from "vitest";
-import {{ QuasarSvm, createKeyedSystemAccount }} from "@blueshift-gg/quasar-svm/web3.js";
+import {{
+  {class_name}Client,
+  findMyAccountAddress,
+}} from "../target/client/typescript/{name}/web3.js";
+
+const client = new {class_name}Client();
 
 describe.concurrent("{class_name} Program", async () => {{
   it("initializes state", async () => {{
-    const idl = JSON.parse(await readFile("target/idl/{module_name}.json", "utf8")) as {{ address: string }};
-    const programAddress = new Address(idl.address);
-    const vm = new QuasarSvm();
-    vm.addProgram(programAddress, await readFile("target/deploy/{so_name}.so"));
-
-    const {{ publicKey: payer }} = await Keypair.generate();
-    const [myAccount, bump] = await Address.findProgramAddress(
-      [Buffer.from("my-account"), payer.toBytes()],
-      programAddress,
-    );
+    const q = await QuasarTest.load({class_name}Client.programId);
+    const payer = await q.actor();
+    const myAccount = await findMyAccountAddress(payer);
+    q.empty(myAccount);
     const value = 42n;
-    const instructionData = Buffer.alloc(9);
-    instructionData[0] = 0;
-    instructionData.writeBigUInt64LE(value, 1);
 
-    const initializeInstruction = new TransactionInstruction({{
-      programId: programAddress,
-      keys: [
-        {{ pubkey: payer, isSigner: true, isWritable: true }},
-        {{ pubkey: myAccount, isSigner: false, isWritable: true }},
-        {{ pubkey: new Address("11111111111111111111111111111111"), isSigner: false, isWritable: false }},
-      ],
-      data: instructionData,
-    }});
+    const result = await q.send(client.createInitializeInstruction({{ payer, value }}));
 
-    const result = vm.processInstruction(initializeInstruction, [
-      createKeyedSystemAccount(payer),
-      createKeyedSystemAccount(myAccount, 0n),
-    ]);
-
-    expect(result.status.ok, `initialize failed:\n${{result.logs.join("\n")}}`).toBe(true);
-    const stored = result.accounts.find((account) => account.accountId.equals(myAccount));
+    result.succeeds().cuBelow(10_000);
+    const stored = result.account(myAccount);
     if (!stored) throw new Error("initialized state account is missing");
-    expect(stored.accountInfo.owner.equals(programAddress)).toBe(true);
-    expect(stored.accountInfo.data).toHaveLength(107);
-    expect(stored.accountInfo.data[0]).toBe(1);
-    expect(stored.accountInfo.data[1]).toBe(1);
-    expect(stored.accountInfo.data.subarray(2, 34)).toEqual(Buffer.from(payer.toBytes()));
-    expect(new DataView(
-      stored.accountInfo.data.buffer,
-      stored.accountInfo.data.byteOffset,
-    ).getBigUint64(34, true)).toBe(value);
-    expect(stored.accountInfo.data[42]).toBe(bump);
-    expect(stored.accountInfo.data.subarray(43).every((byte) => byte === 0)).toBe(true);
+    const state = client.decodeMyAccount(stored.accountInfo.data);
+    expect(state.authority.equals(payer)).toBe(true);
+    expect(state.value).toBe(value);
+    q.free();
   }});
 }});
 "#,
-            class_name = snake_to_pascal(&module_name)
+            class_name = snake_to_pascal(&module_name),
         )
     }
 }
@@ -749,180 +658,395 @@ fn test_initialize() {{
 "#
             )
         }
-        (RustFramework::QuasarSVM, Template::Minimal) => {
-            format!(
-                r#"use quasar_svm::{{Account, Pubkey, QuasarSvm}};
-use solana_address::Address;
-use solana_instruction::{{AccountMeta, Instruction}};
+        (RustFramework::QuasarSVM, Template::Minimal) => r#"use quasar_test::prelude::*;
 
-fn setup() -> QuasarSvm {{
-    let elf = std::fs::read("target/deploy/{libname}.so").unwrap();
-    QuasarSvm::new()
-        .with_program(&Pubkey::from(crate::ID), &elf)
-}}
-
-fn initialize_instruction(payer: Address) -> Instruction {{
-    Instruction {{
-        program_id: Address::from(crate::ID.to_bytes()),
+fn initialize_instruction(payer: Pubkey) -> Instruction {
+    Instruction {
+        program_id: crate::ID,
         accounts: vec![
             AccountMeta::new_readonly(payer, true),
         ],
         data: vec![0],
-    }}
-}}
+    }
+}
 
-#[test]
-fn test_initialize() {{
-    let mut svm = setup();
-
-    let payer = Pubkey::new_unique();
-
-    let instruction = initialize_instruction(Address::from(payer.to_bytes()));
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[Account {{
-            address: payer,
-            lamports: 10_000_000_000,
-            data: vec![],
-            owner: quasar_svm::system_program::ID,
-            executable: false,
-        }}],
-    );
-
-    result.assert_success();
-}}
+quasar_test! {
+    fn test_initialize(q) {
+        let payer = q.actor();
+        q.send(initialize_instruction(payer)).succeeds();
+    }
+}
 "#
-            )
-        }
-        (RustFramework::QuasarSVM, Template::Full) => {
-            format!(
-                r#"use quasar_svm::{{Account, Pubkey, QuasarSvm}};
-use solana_address::Address;
-use solana_instruction::{{AccountMeta, Instruction}};
+        .to_string(),
+        (RustFramework::QuasarSVM, Template::Full) => r#"use quasar_test::prelude::*;
 
 const VALUE: u64 = 42;
 const MY_ACCOUNT_SIZE: usize = 107;
 
-fn setup() -> QuasarSvm {{
-    let elf = std::fs::read("target/deploy/{libname}.so").unwrap();
-    QuasarSvm::new()
-        .with_program(&Pubkey::from(crate::ID), &elf)
-}}
-
-fn initialize_instruction(payer: Pubkey, my_account: Pubkey) -> Instruction {{
+fn initialize_instruction(payer: Pubkey, my_account: Pubkey) -> Instruction {
     let mut data = vec![0];
     data.extend_from_slice(&VALUE.to_le_bytes());
-    Instruction {{
-        program_id: Address::from(crate::ID.to_bytes()),
+    Instruction {
+        program_id: crate::ID,
         accounts: vec![
-            AccountMeta::new(Address::from(payer.to_bytes()), true),
-            AccountMeta::new(Address::from(my_account.to_bytes()), false),
+            AccountMeta::new(payer, true),
+            AccountMeta::new(my_account, false),
             AccountMeta::new_readonly(
-                Address::from(quasar_svm::system_program::ID.to_bytes()),
+                quasar_test::quasar_svm::system_program::ID,
                 false,
             ),
         ],
         data,
-    }}
-}}
+    }
+}
 
-fn system_account(address: Pubkey, lamports: u64) -> Account {{
-    Account {{
-        address,
-        lamports,
-        data: vec![],
-        owner: quasar_svm::system_program::ID,
-        executable: false,
-    }}
-}}
+quasar_test! {
+    fn test_initialize(q) {
+        let payer = q.actor();
+        let (my_account, bump) =
+            Pubkey::find_program_address(&[b"my-account", payer.as_ref()], &crate::ID);
+        q.empty(my_account);
 
-#[test]
-fn test_initialize() {{
-    let mut svm = setup();
-    let payer = Pubkey::new_unique();
-    let (my_account, bump) =
-        Pubkey::find_program_address(&[b"my-account", payer.as_ref()], &crate::ID);
-    let instruction = initialize_instruction(payer, my_account);
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[system_account(payer, 10_000_000_000), system_account(my_account, 0)],
-    );
-
-    result.assert_success();
-    let stored = result.account(&my_account).expect("initialized state account");
-    assert_eq!(stored.owner, crate::ID);
-    assert_eq!(stored.data.len(), MY_ACCOUNT_SIZE);
-    assert_eq!(stored.data[0], 1, "discriminator");
-    assert_eq!(stored.data[1], 1, "version");
-    assert_eq!(&stored.data[2..34], payer.as_ref(), "authority");
-    assert_eq!(&stored.data[34..42], &VALUE.to_le_bytes(), "value");
-    assert_eq!(stored.data[42], bump, "bump");
-    assert!(stored.data[43..].iter().all(|byte| *byte == 0), "reserved");
-}}
+        let result = q.send(initialize_instruction(payer, my_account));
+        result.succeeds();
+        let stored = result.account(&my_account).expect("initialized state account");
+        assert_eq!(stored.owner, crate::ID);
+        assert_eq!(stored.data.len(), MY_ACCOUNT_SIZE);
+        assert_eq!(stored.data[0], 1, "discriminator");
+        assert_eq!(stored.data[1], 1, "version");
+        assert_eq!(&stored.data[2..34], payer.as_ref(), "authority");
+        assert_eq!(&stored.data[34..42], &VALUE.to_le_bytes(), "value");
+        assert_eq!(stored.data[42], bump, "bump");
+        assert!(stored.data[43..].iter().all(|byte| *byte == 0), "reserved");
+    }
+}
 "#
-            )
-        }
+        .to_string(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use {
-        super::{generate_test_ts, generate_tests_rs, scaffold},
-        crate::init::types::{
-            PackageManager, RustFramework, Template, TestLanguage, Toolchain, TypeScriptSdk,
+        super::{
+            generate_test_ts, generate_tests_rs, scaffold, QUASAR_SVM_TYPESCRIPT_VERSION,
+            QUASAR_TEST_TYPESCRIPT_VERSION,
+        },
+        crate::{
+            config::QuasarConfig,
+            init::types::{
+                PackageManager, RustFramework, Template, TestLanguage, Toolchain, TypeScriptSdk,
+            },
         },
         quasar_idl::codegen::typescript::{client_dependency_version, TsTarget},
         serde_json::Value,
-        std::fs,
+        std::{collections::BTreeSet, fs},
         tempfile::tempdir,
     };
 
-    #[test]
-    fn scaffold_typescript_projects_use_selected_solana_dependency() {
-        let temp = tempdir().expect("tempdir");
-        let package_manager = PackageManager::Npm;
+    #[derive(Clone, Copy)]
+    enum TestStack {
+        NoTests,
+        QuasarSvm,
+        Mollusk,
+        Kit,
+        Web3,
+    }
 
-        for (dir_name, project_name, sdk, dep_name, target) in [
-            (
-                "kit",
-                "demo-kit",
-                TypeScriptSdk::Kit,
-                "@solana/kit",
-                TsTarget::Kit,
+    impl TestStack {
+        fn label(self) -> &'static str {
+            match self {
+                Self::NoTests => "none",
+                Self::QuasarSvm => "rust/quasar-svm",
+                Self::Mollusk => "rust/mollusk",
+                Self::Kit => "typescript/kit",
+                Self::Web3 => "typescript/web3.js",
+            }
+        }
+
+        fn choices(self) -> (TestLanguage, Option<RustFramework>, Option<TypeScriptSdk>) {
+            match self {
+                Self::NoTests => (TestLanguage::None, None, None),
+                Self::QuasarSvm => (TestLanguage::Rust, Some(RustFramework::QuasarSVM), None),
+                Self::Mollusk => (TestLanguage::Rust, Some(RustFramework::Mollusk), None),
+                Self::Kit => (TestLanguage::TypeScript, None, Some(TypeScriptSdk::Kit)),
+                Self::Web3 => (TestLanguage::TypeScript, None, Some(TypeScriptSdk::Web3js)),
+            }
+        }
+    }
+
+    struct ScaffoldCase {
+        label: &'static str,
+        toolchain: Toolchain,
+        stack: TestStack,
+        template: Template,
+        package_manager: Option<PackageManager>,
+    }
+
+    fn pairwise_cases() -> Vec<ScaffoldCase> {
+        use {
+            PackageManager::{Bun, Npm, Other, Pnpm, Yarn},
+            Template::{Full, Minimal},
+            TestStack::{Kit, Mollusk, NoTests, QuasarSvm, Web3},
+            Toolchain::{Solana, Upstream},
+        };
+
+        let case = |label, toolchain, stack, template, package_manager| ScaffoldCase {
+            label,
+            toolchain,
+            stack,
+            template,
+            package_manager,
+        };
+        let other = || {
+            Some(Other {
+                install: "custom-install --locked".into(),
+                test: "custom-test --ci".into(),
+            })
+        };
+
+        vec![
+            case("none-solana-minimal", Solana, NoTests, Minimal, None),
+            case("none-upstream-full", Upstream, NoTests, Full, None),
+            case("quasar-svm-solana-full", Solana, QuasarSvm, Full, None),
+            case(
+                "quasar-svm-upstream-minimal",
+                Upstream,
+                QuasarSvm,
+                Minimal,
+                None,
             ),
-            (
-                "web3",
-                "demo-web3",
-                TypeScriptSdk::Web3js,
-                "@solana/web3.js",
-                TsTarget::Web3js,
+            case("mollusk-solana-minimal", Solana, Mollusk, Minimal, None),
+            case("mollusk-upstream-full", Upstream, Mollusk, Full, None),
+            case("kit-pnpm-solana-minimal", Solana, Kit, Minimal, Some(Pnpm)),
+            case("web3-pnpm-upstream-full", Upstream, Web3, Full, Some(Pnpm)),
+            case(
+                "kit-bun-upstream-minimal",
+                Upstream,
+                Kit,
+                Minimal,
+                Some(Bun),
             ),
-        ] {
-            let project_dir = temp.path().join(dir_name);
+            case("web3-bun-solana-full", Solana, Web3, Full, Some(Bun)),
+            case("kit-npm-solana-full", Solana, Kit, Full, Some(Npm)),
+            case(
+                "web3-npm-upstream-minimal",
+                Upstream,
+                Web3,
+                Minimal,
+                Some(Npm),
+            ),
+            case("kit-yarn-upstream-full", Upstream, Kit, Full, Some(Yarn)),
+            case(
+                "web3-yarn-solana-minimal",
+                Solana,
+                Web3,
+                Minimal,
+                Some(Yarn),
+            ),
+            case("kit-other-solana-minimal", Solana, Kit, Minimal, other()),
+            case("web3-other-upstream-full", Upstream, Web3, Full, other()),
+        ]
+    }
+    #[test]
+    fn every_scaffold_choice_is_covered_by_a_pairwise_matrix() {
+        let temp = tempdir().expect("tempdir");
+        let mut toolchain_template = BTreeSet::new();
+        let mut toolchain_stack = BTreeSet::new();
+        let mut template_stack = BTreeSet::new();
+        let mut package_managers = BTreeSet::new();
+        let mut toolchain_package_manager = BTreeSet::new();
+        let mut template_package_manager = BTreeSet::new();
+        let mut sdk_package_manager = BTreeSet::new();
+
+        for case in pairwise_cases() {
+            let (language, rust_framework, ts_sdk) = case.stack.choices();
+            let toolchain = case.toolchain.to_string();
+            let template = case.template.to_string();
+            let stack = case.stack.label().to_string();
+            toolchain_template.insert((toolchain.clone(), template.clone()));
+            toolchain_stack.insert((toolchain.clone(), stack.clone()));
+            template_stack.insert((template.clone(), stack));
+
+            let install_command = case
+                .package_manager
+                .as_ref()
+                .map(|manager| manager.install_cmd().to_string());
+            let test_command = case
+                .package_manager
+                .as_ref()
+                .map(|manager| manager.test_cmd().to_string());
+            if let (Some(manager), Some(sdk)) = (&case.package_manager, ts_sdk) {
+                let manager = manager.to_string();
+                let sdk = sdk.to_string();
+                package_managers.insert(manager.clone());
+                toolchain_package_manager.insert((toolchain, manager.clone()));
+                template_package_manager.insert((template, manager.clone()));
+                sdk_package_manager.insert((sdk, manager));
+            }
+
+            let project_dir = temp.path().join(case.label);
+            let clients = if matches!(language, TestLanguage::TypeScript) {
+                vec!["typescript".to_string()]
+            } else {
+                Vec::new()
+            };
             scaffold(
                 project_dir.to_str().expect("utf8 path"),
-                project_name,
-                Toolchain::Upstream,
-                TestLanguage::TypeScript,
-                None,
-                Some(sdk),
-                Template::Minimal,
-                Some(&package_manager),
-                &[],
+                case.label,
+                case.toolchain,
+                language,
+                rust_framework,
+                ts_sdk,
+                case.template,
+                case.package_manager.as_ref(),
+                &clients,
             )
-            .expect("scaffold project");
+            .unwrap_or_else(|error| panic!("{}: scaffold failed: {error}", case.label));
 
-            let package_json: Value = serde_json::from_str(
-                &fs::read_to_string(project_dir.join("package.json")).expect("read package.json"),
+            let config: QuasarConfig = toml::from_str(
+                &fs::read_to_string(project_dir.join("Quasar.toml")).expect("read Quasar.toml"),
             )
-            .expect("valid package.json");
+            .unwrap_or_else(|error| panic!("{}: invalid Quasar.toml: {error}", case.label));
+            assert_eq!(
+                config.toolchain.toolchain_type,
+                case.toolchain.to_string(),
+                "{}",
+                case.label
+            );
+            assert_eq!(
+                config.testing.language,
+                language.to_string(),
+                "{}",
+                case.label
+            );
+            assert_eq!(config.clients.languages, clients, "{}", case.label);
 
-            let dependencies = &package_json["dependencies"];
-            assert_eq!(dependencies[dep_name], client_dependency_version(target));
+            let cargo: toml::Value = toml::from_str(
+                &fs::read_to_string(project_dir.join("Cargo.toml")).expect("read Cargo.toml"),
+            )
+            .unwrap_or_else(|error| panic!("{}: invalid Cargo.toml: {error}", case.label));
+            assert_eq!(
+                cargo["dependencies"].get("solana-instruction").is_some(),
+                matches!(case.toolchain, Toolchain::Solana),
+                "{}",
+                case.label,
+            );
+            assert_eq!(
+                project_dir.join(".cargo/config.toml").exists(),
+                matches!(case.toolchain, Toolchain::Upstream),
+                "{}",
+                case.label,
+            );
+            assert_eq!(
+                project_dir.join("src/state.rs").exists(),
+                matches!(case.template, Template::Full),
+                "{}",
+                case.label,
+            );
+
+            if let Some(framework) = rust_framework {
+                let rust = config
+                    .testing
+                    .rust
+                    .as_ref()
+                    .unwrap_or_else(|| panic!("{}: missing Rust config", case.label));
+                assert_eq!(rust.framework, framework.to_string(), "{}", case.label);
+                let manifest = fs::read_to_string(project_dir.join("Cargo.toml"))
+                    .expect("read generated Cargo.toml");
+                assert!(
+                    manifest.contains(match framework {
+                        RustFramework::QuasarSVM => "quasar-test =",
+                        RustFramework::Mollusk => "mollusk-svm =",
+                    }),
+                    "{}: missing selected Rust framework dependency",
+                    case.label,
+                );
+                assert!(project_dir.join("src/tests.rs").exists(), "{}", case.label);
+            } else {
+                assert!(config.testing.rust.is_none(), "{}", case.label);
+            }
+
+            if let Some(sdk) = ts_sdk {
+                let typescript = config
+                    .testing
+                    .typescript
+                    .as_ref()
+                    .unwrap_or_else(|| panic!("{}: missing TypeScript config", case.label));
+                assert_eq!(typescript.sdk, sdk.to_string(), "{}", case.label);
+                assert_eq!(
+                    typescript.install.display(),
+                    install_command.expect("TypeScript install command"),
+                    "{}",
+                    case.label,
+                );
+                assert_eq!(
+                    typescript.test.display(),
+                    test_command.expect("TypeScript test command"),
+                    "{}",
+                    case.label,
+                );
+
+                let package_json: Value = serde_json::from_str(
+                    &fs::read_to_string(project_dir.join("package.json"))
+                        .expect("read package.json"),
+                )
+                .unwrap_or_else(|error| panic!("{}: invalid package.json: {error}", case.label));
+                let (dependency, target) = match sdk {
+                    TypeScriptSdk::Kit => ("@solana/kit", TsTarget::Kit),
+                    TypeScriptSdk::Web3js => ("@solana/web3.js", TsTarget::Web3js),
+                };
+                assert_eq!(
+                    package_json["dependencies"][dependency],
+                    client_dependency_version(target),
+                    "{}",
+                    case.label,
+                );
+                assert_eq!(
+                    package_json["dependencies"]["@blueshift-gg/quasar-svm"],
+                    QUASAR_SVM_TYPESCRIPT_VERSION,
+                    "{}",
+                    case.label,
+                );
+                assert_eq!(
+                    package_json["dependencies"]["@blueshift-gg/quasar-test"],
+                    QUASAR_TEST_TYPESCRIPT_VERSION,
+                    "{}",
+                    case.label,
+                );
+                assert!(
+                    project_dir
+                        .join("tests")
+                        .join(format!("{}.test.ts", case.label))
+                        .exists(),
+                    "{}",
+                    case.label,
+                );
+            } else {
+                assert!(config.testing.typescript.is_none(), "{}", case.label);
+                assert!(!project_dir.join("package.json").exists(), "{}", case.label);
+            }
         }
+
+        assert_eq!(toolchain_template.len(), 4, "toolchain x template coverage");
+        assert_eq!(toolchain_stack.len(), 10, "toolchain x test stack coverage");
+        assert_eq!(template_stack.len(), 10, "template x test stack coverage");
+        assert_eq!(package_managers.len(), 5, "package-manager choice coverage");
+        assert_eq!(
+            toolchain_package_manager.len(),
+            10,
+            "toolchain x package-manager coverage",
+        );
+        assert_eq!(
+            template_package_manager.len(),
+            10,
+            "template x package-manager coverage",
+        );
+        assert_eq!(
+            sdk_package_manager.len(),
+            10,
+            "TypeScript SDK x package-manager coverage",
+        );
     }
 
     #[test]
@@ -937,28 +1061,33 @@ mod tests {
                 generate_tests_rs("demo", framework, Template::Minimal, Toolchain::Solana);
             assert!(!minimal.contains("my-account"));
             assert!(!minimal.contains("MY_ACCOUNT_SIZE"));
+
+            if matches!(framework, RustFramework::QuasarSVM) {
+                assert!(full.contains("quasar_test!"));
+                assert!(full.contains("q.send("));
+                assert!(!full.contains("fixtures::"));
+                assert!(minimal.contains("let payer = q.actor();"));
+            }
         }
 
         for sdk in [TypeScriptSdk::Kit, TypeScriptSdk::Web3js] {
-            let full = generate_test_ts("demo", sdk, Template::Full, Toolchain::Solana);
-            assert!(full.contains("my-account"));
+            let full = generate_test_ts("demo", sdk, Template::Full);
             assert!(full.contains("initializes state"));
-            assert!(full.contains("data[42]"));
+            assert!(full.contains("QuasarTest.load"));
+            assert!(full.contains("findMyAccountAddress"));
+            assert!(full.contains("q.empty(myAccount)"));
+            assert!(full.contains("q.send(client.createInitializeInstruction"));
+            assert!(full.contains("client.decodeMyAccount"));
 
-            let minimal = generate_test_ts("demo", sdk, Template::Minimal, Toolchain::Solana);
-            assert!(!minimal.contains("my-account"));
+            let minimal = generate_test_ts("demo", sdk, Template::Minimal);
+            assert!(!minimal.contains("findMyAccountAddress"));
             assert!(minimal.contains("it(\"initializes\""));
+            assert!(minimal.contains("result.succeeds().cuBelow(10_000)"));
         }
 
-        let web3 = generate_test_ts(
-            "demo",
-            TypeScriptSdk::Web3js,
-            Template::Full,
-            Toolchain::Solana,
-        );
-        assert!(web3.contains("await Address.findProgramAddress"));
-        assert!(web3.contains("Buffer.from(payer.toBytes())"));
-        assert!(!web3.contains("findProgramAddressSync"));
-        assert!(!web3.contains("toBuffer()"));
+        let web3 = generate_test_ts("demo", TypeScriptSdk::Web3js, Template::Full);
+        assert!(web3.contains("state.authority.equals(payer)"));
+        assert!(!web3.contains("TransactionInstruction"));
+        assert!(!web3.contains("createKeyedSystemAccount"));
     }
 }

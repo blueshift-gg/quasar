@@ -193,6 +193,37 @@ def policy_entries(policy: dict[str, Any]) -> dict[tuple[str, str, str], dict[st
     return entries
 
 
+def dev_test_roots(policy: dict[str, Any], metadata: dict[str, Any]) -> set[str]:
+    """Return publishable roots whose public purpose is local test execution.
+
+    These roots may carry normal dependencies that are runtime-reachable inside
+    the test process. Findings still need a reviewed, expiring exception, and a
+    finding reachable from any production root remains blocked.
+    """
+    publishable = {
+        (package["name"], package["version"])
+        for package in publishable_packages(metadata)
+    }
+    roots: set[str] = set()
+    for entry in policy.get("dev_test_roots", []):
+        if not isinstance(entry, dict):
+            raise ValueError("dev_test_roots entries must be objects")
+        name = entry.get("package", "")
+        version = entry.get("version", "")
+        if not name or not version or not entry.get("reason"):
+            raise ValueError(
+                "dev_test_roots entries require package, version, and reason"
+            )
+        if (name, version) not in publishable:
+            raise ValueError(
+                f"dev/test root is not a publishable workspace package: {name}@{version}"
+            )
+        if name in roots:
+            raise ValueError(f"duplicate dev/test root: {name}@{version}")
+        roots.add(name)
+    return roots
+
+
 def validate_path(
     entry: dict[str, Any],
     metadata: dict[str, Any],
@@ -240,6 +271,7 @@ def validate_exception(
     metadata: dict[str, Any],
     graph: dict[str, set[str]],
     finding_ids: set[str],
+    runtime_roots: set[str],
 ) -> list[str]:
     errors: list[str] = []
     if entry.get("reachability") != "dev/test-only":
@@ -262,6 +294,13 @@ def validate_exception(
     path_error = validate_path(entry, metadata, graph, finding_ids)
     if path_error:
         errors.append(path_error)
+    elif runtime_roots:
+        path_root = entry["dependency_path"][0]["package"]
+        if path_root not in runtime_roots:
+            errors.append(
+                "dependency_path must start at a reachable dev/test root: "
+                f"expected one of {', '.join(sorted(runtime_roots))}, got {path_root}"
+            )
     return errors
 
 
@@ -271,6 +310,7 @@ def main() -> int:
         audit, metadata = load_reports(args)
         policy = read_json(args.policy)
         exceptions = policy_entries(policy)
+        test_roots = dev_test_roots(policy, metadata)
         graph = dependency_graph(metadata)
         runtime_packages = (
             runtime_inventory_from_json(read_json(args.runtime_json))
@@ -296,10 +336,14 @@ def main() -> int:
         if entry is not None:
             seen_exceptions.add(key)
         roots = advisory_runtime_roots(finding, runtime_packages)
-        if roots:
+        production_roots = roots - test_roots
+        if production_roots:
             runtime_count += 1
             print(f"BLOCKED runtime-reachable: {label}")
-            print(f"  publishable roots: {', '.join(sorted(roots))}")
+            print(f"  production roots: {', '.join(sorted(production_roots))}")
+            test_only = roots & test_roots
+            if test_only:
+                print(f"  dev/test roots: {', '.join(sorted(test_only))}")
             errors.append(f"runtime-reachable advisory: {label}")
             continue
 
@@ -308,7 +352,9 @@ def main() -> int:
             errors.append(f"missing dev/test-only exception: {label}")
             continue
 
-        exception_errors = validate_exception(entry, args.today, metadata, graph, finding_ids)
+        exception_errors = validate_exception(
+            entry, args.today, metadata, graph, finding_ids, roots
+        )
         if exception_errors:
             print(f"BLOCKED invalid dev/test-only exception: {label}")
             errors.extend(f"{label}: {error}" for error in exception_errors)
@@ -318,7 +364,11 @@ def main() -> int:
             f"{component['package']}@{component['version']}"
             for component in entry["dependency_path"]
         )
-        print(f"ACCEPTED dev/test-only: {label}")
+        if roots:
+            print(f"ACCEPTED dev/test-tool runtime: {label}")
+            print(f"  dev/test roots: {', '.join(sorted(roots))}")
+        else:
+            print(f"ACCEPTED dev/test-only: {label}")
         print(f"  path: {path}")
         print(
             f"  owner: {entry['owner']}; reviewed: {entry['reviewed_on']}; "

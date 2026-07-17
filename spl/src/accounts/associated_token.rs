@@ -6,11 +6,14 @@
 //! use quasar_spl::accounts::associated_token;
 //! #[account(init, associated_token(
 //!     mint = mint, authority = authority,
-//!     token_program = token_program, system_program = system_program,
-//!     ata_program = ata_program,
+//!     token_program = token_program,
 //! ))]
 //! pub ata: Account<Token>,
 //! ```
+//!
+//! During initialization, fields named `system_program`, `ata_program`, or
+//! `associated_token_program` are inferred from the accounts struct. Explicit
+//! arguments remain available for non-standard field names.
 
 use quasar_lang::prelude::*;
 
@@ -109,8 +112,8 @@ impl<'a> quasar_lang::account_behavior::BehaviorArgsBuilder for ArgsBuilder<'a> 
             mint: self.mint.ok_or(ProgramError::InvalidArgument)?,
             authority: self.authority.ok_or(ProgramError::InvalidArgument)?,
             token_program: Some(self.token_program.ok_or(ProgramError::InvalidArgument)?),
-            system_program: Some(self.system_program.ok_or(ProgramError::InvalidArgument)?),
-            ata_program: Some(self.ata_program.ok_or(ProgramError::InvalidArgument)?),
+            system_program: self.system_program,
+            ata_program: self.ata_program,
         })
     }
 
@@ -124,6 +127,8 @@ impl<'a> quasar_lang::account_behavior::BehaviorArgsBuilder for ArgsBuilder<'a> 
 pub struct Behavior;
 
 const ATA_PROGRAM_ARG: u64 = quasar_lang::account_behavior::behavior_arg_key_hash("ata_program");
+const ASSOCIATED_TOKEN_PROGRAM_ARG: u64 =
+    quasar_lang::account_behavior::behavior_arg_key_hash("associated_token_program");
 const SYSTEM_PROGRAM_ARG: u64 =
     quasar_lang::account_behavior::behavior_arg_key_hash("system_program");
 const TOKEN_PROGRAM_ARG: u64 =
@@ -138,8 +143,16 @@ macro_rules! impl_ata_behavior {
         impl AccountBehavior<$wrapper> for Behavior {
             type Args<'a> = Args<'a>;
             const SETS_INIT_PARAMS: bool = true;
+            const INIT_REQUIRES_SIGNER: bool = false;
             const INIT_SATISFIES_CHECK: bool = true;
             const VALIDATES_ACCOUNT_DATA: bool = $validates_account_data;
+            const IDL_RESOLVER: Option<quasar_lang::account_behavior::BehaviorIdlResolver> = Some(
+                quasar_lang::account_behavior::BehaviorIdlResolver::AssociatedToken {
+                    mint: "mint",
+                    owner: "authority",
+                    token_program: Some("token_program"),
+                },
+            );
 
             #[inline(always)]
             fn uses_arg<const PHASE: u8, const KEY: u64>() -> bool {
@@ -166,6 +179,21 @@ macro_rules! impl_ata_behavior {
                     idempotent: false,
                 };
                 Ok(())
+            }
+
+            #[inline(always)]
+            fn infer_init_account<'a, const KEY: u64>(
+                args: &mut Args<'a>,
+                account: &'a AccountView,
+            ) {
+                if KEY == SYSTEM_PROGRAM_ARG && args.system_program.is_none() {
+                    args.system_program = Some(account);
+                }
+                if (KEY == ATA_PROGRAM_ARG || KEY == ASSOCIATED_TOKEN_PROGRAM_ARG)
+                    && args.ata_program.is_none()
+                {
+                    args.ata_program = Some(account);
+                }
             }
 
             #[inline(always)]
@@ -208,6 +236,13 @@ impl_ata_behavior!(
 /// Check-only behavior for `InterfaceAccount<TokenInterface>`.
 impl AccountBehavior<InterfaceAccount<crate::interface::TokenInterface>> for Behavior {
     type Args<'a> = Args<'a>;
+    const IDL_RESOLVER: Option<quasar_lang::account_behavior::BehaviorIdlResolver> = Some(
+        quasar_lang::account_behavior::BehaviorIdlResolver::AssociatedToken {
+            mint: "mint",
+            owner: "authority",
+            token_program: Some("token_program"),
+        },
+    );
 
     #[inline(always)]
     fn check<'a>(

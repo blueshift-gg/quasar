@@ -8,28 +8,28 @@
 //! are rendered with `quote!(#x).to_string()` so the output is stable and
 //! readable rather than the verbose `syn` `Debug`.
 //!
-//! Test-only: the printer exists to snapshot the IR, not to feed codegen.
+//! The same stable renderers also feed the host-only validation-plan IDL
+//! extension. Keeping snapshots and the public audit surface on one renderer
+//! prevents them from drifting apart.
 
 use {
     super::{
+        describe::{
+            epilogue as epilogue_step, load as load_step, post_load as post_load_step,
+            pre_load as pre_load_step, rent as rent_str, tokens as toks,
+            user_check as user_check_str,
+        },
         model::{
             AddressConstraint, AddressKind, BehaviorArg, BehaviorGroup, FieldCore, FieldKind,
             FieldSemantics, InitDirective, SeedRef, UserCheck,
         },
         specs::{
-            AccountsPlanTyped, AddressSpec, BehaviorCall, EpilogueStep, EventCpiTerm, FieldPlan,
-            FixedAddressSource, IdlResolverPlan, IdlSeedPlan, InitPlan, LoadStep, LoweredArg,
-            LoweredValue, PostLoadStep, PreLoadStep, ReallocSpec, RentPlan,
+            AccountsPlanTyped, EventCpiTerm, FieldPlan, FixedAddressSource, IdlResolverPlan,
+            IdlSeedPlan,
         },
     },
-    quote::ToTokens,
     std::fmt::Write,
 };
-
-/// Render any `syn` node as its token string (stable, whitespace-normalized).
-fn toks(node: &impl ToTokens) -> String {
-    node.to_token_stream().to_string()
-}
 
 fn opt_expr(e: &Option<syn::Expr>) -> String {
     match e {
@@ -54,7 +54,7 @@ pub(crate) fn dump_semantics(sems: &[FieldSemantics]) -> String {
     out
 }
 
-fn kind_str(k: FieldKind) -> &'static str {
+pub(crate) fn kind_str(k: FieldKind) -> &'static str {
     match k {
         FieldKind::Single => "Single",
         FieldKind::Composite => "Composite",
@@ -190,27 +190,6 @@ fn dump_user_checks(out: &mut String, checks: &[UserCheck]) {
     }
 }
 
-fn user_check_str(c: &UserCheck) -> String {
-    match c {
-        UserCheck::HasOne { targets, error } => {
-            let targets: Vec<String> = targets.iter().map(|i| i.to_string()).collect();
-            format!(
-                "HasOne targets=[{}] error={}",
-                targets.join(", "),
-                opt_expr(error)
-            )
-        }
-        UserCheck::Constraints { exprs, error } => {
-            let exprs: Vec<String> = exprs.iter().map(|e| format!("`{}`", toks(e))).collect();
-            format!(
-                "Constraints exprs=[{}] error={}",
-                exprs.join(", "),
-                opt_expr(error)
-            )
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Plan IR
 // ---------------------------------------------------------------------------
@@ -239,14 +218,6 @@ fn event_cpi_term(term: &EventCpiTerm) -> String {
     }
 }
 
-fn rent_str(rent: &RentPlan) -> String {
-    match rent {
-        RentPlan::NotNeeded => "NotNeeded".to_string(),
-        RentPlan::FromSysvarField { field } => format!("FromSysvarField(field={field})"),
-        RentPlan::FetchOnce => "FetchOnce".to_string(),
-    }
-}
-
 fn dump_field_plan(out: &mut String, field: &FieldPlan) {
     let _ = writeln!(
         out,
@@ -261,6 +232,9 @@ fn dump_field_plan(out: &mut String, field: &FieldPlan) {
         field.writable,
         field.signer,
     );
+    if field.behavior_init_signer {
+        let _ = writeln!(out, "    behavior_init_signer: true");
+    }
     let _ = writeln!(out, "    load: {}", load_step(&field.load));
     let _ = writeln!(
         out,
@@ -335,109 +309,5 @@ fn idl_seed(seed: &IdlSeedPlan) -> String {
         } => format!("AccountField(base={base} account={account} field={field})"),
         IdlSeedPlan::IxArg { name, ty } => format!("IxArg(name={name} ty=`{}`)", toks(ty)),
         IdlSeedPlan::Const { expr } => format!("Const(`{}`)", toks(expr)),
-    }
-}
-
-fn load_step(load: &LoadStep) -> String {
-    match load {
-        LoadStep::Dynamic { base_ty } => format!("Dynamic(base_ty=`{}`)", toks(base_ty)),
-        LoadStep::Fixed { validates_paths } => {
-            let paths: Vec<String> = validates_paths.iter().map(toks).collect();
-            format!("Fixed(validates=[{}])", paths.join(", "))
-        }
-    }
-}
-
-fn addr_spec(a: &AddressSpec) -> String {
-    format!("expr=`{}` error={}", toks(&a.expr), opt_expr(&a.error))
-}
-
-fn opt_addr_spec(a: &Option<AddressSpec>) -> String {
-    match a {
-        Some(a) => format!("Some({})", addr_spec(a)),
-        None => "None".to_string(),
-    }
-}
-
-fn pre_load_step(step: &PreLoadStep) -> String {
-    match step {
-        PreLoadStep::VerifyAddress(a) => format!("VerifyAddress({})", addr_spec(a.as_ref())),
-        PreLoadStep::Init(plan) => match plan.as_ref() {
-            InitPlan::Program(p) => format!(
-                "Init::Program(payer={} space_ty=`{}` idempotent={} verified_address={})",
-                p.payer.ident,
-                toks(&p.space_ty),
-                p.idempotent,
-                opt_addr_spec(&p.verified_address),
-            ),
-            InitPlan::Behavior(b) => {
-                let calls: Vec<String> = b
-                    .init_param_calls
-                    .iter()
-                    .map(|c| behavior_call(c, "SetInitParam"))
-                    .collect();
-                format!(
-                    "Init::Behavior(payer={} idempotent={} init_param_calls=[{}] \
-                     verified_address={})",
-                    b.payer.ident,
-                    b.idempotent,
-                    calls.join(", "),
-                    opt_addr_spec(&b.verified_address),
-                )
-            }
-        },
-    }
-}
-
-fn post_load_step(step: &PostLoadStep) -> String {
-    match step {
-        PostLoadStep::Behavior { phase, call } => {
-            format!("Behavior({})", behavior_call(call, &format!("{phase:?}")))
-        }
-        PostLoadStep::UserCheck(check) => format!("UserCheck({})", user_check_str(check)),
-        PostLoadStep::VerifyExistingAddress(a) => {
-            format!("VerifyExistingAddress({})", addr_spec(a))
-        }
-        PostLoadStep::Realloc(ReallocSpec { new_space, payer }) => {
-            format!(
-                "Realloc(new_space=`{}` payer={})",
-                toks(new_space),
-                payer.ident
-            )
-        }
-    }
-}
-
-fn epilogue_step(step: &EpilogueStep) -> String {
-    match step {
-        EpilogueStep::Behavior(c) => format!("Behavior({})", behavior_call(c, "Exit")),
-        EpilogueStep::ProgramClose(c) => {
-            format!("ProgramClose(destination_field={})", c.destination_field)
-        }
-    }
-}
-
-fn behavior_call(call: &BehaviorCall, phase: &str) -> String {
-    let args: Vec<String> = call
-        .args
-        .iter()
-        .map(|LoweredArg { key, lowered }| format!("{key}={}", lowered_value(lowered)))
-        .collect();
-    format!(
-        "path=`{}` phase={} args=[{}]",
-        toks(&call.path),
-        phase,
-        args.join(", "),
-    )
-}
-
-fn lowered_value(v: &LoweredValue) -> String {
-    match v {
-        LoweredValue::FieldView(i) => format!("FieldView({i})"),
-        LoweredValue::OptionalFieldView(i) => format!("OptionalFieldView({i})"),
-        LoweredValue::Expr(e) => format!("Expr(`{}`)", toks(e)),
-        LoweredValue::NoneLiteral => "NoneLiteral".to_string(),
-        LoweredValue::SomeFieldView(i) => format!("SomeFieldView({i})"),
-        LoweredValue::SomeExpr(e) => format!("SomeExpr(`{}`)", toks(e)),
     }
 }

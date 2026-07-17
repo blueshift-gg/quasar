@@ -63,8 +63,8 @@ COPY --from=packager /opt/quasar-release-rehearsal /opt/quasar-release-rehearsal
 COPY .github/scripts/release-package-rehearsal.sh /usr/local/bin/quasar-release-package-rehearsal
 
 RUN quasar --version \
-    && test "$(find /opt/quasar-release-rehearsal/archives -type f -name '*.crate' | wc -l)" -eq 10 \
-    && test "$(find /opt/quasar-release-rehearsal/packages -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 10 \
+    && test "$(find /opt/quasar-release-rehearsal/archives -type f -name '*.crate' | wc -l)" -eq 11 \
+    && test "$(find /opt/quasar-release-rehearsal/packages -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 11 \
     && groupadd --gid 10001 quasar \
     && useradd --uid 10001 --gid quasar --create-home --shell /bin/bash quasar \
     && install -d -o quasar -g quasar /home/quasar/.cargo /rehearsal/projects \

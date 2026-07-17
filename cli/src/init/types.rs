@@ -159,7 +159,7 @@ impl PackageManager {
     pub(super) fn test_cmd(&self) -> &str {
         match self {
             PackageManager::Pnpm => "pnpm test",
-            PackageManager::Bun => "bun test",
+            PackageManager::Bun => "bun run test",
             PackageManager::Npm => "npm test",
             PackageManager::Yarn => "yarn test",
             PackageManager::Other { test, .. } => test,

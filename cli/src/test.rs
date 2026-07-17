@@ -2,9 +2,9 @@ use {
     crate::{
         config::{CommandSpec, QuasarConfig},
         error::{CliError, CliResult},
-        style,
+        style, utils,
     },
-    std::{path::Path, process::Command},
+    std::{ffi::OsStr, path::Path, process::Command},
 };
 
 pub fn run(
@@ -89,7 +89,13 @@ fn run_typescript_tests(
         run_command(install_cmd, verbose)?;
     }
 
-    run_test_cmd(test_cmd, filter, show_output, verbose)
+    let program_path = compiled_program_path(config)?;
+    let command = effective_test_command(test_cmd, filter, show_output);
+    run_command_with_env(
+        &command,
+        verbose,
+        Some(("QUASAR_PROGRAM_PATH", program_path.as_os_str())),
+    )
 }
 
 fn run_rust_tests(
@@ -106,10 +112,39 @@ fn run_rust_tests(
         .map(|r| &r.test)
         .unwrap_or(&default_test);
 
-    run_test_cmd(test_cmd, filter, show_output, verbose)
+    let program_path = compiled_program_path(config)?;
+    let command = effective_test_command(test_cmd, filter, show_output);
+    run_command_with_env(
+        &command,
+        verbose,
+        Some(("QUASAR_PROGRAM_PATH", program_path.as_os_str())),
+    )
+}
+
+fn compiled_program_path(config: &QuasarConfig) -> Result<std::path::PathBuf, CliError> {
+    let program_path = utils::find_so(config, false).ok_or_else(|| {
+        CliError::message(
+            "compiled program not found; run `quasar test` without `--no-build` or build the \
+             program first",
+        )
+    })?;
+    program_path.canonicalize().map_err(|error| {
+        CliError::message(format!(
+            "failed to resolve compiled program {}: {error}",
+            program_path.display()
+        ))
+    })
 }
 
 fn run_command(command: &CommandSpec, verbose: bool) -> CliResult {
+    run_command_with_env(command, verbose, None)
+}
+
+fn run_command_with_env(
+    command: &CommandSpec,
+    verbose: bool,
+    environment: Option<(&str, &OsStr)>,
+) -> CliResult {
     eprintln!(
         "  {}",
         style::step(&format!("Running {}...", command.display()))
@@ -118,7 +153,12 @@ fn run_command(command: &CommandSpec, verbose: bool) -> CliResult {
         eprintln!("  {}", style::dim(&format!("$ {}", command.display())));
     }
 
-    let status = Command::new(&command.program).args(&command.args).status();
+    let mut process = Command::new(&command.program);
+    process.args(&command.args);
+    if let Some((key, value)) = environment {
+        process.env(key, value);
+    }
+    let status = process.status();
 
     match status {
         Ok(s) if s.success() => Ok(()),
@@ -131,16 +171,6 @@ fn run_command(command: &CommandSpec, verbose: bool) -> CliResult {
             command.display()
         ))),
     }
-}
-
-fn run_test_cmd(
-    test_cmd: &CommandSpec,
-    filter: Option<&str>,
-    show_output: bool,
-    verbose: bool,
-) -> CliResult {
-    let command = effective_test_command(test_cmd, filter, show_output);
-    run_command(&command, verbose)
 }
 
 fn effective_test_command(
@@ -193,8 +223,10 @@ fn test_command_args(
             }
         }
     } else if let Some(pattern) = filter {
-        args.push("-t".to_string());
-        args.push(pattern.to_string());
+        if is_npm_script_command(test_cmd) && !args.iter().any(|arg| arg == "--") {
+            args.push("--".to_string());
+        }
+        args.extend(["-t".to_string(), pattern.to_string()]);
     }
 
     args
@@ -205,6 +237,20 @@ fn is_cargo_program(program: &str) -> bool {
         .file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| name == "cargo" || name == "cargo.exe")
+}
+
+fn is_npm_script_command(command: &CommandSpec) -> bool {
+    let Some(program) = Path::new(&command.program)
+        .file_name()
+        .and_then(|name| name.to_str())
+    else {
+        return false;
+    };
+    matches!(program, "npm" | "npm.cmd")
+        && matches!(
+            command.args.first().map(String::as_str),
+            Some("test" | "run")
+        )
 }
 
 #[cfg(test)]
@@ -288,6 +334,27 @@ mod tests {
         let command = effective_test_command(&cmd, Some("my_test"), true);
 
         assert_eq!(command.display(), "npx vitest run -t my_test");
+    }
+
+    #[test]
+    fn npm_script_filter_is_forwarded_to_the_test_runner() {
+        let cmd = CommandSpec::new("npm", ["test"]);
+        let command = effective_test_command(&cmd, Some("my_test"), false);
+
+        assert_eq!(command.display(), "npm test -- -t my_test");
+    }
+
+    #[test]
+    fn other_package_managers_forward_script_arguments_without_a_separator() {
+        for cmd in [
+            CommandSpec::new("pnpm", ["test"]),
+            CommandSpec::new("yarn", ["test"]),
+            CommandSpec::new("bun", ["run", "test"]),
+        ] {
+            let command = effective_test_command(&cmd, Some("my_test"), false);
+            assert_eq!(command.args.last().map(String::as_str), Some("my_test"));
+            assert!(!command.args.iter().any(|arg| arg == "--"));
+        }
     }
 
     #[test]

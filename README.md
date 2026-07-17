@@ -124,8 +124,12 @@ and their clients are not published.
 | `quasar-profile` | `profile/` | SBF binary profiler for the Quasar Solana framework |
 | `quasar-schema` | `schema/` | Shared schema types for Quasar interfaces |
 | `quasar-spl` | `spl/` | SPL Token program CPI and zero-copy account types for the Quasar Solana framework |
+| `quasar-test` | `testing/` | Project-aware QuasarSVM testing utilities for Quasar programs |
 | `solana-compiler-builtins` | `solana-compiler-builtins/` | Compiler runtime builtins required by Quasar SBF programs |
 <!-- published-crate-inventory:end -->
+
+The TypeScript test SDK is published as `@blueshift-gg/quasar-test`, with
+separate `/kit` and `/web3.js` entry points.
 
 ## License
 

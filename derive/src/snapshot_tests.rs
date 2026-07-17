@@ -264,6 +264,24 @@ fn instruction_fixed_and_dynamic() {
         .assert_eq(&expand_pretty(instruction_inner(attr, item)));
 }
 
+/// Bounded typed remaining accounts stay raw through argument decoding and
+/// become typed immediately before the user body. This avoids generating drop
+/// cleanup for instruction-data failures while keeping the typed handler API.
+#[test]
+fn instruction_bounded_remaining() {
+    let attr = quote! {};
+    let item = quote! {
+        pub fn approve(
+            ctx: CtxWithRemaining<Approve, Signer, 10>,
+            amount: u64,
+        ) -> Result<(), ProgramError> {
+            ctx.accounts.handler(amount, ctx.remaining)
+        }
+    };
+    expect_test::expect_file!["expansions/instruction_bounded_remaining.rs"]
+        .assert_eq(&expand_pretty(instruction_inner(attr, item)));
+}
+
 // ---------------------------------------------------------------------------
 // #[program] module macro.
 // ---------------------------------------------------------------------------

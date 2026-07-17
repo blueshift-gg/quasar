@@ -9,6 +9,32 @@ pub struct DepositInstruction {
     pub amount: u64,
 }
 
+pub struct DepositInstructionInput {
+    pub depositor: Address,
+    pub config: Address,
+    pub amount: u64,
+}
+
+impl From<DepositInstructionInput> for DepositInstruction {
+    fn from(ix: DepositInstructionInput) -> DepositInstruction {
+        let depositor = ix.depositor;
+        let config = ix.config;
+        let vault = Address::find_program_address(&[b"vault", config.as_ref()], &ID).0;
+        DepositInstruction {
+            depositor,
+            config,
+            vault,
+            amount: ix.amount,
+        }
+    }
+}
+
+impl From<DepositInstructionInput> for Instruction {
+    fn from(ix: DepositInstructionInput) -> Instruction {
+        DepositInstruction::from(ix).into()
+    }
+}
+
 impl From<DepositInstruction> for Instruction {
     fn from(ix: DepositInstruction) -> Instruction {
         let accounts = vec![

@@ -1,12 +1,11 @@
-pub fn transfer(
-    mut context: ::quasar_lang::context::Context,
-) -> Result<(), ProgramError> {
+pub fn transfer(context: ::quasar_lang::context::Context) -> Result<(), ProgramError> {
     __transfer_body(unsafe { <Ctx<Transfer>>::new_unchecked(context) }?)
 }
 #[inline(always)]
 fn __transfer_body(
     mut ctx: Ctx<Transfer>,
 ) -> Result<(), ::quasar_lang::__solana_program_error::ProgramError> {
+    let __quasar_epilogue_data = ctx.data;
     use ::quasar_lang::__zeropod as zeropod;
     #[derive(zeropod::ZeroPod)]
     #[zeropod(compact)]
@@ -34,8 +33,8 @@ fn __transfer_body(
             ::quasar_lang::__solana_program_error::ProgramError,
         > = { ctx.accounts.handler(amount, memo) };
         __user_result?;
-        if ctx.has_epilogue() {
-            ctx.accounts.epilogue()?;
+        if <Transfer as ::quasar_lang::traits::ParseAccounts>::HAS_EPILOGUE {
+            ctx.accounts.epilogue_with_context(&ctx.bumps, __quasar_epilogue_data)?;
         }
         Ok(())
     }

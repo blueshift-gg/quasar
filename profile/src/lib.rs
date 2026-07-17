@@ -1,4 +1,5 @@
 mod aggregate;
+mod budget;
 mod dwarf;
 mod elf;
 mod output;
@@ -30,9 +31,20 @@ pub struct ProfileCommand {
     pub diff_program: Option<String>,
     pub share: bool,
     pub expand: bool,
+    pub budget_path: PathBuf,
+    pub write_budget: bool,
+    pub assert_budget: bool,
+    pub headroom_percent: u32,
+    pub json: bool,
 }
 
 pub fn run(command: ProfileCommand) {
+    if command.write_budget && command.assert_budget {
+        fail("--write-budget and --assert-budget cannot be used together");
+    }
+    if command.headroom_percent > 1_000 {
+        fail("--headroom must be between 0 and 1000 percent");
+    }
     if let Some(program) = command.diff_program {
         run_diff(program);
         return;
@@ -88,19 +100,101 @@ pub fn run(command: ProfileCommand) {
         }
     };
 
-    let program_name = elf_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown");
-    let version = resolve_program_version(&elf_path, program_name);
-    let binary_size = fs::metadata(&elf_path).map(|m| m.len()).unwrap_or(0);
+    let program_name = profile_program_name(&elf_path);
+    let version = resolve_program_version(&elf_path, &program_name);
+    let profile_binary_size = fs::metadata(&elf_path)
+        .map(|metadata| metadata.len())
+        .unwrap_or_else(|error| {
+            fail(&format!(
+                "failed to read metadata for {}: {error}",
+                elf_path.display()
+            ))
+        });
+    let deploy_binary_size = deploy_binary_size(
+        &elf_path,
+        &program_name,
+        profile_binary_size,
+        command.write_budget || command.assert_budget || command.json,
+    )
+    .unwrap_or_else(|message| fail(&message));
+
+    let result = aggregate::profile(&mmap, &info, &resolver);
+    let measurement = budget::Measurement::from_profile(&result, &program_name, deploy_binary_size);
+    let mut violations = Vec::new();
+
+    if command.write_budget {
+        budget::write(&command.budget_path, &measurement, command.headroom_percent)
+            .unwrap_or_else(|message| fail(&message));
+    } else if command.assert_budget {
+        violations = budget::assert(&command.budget_path, &measurement)
+            .unwrap_or_else(|message| fail(&message));
+    }
+
+    if command.json {
+        let status = if command.write_budget {
+            Some(budget::BudgetStatus {
+                path: &command.budget_path,
+                status: "written",
+                violations: &[],
+            })
+        } else if command.assert_budget {
+            Some(budget::BudgetStatus {
+                path: &command.budget_path,
+                status: if violations.is_empty() {
+                    "passed"
+                } else {
+                    "failed"
+                },
+                violations: &violations,
+            })
+        } else {
+            None
+        };
+        let report = budget::MachineReport {
+            version: budget::BUDGET_VERSION,
+            measurement: &measurement,
+            budget: status,
+        };
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report)
+                .unwrap_or_else(|error| fail(&format!("failed to serialize profile: {error}")))
+        );
+        if !violations.is_empty() {
+            std::process::exit(2);
+        }
+        return;
+    }
+
+    output::print_summary(&result, &program_name, profile_binary_size, expand);
+
+    if command.write_budget {
+        println!(
+            "  budget    wrote {} with {}% headroom",
+            command.budget_path.display(),
+            command.headroom_percent
+        );
+        return;
+    }
+
+    if command.assert_budget {
+        if violations.is_empty() {
+            println!("  budget    passed {}", command.budget_path.display());
+            return;
+        }
+        eprintln!("\nBudget violations in {}:", command.budget_path.display());
+        for violation in &violations {
+            eprintln!(
+                "  {}: actual {} exceeds maximum {}",
+                violation.metric, violation.actual, violation.maximum
+            );
+        }
+        std::process::exit(2);
+    }
+
     let profile_root = profile_web_root();
     ensure_frontend_assets(&profile_root);
     let profiles_dir = profile_root.join("profiles");
-
-    let result = aggregate::profile(&mmap, &info, &resolver);
-
-    output::print_summary(&result, program_name, binary_size, expand);
 
     let binary_hash = sha256_file(&elf_path).unwrap_or_else(|e| {
         eprintln!("Error: failed to hash {}: {}", elf_path.display(), e);
@@ -116,9 +210,9 @@ pub fn run(command: ProfileCommand) {
     output::write_json(
         &result,
         &local_output_path,
-        program_name,
+        &program_name,
         &version,
-        binary_size,
+        profile_binary_size,
         &binary_hash,
     );
     if public_gist {
@@ -134,7 +228,7 @@ pub fn run(command: ProfileCommand) {
         "http://{}:{}/?program={}",
         SERVER_HOST, SERVER_PORT, program_name
     );
-    match serve::serve_background(&profile_root, SERVER_PORT, program_name) {
+    match serve::serve_background(&profile_root, SERVER_PORT, &program_name) {
         Ok(_) => output::print_flamegraph_link(&url),
         Err(_) => {
             // Port busy; server is already running, so show the link.
@@ -142,6 +236,67 @@ pub fn run(command: ProfileCommand) {
                 output::print_flamegraph_link(&url);
             }
         }
+    }
+}
+
+fn fail(message: &str) -> ! {
+    eprintln!("Error: {message}");
+    std::process::exit(1);
+}
+
+fn profile_program_name(elf_path: &Path) -> String {
+    let file_name = elf_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("unknown");
+    file_name
+        .strip_suffix(".so.debug")
+        .or_else(|| file_name.strip_suffix(".so"))
+        .unwrap_or(file_name)
+        .to_string()
+}
+
+/// Measure the deployable artifact when the profiler is reading its unstripped
+/// companion. For arbitrary ELF paths, the input file remains the only honest
+/// size source.
+fn deploy_binary_size(
+    elf_path: &Path,
+    program_name: &str,
+    fallback: u64,
+    require_companion: bool,
+) -> Result<u64, String> {
+    let Some(parent) = elf_path.parent() else {
+        return Ok(fallback);
+    };
+    let parent_name = parent.file_name().and_then(|name| name.to_str());
+    let candidate = match parent_name {
+        Some("profile") => parent
+            .parent()
+            .map(|target| target.join("deploy").join(format!("{program_name}.so"))),
+        Some("debug")
+            if parent
+                .parent()
+                .and_then(Path::file_name)
+                .and_then(|name| name.to_str())
+                == Some("deploy") =>
+        {
+            parent
+                .parent()
+                .map(|deploy| deploy.join(format!("{program_name}.so")))
+        }
+        _ => None,
+    };
+    let Some(candidate) = candidate else {
+        return Ok(fallback);
+    };
+    match fs::metadata(&candidate) {
+        Ok(metadata) => Ok(metadata.len()),
+        Err(error) if require_companion => Err(format!(
+            "cannot measure deploy binary size: expected {} beside the unstripped profile \
+             artifact: {error}",
+            candidate.display()
+        )),
+        Err(_) => Ok(fallback),
     }
 }
 
@@ -367,7 +522,10 @@ fn sha256_file(path: &Path) -> io::Result<String> {
 #[cfg(test)]
 mod tests {
     use {
-        super::{materialize_frontend_assets, profile_web_root, FRONTEND_INDEX, PROFILE_DIR},
+        super::{
+            deploy_binary_size, materialize_frontend_assets, profile_program_name,
+            profile_web_root, FRONTEND_INDEX, PROFILE_DIR,
+        },
         crate::output::last_profile_path,
         std::{fs, path::PathBuf},
         tempfile::tempdir,
@@ -402,5 +560,45 @@ mod tests {
             last_profile_path("demo"),
             profile_root.join(".last-profile.demo")
         );
+    }
+
+    #[test]
+    fn derives_the_same_program_name_from_profile_and_debug_artifacts() {
+        assert_eq!(
+            profile_program_name(std::path::Path::new("target/profile/demo.so")),
+            "demo"
+        );
+        assert_eq!(
+            profile_program_name(std::path::Path::new("target/deploy/debug/demo.so.debug")),
+            "demo"
+        );
+    }
+
+    #[test]
+    fn budget_size_prefers_the_deployable_companion() {
+        let temp = tempdir().unwrap();
+        let target = temp.path().join("target");
+        let deploy = target.join("deploy/demo.so");
+        let profile = target.join("profile/demo.so");
+        let debug = target.join("deploy/debug/demo.so.debug");
+        fs::create_dir_all(deploy.parent().unwrap()).unwrap();
+        fs::create_dir_all(profile.parent().unwrap()).unwrap();
+        fs::create_dir_all(debug.parent().unwrap()).unwrap();
+        fs::write(&deploy, [0_u8; 7]).unwrap();
+        fs::write(&profile, [0_u8; 70]).unwrap();
+        fs::write(&debug, [0_u8; 700]).unwrap();
+
+        assert_eq!(deploy_binary_size(&profile, "demo", 70, true), Ok(7));
+        assert_eq!(deploy_binary_size(&debug, "demo", 700, true), Ok(7));
+        assert_eq!(
+            deploy_binary_size(&temp.path().join("custom.so"), "custom", 11, true),
+            Ok(11)
+        );
+
+        fs::remove_file(&deploy).unwrap();
+        assert!(deploy_binary_size(&debug, "demo", 700, true)
+            .unwrap_err()
+            .contains("cannot measure deploy binary size"));
+        assert_eq!(deploy_binary_size(&debug, "demo", 700, false), Ok(700));
     }
 }

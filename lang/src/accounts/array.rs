@@ -128,6 +128,20 @@ where
         }
         Ok(())
     }
+
+    #[inline(always)]
+    fn epilogue_with_context(
+        &mut self,
+        bumps: &Self::Bumps,
+        data: &[u8],
+    ) -> Result<(), ProgramError> {
+        let mut i = 0usize;
+        while i < N {
+            self.items[i].epilogue_with_context(&bumps[i], data)?;
+            i += 1;
+        }
+        Ok(())
+    }
 }
 
 unsafe impl<'input, T, const N: usize> ParseAccountsUnchecked<'input> for AccountsArray<T, N>

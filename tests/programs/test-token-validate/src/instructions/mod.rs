@@ -39,3 +39,6 @@ pub use validate_mint_with_freeze_2022_check::ValidateMintWithFreeze2022Check;
 
 pub mod validate_mint_with_freeze_interface_check;
 pub use validate_mint_with_freeze_interface_check::ValidateMintWithFreezeInterfaceCheck;
+
+pub mod validate_mint_program_only;
+pub use validate_mint_program_only::ValidateMintProgramOnly;

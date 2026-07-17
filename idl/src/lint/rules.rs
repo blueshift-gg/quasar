@@ -26,7 +26,7 @@ const RESERVED_ACCOUNT_NAMES: &[&str] = &[
 
 pub fn preflight(surface: &ProgramSurface, config: &LintConfig) -> LintReport {
     let mut report = LintReport::default();
-    preflight_accounts(surface, &mut report);
+    preflight_accounts(surface, config, &mut report);
     preflight_instructions(surface, config, &mut report);
     preflight_discriminators(surface, &mut report);
     graph_checks(surface, &mut report);
@@ -42,9 +42,12 @@ pub fn diff(old: &ProgramSurface, new: &ProgramSurface) -> LintReport {
     report
 }
 
-fn preflight_accounts(surface: &ProgramSurface, report: &mut LintReport) {
+fn preflight_accounts(surface: &ProgramSurface, config: &LintConfig, report: &mut LintReport) {
     for account in &surface.accounts {
-        if !has_leading_version(account) {
+        // Versioning and reserved padding are useful release policies, not
+        // correctness requirements. Keep byte-compatible ports quiet by
+        // default and surface this advice only during an explicit strict audit.
+        if config.strict && !has_leading_version(account) {
             report.push(Diagnostic::new(
                 RuleCode::P001,
                 account.name.clone(),
@@ -57,7 +60,7 @@ fn preflight_accounts(surface: &ProgramSurface, report: &mut LintReport) {
             ));
         }
 
-        if !has_trailing_reserved_padding(account) {
+        if config.strict && !has_trailing_reserved_padding(account) {
             report.push(Diagnostic::new(
                 RuleCode::P002,
                 account.name.clone(),
@@ -94,12 +97,26 @@ fn has_leading_version(account: &AccountSurface) -> bool {
 
 fn has_trailing_reserved_padding(account: &AccountSurface) -> bool {
     matches!(
-        account.fields.last(),
+        account
+            .fields
+            .iter()
+            .rev()
+            .find(|field| !is_tail_stored(field)),
         Some(field)
             if field.name == "_reserved"
                 && field.ty.starts_with("[u8; ")
                 && field.ty.ends_with(']')
     )
+}
+
+fn is_tail_stored(field: &FieldSurface) -> bool {
+    field
+        .codec
+        .as_deref()
+        .and_then(|codec| serde_json::from_str::<serde_json::Value>(codec).ok())
+        .is_some_and(|codec| {
+            codec.get("storage").and_then(serde_json::Value::as_str) == Some("tail")
+        })
 }
 
 fn preflight_instructions(surface: &ProgramSurface, config: &LintConfig, report: &mut LintReport) {
@@ -263,24 +280,44 @@ fn graph_checks(surface: &ProgramSurface, report: &mut LintReport) {
 }
 
 fn connected_components(instruction: &InstructionSurface) -> Vec<Vec<String>> {
-    let names: BTreeSet<&str> = instruction
+    let relevant: BTreeSet<&str> = instruction
         .accounts
         .iter()
         .filter(|account| is_graph_relevant(account))
         .map(|account| account.name.as_str())
         .collect();
-    if names.len() < 2 {
+    if relevant.len() < 2 {
         return Vec::new();
     }
 
+    // Caller-controlled inputs are not components by themselves, but they can
+    // connect derived accounts that share an authority or data dependency.
+    // Fixed program/sysvar addresses are deliberately excluded: every ATA
+    // sharing the Token Program does not make otherwise unrelated state one
+    // account group.
+    // Connector nodes are traversal-only: caller inputs and relationship
+    // accounts such as ATAs may join program-state components, but never
+    // become a reported component by themselves.
+    let connectors: BTreeSet<&str> = instruction
+        .accounts
+        .iter()
+        .filter(|account| account.graph_connector)
+        .map(|account| account.name.as_str())
+        .collect();
+    let graph_names = relevant
+        .iter()
+        .chain(connectors.iter())
+        .copied()
+        .collect::<BTreeSet<_>>();
+
     let mut edges: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
     for account in &instruction.accounts {
-        if !is_graph_relevant(account) {
+        if !is_graph_relevant(account) && !account.graph_connector {
             continue;
         }
         edges.entry(account.name.as_str()).or_default();
         for reference in &account.resolver_refs {
-            if names.contains(reference.as_str()) {
+            if graph_names.contains(reference.as_str()) {
                 edges
                     .entry(account.name.as_str())
                     .or_default()
@@ -295,7 +332,7 @@ fn connected_components(instruction: &InstructionSurface) -> Vec<Vec<String>> {
 
     let mut seen = BTreeSet::new();
     let mut components = Vec::new();
-    for name in names {
+    for name in relevant.iter().copied() {
         if seen.contains(name) {
             continue;
         }
@@ -303,7 +340,9 @@ fn connected_components(instruction: &InstructionSurface) -> Vec<Vec<String>> {
         let mut queue = VecDeque::from([name]);
         seen.insert(name);
         while let Some(current) = queue.pop_front() {
-            component.push(current.to_owned());
+            if relevant.contains(current) {
+                component.push(current.to_owned());
+            }
             if let Some(neighbors) = edges.get(current) {
                 for neighbor in neighbors {
                     if seen.insert(neighbor) {

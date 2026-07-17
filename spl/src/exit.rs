@@ -1,4 +1,7 @@
-use {crate::instructions, quasar_lang::prelude::*};
+use {
+    crate::instructions,
+    quasar_lang::{cpi::CpiCall, prelude::*},
+};
 
 /// Close a token account via CPI to the token program.
 #[inline(always)]
@@ -11,6 +14,22 @@ pub(crate) fn close_token_account(
     instructions::close_account(token_program, account, destination, authority).invoke()
 }
 
+/// Close a token account via a CPI signed by its PDA authority.
+#[inline(always)]
+pub(crate) fn close_token_account_signed<S>(
+    token_program: &AccountView,
+    account: &AccountView,
+    destination: &AccountView,
+    authority: &AccountView,
+    signer: &S,
+) -> Result<(), ProgramError>
+where
+    S: quasar_lang::cpi::CpiSignerSeeds + ?Sized,
+{
+    instructions::close_account(token_program, account, destination, authority)
+        .invoke_signed(signer)
+}
+
 /// Transfer all tokens out, then no-op if balance is zero.
 #[inline(always)]
 pub(crate) fn sweep_token_account(
@@ -20,6 +39,21 @@ pub(crate) fn sweep_token_account(
     destination: &AccountView,
     authority: &AccountView,
 ) -> Result<(), ProgramError> {
+    let Some(call) = sweep_token_account_call(token_program, source, mint, destination, authority)?
+    else {
+        return Ok(());
+    };
+    call.invoke()
+}
+
+#[inline(always)]
+fn sweep_token_account_call<'a>(
+    token_program: &'a AccountView,
+    source: &'a AccountView,
+    mint: &'a AccountView,
+    destination: &'a AccountView,
+    authority: &'a AccountView,
+) -> Result<Option<CpiCall<'a, 4, 10>>, ProgramError> {
     if quasar_lang::utils::hint::unlikely(
         source.data_len() < core::mem::size_of::<crate::token::TokenDataZc>(),
     ) {
@@ -32,7 +66,7 @@ pub(crate) fn sweep_token_account(
     };
 
     if amount == 0 {
-        return Ok(());
+        return Ok(None);
     }
 
     if quasar_lang::utils::hint::unlikely(
@@ -46,7 +80,7 @@ pub(crate) fn sweep_token_account(
         mint_state.decimals()
     };
 
-    instructions::transfer_checked(
+    Ok(Some(instructions::transfer_checked(
         token_program,
         source,
         mint,
@@ -54,6 +88,25 @@ pub(crate) fn sweep_token_account(
         authority,
         amount,
         decimals,
-    )
-    .invoke()
+    )))
+}
+
+/// Sweep all tokens out via a CPI signed by the source's PDA authority.
+#[inline(always)]
+pub(crate) fn sweep_token_account_signed<S>(
+    token_program: &AccountView,
+    source: &AccountView,
+    mint: &AccountView,
+    destination: &AccountView,
+    authority: &AccountView,
+    signer: &S,
+) -> Result<(), ProgramError>
+where
+    S: quasar_lang::cpi::CpiSignerSeeds + ?Sized,
+{
+    let Some(call) = sweep_token_account_call(token_program, source, mint, destination, authority)?
+    else {
+        return Ok(());
+    };
+    call.invoke_signed(signer)
 }

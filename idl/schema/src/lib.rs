@@ -26,8 +26,9 @@ pub mod layout;
 pub mod root;
 pub mod space;
 pub mod types;
+pub mod validation;
 
 pub use {
     account::*, canonical::*, codec::*, error::*, event::*, instruction::*, layout::*, root::*,
-    space::*, types::*,
+    space::*, types::*, validation::*,
 };

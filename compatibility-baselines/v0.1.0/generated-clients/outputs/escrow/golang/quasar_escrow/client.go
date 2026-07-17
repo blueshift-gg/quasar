@@ -210,24 +210,24 @@ func NewMakeInstruction(input *MakeInput) *solana.GenericInstruction {
 	accounts := []*solana.AccountMeta{}
 	accountsMap := map[string]solana.PublicKey{}
 	accountsMap["maker"] = input.Maker
-	accounts = append(accounts, solana.Meta(accountsMap["maker"]).WRITE().SIGNER())
-	accountsMap["escrow"] = func() solana.PublicKey { addr, _, err := solana.FindProgramAddress([][]byte{[]byte{0x65, 0x73, 0x63, 0x72, 0x6f, 0x77}, func() []byte { key := accountsMap["maker"]; return key[:] }()}, ProgramID); if err != nil { panic(err) }; return addr }()
-	accounts = append(accounts, solana.Meta(accountsMap["escrow"]).WRITE())
 	accountsMap["mintA"] = input.MintA
-	accounts = append(accounts, solana.Meta(accountsMap["mintA"]))
 	accountsMap["mintB"] = input.MintB
-	accounts = append(accounts, solana.Meta(accountsMap["mintB"]))
 	accountsMap["makerTaA"] = input.MakerTaA
-	accounts = append(accounts, solana.Meta(accountsMap["makerTaA"]).WRITE())
 	accountsMap["makerTaB"] = input.MakerTaB
-	accounts = append(accounts, solana.Meta(accountsMap["makerTaB"]).WRITE().SIGNER())
 	accountsMap["vaultTaA"] = input.VaultTaA
-	accounts = append(accounts, solana.Meta(accountsMap["vaultTaA"]).WRITE().SIGNER())
 	accountsMap["rent"] = solana.MustPublicKeyFromBase58("SysvarRent111111111111111111111111111111111")
-	accounts = append(accounts, solana.Meta(accountsMap["rent"]))
 	accountsMap["tokenProgram"] = solana.MustPublicKeyFromBase58("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
-	accounts = append(accounts, solana.Meta(accountsMap["tokenProgram"]))
 	accountsMap["systemProgram"] = solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+	accountsMap["escrow"] = func() solana.PublicKey { addr, _, err := solana.FindProgramAddress([][]byte{[]byte{0x65, 0x73, 0x63, 0x72, 0x6f, 0x77}, func() []byte { key := accountsMap["maker"]; return key[:] }()}, ProgramID); if err != nil { panic(err) }; return addr }()
+	accounts = append(accounts, solana.Meta(accountsMap["maker"]).WRITE().SIGNER())
+	accounts = append(accounts, solana.Meta(accountsMap["escrow"]).WRITE())
+	accounts = append(accounts, solana.Meta(accountsMap["mintA"]))
+	accounts = append(accounts, solana.Meta(accountsMap["mintB"]))
+	accounts = append(accounts, solana.Meta(accountsMap["makerTaA"]).WRITE())
+	accounts = append(accounts, solana.Meta(accountsMap["makerTaB"]).WRITE().SIGNER())
+	accounts = append(accounts, solana.Meta(accountsMap["vaultTaA"]).WRITE().SIGNER())
+	accounts = append(accounts, solana.Meta(accountsMap["rent"]))
+	accounts = append(accounts, solana.Meta(accountsMap["tokenProgram"]))
 	accounts = append(accounts, solana.Meta(accountsMap["systemProgram"]))
 	data := make([]byte, 0, 256)
 	data = append(data, MakeDiscriminator[:]...)
@@ -251,28 +251,28 @@ func NewTakeInstruction(input *TakeInput) *solana.GenericInstruction {
 	accounts := []*solana.AccountMeta{}
 	accountsMap := map[string]solana.PublicKey{}
 	accountsMap["taker"] = input.Taker
-	accounts = append(accounts, solana.Meta(accountsMap["taker"]).WRITE().SIGNER())
-	accountsMap["escrow"] = func() solana.PublicKey { addr, _, err := solana.FindProgramAddress([][]byte{[]byte{0x65, 0x73, 0x63, 0x72, 0x6f, 0x77}, func() []byte { key := accountsMap["maker"]; return key[:] }()}, ProgramID); if err != nil { panic(err) }; return addr }()
-	accounts = append(accounts, solana.Meta(accountsMap["escrow"]).WRITE())
 	accountsMap["maker"] = input.Maker
-	accounts = append(accounts, solana.Meta(accountsMap["maker"]).WRITE())
 	accountsMap["mintA"] = input.MintA
-	accounts = append(accounts, solana.Meta(accountsMap["mintA"]))
 	accountsMap["mintB"] = input.MintB
-	accounts = append(accounts, solana.Meta(accountsMap["mintB"]))
 	accountsMap["takerTaA"] = input.TakerTaA
-	accounts = append(accounts, solana.Meta(accountsMap["takerTaA"]).WRITE().SIGNER())
 	accountsMap["takerTaB"] = input.TakerTaB
-	accounts = append(accounts, solana.Meta(accountsMap["takerTaB"]).WRITE())
 	accountsMap["makerTaB"] = input.MakerTaB
-	accounts = append(accounts, solana.Meta(accountsMap["makerTaB"]).WRITE().SIGNER())
 	accountsMap["vaultTaA"] = input.VaultTaA
-	accounts = append(accounts, solana.Meta(accountsMap["vaultTaA"]).WRITE())
 	accountsMap["rent"] = solana.MustPublicKeyFromBase58("SysvarRent111111111111111111111111111111111")
-	accounts = append(accounts, solana.Meta(accountsMap["rent"]))
 	accountsMap["tokenProgram"] = solana.MustPublicKeyFromBase58("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
-	accounts = append(accounts, solana.Meta(accountsMap["tokenProgram"]))
 	accountsMap["systemProgram"] = solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+	accountsMap["escrow"] = func() solana.PublicKey { addr, _, err := solana.FindProgramAddress([][]byte{[]byte{0x65, 0x73, 0x63, 0x72, 0x6f, 0x77}, func() []byte { key := accountsMap["maker"]; return key[:] }()}, ProgramID); if err != nil { panic(err) }; return addr }()
+	accounts = append(accounts, solana.Meta(accountsMap["taker"]).WRITE().SIGNER())
+	accounts = append(accounts, solana.Meta(accountsMap["escrow"]).WRITE())
+	accounts = append(accounts, solana.Meta(accountsMap["maker"]).WRITE())
+	accounts = append(accounts, solana.Meta(accountsMap["mintA"]))
+	accounts = append(accounts, solana.Meta(accountsMap["mintB"]))
+	accounts = append(accounts, solana.Meta(accountsMap["takerTaA"]).WRITE().SIGNER())
+	accounts = append(accounts, solana.Meta(accountsMap["takerTaB"]).WRITE())
+	accounts = append(accounts, solana.Meta(accountsMap["makerTaB"]).WRITE().SIGNER())
+	accounts = append(accounts, solana.Meta(accountsMap["vaultTaA"]).WRITE())
+	accounts = append(accounts, solana.Meta(accountsMap["rent"]))
+	accounts = append(accounts, solana.Meta(accountsMap["tokenProgram"]))
 	accounts = append(accounts, solana.Meta(accountsMap["systemProgram"]))
 	data := TakeDiscriminator[:]
 	return solana.NewInstruction(ProgramID, accounts, data)
@@ -289,20 +289,20 @@ func NewRefundInstruction(input *RefundInput) *solana.GenericInstruction {
 	accounts := []*solana.AccountMeta{}
 	accountsMap := map[string]solana.PublicKey{}
 	accountsMap["maker"] = input.Maker
-	accounts = append(accounts, solana.Meta(accountsMap["maker"]).WRITE().SIGNER())
-	accountsMap["escrow"] = func() solana.PublicKey { addr, _, err := solana.FindProgramAddress([][]byte{[]byte{0x65, 0x73, 0x63, 0x72, 0x6f, 0x77}, func() []byte { key := accountsMap["maker"]; return key[:] }()}, ProgramID); if err != nil { panic(err) }; return addr }()
-	accounts = append(accounts, solana.Meta(accountsMap["escrow"]).WRITE())
 	accountsMap["mintA"] = input.MintA
-	accounts = append(accounts, solana.Meta(accountsMap["mintA"]))
 	accountsMap["makerTaA"] = input.MakerTaA
-	accounts = append(accounts, solana.Meta(accountsMap["makerTaA"]).WRITE().SIGNER())
 	accountsMap["vaultTaA"] = input.VaultTaA
-	accounts = append(accounts, solana.Meta(accountsMap["vaultTaA"]).WRITE())
 	accountsMap["rent"] = solana.MustPublicKeyFromBase58("SysvarRent111111111111111111111111111111111")
-	accounts = append(accounts, solana.Meta(accountsMap["rent"]))
 	accountsMap["tokenProgram"] = solana.MustPublicKeyFromBase58("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
-	accounts = append(accounts, solana.Meta(accountsMap["tokenProgram"]))
 	accountsMap["systemProgram"] = solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+	accountsMap["escrow"] = func() solana.PublicKey { addr, _, err := solana.FindProgramAddress([][]byte{[]byte{0x65, 0x73, 0x63, 0x72, 0x6f, 0x77}, func() []byte { key := accountsMap["maker"]; return key[:] }()}, ProgramID); if err != nil { panic(err) }; return addr }()
+	accounts = append(accounts, solana.Meta(accountsMap["maker"]).WRITE().SIGNER())
+	accounts = append(accounts, solana.Meta(accountsMap["escrow"]).WRITE())
+	accounts = append(accounts, solana.Meta(accountsMap["mintA"]))
+	accounts = append(accounts, solana.Meta(accountsMap["makerTaA"]).WRITE().SIGNER())
+	accounts = append(accounts, solana.Meta(accountsMap["vaultTaA"]).WRITE())
+	accounts = append(accounts, solana.Meta(accountsMap["rent"]))
+	accounts = append(accounts, solana.Meta(accountsMap["tokenProgram"]))
 	accounts = append(accounts, solana.Meta(accountsMap["systemProgram"]))
 	data := RefundDiscriminator[:]
 	return solana.NewInstruction(ProgramID, accounts, data)

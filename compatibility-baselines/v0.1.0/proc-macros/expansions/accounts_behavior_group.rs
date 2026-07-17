@@ -367,6 +367,26 @@ mod __use_custom_behavior_client_macro {
     name : ::quasar_lang::idl_build::s("data"), optional : false, writable :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), signer :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), resolver :
-    ::quasar_lang::idl_build::__reexport::IdlResolver::Input {}, docs :
+    ::quasar_lang::idl_build::one_behavior_resolver("data",
+    [::quasar_lang::idl_build::behavior_resolver(< min_value::Behavior as
+    ::quasar_lang::account_behavior::AccountBehavior < Account < MyData > >>
+    ::IDL_RESOLVER, & [],)],).unwrap_or_else(|| {
+    ::quasar_lang::idl_build::__reexport::IdlResolver::Input {} }), docs :
     ::quasar_lang::idl_build::Vec::new(), }],) })
+}
+#[cfg(feature = "idl-build")]
+::quasar_lang::__private_inventory::submit! {
+    ::quasar_lang::idl_build::AccountsValidationFragment(|| {
+    (::quasar_lang::idl_build::s("UseCustomBehavior"),
+    ::quasar_lang::idl_build::__reexport::IdlAccountsValidation { rent :
+    ::quasar_lang::idl_build::s("NotNeeded"), accounts :
+    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::__reexport::IdlAccountValidation
+    { name : ::quasar_lang::idl_build::s("data"), account_type :
+    ::quasar_lang::idl_build::s("Account < MyData >"), wrapper :
+    ::quasar_lang::idl_build::s("Account"), writable : false, signer : false, optional :
+    false, allow_duplicate : false, load :
+    ::quasar_lang::idl_build::s("Fixed(validates=[min_value])"), pre_load :
+    ::quasar_lang::idl_build::vec![], post_load :
+    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::s("Behavior(path=`min_value` phase=Check args=[min=Expr(`10u64`)])")],
+    epilogue : ::quasar_lang::idl_build::vec![], }], },) })
 }

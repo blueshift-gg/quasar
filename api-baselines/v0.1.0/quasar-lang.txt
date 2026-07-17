@@ -10,6 +10,27 @@ pub use quasar_lang::ZeroPodError
 pub use quasar_lang::ZeroPodFixed
 pub use quasar_lang::ZeroPodSchema
 pub mod quasar_lang::account_behavior
+pub enum quasar_lang::account_behavior::BehaviorIdlResolver
+pub quasar_lang::account_behavior::BehaviorIdlResolver::AssociatedToken
+pub quasar_lang::account_behavior::BehaviorIdlResolver::AssociatedToken::mint: &'static str
+pub quasar_lang::account_behavior::BehaviorIdlResolver::AssociatedToken::owner: &'static str
+pub quasar_lang::account_behavior::BehaviorIdlResolver::AssociatedToken::token_program: core::option::Option<&'static str>
+impl core::clone::Clone for quasar_lang::account_behavior::BehaviorIdlResolver
+pub fn quasar_lang::account_behavior::BehaviorIdlResolver::clone(&self) -> quasar_lang::account_behavior::BehaviorIdlResolver
+impl core::cmp::Eq for quasar_lang::account_behavior::BehaviorIdlResolver
+impl core::cmp::PartialEq for quasar_lang::account_behavior::BehaviorIdlResolver
+pub fn quasar_lang::account_behavior::BehaviorIdlResolver::eq(&self, &quasar_lang::account_behavior::BehaviorIdlResolver) -> bool
+impl core::fmt::Debug for quasar_lang::account_behavior::BehaviorIdlResolver
+pub fn quasar_lang::account_behavior::BehaviorIdlResolver::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for quasar_lang::account_behavior::BehaviorIdlResolver
+impl core::marker::StructuralPartialEq for quasar_lang::account_behavior::BehaviorIdlResolver
+impl core::marker::Freeze for quasar_lang::account_behavior::BehaviorIdlResolver
+impl core::marker::Send for quasar_lang::account_behavior::BehaviorIdlResolver
+impl core::marker::Sync for quasar_lang::account_behavior::BehaviorIdlResolver
+impl core::marker::Unpin for quasar_lang::account_behavior::BehaviorIdlResolver
+impl core::marker::UnsafeUnpin for quasar_lang::account_behavior::BehaviorIdlResolver
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_lang::account_behavior::BehaviorIdlResolver
+impl core::panic::unwind_safe::UnwindSafe for quasar_lang::account_behavior::BehaviorIdlResolver
 pub const quasar_lang::account_behavior::ARG_PHASE_AFTER_INIT: u8
 pub const quasar_lang::account_behavior::ARG_PHASE_CHECK: u8
 pub const quasar_lang::account_behavior::ARG_PHASE_EXIT: u8
@@ -17,6 +38,8 @@ pub const quasar_lang::account_behavior::ARG_PHASE_SET_INIT_PARAM: u8
 pub const quasar_lang::account_behavior::ARG_PHASE_UPDATE: u8
 pub trait quasar_lang::account_behavior::AccountBehavior<A>
 pub type quasar_lang::account_behavior::AccountBehavior::Args<'a>
+pub const quasar_lang::account_behavior::AccountBehavior::IDL_RESOLVER: core::option::Option<quasar_lang::account_behavior::BehaviorIdlResolver>
+pub const quasar_lang::account_behavior::AccountBehavior::INIT_REQUIRES_SIGNER: bool
 pub const quasar_lang::account_behavior::AccountBehavior::INIT_SATISFIES_CHECK: bool
 pub const quasar_lang::account_behavior::AccountBehavior::REQUIRES_MUT: bool
 pub const quasar_lang::account_behavior::AccountBehavior::RUN_AFTER_INIT: bool
@@ -28,9 +51,12 @@ pub const quasar_lang::account_behavior::AccountBehavior::VALIDATES_ACCOUNT_DATA
 pub fn quasar_lang::account_behavior::AccountBehavior::after_init<'a>(&mut A, &Self::Args) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::account_behavior::AccountBehavior::check<'a>(&A, &Self::Args) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::account_behavior::AccountBehavior::exit<'a>(&mut A, &Self::Args) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::account_behavior::AccountBehavior::exit_signed<'a, S>(&mut A, &Self::Args, &S) -> core::result::Result<(), solana_program_error::ProgramError> where S: quasar_lang::cpi::CpiSignerSeeds + ?core::marker::Sized
+pub fn quasar_lang::account_behavior::AccountBehavior::infer_init_account<'a, const KEY: u64>(&mut Self::Args, &'a solana_account_view::AccountView)
 pub fn quasar_lang::account_behavior::AccountBehavior::set_init_param<'a>(&mut <A as quasar_lang::account_init::AccountInit>::InitParams, &Self::Args) -> core::result::Result<(), solana_program_error::ProgramError> where A: quasar_lang::account_init::AccountInit
 pub fn quasar_lang::account_behavior::AccountBehavior::update<'a>(&mut A, &Self::Args) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::account_behavior::AccountBehavior::uses_arg<const PHASE: u8, const KEY: u64>() -> bool
+pub fn quasar_lang::account_behavior::AccountBehavior::uses_exit_signer_arg<const KEY: u64>() -> bool
 pub trait quasar_lang::account_behavior::BehaviorArgsBuilder
 pub type quasar_lang::account_behavior::BehaviorArgsBuilder::Check
 pub type quasar_lang::account_behavior::BehaviorArgsBuilder::Exit
@@ -281,6 +307,8 @@ impl<'input, T, const N: usize> quasar_lang::traits::ParseAccounts<'input> for q
 pub type quasar_lang::accounts::AccountsArray<T, N>::Bumps = [<T as quasar_lang::traits::ParseAccounts<'input>>::Bumps; N]
 pub const quasar_lang::accounts::AccountsArray<T, N>::HAS_EPILOGUE: bool
 pub fn quasar_lang::accounts::AccountsArray<T, N>::epilogue(&mut self) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::accounts::AccountsArray<T, N>::epilogue_with_context(&mut self, &Self::Bumps, &[u8]) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::accounts::AccountsArray<T, N>::has_epilogue(&self) -> bool
 pub fn quasar_lang::accounts::AccountsArray<T, N>::parse(&'input mut [solana_account_view::AccountView], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 pub fn quasar_lang::accounts::AccountsArray<T, N>::parse_with_instruction_data(&'input mut [solana_account_view::AccountView], &[u8], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 impl<T, const N: usize> core::convert::AsRef<[T]> for quasar_lang::accounts::AccountsArray<T, N>
@@ -658,6 +686,8 @@ impl<'input, T, const N: usize> quasar_lang::traits::ParseAccounts<'input> for q
 pub type quasar_lang::accounts::AccountsArray<T, N>::Bumps = [<T as quasar_lang::traits::ParseAccounts<'input>>::Bumps; N]
 pub const quasar_lang::accounts::AccountsArray<T, N>::HAS_EPILOGUE: bool
 pub fn quasar_lang::accounts::AccountsArray<T, N>::epilogue(&mut self) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::accounts::AccountsArray<T, N>::epilogue_with_context(&mut self, &Self::Bumps, &[u8]) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::accounts::AccountsArray<T, N>::has_epilogue(&self) -> bool
 pub fn quasar_lang::accounts::AccountsArray<T, N>::parse(&'input mut [solana_account_view::AccountView], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 pub fn quasar_lang::accounts::AccountsArray<T, N>::parse_with_instruction_data(&'input mut [solana_account_view::AccountView], &[u8], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 impl<T, const N: usize> core::convert::AsRef<[T]> for quasar_lang::accounts::AccountsArray<T, N>
@@ -1074,6 +1104,8 @@ pub fn quasar_lang::client::DynBytes<P>::from(alloc::vec::Vec<u8>) -> Self
 impl<P> core::marker::StructuralPartialEq for quasar_lang::client::DynBytes<P>
 impl<P> quasar_lang::client::SerializeArg for quasar_lang::client::DynBytes<P> where wincode::len::UseIntLen<P>: wincode::len::SeqLen<wincode::config::DefaultConfig>
 pub fn quasar_lang::client::DynBytes<P>::serialize_arg(&self) -> alloc::vec::Vec<u8>
+impl<P> quasar_lang::pda::SeedBytes for quasar_lang::client::DynBytes<P>
+pub fn quasar_lang::client::DynBytes<P>::as_seed_bytes(&self) -> &[u8]
 impl<P> core::marker::Freeze for quasar_lang::client::DynBytes<P>
 impl<P> core::marker::Send for quasar_lang::client::DynBytes<P> where P: core::marker::Send
 impl<P> core::marker::Sync for quasar_lang::client::DynBytes<P> where P: core::marker::Sync
@@ -1112,6 +1144,8 @@ pub fn quasar_lang::client::DynString<P>::compact_header(&self) -> alloc::vec::V
 pub fn quasar_lang::client::DynString<P>::compact_tail(&self) -> alloc::vec::Vec<u8>
 impl<P> quasar_lang::client::SerializeArg for quasar_lang::client::DynString<P> where wincode::len::UseIntLen<P>: wincode::len::SeqLen<wincode::config::DefaultConfig>
 pub fn quasar_lang::client::DynString<P>::serialize_arg(&self) -> alloc::vec::Vec<u8>
+impl<P> quasar_lang::pda::SeedBytes for quasar_lang::client::DynString<P>
+pub fn quasar_lang::client::DynString<P>::as_seed_bytes(&self) -> &[u8]
 impl<P> core::marker::Freeze for quasar_lang::client::DynString<P>
 impl<P> core::marker::Send for quasar_lang::client::DynString<P> where P: core::marker::Send
 impl<P> core::marker::Sync for quasar_lang::client::DynString<P> where P: core::marker::Sync
@@ -1128,6 +1162,8 @@ pub fn quasar_lang::client::DynVec<T, P>::new(alloc::vec::Vec<T>) -> Self
 impl<'de, T, P, C: wincode::config::ConfigCore> wincode::schema::SchemaRead<'de, C> for quasar_lang::client::DynVec<T, P> where T: wincode::schema::SchemaRead<'de, C, Dst = T>, wincode::len::UseIntLen<P>: wincode::len::SeqLen<C>
 pub type quasar_lang::client::DynVec<T, P>::Dst = quasar_lang::client::DynVec<T, P>
 pub fn quasar_lang::client::DynVec<T, P>::read(impl wincode::io::Reader<'de>, &mut core::mem::maybe_uninit::MaybeUninit<Self>) -> wincode::error::ReadResult<()>
+impl<P> quasar_lang::pda::SeedBytes for quasar_lang::client::DynVec<u8, P>
+pub fn quasar_lang::client::DynVec<u8, P>::as_seed_bytes(&self) -> &[u8]
 impl<T, P, C: wincode::config::ConfigCore> wincode::schema::SchemaWrite<C> for quasar_lang::client::DynVec<T, P> where T: wincode::schema::SchemaWrite<C, Src = T>, wincode::len::UseIntLen<P>: wincode::len::SeqLen<C>
 pub type quasar_lang::client::DynVec<T, P>::Src = quasar_lang::client::DynVec<T, P>
 pub fn quasar_lang::client::DynVec<T, P>::size_of(&Self) -> wincode::error::WriteResult<usize>
@@ -1212,22 +1248,26 @@ impl<'input, T> core::marker::Unpin for quasar_lang::context::Ctx<'input, T> whe
 impl<'input, T> core::marker::UnsafeUnpin for quasar_lang::context::Ctx<'input, T> where T: core::marker::UnsafeUnpin, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::marker::UnsafeUnpin
 impl<'input, T> core::panic::unwind_safe::RefUnwindSafe for quasar_lang::context::Ctx<'input, T> where T: core::panic::unwind_safe::RefUnwindSafe, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::panic::unwind_safe::RefUnwindSafe
 impl<'input, T> core::panic::unwind_safe::UnwindSafe for quasar_lang::context::Ctx<'input, T> where T: core::panic::unwind_safe::UnwindSafe, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::panic::unwind_safe::UnwindSafe
-pub struct quasar_lang::context::CtxWithRemaining<'input, T: quasar_lang::traits::ParseAccounts<'input> + ParseAccountsUnchecked<'input> + quasar_lang::traits::AccountCount>
+pub struct quasar_lang::context::CtxWithRemaining<'input, T: quasar_lang::traits::ParseAccounts<'input> + ParseAccountsUnchecked<'input> + quasar_lang::traits::AccountCount, R, const N: usize>
 pub quasar_lang::context::CtxWithRemaining::accounts: T
 pub quasar_lang::context::CtxWithRemaining::bumps: <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps
 pub quasar_lang::context::CtxWithRemaining::data: &'input [u8]
 pub quasar_lang::context::CtxWithRemaining::program_id: &'input [u8; 32]
+pub quasar_lang::context::CtxWithRemaining::remaining: quasar_lang::remaining::Remaining<R, N>
+impl<'input, T: quasar_lang::traits::ParseAccounts<'input> + ParseAccountsUnchecked<'input> + quasar_lang::traits::AccountCount, R, const N: usize> quasar_lang::context::CtxWithRemaining<'input, T, R, N>
+pub const fn quasar_lang::context::CtxWithRemaining<'input, T, R, N>::has_epilogue(&self) -> bool
+impl<'input, T: quasar_lang::traits::ParseAccounts<'input> + ParseAccountsUnchecked<'input> + quasar_lang::traits::AccountCount, R: RemainingItem<'input>, const N: usize> quasar_lang::context::CtxWithRemaining<'input, T, R, N>
+pub fn quasar_lang::context::CtxWithRemaining<'input, T, R, N>::new_typed(quasar_lang::context::Context<'input>) -> core::result::Result<Self, solana_program_error::ProgramError>
 impl<'input, T: quasar_lang::traits::ParseAccounts<'input> + ParseAccountsUnchecked<'input> + quasar_lang::traits::AccountCount> quasar_lang::context::CtxWithRemaining<'input, T>
-pub const fn quasar_lang::context::CtxWithRemaining<'input, T>::has_epilogue(&self) -> bool
 pub fn quasar_lang::context::CtxWithRemaining<'input, T>::new(quasar_lang::context::Context<'input>) -> core::result::Result<Self, solana_program_error::ProgramError>
 pub fn quasar_lang::context::CtxWithRemaining<'input, T>::remaining_accounts(&self) -> quasar_lang::remaining::RemainingAccounts<'input>
-impl<'input, T> core::marker::Freeze for quasar_lang::context::CtxWithRemaining<'input, T> where T: core::marker::Freeze, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::marker::Freeze
-impl<'input, T> !core::marker::Send for quasar_lang::context::CtxWithRemaining<'input, T>
-impl<'input, T> !core::marker::Sync for quasar_lang::context::CtxWithRemaining<'input, T>
-impl<'input, T> core::marker::Unpin for quasar_lang::context::CtxWithRemaining<'input, T> where T: core::marker::Unpin, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::marker::Unpin
-impl<'input, T> core::marker::UnsafeUnpin for quasar_lang::context::CtxWithRemaining<'input, T> where T: core::marker::UnsafeUnpin, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::marker::UnsafeUnpin
-impl<'input, T> core::panic::unwind_safe::RefUnwindSafe for quasar_lang::context::CtxWithRemaining<'input, T> where T: core::panic::unwind_safe::RefUnwindSafe, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::panic::unwind_safe::RefUnwindSafe
-impl<'input, T> core::panic::unwind_safe::UnwindSafe for quasar_lang::context::CtxWithRemaining<'input, T> where T: core::panic::unwind_safe::UnwindSafe, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::panic::unwind_safe::UnwindSafe
+impl<'input, T, R, const N: usize> core::marker::Freeze for quasar_lang::context::CtxWithRemaining<'input, T, R, N> where T: core::marker::Freeze, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::marker::Freeze, R: core::marker::Freeze
+impl<'input, T, R, const N: usize> !core::marker::Send for quasar_lang::context::CtxWithRemaining<'input, T, R, N>
+impl<'input, T, R, const N: usize> !core::marker::Sync for quasar_lang::context::CtxWithRemaining<'input, T, R, N>
+impl<'input, T, R, const N: usize> core::marker::Unpin for quasar_lang::context::CtxWithRemaining<'input, T, R, N> where T: core::marker::Unpin, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::marker::Unpin, R: core::marker::Unpin
+impl<'input, T, R, const N: usize> core::marker::UnsafeUnpin for quasar_lang::context::CtxWithRemaining<'input, T, R, N> where T: core::marker::UnsafeUnpin, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::marker::UnsafeUnpin, R: core::marker::UnsafeUnpin
+impl<'input, T, R, const N: usize> core::panic::unwind_safe::RefUnwindSafe for quasar_lang::context::CtxWithRemaining<'input, T, R, N> where T: core::panic::unwind_safe::RefUnwindSafe, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::panic::unwind_safe::RefUnwindSafe, R: core::panic::unwind_safe::RefUnwindSafe
+impl<'input, T, R, const N: usize> core::panic::unwind_safe::UnwindSafe for quasar_lang::context::CtxWithRemaining<'input, T, R, N> where T: core::panic::unwind_safe::UnwindSafe, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::panic::unwind_safe::UnwindSafe, R: core::panic::unwind_safe::UnwindSafe
 pub mod quasar_lang::cpi
 pub use quasar_lang::cpi::CpiAccount
 pub use quasar_lang::cpi::InstructionAccount
@@ -1348,26 +1388,26 @@ pub use quasar_lang::entrypoint::NOT_BORROWED
 pub use quasar_lang::entrypoint::RuntimeAccount
 pub mod quasar_lang::error
 #[repr(u32)] pub enum quasar_lang::error::QuasarError
-pub quasar_lang::error::QuasarError::AccountAlreadyInitialized
+pub quasar_lang::error::QuasarError::AccountAlreadyInitialized = 3001
 pub quasar_lang::error::QuasarError::AccountNotInitialized = 3000
-pub quasar_lang::error::QuasarError::AccountNotMutable
-pub quasar_lang::error::QuasarError::AccountNotRentExempt
-pub quasar_lang::error::QuasarError::AccountNotSigner
-pub quasar_lang::error::QuasarError::AccountOwnedByWrongProgram
-pub quasar_lang::error::QuasarError::AddressMismatch
-pub quasar_lang::error::QuasarError::CompactWriterFieldNotSet
-pub quasar_lang::error::QuasarError::ConstraintViolation
-pub quasar_lang::error::QuasarError::DynamicFieldTooLong
-pub quasar_lang::error::QuasarError::HasOneMismatch
-pub quasar_lang::error::QuasarError::InsufficientSpace
-pub quasar_lang::error::QuasarError::InvalidDiscriminator
-pub quasar_lang::error::QuasarError::InvalidPda
-pub quasar_lang::error::QuasarError::InvalidReturnData
-pub quasar_lang::error::QuasarError::InvalidSeeds
-pub quasar_lang::error::QuasarError::MissingReturnData
-pub quasar_lang::error::QuasarError::RemainingAccountDuplicate
-pub quasar_lang::error::QuasarError::RemainingAccountsOverflow
-pub quasar_lang::error::QuasarError::ReturnDataFromWrongProgram
+pub quasar_lang::error::QuasarError::AccountNotMutable = 3010
+pub quasar_lang::error::QuasarError::AccountNotRentExempt = 3008
+pub quasar_lang::error::QuasarError::AccountNotSigner = 3011
+pub quasar_lang::error::QuasarError::AccountOwnedByWrongProgram = 3009
+pub quasar_lang::error::QuasarError::AddressMismatch = 3012
+pub quasar_lang::error::QuasarError::CompactWriterFieldNotSet = 3014
+pub quasar_lang::error::QuasarError::ConstraintViolation = 3004
+pub quasar_lang::error::QuasarError::DynamicFieldTooLong = 3013
+pub quasar_lang::error::QuasarError::HasOneMismatch = 3005
+pub quasar_lang::error::QuasarError::InsufficientSpace = 3007
+pub quasar_lang::error::QuasarError::InvalidDiscriminator = 3006
+pub quasar_lang::error::QuasarError::InvalidPda = 3002
+pub quasar_lang::error::QuasarError::InvalidReturnData = 3019
+pub quasar_lang::error::QuasarError::InvalidSeeds = 3003
+pub quasar_lang::error::QuasarError::MissingReturnData = 3017
+pub quasar_lang::error::QuasarError::RemainingAccountDuplicate = 3016
+pub quasar_lang::error::QuasarError::RemainingAccountsOverflow = 3015
+pub quasar_lang::error::QuasarError::ReturnDataFromWrongProgram = 3018
 impl core::convert::From<quasar_lang::error::QuasarError> for solana_program_error::ProgramError
 pub fn solana_program_error::ProgramError::from(quasar_lang::error::QuasarError) -> Self
 impl core::convert::TryFrom<u32> for quasar_lang::error::QuasarError
@@ -1484,6 +1524,12 @@ impl quasar_lang::pda::SeedBytes for u64
 pub fn u64::as_seed_bytes(&self) -> &[u8]
 impl quasar_lang::pda::SeedBytes for u8
 pub fn u8::as_seed_bytes(&self) -> &[u8]
+impl<P> quasar_lang::pda::SeedBytes for quasar_lang::client::DynBytes<P>
+pub fn quasar_lang::client::DynBytes<P>::as_seed_bytes(&self) -> &[u8]
+impl<P> quasar_lang::pda::SeedBytes for quasar_lang::client::DynString<P>
+pub fn quasar_lang::client::DynString<P>::as_seed_bytes(&self) -> &[u8]
+impl<P> quasar_lang::pda::SeedBytes for quasar_lang::client::DynVec<u8, P>
+pub fn quasar_lang::client::DynVec<u8, P>::as_seed_bytes(&self) -> &[u8]
 impl<T: ?core::marker::Sized + quasar_lang::pda::SeedBytes> quasar_lang::pda::SeedBytes for &T
 pub fn &T::as_seed_bytes(&self) -> &[u8]
 impl<const N: usize> quasar_lang::pda::SeedBytes for [u8; N]
@@ -1600,6 +1646,8 @@ impl<'input, T, const N: usize> quasar_lang::traits::ParseAccounts<'input> for q
 pub type quasar_lang::accounts::AccountsArray<T, N>::Bumps = [<T as quasar_lang::traits::ParseAccounts<'input>>::Bumps; N]
 pub const quasar_lang::accounts::AccountsArray<T, N>::HAS_EPILOGUE: bool
 pub fn quasar_lang::accounts::AccountsArray<T, N>::epilogue(&mut self) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::accounts::AccountsArray<T, N>::epilogue_with_context(&mut self, &Self::Bumps, &[u8]) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::accounts::AccountsArray<T, N>::has_epilogue(&self) -> bool
 pub fn quasar_lang::accounts::AccountsArray<T, N>::parse(&'input mut [solana_account_view::AccountView], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 pub fn quasar_lang::accounts::AccountsArray<T, N>::parse_with_instruction_data(&'input mut [solana_account_view::AccountView], &[u8], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 impl<T, const N: usize> core::convert::AsRef<[T]> for quasar_lang::accounts::AccountsArray<T, N>
@@ -1802,6 +1850,7 @@ pub trait quasar_lang::prelude::internal::Discriminator
 pub const quasar_lang::prelude::internal::Discriminator::BUMP_OFFSET: core::option::Option<usize>
 pub const quasar_lang::prelude::internal::Discriminator::DISCRIMINATOR: &'static [u8]
 pub trait quasar_lang::prelude::internal::HasSeeds
+pub const quasar_lang::prelude::internal::HasSeeds::HAS_SEED_PREFIX: bool
 pub const quasar_lang::prelude::internal::HasSeeds::SEED_DYNAMIC_COUNT: usize
 pub const quasar_lang::prelude::internal::HasSeeds::SEED_PREFIX: &'static [u8]
 pub trait quasar_lang::prelude::internal::Owners
@@ -1810,12 +1859,16 @@ pub trait quasar_lang::prelude::internal::ParseAccounts<'input>: core::marker::S
 pub type quasar_lang::prelude::internal::ParseAccounts::Bumps: core::marker::Copy
 pub const quasar_lang::prelude::internal::ParseAccounts::HAS_EPILOGUE: bool
 pub fn quasar_lang::prelude::internal::ParseAccounts::epilogue(&mut self) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::prelude::internal::ParseAccounts::epilogue_with_context(&mut self, &Self::Bumps, &[u8]) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::prelude::internal::ParseAccounts::has_epilogue(&self) -> bool
 pub fn quasar_lang::prelude::internal::ParseAccounts::parse(&'input mut [solana_account_view::AccountView], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 pub fn quasar_lang::prelude::internal::ParseAccounts::parse_with_instruction_data(&'input mut [solana_account_view::AccountView], &[u8], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 impl<'input, T, const N: usize> quasar_lang::traits::ParseAccounts<'input> for quasar_lang::accounts::AccountsArray<T, N> where T: quasar_lang::traits::ParseAccounts<'input> + ParseAccountsUnchecked<'input> + quasar_lang::traits::AccountCount
 pub type quasar_lang::accounts::AccountsArray<T, N>::Bumps = [<T as quasar_lang::traits::ParseAccounts<'input>>::Bumps; N]
 pub const quasar_lang::accounts::AccountsArray<T, N>::HAS_EPILOGUE: bool
 pub fn quasar_lang::accounts::AccountsArray<T, N>::epilogue(&mut self) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::accounts::AccountsArray<T, N>::epilogue_with_context(&mut self, &Self::Bumps, &[u8]) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::accounts::AccountsArray<T, N>::has_epilogue(&self) -> bool
 pub fn quasar_lang::accounts::AccountsArray<T, N>::parse(&'input mut [solana_account_view::AccountView], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 pub fn quasar_lang::accounts::AccountsArray<T, N>::parse_with_instruction_data(&'input mut [solana_account_view::AccountView], &[u8], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 pub trait quasar_lang::prelude::internal::ProgramInterface
@@ -2069,26 +2122,26 @@ pub macro quasar_lang::prelude::require!
 pub macro quasar_lang::prelude::require_eq!
 pub macro quasar_lang::prelude::require_keys_eq!
 #[repr(u32)] pub enum quasar_lang::prelude::QuasarError
-pub quasar_lang::prelude::QuasarError::AccountAlreadyInitialized
+pub quasar_lang::prelude::QuasarError::AccountAlreadyInitialized = 3001
 pub quasar_lang::prelude::QuasarError::AccountNotInitialized = 3000
-pub quasar_lang::prelude::QuasarError::AccountNotMutable
-pub quasar_lang::prelude::QuasarError::AccountNotRentExempt
-pub quasar_lang::prelude::QuasarError::AccountNotSigner
-pub quasar_lang::prelude::QuasarError::AccountOwnedByWrongProgram
-pub quasar_lang::prelude::QuasarError::AddressMismatch
-pub quasar_lang::prelude::QuasarError::CompactWriterFieldNotSet
-pub quasar_lang::prelude::QuasarError::ConstraintViolation
-pub quasar_lang::prelude::QuasarError::DynamicFieldTooLong
-pub quasar_lang::prelude::QuasarError::HasOneMismatch
-pub quasar_lang::prelude::QuasarError::InsufficientSpace
-pub quasar_lang::prelude::QuasarError::InvalidDiscriminator
-pub quasar_lang::prelude::QuasarError::InvalidPda
-pub quasar_lang::prelude::QuasarError::InvalidReturnData
-pub quasar_lang::prelude::QuasarError::InvalidSeeds
-pub quasar_lang::prelude::QuasarError::MissingReturnData
-pub quasar_lang::prelude::QuasarError::RemainingAccountDuplicate
-pub quasar_lang::prelude::QuasarError::RemainingAccountsOverflow
-pub quasar_lang::prelude::QuasarError::ReturnDataFromWrongProgram
+pub quasar_lang::prelude::QuasarError::AccountNotMutable = 3010
+pub quasar_lang::prelude::QuasarError::AccountNotRentExempt = 3008
+pub quasar_lang::prelude::QuasarError::AccountNotSigner = 3011
+pub quasar_lang::prelude::QuasarError::AccountOwnedByWrongProgram = 3009
+pub quasar_lang::prelude::QuasarError::AddressMismatch = 3012
+pub quasar_lang::prelude::QuasarError::CompactWriterFieldNotSet = 3014
+pub quasar_lang::prelude::QuasarError::ConstraintViolation = 3004
+pub quasar_lang::prelude::QuasarError::DynamicFieldTooLong = 3013
+pub quasar_lang::prelude::QuasarError::HasOneMismatch = 3005
+pub quasar_lang::prelude::QuasarError::InsufficientSpace = 3007
+pub quasar_lang::prelude::QuasarError::InvalidDiscriminator = 3006
+pub quasar_lang::prelude::QuasarError::InvalidPda = 3002
+pub quasar_lang::prelude::QuasarError::InvalidReturnData = 3019
+pub quasar_lang::prelude::QuasarError::InvalidSeeds = 3003
+pub quasar_lang::prelude::QuasarError::MissingReturnData = 3017
+pub quasar_lang::prelude::QuasarError::RemainingAccountDuplicate = 3016
+pub quasar_lang::prelude::QuasarError::RemainingAccountsOverflow = 3015
+pub quasar_lang::prelude::QuasarError::ReturnDataFromWrongProgram = 3018
 impl core::convert::From<quasar_lang::error::QuasarError> for solana_program_error::ProgramError
 pub fn solana_program_error::ProgramError::from(quasar_lang::error::QuasarError) -> Self
 impl core::convert::TryFrom<u32> for quasar_lang::error::QuasarError
@@ -2162,6 +2215,8 @@ impl<'input, T, const N: usize> quasar_lang::traits::ParseAccounts<'input> for q
 pub type quasar_lang::accounts::AccountsArray<T, N>::Bumps = [<T as quasar_lang::traits::ParseAccounts<'input>>::Bumps; N]
 pub const quasar_lang::accounts::AccountsArray<T, N>::HAS_EPILOGUE: bool
 pub fn quasar_lang::accounts::AccountsArray<T, N>::epilogue(&mut self) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::accounts::AccountsArray<T, N>::epilogue_with_context(&mut self, &Self::Bumps, &[u8]) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::accounts::AccountsArray<T, N>::has_epilogue(&self) -> bool
 pub fn quasar_lang::accounts::AccountsArray<T, N>::parse(&'input mut [solana_account_view::AccountView], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 pub fn quasar_lang::accounts::AccountsArray<T, N>::parse_with_instruction_data(&'input mut [solana_account_view::AccountView], &[u8], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 impl<T, const N: usize> core::convert::AsRef<[T]> for quasar_lang::accounts::AccountsArray<T, N>
@@ -2277,22 +2332,26 @@ impl<'input, T> core::marker::Unpin for quasar_lang::context::Ctx<'input, T> whe
 impl<'input, T> core::marker::UnsafeUnpin for quasar_lang::context::Ctx<'input, T> where T: core::marker::UnsafeUnpin, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::marker::UnsafeUnpin
 impl<'input, T> core::panic::unwind_safe::RefUnwindSafe for quasar_lang::context::Ctx<'input, T> where T: core::panic::unwind_safe::RefUnwindSafe, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::panic::unwind_safe::RefUnwindSafe
 impl<'input, T> core::panic::unwind_safe::UnwindSafe for quasar_lang::context::Ctx<'input, T> where T: core::panic::unwind_safe::UnwindSafe, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::panic::unwind_safe::UnwindSafe
-pub struct quasar_lang::prelude::CtxWithRemaining<'input, T: quasar_lang::traits::ParseAccounts<'input> + ParseAccountsUnchecked<'input> + quasar_lang::traits::AccountCount>
+pub struct quasar_lang::prelude::CtxWithRemaining<'input, T: quasar_lang::traits::ParseAccounts<'input> + ParseAccountsUnchecked<'input> + quasar_lang::traits::AccountCount, R, const N: usize>
 pub quasar_lang::prelude::CtxWithRemaining::accounts: T
 pub quasar_lang::prelude::CtxWithRemaining::bumps: <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps
 pub quasar_lang::prelude::CtxWithRemaining::data: &'input [u8]
 pub quasar_lang::prelude::CtxWithRemaining::program_id: &'input [u8; 32]
+pub quasar_lang::prelude::CtxWithRemaining::remaining: quasar_lang::remaining::Remaining<R, N>
+impl<'input, T: quasar_lang::traits::ParseAccounts<'input> + ParseAccountsUnchecked<'input> + quasar_lang::traits::AccountCount, R, const N: usize> quasar_lang::context::CtxWithRemaining<'input, T, R, N>
+pub const fn quasar_lang::context::CtxWithRemaining<'input, T, R, N>::has_epilogue(&self) -> bool
+impl<'input, T: quasar_lang::traits::ParseAccounts<'input> + ParseAccountsUnchecked<'input> + quasar_lang::traits::AccountCount, R: RemainingItem<'input>, const N: usize> quasar_lang::context::CtxWithRemaining<'input, T, R, N>
+pub fn quasar_lang::context::CtxWithRemaining<'input, T, R, N>::new_typed(quasar_lang::context::Context<'input>) -> core::result::Result<Self, solana_program_error::ProgramError>
 impl<'input, T: quasar_lang::traits::ParseAccounts<'input> + ParseAccountsUnchecked<'input> + quasar_lang::traits::AccountCount> quasar_lang::context::CtxWithRemaining<'input, T>
-pub const fn quasar_lang::context::CtxWithRemaining<'input, T>::has_epilogue(&self) -> bool
 pub fn quasar_lang::context::CtxWithRemaining<'input, T>::new(quasar_lang::context::Context<'input>) -> core::result::Result<Self, solana_program_error::ProgramError>
 pub fn quasar_lang::context::CtxWithRemaining<'input, T>::remaining_accounts(&self) -> quasar_lang::remaining::RemainingAccounts<'input>
-impl<'input, T> core::marker::Freeze for quasar_lang::context::CtxWithRemaining<'input, T> where T: core::marker::Freeze, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::marker::Freeze
-impl<'input, T> !core::marker::Send for quasar_lang::context::CtxWithRemaining<'input, T>
-impl<'input, T> !core::marker::Sync for quasar_lang::context::CtxWithRemaining<'input, T>
-impl<'input, T> core::marker::Unpin for quasar_lang::context::CtxWithRemaining<'input, T> where T: core::marker::Unpin, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::marker::Unpin
-impl<'input, T> core::marker::UnsafeUnpin for quasar_lang::context::CtxWithRemaining<'input, T> where T: core::marker::UnsafeUnpin, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::marker::UnsafeUnpin
-impl<'input, T> core::panic::unwind_safe::RefUnwindSafe for quasar_lang::context::CtxWithRemaining<'input, T> where T: core::panic::unwind_safe::RefUnwindSafe, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::panic::unwind_safe::RefUnwindSafe
-impl<'input, T> core::panic::unwind_safe::UnwindSafe for quasar_lang::context::CtxWithRemaining<'input, T> where T: core::panic::unwind_safe::UnwindSafe, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::panic::unwind_safe::UnwindSafe
+impl<'input, T, R, const N: usize> core::marker::Freeze for quasar_lang::context::CtxWithRemaining<'input, T, R, N> where T: core::marker::Freeze, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::marker::Freeze, R: core::marker::Freeze
+impl<'input, T, R, const N: usize> !core::marker::Send for quasar_lang::context::CtxWithRemaining<'input, T, R, N>
+impl<'input, T, R, const N: usize> !core::marker::Sync for quasar_lang::context::CtxWithRemaining<'input, T, R, N>
+impl<'input, T, R, const N: usize> core::marker::Unpin for quasar_lang::context::CtxWithRemaining<'input, T, R, N> where T: core::marker::Unpin, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::marker::Unpin, R: core::marker::Unpin
+impl<'input, T, R, const N: usize> core::marker::UnsafeUnpin for quasar_lang::context::CtxWithRemaining<'input, T, R, N> where T: core::marker::UnsafeUnpin, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::marker::UnsafeUnpin, R: core::marker::UnsafeUnpin
+impl<'input, T, R, const N: usize> core::panic::unwind_safe::RefUnwindSafe for quasar_lang::context::CtxWithRemaining<'input, T, R, N> where T: core::panic::unwind_safe::RefUnwindSafe, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::panic::unwind_safe::RefUnwindSafe, R: core::panic::unwind_safe::RefUnwindSafe
+impl<'input, T, R, const N: usize> core::panic::unwind_safe::UnwindSafe for quasar_lang::context::CtxWithRemaining<'input, T, R, N> where T: core::panic::unwind_safe::UnwindSafe, <T as quasar_lang::traits::ParseAccounts<'input>>::Bumps: core::panic::unwind_safe::UnwindSafe, R: core::panic::unwind_safe::UnwindSafe
 pub struct quasar_lang::prelude::InitCtx<'a, R: RentAccess>
 pub quasar_lang::prelude::InitCtx::payer: &'a solana_account_view::AccountView
 pub quasar_lang::prelude::InitCtx::program_id: &'a solana_address::Address
@@ -2676,6 +2735,8 @@ impl<A> core::panic::unwind_safe::UnwindSafe for quasar_lang::accounts::Uninit<A
 pub const quasar_lang::prelude::SYSTEM_PROGRAM_ID: solana_address::Address
 pub trait quasar_lang::prelude::AccountBehavior<A>
 pub type quasar_lang::prelude::AccountBehavior::Args<'a>
+pub const quasar_lang::prelude::AccountBehavior::IDL_RESOLVER: core::option::Option<quasar_lang::account_behavior::BehaviorIdlResolver>
+pub const quasar_lang::prelude::AccountBehavior::INIT_REQUIRES_SIGNER: bool
 pub const quasar_lang::prelude::AccountBehavior::INIT_SATISFIES_CHECK: bool
 pub const quasar_lang::prelude::AccountBehavior::REQUIRES_MUT: bool
 pub const quasar_lang::prelude::AccountBehavior::RUN_AFTER_INIT: bool
@@ -2687,9 +2748,12 @@ pub const quasar_lang::prelude::AccountBehavior::VALIDATES_ACCOUNT_DATA: bool
 pub fn quasar_lang::prelude::AccountBehavior::after_init<'a>(&mut A, &Self::Args) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::prelude::AccountBehavior::check<'a>(&A, &Self::Args) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::prelude::AccountBehavior::exit<'a>(&mut A, &Self::Args) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::prelude::AccountBehavior::exit_signed<'a, S>(&mut A, &Self::Args, &S) -> core::result::Result<(), solana_program_error::ProgramError> where S: quasar_lang::cpi::CpiSignerSeeds + ?core::marker::Sized
+pub fn quasar_lang::prelude::AccountBehavior::infer_init_account<'a, const KEY: u64>(&mut Self::Args, &'a solana_account_view::AccountView)
 pub fn quasar_lang::prelude::AccountBehavior::set_init_param<'a>(&mut <A as quasar_lang::account_init::AccountInit>::InitParams, &Self::Args) -> core::result::Result<(), solana_program_error::ProgramError> where A: quasar_lang::account_init::AccountInit
 pub fn quasar_lang::prelude::AccountBehavior::update<'a>(&mut A, &Self::Args) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::prelude::AccountBehavior::uses_arg<const PHASE: u8, const KEY: u64>() -> bool
+pub fn quasar_lang::prelude::AccountBehavior::uses_exit_signer_arg<const KEY: u64>() -> bool
 pub trait quasar_lang::prelude::AccountCount
 pub const quasar_lang::prelude::AccountCount::COUNT: usize
 pub const quasar_lang::prelude::AccountCount::NEEDS_EVENT_CPI: bool
@@ -2920,6 +2984,7 @@ pub const quasar_lang::prelude::Event::DISCRIMINATOR: &'static [u8]
 pub fn quasar_lang::prelude::Event::emit(&self, impl core::ops::function::FnOnce(&[u8]) -> core::result::Result<(), solana_program_error::ProgramError>) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::prelude::Event::write_data(&self, &mut [u8])
 pub trait quasar_lang::prelude::HasSeeds
+pub const quasar_lang::prelude::HasSeeds::HAS_SEED_PREFIX: bool
 pub const quasar_lang::prelude::HasSeeds::SEED_DYNAMIC_COUNT: usize
 pub const quasar_lang::prelude::HasSeeds::SEED_PREFIX: &'static [u8]
 pub trait quasar_lang::prelude::Id
@@ -2953,12 +3018,16 @@ pub trait quasar_lang::prelude::ParseAccounts<'input>: core::marker::Sized
 pub type quasar_lang::prelude::ParseAccounts::Bumps: core::marker::Copy
 pub const quasar_lang::prelude::ParseAccounts::HAS_EPILOGUE: bool
 pub fn quasar_lang::prelude::ParseAccounts::epilogue(&mut self) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::prelude::ParseAccounts::epilogue_with_context(&mut self, &Self::Bumps, &[u8]) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::prelude::ParseAccounts::has_epilogue(&self) -> bool
 pub fn quasar_lang::prelude::ParseAccounts::parse(&'input mut [solana_account_view::AccountView], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 pub fn quasar_lang::prelude::ParseAccounts::parse_with_instruction_data(&'input mut [solana_account_view::AccountView], &[u8], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 impl<'input, T, const N: usize> quasar_lang::traits::ParseAccounts<'input> for quasar_lang::accounts::AccountsArray<T, N> where T: quasar_lang::traits::ParseAccounts<'input> + ParseAccountsUnchecked<'input> + quasar_lang::traits::AccountCount
 pub type quasar_lang::accounts::AccountsArray<T, N>::Bumps = [<T as quasar_lang::traits::ParseAccounts<'input>>::Bumps; N]
 pub const quasar_lang::accounts::AccountsArray<T, N>::HAS_EPILOGUE: bool
 pub fn quasar_lang::accounts::AccountsArray<T, N>::epilogue(&mut self) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::accounts::AccountsArray<T, N>::epilogue_with_context(&mut self, &Self::Bumps, &[u8]) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::accounts::AccountsArray<T, N>::has_epilogue(&self) -> bool
 pub fn quasar_lang::accounts::AccountsArray<T, N>::parse(&'input mut [solana_account_view::AccountView], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 pub fn quasar_lang::accounts::AccountsArray<T, N>::parse_with_instruction_data(&'input mut [solana_account_view::AccountView], &[u8], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 pub trait quasar_lang::prelude::ProgramInterface
@@ -3046,6 +3115,7 @@ impl<'a> core::marker::Unpin for quasar_lang::remaining::RemainingAccounts<'a>
 impl<'a> core::marker::UnsafeUnpin for quasar_lang::remaining::RemainingAccounts<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for quasar_lang::remaining::RemainingAccounts<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for quasar_lang::remaining::RemainingAccounts<'a>
+pub const quasar_lang::remaining::MAX_REMAINING_ACCOUNTS: usize
 pub type quasar_lang::remaining::RemainingIter<'a> = RemainingIterImpl<'a>
 pub mod quasar_lang::return_data
 pub fn quasar_lang::return_data::set_return_data(&[u8])
@@ -3182,6 +3252,7 @@ pub const quasar_lang::traits::Event::DISCRIMINATOR: &'static [u8]
 pub fn quasar_lang::traits::Event::emit(&self, impl core::ops::function::FnOnce(&[u8]) -> core::result::Result<(), solana_program_error::ProgramError>) -> core::result::Result<(), solana_program_error::ProgramError>
 pub fn quasar_lang::traits::Event::write_data(&self, &mut [u8])
 pub trait quasar_lang::traits::HasSeeds
+pub const quasar_lang::traits::HasSeeds::HAS_SEED_PREFIX: bool
 pub const quasar_lang::traits::HasSeeds::SEED_DYNAMIC_COUNT: usize
 pub const quasar_lang::traits::HasSeeds::SEED_PREFIX: &'static [u8]
 pub trait quasar_lang::traits::Id
@@ -3200,12 +3271,16 @@ pub trait quasar_lang::traits::ParseAccounts<'input>: core::marker::Sized
 pub type quasar_lang::traits::ParseAccounts::Bumps: core::marker::Copy
 pub const quasar_lang::traits::ParseAccounts::HAS_EPILOGUE: bool
 pub fn quasar_lang::traits::ParseAccounts::epilogue(&mut self) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::traits::ParseAccounts::epilogue_with_context(&mut self, &Self::Bumps, &[u8]) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::traits::ParseAccounts::has_epilogue(&self) -> bool
 pub fn quasar_lang::traits::ParseAccounts::parse(&'input mut [solana_account_view::AccountView], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 pub fn quasar_lang::traits::ParseAccounts::parse_with_instruction_data(&'input mut [solana_account_view::AccountView], &[u8], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 impl<'input, T, const N: usize> quasar_lang::traits::ParseAccounts<'input> for quasar_lang::accounts::AccountsArray<T, N> where T: quasar_lang::traits::ParseAccounts<'input> + ParseAccountsUnchecked<'input> + quasar_lang::traits::AccountCount
 pub type quasar_lang::accounts::AccountsArray<T, N>::Bumps = [<T as quasar_lang::traits::ParseAccounts<'input>>::Bumps; N]
 pub const quasar_lang::accounts::AccountsArray<T, N>::HAS_EPILOGUE: bool
 pub fn quasar_lang::accounts::AccountsArray<T, N>::epilogue(&mut self) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::accounts::AccountsArray<T, N>::epilogue_with_context(&mut self, &Self::Bumps, &[u8]) -> core::result::Result<(), solana_program_error::ProgramError>
+pub fn quasar_lang::accounts::AccountsArray<T, N>::has_epilogue(&self) -> bool
 pub fn quasar_lang::accounts::AccountsArray<T, N>::parse(&'input mut [solana_account_view::AccountView], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 pub fn quasar_lang::accounts::AccountsArray<T, N>::parse_with_instruction_data(&'input mut [solana_account_view::AccountView], &[u8], &solana_address::Address) -> core::result::Result<(Self, Self::Bumps), solana_program_error::ProgramError>
 pub trait quasar_lang::traits::ProgramInterface

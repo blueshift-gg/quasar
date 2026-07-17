@@ -40,7 +40,7 @@ pub(crate) fn program_inner(attr: TokenStream2, item: TokenStream2) -> TokenStre
         Err(e) => return e.to_compile_error(),
     };
     let mod_name = module.ident.clone();
-    let program_type_name = format_ident!("{}", snake_to_pascal(&mod_name.to_string()));
+    let program_type_name = format_ident!("{}Program", snake_to_pascal(&mod_name.to_string()));
 
     let items = match module.content.as_ref() {
         Some((_, items)) => items,

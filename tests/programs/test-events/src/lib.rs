@@ -8,6 +8,10 @@ use instructions::*;
 pub mod events;
 declare_id!("66666666666666666666666666666666666666666666");
 
+// A program's PascalCase name remains available to user state and context
+// types; the generated executable marker is suffixed with `Program`.
+pub struct QuasarTestEvents;
+
 #[program]
 mod quasar_test_events {
     use super::*;

@@ -82,6 +82,23 @@ pub trait AccountBehavior<A> {
     /// this set to `true`.
     const SETS_INIT_PARAMS: bool = false;
 
+    /// Whether a non-PDA account initialized through this behavior must sign
+    /// the outer transaction.
+    ///
+    /// Most account creation paths create the passed account directly and
+    /// therefore require its keypair signature. Derived-address protocols,
+    /// such as associated-token accounts, override this to `false` because
+    /// their program creates the account without a client-held keypair.
+    const INIT_REQUIRES_SIGNER: bool = true;
+
+    /// Optional address recipe exported to generated clients through the IDL.
+    ///
+    /// Behaviors that validate a derived address should describe it here so
+    /// callers do not have to supply an address the program can derive. The
+    /// recipe names behavior arguments rather than account fields, keeping the
+    /// behavior reusable when programs choose different field names.
+    const IDL_RESOLVER: Option<BehaviorIdlResolver> = None;
+
     /// Whether `after_init` runs after account creation.
     const RUN_AFTER_INIT: bool = false;
 
@@ -110,6 +127,18 @@ pub trait AccountBehavior<A> {
         true
     }
 
+    /// Whether an exit-phase account argument identifies a PDA authority that
+    /// this behavior can sign for.
+    ///
+    /// The accounts derive uses this opt-in together with the referenced
+    /// field's typed `#[seeds(...)]` address to construct signer seeds from the
+    /// already-verified bump. Behaviors that opt in must perform their CPI in
+    /// [`AccountBehavior::exit_signed`].
+    #[inline(always)]
+    fn uses_exit_signer_arg<const KEY: u64>() -> bool {
+        false
+    }
+
     /// Whether `update` runs after validation (requires `#[account(mut)]`).
     const RUN_UPDATE: bool = false;
 
@@ -132,6 +161,18 @@ pub trait AccountBehavior<A> {
         Ok(())
     }
 
+    /// Offer a conventionally named account field to init arguments.
+    ///
+    /// The default ignores it. Protocol behaviors may fill omitted
+    /// boilerplate accounts while preserving any value the user supplied
+    /// explicitly through the behavior builder.
+    #[inline(always)]
+    fn infer_init_account<'a, const KEY: u64>(
+        _args: &mut Self::Args<'a>,
+        _account: &'a crate::__internal::AccountView,
+    ) {
+    }
+
     /// Runs immediately after a new account has been initialized.
     fn after_init<'a>(_account: &mut A, _args: &Self::Args<'a>) -> Result<(), ProgramError> {
         Ok(())
@@ -151,6 +192,43 @@ pub trait AccountBehavior<A> {
     fn exit<'a>(_account: &mut A, _args: &Self::Args<'a>) -> Result<(), ProgramError> {
         Ok(())
     }
+
+    /// Runs the epilogue with signer seeds for a typed PDA authority.
+    ///
+    /// The default delegates to [`AccountBehavior::exit`], preserving source
+    /// compatibility for existing behaviors. A behavior opts into signed CPI
+    /// by returning `true` from [`AccountBehavior::uses_exit_signer_arg`] and
+    /// overriding this method.
+    fn exit_signed<'a, S>(
+        account: &mut A,
+        args: &Self::Args<'a>,
+        _signer: &S,
+    ) -> Result<(), ProgramError>
+    where
+        S: crate::cpi::CpiSignerSeeds + ?Sized,
+    {
+        Self::exit(account, args)
+    }
+}
+
+/// Client-address metadata supplied by a protocol-owned account behavior.
+///
+/// This is metadata only. The protocol crate still owns all validation and
+/// lifecycle logic; Quasar maps the named behavior arguments into the public
+/// IDL during the host-only IDL build.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BehaviorIdlResolver {
+    /// An associated token account derived from mint, owner, and optionally a
+    /// caller-selected token program.
+    AssociatedToken {
+        /// Behavior argument containing the mint account.
+        mint: &'static str,
+        /// Behavior argument containing the wallet or PDA owner.
+        owner: &'static str,
+        /// Behavior argument containing the token program. `None` selects the
+        /// canonical SPL Token program in generated clients.
+        token_program: Option<&'static str>,
+    },
 }
 
 /// The builder contract for a behavior module's phase arguments.

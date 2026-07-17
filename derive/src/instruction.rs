@@ -76,6 +76,7 @@ fn emit_fixed_schema_stmts(
 /// Lifecycle: parse -> validate -> handler -> epilogue
 fn emit_handler_tail(
     param_ident: &Ident,
+    accounts_ty: &Type,
     stmts: &[syn::Stmt],
     has_return_data: bool,
     return_ok_type: Option<&Type>,
@@ -87,8 +88,11 @@ fn emit_handler_tail(
     // Const-elide via HAS_EPILOGUE. When the struct has no close/sweep/migrate,
     // this branch is eliminated at compile time: saving ~2-7 CU on sBPF.
     let epilogue_call = quote! {
-        if #param_ident.has_epilogue() {
-            #param_ident.accounts.epilogue()?;
+        if <#accounts_ty as #krate::traits::ParseAccounts>::HAS_EPILOGUE {
+            #param_ident.accounts.epilogue_with_context(
+                &#param_ident.bumps,
+                __quasar_epilogue_data,
+            )?;
         }
     };
 
@@ -155,6 +159,8 @@ fn compact_layout_class(cls: &ArgClass) -> crate::schema_ir::LayoutClass {
 
 fn emit_decode_and_tail(
     param_ident: &Ident,
+    accounts_ty: &Type,
+    typed_context: Option<&Type>,
     remaining: &[syn::PatType],
     stmts: &[syn::Stmt],
     has_return_data: bool,
@@ -162,6 +168,13 @@ fn emit_decode_and_tail(
 ) -> syn::Result<Vec<syn::Stmt>> {
     let krate = crate::krate::lang_path();
     let mut out = Vec::new();
+
+    // Argument decoding consumes `ctx.data`, while PDA signer helpers in an
+    // epilogue must see the same instruction bytes used during account
+    // validation.
+    out.push(syn::parse_quote!(
+        let __quasar_epilogue_data = #param_ident.data;
+    ));
 
     if !remaining.is_empty() {
         let mut field_names: Vec<Ident> = Vec::with_capacity(remaining.len());
@@ -209,12 +222,16 @@ fn emit_decode_and_tail(
                 let #arg_name = <#arg_ty>::decode_compact(&#param_ident.data)?;
             ));
 
-            out.push(syn::parse_quote!(
-                #param_ident.data = &[];
-            ));
+            if let Some(typed_context) = typed_context {
+                out.push(syn::parse_quote!(
+                    let mut #param_ident: #typed_context = #param_ident.into_typed()?;
+                ));
+            }
+            out.push(syn::parse_quote!(#param_ident.data = &[];));
 
             out.extend(emit_handler_tail(
                 param_ident,
+                accounts_ty,
                 stmts,
                 has_return_data,
                 return_ok_type,
@@ -290,14 +307,18 @@ fn emit_decode_and_tail(
                 &zc_field_orig_types,
             ));
         }
+    }
 
+    if let Some(typed_context) = typed_context {
         out.push(syn::parse_quote!(
-            #param_ident.data = &[];
+            let mut #param_ident: #typed_context = #param_ident.into_typed()?;
         ));
     }
+    out.push(syn::parse_quote!(#param_ident.data = &[];));
 
     out.extend(emit_handler_tail(
         param_ident,
+        accounts_ty,
         stmts,
         has_return_data,
         return_ok_type,
@@ -417,12 +438,16 @@ pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> Token
 
     // Single classifier, shared with `#[program]`: rejects a non-`Ctx` first
     // parameter identically and reports whether the direct entry applies.
-    let (accounts_ty, has_remaining) = {
+    let (accounts_ty, has_remaining, has_bounded_remaining) = {
         let ctx_kind = match crate::ctx::CtxKind::classify(&func.sig) {
             Ok(k) => k,
             Err(e) => return e.to_compile_error(),
         };
-        (ctx_kind.inner_ty().clone(), ctx_kind.has_remaining())
+        (
+            ctx_kind.inner_ty().clone(),
+            ctx_kind.has_remaining(),
+            ctx_kind.bounded_remaining().is_some(),
+        )
     };
 
     // Decode + user body + epilogue, emitted exactly ONCE into `__{name}_body`.
@@ -432,6 +457,8 @@ pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> Token
     let stmts = std::mem::take(&mut func.block.stmts);
     let decoded_tail = match emit_decode_and_tail(
         &param_ident,
+        &accounts_ty,
+        has_bounded_remaining.then_some(param_type.as_ref()),
         &remaining,
         &stmts,
         has_return_data,
@@ -441,22 +468,28 @@ pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> Token
         Err(e) => return e.to_compile_error(),
     };
     let body_fn_name = format_ident!("__{}_body", fn_name);
+    let body_param_type: Type = if has_bounded_remaining {
+        syn::parse_quote!(#krate::context::CtxWithRemaining<#accounts_ty>)
+    } else {
+        param_type.as_ref().clone()
+    };
     let body_fn = quote! {
         #[inline(always)]
-        fn #body_fn_name(mut #param_ident: #param_type) -> Result<(), #krate::__solana_program_error::ProgramError> {
+        fn #body_fn_name(mut #param_ident: #body_param_type) -> Result<(), #krate::__solana_program_error::ProgramError> {
             #(#decoded_tail)*
         }
     };
 
-    // Normal entry: a thin wrapper through the length-checked constructor.
+    // Normal entry: the program dispatcher already proved the declared-account
+    // count, so this wrapper uses the unchecked constructor exactly once.
     func.sig.inputs = syn::punctuated::Punctuated::new();
     func.sig
         .inputs
-        .push(syn::parse_quote!(mut context: #krate::context::Context));
+        .push(syn::parse_quote!(context: #krate::context::Context));
     // SAFETY: the generated dispatch parsed exactly `COUNT` validated account
     // views into this `Context` before invoking the handler.
     let entry_call: syn::Expr = syn::parse_quote!(
-        #body_fn_name(unsafe { <#param_type>::new_unchecked(context) }?)
+        #body_fn_name(unsafe { <#body_param_type>::new_unchecked(context) }?)
     );
     func.block.stmts = vec![syn::Stmt::Expr(entry_call, None)];
 

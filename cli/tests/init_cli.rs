@@ -44,6 +44,55 @@ fn use_workspace_lang(project_dir: &Path) -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn non_interactive_no_git_init_has_no_global_or_git_side_effects() -> Result<(), Box<dyn Error>> {
+    let temp = tempdir()?;
+    let home = temp.path().join("home");
+    let config_path = home.join(".quasar/config.toml");
+    fs::create_dir_all(config_path.parent().expect("config parent"))?;
+    let original_config = r#"[defaults]
+toolchain = "solana"
+test_language = "rust"
+template = "full"
+git = "init-and-commit"
+
+[ui]
+animation = false
+color = false
+"#;
+    fs::write(&config_path, original_config)?;
+
+    let init = Command::new(env!("CARGO_BIN_EXE_quasar"))
+        .args([
+            "init",
+            "automated-project",
+            "--yes",
+            "--no-git",
+            "--test-language",
+            "none",
+            "--template",
+            "minimal",
+            "--toolchain",
+            "solana",
+            "--verbose",
+        ])
+        .env("HOME", &home)
+        .current_dir(temp.path())
+        .output()?;
+    assert_success("non-interactive quasar init --no-git", &init);
+
+    assert_eq!(fs::read_to_string(&config_path)?, original_config);
+    assert!(!temp.path().join("automated-project/.git").exists());
+
+    let stdout = String::from_utf8_lossy(&init.stdout);
+    let stderr = String::from_utf8_lossy(&init.stderr);
+    assert!(!stdout.contains("Preferences saved"), "stdout:\n{stdout}");
+    assert!(!stderr.contains("Configuring git"), "stderr:\n{stderr}");
+    assert!(!stderr.contains("Git setup complete"), "stderr:\n{stderr}");
+
+    Ok(())
+}
+
+#[test]
 fn generated_starters_pass_strict_lint() -> Result<(), Box<dyn Error>> {
     let temp = tempdir()?;
     let home = temp.path().join("home");

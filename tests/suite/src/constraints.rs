@@ -1,7 +1,7 @@
 use {
     crate::helpers::*,
     quasar_svm::{Instruction, ProgramError, Pubkey},
-    quasar_test_misc::cpi::*,
+    quasar_test_misc::{cpi::*, errors::TestError},
 };
 
 // has_one default errors.
@@ -307,7 +307,7 @@ fn constraint_custom_fail() {
     let result =
         svm.process_instruction(&ix, &[simple_account(account, Pubkey::new_unique(), 0, 0)]);
     assert!(result.is_err(), "constraint custom fail");
-    result.assert_error(ProgramError::Custom(2)); // TestError::CustomConstraint
+    result.assert_error(ProgramError::Custom(TestError::CustomConstraint as u32));
 }
 
 // combined constraints.

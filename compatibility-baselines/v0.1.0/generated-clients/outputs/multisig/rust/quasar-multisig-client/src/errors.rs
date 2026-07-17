@@ -75,3 +75,9 @@ impl QuasarMultisigError {
         }
     }
 }
+
+impl From<QuasarMultisigError> for u32 {
+    fn from(error: QuasarMultisigError) -> Self {
+        error as u32
+    }
+}

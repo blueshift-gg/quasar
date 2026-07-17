@@ -82,7 +82,7 @@ Run the test suite. Builds first, then runs either Rust tests or TypeScript test
 
 TypeScript tests run through the configured command, which defaults to `npx vitest run`. Rust tests run through the configured command, which defaults to `cargo test tests::`.
 
-### `quasar profile [elf] [--expand] [--diff PROGRAM] [--share] [--watch]`
+### `quasar profile [elf] [--expand] [--diff PROGRAM] [--share] [--watch] [--write-budget|--assert-budget] [--json]`
 
 Measure compute-unit usage by statically walking the sBPF binary's call graph. If no ELF path is given, runs a debug build automatically.
 
@@ -92,6 +92,11 @@ Measure compute-unit usage by statically walking the sBPF binary's call graph. I
 | `--diff PROGRAM` | Compare against an on-chain program (starts a blocking server) |
 | `--share` | Upload the profile as a public GitHub Gist |
 | `-w, --watch` | Watch `src/` for changes and re-profile automatically |
+| `--write-budget` | Write ceilings for the current ELF to `quasar-budget.toml` |
+| `--assert-budget` | Check the current ELF and exit 2 if any ceiling is exceeded |
+| `--budget FILE` | Read or write a different budget file |
+| `--headroom PERCENT` | Add headroom when writing a budget (default: 5) |
+| `--json` | Print deterministic JSON and skip the flamegraph server |
 
 The profiler tracks results between runs. On the first run, it shows the top 5 hottest functions. On subsequent runs, it shows the biggest regressions and improvements by magnitude:
 
@@ -104,6 +109,36 @@ The profiler tracks results between runs. On the first run, it shows the top 5 h
 ```
 
 A background HTTP server starts automatically to serve the interactive flamegraph viewer. The server shuts itself down after 30 seconds of inactivity.
+
+The profiler's CU values are static estimates from the compiled sBPF instruction
+graph. They are deterministic for a fixed ELF and toolchain, which makes them
+useful as code-generation regression budgets. They are not transaction runtime
+CU: runtime costs also depend on inputs, syscalls, CPI, and the validator. Keep
+runtime transaction benchmarks for that separate question.
+
+Bootstrap a checked-in budget from an existing debug ELF, then enforce it in
+CI:
+
+```bash
+quasar profile target/deploy/debug/my_program.so.debug --write-budget
+quasar profile target/deploy/debug/my_program.so.debug --assert-budget --json
+```
+
+The generated file can hold multiple programs and includes total static CU,
+per-function static CU, and deployable binary-size ceilings. Quasar analyzes
+the unstripped debug ELF but measures its sibling `target/deploy/*.so` for the
+size ceiling:
+
+```toml
+version = 1
+
+[program.my_program]
+binary_size = 42000
+total_cu = 12500
+
+[program.my_program.functions]
+"my_program::process_deposit" = 3400
+```
 
 ### `quasar dump [elf] [--function SYMBOL] [--source]`
 

@@ -1,6 +1,6 @@
 use {
     crate::{
-        config::resolve_client_path,
+        config::{resolve_client_path, QuasarConfig},
         error::{CliError, CliResult},
         output::{commit, PreparedOutput},
         IdlCommand,
@@ -40,8 +40,10 @@ fn extract_idl_json(stdout: &str) -> Result<&str, CliError> {
     Ok(json)
 }
 
-/// Build the IDL by compiling the program crate with `--features idl-build`
-/// and running the `__quasar_emit_idl` test to capture the JSON output.
+/// Build the IDL by linking the program crate into a tiny host-side runner.
+///
+/// The program is compiled as a normal dependency with `idl-build` enabled,
+/// so its `#[cfg(test)]` modules are not compiled just to generate metadata.
 pub fn build(crate_path: &Path) -> Result<Idl, CliError> {
     // Read the crate name from Cargo.toml
     let cargo_toml_path = crate_path.join("Cargo.toml");
@@ -64,30 +66,96 @@ pub fn build(crate_path: &Path) -> Result<Idl, CliError> {
             ))
         })?;
 
-    // Run the IDL emission test
-    let output = Command::new("cargo")
-        .arg("test")
+    if cargo_toml
+        .get("features")
+        .and_then(|features| features.get("idl-build"))
+        .is_none()
+    {
+        return Err(CliError::message(format!(
+            "IDL build failed because package `{package_name}` does not define the `idl-build` \
+             feature.\n\nAdd this to Cargo.toml:\n\n[features]\nidl-build = \
+             [\"quasar-lang/idl-build\"]"
+        )));
+    }
+
+    let linkable = cargo_toml
+        .get("lib")
+        .and_then(|lib| lib.get("crate-type"))
+        .and_then(toml::Value::as_array)
+        .is_none_or(|crate_types| {
+            crate_types
+                .iter()
+                .any(|crate_type| matches!(crate_type.as_str(), Some("lib" | "rlib")))
+        });
+    if !linkable {
+        return Err(CliError::message(format!(
+            "IDL build requires package `{package_name}` to expose a Rust library target.\n\nAdd \
+             `\"lib\"` to `[lib].crate-type`, for example:\n\n[lib]\ncrate-type = [\"cdylib\", \
+             \"lib\"]"
+        )));
+    }
+
+    let crate_path = crate_path
+        .canonicalize()
+        .map_err(|error| CliError::io_path("resolve", crate_path, error))?;
+    let runner = tempfile::tempdir()
+        .map_err(|error| CliError::message(format!("failed to create IDL runner: {error}")))?;
+    let runner_src = runner.path().join("src");
+    std::fs::create_dir(&runner_src)
+        .map_err(|error| CliError::io_path("create", &runner_src, error))?;
+
+    let package = toml::Value::String(package_name.to_owned()).to_string();
+    let path = toml::Value::String(crate_path.to_string_lossy().into_owned()).to_string();
+    let manifest = format!(
+        r#"[package]
+name = "quasar-idl-runner"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+resolver = "2"
+
+[dependencies.quasar_program]
+package = {package}
+path = {path}
+features = ["idl-build"]
+"#,
+    );
+    let runner_manifest = runner.path().join("Cargo.toml");
+    std::fs::write(&runner_manifest, manifest)
+        .map_err(|error| CliError::io_path("write", &runner_manifest, error))?;
+    let runner_main = runner_src.join("main.rs");
+    std::fs::write(
+        &runner_main,
+        format!(
+            r#"fn main() {{
+    println!("{IDL_JSON_BEGIN}");
+    println!("{{}}", quasar_program::__quasar_build_idl());
+    println!("{IDL_JSON_END}");
+}}
+"#,
+        ),
+    )
+    .map_err(|error| CliError::io_path("write", &runner_main, error))?;
+
+    let mut command = Command::new("cargo");
+    command
+        .arg("run")
+        .arg("--quiet")
         .arg("--manifest-path")
-        .arg(&cargo_toml_path)
-        .arg("--features")
-        .arg("idl-build")
-        .arg("--")
-        .arg("__quasar_emit_idl")
-        .arg("--nocapture")
+        .arg(&runner_manifest);
+    if let Some(target_dir) = cargo_target_directory(&cargo_toml_path) {
+        command.env("CARGO_TARGET_DIR", target_dir);
+    }
+    let output = command
         .output()
-        .map_err(|e| CliError::message(format!("failed to run cargo test: {e}")))?;
+        .map_err(|e| CliError::message(format!("failed to run IDL build: {e}")))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("does not contain this feature: idl-build") {
-            return Err(CliError::message(format!(
-                "IDL build failed because package `{package_name}` does not define the \
-                 `idl-build` feature.\n\nAdd this to Cargo.toml:\n\n[features]\nidl-build = \
-                 [\"quasar-lang/idl-build\"]\n\ncargo stderr:\n{stderr}"
-            )));
-        }
         return Err(CliError::message(format!(
-            "IDL build failed (cargo test --features idl-build):\n{stderr}"
+            "IDL build failed while compiling package `{package_name}`:\n{stderr}"
         )));
     }
 
@@ -98,6 +166,23 @@ pub fn build(crate_path: &Path) -> Result<Idl, CliError> {
         .map_err(|e| CliError::json_parse("IDL JSON emitted by __quasar_emit_idl", e))?;
 
     Ok(idl)
+}
+
+fn cargo_target_directory(manifest_path: &Path) -> Option<PathBuf> {
+    let output = Command::new("cargo")
+        .args(["metadata", "--no-deps", "--format-version", "1"])
+        .arg("--manifest-path")
+        .arg(manifest_path)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    serde_json::from_slice::<serde_json::Value>(&output.stdout)
+        .ok()?
+        .get("target_directory")?
+        .as_str()
+        .map(PathBuf::from)
 }
 
 /// Generate IDL JSON and Rust client from the program crate.
@@ -135,6 +220,40 @@ fn prepare_idl_outputs(idl: &Idl, clients_path: &Path) -> Result<Vec<PreparedOut
         PreparedOutput::file(client_dir.join("Cargo.toml"), client_cargo_toml),
         PreparedOutput::directory(client_dir.join("src"), src_files),
     ])
+}
+
+/// Locate and parse the IDL emitted by the most recent build.
+///
+/// Deployment and verification consume the persisted artifact rather than
+/// rebuilding the host-only IDL a second time. Both project and module names
+/// are checked because Cargo package names may contain hyphens while program
+/// modules use underscores.
+pub(crate) fn load_generated(config: &QuasarConfig) -> Result<(PathBuf, Idl), CliError> {
+    let module_name = config.module_name();
+    let names = [&config.project.name, &module_name];
+    let workspace_target = crate::utils::workspace_target_dir();
+    let roots = [PathBuf::from("target"), workspace_target];
+
+    for root in roots {
+        for name in names {
+            let path = root.join("idl").join(format!("{name}.json"));
+            if !path.is_file() {
+                continue;
+            }
+            let json = std::fs::read_to_string(&path)
+                .map_err(|error| CliError::io_path("read", &path, error))?;
+            quasar_idl::types::check_spec(&json).map_err(CliError::message)?;
+            let idl = serde_json::from_str(&json).map_err(|error| {
+                CliError::json_parse(format!("IDL file {}", path.display()), error)
+            })?;
+            return Ok((path, idl));
+        }
+    }
+
+    Err(CliError::message(
+        "generated IDL not found in target/idl\n\n  Run `quasar build` before deployment or \
+         verification.",
+    ))
 }
 
 /// Called by `quasar idl <path>` (generate) or `quasar idl verify <idl>`.

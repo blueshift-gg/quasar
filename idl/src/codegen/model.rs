@@ -1,10 +1,11 @@
 use {
     crate::types::{
-        AccountFlag, Idl, IdlArg, IdlCodec, IdlGenericArg, IdlInstruction, IdlLayout, IdlPdaSeed,
-        IdlResolver, IdlType,
+        AccountFlag, Idl, IdlAccountNode, IdlArg, IdlCodec, IdlGenericArg, IdlInstruction,
+        IdlLayout, IdlPdaProgram, IdlPdaSeed, IdlResolver, IdlType,
     },
     quasar_schema::{camel_to_pascal, camel_to_snake, snake_to_pascal},
     std::{
+        collections::HashSet,
         error::Error,
         ffi::OsStr,
         fmt,
@@ -17,7 +18,7 @@ use {
 pub struct CodegenError(String);
 
 impl CodegenError {
-    fn new(message: impl Into<String>) -> Self {
+    pub(super) fn new(message: impl Into<String>) -> Self {
         Self(message.into())
     }
 }
@@ -431,6 +432,89 @@ impl InstructionPlan {
     }
 }
 
+/// Whether a required account address is derived by generated clients.
+pub fn resolver_is_derived(resolver: &IdlResolver) -> bool {
+    matches!(
+        resolver,
+        IdlResolver::Pda { .. } | IdlResolver::AssociatedToken { .. }
+    )
+}
+
+/// Account addresses that must be available before `account` can be derived.
+pub fn resolved_account_dependencies(account: &IdlAccountNode) -> Vec<&str> {
+    match &account.resolver {
+        IdlResolver::Pda { program, seeds } => {
+            let mut dependencies = Vec::new();
+            if let IdlPdaProgram::Account { path } = program {
+                dependencies.push(path.as_str());
+            }
+            dependencies.extend(seeds.iter().filter_map(|seed| match seed {
+                IdlPdaSeed::Account { path } => Some(path.as_str()),
+                // Account-field seeds are explicit client inputs. Generators
+                // do not fetch or decode the referenced account, so its
+                // address is not a derivation dependency.
+                IdlPdaSeed::Const { .. }
+                | IdlPdaSeed::AccountField { .. }
+                | IdlPdaSeed::Arg { .. } => None,
+            }));
+            dependencies
+        }
+        IdlResolver::AssociatedToken {
+            mint,
+            owner,
+            token_program,
+        } => {
+            let mut dependencies = vec![mint.as_str(), owner.as_str()];
+            if let Some(token_program) = token_program {
+                dependencies.push(token_program.as_str());
+            }
+            dependencies
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Required derived accounts in dependency order, independent of IDL field
+/// order. Optional accounts remain caller-controlled and are available as
+/// inputs even when their wrapped resolver is derived.
+pub fn resolved_account_order(ix: &IdlInstruction) -> CodegenResult<Vec<&IdlAccountNode>> {
+    let mut available = ix
+        .accounts
+        .iter()
+        .filter(|account| account.optional || !resolver_is_derived(&account.resolver))
+        .map(|account| account.name.as_str())
+        .collect::<HashSet<_>>();
+    let mut pending = ix
+        .accounts
+        .iter()
+        .filter(|account| !account.optional && resolver_is_derived(&account.resolver))
+        .collect::<Vec<_>>();
+    let mut ordered = Vec::with_capacity(pending.len());
+
+    while !pending.is_empty() {
+        let Some(index) = pending.iter().position(|account| {
+            resolved_account_dependencies(account)
+                .iter()
+                .all(|dependency| available.contains(dependency))
+        }) else {
+            let names = pending
+                .iter()
+                .map(|account| account.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(CodegenError::new(format!(
+                "instruction `{}` has unresolved or cyclic derived-account dependencies: {names}",
+                ix.name
+            )));
+        };
+        let account = pending.remove(index);
+        available.insert(account.name.as_str());
+        ordered.push(account);
+    }
+
+    Ok(ordered)
+}
+
 /// Whether an argument lands in the tail (dynamic) region: a size-prefixed
 /// string/vec, or an optional wrapping one.
 fn arg_is_tail(arg: &IdlArg) -> bool {
@@ -565,22 +649,23 @@ impl ProgramFeatures {
                 .iter()
                 .any(|ix| ix.accounts.iter().any(|account| account.optional)),
             has_pdas: idl.instructions.iter().any(|ix| {
-                ix.accounts
-                    .iter()
-                    .any(|account| matches!(account.resolver, IdlResolver::Pda { .. }))
+                ix.accounts.iter().any(|account| {
+                    matches!(
+                        account.resolver,
+                        IdlResolver::Pda { .. } | IdlResolver::AssociatedToken { .. }
+                    )
+                })
             }),
             has_pda_account_seeds: idl.instructions.iter().any(|ix| {
-                ix.accounts.iter().any(|account| {
-                    if let IdlResolver::Pda { seeds, .. } = &account.resolver {
-                        seeds.iter().any(|seed| {
-                            matches!(
-                                seed,
-                                IdlPdaSeed::Account { .. } | IdlPdaSeed::AccountField { .. }
-                            )
-                        })
-                    } else {
-                        false
-                    }
+                ix.accounts.iter().any(|account| match &account.resolver {
+                    IdlResolver::Pda { seeds, .. } => seeds.iter().any(|seed| {
+                        matches!(
+                            seed,
+                            IdlPdaSeed::Account { .. } | IdlPdaSeed::AccountField { .. }
+                        )
+                    }),
+                    IdlResolver::AssociatedToken { .. } => true,
+                    _ => false,
                 })
             }),
             ..Self::default()
@@ -658,6 +743,7 @@ fn validate_codegen_structure(idl: &Idl) -> CodegenResult<()> {
             )?;
         }
         InstructionPlan::from_instruction(ix).map_err(CodegenError::new)?;
+        resolved_account_order(ix)?;
         for account in &ix.accounts {
             validate_identifier(
                 &format!("instruction `{}` account `{}`", ix.name, account.name),
@@ -876,6 +962,29 @@ pub fn go_field_path(path: &str) -> String {
 mod tests {
     use {super::*, crate::types::IdlMetadata};
 
+    fn account(name: &str, resolver: IdlResolver) -> IdlAccountNode {
+        IdlAccountNode {
+            name: name.to_owned(),
+            optional: false,
+            writable: AccountFlag::Fixed(false),
+            signer: AccountFlag::Fixed(false),
+            resolver,
+            docs: vec![],
+        }
+    }
+
+    fn instruction(accounts: Vec<IdlAccountNode>) -> IdlInstruction {
+        IdlInstruction {
+            name: "derive".to_owned(),
+            discriminator: vec![0],
+            docs: vec![],
+            accounts,
+            args: vec![],
+            layout: None,
+            remaining_accounts: None,
+        }
+    }
+
     fn idl_with_names(name: &str, crate_name: &str) -> Idl {
         Idl {
             spec: "quasar-idl/1.0.0".to_string(),
@@ -963,6 +1072,79 @@ mod tests {
         assert_eq!(
             go_field_path("walletConfig.approval_threshold"),
             "WalletConfig.ApprovalThreshold"
+        );
+    }
+
+    #[test]
+    fn derived_account_order_rejects_missing_and_cyclic_dependencies() {
+        let missing = instruction(vec![account(
+            "child",
+            IdlResolver::Pda {
+                program: IdlPdaProgram::ProgramId {},
+                seeds: vec![IdlPdaSeed::Account {
+                    path: "missing".to_owned(),
+                }],
+            },
+        )]);
+        let error = resolved_account_order(&missing).unwrap_err();
+        assert!(error.to_string().contains("unresolved or cyclic"));
+
+        let cycle = instruction(vec![
+            account(
+                "first",
+                IdlResolver::Pda {
+                    program: IdlPdaProgram::ProgramId {},
+                    seeds: vec![IdlPdaSeed::Account {
+                        path: "second".to_owned(),
+                    }],
+                },
+            ),
+            account(
+                "second",
+                IdlResolver::Pda {
+                    program: IdlPdaProgram::ProgramId {},
+                    seeds: vec![IdlPdaSeed::Account {
+                        path: "first".to_owned(),
+                    }],
+                },
+            ),
+        ]);
+        let error = resolved_account_order(&cycle).unwrap_err();
+        assert!(error.to_string().contains("first, second"));
+    }
+
+    #[test]
+    fn account_field_seed_is_not_an_address_dependency() {
+        let ix = instruction(vec![
+            account(
+                "parent",
+                IdlResolver::Pda {
+                    program: IdlPdaProgram::ProgramId {},
+                    seeds: vec![IdlPdaSeed::AccountField {
+                        path: "child".to_owned(),
+                        field: "authority".to_owned(),
+                        account: "Child".to_owned(),
+                    }],
+                },
+            ),
+            account(
+                "child",
+                IdlResolver::Pda {
+                    program: IdlPdaProgram::ProgramId {},
+                    seeds: vec![IdlPdaSeed::Account {
+                        path: "parent".to_owned(),
+                    }],
+                },
+            ),
+        ]);
+
+        let order = resolved_account_order(&ix).unwrap();
+        assert_eq!(
+            order
+                .iter()
+                .map(|account| account.name.as_str())
+                .collect::<Vec<_>>(),
+            ["parent", "child"]
         );
     }
 }

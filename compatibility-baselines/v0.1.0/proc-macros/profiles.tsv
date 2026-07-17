@@ -12,6 +12,7 @@ Accounts	accounts_behavior_group	expansions/accounts_behavior_group.rs
 Accounts	accounts_ix_args_fixed	expansions/accounts_ix_args_fixed.rs
 Accounts	accounts_ix_args_dynamic	expansions/accounts_ix_args_dynamic.rs
 instruction	instruction_fixed_and_dynamic	expansions/instruction_fixed_and_dynamic.rs
+instruction	instruction_bounded_remaining	expansions/instruction_bounded_remaining.rs
 program	program_dispatch_two_ix	expansions/program_dispatch_two_ix.rs
 account	account_fixed	expansions/account_fixed.rs
 account	account_dynamic	expansions/account_dynamic.rs

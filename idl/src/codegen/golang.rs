@@ -1,7 +1,11 @@
 use {
-    super::model::{go_field_path, reject_generics, CodegenResult, ProgramModel},
+    super::model::{
+        go_field_path, reject_generics, resolved_account_order, resolver_is_derived, CodegenResult,
+        ProgramModel,
+    },
     crate::types::{
-        Idl, IdlArg, IdlCodec, IdlFieldDef, IdlPdaSeed, IdlResolver, IdlType, IdlTypeDef,
+        Idl, IdlAccountNode, IdlArg, IdlCodec, IdlFieldDef, IdlPdaProgram, IdlPdaSeed, IdlResolver,
+        IdlType, IdlTypeDef,
     },
     quasar_schema::{snake_to_pascal, to_camel_case},
     std::fmt::Write,
@@ -224,7 +228,9 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
             if !acc.optional
                 && matches!(
                     acc.resolver,
-                    IdlResolver::Const { .. } | IdlResolver::Pda { .. }
+                    IdlResolver::Const { .. }
+                        | IdlResolver::Pda { .. }
+                        | IdlResolver::AssociatedToken { .. }
                 )
             {
                 continue;
@@ -268,60 +274,19 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
         if !ix.accounts.is_empty() {
             out.push_str("\taccountsMap := map[string]solana.PublicKey{}\n");
         }
-        for acc in &ix.accounts {
-            let key_expr = if acc.optional {
-                format!(
-                    "func() solana.PublicKey {{ if input.{n} != nil {{ return *input.{n} }}; \
-                     return ProgramID }}()",
-                    n = snake_to_pascal(&acc.name)
-                )
-            } else if let IdlResolver::Const { ref address } = acc.resolver {
-                format!("solana.MustPublicKeyFromBase58(\"{}\")", address)
-            } else if let IdlResolver::Pda { ref seeds, .. } = acc.resolver {
-                let mut seed_exprs = Vec::new();
-                for seed in seeds {
-                    match seed {
-                        IdlPdaSeed::Const { value } => {
-                            seed_exprs.push(format!("[]byte{{{}}}", super::format_disc_hex(value)));
-                        }
-                        IdlPdaSeed::Account { path } => {
-                            seed_exprs.push(format!(
-                                "func() []byte {{ key := accountsMap[\"{}\"]; return key[:] }}()",
-                                path
-                            ));
-                        }
-                        IdlPdaSeed::AccountField {
-                            path,
-                            field,
-                            account,
-                            ..
-                        } => {
-                            let ty = account_field_type(idl, account, field);
-                            seed_exprs.push(go_pda_seed_expr(
-                                &format!("input.{}", account_field_seed_input_name(path, field)),
-                                ty.as_ref(),
-                            ));
-                        }
-                        IdlPdaSeed::Arg { path, ty, .. } => {
-                            seed_exprs.push(go_pda_seed_expr(
-                                &format!("input.{}", go_field_path(path)),
-                                Some(ty),
-                            ));
-                        }
-                    }
-                }
-                // Invalid seeds are programmer errors in generated PDA calls.
-                format!(
-                    "func() solana.PublicKey {{ addr, _, err := \
-                     solana.FindProgramAddress([][]byte{{{}}}, ProgramID); if err != nil {{ \
-                     panic(err) }}; return addr }}()",
-                    seed_exprs.join(", ")
-                )
-            } else {
-                format!("input.{}", snake_to_pascal(&acc.name))
-            };
-
+        for acc in ix
+            .accounts
+            .iter()
+            .filter(|acc| acc.optional || !resolver_is_derived(&acc.resolver))
+        {
+            let key_expr = go_account_key_expr(acc, idl);
             writeln!(out, "\taccountsMap[\"{}\"] = {}", acc.name, key_expr).unwrap();
+        }
+        for acc in resolved_account_order(ix)? {
+            let key_expr = go_account_key_expr(acc, idl);
+            writeln!(out, "\taccountsMap[\"{}\"] = {}", acc.name, key_expr).unwrap();
+        }
+        for acc in &ix.accounts {
             let meta_expr = account_meta_expr(
                 &format!("accountsMap[\"{}\"]", acc.name),
                 acc.signer.is_true(),
@@ -632,6 +597,81 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
     }
 
     Ok(out)
+}
+
+fn go_account_key_expr(account: &IdlAccountNode, idl: &Idl) -> String {
+    if account.optional {
+        let name = snake_to_pascal(&account.name);
+        return format!(
+            "func() solana.PublicKey {{ if input.{name} != nil {{ return *input.{name} }}; return \
+             ProgramID }}()"
+        );
+    }
+
+    match &account.resolver {
+        IdlResolver::Const { address } => {
+            format!("solana.MustPublicKeyFromBase58(\"{address}\")")
+        }
+        IdlResolver::Pda { program, seeds } => {
+            let seed_exprs = seeds
+                .iter()
+                .map(|seed| match seed {
+                    IdlPdaSeed::Const { value } => {
+                        format!("[]byte{{{}}}", super::format_disc_hex(value))
+                    }
+                    IdlPdaSeed::Account { path } => format!(
+                        "func() []byte {{ key := accountsMap[\"{path}\"]; return key[:] }}()"
+                    ),
+                    IdlPdaSeed::AccountField {
+                        path,
+                        field,
+                        account,
+                    } => {
+                        let ty = account_field_type(idl, account, field);
+                        go_pda_seed_expr(
+                            &format!("input.{}", account_field_seed_input_name(path, field)),
+                            ty.as_ref(),
+                        )
+                    }
+                    IdlPdaSeed::Arg { path, ty } => {
+                        go_pda_seed_expr(&format!("input.{}", go_field_path(path)), Some(ty))
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            let program = match program {
+                IdlPdaProgram::ProgramId {} => "ProgramID".to_string(),
+                IdlPdaProgram::Account { path } => format!("accountsMap[\"{path}\"]"),
+            };
+            format!(
+                "func() solana.PublicKey {{ addr, _, err := \
+                 solana.FindProgramAddress([][]byte{{{seed_exprs}}}, {program}); if err != nil {{ \
+                 panic(err) }}; return addr }}()"
+            )
+        }
+        IdlResolver::AssociatedToken {
+            mint,
+            owner,
+            token_program,
+        } => {
+            let token_program = token_program.as_ref().map_or_else(
+                || {
+                    "solana.MustPublicKeyFromBase58(\"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA\"\
+                     )"
+                    .to_string()
+                },
+                |path| format!("accountsMap[\"{path}\"]"),
+            );
+            format!(
+                "func() solana.PublicKey {{ owner := accountsMap[\"{owner}\"]; token := \
+                 {token_program}; mint := accountsMap[\"{mint}\"]; addr, _, err := \
+                 solana.FindProgramAddress([][]byte{{owner[:], token[:], mint[:]}}, \
+                 solana.MustPublicKeyFromBase58(\"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL\"\
+                 )); if err != nil {{ panic(err) }}; return addr }}()"
+            )
+        }
+        _ => format!("input.{}", snake_to_pascal(&account.name)),
+    }
 }
 
 pub fn generate_go_mod_for_program(model: &ProgramModel<'_>) -> String {

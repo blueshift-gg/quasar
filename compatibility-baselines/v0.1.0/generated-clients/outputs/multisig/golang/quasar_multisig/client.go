@@ -143,12 +143,12 @@ func NewCreateInstruction(input *CreateInput) *solana.GenericInstruction {
 	accounts := []*solana.AccountMeta{}
 	accountsMap := map[string]solana.PublicKey{}
 	accountsMap["creator"] = input.Creator
-	accounts = append(accounts, solana.Meta(accountsMap["creator"]).WRITE().SIGNER())
-	accountsMap["config"] = func() solana.PublicKey { addr, _, err := solana.FindProgramAddress([][]byte{[]byte{0x6d, 0x75, 0x6c, 0x74, 0x69, 0x73, 0x69, 0x67}, func() []byte { key := accountsMap["creator"]; return key[:] }()}, ProgramID); if err != nil { panic(err) }; return addr }()
-	accounts = append(accounts, solana.Meta(accountsMap["config"]).WRITE())
 	accountsMap["rent"] = solana.MustPublicKeyFromBase58("SysvarRent111111111111111111111111111111111")
-	accounts = append(accounts, solana.Meta(accountsMap["rent"]))
 	accountsMap["systemProgram"] = solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+	accountsMap["config"] = func() solana.PublicKey { addr, _, err := solana.FindProgramAddress([][]byte{[]byte{0x6d, 0x75, 0x6c, 0x74, 0x69, 0x73, 0x69, 0x67}, func() []byte { key := accountsMap["creator"]; return key[:] }()}, ProgramID); if err != nil { panic(err) }; return addr }()
+	accounts = append(accounts, solana.Meta(accountsMap["creator"]).WRITE().SIGNER())
+	accounts = append(accounts, solana.Meta(accountsMap["config"]).WRITE())
+	accounts = append(accounts, solana.Meta(accountsMap["rent"]))
 	accounts = append(accounts, solana.Meta(accountsMap["systemProgram"]))
 	accounts = append(accounts, input.RemainingAccounts...)
 	data := make([]byte, 0, 256)
@@ -167,12 +167,12 @@ func NewDepositInstruction(input *DepositInput) *solana.GenericInstruction {
 	accounts := []*solana.AccountMeta{}
 	accountsMap := map[string]solana.PublicKey{}
 	accountsMap["depositor"] = input.Depositor
-	accounts = append(accounts, solana.Meta(accountsMap["depositor"]).WRITE().SIGNER())
 	accountsMap["config"] = input.Config
-	accounts = append(accounts, solana.Meta(accountsMap["config"]))
-	accountsMap["vault"] = func() solana.PublicKey { addr, _, err := solana.FindProgramAddress([][]byte{[]byte{0x76, 0x61, 0x75, 0x6c, 0x74}, func() []byte { key := accountsMap["config"]; return key[:] }()}, ProgramID); if err != nil { panic(err) }; return addr }()
-	accounts = append(accounts, solana.Meta(accountsMap["vault"]).WRITE())
 	accountsMap["systemProgram"] = solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+	accountsMap["vault"] = func() solana.PublicKey { addr, _, err := solana.FindProgramAddress([][]byte{[]byte{0x76, 0x61, 0x75, 0x6c, 0x74}, func() []byte { key := accountsMap["config"]; return key[:] }()}, ProgramID); if err != nil { panic(err) }; return addr }()
+	accounts = append(accounts, solana.Meta(accountsMap["depositor"]).WRITE().SIGNER())
+	accounts = append(accounts, solana.Meta(accountsMap["config"]))
+	accounts = append(accounts, solana.Meta(accountsMap["vault"]).WRITE())
 	accounts = append(accounts, solana.Meta(accountsMap["systemProgram"]))
 	data := make([]byte, 0, 256)
 	data = append(data, DepositDiscriminator[:]...)
@@ -189,10 +189,10 @@ func NewSetLabelInstruction(input *SetLabelInput) *solana.GenericInstruction {
 	accounts := []*solana.AccountMeta{}
 	accountsMap := map[string]solana.PublicKey{}
 	accountsMap["creator"] = input.Creator
-	accounts = append(accounts, solana.Meta(accountsMap["creator"]).WRITE().SIGNER())
-	accountsMap["config"] = func() solana.PublicKey { addr, _, err := solana.FindProgramAddress([][]byte{[]byte{0x6d, 0x75, 0x6c, 0x74, 0x69, 0x73, 0x69, 0x67}, func() []byte { key := accountsMap["creator"]; return key[:] }()}, ProgramID); if err != nil { panic(err) }; return addr }()
-	accounts = append(accounts, solana.Meta(accountsMap["config"]).WRITE())
 	accountsMap["systemProgram"] = solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+	accountsMap["config"] = func() solana.PublicKey { addr, _, err := solana.FindProgramAddress([][]byte{[]byte{0x6d, 0x75, 0x6c, 0x74, 0x69, 0x73, 0x69, 0x67}, func() []byte { key := accountsMap["creator"]; return key[:] }()}, ProgramID); if err != nil { panic(err) }; return addr }()
+	accounts = append(accounts, solana.Meta(accountsMap["creator"]).WRITE().SIGNER())
+	accounts = append(accounts, solana.Meta(accountsMap["config"]).WRITE())
 	accounts = append(accounts, solana.Meta(accountsMap["systemProgram"]))
 	data := make([]byte, 0, 256)
 	data = append(data, SetLabelDiscriminator[:]...)
@@ -212,15 +212,15 @@ type ExecuteTransferInput struct {
 func NewExecuteTransferInstruction(input *ExecuteTransferInput) *solana.GenericInstruction {
 	accounts := []*solana.AccountMeta{}
 	accountsMap := map[string]solana.PublicKey{}
-	accountsMap["config"] = func() solana.PublicKey { addr, _, err := solana.FindProgramAddress([][]byte{[]byte{0x6d, 0x75, 0x6c, 0x74, 0x69, 0x73, 0x69, 0x67}, func() []byte { key := accountsMap["creator"]; return key[:] }()}, ProgramID); if err != nil { panic(err) }; return addr }()
-	accounts = append(accounts, solana.Meta(accountsMap["config"]))
 	accountsMap["creator"] = input.Creator
-	accounts = append(accounts, solana.Meta(accountsMap["creator"]))
-	accountsMap["vault"] = func() solana.PublicKey { addr, _, err := solana.FindProgramAddress([][]byte{[]byte{0x76, 0x61, 0x75, 0x6c, 0x74}, func() []byte { key := accountsMap["config"]; return key[:] }()}, ProgramID); if err != nil { panic(err) }; return addr }()
-	accounts = append(accounts, solana.Meta(accountsMap["vault"]).WRITE())
 	accountsMap["recipient"] = input.Recipient
-	accounts = append(accounts, solana.Meta(accountsMap["recipient"]).WRITE())
 	accountsMap["systemProgram"] = solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+	accountsMap["config"] = func() solana.PublicKey { addr, _, err := solana.FindProgramAddress([][]byte{[]byte{0x6d, 0x75, 0x6c, 0x74, 0x69, 0x73, 0x69, 0x67}, func() []byte { key := accountsMap["creator"]; return key[:] }()}, ProgramID); if err != nil { panic(err) }; return addr }()
+	accountsMap["vault"] = func() solana.PublicKey { addr, _, err := solana.FindProgramAddress([][]byte{[]byte{0x76, 0x61, 0x75, 0x6c, 0x74}, func() []byte { key := accountsMap["config"]; return key[:] }()}, ProgramID); if err != nil { panic(err) }; return addr }()
+	accounts = append(accounts, solana.Meta(accountsMap["config"]))
+	accounts = append(accounts, solana.Meta(accountsMap["creator"]))
+	accounts = append(accounts, solana.Meta(accountsMap["vault"]).WRITE())
+	accounts = append(accounts, solana.Meta(accountsMap["recipient"]).WRITE())
 	accounts = append(accounts, solana.Meta(accountsMap["systemProgram"]))
 	accounts = append(accounts, input.RemainingAccounts...)
 	data := make([]byte, 0, 256)

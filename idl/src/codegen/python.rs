@@ -1,7 +1,11 @@
 use {
-    super::model::{python_field_path, reject_generics, CodegenResult, ProgramModel},
+    super::model::{
+        python_field_path, reject_generics, resolved_account_order, resolver_is_derived,
+        CodegenResult, ProgramModel,
+    },
     crate::types::{
-        Idl, IdlArg, IdlCodec, IdlFieldDef, IdlPdaSeed, IdlResolver, IdlType, IdlTypeDef,
+        Idl, IdlAccountNode, IdlArg, IdlCodec, IdlFieldDef, IdlPdaProgram, IdlPdaSeed, IdlResolver,
+        IdlType, IdlTypeDef,
     },
     quasar_schema::{camel_to_snake, snake_to_pascal, to_screaming_snake},
     std::fmt::Write,
@@ -204,8 +208,11 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
             if matches!(acc.resolver, IdlResolver::Const { .. }) {
                 continue; // Known addresses are auto-filled
             }
-            if matches!(acc.resolver, IdlResolver::Pda { .. }) {
-                continue; // PDAs are derived
+            if matches!(
+                acc.resolver,
+                IdlResolver::Pda { .. } | IdlResolver::AssociatedToken { .. }
+            ) {
+                continue; // Derived addresses are filled by the client
             }
             writeln!(out, "    {}: Pubkey", camel_to_snake(&acc.name)).unwrap();
             has_any_fields = true;
@@ -268,54 +275,22 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
 
         out.push_str("    accounts_map = {}\n");
 
-        // Build accounts list
+        // Resolve addresses independently from account-meta order: derived
+        // accounts may depend on fields declared later in the IDL.
         out.push_str("    accounts = []\n");
-        for acc in &ix.accounts {
-            let key_expr = if acc.optional {
-                let snake = camel_to_snake(&acc.name);
-                format!("input.{snake} if input.{snake} is not None else PROGRAM_ID")
-            } else if let IdlResolver::Const { ref address } = acc.resolver {
-                format!("Pubkey.from_string(\"{}\")", address)
-            } else if let IdlResolver::Pda { ref seeds, .. } = acc.resolver {
-                let mut seed_exprs = Vec::new();
-                for seed in seeds {
-                    match seed {
-                        IdlPdaSeed::Const { value } => {
-                            seed_exprs
-                                .push(format!("bytes([{}])", super::format_disc_decimal(value)));
-                        }
-                        IdlPdaSeed::Account { path } => {
-                            seed_exprs.push(format!("bytes(accounts_map[\"{}\"])", path));
-                        }
-                        IdlPdaSeed::AccountField {
-                            path,
-                            field,
-                            account,
-                            ..
-                        } => {
-                            let ty = account_field_type(idl, account, field);
-                            seed_exprs.push(python_pda_seed_expr(
-                                &format!("input.{}", account_field_seed_input_name(path, field)),
-                                ty.as_ref(),
-                            ));
-                        }
-                        IdlPdaSeed::Arg { path, ty, .. } => {
-                            seed_exprs.push(python_pda_seed_expr(
-                                &format!("input.{}", python_field_path(path)),
-                                Some(ty),
-                            ));
-                        }
-                    }
-                }
-                format!(
-                    "Pubkey.find_program_address([{}], PROGRAM_ID)[0]",
-                    seed_exprs.join(", ")
-                )
-            } else {
-                format!("input.{}", camel_to_snake(&acc.name))
-            };
-
+        for acc in ix
+            .accounts
+            .iter()
+            .filter(|acc| acc.optional || !resolver_is_derived(&acc.resolver))
+        {
+            let key_expr = python_account_key_expr(acc, idl);
             writeln!(out, "    accounts_map[\"{}\"] = {}", acc.name, key_expr).unwrap();
+        }
+        for acc in resolved_account_order(ix)? {
+            let key_expr = python_account_key_expr(acc, idl);
+            writeln!(out, "    accounts_map[\"{}\"] = {}", acc.name, key_expr).unwrap();
+        }
+        for acc in &ix.accounts {
             writeln!(
                 out,
                 "    accounts.append(AccountMeta(accounts_map[\"{}\"], is_signer={}, \
@@ -546,6 +521,70 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
     }
 
     Ok(out)
+}
+
+fn python_account_key_expr(account: &IdlAccountNode, idl: &Idl) -> String {
+    if account.optional {
+        let name = camel_to_snake(&account.name);
+        return format!("input.{name} if input.{name} is not None else PROGRAM_ID");
+    }
+
+    match &account.resolver {
+        IdlResolver::Const { address } => format!("Pubkey.from_string(\"{address}\")"),
+        IdlResolver::Pda { program, seeds } => {
+            let seed_exprs = seeds
+                .iter()
+                .map(|seed| match seed {
+                    IdlPdaSeed::Const { value } => {
+                        format!("bytes([{}])", super::format_disc_decimal(value))
+                    }
+                    IdlPdaSeed::Account { path } => {
+                        format!("bytes(accounts_map[\"{path}\"])")
+                    }
+                    IdlPdaSeed::AccountField {
+                        path,
+                        field,
+                        account,
+                    } => {
+                        let ty = account_field_type(idl, account, field);
+                        python_pda_seed_expr(
+                            &format!("input.{}", account_field_seed_input_name(path, field)),
+                            ty.as_ref(),
+                        )
+                    }
+                    IdlPdaSeed::Arg { path, ty } => python_pda_seed_expr(
+                        &format!("input.{}", python_field_path(path)),
+                        Some(ty),
+                    ),
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            let program = match program {
+                IdlPdaProgram::ProgramId {} => "PROGRAM_ID".to_string(),
+                IdlPdaProgram::Account { path } => format!("accounts_map[\"{path}\"]"),
+            };
+            format!("Pubkey.find_program_address([{seed_exprs}], {program})[0]")
+        }
+        IdlResolver::AssociatedToken {
+            mint,
+            owner,
+            token_program,
+        } => {
+            let token_program = token_program.as_ref().map_or_else(
+                || {
+                    "Pubkey.from_string(\"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA\")"
+                        .to_string()
+                },
+                |path| format!("accounts_map[\"{path}\"]"),
+            );
+            format!(
+                "Pubkey.find_program_address([bytes(accounts_map[\"{owner}\"]), \
+                 bytes({token_program}), bytes(accounts_map[\"{mint}\"])], \
+                 Pubkey.from_string(\"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL\"))[0]"
+            )
+        }
+        _ => format!("input.{}", camel_to_snake(&account.name)),
+    }
 }
 
 fn python_type(ty: &IdlType) -> String {

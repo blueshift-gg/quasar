@@ -469,12 +469,14 @@ mod __init_escrow_client_macro {
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(true), signer :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), resolver :
     ::quasar_lang::idl_build::__reexport::IdlResolver::Pda { program :
-    ::quasar_lang::idl_build::__reexport::IdlPdaProgram::ProgramId {}, seeds :
-    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::__reexport::IdlPdaSeed::Const
-    { value : ::quasar_lang::idl_build::Vec::from(< Escrow as
-    ::quasar_lang::traits::HasSeeds > ::SEED_PREFIX), },
-    ::quasar_lang::idl_build::__reexport::IdlPdaSeed::Account { path :
-    ::quasar_lang::idl_build::s("payer"), }], }, docs :
+    ::quasar_lang::idl_build::__reexport::IdlPdaProgram::ProgramId {}, seeds : { let mut
+    seeds = ::quasar_lang::idl_build::Vec::new(); if < Escrow as
+    ::quasar_lang::traits::HasSeeds > ::HAS_SEED_PREFIX { seeds
+    .push(::quasar_lang::idl_build::__reexport::IdlPdaSeed::Const { value :
+    ::quasar_lang::idl_build::Vec::from(< Escrow as ::quasar_lang::traits::HasSeeds >
+    ::SEED_PREFIX), }); } seeds
+    .push(::quasar_lang::idl_build::__reexport::IdlPdaSeed::Account { path :
+    ::quasar_lang::idl_build::s("payer"), }); seeds }, }, docs :
     ::quasar_lang::idl_build::Vec::new(), },
     ::quasar_lang::idl_build::__reexport::IdlAccountNode { name :
     ::quasar_lang::idl_build::s("systemProgram"), optional : false, writable :
@@ -484,4 +486,37 @@ mod __init_escrow_client_macro {
     ::quasar_lang::idl_build::address_to_base58(& < SystemProgram as
     ::quasar_lang::traits::Id > ::ID), }, docs : ::quasar_lang::idl_build::Vec::new(),
     }],) })
+}
+#[cfg(feature = "idl-build")]
+::quasar_lang::__private_inventory::submit! {
+    ::quasar_lang::idl_build::AccountsValidationFragment(|| {
+    (::quasar_lang::idl_build::s("InitEscrow"),
+    ::quasar_lang::idl_build::__reexport::IdlAccountsValidation { rent :
+    ::quasar_lang::idl_build::s("FetchOnce"), accounts :
+    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::__reexport::IdlAccountValidation
+    { name : ::quasar_lang::idl_build::s("payer"), account_type :
+    ::quasar_lang::idl_build::s("Signer"), wrapper :
+    ::quasar_lang::idl_build::s("Signer"), writable : true, signer : true, optional :
+    false, allow_duplicate : false, load :
+    ::quasar_lang::idl_build::s("Fixed(validates=[])"), pre_load :
+    ::quasar_lang::idl_build::vec![], post_load : ::quasar_lang::idl_build::vec![],
+    epilogue : ::quasar_lang::idl_build::vec![], },
+    ::quasar_lang::idl_build::__reexport::IdlAccountValidation { name :
+    ::quasar_lang::idl_build::s("escrow"), account_type :
+    ::quasar_lang::idl_build::s("Account < Escrow >"), wrapper :
+    ::quasar_lang::idl_build::s("Account"), writable : true, signer : false, optional :
+    false, allow_duplicate : false, load :
+    ::quasar_lang::idl_build::s("Fixed(validates=[])"), pre_load :
+    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::s("VerifyAddress(expr=`Escrow :: seeds (payer . address ())` error=None)"),
+    ::quasar_lang::idl_build::s("Init::Program(payer=payer space_ty=`Account < Escrow >` idempotent=false verified_address=Some(expr=`Escrow :: seeds (payer . address ())` error=None))")],
+    post_load : ::quasar_lang::idl_build::vec![], epilogue :
+    ::quasar_lang::idl_build::vec![], },
+    ::quasar_lang::idl_build::__reexport::IdlAccountValidation { name :
+    ::quasar_lang::idl_build::s("systemProgram"), account_type :
+    ::quasar_lang::idl_build::s("Program < SystemProgram >"), wrapper :
+    ::quasar_lang::idl_build::s("Program"), writable : false, signer : false, optional :
+    false, allow_duplicate : false, load :
+    ::quasar_lang::idl_build::s("Fixed(validates=[])"), pre_load :
+    ::quasar_lang::idl_build::vec![], post_load : ::quasar_lang::idl_build::vec![],
+    epilogue : ::quasar_lang::idl_build::vec![], }], },) })
 }

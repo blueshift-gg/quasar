@@ -19,12 +19,6 @@ fn quasar_take<'a>(data: &'a [u8], offset: &mut usize, len: usize) -> Option<&'a
     Some(bytes)
 }
 
-fn quasar_read_len(data: &[u8], offset: &mut usize, width: usize) -> Option<usize> {
-    let mut buf = [0u8; 8];
-    buf.get_mut(..width)?.copy_from_slice(quasar_take(data, offset, width)?);
-    usize::try_from(u64::from_le_bytes(buf)).ok()
-}
-
 pub fn decode_instruction(data: &[u8]) -> Option<ProgramInstruction> {
     let disc = *data.first()?;
     match disc {

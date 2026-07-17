@@ -153,6 +153,45 @@ export interface RefundInstructionInput {
   vaultTaA: Address;
 }
 
+export interface MakeInstructionAccountOverrides {
+  maker?: Address;
+  escrow?: Address;
+  mintA?: Address;
+  mintB?: Address;
+  makerTaA?: Address;
+  makerTaB?: Address;
+  vaultTaA?: Address;
+  rent?: Address;
+  tokenProgram?: Address;
+  systemProgram?: Address;
+}
+
+export interface TakeInstructionAccountOverrides {
+  taker?: Address;
+  escrow?: Address;
+  maker?: Address;
+  mintA?: Address;
+  mintB?: Address;
+  takerTaA?: Address;
+  takerTaB?: Address;
+  makerTaB?: Address;
+  vaultTaA?: Address;
+  rent?: Address;
+  tokenProgram?: Address;
+  systemProgram?: Address;
+}
+
+export interface RefundInstructionAccountOverrides {
+  maker?: Address;
+  escrow?: Address;
+  mintA?: Address;
+  makerTaA?: Address;
+  vaultTaA?: Address;
+  rent?: Address;
+  tokenProgram?: Address;
+  systemProgram?: Address;
+}
+
 /* Codecs */
 const EscrowStructCodec = getStructCodec([
   ["maker", getWeb3jsAddressCodec()],
@@ -264,11 +303,15 @@ export class QuasarEscrowClient {
   }
 
   async createMakeInstruction(input: MakeInstructionInput): Promise<TransactionInstruction> {
+    return this.createMakeInstructionUnchecked(input, {});
+  }
+
+  async createMakeInstructionUnchecked(input: MakeInstructionInput, accountOverrides: MakeInstructionAccountOverrides): Promise<TransactionInstruction> {
     const accountsMap: Record<string, Address> = {};
     accountsMap["rent"] = new Address("SysvarRent111111111111111111111111111111111");
     accountsMap["tokenProgram"] = new Address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
     accountsMap["systemProgram"] = new Address("11111111111111111111111111111111");
-    accountsMap["escrow"] = await findEscrowAddress(input.maker);
+    accountsMap["escrow"] = await findEscrowAddress((accountOverrides.maker ?? input.maker));
     const argsCodec = getStructCodec([
       ["deposit", getU64Codec()],
       ["receive", getU64Codec()],
@@ -277,66 +320,74 @@ export class QuasarEscrowClient {
     return new TransactionInstruction({
       programId: QuasarEscrowClient.programId,
       keys: [
-        { pubkey: input.maker, isSigner: true, isWritable: true },
-        { pubkey: accountsMap["escrow"], isSigner: false, isWritable: true },
-        { pubkey: input.mintA, isSigner: false, isWritable: false },
-        { pubkey: input.mintB, isSigner: false, isWritable: false },
-        { pubkey: input.makerTaA, isSigner: false, isWritable: true },
-        { pubkey: input.makerTaB, isSigner: true, isWritable: true },
-        { pubkey: input.vaultTaA, isSigner: true, isWritable: true },
-        { pubkey: accountsMap["rent"], isSigner: false, isWritable: false },
-        { pubkey: accountsMap["tokenProgram"], isSigner: false, isWritable: false },
-        { pubkey: accountsMap["systemProgram"], isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.maker ?? input.maker), isSigner: true, isWritable: true },
+        { pubkey: (accountOverrides.escrow ?? accountsMap["escrow"]), isSigner: false, isWritable: true },
+        { pubkey: (accountOverrides.mintA ?? input.mintA), isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.mintB ?? input.mintB), isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.makerTaA ?? input.makerTaA), isSigner: false, isWritable: true },
+        { pubkey: (accountOverrides.makerTaB ?? input.makerTaB), isSigner: true, isWritable: true },
+        { pubkey: (accountOverrides.vaultTaA ?? input.vaultTaA), isSigner: true, isWritable: true },
+        { pubkey: (accountOverrides.rent ?? accountsMap["rent"]), isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.tokenProgram ?? accountsMap["tokenProgram"]), isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.systemProgram ?? accountsMap["systemProgram"]), isSigner: false, isWritable: false },
       ],
       data,
     });
   }
 
   async createTakeInstruction(input: TakeInstructionInput): Promise<TransactionInstruction> {
+    return this.createTakeInstructionUnchecked(input, {});
+  }
+
+  async createTakeInstructionUnchecked(input: TakeInstructionInput, accountOverrides: TakeInstructionAccountOverrides): Promise<TransactionInstruction> {
     const accountsMap: Record<string, Address> = {};
     accountsMap["rent"] = new Address("SysvarRent111111111111111111111111111111111");
     accountsMap["tokenProgram"] = new Address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
     accountsMap["systemProgram"] = new Address("11111111111111111111111111111111");
-    accountsMap["escrow"] = await findEscrowAddress(input.maker);
+    accountsMap["escrow"] = await findEscrowAddress((accountOverrides.maker ?? input.maker));
     const data = Uint8Array.from([1]);
     return new TransactionInstruction({
       programId: QuasarEscrowClient.programId,
       keys: [
-        { pubkey: input.taker, isSigner: true, isWritable: true },
-        { pubkey: accountsMap["escrow"], isSigner: false, isWritable: true },
-        { pubkey: input.maker, isSigner: false, isWritable: true },
-        { pubkey: input.mintA, isSigner: false, isWritable: false },
-        { pubkey: input.mintB, isSigner: false, isWritable: false },
-        { pubkey: input.takerTaA, isSigner: true, isWritable: true },
-        { pubkey: input.takerTaB, isSigner: false, isWritable: true },
-        { pubkey: input.makerTaB, isSigner: true, isWritable: true },
-        { pubkey: input.vaultTaA, isSigner: false, isWritable: true },
-        { pubkey: accountsMap["rent"], isSigner: false, isWritable: false },
-        { pubkey: accountsMap["tokenProgram"], isSigner: false, isWritable: false },
-        { pubkey: accountsMap["systemProgram"], isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.taker ?? input.taker), isSigner: true, isWritable: true },
+        { pubkey: (accountOverrides.escrow ?? accountsMap["escrow"]), isSigner: false, isWritable: true },
+        { pubkey: (accountOverrides.maker ?? input.maker), isSigner: false, isWritable: true },
+        { pubkey: (accountOverrides.mintA ?? input.mintA), isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.mintB ?? input.mintB), isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.takerTaA ?? input.takerTaA), isSigner: true, isWritable: true },
+        { pubkey: (accountOverrides.takerTaB ?? input.takerTaB), isSigner: false, isWritable: true },
+        { pubkey: (accountOverrides.makerTaB ?? input.makerTaB), isSigner: true, isWritable: true },
+        { pubkey: (accountOverrides.vaultTaA ?? input.vaultTaA), isSigner: false, isWritable: true },
+        { pubkey: (accountOverrides.rent ?? accountsMap["rent"]), isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.tokenProgram ?? accountsMap["tokenProgram"]), isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.systemProgram ?? accountsMap["systemProgram"]), isSigner: false, isWritable: false },
       ],
       data,
     });
   }
 
   async createRefundInstruction(input: RefundInstructionInput): Promise<TransactionInstruction> {
+    return this.createRefundInstructionUnchecked(input, {});
+  }
+
+  async createRefundInstructionUnchecked(input: RefundInstructionInput, accountOverrides: RefundInstructionAccountOverrides): Promise<TransactionInstruction> {
     const accountsMap: Record<string, Address> = {};
     accountsMap["rent"] = new Address("SysvarRent111111111111111111111111111111111");
     accountsMap["tokenProgram"] = new Address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
     accountsMap["systemProgram"] = new Address("11111111111111111111111111111111");
-    accountsMap["escrow"] = await findEscrowAddress(input.maker);
+    accountsMap["escrow"] = await findEscrowAddress((accountOverrides.maker ?? input.maker));
     const data = Uint8Array.from([2]);
     return new TransactionInstruction({
       programId: QuasarEscrowClient.programId,
       keys: [
-        { pubkey: input.maker, isSigner: true, isWritable: true },
-        { pubkey: accountsMap["escrow"], isSigner: false, isWritable: true },
-        { pubkey: input.mintA, isSigner: false, isWritable: false },
-        { pubkey: input.makerTaA, isSigner: true, isWritable: true },
-        { pubkey: input.vaultTaA, isSigner: false, isWritable: true },
-        { pubkey: accountsMap["rent"], isSigner: false, isWritable: false },
-        { pubkey: accountsMap["tokenProgram"], isSigner: false, isWritable: false },
-        { pubkey: accountsMap["systemProgram"], isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.maker ?? input.maker), isSigner: true, isWritable: true },
+        { pubkey: (accountOverrides.escrow ?? accountsMap["escrow"]), isSigner: false, isWritable: true },
+        { pubkey: (accountOverrides.mintA ?? input.mintA), isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.makerTaA ?? input.makerTaA), isSigner: true, isWritable: true },
+        { pubkey: (accountOverrides.vaultTaA ?? input.vaultTaA), isSigner: false, isWritable: true },
+        { pubkey: (accountOverrides.rent ?? accountsMap["rent"]), isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.tokenProgram ?? accountsMap["tokenProgram"]), isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.systemProgram ?? accountsMap["systemProgram"]), isSigner: false, isWritable: false },
       ],
       data,
     });
@@ -355,6 +406,29 @@ export async function findEscrowAddress(maker: Address): Promise<Address> {
 }
 
 /* Errors */
+export const PROGRAM_ERROR_CODES = {
+  AccountAlreadyInitialized: 3001,
+  AccountNotInitialized: 3000,
+  AccountNotMutable: 3010,
+  AccountNotRentExempt: 3008,
+  AccountNotSigner: 3011,
+  AccountOwnedByWrongProgram: 3009,
+  AddressMismatch: 3012,
+  CompactWriterFieldNotSet: 3014,
+  ConstraintViolation: 3004,
+  DynamicFieldTooLong: 3013,
+  HasOneMismatch: 3005,
+  InsufficientSpace: 3007,
+  InvalidDiscriminator: 3006,
+  InvalidPda: 3002,
+  InvalidReturnData: 3019,
+  InvalidSeeds: 3003,
+  MissingReturnData: 3017,
+  RemainingAccountDuplicate: 3016,
+  RemainingAccountsOverflow: 3015,
+  ReturnDataFromWrongProgram: 3018,
+} as const;
+
 export const PROGRAM_ERRORS: Record<number, { name: string; msg?: string }> = {
   3001: { name: "AccountAlreadyInitialized", msg: "Account discriminator is already set (double-init attempt)." },
   3000: { name: "AccountNotInitialized", msg: "Account data is all zeros or has no discriminator." },

@@ -9,6 +9,29 @@ pub struct SetLabelInstruction {
     pub label: DynString<u8>,
 }
 
+pub struct SetLabelInstructionInput {
+    pub creator: Address,
+    pub label: DynString<u8>,
+}
+
+impl From<SetLabelInstructionInput> for SetLabelInstruction {
+    fn from(ix: SetLabelInstructionInput) -> SetLabelInstruction {
+        let creator = ix.creator;
+        let config = Address::find_program_address(&[b"multisig", creator.as_ref()], &ID).0;
+        SetLabelInstruction {
+            creator,
+            config,
+            label: ix.label,
+        }
+    }
+}
+
+impl From<SetLabelInstructionInput> for Instruction {
+    fn from(ix: SetLabelInstructionInput) -> Instruction {
+        SetLabelInstruction::from(ix).into()
+    }
+}
+
 impl From<SetLabelInstruction> for Instruction {
     fn from(ix: SetLabelInstruction) -> Instruction {
         let accounts = vec![

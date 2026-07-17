@@ -12,7 +12,11 @@
 //! - `CtxWithRemaining`: like `Ctx` but also captures the remaining accounts
 //!   region for instructions that inspect or forward trailing accounts.
 
-use crate::{prelude::*, remaining::RemainingAccounts, traits::ParseAccountsUnchecked};
+use crate::{
+    prelude::*,
+    remaining::{Remaining, RemainingAccounts, RemainingItem},
+    traits::ParseAccountsUnchecked,
+};
 
 /// Cast `&[u8; 32]` to `&Address`.
 ///
@@ -156,14 +160,25 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
     }
 }
 
+/// Marker used by the raw, dynamically shaped remaining-account context.
+///
+/// Programs normally refer to it through the default
+/// `CtxWithRemaining<Accounts>` parameters rather than naming it directly.
+#[doc(hidden)]
+pub struct DynamicRemaining;
+
 /// Like [`Ctx`] but also captures the remaining accounts region.
 ///
-/// Use this for instructions that call `remaining_accounts()`, for example when
-/// inspecting trailing accounts in local logic or forwarding a variable number
-/// of accounts to a downstream CPI.
+/// `CtxWithRemaining<Accounts>` preserves the raw compatibility API for
+/// intentionally dynamic or forwarded tails. Prefer
+/// `CtxWithRemaining<Accounts, Item, N>` when the handler consumes a known
+/// account type: dispatch validates the complete tail and exposes it through
+/// [`Self::remaining`].
 pub struct CtxWithRemaining<
     'input,
     T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + AccountCount,
+    R = DynamicRemaining,
+    const N: usize = 0,
 > {
     /// Validated and typed account struct.
     pub accounts: T,
@@ -176,6 +191,12 @@ pub struct CtxWithRemaining<
 
     /// Instruction data with discriminator already consumed.
     pub data: &'input [u8],
+
+    /// Parsed bounded remaining accounts.
+    ///
+    /// This is an empty internal value for the dynamic one-parameter form;
+    /// call [`Self::remaining_accounts`] on that form instead.
+    pub remaining: Remaining<R, N>,
 
     /// Pointer to the first remaining account in the input buffer.
     remaining_ptr: *mut u8,
@@ -222,6 +243,7 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
             bumps,
             program_id: ctx.program_id,
             data: ctx.data,
+            remaining: Remaining::empty(),
             remaining_ptr: ctx.remaining_ptr,
             declared,
             accounts_boundary: ctx.accounts_boundary,
@@ -258,17 +280,11 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
             bumps,
             program_id: ctx.program_id,
             data: ctx.data,
+            remaining: Remaining::empty(),
             remaining_ptr: ctx.remaining_ptr,
             declared,
             accounts_boundary: ctx.accounts_boundary,
         })
-    }
-
-    /// Compile-time check for whether `T` has lifecycle operations
-    /// (close/sweep/migrate). When false, the epilogue call is elided.
-    #[inline(always)]
-    pub const fn has_epilogue(&self) -> bool {
-        T::HAS_EPILOGUE
     }
 
     /// Remaining-account accessor.
@@ -293,5 +309,64 @@ impl<'input, T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + Account
                 self.data,
             )
         }
+    }
+
+    /// Convert a dynamic tail into a fully validated bounded tail.
+    ///
+    /// Generated dispatch calls this after decoding instruction arguments, so
+    /// a decode failure cannot require cleanup for typed account wrappers that
+    /// were never exposed to the handler.
+    #[doc(hidden)]
+    #[inline(always)]
+    pub fn into_typed<R, const N: usize>(
+        self,
+    ) -> Result<CtxWithRemaining<'input, T, R, N>, ProgramError>
+    where
+        R: RemainingItem<'input>,
+    {
+        let remaining = self.remaining_accounts().parse::<R, N>()?;
+        Ok(CtxWithRemaining {
+            accounts: self.accounts,
+            bumps: self.bumps,
+            program_id: self.program_id,
+            data: self.data,
+            remaining,
+            remaining_ptr: self.remaining_ptr,
+            declared: self.declared,
+            accounts_boundary: self.accounts_boundary,
+        })
+    }
+}
+
+impl<
+        'input,
+        T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + AccountCount,
+        R: RemainingItem<'input>,
+        const N: usize,
+    > CtxWithRemaining<'input, T, R, N>
+{
+    /// Parse declared accounts and a complete bounded remaining-account tail.
+    ///
+    /// Generated dispatch decodes instruction arguments before converting its
+    /// tail, but this constructor remains useful to callers that already have
+    /// a [`Context`] and preserves the original typed-context API.
+    #[inline(always)]
+    pub fn new_typed(ctx: Context<'input>) -> Result<Self, ProgramError> {
+        CtxWithRemaining::<T>::new(ctx)?.into_typed()
+    }
+}
+
+impl<
+        'input,
+        T: ParseAccounts<'input> + ParseAccountsUnchecked<'input> + AccountCount,
+        R,
+        const N: usize,
+    > CtxWithRemaining<'input, T, R, N>
+{
+    /// Compile-time check for whether `T` has lifecycle operations
+    /// (close/sweep/migrate). When false, the epilogue call is elided.
+    #[inline(always)]
+    pub const fn has_epilogue(&self) -> bool {
+        T::HAS_EPILOGUE
     }
 }

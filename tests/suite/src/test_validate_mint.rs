@@ -4,6 +4,45 @@ use {
     quasar_test_token_validate::cpi::*,
 };
 
+#[test]
+fn mint_program_only_accepts_matching_owner() {
+    let mut svm = svm_validate();
+    let authority = Pubkey::new_unique();
+    let mint_key = Pubkey::new_unique();
+    let token_program = spl_token_program_id();
+
+    let instruction: Instruction = ValidateMintProgramOnlyInstruction {
+        mint: mint_key,
+        token_program,
+    }
+    .into();
+
+    let result = svm.process_instruction(
+        &instruction,
+        &[mint_account(mint_key, authority, 6, token_program)],
+    );
+    assert!(result.is_ok(), "should succeed: {:?}", result.raw_result);
+}
+
+#[test]
+fn mint_program_only_rejects_mismatched_owner() {
+    let mut svm = svm_validate();
+    let authority = Pubkey::new_unique();
+    let mint_key = Pubkey::new_unique();
+
+    let instruction: Instruction = ValidateMintProgramOnlyInstruction {
+        mint: mint_key,
+        token_program: token_2022_program_id(),
+    }
+    .into();
+
+    let result = svm.process_instruction(
+        &instruction,
+        &[mint_account(mint_key, authority, 6, spl_token_program_id())],
+    );
+    assert!(result.is_err(), "should fail: token program owner mismatch");
+}
+
 // Account<Mint> with SPL Token, ValidateMintCheck.
 
 #[test]

@@ -900,6 +900,84 @@ impl core::marker::Unpin for quasar_idl_schema::IdlTypeDef
 impl core::marker::UnsafeUnpin for quasar_idl_schema::IdlTypeDef
 impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl_schema::IdlTypeDef
 impl core::panic::unwind_safe::UnwindSafe for quasar_idl_schema::IdlTypeDef
+pub mod quasar_idl_schema::validation
+pub struct quasar_idl_schema::validation::IdlAccountValidation
+pub quasar_idl_schema::validation::IdlAccountValidation::account_type: alloc::string::String
+pub quasar_idl_schema::validation::IdlAccountValidation::allow_duplicate: bool
+pub quasar_idl_schema::validation::IdlAccountValidation::epilogue: alloc::vec::Vec<alloc::string::String>
+pub quasar_idl_schema::validation::IdlAccountValidation::load: alloc::string::String
+pub quasar_idl_schema::validation::IdlAccountValidation::name: alloc::string::String
+pub quasar_idl_schema::validation::IdlAccountValidation::optional: bool
+pub quasar_idl_schema::validation::IdlAccountValidation::post_load: alloc::vec::Vec<alloc::string::String>
+pub quasar_idl_schema::validation::IdlAccountValidation::pre_load: alloc::vec::Vec<alloc::string::String>
+pub quasar_idl_schema::validation::IdlAccountValidation::signer: bool
+pub quasar_idl_schema::validation::IdlAccountValidation::wrapper: alloc::string::String
+pub quasar_idl_schema::validation::IdlAccountValidation::writable: bool
+impl core::clone::Clone for quasar_idl_schema::IdlAccountValidation
+pub fn quasar_idl_schema::IdlAccountValidation::clone(&self) -> quasar_idl_schema::IdlAccountValidation
+impl core::cmp::Eq for quasar_idl_schema::IdlAccountValidation
+impl core::cmp::PartialEq for quasar_idl_schema::IdlAccountValidation
+pub fn quasar_idl_schema::IdlAccountValidation::eq(&self, &quasar_idl_schema::IdlAccountValidation) -> bool
+impl core::fmt::Debug for quasar_idl_schema::IdlAccountValidation
+pub fn quasar_idl_schema::IdlAccountValidation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for quasar_idl_schema::IdlAccountValidation
+impl serde_core::ser::Serialize for quasar_idl_schema::IdlAccountValidation
+pub fn quasar_idl_schema::IdlAccountValidation::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for quasar_idl_schema::IdlAccountValidation
+pub fn quasar_idl_schema::IdlAccountValidation::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for quasar_idl_schema::IdlAccountValidation
+impl core::marker::Send for quasar_idl_schema::IdlAccountValidation
+impl core::marker::Sync for quasar_idl_schema::IdlAccountValidation
+impl core::marker::Unpin for quasar_idl_schema::IdlAccountValidation
+impl core::marker::UnsafeUnpin for quasar_idl_schema::IdlAccountValidation
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl_schema::IdlAccountValidation
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl_schema::IdlAccountValidation
+pub struct quasar_idl_schema::validation::IdlAccountsValidation
+pub quasar_idl_schema::validation::IdlAccountsValidation::accounts: alloc::vec::Vec<quasar_idl_schema::IdlAccountValidation>
+pub quasar_idl_schema::validation::IdlAccountsValidation::rent: alloc::string::String
+impl core::clone::Clone for quasar_idl_schema::IdlAccountsValidation
+pub fn quasar_idl_schema::IdlAccountsValidation::clone(&self) -> quasar_idl_schema::IdlAccountsValidation
+impl core::cmp::Eq for quasar_idl_schema::IdlAccountsValidation
+impl core::cmp::PartialEq for quasar_idl_schema::IdlAccountsValidation
+pub fn quasar_idl_schema::IdlAccountsValidation::eq(&self, &quasar_idl_schema::IdlAccountsValidation) -> bool
+impl core::fmt::Debug for quasar_idl_schema::IdlAccountsValidation
+pub fn quasar_idl_schema::IdlAccountsValidation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for quasar_idl_schema::IdlAccountsValidation
+impl serde_core::ser::Serialize for quasar_idl_schema::IdlAccountsValidation
+pub fn quasar_idl_schema::IdlAccountsValidation::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for quasar_idl_schema::IdlAccountsValidation
+pub fn quasar_idl_schema::IdlAccountsValidation::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for quasar_idl_schema::IdlAccountsValidation
+impl core::marker::Send for quasar_idl_schema::IdlAccountsValidation
+impl core::marker::Sync for quasar_idl_schema::IdlAccountsValidation
+impl core::marker::Unpin for quasar_idl_schema::IdlAccountsValidation
+impl core::marker::UnsafeUnpin for quasar_idl_schema::IdlAccountsValidation
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl_schema::IdlAccountsValidation
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl_schema::IdlAccountsValidation
+pub struct quasar_idl_schema::validation::IdlValidationPlan
+pub quasar_idl_schema::validation::IdlValidationPlan::instructions: alloc::collections::btree::map::BTreeMap<alloc::string::String, quasar_idl_schema::IdlAccountsValidation>
+pub quasar_idl_schema::validation::IdlValidationPlan::version: u32
+impl core::clone::Clone for quasar_idl_schema::IdlValidationPlan
+pub fn quasar_idl_schema::IdlValidationPlan::clone(&self) -> quasar_idl_schema::IdlValidationPlan
+impl core::cmp::Eq for quasar_idl_schema::IdlValidationPlan
+impl core::cmp::PartialEq for quasar_idl_schema::IdlValidationPlan
+pub fn quasar_idl_schema::IdlValidationPlan::eq(&self, &quasar_idl_schema::IdlValidationPlan) -> bool
+impl core::fmt::Debug for quasar_idl_schema::IdlValidationPlan
+pub fn quasar_idl_schema::IdlValidationPlan::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for quasar_idl_schema::IdlValidationPlan
+impl serde_core::ser::Serialize for quasar_idl_schema::IdlValidationPlan
+pub fn quasar_idl_schema::IdlValidationPlan::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for quasar_idl_schema::IdlValidationPlan
+pub fn quasar_idl_schema::IdlValidationPlan::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for quasar_idl_schema::IdlValidationPlan
+impl core::marker::Send for quasar_idl_schema::IdlValidationPlan
+impl core::marker::Sync for quasar_idl_schema::IdlValidationPlan
+impl core::marker::Unpin for quasar_idl_schema::IdlValidationPlan
+impl core::marker::UnsafeUnpin for quasar_idl_schema::IdlValidationPlan
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl_schema::IdlValidationPlan
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl_schema::IdlValidationPlan
+pub const quasar_idl_schema::validation::VALIDATION_EXTENSION_KEY: &str
+pub const quasar_idl_schema::validation::VALIDATION_EXTENSION_VERSION: u32
 pub enum quasar_idl_schema::AccountFlag
 pub quasar_idl_schema::AccountFlag::Dynamic(quasar_idl_schema::AccountFlagDynamic)
 pub quasar_idl_schema::AccountFlag::Fixed(bool)
@@ -1440,6 +1518,59 @@ impl core::marker::Unpin for quasar_idl_schema::IdlAccountNode
 impl core::marker::UnsafeUnpin for quasar_idl_schema::IdlAccountNode
 impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl_schema::IdlAccountNode
 impl core::panic::unwind_safe::UnwindSafe for quasar_idl_schema::IdlAccountNode
+pub struct quasar_idl_schema::IdlAccountValidation
+pub quasar_idl_schema::IdlAccountValidation::account_type: alloc::string::String
+pub quasar_idl_schema::IdlAccountValidation::allow_duplicate: bool
+pub quasar_idl_schema::IdlAccountValidation::epilogue: alloc::vec::Vec<alloc::string::String>
+pub quasar_idl_schema::IdlAccountValidation::load: alloc::string::String
+pub quasar_idl_schema::IdlAccountValidation::name: alloc::string::String
+pub quasar_idl_schema::IdlAccountValidation::optional: bool
+pub quasar_idl_schema::IdlAccountValidation::post_load: alloc::vec::Vec<alloc::string::String>
+pub quasar_idl_schema::IdlAccountValidation::pre_load: alloc::vec::Vec<alloc::string::String>
+pub quasar_idl_schema::IdlAccountValidation::signer: bool
+pub quasar_idl_schema::IdlAccountValidation::wrapper: alloc::string::String
+pub quasar_idl_schema::IdlAccountValidation::writable: bool
+impl core::clone::Clone for quasar_idl_schema::IdlAccountValidation
+pub fn quasar_idl_schema::IdlAccountValidation::clone(&self) -> quasar_idl_schema::IdlAccountValidation
+impl core::cmp::Eq for quasar_idl_schema::IdlAccountValidation
+impl core::cmp::PartialEq for quasar_idl_schema::IdlAccountValidation
+pub fn quasar_idl_schema::IdlAccountValidation::eq(&self, &quasar_idl_schema::IdlAccountValidation) -> bool
+impl core::fmt::Debug for quasar_idl_schema::IdlAccountValidation
+pub fn quasar_idl_schema::IdlAccountValidation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for quasar_idl_schema::IdlAccountValidation
+impl serde_core::ser::Serialize for quasar_idl_schema::IdlAccountValidation
+pub fn quasar_idl_schema::IdlAccountValidation::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for quasar_idl_schema::IdlAccountValidation
+pub fn quasar_idl_schema::IdlAccountValidation::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for quasar_idl_schema::IdlAccountValidation
+impl core::marker::Send for quasar_idl_schema::IdlAccountValidation
+impl core::marker::Sync for quasar_idl_schema::IdlAccountValidation
+impl core::marker::Unpin for quasar_idl_schema::IdlAccountValidation
+impl core::marker::UnsafeUnpin for quasar_idl_schema::IdlAccountValidation
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl_schema::IdlAccountValidation
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl_schema::IdlAccountValidation
+pub struct quasar_idl_schema::IdlAccountsValidation
+pub quasar_idl_schema::IdlAccountsValidation::accounts: alloc::vec::Vec<quasar_idl_schema::IdlAccountValidation>
+pub quasar_idl_schema::IdlAccountsValidation::rent: alloc::string::String
+impl core::clone::Clone for quasar_idl_schema::IdlAccountsValidation
+pub fn quasar_idl_schema::IdlAccountsValidation::clone(&self) -> quasar_idl_schema::IdlAccountsValidation
+impl core::cmp::Eq for quasar_idl_schema::IdlAccountsValidation
+impl core::cmp::PartialEq for quasar_idl_schema::IdlAccountsValidation
+pub fn quasar_idl_schema::IdlAccountsValidation::eq(&self, &quasar_idl_schema::IdlAccountsValidation) -> bool
+impl core::fmt::Debug for quasar_idl_schema::IdlAccountsValidation
+pub fn quasar_idl_schema::IdlAccountsValidation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for quasar_idl_schema::IdlAccountsValidation
+impl serde_core::ser::Serialize for quasar_idl_schema::IdlAccountsValidation
+pub fn quasar_idl_schema::IdlAccountsValidation::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for quasar_idl_schema::IdlAccountsValidation
+pub fn quasar_idl_schema::IdlAccountsValidation::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for quasar_idl_schema::IdlAccountsValidation
+impl core::marker::Send for quasar_idl_schema::IdlAccountsValidation
+impl core::marker::Sync for quasar_idl_schema::IdlAccountsValidation
+impl core::marker::Unpin for quasar_idl_schema::IdlAccountsValidation
+impl core::marker::UnsafeUnpin for quasar_idl_schema::IdlAccountsValidation
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl_schema::IdlAccountsValidation
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl_schema::IdlAccountsValidation
 pub struct quasar_idl_schema::IdlArg
 pub quasar_idl_schema::IdlArg::codec: core::option::Option<quasar_idl_schema::IdlCodec>
 pub quasar_idl_schema::IdlArg::docs: alloc::vec::Vec<alloc::string::String>
@@ -1718,6 +1849,28 @@ impl core::marker::Unpin for quasar_idl_schema::IdlTypeDef
 impl core::marker::UnsafeUnpin for quasar_idl_schema::IdlTypeDef
 impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl_schema::IdlTypeDef
 impl core::panic::unwind_safe::UnwindSafe for quasar_idl_schema::IdlTypeDef
+pub struct quasar_idl_schema::IdlValidationPlan
+pub quasar_idl_schema::IdlValidationPlan::instructions: alloc::collections::btree::map::BTreeMap<alloc::string::String, quasar_idl_schema::IdlAccountsValidation>
+pub quasar_idl_schema::IdlValidationPlan::version: u32
+impl core::clone::Clone for quasar_idl_schema::IdlValidationPlan
+pub fn quasar_idl_schema::IdlValidationPlan::clone(&self) -> quasar_idl_schema::IdlValidationPlan
+impl core::cmp::Eq for quasar_idl_schema::IdlValidationPlan
+impl core::cmp::PartialEq for quasar_idl_schema::IdlValidationPlan
+pub fn quasar_idl_schema::IdlValidationPlan::eq(&self, &quasar_idl_schema::IdlValidationPlan) -> bool
+impl core::fmt::Debug for quasar_idl_schema::IdlValidationPlan
+pub fn quasar_idl_schema::IdlValidationPlan::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for quasar_idl_schema::IdlValidationPlan
+impl serde_core::ser::Serialize for quasar_idl_schema::IdlValidationPlan
+pub fn quasar_idl_schema::IdlValidationPlan::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for quasar_idl_schema::IdlValidationPlan
+pub fn quasar_idl_schema::IdlValidationPlan::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for quasar_idl_schema::IdlValidationPlan
+impl core::marker::Send for quasar_idl_schema::IdlValidationPlan
+impl core::marker::Sync for quasar_idl_schema::IdlValidationPlan
+impl core::marker::Unpin for quasar_idl_schema::IdlValidationPlan
+impl core::marker::UnsafeUnpin for quasar_idl_schema::IdlValidationPlan
+impl core::panic::unwind_safe::RefUnwindSafe for quasar_idl_schema::IdlValidationPlan
+impl core::panic::unwind_safe::UnwindSafe for quasar_idl_schema::IdlValidationPlan
 pub struct quasar_idl_schema::RemainingAccountItem
 pub quasar_idl_schema::RemainingAccountItem::client_type: alloc::string::String
 pub quasar_idl_schema::RemainingAccountItem::signer: quasar_idl_schema::AccountFlag
@@ -1782,6 +1935,8 @@ impl core::panic::unwind_safe::UnwindSafe for quasar_idl_schema::ScalarRepr
 pub const quasar_idl_schema::CURRENT_SPEC: &str
 pub const quasar_idl_schema::SPEC_SCHEME: &str
 pub const quasar_idl_schema::SUPPORTED_SPEC_MAJOR: u64
+pub const quasar_idl_schema::VALIDATION_EXTENSION_KEY: &str
+pub const quasar_idl_schema::VALIDATION_EXTENSION_VERSION: u32
 pub fn quasar_idl_schema::canonical_abi_json(&quasar_idl_schema::Idl) -> serde_json::error::Result<alloc::vec::Vec<u8>>
 pub fn quasar_idl_schema::canonical_abi_json_pretty(&quasar_idl_schema::Idl) -> serde_json::error::Result<alloc::vec::Vec<u8>>
 pub fn quasar_idl_schema::canonical_json(&quasar_idl_schema::Idl) -> serde_json::error::Result<alloc::vec::Vec<u8>>

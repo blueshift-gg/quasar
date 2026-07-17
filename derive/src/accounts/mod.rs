@@ -151,13 +151,22 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
         ix_arg_extraction: &ix_arg_extraction_call,
         has_instruction_args: typed_plan.has_instruction_args,
     });
-    let epilogue_method = emit::parse::emit_epilogue(&typed_plan);
+    let epilogue_method = emit::parse::emit_epilogue(&typed_plan, &ix_arg_extraction_call);
     let has_epilogue_expr = emit::parse::emit_has_epilogue_typed(&typed_plan);
 
-    let client_macro = crate::client_macro::generate_accounts_macro(name, &typed_plan);
+    let client_macro =
+        crate::client_macro::generate_accounts_macro(name, &input.generics, &typed_plan);
+    let signer_meta_impl = emit_account_signer_constants(
+        name,
+        &typed_plan,
+        &impl_generics_ts,
+        &ty_generics_ts,
+        &where_clause_ts,
+    );
 
     // IDL accounts meta fragment (feature-gated behind `idl-build`)
     let idl_accounts_meta = emit_idl_accounts_meta(name, &typed_plan);
+    let idl_validation_meta = emit_idl_validation_meta(name, &typed_plan);
 
     // Typed `EventCpi` impl (only for structs with an event-authority field).
     // Computed before `emit_accounts_output` moves the generics. A missing
@@ -199,8 +208,114 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
 
     quote::quote! {
         #main_output
+        #signer_meta_impl
         #idl_accounts_meta
+        #idl_validation_meta
         #event_cpi_impl
+    }
+}
+
+/// Resolve behavior-defined signer requirements where the behavior paths and
+/// account types are in scope. The exported client macro can then read the
+/// values through the accounts type without leaking those local paths into the
+/// program module where that macro is invoked.
+fn emit_account_signer_constants(
+    name: &syn::Ident,
+    plan: &resolve::specs::AccountsPlanTyped,
+    impl_generics: &proc_macro2::TokenStream,
+    ty_generics: &proc_macro2::TokenStream,
+    where_clause: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    if !plan.fields.iter().any(|field| field.behavior_init_signer) {
+        return quote! {};
+    }
+
+    let signers = plan.fields.iter().map(emit_account_signer);
+    let count = plan.fields.len();
+    quote! {
+        impl #impl_generics #name #ty_generics #where_clause {
+            #[doc(hidden)]
+            pub const __QUASAR_ACCOUNT_SIGNERS: [bool; #count] = [#(#signers),*];
+        }
+    }
+}
+
+/// Emit the account-meta signer expression from the typed plan. Core account
+/// semantics produce a fixed requirement; delegated init can additionally ask
+/// the one behavior that supplies init params whether the account must sign.
+pub(crate) fn emit_account_signer(field: &resolve::specs::FieldPlan) -> proc_macro2::TokenStream {
+    let fixed = field.signer;
+    if !field.behavior_init_signer {
+        return quote! { #fixed };
+    }
+
+    let krate = crate::krate::lang_path();
+    let ty = &field.effective_ty;
+    let behavior_requirements = field.behaviors.iter().map(|behavior| {
+        let path = &behavior.path;
+        quote! {
+            (<#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::SETS_INIT_PARAMS
+                && <#path::Behavior as #krate::account_behavior::AccountBehavior<#ty>>::INIT_REQUIRES_SIGNER)
+        }
+    });
+
+    quote! { #fixed #(|| #behavior_requirements)* }
+}
+
+/// Emit the compiler's resolved account-validation plan into the opaque IDL
+/// extension channel. The on-chain program never links this host-only data.
+fn emit_idl_validation_meta(
+    name: &syn::Ident,
+    plan: &resolve::specs::AccountsPlanTyped,
+) -> proc_macro2::TokenStream {
+    use resolve::describe::{epilogue, load, post_load, pre_load, rent, tokens};
+
+    let krate = crate::krate::lang_path();
+    let struct_name = name.to_string();
+    let rent = rent(&plan.rent);
+    let accounts = plan.fields.iter().map(|field| {
+        let name = crate::helpers::snake_to_camel(&field.ident.to_string());
+        let account_type = tokens(&field.effective_ty);
+        let wrapper = format!("{:?}", field.wrapper);
+        let writable = field.writable;
+        let signer = emit_account_signer(field);
+        let optional = field.optional;
+        let allow_duplicate = field.dup;
+        let load = load(&field.load);
+        let pre_load: Vec<String> = field.pre_load.iter().map(pre_load).collect();
+        let post_load: Vec<String> = field.post_load.iter().map(post_load).collect();
+        let epilogue: Vec<String> = field.epilogue.iter().map(epilogue).collect();
+
+        quote! {
+            #krate::idl_build::__reexport::IdlAccountValidation {
+                name: #krate::idl_build::s(#name),
+                account_type: #krate::idl_build::s(#account_type),
+                wrapper: #krate::idl_build::s(#wrapper),
+                writable: #writable,
+                signer: #signer,
+                optional: #optional,
+                allow_duplicate: #allow_duplicate,
+                load: #krate::idl_build::s(#load),
+                pre_load: #krate::idl_build::vec![#(#krate::idl_build::s(#pre_load)),*],
+                post_load: #krate::idl_build::vec![#(#krate::idl_build::s(#post_load)),*],
+                epilogue: #krate::idl_build::vec![#(#krate::idl_build::s(#epilogue)),*],
+            }
+        }
+    });
+
+    quote! {
+        #[cfg(feature = "idl-build")]
+        #krate::__private_inventory::submit! {
+            #krate::idl_build::AccountsValidationFragment(|| {
+                (
+                    #krate::idl_build::s(#struct_name),
+                    #krate::idl_build::__reexport::IdlAccountsValidation {
+                        rent: #krate::idl_build::s(#rent),
+                        accounts: #krate::idl_build::vec![#(#accounts),*],
+                    },
+                )
+            })
+        }
     }
 }
 
@@ -283,13 +398,37 @@ fn emit_idl_accounts_meta(
             let field_name = crate::helpers::snake_to_camel(&fp.ident.to_string());
             let optional = fp.optional;
             let writable = fp.writable;
-            let signer = fp.signer;
+            let signer = emit_account_signer(fp);
 
-            let resolver_tokens = fp
-                .idl_resolver
-                .as_ref()
-                .map(emit_idl_resolver)
-                .unwrap_or_else(|| quote! { #krate::idl_build::__reexport::IdlResolver::Input {} });
+            let resolver_tokens = if let Some(resolver) = fp.idl_resolver.as_ref() {
+                emit_idl_resolver(resolver)
+            } else if fp.behaviors.is_empty() {
+                quote! { #krate::idl_build::__reexport::IdlResolver::Input {} }
+            } else {
+                let field_ty = &fp.effective_ty;
+                let candidates = fp.behaviors.iter().map(|behavior| {
+                    let path = &behavior.path;
+                    let args = behavior.idl_account_args.iter().map(|arg| {
+                        let key = &arg.key;
+                        let field = &arg.field;
+                        quote! { (#key, #field) }
+                    });
+                    quote! {
+                        #krate::idl_build::behavior_resolver(
+                            <#path::Behavior as #krate::account_behavior::AccountBehavior<#field_ty>>::IDL_RESOLVER,
+                            &[#(#args),*],
+                        )
+                    }
+                });
+                quote! {
+                    #krate::idl_build::one_behavior_resolver(
+                        #field_name,
+                        [#(#candidates),*],
+                    ).unwrap_or_else(|| {
+                        #krate::idl_build::__reexport::IdlResolver::Input {}
+                    })
+                }
+            };
             let node_docs = crate::helpers::docs_tokens_from_lines(&fp.docs);
 
             quote! {
@@ -340,14 +479,7 @@ fn emit_idl_resolver(resolver: &resolve::specs::IdlResolverPlan) -> proc_macro2:
             }
         }
         IdlResolverPlan::Pda { account_ty, seeds } => {
-            let mut seed_tokens = Vec::with_capacity(seeds.len() + 1);
-            seed_tokens.push(quote! {
-                #krate::idl_build::__reexport::IdlPdaSeed::Const {
-                    value: #krate::idl_build::Vec::from(
-                        <#account_ty as #krate::traits::HasSeeds>::SEED_PREFIX
-                    ),
-                }
-            });
+            let mut seed_tokens = Vec::with_capacity(seeds.len());
             for seed in seeds {
                 seed_tokens.push(emit_idl_pda_seed(seed));
             }
@@ -355,7 +487,18 @@ fn emit_idl_resolver(resolver: &resolve::specs::IdlResolverPlan) -> proc_macro2:
             quote! {
                 #krate::idl_build::__reexport::IdlResolver::Pda {
                     program: #krate::idl_build::__reexport::IdlPdaProgram::ProgramId {},
-                    seeds: #krate::idl_build::vec![#(#seed_tokens),*],
+                    seeds: {
+                        let mut seeds = #krate::idl_build::Vec::new();
+                        if <#account_ty as #krate::traits::HasSeeds>::HAS_SEED_PREFIX {
+                            seeds.push(#krate::idl_build::__reexport::IdlPdaSeed::Const {
+                                value: #krate::idl_build::Vec::from(
+                                    <#account_ty as #krate::traits::HasSeeds>::SEED_PREFIX
+                                ),
+                            });
+                        }
+                        #(seeds.push(#seed_tokens);)*
+                        seeds
+                    },
                 }
             }
         }

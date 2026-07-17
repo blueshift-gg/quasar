@@ -42,8 +42,16 @@
           "type": { "defined": { "name": "VaultConfig" } }
         },
         { "name": "nonce", "type": "u16" },
-        { "name": "beneficiary", "type": "pubkey" }
+        { "name": "beneficiary", "type": "pubkey" },
+        { "name": "signers", "type": { "array": ["pubkey", 2] } }
       ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "ForeignVault",
+      "discriminator": [7, 8],
+      "space": { "discriminator": 2, "min": 75, "max": null }
     }
   ],
   "types": [
@@ -51,9 +59,49 @@
       "name": "VaultConfig",
       "kind": "struct",
       "fields": [
-        { "name": "limit", "type": "u64" },
+        { "name": "limits", "type": { "array": ["u64", 2] } },
+        {
+          "name": "windows",
+          "type": {
+            "array": [{ "defined": { "name": "Window" } }, 2]
+          }
+        },
         { "name": "enabled", "type": "bool" }
-      ]
+      ],
+      "layout": {
+        "kind": "fixed",
+        "fields": ["limits", "windows", "enabled"]
+      }
+    },
+    {
+      "name": "Window",
+      "kind": "struct",
+      "fields": [
+        { "name": "min", "type": "u32" },
+        { "name": "max", "type": "u32" }
+      ],
+      "layout": { "kind": "fixed", "fields": ["min", "max"] }
+    },
+    {
+      "name": "ForeignVault",
+      "kind": "struct",
+      "fields": [
+        { "name": "authority", "type": "pubkey" },
+        {
+          "name": "config",
+          "type": { "defined": { "name": "VaultConfig" } }
+        },
+        {
+          "name": "matrix",
+          "type": {
+            "array": [{ "array": ["u16", 2] }, 2]
+          }
+        }
+      ],
+      "layout": {
+        "kind": "fixed",
+        "fields": ["authority", "config", "matrix"]
+      }
     }
   ]
 }

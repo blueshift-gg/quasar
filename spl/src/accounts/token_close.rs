@@ -97,6 +97,11 @@ macro_rules! impl_token_close_behavior {
             const RUN_EXIT: bool = true;
 
             #[inline(always)]
+            fn uses_exit_signer_arg<const KEY: u64>() -> bool {
+                KEY == quasar_lang::account_behavior::behavior_arg_key_hash("authority")
+            }
+
+            #[inline(always)]
             fn exit<'a>(account: &mut $wrapper, args: &Args<'a>) -> Result<(), ProgramError> {
                 // SAFETY: The exit hook has exclusive access to the loaded account wrapper.
                 let view = unsafe { <$wrapper as AccountLoad>::to_account_view_mut(account) };
@@ -105,6 +110,26 @@ macro_rules! impl_token_close_behavior {
                     view,
                     args.dest,
                     args.authority,
+                )
+            }
+
+            #[inline(always)]
+            fn exit_signed<'a, S>(
+                account: &mut $wrapper,
+                args: &Args<'a>,
+                signer: &S,
+            ) -> Result<(), ProgramError>
+            where
+                S: quasar_lang::cpi::CpiSignerSeeds + ?Sized,
+            {
+                // SAFETY: The exit hook has exclusive access to the loaded account wrapper.
+                let view = unsafe { <$wrapper as AccountLoad>::to_account_view_mut(account) };
+                crate::exit::close_token_account_signed(
+                    args.token_program,
+                    view,
+                    args.dest,
+                    args.authority,
+                    signer,
                 )
             }
         }

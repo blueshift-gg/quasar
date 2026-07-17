@@ -380,40 +380,47 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
     )?;
     progress.done("Scaffold files written");
 
-    // Optional git setup (unless already in a git repo)
-    progress.step("Configuring git...");
-    maybe_initialize_git_repo(&name, git_setup);
-    progress.done("Git setup complete");
+    // Optional git setup (unless already in a git repo). Do not report work
+    // that `--no-git` explicitly disabled.
+    if !matches!(git_setup, GitSetup::Skip) {
+        progress.step("Configuring git...");
+        maybe_initialize_git_repo(&name, git_setup);
+        progress.done("Git setup complete");
+    }
 
-    // Save preferences for next time (disable animation after first run)
-    let saved_git_default = if no_git {
-        globals.defaults.git.clone()
-    } else {
-        Some(git_setup.to_string())
-    };
-    let saved_pm = package_manager
-        .as_ref()
-        .map(|pm| pm.to_string())
-        .or_else(|| globals.defaults.package_manager.clone());
+    // Interactive choices become defaults for the next interactive run.
+    // `--yes` is automation: it may consume defaults, but must not mutate
+    // unrelated global state as a side effect of scaffolding a project.
+    if !skip_prompts {
+        let saved_git_default = if no_git {
+            globals.defaults.git.clone()
+        } else {
+            Some(git_setup.to_string())
+        };
+        let saved_pm = package_manager
+            .as_ref()
+            .map(|pm| pm.to_string())
+            .or_else(|| globals.defaults.package_manager.clone());
 
-    let new_globals = GlobalConfig {
-        defaults: GlobalDefaults {
-            toolchain: Some(toolchain.to_string()),
-            test_language: Some(test_language.to_string()),
-            rust_framework: rust_framework.map(|f| f.to_string()),
-            ts_sdk: ts_sdk.map(|s| s.to_string()),
-            template: Some(template.to_string()),
-            git: saved_git_default,
-            package_manager: saved_pm,
-        },
-        ui: UiConfig {
-            animation: false,
-            ..globals.ui
-        },
-    };
-    progress.step("Saving CLI defaults...");
-    let _ = new_globals.save(); // best-effort
-    progress.done("CLI defaults saved");
+        let new_globals = GlobalConfig {
+            defaults: GlobalDefaults {
+                toolchain: Some(toolchain.to_string()),
+                test_language: Some(test_language.to_string()),
+                rust_framework: rust_framework.map(|f| f.to_string()),
+                ts_sdk: ts_sdk.map(|s| s.to_string()),
+                template: Some(template.to_string()),
+                git: saved_git_default,
+                package_manager: saved_pm,
+            },
+            ui: UiConfig {
+                animation: false,
+                ..globals.ui
+            },
+        };
+        progress.step("Saving CLI defaults...");
+        let _ = new_globals.save(); // best-effort
+        progress.done("CLI defaults saved");
+    }
     progress.clear();
 
     // Success message
@@ -446,12 +453,14 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
         );
     }
     println!();
-    println!(
-        "  {} saved to {}",
-        style::dim("Preferences"),
-        style::dim(&GlobalConfig::path().display().to_string()),
-    );
-    println!();
+    if !skip_prompts {
+        println!(
+            "  {} saved to {}",
+            style::dim("Preferences"),
+            style::dim(&GlobalConfig::path().display().to_string()),
+        );
+        println!();
+    }
 
     Ok(())
 }

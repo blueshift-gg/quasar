@@ -84,7 +84,7 @@ impl CloseVault {
 pub struct EmitMoved {
     pub signer: Signer,
     pub event_authority: EventAuthority,
-    pub program: Program<RenameConsumer>,
+    pub program: Program<RenameConsumerProgram>,
 }
 impl EmitMoved {
     #[inline(always)]

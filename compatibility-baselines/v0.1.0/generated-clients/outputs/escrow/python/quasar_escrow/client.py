@@ -134,24 +134,24 @@ def create_make_instruction(input: MakeInput) -> Instruction:
     accounts_map = {}
     accounts = []
     accounts_map["maker"] = input.maker
-    accounts.append(AccountMeta(accounts_map["maker"], is_signer=True, is_writable=True))
-    accounts_map["escrow"] = Pubkey.find_program_address([bytes([101, 115, 99, 114, 111, 119]), bytes(accounts_map["maker"])], PROGRAM_ID)[0]
-    accounts.append(AccountMeta(accounts_map["escrow"], is_signer=False, is_writable=True))
     accounts_map["mintA"] = input.mint_a
-    accounts.append(AccountMeta(accounts_map["mintA"], is_signer=False, is_writable=False))
     accounts_map["mintB"] = input.mint_b
-    accounts.append(AccountMeta(accounts_map["mintB"], is_signer=False, is_writable=False))
     accounts_map["makerTaA"] = input.maker_ta_a
-    accounts.append(AccountMeta(accounts_map["makerTaA"], is_signer=False, is_writable=True))
     accounts_map["makerTaB"] = input.maker_ta_b
-    accounts.append(AccountMeta(accounts_map["makerTaB"], is_signer=True, is_writable=True))
     accounts_map["vaultTaA"] = input.vault_ta_a
-    accounts.append(AccountMeta(accounts_map["vaultTaA"], is_signer=True, is_writable=True))
     accounts_map["rent"] = Pubkey.from_string("SysvarRent111111111111111111111111111111111")
-    accounts.append(AccountMeta(accounts_map["rent"], is_signer=False, is_writable=False))
     accounts_map["tokenProgram"] = Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
-    accounts.append(AccountMeta(accounts_map["tokenProgram"], is_signer=False, is_writable=False))
     accounts_map["systemProgram"] = Pubkey.from_string("11111111111111111111111111111111")
+    accounts_map["escrow"] = Pubkey.find_program_address([bytes([101, 115, 99, 114, 111, 119]), bytes(accounts_map["maker"])], PROGRAM_ID)[0]
+    accounts.append(AccountMeta(accounts_map["maker"], is_signer=True, is_writable=True))
+    accounts.append(AccountMeta(accounts_map["escrow"], is_signer=False, is_writable=True))
+    accounts.append(AccountMeta(accounts_map["mintA"], is_signer=False, is_writable=False))
+    accounts.append(AccountMeta(accounts_map["mintB"], is_signer=False, is_writable=False))
+    accounts.append(AccountMeta(accounts_map["makerTaA"], is_signer=False, is_writable=True))
+    accounts.append(AccountMeta(accounts_map["makerTaB"], is_signer=True, is_writable=True))
+    accounts.append(AccountMeta(accounts_map["vaultTaA"], is_signer=True, is_writable=True))
+    accounts.append(AccountMeta(accounts_map["rent"], is_signer=False, is_writable=False))
+    accounts.append(AccountMeta(accounts_map["tokenProgram"], is_signer=False, is_writable=False))
     accounts.append(AccountMeta(accounts_map["systemProgram"], is_signer=False, is_writable=False))
     data = bytearray(MAKE_DISCRIMINATOR)
     data += struct.pack("<Q", input.deposit)
@@ -176,28 +176,28 @@ def create_take_instruction(input: TakeInput) -> Instruction:
     accounts_map = {}
     accounts = []
     accounts_map["taker"] = input.taker
-    accounts.append(AccountMeta(accounts_map["taker"], is_signer=True, is_writable=True))
-    accounts_map["escrow"] = Pubkey.find_program_address([bytes([101, 115, 99, 114, 111, 119]), bytes(accounts_map["maker"])], PROGRAM_ID)[0]
-    accounts.append(AccountMeta(accounts_map["escrow"], is_signer=False, is_writable=True))
     accounts_map["maker"] = input.maker
-    accounts.append(AccountMeta(accounts_map["maker"], is_signer=False, is_writable=True))
     accounts_map["mintA"] = input.mint_a
-    accounts.append(AccountMeta(accounts_map["mintA"], is_signer=False, is_writable=False))
     accounts_map["mintB"] = input.mint_b
-    accounts.append(AccountMeta(accounts_map["mintB"], is_signer=False, is_writable=False))
     accounts_map["takerTaA"] = input.taker_ta_a
-    accounts.append(AccountMeta(accounts_map["takerTaA"], is_signer=True, is_writable=True))
     accounts_map["takerTaB"] = input.taker_ta_b
-    accounts.append(AccountMeta(accounts_map["takerTaB"], is_signer=False, is_writable=True))
     accounts_map["makerTaB"] = input.maker_ta_b
-    accounts.append(AccountMeta(accounts_map["makerTaB"], is_signer=True, is_writable=True))
     accounts_map["vaultTaA"] = input.vault_ta_a
-    accounts.append(AccountMeta(accounts_map["vaultTaA"], is_signer=False, is_writable=True))
     accounts_map["rent"] = Pubkey.from_string("SysvarRent111111111111111111111111111111111")
-    accounts.append(AccountMeta(accounts_map["rent"], is_signer=False, is_writable=False))
     accounts_map["tokenProgram"] = Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
-    accounts.append(AccountMeta(accounts_map["tokenProgram"], is_signer=False, is_writable=False))
     accounts_map["systemProgram"] = Pubkey.from_string("11111111111111111111111111111111")
+    accounts_map["escrow"] = Pubkey.find_program_address([bytes([101, 115, 99, 114, 111, 119]), bytes(accounts_map["maker"])], PROGRAM_ID)[0]
+    accounts.append(AccountMeta(accounts_map["taker"], is_signer=True, is_writable=True))
+    accounts.append(AccountMeta(accounts_map["escrow"], is_signer=False, is_writable=True))
+    accounts.append(AccountMeta(accounts_map["maker"], is_signer=False, is_writable=True))
+    accounts.append(AccountMeta(accounts_map["mintA"], is_signer=False, is_writable=False))
+    accounts.append(AccountMeta(accounts_map["mintB"], is_signer=False, is_writable=False))
+    accounts.append(AccountMeta(accounts_map["takerTaA"], is_signer=True, is_writable=True))
+    accounts.append(AccountMeta(accounts_map["takerTaB"], is_signer=False, is_writable=True))
+    accounts.append(AccountMeta(accounts_map["makerTaB"], is_signer=True, is_writable=True))
+    accounts.append(AccountMeta(accounts_map["vaultTaA"], is_signer=False, is_writable=True))
+    accounts.append(AccountMeta(accounts_map["rent"], is_signer=False, is_writable=False))
+    accounts.append(AccountMeta(accounts_map["tokenProgram"], is_signer=False, is_writable=False))
     accounts.append(AccountMeta(accounts_map["systemProgram"], is_signer=False, is_writable=False))
     data = TAKE_DISCRIMINATOR
     return Instruction(PROGRAM_ID, data, accounts)
@@ -215,20 +215,20 @@ def create_refund_instruction(input: RefundInput) -> Instruction:
     accounts_map = {}
     accounts = []
     accounts_map["maker"] = input.maker
-    accounts.append(AccountMeta(accounts_map["maker"], is_signer=True, is_writable=True))
-    accounts_map["escrow"] = Pubkey.find_program_address([bytes([101, 115, 99, 114, 111, 119]), bytes(accounts_map["maker"])], PROGRAM_ID)[0]
-    accounts.append(AccountMeta(accounts_map["escrow"], is_signer=False, is_writable=True))
     accounts_map["mintA"] = input.mint_a
-    accounts.append(AccountMeta(accounts_map["mintA"], is_signer=False, is_writable=False))
     accounts_map["makerTaA"] = input.maker_ta_a
-    accounts.append(AccountMeta(accounts_map["makerTaA"], is_signer=True, is_writable=True))
     accounts_map["vaultTaA"] = input.vault_ta_a
-    accounts.append(AccountMeta(accounts_map["vaultTaA"], is_signer=False, is_writable=True))
     accounts_map["rent"] = Pubkey.from_string("SysvarRent111111111111111111111111111111111")
-    accounts.append(AccountMeta(accounts_map["rent"], is_signer=False, is_writable=False))
     accounts_map["tokenProgram"] = Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
-    accounts.append(AccountMeta(accounts_map["tokenProgram"], is_signer=False, is_writable=False))
     accounts_map["systemProgram"] = Pubkey.from_string("11111111111111111111111111111111")
+    accounts_map["escrow"] = Pubkey.find_program_address([bytes([101, 115, 99, 114, 111, 119]), bytes(accounts_map["maker"])], PROGRAM_ID)[0]
+    accounts.append(AccountMeta(accounts_map["maker"], is_signer=True, is_writable=True))
+    accounts.append(AccountMeta(accounts_map["escrow"], is_signer=False, is_writable=True))
+    accounts.append(AccountMeta(accounts_map["mintA"], is_signer=False, is_writable=False))
+    accounts.append(AccountMeta(accounts_map["makerTaA"], is_signer=True, is_writable=True))
+    accounts.append(AccountMeta(accounts_map["vaultTaA"], is_signer=False, is_writable=True))
+    accounts.append(AccountMeta(accounts_map["rent"], is_signer=False, is_writable=False))
+    accounts.append(AccountMeta(accounts_map["tokenProgram"], is_signer=False, is_writable=False))
     accounts.append(AccountMeta(accounts_map["systemProgram"], is_signer=False, is_writable=False))
     data = REFUND_DISCRIMINATOR
     return Instruction(PROGRAM_ID, data, accounts)

@@ -2,6 +2,7 @@ use {
     crate::helpers::*,
     quasar_svm::{Instruction, Pubkey},
     quasar_test_token_cpi::cpi::*,
+    solana_program_pack::Pack,
 };
 
 // sweep only with SPL Token.
@@ -578,5 +579,75 @@ fn sweep_and_close_interface_wrong_authority() {
     assert!(
         result.is_err(),
         "sweep + close Interface wrong authority should fail"
+    );
+}
+
+#[test]
+fn pda_sweep_and_close_runs_token_exits_before_authority_close() {
+    let mut svm = svm_cpi();
+    let owner = Pubkey::new_unique();
+    let (authority, bump) =
+        Pubkey::find_program_address(&[b"lifecycle", owner.as_ref()], &quasar_test_token_cpi::ID);
+    let mint_key = Pubkey::new_unique();
+    let source_key = Pubkey::new_unique();
+    let receiver_key = Pubkey::new_unique();
+    let token_program = spl_token_program_id();
+
+    let instruction: Instruction = PdaSweepAndCloseInstruction {
+        owner,
+        authority,
+        source: source_key,
+        receiver: receiver_key,
+        mint: mint_key,
+        token_program,
+    }
+    .into();
+
+    let mut authority_data = vec![0; 34];
+    authority_data[0] = 2;
+    authority_data[1..33].copy_from_slice(owner.as_ref());
+    authority_data[33] = bump;
+    let authority_lamports = 1_000_000;
+    let source = token_account(source_key, mint_key, authority, 500, token_program);
+    let source_lamports = source.lamports;
+    let result = svm.process_instruction(
+        &instruction,
+        &[
+            signer_account(owner),
+            raw_account(
+                authority,
+                authority_lamports,
+                authority_data,
+                quasar_test_token_cpi::ID,
+            ),
+            source,
+            token_account(receiver_key, mint_key, owner, 0, token_program),
+            mint_account(mint_key, owner, 6, token_program),
+        ],
+    );
+    result.assert_success();
+
+    let receiver = result.account(&receiver_key).expect("receiver result");
+    assert_eq!(
+        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+            .expect("decode receiver")
+            .amount,
+        500
+    );
+    let owner_result = result.account(&owner).expect("owner result");
+    assert_eq!(
+        owner_result.lamports,
+        1_000_000 + authority_lamports + source_lamports
+    );
+    assert_eq!(
+        result
+            .account(&authority)
+            .expect("closed authority")
+            .lamports,
+        0
+    );
+    assert_eq!(
+        result.account(&source_key).expect("closed source").lamports,
+        0
     );
 }

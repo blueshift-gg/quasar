@@ -92,4 +92,11 @@ mod quasar_test_token_validate {
     ) -> Result<(), ProgramError> {
         ctx.accounts.handler()
     }
+
+    #[instruction(discriminator = 14)]
+    pub fn validate_mint_program_only(
+        ctx: Ctx<ValidateMintProgramOnly>,
+    ) -> Result<(), ProgramError> {
+        ctx.accounts.handler()
+    }
 }

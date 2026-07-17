@@ -60,6 +60,8 @@ pub struct AccountMetaSurface {
     pub pda_seeds: Vec<String>,
     #[serde(skip)]
     pub(super) graph_relevant: bool,
+    #[serde(skip)]
+    pub(super) graph_connector: bool,
 }
 
 impl<'de> Deserialize<'de> for AccountMetaSurface {
@@ -89,6 +91,7 @@ impl<'de> Deserialize<'de> for AccountMetaSurface {
             resolver_refs: wire.resolver_refs,
             pda_seeds: wire.pda_seeds,
             graph_relevant: resolver_is_graph_relevant(&resolver),
+            graph_connector: resolver_is_graph_connector(&resolver),
         })
     }
 }
@@ -256,6 +259,7 @@ impl AccountMetaSurface {
             resolver_refs: resolver_refs(&account.resolver),
             pda_seeds: pda_seeds(&account.resolver),
             graph_relevant: resolver_is_graph_relevant(&account.resolver),
+            graph_connector: resolver_is_graph_connector(&account.resolver),
         }
     }
 
@@ -272,13 +276,37 @@ fn resolver_is_graph_relevant(resolver: &IdlResolver) -> bool {
     match resolver {
         IdlResolver::Const { .. }
         | IdlResolver::KnownProgram { .. }
-        | IdlResolver::Remaining { .. } => false,
-        IdlResolver::Optional { resolver } => resolver_is_graph_relevant(resolver),
-        IdlResolver::Input {}
-        | IdlResolver::Pda { .. }
+        | IdlResolver::Remaining { .. }
+        // An ATA is a client-owned token endpoint more often than program
+        // state. It can be entirely valid for it to sit outside the program's
+        // PDA graph, so it must not create an L001 component by itself.
         | IdlResolver::AssociatedToken { .. }
+        // A caller-controlled input may intentionally be independent: payer,
+        // recipient, permissionless depositor, or CPI passthrough. With no IDL
+        // relationship to inspect, treating it as an isolated graph component
+        // produces warnings the program cannot address declaratively.
+        | IdlResolver::Input {} => false,
+        IdlResolver::Optional { resolver } => resolver_is_graph_relevant(resolver),
+        IdlResolver::Pda { .. } | IdlResolver::AccountField { .. } | IdlResolver::Arg { .. } => {
+            true
+        }
+    }
+}
+
+fn resolver_is_graph_connector(resolver: &IdlResolver) -> bool {
+    match resolver {
+        // Inputs can connect multiple derived accounts that share an
+        // authority. ATAs are bridge nodes: their mint/owner relationships
+        // connect real state without making every client token endpoint a
+        // standalone L001 component.
+        IdlResolver::Input {} | IdlResolver::AssociatedToken { .. } => true,
+        IdlResolver::Optional { resolver } => resolver_is_graph_connector(resolver),
+        IdlResolver::Const { .. }
+        | IdlResolver::KnownProgram { .. }
+        | IdlResolver::Pda { .. }
         | IdlResolver::AccountField { .. }
-        | IdlResolver::Arg { .. } => true,
+        | IdlResolver::Arg { .. }
+        | IdlResolver::Remaining { .. } => false,
     }
 }
 
@@ -423,13 +451,13 @@ fn collect_resolver_refs(resolver: &IdlResolver, refs: &mut Vec<String>) {
         IdlResolver::AssociatedToken {
             mint,
             owner,
-            token_program,
+            token_program: _,
         } => {
+            // The mint and owner are semantic relationships. The Token
+            // Program is shared infrastructure and must not merge otherwise
+            // unrelated account groups.
             refs.push(mint.clone());
             refs.push(owner.clone());
-            if let Some(token_program) = token_program {
-                refs.push(token_program.clone());
-            }
         }
         IdlResolver::AccountField { account, .. } => refs.push(account.clone()),
         IdlResolver::Optional { resolver } => collect_resolver_refs(resolver, refs),
@@ -539,6 +567,7 @@ mod tests {
             resolver_refs: Vec::new(),
             pda_seeds: Vec::new(),
             graph_relevant: false,
+            graph_connector: false,
         };
 
         let json = serde_json::to_string(&account).expect("serialize account surface");

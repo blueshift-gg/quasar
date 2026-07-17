@@ -95,10 +95,10 @@
         "kind": "append",
         "name": "remainingAccounts",
         "min": 0,
-        "max": null,
+        "max": 10,
         "item": {
           "clientType": "accountMeta",
-          "signer": "input",
+          "signer": true,
           "writable": "input"
         },
         "policy": {
@@ -363,10 +363,10 @@
         "kind": "append",
         "name": "remainingAccounts",
         "min": 0,
-        "max": null,
+        "max": 10,
         "item": {
           "clientType": "accountMeta",
-          "signer": "input",
+          "signer": true,
           "writable": "input"
         },
         "policy": {
@@ -559,8 +559,256 @@
       "msg": "Return data was set by a different program than the one invoked."
     }
   ],
+  "extensions": {
+    "quasar:validationPlan": {
+      "instructions": {
+        "create": {
+          "accounts": [
+            {
+              "accountType": "Signer",
+              "allowDuplicate": false,
+              "epilogue": [],
+              "load": "Fixed(validates=[])",
+              "name": "creator",
+              "optional": false,
+              "postLoad": [],
+              "preLoad": [],
+              "signer": true,
+              "wrapper": "Signer",
+              "writable": true
+            },
+            {
+              "accountType": "Account < MultisigConfig >",
+              "allowDuplicate": false,
+              "epilogue": [],
+              "load": "Fixed(validates=[])",
+              "name": "config",
+              "optional": false,
+              "postLoad": [],
+              "preLoad": [
+                "VerifyAddress(expr=`MultisigConfig :: seeds(creator.address())` error=None)",
+                "Init::Program(payer=creator space_ty=`Account < MultisigConfig >` idempotent=false verified_address=Some(expr=`MultisigConfig :: seeds(creator.address())` error=None))"
+              ],
+              "signer": false,
+              "wrapper": "Account",
+              "writable": true
+            },
+            {
+              "accountType": "Sysvar < Rent >",
+              "allowDuplicate": false,
+              "epilogue": [],
+              "load": "Fixed(validates=[])",
+              "name": "rent",
+              "optional": false,
+              "postLoad": [],
+              "preLoad": [],
+              "signer": false,
+              "wrapper": "Sysvar",
+              "writable": false
+            },
+            {
+              "accountType": "Program < SystemProgram >",
+              "allowDuplicate": false,
+              "epilogue": [],
+              "load": "Fixed(validates=[])",
+              "name": "systemProgram",
+              "optional": false,
+              "postLoad": [],
+              "preLoad": [],
+              "signer": false,
+              "wrapper": "Program",
+              "writable": false
+            }
+          ],
+          "rent": "FromSysvarField(field=rent)"
+        },
+        "deposit": {
+          "accounts": [
+            {
+              "accountType": "Signer",
+              "allowDuplicate": false,
+              "epilogue": [],
+              "load": "Fixed(validates=[])",
+              "name": "depositor",
+              "optional": false,
+              "postLoad": [],
+              "preLoad": [],
+              "signer": true,
+              "wrapper": "Signer",
+              "writable": true
+            },
+            {
+              "accountType": "Account < MultisigConfig >",
+              "allowDuplicate": false,
+              "epilogue": [],
+              "load": "Fixed(validates=[])",
+              "name": "config",
+              "optional": false,
+              "postLoad": [],
+              "preLoad": [],
+              "signer": false,
+              "wrapper": "Account",
+              "writable": false
+            },
+            {
+              "accountType": "UncheckedAccount",
+              "allowDuplicate": false,
+              "epilogue": [],
+              "load": "Fixed(validates=[])",
+              "name": "vault",
+              "optional": false,
+              "postLoad": [
+                "VerifyExistingAddress(expr=`MultisigVaultPda :: seeds(config.address())` error=None)"
+              ],
+              "preLoad": [],
+              "signer": false,
+              "wrapper": "UncheckedAccount",
+              "writable": true
+            },
+            {
+              "accountType": "Program < SystemProgram >",
+              "allowDuplicate": false,
+              "epilogue": [],
+              "load": "Fixed(validates=[])",
+              "name": "systemProgram",
+              "optional": false,
+              "postLoad": [],
+              "preLoad": [],
+              "signer": false,
+              "wrapper": "Program",
+              "writable": false
+            }
+          ],
+          "rent": "NotNeeded"
+        },
+        "execute_transfer": {
+          "accounts": [
+            {
+              "accountType": "Account < MultisigConfig >",
+              "allowDuplicate": false,
+              "epilogue": [],
+              "load": "Fixed(validates=[])",
+              "name": "config",
+              "optional": false,
+              "postLoad": [
+                "VerifyExistingAddress(expr=`MultisigConfig :: seeds(creator.address())` error=None)",
+                "UserCheck(HasOne targets=[creator] error=None)"
+              ],
+              "preLoad": [],
+              "signer": false,
+              "wrapper": "Account",
+              "writable": false
+            },
+            {
+              "accountType": "UncheckedAccount",
+              "allowDuplicate": false,
+              "epilogue": [],
+              "load": "Fixed(validates=[])",
+              "name": "creator",
+              "optional": false,
+              "postLoad": [],
+              "preLoad": [],
+              "signer": false,
+              "wrapper": "UncheckedAccount",
+              "writable": false
+            },
+            {
+              "accountType": "UncheckedAccount",
+              "allowDuplicate": false,
+              "epilogue": [],
+              "load": "Fixed(validates=[])",
+              "name": "vault",
+              "optional": false,
+              "postLoad": [
+                "VerifyExistingAddress(expr=`MultisigVaultPda :: seeds(config.address())` error=None)"
+              ],
+              "preLoad": [],
+              "signer": false,
+              "wrapper": "UncheckedAccount",
+              "writable": true
+            },
+            {
+              "accountType": "UncheckedAccount",
+              "allowDuplicate": false,
+              "epilogue": [],
+              "load": "Fixed(validates=[])",
+              "name": "recipient",
+              "optional": false,
+              "postLoad": [],
+              "preLoad": [],
+              "signer": false,
+              "wrapper": "UncheckedAccount",
+              "writable": true
+            },
+            {
+              "accountType": "Program < SystemProgram >",
+              "allowDuplicate": false,
+              "epilogue": [],
+              "load": "Fixed(validates=[])",
+              "name": "systemProgram",
+              "optional": false,
+              "postLoad": [],
+              "preLoad": [],
+              "signer": false,
+              "wrapper": "Program",
+              "writable": false
+            }
+          ],
+          "rent": "NotNeeded"
+        },
+        "set_label": {
+          "accounts": [
+            {
+              "accountType": "Signer",
+              "allowDuplicate": false,
+              "epilogue": [],
+              "load": "Fixed(validates=[])",
+              "name": "creator",
+              "optional": false,
+              "postLoad": [],
+              "preLoad": [],
+              "signer": true,
+              "wrapper": "Signer",
+              "writable": true
+            },
+            {
+              "accountType": "Account < MultisigConfig >",
+              "allowDuplicate": false,
+              "epilogue": [],
+              "load": "Fixed(validates=[])",
+              "name": "config",
+              "optional": false,
+              "postLoad": [
+                "VerifyExistingAddress(expr=`MultisigConfig :: seeds(creator.address())` error=None)",
+                "UserCheck(HasOne targets=[creator] error=None)"
+              ],
+              "preLoad": [],
+              "signer": false,
+              "wrapper": "Account",
+              "writable": true
+            },
+            {
+              "accountType": "Program < SystemProgram >",
+              "allowDuplicate": false,
+              "epilogue": [],
+              "load": "Fixed(validates=[])",
+              "name": "systemProgram",
+              "optional": false,
+              "postLoad": [],
+              "preLoad": [],
+              "signer": false,
+              "wrapper": "Program",
+              "writable": false
+            }
+          ],
+          "rent": "NotNeeded"
+        }
+      },
+      "version": 1
+    }
+  },
   "hashes": {
-    "idl": "7efbbc13016b9671d251234001d16ac2a08a1f3af98ae6f71826febc70bb6e79",
-    "abi": "255332d70136c0c38d5f14ce7ba6795dbd251214096f896e9f18d876b0297c98"
+    "idl": "290b2ffee70c390e16ced65834ea10e918b7f5ee044fea23c5410ec58f4f2dea",
+    "abi": "4771408386c22aa8f00a7c97d092b2891fa4919be6e1c71439949a873aaf2383"
   }
 }

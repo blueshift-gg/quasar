@@ -29,6 +29,53 @@ pub mod __reexport {
 
 use quasar_idl_schema::*;
 
+/// Resolve one protocol behavior's address metadata against the account-field
+/// arguments used by a concrete `#[account(...)]` declaration.
+pub fn behavior_resolver(
+    resolver: Option<crate::account_behavior::BehaviorIdlResolver>,
+    account_args: &[(&str, &str)],
+) -> Option<IdlResolver> {
+    let account = |argument: &str| {
+        account_args
+            .iter()
+            .find_map(|(key, field)| (*key == argument).then(|| String::from(*field)))
+    };
+
+    match resolver? {
+        crate::account_behavior::BehaviorIdlResolver::AssociatedToken {
+            mint,
+            owner,
+            token_program,
+        } => Some(IdlResolver::AssociatedToken {
+            mint: account(mint)?,
+            owner: account(owner)?,
+            token_program: match token_program {
+                Some(argument) => Some(account(argument)?),
+                None => None,
+            },
+        }),
+    }
+}
+
+/// Select the only behavior-defined address recipe for an account field.
+///
+/// Multiple recipes are ambiguous and indicate conflicting behavior metadata,
+/// so IDL generation fails instead of silently picking one.
+pub fn one_behavior_resolver<const N: usize>(
+    field: &str,
+    resolvers: [Option<IdlResolver>; N],
+) -> Option<IdlResolver> {
+    let mut selected = None;
+    for resolver in resolvers.into_iter().flatten() {
+        assert!(
+            selected.is_none(),
+            "idl-build: account field `{field}` has multiple behavior-defined address resolvers"
+        );
+        selected = Some(resolver);
+    }
+    selected
+}
+
 /// Fragment submitted by `#[account]`; uses a fn pointer to avoid static
 /// alloc.
 pub struct AccountFragment {
@@ -79,12 +126,17 @@ pub enum InstructionDiscriminatorSource {
 /// IDL.
 pub struct AccountsMetaFragment(pub fn() -> (String, Vec<IdlAccountNode>));
 
+/// Fragment submitted by `#[derive(Accounts)]`; carries the compiler's
+/// resolved validation and lifecycle plan for audit tooling.
+pub struct AccountsValidationFragment(pub fn() -> (String, IdlAccountsValidation));
+
 inventory::collect!(AccountFragment);
 inventory::collect!(TypeFragment);
 inventory::collect!(EventFragment);
 inventory::collect!(ErrorFragment);
 inventory::collect!(InstructionFragment);
 inventory::collect!(AccountsMetaFragment);
+inventory::collect!(AccountsValidationFragment);
 
 /// Assemble all registered fragments into a complete IDL.
 ///
@@ -98,12 +150,18 @@ pub fn build_idl(address: &str, name: &str, crate_name: &str, version: &str) -> 
     let mut errors = Vec::new();
     let mut instructions = Vec::new();
     let mut auto_discriminator_sources = serde_json::Map::new();
+    let mut validation_instructions = alloc::collections::BTreeMap::new();
 
     // Collect accounts meta fragments into a lookup table.
     let accounts_meta: Vec<(String, Vec<IdlAccountNode>)> = inventory::iter::<AccountsMetaFragment>
         .into_iter()
         .map(|frag| (frag.0)())
         .collect();
+    let accounts_validation: Vec<(String, IdlAccountsValidation)> =
+        inventory::iter::<AccountsValidationFragment>
+            .into_iter()
+            .map(|frag| (frag.0)())
+            .collect();
 
     for frag in inventory::iter::<AccountFragment> {
         let (account_def, type_def) = (frag.build)();
@@ -146,6 +204,19 @@ pub fn build_idl(address: &str, name: &str, crate_name: &str, version: &str) -> 
                 });
             ix.accounts = nodes.clone();
         }
+        if !frag.accounts_struct_name.is_empty() {
+            let (_, validation) = accounts_validation
+                .iter()
+                .find(|(struct_name, _)| struct_name == frag.accounts_struct_name)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "idl-build: instruction `{}` references accounts struct `{}` but no \
+                         AccountsValidationFragment with that name was registered",
+                        ix.name, frag.accounts_struct_name
+                    )
+                });
+            validation_instructions.insert(ix.name.clone(), validation.clone());
+        }
         instructions.push(ix);
     }
 
@@ -181,7 +252,21 @@ pub fn build_idl(address: &str, name: &str, crate_name: &str, version: &str) -> 
         types,
         events,
         errors,
-        extensions: None,
+        extensions: if validation_instructions.is_empty() {
+            None
+        } else {
+            let validation = IdlValidationPlan {
+                version: VALIDATION_EXTENSION_VERSION,
+                instructions: validation_instructions,
+            };
+            let mut extensions = serde_json::Map::new();
+            extensions.insert(
+                String::from(VALIDATION_EXTENSION_KEY),
+                serde_json::to_value(validation)
+                    .expect("validation plan should serialize into the IDL extension"),
+            );
+            Some(serde_json::Value::Object(extensions))
+        },
         hashes: None,
     };
 
@@ -373,6 +458,33 @@ mod codec_tests {
     #[should_panic(expected = "no codec")]
     fn dynamic_arg_without_codec_panics() {
         assert_dynamic_fields_have_codecs(&idl_with_arg(arg(u8_vec(), None)));
+    }
+
+    #[test]
+    fn behavior_resolver_requires_every_declared_recipe_argument() {
+        let recipe = Some(
+            crate::account_behavior::BehaviorIdlResolver::AssociatedToken {
+                mint: "mint",
+                owner: "owner",
+                token_program: Some("token_program"),
+            },
+        );
+        let incomplete = [("mint", "mint"), ("owner", "wallet")];
+        assert!(behavior_resolver(recipe, &incomplete).is_none());
+
+        let complete = [
+            ("mint", "mint"),
+            ("owner", "wallet"),
+            ("token_program", "tokenProgram"),
+        ];
+        assert!(matches!(
+            behavior_resolver(recipe, &complete),
+            Some(IdlResolver::AssociatedToken {
+                mint,
+                owner,
+                token_program: Some(token_program),
+            }) if mint == "mint" && owner == "wallet" && token_program == "tokenProgram"
+        ));
     }
 
     fn idl_with_account_discs(discs: &[(&str, Vec<u8>)]) -> Idl {

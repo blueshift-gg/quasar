@@ -156,3 +156,66 @@ pub struct Noop {}
 
     Ok(())
 }
+
+#[test]
+fn idl_build_does_not_compile_program_unit_tests() -> Result<(), Box<dyn Error>> {
+    let temp = tempdir()?;
+    let program_dir = temp.path().join("programs/idl-with-broken-unit-test");
+
+    write_file(
+        &temp.path().join("Cargo.toml"),
+        r#"[workspace]
+members = ["programs/idl-with-broken-unit-test"]
+resolver = "3"
+"#,
+    )?;
+    write_file(
+        &program_dir.join("Cargo.toml"),
+        format!(
+            r#"[package]
+name = "idl-with-broken-unit-test"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+idl-build = ["quasar-lang/idl-build"]
+
+[dependencies]
+quasar-lang = {{ path = "{}" }}
+"#,
+            workspace_root().join("lang").display()
+        ),
+    )?;
+    write_file(
+        &program_dir.join("src/lib.rs"),
+        r#"#![no_std]
+
+use quasar_lang::prelude::*;
+
+declare_id!("11111111111111111111111111111111");
+
+#[program]
+mod idl_with_broken_unit_test {
+    use super::*;
+
+    pub fn noop(_ctx: Ctx<Noop>) -> Result<(), ProgramError> {
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Noop {}
+
+#[cfg(test)]
+compile_error!("IDL generation compiled an unrelated unit test");
+"#,
+    )?;
+
+    let generated = idl::build(&program_dir)?;
+    assert_eq!(generated.name, "idl_with_broken_unit_test");
+
+    Ok(())
+}

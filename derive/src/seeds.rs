@@ -8,8 +8,7 @@ use {
         parse::{Parse, ParseStream},
         parse2,
         spanned::Spanned,
-        Data, DeriveInput, Error, Expr, ExprLit, Generics, Ident, Lit, LitByteStr, Result, Token,
-        Type, Visibility,
+        Data, DeriveInput, Error, Generics, Ident, LitByteStr, Result, Token, Type, Visibility,
     },
 };
 
@@ -21,58 +20,56 @@ pub(crate) struct SeedParam {
     ty: SeedType,
 }
 
-/// Parsed `#[seeds(b"prefix", name: Type, ...)]` content.
+/// Parsed `#[seeds(b"prefix", name: Type, ...)]` or prefixless
+/// `#[seeds(name: Type, ...)]` content.
 pub(crate) struct SeedsAttr {
-    prefix: Vec<u8>,
+    prefix: Option<Vec<u8>>,
     params: Vec<SeedParam>,
 }
 
 impl Parse for SeedsAttr {
     fn parse(input: ParseStream) -> Result<Self> {
-        let prefix_expr: Expr = input.parse()?;
-        let prefix_span = prefix_expr.span();
-        let prefix = match &prefix_expr {
-            Expr::Lit(ExprLit {
-                lit: Lit::ByteStr(bytes),
-                ..
-            }) => {
-                let prefix = bytes.value();
-                if prefix.len() > MAX_SEED_LEN {
-                    return Err(Error::new_spanned(
-                        bytes,
-                        format!(
-                            "seed prefix is {} bytes, exceeds MAX_SEED_LEN of {MAX_SEED_LEN}",
-                            prefix.len(),
-                        ),
-                    ));
-                }
-                prefix
-            }
-            _ => {
+        let attr_span = input.span();
+        if input.is_empty() {
+            return Err(Error::new(attr_span, "#[seeds] requires at least one seed"));
+        }
+
+        let prefix = if input.peek(LitByteStr) {
+            let bytes: LitByteStr = input.parse()?;
+            let prefix = bytes.value();
+            if prefix.len() > MAX_SEED_LEN {
                 return Err(Error::new_spanned(
-                    prefix_expr,
-                    "#[seeds] first argument must be a byte string literal (e.g., b\"vault\")",
-                ))
+                    bytes,
+                    format!(
+                        "seed prefix is {} bytes, exceeds MAX_SEED_LEN of {MAX_SEED_LEN}",
+                        prefix.len(),
+                    ),
+                ));
             }
+            if !input.is_empty() {
+                let _: Token![,] = input.parse()?;
+            }
+            Some(prefix)
+        } else {
+            None
         };
 
         let mut params = Vec::new();
         while !input.is_empty() {
-            let _: Token![,] = input.parse()?;
-            if input.is_empty() {
-                break;
-            }
             let name: Ident = input.parse()?;
             let _: Token![:] = input.parse()?;
             let ty: Type = input.parse()?;
             let ty = parse_seed_type(ty)?;
             params.push(SeedParam { name, ty });
+            if !input.is_empty() {
+                let _: Token![,] = input.parse()?;
+            }
         }
 
-        let seed_count_without_bump = 1 + params.len();
+        let seed_count_without_bump = usize::from(prefix.is_some()) + params.len();
         if seed_count_without_bump > MAX_PDA_SEEDS_WITHOUT_BUMP {
             return Err(Error::new(
-                prefix_span,
+                attr_span,
                 format!(
                     "PDA seed list has {seed_count_without_bump} seeds before bump; Quasar \
                      supports at most {MAX_PDA_SEEDS_WITHOUT_BUMP}"
@@ -149,7 +146,8 @@ pub(crate) fn generate_seeds_impl(
     seeds_attr: &SeedsAttr,
 ) -> TokenStream {
     let krate = crate::krate::lang_path();
-    let prefix_bytes = &seeds_attr.prefix;
+    let has_prefix = seeds_attr.prefix.is_some();
+    let prefix_bytes = seeds_attr.prefix.as_deref().unwrap_or(&[]);
     let prefix_lit = LitByteStr::new(prefix_bytes, Span::call_site());
     let dynamic_count = seeds_attr.params.len();
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -157,7 +155,7 @@ pub(crate) fn generate_seeds_impl(
     let seed_set = format_ident!("{}SeedSet", name);
     let seed_set_bump = format_ident!("{}SeedSetWithBump", name);
 
-    let n_slices = 1 + seeds_attr.params.len();
+    let n_slices = usize::from(has_prefix) + seeds_attr.params.len();
     let n_slices_with_bump = n_slices + 1;
 
     let param_field_names: Vec<_> = seeds_attr
@@ -184,14 +182,20 @@ pub(crate) fn generate_seeds_impl(
         .collect();
 
     let slice_exprs: Vec<_> = {
-        let mut slices = vec![quote! { #prefix_lit }];
+        let mut slices = Vec::new();
+        if has_prefix {
+            slices.push(quote! { #prefix_lit });
+        }
         for (idx, field_name) in param_field_names.iter().enumerate() {
             slices.push(seeds_attr.params[idx].ty.slice_expr(field_name, ""));
         }
         slices
     };
     let slice_exprs_bump: Vec<_> = {
-        let mut slices = vec![quote! { #prefix_lit }];
+        let mut slices = Vec::new();
+        if has_prefix {
+            slices.push(quote! { #prefix_lit });
+        }
         for (idx, field_name) in param_field_names.iter().enumerate() {
             slices.push(seeds_attr.params[idx].ty.slice_expr(field_name, "inner"));
         }
@@ -224,6 +228,7 @@ pub(crate) fn generate_seeds_impl(
 
     quote! {
         impl #impl_generics #krate::traits::HasSeeds for #name #ty_generics #where_clause {
+            const HAS_SEED_PREFIX: bool = #has_prefix;
             const SEED_PREFIX: &'static [u8] = &[#(#prefix_bytes),*];
             const SEED_DYNAMIC_COUNT: usize = #dynamic_count;
         }

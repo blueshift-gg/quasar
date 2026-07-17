@@ -1,5 +1,5 @@
 use {
-    crate::{events::SimpleEvent, EventAuthority, QuasarTestEvents},
+    crate::{events::SimpleEvent, EventAuthority, QuasarTestEventsProgram},
     quasar_derive::Accounts,
     quasar_lang::prelude::*,
 };
@@ -8,7 +8,7 @@ use {
 pub struct EmitViaCpi {
     pub signer: Signer,
     pub event_authority: EventAuthority,
-    pub program: Program<QuasarTestEvents>,
+    pub program: Program<QuasarTestEventsProgram>,
 }
 
 impl EmitViaCpi {

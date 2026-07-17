@@ -37,7 +37,7 @@ SBF_ALL := $(SBF_EXAMPLES) $(SBF_TEST_PROGRAMS)
 
 # Public crates in dependency order. Keep this list aligned with the release
 # workflow; `package-check` proves the complete publication graph packages.
-PUBLISH_PACKAGES := quasar-schema quasar-idl-schema quasar-profile \
+PUBLISH_PACKAGES := quasar-schema quasar-idl-schema quasar-profile quasar-test \
 	solana-compiler-builtins quasar-derive quasar-idl quasar-lang \
 	quasar-spl quasar-metadata quasar-cli
 
@@ -60,16 +60,18 @@ PACKAGE_PATCHES := \
 	--config 'patch.crates-io.quasar-derive.path="derive"' \
 	--config 'patch.crates-io.quasar-idl.path="idl"' \
 	--config 'patch.crates-io.quasar-lang.path="lang"' \
+	--config 'patch.crates-io.quasar-test.path="testing"' \
 	--config 'patch.crates-io.quasar-spl.path="spl"' \
 	--config 'patch.crates-io.quasar-metadata.path="metadata"'
 
 PACKAGE_REHEARSAL_ROOT ?= target/release-rehearsal
+TYPESCRIPT_TEST_DIR := testing/typescript
 
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
 	check-runtime-panics check-workspace-invariants check-license-policy \
 	check-package-metadata check-readme-crate-inventory check-release-train \
 	build build-sbf test test-bless \
-	test-host-inventory test-host test-sbf-host \
+	test-host-inventory test-host test-sbf-host test-quasar-test-standalone \
 	bench-cu bench-tracked compare-tracked test-benchmark-policy doc-check \
 	test-miri test-miri-strict test-all \
 	nightly-version cargo-fuzz-version cargo-audit-version cargo-public-api-version \
@@ -78,6 +80,7 @@ PACKAGE_REHEARSAL_ROOT ?= target/release-rehearsal
 	check-idl-wire-baselines bless-idl-wire-baselines \
 	check-generated-client-baselines bless-generated-client-baselines \
 	test-audit-policy generated-client-smoke \
+	test-typescript-package typescript-package-check \
 	check-release-dependencies test-release-dependency-policy \
 	check-release-permissions test-release-permission-policy \
 	kani help-kani check-kani kani-lang \
@@ -400,12 +403,16 @@ test-sbf-host:
 		$(foreach package,$(SBF_HOST_TEST_PACKAGES),-p $(package)) \
 		--all-features
 
+test-quasar-test-standalone:
+	@scripts/test-quasar-test-standalone.sh target/deploy/quasar_vault.so
+
 # Asserts committed trybuild .stderr goldens (trybuild default mode). A stale
 # golden fails the build — that is the gate. Regenerate with `make test-bless`.
 test:
 	@$(MAKE) build
 	@$(MAKE) build-sbf
 	@$(MAKE) test-host
+	@$(MAKE) test-quasar-test-standalone
 	@$(MAKE) test-sbf-host
 
 # Regenerates trybuild .stderr goldens (TRYBUILD=overwrite). Use only when a
@@ -421,6 +428,14 @@ test-bless:
 
 generated-client-smoke:
 	@cargo test -p quasar-cli --test generated_clients_smoke -- --nocapture --test-threads=1
+
+test-typescript-package:
+	@npm ci --prefix "$(TYPESCRIPT_TEST_DIR)"
+	@npm run --prefix "$(TYPESCRIPT_TEST_DIR)" check-types
+	@npm test --prefix "$(TYPESCRIPT_TEST_DIR)"
+
+typescript-package-check:
+	@cd "$(TYPESCRIPT_TEST_DIR)" && npm pack --dry-run
 
 package-check: check-package-metadata
 	@# First-release internal dependencies are not on crates.io yet. `msrv-check`
