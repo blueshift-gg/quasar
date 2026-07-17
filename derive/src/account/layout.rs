@@ -209,6 +209,10 @@ pub(super) fn emit_account_wrapper(
 
         unsafe impl #krate::traits::StaticView for #name {}
 
+        impl #krate::traits::AccountData for #zc_path {
+            type Wrapper = #name;
+        }
+
         impl #krate::traits::AsAccountView for #name {
             #[inline(always)]
             fn to_account_view(&self) -> &#krate::__internal::AccountView {

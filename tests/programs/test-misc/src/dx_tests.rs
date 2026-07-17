@@ -14,8 +14,8 @@ use {
 
 #[quasar_test]
 fn initialize_stores_typed_state(q: &mut QuasarTest) {
-    let payer = q.actor();
-    let (account, bump) = q.pda_with_bump(SimpleAccount::seeds(&payer));
+    let payer = q.add_wallet();
+    let (account, bump) = q.derive_pda_with_bump(SimpleAccount::seeds(&payer));
 
     q.send(InitializeInstruction { payer, value: 42 })
         .succeeds();
@@ -28,9 +28,9 @@ fn initialize_stores_typed_state(q: &mut QuasarTest) {
 
 #[quasar_test]
 fn close_returns_the_account_to_the_system(q: &mut QuasarTest) {
-    let authority = q.actor();
-    let (account, bump) = q.pda_with_bump(SimpleAccount::seeds(&authority));
-    q.write::<SimpleAccount>(
+    let authority = q.add_wallet();
+    let (account, bump) = q.derive_pda_with_bump(SimpleAccount::seeds(&authority));
+    q.write(
         account,
         SimpleAccountData {
             authority,
@@ -46,9 +46,9 @@ fn close_returns_the_account_to_the_system(q: &mut QuasarTest) {
 
 #[quasar_test]
 fn close_rejects_a_foreign_authority(q: &mut QuasarTest) {
-    let [owner, intruder] = q.actors();
-    let (account, bump) = q.pda_with_bump(SimpleAccount::seeds(&owner));
-    q.write::<SimpleAccount>(
+    let [owner, intruder] = q.add_wallets();
+    let (account, bump) = q.derive_pda_with_bump(SimpleAccount::seeds(&owner));
+    q.write(
         account,
         SimpleAccountData {
             authority: owner,
@@ -59,7 +59,7 @@ fn close_rejects_a_foreign_authority(q: &mut QuasarTest) {
 
     // The client derives the PDA from the passed authority; swapping in the
     // owner's account is the mismatch under test.
-    let intruder_pda = q.pda(SimpleAccount::seeds(&intruder));
+    let intruder_pda = q.derive_pda(SimpleAccount::seeds(&intruder));
     q.send(
         CloseAccountInstruction {
             authority: intruder,

@@ -8,7 +8,7 @@
 use {
     quasar_lang::{
         __zeropod::{ZcElem, ZcValidate},
-        traits::{Discriminator, Owner, SeedSlices},
+        traits::{AccountData, Discriminator, Owner, SeedSlices},
     },
     std::{
         env,
@@ -19,15 +19,15 @@ use {
     },
 };
 pub use {
-    quasar_svm::{Account, Pubkey, QuasarSvm, QuasarSvmConfig},
+    quasar_svm::{Account, ProgramError, Pubkey, QuasarSvm, QuasarSvmConfig},
     quasar_test_derive::quasar_test,
 };
 
 /// Environment variable set by `quasar test` to the freshly built program.
 pub const PROGRAM_PATH_ENV: &str = "QUASAR_PROGRAM_PATH";
 
-/// Default balance assigned by [`QuasarTest::actor`]: ten SOL.
-pub const DEFAULT_ACTOR_LAMPORTS: u64 = 10_000_000_000;
+/// Default balance assigned by [`QuasarTest::add_wallet`]: ten SOL.
+pub const DEFAULT_WALLET_LAMPORTS: u64 = 10_000_000_000;
 
 /// A project-aware wrapper around [`QuasarSvm`].
 ///
@@ -44,8 +44,10 @@ impl QuasarTest {
     /// Load the current project's compiled program.
     ///
     /// `quasar test` supplies the exact artifact through
-    /// [`PROGRAM_PATH_ENV`]. For direct `cargo test` runs, Quasar searches
-    /// ancestor `target/deploy` directories and accepts the only `.so` there.
+    /// [`PROGRAM_PATH_ENV`]. For direct `cargo test` runs, Quasar prefers
+    /// `target/deploy/{crate_name}.so` when a crate name is known (see
+    /// [`QuasarTest::builder`]) and otherwise accepts the only `.so` in an
+    /// ancestor `target/deploy` directory.
     ///
     /// # Panics
     ///
@@ -53,77 +55,31 @@ impl QuasarTest {
     /// located or read. Use [`Self::try_new`] when setup errors should be
     /// handled explicitly.
     pub fn new(program_id: impl Into<Pubkey>) -> Self {
-        Self::try_new(program_id).unwrap_or_else(|error| panic!("{error}"))
-    }
-
-    /// Load the current project's program with explicit SVM configuration.
-    ///
-    /// This is useful when a test wants to disable bundled SPL programs or
-    /// otherwise control the base runtime. See [`QuasarSvmConfig`].
-    pub fn new_with_config(program_id: impl Into<Pubkey>, config: QuasarSvmConfig) -> Self {
-        Self::try_new_with_config(program_id, config).unwrap_or_else(|error| panic!("{error}"))
+        Self::builder(program_id)
+            .build()
+            .unwrap_or_else(|error| panic!("{error}"))
     }
 
     /// Fallible variant of [`Self::new`].
-    pub fn try_new(program_id: impl Into<Pubkey>) -> Result<Self, ProjectError> {
-        Self::try_new_with_config(program_id, QuasarSvmConfig::default())
+    pub fn try_new(program_id: impl Into<Pubkey>) -> Result<Self, SetupError> {
+        Self::builder(program_id).build()
     }
 
-    /// Load a crate's compiled program by name.
+    /// Customize world setup before loading the program.
     ///
-    /// Prefers `target/deploy/{crate_name}.so` (with `-` mapped to `_`) over
-    /// the only-artifact rule, so tests resolve their own program in a
-    /// workspace that builds several. `#[quasar_test]` calls this with
-    /// `env!("CARGO_PKG_NAME")`.
-    pub fn new_for_crate(program_id: impl Into<Pubkey>, crate_name: &str) -> Self {
-        Self::try_new_for_crate(program_id, crate_name).unwrap_or_else(|error| panic!("{error}"))
-    }
-
-    /// Fallible variant of [`Self::new_for_crate`].
-    pub fn try_new_for_crate(
-        program_id: impl Into<Pubkey>,
-        crate_name: &str,
-    ) -> Result<Self, ProjectError> {
-        let path = resolve_program_path_named(crate_name)?;
-        Self::from_program_path_with_config(program_id, path, QuasarSvmConfig::default())
-    }
-
-    /// Fallible variant of [`Self::new_with_config`].
-    pub fn try_new_with_config(
-        program_id: impl Into<Pubkey>,
-        config: QuasarSvmConfig,
-    ) -> Result<Self, ProjectError> {
-        let path = resolve_program_path()?;
-        Self::from_program_path_with_config(program_id, path, config)
-    }
-
-    /// Load a program from an explicit artifact path.
-    pub fn from_program_path(
-        program_id: impl Into<Pubkey>,
-        path: impl AsRef<Path>,
-    ) -> Result<Self, ProjectError> {
-        Self::from_program_path_with_config(program_id, path, QuasarSvmConfig::default())
-    }
-
-    /// Load a program from an explicit artifact path and SVM configuration.
-    pub fn from_program_path_with_config(
-        program_id: impl Into<Pubkey>,
-        path: impl AsRef<Path>,
-        config: QuasarSvmConfig,
-    ) -> Result<Self, ProjectError> {
-        let path = path.as_ref().to_path_buf();
-        let elf = fs::read(&path).map_err(|source| ProjectError::ReadProgram {
-            path: path.clone(),
-            source,
-        })?;
-        let program_id = program_id.into();
-        let svm = QuasarSvm::new_with_config(config).with_program(&program_id, &elf);
-        Ok(Self {
-            svm,
-            program_id,
-            program_path: path,
-            fresh_addresses: 0,
-        })
+    /// ```rust,ignore
+    /// let mut q = QuasarTest::builder(other_program::ID)
+    ///     .crate_name("other-program")
+    ///     .config(QuasarSvmConfig::default())
+    ///     .build()?;
+    /// ```
+    pub fn builder(program_id: impl Into<Pubkey>) -> QuasarTestBuilder {
+        QuasarTestBuilder {
+            program_id: program_id.into(),
+            config: QuasarSvmConfig::default(),
+            program_path: None,
+            crate_name: None,
+        }
     }
 
     /// The program under test.
@@ -141,74 +97,31 @@ impl QuasarTest {
         self.svm
     }
 
-    /// Load an additional CPI target while retaining the project wrapper.
-    pub fn with_program(self, program_id: &Pubkey, elf: &[u8]) -> Self {
+    /// Load an additional program (a CPI target) into the world.
+    pub fn load_program(&mut self, program_id: &Pubkey, elf: &[u8]) {
         self.svm
             .add_program(program_id, &quasar_svm::loader_keys::LOADER_V3, elf);
-        self
     }
 
-    /// Load an additional CPI target with an explicit loader.
-    pub fn with_program_loader(self, program_id: &Pubkey, loader: &Pubkey, elf: &[u8]) -> Self {
-        self.svm.add_program(program_id, loader, elf);
-        self
-    }
-
-    /// Pre-populate an account while retaining the project wrapper.
-    pub fn with_account(mut self, account: Account) -> Self {
-        self.svm.set_account(account);
-        self
-    }
-
-    /// Set the clock slot while retaining the project wrapper.
-    pub fn with_slot(mut self, slot: u64) -> Self {
-        self.svm.sysvars.warp_to_slot(slot);
-        self
-    }
-
-    /// Set the transaction compute budget while retaining the project wrapper.
-    pub fn with_compute_budget(mut self, max_units: u64) -> Self {
-        self.svm.compute_budget.compute_unit_limit = max_units;
-        self
-    }
-
-    /// Airdrop lamports while retaining the project wrapper.
-    pub fn with_airdrop(mut self, address: &Pubkey, lamports: u64) -> Self {
-        self.svm.airdrop(address, lamports);
-        self
-    }
-
-    /// Create a rent-exempt account while retaining the project wrapper.
-    pub fn with_create_account(mut self, address: &Pubkey, space: usize, owner: &Pubkey) -> Self {
-        self.svm.create_account(address, space, owner);
-        self
-    }
-
-    /// Create a funded actor at a fresh address.
+    /// Register a funded wallet at a fresh address.
     ///
-    /// The default balance is [`DEFAULT_ACTOR_LAMPORTS`]. Use
-    /// [`Self::actor_with_lamports`] when the balance is part of the test.
-    pub fn actor(&mut self) -> Pubkey {
-        self.actor_with_lamports(DEFAULT_ACTOR_LAMPORTS)
+    /// The default balance is [`DEFAULT_WALLET_LAMPORTS`]. Use
+    /// [`Self::add_wallet_with_lamports`] when the balance is part of the
+    /// test.
+    pub fn add_wallet(&mut self) -> Pubkey {
+        self.add_wallet_with_lamports(DEFAULT_WALLET_LAMPORTS)
     }
 
-    /// Create several funded actors at fresh addresses.
+    /// Register several funded wallets at fresh addresses.
     ///
     /// Array destructuring keeps named multi-party scenarios compact:
-    /// `let [maker, taker] = q.actors();`.
-    pub fn actors<const N: usize>(&mut self) -> [Pubkey; N] {
-        std::array::from_fn(|_| self.actor())
+    /// `let [maker, taker] = q.add_wallets();`.
+    pub fn add_wallets<const N: usize>(&mut self) -> [Pubkey; N] {
+        std::array::from_fn(|_| self.add_wallet())
     }
 
-    /// Fund a chosen address with the default actor balance.
-    ///
-    /// Use this when deterministic addresses make a scenario easier to read.
-    pub fn actor_at(&mut self, address: Pubkey) -> Pubkey {
-        self.fund(address, DEFAULT_ACTOR_LAMPORTS)
-    }
-
-    /// Create a funded actor at a fresh address with an explicit balance.
-    pub fn actor_with_lamports(&mut self, lamports: u64) -> Pubkey {
+    /// Register a funded wallet at a fresh address with an explicit balance.
+    pub fn add_wallet_with_lamports(&mut self, lamports: u64) -> Pubkey {
         let address = self.fresh_address();
         self.fund(address, lamports)
     }
@@ -233,25 +146,20 @@ impl QuasarTest {
         address
     }
 
-    /// Add an empty system account for an instruction that initializes it.
-    pub fn empty(&mut self, address: Pubkey) -> Pubkey {
-        self.svm.set_account(fixtures::empty_account(address));
-        address
+    /// Register a six-decimal mint with zero supply at a fresh address.
+    pub fn add_mint(&mut self, authority: Pubkey) -> Pubkey {
+        self.add_mint_with_supply(authority, 0)
     }
 
-    /// Create a six-decimal mint with zero supply at a fresh address.
-    pub fn mint(&mut self, authority: Pubkey) -> Pubkey {
-        self.mint_with_supply(authority, 0)
-    }
-
-    /// Create a six-decimal mint with an explicit supply at a fresh address.
-    pub fn mint_with_supply(&mut self, authority: Pubkey, supply: u64) -> Pubkey {
+    /// Register a six-decimal mint with an explicit supply at a fresh
+    /// address.
+    pub fn add_mint_with_supply(&mut self, authority: Pubkey, supply: u64) -> Pubkey {
         let address = self.fresh_address();
-        self.mint_at(address, authority, supply, 6)
+        self.add_mint_at(address, authority, supply, 6)
     }
 
-    /// Create a mint at an explicit address and return that address.
-    pub fn mint_at(
+    /// Register a mint at an explicit address and return that address.
+    pub fn add_mint_at(
         &mut self,
         address: Pubkey,
         authority: Pubkey,
@@ -264,14 +172,14 @@ impl QuasarTest {
         address
     }
 
-    /// Create an SPL Token account at a fresh address.
-    pub fn token_account(&mut self, owner: Pubkey, mint: Pubkey, amount: u64) -> Pubkey {
+    /// Register a token account at a fresh address.
+    pub fn add_token_account(&mut self, owner: Pubkey, mint: Pubkey, amount: u64) -> Pubkey {
         let address = self.fresh_address();
-        self.token_account_at(address, owner, mint, amount)
+        self.add_token_account_at(address, owner, mint, amount)
     }
 
-    /// Create an SPL Token account at an explicit address.
-    pub fn token_account_at(
+    /// Register a token account at an explicit address.
+    pub fn add_token_account_at(
         &mut self,
         address: Pubkey,
         owner: Pubkey,
@@ -285,9 +193,10 @@ impl QuasarTest {
 
     /// Derive an associated token address without registering an account.
     ///
-    /// Use this for init targets: [`Self::ata`] would register an existing
-    /// account, which is exactly what an init instruction must not find.
-    pub fn ata_address(&self, owner: Pubkey, mint: Pubkey) -> Pubkey {
+    /// Use this for init targets and assertions: [`Self::add_ata`] would
+    /// register an existing account, which is exactly what an init
+    /// instruction must not find.
+    pub fn derive_ata(&self, owner: Pubkey, mint: Pubkey) -> Pubkey {
         Pubkey::find_program_address(
             &[
                 owner.as_ref(),
@@ -299,8 +208,8 @@ impl QuasarTest {
         .0
     }
 
-    /// Create an associated token account and return its derived address.
-    pub fn ata(&mut self, owner: Pubkey, mint: Pubkey, amount: u64) -> Pubkey {
+    /// Register an associated token account and return its derived address.
+    pub fn add_ata(&mut self, owner: Pubkey, mint: Pubkey, amount: u64) -> Pubkey {
         let account = fixtures::associated_token_account(owner, mint, amount);
         let address = account.address;
         self.svm.set_account(account);
@@ -314,14 +223,14 @@ impl QuasarTest {
     /// validates against:
     ///
     /// ```rust,ignore
-    /// let vault = q.pda(Vault::seeds(&maker));
+    /// let vault = q.derive_pda(Vault::seeds(&maker));
     /// ```
-    pub fn pda(&self, seeds: impl SeedSlices) -> Pubkey {
-        self.pda_with_bump(seeds).0
+    pub fn derive_pda(&self, seeds: impl SeedSlices) -> Pubkey {
+        self.derive_pda_with_bump(seeds).0
     }
 
     /// Derive the canonical PDA and bump for a seed set.
-    pub fn pda_with_bump(&self, seeds: impl SeedSlices) -> (Pubkey, u8) {
+    pub fn derive_pda_with_bump(&self, seeds: impl SeedSlices) -> (Pubkey, u8) {
         seeds.with_slices(|slices| Pubkey::find_program_address(slices, &self.program_id))
     }
 
@@ -387,35 +296,73 @@ impl QuasarTest {
         }
     }
 
+    /// An account's current lamport balance in this world.
+    pub fn lamports(&self, address: Pubkey) -> u64 {
+        self.world_account(address).lamports
+    }
+
+    /// A token account's current balance in this world.
+    pub fn tokens(&self, address: Pubkey) -> u64 {
+        use spl_token::{solana_program::program_pack::Pack, state::Account as TokenAccount};
+
+        let account = self.world_account(address);
+        TokenAccount::unpack(&account.data)
+            .unwrap_or_else(|error| {
+                panic!("could not decode {address} as an SPL Token account: {error}")
+            })
+            .amount
+    }
+
+    /// A mint's current supply in this world.
+    pub fn supply(&self, address: Pubkey) -> u64 {
+        use spl_token::{solana_program::program_pack::Pack, state::Mint};
+
+        let account = self.world_account(address);
+        Mint::unpack(&account.data)
+            .unwrap_or_else(|error| {
+                panic!("could not decode {address} as an SPL Token mint: {error}")
+            })
+            .supply
+    }
+
+    fn world_account(&self, address: Pubkey) -> Account {
+        self.svm
+            .get_account(&address)
+            .unwrap_or_else(|| panic!("no account at {address}"))
+    }
+
     /// Register a rent-exempt program account holding `state`.
     ///
-    /// The account gets `T`'s owner and discriminator, so a follow-up
-    /// [`Self::read`] (or the program itself) accepts it:
+    /// The account gets the owning type's discriminator and owner, so a
+    /// follow-up [`Self::read`] (or the program itself) accepts it:
     ///
     /// ```rust,ignore
-    /// q.write::<Vault>(vault, VaultData { authority: maker, balance: 500.into(), bump });
+    /// q.write(vault, VaultData { authority: maker, balance: 500.into(), bump });
     /// ```
-    pub fn write<T>(&mut self, address: Pubkey, state: T::Target) -> Pubkey
+    pub fn write<D>(&mut self, address: Pubkey, state: D) -> Pubkey
     where
-        T: Discriminator + Owner + Deref,
-        T::Target: ZcElem + Copy,
+        D: AccountData + ZcElem + Copy,
+        D::Wrapper: Discriminator + Owner,
     {
-        let disc = T::DISCRIMINATOR;
-        let size = core::mem::size_of::<T::Target>();
+        let disc = <D::Wrapper as Discriminator>::DISCRIMINATOR;
+        let size = core::mem::size_of::<D>();
         let mut data = vec![0u8; disc.len() + size];
         data[..disc.len()].copy_from_slice(disc);
-        // SAFETY: `T::Target` is `ZcElem` (`#[repr(C)]`, alignment 1, no
-        // padding), so its `size` bytes are initialized and the destination
-        // range was sized for them.
+        // SAFETY: `D` is `ZcElem` (`#[repr(C)]`, alignment 1, no padding),
+        // so its `size` bytes are initialized and the destination range was
+        // sized for them.
         unsafe {
             std::ptr::copy_nonoverlapping(
-                (&state as *const T::Target).cast::<u8>(),
+                (&state as *const D).cast::<u8>(),
                 data[disc.len()..].as_mut_ptr(),
                 size,
             );
         }
-        self.svm
-            .set_account(fixtures::program_account(address, T::OWNER, data));
+        self.svm.set_account(fixtures::program_account(
+            address,
+            <D::Wrapper as Owner>::OWNER,
+            data,
+        ));
         address
     }
 
@@ -423,8 +370,8 @@ impl QuasarTest {
     ///
     /// Writable instruction accounts missing from the world are registered as
     /// empty system accounts first, so freshly initialized accounts survive
-    /// into follow-up sends and [`Self::read`] without an explicit
-    /// [`Self::empty`] call.
+    /// into follow-up sends and [`Self::read`] without any setup.
+    #[must_use = "assert the outcome: .succeeds(), .fails_with(..), or inspect the result"]
     pub fn send(
         &mut self,
         instruction: impl Into<quasar_svm::Instruction>,
@@ -440,6 +387,7 @@ impl QuasarTest {
     /// This escape hatch is useful when the supplied account itself is the
     /// subject of a test. Successful execution commits those accounts to the
     /// world like every other transaction account.
+    #[must_use = "assert the outcome: .succeeds(), .fails_with(..), or inspect the result"]
     pub fn send_with(
         &mut self,
         instruction: impl Into<quasar_svm::Instruction>,
@@ -465,6 +413,7 @@ impl QuasarTest {
     }
 
     /// Simulate one instruction without committing its account changes.
+    #[must_use = "assert the outcome: .succeeds(), .fails_with(..), or inspect the result"]
     pub fn simulate(
         &mut self,
         instruction: impl Into<quasar_svm::Instruction>,
@@ -485,6 +434,57 @@ impl Deref for QuasarTest {
 impl DerefMut for QuasarTest {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.svm
+    }
+}
+
+/// World setup: which program artifact to load and how to configure the VM.
+///
+/// Created by [`QuasarTest::builder`].
+pub struct QuasarTestBuilder {
+    program_id: Pubkey,
+    config: QuasarSvmConfig,
+    program_path: Option<PathBuf>,
+    crate_name: Option<String>,
+}
+
+impl QuasarTestBuilder {
+    /// Base runtime configuration (bundled SPL programs, compute budget).
+    pub fn config(mut self, config: QuasarSvmConfig) -> Self {
+        self.config = config;
+        self
+    }
+
+    /// Load an explicit program artifact instead of discovering one.
+    pub fn program_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.program_path = Some(path.into());
+        self
+    }
+
+    /// Prefer `target/deploy/{crate_name}.so` (with `-` mapped to `_`) during
+    /// discovery, so tests resolve their own program in a workspace that
+    /// builds several. `#[quasar_test]` passes `env!("CARGO_PKG_NAME")`.
+    pub fn crate_name(mut self, name: impl Into<String>) -> Self {
+        self.crate_name = Some(name.into());
+        self
+    }
+
+    /// Load the program and start the world.
+    pub fn build(self) -> Result<QuasarTest, SetupError> {
+        let path = match self.program_path {
+            Some(path) => path,
+            None => resolve_program_path(self.crate_name.as_deref())?,
+        };
+        let elf = fs::read(&path).map_err(|source| SetupError::ReadProgram {
+            path: path.clone(),
+            source,
+        })?;
+        let svm = QuasarSvm::new_with_config(self.config).with_program(&self.program_id, &elf);
+        Ok(QuasarTest {
+            svm,
+            program_id: self.program_id,
+            program_path: path,
+            fresh_addresses: 0,
+        })
     }
 }
 
@@ -527,25 +527,17 @@ where
     }
 }
 
-/// Resolve the compiled program path used by [`QuasarTest`].
-pub fn resolve_program_path() -> Result<PathBuf, ProjectError> {
+/// Resolve the compiled program path: the `quasar test` override, then
+/// discovery from the current directory.
+fn resolve_program_path(crate_name: Option<&str>) -> Result<PathBuf, SetupError> {
     if let Some(path) = configured_program_path()? {
         return Ok(path);
     }
-    let current_dir = env::current_dir().map_err(ProjectError::CurrentDirectory)?;
-    resolve_program_path_from(&current_dir)
+    let current_dir = env::current_dir().map_err(SetupError::CurrentDirectory)?;
+    resolve_program_path_from_named(&current_dir, crate_name)
 }
 
-/// Resolve a crate's compiled program path by name.
-pub fn resolve_program_path_named(crate_name: &str) -> Result<PathBuf, ProjectError> {
-    if let Some(path) = configured_program_path()? {
-        return Ok(path);
-    }
-    let current_dir = env::current_dir().map_err(ProjectError::CurrentDirectory)?;
-    resolve_program_path_from_named(&current_dir, Some(crate_name))
-}
-
-fn configured_program_path() -> Result<Option<PathBuf>, ProjectError> {
+fn configured_program_path() -> Result<Option<PathBuf>, SetupError> {
     let Some(path) = env::var_os(PROGRAM_PATH_ENV) else {
         return Ok(None);
     };
@@ -553,17 +545,13 @@ fn configured_program_path() -> Result<Option<PathBuf>, ProjectError> {
     if path.is_file() {
         return Ok(Some(path));
     }
-    Err(ProjectError::ConfiguredProgramMissing { path })
-}
-
-fn resolve_program_path_from(start: &Path) -> Result<PathBuf, ProjectError> {
-    resolve_program_path_from_named(start, None)
+    Err(SetupError::ConfiguredProgramMissing { path })
 }
 
 fn resolve_program_path_from_named(
     start: &Path,
     crate_name: Option<&str>,
-) -> Result<PathBuf, ProjectError> {
+) -> Result<PathBuf, SetupError> {
     let artifact = crate_name.map(|name| format!("{}.so", name.replace('-', "_")));
     let mut checked = Vec::new();
     for ancestor in start.ancestors() {
@@ -588,11 +576,11 @@ fn resolve_program_path_from_named(
             return Ok(programs.remove(0));
         }
         if programs.len() > 1 {
-            return Err(ProjectError::AmbiguousPrograms { deploy, programs });
+            return Err(SetupError::AmbiguousPrograms { deploy, programs });
         }
     }
 
-    Err(ProjectError::ProgramNotFound {
+    Err(SetupError::ProgramNotFound {
         start: start.to_path_buf(),
         checked,
     })
@@ -601,7 +589,7 @@ fn resolve_program_path_from_named(
 /// Failure to locate or load the current project's compiled program.
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum ProjectError {
+pub enum SetupError {
     /// The path supplied by `quasar test` no longer exists.
     ConfiguredProgramMissing { path: PathBuf },
     /// The current working directory could not be read.
@@ -623,7 +611,7 @@ pub enum ProjectError {
     },
 }
 
-impl fmt::Display for ProjectError {
+impl fmt::Display for SetupError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ConfiguredProgramMissing { path } => write!(
@@ -675,7 +663,7 @@ impl fmt::Display for ProjectError {
     }
 }
 
-impl Error for ProjectError {
+impl Error for SetupError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::CurrentDirectory(source) | Self::ReadProgram { source, .. } => Some(source),
@@ -796,6 +784,9 @@ impl<T: Into<quasar_svm::Instruction>> InstructionExt for T {
 }
 
 /// Assertions layered on [`quasar_svm::ExecutionResult`].
+///
+/// Asserting methods chain (`.succeeds().has_tokens(vault, 10)`); the noun
+/// forms (`lamports`, `tokens`, `supply`) return the resulting values.
 pub trait ExecutionResultExt {
     /// Assert success and keep the result available for chained expectations.
     fn succeeds(&self) -> &Self;
@@ -804,6 +795,10 @@ pub trait ExecutionResultExt {
     fn fails_with<E>(&self, expected: E) -> &Self
     where
         E: Into<u32>;
+
+    /// Assert a non-custom [`ProgramError`] and keep the result available for
+    /// chaining.
+    fn fails(&self, expected: ProgramError) -> &Self;
 
     /// Assert a compute-unit ceiling and keep the result available for
     /// chaining.
@@ -818,34 +813,18 @@ pub trait ExecutionResultExt {
     /// Assert a mint supply and keep the result available for chaining.
     fn has_supply(&self, address: Pubkey, expected: u64) -> &Self;
 
-    /// Assert that an account has been fully closed.
+    /// Assert that an account has been fully closed: zero lamports, no data,
+    /// system-owned.
     fn is_closed(&self, address: Pubkey) -> &Self;
 
-    /// Assert a program-specific error using a generated client error enum.
-    fn assert_custom_error<E>(&self, expected: E)
-    where
-        E: Into<u32>;
-
-    /// Assert that execution consumed strictly fewer than `limit` units.
-    fn assert_compute_units_below(&self, limit: u64);
-
-    /// Return an account's resulting lamport balance.
+    /// An account's resulting lamport balance.
     fn lamports(&self, address: &Pubkey) -> u64;
 
-    /// Return an SPL Token account's resulting raw token balance.
-    fn token_balance(&self, address: &Pubkey) -> u64;
+    /// A token account's resulting balance.
+    fn tokens(&self, address: &Pubkey) -> u64;
 
-    /// Return an SPL Token mint's resulting supply.
-    fn mint_supply(&self, address: &Pubkey) -> u64;
-
-    /// Assert an account's resulting lamport balance.
-    fn assert_lamports(&self, address: &Pubkey, expected: u64);
-
-    /// Assert an SPL Token account's resulting raw token balance.
-    fn assert_token_balance(&self, address: &Pubkey, expected: u64);
-
-    /// Assert an SPL Token mint's resulting supply.
-    fn assert_mint_supply(&self, address: &Pubkey, expected: u64);
+    /// A mint's resulting supply.
+    fn supply(&self, address: &Pubkey) -> u64;
 }
 
 impl ExecutionResultExt for quasar_svm::ExecutionResult {
@@ -858,27 +837,48 @@ impl ExecutionResultExt for quasar_svm::ExecutionResult {
     where
         E: Into<u32>,
     {
-        self.assert_custom_error(expected);
+        self.assert_error(quasar_svm::ProgramError::Custom(expected.into()));
+        self
+    }
+
+    fn fails(&self, expected: ProgramError) -> &Self {
+        self.assert_error(expected);
         self
     }
 
     fn cu_below(&self, limit: u64) -> &Self {
-        self.assert_compute_units_below(limit);
+        assert!(
+            self.compute_units_consumed < limit,
+            "expected fewer than {limit} compute units, consumed {}",
+            self.compute_units_consumed
+        );
         self
     }
 
     fn has_lamports(&self, address: Pubkey, expected: u64) -> &Self {
-        self.assert_lamports(&address, expected);
+        assert_eq!(
+            self.lamports(&address),
+            expected,
+            "unexpected lamport balance for {address}"
+        );
         self
     }
 
     fn has_tokens(&self, address: Pubkey, expected: u64) -> &Self {
-        self.assert_token_balance(&address, expected);
+        assert_eq!(
+            self.tokens(&address),
+            expected,
+            "unexpected token balance for {address}"
+        );
         self
     }
 
     fn has_supply(&self, address: Pubkey, expected: u64) -> &Self {
-        self.assert_mint_supply(&address, expected);
+        assert_eq!(
+            self.supply(&address),
+            expected,
+            "unexpected mint supply for {address}"
+        );
         self
     }
 
@@ -900,34 +900,11 @@ impl ExecutionResultExt for quasar_svm::ExecutionResult {
         self
     }
 
-    fn assert_custom_error<E>(&self, expected: E)
-    where
-        E: Into<u32>,
-    {
-        self.assert_error(quasar_svm::ProgramError::Custom(expected.into()));
-    }
-
-    fn assert_compute_units_below(&self, limit: u64) {
-        assert!(
-            self.compute_units_consumed < limit,
-            "expected fewer than {limit} compute units, consumed {}",
-            self.compute_units_consumed
-        );
-    }
-
-    fn assert_lamports(&self, address: &Pubkey, expected: u64) {
-        assert_eq!(
-            self.lamports(address),
-            expected,
-            "unexpected lamport balance for {address}"
-        );
-    }
-
     fn lamports(&self, address: &Pubkey) -> u64 {
         result_account(self, address).lamports
     }
 
-    fn token_balance(&self, address: &Pubkey) -> u64 {
+    fn tokens(&self, address: &Pubkey) -> u64 {
         use spl_token::{solana_program::program_pack::Pack, state::Account as TokenAccount};
 
         let account = result_account(self, address);
@@ -937,7 +914,7 @@ impl ExecutionResultExt for quasar_svm::ExecutionResult {
         token_account.amount
     }
 
-    fn mint_supply(&self, address: &Pubkey) -> u64 {
+    fn supply(&self, address: &Pubkey) -> u64 {
         use spl_token::{solana_program::program_pack::Pack, state::Mint};
 
         let account = result_account(self, address);
@@ -945,22 +922,6 @@ impl ExecutionResultExt for quasar_svm::ExecutionResult {
             panic!("could not decode {address} as an SPL Token mint: {error}")
         });
         mint.supply
-    }
-
-    fn assert_token_balance(&self, address: &Pubkey, expected: u64) {
-        assert_eq!(
-            self.token_balance(address),
-            expected,
-            "unexpected token balance for {address}"
-        );
-    }
-
-    fn assert_mint_supply(&self, address: &Pubkey, expected: u64) {
-        assert_eq!(
-            self.mint_supply(address),
-            expected,
-            "unexpected mint supply for {address}"
-        );
     }
 }
 
@@ -989,7 +950,7 @@ pub use quasar_svm;
 #[cfg(test)]
 mod tests {
     use {
-        super::{fixtures, resolve_program_path_from, ExecutionResultExt, ProjectError},
+        super::{fixtures, resolve_program_path_from_named, ExecutionResultExt, SetupError},
         quasar_svm::{ExecutionResult, ExecutionTrace, InstructionError, Pubkey},
         std::{fs, path::PathBuf},
     };
@@ -1012,7 +973,7 @@ mod tests {
         fs::write(deploy.join("example.so"), b"elf").unwrap();
 
         assert_eq!(
-            resolve_program_path_from(&nested).unwrap(),
+            resolve_program_path_from_named(&nested, None).unwrap(),
             deploy.join("example.so")
         );
 
@@ -1044,8 +1005,8 @@ mod tests {
         fs::write(deploy.join("two.so"), b"elf").unwrap();
 
         assert!(matches!(
-            resolve_program_path_from(&root),
-            Err(ProjectError::AmbiguousPrograms { .. })
+            resolve_program_path_from_named(&root, None),
+            Err(SetupError::AmbiguousPrograms { .. })
         ));
 
         fs::remove_dir_all(root).unwrap();

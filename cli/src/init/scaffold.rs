@@ -427,7 +427,7 @@ const client = new {class_name}Client();
 describe.concurrent("{class_name} Program", async () => {{
   it("initializes", async () => {{
     const q = await QuasarTest.load(PROGRAM_ADDRESS);
-    const payer = await q.actor();
+    const payer = await q.add_wallet();
 
     const result = await q.send(client.createInitializeInstruction({{ payer }}));
 
@@ -449,7 +449,7 @@ const client = new {class_name}Client();
 describe.concurrent("{class_name} Program", async () => {{
   it("initializes", async () => {{
     const q = await QuasarTest.load({class_name}Client.programId);
-    const payer = await q.actor();
+    const payer = await q.add_wallet();
 
     const result = await q.send(client.createInitializeInstruction({{ payer }}));
 
@@ -481,7 +481,7 @@ const client = new {class_name}Client();
 describe.concurrent("{class_name} Program", async () => {{
   it("initializes state", async () => {{
     const q = await QuasarTest.load(PROGRAM_ADDRESS);
-    const payer = await q.actor();
+    const payer = await q.add_wallet();
     const myAccount = await findMyAccountAddress(payer);
     q.empty(myAccount);
     const value = 42n;
@@ -514,7 +514,7 @@ const client = new {class_name}Client();
 describe.concurrent("{class_name} Program", async () => {{
   it("initializes state", async () => {{
     const q = await QuasarTest.load({class_name}Client.programId);
-    const payer = await q.actor();
+    const payer = await q.add_wallet();
     const myAccount = await findMyAccountAddress(payer);
     q.empty(myAccount);
     const value = 42n;
@@ -663,7 +663,7 @@ fn test_initialize() {{
 
 #[quasar_test]
 fn initialize(q: &mut QuasarTest) {
-    let payer = q.actor();
+    let payer = q.add_wallet();
     q.send(InitializeInstruction { payer }).succeeds();
 }
 "#
@@ -678,8 +678,8 @@ const VALUE: u64 = 42;
 
 #[quasar_test]
 fn initialize(q: &mut QuasarTest) {
-    let payer = q.actor();
-    let (my_account, bump) = q.pda_with_bump(MyAccount::seeds(&payer));
+    let payer = q.add_wallet();
+    let (my_account, bump) = q.derive_pda_with_bump(MyAccount::seeds(&payer));
 
     q.send(InitializeInstruction { payer, value: VALUE }).succeeds();
 
@@ -1037,7 +1037,7 @@ mod tests {
             let framework = RustFramework::QuasarSVM;
             let full = generate_tests_rs("demo", framework, Template::Full, Toolchain::Solana);
             assert!(full.contains("#[quasar_test]"));
-            assert!(full.contains("q.pda_with_bump(MyAccount::seeds(&payer))"));
+            assert!(full.contains("q.derive_pda_with_bump(MyAccount::seeds(&payer))"));
             assert!(full.contains("q.send(InitializeInstruction {"));
             assert!(full.contains("q.read::<MyAccount>(my_account)"));
             assert!(!full.contains("fixtures::"));
@@ -1046,7 +1046,7 @@ mod tests {
             let minimal =
                 generate_tests_rs("demo", framework, Template::Minimal, Toolchain::Solana);
             assert!(minimal.contains("#[quasar_test]"));
-            assert!(minimal.contains("let payer = q.actor();"));
+            assert!(minimal.contains("let payer = q.add_wallet();"));
             assert!(!minimal.contains("MyAccount"));
         }
 

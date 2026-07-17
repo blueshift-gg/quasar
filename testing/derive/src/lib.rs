@@ -70,8 +70,10 @@ pub fn quasar_test(attr: TokenStream, item: TokenStream) -> TokenStream {
         #(#attrs)*
         #[test]
         fn #name() {
-            let mut __quasar_world =
-                ::quasar_test::QuasarTest::new_for_crate(#program_id, env!("CARGO_PKG_NAME"));
+            let mut __quasar_world = ::quasar_test::QuasarTest::builder(#program_id)
+                .crate_name(env!("CARGO_PKG_NAME"))
+                .build()
+                .unwrap_or_else(|error| ::core::panic!("{error}"));
             let #world_name: #world_ty = &mut __quasar_world;
             #body
         }

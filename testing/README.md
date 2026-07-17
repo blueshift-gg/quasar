@@ -19,7 +19,7 @@ use {
 
 #[quasar_test]
 fn deposits_into_the_vault(q: &mut QuasarTest) {
-    let authority = q.actor();
+    let authority = q.add_wallet();
 
     q.send(InitializeInstruction { authority }).succeeds();
     q.send(DepositInstruction {
@@ -29,7 +29,7 @@ fn deposits_into_the_vault(q: &mut QuasarTest) {
     .succeeds()
     .cu_below(10_000);
 
-    let state = q.read::<Vault>(q.pda(Vault::seeds(&authority)));
+    let state = q.read::<Vault>(q.derive_pda(Vault::seeds(&authority)));
     assert_eq!(state.balance, 1_000_000_000);
 }
 ```
@@ -38,10 +38,11 @@ A `#[quasar_test]` function is a plain `#[test]` whose world is loaded from
 the crate's compiled program. Everything typed comes from the program itself:
 instructions from the generated client (which fills in `Program<T>`/
 `Sysvar<T>` addresses and derives `#[seeds]` PDA accounts, so neither appears
-in the struct), addresses via `pda` from `#[seeds]`, state via `read`/`write`
-from `#[account]`. `actor`, `actors`, `actor_at`, `mint`, `ata`, and `empty`
-put common fixtures directly into the test world, and `send` backs missing
-writable accounts with empty system accounts so init targets need no setup.
+in the struct), addresses via `derive_pda` from `#[seeds]`, state via `read`/`write`
+from `#[account]`. `add_wallet`, `add_mint`, `add_token_account`, `add_ata`,
+and `fund` put common fixtures directly into the test world, and `send` backs
+missing writable accounts with empty system accounts so init targets need no
+setup.
 The returned result supports fluent success, typed error, compute-unit,
 balance, supply, and account-closure checks. For a deliberate deviation from
 the canonical call — a spoofed PDA, a missing signature — adjust the built
@@ -54,8 +55,9 @@ available for unusual cases.
 `target/deploy/{crate_name}.so` in the nearest ancestor target directory and
 otherwise require a single unambiguous `.so`, so a test cannot silently
 execute the wrong binary. Use `#[quasar_test(program_id = EXPR)]` for an
-external program and `QuasarTest::from_program_path` for an explicit
-artifact.
+external program and `QuasarTest::builder(id)` (config, explicit artifact
+path, crate name) when setup needs control. The API's shapes and naming
+rules live in [API.md](API.md).
 
 `QuasarTest` dereferences to `QuasarSvm`, so the complete VM API remains
 available. Use `quasar-svm` directly only when you are testing the VM itself or

@@ -7,6 +7,9 @@ pub struct MixedAccount {
 Use this type when constructing account data values (e.g., for `Migrate` implementations).*/
 pub type MixedAccountData = __mixed_account_zc::MixedAccountZc;
 unsafe impl ::quasar_lang::traits::StaticView for MixedAccount {}
+impl ::quasar_lang::traits::AccountData for __mixed_account_zc::MixedAccountZc {
+    type Wrapper = MixedAccount;
+}
 impl ::quasar_lang::traits::AsAccountView for MixedAccount {
     #[inline(always)]
     fn to_account_view(&self) -> &::quasar_lang::__internal::AccountView {

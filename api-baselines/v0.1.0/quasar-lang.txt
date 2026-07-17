@@ -3209,6 +3209,8 @@ pub const quasar_lang::traits::AccountCount::NEEDS_EVENT_CPI: bool
 impl<T, const N: usize> quasar_lang::traits::AccountCount for quasar_lang::accounts::AccountsArray<T, N> where T: quasar_lang::traits::AccountCount
 pub const quasar_lang::accounts::AccountsArray<T, N>::COUNT: usize
 pub const quasar_lang::accounts::AccountsArray<T, N>::NEEDS_EVENT_CPI: bool
+pub trait quasar_lang::traits::AccountData
+pub type quasar_lang::traits::AccountData::Wrapper
 pub trait quasar_lang::traits::AsAccountView
 pub fn quasar_lang::traits::AsAccountView::address(&self) -> &solana_address::Address
 pub fn quasar_lang::traits::AsAccountView::to_account_view(&self) -> &solana_account_view::AccountView
