@@ -59,6 +59,20 @@ impl<'__quasar_seed> VaultPdaSeedSetWithBump<'__quasar_seed> {
     pub fn as_slices(&self) -> [&[u8]; 3usize] {
         [b"vault", self.inner._authority.as_ref(), &self._bump]
     }
+    /// Materialize the signer-seed array once.
+    ///
+    /// `invoke_signed(&set)` rebuilds the array on every call (the
+    /// pointer escapes into the syscall, so the rebuild cannot be
+    /// elided). Bind this before signing several CPIs to pay the
+    /// construction cost once.
+    #[inline(always)]
+    pub fn signer_seeds(&self) -> [::quasar_lang::cpi::Seed<'_>; 3usize] {
+        [
+            ::quasar_lang::cpi::Seed::from(b"vault"),
+            ::quasar_lang::cpi::Seed::from(self.inner._authority.as_ref()),
+            ::quasar_lang::cpi::Seed::from(&self._bump),
+        ]
+    }
 }
 impl<'__quasar_seed> ::quasar_lang::cpi::CpiSignerSeeds
 for VaultPdaSeedSetWithBump<'__quasar_seed> {

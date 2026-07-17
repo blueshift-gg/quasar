@@ -313,6 +313,17 @@ pub(crate) fn generate_seeds_impl(
             pub fn as_slices(&self) -> [&[u8]; #n_slices_with_bump] {
                 [ #( #slice_exprs_bump ),* ]
             }
+
+            /// Materialize the signer-seed array once.
+            ///
+            /// `invoke_signed(&set)` rebuilds the array on every call (the
+            /// pointer escapes into the syscall, so the rebuild cannot be
+            /// elided). Bind this before signing several CPIs to pay the
+            /// construction cost once.
+            #[inline(always)]
+            pub fn signer_seeds(&self) -> [#krate::cpi::Seed<'_>; #n_slices_with_bump] {
+                [ #( #krate::cpi::Seed::from(#slice_exprs_bump) ),* ]
+            }
         }
 
         impl<'__quasar_seed> #krate::cpi::CpiSignerSeeds for #seed_set_bump<'__quasar_seed> {
