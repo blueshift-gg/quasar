@@ -7,6 +7,9 @@ pub struct DynamicAccount {
 Use this type when constructing account data values (e.g., for `Migrate` implementations).*/
 pub type DynamicAccountData = __dynamic_account_zc::DynamicAccountZc;
 unsafe impl ::quasar_lang::traits::StaticView for DynamicAccount {}
+impl ::quasar_lang::traits::AccountData for __dynamic_account_zc::DynamicAccountZc {
+    type Wrapper = DynamicAccount;
+}
 impl ::quasar_lang::traits::AsAccountView for DynamicAccount {
     #[inline(always)]
     fn to_account_view(&self) -> &::quasar_lang::__internal::AccountView {

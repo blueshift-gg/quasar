@@ -4,7 +4,7 @@ use {
         cpi::*,
         state::{Escrow, EscrowData},
     },
-    quasar_test::prelude::*,
+    quasar_test::{prelude::*, DEFAULT_WALLET_LAMPORTS},
 };
 
 #[path = "../../cu_bench.rs"]
@@ -25,15 +25,15 @@ const WRONG_OWNER: Pubkey = Pubkey::new_from_array([10; 32]);
 
 /// Register the maker and both mints.
 fn base_world(q: &mut QuasarTest) {
-    q.actor_at(MAKER);
-    q.mint_at(MINT_A, MAKER, 1_000_000_000, 9);
-    q.mint_at(MINT_B, MAKER, 1_000_000_000, 9);
+    q.fund(MAKER, DEFAULT_WALLET_LAMPORTS);
+    q.add_mint_at(MINT_A, MAKER, 1_000_000_000, 9);
+    q.add_mint_at(MINT_B, MAKER, 1_000_000_000, 9);
 }
 
 /// Register a live escrow holding 1337 vault tokens, as `make` leaves it.
 fn live_escrow(q: &mut QuasarTest) -> Pubkey {
-    let (escrow, bump) = q.pda_with_bump(Escrow::seeds(&MAKER));
-    q.write::<Escrow>(
+    let (escrow, bump) = q.derive_pda_with_bump(Escrow::seeds(&MAKER));
+    q.write(
         escrow,
         EscrowData {
             maker: MAKER,
@@ -44,15 +44,15 @@ fn live_escrow(q: &mut QuasarTest) -> Pubkey {
             bump,
         },
     );
-    q.token_account_at(VAULT_TA_A, escrow, MINT_A, 1337);
+    q.add_token_account_at(VAULT_TA_A, escrow, MINT_A, 1337);
     escrow
 }
 
 #[quasar_test]
 fn test_make_cu(q: &mut QuasarTest) {
     base_world(q);
-    q.token_account_at(MAKER_TA_A, MAKER, MINT_A, 1_000_000);
-    let (escrow, bump) = q.pda_with_bump(Escrow::seeds(&MAKER));
+    q.add_token_account_at(MAKER_TA_A, MAKER, MINT_A, 1_000_000);
+    let (escrow, bump) = q.derive_pda_with_bump(Escrow::seeds(&MAKER));
 
     let result = q.send(MakeInstruction {
         maker: MAKER,
@@ -77,9 +77,9 @@ fn test_make_cu(q: &mut QuasarTest) {
 #[quasar_test]
 fn test_take_cu(q: &mut QuasarTest) {
     base_world(q);
-    q.actor_at(TAKER);
+    q.fund(TAKER, DEFAULT_WALLET_LAMPORTS);
     live_escrow(q);
-    q.token_account_at(TAKER_TA_B, TAKER, MINT_B, 10_000);
+    q.add_token_account_at(TAKER_TA_B, TAKER, MINT_B, 10_000);
 
     let result = q.send(TakeInstruction {
         taker: TAKER,
@@ -115,10 +115,10 @@ fn test_refund_cu(q: &mut QuasarTest) {
 #[quasar_test]
 fn test_make_existing_token_accounts(q: &mut QuasarTest) {
     base_world(q);
-    q.token_account_at(MAKER_TA_A, MAKER, MINT_A, 1_000_000);
-    let escrow = q.pda(Escrow::seeds(&MAKER));
-    q.token_account_at(MAKER_TA_B, MAKER, MINT_B, 0);
-    q.token_account_at(VAULT_TA_A, escrow, MINT_A, 0);
+    q.add_token_account_at(MAKER_TA_A, MAKER, MINT_A, 1_000_000);
+    let escrow = q.derive_pda(Escrow::seeds(&MAKER));
+    q.add_token_account_at(MAKER_TA_B, MAKER, MINT_B, 0);
+    q.add_token_account_at(VAULT_TA_A, escrow, MINT_A, 0);
 
     q.send(MakeInstruction {
         maker: MAKER,
@@ -136,10 +136,10 @@ fn test_make_existing_token_accounts(q: &mut QuasarTest) {
 #[quasar_test]
 fn test_make_existing_maker_ta_b_wrong_mint(q: &mut QuasarTest) {
     base_world(q);
-    q.token_account_at(MAKER_TA_A, MAKER, MINT_A, 1_000_000);
-    let escrow = q.pda(Escrow::seeds(&MAKER));
-    q.token_account_at(MAKER_TA_B, MAKER, MINT_A, 0); // wrong mint
-    q.token_account_at(VAULT_TA_A, escrow, MINT_A, 0);
+    q.add_token_account_at(MAKER_TA_A, MAKER, MINT_A, 1_000_000);
+    let escrow = q.derive_pda(Escrow::seeds(&MAKER));
+    q.add_token_account_at(MAKER_TA_B, MAKER, MINT_A, 0); // wrong mint
+    q.add_token_account_at(VAULT_TA_A, escrow, MINT_A, 0);
 
     let result = q.send(MakeInstruction {
         maker: MAKER,
@@ -160,10 +160,10 @@ fn test_make_existing_maker_ta_b_wrong_mint(q: &mut QuasarTest) {
 #[quasar_test]
 fn test_make_existing_maker_ta_b_wrong_owner(q: &mut QuasarTest) {
     base_world(q);
-    q.token_account_at(MAKER_TA_A, MAKER, MINT_A, 1_000_000);
-    let escrow = q.pda(Escrow::seeds(&MAKER));
-    q.token_account_at(MAKER_TA_B, WRONG_OWNER, MINT_B, 0); // wrong owner
-    q.token_account_at(VAULT_TA_A, escrow, MINT_A, 0);
+    q.add_token_account_at(MAKER_TA_A, MAKER, MINT_A, 1_000_000);
+    let escrow = q.derive_pda(Escrow::seeds(&MAKER));
+    q.add_token_account_at(MAKER_TA_B, WRONG_OWNER, MINT_B, 0); // wrong owner
+    q.add_token_account_at(VAULT_TA_A, escrow, MINT_A, 0);
 
     let result = q.send(MakeInstruction {
         maker: MAKER,
@@ -184,11 +184,11 @@ fn test_make_existing_maker_ta_b_wrong_owner(q: &mut QuasarTest) {
 #[quasar_test]
 fn test_take_existing_token_accounts(q: &mut QuasarTest) {
     base_world(q);
-    q.actor_at(TAKER);
+    q.fund(TAKER, DEFAULT_WALLET_LAMPORTS);
     live_escrow(q);
-    q.token_account_at(TAKER_TA_A, TAKER, MINT_A, 0);
-    q.token_account_at(TAKER_TA_B, TAKER, MINT_B, 10_000);
-    q.token_account_at(MAKER_TA_B, MAKER, MINT_B, 500);
+    q.add_token_account_at(TAKER_TA_A, TAKER, MINT_A, 0);
+    q.add_token_account_at(TAKER_TA_B, TAKER, MINT_B, 10_000);
+    q.add_token_account_at(MAKER_TA_B, MAKER, MINT_B, 500);
 
     q.send(TakeInstruction {
         taker: TAKER,
@@ -206,7 +206,7 @@ fn test_take_existing_token_accounts(q: &mut QuasarTest) {
 #[quasar_test]
 fn test_refund_existing_maker_ta_a(q: &mut QuasarTest) {
     base_world(q);
-    q.token_account_at(MAKER_TA_A, MAKER, MINT_A, 5_000);
+    q.add_token_account_at(MAKER_TA_A, MAKER, MINT_A, 5_000);
     live_escrow(q);
 
     q.send(RefundInstruction {

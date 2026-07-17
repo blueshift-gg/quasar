@@ -322,6 +322,17 @@ pub trait HasSeeds {
     type WithBump<'seed>;
 }
 
+/// Links an account's generated data layout (`{Name}Data`) back to its
+/// wrapper type.
+///
+/// Implemented by: `#[account]` for the data layout it generates.
+/// Used by: `quasar-test`'s `write`, so the wrapper never has to be named
+/// twice (`q.write(addr, VaultData { .. })`).
+pub trait AccountData {
+    /// The `#[account]` wrapper this layout belongs to.
+    type Wrapper;
+}
+
 /// Owned type of one `#[seeds(...)]` dynamic parameter, by position.
 ///
 /// Implemented by: seeds codegen for each dynamic seed.
