@@ -29,6 +29,19 @@ pub fn generate_accounts_macro(
     let descriptors = describe_accounts(name, generics, plan);
     let macro_name = format_ident!("__{}_instruction", pascal_to_snake(&name.to_string()));
     let module_name = format_ident!("__{}_client_macro", pascal_to_snake(&name.to_string()));
+    // Two derived fields may share a stored-data seed root (a chained field
+    // inherits its base's inputs); the input appears once, at first use.
+    let mut seen_inputs: Vec<syn::Ident> = Vec::new();
+    let mut descriptors = descriptors;
+    for descriptor in &mut descriptors {
+        descriptor
+            .seed_inputs
+            .retain(|(input, _)| !seen_inputs.contains(input));
+        for (input, _) in &descriptor.seed_inputs {
+            seen_inputs.push(input.clone());
+        }
+    }
+    let descriptors = descriptors;
     let account_fields: Vec<_> = descriptors
         .iter()
         .map(|descriptor| emit_account_field(name, descriptor))
@@ -38,7 +51,7 @@ pub fn generate_accounts_macro(
         .iter()
         .flat_map(|descriptor| {
             descriptor.seed_inputs.iter().map(|(input, alias)| {
-                let realias = seed_input_realias(name, &descriptor.name, input);
+                let realias = seed_input_realias(name, input);
                 quote! {
                     #[doc(hidden)]
                     #[allow(unexpected_cfgs)]
@@ -199,7 +212,7 @@ fn emit_account_field(name: &syn::Ident, descriptor: &AccountDescriptor) -> Toke
         // typed inputs carrying those values (via definition-site re-aliases,
         // so the type resolves inside the cpi module).
         let inputs = descriptor.seed_inputs.iter().map(|(input, _)| {
-            let realias = seed_input_realias(name, &descriptor.name, input);
+            let realias = seed_input_realias(name, input);
             quote! { pub #input: #realias, }
         });
         return quote! { #(#inputs)* };
@@ -212,15 +225,10 @@ fn emit_account_field(name: &syn::Ident, descriptor: &AccountDescriptor) -> Toke
 /// The definition-site re-alias for one synthetic seed input, scoped by the
 /// accounts struct so sibling structs with identical fields don't collide in
 /// the program module's glob imports.
-fn seed_input_realias(
-    accounts_struct: &syn::Ident,
-    field: &syn::Ident,
-    input: &syn::Ident,
-) -> syn::Ident {
+fn seed_input_realias(accounts_struct: &syn::Ident, input: &syn::Ident) -> syn::Ident {
     format_ident!(
-        "__QuasarSeedInput{}{}{}",
+        "__QuasarSeedInput{}{}",
         accounts_struct,
-        crate::helpers::snake_to_camel(&field.to_string()),
         crate::helpers::snake_to_camel(&input.to_string())
     )
 }
