@@ -22,7 +22,4 @@ quasar-lang = { path = "../../lang" }
 quasar-spl = { path = "../../spl" }
 
 [dev-dependencies]
-quasar-escrow-client = { path = "client" }
-wincode = { version = "0.4", features = ["derive"] }
-quasar-svm = { git = "https://github.com/blueshift-gg/quasar-svm" }
-spl-token-interface = { version = "2.0.0" }
+quasar-test = { path = "../../testing" }

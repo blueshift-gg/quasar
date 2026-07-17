@@ -9,7 +9,7 @@ use {
         state::{SimpleAccount, SimpleAccountData},
     },
     quasar_lang::prelude::QuasarError,
-    quasar_test::{prelude::*, quasar_svm::system_program},
+    quasar_test::prelude::*,
 };
 
 #[quasar_test]
@@ -17,13 +17,8 @@ fn initialize_stores_typed_state(q: &mut QuasarTest) {
     let payer = q.actor();
     let (account, bump) = q.pda_with_bump(SimpleAccount::seeds(&payer));
 
-    q.send(InitializeInstruction {
-        payer,
-        account,
-        system_program: system_program::ID,
-        value: 42,
-    })
-    .succeeds();
+    q.send(InitializeInstruction { payer, value: 42 })
+        .succeeds();
 
     let state = q.read::<SimpleAccount>(account);
     assert_eq!(state.authority, payer);
@@ -44,7 +39,7 @@ fn close_returns_the_account_to_the_system(q: &mut QuasarTest) {
         },
     );
 
-    q.send(CloseAccountInstruction { authority, account })
+    q.send(CloseAccountInstruction { authority })
         .succeeds()
         .is_closed(account);
 }
@@ -62,9 +57,14 @@ fn close_rejects_a_foreign_authority(q: &mut QuasarTest) {
         },
     );
 
-    q.send(CloseAccountInstruction {
-        authority: intruder,
-        account,
-    })
+    // The client derives the PDA from the passed authority; swapping in the
+    // owner's account is the mismatch under test.
+    let intruder_pda = q.pda(SimpleAccount::seeds(&intruder));
+    q.send(
+        CloseAccountInstruction {
+            authority: intruder,
+        }
+        .swap_account(intruder_pda, account),
+    )
     .fails_with(QuasarError::InvalidPda as u32);
 }

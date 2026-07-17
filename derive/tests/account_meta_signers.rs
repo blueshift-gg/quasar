@@ -35,8 +35,6 @@ struct InitAssociatedToken {
     ata_program: Program<AssociatedTokenProgram>,
 }
 
-__init_associated_token_instruction!(InitAssociatedTokenInstruction, [0], {});
-
 #[derive(Accounts)]
 struct InitTokenAccount {
     #[account(mut)]
@@ -53,7 +51,16 @@ struct InitTokenAccount {
     system_program: Program<SystemProgram>,
 }
 
-__init_token_account_instruction!(InitTokenAccountInstruction, [1], {});
+// The client macro expands inside the generated `cpi` module (a child of
+// the `#[program]` module); this mirror gives its `super::` paths the same
+// shape.
+mod cpi {
+    use super::*;
+
+    __init_associated_token_instruction!(InitAssociatedTokenInstruction, [0], {});
+    __init_token_account_instruction!(InitTokenAccountInstruction, [1], {});
+}
+use cpi::*;
 
 fn address(byte: u8) -> Address {
     Address::from([byte; 32])
@@ -65,9 +72,6 @@ fn associated_token_init_does_not_require_the_derived_account_to_sign() {
         payer: address(1),
         mint: address(2),
         ata: address(3),
-        token_program: address(4),
-        system_program: address(5),
-        ata_program: address(6),
     }
     .into();
 
@@ -82,8 +86,6 @@ fn direct_token_init_still_requires_the_new_account_to_sign() {
         mint: address(2),
         authority: address(3),
         token: address(4),
-        token_program: address(5),
-        system_program: address(6),
     }
     .into();
 

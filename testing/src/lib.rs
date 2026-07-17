@@ -728,6 +728,42 @@ pub mod fixtures {
     }
 }
 
+/// Test-side adjustments to a built [`quasar_svm::Instruction`].
+///
+/// Generated client instructions encode the canonical call. These helpers
+/// express a test's deliberate deviations from it by address, so the
+/// deviation is visible where the test constructs the instruction.
+pub trait InstructionExt: Sized {
+    /// Mark the given accounts as signers.
+    fn signed_by(self, signers: &[Pubkey]) -> quasar_svm::Instruction;
+
+    /// Replace every meta for `from` with `to`, e.g. to hand an instruction
+    /// the wrong program or a foreign account on purpose.
+    fn swap_account(self, from: Pubkey, to: Pubkey) -> quasar_svm::Instruction;
+}
+
+impl<T: Into<quasar_svm::Instruction>> InstructionExt for T {
+    fn signed_by(self, signers: &[Pubkey]) -> quasar_svm::Instruction {
+        let mut instruction = self.into();
+        for meta in &mut instruction.accounts {
+            if signers.contains(&meta.pubkey) {
+                meta.is_signer = true;
+            }
+        }
+        instruction
+    }
+
+    fn swap_account(self, from: Pubkey, to: Pubkey) -> quasar_svm::Instruction {
+        let mut instruction = self.into();
+        for meta in &mut instruction.accounts {
+            if meta.pubkey == from {
+                meta.pubkey = to;
+            }
+        }
+        instruction
+    }
+}
+
 /// Assertions layered on [`quasar_svm::ExecutionResult`].
 pub trait ExecutionResultExt {
     /// Assert success and keep the result available for chained expectations.
@@ -906,7 +942,9 @@ fn result_account<'a>(result: &'a quasar_svm::ExecutionResult, address: &Pubkey)
 /// Convenient imports for Quasar program tests.
 pub mod prelude {
     pub use {
-        crate::{quasar_test, ExecutionResultExt, QuasarSvmConfig, QuasarTest, Snapshot},
+        crate::{
+            quasar_test, ExecutionResultExt, InstructionExt, QuasarSvmConfig, QuasarTest, Snapshot,
+        },
         quasar_svm::{
             system_program, Account, AccountMeta, ExecutionResult, Instruction, ProgramError,
             Pubkey,

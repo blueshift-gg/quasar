@@ -18,7 +18,6 @@ fn mint_to_spl() {
         authority,
         mint: mint_key,
         to: to_key,
-        token_program,
         amount: 5000,
     }
     .into();
@@ -52,7 +51,6 @@ fn mint_to_t22() {
         authority,
         mint: mint_key,
         to: to_key,
-        token_program,
         amount: 5000,
     }
     .into();
@@ -120,7 +118,6 @@ fn burn_spl() {
         authority,
         from: from_key,
         mint: mint_key,
-        token_program,
         amount: 500,
     }
     .into();
@@ -192,7 +189,6 @@ fn mint_to_rejects_wrong_mint_authority() {
         authority,
         mint: mint_key,
         to: to_key,
-        token_program,
         amount: 5000,
     }
     .into();
@@ -221,7 +217,6 @@ fn burn_rejects_more_than_balance() {
         authority,
         from: from_key,
         mint: mint_key,
-        token_program,
         amount: 500,
     }
     .into();

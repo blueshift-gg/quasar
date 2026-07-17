@@ -21,7 +21,6 @@ fn ata_spl_happy() {
         ata: ata_key,
         mint: mint_key,
         wallet,
-        token_program,
     }
     .into();
 
@@ -49,7 +48,6 @@ fn ata_spl_wrong_address() {
         ata: wrong_ata,
         mint: mint_key,
         wallet,
-        token_program,
     }
     .into();
 
@@ -79,7 +77,6 @@ fn ata_spl_wrong_mint() {
         ata: ata_key,
         mint: mint_key,
         wallet,
-        token_program,
     }
     .into();
 
@@ -109,7 +106,6 @@ fn ata_spl_wrong_authority() {
         ata: ata_key,
         mint: mint_key,
         wallet,
-        token_program,
     }
     .into();
 
@@ -138,7 +134,6 @@ fn ata_spl_wrong_owner() {
         ata: ata_key,
         mint: mint_key,
         wallet,
-        token_program,
     }
     .into();
 
@@ -176,7 +171,6 @@ fn ata_t22_happy() {
         ata: ata_key,
         mint: mint_key,
         wallet,
-        token_program,
     }
     .into();
 

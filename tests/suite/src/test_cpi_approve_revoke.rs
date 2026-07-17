@@ -19,7 +19,6 @@ fn approve_spl() {
         authority,
         source: source_key,
         delegate: delegate_key,
-        token_program,
         amount: 500,
     }
     .into();
@@ -54,7 +53,6 @@ fn approve_t22() {
         authority,
         source: source_key,
         delegate: delegate_key,
-        token_program,
         amount: 500,
     }
     .into();
@@ -123,7 +121,6 @@ fn revoke_spl() {
     let instruction: Instruction = RevokeInstruction {
         authority,
         source: source_key,
-        token_program,
     }
     .into();
 
@@ -208,7 +205,6 @@ fn approve_rejects_wrong_owner() {
         authority,
         source: source_key,
         delegate: delegate_key,
-        token_program,
         amount: 500,
     }
     .into();
@@ -240,7 +236,6 @@ fn revoke_rejects_wrong_owner() {
     let instruction: Instruction = RevokeInstruction {
         authority,
         source: source_key,
-        token_program,
     }
     .into();
     let result = svm.process_instruction(

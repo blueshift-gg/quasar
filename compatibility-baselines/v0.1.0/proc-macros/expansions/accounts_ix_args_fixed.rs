@@ -257,8 +257,8 @@ mod __ix_args_fixed_client_macro {
         ) => {
             pub struct $struct_name { pub account : ::quasar_lang::prelude::Address,
             $(pub $arg_name : $arg_ty,)* } impl From < $struct_name > for
-            ::quasar_lang::client::Instruction { fn from(ix : $struct_name) ->
-            ::quasar_lang::client::Instruction { let accounts =
+            ::quasar_lang::client::Instruction { #[allow(unused_variables)] fn from(ix :
+            $struct_name) -> ::quasar_lang::client::Instruction { let accounts =
             ::alloc::vec![::quasar_lang::client::AccountMeta::new(ix.account, false),];
             let data = { let mut _data = ::alloc::vec![$($disc),*]; $(_data
             .extend_from_slice(& < $arg_ty as ::quasar_lang::client::SerializeArg >
@@ -272,8 +272,8 @@ mod __ix_args_fixed_client_macro {
         ) => {
             pub struct $struct_name { pub account : ::quasar_lang::prelude::Address,
             $(pub $arg_name : $arg_ty,)* } impl From < $struct_name > for
-            ::quasar_lang::client::Instruction { fn from(ix : $struct_name) ->
-            ::quasar_lang::client::Instruction { let accounts =
+            ::quasar_lang::client::Instruction { #[allow(unused_variables)] fn from(ix :
+            $struct_name) -> ::quasar_lang::client::Instruction { let accounts =
             ::alloc::vec![::quasar_lang::client::AccountMeta::new(ix.account, false),];
             let data = { let mut _data = ::alloc::vec![$($disc),*]; $(_data
             .extend_from_slice(& < $arg_ty as ::quasar_lang::client::CompactSerializeArg
@@ -289,8 +289,8 @@ mod __ix_args_fixed_client_macro {
             pub struct $struct_name { pub account : ::quasar_lang::prelude::Address,
             $(pub $arg_name : $arg_ty,)* pub remaining_accounts : ::alloc::vec::Vec <
             ::quasar_lang::client::AccountMeta >, } impl From < $struct_name > for
-            ::quasar_lang::client::Instruction { fn from(ix : $struct_name) ->
-            ::quasar_lang::client::Instruction { let mut accounts =
+            ::quasar_lang::client::Instruction { #[allow(unused_variables)] fn from(ix :
+            $struct_name) -> ::quasar_lang::client::Instruction { let mut accounts =
             ::alloc::vec![::quasar_lang::client::AccountMeta::new(ix.account, false),];
             accounts.extend(ix.remaining_accounts); let data = { let mut _data =
             ::alloc::vec![$($disc),*]; $(_data.extend_from_slice(& < $arg_ty as
@@ -305,8 +305,8 @@ mod __ix_args_fixed_client_macro {
             pub struct $struct_name { pub account : ::quasar_lang::prelude::Address,
             $(pub $arg_name : $arg_ty,)* pub remaining_accounts : ::alloc::vec::Vec <
             ::quasar_lang::client::AccountMeta >, } impl From < $struct_name > for
-            ::quasar_lang::client::Instruction { fn from(ix : $struct_name) ->
-            ::quasar_lang::client::Instruction { let mut accounts =
+            ::quasar_lang::client::Instruction { #[allow(unused_variables)] fn from(ix :
+            $struct_name) -> ::quasar_lang::client::Instruction { let mut accounts =
             ::alloc::vec![::quasar_lang::client::AccountMeta::new(ix.account, false),];
             accounts.extend(ix.remaining_accounts); let data = { let mut _data =
             ::alloc::vec![$($disc),*]; $(_data.extend_from_slice(& < $arg_ty as

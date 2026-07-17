@@ -83,7 +83,6 @@ fn test_emit_cpi_success() {
     let instruction = EmitViaCpiInstruction {
         signer,
         event_authority,
-        program: quasar_test_events::ID,
         value: 42,
     }
     .into();
@@ -112,7 +111,6 @@ fn test_emit_cpi_different_value() {
     let instruction = EmitViaCpiInstruction {
         signer,
         event_authority,
-        program: quasar_test_events::ID,
         value: 999,
     }
     .into();
@@ -141,7 +139,6 @@ fn test_emit_cpi_cu() {
     let instruction = EmitViaCpiInstruction {
         signer,
         event_authority,
-        program: quasar_test_events::ID,
         value: 42,
     }
     .into();
@@ -165,7 +162,6 @@ fn test_emit_cpi_wrong_authority() {
     let instruction = EmitViaCpiInstruction {
         signer,
         event_authority: wrong_authority,
-        program: quasar_test_events::ID,
         value: 42,
     }
     .into();
@@ -278,7 +274,6 @@ fn test_emit_cpi_with_extra_accounts() {
     let instruction = EmitViaCpiInstruction {
         signer,
         event_authority,
-        program: quasar_test_events::ID,
         value: 77,
     }
     .into();
@@ -299,13 +294,19 @@ fn test_emit_cpi_wrong_program() {
     let (event_authority, _) =
         Address::find_program_address(&[b"__event_authority"], &quasar_test_events::ID);
     let wrong_program = Address::new_unique();
-    let instruction = EmitViaCpiInstruction {
+    // The client fills the canonical program address; point the meta at a
+    // wrong executable on purpose.
+    let mut instruction: solana_instruction::Instruction = EmitViaCpiInstruction {
         signer,
         event_authority,
-        program: wrong_program,
         value: 42,
     }
     .into();
+    for meta in &mut instruction.accounts {
+        if meta.pubkey == quasar_test_events::ID {
+            meta.pubkey = wrong_program;
+        }
+    }
     let result = mollusk.process_instruction(
         &instruction,
         &[
@@ -342,7 +343,6 @@ fn test_emit_cpi_missing_event_authority() {
     let instruction = EmitViaCpiInstruction {
         signer,
         event_authority: random_account,
-        program: quasar_test_events::ID,
         value: 42,
     }
     .into();
@@ -367,7 +367,6 @@ fn test_emit_cpi_authority_not_signer() {
     let mut instruction: solana_instruction::Instruction = EmitViaCpiInstruction {
         signer,
         event_authority,
-        program: quasar_test_events::ID,
         value: 42,
     }
     .into();
@@ -395,7 +394,6 @@ fn test_emit_cpi_cu_budget() {
     let instruction = EmitViaCpiInstruction {
         signer,
         event_authority,
-        program: quasar_test_events::ID,
         value: 42,
     }
     .into();
@@ -498,7 +496,6 @@ fn test_emit_cpi_aliased_program_field_reaches_log() {
     let instruction: quasar_svm::Instruction = EmitViaCpiAliasedInstruction {
         signer,
         event_authority,
-        emitter: quasar_test_events::ID,
         value: 42,
     }
     .into();

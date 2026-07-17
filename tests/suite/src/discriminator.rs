@@ -165,13 +165,7 @@ fn no_disc_init_success() {
     let (account, _bump) =
         Pubkey::find_program_address(&[b"nodisc", payer.as_ref()], &quasar_test_misc::ID);
 
-    let ix: Instruction = InitNoDiscInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 42,
-    }
-    .into();
+    let ix: Instruction = InitNoDiscInstruction { payer, value: 42 }.into();
 
     let result =
         svm.process_instruction(&ix, &[rich_signer_account(payer), empty_account(account)]);
@@ -191,13 +185,7 @@ fn no_disc_read_after_init() {
         Pubkey::find_program_address(&[b"nodisc", payer.as_ref()], &quasar_test_misc::ID);
 
     // Init first
-    let ix1: Instruction = InitNoDiscInstruction {
-        payer,
-        account,
-        system_program: quasar_svm::system_program::ID,
-        value: 99,
-    }
-    .into();
+    let ix1: Instruction = InitNoDiscInstruction { payer, value: 99 }.into();
     let r1 = svm.process_instruction(&ix1, &[rich_signer_account(payer), empty_account(account)]);
     assert!(r1.is_ok(), "init: {:?}", r1.raw_result);
 

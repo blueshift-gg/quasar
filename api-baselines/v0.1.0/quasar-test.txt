@@ -120,6 +120,12 @@ pub fn quasar_svm::svm::ExecutionResult::lamports(&self, &solana_address::Addres
 pub fn quasar_svm::svm::ExecutionResult::mint_supply(&self, &solana_address::Address) -> u64
 pub fn quasar_svm::svm::ExecutionResult::succeeds(&self) -> &Self
 pub fn quasar_svm::svm::ExecutionResult::token_balance(&self, &solana_address::Address) -> u64
+pub trait quasar_test::prelude::InstructionExt: core::marker::Sized
+pub fn quasar_test::prelude::InstructionExt::signed_by(self, &[solana_address::Address]) -> solana_instruction::Instruction
+pub fn quasar_test::prelude::InstructionExt::swap_account(self, solana_address::Address, solana_address::Address) -> solana_instruction::Instruction
+impl<T: core::convert::Into<solana_instruction::Instruction>> quasar_test::InstructionExt for T
+pub fn T::signed_by(self, &[solana_address::Address]) -> solana_instruction::Instruction
+pub fn T::swap_account(self, solana_address::Address, solana_address::Address) -> solana_instruction::Instruction
 #[non_exhaustive] pub enum quasar_test::ProjectError
 pub quasar_test::ProjectError::AmbiguousPrograms
 pub quasar_test::ProjectError::AmbiguousPrograms::deploy: std::path::PathBuf
@@ -245,5 +251,11 @@ pub fn quasar_svm::svm::ExecutionResult::lamports(&self, &solana_address::Addres
 pub fn quasar_svm::svm::ExecutionResult::mint_supply(&self, &solana_address::Address) -> u64
 pub fn quasar_svm::svm::ExecutionResult::succeeds(&self) -> &Self
 pub fn quasar_svm::svm::ExecutionResult::token_balance(&self, &solana_address::Address) -> u64
+pub trait quasar_test::InstructionExt: core::marker::Sized
+pub fn quasar_test::InstructionExt::signed_by(self, &[solana_address::Address]) -> solana_instruction::Instruction
+pub fn quasar_test::InstructionExt::swap_account(self, solana_address::Address, solana_address::Address) -> solana_instruction::Instruction
+impl<T: core::convert::Into<solana_instruction::Instruction>> quasar_test::InstructionExt for T
+pub fn T::signed_by(self, &[solana_address::Address]) -> solana_instruction::Instruction
+pub fn T::swap_account(self, solana_address::Address, solana_address::Address) -> solana_instruction::Instruction
 pub fn quasar_test::resolve_program_path() -> core::result::Result<std::path::PathBuf, quasar_test::ProjectError>
 pub fn quasar_test::resolve_program_path_named(&str) -> core::result::Result<std::path::PathBuf, quasar_test::ProjectError>

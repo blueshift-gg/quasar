@@ -2081,12 +2081,9 @@ dependencies = [
 name = "quasar-escrow"
 version = "0.1.0"
 dependencies = [
- "quasar-escrow-client",
  "quasar-lang",
  "quasar-spl",
- "quasar-svm 0.1.0 (git+https://github.com/blueshift-gg/quasar-svm)",
- "spl-token-interface",
- "wincode 0.4.9",
+ "quasar-test",
 ]
 
 [[package]]

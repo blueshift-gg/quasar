@@ -163,6 +163,20 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
         &ty_generics_ts,
         &where_clause_ts,
     );
+    let fixed_address_impl = emit_fixed_address_constants(
+        name,
+        &typed_plan,
+        &impl_generics_ts,
+        &ty_generics_ts,
+        &where_clause_ts,
+    );
+    let pda_address_impl = emit_pda_address_fns(
+        name,
+        &typed_plan,
+        &impl_generics_ts,
+        &ty_generics_ts,
+        &where_clause_ts,
+    );
 
     // IDL accounts meta fragment (feature-gated behind `idl-build`)
     let idl_accounts_meta = emit_idl_accounts_meta(name, &typed_plan);
@@ -209,6 +223,8 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
     quote::quote! {
         #main_output
         #signer_meta_impl
+        #fixed_address_impl
+        #pda_address_impl
         #idl_accounts_meta
         #idl_validation_meta
         #event_cpi_impl
@@ -236,6 +252,98 @@ fn emit_account_signer_constants(
         impl #impl_generics #name #ty_generics #where_clause {
             #[doc(hidden)]
             pub const __QUASAR_ACCOUNT_SIGNERS: [bool; #count] = [#(#signers),*];
+        }
+    }
+}
+
+/// Resolve `Program<T>`/`Sysvar<T>` canonical addresses where those types are
+/// in scope. The exported client macro reads them through the accounts type
+/// (same mechanism as `__QUASAR_ACCOUNT_SIGNERS`), so its instruction struct
+/// can drop the fields entirely.
+fn emit_fixed_address_constants(
+    name: &syn::Ident,
+    plan: &resolve::specs::AccountsPlanTyped,
+    impl_generics: &proc_macro2::TokenStream,
+    ty_generics: &proc_macro2::TokenStream,
+    where_clause: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
+    let consts: Vec<proc_macro2::TokenStream> = plan
+        .fields
+        .iter()
+        .filter_map(|field| {
+            let expr = crate::client_macro::fixed_address_expr(field)?;
+            let ident = crate::client_macro::fixed_address_const(&field.ident);
+            Some(quote! {
+                #[doc(hidden)]
+                pub const #ident: #krate::prelude::Address = #expr;
+            })
+        })
+        .collect();
+    if consts.is_empty() {
+        return quote! {};
+    }
+    quote! {
+        #[allow(non_upper_case_globals)]
+        impl #impl_generics #name #ty_generics #where_clause {
+            #(#consts)*
+        }
+    }
+}
+
+/// Resolve typed-seeds PDA addresses where the seed types are in scope. The
+/// exported client macro calls these through the accounts type, so its
+/// instruction struct can drop every client-derivable PDA field.
+fn emit_pda_address_fns(
+    name: &syn::Ident,
+    plan: &resolve::specs::AccountsPlanTyped,
+    impl_generics: &proc_macro2::TokenStream,
+    ty_generics: &proc_macro2::TokenStream,
+    where_clause: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
+    let fns: Vec<proc_macro2::TokenStream> = plan
+        .fields
+        .iter()
+        .filter_map(|field| {
+            let (account_ty, seeds) = crate::client_macro::client_derivable_pda(plan, field)?;
+            let fn_ident = crate::client_macro::pda_address_fn(&field.ident);
+            let params: Vec<proc_macro2::TokenStream> = seeds
+                .iter()
+                .filter_map(|seed| match seed {
+                    resolve::specs::IdlSeedPlan::AccountAddr { base } => {
+                        Some(quote! { #base: &#krate::prelude::Address })
+                    }
+                    _ => None,
+                })
+                .collect();
+            let args: Vec<proc_macro2::TokenStream> = seeds
+                .iter()
+                .map(|seed| match seed {
+                    resolve::specs::IdlSeedPlan::AccountAddr { base } => quote! { #base },
+                    resolve::specs::IdlSeedPlan::Const { expr } => quote! { #expr },
+                    _ => unreachable!("client_derivable_pda rejects other seed plans"),
+                })
+                .collect();
+            Some(quote! {
+                #[doc(hidden)]
+                #[inline]
+                pub fn #fn_ident(
+                    #(#params,)*
+                    program_id: &#krate::prelude::Address,
+                ) -> #krate::prelude::Address {
+                    let seeds = <#account_ty>::seeds(#(#args),*);
+                    #krate::pda::find_program_address_const(&seeds.as_slices(), program_id).0
+                }
+            })
+        })
+        .collect();
+    if fns.is_empty() {
+        return quote! {};
+    }
+    quote! {
+        impl #impl_generics #name #ty_generics #where_clause {
+            #(#fns)*
         }
     }
 }

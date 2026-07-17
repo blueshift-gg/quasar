@@ -28,7 +28,6 @@ fn mut_readback_data_and_lamports() {
     let ix: Instruction = CpiMutReadbackInstruction {
         account,
         payer,
-        system_program: quasar_svm::system_program::ID,
         new_value: 999,
     }
     .into();
@@ -61,7 +60,6 @@ fn mut_readback_wrapping_overflow() {
     let ix: Instruction = CpiMutReadbackInstruction {
         account,
         payer,
-        system_program: quasar_svm::system_program::ID,
         new_value: u64::MAX,
     }
     .into();
@@ -90,7 +88,6 @@ fn mut_readback_zero_value() {
     let ix: Instruction = CpiMutReadbackInstruction {
         account,
         payer,
-        system_program: quasar_svm::system_program::ID,
         new_value: 0,
     }
     .into();

@@ -681,13 +681,7 @@ fn initialize(q: &mut QuasarTest) {
     let payer = q.actor();
     let (my_account, bump) = q.pda_with_bump(MyAccount::seeds(&payer));
 
-    q.send(InitializeInstruction {
-        payer,
-        my_account,
-        system_program: system_program::ID,
-        value: VALUE,
-    })
-    .succeeds();
+    q.send(InitializeInstruction { payer, value: VALUE }).succeeds();
 
     let state = q.read::<MyAccount>(my_account);
     assert_eq!(state.version, 1);

@@ -14,14 +14,12 @@ fn init_token_interface_spl_happy() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitTokenInterfaceInstruction {
         payer,
         token_account: token_key,
         mint: mint_key,
         token_program,
-        system_program,
     }
     .into();
 
@@ -48,14 +46,12 @@ fn init_token_interface_t22_happy() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = token_2022_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitTokenInterfaceInstruction {
         payer,
         token_account: token_key,
         mint: mint_key,
         token_program,
-        system_program,
     }
     .into();
 
@@ -84,7 +80,6 @@ fn init_if_needed_token_interface_spl_new() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction = with_signers(
         InitIfNeededTokenInterfaceInstruction {
@@ -92,7 +87,6 @@ fn init_if_needed_token_interface_spl_new() {
             token_account: token_key,
             mint: mint_key,
             token_program,
-            system_program,
         }
         .into(),
         &[1],
@@ -121,7 +115,6 @@ fn init_if_needed_token_interface_t22_new() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = token_2022_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction = with_signers(
         InitIfNeededTokenInterfaceInstruction {
@@ -129,7 +122,6 @@ fn init_if_needed_token_interface_t22_new() {
             token_account: token_key,
             mint: mint_key,
             token_program,
-            system_program,
         }
         .into(),
         &[1],
@@ -158,14 +150,12 @@ fn init_if_needed_token_interface_existing_valid() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitIfNeededTokenInterfaceInstruction {
         payer,
         token_account: token_key,
         mint: mint_key,
         token_program,
-        system_program,
     }
     .into();
 
@@ -202,14 +192,12 @@ fn init_if_needed_token_interface_existing_wrong_mint() {
     let wrong_mint = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitIfNeededTokenInterfaceInstruction {
         payer,
         token_account: token_key,
         mint: mint_key,
         token_program,
-        system_program,
     }
     .into();
 
@@ -233,14 +221,12 @@ fn init_mint_interface_spl_happy() {
     let mint_key = Pubkey::new_unique();
     let authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitMintInterfaceInstruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
         token_program,
-        system_program,
     }
     .into();
 
@@ -266,14 +252,12 @@ fn init_mint_interface_t22_happy() {
     let mint_key = Pubkey::new_unique();
     let authority = Pubkey::new_unique();
     let token_program = token_2022_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitMintInterfaceInstruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
         token_program,
-        system_program,
     }
     .into();
 
@@ -301,7 +285,6 @@ fn init_if_needed_mint_interface_spl_new() {
     let mint_key = Pubkey::new_unique();
     let authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction = with_signers(
         InitIfNeededMintInterfaceInstruction {
@@ -309,7 +292,6 @@ fn init_if_needed_mint_interface_spl_new() {
             mint: mint_key,
             mint_authority: authority,
             token_program,
-            system_program,
         }
         .into(),
         &[1],
@@ -337,7 +319,6 @@ fn init_if_needed_mint_interface_t22_new() {
     let mint_key = Pubkey::new_unique();
     let authority = Pubkey::new_unique();
     let token_program = token_2022_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction = with_signers(
         InitIfNeededMintInterfaceInstruction {
@@ -345,7 +326,6 @@ fn init_if_needed_mint_interface_t22_new() {
             mint: mint_key,
             mint_authority: authority,
             token_program,
-            system_program,
         }
         .into(),
         &[1],
@@ -373,14 +353,12 @@ fn init_if_needed_mint_interface_existing_valid() {
     let mint_key = Pubkey::new_unique();
     let authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitIfNeededMintInterfaceInstruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
         token_program,
-        system_program,
     }
     .into();
 
@@ -416,14 +394,12 @@ fn init_if_needed_mint_interface_existing_wrong_authority() {
     let authority = Pubkey::new_unique();
     let wrong_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let instruction: Instruction = InitIfNeededMintInterfaceInstruction {
         payer,
         mint: mint_key,
         mint_authority: authority,
         token_program,
-        system_program,
     }
     .into();
 

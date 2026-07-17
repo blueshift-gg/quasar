@@ -15,7 +15,6 @@ fn init_ata_spl_happy() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let ata_program = ata_program_id();
     let (ata_key, _) =
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
@@ -24,9 +23,6 @@ fn init_ata_spl_happy() {
         ata: ata_key,
         wallet,
         mint: mint_key,
-        token_program,
-        system_program: quasar_svm::system_program::ID,
-        ata_program,
     }
     .into();
 
@@ -54,7 +50,6 @@ fn init_ata_spl_already_initialized() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let ata_program = ata_program_id();
     let (ata_key, _) =
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
@@ -63,9 +58,6 @@ fn init_ata_spl_already_initialized() {
         ata: ata_key,
         wallet,
         mint: mint_key,
-        token_program,
-        system_program: quasar_svm::system_program::ID,
-        ata_program,
     }
     .into();
 
@@ -91,7 +83,6 @@ fn init_ata_t22_happy() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = token_2022_program_id();
-    let ata_program = ata_program_id();
     let (ata_key, _) =
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
@@ -100,9 +91,6 @@ fn init_ata_t22_happy() {
         ata: ata_key,
         wallet,
         mint: mint_key,
-        token_program,
-        system_program: quasar_svm::system_program::ID,
-        ata_program,
     }
     .into();
 
@@ -130,7 +118,6 @@ fn init_ata_t22_already_initialized() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = token_2022_program_id();
-    let ata_program = ata_program_id();
     let (ata_key, _) =
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
@@ -139,9 +126,6 @@ fn init_ata_t22_already_initialized() {
         ata: ata_key,
         wallet,
         mint: mint_key,
-        token_program,
-        system_program: quasar_svm::system_program::ID,
-        ata_program,
     }
     .into();
 
@@ -167,7 +151,6 @@ fn init_if_needed_ata_spl_happy_new() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let ata_program = ata_program_id();
     let (ata_key, _) =
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
@@ -176,9 +159,6 @@ fn init_if_needed_ata_spl_happy_new() {
         ata: ata_key,
         wallet,
         mint: mint_key,
-        token_program,
-        system_program: quasar_svm::system_program::ID,
-        ata_program,
     }
     .into();
 
@@ -208,7 +188,6 @@ fn init_if_needed_ata_spl_existing_valid() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let ata_program = ata_program_id();
     let (ata_key, _) =
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
@@ -217,9 +196,6 @@ fn init_if_needed_ata_spl_existing_valid() {
         ata: ata_key,
         wallet,
         mint: mint_key,
-        token_program,
-        system_program: quasar_svm::system_program::ID,
-        ata_program,
     }
     .into();
 
@@ -259,7 +235,6 @@ fn init_if_needed_ata_spl_existing_wrong_mint() {
     let wrong_mint = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let ata_program = ata_program_id();
     let (ata_key, _) =
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
@@ -268,9 +243,6 @@ fn init_if_needed_ata_spl_existing_wrong_mint() {
         ata: ata_key,
         wallet,
         mint: mint_key,
-        token_program,
-        system_program: quasar_svm::system_program::ID,
-        ata_program,
     }
     .into();
 
@@ -295,7 +267,6 @@ fn init_if_needed_ata_spl_existing_wrong_authority() {
     let wrong_wallet = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let ata_program = ata_program_id();
     let (ata_key, _) =
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
@@ -304,9 +275,6 @@ fn init_if_needed_ata_spl_existing_wrong_authority() {
         ata: ata_key,
         wallet,
         mint: mint_key,
-        token_program,
-        system_program: quasar_svm::system_program::ID,
-        ata_program,
     }
     .into();
 
@@ -330,7 +298,6 @@ fn init_if_needed_ata_spl_existing_wrong_owner() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let ata_program = ata_program_id();
     let (ata_key, _) =
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
@@ -339,9 +306,6 @@ fn init_if_needed_ata_spl_existing_wrong_owner() {
         ata: ata_key,
         wallet,
         mint: mint_key,
-        token_program,
-        system_program: quasar_svm::system_program::ID,
-        ata_program,
     }
     .into();
 
@@ -374,7 +338,6 @@ fn init_if_needed_ata_t22_happy_new() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = token_2022_program_id();
-    let ata_program = ata_program_id();
     let (ata_key, _) =
         get_associated_token_address_with_program_const(&wallet, &mint_key, &token_program);
 
@@ -383,9 +346,6 @@ fn init_if_needed_ata_t22_happy_new() {
         ata: ata_key,
         wallet,
         mint: mint_key,
-        token_program,
-        system_program: quasar_svm::system_program::ID,
-        ata_program,
     }
     .into();
 

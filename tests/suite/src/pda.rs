@@ -35,12 +35,7 @@ fn test_literal_seed_init() {
     let payer = Address::new_unique();
     let (config, _) = Address::find_program_address(&[b"config"], &quasar_test_pda::ID);
 
-    let instruction: Instruction = InitLiteralSeedInstruction {
-        payer,
-        config,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = InitLiteralSeedInstruction { payer }.into();
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -70,13 +65,7 @@ fn test_pubkey_seed_init() {
     let payer = Address::new_unique();
     let (user, _) = Address::find_program_address(&[b"user", payer.as_ref()], &quasar_test_pda::ID);
 
-    let instruction: Instruction = InitPubkeySeedInstruction {
-        payer,
-        user,
-        system_program,
-        value: 42,
-    }
-    .into();
+    let instruction: Instruction = InitPubkeySeedInstruction { payer, value: 42 }.into();
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -115,8 +104,6 @@ fn test_instruction_seed_init() {
     let instruction: Instruction = InitInstructionSeedInstruction {
         payer,
         authority,
-        item,
-        system_program,
         id: 123,
     }
     .into();
@@ -160,8 +147,6 @@ fn test_multi_seed_init() {
     let instruction: Instruction = InitMultiSeedsInstruction {
         payer,
         authority,
-        complex,
-        system_program,
         amount: 500,
     }
     .into();
@@ -203,7 +188,6 @@ fn test_update_pda_success() {
 
     let instruction: Instruction = UpdatePdaInstruction {
         authority,
-        user: pda,
         new_value: 100,
     }
     .into();
@@ -247,12 +231,14 @@ fn test_update_pda_wrong_seeds() {
 
     let account_data = build_user_account_data(authority, 42, bump);
 
-    let instruction: Instruction = UpdatePdaInstruction {
+    let mut instruction: Instruction = UpdatePdaInstruction {
         authority,
-        user: wrong_pda,
         new_value: 100,
     }
     .into();
+    // The client derives the canonical PDA meta; repoint it at the address
+    // under test.
+    instruction.accounts[1].pubkey = wrong_pda;
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -289,12 +275,14 @@ fn test_update_pda_wrong_authority() {
 
     let account_data = build_user_account_data(authority, 42, bump);
 
-    let instruction: Instruction = UpdatePdaInstruction {
+    let mut instruction: Instruction = UpdatePdaInstruction {
         authority: wrong_authority,
-        user: pda,
         new_value: 100,
     }
     .into();
+    // The client derives the canonical PDA meta; repoint it at the address
+    // under test.
+    instruction.accounts[1].pubkey = pda;
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -335,11 +323,7 @@ fn test_close_pda() {
     let authority_lamports: u64 = 500_000;
     let account_data = build_user_account_data(authority, 42, bump);
 
-    let instruction: Instruction = ClosePdaInstruction {
-        authority,
-        user: pda,
-    }
-    .into();
+    let instruction: Instruction = ClosePdaInstruction { authority }.into();
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -387,7 +371,6 @@ fn test_pda_signer_transfer() {
 
     let instruction: Instruction = PdaTransferInstruction {
         authority,
-        pda,
         recipient,
         amount: transfer_amount,
     }
@@ -433,13 +416,15 @@ fn test_pda_signer_wrong_seeds() {
 
     let account_data = build_user_account_data(authority, 42, bump);
 
-    let instruction: Instruction = PdaTransferInstruction {
+    let mut instruction: Instruction = PdaTransferInstruction {
         authority: wrong_authority,
-        pda,
         recipient,
         amount: 100,
     }
     .into();
+    // The client derives the canonical PDA meta; repoint it at the address
+    // under test.
+    instruction.accounts[1].pubkey = pda;
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -478,13 +463,7 @@ fn test_pda_bump_from_account() {
     let (pda, expected_bump) =
         Address::find_program_address(&[b"user", payer.as_ref()], &quasar_test_pda::ID);
 
-    let instruction: Instruction = InitPubkeySeedInstruction {
-        payer,
-        user: pda,
-        system_program,
-        value: 99,
-    }
-    .into();
+    let instruction: Instruction = InitPubkeySeedInstruction { payer, value: 99 }.into();
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -512,12 +491,7 @@ fn test_pda_cu() {
     let payer = Address::new_unique();
     let (config, _) = Address::find_program_address(&[b"config"], &quasar_test_pda::ID);
 
-    let instruction: Instruction = InitLiteralSeedInstruction {
-        payer,
-        config,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = InitLiteralSeedInstruction { payer }.into();
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -538,12 +512,7 @@ fn test_empty_seed() {
     let payer = Address::new_unique();
     let (empty, _) = Address::find_program_address(&[b""], &quasar_test_pda::ID);
 
-    let instruction: Instruction = InitEmptySeedInstruction {
-        payer,
-        empty,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = InitEmptySeedInstruction { payer }.into();
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -573,12 +542,7 @@ fn test_max_seed_length() {
     let (max_seed, _) =
         Address::find_program_address(&[b"abcdefghijklmnopqrstuvwxyz012345"], &quasar_test_pda::ID);
 
-    let instruction: Instruction = InitMaxSeedLengthInstruction {
-        payer,
-        max_seed,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = InitMaxSeedLengthInstruction { payer }.into();
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -612,8 +576,6 @@ fn test_seed_with_special_chars() {
     let instruction: Instruction = InitInstructionSeedInstruction {
         payer,
         authority: special_key,
-        item,
-        system_program,
         id: 0xFF_FF_FF_FF_FF_FF_FF_FF,
     }
     .into();
@@ -650,7 +612,6 @@ fn test_pda_account_wrong_owner() {
 
     let instruction: Instruction = UpdatePdaInstruction {
         authority,
-        user: pda,
         new_value: 100,
     }
     .into();
@@ -687,12 +648,7 @@ fn test_pda_account_not_writable_on_init() {
     let payer = Address::new_unique();
     let (config, _) = Address::find_program_address(&[b"config"], &quasar_test_pda::ID);
 
-    let mut instruction: Instruction = InitLiteralSeedInstruction {
-        payer,
-        config,
-        system_program,
-    }
-    .into();
+    let mut instruction: Instruction = InitLiteralSeedInstruction { payer }.into();
 
     instruction.accounts[1].is_writable = false;
 
@@ -727,8 +683,6 @@ fn test_multi_seed_three_components() {
         payer,
         first,
         second,
-        triple,
-        system_program,
     }
     .into();
 
@@ -764,13 +718,7 @@ fn test_max_multi_seeds() {
     let authority = Address::new_unique();
     let (complex, _) = Address::find_program_address(&[b"max_multi_seeds"], &quasar_test_pda::ID);
 
-    let instruction: Instruction = InitMaxMultiSeedsInstruction {
-        payer,
-        authority,
-        complex,
-        system_program,
-    }
-    .into();
+    let instruction: Instruction = InitMaxMultiSeedsInstruction { payer, authority }.into();
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -803,8 +751,6 @@ fn test_multi_seed_with_address_and_literal() {
     let instruction: Instruction = InitMultiSeedsInstruction {
         payer,
         authority,
-        complex,
-        system_program,
         amount: 12345,
     }
     .into();
@@ -846,14 +792,15 @@ fn test_multi_seed_order_matters() {
         &quasar_test_pda::ID,
     );
 
-    let instruction: Instruction = InitThreeSeedsInstruction {
+    let mut instruction: Instruction = InitThreeSeedsInstruction {
         payer,
         first,
         second,
-        triple: triple_swapped,
-        system_program,
     }
     .into();
+    // The client derives the canonical PDA meta; repoint it at the address
+    // under test.
+    instruction.accounts[3].pubkey = triple_swapped;
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -888,7 +835,6 @@ fn test_pda_signer_cpi_success() {
 
     let instruction: Instruction = PdaTransferInstruction {
         authority,
-        pda,
         recipient,
         amount: transfer_amount,
     }
@@ -932,13 +878,15 @@ fn test_pda_signer_wrong_authority_cpi() {
 
     let account_data = build_user_account_data(authority, 42, bump);
 
-    let instruction: Instruction = PdaTransferInstruction {
+    let mut instruction: Instruction = PdaTransferInstruction {
         authority: wrong_authority,
-        pda,
         recipient,
         amount: 100,
     }
     .into();
+    // The client derives the canonical PDA meta; repoint it at the address
+    // under test.
+    instruction.accounts[1].pubkey = pda;
 
     let result = mollusk.process_instruction(
         &instruction,
@@ -988,7 +936,6 @@ fn test_typed_seed_ix_data_init() {
         payer,
         authority,
         item: item_pda,
-        system_program,
         index,
     }
     .into();
@@ -1032,13 +979,7 @@ fn test_typed_seed_deserialized_field() {
     // Step 1: Create the NamespaceConfig
     let (config_pda, _) = Address::find_program_address(&[b"ns_config"], &quasar_test_pda::ID);
 
-    let init_config_ix: Instruction = InitNsConfigInstruction {
-        payer,
-        config: config_pda,
-        system_program,
-        namespace,
-    }
-    .into();
+    let init_config_ix: Instruction = InitNsConfigInstruction { payer, namespace }.into();
 
     let result = mollusk.process_instruction(
         &init_config_ix,
@@ -1064,7 +1005,6 @@ fn test_typed_seed_deserialized_field() {
     let init_item_ix: Instruction = InitScopedItemInstruction {
         payer,
         item: item_pda,
-        system_program,
         namespace,
     }
     .into();
@@ -1118,13 +1058,7 @@ fn test_init_typed_seed_from_account_field() {
     // Step 1: Create the NamespaceConfig
     let (config_pda, _) = Address::find_program_address(&[b"ns_config"], &quasar_test_pda::ID);
 
-    let init_config_ix: Instruction = InitNsConfigInstruction {
-        payer,
-        config: config_pda,
-        system_program,
-        namespace,
-    }
-    .into();
+    let init_config_ix: Instruction = InitNsConfigInstruction { payer, namespace }.into();
 
     let result = mollusk.process_instruction(
         &init_config_ix,
@@ -1149,7 +1083,6 @@ fn test_init_typed_seed_from_account_field() {
         payer,
         config: config_pda,
         item: item_pda,
-        system_program,
     }
     .into();
 
@@ -1190,12 +1123,10 @@ fn test_wrong_seed_addresses_rejected() {
         ("pda of a different literal", different_literal),
     ] {
         let payer = Address::new_unique();
-        let instruction: Instruction = InitLiteralSeedInstruction {
-            payer,
-            config: wrong_pda,
-            system_program,
-        }
-        .into();
+        let mut instruction: Instruction = InitLiteralSeedInstruction { payer }.into();
+        // The client derives the canonical PDA meta; repoint it at the
+        // address under test.
+        instruction.accounts[1].pubkey = wrong_pda;
         let result = mollusk.process_instruction(
             &instruction,
             &[
@@ -1236,7 +1167,6 @@ fn test_wrong_stored_bumps_rejected() {
         let account_data = build_user_account_data(authority, 42, wrong_bump);
         let instruction: Instruction = UpdatePdaInstruction {
             authority,
-            user: pda,
             new_value: 100,
         }
         .into();

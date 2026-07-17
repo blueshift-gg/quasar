@@ -13,7 +13,6 @@ fn init_token_pda_spl_happy() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     // Derive the PDA: seeds = [b"token", payer]
     let (token_pda, _bump) =
@@ -21,10 +20,7 @@ fn init_token_pda_spl_happy() {
 
     let instruction: Instruction = InitTokenPdaInstruction {
         payer,
-        token_account: token_pda,
         mint: mint_key,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -50,18 +46,17 @@ fn init_token_pda_spl_wrong_address() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let wrong_key = Pubkey::new_unique();
 
-    let instruction: Instruction = InitTokenPdaInstruction {
+    let mut instruction: Instruction = InitTokenPdaInstruction {
         payer,
-        token_account: wrong_key,
         mint: mint_key,
-        token_program,
-        system_program,
     }
     .into();
+    // The client derives the canonical PDA meta; repoint it at the address
+    // under test.
+    instruction.accounts[1].pubkey = wrong_key;
 
     let result = svm.process_instruction(
         &instruction,
@@ -85,17 +80,13 @@ fn init_token_pda_t22_happy() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = token_2022_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let (token_pda, _bump) =
         Pubkey::find_program_address(&[b"token", payer.as_ref()], &quasar_test_token_init::ID);
 
     let instruction: Instruction = InitTokenPdaT22Instruction {
         payer,
-        token_account: token_pda,
         mint: mint_key,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -123,17 +114,13 @@ fn init_token_pda_spl_prefunded_partial() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let (token_pda, _bump) =
         Pubkey::find_program_address(&[b"token", payer.as_ref()], &quasar_test_token_init::ID);
 
     let instruction: Instruction = InitTokenPdaInstruction {
         payer,
-        token_account: token_pda,
         mint: mint_key,
-        token_program,
-        system_program,
     }
     .into();
 
@@ -174,7 +161,6 @@ fn init_token_pda_spl_prefunded_excess() {
     let mint_key = Pubkey::new_unique();
     let mint_authority = Pubkey::new_unique();
     let token_program = spl_token_program_id();
-    let system_program = quasar_svm::system_program::ID;
 
     let (token_pda, _bump) =
         Pubkey::find_program_address(&[b"token", payer.as_ref()], &quasar_test_token_init::ID);
@@ -182,10 +168,7 @@ fn init_token_pda_spl_prefunded_excess() {
     let payer_lamports = 100_000_000_000u64;
     let instruction: Instruction = InitTokenPdaInstruction {
         payer,
-        token_account: token_pda,
         mint: mint_key,
-        token_program,
-        system_program,
     }
     .into();
 

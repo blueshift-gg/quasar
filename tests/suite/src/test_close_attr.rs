@@ -20,7 +20,6 @@ fn close_attr_spl_happy() {
         token_account: account_key,
         mint: mint_key,
         destination,
-        token_program,
     }
     .into();
 
@@ -55,7 +54,6 @@ fn close_attr_spl_wrong_authority() {
         token_account: account_key,
         mint: mint_key,
         destination,
-        token_program,
     }
     .into();
 
@@ -86,7 +84,6 @@ fn close_attr_spl_wrong_mint() {
         token_account: account_key,
         mint: mint_key,
         destination,
-        token_program,
     }
     .into();
 
@@ -118,7 +115,6 @@ fn close_attr_t22_happy() {
         token_account: account_key,
         mint: mint_key,
         destination,
-        token_program,
     }
     .into();
 
@@ -153,7 +149,6 @@ fn close_attr_t22_wrong_authority() {
         token_account: account_key,
         mint: mint_key,
         destination,
-        token_program,
     }
     .into();
 

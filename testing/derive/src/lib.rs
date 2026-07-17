@@ -44,8 +44,8 @@ pub fn quasar_test(attr: TokenStream, item: TokenStream) -> TokenStream {
     let signature_error = || {
         syn::Error::new_spanned(
             &func.sig,
-            "a #[quasar_test] function takes the world as its only parameter: \
-             `fn name(q: &mut QuasarTest)`",
+            "a #[quasar_test] function takes the world as its only parameter: `fn name(q: &mut \
+             QuasarTest)`",
         )
         .to_compile_error()
         .into()
