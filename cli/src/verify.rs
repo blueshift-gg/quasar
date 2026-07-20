@@ -40,7 +40,7 @@ pub(crate) struct DeploymentManifest {
     pub last_deploy_slot: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct ProgramShow {
     #[serde(alias = "program_id")]
@@ -165,6 +165,19 @@ pub(crate) fn verify_after_deploy(
 
 fn verify_live(request: VerifyRequest<'_>, solana: &str) -> Result<DeploymentManifest, CliError> {
     validate_address(request.program_id)?;
+    validate_address(&request.idl.address).map_err(|error| {
+        CliError::message(format!(
+            "generated IDL contains an invalid program address `{}`: {error}",
+            request.idl.address
+        ))
+    })?;
+    if request.idl.address != request.program_id {
+        return Err(CliError::message(format!(
+            "generated IDL address {} does not match program {}; rebuild the IDL for this program",
+            request.idl.address, request.program_id
+        )));
+    }
+    let hashes = crate::idl::validate_hashes(request.idl)?;
     if !request.elf_path.is_file() {
         return Err(CliError::message(format!(
             "local ELF not found: {}",
@@ -192,6 +205,13 @@ fn verify_live(request: VerifyRequest<'_>, solana: &str) -> Result<DeploymentMan
         CliError::message(format!("failed to create program dump file: {error}"))
     })?;
     dump_program(solana, request.program_id, dump.path(), request.cluster)?;
+    let after_dump = show_program(solana, request.program_id, request.cluster)?;
+    if after_dump != show {
+        return Err(CliError::message(format!(
+            "program {} changed while it was being verified; retry against a stable deployment",
+            request.program_id
+        )));
+    }
     let local_hash = sha256_file(request.elf_path)?;
     let deployed_hash = sha256_file(dump.path())?;
     if local_hash != deployed_hash {
@@ -201,9 +221,6 @@ fn verify_live(request: VerifyRequest<'_>, solana: &str) -> Result<DeploymentMan
         )));
     }
 
-    let hashes = request.idl.hashes.as_ref().ok_or_else(|| {
-        CliError::message("generated IDL has no integrity hashes; rebuild it with `quasar build`")
-    })?;
     Ok(DeploymentManifest {
         version: MANIFEST_VERSION,
         program_id: request.program_id.to_string(),
@@ -486,12 +503,12 @@ fn source_revision_label(revision: &str, dirty: bool) -> String {
 mod tests {
     use super::*;
 
-    fn idl_with_hashes() -> Idl {
-        Idl {
+    fn idl_with_hashes(address: &str) -> Idl {
+        let mut idl = Idl {
             spec: quasar_idl::types::CURRENT_SPEC.to_string(),
             name: "demo".to_string(),
             version: "0.1.0".to_string(),
-            address: "11111111111111111111111111111111".to_string(),
+            address: address.to_string(),
             metadata: Default::default(),
             docs: vec![],
             instructions: vec![],
@@ -500,11 +517,13 @@ mod tests {
             events: vec![],
             errors: vec![],
             extensions: None,
-            hashes: Some(quasar_idl::types::IdlHashes {
-                idl: "idl-hash".to_string(),
-                abi: "abi-hash".to_string(),
-            }),
-        }
+            hashes: None,
+        };
+        idl.hashes = Some(quasar_idl::types::IdlHashes {
+            idl: quasar_idl::types::compute_idl_hash(&idl),
+            abi: quasar_idl::types::compute_abi_hash(&idl),
+        });
+        idl
     }
 
     fn manifest() -> DeploymentManifest {
@@ -584,6 +603,57 @@ mod tests {
         assert!(validate_address("abc").is_err());
     }
 
+    #[test]
+    fn live_verification_rejects_an_idl_for_another_program_before_rpc() {
+        let root = tempfile::tempdir().unwrap();
+        let program_id = bs58::encode([1u8; 32]).into_string();
+        let other_program = bs58::encode([2u8; 32]).into_string();
+        let elf_path = root.path().join("demo.so");
+        fs::write(&elf_path, b"same-elf").unwrap();
+        let idl = idl_with_hashes(&other_program);
+
+        let error = verify_live(
+            VerifyRequest {
+                program_id: &program_id,
+                elf_path: &elf_path,
+                idl: &idl,
+                cluster: None,
+                expected_authority: None,
+            },
+            "solana-must-not-run",
+        )
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("does not match program"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn live_verification_recomputes_idl_hashes_before_rpc() {
+        let root = tempfile::tempdir().unwrap();
+        let program_id = bs58::encode([1u8; 32]).into_string();
+        let elf_path = root.path().join("demo.so");
+        fs::write(&elf_path, b"same-elf").unwrap();
+        let mut idl = idl_with_hashes(&program_id);
+        idl.name = "tampered".to_string();
+
+        let error = verify_live(
+            VerifyRequest {
+                program_id: &program_id,
+                elf_path: &elf_path,
+                idl: &idl,
+                cluster: None,
+                expected_authority: None,
+            },
+            "solana-must-not-run",
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("IDL hash mismatch"), "{error}");
+    }
+
     #[cfg(unix)]
     fn fake_solana(root: &Path, program_id: &str, authority: &str, dumped_elf: &str) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
@@ -622,7 +692,7 @@ exit 64
         let elf_path = root.path().join("demo.so");
         fs::write(&elf_path, b"same-elf").unwrap();
         let solana = fake_solana(root.path(), &program_id, &authority, "same-elf");
-        let idl = idl_with_hashes();
+        let idl = idl_with_hashes(&program_id);
 
         let observed = verify_live(
             VerifyRequest {
@@ -646,8 +716,9 @@ exit 64
             Some("data-address")
         );
         assert_eq!(observed.last_deploy_slot, Some(42));
-        assert_eq!(observed.idl_sha256, "idl-hash");
-        assert_eq!(observed.abi_sha256, "abi-hash");
+        let hashes = idl.hashes.as_ref().unwrap();
+        assert_eq!(observed.idl_sha256, hashes.idl);
+        assert_eq!(observed.abi_sha256, hashes.abi);
         let calls = fs::read_to_string(root.path().join("calls.log")).unwrap();
         assert!(
             calls.contains(&format!(
@@ -673,7 +744,7 @@ exit 64
         let elf_path = root.path().join("demo.so");
         fs::write(&elf_path, b"local-elf").unwrap();
         let solana = fake_solana(root.path(), &program_id, &authority, "deployed-elf");
-        let idl = idl_with_hashes();
+        let idl = idl_with_hashes(&program_id);
 
         let error = verify_live(
             VerifyRequest {

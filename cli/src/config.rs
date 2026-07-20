@@ -189,17 +189,12 @@ impl QuasarConfig {
         self.clients.path.clone()
     }
 
-    pub fn codegen_targets(&self) -> Vec<&'static str> {
+    pub fn codegen_targets(&self) -> Vec<ClientTarget> {
         let mut targets = Vec::new();
-        for target in &self.clients.targets {
-            let target = match target {
-                ClientTarget::Rust => continue,
-                ClientTarget::Kit => "kit",
-                ClientTarget::Web3 => "web3",
-                ClientTarget::Python => "python",
-                ClientTarget::Go => "go",
-                ClientTarget::C => "c",
-            };
+        for &target in &self.clients.targets {
+            if target == ClientTarget::Rust {
+                continue;
+            }
             if !targets.contains(&target) {
                 targets.push(target);
             }

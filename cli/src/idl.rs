@@ -7,7 +7,7 @@ use {
     },
     quasar_idl::{
         codegen::{self, model::ProgramModel},
-        types::Idl,
+        types::{Idl, IdlHashes},
     },
     std::{
         path::{Path, PathBuf},
@@ -383,14 +383,26 @@ fn verify(idl_path: &Path) -> CliResult {
     let idl: Idl = serde_json::from_str(&json)
         .map_err(|e| CliError::json_parse(format!("IDL file {}", idl_path.display()), e))?;
 
-    let stored = idl.hashes.clone().ok_or_else(|| {
+    validate_hashes(&idl).map_err(|error| {
         CliError::message(format!(
-            "IDL `{}` has no `hashes` field to verify",
+            "IDL integrity check failed for {}: {error}",
             idl_path.display()
         ))
     })?;
-    let expected_idl = quasar_idl::types::compute_idl_hash(&idl);
-    let expected_abi = quasar_idl::types::compute_abi_hash(&idl);
+
+    println!(
+        "  {}",
+        crate::style::success(&format!("IDL hashes verified: {}", idl_path.display()))
+    );
+    Ok(())
+}
+
+pub(crate) fn validate_hashes(idl: &Idl) -> Result<&IdlHashes, CliError> {
+    let stored = idl.hashes.as_ref().ok_or_else(|| {
+        CliError::message("IDL has no integrity hashes; rebuild it with `quasar build`")
+    })?;
+    let expected_idl = quasar_idl::types::compute_idl_hash(idl);
+    let expected_abi = quasar_idl::types::compute_abi_hash(idl);
 
     let mut mismatches = Vec::new();
     if stored.idl != expected_idl {
@@ -407,15 +419,10 @@ fn verify(idl_path: &Path) -> CliResult {
     }
 
     if mismatches.is_empty() {
-        println!(
-            "  {}",
-            crate::style::success(&format!("IDL hashes verified: {}", idl_path.display()))
-        );
-        Ok(())
+        Ok(stored)
     } else {
         Err(CliError::message(format!(
-            "IDL hash mismatch in {}:\n{}",
-            idl_path.display(),
+            "IDL hash mismatch:\n{}",
             mismatches.join("\n")
         )))
     }
@@ -425,16 +432,12 @@ fn verify(idl_path: &Path) -> CliResult {
 /// language clients.
 pub fn generate(
     crate_path: &Path,
-    languages: &[&str],
+    targets: &[crate::config::ClientTarget],
     clients_path: &Path,
 ) -> Result<Idl, CliError> {
     let idl = build(crate_path)?;
     let mut outputs = prepare_idl_outputs(&idl, clients_path)?;
-    outputs.extend(crate::client::prepare_clients(
-        &idl,
-        languages,
-        clients_path,
-    )?);
+    outputs.extend(crate::client::prepare_clients(&idl, targets, clients_path)?);
     commit(outputs)?;
     Ok(idl)
 }

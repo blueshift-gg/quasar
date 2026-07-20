@@ -27,8 +27,18 @@ pub fn run(cmd: crate::InitCommand) -> CliResult {
 
     if !cmd.no_git {
         progress.step("Configuring git...");
-        maybe_initialize_git_repo(&name, GitSetup::InitializeAndCommit);
-        progress.done("Git setup complete");
+        match maybe_initialize_git_repo(&name, GitSetup::InitializeAndCommit) {
+            Ok(()) => progress.done("Git setup complete"),
+            Err(error) => {
+                progress.clear();
+                eprintln!(
+                    "  {}",
+                    style::warn(&format!(
+                        "Project created, but Git setup did not complete: {error}"
+                    ))
+                );
+            }
+        }
     }
     progress.clear();
 

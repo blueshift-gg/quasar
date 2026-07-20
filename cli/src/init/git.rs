@@ -1,9 +1,10 @@
 use {
     super::types::GitSetup,
+    crate::error::CliError,
     std::{path::Path, process::Command},
 };
 
-pub(super) fn maybe_initialize_git_repo(name: &str, git_setup: GitSetup) {
+pub(super) fn maybe_initialize_git_repo(name: &str, git_setup: GitSetup) -> Result<(), CliError> {
     let root = Path::new(name);
     let already_git = if name == "." {
         Path::new(".git").exists()
@@ -12,37 +13,58 @@ pub(super) fn maybe_initialize_git_repo(name: &str, git_setup: GitSetup) {
     };
 
     if !already_git {
-        let _ = initialize_git_repo(root, git_setup);
+        initialize_git_repo(root, git_setup)?;
     }
+    Ok(())
 }
 
-fn initialize_git_repo(root: &Path, git_setup: GitSetup) -> bool {
+fn initialize_git_repo(root: &Path, git_setup: GitSetup) -> Result<(), CliError> {
     initialize_git_repo_with(root, git_setup, Path::new("git"))
 }
 
-fn initialize_git_repo_with(root: &Path, git_setup: GitSetup, git: &Path) -> bool {
-    run_git(git, root, &["init", "--quiet"])
-        && match git_setup {
-            GitSetup::InitializeAndCommit => {
-                run_git(git, root, &["add", "."])
-                    && run_git(
-                        git,
-                        root,
-                        &["commit", "-am", "chore: initial commit", "--quiet"],
-                    )
-            }
-            #[cfg(test)]
-            GitSetup::Initialize => true,
+fn initialize_git_repo_with(root: &Path, git_setup: GitSetup, git: &Path) -> Result<(), CliError> {
+    run_git(git, root, &["init", "--quiet"])?;
+    match git_setup {
+        GitSetup::InitializeAndCommit => {
+            run_git(git, root, &["add", "."])?;
+            run_git(
+                git,
+                root,
+                &["commit", "-am", "chore: initial commit", "--quiet"],
+            )
         }
+        #[cfg(test)]
+        GitSetup::Initialize => Ok(()),
+    }
 }
 
-fn run_git(git: &Path, root: &Path, args: &[&str]) -> bool {
-    Command::new(git)
+fn run_git(git: &Path, root: &Path, args: &[&str]) -> Result<(), CliError> {
+    let output = Command::new(git)
         .args(args)
         .current_dir(root)
-        .status()
-        .ok()
-        .is_some_and(|status| status.success())
+        .output()
+        .map_err(|error| {
+            CliError::message(format!("failed to run `git {}`: {error}", args.join(" ")))
+        })?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let detail = if stderr.trim().is_empty() {
+        stdout.trim()
+    } else {
+        stderr.trim()
+    };
+    Err(CliError::message(format!(
+        "`git {}` failed{}",
+        args.join(" "),
+        if detail.is_empty() {
+            String::new()
+        } else {
+            format!(": {detail}")
+        }
+    )))
 }
 
 #[cfg(test)]
@@ -63,9 +85,7 @@ mod tests {
         let root = sandbox.join("repo");
         fs::create_dir_all(&root).unwrap();
 
-        let ok = initialize_git_repo_with(&root, GitSetup::InitializeAndCommit, &git);
-
-        assert!(ok);
+        initialize_git_repo_with(&root, GitSetup::InitializeAndCommit, &git).unwrap();
         assert_eq!(
             read_git_log(&sandbox),
             vec![
@@ -83,9 +103,7 @@ mod tests {
         let root = sandbox.join("repo");
         fs::create_dir_all(&root).unwrap();
 
-        let ok = initialize_git_repo_with(&root, GitSetup::Initialize, &git);
-
-        assert!(ok);
+        initialize_git_repo_with(&root, GitSetup::Initialize, &git).unwrap();
         assert_eq!(read_git_log(&sandbox), vec!["init --quiet"]);
     }
 
@@ -96,9 +114,10 @@ mod tests {
         let root = sandbox.join("repo");
         fs::create_dir_all(&root).unwrap();
 
-        let ok = initialize_git_repo_with(&root, GitSetup::InitializeAndCommit, &git);
+        let error =
+            initialize_git_repo_with(&root, GitSetup::InitializeAndCommit, &git).unwrap_err();
 
-        assert!(!ok);
+        assert!(error.to_string().contains("`git init --quiet` failed"));
         assert_eq!(read_git_log(&sandbox), vec!["init --quiet"]);
     }
 
