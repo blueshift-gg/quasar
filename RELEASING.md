@@ -15,7 +15,7 @@ Start from a clean `0.1.0-release` head. Confirm the workspace version and
 derived dependency graph:
 
 ```bash
-cargo run -p quasar-release-tool -- graph --json
+cargo run --locked -p quasar-release-tool -- graph --json
 ```
 
 The graph command rejects version disagreement, inexact internal pins,
@@ -24,15 +24,16 @@ unpublished internal dependencies, and cycles.
 Create and inspect every archive through the same graph:
 
 ```bash
-cargo run -p quasar-release-tool -- package --output target/release-packages
+cargo run --locked -p quasar-release-tool -- package --output target/release-packages
 make package-rehearsal
 ```
 
 The rehearsal image contains the packaged CLI and libraries, but no repository
 checkout, credentials, or writable package source. It creates the canonical
-starter, builds and tests it, compiles the stable clients, profiles it, deploys
-to a local validator, verifies positive and negative cases, and confirms
-generation and cleanup are deterministic.
+starter, builds and tests every packaged crate, executes representative Rust,
+Kit, and Web3 client contracts, profiles the starter, deploys to a local
+validator, verifies positive and negative cases, and confirms generation and
+cleanup are deterministic.
 
 ## Required gates
 
@@ -40,8 +41,10 @@ Run these commands on the exact commit that will be tagged:
 
 ```bash
 cargo fmt --all -- --check
+make msrv-check
+make check-features
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+make doc-check
 make test
 make contracts
 make miri
@@ -69,13 +72,15 @@ pruning change.
 
 Create a signed `v<VERSION>` tag only after the exact-head workflow and package
 rehearsal are green. The release workflow validates the tag against the
-Cargo-derived version, regenerates the archives, and publishes in derived
-dependency order:
+Cargo-derived version, transfers the exact rehearsed archives to the
+credentialed job, and publishes in derived dependency order:
 
 ```bash
 cargo run -p quasar-release-tool -- publish --version <VERSION>
 ```
 
-The helper waits for each dependency tier to become available before
-publishing its consumers. It refuses a dirty tree, mismatched tag, missing
-archive, or release-graph drift.
+The helper reproduces each archive byte-for-byte before Cargo uploads it, then
+requires the crates.io checksum to match the rehearsal manifest. It waits for
+each dependency tier to become available before publishing its consumers and
+refuses a dirty tree, mismatched tag, missing archive, checksum mismatch, or
+release-graph drift.

@@ -12,9 +12,9 @@ release definitions.
 | Rust quality | Formatting, Clippy with warnings denied, and warning-free Rustdoc on the supported toolchain |
 | Core behavior | Owner-local host tests for stable crates and CLI logic |
 | On-chain behavior | Real SBF programs with exact error and resulting-state assertions |
-| Stable contracts | Derive diagnostics, IDL wire fixtures, and independently compiled Rust, Kit 7, and Web3.js 3 clients |
+| Stable contracts | Derive diagnostics, IDL wire fixtures, and independently compiled and executed Rust, Kit 7, and Web3.js 3 client contracts |
 | Package journey | Immutable package archives install, initialize, build, test, and generate clients without repository source |
-| Dependency safety | Normal dependency-audit output for the reachable release graph |
+| Dependency safety | Normal dependency-audit output for the complete workspace lockfile |
 | Unsafe boundaries | Focused Miri, Kani, and fuzz-build checks for changed parsing, aliasing, provenance, or initialization code |
 | Performance | Compute-unit and binary-size budgets for runtime, derive, and SPL changes |
 
