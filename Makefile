@@ -271,44 +271,31 @@ compare-tracked:
 
 miri: test-miri
 
-# Ordinary semantic cases in lang/tests/miri.rs and spl/tests/miri.rs run in
-# the fast host suite. Miri selects only tests with a unique unsafe failure
-# story: generated parsing, provenance, aliasing, initialization, and exact
-# pointer boundaries. Extension points run under both borrow models.
+# The complete adversarial suites run under Tree Borrows. No test is removed
+# from Miri merely because a nearby case exercises the same broad category:
+# pruning requires a per-test unsafe-path and oracle equivalence argument.
+# Generated downstream extension points additionally run under both supported
+# borrow models.
 test-miri:
 	@MIRIFLAGS="-Zmiri-symbolic-alignment-check" \
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri_extensions
 	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri_extensions
-	@for test in \
-		aliasing_write_then_read_original_view \
-		aliasing_duplicate_accounts_4_deref_mut_to_same_data \
-		bounds_account_view_exact_size_sweep \
-		bounds_remaining_boundary_pointer_subtraction \
-		uninit_maybeuninit_account_view_array \
-		dynamic_memmove_1byte_grow_1byte_tail \
-		instruction_zc_cast_exact_length \
-		tail_str_exact_boundary \
-		cpi_aliasing_interleaved_write_cpi_cycles; do \
-		MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
-			cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri "$$test" -- --exact; \
-	done
-	@for test in \
-		token_deref_mut_aliasing_stress \
-		mint_exact_size_buffer \
-		interface_account_aliasing \
-		zero_copy_deref_from_exact_boundary \
-		maybeunit_init_then_read_every_byte_initialize_mint; do \
-		MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
-			cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri "$$test" -- --exact; \
-	done
+	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
+		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri
+	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
+		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri
 
-# Strict provenance is reserved for the small downstream extension-point suite.
+# Strict provenance covers the same complete unsafe surface.
 test-miri-strict:
 	@MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri_extensions
 	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri_extensions
+	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
+		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri
+	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
+		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri
 
 # Host-side line coverage is informational only; SBF-executed code is
 # invisible here by design.
