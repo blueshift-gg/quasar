@@ -1,5 +1,8 @@
+mod kit;
+mod web3;
+
 use {
-    super::model::{
+    super::super::model::{
         account_field_definition, account_field_seed_inputs, resolved_account_order, CodegenResult,
         ProgramModel,
     },
@@ -110,8 +113,8 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
     let has_pdas = model.features.has_pdas;
     let has_pda_account_seeds = model.features.has_pda_account_seeds;
     let has_pda_account_field_seeds = has_account_field_pda_seeds(idl);
-    let plugin_accounts = eligible_plugin_accounts(idl);
-    let plugin_instructions = eligible_plugin_instructions(idl);
+    let plugin_accounts = kit::eligible_plugin_accounts(idl);
+    let plugin_instructions = kit::eligible_plugin_instructions(idl);
     let emit_plugin =
         target == TsTarget::Kit && (!plugin_accounts.is_empty() || !plugin_instructions.is_empty());
 
@@ -264,7 +267,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
     // Account discriminators
     for account in &idl.accounts {
         let const_name = pascal_to_screaming_snake(&account.name);
-        let disc_str = super::format_disc_array(&account.discriminator);
+        let disc_str = crate::codegen::format_disc_array(&account.discriminator);
         writeln!(
             out,
             "export const {}_DISCRIMINATOR = new Uint8Array({});",
@@ -276,7 +279,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
     // Event discriminators
     for event in &idl.events {
         let const_name = pascal_to_screaming_snake(&event.name);
-        let disc_str = super::format_disc_array(&event.discriminator);
+        let disc_str = crate::codegen::format_disc_array(&event.discriminator);
         writeln!(
             out,
             "export const {}_DISCRIMINATOR = new Uint8Array({});",
@@ -289,7 +292,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
     for ix in &idl.instructions {
         let pascal = snake_to_pascal(&ix.name);
         let const_name = pascal_to_screaming_snake(&pascal);
-        let disc_str = super::format_disc_array(&ix.discriminator);
+        let disc_str = crate::codegen::format_disc_array(&ix.discriminator);
         writeln!(
             out,
             "export const {}_INSTRUCTION_DISCRIMINATOR = new Uint8Array({});",
@@ -636,19 +639,19 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
     }
 
     match target {
-        TsTarget::Web3js => generate_instruction_builders_web3js(
+        TsTarget::Web3js => web3::emit_instruction_builders(
             &mut out,
             idl,
             &exportable_pda_helpers,
             &model.identity.program_name,
         ),
-        TsTarget::Kit => generate_instruction_builders_kit(&mut out, idl, &exportable_pda_helpers),
+        TsTarget::Kit => kit::emit_instruction_builders(&mut out, idl, &exportable_pda_helpers),
     }
 
     out.push_str("}\n\n");
 
     if emit_plugin {
-        emit_kit_program_plugin(&mut out, &model, &plugin_accounts, &plugin_instructions);
+        kit::emit_program_plugin(&mut out, &model, &plugin_accounts, &plugin_instructions);
     }
 
     if !pdas.is_empty() {
@@ -725,609 +728,6 @@ mod package_tests {
         assert!(!web3.contains("@solana/kit"));
         assert!(!kit.contains("-rc."));
         assert!(!web3.contains("-rc."));
-    }
-}
-
-fn emit_kit_program_plugin(
-    out: &mut String,
-    model: &ProgramModel,
-    accounts: &[&IdlAccountDef],
-    instructions: &[&IdlInstruction],
-) {
-    let program_pascal = snake_to_pascal(&model.identity.program_name);
-    let program_camel = lower_first(&program_pascal);
-    let class_name = format!("{program_pascal}Client");
-
-    out.push_str("/* Program Plugin */\n");
-
-    let mut requirements = Vec::new();
-    if !accounts.is_empty() {
-        requirements.push("ClientWithRpc<GetAccountInfoApi & GetMultipleAccountsApi>");
-    }
-    if !instructions.is_empty() {
-        requirements.push("ClientWithPayer");
-        requirements.push("ClientWithTransactionPlanning");
-        requirements.push("ClientWithTransactionSending");
-    }
-
-    writeln!(
-        out,
-        "export type {program_pascal}PluginRequirements = {};\n",
-        requirements.join(" &\n  ")
-    )
-    .expect("write to String");
-
-    writeln!(out, "export function {program_camel}Program() {{").expect("write to String");
-    writeln!(out, "  const __client = new {class_name}();").expect("write to String");
-    writeln!(
-        out,
-        "  return <T extends {program_pascal}PluginRequirements>(client: T) => ({{"
-    )
-    .expect("write to String");
-    out.push_str("    ...client,\n");
-    writeln!(out, "    {program_camel}: {{").expect("write to String");
-
-    if !accounts.is_empty() {
-        out.push_str("      accounts: {\n");
-        for account in accounts {
-            let key = lower_first(&account.name);
-            writeln!(
-                out,
-                "        {key}: addSelfFetchFunctions(client, {}Codec),",
-                account.name
-            )
-            .expect("write to String");
-        }
-        out.push_str("      },\n");
-    }
-
-    if !instructions.is_empty() {
-        out.push_str("      instructions: {\n");
-        for ix in instructions {
-            let ix_pascal = snake_to_pascal(&ix.name);
-            let ix_camel = to_camel_case(&ix.name);
-            if kit_plugin_instruction_has_input(ix) {
-                writeln!(
-                    out,
-                    "        {ix_camel}: (input: {ix_pascal}InstructionInput) => \
-                     addSelfPlanAndSendFunctions(client, \
-                     __client.create{ix_pascal}Instruction(input)),"
-                )
-                .expect("write to String");
-            } else {
-                writeln!(
-                    out,
-                    "        {ix_camel}: () => addSelfPlanAndSendFunctions(client, \
-                     __client.create{ix_pascal}Instruction()),"
-                )
-                .expect("write to String");
-            }
-        }
-        out.push_str("      },\n");
-    }
-
-    out.push_str("    },\n");
-    out.push_str("  });\n");
-    out.push_str("}\n\n");
-}
-
-fn eligible_plugin_accounts(idl: &Idl) -> Vec<&IdlAccountDef> {
-    idl.accounts
-        .iter()
-        .filter(|account| {
-            idl.types
-                .iter()
-                .find(|ty| ty.name == account.name)
-                .is_some_and(|ty| !has_dynamic_field_defs(&ty.fields))
-        })
-        .collect()
-}
-
-fn eligible_plugin_instructions(idl: &Idl) -> Vec<&IdlInstruction> {
-    idl.instructions
-        .iter()
-        .filter(|ix| !instruction_has_account_field_pda_seeds(ix))
-        .collect()
-}
-
-fn kit_plugin_instruction_has_input(ix: &IdlInstruction) -> bool {
-    ix.remaining_accounts.is_some()
-        || !ix.args.is_empty()
-        || ix
-            .accounts
-            .iter()
-            .any(|account| account.optional || matches!(account.resolver, IdlResolver::Input {}))
-}
-
-fn lower_first(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(first) => first.to_ascii_lowercase().to_string() + chars.as_str(),
-        None => String::new(),
-    }
-}
-
-fn generate_instruction_builders_web3js(
-    out: &mut String,
-    idl: &Idl,
-    exportable_pda_helpers: &HashMap<String, String>,
-    program_name: &str,
-) {
-    let class_name = format!("{}Client", snake_to_pascal(program_name));
-    for ix in &idl.instructions {
-        let has_remaining = ix.remaining_accounts.is_some();
-        out.push('\n');
-        let pascal = snake_to_pascal(&ix.name);
-        let arg_types = instruction_arg_types(ix);
-
-        let mut user_accs = Vec::new();
-        let mut has_non_input_accounts = false;
-        for acc in &ix.accounts {
-            if acc.optional || matches!(acc.resolver, IdlResolver::Input {}) {
-                user_accs.push(acc);
-            } else {
-                has_non_input_accounts = true;
-            }
-        }
-
-        let input_account_names: HashSet<&str> =
-            user_accs.iter().map(|a| a.name.as_str()).collect();
-        let optional_account_names: HashSet<&str> = user_accs
-            .iter()
-            .filter(|account| account.optional)
-            .map(|account| account.name.as_str())
-            .collect();
-        let ix_needs_account_resolver = instruction_has_account_field_pda_seeds(ix);
-        let ix_has_pdas = ix.accounts.iter().any(|a| {
-            !a.optional
-                && matches!(
-                    a.resolver,
-                    IdlResolver::Pda { .. } | IdlResolver::AssociatedToken { .. }
-                )
-        });
-
-        let account_expr = |name: &str| {
-            if input_account_names.contains(name) {
-                if optional_account_names.contains(name) {
-                    format!("(accountOverrides.{name} ?? input.{name} ?? {class_name}.programId)")
-                } else {
-                    format!("(accountOverrides.{name} ?? input.{name})")
-                }
-            } else {
-                format!("(accountOverrides.{name} ?? accountsMap[\"{name}\"])")
-            }
-        };
-
-        // Method signature
-        let mut method_params = Vec::new();
-        if !user_accs.is_empty() || !ix.args.is_empty() || has_remaining {
-            method_params.push(format!("input: {pascal}InstructionInput"));
-        }
-        if ix_needs_account_resolver {
-            method_params.push("resolver: AccountDataResolver".to_string());
-        }
-        let ix_needs_async = ix_needs_account_resolver || ix_has_pdas;
-        let async_kw = if ix_needs_async { "async " } else { "" };
-        let return_type = if ix_needs_async {
-            "Promise<TransactionInstruction>"
-        } else {
-            "TransactionInstruction"
-        };
-        if !ix.accounts.is_empty() {
-            writeln!(
-                out,
-                "  {async_kw}create{pascal}Instruction({}): {return_type} {{",
-                method_params.join(", ")
-            )
-            .expect("write to String");
-            let mut unchecked_args = Vec::new();
-            if !user_accs.is_empty() || !ix.args.is_empty() || has_remaining {
-                unchecked_args.push("input");
-            }
-            unchecked_args.push("{}");
-            if ix_needs_account_resolver {
-                unchecked_args.push("resolver");
-            }
-            writeln!(
-                out,
-                "    return this.create{pascal}InstructionUnchecked({});",
-                unchecked_args.join(", ")
-            )
-            .expect("write to String");
-            out.push_str("  }\n\n");
-
-            let override_position = if !user_accs.is_empty() || !ix.args.is_empty() || has_remaining
-            {
-                1
-            } else {
-                0
-            };
-            method_params.insert(
-                override_position,
-                format!("accountOverrides: {pascal}InstructionAccountOverrides"),
-            );
-        }
-        writeln!(
-            out,
-            "  {async_kw}create{pascal}Instruction{}({}): {return_type} {{",
-            if ix.accounts.is_empty() {
-                ""
-            } else {
-                "Unchecked"
-            },
-            method_params.join(", ")
-        )
-        .expect("write to String");
-
-        if has_non_input_accounts {
-            out.push_str("    const accountsMap: Record<string, Address> = {};\n");
-        }
-
-        // Derive fixed-address accounts
-        for acc in &ix.accounts {
-            if acc.optional {
-                continue;
-            }
-            if let IdlResolver::Const { address } = &acc.resolver {
-                writeln!(
-                    out,
-                    "    accountsMap[\"{}\"] = new Address(\"{}\");",
-                    acc.name, address
-                )
-                .expect("write to String");
-            }
-        }
-
-        // Derive PDA accounts
-        for acc in resolved_account_order(ix).expect("validated derived-account order") {
-            if let IdlResolver::Pda { program, seeds } = &acc.resolver {
-                let helper_name = matches!(program, IdlPdaProgram::ProgramId {})
-                    .then(|| exportable_pda_helpers.get(&format!("{:?}", seeds)))
-                    .flatten();
-                if let Some(helper_name) = helper_name {
-                    let args = helper_call_args(seeds, &account_expr);
-                    writeln!(
-                        out,
-                        "    accountsMap[\"{}\"] = await {}({});",
-                        acc.name, helper_name, args
-                    )
-                    .expect("write to String");
-                } else {
-                    emit_account_field_seed_resolvers(out, seeds, idl, &account_expr);
-                    let program_expr = match program {
-                        IdlPdaProgram::ProgramId {} => format!("{class_name}.programId"),
-                        IdlPdaProgram::Account { path } => account_expr(path),
-                    };
-                    emit_inline_pda_derivation(
-                        out,
-                        &acc.name,
-                        seeds,
-                        idl,
-                        InlinePdaTarget::Web3js {
-                            program_expr: &program_expr,
-                        },
-                        &arg_types,
-                        &account_expr,
-                    );
-                }
-            } else if let IdlResolver::AssociatedToken {
-                mint,
-                owner,
-                token_program,
-            } = &acc.resolver
-            {
-                emit_associated_token_derivation(
-                    out,
-                    &acc.name,
-                    mint,
-                    owner,
-                    token_program.as_deref(),
-                    TsTarget::Web3js,
-                    &account_expr,
-                );
-            }
-        }
-
-        // Encode instruction data
-        let disc_str = super::format_disc_decimal(&ix.discriminator);
-        let has_dyn = ix.args.iter().any(is_arg_dynamic);
-        if ix.args.is_empty() {
-            writeln!(out, "    const data = Uint8Array.from([{}]);", disc_str)
-                .expect("write to String");
-        } else if !has_dyn {
-            // Fixed-only: use getStructCodec
-            out.push_str("    const argsCodec = getStructCodec([\n");
-            for arg in &ix.args {
-                writeln!(
-                    out,
-                    "      [\"{}\", {}],",
-                    arg.name,
-                    ts_codec_for_arg(arg, TsTarget::Web3js)
-                )
-                .expect("write to String");
-            }
-            out.push_str("    ]);\n");
-            let arg_names: Vec<String> = ix
-                .args
-                .iter()
-                .map(|a| format!("{}: input.{}", a.name, a.name))
-                .collect();
-            writeln!(
-                out,
-                "    const data = Uint8Array.from([{}, ...argsCodec.encode({{ {} }})]);",
-                disc_str,
-                arg_names.join(", ")
-            )
-            .expect("write to String");
-        } else {
-            // Compact layout: [disc][fixed fields][all prefixes][all dynamic data]
-            emit_compact_encoding(out, ix, &disc_str, TsTarget::Web3js, "Uint8Array.from");
-        }
-
-        // Return TransactionInstruction
-        out.push_str("    return new TransactionInstruction({\n");
-        writeln!(out, "      programId: {class_name}.programId,").expect("write to String");
-        if !ix.accounts.is_empty() || has_remaining {
-            out.push_str("      keys: [\n");
-            for acc in &ix.accounts {
-                let pubkey_expr = account_expr(&acc.name);
-                let is_signer = matches!(acc.signer, AccountFlag::Fixed(true));
-                let is_writable = matches!(acc.writable, AccountFlag::Fixed(true));
-                writeln!(
-                    out,
-                    "        {{ pubkey: {}, isSigner: {}, isWritable: {} }},",
-                    pubkey_expr, is_signer, is_writable
-                )
-                .expect("write to String");
-            }
-            if has_remaining {
-                out.push_str("        ...(input.remainingAccounts ?? []),\n");
-            }
-            out.push_str("      ],\n");
-        }
-        out.push_str("      data,\n");
-        out.push_str("    });\n");
-        out.push_str("  }\n");
-    }
-}
-
-fn generate_instruction_builders_kit(
-    out: &mut String,
-    idl: &Idl,
-    exportable_pda_helpers: &HashMap<String, String>,
-) {
-    for ix in &idl.instructions {
-        let has_remaining = ix.remaining_accounts.is_some();
-        out.push('\n');
-        let pascal = snake_to_pascal(&ix.name);
-        let arg_types = instruction_arg_types(ix);
-
-        let mut user_accs = Vec::new();
-        let mut has_non_input_accounts = false;
-        for acc in &ix.accounts {
-            if acc.optional || matches!(acc.resolver, IdlResolver::Input {}) {
-                user_accs.push(acc);
-            } else {
-                has_non_input_accounts = true;
-            }
-        }
-
-        let input_account_names: HashSet<&str> =
-            user_accs.iter().map(|a| a.name.as_str()).collect();
-        let optional_account_names: HashSet<&str> = user_accs
-            .iter()
-            .filter(|account| account.optional)
-            .map(|account| account.name.as_str())
-            .collect();
-        let ix_needs_account_resolver = instruction_has_account_field_pda_seeds(ix);
-
-        let account_expr = |name: &str| {
-            if input_account_names.contains(name) {
-                if optional_account_names.contains(name) {
-                    format!("(accountOverrides.{name} ?? input.{name} ?? PROGRAM_ADDRESS)")
-                } else {
-                    format!("(accountOverrides.{name} ?? input.{name})")
-                }
-            } else {
-                format!("(accountOverrides.{name} ?? accountsMap[\"{name}\"])")
-            }
-        };
-
-        // Check if this instruction has any PDAs (requires async)
-        let ix_has_pdas = ix.accounts.iter().any(|a| {
-            !a.optional
-                && matches!(
-                    a.resolver,
-                    IdlResolver::Pda { .. } | IdlResolver::AssociatedToken { .. }
-                )
-        });
-
-        // Method signature
-        let mut method_params = Vec::new();
-        if !user_accs.is_empty() || !ix.args.is_empty() || has_remaining {
-            method_params.push(format!("input: {pascal}InstructionInput"));
-        }
-        if ix_needs_account_resolver {
-            method_params.push("resolver: AccountDataResolver".to_string());
-        }
-        let return_type = if ix_has_pdas {
-            "Promise<Instruction>"
-        } else {
-            "Instruction"
-        };
-        let async_kw = if ix_has_pdas { "async " } else { "" };
-        if !ix.accounts.is_empty() {
-            writeln!(
-                out,
-                "  {async_kw}create{pascal}Instruction({}): {return_type} {{",
-                method_params.join(", ")
-            )
-            .expect("write to String");
-            let mut unchecked_args = Vec::new();
-            if !user_accs.is_empty() || !ix.args.is_empty() || has_remaining {
-                unchecked_args.push("input");
-            }
-            unchecked_args.push("{}");
-            if ix_needs_account_resolver {
-                unchecked_args.push("resolver");
-            }
-            writeln!(
-                out,
-                "    return this.create{pascal}InstructionUnchecked({});",
-                unchecked_args.join(", ")
-            )
-            .expect("write to String");
-            out.push_str("  }\n\n");
-
-            let override_position = if !user_accs.is_empty() || !ix.args.is_empty() || has_remaining
-            {
-                1
-            } else {
-                0
-            };
-            method_params.insert(
-                override_position,
-                format!("accountOverrides: {pascal}InstructionAccountOverrides"),
-            );
-        }
-        writeln!(
-            out,
-            "  {async_kw}create{pascal}Instruction{}({}): {return_type} {{",
-            if ix.accounts.is_empty() {
-                ""
-            } else {
-                "Unchecked"
-            },
-            method_params.join(", ")
-        )
-        .expect("write to String");
-
-        if has_non_input_accounts {
-            out.push_str("    const accountsMap: Record<string, Address> = {};\n");
-        }
-
-        // Derive fixed-address accounts
-        for acc in &ix.accounts {
-            if acc.optional {
-                continue;
-            }
-            if let IdlResolver::Const { address } = &acc.resolver {
-                writeln!(
-                    out,
-                    "    accountsMap[\"{}\"] = address(\"{}\");",
-                    acc.name, address
-                )
-                .expect("write to String");
-            }
-        }
-
-        // Derive PDA accounts (async in kit)
-        for acc in resolved_account_order(ix).expect("validated derived-account order") {
-            if let IdlResolver::Pda { program, seeds } = &acc.resolver {
-                let helper_name = matches!(program, IdlPdaProgram::ProgramId {})
-                    .then(|| exportable_pda_helpers.get(&format!("{:?}", seeds)))
-                    .flatten();
-                if let Some(helper_name) = helper_name {
-                    let args = helper_call_args(seeds, &account_expr);
-                    writeln!(
-                        out,
-                        "    accountsMap[\"{}\"] = await {}({});",
-                        acc.name, helper_name, args
-                    )
-                    .expect("write to String");
-                } else {
-                    emit_account_field_seed_resolvers(out, seeds, idl, &account_expr);
-                    let program_expr = match program {
-                        IdlPdaProgram::ProgramId {} => "PROGRAM_ADDRESS".to_string(),
-                        IdlPdaProgram::Account { path } => account_expr(path),
-                    };
-                    emit_inline_pda_derivation(
-                        out,
-                        &acc.name,
-                        seeds,
-                        idl,
-                        InlinePdaTarget::Kit {
-                            program_expr: &program_expr,
-                        },
-                        &arg_types,
-                        &account_expr,
-                    );
-                }
-            } else if let IdlResolver::AssociatedToken {
-                mint,
-                owner,
-                token_program,
-            } = &acc.resolver
-            {
-                emit_associated_token_derivation(
-                    out,
-                    &acc.name,
-                    mint,
-                    owner,
-                    token_program.as_deref(),
-                    TsTarget::Kit,
-                    &account_expr,
-                );
-            }
-        }
-
-        // Encode instruction data
-        let disc_str = super::format_disc_decimal(&ix.discriminator);
-        let has_dyn = ix.args.iter().any(is_arg_dynamic);
-        if ix.args.is_empty() {
-            writeln!(out, "    const data = Uint8Array.from([{}]);", disc_str)
-                .expect("write to String");
-        } else if !has_dyn {
-            // Fixed-only: use getStructCodec
-            out.push_str("    const argsCodec = getStructCodec([\n");
-            for arg in &ix.args {
-                writeln!(
-                    out,
-                    "      [\"{}\", {}],",
-                    arg.name,
-                    ts_codec_for_arg(arg, TsTarget::Kit)
-                )
-                .expect("write to String");
-            }
-            out.push_str("    ]);\n");
-            let arg_names: Vec<String> = ix
-                .args
-                .iter()
-                .map(|a| format!("{}: input.{}", a.name, a.name))
-                .collect();
-            writeln!(
-                out,
-                "    const data = Uint8Array.from([{}, ...argsCodec.encode({{ {} }})]);",
-                disc_str,
-                arg_names.join(", ")
-            )
-            .expect("write to String");
-        } else {
-            // Compact layout: [disc][fixed fields][all prefixes][all dynamic data]
-            emit_compact_encoding(out, ix, &disc_str, TsTarget::Kit, "Uint8Array.from");
-        }
-
-        // Return Instruction
-        out.push_str("    return {\n");
-        out.push_str("      programAddress: PROGRAM_ADDRESS,\n");
-        if !ix.accounts.is_empty() || has_remaining {
-            out.push_str("      accounts: [\n");
-            for acc in &ix.accounts {
-                let addr_expr = account_expr(&acc.name);
-                let is_signer = matches!(acc.signer, AccountFlag::Fixed(true));
-                let is_writable = matches!(acc.writable, AccountFlag::Fixed(true));
-                let role = account_role(is_signer, is_writable);
-                writeln!(out, "        {{ address: {}, role: {} }},", addr_expr, role)
-                    .expect("write to String");
-            }
-            if has_remaining {
-                out.push_str("        ...(input.remainingAccounts ?? []),\n");
-            }
-            out.push_str("      ],\n");
-        }
-        out.push_str("      data,\n");
-        out.push_str("    };\n");
-        out.push_str("  }\n");
     }
 }
 
@@ -2665,7 +2065,7 @@ fn primitive_ts_codec(primitive: &str, target: TsTarget) -> String {
         },
         "string" => "addCodecSizePrefix(getUtf8Codec(), getU32Codec())".to_string(),
         other if other.starts_with('[') => {
-            let size = super::parse_fixed_array_size(other).unwrap_or(1);
+            let size = crate::codegen::parse_fixed_array_size(other).unwrap_or(1);
             format!("fixCodecSize(getBytesCodec(), {})", size)
         }
         other => format!("/* unknown: {} */", other),
