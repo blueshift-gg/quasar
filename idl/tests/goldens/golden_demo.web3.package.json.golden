@@ -1,5 +1,5 @@
 {
-  "name": "quasar-multisig-client-web3",
+  "name": "golden_demo-client-web3",
   "version": "0.1.0",
   "private": true,
   "exports": "./client.ts",

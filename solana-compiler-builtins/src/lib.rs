@@ -49,7 +49,11 @@ fn sol_memcmp(a: *const u8, b: *const u8, n: usize) -> i32 {
 unsafe fn cmp_bytes(a: *const u8, b: *const u8, n: usize) -> i32 {
     let mut i = 0usize;
     while i + 8 <= n {
+        // SAFETY: the caller guarantees both pointers are readable for `n`
+        // bytes; this iteration stays within that range and permits unaligned
+        // inputs by using `read_unaligned`.
         let wa = unsafe { core::ptr::read_unaligned(a.add(i) as *const u64) };
+        // SAFETY: same range and alignment argument as for `wa`.
         let wb = unsafe { core::ptr::read_unaligned(b.add(i) as *const u64) };
         if wa != wb {
             // Mismatch somewhere in this word; the byte scan below finds the
@@ -60,7 +64,9 @@ unsafe fn cmp_bytes(a: *const u8, b: *const u8, n: usize) -> i32 {
     }
 
     while i < n {
+        // SAFETY: `i < n` and the caller guarantees `a` is readable for `n`.
         let ba = unsafe { *a.add(i) };
+        // SAFETY: `i < n` and the caller guarantees `b` is readable for `n`.
         let bb = unsafe { *b.add(i) };
         if ba != bb {
             return ba as i32 - bb as i32;

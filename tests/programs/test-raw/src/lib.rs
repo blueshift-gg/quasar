@@ -42,6 +42,8 @@ mod quasar_test_raw {
 
         let target = &mut ctx.accounts[0];
         let value_bytes: [u8; 8] = ctx.data[..8].try_into().unwrap();
+        // SAFETY: `target` is exclusively borrowed from the context; the
+        // length check precedes the in-bounds eight-byte copy.
         unsafe {
             let data = target.borrow_unchecked_mut();
             if data.len() < 16 {
@@ -97,6 +99,8 @@ mod quasar_test_raw {
         }
 
         #[cfg(not(target_os = "solana"))]
+        // SAFETY: the test runtime supplies at least `WRITE_OFFSET + 8` bytes
+        // for the target and `ctx.data` was checked to contain eight bytes.
         unsafe {
             core::ptr::copy_nonoverlapping(src, dest.add(WRITE_OFFSET), 8);
         }
@@ -118,9 +122,12 @@ mod quasar_test_raw {
         let selector = ctx.data[0] as usize;
 
         fn write_aa(view: &mut AccountView) {
+            // SAFETY: this raw-handler fixture is invoked only with target
+            // accounts containing byte offset eight.
             unsafe { *view.borrow_unchecked_mut().get_unchecked_mut(8) = 0xAA };
         }
         fn write_bb(view: &mut AccountView) {
+            // SAFETY: same fixture contract as `write_aa`.
             unsafe { *view.borrow_unchecked_mut().get_unchecked_mut(8) = 0xBB };
         }
 

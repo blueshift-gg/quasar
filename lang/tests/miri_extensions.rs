@@ -4,7 +4,11 @@
 //! under both Stacked Borrows and Tree Borrows. Most importantly, they execute
 //! an actual `#[instruction]`-generated fixed-argument decoder over untrusted
 //! bytes rather than mirroring its pointer cast in test code.
-#![allow(unexpected_cfgs)]
+#![allow(
+    unexpected_cfgs,
+    clippy::undocumented_unsafe_blocks,
+    reason = "this adversarial fixture intentionally invokes documented unsafe extension points"
+)]
 
 use {quasar_lang::prelude::*, solana_program_error::ProgramError};
 

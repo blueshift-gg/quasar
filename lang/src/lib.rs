@@ -290,6 +290,8 @@ pub mod __internal {
         // SAFETY: `raw` is the current non-dup account, so `data_len` is valid
         // and `input` meets `advance_account_data`'s entry contract.
         let data_len = unsafe { (*raw).data_len as usize };
+        // SAFETY: `input` points to the validated account header and
+        // `data_len` was read from that header.
         let input = unsafe { crate::svm::advance_account_data(input, data_len) };
         Ok(input)
     }
@@ -353,6 +355,8 @@ pub mod __internal {
         // SAFETY: `raw` is the current non-dup account, so `data_len` is
         // valid and `input` meets `advance_account_data`'s entry contract.
         let data_len = unsafe { (*raw).data_len as usize };
+        // SAFETY: `input` points to the validated account header and
+        // `data_len` was read from that header.
         let input = unsafe { crate::svm::advance_account_data(input, data_len) };
         Ok(input)
     }
@@ -420,8 +424,10 @@ pub mod __internal {
         }
 
         // SAFETY: `base[offset]` is writable per the caller's contract; a dup
-        // entry is exactly `DUP_ENTRY_SIZE` bytes.
+        // slot may copy the already validated view.
         unsafe { core::ptr::write(base.add(offset), orig_view) };
+        // SAFETY: a duplicate entry is exactly `DUP_ENTRY_SIZE` bytes and the
+        // caller guarantees the input contains a complete entry.
         Ok(unsafe { input.add(DUP_ENTRY_SIZE) })
     }
 }

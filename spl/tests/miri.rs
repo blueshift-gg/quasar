@@ -4,11 +4,13 @@
 //! output. Each test exercises a specific unsafe pattern under conditions
 //! that would trigger Miri if the pattern is unsound.
 #![allow(
+    clippy::undocumented_unsafe_blocks,
     clippy::manual_div_ceil,
     clippy::useless_vec,
     clippy::deref_addrof,
     clippy::needless_range_loop,
-    clippy::borrow_deref_ref
+    clippy::borrow_deref_ref,
+    reason = "this adversarial fixture centralizes account-buffer safety at its constructors"
 )]
 //!
 //! ## Run
@@ -127,7 +129,9 @@ impl AccountBuffer {
     }
 
     unsafe fn view(&mut self) -> AccountView {
-        AccountView::new_unchecked(self.raw())
+        // SAFETY: `self.raw()` points into the live, correctly aligned
+        // account buffer owned by this fixture.
+        unsafe { AccountView::new_unchecked(self.raw()) }
     }
 
     fn write_data(&mut self, data: &[u8]) {

@@ -98,7 +98,7 @@ LC_ALL=C sort "$tmp/expected-files" -o "$tmp/expected-files"
 
 if [[ -n "$(uniq -d "$tmp/primary-packages")" ]] \
   || ! diff -u "$tmp/expected-packages" "$tmp/primary-packages"; then
-  echo "every publishable library needs exactly one default or proc-macro public API profile" >&2
+  echo "every stable Rust package needs exactly one primary public API profile" >&2
   exit 1
 fi
 

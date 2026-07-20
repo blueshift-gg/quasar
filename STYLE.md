@@ -5,7 +5,8 @@ How runtime code is written here — the unsafe core especially. The lineage is
 were effortless, because every invariant is established exactly once and then
 trusted. TESTING.md owns test style; this document owns the code.
 
-The mechanically checkable subset is enforced by `make check-unsafe-policy`.
+The compiler denies unsafe operations outside explicit unsafe blocks, and
+Clippy requires every unsafe block to carry its local safety argument.
 Everything else is review judgment, and reviewers hold changes to it.
 
 ## The feel

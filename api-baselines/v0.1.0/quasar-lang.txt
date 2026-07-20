@@ -1093,6 +1093,7 @@ impl<P: core::clone::Clone> core::clone::Clone for quasar_lang::client::DynBytes
 pub fn quasar_lang::client::DynBytes<P>::clone(&self) -> quasar_lang::client::DynBytes<P>
 impl<P: core::cmp::PartialEq> core::cmp::PartialEq for quasar_lang::client::DynBytes<P>
 pub fn quasar_lang::client::DynBytes<P>::eq(&self, &quasar_lang::client::DynBytes<P>) -> bool
+impl<P: core::cmp::PartialEq> core::marker::StructuralPartialEq for quasar_lang::client::DynBytes<P>
 impl<P: core::fmt::Debug> core::fmt::Debug for quasar_lang::client::DynBytes<P>
 pub fn quasar_lang::client::DynBytes<P>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<P> core::convert::From<&str> for quasar_lang::client::DynBytes<P>
@@ -1101,7 +1102,6 @@ impl<P> core::convert::From<alloc::string::String> for quasar_lang::client::DynB
 pub fn quasar_lang::client::DynBytes<P>::from(alloc::string::String) -> Self
 impl<P> core::convert::From<alloc::vec::Vec<u8>> for quasar_lang::client::DynBytes<P>
 pub fn quasar_lang::client::DynBytes<P>::from(alloc::vec::Vec<u8>) -> Self
-impl<P> core::marker::StructuralPartialEq for quasar_lang::client::DynBytes<P>
 impl<P> quasar_lang::client::SerializeArg for quasar_lang::client::DynBytes<P> where wincode::len::UseIntLen<P>: wincode::len::SeqLen<wincode::config::DefaultConfig>
 pub fn quasar_lang::client::DynBytes<P>::serialize_arg(&self) -> alloc::vec::Vec<u8>
 impl<P> quasar_lang::pda::SeedBytes for quasar_lang::client::DynBytes<P>
@@ -1130,6 +1130,7 @@ impl<P: core::clone::Clone> core::clone::Clone for quasar_lang::client::DynStrin
 pub fn quasar_lang::client::DynString<P>::clone(&self) -> quasar_lang::client::DynString<P>
 impl<P: core::cmp::PartialEq> core::cmp::PartialEq for quasar_lang::client::DynString<P>
 pub fn quasar_lang::client::DynString<P>::eq(&self, &quasar_lang::client::DynString<P>) -> bool
+impl<P: core::cmp::PartialEq> core::marker::StructuralPartialEq for quasar_lang::client::DynString<P>
 impl<P: core::fmt::Debug> core::fmt::Debug for quasar_lang::client::DynString<P>
 pub fn quasar_lang::client::DynString<P>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<P> core::convert::From<&str> for quasar_lang::client::DynString<P>
@@ -1138,7 +1139,6 @@ impl<P> core::convert::From<alloc::string::String> for quasar_lang::client::DynS
 pub fn quasar_lang::client::DynString<P>::from(alloc::string::String) -> Self
 impl<P> core::convert::From<alloc::vec::Vec<u8>> for quasar_lang::client::DynString<P>
 pub fn quasar_lang::client::DynString<P>::from(alloc::vec::Vec<u8>) -> Self
-impl<P> core::marker::StructuralPartialEq for quasar_lang::client::DynString<P>
 impl<P> quasar_lang::client::CompactSerializeArg for quasar_lang::client::DynString<P> where wincode::len::UseIntLen<P>: wincode::len::SeqLen<wincode::config::DefaultConfig>
 pub fn quasar_lang::client::DynString<P>::compact_header(&self) -> alloc::vec::Vec<u8>
 pub fn quasar_lang::client::DynString<P>::compact_tail(&self) -> alloc::vec::Vec<u8>
@@ -1170,7 +1170,6 @@ pub fn quasar_lang::client::DynVec<T, P>::size_of(&Self) -> wincode::error::Writ
 pub fn quasar_lang::client::DynVec<T, P>::write(impl wincode::io::Writer, &Self) -> wincode::error::WriteResult<()>
 impl<T, P> core::convert::From<alloc::vec::Vec<T>> for quasar_lang::client::DynVec<T, P>
 pub fn quasar_lang::client::DynVec<T, P>::from(alloc::vec::Vec<T>) -> Self
-impl<T, P> core::marker::StructuralPartialEq for quasar_lang::client::DynVec<T, P>
 impl<T, P> quasar_lang::client::CompactSerializeArg for quasar_lang::client::DynVec<T, P> where T: wincode::schema::SchemaWrite<wincode::config::DefaultConfig, Src = T>, wincode::len::UseIntLen<P>: wincode::len::SeqLen<wincode::config::DefaultConfig>
 pub fn quasar_lang::client::DynVec<T, P>::compact_header(&self) -> alloc::vec::Vec<u8>
 pub fn quasar_lang::client::DynVec<T, P>::compact_tail(&self) -> alloc::vec::Vec<u8>
@@ -1182,6 +1181,7 @@ impl<T: core::clone::Clone, P> core::convert::From<&[T]> for quasar_lang::client
 pub fn quasar_lang::client::DynVec<T, P>::from(&[T]) -> Self
 impl<T: core::cmp::PartialEq, P: core::cmp::PartialEq> core::cmp::PartialEq for quasar_lang::client::DynVec<T, P>
 pub fn quasar_lang::client::DynVec<T, P>::eq(&self, &quasar_lang::client::DynVec<T, P>) -> bool
+impl<T: core::cmp::PartialEq, P: core::cmp::PartialEq> core::marker::StructuralPartialEq for quasar_lang::client::DynVec<T, P>
 impl<T: core::fmt::Debug, P: core::fmt::Debug> core::fmt::Debug for quasar_lang::client::DynVec<T, P>
 pub fn quasar_lang::client::DynVec<T, P>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T, P> core::marker::Freeze for quasar_lang::client::DynVec<T, P>
@@ -1430,8 +1430,42 @@ pub fn quasar_lang::event::EventCpi::event_authority(&self) -> &solana_account_v
 pub fn quasar_lang::event::EventCpi::event_program(&self) -> &solana_account_view::AccountView
 pub fn quasar_lang::event::emit_event_cpi(&solana_account_view::AccountView, &solana_account_view::AccountView, &[u8], u8) -> core::result::Result<(), solana_program_error::ProgramError>
 pub mod quasar_lang::instruction_arg
+#[repr(transparent)] pub struct quasar_lang::instruction_arg::PodStringZc<const N: usize, const PFX: usize>(_)
+impl<const N: usize, const PFX: usize> core::clone::Clone for quasar_lang::instruction_arg::PodStringZc<N, PFX>
+pub fn quasar_lang::instruction_arg::PodStringZc<N, PFX>::clone(&self) -> quasar_lang::instruction_arg::PodStringZc<N, PFX>
+impl<const N: usize, const PFX: usize> core::marker::Copy for quasar_lang::instruction_arg::PodStringZc<N, PFX>
+impl<const N: usize, const PFX: usize> zeropod::traits::ZcElem for quasar_lang::instruction_arg::PodStringZc<N, PFX>
+impl<const N: usize, const PFX: usize> zeropod::traits::ZcField for quasar_lang::instruction_arg::PodStringZc<N, PFX>
+pub type quasar_lang::instruction_arg::PodStringZc<N, PFX>::Pod = quasar_lang::instruction_arg::PodStringZc<N, PFX>
+pub const quasar_lang::instruction_arg::PodStringZc<N, PFX>::POD_SIZE: usize
+impl<const N: usize, const PFX: usize> zeropod::traits::ZcValidate for quasar_lang::instruction_arg::PodStringZc<N, PFX>
+pub fn quasar_lang::instruction_arg::PodStringZc<N, PFX>::validate_ref(&Self) -> core::result::Result<(), zeropod::error::ZeroPodError>
+impl<const N: usize, const PFX: usize> core::marker::Freeze for quasar_lang::instruction_arg::PodStringZc<N, PFX>
+impl<const N: usize, const PFX: usize> core::marker::Send for quasar_lang::instruction_arg::PodStringZc<N, PFX>
+impl<const N: usize, const PFX: usize> core::marker::Sync for quasar_lang::instruction_arg::PodStringZc<N, PFX>
+impl<const N: usize, const PFX: usize> core::marker::Unpin for quasar_lang::instruction_arg::PodStringZc<N, PFX>
+impl<const N: usize, const PFX: usize> core::marker::UnsafeUnpin for quasar_lang::instruction_arg::PodStringZc<N, PFX>
+impl<const N: usize, const PFX: usize> core::panic::unwind_safe::RefUnwindSafe for quasar_lang::instruction_arg::PodStringZc<N, PFX>
+impl<const N: usize, const PFX: usize> core::panic::unwind_safe::UnwindSafe for quasar_lang::instruction_arg::PodStringZc<N, PFX>
+#[repr(transparent)] pub struct quasar_lang::instruction_arg::PodVecZc<T: zeropod::traits::ZcElem, const N: usize, const PFX: usize>(_)
+impl<T: core::clone::Clone + zeropod::traits::ZcElem, const N: usize, const PFX: usize> core::clone::Clone for quasar_lang::instruction_arg::PodVecZc<T, N, PFX>
+pub fn quasar_lang::instruction_arg::PodVecZc<T, N, PFX>::clone(&self) -> quasar_lang::instruction_arg::PodVecZc<T, N, PFX>
+impl<T: core::marker::Copy + zeropod::traits::ZcElem, const N: usize, const PFX: usize> core::marker::Copy for quasar_lang::instruction_arg::PodVecZc<T, N, PFX>
+impl<T: zeropod::traits::ZcElem, const N: usize, const PFX: usize> zeropod::traits::ZcElem for quasar_lang::instruction_arg::PodVecZc<T, N, PFX>
+impl<T: zeropod::traits::ZcElem, const N: usize, const PFX: usize> zeropod::traits::ZcField for quasar_lang::instruction_arg::PodVecZc<T, N, PFX>
+pub type quasar_lang::instruction_arg::PodVecZc<T, N, PFX>::Pod = quasar_lang::instruction_arg::PodVecZc<T, N, PFX>
+pub const quasar_lang::instruction_arg::PodVecZc<T, N, PFX>::POD_SIZE: usize
+impl<T: zeropod::traits::ZcElem, const N: usize, const PFX: usize> zeropod::traits::ZcValidate for quasar_lang::instruction_arg::PodVecZc<T, N, PFX>
+pub fn quasar_lang::instruction_arg::PodVecZc<T, N, PFX>::validate_ref(&Self) -> core::result::Result<(), zeropod::error::ZeroPodError>
+impl<T, const N: usize, const PFX: usize> core::marker::Freeze for quasar_lang::instruction_arg::PodVecZc<T, N, PFX> where T: core::marker::Freeze
+impl<T, const N: usize, const PFX: usize> core::marker::Send for quasar_lang::instruction_arg::PodVecZc<T, N, PFX> where T: core::marker::Send
+impl<T, const N: usize, const PFX: usize> core::marker::Sync for quasar_lang::instruction_arg::PodVecZc<T, N, PFX> where T: core::marker::Sync
+impl<T, const N: usize, const PFX: usize> core::marker::Unpin for quasar_lang::instruction_arg::PodVecZc<T, N, PFX> where T: core::marker::Unpin
+impl<T, const N: usize, const PFX: usize> core::marker::UnsafeUnpin for quasar_lang::instruction_arg::PodVecZc<T, N, PFX> where T: core::marker::UnsafeUnpin
+impl<T, const N: usize, const PFX: usize> core::panic::unwind_safe::RefUnwindSafe for quasar_lang::instruction_arg::PodVecZc<T, N, PFX> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<T, const N: usize, const PFX: usize> core::panic::unwind_safe::UnwindSafe for quasar_lang::instruction_arg::PodVecZc<T, N, PFX> where T: core::panic::unwind_safe::UnwindSafe
 pub trait quasar_lang::instruction_arg::InstructionArg: core::marker::Sized
-pub type quasar_lang::instruction_arg::InstructionArg::Zc: core::marker::Copy
+pub type quasar_lang::instruction_arg::InstructionArg::Zc: zeropod::traits::ZcElem
 pub fn quasar_lang::instruction_arg::InstructionArg::from_zc(&Self::Zc) -> Self
 pub fn quasar_lang::instruction_arg::InstructionArg::to_zc(&self) -> Self::Zc
 pub fn quasar_lang::instruction_arg::InstructionArg::validate_zc(&Self::Zc) -> core::result::Result<(), solana_program_error::ProgramError>
@@ -1440,11 +1474,21 @@ pub type core::option::Option<T>::Zc = zeropod::pod::option::PodOption<<T as qua
 pub fn core::option::Option<T>::from_zc(&Self::Zc) -> Self
 pub fn core::option::Option<T>::to_zc(&self) -> Self::Zc
 pub fn core::option::Option<T>::validate_zc(&Self::Zc) -> core::result::Result<(), solana_program_error::ProgramError>
-impl<T> quasar_lang::instruction_arg::InstructionArg for T where T: core::marker::Copy + quasar_lang::instruction_arg::sealed::BuiltinPod + zeropod::traits::ZcField + core::convert::From<<T as zeropod::traits::ZcField>::Pod>, <T as zeropod::traits::ZcField>::Pod: core::marker::Copy + zeropod::traits::ZcValidate + core::convert::From<T>
+impl<T: zeropod::traits::ZcElem, const N: usize, const PFX: usize> quasar_lang::instruction_arg::InstructionArg for zeropod::pod::vec::PodVec<T, N, PFX>
+pub type zeropod::pod::vec::PodVec<T, N, PFX>::Zc = quasar_lang::instruction_arg::PodVecZc<T, N, PFX>
+pub fn zeropod::pod::vec::PodVec<T, N, PFX>::from_zc(&Self::Zc) -> Self
+pub fn zeropod::pod::vec::PodVec<T, N, PFX>::to_zc(&self) -> Self::Zc
+pub fn zeropod::pod::vec::PodVec<T, N, PFX>::validate_zc(&Self::Zc) -> core::result::Result<(), solana_program_error::ProgramError>
+impl<T> quasar_lang::instruction_arg::InstructionArg for T where T: core::marker::Copy + quasar_lang::instruction_arg::sealed::BuiltinPod + zeropod::traits::ZcField + core::convert::From<<T as zeropod::traits::ZcField>::Pod>, <T as zeropod::traits::ZcField>::Pod: zeropod::traits::ZcElem + core::convert::From<T>
 pub type T::Zc = <T as zeropod::traits::ZcField>::Pod
 pub fn T::from_zc(&Self::Zc) -> Self
 pub fn T::to_zc(&self) -> Self::Zc
 pub fn T::validate_zc(&Self::Zc) -> core::result::Result<(), solana_program_error::ProgramError>
+impl<const N: usize, const PFX: usize> quasar_lang::instruction_arg::InstructionArg for zeropod::pod::string::PodString<N, PFX>
+pub type zeropod::pod::string::PodString<N, PFX>::Zc = quasar_lang::instruction_arg::PodStringZc<N, PFX>
+pub fn zeropod::pod::string::PodString<N, PFX>::from_zc(&Self::Zc) -> Self
+pub fn zeropod::pod::string::PodString<N, PFX>::to_zc(&self) -> Self::Zc
+pub fn zeropod::pod::string::PodString<N, PFX>::validate_zc(&Self::Zc) -> core::result::Result<(), solana_program_error::ProgramError>
 pub trait quasar_lang::instruction_arg::InstructionArgField: quasar_lang::instruction_arg::InstructionArg + zeropod::traits::ZcField<Pod = <Self as quasar_lang::instruction_arg::InstructionArg>::Zc>
 impl<T> quasar_lang::instruction_arg::InstructionArgField for T where T: quasar_lang::instruction_arg::InstructionArg + zeropod::traits::ZcField<Pod = <T as quasar_lang::instruction_arg::InstructionArg>::Zc>
 pub type quasar_lang::instruction_arg::OptionZc<Z> = zeropod::pod::option::PodOption<Z>
@@ -3000,7 +3044,7 @@ pub const quasar_lang::cpi::system::SystemProgram::ID: solana_address::Address
 impl<T: quasar_lang::traits::Id> quasar_lang::traits::Id for quasar_lang::accounts::Program<T>
 pub const quasar_lang::accounts::Program<T>::ID: solana_address::Address
 pub trait quasar_lang::prelude::InstructionArg: core::marker::Sized
-pub type quasar_lang::prelude::InstructionArg::Zc: core::marker::Copy
+pub type quasar_lang::prelude::InstructionArg::Zc: zeropod::traits::ZcElem
 pub fn quasar_lang::prelude::InstructionArg::from_zc(&Self::Zc) -> Self
 pub fn quasar_lang::prelude::InstructionArg::to_zc(&self) -> Self::Zc
 pub fn quasar_lang::prelude::InstructionArg::validate_zc(&Self::Zc) -> core::result::Result<(), solana_program_error::ProgramError>
@@ -3009,11 +3053,21 @@ pub type core::option::Option<T>::Zc = zeropod::pod::option::PodOption<<T as qua
 pub fn core::option::Option<T>::from_zc(&Self::Zc) -> Self
 pub fn core::option::Option<T>::to_zc(&self) -> Self::Zc
 pub fn core::option::Option<T>::validate_zc(&Self::Zc) -> core::result::Result<(), solana_program_error::ProgramError>
-impl<T> quasar_lang::instruction_arg::InstructionArg for T where T: core::marker::Copy + quasar_lang::instruction_arg::sealed::BuiltinPod + zeropod::traits::ZcField + core::convert::From<<T as zeropod::traits::ZcField>::Pod>, <T as zeropod::traits::ZcField>::Pod: core::marker::Copy + zeropod::traits::ZcValidate + core::convert::From<T>
+impl<T: zeropod::traits::ZcElem, const N: usize, const PFX: usize> quasar_lang::instruction_arg::InstructionArg for zeropod::pod::vec::PodVec<T, N, PFX>
+pub type zeropod::pod::vec::PodVec<T, N, PFX>::Zc = quasar_lang::instruction_arg::PodVecZc<T, N, PFX>
+pub fn zeropod::pod::vec::PodVec<T, N, PFX>::from_zc(&Self::Zc) -> Self
+pub fn zeropod::pod::vec::PodVec<T, N, PFX>::to_zc(&self) -> Self::Zc
+pub fn zeropod::pod::vec::PodVec<T, N, PFX>::validate_zc(&Self::Zc) -> core::result::Result<(), solana_program_error::ProgramError>
+impl<T> quasar_lang::instruction_arg::InstructionArg for T where T: core::marker::Copy + quasar_lang::instruction_arg::sealed::BuiltinPod + zeropod::traits::ZcField + core::convert::From<<T as zeropod::traits::ZcField>::Pod>, <T as zeropod::traits::ZcField>::Pod: zeropod::traits::ZcElem + core::convert::From<T>
 pub type T::Zc = <T as zeropod::traits::ZcField>::Pod
 pub fn T::from_zc(&Self::Zc) -> Self
 pub fn T::to_zc(&self) -> Self::Zc
 pub fn T::validate_zc(&Self::Zc) -> core::result::Result<(), solana_program_error::ProgramError>
+impl<const N: usize, const PFX: usize> quasar_lang::instruction_arg::InstructionArg for zeropod::pod::string::PodString<N, PFX>
+pub type zeropod::pod::string::PodString<N, PFX>::Zc = quasar_lang::instruction_arg::PodStringZc<N, PFX>
+pub fn zeropod::pod::string::PodString<N, PFX>::from_zc(&Self::Zc) -> Self
+pub fn zeropod::pod::string::PodString<N, PFX>::to_zc(&self) -> Self::Zc
+pub fn zeropod::pod::string::PodString<N, PFX>::validate_zc(&Self::Zc) -> core::result::Result<(), solana_program_error::ProgramError>
 pub trait quasar_lang::prelude::Owner
 pub const quasar_lang::prelude::Owner::OWNER: solana_address::Address
 impl quasar_lang::traits::Owner for quasar_lang::accounts::SystemAccount

@@ -42,37 +42,18 @@ goldens (`TRYBUILD=overwrite`), then review every regenerated `.stderr` diff
 like code — each hunk must be a deliberate, correct diagnostic, not an
 accidental regression. Never set `TRYBUILD=overwrite` in `make test` or CI.
 
-## Macro expansion snapshots
+## Owner-local compatibility fixtures
 
-The `.rs` files under
-`compatibility-baselines/v0.1.0/proc-macros/expansions/` are pretty-printed
-goldens of what each proc macro expands to — the reviewable spec of the
-generated code. `make check-proc-macro-baselines` and its dedicated CI job
-assert them: an expansion that drifts from its golden fails the build.
+Proc-macro expansion fixtures live under
+`derive/tests/compatibility-v0.1.0/` and are asserted directly by the derive
+crate. A snapshot diff is a codegen change. Regenerate deliberately with
+`make bless-proc-macro-baselines`, then review every changed line.
 
-A snapshot diff **is** a codegen change. When you intend to change emission,
-run `make bless-proc-macro-baselines` to regenerate the goldens, then review
-every diff hunk like code — each change must be a deliberate, correct emission
-difference, never blessed blindly. Never set `UPDATE_EXPECT` in `make test` or
+IDL wire and generated-client fixtures live under `idl/tests/`. Rust, Kit, and
+Web3 output are stable contracts; Python, Go, and C retain functional tests
+without patch-level snapshots. Run `cargo test -p quasar-idl --all-features`
+to exercise the owning suite. Never set `UPDATE_EXPECT` in ordinary tests or
 CI.
-
-## IDL wire-contract snapshots
-
-The pretty JSON files under
-`compatibility-baselines/v0.1.0/idl-wire/programs/` contain the exact typed
-projection used by the ABI hash, rebuilt from representative programs. Run
-`make check-idl-wire-baselines` to compare generated wire contracts. Run
-`make bless-idl-wire-baselines` only after reviewing the compatibility impact;
-documentation-only changes never appear in this projection.
-
-## Generated-client snapshots
-
-The source trees under
-`compatibility-baselines/v0.1.0/generated-clients/outputs/` freeze every
-supported client language for representative programs. Run
-`make check-generated-client-baselines` to compare generated Rust, TypeScript,
-Python, Go, and C files. Run `make bless-generated-client-baselines` only after
-reviewing every source diff and explicitly removing obsolete files.
 
 ## When this changes
 

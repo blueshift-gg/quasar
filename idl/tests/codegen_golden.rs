@@ -1,11 +1,9 @@
-//! In-crate goldens for every client generator.
+//! Owner-local goldens for the stable client generators.
 //!
-//! The CLI crate byte-compares full client trees for the multisig/escrow
-//! fixtures (compatibility-baselines), but those tests never run under
-//! `cargo test -p quasar-idl` — leaving the ~9k lines of generators with only
-//! substring oracles inside this package. These goldens close that hole with
-//! a compact representative program: an emitted line cannot change without a
-//! reviewable diff here.
+//! A compact representative program protects Rust, Kit, and Web3 output close
+//! to the code that owns it. Preview backends use functional compilation
+//! checks when their implementation or the shared model changes; they do not
+//! carry patch-level snapshots.
 //!
 //! Regenerate deliberately with `UPDATE_EXPECT=1 cargo test -p quasar-idl
 //! --test codegen_golden` and review every hunk like code (TESTING.md).
@@ -185,7 +183,7 @@ fn rust_client_matches_golden() {
 }
 
 #[test]
-fn typescript_client_matches_golden() {
+fn web3_client_matches_golden() {
     let idl = representative_idl();
     let out = codegen::typescript::generate_ts_client(&idl).expect("ts client");
     assert_eq!(
@@ -197,44 +195,20 @@ fn typescript_client_matches_golden() {
 }
 
 #[test]
-fn typescript_kit_client_matches_golden() {
+fn kit_client_matches_golden() {
     let idl = representative_idl();
     let out = codegen::typescript::generate_ts_client_kit(&idl).expect("ts kit client");
     expect_file![golden("golden_demo.kit.ts.golden")].assert_eq(&out);
 }
 
 #[test]
-fn python_client_matches_golden() {
+fn stable_typescript_manifests_match_goldens() {
     let idl = representative_idl();
-    let out = codegen::python::generate_python_client(&idl).expect("python client");
-    assert_eq!(
-        out,
-        codegen::python::generate_python_client(&idl).expect("python client"),
-        "generator must be deterministic"
-    );
-    expect_file![golden("golden_demo.py.golden")].assert_eq(&out);
-}
-
-#[test]
-fn go_client_matches_golden() {
-    let idl = representative_idl();
-    let out = codegen::golang::generate_go_client(&idl).expect("go client");
-    assert_eq!(
-        out,
-        codegen::golang::generate_go_client(&idl).expect("go client"),
-        "generator must be deterministic"
-    );
-    expect_file![golden("golden_demo.go.golden")].assert_eq(&out);
-}
-
-#[test]
-fn c_client_matches_golden() {
-    let idl = representative_idl();
-    let out = codegen::c::generate_c_client(&idl).expect("c client");
-    assert_eq!(
-        out,
-        codegen::c::generate_c_client(&idl).expect("c client"),
-        "generator must be deterministic"
-    );
-    expect_file![golden("golden_demo.h.golden")].assert_eq(&out);
+    let kit = codegen::typescript::generate_package_json(&idl, codegen::typescript::TsTarget::Kit)
+        .expect("Kit package manifest");
+    let web3 =
+        codegen::typescript::generate_package_json(&idl, codegen::typescript::TsTarget::Web3js)
+            .expect("Web3 package manifest");
+    expect_file![golden("golden_demo.kit.package.json.golden")].assert_eq(&kit);
+    expect_file![golden("golden_demo.web3.package.json.golden")].assert_eq(&web3);
 }

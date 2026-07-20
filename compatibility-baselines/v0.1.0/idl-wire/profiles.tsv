@@ -1,3 +1,0 @@
-# fixture	program crate	baseline file
-multisig	examples/multisig	programs/multisig.abi.json
-escrow	examples/escrow	programs/escrow.abi.json

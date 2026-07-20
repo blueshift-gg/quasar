@@ -16,6 +16,9 @@ pub struct TakeEvent {
     pub escrow: Address,
 }
 
+// SAFETY: TYPE_META remains dynamic and size_of counts exactly the
+// discriminator, fixed fields, length prefixes, and payload bytes written
+// below.
 unsafe impl<C: ConfigCore> SchemaWrite<C> for TakeEvent
 where
     Address: SchemaWrite<C, Src = Address>,
@@ -33,6 +36,8 @@ where
     }
 }
 
+// SAFETY: TYPE_META remains dynamic and read initializes dst exactly once,
+// only after every discriminator, field, and payload validates.
 unsafe impl<'de, C: ConfigCore> SchemaRead<'de, C> for TakeEvent
 where
     Address: SchemaRead<'de, C, Dst = Address>,

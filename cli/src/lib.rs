@@ -10,7 +10,7 @@ mod client;
 mod config;
 mod deploy;
 mod error;
-pub mod idl;
+mod idl;
 mod init;
 mod inspect_asm;
 mod inspect_validation;

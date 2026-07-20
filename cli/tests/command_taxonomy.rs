@@ -43,7 +43,8 @@ fn removed_commands_have_no_aliases() -> Result<(), Box<dyn Error>> {
 #[test]
 fn validation_json_is_deterministic_and_preview_labeled() -> Result<(), Box<dyn Error>> {
     let temp = tempdir()?;
-    let idl = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/goldens/multisig.idl.json");
+    let idl = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../idl/tests/fixtures/programs/multisig.idl.json");
     let run = || {
         quasar(temp.path())
             .args(["inspect", "validation"])

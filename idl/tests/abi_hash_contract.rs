@@ -132,6 +132,19 @@ fn complete_abi_shape_has_a_golden_hash() {
 }
 
 #[test]
+fn multisig_wire_projection_matches_owner_local_fixture() {
+    let idl: Idl = serde_json::from_str(include_str!("fixtures/programs/multisig.idl.json"))
+        .expect("multisig IDL fixture must parse");
+    let actual = canonical_abi_json(&idl).expect("multisig ABI must serialize");
+    let expected = include_bytes!("fixtures/wire/v0.1.0/multisig.abi.json");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&actual).expect("actual ABI must parse"),
+        serde_json::from_slice::<serde_json::Value>(expected).expect("ABI fixture must parse"),
+        "multisig ABI wire projection changed"
+    );
+}
+
+#[test]
 fn documentation_metadata_and_extensions_do_not_change_the_abi_hash() {
     let base = fixture();
 

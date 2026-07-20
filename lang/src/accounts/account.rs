@@ -1,10 +1,11 @@
 //! The typed [`Account`] wrapper and the raw account-mutation helpers
 //! (`resize`, `set_lamports`, `realloc_account`) it is built on.
 //!
-//! `Account<T>` is `#[repr(transparent)]` over [`AccountView`] (through `T:
-//! StaticView`) and is constructed only after owner and data validation, so
-//! every `Deref`, `close`, and `realloc` re-relies on that construction
-//! invariant to reach the backing account through a pointer cast.
+//! `Account<T>` is `#[repr(transparent)]` over
+//! [`AccountView`](solana_account_view::AccountView) (through `T: StaticView`)
+//! and is constructed only after owner and data validation, so every `Deref`,
+//! `close`, and `realloc` re-relies on that construction invariant to reach
+//! the backing account through a pointer cast.
 
 use {
     crate::prelude::*,

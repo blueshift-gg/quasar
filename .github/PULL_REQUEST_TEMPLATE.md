@@ -12,23 +12,17 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for details. This PR will be closed.
 ## Maintainer checklist
 
 <!-- What does this PR do, and why? Reference the issue it closes.
-     Every box below maps to an enforced check; tick what applies, delete
-     what doesn't. "The check obviously works" is not an argument — the
-     matrix and the mutation baseline are (TESTING.md). -->
+     Tick what applies and delete what does not. -->
 
-- [ ] New/changed feature has its `tests/feature-matrix.tsv` row and every
-      required cell filled (`make check-test-matrix` — enforced in CI)
-- [ ] Every new rejection path asserts the exact error via a named constant
-      (`make check-suite-oracles` — enforced in CI)
+- [ ] Every new rejection path asserts the exact typed error or diagnostic
 - [ ] Bug fix ships a regression test that fails before the fix and
       references the issue in its name or a comment
 - [ ] Intentional diagnostic/codegen/IDL/client changes: goldens regenerated
-      with the bless targets and every diff hunk reviewed like code
+      through their owning crate and every diff hunk reviewed like code
       (CONTRIBUTING.md; never blessed blindly)
-- [ ] No new `println!` in test code (`make check-test-silence` — enforced
-      in CI); CU-relevant changes checked against `make compare-tracked`
-- [ ] Ratchets only shrink: any addition to `.ci/mutants-baseline.txt` or
-      the oracle allowlist is justified in the description
-- [ ] Compatibility impact stated for any published Rust item, macro
-      expansion, IDL field, wire layout, or generated client change, with
-      the relevant baseline diff (VERSIONING.md)
+- [ ] CU-relevant changes checked against `make compare-tracked`
+- [ ] Unsafe changes explain their local safety contract and add a targeted
+      Miri, Kani, or fuzz case when that tool owns a unique failure mode
+- [ ] Compatibility impact stated for a stable Rust item, macro expansion,
+      IDL field, wire layout, or generated client change, with the relevant
+      owner-local fixture diff (VERSIONING.md)

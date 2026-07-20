@@ -23,6 +23,8 @@ impl CpiInvokeStructReturn {
         .invoke_with_return()?;
 
         let expected = <ReturnPayload as InstructionArg>::to_zc(&RETURN_PAYLOAD_VALUE);
+        // SAFETY: `InstructionArg::Zc` is `ZcElem`, so its complete initialized
+        // object representation is readable as bytes for its exact size.
         let expected_bytes = unsafe {
             core::slice::from_raw_parts(
                 &expected as *const <ReturnPayload as InstructionArg>::Zc as *const u8,

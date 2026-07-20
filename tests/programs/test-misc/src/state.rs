@@ -202,6 +202,8 @@ unsafe impl quasar_lang::traits::StaticView for VaultInterface {}
 
 impl quasar_lang::account_load::AccountLoad for VaultInterface {
     fn check(view: &AccountView) -> Result<(), ProgramError> {
+        // SAFETY: validation runs before a typed wrapper or mutable borrow is
+        // created from this view.
         let data = unsafe { view.borrow_unchecked() };
         if data.is_empty() {
             return Err(ProgramError::AccountDataTooSmall);

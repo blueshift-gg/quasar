@@ -1,12 +1,7 @@
+# Stable Rust products only. Supporting crates are protected by their
+# owner-local macro, wire, decoder, and generated-client contracts.
 # package	profile	baseline file
-quasar-schema	default	quasar-schema.txt
-quasar-idl-schema	default	quasar-idl-schema.txt
-quasar-test	default	quasar-test.txt
-quasar-test-derive	proc-macro	quasar-test-derive.txt
-solana-compiler-builtins	default	solana-compiler-builtins.txt
-quasar-derive	proc-macro	quasar-derive.txt
-quasar-idl	default	quasar-idl.txt
 quasar-lang	default	quasar-lang.txt
 quasar-lang	all-features	quasar-lang.all-features.txt
 quasar-spl	default	quasar-spl.txt
-quasar-cli	default	quasar-cli.txt
+quasar-test	default	quasar-test.txt

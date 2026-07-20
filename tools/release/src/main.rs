@@ -688,8 +688,10 @@ fn command_status(command: &mut Command, action: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_graph, Candidate, CandidateDependency};
-    use std::path::PathBuf;
+    use {
+        super::{build_graph, Candidate, CandidateDependency},
+        std::path::PathBuf,
+    };
 
     fn package(name: &str, dependencies: &[(&str, &str)], publishable: bool) -> Candidate {
         Candidate {

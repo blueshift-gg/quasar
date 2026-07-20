@@ -20,25 +20,56 @@ if [[ ! -f "$program_artifact" ]]; then
   fail "fixture program does not exist: $program_artifact (run `make build-sbf` first)"
 fi
 program_artifact="$(cd "$(dirname "$program_artifact")" && pwd -P)/$(basename "$program_artifact")"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/quasar-test-standalone.XXXXXX")"
+tmp="$(cd "$tmp" && pwd -P)"
+trap 'rm -rf "$tmp"' EXIT
+
+graph="$tmp/graph.json"
+cargo run --quiet --locked -p quasar-release-tool -- graph --json >"$graph"
+packages="$tmp/packages.tsv"
+jq -r --arg root "$package_name" '
+  . as $graph
+  | def visit($name):
+      $name,
+      (($graph.packages[] | select(.name == $name) | .dependencies[]) | visit(.));
+  [visit($root)] | unique as $closure
+  | $graph.packages[]
+  | select(.name as $name | $closure | index($name))
+  | [.name, .version, .manifest_path]
+  | @tsv
+' "$graph" >"$packages"
 package_version="$(
-  cargo metadata --no-deps --format-version 1 \
-    | jq -r --arg name "$package_name" '.packages[] | select(.name == $name) | .version'
+  jq -r --arg name "$package_name" \
+    '.packages[] | select(.name == $name) | .version' "$graph"
 )"
 [[ -n "$package_version" && "$package_version" != "null" ]] \
   || fail "could not resolve the $package_name package version"
 readonly package_version
 
-tmp="$(mktemp -d "${TMPDIR:-/tmp}/quasar-test-standalone.XXXXXX")"
-tmp="$(cd "$tmp" && pwd -P)"
-trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/packages" "$tmp/consumer/src"
+config="$tmp/cargo-config.toml"
+printf '[patch.crates-io]\n' >"$config"
 
-cargo package -p "$package_name" --locked --allow-dirty --no-verify
-archive="target/package/$package_name-$package_version.crate"
-[[ -f "$archive" ]] || fail "package archive was not created: $archive"
+patch_args=()
+while IFS=$'\t' read -r name _ manifest_path; do
+  package_root="$(cd "$(dirname "$manifest_path")" && pwd -P)"
+  patch_args+=(--config "patch.crates-io.$name.path=\"$package_root\"")
+done <"$packages"
 
-mkdir -p "$tmp/package" "$tmp/consumer/src"
-tar -xzf "$archive" -C "$tmp/package"
-package_dir="$tmp/package/$package_name-$package_version"
+# Package every crate discovered by the release graph so the consumer can use
+# only normalized archive contents even before the first crates.io release.
+while IFS=$'\t' read -r name version _; do
+  cargo package -p "$name" --locked --allow-dirty --no-verify "${patch_args[@]}"
+  archive="target/package/$name-$version.crate"
+  [[ -f "$archive" ]] || fail "package archive was not created: $archive"
+  tar -xzf "$archive" -C "$tmp/packages"
+  package_dir="$tmp/packages/$name-$version"
+  [[ -f "$package_dir/Cargo.toml" ]] \
+    || fail "archive is missing its normalized manifest: $archive"
+  printf '%s = { path = "%s" }\n' "$name" "$package_dir" >>"$config"
+done <"$packages"
+
+package_dir="$tmp/packages/$package_name-$package_version"
 [[ -f "$package_dir/Cargo.toml" ]] || fail "archive is missing its normalized manifest"
 [[ -f "$package_dir/src/lib.rs" ]] || fail "archive is missing src/lib.rs"
 [[ -f "$package_dir/README.md" ]] || fail "archive is missing README.md"
@@ -94,14 +125,12 @@ mod tests {
         }
     }
 
-    quasar_test! {
-      program_id = Pubkey::from_str(PROGRAM_ID).expect("valid fixture program id");
-      fn packaged_crate_executes_a_real_program(q) {
+    #[quasar_test(program_id = Pubkey::from_str(PROGRAM_ID).expect("valid fixture program id"))]
+    fn packaged_crate_executes_a_real_program(q: &mut QuasarTest) {
         let program_id = Pubkey::from_str(PROGRAM_ID).unwrap();
         let user = Pubkey::new_from_array([1; 32]);
         let (vault, _) = Pubkey::find_program_address(&[b"vault", user.as_ref()], &program_id);
         q.fund(user, USER_LAMPORTS);
-        q.empty(vault);
 
         if let Some(expected) = env::var_os(PROGRAM_PATH_ENV) {
             assert_eq!(
@@ -117,16 +146,18 @@ mod tests {
             .has_lamports(user, USER_LAMPORTS - DEPOSIT);
 
         let wrong_vault = Pubkey::new_unique();
-        q.empty(wrong_vault);
         q.send(deposit_instruction(program_id, user, wrong_vault))
             .fails_with(VaultError::InvalidPda);
-      }
     }
 }
 EOF
 
 metadata="$tmp/consumer-metadata.json"
-cargo metadata --manifest-path "$tmp/consumer/Cargo.toml" --format-version 1 >"$metadata"
+cargo metadata \
+  --manifest-path "$tmp/consumer/Cargo.toml" \
+  --format-version 1 \
+  --config "$config" \
+  >"$metadata"
 actual_manifest="$(jq -r --arg name "$package_name" \
   '.packages[] | select(.name == $name) | .manifest_path' "$metadata")"
 [[ "$actual_manifest" == "$package_dir/Cargo.toml" ]] \
@@ -136,29 +167,36 @@ if jq -e --arg name "$package_name" \
   "$metadata" >/dev/null; then
   fail "packaged quasar-test contains a non-registry dependency"
 fi
-if jq -e '.packages[] | select(.name | test("^quasar-(lang|cli|derive|idl|spl|metadata)$"))' \
+if jq -e '.packages[] | select(.name | test("^quasar-(cli|idl|spl)$"))' \
   "$metadata" >/dev/null; then
-  fail "quasar-test pulled an on-chain framework or CLI crate into its dependency graph"
+  fail "quasar-test pulled an unrelated product into its dependency graph"
+fi
+if jq -e --arg root "$repo_root/" \
+  '.packages[] | select(.manifest_path | startswith($root))' \
+  "$metadata" >/dev/null; then
+  fail "standalone consumer resolved a dependency from the workspace checkout"
 fi
 
 export CARGO_TARGET_DIR="$tmp/consumer/target"
 cd "$tmp/consumer"
 
-QUASAR_PROGRAM_PATH="$program_artifact" cargo test --locked
+QUASAR_PROGRAM_PATH="$program_artifact" cargo test --locked --config "$config"
 
 mkdir -p target/deploy
 cp "$program_artifact" target/deploy/quasar_vault.so
-env -u QUASAR_PROGRAM_PATH cargo test --locked
+env -u QUASAR_PROGRAM_PATH cargo test --locked --config "$config"
 
 cp "$program_artifact" target/deploy/decoy.so
-if env -u QUASAR_PROGRAM_PATH cargo test --locked >"$tmp/ambiguous.log" 2>&1; then
+if env -u QUASAR_PROGRAM_PATH cargo test --locked --config "$config" \
+  >"$tmp/ambiguous.log" 2>&1; then
   fail "direct discovery accepted an ambiguous target/deploy directory"
 fi
 grep -F "found multiple program artifacts" "$tmp/ambiguous.log" >/dev/null \
   || fail "ambiguous discovery did not return its actionable diagnostic"
 rm target/deploy/decoy.so
 
-if QUASAR_PROGRAM_PATH="$tmp/missing.so" cargo test --locked >"$tmp/missing.log" 2>&1; then
+if QUASAR_PROGRAM_PATH="$tmp/missing.so" cargo test --locked --config "$config" \
+  >"$tmp/missing.log" 2>&1; then
   fail "configured discovery accepted a missing artifact"
 fi
 grep -F "QUASAR_PROGRAM_PATH points to missing program artifact" "$tmp/missing.log" >/dev/null \

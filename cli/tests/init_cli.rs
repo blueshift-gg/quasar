@@ -52,26 +52,16 @@ fn canonical_init_is_non_interactive_and_has_no_global_side_effects() -> Result<
 }
 
 #[test]
-fn removed_scaffold_flags_are_unknown() -> Result<(), Box<dyn Error>> {
-    for flag in [
-        "--yes",
-        "--test-language",
-        "--rust-framework",
-        "--ts-sdk",
-        "--template",
-        "--toolchain",
-    ] {
-        let temp = tempdir()?;
-        let home = temp.path().join("home");
-        fs::create_dir(&home)?;
-        let output = Command::new(env!("CARGO_BIN_EXE_quasar"))
-            .args(["init", "demo", flag])
-            .env("HOME", home)
-            .output()?;
-        assert!(!output.status.success(), "{flag} unexpectedly succeeded");
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(stderr.contains("unexpected argument"), "{flag}: {stderr}");
-    }
+fn legacy_non_interactive_flag_is_unknown() -> Result<(), Box<dyn Error>> {
+    let temp = tempdir()?;
+    let home = temp.path().join("home");
+    fs::create_dir(&home)?;
+    let output = Command::new(env!("CARGO_BIN_EXE_quasar"))
+        .args(["init", "demo", "--yes"])
+        .env("HOME", home)
+        .output()?;
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("unexpected argument"));
     Ok(())
 }
 

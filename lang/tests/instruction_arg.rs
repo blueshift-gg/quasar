@@ -95,6 +95,8 @@ fn option_zc_size_is_fixed() {
 fn option_none_payload_is_zeroed() {
     let zc = None::<u64>.to_zc();
     // Skip the first byte (tag), the rest is the payload.
+    // SAFETY: the exact initialized `OptionZc` object is live for the slice
+    // duration and the range excludes neither its allocation nor alignment.
     let bytes = unsafe {
         core::slice::from_raw_parts(
             (&zc as *const _ as *const u8).add(1),
@@ -249,6 +251,8 @@ fn podstring_validate_rejects_corrupted_len() {
     // Access len bytes via ptr: PodString<4,1> is [len: [u8;1]][data:
     // [MaybeUninit<u8>;4]]
     let ptr = &mut zc as *mut _ as *mut u8;
+    // SAFETY: the first byte is the in-bounds length prefix of this live ZC
+    // object; the test intentionally corrupts it before validation.
     unsafe { *ptr = 5 }; // set len prefix to 5 > N=4
     assert_eq!(
         <PodString<4> as InstructionArg>::validate_zc(&zc),
@@ -294,6 +298,8 @@ fn podvec_validate_rejects_corrupted_len() {
     let mut zc = <PodVec<u8, 4> as InstructionArg>::to_zc(&v);
     // Set len prefix to 5 (> N=4). PodVec<u8,4,2>: first 2 bytes are len (LE u16).
     let ptr = &mut zc as *mut _ as *mut u8;
+    // SAFETY: the first two bytes are the in-bounds length prefix of this live
+    // ZC object; the test intentionally corrupts them before validation.
     unsafe {
         *ptr = 5;
         *ptr.add(1) = 0;

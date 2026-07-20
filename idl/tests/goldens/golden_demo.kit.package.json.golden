@@ -1,5 +1,5 @@
 {
-  "name": "quasar-multisig-client-kit",
+  "name": "golden_demo-client-kit",
   "version": "0.1.0",
   "private": true,
   "exports": "./client.ts",

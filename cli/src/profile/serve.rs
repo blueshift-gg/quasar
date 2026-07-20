@@ -30,7 +30,9 @@ pub(crate) fn serve_background(root: &Path, port: u16, program: &str) -> std::io
 
     let root = root.to_path_buf();
 
-    // Fork: child process runs the server, parent returns immediately
+    // SAFETY: no Rust threads are started before this call; both branches
+    // immediately restrict themselves to process-safe listener ownership, and
+    // the child detaches before entering the blocking server loop.
     unsafe {
         let pid = libc::fork();
         if pid < 0 {

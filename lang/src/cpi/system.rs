@@ -3,7 +3,7 @@
 //! Each builder documents its fixed wire layout per instruction and serializes
 //! the data with unaligned writes into a `MaybeUninit` stack buffer, fully
 //! initialized before `assume_init`. Constructed calls are dispatched through
-//! [`CpiCall`](super::CpiCall).
+//! [`CpiCall`](crate::cpi::CpiCall).
 
 use {
     super::{CpiCall, InstructionAccount, Signer},

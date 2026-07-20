@@ -1826,6 +1826,10 @@ fn emit_manual_impls(
     let const_name = pascal_to_screaming_snake(base);
     let disc_const = format!("{}_{}_DISCRIMINATOR", const_name, kind.to_ascii_uppercase());
 
+    out.push_str(
+        "// SAFETY: TYPE_META remains dynamic and size_of counts exactly the\n// discriminator, \
+         fixed fields, length prefixes, and payload bytes\n// written below.\n",
+    );
     writeln!(
         out,
         "unsafe impl<C: ConfigCore> SchemaWrite<C> for {}",
@@ -1929,6 +1933,10 @@ fn emit_manual_impls(
     out.push_str("    }\n");
     out.push_str("}\n\n");
 
+    out.push_str(
+        "// SAFETY: TYPE_META remains dynamic and read initializes dst exactly\n// once, only \
+         after every discriminator, field, and payload validates.\n",
+    );
     writeln!(
         out,
         "unsafe impl<'de, C: ConfigCore> SchemaRead<'de, C> for {}",

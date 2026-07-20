@@ -136,7 +136,11 @@ pub unsafe fn invoke_raw(
         };
         // SAFETY: Same pointer/length contract as above for CPI account metas.
         let cpi_slice = unsafe { core::slice::from_raw_parts(cpi_accounts, cpi_accounts_len) };
-        solana_instruction_view::cpi::invoke_signed_unchecked(&instruction, cpi_slice, signers);
+        // SAFETY: `instruction` and every CPI account were constructed from the
+        // pointer/length pairs covered by this function's caller contract.
+        unsafe {
+            solana_instruction_view::cpi::invoke_signed_unchecked(&instruction, cpi_slice, signers);
+        }
         0
     }
 }
@@ -500,6 +504,11 @@ mod account_buffer;
 pub(crate) use account_buffer::{AccountBuffer, MIN_ACCOUNT_BUF};
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::undocumented_unsafe_blocks,
+        reason = "synthetic account buffers centralize their safety contract in the fixture"
+    )]
+
     extern crate std;
 
     use {

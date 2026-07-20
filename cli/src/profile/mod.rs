@@ -70,6 +70,8 @@ pub(crate) fn run(command: ProfileCommand) {
         std::process::exit(1);
     });
 
+    // SAFETY: `file` remains open while the read-only mapping is parsed, and
+    // this process does not mutate or truncate the ELF during analysis.
     let mmap = unsafe { Mmap::map(&file) }.unwrap_or_else(|e| {
         eprintln!("Error: failed to mmap {}: {}", elf_path.display(), e);
         std::process::exit(1);

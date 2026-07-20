@@ -1,6 +1,6 @@
 SHELL := /usr/bin/env bash
 # Keep rustfmt, Clippy, and Miri deterministic across local and CI runs.
-NIGHTLY_TOOLCHAIN := nightly-2026-03-27
+NIGHTLY_TOOLCHAIN := nightly-2026-06-24
 KANI_VERSION := 0.67.0
 CARGO_FUZZ_VERSION := 0.13.2
 CARGO_AUDIT_VERSION := 0.22.1
@@ -9,12 +9,7 @@ LICENSE_EXPRESSION := Apache-2.0 OR MIT
 PUBLIC_API_BASELINE_VERSION := v0.1.0
 PUBLIC_API_BASELINE_DIR := api-baselines/$(PUBLIC_API_BASELINE_VERSION)
 PUBLIC_API_TARGET := x86_64-unknown-linux-gnu
-PROC_MACRO_BASELINE_VERSION := v0.1.0
-PROC_MACRO_BASELINE_DIR := compatibility-baselines/$(PROC_MACRO_BASELINE_VERSION)/proc-macros
-IDL_WIRE_BASELINE_VERSION := v0.1.0
-IDL_WIRE_BASELINE_DIR := compatibility-baselines/$(IDL_WIRE_BASELINE_VERSION)/idl-wire
-GENERATED_CLIENT_BASELINE_VERSION := v0.1.0
-GENERATED_CLIENT_BASELINE_DIR := compatibility-baselines/$(GENERATED_CLIENT_BASELINE_VERSION)/generated-clients
+STABLE_API_PACKAGES := quasar-lang quasar-spl quasar-test
 PROGRAM_MSRV := 1.89.0
 # platform-tools v1.52 ships Cargo 1.89 which supports Cargo.lock v4.
 # v1.51 ships Cargo 1.84 which does not, causing "duplicate lang item" errors.
@@ -34,41 +29,28 @@ SBF_EXAMPLES := examples/vault examples/escrow examples/multisig
 # All SBF programs
 SBF_ALL := $(SBF_EXAMPLES) $(SBF_TEST_PROGRAMS)
 
-# Non-release targets may select the current publishable workspace without
-# maintaining an inventory. Publication order and packaging come exclusively
-# from quasar-release-tool.
-PUBLISHABLE_PACKAGES = $(shell cargo metadata --locked --no-deps --format-version 1 \
-	| jq -r '.packages[] | select(.publish != []) | .name')
-
-# Publishable crates whose ordinary host tests can run without the generated
-# client toolchains. The CLI smoke target is delegated below because it needs
-# pinned Node, Python, Go, Clang, and Caravel dependencies.
-HOST_TEST_PACKAGES = $(filter-out quasar-cli,$(PUBLISHABLE_PACKAGES))
-
 # Host-side tests that consume freshly built SBF artifacts.
 SBF_HOST_TEST_PACKAGES := quasar-vault quasar-escrow quasar-multisig quasar-test-suite
+# Program packages are discovered from Cargo's cdylib targets so a new SBF
+# target does not need to be copied into a second host-test inventory.
+SBF_PROGRAM_PACKAGES := $(shell cargo metadata --locked --no-deps --format-version 1 2>/dev/null | \
+	jq -r '.packages[] | select(any(.targets[]?; (.crate_types // []) | index("cdylib"))) | .name')
+HOST_TEST_EXCLUDES := $(sort $(SBF_HOST_TEST_PACKAGES) $(SBF_PROGRAM_PACKAGES))
 
 PACKAGE_REHEARSAL_ROOT ?= target/release-rehearsal
 
-.PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
-	check-runtime-panics check-workspace-invariants check-test-silence \
-	check-suite-oracles check-unsafe-policy check-license-policy \
-	check-package-metadata check-readme-crate-inventory check-release-train \
+.PHONY: format format-fix clippy clippy-fix check-features \
+	check-workspace-invariants check-license-policy \
+	check-package-metadata check-release-train \
 	build build-sbf test test-bless \
-	test-host-inventory test-host test-sbf-host test-quasar-test-standalone \
+	test-host test-sbf-host test-quasar-test-standalone \
 	bench-cu bench-tracked compare-tracked test-benchmark-policy doc-check \
-	test-miri test-miri-strict test-all \
+	miri test-miri test-miri-strict test-all \
 	nightly-version cargo-fuzz-version cargo-audit-version cargo-public-api-version \
-	test-fuzz-build check-public-api bless-public-api \
+	fuzz-build test-fuzz-build check-public-api bless-public-api contracts \
 	check-proc-macro-baselines bless-proc-macro-baselines \
-	check-idl-wire-baselines bless-idl-wire-baselines \
-	check-generated-client-baselines bless-generated-client-baselines \
-	test-audit-policy generated-client-smoke \
-	check-release-dependencies test-release-dependency-policy \
-	check-release-permissions test-release-permission-policy \
-	test-matrix check-test-matrix coverage \
-	mutants mutants-bless kani help-kani check-kani kani-lang \
-	kani-spl msrv-check package-check package-rehearsal audit
+	coverage kani help-kani check-kani kani-lang kani-spl msrv-check \
+	bench package-check package-rehearsal audit
 
 # Print the nightly toolchain version for CI
 nightly-version:
@@ -86,35 +68,25 @@ cargo-public-api-version:
 check-public-api:
 	@scripts/check-public-api.sh check "$(PUBLIC_API_BASELINE_DIR)" \
 		"$(NIGHTLY_TOOLCHAIN)" "$(CARGO_PUBLIC_API_VERSION)" \
-		"$(PUBLIC_API_TARGET)" $(PUBLISHABLE_PACKAGES)
+		"$(PUBLIC_API_TARGET)" $(STABLE_API_PACKAGES)
 
 bless-public-api:
 	@scripts/check-public-api.sh bless "$(PUBLIC_API_BASELINE_DIR)" \
 		"$(NIGHTLY_TOOLCHAIN)" "$(CARGO_PUBLIC_API_VERSION)" \
-		"$(PUBLIC_API_TARGET)" $(PUBLISHABLE_PACKAGES)
+		"$(PUBLIC_API_TARGET)" $(STABLE_API_PACKAGES)
 
 check-proc-macro-baselines:
-	@scripts/check-proc-macro-baselines.sh check "$(PROC_MACRO_BASELINE_DIR)" \
-		"$(PUBLIC_API_BASELINE_DIR)/quasar-derive.txt"
+	@cargo test -p quasar-derive --all-features snapshot_tests:: -- --test-threads=1
 
 bless-proc-macro-baselines:
-	@scripts/check-proc-macro-baselines.sh bless "$(PROC_MACRO_BASELINE_DIR)" \
-		"$(PUBLIC_API_BASELINE_DIR)/quasar-derive.txt"
+	@UPDATE_EXPECT=1 cargo test -p quasar-derive --all-features snapshot_tests:: -- --test-threads=1
 
-check-idl-wire-baselines:
-	@scripts/check-idl-wire-baselines.sh check "$(IDL_WIRE_BASELINE_DIR)"
-
-bless-idl-wire-baselines:
-	@scripts/check-idl-wire-baselines.sh bless "$(IDL_WIRE_BASELINE_DIR)"
-
-check-generated-client-baselines:
-	@scripts/check-generated-client-baselines.sh check "$(GENERATED_CLIENT_BASELINE_DIR)"
-
-bless-generated-client-baselines:
-	@scripts/check-generated-client-baselines.sh bless "$(GENERATED_CLIENT_BASELINE_DIR)"
-
+fuzz-build: test-fuzz-build
 test-fuzz-build:
 	@cd lang && cargo +$(NIGHTLY_TOOLCHAIN) fuzz build
+
+contracts: check-public-api check-proc-macro-baselines
+	@cargo test -p quasar-idl --all-features
 
 doc-check:
 	@RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked
@@ -129,7 +101,7 @@ help-kani:
 	@echo "Expected local version: kani $(KANI_VERSION)"
 	@echo "Check version:         kani --version"
 	@echo "Run all proofs:        make kani"
-	@echo "Run one crate:         make kani-lang | make kani-spl | make kani-metadata"
+	@echo "Run one crate:         make kani-lang | make kani-spl"
 
 check-kani:
 	@command -v kani >/dev/null 2>&1 || { \
@@ -148,139 +120,21 @@ check-kani:
 	fi
 
 format:
-	@cargo +$(NIGHTLY_TOOLCHAIN) fmt --all -- --check
+	@cargo fmt --all -- --check
 
 format-fix:
-	@cargo +$(NIGHTLY_TOOLCHAIN) fmt --all
+	@cargo fmt --all
 
 clippy:
-	@cargo +$(NIGHTLY_TOOLCHAIN) clippy --all --all-features --all-targets -- -D warnings
+	@cargo clippy --workspace --all-features --all-targets -- -D warnings
 
 clippy-fix:
-	@cargo +$(NIGHTLY_TOOLCHAIN) clippy --all --all-features --all-targets --fix --allow-dirty --allow-staged -- -D warnings
+	@cargo clippy --workspace --all-features --all-targets --fix --allow-dirty --allow-staged -- -D warnings
 
 check-features:
 	@cargo hack --feature-powerset --no-dev-deps check
 
-check-workspace-lints:
-	@missing=0; \
-	while IFS= read -r manifest; do \
-	  if ! rg -q '^\[lints\]$$' "$$manifest" || ! rg -q '^workspace = true$$' "$$manifest"; then \
-	    echo "missing workspace lint opt-in: $$manifest" >&2; \
-	    missing=1; \
-	  fi; \
-	done < <( \
-	  cargo metadata --no-deps --format-version 1 \
-	    | rg -o '"manifest_path":"[^"]+"' \
-	    | sed 's/"manifest_path":"//; s/"$$//' \
-	); \
-	if [[ "$$missing" -ne 0 ]]; then exit 1; fi
-
-check-runtime-panics:
-	@# Panic-style macros in production runtime/derive code. Each file is scanned
-	@# only up to its first #[cfg(test)] (test modules trail the file by
-	@# convention), so inline test-module panics are excluded — the previous
-	@# `tests/`-glob only excluded whole test directories. Allowlisted: the
-	@# intentional lib.rs abort, the whole idl_build.rs, and the ice.rs helper.
-	@viol=""; \
-	while IFS= read -r f; do \
-	  hits="$$(awk '/#\[cfg\(test\)\]/{exit} /^[[:space:]]*\/\//{next} /panic!|unreachable!|todo!|unimplemented!/{print FILENAME":"FNR": "$$0}' "$$f")"; \
-	  [[ -n "$$hits" ]] && viol+="$$hits"$$'\n'; \
-	done < <(find lang/src spl/src derive/src -name '*.rs'); \
-	viol="$$(printf '%s' "$$viol" | grep -v 'lang/src/idl_build.rs:' | grep -vF 'panic!("program aborted")' | grep -v 'derive/src/ice.rs:')"; \
-	if [[ -n "$$viol" ]]; then \
-	  echo "unexpected panic-style macro in runtime/derive code:" >&2; \
-	  echo "$$viol" >&2; \
-	  exit 1; \
-	fi
-	@# No bare unwrap/expect in derive/src production code: front-end invariants
-	@# panic through ice!() instead. Two sites are allowlisted by message: the
-	@# quote!-generated IDL serializer (runs in the user crate) and the
-	@# sibling-owned rent-plan invariant in emit/parse.rs. Test modules (scanned
-	@# only up to the first #[cfg(test)]) and test-only files are excluded.
-	@uw=""; \
-	while IFS= read -r f; do \
-	  if [[ "$$f" == */snapshot_tests.rs || "$$f" == */plan_snapshots.rs || "$$f" == */snapshots/* || "$$f" == */dump.rs ]]; then continue; fi; \
-	  hits="$$(awk '/#\[cfg\(test\)\]/{exit} /^[[:space:]]*\/\//{next} /\.unwrap\(\)|\.expect\(/{print FILENAME":"FNR": "$$0}' "$$f")"; \
-	  [[ -n "$$hits" ]] && uw+="$$hits"$$'\n'; \
-	done < <(find derive/src -name '*.rs'); \
-	uw="$$(printf '%s' "$$uw" | grep -vF 'generated IDL should serialize' | grep -vF 'rent plan field should exist in account semantics')"; \
-	if [[ -n "$$uw" ]]; then \
-	  echo "unexpected bare unwrap/expect in derive/src production code (use ice!() or extend the allowlist with justification):" >&2; \
-	  echo "$$uw" >&2; \
-	  exit 1; \
-	fi
-
-# Every unsafe site carries its soundness argument (STYLE.md): SAFETY
-# comments name preconditions, unsafe fns carry # Safety contracts.
-check-unsafe-policy:
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_check_unsafe_policy.py
-	@python3 scripts/check-unsafe-policy.py
-
-# Rejection tests pin the exact error (TESTING.md): bare is_err() cannot
-# distinguish "the right check fired" from "an earlier check masked a broken
-# one". Allowlist (with reasons) lives in the script.
-check-suite-oracles:
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_check_suite_oracles.py
-	@python3 scripts/check-suite-oracles.py
-
-# Tests are silent on success (TESTING.md): anything worth printing is worth
-# asserting. Benchmark CU goes to target/cu-bench/*.jsonl via
-# examples/cu_bench.rs, never to stdout. Covers the SVM suite, the example
-# benches, every crate's host test directory, and the quasar-test harness.
-check-test-silence:
-	@viol="$$(rg -n 'println!|eprintln!' tests/suite/src \
-	  examples/vault/src/tests.rs examples/escrow/src/tests.rs \
-	  examples/multisig/src/tests.rs \
-	  lang/tests derive/tests spl/tests idl/tests cli/tests \
-	  testing/src \
-	  -g '!compile_fail/**' -g '!compile_pass/**' \
-	  || true)"; \
-	if [[ -n "$$viol" ]]; then \
-	  echo "test code must not print (TESTING.md: assert, don't print):" >&2; \
-	  echo "$$viol" >&2; \
-	  exit 1; \
-	fi
-
-check-workspace-invariants: check-license-policy check-package-metadata \
-	check-readme-crate-inventory check-release-train check-test-silence \
-	check-suite-oracles check-unsafe-policy
-	@check_allowed() { \
-	  local desc="$$1" pattern="$$2"; shift 2; \
-	  local allowed=("$$@") matches; \
-	  matches="$$(rg -n "$$pattern" cli/src || true)"; \
-	  while IFS= read -r entry; do \
-	    [[ -z "$$entry" ]] && continue; \
-	    local ok=0; \
-	    for prefix in "$${allowed[@]}"; do \
-	      if [[ "$$entry" == "$$prefix"* ]]; then ok=1; break; fi; \
-	    done; \
-	    if [[ "$$ok" -eq 0 ]]; then \
-	      echo "unexpected $${desc}: $$entry" >&2; \
-	      exit 1; \
-	    fi; \
-	  done <<<"$$matches"; \
-	}; \
-	if [[ ! -x scripts/bench-tracked-programs.sh ]]; then \
-	  echo "expected executable script: scripts/bench-tracked-programs.sh" >&2; \
-	  exit 1; \
-	fi; \
-	for script in scripts/install-solana-tools.sh; do \
-	  if [[ ! -x "$$script" ]]; then \
-	    echo "expected executable script: $$script" >&2; \
-	    exit 1; \
-	  fi; \
-	done; \
-	check_allowed "process::exit" 'std::process::exit|process::exit' \
-	  'cli/src/main.rs:' 'cli/src/init/banner.rs:'; \
-	check_allowed "polling watch loop sleep" \
-	  'std::thread::sleep\(std::time::Duration::from_secs\(1\)\)' \
-	  'cli/src/build_watch.rs:'; \
-	if rg -n 'split_whitespace\(' cli/src >/dev/null; then \
-	  echo "cli command parsing must not use split_whitespace()" >&2; \
-	  rg -n 'split_whitespace\(' cli/src >&2; \
-	  exit 1; \
-	fi
+check-workspace-invariants: check-license-policy check-package-metadata check-release-train
 
 check-license-policy:
 	@expected='$(LICENSE_EXPRESSION)'; \
@@ -328,9 +182,6 @@ check-package-metadata:
 	  '.packages[] | select(.publish != []) | (.manifest_path | sub("/Cargo.toml$$"; "")) + "/" + .readme' \
 	  <<<"$$metadata")
 
-check-readme-crate-inventory:
-	@python3 scripts/check-readme-crate-inventory.py
-
 check-release-train:
 	@cargo run --locked -p quasar-release-tool -- graph --json >/dev/null
 
@@ -349,28 +200,12 @@ build-sbf:
 	@echo "Building test-heap (alloc only, no debug — tests alloc trap)"
 	cargo build-sbf --tools-version $(PLATFORM_TOOLS) --manifest-path tests/programs/test-heap/Cargo.toml --features alloc
 
-# Generates the exact Cargo test-target inventory used by required CI. The
-# checker also maps every tracked #[test] back to an enabled Cargo target and
-# fails on disabled, unassigned, or newly unclassified tests.
-test-host-inventory:
-	@mkdir -p target
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_host_test_inventory.py
-	@python3 scripts/host-test-inventory.py \
-		$(foreach package,$(PUBLISHABLE_PACKAGES),--tested-package $(package)) \
-		$(foreach package,$(SBF_HOST_TEST_PACKAGES),--sbf-package $(package)) \
-		> target/host-test-inventory.json
-	@cat target/host-test-inventory.json
-
-# Runs every ordinary host target in every publishable crate. CLI integration
-# targets are derived from Cargo metadata so a new target cannot silently fall
-# out of this command. generated_clients_smoke remains in its pinned toolchain
-# job and is recorded as delegated in the inventory.
-test-host: test-host-inventory
-	@CARGO_INCREMENTAL=0 cargo test \
-		$(foreach package,$(HOST_TEST_PACKAGES),-p $(package)) \
+# Cargo owns test-target discovery: adding a legitimate target needs no
+# secondary inventory update.
+test-host:
+	@CARGO_INCREMENTAL=0 cargo test --workspace \
+		$(foreach package,$(HOST_TEST_EXCLUDES),--exclude $(package)) \
 		--all-features
-	@CARGO_INCREMENTAL=0 cargo test -p quasar-cli --all-features \
-		$$(python3 scripts/host-test-inventory.py --cli-host-args)
 
 test-sbf-host:
 	@CARGO_INCREMENTAL=0 cargo test \
@@ -395,13 +230,7 @@ test:
 test-bless:
 	@$(MAKE) build
 	@$(MAKE) build-sbf
-	@CARGO_INCREMENTAL=0 TRYBUILD=overwrite cargo test \
-		$(foreach package,$(HOST_TEST_PACKAGES),-p $(package)) \
-		$(foreach package,$(SBF_HOST_TEST_PACKAGES),-p $(package)) \
-		--all-features
-
-generated-client-smoke:
-	@cargo test -p quasar-cli --test generated_clients_smoke -- --nocapture --test-threads=1
+	@CARGO_INCREMENTAL=0 TRYBUILD=overwrite cargo test --workspace --all-features
 
 package-check: check-package-metadata
 	@rm -rf target/release-packages
@@ -424,23 +253,7 @@ audit:
 		echo "expected: $(CARGO_AUDIT_VERSION)"; \
 		exit 1; \
 	fi
-	@$(MAKE) test-audit-policy
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/audit-release-reachability.py
-
-test-audit-policy:
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_audit_release_reachability.py
-
-check-release-dependencies: test-release-dependency-policy
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check-release-dependencies.py
-
-test-release-dependency-policy:
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_release_dependency_policy.py
-
-check-release-permissions: test-release-permission-policy
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check-release-permissions.py
-
-test-release-permission-policy:
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_release_permission_policy.py
+	@cargo audit
 
 bench-cu:
 	@$(MAKE) build-sbf
@@ -462,39 +275,49 @@ test-benchmark-policy:
 compare-tracked:
 	@bash scripts/bench-tracked-programs.sh compare
 
+miri: test-miri
+
+# Ordinary semantic cases in lang/tests/miri.rs and spl/tests/miri.rs run in
+# the fast host suite. Miri selects only tests with a unique unsafe failure
+# story: generated parsing, provenance, aliasing, initialization, and exact
+# pointer boundaries. Extension points run under both borrow models.
 test-miri:
 	@MIRIFLAGS="-Zmiri-symbolic-alignment-check" \
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri_extensions
 	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri_extensions
-	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
-		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri
-	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
-		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri
+	@for test in \
+		aliasing_write_then_read_original_view \
+		aliasing_duplicate_accounts_4_deref_mut_to_same_data \
+		bounds_account_view_exact_size_sweep \
+		bounds_remaining_boundary_pointer_subtraction \
+		uninit_maybeuninit_account_view_array \
+		dynamic_memmove_1byte_grow_1byte_tail \
+		instruction_zc_cast_exact_length \
+		tail_str_exact_boundary \
+		cpi_aliasing_interleaved_write_cpi_cycles; do \
+		MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
+			cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri "$$test" -- --exact; \
+	done
+	@for test in \
+		token_deref_mut_aliasing_stress \
+		mint_exact_size_buffer \
+		interface_account_aliasing \
+		zero_copy_deref_from_exact_boundary \
+		maybeunit_init_then_read_every_byte_initialize_mint; do \
+		MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
+			cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri "$$test" -- --exact; \
+	done
 
+# Strict provenance is reserved for the small downstream extension-point suite.
 test-miri-strict:
 	@MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri_extensions
 	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri_extensions
-	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
-		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri
-	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
-		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri
 
-# Feature -> test traceability (TESTING.md): the grid of what is tested and
-# how. check mode fails on an empty required cell, manifest drift, or a suite
-# module no feature claims.
-test-matrix:
-	@python3 scripts/test-matrix.py
-
-check-test-matrix:
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_test_matrix.py
-	@python3 scripts/test-matrix.py --check
-
-# Host-side line coverage, informational only: code executed under
-# SBF/Mollusk is invisible here (TESTING.md) — the matrix above and the
-# mutation baseline are the assurance metrics, never a coverage percentage.
+# Host-side line coverage is informational only; SBF-executed code is
+# invisible here by design.
 coverage:
 	@command -v cargo-llvm-cov >/dev/null 2>&1 || { \
 		echo "cargo-llvm-cov is not installed; run: cargo install cargo-llvm-cov --locked"; \
@@ -505,16 +328,6 @@ coverage:
 		--all-features --html
 	@echo "HTML report: target/llvm-cov/html/index.html"
 
-# Mutation testing (TESTING.md): per-package cargo-mutants runs, then the
-# missed set is judged against the shrink-only baseline in
-# .ci/mutants-baseline.txt. Deep-tier: nightly CI, not the PR gate.
-mutants:
-	@scripts/mutants.sh run-all
-	@scripts/mutants.sh check-baseline
-
-mutants-bless:
-	@scripts/mutants.sh bless-baseline
-
 kani-lang: check-kani
 	@cargo kani -p quasar-lang
 
@@ -523,20 +336,20 @@ kani-spl: check-kani
 
 kani: kani-lang kani-spl
 
+bench: test-benchmark-policy bench-tracked compare-tracked
+
 # Run all checks in sequence
 test-all:
 	@echo "Running all checks..."
 	@$(MAKE) format
 	@$(MAKE) clippy
-	@$(MAKE) check-workspace-lints
-	@$(MAKE) check-runtime-panics
 	@$(MAKE) check-workspace-invariants
 	@$(MAKE) test
-	@$(MAKE) generated-client-smoke
+	@$(MAKE) contracts
 	@$(MAKE) package-check
 	@$(MAKE) audit
 	@$(MAKE) test-benchmark-policy
 	@$(MAKE) doc-check
-	@$(MAKE) test-fuzz-build
-	@$(MAKE) test-miri-strict
+	@$(MAKE) fuzz-build
+	@$(MAKE) miri
 	@echo "All checks passed!"

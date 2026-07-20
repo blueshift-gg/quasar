@@ -28,6 +28,8 @@ impl AccountBuffer {
 
     fn init_signer(&mut self, seed: u8) {
         let raw = self.raw();
+        // SAFETY: `raw` points to the aligned runtime header allocated by
+        // `new`; every written field lies within that header.
         unsafe {
             (*raw).borrow_state = NOT_BORROWED;
             (*raw).is_signer = 1;
@@ -42,7 +44,9 @@ impl AccountBuffer {
     }
 
     unsafe fn view(&mut self) -> AccountView {
-        AccountView::new_unchecked(self.raw())
+        // SAFETY: `self.raw()` points into the live, correctly aligned
+        // account buffer owned by this fixture.
+        unsafe { AccountView::new_unchecked(self.raw()) }
     }
 }
 
@@ -68,6 +72,8 @@ fn parse_accounts_rejects_extra_non_composite_accounts() {
     first.init_signer(1);
     let mut second = AccountBuffer::new();
     second.init_signer(2);
+    // SAFETY: both buffers initialized complete, live runtime headers and
+    // remain owned for the duration of the account views.
     let mut accounts = unsafe { [first.view(), second.view()] };
 
     let err = match OnlySigner::parse(&mut accounts, &Address::default()) {

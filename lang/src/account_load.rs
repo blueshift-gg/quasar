@@ -1,10 +1,11 @@
 //! Validation and construction for account wrapper types.
 //!
-//! [`AccountLoad`] turns a validated [`AccountView`] into a typed wrapper.
+//! [`AccountLoad`](crate::account_load::AccountLoad) turns a validated
+//! [`AccountView`](solana_account_view::AccountView) into a typed wrapper.
 //! Every wrapper is `#[repr(transparent)]` over `AccountView` — enforced by
-//! the [`StaticView`] supertrait — so each loader validates the account
-//! first, then constructs the wrapper with a pointer cast relying on that
-//! layout.
+//! the [`StaticView`](crate::traits::StaticView) supertrait — so each loader
+//! validates the account first, then constructs the wrapper with a pointer
+//! cast relying on that layout.
 
 use {
     crate::traits::{AsAccountView, StaticView},

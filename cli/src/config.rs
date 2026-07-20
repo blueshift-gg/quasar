@@ -325,8 +325,8 @@ mod tests {
         assert_eq!(
             config,
             "[project]\nname = \"demo\"\n\n[testing]\ncommand = { program = \"cargo\", args = \
-             [\"test\", \"tests::\"] }\n\n[clients]\npath = \"target/client\"\ntargets = [\"rust\", \
-             \"kit\", \"web3\"]\n"
+             [\"test\", \"tests::\"] }\n\n[clients]\npath = \"target/client\"\ntargets = \
+             [\"rust\", \"kit\", \"web3\"]\n"
         );
     }
 
