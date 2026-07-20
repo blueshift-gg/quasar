@@ -15,7 +15,6 @@ IDL_WIRE_BASELINE_VERSION := v0.1.0
 IDL_WIRE_BASELINE_DIR := compatibility-baselines/$(IDL_WIRE_BASELINE_VERSION)/idl-wire
 GENERATED_CLIENT_BASELINE_VERSION := v0.1.0
 GENERATED_CLIENT_BASELINE_DIR := compatibility-baselines/$(GENERATED_CLIENT_BASELINE_VERSION)/generated-clients
-RELEASE_WORKFLOW ?= .github/workflows/release.yml
 PROGRAM_MSRV := 1.89.0
 # platform-tools v1.52 ships Cargo 1.89 which supports Cargo.lock v4.
 # v1.51 ships Cargo 1.84 which does not, causing "duplicate lang item" errors.
@@ -35,31 +34,19 @@ SBF_EXAMPLES := examples/vault examples/escrow examples/multisig
 # All SBF programs
 SBF_ALL := $(SBF_EXAMPLES) $(SBF_TEST_PROGRAMS)
 
-# Public crates in dependency order. Keep this list aligned with the release
-# workflow; `package-check` proves the complete publication graph packages.
-PUBLISH_PACKAGES := quasar-schema quasar-idl-schema \
-	quasar-test-derive solana-compiler-builtins quasar-derive quasar-idl \
-	quasar-lang quasar-test quasar-spl quasar-cli
+# Non-release targets may select the current publishable workspace without
+# maintaining an inventory. Publication order and packaging come exclusively
+# from quasar-release-tool.
+PUBLISHABLE_PACKAGES = $(shell cargo metadata --locked --no-deps --format-version 1 \
+	| jq -r '.packages[] | select(.publish != []) | .name')
 
 # Publishable crates whose ordinary host tests can run without the generated
 # client toolchains. The CLI smoke target is delegated below because it needs
 # pinned Node, Python, Go, Clang, and Caravel dependencies.
-HOST_TEST_PACKAGES := $(filter-out quasar-cli,$(PUBLISH_PACKAGES))
+HOST_TEST_PACKAGES = $(filter-out quasar-cli,$(PUBLISHABLE_PACKAGES))
 
 # Host-side tests that consume freshly built SBF artifacts.
 SBF_HOST_TEST_PACKAGES := quasar-vault quasar-escrow quasar-multisig quasar-test-suite
-
-# Resolve first-release internal dependencies while checking package manifests.
-# These patches are command-local and never enter the published archives.
-PACKAGE_PATCHES := \
-	--config 'patch.crates-io.quasar-schema.path="schema"' \
-	--config 'patch.crates-io.quasar-idl-schema.path="idl/schema"' \
-	--config 'patch.crates-io.solana-compiler-builtins.path="solana-compiler-builtins"' \
-	--config 'patch.crates-io.quasar-derive.path="derive"' \
-	--config 'patch.crates-io.quasar-idl.path="idl"' \
-	--config 'patch.crates-io.quasar-lang.path="lang"' \
-	--config 'patch.crates-io.quasar-test.path="testing"' \
-	--config 'patch.crates-io.quasar-spl.path="spl"'
 
 PACKAGE_REHEARSAL_ROOT ?= target/release-rehearsal
 
@@ -99,12 +86,12 @@ cargo-public-api-version:
 check-public-api:
 	@scripts/check-public-api.sh check "$(PUBLIC_API_BASELINE_DIR)" \
 		"$(NIGHTLY_TOOLCHAIN)" "$(CARGO_PUBLIC_API_VERSION)" \
-		"$(PUBLIC_API_TARGET)" $(PUBLISH_PACKAGES)
+		"$(PUBLIC_API_TARGET)" $(PUBLISHABLE_PACKAGES)
 
 bless-public-api:
 	@scripts/check-public-api.sh bless "$(PUBLIC_API_BASELINE_DIR)" \
 		"$(NIGHTLY_TOOLCHAIN)" "$(CARGO_PUBLIC_API_VERSION)" \
-		"$(PUBLIC_API_TARGET)" $(PUBLISH_PACKAGES)
+		"$(PUBLIC_API_TARGET)" $(PUBLISHABLE_PACKAGES)
 
 check-proc-macro-baselines:
 	@scripts/check-proc-macro-baselines.sh check "$(PROC_MACRO_BASELINE_DIR)" \
@@ -130,18 +117,10 @@ test-fuzz-build:
 	@cd lang && cargo +$(NIGHTLY_TOOLCHAIN) fuzz build
 
 doc-check:
-	@set -euo pipefail; \
-	for package in $(PUBLISH_PACKAGES); do \
-		cargo clean --doc >/dev/null; \
-		echo "Documenting $$package with warnings denied"; \
-		RUSTDOCFLAGS="-D warnings" cargo doc -p "$$package" \
-			--all-features --no-deps --locked; \
-	done
+	@RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked
 
 msrv-check:
-	@cargo +$(PROGRAM_MSRV) check \
-		$(foreach package,$(PUBLISH_PACKAGES),-p $(package)) \
-		--all-features --locked
+	@cargo +$(PROGRAM_MSRV) check --workspace --all-features --locked
 
 help-kani:
 	@echo "Local Kani verification is optional."
@@ -286,7 +265,7 @@ check-workspace-invariants: check-license-policy check-package-metadata \
 	  echo "expected executable script: scripts/bench-tracked-programs.sh" >&2; \
 	  exit 1; \
 	fi; \
-	for script in scripts/publish-crate.sh scripts/wait-for-crate.sh scripts/install-solana-tools.sh; do \
+	for script in scripts/install-solana-tools.sh; do \
 	  if [[ ! -x "$$script" ]]; then \
 	    echo "expected executable script: $$script" >&2; \
 	    exit 1; \
@@ -353,41 +332,7 @@ check-readme-crate-inventory:
 	@python3 scripts/check-readme-crate-inventory.py
 
 check-release-train:
-	@metadata="$$(cargo metadata --locked --no-deps --format-version 1)"; \
-	declared="$$(printf '%s\n' $(PUBLISH_PACKAGES) | LC_ALL=C sort)"; \
-	publishable="$$(jq -r '.packages[] | select(.publish != []) | .name' \
-	  <<<"$$metadata" | LC_ALL=C sort)"; \
-	if [[ "$$declared" != "$$publishable" ]]; then \
-	  echo "PUBLISH_PACKAGES does not match the publishable workspace crates" >&2; \
-	  diff <(printf '%s\n' "$$declared") <(printf '%s\n' "$$publishable") >&2 || true; \
-	  exit 1; \
-	fi; \
-	published="$$(printf '%s\n' $(PUBLISH_PACKAGES) | jq -R . | jq -s .)"; \
-	edges="$$(jq -r --argjson published "$$published" \
-	  '.packages[] \
-	   | select(.name as $$name | $$published | index($$name)) \
-	   | . as $$package \
-	   | .dependencies[] \
-	   | select((.kind // "normal") != "dev") \
-	   | select(.name as $$dependency | $$published | index($$dependency)) \
-	   | [$$package.name, .name] | @tsv' <<<"$$metadata")"; \
-	for package in $(PUBLISH_PACKAGES); do \
-	  publish_count="$$(grep -cF "scripts/publish-crate.sh $$package " "$(RELEASE_WORKFLOW)" || true)"; \
-	  wait_count="$$(grep -cF "scripts/wait-for-crate.sh $$package " "$(RELEASE_WORKFLOW)" || true)"; \
-	  if [[ "$$publish_count" -ne 1 || "$$wait_count" -ne 1 ]]; then \
-	    echo "release workflow must publish and wait for $$package exactly once" >&2; \
-	    exit 1; \
-	  fi; \
-	done; \
-	while IFS=$$'\t' read -r package dependency; do \
-	  [[ -z "$$package" ]] && continue; \
-	  publish_line="$$(grep -nF "scripts/publish-crate.sh $$package " "$(RELEASE_WORKFLOW)" | cut -d: -f1)"; \
-	  wait_line="$$(grep -nF "scripts/wait-for-crate.sh $$dependency " "$(RELEASE_WORKFLOW)" | cut -d: -f1)"; \
-	  if (( wait_line >= publish_line )); then \
-	    echo "release workflow publishes $$package before $$dependency is available" >&2; \
-	    exit 1; \
-	  fi; \
-	done <<<"$$edges"
+	@cargo run --locked -p quasar-release-tool -- graph --json >/dev/null
 
 build:
 	@cargo build
@@ -411,7 +356,7 @@ test-host-inventory:
 	@mkdir -p target
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_host_test_inventory.py
 	@python3 scripts/host-test-inventory.py \
-		$(foreach package,$(PUBLISH_PACKAGES),--tested-package $(package)) \
+		$(foreach package,$(PUBLISHABLE_PACKAGES),--tested-package $(package)) \
 		$(foreach package,$(SBF_HOST_TEST_PACKAGES),--sbf-package $(package)) \
 		> target/host-test-inventory.json
 	@cat target/host-test-inventory.json
@@ -459,70 +404,14 @@ generated-client-smoke:
 	@cargo test -p quasar-cli --test generated_clients_smoke -- --nocapture --test-threads=1
 
 package-check: check-package-metadata
-	@# First-release internal dependencies are not on crates.io yet. `msrv-check`
-	@# compiles the source graph; #283 rehearses the packaged graph locally.
-	@cargo package --quiet $(foreach package,$(PUBLISH_PACKAGES),-p $(package)) \
-		--locked --allow-dirty --no-verify $(PACKAGE_PATCHES)
-	@set -euo pipefail; \
-	metadata="$$(cargo metadata --locked --no-deps --format-version 1)"; \
-	for package in $(PUBLISH_PACKAGES); do \
-	  version="$$(jq -r --arg package "$$package" \
-	    '.packages[] | select(.name == $$package) | .version' <<<"$$metadata")"; \
-	  archive="target/package/$$package-$$version.crate"; \
-	  root="$$package-$$version"; \
-	  if [[ ! -f "$$archive" ]]; then \
-	    echo "missing package archive: $$archive" >&2; \
-	    exit 1; \
-	  fi; \
-	  manifest="$$(tar -xOzf "$$archive" "$$root/Cargo.toml")"; \
-	  for file in LICENSE-APACHE LICENSE-MIT; do \
-	    if ! tar -tzf "$$archive" | grep -x "$$root/$$file" >/dev/null; then \
-	      echo "$$archive does not contain $$file" >&2; \
-	      exit 1; \
-	    fi; \
-	    if ! cmp -s "$$file" <(tar -xOzf "$$archive" "$$root/$$file"); then \
-	      echo "$$archive contains the wrong $$file text" >&2; \
-	      exit 1; \
-	    fi; \
-	  done; \
-	  license="$$(awk -F ' = ' \
-	    '$$1 == "license" { gsub(/"/, "", $$2); print $$2; exit }' <<<"$$manifest")"; \
-	  if [[ "$$license" != '$(LICENSE_EXPRESSION)' ]]; then \
-	    echo "$$archive declares unexpected license: $$license" >&2; \
-	    exit 1; \
-	  fi; \
-	  readme="$$(awk -F ' = ' \
-	    '$$1 == "readme" { gsub(/"/, "", $$2); print $$2; exit }' <<<"$$manifest")"; \
-	  source_readme="$$(jq -r --arg package "$$package" \
-	    '.packages[] | select(.name == $$package) | (.manifest_path | sub("/Cargo.toml$$"; "")) + "/" + .readme' \
-	    <<<"$$metadata")"; \
-	  if [[ -z "$$readme" ]] \
-	    || ! tar -tzf "$$archive" | grep -x "$$root/$$readme" >/dev/null; then \
-	    echo "$$archive does not contain its configured README" >&2; \
-	    exit 1; \
-	  fi; \
-	  if ! cmp -s "$$source_readme" <(tar -xOzf "$$archive" "$$root/$$readme"); then \
-	    echo "$$archive contains the wrong README text" >&2; \
-	    exit 1; \
-	  fi; \
-	  homepage="$$(awk -F ' = ' \
-	    '$$1 == "homepage" { gsub(/"/, "", $$2); print $$2; exit }' <<<"$$manifest")"; \
-	  documentation="$$(awk -F ' = ' \
-	    '$$1 == "documentation" { gsub(/"/, "", $$2); print $$2; exit }' <<<"$$manifest")"; \
-	  repository="$$(awk -F ' = ' \
-	    '$$1 == "repository" { gsub(/"/, "", $$2); print $$2; exit }' <<<"$$manifest")"; \
-	  if [[ "$$homepage" != 'https://quasar-lang.com' \
-	    || "$$documentation" != "https://docs.rs/$$package/$$version" \
-	    || "$$repository" != 'https://github.com/blueshift-gg/quasar' ]]; then \
-	    echo "$$archive contains inconsistent crates.io links" >&2; \
-	    exit 1; \
-	  fi; \
-	done
+	@rm -rf target/release-packages
+	@cargo run --locked -p quasar-release-tool -- package \
+		--output target/release-packages
 
 package-rehearsal: package-check
 	@rm -rf "$(PACKAGE_REHEARSAL_ROOT)"
 	@scripts/prepare-package-rehearsal.sh \
-		target/package "$(PACKAGE_REHEARSAL_ROOT)" $(PUBLISH_PACKAGES)
+		target/release-packages "$(PACKAGE_REHEARSAL_ROOT)"
 
 audit:
 	@command -v cargo-audit >/dev/null 2>&1 || { \

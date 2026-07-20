@@ -4,15 +4,22 @@ shopt -s nullglob
 
 archive_dir="${1:?package archive directory is required}"
 output_root="${2:?rehearsal output directory is required}"
-shift 2
-packages=("$@")
-
-if [[ "${#packages[@]}" -ne 11 ]]; then
-  echo "expected the eleven v0.1.0 release packages, got ${#packages[@]}" >&2
-  exit 1
-fi
 if [[ ! -d "$archive_dir" ]]; then
   echo "package archive directory does not exist: $archive_dir" >&2
+  exit 1
+fi
+manifest="$archive_dir/manifest.json"
+if [[ ! -f "$manifest" ]]; then
+  echo "package manifest does not exist: $manifest" >&2
+  exit 1
+fi
+packages=()
+while IFS= read -r package; do
+  packages+=("$package")
+done < <(jq -r '.packages[].name' "$manifest")
+expected_count="$(jq -r '.packages | length' "$manifest")"
+if [[ "${#packages[@]}" -ne "$expected_count" || "$expected_count" -eq 0 ]]; then
+  echo "package manifest contains an invalid package inventory" >&2
   exit 1
 fi
 if [[ -e "$output_root" ]]; then
@@ -25,6 +32,7 @@ output_root="$(cd "$output_root" && pwd -P)"
 archive_dir="$(cd "$archive_dir" && pwd -P)"
 config="$output_root/cargo-config.toml"
 inventory="$output_root/packages.tsv"
+cp "$manifest" "$output_root/manifest.json"
 
 printf '[patch.crates-io]\n' >"$config"
 printf 'package\tversion\tarchive\n' >"$inventory"
@@ -69,7 +77,7 @@ done
 
 archive_count="$(find "$output_root/archives" -type f -name '*.crate' | wc -l | tr -d ' ')"
 package_count="$(find "$output_root/packages" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
-if [[ "$archive_count" -ne 11 || "$package_count" -ne 11 ]]; then
-  echo "rehearsal must contain exactly eleven archives and eleven unpacked packages" >&2
+if [[ "$archive_count" -ne "$expected_count" || "$package_count" -ne "$expected_count" ]]; then
+  echo "rehearsal package count does not match the release manifest" >&2
   exit 1
 fi

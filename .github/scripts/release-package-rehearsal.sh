@@ -187,10 +187,11 @@ verify_upstream_starter() {
 }
 
 [[ ! -e /workspace/quasar ]] || fail "source checkout is present in the runtime image"
-[[ "$(find "$package_root/archives" -type f -name '*.crate' | wc -l | tr -d ' ')" -eq 11 ]] \
-  || fail "expected eleven package archives"
-[[ "$(find "$package_root/packages" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" -eq 11 ]] \
-  || fail "expected eleven unpacked packages"
+expected_packages="$(jq -r '.packages | length' "$package_root/manifest.json")"
+[[ "$(find "$package_root/archives" -type f -name '*.crate' | wc -l | tr -d ' ')" -eq "$expected_packages" ]] \
+  || fail "package archive count does not match the release manifest"
+[[ "$(find "$package_root/packages" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" -eq "$expected_packages" ]] \
+  || fail "unpacked package count does not match the release manifest"
 if find "$package_root" -perm -u=w -print -quit | grep -q .; then
   fail "packaged sources are writable"
 fi

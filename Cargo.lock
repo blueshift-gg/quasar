@@ -2141,6 +2141,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "quasar-release-tool"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "quasar-schema"
 version = "0.1.0"
 
