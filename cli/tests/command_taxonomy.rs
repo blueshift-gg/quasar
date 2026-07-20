@@ -75,3 +75,70 @@ fn assembly_inspection_reports_a_missing_toolchain_cleanly() -> Result<(), Box<d
     assert!(stderr.contains("llvm-objdump not found"), "{stderr}");
     Ok(())
 }
+
+fn write_minimal_idl(path: &std::path::Path) -> Result<(), Box<dyn Error>> {
+    fs::write(
+        path,
+        r#"{
+  "spec": "quasar-idl/1.0.0",
+  "name": "vault",
+  "version": "0.1.0",
+  "address": "11111111111111111111111111111111",
+  "instructions": [],
+  "accounts": [],
+  "types": [],
+  "events": [],
+  "errors": []
+}"#,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn client_targets_are_independent_and_default_to_stable_only() -> Result<(), Box<dyn Error>> {
+    let temp = tempdir()?;
+    let idl = temp.path().join("vault.json");
+    write_minimal_idl(&idl)?;
+
+    let kit = quasar(temp.path())
+        .current_dir(temp.path())
+        .args(["client"])
+        .arg(&idl)
+        .args(["--target", "kit"])
+        .output()?;
+    assert!(
+        kit.status.success(),
+        "{}",
+        String::from_utf8_lossy(&kit.stderr)
+    );
+    assert!(temp
+        .path()
+        .join("target/client/kit/vault/client.ts")
+        .is_file());
+    assert!(!temp.path().join("target/client/web3").exists());
+    assert!(!temp.path().join("target/client/python").exists());
+
+    fs::remove_dir_all(temp.path().join("target"))?;
+    let defaults = quasar(temp.path())
+        .current_dir(temp.path())
+        .arg("client")
+        .arg(&idl)
+        .output()?;
+    assert!(
+        defaults.status.success(),
+        "{}",
+        String::from_utf8_lossy(&defaults.stderr)
+    );
+    assert!(temp
+        .path()
+        .join("target/client/kit/vault/client.ts")
+        .is_file());
+    assert!(temp
+        .path()
+        .join("target/client/web3/vault/client.ts")
+        .is_file());
+    for preview in ["python", "go", "c"] {
+        assert!(!temp.path().join("target/client").join(preview).exists());
+    }
+    Ok(())
+}

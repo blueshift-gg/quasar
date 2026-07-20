@@ -194,9 +194,10 @@ impl QuasarConfig {
         for target in &self.clients.targets {
             let target = match target {
                 ClientTarget::Rust => continue,
-                ClientTarget::Kit | ClientTarget::Web3 => "typescript",
+                ClientTarget::Kit => "kit",
+                ClientTarget::Web3 => "web3",
                 ClientTarget::Python => "python",
-                ClientTarget::Go => "golang",
+                ClientTarget::Go => "go",
                 ClientTarget::C => "c",
             };
             if !targets.contains(&target) {

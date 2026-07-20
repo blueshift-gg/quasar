@@ -1,0 +1,10 @@
+{
+  "name": "quasar-multisig-client-web3",
+  "version": "0.1.0",
+  "private": true,
+  "exports": "./client.ts",
+  "dependencies": {
+    "@solana/codecs": "^6.2.0",
+    "@solana/web3.js": "^3.0.0"
+  }
+}

@@ -12,8 +12,8 @@ use {
     tempfile::tempdir,
 };
 
-const CLIENT_LANGUAGES: &[&str] = &["typescript", "python", "golang", "c"];
-const OUTPUT_ROOTS: &[&str] = &["c", "golang", "python", "rust", "typescript"];
+const CLIENT_LANGUAGES: &[&str] = &["kit", "web3", "python", "go", "c"];
+const OUTPUT_ROOTS: &[&str] = &["c", "go", "kit", "python", "rust", "web3"];
 
 struct Profile {
     fixture: String,

@@ -253,10 +253,9 @@ struct ClientCommand {
     #[arg(value_name = "IDL")]
     pub idl_path: PathBuf,
 
-    /// Languages to generate (default: all). Comma-separated.
-    /// Options: typescript, python, golang
-    #[arg(long, value_delimiter = ',', value_name = "LANG")]
-    pub lang: Vec<String>,
+    /// Client target to generate (default: kit and web3)
+    #[arg(long, value_enum, value_name = "TARGET")]
+    pub target: Option<config::ClientTarget>,
 }
 
 #[derive(Args, Debug, Default)]

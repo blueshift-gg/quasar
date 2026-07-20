@@ -16,8 +16,8 @@ use {
     },
 };
 
-const SOLANA_KIT_VERSION: &str = "^6.4.0";
-const SOLANA_WEB3JS_VERSION: &str = "^3.0.0-rc.1";
+const SOLANA_KIT_VERSION: &str = "^7.0.0";
+const SOLANA_WEB3JS_VERSION: &str = "^3.0.0";
 
 /// Target flavor for TypeScript client generation.
 #[derive(Clone, Copy, PartialEq)]
@@ -64,32 +64,34 @@ pub fn generate_ts_client_kit(idl: &Idl) -> CodegenResult<String> {
     generate_ts(idl, TsTarget::Kit)
 }
 
-pub fn generate_package_json(idl: &Idl) -> CodegenResult<String> {
+pub fn generate_package_json(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
     let model = ProgramModel::try_new(idl)?;
+    let codecs_version = match target {
+        TsTarget::Kit => "^7.0.0",
+        TsTarget::Web3js => "^6.2.0",
+    };
     let codecs_dep = if model.features.needs_codecs {
-        "\n    \"@solana/codecs\": \"^6.2.0\","
+        format!("\n    \"@solana/codecs\": \"{codecs_version}\",")
     } else {
-        ""
+        String::new()
+    };
+    let (target_name, dependency, dependency_version) = match target {
+        TsTarget::Kit => ("kit", "@solana/kit", client_dependency_version(target)),
+        TsTarget::Web3js => ("web3", "@solana/web3.js", client_dependency_version(target)),
     };
 
     Ok(format!(
         r#"{{
-  "name": "{package_name}",
+  "name": "{package_name}-{target_name}",
   "version": "{version}",
   "private": true,
-  "exports": {{
-    "./web3.js": "./web3.ts",
-    "./kit": "./kit.ts"
-  }},
+  "exports": "./client.ts",
   "dependencies": {{{codecs_dep}
-    "@solana/kit": "{solana_kit_version}",
-    "@solana/web3.js": "{solana_web3js_version}"
+    "{dependency}": "{dependency_version}"
   }}
 }}
 "#,
         package_name = model.identity.typescript_package,
-        solana_kit_version = client_dependency_version(TsTarget::Kit),
-        solana_web3js_version = client_dependency_version(TsTarget::Web3js),
         version = idl.version,
     ))
 }
@@ -673,6 +675,46 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
     }
 
     Ok(out)
+}
+
+#[cfg(test)]
+mod package_tests {
+    use {
+        super::{generate_package_json, TsTarget},
+        crate::types::{Idl, IdlMetadata},
+    };
+
+    fn minimal_idl() -> Idl {
+        Idl {
+            spec: "quasar-idl/1.0.0".to_owned(),
+            name: "vault".to_owned(),
+            version: "0.1.0".to_owned(),
+            address: "11111111111111111111111111111111".to_owned(),
+            metadata: IdlMetadata::default(),
+            docs: vec![],
+            instructions: vec![],
+            accounts: vec![],
+            types: vec![],
+            events: vec![],
+            errors: vec![],
+            extensions: None,
+            hashes: None,
+        }
+    }
+
+    #[test]
+    fn stable_targets_have_independent_final_only_manifests() {
+        let idl = minimal_idl();
+        let kit = generate_package_json(&idl, TsTarget::Kit).unwrap();
+        let web3 = generate_package_json(&idl, TsTarget::Web3js).unwrap();
+
+        assert!(kit.contains(r#""@solana/kit": "^7.0.0""#));
+        assert!(!kit.contains("@solana/web3.js"));
+        assert!(web3.contains(r#""@solana/web3.js": "^3.0.0""#));
+        assert!(!web3.contains("@solana/kit"));
+        assert!(!kit.contains("-rc."));
+        assert!(!web3.contains("-rc."));
+    }
 }
 
 fn emit_kit_program_plugin(

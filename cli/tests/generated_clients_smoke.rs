@@ -364,7 +364,7 @@ fn compile_typescript_client(client_dir: &Path) -> Result<(), Box<dyn Error>> {
     "strict": true,
     "target": "ES2022"
   },
-  "include": ["web3.ts", "kit.ts"]
+  "include": ["client.ts"]
 }
 "#,
     )?;
@@ -449,11 +449,16 @@ fn only_child_dir(path: &Path) -> Result<PathBuf, Box<dyn Error>> {
     }
 }
 
+fn stable_typescript_client(clients_path: &Path, target: &str) -> Result<PathBuf, Box<dyn Error>> {
+    only_child_dir(&clients_path.join(target))
+}
+
 fn assert_typescript_client_requires_address_constraint_accounts(
-    client_dir: &Path,
+    clients_path: &Path,
 ) -> Result<(), Box<dyn Error>> {
-    let kit = fs::read_to_string(client_dir.join("kit.ts"))?;
-    let web3 = fs::read_to_string(client_dir.join("web3.ts"))?;
+    let kit = fs::read_to_string(stable_typescript_client(clients_path, "kit")?.join("client.ts"))?;
+    let web3 =
+        fs::read_to_string(stable_typescript_client(clients_path, "web3")?.join("client.ts"))?;
 
     for source in [&kit, &web3] {
         assert!(
@@ -567,7 +572,7 @@ pub mod lifecycle_client_flags {
     let clients_path = temp.path().join("clients");
     idl::generate(
         &program_dir,
-        &["typescript", "python", "golang", "c"],
+        &["kit", "web3", "python", "go", "c"],
         &clients_path,
     )?;
 
@@ -603,7 +608,7 @@ pub mod lifecycle_client_flags {
     assert!(rust_ix.contains("AccountMeta::new(ix.config, false)"));
     assert!(rust_ix.contains("AccountMeta::new(ix.vault, false)"));
 
-    let ts_web3 = read_file(&only_child_dir(&clients_path.join("typescript"))?.join("web3.ts"))?;
+    let ts_web3 = read_file(&stable_typescript_client(&clients_path, "web3")?.join("client.ts"))?;
     assert!(ts_web3.contains(
         "{ pubkey: (accountOverrides.config ?? input.config), isSigner: false, isWritable: true },"
     ));
@@ -619,7 +624,7 @@ pub mod lifecycle_client_flags {
         r#"accounts.append(AccountMeta(accounts_map["vault"], is_signer=False, is_writable=True))"#
     ));
 
-    let go_client = read_file(&only_child_dir(&clients_path.join("golang"))?.join("client.go"))?;
+    let go_client = read_file(&only_child_dir(&clients_path.join("go"))?.join("client.go"))?;
     assert!(go_client
         .contains(r#"accounts = append(accounts, solana.Meta(accountsMap["config"]).WRITE())"#));
     assert!(go_client
@@ -721,7 +726,7 @@ fn generated_clients_compile_from_fresh_project() -> Result<(), Box<dyn Error>> 
     let clients_path = temp.path().join("clients");
     let generated_idl = idl::generate(
         &fixture,
-        &["typescript", "python", "golang", "c"],
+        &["kit", "web3", "python", "go", "c"],
         &clients_path,
     )?;
 
@@ -783,10 +788,11 @@ fn generated_clients_compile_from_fresh_project() -> Result<(), Box<dyn Error>> 
         assert!(rust.contains("solana_address::address!(\"11111111111111111111111111111111\")"));
     }
 
-    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
-    if ts_dir.exists() {
-        assert_typescript_client_requires_address_constraint_accounts(&ts_dir)?;
-        let kit = read_file(&ts_dir.join("kit.ts"))?;
+    let kit_dir = stable_typescript_client(&clients_path, "kit")?;
+    let web3_dir = stable_typescript_client(&clients_path, "web3")?;
+    if kit_dir.exists() {
+        assert_typescript_client_requires_address_constraint_accounts(&clients_path)?;
+        let kit = read_file(&kit_dir.join("client.ts"))?;
         assert!(
             kit.contains("from \"@solana/kit/program-client-core\""),
             "Kit client should import program plugin helpers"
@@ -799,7 +805,8 @@ fn generated_clients_compile_from_fresh_project() -> Result<(), Box<dyn Error>> 
             kit.contains("addSelfPlanAndSendFunctions"),
             "Kit program plugin should expose self plan/send instruction helpers"
         );
-        compile_typescript_client(&ts_dir)?;
+        compile_typescript_client(&kit_dir)?;
+        compile_typescript_client(&web3_dir)?;
     }
 
     let py_dir = only_child_dir(&clients_path.join("python"))?;
@@ -813,7 +820,7 @@ fn generated_clients_compile_from_fresh_project() -> Result<(), Box<dyn Error>> 
         );
     }
 
-    let go_dir = only_child_dir(&clients_path.join("golang"))?;
+    let go_dir = only_child_dir(&clients_path.join("go"))?;
     if go_dir.exists() {
         compile_go_client(&go_dir)?;
         let golang = read_file(&go_dir.join("client.go"))?;
@@ -1020,7 +1027,7 @@ mod decoder_total {
     let clients_path = temp.path().join("clients");
     idl::generate(
         &program_dir,
-        &["typescript", "python", "golang", "c"],
+        &["kit", "web3", "python", "go", "c"],
         &clients_path,
     )?;
 
@@ -1129,7 +1136,7 @@ assert value.bytes == [1, 2, 3]
             .current_dir(&python_dir),
     )?;
 
-    let go_dir = only_child_dir(&clients_path.join("golang"))?;
+    let go_dir = only_child_dir(&clients_path.join("go"))?;
     write_file(
         &go_dir.join("decoder_test.go"),
         r#"package decoder_total
@@ -1177,11 +1184,11 @@ func TestMalformedDecodeFixture(t *testing.T) {
             .current_dir(&go_dir),
     )?;
 
-    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
+    let ts_dir = stable_typescript_client(&clients_path, "web3")?;
     compile_typescript_client(&ts_dir)?;
     write_file(
         &ts_dir.join("decoder_test.ts"),
-        r#"import { DecoderTotalClient } from "./web3.ts";
+        r#"import { DecoderTotalClient } from "./client.ts";
 
 const client = new DecoderTotalClient();
 const valid = Uint8Array.from([
@@ -1320,10 +1327,11 @@ pub struct Submit {
     )?;
 
     let clients_path = temp.path().join("clients");
-    idl::generate(&program_dir, &["typescript"], &clients_path)?;
-    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
-    let kit = fs::read_to_string(ts_dir.join("kit.ts"))?;
-    let web3 = fs::read_to_string(ts_dir.join("web3.ts"))?;
+    idl::generate(&program_dir, &["kit", "web3"], &clients_path)?;
+    let kit =
+        fs::read_to_string(stable_typescript_client(&clients_path, "kit")?.join("client.ts"))?;
+    let web3 =
+        fs::read_to_string(stable_typescript_client(&clients_path, "web3")?.join("client.ts"))?;
 
     for source in [&kit, &web3] {
         assert!(
@@ -1398,9 +1406,9 @@ pub struct Submit {
     )?;
 
     let clients_path = temp.path().join("clients");
-    idl::generate(&program_dir, &["typescript"], &clients_path)?;
-    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
-    let kit = read_file(&ts_dir.join("kit.ts"))?;
+    idl::generate(&program_dir, &["kit"], &clients_path)?;
+    let ts_dir = stable_typescript_client(&clients_path, "kit")?;
+    let kit = read_file(&ts_dir.join("client.ts"))?;
 
     assert!(
         kit.contains("nums: Array<bigint>;"),
@@ -1525,10 +1533,10 @@ pub struct ResolverHeavy {
     )?;
 
     let clients_path = temp.path().join("clients");
-    idl::generate(&program_dir, &["typescript"], &clients_path)?;
+    idl::generate(&program_dir, &["kit"], &clients_path)?;
 
-    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
-    let kit = read_file(&ts_dir.join("kit.ts"))?;
+    let ts_dir = stable_typescript_client(&clients_path, "kit")?;
+    let kit = read_file(&ts_dir.join("client.ts"))?;
 
     assert!(
         kit.contains("from \"@solana/kit/program-client-core\""),
@@ -1651,7 +1659,7 @@ pub struct UseScoped {
     let clients_path = temp.path().join("clients");
     idl::generate(
         &program_dir,
-        &["typescript", "python", "golang", "c"],
+        &["kit", "web3", "python", "go", "c"],
         &clients_path,
     )?;
 
@@ -1673,9 +1681,10 @@ pub struct UseScoped {
         "account field seed should include the source field path: {idl_json}"
     );
 
-    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
-    let kit = read_file(&ts_dir.join("kit.ts"))?;
-    let web3 = read_file(&ts_dir.join("web3.ts"))?;
+    let kit_dir = stable_typescript_client(&clients_path, "kit")?;
+    let web3_dir = stable_typescript_client(&clients_path, "web3")?;
+    let kit = read_file(&kit_dir.join("client.ts"))?;
+    let web3 = read_file(&web3_dir.join("client.ts"))?;
 
     for source in [&kit, &web3] {
         assert!(
@@ -1692,9 +1701,10 @@ pub struct UseScoped {
         );
     }
 
-    compile_typescript_client(&ts_dir)?;
+    compile_typescript_client(&kit_dir)?;
+    compile_typescript_client(&web3_dir)?;
     compile_python_client(&only_child_dir(&clients_path.join("python"))?)?;
-    compile_go_client(&only_child_dir(&clients_path.join("golang"))?)?;
+    compile_go_client(&only_child_dir(&clients_path.join("go"))?)?;
 
     let c_dir = only_child_dir(&clients_path.join("c"))?;
     let c_header = read_file(&c_dir.join("client.h"))?;
@@ -1810,7 +1820,7 @@ pub struct Submit {
     let clients_path = temp.path().join("clients");
     idl::generate(
         &program_dir,
-        &["typescript", "python", "golang", "c"],
+        &["kit", "web3", "python", "go", "c"],
         &clients_path,
     )?;
 
@@ -1828,18 +1838,9 @@ pub struct Submit {
     override_rust_client_with_workspace_path(&rust_client_dir)?;
     compile_rust_client(&rust_client_dir)?;
 
-    let ts_root = clients_path.join("typescript");
-    let ts_dir = fs::read_dir(&ts_root)?
-        .next()
-        .ok_or_else(|| {
-            format!(
-                "no TypeScript client generated under `{}`",
-                ts_root.display()
-            )
-        })??
-        .path();
-    for file in ["web3.ts", "kit.ts"] {
-        let source = read_file(&ts_dir.join(file))?;
+    for target in ["web3", "kit"] {
+        let source =
+            read_file(&stable_typescript_client(&clients_path, target)?.join("client.ts"))?;
         assert!(source.contains(
             "const maybe_nameTag = getU8Codec().encode(input.maybe_name === null ? 0 : 1);"
         ));
@@ -1862,7 +1863,7 @@ pub struct Submit {
     assert!(python_source.contains("if input.maybe_addrs is not None:"));
     compile_python_client(&python_dir)?;
 
-    let go_dir = only_child_dir(&clients_path.join("golang"))?;
+    let go_dir = only_child_dir(&clients_path.join("go"))?;
     let go_source = read_file(&go_dir.join("client.go"))?;
     assert!(go_source.contains("MaybeName *string"));
     assert!(go_source.contains("MaybeAddrs *[]solana.PublicKey"));
@@ -2025,7 +2026,7 @@ pub struct FixedOnly {
     let clients_path = temp.path().join("clients");
     idl::generate(
         &program_dir,
-        &["typescript", "python", "golang", "c"],
+        &["kit", "web3", "python", "go", "c"],
         &clients_path,
     )?;
 
@@ -2060,9 +2061,10 @@ pub struct FixedOnly {
 
     // TypeScript (web3.js + kit): optional account is an optional `?` input;
     // absent defaults to the program address, present passes through.
-    let ts_dir = only_child_dir(&clients_path.join("typescript"))?;
-    let web3 = read_file(&ts_dir.join("web3.ts"))?;
-    let kit = read_file(&ts_dir.join("kit.ts"))?;
+    let kit_dir = stable_typescript_client(&clients_path, "kit")?;
+    let web3_dir = stable_typescript_client(&clients_path, "web3")?;
+    let web3 = read_file(&web3_dir.join("client.ts"))?;
+    let kit = read_file(&kit_dir.join("client.ts"))?;
     for source in [&web3, &kit] {
         assert!(
             source.contains("  maybe?: Address;"),
@@ -2093,7 +2095,8 @@ pub struct FixedOnly {
         kit.contains("address: (accountOverrides.maybe ?? input.maybe ?? PROGRAM_ADDRESS), role:"),
         "kit should default an absent optional account to the program address"
     );
-    compile_typescript_client(&ts_dir)?;
+    compile_typescript_client(&kit_dir)?;
+    compile_typescript_client(&web3_dir)?;
 
     // Python / Go / C: optional inputs are None-default / pointer / nullable
     // pointer respectively, each defaulting an absent slot to the program id.
@@ -2107,7 +2110,7 @@ pub struct FixedOnly {
     assert!(!py.contains("accounts_map[\"maybe\"] = Pubkey.find_program_address"));
     compile_python_client(&py_dir)?;
 
-    let go_dir = only_child_dir(&clients_path.join("golang"))?;
+    let go_dir = only_child_dir(&clients_path.join("go"))?;
     let go = read_file(&go_dir.join("client.go"))?;
     assert!(go.contains("Maybe *solana.PublicKey"));
     assert!(go.contains("MaybeProgram *solana.PublicKey"));
