@@ -231,7 +231,8 @@ fn podstring_round_trip() {
 fn podstring_validate_valid() {
     let mut s = PodString::<32>::default();
     assert!(s.set("hi"));
-    assert!(<PodString<32> as InstructionArg>::validate_zc(&s).is_ok());
+    let zc = <PodString<32> as InstructionArg>::to_zc(&s);
+    assert!(<PodString<32> as InstructionArg>::validate_zc(&zc).is_ok());
 }
 
 #[test]
@@ -242,12 +243,12 @@ fn podstring_validate_rejects_corrupted_len() {
     // Corrupt the length to 5 (> N=4).
     // PodString<4, 1>: len is [u8; 1].
     // We need to set the raw len field to 5.
-    // Use to_zc (identity) then corrupt via write.
+    // Convert to the layout-compatible ZC wrapper, then corrupt via write.
     let mut zc = <PodString<4> as InstructionArg>::to_zc(&s);
     // decode_len > N should be rejected.
     // Access len bytes via ptr: PodString<4,1> is [len: [u8;1]][data:
     // [MaybeUninit<u8>;4]]
-    let ptr = &mut zc as *mut PodString<4> as *mut u8;
+    let ptr = &mut zc as *mut _ as *mut u8;
     unsafe { *ptr = 5 }; // set len prefix to 5 > N=4
     assert_eq!(
         <PodString<4> as InstructionArg>::validate_zc(&zc),
@@ -256,8 +257,7 @@ fn podstring_validate_rejects_corrupted_len() {
 }
 
 #[test]
-fn podstring_zc_is_self() {
-    // Verify Zc = Self (identity): no copy overhead
+fn podstring_zc_preserves_layout() {
     assert_eq!(
         core::mem::size_of::<<PodString<32> as InstructionArg>::Zc>(),
         core::mem::size_of::<PodString<32>>()
@@ -283,7 +283,8 @@ fn podvec_round_trip() {
 fn podvec_validate_valid() {
     let mut v = PodVec::<u8, 8>::default();
     assert!(v.push(42));
-    assert!(<PodVec<u8, 8> as InstructionArg>::validate_zc(&v).is_ok());
+    let zc = <PodVec<u8, 8> as InstructionArg>::to_zc(&v);
+    assert!(<PodVec<u8, 8> as InstructionArg>::validate_zc(&zc).is_ok());
 }
 
 #[test]
@@ -292,7 +293,7 @@ fn podvec_validate_rejects_corrupted_len() {
     let v = PodVec::<u8, 4>::default();
     let mut zc = <PodVec<u8, 4> as InstructionArg>::to_zc(&v);
     // Set len prefix to 5 (> N=4). PodVec<u8,4,2>: first 2 bytes are len (LE u16).
-    let ptr = &mut zc as *mut PodVec<u8, 4> as *mut u8;
+    let ptr = &mut zc as *mut _ as *mut u8;
     unsafe {
         *ptr = 5;
         *ptr.add(1) = 0;
@@ -304,7 +305,7 @@ fn podvec_validate_rejects_corrupted_len() {
 }
 
 #[test]
-fn podvec_zc_is_self() {
+fn podvec_zc_preserves_layout() {
     assert_eq!(
         core::mem::size_of::<<PodVec<u8, 8> as InstructionArg>::Zc>(),
         core::mem::size_of::<PodVec<u8, 8>>()
@@ -312,6 +313,37 @@ fn podvec_zc_is_self() {
     assert_eq!(
         core::mem::align_of::<<PodVec<u8, 8> as InstructionArg>::Zc>(),
         1
+    );
+}
+
+#[derive(Copy, Clone, quasar_lang::prelude::QuasarSerialize)]
+struct BoundedArgs {
+    label: PodString<16>,
+    values: PodVec<u8, 8>,
+    maybe_label: Option<PodString<16>>,
+}
+
+#[test]
+fn bounded_containers_work_inside_derived_instruction_args() {
+    let mut label = PodString::<16>::default();
+    assert!(label.set("quasar"));
+    let mut values = PodVec::<u8, 8>::default();
+    assert!(values.set_from_slice(&[3, 1, 4]));
+
+    let value = BoundedArgs {
+        label,
+        values,
+        maybe_label: Some(label),
+    };
+    let zc = value.to_zc();
+
+    assert!(BoundedArgs::validate_zc(&zc).is_ok());
+    let decoded = BoundedArgs::from_zc(&zc);
+    assert_eq!(decoded.label.as_str(), "quasar");
+    assert_eq!(decoded.values.as_slice(), &[3, 1, 4]);
+    assert_eq!(
+        decoded.maybe_label.as_ref().map(PodString::as_str),
+        Some("quasar")
     );
 }
 

@@ -110,13 +110,15 @@ pub unsafe fn invoke_raw(
         // SAFETY: `CInstruction` is `#[repr(C)]` and layout-compatible with
         // the C struct expected by `sol_invoke_signed_c`. All pointer fields
         // are valid per this function's safety contract.
-        solana_instruction_view::cpi::sol_invoke_signed_c(
-            &instruction as *const _ as *const u8,
-            cpi_accounts as *const u8,
-            cpi_accounts_len as u64,
-            signers as *const _ as *const u8,
-            signers.len() as u64,
-        )
+        unsafe {
+            solana_instruction_view::cpi::sol_invoke_signed_c(
+                &instruction as *const _ as *const u8,
+                cpi_accounts as *const u8,
+                cpi_accounts_len as u64,
+                signers as *const _ as *const u8,
+                signers.len() as u64,
+            )
+        }
     }
 
     #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]

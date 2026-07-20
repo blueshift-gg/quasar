@@ -54,6 +54,9 @@ fn emit_fixed_schema_stmts(
             return Err(#krate::__solana_program_error::ProgramError::InvalidInstructionData);
         }
     ));
+    // SAFETY: every generated field is a `ZcElem`, so the `repr(C)`
+    // aggregate is alignment 1, padding-free, and valid for all bit patterns;
+    // the length guard above proves the full aggregate is initialized.
     stmts.push(syn::parse_quote!(
         let __zc = unsafe { &*(#param_ident.data.as_ptr() as *const __InstructionDataZc) };
     ));

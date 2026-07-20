@@ -11,12 +11,14 @@ use crate::pod::*;
 
 /// A type that can appear as a fixed-size `#[instruction]` argument.
 ///
-/// The associated `Zc` type must be `#[repr(C)]` with alignment 1 so that
-/// the instruction data ZC struct can be read via zero-copy pointer cast
-/// from `&[u8]`.
+/// The associated `Zc` type must satisfy [`zeropod::ZcElem`]. This is the
+/// safety boundary that permits generated decoders to borrow untrusted
+/// instruction bytes before semantic validation: the type has alignment 1,
+/// contains no padding, and accepts every initialized bit pattern as a valid
+/// Rust value.
 pub trait InstructionArg: Sized {
-    /// The alignment-1 companion type for zero-copy deserialization.
-    type Zc: Copy;
+    /// The zero-copy companion type for deserialization.
+    type Zc: zeropod::ZcElem;
     /// Reconstruct the native value from its ZC representation.
     fn from_zc(zc: &Self::Zc) -> Self;
     /// Convert the native value into its alignment-1 ZC representation.
@@ -25,11 +27,12 @@ pub trait InstructionArg: Sized {
     /// Validate the raw ZC bytes before calling `from_zc`.
     ///
     /// Called by `#[instruction]` codegen on untrusted instruction data.
-    /// The default is a no-op. Override for types with validity constraints
-    /// on their ZC representation (e.g. `Option<T>` rejects tag values > 1).
+    /// The default delegates to [`zeropod::ZcValidate`]. Override only when
+    /// the native conversion requires stricter validation.
     #[inline(always)]
-    fn validate_zc(_zc: &Self::Zc) -> Result<(), crate::prelude::ProgramError> {
-        Ok(())
+    fn validate_zc(zc: &Self::Zc) -> Result<(), crate::prelude::ProgramError> {
+        <Self::Zc as zeropod::ZcValidate>::validate_ref(zc)
+            .map_err(|_| crate::prelude::ProgramError::InvalidInstructionData)
     }
 }
 
@@ -76,9 +79,111 @@ impl BuiltinPod for PodI64 {}
 impl BuiltinPod for PodI128 {}
 impl BuiltinPod for PodBool {}
 
-// Containers
-impl<const N: usize, const PFX: usize> BuiltinPod for PodString<N, PFX> {}
-impl<T: zeropod::ZcElem, const N: usize, const PFX: usize> BuiltinPod for PodVec<T, N, PFX> {}
+/// Instruction-wire representation for [`PodString`].
+///
+/// The wrapper exists because zeropod's bounded string is a valid zero-copy
+/// element but cannot be given the foreign [`zeropod::ZcElem`] implementation
+/// from this crate.
+#[repr(transparent)]
+#[derive(Copy, Clone)]
+pub struct PodStringZc<const N: usize, const PFX: usize = 1>(PodString<N, PFX>);
+
+impl<const N: usize, const PFX: usize> zeropod::ZcValidate for PodStringZc<N, PFX> {
+    #[inline(always)]
+    fn validate_ref(value: &Self) -> Result<(), zeropod::ZeroPodError> {
+        <PodString<N, PFX> as zeropod::ZcValidate>::validate_ref(&value.0)
+    }
+}
+
+// SAFETY: `PodStringZc` is transparent over zeropod's `repr(C)` sequence of
+// an alignment-1 length prefix and `MaybeUninit<u8>` storage. It has no
+// padding, every initialized bit pattern is a valid Rust value, and the
+// delegated validator checks both the encoded length and UTF-8 payload.
+unsafe impl<const N: usize, const PFX: usize> zeropod::ZcElem for PodStringZc<N, PFX> {}
+
+impl<const N: usize, const PFX: usize> zeropod::ZcField for PodStringZc<N, PFX> {
+    type Pod = Self;
+    const POD_SIZE: usize = core::mem::size_of::<Self>();
+}
+
+/// Instruction-wire representation for [`PodVec`].
+///
+/// Like [`PodStringZc`], this supplies a local, auditable `ZcElem` boundary
+/// without changing the bounded vector's wire layout.
+#[repr(transparent)]
+#[derive(Copy, Clone)]
+pub struct PodVecZc<T: zeropod::ZcElem, const N: usize, const PFX: usize = 2>(PodVec<T, N, PFX>);
+
+impl<T: zeropod::ZcElem, const N: usize, const PFX: usize> zeropod::ZcValidate
+    for PodVecZc<T, N, PFX>
+{
+    #[inline(always)]
+    fn validate_ref(value: &Self) -> Result<(), zeropod::ZeroPodError> {
+        <PodVec<T, N, PFX> as zeropod::ZcValidate>::validate_ref(&value.0)
+    }
+}
+
+// SAFETY: `PodVecZc` is transparent over zeropod's `repr(C)` sequence of an
+// alignment-1 length prefix and `MaybeUninit<T>` storage. `T: ZcElem`
+// guarantees the element layout, and the delegated validator checks the
+// encoded length and every active element.
+unsafe impl<T: zeropod::ZcElem, const N: usize, const PFX: usize> zeropod::ZcElem
+    for PodVecZc<T, N, PFX>
+{
+}
+
+impl<T: zeropod::ZcElem, const N: usize, const PFX: usize> zeropod::ZcField
+    for PodVecZc<T, N, PFX>
+{
+    type Pod = Self;
+    const POD_SIZE: usize = core::mem::size_of::<Self>();
+}
+
+impl<const N: usize, const PFX: usize> InstructionArg for PodString<N, PFX> {
+    type Zc = PodStringZc<N, PFX>;
+
+    #[inline(always)]
+    fn from_zc(zc: &Self::Zc) -> Self {
+        if <Self::Zc as zeropod::ZcValidate>::validate_ref(zc).is_ok() {
+            zc.0
+        } else {
+            Self::default()
+        }
+    }
+
+    #[inline(always)]
+    fn to_zc(&self) -> Self::Zc {
+        // SAFETY: every all-zero bit pattern is valid for `PodStringZc` and
+        // encodes an empty string. Starting from zero also initializes the
+        // inactive tail before the fixed-size value is exposed as bytes.
+        let mut zc = unsafe { core::mem::zeroed::<Self::Zc>() };
+        let _stored = zc.0.set(self.as_str());
+        zc
+    }
+}
+
+impl<T: zeropod::ZcElem, const N: usize, const PFX: usize> InstructionArg for PodVec<T, N, PFX> {
+    type Zc = PodVecZc<T, N, PFX>;
+
+    #[inline(always)]
+    fn from_zc(zc: &Self::Zc) -> Self {
+        if <Self::Zc as zeropod::ZcValidate>::validate_ref(zc).is_ok() {
+            zc.0
+        } else {
+            Self::default()
+        }
+    }
+
+    #[inline(always)]
+    fn to_zc(&self) -> Self::Zc {
+        // SAFETY: every all-zero bit pattern is valid for `PodVecZc` and
+        // encodes an empty vector. Starting from zero also initializes the
+        // inactive tail before the fixed-size value is exposed as bytes.
+        let mut zc = unsafe { core::mem::zeroed::<Self::Zc>() };
+        let _stored = zc.0.set_from_slice(self.as_slice());
+        zc
+    }
+}
 
 /// Blanket `InstructionArg` for all builtin pod types via `ZcField` + `From`.
 ///
@@ -87,7 +192,7 @@ impl<T: zeropod::ZcElem, const N: usize, const PFX: usize> BuiltinPod for PodVec
 impl<T> InstructionArg for T
 where
     T: Copy + BuiltinPod + zeropod::ZcField,
-    T::Pod: Copy + zeropod::ZcValidate + From<T>,
+    T::Pod: zeropod::ZcElem + From<T>,
     T: From<T::Pod>,
 {
     type Zc = T::Pod;
