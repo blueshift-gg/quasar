@@ -17,6 +17,8 @@ RUN sed -ri \
     git \
     jq \
     libssl-dev \
+    nodejs \
+    npm \
     pkg-config \
     procps \
     python3 \
@@ -29,7 +31,7 @@ WORKDIR /workspace/quasar
 COPY . /workspace/quasar
 
 RUN grep -Fx 'cargo install quasar-cli --version 0.1.0 --locked' README.md \
-    && make PACKAGE_REHEARSAL_ROOT=/opt/quasar-release-rehearsal package-rehearsal \
+    && make PACKAGE_REHEARSAL_ROOT=/opt/quasar-release-rehearsal package-rehearsal-prepare \
     && cargo --config /opt/quasar-release-rehearsal/cargo-config.toml \
         install \
         --path /opt/quasar-release-rehearsal/packages/quasar-cli-0.1.0 \
@@ -43,16 +45,13 @@ ARG SOLANA_VERSION=v4.1.1
 ARG SOLANA_LINUX_SHA256
 
 ENV CARGO_TERM_COLOR=always
-ENV PATH="/opt/quasar-cli/bin:/opt/sbpf-linker/bin:/opt/solana/active_release/bin:/usr/local/cargo/bin:${PATH}"
+ENV PATH="/opt/quasar-cli/bin:/opt/solana/active_release/bin:/usr/local/cargo/bin:${PATH}"
 
 COPY scripts/install-solana-tools.sh /usr/local/bin/install-solana-tools
 
 RUN HOME=/root XDG_CACHE_HOME=/root/.cache \
         install-solana-tools "${SOLANA_VERSION}" "${SOLANA_LINUX_SHA256}" /opt/solana \
     && cargo-build-sbf --version \
-    && rustup toolchain install nightly-2026-03-27 --profile minimal --component rust-src \
-    && HOME=/root CARGO_HOME=/usr/local/cargo cargo install \
-        sbpf-linker --version 0.1.9 --locked --root /opt/sbpf-linker \
     && rm -rf /root/.cache/quasar/solana
 
 ENV CARGO_HOME=/home/quasar/.cargo

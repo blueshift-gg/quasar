@@ -9,11 +9,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  KANI_VERSION: 0.67.0
   PROGRAM_MSRV: 1.89.0
   SOLANA_VERSION: v4.1.1
   SOLANA_LINUX_SHA256: a5c8e74b8ffa9ce906872b812849057c7fb21cf036ba08f219eb335e20fa4fb3
-  Z3_VERSION: 4.8.12-3.1build1
   CARGO_TERM_COLOR: always
 
 permissions:
@@ -24,34 +22,6 @@ jobs:
   ci:
     name: CI Gate
     uses: ./.github/workflows/ci.yml
-    with:
-      generated_client_smoke: true
-
-  # ── Kani: formal verification of proof harnesses ──
-  kani:
-    name: Kani
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-kani-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-kani-
-      - name: Install z3 (SMT solver for wide-type proofs)
-        run: sudo apt-get install -y "z3=${{ env.Z3_VERSION }}"
-      - name: Verify proof harnesses
-        uses: model-checking/kani-github-action@2534b7aeb3c6b4b0a5ecc3981bb3e63d47b5b126 # v1
-        with:
-          kani-version: ${{ env.KANI_VERSION }}
-          command: make kani
-      - name: Print Kani toolchain
-        run: cargo kani --version
 
   # ── Package rehearsal: exercise the unpublished archives before tagging ──
   package-rehearsal:
@@ -60,6 +30,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Require final stable JavaScript clients
+        run: |
+          npm view '@solana/kit@7.0.0' version | grep -Fx '7.0.0'
+          npm view '@solana/web3.js@3.0.0' version | grep -Fx '3.0.0'
 
       - name: Build package rehearsal image
         run: |
@@ -77,7 +54,7 @@ jobs:
   # ── Publish crates to crates.io in dependency order ──
   publish:
     name: Publish to crates.io
-    needs: [ci, kani, package-rehearsal]
+    needs: [ci, package-rehearsal]
     runs-on: ubuntu-24.04
     env:
       RUSTUP_TOOLCHAIN: 1.89.0
@@ -86,6 +63,8 @@ jobs:
     environment: crates-io
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: ${{ env.PROGRAM_MSRV }}
@@ -94,11 +73,13 @@ jobs:
         run: rustc --version && cargo --version
 
       - name: Validate release tag
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
           version="$(cargo run --locked -p quasar-release-tool -- graph --json \
             | jq -r '.version')"
-          if [ "${{ github.ref_name }}" != "v${version}" ]; then
-            echo "tag ${{ github.ref_name }} does not match workspace version ${version}" >&2
+          if [ "$REF_NAME" != "v${version}" ]; then
+            echo "tag $REF_NAME does not match workspace version ${version}" >&2
             exit 1
           fi
           echo "QUASAR_VERSION=${version}" >> "$GITHUB_ENV"
@@ -107,7 +88,7 @@ jobs:
         run: cargo run --locked -p quasar-release-tool -- package --output target/release-packages
 
       - name: Publish release graph
-        run: cargo run --locked -p quasar-release-tool -- publish --version "$QUASAR_VERSION"
+        run: cargo run --locked -p quasar-release-tool -- publish --version "$QUASAR_VERSION" # zizmor: ignore[use-trusted-publishing] bootstrap token until crates.io OIDC migration
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
@@ -123,10 +104,12 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Create GitHub Release
-        run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "${{ github.ref_name }}" \
-            --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          gh release create "$REF_NAME" \
+            --title "$REF_NAME" \
+            --generate-notes

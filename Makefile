@@ -38,6 +38,8 @@ SBF_PROGRAM_PACKAGES := $(shell cargo metadata --locked --no-deps --format-versi
 HOST_TEST_EXCLUDES := $(sort $(SBF_HOST_TEST_PACKAGES) $(SBF_PROGRAM_PACKAGES))
 
 PACKAGE_REHEARSAL_ROOT ?= target/release-rehearsal
+SOLANA_VERSION ?= v4.1.1
+SOLANA_LINUX_SHA256 ?= a5c8e74b8ffa9ce906872b812849057c7fb21cf036ba08f219eb335e20fa4fb3
 
 .PHONY: format format-fix clippy clippy-fix check-features \
 	check-workspace-invariants check-license-policy \
@@ -50,7 +52,7 @@ PACKAGE_REHEARSAL_ROOT ?= target/release-rehearsal
 	fuzz-build test-fuzz-build check-public-api bless-public-api contracts \
 	check-proc-macro-baselines bless-proc-macro-baselines \
 	coverage kani help-kani check-kani kani-lang kani-spl msrv-check \
-	bench package-check package-rehearsal audit
+	bench package-check package-rehearsal-prepare package-rehearsal audit
 
 # Print the nightly toolchain version for CI
 nightly-version:
@@ -237,10 +239,20 @@ package-check: check-package-metadata
 	@cargo run --locked -p quasar-release-tool -- package \
 		--output target/release-packages
 
-package-rehearsal: package-check
+package-rehearsal-prepare: package-check
 	@rm -rf "$(PACKAGE_REHEARSAL_ROOT)"
 	@scripts/prepare-package-rehearsal.sh \
 		target/release-packages "$(PACKAGE_REHEARSAL_ROOT)"
+
+package-rehearsal:
+	@docker build \
+		--platform linux/amd64 \
+		--build-arg SOLANA_VERSION="$(SOLANA_VERSION)" \
+		--build-arg SOLANA_LINUX_SHA256="$(SOLANA_LINUX_SHA256)" \
+		--file .github/docker/release-package-rehearsal.Dockerfile \
+		--tag quasar-release-package-rehearsal:local \
+		.
+	@docker run --rm quasar-release-package-rehearsal:local
 
 audit:
 	@command -v cargo-audit >/dev/null 2>&1 || { \

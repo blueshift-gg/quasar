@@ -6,12 +6,9 @@ on:
   pull_request:
     branches: [master, 0.1.0-release]
   workflow_call:
-    inputs:
-      generated_client_smoke:
-        description: Run generated client smoke coverage.
-        required: false
-        type: boolean
-        default: true
+
+permissions:
+  contents: read
 
 concurrency:
   group: required-ci-${{ startsWith(github.ref, 'refs/tags/') && github.run_id || github.ref }}
@@ -19,847 +16,262 @@ concurrency:
 
 env:
   HOST_RUST_VERSION: 1.92.0
-  CARGO_MUTANTS_VERSION: 27.1.0
-  PROGRAM_MSRV: 1.89.0
   SOLANA_VERSION: v4.1.1
   SOLANA_LINUX_SHA256: a5c8e74b8ffa9ce906872b812849057c7fb21cf036ba08f219eb335e20fa4fb3
-  Z3_VERSION: 4.8.12-3.1build1
-  NODE_VERSION: 24.18.0
-  TYPESCRIPT_VERSION: 5.9.3
-  NODE_TYPES_VERSION: 22.13.0
-  PYTHON_VERSION: 3.14.3
-  SOLDERS_VERSION: 0.28.0
-  GO_VERSION: 1.25.5
-  C_COMPILER_VERSION: 18.1.3
-  CARAVEL_REV: a0a88b705bc888a7ac3e8f7e506a1e997b374b4d
-  CARGO_HACK_VERSION: 0.6.43
-  KANI_VERSION: 0.67.0
   CARGO_TERM_COLOR: always
 
 jobs:
-  fuzz_scope:
-    name: Fuzz Build Scope
+  scope:
+    name: Changed promise scope
     runs-on: ubuntu-24.04
     outputs:
-      should_run: ${{ steps.scope.outputs.should_run }}
+      safety: ${{ steps.result.outputs.safety }}
+      performance: ${{ steps.result.outputs.performance }}
+      preview: ${{ steps.result.outputs.preview }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
+          persist-credentials: false
       - id: changed
-        if: github.event_name != 'workflow_call'
+        if: github.event_name == 'pull_request'
         uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         with:
           filters: |
-            fuzz_build:
+            safety:
               - 'lang/**'
               - 'derive/**'
               - 'schema/**'
-              - 'Cargo.lock'
-              - 'Cargo.toml'
-              - '.github/workflows/ci.yml'
-              - '.github/workflows/release.yml'
-              - 'Makefile'
-      - id: scope
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_call" ]; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-          elif [ "${{ steps.changed.outputs.fuzz_build }}" = "true" ]; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-          fi
-
-  kani_scope:
-    name: Kani Scope
-    runs-on: ubuntu-24.04
-    outputs:
-      should_run: ${{ steps.scope.outputs.should_run }}
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          fetch-depth: 0
-      - id: changed
-        if: github.event_name != 'workflow_call'
-        uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
-        with:
-          filters: |
-            kani:
-              - 'lang/**'
               - 'spl/**'
-              - 'Cargo.lock'
               - 'Cargo.toml'
-              - '.github/workflows/ci.yml'
-              - '.github/workflows/release.yml'
+              - 'Cargo.lock'
               - 'Makefile'
-      - id: scope
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_call" ]; then
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-          elif [ "${{ steps.changed.outputs.kani }}" = "true" ]; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-          fi
-
-  generated_client_scope:
-    name: Generated Client Scope
-    runs-on: ubuntu-24.04
-    outputs:
-      should_run: ${{ steps.scope.outputs.should_run }}
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          fetch-depth: 0
-      - id: changed
-        if: github.event_name != 'workflow_call'
-        uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
-        with:
-          filters: |
-            client_codegen:
-              - 'cli/**'
-              - 'derive/**'
-              - 'idl/**'
+            performance:
               - 'lang/**'
-              - 'schema/**'
-              - 'examples/multisig/**'
-              - 'Cargo.lock'
+              - 'derive/**'
+              - 'spl/**'
+              - 'examples/**'
               - 'Cargo.toml'
-              - '.github/workflows/ci.yml'
+              - 'Cargo.lock'
               - 'Makefile'
-      - id: scope
+            preview:
+              - 'idl/**'
+              - 'cli/src/client.rs'
+              - 'cli/src/config.rs'
+              - 'schema/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+      - id: result
+        env:
+          SAFETY_CHANGED: ${{ steps.changed.outputs.safety }}
+          PERFORMANCE_CHANGED: ${{ steps.changed.outputs.performance }}
+          PREVIEW_CHANGED: ${{ steps.changed.outputs.preview }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_call" ]; then
-            echo "should_run=${{ inputs.generated_client_smoke }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ steps.changed.outputs.client_codegen }}" = "true" ]; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "safety=${SAFETY_CHANGED:-false}" >> "$GITHUB_OUTPUT"
+            echo "performance=${PERFORMANCE_CHANGED:-false}" >> "$GITHUB_OUTPUT"
+            echo "preview=${PREVIEW_CHANGED:-false}" >> "$GITHUB_OUTPUT"
           else
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "safety=true" >> "$GITHUB_OUTPUT"
+            echo "performance=true" >> "$GITHUB_OUTPUT"
+            echo "preview=true" >> "$GITHUB_OUTPUT"
           fi
 
-  rust_fmt:
-    name: Rustfmt
+  rust-quality:
+    name: Rust quality
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - name: Get nightly toolchain version
-        id: nightly
-        run: echo "version=$(make nightly-version)" >> $GITHUB_OUTPUT
-      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
-          toolchain: ${{ steps.nightly.outputs.version }}
-          components: rustfmt
-      - name: Print Rustfmt toolchain
-        run: |
-          rustup run "${{ steps.nightly.outputs.version }}" rustc --version
-          rustup run "${{ steps.nightly.outputs.version }}" cargo --version
-          rustup run "${{ steps.nightly.outputs.version }}" rustfmt --version
-      - name: Run format
-        run: make format
-
-  rust_clippy:
-    name: Clippy
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-clippy-
-      - name: Get nightly toolchain version
-        id: nightly
-        run: echo "version=$(make nightly-version)" >> $GITHUB_OUTPUT
-      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
-        with:
-          toolchain: ${{ steps.nightly.outputs.version }}
-          components: clippy
-      - name: Print Clippy toolchain
-        run: |
-          rustup run "${{ steps.nightly.outputs.version }}" rustc --version
-          rustup run "${{ steps.nightly.outputs.version }}" cargo --version
-          cargo +${{ steps.nightly.outputs.version }} clippy --version
-      - name: Run clippy
-        run: make clippy
-
-  rustdoc:
-    name: Rustdoc
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-rustdoc-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-rustdoc-
-      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
         with:
           toolchain: ${{ env.HOST_RUST_VERSION }}
-      - name: Print Rustdoc toolchain
+          components: clippy,rustfmt
+      - name: Format, lint, and document
+        run: make format clippy doc-check
+      - name: Validate workflow syntax
         run: |
-          rustc --version
-          cargo --version
-          rustdoc --version
-      - name: Build public crate documentation with warnings denied
-        run: make doc-check
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          actionlint
+      - name: Audit workflow security
+        run: |
+          cargo install zizmor --version 1.26.1 --locked
+          zizmor .github/workflows
 
-  public_api:
-    name: Public API Baseline
+  core-host-tests:
+    name: Core host tests
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-public-api-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-public-api-
-      - name: Read pinned public API tools
-        id: versions
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+        with:
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+      - name: Run stable crate and CLI behavior
+        run: make test-host
+
+  sbf-behavior:
+    name: SBF behavior
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - name: Install supported Solana tools
+        run: scripts/install-solana-tools.sh "$SOLANA_VERSION" "$SOLANA_LINUX_SHA256"
+      - name: Exercise exact program behavior
+        run: make build-sbf test-quasar-test-standalone test-sbf-host
+
+  contracts:
+    name: Contracts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - id: versions
         run: |
           echo "nightly=$(make nightly-version)" >> "$GITHUB_OUTPUT"
           echo "public_api=$(make cargo-public-api-version)" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
         with:
           toolchain: ${{ steps.versions.outputs.nightly }}
           targets: x86_64-unknown-linux-gnu
       - uses: taiki-e/install-action@43aecc8d72668fbcfe75c31400bc4f890f1c5853 # v2
         with:
           tool: cargo-public-api@${{ steps.versions.outputs.public_api }}
-      - name: Print public API toolchain
-        run: |
-          rustc +${{ steps.versions.outputs.nightly }} --version
-          cargo --version
-          cargo public-api --version
-      - name: Reject Rust public API regressions
-        run: make check-public-api
+      - name: Check stable APIs, macros, IDL, and generated clients
+        run: make contracts
 
-  proc_macro_baseline:
-    name: Proc-macro Expansion Baseline
+  package-journey:
+    name: Package journey
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - name: Build immutable package rehearsal
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            --build-arg SOLANA_VERSION="$SOLANA_VERSION" \
+            --build-arg SOLANA_LINUX_SHA256="$SOLANA_LINUX_SHA256" \
+            --file .github/docker/release-package-rehearsal.Dockerfile \
+            --tag quasar-release-package-rehearsal:${{ github.sha }} \
+            .
+      - name: Run source-free product journey
+        run: |
+          docker run --rm \
+            --env ALLOW_MISSING_FINAL_WEB3=1 \
+            quasar-release-package-rehearsal:${{ github.sha }}
+
+  dependency-audit:
+    name: Dependency audit
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-proc-macro-baseline-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-proc-macro-baseline-
-      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
-        with:
-          toolchain: ${{ env.HOST_RUST_VERSION }}
-      - name: Print proc-macro baseline toolchain
-        run: |
-          rustc --version
-          cargo --version
-      - name: Reject proc-macro expansion regressions
-        run: make check-proc-macro-baselines
-
-  idl_wire_baseline:
-    name: IDL Wire Contract Baseline
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-idl-wire-baseline-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-idl-wire-baseline-
-      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
-        with:
-          toolchain: ${{ env.HOST_RUST_VERSION }}
-      - name: Print IDL wire baseline toolchain
-        run: |
-          rustc --version
-          cargo --version
-      - name: Reject IDL wire-contract regressions
-        run: make check-idl-wire-baselines
-
-  generated_client_baseline:
-    name: Generated Client Contract Baseline
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-generated-client-baseline-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-generated-client-baseline-
-      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
-        with:
-          toolchain: ${{ env.HOST_RUST_VERSION }}
-      - name: Print generated-client baseline toolchain
-        run: |
-          rustc --version
-          cargo --version
-      - name: Reject generated-client contract regressions
-        run: make check-generated-client-baselines
-
-  check_features:
-    name: Check Features
-    runs-on: ubuntu-24.04
-    env:
-      RUSTUP_TOOLCHAIN: 1.89.0
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-hack-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-hack-
-      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
-        with:
-          toolchain: ${{ env.PROGRAM_MSRV }}
+          persist-credentials: false
       - uses: taiki-e/install-action@43aecc8d72668fbcfe75c31400bc4f890f1c5853 # v2
         with:
-          tool: cargo-hack@${{ env.CARGO_HACK_VERSION }}
-      - name: Print feature-check toolchain
-        run: rustc --version && cargo --version && cargo hack --version
-      - name: Check all feature combinations
-        run: make check-features
-
-  workspace_policy:
-    name: Workspace Policy
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
-        with:
-          toolchain: ${{ env.HOST_RUST_VERSION }}
-      - name: Print workspace-policy toolchain
-        run: rustc --version && cargo --version
-      - name: Verify workspace lint opt-in
-        run: make check-workspace-lints
-      - name: Verify workspace invariants
-        run: make check-workspace-invariants
-      - name: Verify feature-test matrix
-        run: make check-test-matrix
-      - name: Verify immutable release dependencies
-        run: make check-release-dependencies
-      - name: Verify least-privilege release permissions
-        run: make check-release-permissions
-      - name: Verify runtime panic policy
-        run: make check-runtime-panics
-
-  # Informational (continue-on-error): mutants limited to the PR's own diff,
-  # per package with that package's oracle. A surviving mutant on changed
-  # lines is a strong review signal but not yet a blocker; the full nightly
-  # run judges everything against the shrink-only baseline.
-  mutants_in_diff:
-    name: Mutants In Diff (informational)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
-        with:
-          toolchain: ${{ env.HOST_RUST_VERSION }}
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ~/.cargo/bin/cargo-mutants
-          key: ${{ runner.os }}-cargo-mutants-${{ env.CARGO_MUTANTS_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-mutants-${{ env.CARGO_MUTANTS_VERSION }}-
-      - name: Install cargo-mutants
-        run: |
-          command -v cargo-mutants >/dev/null 2>&1 \
-            || cargo install cargo-mutants --version "$CARGO_MUTANTS_VERSION" --locked
-          cargo mutants --version
-      - name: Mutate the PR diff
-        run: |
-          git diff "origin/${{ github.base_ref }}...HEAD" > /tmp/pr.diff
-          missed=""
-          for package in $(scripts/mutants.sh packages); do
-            missed+="$(scripts/mutants.sh run-diff "$package" /tmp/pr.diff)"$'\n'
-          done
-          missed="$(printf '%s' "$missed" | grep -v '^$' || true)"
-          if [[ -n "$missed" ]]; then
-            {
-              echo '### Surviving mutants on this PR'\''s changed lines'
-              echo
-              echo 'No test catches these mutations of your changes (TESTING.md):'
-              echo '```'
-              echo "$missed"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-          echo 'No surviving mutants on changed lines.' >> "$GITHUB_STEP_SUMMARY"
-
-  package:
-    name: Package Graph (${{ matrix.host }})
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - host: Ubuntu 24.04 x86-64
-            runner: ubuntu-24.04
-            triple: x86_64-unknown-linux-gnu
-          - host: macOS 15 Apple Silicon
-            runner: macos-15
-            triple: aarch64-apple-darwin
-          - host: macOS 15 Intel
-            runner: macos-15-intel
-            triple: x86_64-apple-darwin
-    env:
-      RUSTUP_TOOLCHAIN: 1.89.0
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
-        with:
-          toolchain: ${{ env.PROGRAM_MSRV }}
-      - name: Verify host triple
-        run: |
-          actual="$(rustc -vV | sed -n 's/^host: //p')"
-          if [ "$actual" != "${{ matrix.triple }}" ]; then
-            echo "unexpected Rust host triple: $actual" >&2
-            echo "expected: ${{ matrix.triple }}" >&2
-            exit 1
-          fi
-      - name: Verify declared MSRV
-        run: make msrv-check
-      - name: Print publication toolchain
-        run: rustc --version && cargo --version
-      - name: Verify publishable crates
-        run: make package-check
-
-  security_audit:
-    name: Dependency Security Audit
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
-        with:
-          toolchain: ${{ env.HOST_RUST_VERSION }}
-      - id: audit_version
-        name: Read cargo-audit version
-        run: echo "version=$(make --no-print-directory cargo-audit-version)" >> "$GITHUB_OUTPUT"
-      - name: Install pinned cargo-audit
-        run: cargo install cargo-audit --version "${{ steps.audit_version.outputs.version }}" --locked
-      - name: Report advisories by release reachability
+          tool: cargo-audit@0.22.1
+      - name: Audit reachable release dependencies
         run: make audit
 
-  cargo_test:
-    name: Build & Test
+  safety:
+    name: Safety
+    needs: scope
+    if: needs.scope.outputs.safety == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - name: Cache Solana tools
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: ~/.cache/quasar/solana
-          key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}-${{ env.SOLANA_LINUX_SHA256 }}
-      - name: Install Solana tools (cargo-build-sbf)
-        run: |
-          scripts/install-solana-tools.sh "${{ env.SOLANA_VERSION }}" "${{ env.SOLANA_LINUX_SHA256 }}"
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-test-
-      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
-        with:
-          toolchain: ${{ env.HOST_RUST_VERSION }}
-      - name: Print build toolchains
-        run: rustc --version && cargo --version && solana --version && cargo-build-sbf --version
-      - name: Test
-        run: make test
-
-  generated_client_smoke:
-    name: Generated Client Smoke
-    needs: generated_client_scope
-    if: needs.generated_client_scope.outputs.should_run == 'true'
-    runs-on: ubuntu-24.04
-    env:
-      CC: clang-18
-      CARAVEL_INCLUDE_DIR: ${{ github.workspace }}/.caravel/include
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - name: Check out pinned Caravel headers
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          repository: joeymeere/caravel
-          ref: ${{ env.CARAVEL_REV }}
-          path: .caravel
           persist-credentials: false
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-client-smoke-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-client-smoke-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: false
-      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
-        with:
-          toolchain: ${{ env.HOST_RUST_VERSION }}
-      - name: Install pinned Python client dependency
-        run: python -m pip install --disable-pip-version-check "solders==$SOLDERS_VERSION"
-      - name: Print generated-client toolchains
-        run: |
-          rustc --version
-          cargo --version
-          node --version
-          npm --version
-          python --version
-          python -c 'import importlib.metadata; print("solders " + importlib.metadata.version("solders"))'
-          go version
-          "$CC" --version | head -1 | tee /tmp/quasar-cc-version
-          grep -F "version $C_COMPILER_VERSION" /tmp/quasar-cc-version
-          echo "TypeScript ${{ env.TYPESCRIPT_VERSION }}"
-          echo "@types/node ${{ env.NODE_TYPES_VERSION }}"
-          echo "Caravel ${{ env.CARAVEL_REV }}"
-      - name: Run generated client smoke test
-        run: make generated-client-smoke
-
-  miri:
-    name: Miri (Strict Provenance)
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-miri-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-miri-
-      - name: Get nightly toolchain version
-        id: nightly
-        run: echo "version=$(make nightly-version)" >> $GITHUB_OUTPUT
-      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
-        with:
-          toolchain: ${{ steps.nightly.outputs.version }}
-          components: miri
-      - name: Print Miri toolchain
-        run: |
-          rustup run "${{ steps.nightly.outputs.version }}" rustc --version
-          rustup run "${{ steps.nightly.outputs.version }}" cargo --version
-          cargo +${{ steps.nightly.outputs.version }} miri --version
-      - name: Run strict-provenance Miri tests
-        run: make test-miri-strict
-
-  fuzz_build:
-    name: Fuzz Targets Build
-    needs: fuzz_scope
-    if: needs.fuzz_scope.outputs.should_run == 'true'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - name: Get pinned tool versions
-        id: versions
+      - id: versions
         run: |
           echo "nightly=$(make nightly-version)" >> "$GITHUB_OUTPUT"
           echo "cargo_fuzz=$(make cargo-fuzz-version)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-fuzz-registry-v1-${{ steps.versions.outputs.cargo_fuzz }}-${{ hashFiles('lang/fuzz/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-fuzz-registry-v1-${{ steps.versions.outputs.cargo_fuzz }}-
-      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
         with:
           toolchain: ${{ steps.versions.outputs.nightly }}
-      - name: Install pinned cargo-fuzz
-        run: >-
-          cargo +${{ steps.versions.outputs.nightly }} install cargo-fuzz
-          --version ${{ steps.versions.outputs.cargo_fuzz }} --locked
-      - name: Print fuzz toolchain
+          components: miri
+      - name: Build fuzz targets
+        env:
+          NIGHTLY: ${{ steps.versions.outputs.nightly }}
+          CARGO_FUZZ: ${{ steps.versions.outputs.cargo_fuzz }}
         run: |
-          rustup run "${{ steps.versions.outputs.nightly }}" rustc --version
-          rustup run "${{ steps.versions.outputs.nightly }}" cargo --version
-          cargo fuzz --version
-      - name: Build every fuzz target
-        run: make test-fuzz-build
+          cargo +"$NIGHTLY" install cargo-fuzz --version "$CARGO_FUZZ" --locked
+          make fuzz-build
+      - name: Run unique unsafe contracts
+        run: make miri
 
   kani:
-    name: Kani (${{ matrix.crate }})
-    needs: kani_scope
-    if: needs.kani_scope.outputs.should_run == 'true'
+    name: Safety / Kani
+    needs: scope
+    if: needs.scope.outputs.safety == 'true'
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        crate: [quasar-lang, quasar-spl]
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-kani-${{ matrix.crate }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-kani-${{ matrix.crate }}-
-      - name: Install z3 (SMT solver for wide-type proofs)
-        run: sudo apt-get install -y "z3=${{ env.Z3_VERSION }}"
-      - name: Verify ${{ matrix.crate }}
+          persist-credentials: false
+      - name: Verify language and SPL proof harnesses
         uses: model-checking/kani-github-action@2534b7aeb3c6b4b0a5ecc3981bb3e63d47b5b126 # v1
         with:
-          kani-version: ${{ env.KANI_VERSION }}
-          command: cargo kani -p ${{ matrix.crate }}
-      - name: Print Kani toolchain
-        run: cargo kani --version
+          kani-version: 0.67.0
+          command: make kani
 
-  cu_benchmark_pr:
-    name: CU Benchmark Guard (PR)
-    if: github.event_name == 'pull_request'
+  performance:
+    name: Performance
+    needs: scope
+    if: needs.scope.outputs.performance == 'true'
     runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      pull-requests: write
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          fetch-depth: 0
-      - name: Cache Solana tools
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: ~/.cache/quasar/solana
-          key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}-${{ env.SOLANA_LINUX_SHA256 }}
-      - name: Install Solana tools
-        run: |
-          scripts/install-solana-tools.sh "${{ env.SOLANA_VERSION }}" "${{ env.SOLANA_LINUX_SHA256 }}"
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-bench-
-      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
-        with:
-          toolchain: ${{ env.HOST_RUST_VERSION }}
+          persist-credentials: false
+      - name: Install supported Solana tools
+        run: scripts/install-solana-tools.sh "$SOLANA_VERSION" "$SOLANA_LINUX_SHA256"
+      - name: Enforce CU and binary-size budgets
+        run: make build-sbf bench
 
-      - name: Print benchmark toolchains
-        run: rustc --version && cargo --version && solana --version && cargo-build-sbf --version
-
-      - name: Test fixed-baseline policy
-        run: make test-benchmark-policy
-
-      - name: Capture PR metrics
-        run: bash scripts/bench-tracked-programs.sh capture /tmp/pr_metrics.env
-
-      - name: Fail on tracked metric regression
-        id: perf_guard
-        run: |
-          bash scripts/bench-tracked-programs.sh compare-files benchmarks/v0.1.0.env /tmp/pr_metrics.env
-
-      - name: Post benchmark comment
-        if: always()
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
-        with:
-          script: |
-            const fs = require('fs');
-
-            function readEnv(path) {
-              const env = {};
-              for (const line of fs.readFileSync(path, 'utf8').split('\n')) {
-                if (!line || line.startsWith('#')) continue;
-                const idx = line.indexOf('=');
-                if (idx === -1) continue;
-                env[line.slice(0, idx)] = line.slice(idx + 1);
-              }
-              return env;
-            }
-
-            const baseline = readEnv('benchmarks/v0.1.0.env');
-            const pr = readEnv('/tmp/pr_metrics.env');
-            function delta(baseline, pr) {
-              const d = pr - baseline;
-              if (d === 0) return '0 ⚪';
-              return d > 0 ? `+${d} 🔴` : `${d} 🟢`;
-            }
-
-            function fmtNum(n) {
-              return n.toLocaleString('en-US');
-            }
-
-            function metric(key, source) {
-              return parseInt(source[key] || '0', 10);
-            }
-
-            const body = `## Benchmark
-
-            ### Vault
-
-            | Instruction | Baseline | PR | Delta |
-            |-------------|------|-----|-------|
-            | Deposit | ${fmtNum(metric('VAULT_DEPOSIT_CU', baseline))} | ${fmtNum(metric('VAULT_DEPOSIT_CU', pr))} | ${delta(metric('VAULT_DEPOSIT_CU', baseline), metric('VAULT_DEPOSIT_CU', pr))} |
-            | Withdraw | ${fmtNum(metric('VAULT_WITHDRAW_CU', baseline))} | ${fmtNum(metric('VAULT_WITHDRAW_CU', pr))} | ${delta(metric('VAULT_WITHDRAW_CU', baseline), metric('VAULT_WITHDRAW_CU', pr))} |
-            | Binary size | ${fmtNum(metric('VAULT_SIZE', baseline))} | ${fmtNum(metric('VAULT_SIZE', pr))} | ${delta(metric('VAULT_SIZE', baseline), metric('VAULT_SIZE', pr))} bytes |
-
-            ### Escrow
-
-            | Instruction | Baseline | PR | Delta |
-            |-------------|------|-----|-------|
-            | Make | ${fmtNum(metric('ESCROW_MAKE_CU', baseline))} | ${fmtNum(metric('ESCROW_MAKE_CU', pr))} | ${delta(metric('ESCROW_MAKE_CU', baseline), metric('ESCROW_MAKE_CU', pr))} |
-            | Take | ${fmtNum(metric('ESCROW_TAKE_CU', baseline))} | ${fmtNum(metric('ESCROW_TAKE_CU', pr))} | ${delta(metric('ESCROW_TAKE_CU', baseline), metric('ESCROW_TAKE_CU', pr))} |
-            | Refund | ${fmtNum(metric('ESCROW_REFUND_CU', baseline))} | ${fmtNum(metric('ESCROW_REFUND_CU', pr))} | ${delta(metric('ESCROW_REFUND_CU', baseline), metric('ESCROW_REFUND_CU', pr))} |
-            | Binary size | ${fmtNum(metric('ESCROW_SIZE', baseline))} | ${fmtNum(metric('ESCROW_SIZE', pr))} | ${delta(metric('ESCROW_SIZE', baseline), metric('ESCROW_SIZE', pr))} bytes |
-
-            ### Multisig
-
-            | Instruction | Baseline | PR | Delta |
-            |-------------|------|-----|-------|
-            | Create | ${fmtNum(metric('MULTISIG_CREATE_CU', baseline))} | ${fmtNum(metric('MULTISIG_CREATE_CU', pr))} | ${delta(metric('MULTISIG_CREATE_CU', baseline), metric('MULTISIG_CREATE_CU', pr))} |
-            | Deposit | ${fmtNum(metric('MULTISIG_DEPOSIT_CU', baseline))} | ${fmtNum(metric('MULTISIG_DEPOSIT_CU', pr))} | ${delta(metric('MULTISIG_DEPOSIT_CU', baseline), metric('MULTISIG_DEPOSIT_CU', pr))} |
-            | Set label | ${fmtNum(metric('MULTISIG_SET_LABEL_CU', baseline))} | ${fmtNum(metric('MULTISIG_SET_LABEL_CU', pr))} | ${delta(metric('MULTISIG_SET_LABEL_CU', baseline), metric('MULTISIG_SET_LABEL_CU', pr))} |
-            | Execute transfer | ${fmtNum(metric('MULTISIG_EXECUTE_TRANSFER_CU', baseline))} | ${fmtNum(metric('MULTISIG_EXECUTE_TRANSFER_CU', pr))} | ${delta(metric('MULTISIG_EXECUTE_TRANSFER_CU', baseline), metric('MULTISIG_EXECUTE_TRANSFER_CU', pr))} |
-            | Binary size | ${fmtNum(metric('MULTISIG_SIZE', baseline))} | ${fmtNum(metric('MULTISIG_SIZE', pr))} | ${delta(metric('MULTISIG_SIZE', baseline), metric('MULTISIG_SIZE', pr))} bytes`.replace(/^            /gm, '');
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-            const existing = comments.find(c => c.body.includes('## Benchmark'));
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
-
-  check_if_pr_commit:
-    name: Detect merged PR push
-    if: github.event_name == 'push'
+  preview-clients:
+    name: Preview clients
+    needs: scope
+    if: needs.scope.outputs.preview == 'true'
     runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      skip_bench: ${{ steps.check_pr_commit.outputs.skip_bench }}
-    steps:
-      - name: Detect PR-associated push commit
-        id: check_pr_commit
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
-        with:
-          script: |
-            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              commit_sha: context.sha,
-            });
-
-            const mergedPrs = prs.filter(pr => pr.merged_at);
-            const skipBench = mergedPrs.length > 0;
-            core.setOutput('skip_bench', skipBench ? 'true' : 'false');
-
-  cu_benchmark_push:
-    name: CU Benchmark Guard (Push)
-    needs: [check_if_pr_commit]
-    if: github.event_name == 'push' && needs.check_if_pr_commit.outputs.skip_bench != 'true'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          fetch-depth: 0
-      - name: Cache Solana tools
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+          persist-credentials: false
+      - name: Check out the pinned C client headers
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          path: ~/.cache/quasar/solana
-          key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}-${{ env.SOLANA_LINUX_SHA256 }}
-      - name: Install Solana tools
+          repository: joeymeere/caravel
+          ref: a0a88b705bc888a7ac3e8f7e506a1e997b374b4d
+          path: .caravel
+          persist-credentials: false
+      - name: Generate Python, Go, and C explicitly
         run: |
-          scripts/install-solana-tools.sh "${{ env.SOLANA_VERSION }}" "${{ env.SOLANA_LINUX_SHA256 }}"
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-bench-
-      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
-        with:
-          toolchain: ${{ env.HOST_RUST_VERSION }}
-
-      - name: Print benchmark toolchains
-        run: rustc --version && cargo --version && solana --version && cargo-build-sbf --version
-
-      - name: Test fixed-baseline policy
-        run: make test-benchmark-policy
-
-      - name: Capture push head metrics
-        run: bash scripts/bench-tracked-programs.sh capture /tmp/push_head_metrics.env
-
-      - name: Fail on tracked metric regression
-        run: |
-          bash scripts/bench-tracked-programs.sh compare-files benchmarks/v0.1.0.env /tmp/push_head_metrics.env
+          root="$(pwd)"
+          temp="$(mktemp -d)"
+          cp idl/tests/fixtures/programs/multisig.idl.json "$temp/multisig.json"
+          cat >"$temp/Quasar.toml" <<'EOF'
+          [project]
+          name = "preview"
+          [clients]
+          path = "target/client"
+          EOF
+          cd "$temp"
+          cargo run --manifest-path "$root/cli/Cargo.toml" -- client multisig.json --target python
+          cargo run --manifest-path "$root/cli/Cargo.toml" -- client multisig.json --target go
+          cargo run --manifest-path "$root/cli/Cargo.toml" -- client multisig.json --target c
+          python3 -m py_compile target/client/python/*/*.py
+          (cd target/client/go/* && go mod tidy && go test ./...)
+          header="$(find target/client/c -name client.h -print -quit)"
+          printf '#include "%s"\nint main(void) { return 0; }\n' "$header" \
+            | clang -I "$root/.caravel/include" -x c -fsyntax-only -
