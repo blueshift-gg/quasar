@@ -2141,16 +2141,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "quasar-metadata"
-version = "0.1.0"
-dependencies = [
- "quasar-lang",
- "solana-address 2.2.0",
- "solana-program-error",
- "trybuild",
-]
-
-[[package]]
 name = "quasar-multisig"
 version = "0.1.0"
 dependencies = [
@@ -2325,15 +2315,6 @@ name = "quasar-test-heap"
 version = "0.1.0"
 dependencies = [
  "quasar-lang",
-]
-
-[[package]]
-name = "quasar-test-metadata-validate"
-version = "0.1.0"
-dependencies = [
- "quasar-lang",
- "quasar-metadata",
- "quasar-spl",
 ]
 
 [[package]]
@@ -4191,24 +4172,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "382810877fe448991dfc7f0dd6e3ae5d58088fd0ea5e35189655f84e6814fa56"
 dependencies = [
  "void",
-]
-
-[[package]]
-name = "upstream-vault"
-version = "0.1.0"
-dependencies = [
- "quasar-lang",
- "quasar-svm 0.1.0 (git+https://github.com/blueshift-gg/quasar-svm)",
- "upstream-vault-client",
-]
-
-[[package]]
-name = "upstream-vault-client"
-version = "0.1.0"
-dependencies = [
- "solana-address 2.2.0",
- "solana-instruction",
- "wincode 0.4.9",
 ]
 
 [[package]]

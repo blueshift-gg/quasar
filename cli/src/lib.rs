@@ -16,7 +16,6 @@ pub mod idl;
 pub mod init;
 pub mod keys;
 pub mod lint;
-pub mod new;
 mod output;
 mod program_keypair;
 pub mod style;
@@ -42,8 +41,6 @@ pub struct Cli {
 pub enum Command {
     /// Scaffold a new Quasar project
     Init(InitCommand),
-    /// Add instructions, state, and errors to the project
-    Add(AddCommand),
     /// Compile the on-chain program
     Build(BuildCommand),
     /// Run the test suite
@@ -111,21 +108,6 @@ pub struct InitCommand {
     /// Show each scaffold step as it runs
     #[arg(long, action = ArgAction::SetTrue)]
     pub verbose: bool,
-}
-
-#[derive(Args, Debug)]
-pub struct AddCommand {
-    /// Add a new instruction handler
-    #[arg(short, long, value_name = "NAME")]
-    pub instruction: Option<String>,
-
-    /// Add a new state account
-    #[arg(short, long, value_name = "NAME")]
-    pub state: Option<String>,
-
-    /// Add a new error enum
-    #[arg(short, long, value_name = "NAME")]
-    pub error: Option<String>,
 }
 
 #[derive(Args, Debug, Default)]
@@ -429,23 +411,6 @@ pub struct CompletionsCommand {
 pub fn run(cli: Cli) -> CliResult {
     match cli.command {
         Command::Init(cmd) => init::run(cmd),
-        Command::Add(cmd) => {
-            if cmd.instruction.is_none() && cmd.state.is_none() && cmd.error.is_none() {
-                return Err(error::CliError::message(
-                    "specify at least one of -i/--instruction, -s/--state, or -e/--error",
-                ));
-            }
-            if let Some(name) = cmd.instruction {
-                new::run_instruction(&name)?;
-            }
-            if let Some(name) = cmd.state {
-                new::run_state(&name)?;
-            }
-            if let Some(name) = cmd.error {
-                new::run_error(&name)?;
-            }
-            Ok(())
-        }
         Command::Build(cmd) => build::run(cmd.debug, cmd.verbose, cmd.watch, cmd.features),
         Command::Test(cmd) => test::run(
             cmd.debug,
@@ -541,10 +506,6 @@ pub fn print_help() {
     print_cmd(
         "init    [name] [-y] [--no-git] [--template] [--verbose]",
         "Scaffold a new project",
-    );
-    print_cmd(
-        "add     [-i name] [-s name] [-e name]",
-        "Add instructions, state, errors",
     );
     print_cmd(
         "build   [--debug] [--verbose] [-w] [--features]",

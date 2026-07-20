@@ -27,10 +27,10 @@ SBF_TEST_PROGRAMS := tests/programs/test-misc tests/programs/test-errors \
 	tests/programs/test-token-cpi tests/programs/test-token-init \
 	tests/programs/test-token-validate tests/programs/test-sysvar \
 	tests/programs/test-one-of tests/programs/test-migrate \
-	tests/programs/test-raw tests/programs/test-metadata-validate
+	tests/programs/test-raw
 
 # Example programs that produce SBF binaries
-SBF_EXAMPLES := examples/vault examples/escrow examples/multisig examples/upstream-vault
+SBF_EXAMPLES := examples/vault examples/escrow examples/multisig
 
 # All SBF programs
 SBF_ALL := $(SBF_EXAMPLES) $(SBF_TEST_PROGRAMS)
@@ -39,7 +39,7 @@ SBF_ALL := $(SBF_EXAMPLES) $(SBF_TEST_PROGRAMS)
 # workflow; `package-check` proves the complete publication graph packages.
 PUBLISH_PACKAGES := quasar-schema quasar-idl-schema quasar-profile \
 	quasar-test-derive solana-compiler-builtins quasar-derive quasar-idl \
-	quasar-lang quasar-test quasar-spl quasar-metadata quasar-cli
+	quasar-lang quasar-test quasar-spl quasar-cli
 
 # Publishable crates whose ordinary host tests can run without the generated
 # client toolchains. The CLI smoke target is delegated below because it needs
@@ -47,8 +47,7 @@ PUBLISH_PACKAGES := quasar-schema quasar-idl-schema quasar-profile \
 HOST_TEST_PACKAGES := $(filter-out quasar-cli,$(PUBLISH_PACKAGES))
 
 # Host-side tests that consume freshly built SBF artifacts.
-SBF_HOST_TEST_PACKAGES := quasar-vault quasar-escrow quasar-multisig \
-	upstream-vault quasar-test-suite
+SBF_HOST_TEST_PACKAGES := quasar-vault quasar-escrow quasar-multisig quasar-test-suite
 
 # Resolve first-release internal dependencies while checking package manifests.
 # These patches are command-local and never enter the published archives.
@@ -61,11 +60,9 @@ PACKAGE_PATCHES := \
 	--config 'patch.crates-io.quasar-idl.path="idl"' \
 	--config 'patch.crates-io.quasar-lang.path="lang"' \
 	--config 'patch.crates-io.quasar-test.path="testing"' \
-	--config 'patch.crates-io.quasar-spl.path="spl"' \
-	--config 'patch.crates-io.quasar-metadata.path="metadata"'
+	--config 'patch.crates-io.quasar-spl.path="spl"'
 
 PACKAGE_REHEARSAL_ROOT ?= target/release-rehearsal
-TYPESCRIPT_TEST_DIR := testing/typescript
 
 .PHONY: format format-fix clippy clippy-fix check-features check-workspace-lints \
 	check-runtime-panics check-workspace-invariants check-test-silence \
@@ -81,12 +78,11 @@ TYPESCRIPT_TEST_DIR := testing/typescript
 	check-idl-wire-baselines bless-idl-wire-baselines \
 	check-generated-client-baselines bless-generated-client-baselines \
 	test-audit-policy generated-client-smoke \
-	test-typescript-package typescript-package-check \
 	check-release-dependencies test-release-dependency-policy \
 	check-release-permissions test-release-permission-policy \
 	test-matrix check-test-matrix coverage \
 	mutants mutants-bless kani help-kani check-kani kani-lang \
-	kani-spl kani-metadata msrv-check package-check package-rehearsal audit
+	kani-spl msrv-check package-check package-rehearsal audit
 
 # Print the nightly toolchain version for CI
 nightly-version:
@@ -257,8 +253,8 @@ check-suite-oracles:
 check-test-silence:
 	@viol="$$(rg -n 'println!|eprintln!' tests/suite/src \
 	  examples/vault/src/tests.rs examples/escrow/src/tests.rs \
-	  examples/multisig/src/tests.rs examples/upstream-vault/src/tests.rs \
-	  lang/tests derive/tests spl/tests metadata/tests idl/tests cli/tests \
+	  examples/multisig/src/tests.rs \
+	  lang/tests derive/tests spl/tests idl/tests cli/tests \
 	  testing/src \
 	  -g '!compile_fail/**' -g '!compile_pass/**' \
 	  || true)"; \
@@ -463,14 +459,6 @@ test-bless:
 generated-client-smoke:
 	@cargo test -p quasar-cli --test generated_clients_smoke -- --nocapture --test-threads=1
 
-test-typescript-package:
-	@npm ci --prefix "$(TYPESCRIPT_TEST_DIR)"
-	@npm run --prefix "$(TYPESCRIPT_TEST_DIR)" check-types
-	@npm test --prefix "$(TYPESCRIPT_TEST_DIR)"
-
-typescript-package-check:
-	@cd "$(TYPESCRIPT_TEST_DIR)" && npm pack --dry-run
-
 package-check: check-package-metadata
 	@# First-release internal dependencies are not on crates.io yet. `msrv-check`
 	@# compiles the source graph; #283 rehearses the packaged graph locally.
@@ -595,8 +583,6 @@ test-miri:
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri
 	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri
-	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check" \
-		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-metadata --test miri
 
 test-miri-strict:
 	@MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
@@ -607,8 +593,6 @@ test-miri-strict:
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri
 	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri
-	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
-		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-metadata --test miri
 
 # Feature -> test traceability (TESTING.md): the grid of what is tested and
 # how. check mode fails on an empty required cell, manifest drift, or a suite
@@ -649,10 +633,7 @@ kani-lang: check-kani
 kani-spl: check-kani
 	@cargo kani -p quasar-spl
 
-kani-metadata: check-kani
-	@cargo kani -p quasar-metadata
-
-kani: kani-lang kani-spl kani-metadata
+kani: kani-lang kani-spl
 
 # Run all checks in sequence
 test-all:

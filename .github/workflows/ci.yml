@@ -87,7 +87,6 @@ jobs:
             kani:
               - 'lang/**'
               - 'spl/**'
-              - 'metadata/**'
               - 'Cargo.lock'
               - 'Cargo.toml'
               - '.github/workflows/ci.yml'
@@ -508,23 +507,6 @@ jobs:
       - name: Test
         run: make test
 
-  typescript_test:
-    name: TypeScript Test SDK
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: testing/typescript/package-lock.json
-      - name: Print TypeScript test toolchain
-        run: node --version && npm --version
-      - name: Test TypeScript SDK
-        run: make test-typescript-package
-      - name: Verify TypeScript package
-        run: make typescript-package-check
-
   generated_client_smoke:
     name: Generated Client Smoke
     needs: generated_client_scope
@@ -656,7 +638,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        crate: [quasar-lang, quasar-spl, quasar-metadata]
+        crate: [quasar-lang, quasar-spl]
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
