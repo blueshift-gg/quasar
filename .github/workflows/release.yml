@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PROGRAM_MSRV: 1.89.0
+  HOST_RUST_VERSION: 1.92.0
   SOLANA_VERSION: v4.1.1
   SOLANA_LINUX_SHA256: a5c8e74b8ffa9ce906872b812849057c7fb21cf036ba08f219eb335e20fa4fb3
   CARGO_TERM_COLOR: always
@@ -51,13 +51,36 @@ jobs:
       - name: Run package rehearsal
         run: docker run --rm quasar-release-package-rehearsal:${{ github.sha }}
 
+      - name: Export the rehearsed package archives
+        run: |
+          image="quasar-release-package-rehearsal:${{ github.sha }}"
+          container="$(docker create "$image")"
+          trap 'docker rm -f "$container" >/dev/null' EXIT
+          mkdir -p target/release-packages
+          docker cp \
+            "$container:/opt/quasar-release-rehearsal/archives/." \
+            target/release-packages/
+          docker cp \
+            "$container:/opt/quasar-release-rehearsal/manifest.json" \
+            target/release-packages/manifest.json
+          docker rm "$container" >/dev/null
+          trap - EXIT
+
+      - name: Preserve the exact rehearsed archives
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: quasar-release-packages-${{ github.sha }}
+          path: target/release-packages
+          if-no-files-found: error
+          retention-days: 1
+
   # ── Publish crates to crates.io in dependency order ──
   publish:
     name: Publish to crates.io
     needs: [ci, package-rehearsal]
     runs-on: ubuntu-24.04
     env:
-      RUSTUP_TOOLCHAIN: 1.89.0
+      RUSTUP_TOOLCHAIN: 1.92.0
     # This is the sole job that consumes the v0.1.0 bootstrap token. #330
     # configures its environment protection; #287 replaces it with OIDC.
     environment: crates-io
@@ -67,7 +90,13 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
-          toolchain: ${{ env.PROGRAM_MSRV }}
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+
+      - name: Restore the rehearsed package archives
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: quasar-release-packages-${{ github.sha }}
+          path: target/release-packages
 
       - name: Print publication toolchain
         run: rustc --version && cargo --version
@@ -83,9 +112,6 @@ jobs:
             exit 1
           fi
           echo "QUASAR_VERSION=${version}" >> "$GITHUB_ENV"
-
-      - name: Package release graph
-        run: cargo run --locked -p quasar-release-tool -- package --output target/release-packages
 
       - name: Publish release graph
         run: cargo run --locked -p quasar-release-tool -- publish --version "$QUASAR_VERSION" # zizmor: ignore[use-trusted-publishing] bootstrap token until crates.io OIDC migration

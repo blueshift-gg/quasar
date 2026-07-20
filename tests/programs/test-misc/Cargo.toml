@@ -12,6 +12,7 @@ doctest = false
 workspace = true
 
 [features]
+default = ["alloc", "debug"]
 client = []
 debug = []
 alloc = []

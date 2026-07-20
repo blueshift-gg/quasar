@@ -59,6 +59,8 @@ ENV HOME=/home/quasar
 
 COPY --from=packager /opt/quasar-cli /opt/quasar-cli
 COPY --from=packager /opt/quasar-release-rehearsal /opt/quasar-release-rehearsal
+COPY idl/tests/fixtures/programs/client-conformance.idl.json /opt/quasar-client-conformance/program.idl.json
+COPY idl/tests/client-conformance /opt/quasar-client-conformance
 COPY .github/scripts/release-package-rehearsal.sh /usr/local/bin/quasar-release-package-rehearsal
 
 RUN quasar --version \
@@ -72,6 +74,8 @@ RUN quasar --version \
     && cp /opt/quasar-release-rehearsal/cargo-config.toml /rehearsal/.cargo/config.toml \
     && find /opt/quasar-release-rehearsal -type f -exec chmod 0444 {} + \
     && find /opt/quasar-release-rehearsal -type d -exec chmod 0555 {} + \
+    && find /opt/quasar-client-conformance -type f -exec chmod 0444 {} + \
+    && find /opt/quasar-client-conformance -type d -exec chmod 0555 {} + \
     && chmod 0444 /rehearsal/.cargo/config.toml \
     && chmod 0555 /rehearsal/.cargo \
     && rm -rf /usr/local/cargo/registry/cache \

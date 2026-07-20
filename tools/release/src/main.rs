@@ -33,6 +33,15 @@ enum ReleaseCommand {
         #[arg(long)]
         output: PathBuf,
     },
+    /// Verify and unpack packaged crates for source-free rehearsal.
+    Prepare {
+        /// Directory containing archives and manifest.json.
+        #[arg(long)]
+        input: PathBuf,
+        /// Empty directory that receives archives, sources, and Cargo patches.
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Publish the packaged graph tier by tier.
     Publish {
         /// Lockstep workspace version and expected vVERSION tag.
@@ -143,6 +152,7 @@ fn run(cli: Cli) -> Result<(), String> {
             Ok(())
         }
         ReleaseCommand::Package { output } => package(&metadata, &graph, &output),
+        ReleaseCommand::Prepare { input, output } => prepare_rehearsal(&graph, &input, &output),
         ReleaseCommand::Publish { version } => publish(&metadata, &graph, &version),
     }
 }
@@ -339,53 +349,9 @@ fn package(
     let cargo_package_dir = metadata.target_directory.join("package");
     let mut packaged = Vec::new();
     for package in &graph.packages {
-        let patch_names = dependency_closure(graph, &package.name);
-        let patch_args = graph
-            .packages
-            .iter()
-            .filter(|candidate| patch_names.contains(&candidate.name))
-            .map(|candidate| {
-                let package_dir =
-                    metadata
-                        .workspace_root
-                        .join(candidate.manifest_path.parent().ok_or_else(|| {
-                            format!(
-                                "manifest has no parent: {}",
-                                candidate.manifest_path.display()
-                            )
-                        })?);
-                Ok(format!(
-                    "patch.crates-io.{}.path={:?}",
-                    candidate.name,
-                    package_dir.to_string_lossy()
-                ))
-            })
-            .collect::<Result<Vec<_>, String>>()?;
         let archive_name = format!("{}-{}.crate", package.name, package.version);
-        let cargo_archive = cargo_package_dir.join(&archive_name);
-        if cargo_archive.exists() {
-            fs::remove_file(&cargo_archive)
-                .map_err(|error| format!("remove stale {}: {error}", cargo_archive.display()))?;
-        }
-
-        let mut command = Command::new("cargo");
-        command.current_dir(&metadata.workspace_root).args([
-            "package",
-            "--locked",
-            "--no-verify",
-            "-p",
-            &package.name,
-        ]);
-        for patch in &patch_args {
-            command.args(["--config", patch]);
-        }
-        command_status(&mut command, &format!("package {}", package.name))?;
-        if !cargo_archive.is_file() {
-            return Err(format!(
-                "cargo did not create expected archive {}",
-                cargo_archive.display()
-            ));
-        }
+        let cargo_archive = create_cargo_archive(metadata, graph, package)?;
+        debug_assert_eq!(cargo_archive, cargo_package_dir.join(&archive_name));
 
         let output_archive = output_dir.join(&archive_name);
         fs::copy(&cargo_archive, &output_archive).map_err(|error| {
@@ -423,6 +389,66 @@ fn package(
     Ok(())
 }
 
+fn create_cargo_archive(
+    metadata: &CargoMetadata,
+    graph: &ReleaseGraph,
+    package: &ReleasePackage,
+) -> Result<PathBuf, String> {
+    let archive_name = format!("{}-{}.crate", package.name, package.version);
+    let cargo_archive = metadata.target_directory.join("package").join(archive_name);
+    if cargo_archive.exists() {
+        fs::remove_file(&cargo_archive)
+            .map_err(|error| format!("remove stale {}: {error}", cargo_archive.display()))?;
+    }
+
+    let mut command = Command::new("cargo");
+    command.current_dir(&metadata.workspace_root).args([
+        "package",
+        "--locked",
+        "--no-verify",
+        "-p",
+        &package.name,
+    ]);
+    for patch in package_patch_args(metadata, graph, package)? {
+        command.args(["--config", &patch]);
+    }
+    command_status(&mut command, &format!("package {}", package.name))?;
+    if !cargo_archive.is_file() {
+        return Err(format!(
+            "cargo did not create expected archive {}",
+            cargo_archive.display()
+        ));
+    }
+    Ok(cargo_archive)
+}
+
+fn package_patch_args(
+    metadata: &CargoMetadata,
+    graph: &ReleaseGraph,
+    package: &ReleasePackage,
+) -> Result<Vec<String>, String> {
+    let patch_names = dependency_closure(graph, &package.name);
+    graph
+        .packages
+        .iter()
+        .filter(|candidate| patch_names.contains(&candidate.name))
+        .map(|candidate| {
+            let parent = candidate.manifest_path.parent().ok_or_else(|| {
+                format!(
+                    "manifest has no parent: {}",
+                    candidate.manifest_path.display()
+                )
+            })?;
+            let package_dir = metadata.workspace_root.join(parent);
+            Ok(format!(
+                "patch.crates-io.{}.path={:?}",
+                candidate.name,
+                package_dir.to_string_lossy()
+            ))
+        })
+        .collect()
+}
+
 fn dependency_closure(graph: &ReleaseGraph, root: &str) -> BTreeSet<String> {
     let packages = graph
         .packages
@@ -442,6 +468,81 @@ fn dependency_closure(graph: &ReleaseGraph, root: &str) -> BTreeSet<String> {
         }
     }
     closure
+}
+
+fn prepare_rehearsal(
+    graph: &ReleaseGraph,
+    input_dir: &Path,
+    output_dir: &Path,
+) -> Result<(), String> {
+    if output_dir.exists() {
+        return Err(format!(
+            "rehearsal output already exists: {}",
+            output_dir.display()
+        ));
+    }
+    let manifest_path = input_dir.join("manifest.json");
+    let manifest = read_package_manifest(&manifest_path)?;
+    verify_package_manifest(graph, &manifest, input_dir)?;
+
+    let archives_dir = output_dir.join("archives");
+    let packages_dir = output_dir.join("packages");
+    fs::create_dir_all(&archives_dir)
+        .map_err(|error| format!("create {}: {error}", archives_dir.display()))?;
+    fs::create_dir_all(&packages_dir)
+        .map_err(|error| format!("create {}: {error}", packages_dir.display()))?;
+    let output_dir = fs::canonicalize(output_dir)
+        .map_err(|error| format!("canonicalize {}: {error}", output_dir.display()))?;
+    let archives_dir = output_dir.join("archives");
+    let packages_dir = output_dir.join("packages");
+
+    let mut cargo_config = String::from("[patch.crates-io]\n");
+    let mut inventory = String::from("package\tversion\tarchive\n");
+    for package in &manifest.packages {
+        let source_archive = input_dir.join(&package.archive);
+        let output_archive = archives_dir.join(&package.archive);
+        fs::copy(&source_archive, &output_archive).map_err(|error| {
+            format!(
+                "copy {} to {}: {error}",
+                source_archive.display(),
+                output_archive.display()
+            )
+        })?;
+        command_status(
+            Command::new("tar")
+                .args(["-xzf"])
+                .arg(&output_archive)
+                .arg("-C")
+                .arg(&packages_dir),
+            &format!("unpack {}", package.archive),
+        )?;
+
+        let package_dir = packages_dir.join(format!("{}-{}", package.name, package.version));
+        if !package_dir.join("Cargo.toml").is_file() || !package_dir.join("Cargo.lock").is_file() {
+            return Err(format!(
+                "{} is missing its normalized manifest or lockfile",
+                package.archive
+            ));
+        }
+        cargo_config.push_str(&format!(
+            "{} = {{ path = {:?} }}\n",
+            package.name,
+            package_dir.to_string_lossy()
+        ));
+        inventory.push_str(&format!(
+            "{}\t{}\t{}\n",
+            package.name, package.version, package.archive
+        ));
+    }
+
+    fs::write(output_dir.join("cargo-config.toml"), cargo_config)
+        .map_err(|error| format!("write rehearsal Cargo config: {error}"))?;
+    fs::write(output_dir.join("packages.tsv"), inventory)
+        .map_err(|error| format!("write rehearsal package inventory: {error}"))?;
+    fs::copy(&manifest_path, output_dir.join("manifest.json"))
+        .map_err(|error| format!("copy package manifest: {error}"))?;
+    println!("{}", output_dir.display());
+    Ok(())
 }
 
 fn publish(
@@ -465,21 +566,9 @@ fn publish(
                 .workspace_root
                 .join("target/release-packages/manifest.json")
         });
-    let manifest: PackageManifest =
-        serde_json::from_slice(&fs::read(&manifest_path).map_err(|error| {
-            format!("read package manifest {}: {error}", manifest_path.display())
-        })?)
-        .map_err(|error| {
-            format!(
-                "parse package manifest {}: {error}",
-                manifest_path.display()
-            )
-        })?;
-    verify_package_manifest(
-        graph,
-        &manifest,
-        manifest_path.parent().unwrap_or(Path::new(".")),
-    )?;
+    let manifest = read_package_manifest(&manifest_path)?;
+    let archive_dir = manifest_path.parent().unwrap_or(Path::new("."));
+    verify_package_manifest(graph, &manifest, archive_dir)?;
 
     for tier in &graph.tiers {
         for name in tier {
@@ -488,9 +577,29 @@ fn publish(
                 .iter()
                 .find(|package| &package.name == name)
                 .expect("verified package manifest");
-            if published_checksum(name, requested_version)? == Some(packaged.sha256.clone()) {
-                println!("{name}@{requested_version} already published with matching contents");
-                continue;
+            if let Some(checksum) = published_checksum(name, requested_version)? {
+                if checksum == packaged.sha256 {
+                    println!("{name}@{requested_version} already published with matching contents");
+                    continue;
+                }
+                return Err(format!(
+                    "{name}@{requested_version} is already published with checksum {checksum}, \
+                     expected {}",
+                    packaged.sha256
+                ));
+            }
+            let package = graph
+                .packages
+                .iter()
+                .find(|package| &package.name == name)
+                .expect("verified release graph");
+            let repackaged = create_cargo_archive(metadata, graph, package)?;
+            let repackaged_checksum = sha256_file(&repackaged)?;
+            if repackaged_checksum != packaged.sha256 {
+                return Err(format!(
+                    "workspace repackaged {} as {repackaged_checksum}, but rehearsal approved {}",
+                    package.name, packaged.sha256
+                ));
             }
             let mut command = Command::new("cargo");
             command
@@ -499,10 +608,23 @@ fn publish(
             command_status(&mut command, &format!("publish {name}"))?;
         }
         for name in tier {
-            wait_for_crate(name, requested_version)?;
+            let expected = manifest
+                .packages
+                .iter()
+                .find(|package| &package.name == name)
+                .expect("verified package manifest");
+            wait_for_crate(name, requested_version, &expected.sha256)?;
         }
     }
     Ok(())
+}
+
+fn read_package_manifest(path: &Path) -> Result<PackageManifest, String> {
+    serde_json::from_slice(
+        &fs::read(path)
+            .map_err(|error| format!("read package manifest {}: {error}", path.display()))?,
+    )
+    .map_err(|error| format!("parse package manifest {}: {error}", path.display()))
 }
 
 fn verify_package_manifest(
@@ -643,10 +765,17 @@ fn published_checksum(name: &str, version: &str) -> Result<Option<String>, Strin
         .map(str::to_owned))
 }
 
-fn wait_for_crate(name: &str, version: &str) -> Result<(), String> {
+fn wait_for_crate(name: &str, version: &str, expected_checksum: &str) -> Result<(), String> {
     for _ in 0..60 {
-        if published_checksum(name, version)?.is_some() {
-            return Ok(());
+        if let Some(checksum) = published_checksum(name, version)? {
+            return if checksum == expected_checksum {
+                Ok(())
+            } else {
+                Err(format!(
+                    "{name}@{version} was published with checksum {checksum}, expected \
+                     {expected_checksum}"
+                ))
+            };
         }
         thread::sleep(Duration::from_secs(5));
     }
@@ -689,8 +818,8 @@ fn command_status(command: &mut Command, action: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use {
-        super::{build_graph, Candidate, CandidateDependency},
-        std::path::PathBuf,
+        super::*,
+        std::{fs, path::PathBuf, process::Command},
     };
 
     fn package(name: &str, dependencies: &[(&str, &str)], publishable: bool) -> Candidate {
@@ -777,5 +906,125 @@ mod tests {
         ])
         .unwrap_err();
         assert!(error.contains("exact pin `=0.1.0`"), "{error}");
+    }
+
+    #[test]
+    fn cargo_metadata_is_the_only_package_inventory() {
+        let root = PathBuf::from("/workspace");
+        let package = |name: &str, publish: Option<Vec<String>>| CargoPackage {
+            id: format!("{name} 0.1.0 (path+file:///workspace/{name})"),
+            name: name.to_owned(),
+            version: "0.1.0".to_owned(),
+            manifest_path: root.join(name).join("Cargo.toml"),
+            publish,
+            dependencies: Vec::new(),
+        };
+        let with_fixture = CargoMetadata {
+            packages: vec![
+                package("core", None),
+                package("temporary-fixture", None),
+                package("internal-tool", Some(Vec::new())),
+            ],
+            workspace_members: vec![
+                "core 0.1.0 (path+file:///workspace/core)".to_owned(),
+                "temporary-fixture 0.1.0 (path+file:///workspace/temporary-fixture)".to_owned(),
+                "internal-tool 0.1.0 (path+file:///workspace/internal-tool)".to_owned(),
+            ],
+            workspace_root: root.clone(),
+            target_directory: root.join("target"),
+        };
+
+        let candidates = candidates_from_metadata(&with_fixture).unwrap();
+        let graph = build_graph(&candidates).unwrap();
+        assert_eq!(
+            graph
+                .packages
+                .iter()
+                .map(|package| package.name.as_str())
+                .collect::<Vec<_>>(),
+            ["core", "temporary-fixture"]
+        );
+        assert_eq!(
+            graph.packages[1].manifest_path,
+            PathBuf::from("temporary-fixture/Cargo.toml")
+        );
+
+        let without_fixture = CargoMetadata {
+            packages: with_fixture
+                .packages
+                .into_iter()
+                .filter(|package| package.name != "temporary-fixture")
+                .collect(),
+            workspace_members: with_fixture
+                .workspace_members
+                .into_iter()
+                .filter(|member| !member.starts_with("temporary-fixture "))
+                .collect(),
+            workspace_root: root.clone(),
+            target_directory: root.join("target"),
+        };
+        let graph = build_graph(&candidates_from_metadata(&without_fixture).unwrap()).unwrap();
+        assert_eq!(graph.packages.len(), 1);
+        assert_eq!(graph.packages[0].name, "core");
+    }
+
+    #[test]
+    fn rehearsal_preparation_uses_exact_manifest_archives() {
+        let sandbox = tempfile::tempdir().unwrap();
+        let input = sandbox.path().join("input");
+        let source = sandbox.path().join("source");
+        let output = sandbox.path().join("output");
+        let package_root = source.join("base-0.1.0");
+        fs::create_dir_all(&input).unwrap();
+        fs::create_dir_all(&package_root).unwrap();
+        fs::write(
+            package_root.join("Cargo.toml"),
+            "[package]\nname = \"base\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        fs::write(package_root.join("Cargo.lock"), "version = 4\n").unwrap();
+        let archive = input.join("base-0.1.0.crate");
+        let status = Command::new("tar")
+            .arg("-czf")
+            .arg(&archive)
+            .arg("-C")
+            .arg(&source)
+            .arg("base-0.1.0")
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        let graph = build_graph(&[package("base", &[], true)]).unwrap();
+        let manifest = PackageManifest {
+            version: "0.1.0".to_owned(),
+            packages: vec![PackagedCrate {
+                name: "base".to_owned(),
+                version: "0.1.0".to_owned(),
+                tier: 0,
+                archive: "base-0.1.0.crate".to_owned(),
+                sha256: sha256_file(&archive).unwrap(),
+                dependencies: Vec::new(),
+            }],
+        };
+        fs::write(
+            input.join("manifest.json"),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+
+        prepare_rehearsal(&graph, &input, &output).unwrap();
+
+        assert_eq!(
+            fs::read(output.join("archives/base-0.1.0.crate")).unwrap(),
+            fs::read(&archive).unwrap()
+        );
+        assert!(output.join("packages/base-0.1.0/Cargo.toml").is_file());
+        let config = fs::read_to_string(output.join("cargo-config.toml")).unwrap();
+        assert!(config.contains("base = { path = "));
+        let inventory = fs::read_to_string(output.join("packages.tsv")).unwrap();
+        assert_eq!(
+            inventory,
+            "package\tversion\tarchive\nbase\t0.1.0\tbase-0.1.0.crate\n"
+        );
     }
 }

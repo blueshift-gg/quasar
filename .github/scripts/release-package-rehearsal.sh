@@ -3,6 +3,7 @@ set -euo pipefail
 
 readonly rehearsal_root="/rehearsal/projects"
 readonly package_root="/opt/quasar-release-rehearsal"
+readonly conformance_root="/opt/quasar-client-conformance"
 readonly project="$rehearsal_root/canonical"
 readonly source_fingerprint_before="/tmp/quasar-package-sources.before"
 readonly source_fingerprint_after="/tmp/quasar-package-sources.after"
@@ -53,12 +54,14 @@ EOF
 }
 
 typecheck_typescript_client() {
-  local target="$1"
-  local expected_package="$2"
-  local expected_range="$3"
-  local expected_major="$4"
+  local clients_root="$1"
+  local target="$2"
+  local expected_package="$3"
+  local expected_range="$4"
+  local expected_major="$5"
+  local contract="$6"
   local client_dir
-  client_dir="$(find "target/client/$target" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+  client_dir="$(find "$clients_root/$target" -mindepth 1 -maxdepth 1 -type d -print -quit)"
   [[ -n "$client_dir" ]] || fail "$target client was not generated"
   jq -e --arg package "$expected_package" --arg range "$expected_range" \
     '.dependencies[$package] == $range' "$client_dir/package.json" >/dev/null \
@@ -66,10 +69,13 @@ typecheck_typescript_client() {
 
   (
     cd "$client_dir"
+    cp "$contract" conformance.ts
     npm install --ignore-scripts --no-audit --no-fund
-    npm install --ignore-scripts --no-audit --no-fund --no-save typescript@5.9.3
+    npm install --ignore-scripts --no-audit --no-fund --no-save \
+      typescript@5.9.3 tsx@4.20.6
     npx tsc --noEmit --target ES2022 --module NodeNext \
-      --moduleResolution NodeNext --skipLibCheck client.ts
+      --moduleResolution NodeNext --skipLibCheck --strict client.ts conformance.ts
+    npx tsx conformance.ts
     resolved="$(node -p "require('./node_modules/$expected_package/package.json').version")"
     [[ "$resolved" != *-* ]] || fail "$target resolved a prerelease dependency: $resolved"
     case "$resolved" in
@@ -96,6 +102,16 @@ assert_no_credentials
 fingerprint_package_sources >"$source_fingerprint_before"
 
 rm -rf "$rehearsal_root"/*
+while IFS=$'\t' read -r package version archive; do
+  [[ "$package" != "package" ]] || continue
+  package_dir="$package_root/packages/$package-$version"
+  CARGO_TARGET_DIR="$rehearsal_root/archive-check-target" \
+    cargo check --manifest-path "$package_dir/Cargo.toml" \
+      --locked --all-features --all-targets \
+    || fail "packaged crate did not compile: $archive"
+done <"$package_root/packages.tsv"
+rm -rf "$rehearsal_root/archive-check-target"
+
 cd "$rehearsal_root"
 quasar init canonical --no-git
 cd "$project"
@@ -138,10 +154,27 @@ rust_client="$(find target/client/rust -name Cargo.toml -print -quit)"
 [[ -n "$rust_client" ]] || fail "Rust client manifest was not generated"
 cargo check --manifest-path "$rust_client" --locked
 
+conformance_project="$rehearsal_root/client-conformance"
+mkdir -p "$conformance_project"
+cat >"$conformance_project/Quasar.toml" <<'EOF'
+[project]
+name = "client-conformance"
+
+[clients]
+path = "target/client"
+EOF
+(
+  cd "$conformance_project"
+  quasar client "$conformance_root/program.idl.json"
+)
+conformance_clients="$conformance_project/target/client"
+
 npm view '@solana/kit@7.0.0' version | grep -Fx '7.0.0' >/dev/null
-typecheck_typescript_client kit '@solana/kit' '^7.0.0' 7
+typecheck_typescript_client \
+  "$conformance_clients" kit '@solana/kit' '^7.0.0' 7 "$conformance_root/kit.ts"
 if npm view '@solana/web3.js@3.0.0' version 2>/dev/null | grep -Fx '3.0.0' >/dev/null; then
-  typecheck_typescript_client web3 '@solana/web3.js' '^3.0.0' 3
+  typecheck_typescript_client \
+    "$conformance_clients" web3 '@solana/web3.js' '^3.0.0' 3 "$conformance_root/web3.ts"
 elif [[ "${ALLOW_MISSING_FINAL_WEB3:-0}" == "1" ]]; then
   echo "final @solana/web3.js@3.0.0 is unavailable; Web3 installation skipped for PR review" >&2
 else

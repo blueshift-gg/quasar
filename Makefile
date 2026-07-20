@@ -15,24 +15,10 @@ PROGRAM_MSRV := 1.89.0
 # v1.51 ships Cargo 1.84 which does not, causing "duplicate lang item" errors.
 PLATFORM_TOOLS := v1.52
 
-# Test programs that produce SBF binaries
-SBF_TEST_PROGRAMS := tests/programs/test-misc tests/programs/test-errors \
-	tests/programs/test-events tests/programs/test-pda \
-	tests/programs/test-token-cpi tests/programs/test-token-init \
-	tests/programs/test-token-validate tests/programs/test-sysvar \
-	tests/programs/test-one-of tests/programs/test-migrate \
-	tests/programs/test-raw
-
-# Example programs that produce SBF binaries
-SBF_EXAMPLES := examples/vault examples/escrow examples/multisig
-
-# All SBF programs
-SBF_ALL := $(SBF_EXAMPLES) $(SBF_TEST_PROGRAMS)
-
 # Host-side tests that consume freshly built SBF artifacts.
 SBF_HOST_TEST_PACKAGES := quasar-vault quasar-escrow quasar-multisig quasar-test-suite
-# Program packages are discovered from Cargo's cdylib targets so a new SBF
-# target does not need to be copied into a second host-test inventory.
+# Cargo owns the SBF program inventory. Each program manifest owns its default
+# build features, so adding a cdylib target needs no Makefile update.
 SBF_PROGRAM_PACKAGES := $(shell cargo metadata --locked --no-deps --format-version 1 2>/dev/null | \
 	jq -r '.packages[] | select(any(.targets[]?; (.crate_types // []) | index("cdylib"))) | .name')
 HOST_TEST_EXCLUDES := $(sort $(SBF_HOST_TEST_PACKAGES) $(SBF_PROGRAM_PACKAGES))
@@ -91,7 +77,8 @@ contracts: check-public-api check-proc-macro-baselines
 	@cargo test -p quasar-idl --all-features
 
 doc-check:
-	@RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked
+	@RUSTDOCFLAGS="-D warnings" cargo +$(PROGRAM_MSRV) doc \
+		--workspace --all-features --no-deps --locked
 
 msrv-check:
 	@cargo +$(PROGRAM_MSRV) check --workspace --all-features --locked
@@ -191,16 +178,11 @@ build:
 	@cargo build
 
 build-sbf:
-	@for dir in $(SBF_EXAMPLES); do \
-		echo "Building $$dir"; \
-		cargo build-sbf --tools-version $(PLATFORM_TOOLS) --manifest-path "$$dir/Cargo.toml"; \
-	done
-	@for dir in $(SBF_TEST_PROGRAMS); do \
-		echo "Building $$dir (with debug)"; \
-		cargo build-sbf --tools-version $(PLATFORM_TOOLS) --manifest-path "$$dir/Cargo.toml" --features debug,alloc; \
-	done
-	@echo "Building test-heap (alloc only, no debug — tests alloc trap)"
-	cargo build-sbf --tools-version $(PLATFORM_TOOLS) --manifest-path tests/programs/test-heap/Cargo.toml --features alloc
+	@while IFS= read -r manifest; do \
+		echo "Building $$manifest"; \
+		cargo build-sbf --tools-version $(PLATFORM_TOOLS) --manifest-path "$$manifest"; \
+	done < <(cargo metadata --locked --no-deps --format-version 1 \
+		| jq -r '.packages[] | select(any(.targets[]?; (.crate_types // []) | index("cdylib"))) | .manifest_path')
 
 # Cargo owns test-target discovery: adding a legitimate target needs no
 # secondary inventory update.
@@ -241,8 +223,8 @@ package-check: check-package-metadata
 
 package-rehearsal-prepare: package-check
 	@rm -rf "$(PACKAGE_REHEARSAL_ROOT)"
-	@scripts/prepare-package-rehearsal.sh \
-		target/release-packages "$(PACKAGE_REHEARSAL_ROOT)"
+	@cargo run --locked -p quasar-release-tool -- prepare \
+		--input target/release-packages --output "$(PACKAGE_REHEARSAL_ROOT)"
 
 package-rehearsal:
 	@docker build \

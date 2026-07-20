@@ -17,7 +17,7 @@ quasar-lang = { path = "../../../lang" }
 quasar-derive = { path = "../../../derive" }
 
 [features]
-default = ["alloc"]
+default = ["alloc", "debug"]
 alloc = []
 debug = []
 idl-build = ["quasar-lang/idl-build"]

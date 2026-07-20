@@ -16,6 +16,10 @@ concurrency:
 
 env:
   HOST_RUST_VERSION: 1.92.0
+  PROGRAM_MSRV: 1.89.0
+  CARGO_HACK_VERSION: 0.6.43
+  PYTHON_VERSION: 3.14.3
+  SOLDERS_VERSION: 0.28.0
   SOLANA_VERSION: v4.1.1
   SOLANA_LINUX_SHA256: a5c8e74b8ffa9ce906872b812849057c7fb21cf036ba08f219eb335e20fa4fb3
   CARGO_TERM_COLOR: always
@@ -39,6 +43,7 @@ jobs:
         with:
           filters: |
             safety:
+              - '.github/workflows/**'
               - 'lang/**'
               - 'derive/**'
               - 'schema/**'
@@ -47,14 +52,20 @@ jobs:
               - 'Cargo.lock'
               - 'Makefile'
             performance:
+              - '.github/workflows/**'
+              - 'benchmarks/**'
+              - 'compiler-builtins/**'
               - 'lang/**'
               - 'derive/**'
               - 'spl/**'
               - 'examples/**'
+              - 'scripts/bench-tracked-programs.sh'
+              - 'scripts/tests/test_bench_tracked_programs.py'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'Makefile'
             preview:
+              - '.github/workflows/**'
               - 'idl/**'
               - 'cli/src/client.rs'
               - 'cli/src/config.rs'
@@ -88,6 +99,9 @@ jobs:
         with:
           toolchain: ${{ env.HOST_RUST_VERSION }}
           components: clippy,rustfmt
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+        with:
+          toolchain: ${{ env.PROGRAM_MSRV }}
       - name: Format, lint, and document
         run: make format clippy doc-check
       - name: Validate workflow syntax
@@ -98,6 +112,46 @@ jobs:
         run: |
           cargo install zizmor --version 1.26.1 --locked
           zizmor .github/workflows
+
+  supported-rust:
+    name: Supported Rust and feature combinations
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+        with:
+          toolchain: ${{ env.PROGRAM_MSRV }}
+      - uses: taiki-e/install-action@43aecc8d72668fbcfe75c31400bc4f890f1c5853 # v2
+        with:
+          tool: cargo-hack@${{ env.CARGO_HACK_VERSION }}
+      - name: Compile the supported graph and feature powerset
+        run: make msrv-check check-features
+
+  macos-support:
+    name: macOS support / ${{ matrix.triple }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            triple: aarch64-apple-darwin
+          - runner: macos-15-intel
+            triple: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+        with:
+          toolchain: ${{ env.PROGRAM_MSRV }}
+      - name: Verify host and compile the complete workspace
+        run: |
+          actual="$(rustc -vV | sed -n 's/^host: //p')"
+          test "$actual" = "${{ matrix.triple }}"
+          make msrv-check
 
   core-host-tests:
     name: Core host tests
@@ -169,7 +223,7 @@ jobs:
             quasar-release-package-rehearsal:${{ github.sha }}
 
   dependency-audit:
-    name: Dependency audit
+    name: Workspace dependency audit
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -178,7 +232,7 @@ jobs:
       - uses: taiki-e/install-action@43aecc8d72668fbcfe75c31400bc4f890f1c5853 # v2
         with:
           tool: cargo-audit@0.22.1
-      - name: Audit reachable release dependencies
+      - name: Audit the complete workspace lockfile
         run: make audit
 
   safety:
@@ -255,6 +309,9 @@ jobs:
           ref: a0a88b705bc888a7ac3e8f7e506a1e997b374b4d
           path: .caravel
           persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
       - name: Generate Python, Go, and C explicitly
         run: |
           root="$(pwd)"
@@ -271,6 +328,20 @@ jobs:
           cargo run --manifest-path "$root/cli/Cargo.toml" -- client multisig.json --target go
           cargo run --manifest-path "$root/cli/Cargo.toml" -- client multisig.json --target c
           python3 -m py_compile target/client/python/*/*.py
+          python -m pip install --disable-pip-version-check "solders==$SOLDERS_VERSION"
+          PYTHONPATH=target/client/python python - <<'PY'
+          from solders.pubkey import Pubkey
+          from quasar_multisig import CreateInput, create_create_instruction
+
+          creator = Pubkey.from_bytes(bytes([7]) * 32)
+          instruction = create_create_instruction(
+              CreateInput(creator=creator, threshold=2)
+          )
+          assert len(instruction.accounts) == 4
+          assert instruction.accounts[0].pubkey == creator
+          assert instruction.accounts[0].is_signer
+          assert instruction.data == bytes([0, 2])
+          PY
           (cd target/client/go/* && go mod tidy && go test ./...)
           header="$(find target/client/c -name client.h -print -quit)"
           printf '#include "%s"\nint main(void) { return 0; }\n' "$header" \

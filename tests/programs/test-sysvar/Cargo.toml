@@ -13,7 +13,7 @@ doctest = false
 workspace = true
 
 [features]
-default = ["alloc"]
+default = ["alloc", "debug"]
 alloc = []
 debug = []
 idl-build = ["quasar-lang/idl-build"]
