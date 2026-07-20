@@ -73,37 +73,13 @@ pub enum Command {
 
 #[derive(Args, Debug, Default)]
 pub struct InitCommand {
-    /// Project name; skips the interactive name prompt
+    /// Project name
     #[arg(value_name = "NAME")]
-    pub name: Option<String>,
-
-    /// Skip prompts and use saved defaults
-    #[arg(long, short, action = ArgAction::SetTrue)]
-    pub yes: bool,
+    pub name: String,
 
     /// Skip git init and the initial commit
     #[arg(long, action = ArgAction::SetTrue)]
     pub no_git: bool,
-
-    /// Test language (none, rust, typescript)
-    #[arg(long)]
-    pub test_language: Option<String>,
-
-    /// Rust test framework (quasar-svm, mollusk)
-    #[arg(long)]
-    pub rust_framework: Option<String>,
-
-    /// TypeScript SDK (kit, web3.js)
-    #[arg(long)]
-    pub ts_sdk: Option<String>,
-
-    /// Project template (minimal, full)
-    #[arg(long)]
-    pub template: Option<String>,
-
-    /// Toolchain (solana, upstream)
-    #[arg(long)]
-    pub toolchain: Option<String>,
 
     /// Show each scaffold step as it runs
     #[arg(long, action = ArgAction::SetTrue)]
@@ -232,7 +208,7 @@ pub struct ConfigCommand {
 pub enum ConfigAction {
     /// Read a single config value
     Get {
-        /// Config key (e.g. ui.animation, defaults.toolchain, defaults.git)
+        /// Config key (currently ui.color)
         #[arg(value_name = "KEY")]
         key: String,
     },
@@ -502,10 +478,10 @@ pub fn print_help() {
         style::dim("Build programs that execute at the speed of light")
     );
     println!();
-    println!("  {}", style::bold("Commands:"));
+    println!("  {}", style::bold("Core commands:"));
     print_cmd(
-        "init    [name] [-y] [--no-git] [--template] [--verbose]",
-        "Scaffold a new project",
+        "init    <name> [--no-git] [--verbose]",
+        "Scaffold the canonical starter",
     );
     print_cmd(
         "build   [--debug] [--verbose] [-w] [--features]",

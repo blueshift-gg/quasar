@@ -4,10 +4,6 @@ use {
 };
 
 pub(super) fn maybe_initialize_git_repo(name: &str, git_setup: GitSetup) {
-    if matches!(git_setup, GitSetup::Skip) {
-        return;
-    }
-
     let root = Path::new(name);
     let already_git = if name == "." {
         Path::new(".git").exists()
@@ -35,7 +31,8 @@ fn initialize_git_repo_with(root: &Path, git_setup: GitSetup, git: &Path) -> boo
                         &["commit", "-am", "chore: initial commit", "--quiet"],
                     )
             }
-            GitSetup::Initialize | GitSetup::Skip => true,
+            #[cfg(test)]
+            GitSetup::Initialize => true,
         }
 }
 

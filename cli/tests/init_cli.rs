@@ -1,22 +1,9 @@
 use {
-    serde_json::Value,
-    std::{
-        error::Error,
-        fs,
-        path::{Path, PathBuf},
-        process::{Command, Output},
-    },
+    std::{error::Error, fs, path::PathBuf, process::Command},
     tempfile::tempdir,
 };
 
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("workspace root")
-        .to_path_buf()
-}
-
-fn assert_success(label: &str, output: &Output) {
+fn assert_success(label: &str, output: &std::process::Output) {
     assert!(
         output.status.success(),
         "{label} should succeed\nstdout:\n{}\nstderr:\n{}",
@@ -25,176 +12,79 @@ fn assert_success(label: &str, output: &Output) {
     );
 }
 
-fn use_workspace_lang(project_dir: &Path) -> Result<(), Box<dyn Error>> {
-    let manifest_path = project_dir.join("Cargo.toml");
-    let manifest = fs::read_to_string(&manifest_path)?;
-    let dependency = manifest
-        .lines()
-        .find(|line| line.starts_with("quasar-lang = "))
-        .ok_or("generated manifest is missing quasar-lang")?;
-    let local_dependency = format!(
-        "quasar-lang = {{ path = {:?} }}",
-        workspace_root().join("lang")
-    );
-    fs::write(
-        manifest_path,
-        manifest.replacen(dependency, &local_dependency, 1),
-    )?;
-    Ok(())
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf()
 }
 
 #[test]
-fn non_interactive_no_git_init_has_no_global_or_git_side_effects() -> Result<(), Box<dyn Error>> {
-    let temp = tempdir()?;
-    let home = temp.path().join("home");
-    let config_path = home.join(".quasar/config.toml");
-    fs::create_dir_all(config_path.parent().expect("config parent"))?;
-    let original_config = r#"[defaults]
-toolchain = "solana"
-test_language = "rust"
-template = "full"
-git = "init-and-commit"
-
-[ui]
-animation = false
-color = false
-"#;
-    fs::write(&config_path, original_config)?;
-
-    let init = Command::new(env!("CARGO_BIN_EXE_quasar"))
-        .args([
-            "init",
-            "automated-project",
-            "--yes",
-            "--no-git",
-            "--test-language",
-            "none",
-            "--template",
-            "minimal",
-            "--toolchain",
-            "solana",
-            "--verbose",
-        ])
-        .env("HOME", &home)
-        .current_dir(temp.path())
-        .output()?;
-    assert_success("non-interactive quasar init --no-git", &init);
-
-    assert_eq!(fs::read_to_string(&config_path)?, original_config);
-    assert!(!temp.path().join("automated-project/.git").exists());
-
-    let stdout = String::from_utf8_lossy(&init.stdout);
-    let stderr = String::from_utf8_lossy(&init.stderr);
-    assert!(!stdout.contains("Preferences saved"), "stdout:\n{stdout}");
-    assert!(!stderr.contains("Configuring git"), "stderr:\n{stderr}");
-    assert!(!stderr.contains("Git setup complete"), "stderr:\n{stderr}");
-
-    Ok(())
-}
-
-#[test]
-fn generated_starters_pass_strict_lint() -> Result<(), Box<dyn Error>> {
+fn canonical_init_is_non_interactive_and_has_no_global_side_effects() -> Result<(), Box<dyn Error>>
+{
     let temp = tempdir()?;
     let home = temp.path().join("home");
     fs::create_dir(&home)?;
+    let config_path = home.join(".quasar/config.toml");
+    fs::create_dir_all(config_path.parent().unwrap())?;
+    fs::write(&config_path, "[ui]\ncolor = false\n")?;
 
-    for template in ["minimal", "full"] {
-        let name = format!("strict-{template}");
-        let init = Command::new(env!("CARGO_BIN_EXE_quasar"))
-            .arg("init")
-            .arg(&name)
-            .arg("--yes")
-            .arg("--no-git")
-            .arg("--test-language")
-            .arg("none")
-            .arg("--template")
-            .arg(template)
-            .arg("--toolchain")
-            .arg("solana")
-            .env("HOME", &home)
-            .current_dir(temp.path())
+    let output = Command::new(env!("CARGO_BIN_EXE_quasar"))
+        .args(["init", "canonical", "--no-git", "--verbose"])
+        .env("HOME", &home)
+        .env("QUASAR_DEV_ROOT", workspace_root())
+        .current_dir(temp.path())
+        .output()?;
+    assert_success("quasar init", &output);
+
+    let root = temp.path().join("canonical");
+    assert!(!root.join(".git").exists());
+    assert!(root.join("Cargo.lock").is_file());
+    assert!(root.join("src/tests.rs").is_file());
+    assert!(!root.join("package.json").exists());
+    assert!(!root.join("src/state.rs").exists());
+    assert_eq!(
+        fs::read_to_string(config_path)?,
+        "[ui]\ncolor = false\n",
+        "init must not mutate global configuration"
+    );
+    Ok(())
+}
+
+#[test]
+fn removed_scaffold_flags_are_unknown() -> Result<(), Box<dyn Error>> {
+    for flag in [
+        "--yes",
+        "--test-language",
+        "--rust-framework",
+        "--ts-sdk",
+        "--template",
+        "--toolchain",
+    ] {
+        let temp = tempdir()?;
+        let home = temp.path().join("home");
+        fs::create_dir(&home)?;
+        let output = Command::new(env!("CARGO_BIN_EXE_quasar"))
+            .args(["init", "demo", flag])
+            .env("HOME", home)
             .output()?;
-        assert_success(&format!("quasar init --template {template}"), &init);
-
-        let project_dir = temp.path().join(&name);
-        use_workspace_lang(&project_dir)?;
-
-        let lint = Command::new(env!("CARGO_BIN_EXE_quasar"))
-            .arg("lint")
-            .arg("--strict")
-            .arg("--no-diff")
-            .current_dir(&project_dir)
-            .output()?;
-        assert_success(
-            &format!("quasar lint --strict for {template} starter"),
-            &lint,
-        );
-
-        let lib = fs::read_to_string(project_dir.join("src/lib.rs"))?;
-        if template == "minimal" {
-            assert!(!lib.contains("mod state;"));
-            continue;
-        }
-
-        let initialize = fs::read_to_string(project_dir.join("src/instructions/initialize.rs"))?;
-        assert!(lib.contains("pub mod instructions;"));
-        assert!(lib.contains("pub mod state;"));
-        assert!(initialize.contains("MyAccount::seeds(payer.address())"));
-        assert!(initialize.contains("MyAccountInner"));
-        assert!(initialize.contains("_reserved: [0; 64]"));
-
-        let idl = Command::new(env!("CARGO_BIN_EXE_quasar"))
-            .arg("idl")
-            .arg(".")
-            .current_dir(&project_dir)
-            .output()?;
-        assert_success("quasar idl for full starter", &idl);
-
-        let idl_path = fs::read_dir(project_dir.join("target/idl"))?
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .find(|path| path.extension().and_then(|extension| extension.to_str()) == Some("json"))
-            .ok_or("full starter did not generate an IDL file")?;
-        let idl: Value = serde_json::from_slice(&fs::read(idl_path)?)?;
-        let instruction = idl["instructions"]
-            .as_array()
-            .and_then(|instructions| {
-                instructions
-                    .iter()
-                    .find(|instruction| instruction["name"] == "initialize")
-            })
-            .ok_or("full starter IDL is missing initialize")?;
-        let accounts = instruction["accounts"]
-            .as_array()
-            .ok_or("initialize accounts should be an array")?;
-        let resolver = |name: &str| {
-            accounts
-                .iter()
-                .find(|account| account["name"] == name)
-                .map(|account| &account["resolver"])
-        };
-        assert_eq!(
-            resolver("myAccount").map(|value| &value["kind"]),
-            Some(&Value::String("pda".into()))
-        );
-        assert_eq!(
-            resolver("systemProgram").map(|value| &value["address"]),
-            Some(&Value::String("11111111111111111111111111111111".into())),
-        );
-        assert_eq!(instruction["args"][0]["name"], "value");
-
-        let client_src = project_dir
-            .join("target/client/rust")
-            .join(format!("{name}-client/src"));
-        let client_initialize = fs::read_to_string(client_src.join("instructions/initialize.rs"))?;
-        assert!(client_initialize.contains("pub my_account: Address"));
-        assert!(!client_initialize.contains("pub system_program"));
-        assert!(client_initialize.contains("11111111111111111111111111111111"));
-
-        let client_pdas = fs::read_to_string(client_src.join("pda.rs"))?;
-        assert!(client_pdas.contains("find_my_account_address"));
-        assert!(client_pdas.contains("b\"my-account\""));
+        assert!(!output.status.success(), "{flag} unexpectedly succeeded");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("unexpected argument"), "{flag}: {stderr}");
     }
+    Ok(())
+}
 
+#[test]
+fn project_name_is_required() -> Result<(), Box<dyn Error>> {
+    let temp = tempdir()?;
+    let home = temp.path().join("home");
+    fs::create_dir(&home)?;
+    let output = Command::new(env!("CARGO_BIN_EXE_quasar"))
+        .arg("init")
+        .env("HOME", home)
+        .output()?;
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Usage: quasar init <NAME>"));
     Ok(())
 }

@@ -3,13 +3,7 @@ use clap::Parser;
 fn main() {
     quasar_cli::style::init(true);
 
-    let globals = match quasar_cli::config::GlobalConfig::load() {
-        Ok(globals) => globals,
-        Err(e) => {
-            eprintln!("\n  {} {e}", quasar_cli::style::fail(""));
-            std::process::exit(e.exit_code());
-        }
-    };
+    let globals = quasar_cli::config::GlobalConfig::load().unwrap_or_default();
     quasar_cli::style::init(globals.ui.color);
 
     // Intercept top-level help before clap so subcommand help still works normally.
