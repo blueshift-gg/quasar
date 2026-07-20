@@ -69,7 +69,8 @@ See [VERSIONING.md](VERSIONING.md) for the exact contract,
 User documentation is available at
 [quasar-lang.com](https://quasar-lang.com). Repository architecture and
 contributor workflows live in [ARCHITECTURE.md](ARCHITECTURE.md) and
-[CONTRIBUTING.md](CONTRIBUTING.md).
+[CONTRIBUTING.md](CONTRIBUTING.md). Release owners use
+[RELEASING.md](RELEASING.md).
 
 ## License
 

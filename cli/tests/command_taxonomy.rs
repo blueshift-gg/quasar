@@ -19,6 +19,8 @@ fn help_separates_core_commands_from_preview_tools() -> Result<(), Box<dyn Error
     assert!(stdout.contains("Preview tools:"));
     assert!(stdout.contains("inspect validation"));
     assert!(stdout.contains("inspect asm"));
+    assert!(stdout.contains("client  <idl> [--target target]"));
+    assert!(!stdout.contains("--lang"));
     assert!(!stdout.contains("\n    audit "));
     assert!(!stdout.contains("\n    dump "));
     assert!(!stdout.contains("\n    add "));

@@ -1,6 +1,5 @@
 #![allow(unexpected_cfgs)]
 
-// README_QUICK_START_BEGIN
 use quasar_lang::prelude::*;
 
 declare_id!("22222222222222222222222222222222222222222222");
@@ -28,6 +27,4 @@ mod counter_program {
         Ok(())
     }
 }
-// README_QUICK_START_END
-
 fn main() {}

@@ -538,7 +538,7 @@ fn print_help() {
     print_cmd("config  [get|set|list|reset]", "Manage global settings");
     print_cmd("idl     <path>", "Generate the program IDL");
     print_cmd(
-        "client  <idl> [--lang ts,py,go]",
+        "client  <idl> [--target target]",
         "Generate client code from IDL",
     );
     print_cmd("lint    [--update-lock] [--strict]", "Check release safety");
