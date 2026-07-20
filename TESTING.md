@@ -1,209 +1,88 @@
 # Testing
 
-This document defines what **tested** means in this repository: the layers of
-the test suite, the per-feature contract every framework feature must satisfy,
-the assertion rules that make a test count, and the policy that keeps all of it
-true as the framework grows.
+Quasar tests user promises, not matrix completeness. Every test owns a unique
+failure story: a bug that would escape if that test disappeared. Coverage,
+mutation experiments, and suite size are supporting signals rather than
+release definitions.
 
-Quasar validates untrusted input on behalf of programs that hold funds. The
-standard is therefore adversarial: a feature is tested when the suite proves it
-**rejects** every documented hostile input with the exact expected error — not
-when a happy path passes.
+## Required release evidence
 
-Two numbers summarize assurance, and both are enforced in CI:
+| Promise | Evidence |
+| --- | --- |
+| Rust quality | Formatting, Clippy with warnings denied, and warning-free Rustdoc on the supported toolchain |
+| Core behavior | Owner-local host tests for stable crates and CLI logic |
+| On-chain behavior | Real SBF programs with exact error and resulting-state assertions |
+| Stable contracts | Derive diagnostics, IDL wire fixtures, and independently compiled Rust, Kit 7, and Web3.js 3 clients |
+| Package journey | Immutable package archives install, initialize, build, test, and generate clients without repository source |
+| Dependency safety | Normal dependency-audit output for the reachable release graph |
+| Unsafe boundaries | Focused Miri, Kani, and fuzz-build checks for changed parsing, aliasing, provenance, or initialization code |
+| Performance | Compute-unit and binary-size budgets for runtime, derive, and SPL changes |
 
-- **The feature matrix has no empty required cells.** Every shipped feature
-  declares its required test kinds in [`tests/feature-matrix.tsv`](tests/feature-matrix.tsv);
-  `make check-test-matrix` fails if any required cell has no tests.
-- **The mutation baseline only shrinks.** `cargo mutants` runs nightly against
-  [`.ci/mutants-baseline.txt`](.ci/mutants-baseline.txt); a code mutation that
-  no test catches — and that is not already recorded in the baseline — fails
-  the run. Line coverage can look complete while asserting nothing; a mutation
-  score cannot.
+Python, Go, and C functional compilation runs when a preview backend or the
+shared codegen model changes. It is required for that change, but is not an
+unrelated core-release dependency.
 
-## The layers
+## Test ownership
 
-Each layer catches a failure class the others cannot. A change is tested at
-the layer where its failure would occur.
+Put a test beside the implementation that owns the contract:
 
-| Layer | Catches | Lives in | Run locally |
-|---|---|---|---|
-| Host unit + integration | logic bugs in host-runnable code | `#[cfg(test)]` modules, `lang/tests/`, `derive/`, `idl/`, `cli/tests/` | `make test-host` |
-| SVM integration (Mollusk) | runtime validation behavior, end to end through real SBF binaries | `tests/programs/*` (fixture programs) + `tests/suite/` (assertions) | `make build-sbf && make test-sbf-host` |
-| Compiler diagnostics (trybuild) | macro error-message drift | `*/tests/compile_fail/` + `.stderr` goldens | part of `make test-host`; regen: `make test-bless` |
-| Macro-expansion snapshots | codegen drift | `compatibility-baselines/*/proc-macros/` | `make check-proc-macro-baselines` |
-| IDL golden + wire baselines | IDL contract drift | `cli/tests/goldens/`, `compatibility-baselines/*/idl-wire/` | `make check-idl-wire-baselines` |
-| Generated-client baselines | client codegen drift (Rust/TS/Py/Go/C) | `compatibility-baselines/*/generated-clients/` | `make check-generated-client-baselines` |
-| Public API baseline | accidental API breaks | `api-baselines/` | `make check-public-api` |
-| Miri | undefined behavior in unsafe code | `*/tests/miri.rs` | `make test-miri` / `make test-miri-strict` |
-| Kani proofs | exhaustive verification of parsing/unsafe cores | `lang/kani/`, `spl/`, `metadata/` | `make kani` |
-| Fuzzing | decoder crashes on arbitrary bytes | `lang/fuzz/` | `make test-fuzz-build`; run: `cd lang && cargo +$(make nightly-version) fuzz run <target>` |
-| CU + size benchmarks | performance regressions in tracked programs | `examples/*/src/tests.rs` + `scripts/bench-tracked-programs.sh` | `make bench-tracked && make compare-tracked` |
-| Mutation testing | tests that execute code without constraining it | `.cargo/mutants.toml` + `.ci/mutants-baseline.txt` | `make mutants` |
-| Feature matrix | features shipped without their required tests | `tests/feature-matrix.tsv` + `scripts/test-matrix.py` | `make check-test-matrix` |
+- derive compile failures and representative expansions live under `derive/`;
+- IDL wire and generated-client fixtures live under `idl/`;
+- runtime and zero-copy host tests live under `lang/`;
+- SPL validation and CPI behavior live under `spl/`;
+- Rust test utilities and macros live under `testing/`;
+- CLI unit tests cover private logic and binary integration tests cover public
+  behavior; and
+- real SBF fixtures live under `tests/programs/`, with typed assertions in
+  `tests/suite/`.
 
-The full gate is `make test`. CI runs three tiers:
+Do not duplicate the same contract in a root snapshot and an owner-local
+fixture. Stable client changes should produce one focused diff in the codegen
+owner.
 
-- **PR tier** (`ci.yml`, required): everything in the layer table above except
-  Kani-full/mutation/fuzz, plus the matrix, silence, and oracle policies via
-  the workspace-invariants job — and an informational `mutants_in_diff` job
-  that mutates only the PR's changed lines and reports survivors in the job
-  summary.
-- **Nightly tier** (`nightly.yml`): full mutation runs judged against the
-  shrink-only baseline, the host-coverage artifact, and unconditional Kani on
-  all three proof crates (closing the path-gating hole where a lang-adjacent
-  PR skips proofs). Fuzzing runs nightly at 300s per target (`fuzz.yml`).
-- **Weekly**: an 1800s-per-target fuzz soak (Saturday schedule in `fuzz.yml`).
+## Assertions
 
-`make test-host-inventory` proves every host `#[test]` maps to a Cargo target
-that required CI actually runs.
+Failure tests assert the exact typed error. Success tests assert resulting
+state, emitted bytes, or another product outcome rather than status alone.
+Lamport-moving tests assert both sides of the transfer. A regression test must
+fail before its fix.
 
-Bless/regen commands (`make test-bless`, `bless-proc-macro-baselines`,
-`bless-idl-wire-baselines`, `bless-generated-client-baselines`,
-`bless-public-api`, `UPDATE_GOLDEN=1` for the CLI IDL golden) are documented in
-[CONTRIBUTING.md](CONTRIBUTING.md); the rule everywhere is the same —
-**a regenerated golden is reviewed like code, never blessed blindly.**
+Adversarial cases are added where they exercise a distinct branch: one-byte
+truncation, bit corruption, account substitution, duplicate regions, wrong
+signer or writability, wrong owner, and exact-boundary pointer walking. Values
+that flow through the same branch belong in a table-driven test.
 
-## The per-feature test contract
+## Miri, Kani, and fuzzing
 
-A framework feature is anything a user program can invoke or declare: an
-account wrapper, an attribute or constraint, a derive macro, an op, a sysvar
-accessor, a CPI builder, a dispatch mode. Every feature MUST have:
+Miri is reserved for undefined-behavior questions:
 
-1. **A happy-path SVM test that asserts state, not status.** Decode the
-   resulting account bytes and assert field values (`resulting_accounts`,
-   `get_account`). `is_ok()` alone proves nothing about what was written.
-2. **One SVM rejection test per documented failure mode**, each asserting the
-   **exact** error via `assert_error(...)` with a named constant (see Oracles
-   below). If a failure mode has no rejection test, the check guarding it can
-   be deleted without CI noticing.
-3. **Adversarial variants** wherever the check guards funds:
-   - single-bit corruption of the compared value (model:
-     `has_one_single_bit_diff` in `tests/suite/src/constraints.rs`) — proves
-     the comparison is not truncated;
-   - account substitution (valid layout, wrong address/owner/mint);
-   - duplicated accounts where distinct ones are required;
-   - wrong signer / writability / owner on the account header;
-   - data truncated one byte short of the fixed size — proves the length
-     check, not just the parse, rejects.
-4. **A trybuild compile-fail case** if the feature has macro-surface misuse
-   that must be rejected at compile time.
-5. **A macro-expansion snapshot** if it changes what the derives emit.
-6. **A Kani proof** if it touches `unsafe`, pointer arithmetic, or byte
-   parsing (the proof harness is the spec of the trust boundary).
-7. **A CU benchmark entry** if it executes on the instruction hot path of a
-   tracked program.
-8. **A row in `tests/feature-matrix.tsv`** declaring which of the above apply.
-   `make check-test-matrix` enforces the declaration; the row is the feature's
-   testing spec, reviewed with the feature.
+- pointer provenance and aliasing;
+- initialization and all-bit-pattern validity;
+- exact-boundary pointer walking;
+- duplicate-account region behavior;
+- macro-generated decoder soundness; and
+- safe downstream extension points backed by unsafe internals.
 
-Fixture instructions live in `tests/programs/*`; assertions live in
-`tests/suite/src/`. When a rejection test needs an instruction variant the
-fixture program lacks, extend the fixture program — a missing fixture is never
-a reason to skip the rejection test.
+Ordinary ownership, validation, and semantic round-trip behavior belongs in
+fast host or SBF tests. Before removing a Miri case, add or identify the fast
+test with the same oracle. Tests that depend on Tree Borrows keep that model;
+the small adversarial extension suite also runs under the supported alternate
+borrow model.
 
-## Oracles
+Kani proves bounded properties in `quasar-lang` and `quasar-spl`. Fuzz target
+discovery and builds are required; nightly runs and weekly soaks search the
+same live target set. Account-region modeling remains scheduled rather than
+blocking every release.
 
-- **Failure tests assert the exact error.** Use the framework error enum, not
-  magic numbers:
+## CI cadence
 
-  ```rust
-  use quasar_lang::prelude::QuasarError;
+Pull requests run the stable promises affected by the change. Tag and release
+runs execute the complete core gate even when the commit was already tested as
+part of a pull request.
 
-  result.assert_error(ProgramError::Custom(QuasarError::HasOneMismatch as u32));
-  ```
+Nightly or scheduled jobs run full Kani, fuzzing, informational host coverage,
+and longer assurance work. Targeted mutation investigation uses `cargo
+mutants` manually; it has no repository baseline or package matrix.
 
-  A bare `is_err()` cannot distinguish "the has_one check fired" from "an
-  earlier owner check masked a broken has_one" — the regression it exists to
-  catch. `make check-suite-oracles` enforces this: every suite test that
-  asserts `is_err()` must also pin the exact error in the same test
-  (`assert_error`, `ProgramResult::Failure`, or a raw `InstructionError`
-  comparison). The allowlist in `scripts/check-suite-oracles.py` names the
-  exempt modules with their reasons and only shrinks.
-- **Success tests assert resulting state.** Decode and compare fields; for
-  lamport-moving instructions, assert both sides of the transfer.
-- **A new rejection test must fail when its assertion is inverted.** If you
-  can flip the expected error and the test still passes, the test asserts
-  nothing (self-check: this is what the mutation tier automates).
-
-## Naming and noise
-
-- Rejection tests are named `<feature>_rejects_<attack>` (or `_fails_` where
-  the actor is the framework, e.g. `migrate_rejects_wrong_discriminator`).
-  The matrix counts negative coverage by oracle presence, not by name — but
-  reviewers read by name.
-- **Tests are silent on success.** No `println!` — anything worth printing is
-  worth asserting; progress decoration belongs to the harness. CU
-  measurements are written to `target/cu-bench/*.jsonl` through
-  `examples/cu_bench.rs`, never printed for a human to eyeball.
-  `make check-test-silence` enforces this.
-
-## What earns a test its place
-
-The contract above says what must exist; this says what must NOT — volume is
-not rigor, and every test is maintenance the team pays forever. Apply these
-when writing and when reviewing; the quarterly triage applies them
-retroactively.
-
-- **Unique failure story.** State, in one sentence, a bug that only this test
-  catches. If you cannot, merge it into the test that owns that story or
-  delete it.
-- **Test the branch, not the wrapper.** A boundary pair (size-1/size, 64/65
-  accounts) proves a shared framework check once, in the module that owns the
-  check. Re-proving it through every account type that reuses the same check
-  adds symmetry, not coverage.
-- **Matrix cells earn their place by divergent implementation.** Duplicating
-  a scenario across SPL / Token-2022 / Interface is justified only where the
-  path actually forks: a different trait impl, or a different deployed binary
-  whose behavior can drift independently (which is why T22 *rejection* cells
-  stay even where T22 validation cells collapse).
-- **Value diversity without branch diversity is one test.** Inputs that flow
-  through the same arm belong in one table-driven test, not sibling fns.
-- **One layout test, not per-field tests.** Decode the whole struct once and
-  assert every field together.
-- **A proxy oracle dies when the real oracle exists.** Once the actual
-  payload/state is asserted somewhere, "it consumed plausible CU" variants of
-  the same scenario lose their reason to exist.
-
-The objective backstop for all of this is the mutation baseline: a test that
-kills no mutant another test doesn't also kill, and fills no required matrix
-cell, is provably dead weight — prune on that evidence when taste is
-contested.
-
-## Adding a new framework feature — definition of done
-
-- [ ] Fixture instruction(s) in the owning `tests/programs/*` crate
-- [ ] Suite module (or extension) satisfying the contract above
-- [ ] Row in `tests/feature-matrix.tsv`; `make check-test-matrix` passes
-- [ ] trybuild / snapshot / Kani / bench cells filled where the contract
-      requires them
-- [ ] `make test` green; goldens regenerated deliberately and reviewed
-- [ ] Nightly tiers stay green (mutation baseline did not grow)
-
-## Maintenance policy
-
-Mechanical checks do the enforcement; this section defines the human rules.
-
-- **Ratchets only shrink.** `.ci/mutants-baseline.txt` and the
-  `check-suite-oracles` allowlist record accepted debt. Removing entries is
-  always welcome and needs no justification. Adding one requires the PR to
-  explain why the mutant is unkillable (equivalent mutation) or why the error
-  cannot be pinned — "the check obviously works" is not an argument; the
-  baseline is the argument.
-- **Test code is reviewed like runtime code.** A success-only module is
-  rejected in review. A blessed golden diff without line-by-line review is
-  rejected. A weakened assertion is a semantic change, not a cleanup.
-- **Every bug fix ships its regression test** — a test that fails before the
-  fix and references the issue in its name or a comment. No exceptions: the
-  bug proves the suite had a hole; the fix must close the hole, not just the
-  bug.
-- **Cadence.** Quarterly, or before each release, whichever comes first:
-  re-run the deep tier, triage every mutation-baseline entry and oracle
-  allowlist entry, prune tests that no longer assert anything real, and
-  re-capture the tracked CU/size baselines (`benchmarks/*.env`) at the
-  release tag.
-- **Failure routing.** A nightly deep-tier failure is triaged by the author
-  of the change that introduced it, or by the release owner when no single
-  change is at fault. A fuzz crash or a rejection test that *passes* against
-  hostile input it should reject is a **security finding**: stop, minimize
-  (`cargo fuzz tmin` for fuzz), and report before merging anything on top.
+Generated fixtures are reviewed like code. Regeneration is never used to
+silence an unexplained semantic diff.
