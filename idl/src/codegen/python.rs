@@ -1,7 +1,7 @@
 use {
     super::model::{
-        python_field_path, reject_generics, resolved_account_order, resolver_is_derived,
-        CodegenResult, ProgramModel,
+        account_field_definition, account_field_seed_inputs, python_field_path, reject_generics,
+        resolved_account_order, resolver_is_derived, CodegenResult, ProgramModel,
     },
     crate::types::{
         Idl, IdlAccountNode, IdlArg, IdlCodec, IdlFieldDef, IdlPdaProgram, IdlPdaSeed, IdlResolver,
@@ -218,12 +218,15 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
             has_any_fields = true;
         }
 
-        for seed in account_field_seed_inputs(ix, idl) {
+        for seed in account_field_seed_inputs(ix) {
+            let Some(field) = account_field_definition(idl, seed.account, seed.field) else {
+                continue;
+            };
             writeln!(
                 out,
                 "    {}: {}",
-                account_field_seed_input_name(&seed.path, &seed.field),
-                python_type(&seed.ty)
+                account_field_seed_input_name(seed.path, seed.field),
+                python_type(&field.ty)
             )
             .unwrap();
             has_any_fields = true;
@@ -546,10 +549,11 @@ fn python_account_key_expr(account: &IdlAccountNode, idl: &Idl) -> String {
                         field,
                         account,
                     } => {
-                        let ty = account_field_type(idl, account, field);
+                        let ty =
+                            account_field_definition(idl, account, field).map(|field| &field.ty);
                         python_pda_seed_expr(
                             &format!("input.{}", account_field_seed_input_name(path, field)),
-                            ty.as_ref(),
+                            ty,
                         )
                     }
                     IdlPdaSeed::Arg { path, ty } => python_pda_seed_expr(
@@ -1005,67 +1009,6 @@ fn py_bool(b: bool) -> &'static str {
     } else {
         "False"
     }
-}
-
-struct AccountFieldSeedInput {
-    path: String,
-    field: String,
-    ty: IdlType,
-}
-
-fn account_field_seed_inputs(
-    ix: &crate::types::IdlInstruction,
-    idl: &Idl,
-) -> Vec<AccountFieldSeedInput> {
-    let mut inputs = Vec::new();
-    for acc in &ix.accounts {
-        if acc.optional {
-            continue;
-        }
-        let IdlResolver::Pda { seeds, .. } = &acc.resolver else {
-            continue;
-        };
-        for seed in seeds {
-            let IdlPdaSeed::AccountField {
-                path,
-                account,
-                field,
-            } = seed
-            else {
-                continue;
-            };
-            if inputs
-                .iter()
-                .any(|input: &AccountFieldSeedInput| input.path == *path && input.field == *field)
-            {
-                continue;
-            }
-            if let Some(ty) = account_field_type(idl, account, field) {
-                inputs.push(AccountFieldSeedInput {
-                    path: path.clone(),
-                    field: field.clone(),
-                    ty,
-                });
-            }
-        }
-    }
-    inputs
-}
-
-fn account_field_type(idl: &Idl, account: &str, field: &str) -> Option<IdlType> {
-    let mut current_account = account.to_string();
-    let mut field_ty = None;
-
-    for segment in field.split('.') {
-        let type_def = idl.types.iter().find(|ty| ty.name == current_account)?;
-        let field_def = type_def.fields.iter().find(|f| f.name == segment)?;
-        field_ty = Some(field_def.ty.clone());
-        if let IdlType::Defined { defined } = &field_def.ty {
-            current_account = defined.name.clone();
-        }
-    }
-
-    field_ty
 }
 
 fn account_field_seed_input_name(path: &str, field: &str) -> String {

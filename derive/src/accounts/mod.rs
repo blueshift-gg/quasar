@@ -313,7 +313,7 @@ fn emit_pda_address_fns(
         SeedSource::DerivedAccount(i) => quote! { &#i },
         SeedSource::ArgValue(i, _) => quote! { #i },
         SeedSource::Const(expr) => quote! { #expr },
-        SeedSource::FieldValue { .. } => unreachable!("FieldValue routes through find_address"),
+        SeedSource::FieldValue { input, .. } => quote! { #input },
     };
     // `find_address` takes every seed by value.
     let owned_source_arg = |source: &SeedSource| match source {
@@ -321,7 +321,7 @@ fn emit_pda_address_fns(
         SeedSource::DerivedAccount(i) => quote! { #i },
         SeedSource::ArgValue(i, _) => quote! { #i },
         SeedSource::FieldValue { input, .. } => quote! { #input },
-        SeedSource::Const(_) => unreachable!("Const excluded when FieldValue present"),
+        SeedSource::Const(expr) => quote! { #expr },
     };
     let fns: Vec<proc_macro2::TokenStream> = plan
         .fields

@@ -138,6 +138,210 @@ pub fn decode_compact(data: &[u8]) {
 }
 
 // ---------------------------------------------------------------------------
+// remaining_accounts_model: structured SVM account-region state machine
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+enum ModelEntry {
+    Full {
+        address: [u8; 32],
+        owner: [u8; 32],
+        lamports: u64,
+        data_len: usize,
+    },
+    Duplicate {
+        original_index: usize,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ExpectedAccount {
+    address: [u8; 32],
+    owner: [u8; 32],
+    lamports: u64,
+    data_len: usize,
+}
+
+struct AccountRegion {
+    words: std::vec::Vec<u64>,
+    len: usize,
+}
+
+impl AccountRegion {
+    fn serialize(entries: &[ModelEntry]) -> Self {
+        use quasar_lang::__internal::{
+            RuntimeAccount, ACCOUNT_HEADER, DUP_ENTRY_SIZE, NOT_BORROWED,
+        };
+
+        let len: usize = entries
+            .iter()
+            .map(|entry| match entry {
+                ModelEntry::Full { data_len, .. } => {
+                    (ACCOUNT_HEADER + data_len).next_multiple_of(8)
+                }
+                ModelEntry::Duplicate { .. } => DUP_ENTRY_SIZE,
+            })
+            .sum();
+        let mut region = Self {
+            words: std::vec![0; len.div_ceil(8).max(1)],
+            len,
+        };
+        let base = region.words.as_mut_ptr().cast::<u8>();
+        let mut offset = 0usize;
+        for entry in entries {
+            match entry {
+                ModelEntry::Full {
+                    address,
+                    owner,
+                    lamports,
+                    data_len,
+                } => {
+                    // SAFETY: `base + offset` is 8-aligned and the allocation
+                    // reserves a full account stride for this entry.
+                    let raw = unsafe { &mut *base.add(offset).cast::<RuntimeAccount>() };
+                    raw.borrow_state = NOT_BORROWED;
+                    raw.is_signer = 0;
+                    raw.is_writable = 1;
+                    raw.executable = 0;
+                    raw.padding = [0; 4];
+                    raw.address = quasar_lang::prelude::Address::new_from_array(*address);
+                    raw.owner = quasar_lang::prelude::Address::new_from_array(*owner);
+                    raw.lamports = *lamports;
+                    raw.data_len = *data_len as u64;
+                    offset += (ACCOUNT_HEADER + data_len).next_multiple_of(8);
+                }
+                ModelEntry::Duplicate { original_index } => {
+                    // SAFETY: every duplicate owns one 8-byte entry at
+                    // `base + offset`; only its first byte is interpreted.
+                    unsafe { *base.add(offset) = *original_index as u8 };
+                    offset += DUP_ENTRY_SIZE;
+                }
+            }
+        }
+        region
+    }
+
+    fn start(&mut self) -> *mut u8 {
+        self.words.as_mut_ptr().cast::<u8>()
+    }
+
+    fn boundary(&self) -> *const u8 {
+        // SAFETY: `len` is at most the byte capacity reserved in `words`.
+        unsafe { self.words.as_ptr().cast::<u8>().add(self.len) }
+    }
+}
+
+fn model_entries(data: &[u8]) -> std::vec::Vec<ModelEntry> {
+    let mut entries = std::vec::Vec::new();
+    let mut full_indices = std::vec::Vec::new();
+    for (index, chunk) in data.chunks(3).take(24).enumerate() {
+        let kind = chunk.first().copied().unwrap_or_default();
+        let value = chunk.get(1).copied().unwrap_or_default();
+        let extra = chunk.get(2).copied().unwrap_or_default();
+        if kind & 1 == 1 && !full_indices.is_empty() {
+            entries.push(ModelEntry::Duplicate {
+                original_index: full_indices[value as usize % full_indices.len()],
+            });
+        } else {
+            let address_byte = (index + 1) as u8;
+            full_indices.push(entries.len());
+            entries.push(ModelEntry::Full {
+                address: [address_byte; 32],
+                owner: [value; 32],
+                lamports: u64::from(extra) + 1,
+                data_len: usize::from(kind >> 1) % 16,
+            });
+        }
+    }
+    entries
+}
+
+fn oracle(entries: &[ModelEntry]) -> std::vec::Vec<ExpectedAccount> {
+    let mut accounts: std::vec::Vec<ExpectedAccount> = std::vec::Vec::with_capacity(entries.len());
+    for entry in entries {
+        let account = match entry {
+            ModelEntry::Full {
+                address,
+                owner,
+                lamports,
+                data_len,
+            } => ExpectedAccount {
+                address: *address,
+                owner: *owner,
+                lamports: *lamports,
+                data_len: *data_len,
+            },
+            ModelEntry::Duplicate { original_index } => accounts[*original_index].clone(),
+        };
+        accounts.push(account);
+    }
+    accounts
+}
+
+fn observed(account: &quasar_lang::remaining::RemainingAccount) -> ExpectedAccount {
+    ExpectedAccount {
+        address: account.address().to_bytes(),
+        owner: account.owner().to_bytes(),
+        lamports: account.lamports(),
+        data_len: account.data_len(),
+    }
+}
+
+/// Compare every prefix of a structured account-region sequence with a safe
+/// Vec oracle.
+pub fn remaining_accounts_model(data: &[u8]) {
+    use quasar_lang::{
+        accounts::UncheckedAccount, error::QuasarError, prelude::ProgramError,
+        remaining::RemainingAccounts,
+    };
+
+    let entries = model_entries(data);
+    for end in 0..=entries.len() {
+        let prefix = &entries[..end];
+        let expected = oracle(prefix);
+        let mut region = AccountRegion::serialize(prefix);
+        let boundary = region.boundary();
+        // SAFETY: `AccountRegion::serialize` emits a valid aligned SVM account
+        // region, and there are no declared accounts in this model.
+        let remaining = unsafe { RemainingAccounts::new(region.start(), boundary, &[]) };
+
+        let iterated = remaining
+            .iter()
+            .collect::<Result<std::vec::Vec<_>, ProgramError>>()
+            .expect("valid structured region must iterate");
+        assert_eq!(
+            iterated.iter().map(observed).collect::<std::vec::Vec<_>>(),
+            expected
+        );
+
+        for index in 0..=prefix.len() {
+            let actual = remaining
+                .get(index)
+                .expect("valid structured region must support get")
+                .as_ref()
+                .map(observed);
+            assert_eq!(actual, expected.get(index).cloned());
+        }
+
+        let parsed = remaining.parse::<UncheckedAccount, 24>();
+        if prefix
+            .iter()
+            .any(|entry| matches!(entry, ModelEntry::Duplicate { .. }))
+        {
+            assert_eq!(
+                parsed.err(),
+                Some(QuasarError::RemainingAccountDuplicate.into())
+            );
+        } else {
+            assert_eq!(
+                parsed.expect("unique full accounts must parse").len(),
+                expected.len()
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Seed corpora, built from the on-chain-matching client serializers.
 // ---------------------------------------------------------------------------
 

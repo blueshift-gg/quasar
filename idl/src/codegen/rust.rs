@@ -1,7 +1,8 @@
 use {
     super::model::{
-        resolved_account_dependencies, resolved_account_order, resolver_is_derived, CodegenError,
-        CodegenResult, ProgramFeatures, ProgramModel, WireType,
+        account_field_definition, account_field_seed_inputs, resolved_account_dependencies,
+        resolved_account_order, resolver_is_derived, CodegenError, CodegenResult, ProgramFeatures,
+        ProgramModel, WireType,
     },
     crate::types::{
         AccountFlag, Idl, IdlAccountNode, IdlCodec, IdlFieldDef, IdlLayout, IdlPdaSeed,
@@ -602,7 +603,7 @@ fn emit_instructions(
     // Individual instruction files
     for ix in &idl.instructions {
         let snake = camel_to_snake(&ix.name);
-        let content = emit_single_instruction(ix, type_map)?;
+        let content = emit_single_instruction(idl, ix, type_map)?;
         ix_files.push((snake, content));
     }
 
@@ -610,6 +611,7 @@ fn emit_instructions(
 }
 
 fn emit_single_instruction(
+    idl: &Idl,
     ix: &crate::types::IdlInstruction,
     type_map: &HashMap<String, Vec<IdlFieldDef>>,
 ) -> CodegenResult<String> {
@@ -639,7 +641,7 @@ fn emit_single_instruction(
         ix.args.iter().map(|a| (&a.ty, &a.codec)),
         type_map,
     );
-    let account_field_seed_inputs = rust_account_field_seed_inputs(ix, type_map);
+    let account_field_seed_inputs = rust_account_field_seed_inputs(idl, ix);
     emit_field_imports(
         &mut out,
         account_field_seed_inputs
@@ -697,7 +699,7 @@ fn emit_single_instruction(
     });
 
     if has_resolved_input {
-        emit_resolved_instruction_input(&mut out, ix, type_map, &struct_name)?;
+        emit_resolved_instruction_input(&mut out, idl, ix, &struct_name)?;
     }
 
     writeln!(
@@ -875,12 +877,12 @@ fn emit_single_instruction(
 /// asking callers only for unresolved accounts and instruction arguments.
 fn emit_resolved_instruction_input(
     out: &mut String,
+    idl: &Idl,
     ix: &crate::types::IdlInstruction,
-    type_map: &HashMap<String, Vec<IdlFieldDef>>,
     struct_name: &str,
 ) -> CodegenResult<()> {
     let input_name = format!("{struct_name}InstructionInput");
-    let account_field_seeds = rust_account_field_seed_inputs(ix, type_map);
+    let account_field_seeds = rust_account_field_seed_inputs(idl, ix);
 
     writeln!(out, "pub struct {input_name} {{").expect("write to String");
 
@@ -1077,41 +1079,22 @@ struct RustAccountFieldSeed<'a> {
 }
 
 fn rust_account_field_seed_inputs<'a>(
+    idl: &'a Idl,
     ix: &'a crate::types::IdlInstruction,
-    type_map: &'a HashMap<String, Vec<IdlFieldDef>>,
 ) -> Vec<RustAccountFieldSeed<'a>> {
     let mut out = Vec::new();
-    let mut seen = HashSet::new();
-    for seed in ix
-        .accounts
-        .iter()
-        .flat_map(|account| match &account.resolver {
-            IdlResolver::Pda { seeds, .. } => seeds.as_slice(),
-            _ => &[],
-        })
-    {
-        let IdlPdaSeed::AccountField {
-            path,
-            account,
-            field,
-        } = seed
-        else {
-            continue;
-        };
-        let key = format!("{path}:{field}");
-        if !seen.insert(key) {
-            continue;
-        }
-        let Some(field_def) = type_map
-            .get(account)
-            .and_then(|fields| fields.iter().find(|candidate| candidate.name == *field))
-        else {
+    for seed in account_field_seed_inputs(ix) {
+        let Some(field_def) = account_field_definition(idl, seed.account, seed.field) else {
             continue;
         };
         out.push(RustAccountFieldSeed {
-            path,
-            field_name: field,
-            input_name: format!("{}_{}_seed", camel_to_snake(path), camel_to_snake(field)),
+            path: seed.path,
+            field_name: seed.field,
+            input_name: format!(
+                "{}_{}_seed",
+                camel_to_snake(seed.path),
+                camel_to_snake(seed.field)
+            ),
             field: field_def,
         });
     }

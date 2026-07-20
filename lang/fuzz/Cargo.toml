@@ -43,6 +43,13 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "remaining_accounts_model"
+path = "fuzz_targets/remaining_accounts_model.rs"
+test = false
+doc = false
+bench = false
+
 # libFuzzer needs some debug info for readable stacks; keep optimizations on.
 [profile.release]
 debug = 1

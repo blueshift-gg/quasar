@@ -1,7 +1,7 @@
 use {
     super::model::{
-        reject_generics, resolved_account_order, resolver_is_derived, validate_codegen_idl,
-        CodegenResult,
+        account_field_seed_inputs, reject_generics, resolved_account_order, resolver_is_derived,
+        validate_codegen_idl, CodegenResult,
     },
     crate::types::{
         Idl, IdlAccountNode, IdlCodec, IdlPdaProgram, IdlPdaSeed, IdlResolver, IdlType, IdlTypeDef,
@@ -366,8 +366,8 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
         for acc in &user_accounts {
             writeln!(out, "    Pubkey *{};", acc.name).unwrap();
         }
-        for (path, field) in &account_field_seeds {
-            let name = account_field_seed_input_name(path, field);
+        for seed in &account_field_seeds {
+            let name = account_field_seed_input_name(seed.path, seed.field);
             writeln!(out, "    const uint8_t *{name};").unwrap();
             writeln!(out, "    uint64_t {name}_len;").unwrap();
         }
@@ -915,30 +915,6 @@ fn emit_raw_arg_seed(out: &mut String, index: usize, path: &str) {
          sizeof(args->{path});"
     )
     .unwrap();
-}
-
-fn account_field_seed_inputs(ix: &crate::types::IdlInstruction) -> Vec<(String, String)> {
-    let mut inputs = Vec::new();
-    for acc in &ix.accounts {
-        if acc.optional {
-            continue;
-        }
-        let IdlResolver::Pda { seeds, .. } = &acc.resolver else {
-            continue;
-        };
-        for seed in seeds {
-            let IdlPdaSeed::AccountField { path, field, .. } = seed else {
-                continue;
-            };
-            if !inputs
-                .iter()
-                .any(|(seen_path, seen_field)| seen_path == path && seen_field == field)
-            {
-                inputs.push((path.clone(), field.clone()));
-            }
-        }
-    }
-    inputs
 }
 
 fn account_field_seed_input_name(path: &str, field: &str) -> String {

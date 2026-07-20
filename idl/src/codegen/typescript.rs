@@ -1,5 +1,8 @@
 use {
-    super::model::{resolved_account_order, CodegenResult, ProgramModel},
+    super::model::{
+        account_field_definition, account_field_seed_inputs, resolved_account_order, CodegenResult,
+        ProgramModel,
+    },
     crate::types::{
         AccountFlag, Idl, IdlAccountDef, IdlArg, IdlCodec, IdlFieldDef, IdlInstruction,
         IdlPdaProgram, IdlPdaSeed, IdlResolver, IdlType, ScalarRepr,
@@ -2358,11 +2361,12 @@ fn write_inline_pda_seed_lines(
                 field,
             } => {
                 let expr = account_field_seed_var(path, field);
-                let Some(ty) = account_field_type(idl, account, field) else {
+                let Some(ty) = account_field_definition(idl, account, field).map(|field| &field.ty)
+                else {
                     writeln!(out, "        {},", expr).expect("write to String");
                     continue;
                 };
-                writeln!(out, "        {},", ts_pda_arg_seed_expr(&expr, &ty, target))
+                writeln!(out, "        {},", ts_pda_arg_seed_expr(&expr, ty, target))
                     .expect("write to String");
             }
             IdlPdaSeed::Arg { path, .. } => {
@@ -2422,7 +2426,7 @@ fn emit_account_field_seed_resolvers(
         if !seen.insert(key) {
             continue;
         }
-        if account_field_type(idl, account, field).is_none() {
+        if account_field_definition(idl, account, field).is_none() {
             continue;
         }
 
@@ -2462,34 +2466,7 @@ fn has_account_field_pda_seeds(idl: &Idl) -> bool {
 }
 
 fn instruction_has_account_field_pda_seeds(ix: &crate::types::IdlInstruction) -> bool {
-    ix.accounts.iter().any(|account| {
-        if account.optional {
-            return false;
-        }
-        if let IdlResolver::Pda { seeds, .. } = &account.resolver {
-            seeds
-                .iter()
-                .any(|seed| matches!(seed, IdlPdaSeed::AccountField { .. }))
-        } else {
-            false
-        }
-    })
-}
-
-fn account_field_type(idl: &Idl, account: &str, field: &str) -> Option<IdlType> {
-    let mut current_account = account.to_string();
-    let mut field_ty = None;
-
-    for segment in field.split('.') {
-        let type_def = idl.types.iter().find(|ty| ty.name == current_account)?;
-        let field_def = type_def.fields.iter().find(|f| f.name == segment)?;
-        field_ty = Some(field_def.ty.clone());
-        if let IdlType::Defined { defined } = &field_def.ty {
-            current_account = defined.name.clone();
-        }
-    }
-
-    field_ty
+    !account_field_seed_inputs(ix).is_empty()
 }
 
 fn account_field_data_var(path: &str, field: &str) -> String {

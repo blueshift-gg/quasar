@@ -486,6 +486,27 @@ fn source_revision_label(revision: &str, dirty: bool) -> String {
 mod tests {
     use super::*;
 
+    fn idl_with_hashes() -> Idl {
+        Idl {
+            spec: quasar_idl::types::CURRENT_SPEC.to_string(),
+            name: "demo".to_string(),
+            version: "0.1.0".to_string(),
+            address: "11111111111111111111111111111111".to_string(),
+            metadata: Default::default(),
+            docs: vec![],
+            instructions: vec![],
+            accounts: vec![],
+            types: vec![],
+            events: vec![],
+            errors: vec![],
+            extensions: None,
+            hashes: Some(quasar_idl::types::IdlHashes {
+                idl: "idl-hash".to_string(),
+                abi: "abi-hash".to_string(),
+            }),
+        }
+    }
+
     fn manifest() -> DeploymentManifest {
         DeploymentManifest {
             version: MANIFEST_VERSION,
@@ -561,5 +582,114 @@ mod tests {
     fn validates_base58_address_length() {
         validate_address("11111111111111111111111111111111").unwrap();
         assert!(validate_address("abc").is_err());
+    }
+
+    #[cfg(unix)]
+    fn fake_solana(root: &Path, program_id: &str, authority: &str, dumped_elf: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+
+        let script = root.join("solana");
+        let log = root.join("calls.log");
+        let contents = format!(
+            r#"#!/bin/sh
+printf '%s\n' "$*" >> '{log}'
+if [ "$1" = "program" ] && [ "$2" = "show" ]; then
+  printf '%s\n' '{{"programId":"{program_id}","authority":"{authority}","programDataAddress":"data-address","lastDeploySlot":42}}'
+  exit 0
+fi
+if [ "$1" = "program" ] && [ "$2" = "dump" ]; then
+  printf '%s' '{dumped_elf}' > "$4"
+  exit 0
+fi
+printf '%s\n' "unexpected fake solana invocation: $*" >&2
+exit 64
+"#,
+            log = log.display(),
+        );
+        fs::write(&script, contents).unwrap();
+        let mut permissions = fs::metadata(&script).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&script, permissions).unwrap();
+        script
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn live_verification_exercises_show_dump_hash_and_cluster_contract() {
+        let root = tempfile::tempdir().unwrap();
+        let program_id = bs58::encode([1u8; 32]).into_string();
+        let authority = bs58::encode([2u8; 32]).into_string();
+        let elf_path = root.path().join("demo.so");
+        fs::write(&elf_path, b"same-elf").unwrap();
+        let solana = fake_solana(root.path(), &program_id, &authority, "same-elf");
+        let idl = idl_with_hashes();
+
+        let observed = verify_live(
+            VerifyRequest {
+                program_id: &program_id,
+                elf_path: &elf_path,
+                idl: &idl,
+                cluster: Some("http://validator:8899"),
+                expected_authority: Some(&authority),
+            },
+            solana.to_str().unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(observed.program_id, program_id);
+        assert_eq!(
+            observed.upgrade_authority.as_deref(),
+            Some(authority.as_str())
+        );
+        assert_eq!(
+            observed.program_data_address.as_deref(),
+            Some("data-address")
+        );
+        assert_eq!(observed.last_deploy_slot, Some(42));
+        assert_eq!(observed.idl_sha256, "idl-hash");
+        assert_eq!(observed.abi_sha256, "abi-hash");
+        let calls = fs::read_to_string(root.path().join("calls.log")).unwrap();
+        assert!(
+            calls.contains(&format!(
+                "program show {program_id} --output json --url http://validator:8899"
+            )),
+            "{calls}"
+        );
+        assert!(
+            calls.lines().any(
+                |line| line.starts_with(&format!("program dump {program_id} "))
+                    && line.ends_with("--url http://validator:8899")
+            ),
+            "{calls}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn live_verification_rejects_a_dump_that_differs_from_local_elf() {
+        let root = tempfile::tempdir().unwrap();
+        let program_id = bs58::encode([3u8; 32]).into_string();
+        let authority = bs58::encode([4u8; 32]).into_string();
+        let elf_path = root.path().join("demo.so");
+        fs::write(&elf_path, b"local-elf").unwrap();
+        let solana = fake_solana(root.path(), &program_id, &authority, "deployed-elf");
+        let idl = idl_with_hashes();
+
+        let error = verify_live(
+            VerifyRequest {
+                program_id: &program_id,
+                elf_path: &elf_path,
+                idl: &idl,
+                cluster: None,
+                expected_authority: Some(&authority),
+            },
+            solana.to_str().unwrap(),
+        )
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("deployed ELF mismatch"),
+            "{error}"
+        );
     }
 }

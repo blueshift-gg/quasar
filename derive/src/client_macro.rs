@@ -568,9 +568,9 @@ fn collect_roots<'p>(
             }
         }
         SeedSource::DerivedAccount(ident) => {
-            let field = find_field(plan, ident).expect("derived field exists");
-            let nested =
-                field_derivation(plan, field, &mut Vec::new()).expect("derived field re-resolves");
+            let field = find_field(plan, ident).unwrap_or_else(|| ice!("derived field must exist"));
+            let nested = field_derivation(plan, field, &mut Vec::new())
+                .unwrap_or_else(|| ice!("derived field must resolve twice"));
             collect_roots(plan, &nested, roots);
         }
         SeedSource::FieldValue { input, alias } => {
