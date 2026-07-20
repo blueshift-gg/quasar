@@ -15,13 +15,16 @@ PROGRAM_MSRV := 1.89.0
 # v1.51 ships Cargo 1.84 which does not, causing "duplicate lang item" errors.
 PLATFORM_TOOLS := v1.52
 
-# Host-side tests that consume freshly built SBF artifacts.
-SBF_HOST_TEST_PACKAGES := quasar-vault quasar-escrow quasar-multisig quasar-test-suite
+# Native test runners that consume freshly built SBF artifacts. Their
+# development dependency on quasar-test or quasar-svm is the owning manifest's
+# declaration of that requirement; the Makefile keeps no parallel inventory.
+SBF_TEST_RUNNERS := $(shell cargo metadata --locked --no-deps --format-version 1 2>/dev/null | \
+	jq -r '.packages[] | select(any(.dependencies[]?; .kind == "dev" and (.name == "quasar-test" or .name == "quasar-svm"))) | .name')
 # Cargo owns the SBF program inventory. Each program manifest owns its default
 # build features, so adding a cdylib target needs no Makefile update.
 SBF_PROGRAM_PACKAGES := $(shell cargo metadata --locked --no-deps --format-version 1 2>/dev/null | \
 	jq -r '.packages[] | select(any(.targets[]?; (.crate_types // []) | index("cdylib"))) | .name')
-HOST_TEST_EXCLUDES := $(sort $(SBF_HOST_TEST_PACKAGES) $(SBF_PROGRAM_PACKAGES))
+HOST_TEST_EXCLUDES := $(sort $(SBF_TEST_RUNNERS) $(SBF_PROGRAM_PACKAGES))
 
 PACKAGE_REHEARSAL_ROOT ?= target/release-rehearsal
 SOLANA_VERSION ?= v4.1.1
@@ -193,7 +196,7 @@ test-host:
 
 test-sbf-host:
 	@CARGO_INCREMENTAL=0 cargo test \
-		$(foreach package,$(SBF_HOST_TEST_PACKAGES),-p $(package)) \
+		$(foreach package,$(SBF_TEST_RUNNERS),-p $(package)) \
 		--all-features
 
 test-quasar-test-standalone:
@@ -305,7 +308,7 @@ coverage:
 		exit 1; \
 	}
 	@cargo llvm-cov --workspace \
-		$(foreach package,$(SBF_HOST_TEST_PACKAGES),--exclude $(package)) \
+		$(foreach package,$(SBF_TEST_RUNNERS),--exclude $(package)) \
 		--all-features --html
 	@echo "HTML report: target/llvm-cov/html/index.html"
 
