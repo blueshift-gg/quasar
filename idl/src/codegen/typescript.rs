@@ -516,7 +516,13 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
         let name = &account.name;
         let const_name = pascal_to_screaming_snake(name);
         out.push('\n');
-        writeln!(out, "  decode{}(data: Uint8Array): {} {{", name, name).expect("write to String");
+        writeln!(
+            out,
+            "  decode{}(input: ArrayLike<number>): {} {{",
+            name, name
+        )
+        .expect("write to String");
+        out.push_str("    const data = Uint8Array.from(input);\n");
         writeln!(
             out,
             "    if (!matchDisc(data, {}_DISCRIMINATOR)) throw new Error(\"Invalid {} \
@@ -535,11 +541,12 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
 
     if !idl.events.is_empty() {
         out.push('\n');
-        out.push_str("  decodeEvent(data: Uint8Array): DecodedEvent | null {\n");
+        out.push_str("  decodeEvent(input: ArrayLike<number>): DecodedEvent | null {\n");
+        out.push_str("    const data = Uint8Array.from(input);\n");
         for event in &idl.events {
             let has_type = idl.types.iter().any(|t| t.name == event.name);
             let const_name = format!("{}_DISCRIMINATOR", pascal_to_screaming_snake(&event.name));
-            writeln!(out, "    if (matchDisc(data, {}))", const_name).expect("write to String");
+            writeln!(out, "    if (matchDisc(data, {})) {{", const_name).expect("write to String");
             if has_type {
                 writeln!(
                     out,
@@ -558,6 +565,7 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
                 writeln!(out, "      return {{ type: ProgramEvent.{} }};", event.name)
                     .expect("write to String");
             }
+            out.push_str("    }\n");
         }
         out.push_str("    return null;\n");
         out.push_str("  }\n");
@@ -565,7 +573,10 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
 
     if !idl.instructions.is_empty() {
         out.push('\n');
-        out.push_str("  decodeInstruction(data: Uint8Array): DecodedInstruction | null {\n");
+        out.push_str(
+            "  decodeInstruction(input: ArrayLike<number>): DecodedInstruction | null {\n",
+        );
+        out.push_str("    const data = Uint8Array.from(input);\n");
         for ix in &idl.instructions {
             let pascal = snake_to_pascal(&ix.name);
             let const_name = format!(

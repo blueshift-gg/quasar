@@ -1,0 +1,119 @@
+{
+  "spec": "quasar-idl/1.0.0",
+  "name": "golden_demo",
+  "version": "0.1.0",
+  "address": "11111111111111111111111111111111",
+  "instructions": [
+    {
+      "name": "make",
+      "discriminator": [
+        0
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": false,
+          "signer": true,
+          "resolver": {
+            "kind": "input"
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "signer": false,
+          "resolver": {
+            "kind": "pda",
+            "program": {
+              "kind": "programId"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "flag",
+          "type": "bool"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Vault",
+      "discriminator": [
+        42
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "Vault",
+      "kind": "struct",
+      "fields": [
+        {
+          "name": "authority",
+          "type": "pubkey"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "mode",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "Mode",
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "Open",
+          "value": 0
+        },
+        {
+          "name": "Closed",
+          "value": 1
+        }
+      ],
+      "repr": "u8"
+    }
+  ],
+  "events": [
+    {
+      "name": "VaultMade",
+      "discriminator": [
+        7
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Unauthorized",
+      "msg": "caller is not the vault authority"
+    }
+  ]
+}

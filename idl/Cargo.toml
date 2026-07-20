@@ -30,3 +30,4 @@ serde_json = "1"
 
 [dev-dependencies]
 expect-test = "1"
+tempfile = "3"
