@@ -1,5 +1,7 @@
+//! Human and JSON output for the CLI profiler.
+
 use {
-    crate::aggregate::ProfileResult,
+    super::aggregate::ProfileResult,
     serde::Serialize,
     std::{
         collections::HashMap,
@@ -264,7 +266,7 @@ fn save_current_profile(program_name: &str, result: &ProfileResult) {
 }
 
 pub(crate) fn last_profile_path(program_name: &str) -> std::path::PathBuf {
-    crate::profile_web_root().join(format!(".last-profile.{program_name}"))
+    super::profile_web_root().join(format!(".last-profile.{program_name}"))
 }
 
 /// Simplify a demangled Rust function name for the terminal.

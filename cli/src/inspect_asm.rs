@@ -12,6 +12,7 @@ use {
 };
 
 pub fn run(elf_path: Option<PathBuf>, function: Option<String>, source: bool) -> CliResult {
+    eprintln!("  {}", style::dim("Preview tool: assembly inspection"));
     let so_path = match elf_path {
         Some(p) => p,
         None => find_so()?,
@@ -114,7 +115,7 @@ fn find_so() -> Result<PathBuf, crate::error::CliError> {
         Some(p) => Ok(p),
         None => Err(CliError::message(
             "no .so found in target/deploy/ or target/profile/\n  Run `quasar build` first or \
-             pass a path: `quasar dump <path>`",
+             pass a path: `quasar inspect asm <path>`",
         )),
     }
 }

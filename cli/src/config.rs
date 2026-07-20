@@ -189,10 +189,6 @@ impl QuasarConfig {
         self.clients.path.clone()
     }
 
-    pub fn client_targets(&self) -> &[ClientTarget] {
-        &self.clients.targets
-    }
-
     pub fn codegen_targets(&self) -> Vec<&'static str> {
         let mut targets = Vec::new();
         for target in &self.clients.targets {

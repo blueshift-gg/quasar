@@ -1,5 +1,7 @@
+//! DWARF and symbol resolution for the CLI profiler.
+
 use {
-    crate::elf::Symbol,
+    super::elf::Symbol,
     addr2line::{gimli, LookupResult},
     object::{Object, ObjectSection},
 };

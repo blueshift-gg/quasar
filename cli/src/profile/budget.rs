@@ -1,7 +1,7 @@
-//! Checked-in ceilings for static CU estimates and program binary size.
+//! Checked-in ceilings for CLI static CU estimates and program binary size.
 
 use {
-    crate::aggregate::ProfileResult,
+    super::aggregate::ProfileResult,
     serde::{Deserialize, Serialize},
     std::{collections::BTreeMap, fs, path::Path},
 };

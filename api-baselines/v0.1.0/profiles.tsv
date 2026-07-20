@@ -1,7 +1,6 @@
 # package	profile	baseline file
 quasar-schema	default	quasar-schema.txt
 quasar-idl-schema	default	quasar-idl-schema.txt
-quasar-profile	default	quasar-profile.txt
 quasar-test	default	quasar-test.txt
 quasar-test-derive	proc-macro	quasar-test-derive.txt
 solana-compiler-builtins	default	solana-compiler-builtins.txt

@@ -1,3 +1,5 @@
+//! Local preview server for profiler reports.
+
 use std::{
     io::{BufRead, BufReader, Write},
     net::{TcpListener, TcpStream},

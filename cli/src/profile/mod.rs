@@ -7,7 +7,7 @@ mod serve;
 mod walk;
 
 use {
-    crate::elf::DebugLevel,
+    self::elf::DebugLevel,
     memmap2::Mmap,
     sha2::{Digest, Sha256},
     std::{
@@ -22,11 +22,11 @@ use {
 
 const SERVER_HOST: &str = "127.0.0.1";
 const SERVER_PORT: u16 = 7777;
-const FRONTEND_INDEX: &[u8] = include_bytes!("../index.html");
+const FRONTEND_INDEX: &[u8] = include_bytes!("index.html");
 /// Project-local ownership root for generated profiler artifacts.
-pub const PROFILE_DIR: &str = "target/profile";
+pub(crate) const PROFILE_DIR: &str = "target/profile";
 
-pub struct ProfileCommand {
+pub(crate) struct ProfileCommand {
     pub elf_path: Option<PathBuf>,
     pub diff_program: Option<String>,
     pub share: bool,
@@ -38,7 +38,7 @@ pub struct ProfileCommand {
     pub json: bool,
 }
 
-pub fn run(command: ProfileCommand) {
+pub(crate) fn run(command: ProfileCommand) {
     if command.write_budget && command.assert_budget {
         fail("--write-budget and --assert-budget cannot be used together");
     }
@@ -523,10 +523,9 @@ fn sha256_file(path: &Path) -> io::Result<String> {
 mod tests {
     use {
         super::{
-            deploy_binary_size, materialize_frontend_assets, profile_program_name,
-            profile_web_root, FRONTEND_INDEX, PROFILE_DIR,
+            deploy_binary_size, materialize_frontend_assets, output::last_profile_path,
+            profile_program_name, profile_web_root, FRONTEND_INDEX, PROFILE_DIR,
         },
-        crate::output::last_profile_path,
         std::{fs, path::PathBuf},
         tempfile::tempdir,
     };

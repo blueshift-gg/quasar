@@ -1,5 +1,7 @@
+//! Static compute-unit aggregation for the CLI profiler.
+
 use {
-    crate::{dwarf::Resolver, elf::ElfInfo, walk::InstructionWalker},
+    super::{dwarf::Resolver, elf::ElfInfo, walk::InstructionWalker},
     std::collections::HashMap,
 };
 

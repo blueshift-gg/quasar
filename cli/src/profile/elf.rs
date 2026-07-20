@@ -1,3 +1,5 @@
+//! ELF loading for the CLI profiler.
+
 use {goblin::elf::Elf, memmap2::Mmap, std::path::Path};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

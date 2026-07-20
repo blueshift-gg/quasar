@@ -118,11 +118,6 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      - name: Publish quasar-profile
-        run: scripts/publish-crate.sh quasar-profile "$QUASAR_VERSION"
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
       - name: Publish quasar-test-derive
         run: scripts/publish-crate.sh quasar-test-derive "$QUASAR_VERSION"
         env:
@@ -137,7 +132,6 @@ jobs:
         run: |
           scripts/wait-for-crate.sh quasar-schema "$QUASAR_VERSION"
           scripts/wait-for-crate.sh quasar-idl-schema "$QUASAR_VERSION"
-          scripts/wait-for-crate.sh quasar-profile "$QUASAR_VERSION"
           scripts/wait-for-crate.sh quasar-test-derive "$QUASAR_VERSION"
           scripts/wait-for-crate.sh solana-compiler-builtins "$QUASAR_VERSION"
 

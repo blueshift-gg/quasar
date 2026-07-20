@@ -347,7 +347,7 @@ pub(crate) fn load_generated(config: &QuasarConfig) -> Result<(PathBuf, Idl), Cl
 }
 
 /// Called by `quasar idl <path>` (generate) or `quasar idl verify <idl>`.
-pub fn run(command: IdlCommand) -> CliResult {
+pub(crate) fn run(command: IdlCommand) -> CliResult {
     if let Some(crate::IdlAction::Verify { idl_path }) = &command.action {
         return verify(idl_path);
     }

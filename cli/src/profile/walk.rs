@@ -1,3 +1,5 @@
+//! sBPF instruction walking for the CLI profiler.
+
 const LDDW: u8 = 0x18;
 
 pub(crate) struct InstructionWalker<'a> {

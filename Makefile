@@ -37,7 +37,7 @@ SBF_ALL := $(SBF_EXAMPLES) $(SBF_TEST_PROGRAMS)
 
 # Public crates in dependency order. Keep this list aligned with the release
 # workflow; `package-check` proves the complete publication graph packages.
-PUBLISH_PACKAGES := quasar-schema quasar-idl-schema quasar-profile \
+PUBLISH_PACKAGES := quasar-schema quasar-idl-schema \
 	quasar-test-derive solana-compiler-builtins quasar-derive quasar-idl \
 	quasar-lang quasar-test quasar-spl quasar-cli
 
@@ -54,7 +54,6 @@ SBF_HOST_TEST_PACKAGES := quasar-vault quasar-escrow quasar-multisig quasar-test
 PACKAGE_PATCHES := \
 	--config 'patch.crates-io.quasar-schema.path="schema"' \
 	--config 'patch.crates-io.quasar-idl-schema.path="idl/schema"' \
-	--config 'patch.crates-io.quasar-profile.path="profile"' \
 	--config 'patch.crates-io.solana-compiler-builtins.path="solana-compiler-builtins"' \
 	--config 'patch.crates-io.quasar-derive.path="derive"' \
 	--config 'patch.crates-io.quasar-idl.path="idl"' \

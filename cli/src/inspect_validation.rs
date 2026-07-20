@@ -2,13 +2,17 @@ use {
     crate::{
         config::QuasarConfig,
         error::{CliError, CliResult},
-        AuditCommand,
+        ValidationInspectCommand,
     },
     quasar_idl::types::{Idl, IdlAccountValidation, IdlValidationPlan},
     std::{fmt::Write, path::Path},
 };
 
-pub fn run(command: AuditCommand) -> CliResult {
+pub fn run(command: ValidationInspectCommand) -> CliResult {
+    eprintln!(
+        "  {}",
+        crate::style::dim("Preview tool: validation inspection")
+    );
     let idl = match command.idl_path {
         Some(path) => load_idl(&path)?,
         None => {

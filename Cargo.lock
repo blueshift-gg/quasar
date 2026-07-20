@@ -2009,18 +2009,24 @@ dependencies = [
 name = "quasar-cli"
 version = "0.1.0"
 dependencies = [
+ "addr2line",
  "bs58",
+ "chrono",
  "clap",
  "clap_complete",
  "dirs",
  "ed25519-dalek",
  "expect-test",
+ "goblin",
  "hex",
  "indicatif",
+ "libc",
+ "memmap2",
+ "object",
  "quasar-idl",
- "quasar-profile",
  "quasar-schema",
  "rand 0.8.6",
+ "rustc-demangle",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2132,25 +2138,6 @@ dependencies = [
  "solana-address 2.2.0",
  "solana-instruction",
  "wincode 0.4.9",
-]
-
-[[package]]
-name = "quasar-profile"
-version = "0.1.0"
-dependencies = [
- "addr2line",
- "chrono",
- "goblin",
- "hex",
- "libc",
- "memmap2",
- "object",
- "rustc-demangle",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "toml 0.8.23",
 ]
 
 [[package]]
