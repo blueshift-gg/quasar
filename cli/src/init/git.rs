@@ -19,19 +19,18 @@ pub(super) fn maybe_initialize_git_repo(name: &str, git_setup: GitSetup) -> Resu
 }
 
 fn initialize_git_repo(root: &Path, git_setup: GitSetup) -> Result<(), CliError> {
-    initialize_git_repo_with(root, git_setup, Path::new("git"))
+    initialize_git_repo_with(git_setup, |args| run_git(Path::new("git"), root, args))
 }
 
-fn initialize_git_repo_with(root: &Path, git_setup: GitSetup, git: &Path) -> Result<(), CliError> {
-    run_git(git, root, &["init", "--quiet"])?;
+fn initialize_git_repo_with(
+    git_setup: GitSetup,
+    mut run: impl FnMut(&[&str]) -> Result<(), CliError>,
+) -> Result<(), CliError> {
+    run(&["init", "--quiet"])?;
     match git_setup {
         GitSetup::InitializeAndCommit => {
-            run_git(git, root, &["add", "."])?;
-            run_git(
-                git,
-                root,
-                &["commit", "-am", "chore: initial commit", "--quiet"],
-            )
+            run(&["add", "."])?;
+            run(&["commit", "-am", "chore: initial commit", "--quiet"])
         }
         #[cfg(test)]
         GitSetup::Initialize => Ok(()),
@@ -69,26 +68,19 @@ fn run_git(git: &Path, root: &Path, args: &[&str]) -> Result<(), CliError> {
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        std::{
-            fs::{self, OpenOptions},
-            io::Write as _,
-            path::PathBuf,
-            time::{SystemTime, UNIX_EPOCH},
-        },
-    };
+    use super::*;
 
     #[test]
     fn initialize_git_repo_runs_init_add_and_commit() {
-        let sandbox = create_test_sandbox("success");
-        let git = write_fake_git(&sandbox, None);
-        let root = sandbox.join("repo");
-        fs::create_dir_all(&root).unwrap();
+        let mut calls = Vec::new();
 
-        initialize_git_repo_with(&root, GitSetup::InitializeAndCommit, &git).unwrap();
+        initialize_git_repo_with(GitSetup::InitializeAndCommit, |args| {
+            calls.push(args.join(" "));
+            Ok(())
+        })
+        .unwrap();
         assert_eq!(
-            read_git_log(&sandbox),
+            calls,
             vec![
                 "init --quiet",
                 "add .",
@@ -99,79 +91,27 @@ mod tests {
 
     #[test]
     fn initialize_git_repo_can_skip_initial_commit() {
-        let sandbox = create_test_sandbox("init-only");
-        let git = write_fake_git(&sandbox, None);
-        let root = sandbox.join("repo");
-        fs::create_dir_all(&root).unwrap();
+        let mut calls = Vec::new();
 
-        initialize_git_repo_with(&root, GitSetup::Initialize, &git).unwrap();
-        assert_eq!(read_git_log(&sandbox), vec!["init --quiet"]);
+        initialize_git_repo_with(GitSetup::Initialize, |args| {
+            calls.push(args.join(" "));
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(calls, vec!["init --quiet"]);
     }
 
     #[test]
     fn initialize_git_repo_stops_when_git_init_fails() {
-        let sandbox = create_test_sandbox("fail-init");
-        let git = write_fake_git(&sandbox, Some("init"));
-        let root = sandbox.join("repo");
-        fs::create_dir_all(&root).unwrap();
+        let mut calls = Vec::new();
 
-        let error =
-            initialize_git_repo_with(&root, GitSetup::InitializeAndCommit, &git).unwrap_err();
+        let error = initialize_git_repo_with(GitSetup::InitializeAndCommit, |args| {
+            calls.push(args.join(" "));
+            Err(CliError::message("`git init --quiet` failed"))
+        })
+        .unwrap_err();
 
         assert!(error.to_string().contains("`git init --quiet` failed"));
-        assert_eq!(read_git_log(&sandbox), vec!["init --quiet"]);
-    }
-
-    fn create_test_sandbox(label: &str) -> PathBuf {
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!(
-            "quasar-init-{label}-{}-{unique}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    fn read_git_log(sandbox: &Path) -> Vec<String> {
-        fs::read_to_string(sandbox.join("git.log"))
-            .unwrap_or_default()
-            .lines()
-            .map(|line| line.to_string())
-            .collect()
-    }
-
-    fn write_fake_git(sandbox: &Path, fail_on: Option<&str>) -> PathBuf {
-        let path = sandbox.join("git");
-        let log = sandbox.join("git.log");
-        let fail = fail_on.unwrap_or("");
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .unwrap();
-        file.write_all(
-            format!(
-                "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{}'\nif [ \"$1\" = '{}' ]; then\n  exit \
-                 1\nfi\nexit 0\n",
-                log.display(),
-                fail
-            )
-            .as_bytes(),
-        )
-        .unwrap();
-        file.sync_all().unwrap();
-        drop(file);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-
-            let mut perms = fs::metadata(&path).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&path, perms).unwrap();
-        }
-        path
+        assert_eq!(calls, vec!["init --quiet"]);
     }
 }
