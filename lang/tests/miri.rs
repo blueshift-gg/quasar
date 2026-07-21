@@ -1,4 +1,8 @@
 //! Miri UB tests for quasar-lang unsafe code paths.
+#![allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "this adversarial fixture centralizes account-region safety at its constructors"
+)]
 //!
 //! **Design philosophy: adversarial.** Tests are designed to find undefined
 //! behavior, not merely confirm correct output. Each test exercises a specific
@@ -213,7 +217,9 @@ impl AccountBuffer {
     }
 
     unsafe fn view(&mut self) -> AccountView {
-        AccountView::new_unchecked(self.raw())
+        // SAFETY: `self.raw()` points into the live, correctly aligned
+        // account buffer owned by this fixture.
+        unsafe { AccountView::new_unchecked(self.raw()) }
     }
 
     fn write_data(&mut self, data: &[u8]) {
@@ -411,12 +417,16 @@ impl ZeroCopyDeref for TestAccountType {
 
     #[inline(always)]
     unsafe fn deref_from(view: &AccountView) -> &Self::Target {
-        &*(view.data_ptr().add(4) as *const TestZcData)
+        // SAFETY: the fixture constructs this account with a four-byte
+        // discriminator followed by an aligned, initialized `TestZcData`.
+        unsafe { &*(view.data_ptr().add(4) as *const TestZcData) }
     }
 
     #[inline(always)]
     unsafe fn deref_from_mut(view: &mut AccountView) -> &mut Self::Target {
-        &mut *(view.data_ptr().add(4) as *mut TestZcData)
+        // SAFETY: same layout contract as `deref_from`; the exclusive view
+        // grants exclusive access to the payload.
+        unsafe { &mut *(view.data_ptr().add(4) as *mut TestZcData) }
     }
 }
 

@@ -3,28 +3,28 @@ use {
     std::path::PathBuf,
 };
 
-pub mod audit;
-pub mod build;
-pub mod cfg;
-pub mod clean;
-pub mod client;
-pub mod config;
-pub mod deploy;
-pub mod dump;
-pub mod error;
-pub mod idl;
-pub mod init;
-pub mod keys;
-pub mod lint;
-pub mod new;
+mod build;
+mod cfg;
+mod clean;
+mod client;
+mod config;
+mod deploy;
+mod error;
+mod idl;
+mod init;
+mod inspect_asm;
+mod inspect_validation;
+mod keys;
+mod lint;
 mod output;
+mod profile;
 mod program_keypair;
-pub mod style;
-pub mod test;
-pub mod toolchain;
-pub mod utils;
-pub mod verify;
-pub use error::CliResult;
+mod style;
+mod test;
+mod toolchain;
+mod utils;
+mod verify;
+use error::CliResult;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -33,17 +33,15 @@ pub use error::CliResult;
     about = "Build programs that execute at the speed of light",
     disable_help_subcommand = true
 )]
-pub struct Cli {
+struct Cli {
     #[command(subcommand)]
     pub command: Command,
 }
 
 #[derive(Subcommand, Debug)]
-pub enum Command {
+enum Command {
     /// Scaffold a new Quasar project
     Init(InitCommand),
-    /// Add instructions, state, and errors to the project
-    Add(AddCommand),
     /// Compile the on-chain program
     Build(BuildCommand),
     /// Run the test suite
@@ -60,14 +58,12 @@ pub enum Command {
     Client(ClientCommand),
     /// Audit the program surface for pre-deploy and upgrade-safety issues
     Lint(LintCommand),
-    /// Print the compiler's resolved per-account validation plan
-    Audit(AuditCommand),
     /// Verify local artifacts against a deployed program
     Verify(VerifyCommand),
     /// Measure compute-unit usage
     Profile(ProfileCommand),
-    /// Dump sBPF assembly
-    Dump(DumpCommand),
+    /// Preview inspection tools
+    Inspect(InspectCommand),
     /// Manage program keypair
     Keys(KeysCommand),
     /// Generate shell completions
@@ -75,61 +71,22 @@ pub enum Command {
 }
 
 #[derive(Args, Debug, Default)]
-pub struct InitCommand {
-    /// Project name; skips the interactive name prompt
+struct InitCommand {
+    /// Project name
     #[arg(value_name = "NAME")]
-    pub name: Option<String>,
-
-    /// Skip prompts and use saved defaults
-    #[arg(long, short, action = ArgAction::SetTrue)]
-    pub yes: bool,
+    pub name: String,
 
     /// Skip git init and the initial commit
     #[arg(long, action = ArgAction::SetTrue)]
     pub no_git: bool,
-
-    /// Test language (none, rust, typescript)
-    #[arg(long)]
-    pub test_language: Option<String>,
-
-    /// Rust test framework (quasar-svm, mollusk)
-    #[arg(long)]
-    pub rust_framework: Option<String>,
-
-    /// TypeScript SDK (kit, web3.js)
-    #[arg(long)]
-    pub ts_sdk: Option<String>,
-
-    /// Project template (minimal, full)
-    #[arg(long)]
-    pub template: Option<String>,
-
-    /// Toolchain (solana, upstream)
-    #[arg(long)]
-    pub toolchain: Option<String>,
 
     /// Show each scaffold step as it runs
     #[arg(long, action = ArgAction::SetTrue)]
     pub verbose: bool,
 }
 
-#[derive(Args, Debug)]
-pub struct AddCommand {
-    /// Add a new instruction handler
-    #[arg(short, long, value_name = "NAME")]
-    pub instruction: Option<String>,
-
-    /// Add a new state account
-    #[arg(short, long, value_name = "NAME")]
-    pub state: Option<String>,
-
-    /// Add a new error enum
-    #[arg(short, long, value_name = "NAME")]
-    pub error: Option<String>,
-}
-
 #[derive(Args, Debug, Default)]
-pub struct BuildCommand {
+struct BuildCommand {
     /// Emit debug symbols (required for profiling)
     #[arg(long, action = ArgAction::SetTrue)]
     pub debug: bool,
@@ -148,7 +105,7 @@ pub struct BuildCommand {
 }
 
 #[derive(Args, Debug, Default)]
-pub struct TestCommand {
+struct TestCommand {
     /// Build with debug symbols before testing
     #[arg(long, action = ArgAction::SetTrue)]
     pub debug: bool,
@@ -179,7 +136,7 @@ pub struct TestCommand {
 }
 
 #[derive(Args, Debug, Default)]
-pub struct DeployCommand {
+struct DeployCommand {
     /// Path to a program keypair (default: `target/deploy/<name>-keypair.json`)
     #[arg(long, value_name = "KEYPAIR")]
     pub program_keypair: Option<PathBuf>,
@@ -206,7 +163,7 @@ pub struct DeployCommand {
 }
 
 #[derive(Args, Debug, Default)]
-pub struct VerifyCommand {
+struct VerifyCommand {
     /// Program address (defaults to the program keypair address)
     #[arg(long, value_name = "ADDRESS", conflicts_with = "program_keypair")]
     pub program_id: Option<String>,
@@ -234,23 +191,23 @@ pub struct VerifyCommand {
 }
 
 #[derive(Args, Debug, Default)]
-pub struct CleanCommand {
+struct CleanCommand {
     /// Also run cargo clean (removes all build artifacts)
     #[arg(long, short, action = ArgAction::SetTrue)]
     pub all: bool,
 }
 
 #[derive(Args, Debug)]
-pub struct ConfigCommand {
+struct ConfigCommand {
     #[command(subcommand)]
     pub action: Option<ConfigAction>,
 }
 
 #[derive(Subcommand, Debug)]
-pub enum ConfigAction {
+enum ConfigAction {
     /// Read a single config value
     Get {
-        /// Config key (e.g. ui.animation, defaults.toolchain, defaults.git)
+        /// Config key (currently ui.color)
         #[arg(value_name = "KEY")]
         key: String,
     },
@@ -271,7 +228,7 @@ pub enum ConfigAction {
 
 #[derive(Args, Debug)]
 #[command(args_conflicts_with_subcommands = true)]
-pub struct IdlCommand {
+struct IdlCommand {
     /// Path to the program crate directory (generate IDL + Rust client)
     #[arg(value_name = "PATH")]
     pub crate_path: Option<PathBuf>,
@@ -281,7 +238,7 @@ pub struct IdlCommand {
 }
 
 #[derive(Subcommand, Debug)]
-pub enum IdlAction {
+enum IdlAction {
     /// Verify Quasar-producer integrity and ABI hashes against `hashes`.
     Verify {
         /// Path to an IDL JSON file (e.g. target/idl/my_program.json)
@@ -291,19 +248,18 @@ pub enum IdlAction {
 }
 
 #[derive(Args, Debug)]
-pub struct ClientCommand {
+struct ClientCommand {
     /// Path to an IDL JSON file (e.g. target/idl/my_program.json)
     #[arg(value_name = "IDL")]
     pub idl_path: PathBuf,
 
-    /// Languages to generate (default: all). Comma-separated.
-    /// Options: typescript, python, golang
-    #[arg(long, value_delimiter = ',', value_name = "LANG")]
-    pub lang: Vec<String>,
+    /// Client target to generate (default: kit and web3)
+    #[arg(long, value_enum, value_name = "TARGET")]
+    pub target: Option<config::ClientTarget>,
 }
 
 #[derive(Args, Debug, Default)]
-pub struct LintCommand {
+struct LintCommand {
     /// Write the current program surface to quasar.lock.json
     #[arg(long, action = ArgAction::SetTrue)]
     pub update_lock: bool,
@@ -317,8 +273,22 @@ pub struct LintCommand {
     pub strict: bool,
 }
 
+#[derive(Args, Debug)]
+struct InspectCommand {
+    #[command(subcommand)]
+    pub action: InspectAction,
+}
+
+#[derive(Subcommand, Debug)]
+enum InspectAction {
+    /// Preview: print the compiler's resolved validation plan
+    Validation(ValidationInspectCommand),
+    /// Preview: dump sBPF assembly
+    Asm(AsmInspectCommand),
+}
+
 #[derive(Args, Debug, Default)]
-pub struct AuditCommand {
+struct ValidationInspectCommand {
     /// Generated IDL JSON (defaults to the current project's target/idl output)
     #[arg(value_name = "IDL")]
     pub idl_path: Option<PathBuf>,
@@ -329,7 +299,7 @@ pub struct AuditCommand {
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct DumpCommand {
+struct AsmInspectCommand {
     /// Path to a compiled .so (auto-detected from target/deploy/ if omitted)
     #[arg(value_name = "ELF")]
     pub elf_path: Option<PathBuf>,
@@ -344,7 +314,7 @@ pub struct DumpCommand {
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct ProfileCommand {
+struct ProfileCommand {
     /// Path to a compiled .so (auto-detected from target/deploy/ if omitted)
     #[arg(value_name = "ELF")]
     pub elf_path: Option<PathBuf>,
@@ -400,13 +370,13 @@ pub struct ProfileCommand {
 }
 
 #[derive(Args, Debug)]
-pub struct KeysCommand {
+struct KeysCommand {
     #[command(subcommand)]
     pub action: KeysAction,
 }
 
 #[derive(Subcommand, Debug)]
-pub enum KeysAction {
+enum KeysAction {
     /// Print the program ID from the keypair file
     List,
     /// Update declare_id!() to match the keypair
@@ -420,32 +390,38 @@ pub enum KeysAction {
 }
 
 #[derive(Args, Debug)]
-pub struct CompletionsCommand {
+struct CompletionsCommand {
     /// Shell to generate completions for
     #[arg(value_enum)]
     pub shell: clap_complete::Shell,
 }
 
-pub fn run(cli: Cli) -> CliResult {
+/// Run the Quasar executable.
+///
+/// This is the only supported Rust entrypoint for `quasar-cli`; command
+/// modules and parser types are implementation details.
+pub fn entrypoint() {
+    style::init(true);
+    let globals = config::GlobalConfig::load().unwrap_or_default();
+    style::init(globals.ui.color);
+
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() == 1 || (args.len() == 2 && matches!(args[1].as_str(), "--help" | "-h" | "help"))
+    {
+        print_help();
+        return;
+    }
+
+    let cli = Cli::parse();
+    if let Err(error) = run(cli) {
+        eprintln!("\n  {} {error}", style::fail(""));
+        std::process::exit(error.exit_code());
+    }
+}
+
+fn run(cli: Cli) -> CliResult {
     match cli.command {
         Command::Init(cmd) => init::run(cmd),
-        Command::Add(cmd) => {
-            if cmd.instruction.is_none() && cmd.state.is_none() && cmd.error.is_none() {
-                return Err(error::CliError::message(
-                    "specify at least one of -i/--instruction, -s/--state, or -e/--error",
-                ));
-            }
-            if let Some(name) = cmd.instruction {
-                new::run_instruction(&name)?;
-            }
-            if let Some(name) = cmd.state {
-                new::run_state(&name)?;
-            }
-            if let Some(name) = cmd.error {
-                new::run_error(&name)?;
-            }
-            Ok(())
-        }
         Command::Build(cmd) => build::run(cmd.debug, cmd.verbose, cmd.watch, cmd.features),
         Command::Test(cmd) => test::run(
             cmd.debug,
@@ -469,9 +445,13 @@ pub fn run(cli: Cli) -> CliResult {
         Command::Idl(cmd) => idl::run(cmd),
         Command::Client(cmd) => client::run(cmd),
         Command::Lint(cmd) => lint::run(cmd),
-        Command::Audit(cmd) => audit::run(cmd),
         Command::Verify(cmd) => verify::run(cmd),
-        Command::Dump(cmd) => dump::run(cmd.elf_path, cmd.function, cmd.source),
+        Command::Inspect(cmd) => match cmd.action {
+            InspectAction::Validation(command) => inspect_validation::run(command),
+            InspectAction::Asm(command) => {
+                inspect_asm::run(command.elf_path, command.function, command.source)
+            }
+        },
         Command::Completions(cmd) => {
             clap_complete::generate(
                 cmd.shell,
@@ -501,7 +481,7 @@ pub fn run(cli: Cli) -> CliResult {
                 std::path::PathBuf::new()
             };
 
-            quasar_profile::run(quasar_profile::ProfileCommand {
+            profile::run(profile::ProfileCommand {
                 elf_path: if elf_path.as_os_str().is_empty() {
                     None
                 } else {
@@ -523,7 +503,7 @@ pub fn run(cli: Cli) -> CliResult {
 
 /// Print the custom top-level help shown for `quasar`, `quasar -h`,
 /// `quasar --help`, and `quasar help`.
-pub fn print_help() {
+fn print_help() {
     let v = env!("CARGO_PKG_VERSION");
 
     println!();
@@ -537,14 +517,10 @@ pub fn print_help() {
         style::dim("Build programs that execute at the speed of light")
     );
     println!();
-    println!("  {}", style::bold("Commands:"));
+    println!("  {}", style::bold("Core commands:"));
     print_cmd(
-        "init    [name] [-y] [--no-git] [--template] [--verbose]",
-        "Scaffold a new project",
-    );
-    print_cmd(
-        "add     [-i name] [-s name] [-e name]",
-        "Add instructions, state, errors",
+        "init    <name> [--no-git] [--verbose]",
+        "Scaffold the canonical starter",
     );
     print_cmd(
         "build   [--debug] [--verbose] [-w] [--features]",
@@ -562,11 +538,10 @@ pub fn print_help() {
     print_cmd("config  [get|set|list|reset]", "Manage global settings");
     print_cmd("idl     <path>", "Generate the program IDL");
     print_cmd(
-        "client  <idl> [--lang ts,py,go]",
+        "client  <idl> [--target target]",
         "Generate client code from IDL",
     );
     print_cmd("lint    [--update-lock] [--strict]", "Check release safety");
-    print_cmd("audit   [idl] [--json]", "Show compiler validation plans");
     print_cmd(
         "verify  [--program-id] [--manifest]",
         "Verify a deployed program",
@@ -576,7 +551,13 @@ pub fn print_help() {
         "Measure compute-unit usage",
     );
     print_cmd("keys    [list|sync|new]", "Manage program keypair");
-    print_cmd("dump    [elf] [-f] [-S]", "Dump sBPF assembly");
+    println!();
+    println!("  {}", style::bold("Preview tools:"));
+    print_cmd(
+        "inspect validation [idl] [--json]",
+        "Show compiler validation plans",
+    );
+    print_cmd("inspect asm [elf] [-f] [-S]", "Dump sBPF assembly");
     println!();
     println!("  {}", style::bold("Options:"));
     print_cmd("-h, --help", "Print help");
@@ -596,7 +577,7 @@ fn print_cmd(cmd: &str, desc: &str) {
 fn profile_watch(expand: bool) -> CliResult {
     build::watch_loop(|| {
         let elf = build::profile_build()?;
-        quasar_profile::run(quasar_profile::ProfileCommand {
+        profile::run(profile::ProfileCommand {
             elf_path: Some(elf),
             diff_program: None,
             share: false,

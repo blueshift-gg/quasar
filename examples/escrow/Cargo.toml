@@ -22,4 +22,4 @@ quasar-lang = { path = "../../lang" }
 quasar-spl = { path = "../../spl" }
 
 [dev-dependencies]
-quasar-test = { path = "../../testing" }
+quasar-test = { path = "../../test" }

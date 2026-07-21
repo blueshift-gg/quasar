@@ -12,6 +12,7 @@ documentation = "https://docs.rs/quasar-schema/0.1.0"
 readme = "README.md"
 keywords = ["solana", "quasar", "schema", "code-generation"]
 categories = ["development-tools", "data-structures"]
+include = ["/src/**", "/README.md", "/LICENSE-APACHE", "/LICENSE-MIT"]
 
 [lints]
 workspace = true

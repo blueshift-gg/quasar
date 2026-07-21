@@ -730,6 +730,60 @@ pub(crate) fn canonical_instruction_arg_type(ty: &Type) -> proc_macro2::TokenStr
     pod_alias_type(ty, false).unwrap_or_else(|| quote! { #ty })
 }
 
+/// Map a fixed instruction field to the native type consumed by the internal
+/// zeropod schema.
+///
+/// Bounded strings and vectors use Quasar-owned ZC wrappers because their
+/// zeropod storage types cannot receive a foreign `ZcElem` implementation.
+/// Mapping nested `Option` values recursively keeps the schema's generated pod
+/// type identical to `InstructionArg::Zc`.
+pub(crate) fn instruction_schema_type(ty: &Type) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
+    let Type::Path(type_path) = ty else {
+        return quote! { #ty };
+    };
+    let Some(seg) = type_path.path.segments.last() else {
+        return quote! { #ty };
+    };
+
+    if seg.ident == "String" || seg.ident == "PodString" {
+        if let PathArguments::AngleBracketed(ab) = &seg.arguments {
+            let mut args = ab.args.iter();
+            if let Some(n) = args.next() {
+                let pfx = args
+                    .next()
+                    .and_then(|arg| parse_prefix_arg(arg).ok())
+                    .unwrap_or(1);
+                return quote! {
+                    #krate::instruction_arg::PodStringZc<#n, #pfx>
+                };
+            }
+        }
+    } else if seg.ident == "Vec" || seg.ident == "PodVec" {
+        if let PathArguments::AngleBracketed(ab) = &seg.arguments {
+            let mut args = ab.args.iter();
+            if let (Some(element), Some(n)) = (args.next(), args.next()) {
+                let pfx = args
+                    .next()
+                    .and_then(|arg| parse_prefix_arg(arg).ok())
+                    .unwrap_or(2);
+                return quote! {
+                    #krate::instruction_arg::PodVecZc<#element, #n, #pfx>
+                };
+            }
+        }
+    } else if seg.ident == "Option" {
+        if let PathArguments::AngleBracketed(ab) = &seg.arguments {
+            if let Some(syn::GenericArgument::Type(inner)) = ab.args.first() {
+                let inner = instruction_schema_type(inner);
+                return quote! { Option<#inner> };
+            }
+        }
+    }
+
+    quote! { #ty }
+}
+
 pub(crate) fn zc_assign_from_value(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
     let canonical = canonical_instruction_arg_type(ty);

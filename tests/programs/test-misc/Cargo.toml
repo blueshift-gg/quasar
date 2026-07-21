@@ -12,6 +12,7 @@ doctest = false
 workspace = true
 
 [features]
+default = ["alloc", "debug"]
 client = []
 debug = []
 alloc = []
@@ -22,4 +23,4 @@ quasar-lang = { path = "../../../lang" }
 quasar-derive = { path = "../../../derive" }
 
 [dev-dependencies]
-quasar-test = { path = "../../../testing" }
+quasar-test = { path = "../../../test" }

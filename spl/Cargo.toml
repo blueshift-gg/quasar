@@ -12,6 +12,7 @@ documentation = "https://docs.rs/quasar-spl/0.1.0"
 readme = "README.md"
 keywords = ["solana", "spl-token", "token-2022", "cpi", "zero-copy"]
 categories = ["no-std", "api-bindings"]
+include = ["/src/**", "/README.md", "/LICENSE-APACHE", "/LICENSE-MIT"]
 
 [lints]
 workspace = true

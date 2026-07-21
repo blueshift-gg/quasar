@@ -15,8 +15,8 @@
 //! `path::Args::builder()` + `<path::Behavior as AccountBehavior<T>>`.
 //!
 //! See `quasar_lang::account_behavior::AccountBehavior` for the plugin
-//! contract, and `ARCHITECTURE.md` (section 2) for how this pipeline fits the
-//! rest of the compiler.
+//! contract. The compiler boundary is also enforced by the dependency graph:
+//! this crate does not depend on protocol crates such as `quasar-spl`.
 
 pub(crate) mod emit;
 pub(crate) mod resolve;
@@ -313,7 +313,7 @@ fn emit_pda_address_fns(
         SeedSource::DerivedAccount(i) => quote! { &#i },
         SeedSource::ArgValue(i, _) => quote! { #i },
         SeedSource::Const(expr) => quote! { #expr },
-        SeedSource::FieldValue { .. } => unreachable!("FieldValue routes through find_address"),
+        SeedSource::FieldValue { input, .. } => quote! { #input },
     };
     // `find_address` takes every seed by value.
     let owned_source_arg = |source: &SeedSource| match source {
@@ -321,7 +321,7 @@ fn emit_pda_address_fns(
         SeedSource::DerivedAccount(i) => quote! { #i },
         SeedSource::ArgValue(i, _) => quote! { #i },
         SeedSource::FieldValue { input, .. } => quote! { #input },
-        SeedSource::Const(_) => unreachable!("Const excluded when FieldValue present"),
+        SeedSource::Const(expr) => quote! { #expr },
     };
     let fns: Vec<proc_macro2::TokenStream> = plan
         .fields

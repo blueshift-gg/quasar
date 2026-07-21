@@ -143,6 +143,8 @@ impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS
         // SAFETY: Caller guarantees acct_len < MAX_ACCTS.
         let acct_ptr = self.accounts.as_mut_ptr() as *mut InstructionAccount<'a>;
         let cpi_ptr = self.cpi_accounts.as_mut_ptr() as *mut CpiAccount<'a>;
+        // SAFETY: both arrays have `MAX_ACCTS` capacity and the caller
+        // guarantees `acct_len` is a free in-bounds slot.
         unsafe {
             acct_ptr.add(self.acct_len).write(InstructionAccount {
                 address: view.address(),
@@ -318,6 +320,11 @@ impl<'a, const MAX_ACCTS: usize, const MAX_DATA: usize> CpiDynamic<'a, MAX_ACCTS
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::undocumented_unsafe_blocks,
+        reason = "synthetic account buffers centralize their safety contract in the fixture"
+    )]
+
     extern crate std;
 
     use {super::*, crate::cpi::tests::AccountBuffer, solana_address::Address};

@@ -32,8 +32,6 @@ pub enum CliError {
         context: &'static str,
         source: serde_json::Error,
     },
-    #[error("prompt failed: {0}")]
-    Prompt(#[from] dialoguer::Error),
     #[error("{0}")]
     Message(String),
     #[error("{message}")]

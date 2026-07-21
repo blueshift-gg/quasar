@@ -1,78 +1,64 @@
-# Security Policy
+# Security policy
 
-> **Quasar has not been audited.** Do not use it in production with real funds until an audit is complete. There is no bug bounty program at this time.
+> **Quasar has not been audited.** Do not use it in production with real funds.
+> There is no bug bounty program at this time.
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
-Since Quasar is unaudited and should not be used with real funds, **report vulnerabilities publicly** by [opening a bug report](https://github.com/blueshift-gg/quasar/issues/new?template=bug.yml). Public disclosure helps everyone and gets bugs fixed faster.
-
-Once Quasar is audited and in production use, we'll switch to private disclosure with a bug bounty program.
+Report vulnerabilities by
+[opening a security bug](https://github.com/blueshift-gg/quasar/issues/new?template=bug.yml).
+Quasar currently uses public reporting because it is unaudited and not
+recommended for production funds. This policy will move to private disclosure
+before a production recommendation or bounty program.
 
 ## Scope
 
-This policy covers vulnerabilities in Quasar-owned source and automation that
-is published in, or used to produce, the v0.1.0 release.
+This policy covers Quasar-owned source and automation published in, or used to
+produce, the 0.1.0 release.
 
-### Published packages
+The primary product scope is:
 
-- `quasar-lang`, `quasar-derive`, and `solana-compiler-builtins`: program
-  runtime primitives, zero-copy access, validation code generation, CPI and
-  syscall handling, and compiler runtime behavior.
-- `quasar-spl` and `quasar-metadata`: parsing, validation, zero-copy account
-  views, and CPI integrations for SPL Token and Metaplex Token Metadata.
-- `quasar-schema`, `quasar-idl-schema`, and `quasar-idl`: schema and IDL
-  parsing, serialization, hashing, validation, and generated interface data.
-- `quasar-cli`: project and client generation, configuration parsing, command
-  construction, deploy inputs, and program keypair or other secret-file
-  reading, generation, replacement, and permissions.
-- `quasar-profile`: SBF parsing, profile data generation, snapshot handling,
-  and the local profiler server.
+- `quasar-lang`, including zero-copy access, validation, CPI and syscall
+  handling, and generated program behavior;
+- `quasar-spl`, including SPL parsing, validation, account views, and CPI
+  helpers;
+- Rust `quasar-test`, including its macros, fixtures, and assertions; and
+- `quasar-cli`, including configuration and command construction, project and
+  client generation, deployment and verification, profiling, and keypair or
+  secret-file handling.
 
-### Release supply chain
+Supporting proc-macro, IDL, schema, and testing-derive crates
+are in scope where they participate in those products. Stable Rust, Kit 7, and
+Web3.js 3 generated clients and their wire behavior are in scope. Preview
+Python, Go, C, validation-inspection, assembly-inspection, and profiler-server
+code remains security-relevant even though it has no patch-level compatibility
+promise.
 
-The policy also covers repository-owned workflows, Dockerfiles, scripts, and
-configuration that verify, package, publish, or create Quasar releases. This
-includes dependency integrity, workflow permissions, release credential
-exposure, protected publishing boundaries, and mismatches between a tag and
-its published crates or GitHub release artifacts.
+Repository workflows and package manifests are also in scope. This includes
+dependency integrity, workflow permissions, credential exposure, and package
+contents. Credentialed publication is operated outside this repository.
 
-### Outside this policy
+Examples and test programs are not themselves published product
+surfaces. A fixture demonstrating a vulnerability in a shipped product or
+release process remains in scope.
 
-- Vulnerabilities that exist solely in an upstream dependency, the Solana or
-  Agave toolchain, GitHub, or crates.io should be reported to that project or
-  service. A Quasar integration, dependency pin, or reachable use that exposes
-  users to the vulnerability remains in scope here.
-- Other repositories, including `blueshift-gg/quasar-docs` and
-  `blueshift-gg/quasar-svm`, use their own reporting and support boundaries.
-- Examples, test programs, benchmarks, and test-only clients in this repository
-  are not published v0.1.0 packages. A defect confined to those fixtures is out
-  of scope; a fixture that demonstrates a vulnerability in a published package
-  or release process is in scope.
+Vulnerabilities solely in an upstream dependency or service should be reported
+upstream. A reachable Quasar use, unsafe integration, or dependency choice that
+exposes users remains in scope here.
 
-## Unsafe Code and Verification
+## Unsafe code and assurance
 
-Quasar uses `unsafe` for zero-copy access, CPI syscalls, and pointer casts. The
-required CI job runs `make test-miri-strict`, which executes the dedicated Miri
-integration suites for `quasar-lang`, `quasar-spl`, and `quasar-metadata` with:
+Quasar uses `unsafe` for zero-copy account access, pointer walking, CPI
+syscalls, and the SBF compiler runtime shim. Required checks focus Miri on
+provenance, aliasing, initialization, exact boundaries, duplicate account
+regions, macro-generated decoders, and adversarial extension points.
 
-- `-Zmiri-tree-borrows`
-- `-Zmiri-symbolic-alignment-check`
-- `-Zmiri-strict-provenance`
+Kani verifies bounded properties in `quasar-lang` and `quasar-spl`. Fuzzing
+searches arbitrary parsing and account-region inputs. Host and real SBF tests
+cover semantic and on-chain behavior. These checks are evidence for their
+encoded paths and assumptions; they are not a complete soundness proof or a
+substitute for an audit.
 
-Those suites exercise the unsafe paths represented by their tests. A passing
-run is evidence for those paths, not a proof that every unsafe block or every
-published package is sound.
-
-The tag-triggered release workflow separately runs the Kani 0.67.0 proof
-harnesses in `quasar-lang`, `quasar-spl`, and `quasar-metadata`. Kani checks the
-properties encoded by those individual harnesses under their stated bounds and
-assumptions; it does not prove an entire crate or the complete Quasar system.
-
-Miri cannot execute the generated SBF `extern "C"` program entrypoint or other
-SBF-only syscall and FFI paths. Host and on-chain integration tests cover
-additional behavior, but they are not substitutes for an audit or a complete
-undefined behavior proof.
-
-An unsafe operation that lacks an adequate safety argument, violates its stated
-contract, or can be triggered to produce undefined behavior qualifies as a
+An unsafe operation without an adequate safety argument, a violation of its
+documented contract, or user-controlled undefined behavior qualifies as a
 security vulnerability.

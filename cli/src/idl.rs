@@ -7,7 +7,7 @@ use {
     },
     quasar_idl::{
         codegen::{self, model::ProgramModel},
-        types::Idl,
+        types::{Idl, IdlHashes},
     },
     std::{
         path::{Path, PathBuf},
@@ -40,10 +40,11 @@ fn extract_idl_json(stdout: &str) -> Result<&str, CliError> {
     Ok(json)
 }
 
-/// Build the IDL by linking the program crate into a tiny host-side runner.
+/// Build the IDL by linking the program library into a tiny host-side runner.
 ///
-/// The program is compiled as a normal dependency with `idl-build` enabled,
-/// so its `#[cfg(test)]` modules are not compiled just to generate metadata.
+/// Cargo compiles the library with `--locked` and `idl-build`; `rustc` then
+/// links that exact rlib into the runner. This avoids both compiling unrelated
+/// `#[cfg(test)]` modules and resolving a second, potentially drifting graph.
 pub fn build(crate_path: &Path) -> Result<Idl, CliError> {
     // Read the crate name from Cargo.toml
     let cargo_toml_path = crate_path.join("Cargo.toml");
@@ -98,34 +99,13 @@ pub fn build(crate_path: &Path) -> Result<Idl, CliError> {
     let crate_path = crate_path
         .canonicalize()
         .map_err(|error| CliError::io_path("resolve", crate_path, error))?;
+    let cargo_toml_path = crate_path.join("Cargo.toml");
+    let cargo_metadata = locked_cargo_metadata(&cargo_toml_path)?;
+    let package_id = program_package_id(&cargo_metadata, &cargo_toml_path)?;
+    let program_rlib = build_program_rlib(&cargo_toml_path, package_name, package_id)?;
     let runner = tempfile::tempdir()
         .map_err(|error| CliError::message(format!("failed to create IDL runner: {error}")))?;
-    let runner_src = runner.path().join("src");
-    std::fs::create_dir(&runner_src)
-        .map_err(|error| CliError::io_path("create", &runner_src, error))?;
-
-    let package = toml::Value::String(package_name.to_owned()).to_string();
-    let path = toml::Value::String(crate_path.to_string_lossy().into_owned()).to_string();
-    let manifest = format!(
-        r#"[package]
-name = "quasar-idl-runner"
-version = "0.0.0"
-edition = "2021"
-publish = false
-
-[workspace]
-resolver = "2"
-
-[dependencies.quasar_program]
-package = {package}
-path = {path}
-features = ["idl-build"]
-"#,
-    );
-    let runner_manifest = runner.path().join("Cargo.toml");
-    std::fs::write(&runner_manifest, manifest)
-        .map_err(|error| CliError::io_path("write", &runner_manifest, error))?;
-    let runner_main = runner_src.join("main.rs");
+    let runner_main = runner.path().join("main.rs");
     std::fs::write(
         &runner_main,
         format!(
@@ -138,24 +118,43 @@ features = ["idl-build"]
         ),
     )
     .map_err(|error| CliError::io_path("write", &runner_main, error))?;
-
-    let mut command = Command::new("cargo");
-    command
-        .arg("run")
-        .arg("--quiet")
-        .arg("--manifest-path")
-        .arg(&runner_manifest);
-    if let Some(target_dir) = cargo_target_directory(&cargo_toml_path) {
-        command.env("CARGO_TARGET_DIR", target_dir);
-    }
-    let output = command
+    let runner_binary = runner
+        .path()
+        .join(format!("quasar-idl-runner{}", std::env::consts::EXE_SUFFIX));
+    let artifact_dir = program_rlib
+        .parent()
+        .ok_or_else(|| CliError::message("program rlib path has no parent"))?;
+    let dependency_dir = if artifact_dir.file_name().is_some_and(|name| name == "deps") {
+        artifact_dir.to_path_buf()
+    } else {
+        artifact_dir.join("deps")
+    };
+    let compile = Command::new("rustc")
+        .current_dir(&crate_path)
+        .args(["--crate-name", "quasar_idl_runner", "--edition", "2021"])
+        .arg(&runner_main)
+        .arg("--extern")
+        .arg(format!("quasar_program={}", program_rlib.display()))
+        .arg("-L")
+        .arg(format!("dependency={}", dependency_dir.display()))
+        .arg("-o")
+        .arg(&runner_binary)
         .output()
-        .map_err(|e| CliError::message(format!("failed to run IDL build: {e}")))?;
+        .map_err(|error| CliError::message(format!("failed to compile IDL runner: {error}")))?;
+    if !compile.status.success() {
+        return Err(CliError::message(format!(
+            "IDL build failed while linking package `{package_name}`:\n{}",
+            String::from_utf8_lossy(&compile.stderr)
+        )));
+    }
 
+    let output = Command::new(&runner_binary)
+        .output()
+        .map_err(|error| CliError::message(format!("failed to run IDL build: {error}")))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(CliError::message(format!(
-            "IDL build failed while compiling package `{package_name}`:\n{stderr}"
+            "IDL build runner for package `{package_name}` failed:\n{stderr}"
         )));
     }
 
@@ -168,21 +167,112 @@ features = ["idl-build"]
     Ok(idl)
 }
 
-fn cargo_target_directory(manifest_path: &Path) -> Option<PathBuf> {
+fn locked_cargo_metadata(manifest_path: &Path) -> Result<serde_json::Value, CliError> {
     let output = Command::new("cargo")
-        .args(["metadata", "--no-deps", "--format-version", "1"])
+        .args(["metadata", "--locked", "--format-version", "1"])
         .arg("--manifest-path")
         .arg(manifest_path)
+        .args(["--features", "idl-build"])
         .output()
-        .ok()?;
+        .map_err(|error| {
+            CliError::message(format!("failed to inspect locked Cargo graph: {error}"))
+        })?;
     if !output.status.success() {
-        return None;
+        return Err(CliError::message(format!(
+            "IDL builds require an up-to-date Cargo.lock.\n\nRun `cargo generate-lockfile`, \
+             commit the result, and retry.\n\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
     }
     serde_json::from_slice::<serde_json::Value>(&output.stdout)
-        .ok()?
-        .get("target_directory")?
-        .as_str()
-        .map(PathBuf::from)
+        .map_err(|error| CliError::json_parse("cargo metadata", error))
+}
+
+fn program_package_id<'a>(
+    metadata: &'a serde_json::Value,
+    manifest_path: &Path,
+) -> Result<&'a str, CliError> {
+    let manifest_path = manifest_path
+        .to_str()
+        .ok_or_else(|| CliError::message("program manifest path is not UTF-8"))?;
+    metadata
+        .get("packages")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| CliError::message("cargo metadata omitted packages"))?
+        .iter()
+        .find(|package| {
+            package
+                .get("manifest_path")
+                .and_then(serde_json::Value::as_str)
+                == Some(manifest_path)
+        })
+        .and_then(|package| package.get("id"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            CliError::message(format!(
+                "cargo metadata omitted package for {}",
+                manifest_path
+            ))
+        })
+}
+
+fn build_program_rlib(
+    manifest_path: &Path,
+    package_name: &str,
+    package_id: &str,
+) -> Result<PathBuf, CliError> {
+    let output = Command::new("cargo")
+        .args(["build", "--locked", "--lib", "--features", "idl-build"])
+        .arg("--manifest-path")
+        .arg(manifest_path)
+        .arg("--package")
+        .arg(package_name)
+        .arg("--message-format=json-render-diagnostics")
+        .output()
+        .map_err(|error| CliError::message(format!("failed to build IDL program: {error}")))?;
+    if !output.status.success() {
+        return Err(CliError::message(format!(
+            "IDL build failed while compiling package `{package_name}` with its locked dependency \
+             graph:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+
+    for line in output.stdout.split(|byte| *byte == b'\n') {
+        let Ok(message) = serde_json::from_slice::<serde_json::Value>(line) else {
+            continue;
+        };
+        if message.get("reason").and_then(serde_json::Value::as_str) != Some("compiler-artifact")
+            || message
+                .get("package_id")
+                .and_then(serde_json::Value::as_str)
+                != Some(package_id)
+        {
+            continue;
+        }
+        let Some(filenames) = message
+            .get("filenames")
+            .and_then(serde_json::Value::as_array)
+        else {
+            continue;
+        };
+        if let Some(path) = filenames
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .map(PathBuf::from)
+            .find(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "rlib")
+            })
+        {
+            return Ok(path);
+        }
+    }
+
+    Err(CliError::message(format!(
+        "locked build of `{package_name}` did not produce an rlib; add `\"lib\"` to \
+         `[lib].crate-type`"
+    )))
 }
 
 /// Generate IDL JSON and Rust client from the program crate.
@@ -257,7 +347,7 @@ pub(crate) fn load_generated(config: &QuasarConfig) -> Result<(PathBuf, Idl), Cl
 }
 
 /// Called by `quasar idl <path>` (generate) or `quasar idl verify <idl>`.
-pub fn run(command: IdlCommand) -> CliResult {
+pub(crate) fn run(command: IdlCommand) -> CliResult {
     if let Some(crate::IdlAction::Verify { idl_path }) = &command.action {
         return verify(idl_path);
     }
@@ -293,14 +383,26 @@ fn verify(idl_path: &Path) -> CliResult {
     let idl: Idl = serde_json::from_str(&json)
         .map_err(|e| CliError::json_parse(format!("IDL file {}", idl_path.display()), e))?;
 
-    let stored = idl.hashes.clone().ok_or_else(|| {
+    validate_hashes(&idl).map_err(|error| {
         CliError::message(format!(
-            "IDL `{}` has no `hashes` field to verify",
+            "IDL integrity check failed for {}: {error}",
             idl_path.display()
         ))
     })?;
-    let expected_idl = quasar_idl::types::compute_idl_hash(&idl);
-    let expected_abi = quasar_idl::types::compute_abi_hash(&idl);
+
+    println!(
+        "  {}",
+        crate::style::success(&format!("IDL hashes verified: {}", idl_path.display()))
+    );
+    Ok(())
+}
+
+pub(crate) fn validate_hashes(idl: &Idl) -> Result<&IdlHashes, CliError> {
+    let stored = idl.hashes.as_ref().ok_or_else(|| {
+        CliError::message("IDL has no integrity hashes; rebuild it with `quasar build`")
+    })?;
+    let expected_idl = quasar_idl::types::compute_idl_hash(idl);
+    let expected_abi = quasar_idl::types::compute_abi_hash(idl);
 
     let mut mismatches = Vec::new();
     if stored.idl != expected_idl {
@@ -317,15 +419,10 @@ fn verify(idl_path: &Path) -> CliResult {
     }
 
     if mismatches.is_empty() {
-        println!(
-            "  {}",
-            crate::style::success(&format!("IDL hashes verified: {}", idl_path.display()))
-        );
-        Ok(())
+        Ok(stored)
     } else {
         Err(CliError::message(format!(
-            "IDL hash mismatch in {}:\n{}",
-            idl_path.display(),
+            "IDL hash mismatch:\n{}",
             mismatches.join("\n")
         )))
     }
@@ -335,16 +432,12 @@ fn verify(idl_path: &Path) -> CliResult {
 /// language clients.
 pub fn generate(
     crate_path: &Path,
-    languages: &[&str],
+    targets: &[crate::config::ClientTarget],
     clients_path: &Path,
 ) -> Result<Idl, CliError> {
     let idl = build(crate_path)?;
     let mut outputs = prepare_idl_outputs(&idl, clients_path)?;
-    outputs.extend(crate::client::prepare_clients(
-        &idl,
-        languages,
-        clients_path,
-    )?);
+    outputs.extend(crate::client::prepare_clients(&idl, targets, clients_path)?);
     commit(outputs)?;
     Ok(idl)
 }

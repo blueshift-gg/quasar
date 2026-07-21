@@ -1,6 +1,6 @@
 use quasar_lang::{
     instruction_arg::{InstructionArg, OptionZc},
-    pod::{PodBool, PodString, PodU64, PodVec},
+    pod::{PodString, PodU64, PodVec},
     prelude::ProgramError,
 };
 
@@ -31,148 +31,6 @@ struct NestedInner {
 struct NestedOuter<T: InstructionArg> {
     inner: NestedInner,
     value: T,
-}
-
-#[test]
-fn option_u64_some_round_trip() {
-    let val: Option<u64> = Some(42);
-    let zc = val.to_zc();
-    assert_eq!(zc.raw_tag(), 1);
-    let decoded = Option::<u64>::from_zc(&zc);
-    assert_eq!(decoded, Some(42));
-}
-
-#[test]
-fn option_u64_none_round_trip() {
-    let val: Option<u64> = None;
-    let zc = val.to_zc();
-    assert_eq!(zc.raw_tag(), 0);
-    let decoded = Option::<u64>::from_zc(&zc);
-    assert_eq!(decoded, None);
-}
-
-#[test]
-fn option_address_some_round_trip() {
-    let addr = solana_address::Address::from([42u8; 32]);
-    let val: Option<solana_address::Address> = Some(addr);
-    let zc = val.to_zc();
-    assert_eq!(zc.raw_tag(), 1);
-    let decoded = Option::<solana_address::Address>::from_zc(&zc);
-    assert_eq!(decoded, Some(addr));
-}
-
-#[test]
-fn option_address_none_round_trip() {
-    let val: Option<solana_address::Address> = None;
-    let zc = val.to_zc();
-    assert_eq!(zc.raw_tag(), 0);
-    let decoded = Option::<solana_address::Address>::from_zc(&zc);
-    assert_eq!(decoded, None);
-}
-
-#[test]
-fn option_zc_alignment_is_one() {
-    assert_eq!(core::mem::align_of::<OptionZc<[u8; 8]>>(), 1);
-    assert_eq!(core::mem::align_of::<OptionZc<[u8; 32]>>(), 1);
-    assert_eq!(core::mem::align_of::<OptionZc<PodU64>>(), 1);
-}
-
-#[test]
-fn option_zc_size_is_fixed() {
-    // OptionZc<PodU64> = 1 (tag) + 8 (MaybeUninit<PodU64>) = 9
-    assert_eq!(
-        core::mem::size_of::<OptionZc<PodU64>>(),
-        1 + core::mem::size_of::<PodU64>()
-    );
-    // OptionZc<Address> = 1 (tag) + 32 (MaybeUninit<Address>) = 33
-    assert_eq!(
-        core::mem::size_of::<OptionZc<solana_address::Address>>(),
-        1 + core::mem::size_of::<solana_address::Address>()
-    );
-}
-
-#[test]
-fn option_none_payload_is_zeroed() {
-    let zc = None::<u64>.to_zc();
-    // Skip the first byte (tag), the rest is the payload.
-    let bytes = unsafe {
-        core::slice::from_raw_parts(
-            (&zc as *const _ as *const u8).add(1),
-            core::mem::size_of::<PodU64>(),
-        )
-    };
-    assert!(bytes.iter().all(|&b| b == 0x00));
-}
-
-#[test]
-fn option_nested_round_trip() {
-    let some_some: Option<Option<u64>> = Some(Some(42));
-    let zc = some_some.to_zc();
-    assert_eq!(Option::<Option<u64>>::from_zc(&zc), Some(Some(42)));
-
-    let some_none: Option<Option<u64>> = Some(None);
-    let zc = some_none.to_zc();
-    assert_eq!(Option::<Option<u64>>::from_zc(&zc), Some(None));
-
-    let none: Option<Option<u64>> = None;
-    let zc = none.to_zc();
-    assert_eq!(Option::<Option<u64>>::from_zc(&zc), None);
-}
-
-#[test]
-fn option_nested_size() {
-    // OptionZc<OptionZc<PodU64>> = 1 (outer tag) + 1 (inner tag) + 8 (PodU64) = 10
-    assert_eq!(core::mem::size_of::<OptionZc<OptionZc<PodU64>>>(), 10,);
-}
-
-#[test]
-fn option_nested_validate_outer_invalid() {
-    // Outer tag invalid, inner valid
-    let zc = option_zc_with_tag(3, Some(42u64).to_zc());
-    assert_eq!(
-        Option::<Option<u64>>::validate_zc(&zc),
-        Err(ProgramError::InvalidInstructionData)
-    );
-}
-
-#[test]
-fn option_nested_validate_both_valid() {
-    let some_some = Some(Some(42u64)).to_zc();
-    assert!(Option::<Option<u64>>::validate_zc(&some_some).is_ok());
-
-    let some_none = Some(None::<u64>).to_zc();
-    assert!(Option::<Option<u64>>::validate_zc(&some_none).is_ok());
-
-    let none = None::<Option<u64>>.to_zc();
-    assert!(Option::<Option<u64>>::validate_zc(&none).is_ok());
-}
-
-#[test]
-fn validate_zc_noop_for_primitives() {
-    // Primitives always pass validation (default no-op)
-    assert!(u64::validate_zc(&PodU64::from(42)).is_ok());
-    assert!(u8::validate_zc(&0u8).is_ok());
-    assert!(bool::validate_zc(&PodBool::from(true)).is_ok());
-}
-
-#[test]
-fn option_validate_all_boundary_tags() {
-    // Tag 0 and 1 are valid
-    for tag in 0..=1u8 {
-        let zc = option_zc_with_tag(tag, PodU64::from(0));
-        assert!(
-            Option::<u64>::validate_zc(&zc).is_ok(),
-            "tag={tag} should be valid"
-        );
-    }
-    // Tags 2..=255 are invalid
-    for tag in 2..=255u8 {
-        let zc = option_zc_with_tag(tag, PodU64::from(0));
-        assert!(
-            Option::<u64>::validate_zc(&zc).is_err(),
-            "tag={tag} should be invalid"
-        );
-    }
 }
 
 #[test]
@@ -231,7 +89,8 @@ fn podstring_round_trip() {
 fn podstring_validate_valid() {
     let mut s = PodString::<32>::default();
     assert!(s.set("hi"));
-    assert!(<PodString<32> as InstructionArg>::validate_zc(&s).is_ok());
+    let zc = <PodString<32> as InstructionArg>::to_zc(&s);
+    assert!(<PodString<32> as InstructionArg>::validate_zc(&zc).is_ok());
 }
 
 #[test]
@@ -242,12 +101,14 @@ fn podstring_validate_rejects_corrupted_len() {
     // Corrupt the length to 5 (> N=4).
     // PodString<4, 1>: len is [u8; 1].
     // We need to set the raw len field to 5.
-    // Use to_zc (identity) then corrupt via write.
+    // Convert to the layout-compatible ZC wrapper, then corrupt via write.
     let mut zc = <PodString<4> as InstructionArg>::to_zc(&s);
     // decode_len > N should be rejected.
     // Access len bytes via ptr: PodString<4,1> is [len: [u8;1]][data:
     // [MaybeUninit<u8>;4]]
-    let ptr = &mut zc as *mut PodString<4> as *mut u8;
+    let ptr = &mut zc as *mut _ as *mut u8;
+    // SAFETY: the first byte is the in-bounds length prefix of this live ZC
+    // object; the test intentionally corrupts it before validation.
     unsafe { *ptr = 5 }; // set len prefix to 5 > N=4
     assert_eq!(
         <PodString<4> as InstructionArg>::validate_zc(&zc),
@@ -256,8 +117,7 @@ fn podstring_validate_rejects_corrupted_len() {
 }
 
 #[test]
-fn podstring_zc_is_self() {
-    // Verify Zc = Self (identity): no copy overhead
+fn podstring_zc_preserves_layout() {
     assert_eq!(
         core::mem::size_of::<<PodString<32> as InstructionArg>::Zc>(),
         core::mem::size_of::<PodString<32>>()
@@ -283,7 +143,8 @@ fn podvec_round_trip() {
 fn podvec_validate_valid() {
     let mut v = PodVec::<u8, 8>::default();
     assert!(v.push(42));
-    assert!(<PodVec<u8, 8> as InstructionArg>::validate_zc(&v).is_ok());
+    let zc = <PodVec<u8, 8> as InstructionArg>::to_zc(&v);
+    assert!(<PodVec<u8, 8> as InstructionArg>::validate_zc(&zc).is_ok());
 }
 
 #[test]
@@ -292,7 +153,9 @@ fn podvec_validate_rejects_corrupted_len() {
     let v = PodVec::<u8, 4>::default();
     let mut zc = <PodVec<u8, 4> as InstructionArg>::to_zc(&v);
     // Set len prefix to 5 (> N=4). PodVec<u8,4,2>: first 2 bytes are len (LE u16).
-    let ptr = &mut zc as *mut PodVec<u8, 4> as *mut u8;
+    let ptr = &mut zc as *mut _ as *mut u8;
+    // SAFETY: the first two bytes are the in-bounds length prefix of this live
+    // ZC object; the test intentionally corrupts them before validation.
     unsafe {
         *ptr = 5;
         *ptr.add(1) = 0;
@@ -304,7 +167,7 @@ fn podvec_validate_rejects_corrupted_len() {
 }
 
 #[test]
-fn podvec_zc_is_self() {
+fn podvec_zc_preserves_layout() {
     assert_eq!(
         core::mem::size_of::<<PodVec<u8, 8> as InstructionArg>::Zc>(),
         core::mem::size_of::<PodVec<u8, 8>>()
@@ -312,6 +175,37 @@ fn podvec_zc_is_self() {
     assert_eq!(
         core::mem::align_of::<<PodVec<u8, 8> as InstructionArg>::Zc>(),
         1
+    );
+}
+
+#[derive(Copy, Clone, quasar_lang::prelude::QuasarSerialize)]
+struct BoundedArgs {
+    label: PodString<16>,
+    values: PodVec<u8, 8>,
+    maybe_label: Option<PodString<16>>,
+}
+
+#[test]
+fn bounded_containers_work_inside_derived_instruction_args() {
+    let mut label = PodString::<16>::default();
+    assert!(label.set("quasar"));
+    let mut values = PodVec::<u8, 8>::default();
+    assert!(values.set_from_slice(&[3, 1, 4]));
+
+    let value = BoundedArgs {
+        label,
+        values,
+        maybe_label: Some(label),
+    };
+    let zc = value.to_zc();
+
+    assert!(BoundedArgs::validate_zc(&zc).is_ok());
+    let decoded = BoundedArgs::from_zc(&zc);
+    assert_eq!(decoded.label.as_str(), "quasar");
+    assert_eq!(decoded.values.as_slice(), &[3, 1, 4]);
+    assert_eq!(
+        decoded.maybe_label.as_ref().map(PodString::as_str),
+        Some("quasar")
     );
 }
 

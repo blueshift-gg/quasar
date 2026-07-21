@@ -20,6 +20,8 @@ pub struct PaddedSourceV1 {
     __view: AccountView,
 }
 
+// SAFETY: this transparent wrapper contains only the static account view and
+// has no dynamic tail or drop state.
 unsafe impl StaticView for PaddedSourceV1 {}
 
 impl AsAccountView for PaddedSourceV1 {
@@ -50,7 +52,7 @@ impl AccountLoad for PaddedSourceV1 {
     }
 }
 
-/// Raw `#[repr(C)]` fixed portion written by [`PaddedTarget::migrate`].
+/// Raw `#[repr(C)]` fixed portion written when migrating into `PaddedTarget`.
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct PaddedTargetData {
@@ -67,6 +69,8 @@ pub struct PaddedTarget {
     __view: AccountView,
 }
 
+// SAFETY: this transparent wrapper contains only the static account view and
+// has no dynamic tail or drop state.
 unsafe impl StaticView for PaddedTarget {}
 
 impl AsAccountView for PaddedTarget {

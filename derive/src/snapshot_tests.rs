@@ -2,10 +2,10 @@
 //!
 //! Each test drives one macro's `*_inner` entry point with a fixed input token
 //! stream and compares the pretty-printed expansion against a committed golden
-//! under the versioned compatibility baseline. These goldens are the reviewable
+//! beside the owning derive tests. These goldens are the reviewable
 //! spec of what the compiler emits: a diff here is a codegen change and must be
 //! reviewed as one, never blessed blindly (regenerate deliberately with
-//! `make bless-proc-macro-baselines`).
+//! `UPDATE_EXPECT=1 cargo test -p quasar-derive snapshot_tests::`).
 //!
 //! File-like expansions must parse as `syn::File` and are normalized by
 //! `prettyplease`; expression-like expansions have a separate normalizer.
@@ -40,8 +40,7 @@ fn baseline_path(path: &str) -> std::path::PathBuf {
     let root = std::env::var_os("QUASAR_PROC_MACRO_BASELINE_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../compatibility-baselines/v0.1.0/proc-macros")
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/compatibility-v0.1.0")
         });
     root.join(path)
 }

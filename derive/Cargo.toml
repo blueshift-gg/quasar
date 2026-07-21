@@ -12,6 +12,13 @@ documentation = "https://docs.rs/quasar-derive/0.1.0"
 readme = "README.md"
 keywords = ["solana", "quasar", "proc-macro", "code-generation"]
 categories = ["development-tools::procedural-macro-helpers", "rust-patterns"]
+include = [
+    "/src/**",
+    "/tests/compatibility-v0.1.0/**",
+    "/README.md",
+    "/LICENSE-APACHE",
+    "/LICENSE-MIT",
+]
 
 [lints]
 workspace = true

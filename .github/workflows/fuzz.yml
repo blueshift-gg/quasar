@@ -14,6 +14,9 @@ on:
   pull_request:
     types: [labeled, synchronize, reopened]
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -29,7 +32,9 @@ jobs:
     outputs:
       targets: ${{ steps.targets.outputs.targets }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
       - name: Read maintained targets from the fuzz manifest
         id: targets
         run: |
@@ -56,49 +61,53 @@ jobs:
       matrix:
         target: ${{ fromJSON(needs.fuzz_inventory.outputs.targets) }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
       - name: Get pinned tool versions
         id: versions
         run: |
           echo "nightly=$(make nightly-version)" >> "$GITHUB_OUTPUT"
           echo "cargo_fuzz=$(make cargo-fuzz-version)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-fuzz-registry-v1-${{ steps.versions.outputs.cargo_fuzz }}-${{ hashFiles('lang/fuzz/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-fuzz-registry-v1-${{ steps.versions.outputs.cargo_fuzz }}-
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
         with:
           toolchain: ${{ steps.versions.outputs.nightly }}
       - name: Install pinned cargo-fuzz
+        env:
+          NIGHTLY: ${{ steps.versions.outputs.nightly }}
+          CARGO_FUZZ: ${{ steps.versions.outputs.cargo_fuzz }}
         run: >-
-          cargo +${{ steps.versions.outputs.nightly }} install cargo-fuzz
-          --version ${{ steps.versions.outputs.cargo_fuzz }} --locked
+          cargo +"$NIGHTLY" install cargo-fuzz
+          --version "$CARGO_FUZZ" --locked
       - name: Print fuzz toolchain
+        env:
+          NIGHTLY: ${{ steps.versions.outputs.nightly }}
         run: |
-          rustup run "${{ steps.versions.outputs.nightly }}" rustc --version
-          rustup run "${{ steps.versions.outputs.nightly }}" cargo --version
+          rustup run "$NIGHTLY" rustc --version
+          rustup run "$NIGHTLY" cargo --version
           cargo fuzz --version
       - name: Select fuzz duration
         id: duration
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
         run: |
-          if [[ "${{ github.event.schedule }}" == '0 6 * * 6' ]]; then
+          if [[ "$SCHEDULE" == '0 6 * * 6' ]]; then
             echo "seconds=1800" >> "$GITHUB_OUTPUT"
           else
             echo "seconds=300" >> "$GITHUB_OUTPUT"
           fi
       - name: Fuzz ${{ matrix.target }} (${{ steps.duration.outputs.seconds }}s)
         working-directory: lang
+        env:
+          NIGHTLY: ${{ steps.versions.outputs.nightly }}
+          FUZZ_TARGET: ${{ matrix.target }}
+          FUZZ_SECONDS: ${{ steps.duration.outputs.seconds }}
         run: >-
-          cargo +${{ steps.versions.outputs.nightly }} fuzz run ${{ matrix.target }}
-          -- -max_total_time=${{ steps.duration.outputs.seconds }}
+          cargo +"$NIGHTLY" fuzz run "$FUZZ_TARGET"
+          -- -max_total_time="$FUZZ_SECONDS"
       - name: Upload crash artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: fuzz-artifacts-${{ matrix.target }}
           path: lang/fuzz/artifacts/

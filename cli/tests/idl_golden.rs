@@ -8,7 +8,7 @@
 
 use {
     quasar_idl::types::{canonical_json_pretty, Idl},
-    std::{fs, path::PathBuf},
+    std::{fs, path::PathBuf, process::Command},
 };
 
 const EXPECTED_ABI_HASH: &str = "4771408386c22aa8f00a7c97d092b2891fa4919be6e1c71439949a873aaf2383";
@@ -21,15 +21,39 @@ fn workspace_root() -> PathBuf {
 }
 
 fn golden_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/goldens/multisig.idl.json")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../idl/tests/fixtures/programs/multisig.idl.json")
 }
 
 #[test]
 fn multisig_idl_builds_deterministically_and_matches_golden() {
     let fixture = workspace_root().join("examples/multisig");
-
-    let first = quasar_cli::idl::build(&fixture).expect("build multisig IDL");
-    let second = quasar_cli::idl::build(&fixture).expect("re-build multisig IDL");
+    let generated_path = workspace_root().join("target/idl/quasar_multisig.json");
+    let generate = || {
+        Command::new(env!("CARGO_BIN_EXE_quasar"))
+            .arg("idl")
+            .arg(&fixture)
+            .current_dir(workspace_root())
+            .output()
+            .expect("run quasar idl")
+    };
+    let first_output = generate();
+    assert!(
+        first_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first_output.stderr)
+    );
+    let first_bytes = fs::read(&generated_path).expect("read generated multisig IDL");
+    let first: Idl = serde_json::from_slice(&first_bytes).expect("parse generated multisig IDL");
+    let second_output = generate();
+    assert!(
+        second_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&second_output.stderr)
+    );
+    let second_bytes = fs::read(&generated_path).expect("read regenerated multisig IDL");
+    let second: Idl =
+        serde_json::from_slice(&second_bytes).expect("parse regenerated multisig IDL");
 
     let first_bytes = canonical_json_pretty(&first).expect("serialize IDL");
     let second_bytes = canonical_json_pretty(&second).expect("serialize IDL again");

@@ -13,6 +13,17 @@ pub struct ReturnPayloadZc {
     pub flag: <bool as InstructionArg>::Zc,
 }
 
+impl ZcValidate for ReturnPayloadZc {
+    fn validate_ref(value: &Self) -> Result<(), ZeroPodError> {
+        ZcValidate::validate_ref(&value.amount)?;
+        ZcValidate::validate_ref(&value.flag)
+    }
+}
+
+// SAFETY: both fields are alignment-1 `ZcElem` wrappers and the C layout has
+// no padding. Validation delegates to every field, including `PodBool`.
+unsafe impl ZcElem for ReturnPayloadZc {}
+
 impl InstructionArg for ReturnPayload {
     type Zc = ReturnPayloadZc;
 
@@ -191,6 +202,8 @@ unsafe impl quasar_lang::traits::StaticView for VaultInterface {}
 
 impl quasar_lang::account_load::AccountLoad for VaultInterface {
     fn check(view: &AccountView) -> Result<(), ProgramError> {
+        // SAFETY: validation runs before a typed wrapper or mutable borrow is
+        // created from this view.
         let data = unsafe { view.borrow_unchecked() };
         if data.is_empty() {
             return Err(ProgramError::AccountDataTooSmall);

@@ -1,0 +1,10 @@
+{
+  "name": "golden_demo-client-kit",
+  "version": "0.1.0",
+  "private": true,
+  "exports": "./client.ts",
+  "dependencies": {
+    "@solana/codecs": "^7.0.0",
+    "@solana/kit": "^7.0.0"
+  }
+}

@@ -244,7 +244,6 @@ dependencies = [
  "quasar-derive",
  "solana-account-view",
  "solana-address",
- "solana-compiler-builtins",
  "solana-define-syscall",
  "solana-instruction",
  "solana-instruction-view",
@@ -365,10 +364,6 @@ dependencies = [
  "solana-sanitize",
  "wincode",
 ]
-
-[[package]]
-name = "solana-compiler-builtins"
-version = "0.1.0"
 
 [[package]]
 name = "solana-define-syscall"

@@ -12,6 +12,7 @@ documentation = "https://docs.rs/quasar-cli/0.1.0"
 readme = "Readme.md"
 keywords = ["solana", "quasar", "sbf", "cli", "code-generation"]
 categories = ["command-line-utilities", "development-tools"]
+include = ["/src/**", "/Readme.md", "/LICENSE-APACHE", "/LICENSE-MIT"]
 
 [lints]
 workspace = true
@@ -22,10 +23,15 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
-dialoguer = "0.11"
 quasar-idl = { version = "=0.1.0", path = "../idl" }
 quasar-schema = { version = "=0.1.0", path = "../schema" }
-quasar-profile = { version = "=0.1.0", path = "../profile" }
+goblin = "0.9"
+addr2line = "0.24"
+object = { version = "0.36", default-features = false, features = ["read", "elf"] }
+memmap2 = "0.9"
+rustc-demangle = "0.1"
+libc = "0.2"
+chrono = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2.0.18"

@@ -1,10 +1,10 @@
 //! The [`Migration`] wrapper for typed on-chain schema migration.
 //!
-//! `Migration<From, To>` is `#[repr(transparent)]` over [`AccountView`] and
-//! is constructed only after the `From` account is validated, so its `Deref`
-//! to `From::Target` re-relies on that construction invariant. `migrate`
-//! rewrites the account to the `To` layout, revalidates it, and returns an
-//! `&mut Account<To>`.
+//! `Migration<From, To>` is `#[repr(transparent)]` over
+//! [`AccountView`](solana_account_view::AccountView) and is constructed only
+//! after the `From` account is validated, so its `Deref` to `From::Target`
+//! re-relies on that construction invariant. `migrate` rewrites the account
+//! to the `To` layout, revalidates it, and returns an `&mut Account<To>`.
 
 use {crate::prelude::*, core::marker::PhantomData};
 

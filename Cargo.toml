@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["lang", "derive", "spl", "metadata", "idl", "idl/schema", "schema", "profile", "testing", "testing/derive", "solana-compiler-builtins", "examples/*", "examples/*/client", "tests/programs/*", "tests/suite", "cli"]
+members = ["lang", "derive", "spl", "idl", "idl/schema", "schema", "test", "test/derive", "examples/*", "examples/*/client", "tests/programs/*", "tests/suite", "cli"]
 exclude = []
 
 [workspace.package]
@@ -14,6 +14,10 @@ authors = ["Leonardo Donatacci <leo@blueshift.gg>", "Dean Little <dean@blueshift
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))', 'cfg(kani)', 'cfg(kani_ra)'] }
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "deny"
 
 [workspace.metadata.kani.flags]
 tests = true

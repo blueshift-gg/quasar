@@ -1,19 +1,24 @@
-//! In-crate goldens for every client generator.
+//! Owner-local goldens for the stable client generators.
 //!
-//! The CLI crate byte-compares full client trees for the multisig/escrow
-//! fixtures (compatibility-baselines), but those tests never run under
-//! `cargo test -p quasar-idl` — leaving the ~9k lines of generators with only
-//! substring oracles inside this package. These goldens close that hole with
-//! a compact representative program: an emitted line cannot change without a
-//! reviewable diff here.
+//! A compact representative program protects Rust, Kit, and Web3 output close
+//! to the code that owns it. Preview backends use functional compilation
+//! checks when their implementation or the shared model changes; they do not
+//! carry patch-level snapshots.
 //!
 //! Regenerate deliberately with `UPDATE_EXPECT=1 cargo test -p quasar-idl
-//! --test codegen_golden` and review every hunk like code (TESTING.md).
+//! --test codegen_golden` and review every hunk like code.
 
 use {
     expect_test::expect_file,
-    quasar_idl::{codegen, types::*},
-    std::path::PathBuf,
+    quasar_idl::{
+        codegen::{self, model::ProgramModel},
+        types::*,
+    },
+    std::{
+        fs,
+        path::{Path, PathBuf},
+        process::Command,
+    },
 };
 
 fn golden(name: &str) -> PathBuf {
@@ -22,145 +27,13 @@ fn golden(name: &str) -> PathBuf {
         .join(name)
 }
 
-fn field(name: &str, ty: IdlType) -> IdlFieldDef {
-    IdlFieldDef {
-        name: name.to_owned(),
-        ty,
-        codec: None,
-        docs: Vec::new(),
-    }
-}
-
-fn primitive(name: &str) -> IdlType {
-    IdlType::Primitive(name.to_owned())
-}
-
 /// Compact program exercising the generator surfaces: PDA + input accounts,
-/// fixed and dynamic args, a struct account, an enum, an event, and errors.
+/// fixed args, a struct account, an event, and errors.
 fn representative_idl() -> Idl {
-    Idl {
-        spec: "quasar-idl/1.0.0".to_owned(),
-        name: "golden_demo".to_owned(),
-        version: "0.1.0".to_owned(),
-        address: "11111111111111111111111111111111".to_owned(),
-        metadata: IdlMetadata::default(),
-        docs: Vec::new(),
-        instructions: vec![IdlInstruction {
-            name: "make".to_owned(),
-            docs: Vec::new(),
-            discriminator: vec![0],
-            args: vec![
-                IdlArg {
-                    name: "amount".to_owned(),
-                    docs: Vec::new(),
-                    ty: primitive("u64"),
-                    codec: None,
-                },
-                IdlArg {
-                    name: "flag".to_owned(),
-                    docs: Vec::new(),
-                    ty: primitive("bool"),
-                    codec: None,
-                },
-            ],
-            accounts: vec![
-                IdlAccountNode {
-                    name: "authority".to_owned(),
-                    optional: false,
-                    writable: AccountFlag::Fixed(false),
-                    signer: AccountFlag::Fixed(true),
-                    resolver: IdlResolver::Input {},
-                    docs: Vec::new(),
-                },
-                IdlAccountNode {
-                    name: "vault".to_owned(),
-                    optional: false,
-                    writable: AccountFlag::Fixed(true),
-                    signer: AccountFlag::Fixed(false),
-                    resolver: IdlResolver::Pda {
-                        program: IdlPdaProgram::ProgramId {},
-                        seeds: vec![
-                            IdlPdaSeed::Const {
-                                value: b"vault".to_vec(),
-                            },
-                            IdlPdaSeed::Account {
-                                path: "authority".to_owned(),
-                            },
-                        ],
-                    },
-                    docs: Vec::new(),
-                },
-            ],
-            remaining_accounts: None,
-            layout: None,
-        }],
-        accounts: vec![IdlAccountDef {
-            name: "Vault".to_owned(),
-            discriminator: vec![42],
-            docs: Vec::new(),
-            space: None,
-        }],
-        types: vec![
-            IdlTypeDef {
-                name: "Vault".to_owned(),
-                kind: IdlTypeDefKind::Struct,
-                docs: Vec::new(),
-                fields: vec![
-                    field("authority", primitive("pubkey")),
-                    field("amount", primitive("u64")),
-                    field("mode", primitive("u8")),
-                ],
-                variants: Vec::new(),
-                repr: None,
-                alias: None,
-                fallback: None,
-                codec: None,
-                layout: None,
-                space: None,
-                semantics: None,
-            },
-            IdlTypeDef {
-                name: "Mode".to_owned(),
-                kind: IdlTypeDefKind::Enum,
-                docs: Vec::new(),
-                fields: Vec::new(),
-                variants: vec![
-                    IdlEnumVariant {
-                        name: "Open".to_owned(),
-                        value: 0,
-                        fields: Vec::new(),
-                        layout: None,
-                    },
-                    IdlEnumVariant {
-                        name: "Closed".to_owned(),
-                        value: 1,
-                        fields: Vec::new(),
-                        layout: None,
-                    },
-                ],
-                repr: Some("u8".to_owned()),
-                alias: None,
-                fallback: None,
-                codec: None,
-                layout: None,
-                space: None,
-                semantics: None,
-            },
-        ],
-        events: vec![IdlEventDef {
-            name: "VaultMade".to_owned(),
-            discriminator: vec![7],
-            docs: Vec::new(),
-            ty: None,
-        }],
-        errors: vec![IdlErrorDef {
-            code: 6000,
-            name: "Unauthorized".to_owned(),
-            msg: Some("caller is not the vault authority".to_owned()),
-        }],
-        extensions: None,
-        hashes: None,
-    }
+    serde_json::from_str(include_str!(
+        "fixtures/programs/client-conformance.idl.json"
+    ))
+    .expect("client conformance IDL")
 }
 
 fn rust_client_bundle(idl: &Idl) -> String {
@@ -170,6 +43,30 @@ fn rust_client_bundle(idl: &Idl) -> String {
         bundle.push_str(&format!("//// {path} ////\n{content}\n"));
     }
     bundle
+}
+
+fn write_rust_client(idl: &Idl, root: &Path) {
+    let model = ProgramModel::try_new(idl).expect("client model");
+    fs::create_dir_all(root.join("src")).unwrap();
+    for (path, content) in codegen::rust::generate_client(idl).expect("rust client") {
+        let path = root.join("src").join(path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, content).unwrap();
+    }
+
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    let manifest = codegen::rust::generate_cargo_toml_for_program(&model).replace(
+        &format!("quasar-lang = \"={}\"", env!("CARGO_PKG_VERSION")),
+        &format!("quasar-lang = {{ path = {:?} }}", workspace.join("lang")),
+    );
+    fs::write(
+        root.join("Cargo.toml"),
+        format!("{manifest}\n[workspace]\n"),
+    )
+    .unwrap();
 }
 
 #[test]
@@ -185,7 +82,7 @@ fn rust_client_matches_golden() {
 }
 
 #[test]
-fn typescript_client_matches_golden() {
+fn web3_client_matches_golden() {
     let idl = representative_idl();
     let out = codegen::typescript::generate_ts_client(&idl).expect("ts client");
     assert_eq!(
@@ -197,44 +94,103 @@ fn typescript_client_matches_golden() {
 }
 
 #[test]
-fn typescript_kit_client_matches_golden() {
+fn kit_client_matches_golden() {
     let idl = representative_idl();
     let out = codegen::typescript::generate_ts_client_kit(&idl).expect("ts kit client");
     expect_file![golden("golden_demo.kit.ts.golden")].assert_eq(&out);
 }
 
 #[test]
-fn python_client_matches_golden() {
+fn stable_typescript_manifests_match_goldens() {
     let idl = representative_idl();
-    let out = codegen::python::generate_python_client(&idl).expect("python client");
-    assert_eq!(
-        out,
-        codegen::python::generate_python_client(&idl).expect("python client"),
-        "generator must be deterministic"
-    );
-    expect_file![golden("golden_demo.py.golden")].assert_eq(&out);
+    let kit = codegen::typescript::generate_package_json(&idl, codegen::typescript::TsTarget::Kit)
+        .expect("Kit package manifest");
+    let web3 =
+        codegen::typescript::generate_package_json(&idl, codegen::typescript::TsTarget::Web3js)
+            .expect("Web3 package manifest");
+    expect_file![golden("golden_demo.kit.package.json.golden")].assert_eq(&kit);
+    expect_file![golden("golden_demo.web3.package.json.golden")].assert_eq(&web3);
 }
 
 #[test]
-fn go_client_matches_golden() {
-    let idl = representative_idl();
-    let out = codegen::golang::generate_go_client(&idl).expect("go client");
-    assert_eq!(
-        out,
-        codegen::golang::generate_go_client(&idl).expect("go client"),
-        "generator must be deterministic"
-    );
-    expect_file![golden("golden_demo.go.golden")].assert_eq(&out);
-}
+fn representative_rust_client_compiles_and_executes_wire_contracts() {
+    let root = tempfile::tempdir().unwrap();
+    let client = root.path().join("client");
+    write_rust_client(&representative_idl(), &client);
+    fs::create_dir_all(client.join("tests")).unwrap();
+    fs::write(
+        client.join("tests/contracts.rs"),
+        r#"use {
+    golden_demo_client::*,
+    solana_address::Address,
+    solana_instruction::Instruction,
+};
 
 #[test]
-fn c_client_matches_golden() {
-    let idl = representative_idl();
-    let out = codegen::c::generate_c_client(&idl).expect("c client");
+fn instruction_account_pda_decoder_error_and_event_contracts() {
+    let authority = Address::from([9_u8; 32]);
+    let expected_vault = find_vault_address(&authority, &ID).0;
+    let instruction: Instruction = MakeInstructionInput {
+        authority,
+        amount: 42,
+        flag: true,
+    }
+    .into();
+
+    assert_eq!(instruction.accounts.len(), 2);
+    assert!(instruction.accounts[0].is_signer);
+    assert!(!instruction.accounts[0].is_writable);
+    assert_eq!(instruction.accounts[1].pubkey, expected_vault);
+    assert!(instruction.accounts[1].is_writable);
+    match decode_instruction(&instruction.data) {
+        Some(ProgramInstruction::Make { amount, flag }) => {
+            assert_eq!(amount, 42);
+            assert!(flag);
+        }
+        _ => panic!("generated instruction did not round trip"),
+    }
+    assert!(decode_instruction(&[0]).is_none());
+
+    let mut account_data = Vec::new();
+    wincode::serialize_into(
+        &mut account_data,
+        &Vault {
+            authority,
+            amount: 42,
+            mode: 1,
+        },
+    )
+    .unwrap();
+    match decode_account(&account_data) {
+        Some(ProgramAccount::Vault(vault)) => {
+            assert_eq!(vault.authority, authority);
+            assert_eq!(vault.amount, 42);
+            assert_eq!(vault.mode, 1);
+        }
+        _ => panic!("generated account did not round trip"),
+    }
+    assert!(decode_account(&[42]).is_none());
+
+    assert!(matches!(decode_event(&[7]), Some(ProgramEvent::VaultMade)));
+    assert!(decode_event(&[7, 0]).is_none());
     assert_eq!(
-        out,
-        codegen::c::generate_c_client(&idl).expect("c client"),
-        "generator must be deterministic"
+        GoldenDemoError::from_code(6000).unwrap().message(),
+        "caller is not the vault authority"
     );
-    expect_file![golden("golden_demo.h.golden")].assert_eq(&out);
+}
+"#,
+    )
+    .unwrap();
+
+    let output = Command::new("cargo")
+        .args(["test", "--quiet"])
+        .current_dir(&client)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "generated Rust client contract failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }

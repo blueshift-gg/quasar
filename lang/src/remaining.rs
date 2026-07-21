@@ -1,12 +1,11 @@
 //! Accessors for an instruction's remaining accounts — the SVM account-region
 //! tail past the declared accounts.
 //!
-//! Every raw walk is driven through the single-owner
-//! [`Cursor`](crate::svm::Cursor), so this module never decodes a buffer entry
-//! itself. Duplicate markers alias an earlier account: the iterator resolves
-//! them in O(1) against the split `[declared ++ yielded]` index space via
-//! [`resolve_dup`](crate::svm::resolve_dup), while one-off `get`/`parse_single`
-//! access re-walks the region ([`resolve_dup_walk`]).
+//! Every raw walk is driven through the private single-owner `Cursor`, so this
+//! module never decodes a buffer entry itself. Duplicate markers alias an
+//! earlier account: the iterator resolves them in O(1) against the split
+//! `[declared ++ yielded]` index space, while one-off `get`/`parse_single`
+//! access re-walks the region.
 //!
 //! In-bounds proofs for every walk live in `lang/kani/remaining.rs`.
 
@@ -232,9 +231,10 @@ impl<'a> RemainingAccounts<'a> {
             match unsafe { cursor.next() } {
                 // SAFETY: Non-duplicate entry; `raw` is a valid `RuntimeAccount`.
                 RawEntry::Account(raw) if i == index => {
-                    return Ok(Some(RemainingAccount::new(unsafe {
-                        AccountView::new_unchecked(raw)
-                    })));
+                    // SAFETY: `Cursor::next` validated this non-duplicate
+                    // entry and returned its live runtime-account header.
+                    let view = unsafe { AccountView::new_unchecked(raw) };
+                    return Ok(Some(RemainingAccount::new(view)));
                 }
                 RawEntry::Dup(borrow) if i == index => {
                     return Ok(Some(RemainingAccount::new(resolve_dup_walk(

@@ -157,19 +157,23 @@ export type DecodedInstruction =
 export class GoldenDemoClient {
   static readonly programId = new Address("11111111111111111111111111111111");
 
-  decodeVault(data: Uint8Array): Vault {
+  decodeVault(input: ArrayLike<number>): Vault {
+    const data = Uint8Array.from(input);
     if (!matchDisc(data, VAULT_DISCRIMINATOR)) throw new Error("Invalid Vault discriminator");
     return decodeExact<Vault>(VaultCodec, data.slice(VAULT_DISCRIMINATOR.length));
   }
 
-  decodeEvent(data: Uint8Array): DecodedEvent | null {
-    if (matchDisc(data, VAULT_MADE_DISCRIMINATOR))
+  decodeEvent(input: ArrayLike<number>): DecodedEvent | null {
+    const data = Uint8Array.from(input);
+    if (matchDisc(data, VAULT_MADE_DISCRIMINATOR)) {
       if (data.length !== VAULT_MADE_DISCRIMINATOR.length) throw new Error("trailing bytes");
       return { type: ProgramEvent.VaultMade };
+    }
     return null;
   }
 
-  decodeInstruction(data: Uint8Array): DecodedInstruction | null {
+  decodeInstruction(input: ArrayLike<number>): DecodedInstruction | null {
+    const data = Uint8Array.from(input);
     if (matchDisc(data, MAKE_INSTRUCTION_DISCRIMINATOR)) {
       const argsCodec = getStructCodec([
         ["amount", getU64Codec()],

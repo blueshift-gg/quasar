@@ -16,7 +16,7 @@
 use {
     crate::helpers::{
         canonical_instruction_arg_type, check_fixed_before_dynamic, classify_instruction_arg,
-        map_to_pod_type, ArgClass, ArgSite, PodDynField,
+        instruction_schema_type, ArgClass, ArgSite, PodDynField,
     },
     proc_macro::TokenStream,
     proc_macro2::TokenStream as TokenStream2,
@@ -90,7 +90,7 @@ pub(crate) fn derive_quasar_serialize_inner(input: TokenStream2) -> TokenStream2
 fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
     let krate = crate::krate::lang_path();
     let name = &input.ident;
-    let schema_generics = extend_fixed_schema_generics(&input.generics, &fields);
+    let schema_generics = extend_fixed_schema_generics(&input.generics);
     let (schema_impl_generics, schema_ty_generics, schema_where_clause) =
         schema_generics.split_for_impl();
 
@@ -103,6 +103,10 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
 
     let field_names: Vec<_> = fields.iter().map(|f| f.ident.as_ref()).collect();
     let field_types: Vec<_> = fields.iter().map(|f| &f.ty).collect();
+    let schema_field_types: Vec<_> = field_types
+        .iter()
+        .map(|ty| instruction_schema_type(ty))
+        .collect();
     let canonical_field_types: Vec<_> = field_types
         .iter()
         .map(|ty| canonical_instruction_arg_type(ty))
@@ -186,7 +190,7 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
         #[doc(hidden)]
         #[derive(#krate::__zeropod::ZeroPod)]
         pub struct #schema_name #schema_generics #schema_where_clause {
-            #(pub #field_names: #field_types,)*
+            #(pub #field_names: #schema_field_types,)*
         }
 
         #[doc(hidden)]
@@ -361,7 +365,7 @@ fn derive_fixed(input: DeriveInput, fields: Vec<Field>) -> TokenStream2 {
     expanded
 }
 
-fn extend_fixed_schema_generics(generics: &syn::Generics, fields: &[Field]) -> syn::Generics {
+fn extend_fixed_schema_generics(generics: &syn::Generics) -> syn::Generics {
     let krate = crate::krate::lang_path();
     let mut generics = generics.clone();
 
@@ -369,14 +373,6 @@ fn extend_fixed_schema_generics(generics: &syn::Generics, fields: &[Field]) -> s
         param.bounds.push(parse_quote!(
             #krate::instruction_arg::InstructionArgField
         ));
-    }
-
-    let where_clause = generics.make_where_clause();
-    for field in fields {
-        let pod_ty = map_to_pod_type(&field.ty);
-        where_clause
-            .predicates
-            .push(parse_quote!(#pod_ty: #krate::__zeropod::ZcValidate));
     }
 
     generics

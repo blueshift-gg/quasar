@@ -1,10 +1,9 @@
 use {
-    quasar_cli::idl,
     std::{
         error::Error,
         fs,
         path::{Path, PathBuf},
-        process::Command,
+        process::{Command, Output},
     },
     tempfile::tempdir,
 };
@@ -22,6 +21,30 @@ fn write_file(path: &Path, contents: impl AsRef<str>) -> Result<(), Box<dyn Erro
     }
     fs::write(path, contents.as_ref())?;
     Ok(())
+}
+
+fn generate_lockfile(manifest: &Path) -> Result<(), Box<dyn Error>> {
+    let output = Command::new("cargo")
+        .arg("generate-lockfile")
+        .arg("--manifest-path")
+        .arg(manifest)
+        .output()?;
+    if !output.status.success() {
+        return Err(format!(
+            "failed to generate fixture lockfile:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn run_idl(crate_path: &Path, current_dir: &Path) -> Result<Output, Box<dyn Error>> {
+    Ok(Command::new(env!("CARGO_BIN_EXE_quasar"))
+        .arg("idl")
+        .arg(crate_path)
+        .current_dir(current_dir)
+        .output()?)
 }
 
 #[test]
@@ -72,9 +95,9 @@ pub struct Noop {}
 "#,
     )?;
 
-    let err = idl::generate(&program_dir, &[], &temp.path().join("clients"))
-        .expect_err("IDL generation should fail without the idl-build feature");
-    let message = err.to_string();
+    let output = run_idl(&program_dir, temp.path())?;
+    assert!(!output.status.success());
+    let message = String::from_utf8_lossy(&output.stderr);
 
     assert!(
         !message.contains("Anyhow error"),
@@ -85,6 +108,55 @@ pub struct Noop {}
         "missing idl-build feature should include the Cargo.toml fix: {message}"
     );
 
+    Ok(())
+}
+
+#[test]
+fn idl_build_requires_an_up_to_date_lockfile() -> Result<(), Box<dyn Error>> {
+    let temp = tempdir()?;
+    let program_dir = temp.path().join("program");
+    write_file(
+        &program_dir.join("Cargo.toml"),
+        format!(
+            r#"[package]
+name = "unlocked-idl-program"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["lib"]
+
+[features]
+idl-build = ["quasar-lang/idl-build"]
+
+[dependencies]
+quasar-lang = {{ path = "{}" }}
+"#,
+            workspace_root().join("lang").display()
+        ),
+    )?;
+    write_file(
+        &program_dir.join("src/lib.rs"),
+        r#"#![no_std]
+use quasar_lang::prelude::*;
+declare_id!("11111111111111111111111111111111");
+
+#[program]
+mod unlocked_idl_program {
+    use super::*;
+    pub fn noop(_ctx: Ctx<Noop>) -> Result<(), ProgramError> { Ok(()) }
+}
+
+#[derive(Accounts)]
+pub struct Noop {}
+"#,
+    )?;
+
+    let output = run_idl(&program_dir, temp.path())?;
+    assert!(!output.status.success());
+    let message = String::from_utf8_lossy(&output.stderr);
+    assert!(message.contains("up-to-date Cargo.lock"), "{message}");
+    assert!(message.contains("cargo generate-lockfile"), "{message}");
     Ok(())
 }
 
@@ -134,6 +206,7 @@ mod dot_path_program {
 pub struct Noop {}
 "#,
     )?;
+    generate_lockfile(&program_dir.join("Cargo.toml"))?;
 
     let output = Command::new(env!("CARGO_BIN_EXE_quasar"))
         .arg("idl")
@@ -213,9 +286,19 @@ pub struct Noop {}
 compile_error!("IDL generation compiled an unrelated unit test");
 "#,
     )?;
+    generate_lockfile(&temp.path().join("Cargo.toml"))?;
 
-    let generated = idl::build(&program_dir)?;
-    assert_eq!(generated.name, "idl_with_broken_unit_test");
+    let output = run_idl(&program_dir, temp.path())?;
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let generated: serde_json::Value = serde_json::from_slice(&fs::read(
+        temp.path()
+            .join("target/idl/idl_with_broken_unit_test.json"),
+    )?)?;
+    assert_eq!(generated["name"], "idl_with_broken_unit_test");
 
     Ok(())
 }

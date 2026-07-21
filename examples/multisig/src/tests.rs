@@ -7,19 +7,33 @@ use {
     solana_instruction::AccountMeta,
 };
 
-#[path = "../../cu_bench.rs"]
-mod cu_bench;
-
 const CREATOR: Pubkey = Pubkey::new_from_array([11; 32]);
 const SIGNER1: Pubkey = Pubkey::new_from_array([12; 32]);
 const SIGNER2: Pubkey = Pubkey::new_from_array([13; 32]);
 const SIGNER3: Pubkey = Pubkey::new_from_array([14; 32]);
 const DEPOSITOR: Pubkey = Pubkey::new_from_array([15; 32]);
 const RECIPIENT: Pubkey = Pubkey::new_from_array([16; 32]);
+const MAX_ELF_BYTES: usize = 26_504;
+const MAX_CREATE_CU: u64 = 3_376;
+const MAX_DEPOSIT_CU: u64 = 2_268;
+const MAX_SET_LABEL_CU: u64 = 2_212;
+const MAX_EXECUTE_TRANSFER_CU: u64 = 2_744;
 
 fn setup() -> QuasarSvm {
     let elf = std::fs::read("../../target/deploy/quasar_multisig.so").unwrap();
+    assert!(
+        elf.len() <= MAX_ELF_BYTES,
+        "multisig ELF grew to {} bytes; budget is {MAX_ELF_BYTES}",
+        elf.len()
+    );
     QuasarSvm::new().with_program(&crate::ID, &elf)
+}
+
+fn assert_cu(instruction: &str, consumed: u64, maximum: u64) {
+    assert!(
+        consumed <= maximum,
+        "{instruction} consumed {consumed} CU; budget is {maximum}"
+    );
 }
 
 fn signer(address: Pubkey) -> Account {
@@ -113,7 +127,7 @@ fn test_create() {
     let signers_count = u16::from_le_bytes([config_data[36], config_data[37]]);
     assert_eq!(signers_count, 3, "signers count should be 3");
 
-    cu_bench::record_cu("create", result.compute_units_consumed);
+    assert_cu("create", result.compute_units_consumed, MAX_CREATE_CU);
 }
 
 #[test]
@@ -155,7 +169,7 @@ fn test_deposit() {
     let vault_after = result.account(&vault).unwrap().lamports;
     assert_eq!(vault_after, deposit_amount, "vault lamports after deposit");
 
-    cu_bench::record_cu("deposit", result.compute_units_consumed);
+    assert_cu("deposit", result.compute_units_consumed, MAX_DEPOSIT_CU);
 }
 
 #[test]
@@ -201,7 +215,7 @@ fn test_set_label() {
         core::str::from_utf8(&config_data[tail_start..tail_start + label_len]).unwrap();
     assert_eq!(stored_label, label, "label content mismatch");
 
-    cu_bench::record_cu("set_label", result.compute_units_consumed);
+    assert_cu("set_label", result.compute_units_consumed, MAX_SET_LABEL_CU);
 }
 
 #[test]
@@ -281,7 +295,11 @@ fn test_execute_transfer() {
         "recipient lamports after transfer"
     );
 
-    cu_bench::record_cu("execute_transfer", result.compute_units_consumed);
+    assert_cu(
+        "execute_transfer",
+        result.compute_units_consumed,
+        MAX_EXECUTE_TRANSFER_CU,
+    );
 }
 
 #[test]

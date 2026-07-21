@@ -27,6 +27,17 @@ pub struct ReturnPairZc {
     pub b: <u32 as InstructionArg>::Zc,
 }
 
+impl ZcValidate for ReturnPairZc {
+    fn validate_ref(value: &Self) -> Result<(), ZeroPodError> {
+        ZcValidate::validate_ref(&value.a)?;
+        ZcValidate::validate_ref(&value.b)
+    }
+}
+
+// SAFETY: both fields are alignment-1 `ZcElem` wrappers with no invalid bit
+// patterns, and their C layout contains no padding.
+unsafe impl ZcElem for ReturnPairZc {}
+
 impl InstructionArg for ReturnPair {
     type Zc = ReturnPairZc;
 

@@ -30,15 +30,12 @@ fn write_project(program_dir: &Path, amount_ty: &str) -> Result<(), Box<dyn Erro
         r#"[project]
 name = "lint-demo"
 
-[toolchain]
-type = "upstream"
-
 [testing]
-language = "none"
+command = { program = "cargo", args = ["test", "tests::"] }
 
 [clients]
 path = "target/client"
-languages = []
+targets = ["rust", "kit", "web3"]
 "#,
     )?;
     write_file(
@@ -105,6 +102,16 @@ fn lint_update_lock_then_default_diff_catches_breaking_change() -> Result<(), Bo
     let temp = tempdir()?;
     let program_dir = temp.path().join("lint-demo");
     write_project(&program_dir, "u64")?;
+    let lock = Command::new("cargo")
+        .arg("generate-lockfile")
+        .arg("--offline")
+        .current_dir(&program_dir)
+        .output()?;
+    assert!(
+        lock.status.success(),
+        "failed to generate fixture lockfile: {}",
+        String::from_utf8_lossy(&lock.stderr)
+    );
 
     let update = Command::new(env!("CARGO_BIN_EXE_quasar"))
         .arg("lint")

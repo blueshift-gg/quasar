@@ -265,6 +265,11 @@ fn resolve_from_slice(idx: usize, slice: &[AccountView]) -> Option<AccountView> 
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::undocumented_unsafe_blocks,
+        reason = "synthetic account-region helpers centralize their bounds contract"
+    )]
+
     use {
         super::*,
         crate::__internal::account_stride,

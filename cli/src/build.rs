@@ -16,7 +16,7 @@ use {
         style, toolchain, utils,
     },
     diagnostics::{extract_warnings, format_build_errors},
-    lockfile::{ensure_lockfile, missing_sbpf_linker, read_target_rustflags},
+    lockfile::ensure_lockfile,
     std::{
         fs,
         path::{Path, PathBuf},
@@ -44,7 +44,7 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
     let start = Instant::now();
     let mut progress = style::Progress::new(verbose);
 
-    let languages = config.client_languages();
+    let languages = config.codegen_targets();
     let crate_root = utils::find_program_crate(&config);
     progress.step("Generating IDL and clients...");
     let idl = crate::idl::generate(&crate_root, &languages, &clients_path)?;
@@ -62,50 +62,29 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
         style::spinner("Building...")
     };
 
-    if config.is_solana_toolchain() {
-        toolchain::check_build_sbf_supports(PLATFORM_TOOLS_VERSION).map_err(|e| {
-            sp.finish_and_clear();
-            CliError::message(e)
-        })?;
-        ensure_lockfile(&sp)?;
-    }
+    toolchain::check_build_sbf_supports(PLATFORM_TOOLS_VERSION).map_err(|error| {
+        sp.finish_and_clear();
+        CliError::message(error)
+    })?;
+    ensure_lockfile(&sp)?;
 
     // In a workspace, scope the build to the program crate so we don't try
     // to compile CLIs, test suites, or other members for the BPF target.
     let manifest = crate_root.join("Cargo.toml");
     let scoped = manifest.exists() && crate_root != Path::new(".");
 
-    let output = if config.is_solana_toolchain() {
-        let mut cmd = Command::new("cargo");
-        cmd.args(["build-sbf", "--tools-version", PLATFORM_TOOLS_VERSION]);
-        if scoped {
-            cmd.args(["--manifest-path", &manifest.to_string_lossy()]);
-        }
-        if debug {
-            cmd.arg("--debug");
-        }
-        if let Some(f) = features {
-            cmd.args(["--features", f]);
-        }
-        run_build_command(&mut cmd, verbose)
-    } else {
-        if !toolchain::has_sbpf_linker() {
-            sp.finish_and_clear();
-            return Err(missing_sbpf_linker());
-        }
-
-        let mut cmd = upstream_build_command();
-        if debug {
-            cmd.env("RUSTFLAGS", "-C link-arg=--btf -C debuginfo=2");
-        }
-        if scoped {
-            cmd.args(["--manifest-path", &manifest.to_string_lossy()]);
-        }
-        if let Some(f) = features {
-            cmd.args(["--features", f]);
-        }
-        run_build_command(&mut cmd, verbose)
-    };
+    let mut command = Command::new("cargo");
+    command.args(["build-sbf", "--tools-version", PLATFORM_TOOLS_VERSION]);
+    if scoped {
+        command.args(["--manifest-path", &manifest.to_string_lossy()]);
+    }
+    if debug {
+        command.arg("--debug");
+    }
+    if let Some(features) = features {
+        command.args(["--features", features]);
+    }
+    let output = run_build_command(&mut command, verbose);
 
     sp.finish_and_clear();
     progress.clear();
@@ -113,24 +92,6 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
     match output {
         Ok(BuildResult::Captured(o)) if o.status.success() => {
             let elapsed = start.elapsed();
-
-            if !config.is_solana_toolchain() {
-                let program = config.module_name();
-                let src = PathBuf::from("target")
-                    .join("bpfel-unknown-none")
-                    .join("release")
-                    .join(format!("lib{}.so", program));
-                let dest_dir = PathBuf::from("target").join("deploy");
-                fs::create_dir_all(&dest_dir)?;
-                let dest = dest_dir.join(format!("lib{}.so", program));
-                fs::copy(&src, &dest).map_err(|e| {
-                    eprintln!(
-                        "  {}",
-                        style::fail(&format!("failed to copy {}: {e}", src.display()))
-                    );
-                    e
-                })?;
-            }
 
             // Show warnings even on success
             let stderr = String::from_utf8_lossy(&o.stderr);
@@ -176,24 +137,6 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
         Ok(BuildResult::Streamed(status)) if status.success() => {
             let elapsed = start.elapsed();
 
-            if !config.is_solana_toolchain() {
-                let program = config.module_name();
-                let src = PathBuf::from("target")
-                    .join("bpfel-unknown-none")
-                    .join("release")
-                    .join(format!("lib{}.so", program));
-                let dest_dir = PathBuf::from("target").join("deploy");
-                fs::create_dir_all(&dest_dir)?;
-                let dest = dest_dir.join(format!("lib{}.so", program));
-                fs::copy(&src, &dest).map_err(|e| {
-                    eprintln!(
-                        "  {}",
-                        style::fail(&format!("failed to copy {}: {e}", src.display()))
-                    );
-                    e
-                })?;
-            }
-
             let so_path = utils::find_so(&config, false);
             let size_info = so_path
                 .and_then(|p| {
@@ -237,60 +180,35 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
     let clients_path = config.client_path();
     let start = Instant::now();
 
-    let languages = config.client_languages();
+    let languages = config.codegen_targets();
     let crate_root = utils::find_program_crate(&config);
     crate::idl::generate(&crate_root, &languages, &clients_path)?;
 
     let sp = style::spinner("Profile build...");
 
-    if config.is_solana_toolchain() {
-        toolchain::check_build_sbf_supports(PLATFORM_TOOLS_VERSION).map_err(|e| {
-            sp.finish_and_clear();
-            CliError::message(e)
-        })?;
-        ensure_lockfile(&sp)?;
-    }
+    toolchain::check_build_sbf_supports(PLATFORM_TOOLS_VERSION).map_err(|error| {
+        sp.finish_and_clear();
+        CliError::message(error)
+    })?;
+    ensure_lockfile(&sp)?;
 
     let manifest = crate_root.join("Cargo.toml");
     let scoped = manifest.exists() && crate_root != Path::new(".");
 
-    let output = if config.is_solana_toolchain() {
-        let mut cmd = Command::new("cargo");
-        cmd.args([
-            "build-sbf",
-            "--tools-version",
-            PLATFORM_TOOLS_VERSION,
-            "--debug",
-        ]);
-        if scoped {
-            cmd.args(["--manifest-path", &manifest.to_string_lossy()]);
-        }
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output()
-    } else {
-        if !toolchain::has_sbpf_linker() {
-            sp.finish_and_clear();
-            return Err(missing_sbpf_linker());
-        }
-
-        // Read existing rustflags from .cargo/config.toml and append debug flags
-        let existing_flags = read_target_rustflags();
-        let mut all_flags = existing_flags;
-        all_flags.extend([
-            "-C".to_string(),
-            "link-arg=--btf".to_string(),
-            "-C".to_string(),
-            "debuginfo=2".to_string(),
-        ]);
-
-        // Use CARGO_ENCODED_RUSTFLAGS (0x1f-separated) which takes priority
-        let encoded = all_flags.join("\x1f");
-        let mut cmd = upstream_build_command();
-        cmd.env("CARGO_ENCODED_RUSTFLAGS", encoded);
-        if scoped {
-            cmd.args(["--manifest-path", &manifest.to_string_lossy()]);
-        }
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output()
-    };
+    let mut command = Command::new("cargo");
+    command.args([
+        "build-sbf",
+        "--tools-version",
+        PLATFORM_TOOLS_VERSION,
+        "--debug",
+    ]);
+    if scoped {
+        command.args(["--manifest-path", &manifest.to_string_lossy()]);
+    }
+    let output = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output();
 
     sp.finish_and_clear();
 
@@ -298,23 +216,16 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
         Ok(o) if o.status.success() => {
             let elapsed = start.elapsed();
             let program = config.module_name();
-            let profile_dir = PathBuf::from(quasar_profile::PROFILE_DIR);
+            let profile_dir = PathBuf::from(crate::profile::PROFILE_DIR);
             fs::create_dir_all(&profile_dir)?;
 
             // Find the built .so and copy to target/profile/
-            let src = if config.is_solana_toolchain() {
-                utils::find_unstripped_sbf(&config).ok_or_else(|| {
-                    CliError::message(
-                        "profile build succeeded but no unstripped SBF artifact was found under \
-                         target/deploy/debug",
-                    )
-                })?
-            } else {
-                PathBuf::from("target")
-                    .join("bpfel-unknown-none")
-                    .join("release")
-                    .join(format!("lib{}.so", program))
-            };
+            let src = utils::find_unstripped_sbf(&config).ok_or_else(|| {
+                CliError::message(
+                    "profile build succeeded but no unstripped SBF artifact was found under \
+                     target/deploy/debug",
+                )
+            })?;
 
             let dest = profile_dir.join(format!("{}.so", program));
             fs::copy(&src, &dest).map_err(|e| {
@@ -353,14 +264,6 @@ pub fn profile_build() -> Result<PathBuf, crate::error::CliError> {
 
 fn run_watch(debug: bool, verbose: bool, features: Option<String>) -> ! {
     watch_loop(|| run_once(debug, verbose, features.as_deref()))
-}
-
-fn upstream_build_command() -> Command {
-    let mut command = Command::new("cargo");
-    command
-        .arg(format!("+{}", toolchain::UPSTREAM_NIGHTLY_TOOLCHAIN))
-        .arg("build-bpf");
-    command
 }
 
 fn run_build_command(cmd: &mut Command, verbose: bool) -> std::io::Result<BuildResult> {
@@ -437,7 +340,7 @@ fn size_entry_matches(line: &str, key: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_size_entry, size_entry_matches, upstream_build_command};
+    use super::{parse_size_entry, size_entry_matches};
 
     #[test]
     fn size_entry_match_is_exact_even_for_prefix_paths() {
@@ -455,13 +358,5 @@ mod tests {
 
         assert_eq!(parse_size_entry(line, key), Some(1234));
         assert!(size_entry_matches(line, key));
-    }
-
-    #[test]
-    fn upstream_build_uses_the_release_nightly() {
-        let command = upstream_build_command();
-        let args: Vec<_> = command.get_args().collect();
-
-        assert_eq!(args, ["+nightly-2026-03-27", "build-bpf"]);
     }
 }

@@ -48,3 +48,9 @@ rm -rf "${active_release}"
 mv "${extracted}" "${active_release}"
 "${active_release}/bin/solana" --version
 "${active_release}/bin/cargo-build-sbf" --version
+
+# GitHub Actions runs each step in a fresh shell. Export the installed tools to
+# subsequent steps without making the installer workflow-aware elsewhere.
+if [[ -n "${GITHUB_PATH:-}" ]]; then
+  printf '%s\n' "${active_release}/bin" >> "${GITHUB_PATH}"
+fi

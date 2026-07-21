@@ -65,10 +65,14 @@ fn build_mint_account_bytes(
 }
 
 fn cast_token(data: &[u8; 165]) -> &TokenDataZc {
+    // SAFETY: TokenDataZc is the zero-copy view of the exact 165-byte SPL token
+    // layout and has byte alignment.
     unsafe { &*(data.as_ptr() as *const TokenDataZc) }
 }
 
 fn cast_mint(data: &[u8; 82]) -> &MintDataZc {
+    // SAFETY: MintDataZc is the zero-copy view of the exact 82-byte SPL mint
+    // layout and has byte alignment.
     unsafe { &*(data.as_ptr() as *const MintDataZc) }
 }
 

@@ -1,58 +1,102 @@
 use {
     crate::error::CliError,
+    clap::ValueEnum,
     serde::{Deserialize, Serialize},
     std::path::{Path, PathBuf},
 };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct QuasarConfig {
     pub project: ProjectConfig,
-    pub toolchain: ToolchainConfig,
     pub testing: TestingConfig,
     pub clients: ClientsConfig,
 }
 
-#[derive(Debug, Deserialize)]
+impl Default for QuasarConfig {
+    fn default() -> Self {
+        Self::canonical("quasar-program")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct ProjectConfig {
     pub name: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ToolchainConfig {
-    #[serde(rename = "type")]
-    pub toolchain_type: String,
+impl Default for ProjectConfig {
+    fn default() -> Self {
+        Self {
+            name: "quasar-program".to_string(),
+        }
+    }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct TestingConfig {
-    pub language: String,
-    #[serde(default)]
-    pub rust: Option<RustTestingConfig>,
-    #[serde(default)]
-    pub typescript: Option<TypeScriptTestingConfig>,
+    pub command: CommandSpec,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct RustTestingConfig {
-    pub framework: String,
-    pub test: CommandSpec,
+impl Default for TestingConfig {
+    fn default() -> Self {
+        Self {
+            command: CommandSpec::new("cargo", ["test", "tests::"]),
+        }
+    }
 }
 
-#[derive(Debug, Deserialize)]
-pub struct TypeScriptTestingConfig {
-    pub framework: String,
-    pub sdk: String,
-    pub install: CommandSpec,
-    pub test: CommandSpec,
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct ClientsConfig {
     pub path: PathBuf,
-    pub languages: Vec<String>,
+    pub targets: Vec<ClientTarget>,
+}
+
+impl Default for ClientsConfig {
+    fn default() -> Self {
+        Self {
+            path: PathBuf::from("target/client"),
+            targets: vec![ClientTarget::Rust, ClientTarget::Kit, ClientTarget::Web3],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
+#[serde(rename_all = "lowercase")]
+#[value(rename_all = "lower")]
+pub enum ClientTarget {
+    Rust,
+    Kit,
+    Web3,
+    Python,
+    Go,
+    C,
+}
+
+impl ClientTarget {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Rust => "rust",
+            Self::Kit => "kit",
+            Self::Web3 => "web3",
+            Self::Python => "python",
+            Self::Go => "go",
+            Self::C => "c",
+        }
+    }
 }
 
 impl QuasarConfig {
+    pub fn canonical(name: impl Into<String>) -> Self {
+        Self {
+            project: ProjectConfig { name: name.into() },
+            testing: TestingConfig::default(),
+            clients: ClientsConfig::default(),
+        }
+    }
+
     pub fn load() -> Result<Self, CliError> {
         Self::load_from(Path::new("Quasar.toml"))
     }
@@ -60,41 +104,128 @@ impl QuasarConfig {
     pub fn load_from(path: &Path) -> Result<Self, CliError> {
         if !path.exists() {
             return Err(CliError::message(format!(
-                "{} not found.\n\n  Are you in a Quasar project directory?\n  Run quasar init to \
-                 create a new project.",
+                "{} not found.\n\n  Are you in a Quasar project directory?\n  Run `quasar init \
+                 <NAME>` to create a new project.",
                 path.display()
             )));
         }
         let contents = std::fs::read_to_string(path)
-            .map_err(|e| CliError::message(format!("failed to read {}: {e}", path.display())))?;
-        let config: QuasarConfig = toml::from_str(&contents)
-            .map_err(|e| CliError::message(format!("invalid {}: {e}", path.display())))?;
-        Ok(config)
+            .map_err(|error| CliError::io_path("read", path, error))?;
+        Self::parse(&contents)
+            .map_err(|error| CliError::message(format!("invalid {}: {error}", path.display())))
     }
 
-    pub fn is_solana_toolchain(&self) -> bool {
-        self.toolchain.toolchain_type == "solana"
+    pub fn parse(contents: &str) -> Result<Self, String> {
+        for (removed, replacement) in [
+            (
+                "toolchain",
+                "remove [toolchain]; Quasar always uses `cargo build-sbf`",
+            ),
+            (
+                "testing.language",
+                "replace it with `testing.command = { program = \"cargo\", args = [...] }`",
+            ),
+            (
+                "testing.rust",
+                "replace it with the single typed `testing.command`",
+            ),
+            (
+                "testing.typescript",
+                "TypeScript testing was removed; use Rust `quasar-test`",
+            ),
+            (
+                "clients.languages",
+                "rename it to `clients.targets` and use rust, kit, web3, python, go, or c",
+            ),
+        ] {
+            if contains_toml_path(contents, removed) {
+                return Err(format!(
+                    "unsupported `{removed}` configuration; {replacement}"
+                ));
+            }
+        }
+
+        toml::from_str(contents).map_err(|error| {
+            format!(
+                "{error}\n  supported sections: [project], [testing], [clients]\n  supported \
+                 client targets: rust, kit, web3, python, go, c"
+            )
+        })
+    }
+
+    pub fn to_toml(&self) -> String {
+        let string = |value: &str| toml::Value::String(value.to_string()).to_string();
+        let args = self
+            .testing
+            .command
+            .args
+            .iter()
+            .map(|argument| string(argument))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let targets = self
+            .clients
+            .targets
+            .iter()
+            .map(|target| string(target.as_str()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "[project]\nname = {}\n\n[testing]\ncommand = {{ program = {}, args = [{}] \
+             }}\n\n[clients]\npath = {}\ntargets = [{}]\n",
+            string(&self.project.name),
+            string(&self.testing.command.program),
+            args,
+            string(&self.clients.path.to_string_lossy()),
+            targets,
+        )
     }
 
     pub fn module_name(&self) -> String {
         self.project.name.replace('-', "_")
     }
 
-    pub fn has_typescript_tests(&self) -> bool {
-        self.testing.language == "typescript"
-    }
-
-    pub fn has_rust_tests(&self) -> bool {
-        self.testing.language == "rust"
-    }
-
     pub fn client_path(&self) -> PathBuf {
         self.clients.path.clone()
     }
 
-    pub fn client_languages(&self) -> Vec<&str> {
-        self.clients.languages.iter().map(|s| s.as_str()).collect()
+    pub fn codegen_targets(&self) -> Vec<ClientTarget> {
+        let mut targets = Vec::new();
+        for &target in &self.clients.targets {
+            if target == ClientTarget::Rust {
+                continue;
+            }
+            if !targets.contains(&target) {
+                targets.push(target);
+            }
+        }
+        targets
     }
+}
+
+fn contains_toml_path(contents: &str, path: &str) -> bool {
+    let (section, key) = path
+        .rsplit_once('.')
+        .map_or((None, path), |(section, key)| (Some(section), key));
+    let mut current_section = "";
+    for line in contents.lines() {
+        let line = line.split('#').next().unwrap_or_default().trim();
+        if line.starts_with('[') && line.ends_with(']') {
+            current_section = line.trim_matches(&['[', ']'][..]).trim();
+            if section.is_none() && current_section == key {
+                return true;
+            }
+            continue;
+        }
+        if line
+            .split_once('=')
+            .is_some_and(|(candidate, _)| candidate.trim() == key)
+            && section.is_none_or(|expected| expected == current_section)
+        {
+            return true;
+        }
+    }
+    false
 }
 
 pub fn resolve_client_path() -> Result<PathBuf, CliError> {
@@ -102,11 +233,11 @@ pub fn resolve_client_path() -> Result<PathBuf, CliError> {
     if !config_path.exists() {
         return Ok(PathBuf::from("target").join("client"));
     }
-
     QuasarConfig::load_from(config_path).map(|config| config.client_path())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CommandSpec {
     pub program: String,
     #[serde(default)]
@@ -130,69 +261,23 @@ impl CommandSpec {
         parts.extend(self.args.iter().cloned());
         shlex::try_join(parts.iter().map(String::as_str)).unwrap_or_else(|_| self.program.clone())
     }
-
-    pub fn parse(command: &str) -> Result<Self, CliError> {
-        let Some(parts) = shlex::split(command) else {
-            return Err(CliError::message(format!(
-                "invalid command syntax: {command}"
-            )));
-        };
-        Self::from_parts(parts).map_err(CliError::message)
-    }
-}
-
-impl CommandSpec {
-    fn from_parts(parts: Vec<String>) -> Result<Self, String> {
-        let mut parts = parts.into_iter();
-        let Some(program) = parts.next() else {
-            return Err("command cannot be empty".to_string());
-        };
-        Ok(Self {
-            program,
-            args: parts.collect(),
-        })
-    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
+#[serde(default, deny_unknown_fields)]
 pub struct GlobalConfig {
-    #[serde(default)]
-    pub defaults: GlobalDefaults,
-    #[serde(default)]
     pub ui: UiConfig,
 }
 
-#[derive(Debug, Deserialize, Serialize, Default)]
-pub struct GlobalDefaults {
-    pub toolchain: Option<String>,
-    pub test_language: Option<String>,
-    pub rust_framework: Option<String>,
-    pub ts_sdk: Option<String>,
-    pub template: Option<String>,
-    pub git: Option<String>,
-    pub package_manager: Option<String>,
-}
-
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct UiConfig {
-    /// Show the banner on `quasar init` (default: true)
-    #[serde(default = "default_true")]
-    pub animation: bool,
-    /// Use colored output (default: true)
-    #[serde(default = "default_true")]
     pub color: bool,
-}
-
-fn default_true() -> bool {
-    true
 }
 
 impl Default for UiConfig {
     fn default() -> Self {
-        Self {
-            animation: true,
-            color: true,
-        }
+        Self { color: true }
     }
 }
 
@@ -206,15 +291,13 @@ impl GlobalConfig {
 
     pub fn load() -> Result<Self, CliError> {
         let path = Self::path();
-        if path.exists() {
-            let contents = std::fs::read_to_string(&path).map_err(|e| {
-                CliError::message(format!("failed to read {}: {e}", path.display()))
-            })?;
-            toml::from_str(&contents)
-                .map_err(|e| CliError::message(format!("invalid {}: {e}", path.display())))
-        } else {
-            Ok(Self::default())
+        if !path.exists() {
+            return Ok(Self::default());
         }
+        let contents = std::fs::read_to_string(&path)
+            .map_err(|error| CliError::io_path("read", &path, error))?;
+        toml::from_str(&contents)
+            .map_err(|error| CliError::message(format!("invalid {}: {error}", path.display())))
     }
 
     pub fn save(&self) -> Result<(), CliError> {
@@ -222,17 +305,8 @@ impl GlobalConfig {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let toml_str = toml::to_string_pretty(self)?;
-        std::fs::write(path, toml_str)?;
+        std::fs::write(path, toml::to_string_pretty(self)?)?;
         Ok(())
-    }
-
-    pub fn load_from_str(s: &str) -> Result<Self, CliError> {
-        toml::from_str(s).map_err(CliError::from)
-    }
-
-    pub fn to_toml(&self) -> String {
-        toml::to_string_pretty(self).unwrap_or_default()
     }
 }
 
@@ -241,94 +315,44 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_config_has_animation_enabled() {
-        let config = GlobalConfig::default();
-        assert!(config.ui.animation);
+    fn canonical_config_serializes_to_the_public_schema() {
+        let config = QuasarConfig::canonical("demo").to_toml();
+        assert_eq!(
+            config,
+            "[project]\nname = \"demo\"\n\n[testing]\ncommand = { program = \"cargo\", args = \
+             [\"test\", \"tests::\"] }\n\n[clients]\npath = \"target/client\"\ntargets = \
+             [\"rust\", \"kit\", \"web3\"]\n"
+        );
     }
 
     #[test]
-    fn animation_disabled_survives_roundtrip() {
-        let config = GlobalConfig {
-            ui: UiConfig {
-                animation: false,
-                ..UiConfig::default()
-            },
-            ..GlobalConfig::default()
-        };
-        let toml_str = config.to_toml();
-        let loaded = GlobalConfig::load_from_str(&toml_str).unwrap();
-        assert!(!loaded.ui.animation);
+    fn missing_sections_receive_canonical_defaults() {
+        let config = QuasarConfig::parse("[project]\nname = \"demo\"\n").unwrap();
+        assert_eq!(config.testing, TestingConfig::default());
+        assert_eq!(config.clients, ClientsConfig::default());
     }
 
     #[test]
-    fn empty_config_defaults_animation_true() {
-        let loaded = GlobalConfig::load_from_str("").unwrap();
-        assert!(loaded.ui.animation);
-    }
-
-    #[test]
-    fn saved_defaults_survive_a_toml_round_trip() {
-        // Simulates the init flow: default config saved with animation
-        // disabled and populated defaults. (Default-state and plain
-        // animation round-trips are covered by the sibling tests.)
-        let globals = GlobalConfig::default();
-        let saved = GlobalConfig {
-            defaults: GlobalDefaults {
-                toolchain: Some("solana".into()),
-                test_language: Some("rust".into()),
-                rust_framework: Some("quasar-svm".into()),
-                ts_sdk: None,
-                template: Some("minimal".into()),
-                git: Some("commit".into()),
-                package_manager: None,
-            },
-            ui: UiConfig {
-                animation: false,
-                ..globals.ui
-            },
-        };
-        let toml_str = saved.to_toml();
-        let reloaded = GlobalConfig::load_from_str(&toml_str).unwrap();
-        assert!(!reloaded.ui.animation);
-        assert_eq!(reloaded.defaults.toolchain.as_deref(), Some("solana"));
-        assert_eq!(reloaded.defaults.git.as_deref(), Some("commit"));
-    }
-
-    #[test]
-    fn command_spec_deserializes_structured_command() {
-        let config: QuasarConfig = toml::from_str(
-            r#"
-            [project]
-            name = "demo"
-
-            [toolchain]
-            type = "solana"
-
-            [testing]
-            language = "typescript"
-
-            [testing.typescript]
-            framework = "quasar-svm"
-            sdk = "kit"
-            install = { program = "pnpm", args = ["install", "--frozen-lockfile"] }
-            test = { program = "pnpm", args = ["vitest", "run"] }
-
-            [clients]
-            path = "target/client"
-            languages = ["typescript"]
-            "#,
+    fn client_targets_are_closed() {
+        let error = QuasarConfig::parse(
+            "[project]\nname = \"demo\"\n[clients]\ntargets = [\"typescript\"]\n",
         )
-        .unwrap();
-
-        let ts = config.testing.typescript.unwrap();
-        assert_eq!(ts.install.program, "pnpm");
-        assert_eq!(ts.install.args, vec!["install", "--frozen-lockfile"]);
-        assert_eq!(ts.test.program, "pnpm");
-        assert_eq!(ts.test.args, vec!["vitest", "run"]);
+        .unwrap_err();
+        assert!(error.contains("rust, kit, web3, python, go, c"), "{error}");
     }
 
     #[test]
-    fn invalid_global_config_is_not_silently_ignored() {
-        assert!(GlobalConfig::load_from_str("ui = ").is_err());
+    fn removed_values_name_the_supported_replacement() {
+        let error = QuasarConfig::parse("[toolchain]\ntype = \"upstream\"\n").unwrap_err();
+        assert!(error.contains("cargo build-sbf"), "{error}");
+
+        let error = QuasarConfig::parse("[clients]\nlanguages = [\"typescript\"]\n").unwrap_err();
+        assert!(error.contains("clients.targets"), "{error}");
+    }
+
+    #[test]
+    fn testing_command_must_be_structured() {
+        let error = QuasarConfig::parse("[testing]\ncommand = \"cargo test\"\n").unwrap_err();
+        assert!(error.contains("invalid type"), "{error}");
     }
 }

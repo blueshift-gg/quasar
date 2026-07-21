@@ -11,23 +11,6 @@ use {
     },
 };
 
-pub fn run(
-    program_keypair: Option<PathBuf>,
-    upgrade_authority: Option<PathBuf>,
-    keypair: Option<PathBuf>,
-    url: Option<String>,
-    skip_build: bool,
-) -> CliResult {
-    run_with_verification(
-        program_keypair,
-        upgrade_authority,
-        keypair,
-        url,
-        skip_build,
-        false,
-    )
-}
-
 pub(crate) fn run_with_verification(
     program_keypair: Option<PathBuf>,
     upgrade_authority: Option<PathBuf>,

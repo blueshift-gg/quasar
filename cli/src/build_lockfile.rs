@@ -1,5 +1,5 @@
 use {
-    crate::{error::CliError, style, toolchain},
+    crate::{error::CliError, style},
     serde::Deserialize,
     std::{
         collections::HashSet,
@@ -8,30 +8,6 @@ use {
         process::{Command, Stdio},
     },
 };
-
-/// Read rustflags from .cargo/config.toml for the bpfel-unknown-none target.
-pub(super) fn read_target_rustflags() -> Vec<String> {
-    let config_path = Path::new(".cargo").join("config.toml");
-    let contents = match fs::read_to_string(&config_path) {
-        Ok(c) => c,
-        Err(_) => return vec![],
-    };
-    let value: toml::Value = match contents.parse() {
-        Ok(v) => v,
-        Err(_) => return vec![],
-    };
-    value
-        .get("target")
-        .and_then(|t| t.get("bpfel-unknown-none"))
-        .and_then(|t| t.get("rustflags"))
-        .and_then(|f| f.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default()
-}
 
 pub(super) fn ensure_lockfile(sp: &indicatif::ProgressBar) -> Result<(), CliError> {
     let lock_path = Path::new("Cargo.lock");
@@ -93,10 +69,6 @@ pub(super) fn ensure_lockfile(sp: &indicatif::ProgressBar) -> Result<(), CliErro
         style::dim("warning: could not refresh Cargo.lock; building with existing lockfile")
     );
     Ok(())
-}
-
-pub(super) fn missing_sbpf_linker() -> CliError {
-    CliError::message(toolchain::MISSING_SBPF_LINKER_MESSAGE)
 }
 
 fn workspace_manifest_paths() -> Result<Vec<PathBuf>, String> {

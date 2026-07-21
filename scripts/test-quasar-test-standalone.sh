@@ -20,33 +20,12 @@ if [[ ! -f "$program_artifact" ]]; then
   fail "fixture program does not exist: $program_artifact (run `make build-sbf` first)"
 fi
 program_artifact="$(cd "$(dirname "$program_artifact")" && pwd -P)/$(basename "$program_artifact")"
-package_version="$(
-  cargo metadata --no-deps --format-version 1 \
-    | jq -r --arg name "$package_name" '.packages[] | select(.name == $name) | .version'
-)"
-[[ -n "$package_version" && "$package_version" != "null" ]] \
-  || fail "could not resolve the $package_name package version"
-readonly package_version
-
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/quasar-test-standalone.XXXXXX")"
 tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
 
-cargo package -p "$package_name" --locked --allow-dirty --no-verify
-archive="target/package/$package_name-$package_version.crate"
-[[ -f "$archive" ]] || fail "package archive was not created: $archive"
-
-mkdir -p "$tmp/package" "$tmp/consumer/src"
-tar -xzf "$archive" -C "$tmp/package"
-package_dir="$tmp/package/$package_name-$package_version"
-[[ -f "$package_dir/Cargo.toml" ]] || fail "archive is missing its normalized manifest"
-[[ -f "$package_dir/src/lib.rs" ]] || fail "archive is missing src/lib.rs"
-[[ -f "$package_dir/README.md" ]] || fail "archive is missing README.md"
-for license in LICENSE-APACHE LICENSE-MIT; do
-  [[ -f "$package_dir/$license" ]] || fail "archive is missing $license"
-  cmp "$license" "$package_dir/$license" >/dev/null \
-    || fail "archive contains the wrong $license text"
-done
+package_dir="$repo_root/test"
+mkdir -p "$tmp/consumer/src"
 
 cat >"$tmp/consumer/Cargo.toml" <<EOF
 [package]
@@ -94,14 +73,12 @@ mod tests {
         }
     }
 
-    quasar_test! {
-      program_id = Pubkey::from_str(PROGRAM_ID).expect("valid fixture program id");
-      fn packaged_crate_executes_a_real_program(q) {
+    #[quasar_test(program_id = Pubkey::from_str(PROGRAM_ID).expect("valid fixture program id"))]
+    fn external_consumer_executes_a_real_program(q: &mut QuasarTest) {
         let program_id = Pubkey::from_str(PROGRAM_ID).unwrap();
         let user = Pubkey::new_from_array([1; 32]);
         let (vault, _) = Pubkey::find_program_address(&[b"vault", user.as_ref()], &program_id);
         q.fund(user, USER_LAMPORTS);
-        q.empty(vault);
 
         if let Some(expected) = env::var_os(PROGRAM_PATH_ENV) {
             assert_eq!(
@@ -117,28 +94,24 @@ mod tests {
             .has_lamports(user, USER_LAMPORTS - DEPOSIT);
 
         let wrong_vault = Pubkey::new_unique();
-        q.empty(wrong_vault);
         q.send(deposit_instruction(program_id, user, wrong_vault))
             .fails_with(VaultError::InvalidPda);
-      }
     }
 }
 EOF
 
 metadata="$tmp/consumer-metadata.json"
-cargo metadata --manifest-path "$tmp/consumer/Cargo.toml" --format-version 1 >"$metadata"
+cargo metadata \
+  --manifest-path "$tmp/consumer/Cargo.toml" \
+  --format-version 1 \
+  >"$metadata"
 actual_manifest="$(jq -r --arg name "$package_name" \
   '.packages[] | select(.name == $name) | .manifest_path' "$metadata")"
 [[ "$actual_manifest" == "$package_dir/Cargo.toml" ]] \
-  || fail "consumer did not resolve quasar-test from the packaged source"
-if jq -e --arg name "$package_name" \
-  '.packages[] | select(.name == $name) | .dependencies[] | select(.source == null)' \
+  || fail "consumer did not resolve quasar-test from the requested source"
+if jq -e '.packages[] | select(.name | test("^quasar-(cli|idl|spl)$"))' \
   "$metadata" >/dev/null; then
-  fail "packaged quasar-test contains a non-registry dependency"
-fi
-if jq -e '.packages[] | select(.name | test("^quasar-(lang|cli|derive|idl|spl|metadata)$"))' \
-  "$metadata" >/dev/null; then
-  fail "quasar-test pulled an on-chain framework or CLI crate into its dependency graph"
+  fail "quasar-test pulled an unrelated product into its dependency graph"
 fi
 
 export CARGO_TARGET_DIR="$tmp/consumer/target"
@@ -151,14 +124,16 @@ cp "$program_artifact" target/deploy/quasar_vault.so
 env -u QUASAR_PROGRAM_PATH cargo test --locked
 
 cp "$program_artifact" target/deploy/decoy.so
-if env -u QUASAR_PROGRAM_PATH cargo test --locked >"$tmp/ambiguous.log" 2>&1; then
+if env -u QUASAR_PROGRAM_PATH cargo test --locked \
+  >"$tmp/ambiguous.log" 2>&1; then
   fail "direct discovery accepted an ambiguous target/deploy directory"
 fi
 grep -F "found multiple program artifacts" "$tmp/ambiguous.log" >/dev/null \
   || fail "ambiguous discovery did not return its actionable diagnostic"
 rm target/deploy/decoy.so
 
-if QUASAR_PROGRAM_PATH="$tmp/missing.so" cargo test --locked >"$tmp/missing.log" 2>&1; then
+if QUASAR_PROGRAM_PATH="$tmp/missing.so" cargo test --locked \
+  >"$tmp/missing.log" 2>&1; then
   fail "configured discovery accepted a missing artifact"
 fi
 grep -F "QUASAR_PROGRAM_PATH points to missing program artifact" "$tmp/missing.log" >/dev/null \

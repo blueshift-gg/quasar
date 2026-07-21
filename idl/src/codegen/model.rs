@@ -335,6 +335,72 @@ pub struct AccountPlan {
     pub resolver: IdlResolver,
 }
 
+/// One unique account-data value required to derive an instruction PDA.
+///
+/// The identity is `(path, field)`: backends may render the parameter name
+/// differently, but they must agree on which caller-supplied values exist.
+pub(super) struct AccountFieldSeedInput<'a> {
+    pub path: &'a str,
+    pub account: &'a str,
+    pub field: &'a str,
+}
+
+pub(super) fn account_field_seed_inputs(ix: &IdlInstruction) -> Vec<AccountFieldSeedInput<'_>> {
+    let mut inputs = Vec::new();
+    let mut seen = HashSet::new();
+    for account_node in &ix.accounts {
+        if account_node.optional {
+            continue;
+        }
+        let IdlResolver::Pda { seeds, .. } = &account_node.resolver else {
+            continue;
+        };
+        for seed in seeds {
+            let IdlPdaSeed::AccountField {
+                path,
+                account,
+                field,
+            } = seed
+            else {
+                continue;
+            };
+            if seen.insert((path.as_str(), field.as_str())) {
+                inputs.push(AccountFieldSeedInput {
+                    path,
+                    account,
+                    field,
+                });
+            }
+        }
+    }
+    inputs
+}
+
+/// Resolve a dotted account-field seed path to its final IDL field definition.
+pub(super) fn account_field_definition<'a>(
+    idl: &'a Idl,
+    account: &str,
+    field: &str,
+) -> Option<&'a crate::types::IdlFieldDef> {
+    let mut type_name = account;
+    let mut segments = field.split('.').peekable();
+    while let Some(segment) = segments.next() {
+        let type_def = idl.types.iter().find(|ty| ty.name == type_name)?;
+        let field_def = type_def
+            .fields
+            .iter()
+            .find(|candidate| candidate.name == segment)?;
+        if segments.peek().is_none() {
+            return Some(field_def);
+        }
+        let IdlType::Defined { defined } = &field_def.ty else {
+            return None;
+        };
+        type_name = &defined.name;
+    }
+    None
+}
+
 /// A resolved PDA seed (encoding inferred from the seed's declared type).
 #[derive(Clone, Debug)]
 pub enum ResolvedSeed {

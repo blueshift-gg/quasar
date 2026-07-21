@@ -17,7 +17,7 @@ quasar-lang = { path = "../../../lang" }
 quasar-derive = { path = "../../../derive" }
 
 [features]
-default = ["alloc", "cpi"]
+default = ["alloc", "cpi", "debug"]
 cpi = []
 alloc = []
 debug = []
