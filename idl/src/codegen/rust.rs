@@ -4,13 +4,13 @@ use {
         resolved_account_order, resolver_is_derived, CodegenError, CodegenResult, ProgramFeatures,
         ProgramModel, WireType,
     },
+    crate::codegen::naming::{
+        camel_to_snake, pascal_to_snake, snake_to_pascal,
+        to_screaming_snake as pascal_to_screaming_snake,
+    },
     crate::types::{
         AccountFlag, Idl, IdlAccountNode, IdlCodec, IdlFieldDef, IdlLayout, IdlPdaSeed,
         IdlResolver, IdlType,
-    },
-    quasar_schema::{
-        camel_to_snake, pascal_to_snake, snake_to_pascal,
-        to_screaming_snake as pascal_to_screaming_snake,
     },
     std::{
         collections::{HashMap, HashSet},

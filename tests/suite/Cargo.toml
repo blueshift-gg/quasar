@@ -25,7 +25,7 @@ quasar-test-one-of = { path = "../programs/test-one-of" }
 quasar-test-migrate = { path = "../programs/test-migrate" }
 quasar-test-raw = { path = "../programs/test-raw" }
 quasar-spl = { path = "../../spl" }
-quasar-svm = { git = "https://github.com/blueshift-gg/quasar-svm" }
+quasar-svm = "=0.1.0"
 mollusk-svm = "0.10.3"
 spl-token-interface = "2.0.0"
 solana-program-pack = "3.1.0"

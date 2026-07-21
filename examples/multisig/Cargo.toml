@@ -24,4 +24,4 @@ solana-instruction = { version = "3.2.0" }
 [dev-dependencies]
 quasar-multisig-client = { path = "client" }
 wincode = { version = "0.4", features = ["derive"] }
-quasar-svm = { git = "https://github.com/blueshift-gg/quasar-svm" }
+quasar-svm = "=0.1.0"

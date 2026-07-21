@@ -1,8 +1,8 @@
 //! Client instruction macro generation for `#[derive(Accounts)]` structs.
 
 use {
+    crate::helpers::pascal_to_snake,
     proc_macro2::TokenStream,
-    quasar_schema::pascal_to_snake,
     quote::{format_ident, quote},
 };
 

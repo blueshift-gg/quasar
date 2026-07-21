@@ -14,13 +14,13 @@
 //! 2. Off-chain `SchemaWrite` / `SchemaRead` impls.
 
 use {
+    crate::helpers::pascal_to_snake,
     crate::helpers::{
         canonical_instruction_arg_type, check_fixed_before_dynamic, classify_instruction_arg,
         instruction_schema_type, ArgClass, ArgSite, PodDynField,
     },
     proc_macro::TokenStream,
     proc_macro2::TokenStream as TokenStream2,
-    quasar_schema::pascal_to_snake,
     quote::{format_ident, quote},
     syn::{parse_quote, spanned::Spanned, Data, DeriveInput, Field, Fields, Type},
 };

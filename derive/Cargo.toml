@@ -14,7 +14,9 @@ keywords = ["solana", "quasar", "proc-macro", "code-generation"]
 categories = ["development-tools::procedural-macro-helpers", "rust-patterns"]
 include = [
     "/src/**",
-    "/tests/compatibility-v0.1.0/**",
+    "!/src/plan_snapshots.rs",
+    "!/src/snapshot_tests.rs",
+    "!/src/snapshots/**",
     "/README.md",
     "/LICENSE-APACHE",
     "/LICENSE-MIT",
@@ -32,8 +34,8 @@ syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
 proc-macro-crate = "3"
+heck.workspace = true
 serde_json = { version = "1", optional = true }
-quasar-schema = { version = "=0.1.0", path = "../schema" }
 quasar-idl-schema = { version = "=0.1.0", path = "../idl/schema", optional = true }
 
 [features]

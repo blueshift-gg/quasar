@@ -1,4 +1,16 @@
-pub(crate) use quasar_schema::{pascal_to_snake, snake_to_pascal, to_camel_case as snake_to_camel};
+use heck::{ToLowerCamelCase, ToSnakeCase, ToUpperCamelCase};
+
+pub(crate) fn pascal_to_snake(value: &str) -> String {
+    value.to_snake_case()
+}
+
+pub(crate) fn snake_to_pascal(value: &str) -> String {
+    value.to_upper_camel_case()
+}
+
+pub(crate) fn snake_to_camel(value: &str) -> String {
+    value.to_lower_camel_case()
+}
 use {
     quote::{quote, ToTokens},
     syn::{

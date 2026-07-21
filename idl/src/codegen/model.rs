@@ -1,9 +1,9 @@
 use {
+    crate::codegen::naming::{camel_to_pascal, camel_to_snake, snake_to_pascal},
     crate::types::{
         AccountFlag, Idl, IdlAccountNode, IdlArg, IdlCodec, IdlGenericArg, IdlInstruction,
         IdlLayout, IdlPdaProgram, IdlPdaSeed, IdlResolver, IdlType,
     },
-    quasar_schema::{camel_to_pascal, camel_to_snake, snake_to_pascal},
     std::{
         collections::HashSet,
         error::Error,
