@@ -2,14 +2,7 @@
 
 use {
     super::aggregate::ProfileResult,
-    serde::Serialize,
-    std::{
-        collections::HashMap,
-        fs,
-        io::{BufWriter, Write},
-        mem,
-        path::Path,
-    },
+    std::{collections::HashMap, fs},
 };
 
 fn bold(s: &str) -> String {
@@ -235,10 +228,6 @@ fn print_full_table(
     );
 }
 
-pub(crate) fn print_flamegraph_link(url: &str) {
-    println!("  {}  {}", dim("flamegraph"), cyan(url));
-}
-
 fn load_previous_profile(program_name: &str) -> Option<HashMap<String, u64>> {
     let path = last_profile_path(program_name);
     let contents = fs::read_to_string(path).ok()?;
@@ -266,7 +255,7 @@ fn save_current_profile(program_name: &str, result: &ProfileResult) {
 }
 
 pub(crate) fn last_profile_path(program_name: &str) -> std::path::PathBuf {
-    super::profile_web_root().join(format!(".last-profile.{program_name}"))
+    super::profile_root().join(format!(".last-profile.{program_name}"))
 }
 
 /// Simplify a demangled Rust function name for the terminal.
@@ -371,102 +360,4 @@ fn format_cu(n: u64) -> String {
         result.push(c);
     }
     result
-}
-
-#[derive(Serialize)]
-struct ProfileData {
-    program: String,
-    version: String,
-    #[serde(rename = "binaryHash")]
-    binary_hash: String,
-    #[serde(rename = "binarySize")]
-    binary_size: u64,
-    root: FrameNode,
-}
-
-#[derive(Serialize)]
-struct FrameNode {
-    name: String,
-    value: u64,
-    children: Vec<FrameNode>,
-}
-
-#[derive(Default)]
-struct BuildNode {
-    value: u64,
-    children: HashMap<String, BuildNode>,
-}
-
-pub(crate) fn write_json(
-    result: &ProfileResult,
-    path: &Path,
-    program_name: &str,
-    version: &str,
-    binary_size: u64,
-    binary_hash: &str,
-) {
-    let root = frame_tree_from_stacks(result);
-    let profile = ProfileData {
-        program: program_name.to_string(),
-        version: version.to_string(),
-        binary_hash: binary_hash.to_string(),
-        binary_size,
-        root,
-    };
-
-    let file = std::fs::File::create(path).unwrap_or_else(|e| {
-        eprintln!("Error: failed to create {}: {}", path.display(), e);
-        std::process::exit(1);
-    });
-    let mut writer = BufWriter::new(file);
-    serde_json::to_writer_pretty(&mut writer, &profile).unwrap_or_else(|e| {
-        eprintln!("Error: failed to serialize JSON profile: {}", e);
-        std::process::exit(1);
-    });
-    writer.write_all(b"\n").unwrap();
-    writer.flush().unwrap();
-}
-
-fn frame_tree_from_stacks(result: &ProfileResult) -> FrameNode {
-    let mut synthetic = BuildNode::default();
-
-    for (stack, count) in &result.stack_counts {
-        let mut cursor = &mut synthetic;
-        for part in stack.iter().rev() {
-            let node = cursor.children.entry(part.clone()).or_default();
-            node.value += *count;
-            cursor = node;
-        }
-    }
-
-    if synthetic.children.len() == 1 {
-        let (name, node) = synthetic.children.into_iter().next().unwrap();
-        return to_frame_node(name, node);
-    }
-
-    let mut children: Vec<FrameNode> = synthetic
-        .children
-        .into_iter()
-        .map(|(name, node)| to_frame_node(name, node))
-        .collect();
-    children.sort_by(|a, b| b.value.cmp(&a.value).then_with(|| a.name.cmp(&b.name)));
-    FrameNode {
-        name: "all".to_string(),
-        value: result.total_cus,
-        children,
-    }
-}
-
-fn to_frame_node(name: String, mut node: BuildNode) -> FrameNode {
-    let children_map = mem::take(&mut node.children);
-    let mut children: Vec<FrameNode> = children_map
-        .into_iter()
-        .map(|(child_name, child)| to_frame_node(child_name, child))
-        .collect();
-    children.sort_by(|a, b| b.value.cmp(&a.value).then_with(|| a.name.cmp(&b.name)));
-    FrameNode {
-        name,
-        value: node.value,
-        children,
-    }
 }

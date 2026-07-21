@@ -1,6 +1,6 @@
 //! ELF loading for the CLI profiler.
 
-use {goblin::elf::Elf, memmap2::Mmap, std::path::Path};
+use {crate::error::CliError, goblin::elf::Elf, memmap2::Mmap, std::path::Path};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DebugLevel {
@@ -26,36 +26,33 @@ pub(crate) struct ElfInfo {
 const EM_BPF: u16 = 247;
 const EM_SBF: u16 = 263;
 
-pub(crate) fn load(mmap: &Mmap, path: &Path) -> ElfInfo {
-    let elf = Elf::parse(mmap).unwrap_or_else(|e| {
-        eprintln!("Error: failed to parse ELF file {}: {}", path.display(), e);
-        std::process::exit(1);
-    });
+pub(crate) fn load(mmap: &Mmap, path: &Path) -> Result<ElfInfo, CliError> {
+    let elf = Elf::parse(mmap).map_err(|error| {
+        CliError::message(format!(
+            "failed to parse ELF file {}: {error}",
+            path.display()
+        ))
+    })?;
 
     if elf.header.e_machine != EM_BPF && elf.header.e_machine != EM_SBF {
-        eprintln!(
-            "Error: not an SBF binary (e_machine = {}, expected {} or {})",
+        return Err(CliError::message(format!(
+            "not an SBF binary (e_machine = {}, expected {} or {})",
             elf.header.e_machine, EM_BPF, EM_SBF,
-        );
-        std::process::exit(1);
+        )));
     }
 
     let text_sh = elf
         .section_headers
         .iter()
         .find(|sh| elf.shdr_strtab.get_at(sh.sh_name) == Some(".text"))
-        .unwrap_or_else(|| {
-            eprintln!("Error: no .text section found in ELF");
-            std::process::exit(1);
-        });
+        .ok_or_else(|| CliError::message("no .text section found in ELF"))?;
 
     let text_offset = text_sh.sh_offset as usize;
     let text_size = text_sh.sh_size as usize;
     let text_base_addr = text_sh.sh_addr;
 
     if text_size == 0 {
-        eprintln!("Error: .text section is empty");
-        std::process::exit(1);
+        return Err(CliError::message(".text section is empty"));
     }
 
     let has_debug_info = elf
@@ -112,11 +109,11 @@ pub(crate) fn load(mmap: &Mmap, path: &Path) -> ElfInfo {
 
     symbols.sort_by_key(|s| s.addr);
 
-    ElfInfo {
+    Ok(ElfInfo {
         text_offset,
         text_size,
         text_base_addr,
         symbols,
         debug_level,
-    }
+    })
 }
