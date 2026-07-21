@@ -43,10 +43,10 @@ Quasar 0.1.0 has four primary Rust products:
 
 Several crates are published because those products require them:
 `quasar-derive`, `quasar-idl`, `quasar-idl-schema`, `quasar-schema`,
-`quasar-test-derive`, and `solana-compiler-builtins`. They are supporting
-machinery, not additional products. Their intentional proc-macro, IDL wire,
-testing-macro, and compiler-runtime contracts are protected without promising
-that every implementation detail is a stable direct Rust API.
+and `quasar-test-derive`. They are supporting machinery, not additional
+products. Their intentional proc-macro, IDL wire, and testing-macro contracts
+are protected without promising that every implementation detail is a stable
+direct Rust API.
 
 ## Stable and preview capabilities
 
@@ -60,17 +60,17 @@ inspection, profiler sharing, and the profile-diff server are preview tools.
 Preview features require explicit invocation, are not used by the starter, and
 carry no patch-level compatibility promise.
 
-See [VERSIONING.md](VERSIONING.md) for the exact contract,
-[TESTING.md](TESTING.md) for release evidence, and
-[HOST_SUPPORT.md](HOST_SUPPORT.md) for supported development hosts.
+See [VERSIONING.md](VERSIONING.md) for the exact compatibility contract.
+
+Quasar supports Ubuntu 24.04 x86-64 and macOS 15 on Apple Silicon and Intel.
+Windows development uses Ubuntu 24.04 under WSL2; native Windows is not a
+supported 0.1 host.
 
 ## Documentation
 
 User documentation is available at
-[quasar-lang.com](https://quasar-lang.com). Repository architecture and
-contributor workflows live in [ARCHITECTURE.md](ARCHITECTURE.md) and
-[CONTRIBUTING.md](CONTRIBUTING.md). Release owners use
-[RELEASING.md](RELEASING.md).
+[quasar-lang.com](https://quasar-lang.com). Repository architecture, testing,
+and maintainer commands live in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

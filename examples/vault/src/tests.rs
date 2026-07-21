@@ -5,14 +5,26 @@ use {
     std::vec,
 };
 
-#[path = "../../cu_bench.rs"]
-mod cu_bench;
-
 const USER: Pubkey = Pubkey::new_from_array([1; 32]);
+const MAX_ELF_BYTES: usize = 5_536;
+const MAX_DEPOSIT_CU: u64 = 1_556;
+const MAX_WITHDRAW_CU: u64 = 392;
 
 fn setup() -> QuasarSvm {
     let elf = std::fs::read("../../target/deploy/quasar_vault.so").unwrap();
+    assert!(
+        elf.len() <= MAX_ELF_BYTES,
+        "vault ELF grew to {} bytes; budget is {MAX_ELF_BYTES}",
+        elf.len()
+    );
     QuasarSvm::new().with_program(&crate::ID, &elf)
+}
+
+fn assert_cu(instruction: &str, consumed: u64, maximum: u64) {
+    assert!(
+        consumed <= maximum,
+        "{instruction} consumed {consumed} CU; budget is {maximum}"
+    );
 }
 
 fn signer(address: Pubkey) -> Account {
@@ -61,7 +73,7 @@ fn test_deposit() {
     );
     assert_eq!(vault_after, deposit_amount, "vault lamports after deposit");
 
-    cu_bench::record_cu("deposit", result.compute_units_consumed);
+    assert_cu("deposit", result.compute_units_consumed, MAX_DEPOSIT_CU);
 }
 
 #[test]
@@ -112,5 +124,5 @@ fn test_withdraw() {
         "vault lamports after withdraw"
     );
 
-    cu_bench::record_cu("withdraw", result.compute_units_consumed);
+    assert_cu("withdraw", result.compute_units_consumed, MAX_WITHDRAW_CU);
 }

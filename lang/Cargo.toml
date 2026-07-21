@@ -47,9 +47,6 @@ solana-define-syscall = { version = "5.0.0", features = [
     "unstable-static-syscalls",
 ] }
 
-[target.'cfg(target_arch = "bpf")'.dependencies]
-solana-compiler-builtins = { version = "=0.1.0", path = "../solana-compiler-builtins" }
-
 [target.'cfg(not(any(target_os = "solana", target_arch = "bpf")))'.dependencies]
 zeropod = { version = "0.3.3", features = ["wincode", "solana-address", "solana-program-error"] }
 solana-instruction = "3.2.0"

@@ -24,7 +24,7 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/quasar-test-standalone.XXXXXX")"
 tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
 
-package_dir="$repo_root/testing"
+package_dir="$repo_root/test"
 mkdir -p "$tmp/consumer/src"
 
 cat >"$tmp/consumer/Cargo.toml" <<EOF

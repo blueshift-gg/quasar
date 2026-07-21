@@ -7,9 +7,6 @@ use {
     quasar_test::{prelude::*, DEFAULT_WALLET_LAMPORTS},
 };
 
-#[path = "../../cu_bench.rs"]
-mod cu_bench;
-
 // Deterministic addresses avoid Pubkey::new_unique(), whose global counter
 // produces different values depending on test binary layout / discovery order.
 const MAKER: Pubkey = Pubkey::new_from_array([1; 32]);
@@ -22,6 +19,27 @@ const VAULT_TA_A: Pubkey = Pubkey::new_from_array([7; 32]);
 const TAKER_TA_A: Pubkey = Pubkey::new_from_array([8; 32]);
 const TAKER_TA_B: Pubkey = Pubkey::new_from_array([9; 32]);
 const WRONG_OWNER: Pubkey = Pubkey::new_from_array([10; 32]);
+const MAX_ELF_BYTES: usize = 44_320;
+const MAX_MAKE_CU: u64 = 21_035;
+const MAX_TAKE_CU: u64 = 29_256;
+const MAX_REFUND_CU: u64 = 16_942;
+
+fn assert_cu(instruction: &str, consumed: u64, maximum: u64) {
+    assert!(
+        consumed <= maximum,
+        "{instruction} consumed {consumed} CU; budget is {maximum}"
+    );
+}
+
+#[test]
+fn elf_size_stays_within_budget() {
+    let bytes = std::fs::read("../../target/deploy/quasar_escrow.so").unwrap();
+    assert!(
+        bytes.len() <= MAX_ELF_BYTES,
+        "escrow ELF grew to {} bytes; budget is {MAX_ELF_BYTES}",
+        bytes.len()
+    );
+}
 
 /// Register the maker and both mints.
 fn base_world(q: &mut QuasarTest) {
@@ -71,7 +89,7 @@ fn test_make_cu(q: &mut QuasarTest) {
     assert_eq!(state.receive, 1337);
     assert_eq!(state.bump, bump);
 
-    cu_bench::record_cu("make", result.compute_units_consumed);
+    assert_cu("make", result.compute_units_consumed, MAX_MAKE_CU);
 }
 
 #[quasar_test]
@@ -93,7 +111,7 @@ fn test_take_cu(q: &mut QuasarTest) {
     });
     result.succeeds();
 
-    cu_bench::record_cu("take", result.compute_units_consumed);
+    assert_cu("take", result.compute_units_consumed, MAX_TAKE_CU);
 }
 
 #[quasar_test]
@@ -109,7 +127,7 @@ fn test_refund_cu(q: &mut QuasarTest) {
     });
     result.succeeds();
 
-    cu_bench::record_cu("refund", result.compute_units_consumed);
+    assert_cu("refund", result.compute_units_consumed, MAX_REFUND_CU);
 }
 
 #[quasar_test]

@@ -2,8 +2,7 @@ use solana_program_error::ProgramError;
 
 /// Protocol-owned account behavior attached via `#[account(my_behavior(...))]`.
 ///
-/// This is the stable extension seam for plugins; see `ARCHITECTURE.md`
-/// (section 4) for how it fits the compiler.
+/// This is the stable extension seam for protocol-owned plugins.
 ///
 /// # Writing a behavior module
 ///

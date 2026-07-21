@@ -15,8 +15,8 @@
 //! `path::Args::builder()` + `<path::Behavior as AccountBehavior<T>>`.
 //!
 //! See `quasar_lang::account_behavior::AccountBehavior` for the plugin
-//! contract, and `ARCHITECTURE.md` (section 2) for how this pipeline fits the
-//! rest of the compiler.
+//! contract. The compiler boundary is also enforced by the dependency graph:
+//! this crate does not depend on protocol crates such as `quasar-spl`.
 
 pub(crate) mod emit;
 pub(crate) mod resolve;

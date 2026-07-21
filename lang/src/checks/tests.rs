@@ -1,11 +1,8 @@
 //! Host unit tests for the account validation predicates.
 //!
-//! These are the primary mutation-testing oracle for the validation core
-//! (TESTING.md): every predicate has an accepting case, a rejecting case per
-//! failure mode, and boundary cases chosen so the classic mutants — `replace
-//! check -> Ok(())`, a flipped comparison, an off-by-one bound, a skipped
-//! word in a key comparison — each fail at least one test here without
-//! needing an SBF build.
+//! Every predicate has an accepting case, a rejecting case per failure mode,
+//! and exact boundary cases. These tests keep validation failures local and do
+//! not require an SBF build.
 
 extern crate alloc;
 

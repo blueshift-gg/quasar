@@ -2109,7 +2109,6 @@ dependencies = [
  "serde_json",
  "solana-account-view",
  "solana-address 2.2.0",
- "solana-compiler-builtins",
  "solana-define-syscall 5.0.0",
  "solana-instruction",
  "solana-instruction-view",
@@ -2968,10 +2967,6 @@ dependencies = [
  "solana-sdk-macro",
  "solana-sysvar-id",
 ]
-
-[[package]]
-name = "solana-compiler-builtins"
-version = "0.1.0"
 
 [[package]]
 name = "solana-compute-budget"

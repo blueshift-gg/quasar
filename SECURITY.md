@@ -27,7 +27,7 @@ The primary product scope is:
   client generation, deployment and verification, profiling, and keypair or
   secret-file handling.
 
-Supporting proc-macro, IDL, schema, testing-derive, and compiler-runtime crates
+Supporting proc-macro, IDL, schema, and testing-derive crates
 are in scope where they participate in those products. Stable Rust, Kit 7, and
 Web3.js 3 generated clients and their wire behavior are in scope. Preview
 Python, Go, C, validation-inspection, assembly-inspection, and profiler-server
@@ -38,7 +38,7 @@ Repository workflows and package manifests are also in scope. This includes
 dependency integrity, workflow permissions, credential exposure, and package
 contents. Credentialed publication is operated outside this repository.
 
-Examples, benchmarks, and test programs are not themselves published product
+Examples and test programs are not themselves published product
 surfaces. A fixture demonstrating a vulnerability in a shipped product or
 release process remains in scope.
 
@@ -49,7 +49,7 @@ exposes users remains in scope here.
 ## Unsafe code and assurance
 
 Quasar uses `unsafe` for zero-copy account access, pointer walking, CPI
-syscalls, and compiler runtime operations. Required checks focus Miri on
+syscalls, and the SBF compiler runtime shim. Required checks focus Miri on
 provenance, aliasing, initialization, exact boundaries, duplicate account
 regions, macro-generated decoders, and adversarial extension points.
 

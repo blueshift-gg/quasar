@@ -11,8 +11,8 @@
 //! word-at-a-time scan wins for the short keys typical of on-chain data
 //! (discriminators, addresses) while the syscall handles bulk buffers.
 //!
-//! On non-BPF targets the crate is empty (host builds use the platform libc).
-#![cfg_attr(target_arch = "bpf", no_std)]
+//! On non-BPF targets only the unit-test implementation is compiled; host
+//! builds use the platform libc.
 
 #[cfg(target_arch = "bpf")]
 const SOL_MEMCMP: usize = 0x5FDCDE31;

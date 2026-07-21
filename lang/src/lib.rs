@@ -49,8 +49,8 @@
 #[cfg(any(feature = "debug", feature = "idl-build"))]
 extern crate alloc;
 extern crate self as quasar_lang;
-#[cfg(target_arch = "bpf")]
-use solana_compiler_builtins as _;
+
+mod compiler_builtins;
 
 /// Internal re-exports for proc macro codegen. Not part of the public API.
 /// Breaking changes to this module are not considered semver violations.

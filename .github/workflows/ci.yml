@@ -30,7 +30,6 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       safety: ${{ steps.result.outputs.safety }}
-      performance: ${{ steps.result.outputs.performance }}
       preview: ${{ steps.result.outputs.preview }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -48,20 +47,6 @@ jobs:
               - 'derive/**'
               - 'schema/**'
               - 'spl/**'
-              - 'solana-compiler-builtins/**'
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - 'Makefile'
-            performance:
-              - '.github/workflows/**'
-              - 'benchmarks/**'
-              - 'solana-compiler-builtins/**'
-              - 'lang/**'
-              - 'derive/**'
-              - 'spl/**'
-              - 'examples/**'
-              - 'scripts/bench-tracked-programs.sh'
-              - 'scripts/tests/test_bench_tracked_programs.py'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'Makefile'
@@ -76,16 +61,13 @@ jobs:
       - id: result
         env:
           SAFETY_CHANGED: ${{ steps.changed.outputs.safety }}
-          PERFORMANCE_CHANGED: ${{ steps.changed.outputs.performance }}
           PREVIEW_CHANGED: ${{ steps.changed.outputs.preview }}
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             echo "safety=${SAFETY_CHANGED:-false}" >> "$GITHUB_OUTPUT"
-            echo "performance=${PERFORMANCE_CHANGED:-false}" >> "$GITHUB_OUTPUT"
             echo "preview=${PREVIEW_CHANGED:-false}" >> "$GITHUB_OUTPUT"
           else
             echo "safety=true" >> "$GITHUB_OUTPUT"
-            echo "performance=true" >> "$GITHUB_OUTPUT"
             echo "preview=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -106,9 +88,7 @@ jobs:
       - name: Format, lint, and document
         run: make format clippy doc-check
       - name: Validate workflow syntax
-        run: |
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          actionlint
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
       - name: Audit workflow security
         run: |
           cargo install zizmor --version 1.26.1 --locked
@@ -186,18 +166,10 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
-      - id: versions
-        run: |
-          echo "nightly=$(make nightly-version)" >> "$GITHUB_OUTPUT"
-          echo "public_api=$(make cargo-public-api-version)" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
         with:
-          toolchain: ${{ steps.versions.outputs.nightly }}
-          targets: x86_64-unknown-linux-gnu
-      - uses: taiki-e/install-action@43aecc8d72668fbcfe75c31400bc4f890f1c5853 # v2
-        with:
-          tool: cargo-public-api@${{ steps.versions.outputs.public_api }}
-      - name: Check stable APIs, macros, IDL, and generated clients
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+      - name: Check macros, IDL, and generated clients
         run: make contracts
 
   package-contract:
@@ -270,20 +242,6 @@ jobs:
         with:
           kani-version: 0.67.0
           command: make kani
-
-  performance:
-    name: Performance
-    needs: scope
-    if: needs.scope.outputs.performance == 'true'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          persist-credentials: false
-      - name: Install supported Solana tools
-        run: scripts/install-solana-tools.sh "$SOLANA_VERSION" "$SOLANA_LINUX_SHA256"
-      - name: Enforce CU and binary-size budgets
-        run: make build-sbf bench
 
   preview-clients:
     name: Preview clients

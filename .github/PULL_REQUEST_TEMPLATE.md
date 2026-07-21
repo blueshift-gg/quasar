@@ -20,7 +20,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for details. This PR will be closed.
 - [ ] Intentional diagnostic/codegen/IDL/client changes: goldens regenerated
       through their owning crate and every diff hunk reviewed like code
       (CONTRIBUTING.md; never blessed blindly)
-- [ ] CU-relevant changes checked against `make compare-tracked`
+- [ ] CU-relevant changes keep the owning example test budgets green
 - [ ] Unsafe changes explain their local safety contract and add a targeted
       Miri, Kani, or fuzz case when that tool owns a unique failure mode
 - [ ] Compatibility impact stated for a stable Rust item, macro expansion,

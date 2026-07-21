@@ -56,8 +56,12 @@ available for unusual cases.
 otherwise require a single unambiguous `.so`, so a test cannot silently
 execute the wrong binary. Use `#[quasar_test(program_id = EXPR)]` for an
 external program and `QuasarTest::builder(id)` (config, explicit artifact
-path, crate name) when setup needs control. The API's shapes and naming
-rules live in [API.md](API.md).
+path, crate name) when setup needs control.
+
+The API keeps one shape per concept: builders own setup options, `add_*`
+methods mutate the world, `derive_*` methods only calculate addresses, and
+`send`/`send_with`/`simulate` own execution. New helpers should add test
+vocabulary rather than mirror methods already available on `QuasarSvm`.
 
 `QuasarTest` dereferences to `QuasarSvm`, so the complete VM API remains
 available. Use `quasar-svm` directly only when you are testing the VM itself or

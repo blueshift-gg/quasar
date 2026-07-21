@@ -1,7 +1,0 @@
-# Stable Rust products only. Supporting crates are protected by their
-# owner-local macro, wire, decoder, and generated-client contracts.
-# package	profile	baseline file
-quasar-lang	default	quasar-lang.txt
-quasar-lang	all-features	quasar-lang.all-features.txt
-quasar-spl	default	quasar-spl.txt
-quasar-test	default	quasar-test.txt

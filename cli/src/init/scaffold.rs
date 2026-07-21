@@ -168,7 +168,7 @@ fn generate_cargo_toml(name: &str, development_root: Option<&Path>) -> String {
         format!(r#""={version}""#)
     };
     let quasar_test = if let Some(root) = development_root {
-        format!(r#"{{ path = "{}" }}"#, root.join("testing").display())
+        format!(r#"{{ path = "{}" }}"#, root.join("test").display())
     } else if version == "0.0.0" {
         r#"{ git = "https://github.com/blueshift-gg/quasar", branch = "master" }"#.to_string()
     } else {

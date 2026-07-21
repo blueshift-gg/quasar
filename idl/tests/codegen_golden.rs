@@ -6,7 +6,7 @@
 //! carry patch-level snapshots.
 //!
 //! Regenerate deliberately with `UPDATE_EXPECT=1 cargo test -p quasar-idl
-//! --test codegen_golden` and review every hunk like code (TESTING.md).
+//! --test codegen_golden` and review every hunk like code.
 
 use {
     expect_test::expect_file,

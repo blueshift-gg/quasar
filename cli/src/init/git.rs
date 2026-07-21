@@ -72,7 +72,8 @@ mod tests {
     use {
         super::*,
         std::{
-            fs,
+            fs::{self, OpenOptions},
+            io::Write as _,
             path::PathBuf,
             time::{SystemTime, UNIX_EPOCH},
         },
@@ -146,16 +147,23 @@ mod tests {
         let path = sandbox.join("git");
         let log = sandbox.join("git.log");
         let fail = fail_on.unwrap_or("");
-        fs::write(
-            &path,
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .unwrap();
+        file.write_all(
             format!(
                 "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{}'\nif [ \"$1\" = '{}' ]; then\n  exit \
                  1\nfi\nexit 0\n",
                 log.display(),
                 fail
-            ),
+            )
+            .as_bytes(),
         )
         .unwrap();
+        file.sync_all().unwrap();
+        drop(file);
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

@@ -30,14 +30,12 @@ prerelease Web3.js dependency is never a stable 0.1 artifact.
 ## Supporting crates
 
 `quasar-derive`, `quasar-idl`, `quasar-idl-schema`, `quasar-schema`,
-`quasar-test-derive`, and `solana-compiler-builtins` are published to support
-the primary products.
+and `quasar-test-derive` are published to support the primary products.
 
 Their intentional contracts are protected where users depend on them:
-proc-macro input, diagnostics, and expansion behavior; IDL wire behavior;
-Rust testing macros; and compiler-runtime semantics. Other direct Rust APIs in
-these implementation crates may change within `0.1.z` when the stable product
-contracts remain intact.
+proc-macro input, diagnostics, and expansion behavior; IDL wire behavior; and
+Rust testing macros. Other direct Rust APIs in these implementation crates may
+change within `0.1.z` when the stable product contracts remain intact.
 
 Exact internal dependency pins keep the runtime, derives, schema, and CLI in
 lockstep. They do not make internal protocols public.

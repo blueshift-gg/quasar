@@ -13,8 +13,8 @@ cargo install quasar-cli --version 0.1.0 --locked
 ```
 
 Quasar 0.1.0 supports Ubuntu 24.04 x86-64 and macOS 15 on Apple Silicon or
-Intel. Windows users should use Ubuntu under WSL2. See
-[`HOST_SUPPORT.md`](../HOST_SUPPORT.md) for the exact contract.
+Intel. Windows users should use Ubuntu 24.04 under WSL2; native Windows is not
+supported.
 
 ## Start a project
 
