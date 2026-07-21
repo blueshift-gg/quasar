@@ -12,6 +12,7 @@ documentation = "https://docs.rs/quasar-lang/0.1.0"
 readme = "README.md"
 keywords = ["solana", "framework", "zero-copy", "no-std", "sbf"]
 categories = ["no-std", "development-tools"]
+include = ["/src/**", "/README.md", "/LICENSE-APACHE", "/LICENSE-MIT"]
 
 [lints]
 workspace = true

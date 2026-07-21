@@ -34,10 +34,9 @@ Python, Go, C, validation-inspection, assembly-inspection, and profiler-server
 code remains security-relevant even though it has no patch-level compatibility
 promise.
 
-Repository workflows, containers, release tooling, package archives, and
-publishing configuration are also in scope. This includes dependency
-integrity, workflow permissions, credential exposure, tag identity, and
-differences between tested archives and published artifacts.
+Repository workflows and package manifests are also in scope. This includes
+dependency integrity, workflow permissions, credential exposure, and package
+contents. Credentialed publication is operated outside this repository.
 
 Examples, benchmarks, and test programs are not themselves published product
 surfaces. A fixture demonstrating a vulnerability in a shipped product or

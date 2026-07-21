@@ -8,16 +8,15 @@ Quasar v0.1.0 supports these native development hosts:
 | macOS 15 | Apple Silicon | `aarch64-apple-darwin` | `macos-15` |
 | macOS 15 | Intel | `x86_64-apple-darwin` | `macos-15-intel` |
 
-Release CI compiles the Cargo-metadata-derived publishable graph, including the
-CLI, on each row. Ubuntu also owns the SBF and package-journey gates. The macOS
-rows protect package and CLI compilation without maintaining a second package
-inventory.
+CI compiles the workspace, including the CLI, on each row. Ubuntu also owns the
+SBF and Cargo package gates. The macOS rows protect package and CLI compilation
+without maintaining a second package inventory.
 
 ## Required toolchain
 
 Quasar uses the supported Solana `cargo build-sbf` toolchain. For 0.1.0 that
-means Agave v4.1.1 and platform-tools v1.52. Init, build, lint, and package
-rehearsal exercise this path.
+means Agave v4.1.1 and platform-tools v1.52. Init, build, lint, and SBF tests
+exercise this path.
 
 ## Windows
 

@@ -3,9 +3,9 @@ name: CI
 on:
   push:
     branches: [master, 0.1.0-release]
+    tags: ["v*"]
   pull_request:
     branches: [master, 0.1.0-release]
-  workflow_call:
 
 permissions:
   contents: read
@@ -48,13 +48,14 @@ jobs:
               - 'derive/**'
               - 'schema/**'
               - 'spl/**'
+              - 'solana-compiler-builtins/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'Makefile'
             performance:
               - '.github/workflows/**'
               - 'benchmarks/**'
-              - 'compiler-builtins/**'
+              - 'solana-compiler-builtins/**'
               - 'lang/**'
               - 'derive/**'
               - 'spl/**'
@@ -199,28 +200,19 @@ jobs:
       - name: Check stable APIs, macros, IDL, and generated clients
         run: make contracts
 
-  package-journey:
-    name: Package journey
+  package-contract:
+    name: Package contract
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
-      - name: Build immutable package rehearsal
-        run: |
-          docker build \
-            --platform linux/amd64 \
-            --build-arg SOLANA_VERSION="$SOLANA_VERSION" \
-            --build-arg SOLANA_LINUX_SHA256="$SOLANA_LINUX_SHA256" \
-            --file .github/docker/release-package-rehearsal.Dockerfile \
-            --tag quasar-release-package-rehearsal:${{ github.sha }} \
-            .
-      - name: Run source-free product journey
-        run: |
-          docker run --rm \
-            --env ALLOW_MISSING_FINAL_WEB3=1 \
-            quasar-release-package-rehearsal:${{ github.sha }}
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+        with:
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+      - name: Verify publishable workspace packages
+        run: make package-check
 
   dependency-audit:
     name: Workspace dependency audit
@@ -260,7 +252,7 @@ jobs:
         run: |
           cargo +"$NIGHTLY" install cargo-fuzz --version "$CARGO_FUZZ" --locked
           make fuzz-build
-      - name: Run unique unsafe contracts
+      - name: Run complete Miri safety suites
         run: make miri
 
   kani:

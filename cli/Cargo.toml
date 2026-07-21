@@ -12,6 +12,7 @@ documentation = "https://docs.rs/quasar-cli/0.1.0"
 readme = "Readme.md"
 keywords = ["solana", "quasar", "sbf", "cli", "code-generation"]
 categories = ["command-line-utilities", "development-tools"]
+include = ["/src/**", "/Readme.md", "/LICENSE-APACHE", "/LICENSE-MIT"]
 
 [lints]
 workspace = true

@@ -51,9 +51,8 @@ crate. A snapshot diff is a codegen change. Regenerate deliberately with
 
 IDL wire and generated-client fixtures live under `idl/tests/`. Rust, Kit, and
 Web3 output are stable contracts; Python, Go, and C retain functional tests
-without patch-level snapshots. Run `cargo test -p quasar-idl --all-features`
-to exercise the owning suite. Never set `UPDATE_EXPECT` in ordinary tests or
-CI.
+without patch-level snapshots. Run `make contracts` to exercise the owning
+Rust and JavaScript suites. Never set `UPDATE_EXPECT` in ordinary tests or CI.
 
 ## When this changes
 

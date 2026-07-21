@@ -51,17 +51,17 @@ assembly inspection are grouped below `inspect` and labeled preview. Profiling
 is stable CLI behavior whose implementation lives inside the CLI; sharing and
 diff-server behavior is preview.
 
-## Release graph
+## Packaging
 
-Cargo metadata is the only package inventory. A non-publishable Rust helper
-derives publishable members, exact internal pins, dependency edges, topological
-tiers, package archives, and publication order. CI, Docker rehearsal, and
-release publishing consume its machine-readable manifest rather than
-maintaining crate lists or numeric archive counts.
+Cargo manifests are the only package inventory. Cargo's workspace publish path
+selects publishable members, verifies their archives, orders internal
+dependencies, and waits for published dependencies. Quasar does not duplicate
+that behavior in a release application, package manifest, or container.
 
-The package rehearsal is the strongest integration test: it installs immutable
-archives in a clean Linux environment with no source checkout or credentials,
-then runs the same init-to-verification journey users run.
+Product behavior is tested at its owner: CLI integration tests exercise the
+canonical journey, SBF tests exercise deployed programs, and
+`cargo publish --workspace --dry-run --locked` verifies the crates users will
+install.
 
 ## Assurance
 
@@ -70,6 +70,6 @@ wire and client fixtures to IDL, semantic validation to host/SBF suites, and
 undefined-behavior questions to focused Miri/Kani/fuzz targets.
 
 CI jobs are named for promises: Rust quality, core host behavior, SBF behavior,
-contracts, package journey, dependency safety, unsafe-boundary assurance, and
-performance. Scheduled coverage, fuzz soaks, and full proofs deepen assurance
-without turning preview or research machinery into additional products.
+contracts, package integrity, dependency safety, unsafe-boundary assurance, and
+performance. Scheduled fuzzing explores arbitrary inputs without turning
+research machinery into additional products.

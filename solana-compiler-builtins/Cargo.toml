@@ -12,6 +12,7 @@ documentation = "https://docs.rs/solana-compiler-builtins/0.1.0"
 readme = "README.md"
 keywords = ["solana", "sbf", "compiler-builtins", "no-std"]
 categories = ["no-std", "embedded"]
+include = ["/src/**", "/README.md", "/LICENSE-APACHE", "/LICENSE-MIT"]
 
 [lints]
 workspace = true

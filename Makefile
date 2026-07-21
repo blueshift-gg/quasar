@@ -26,13 +26,8 @@ SBF_PROGRAM_PACKAGES := $(shell cargo metadata --locked --no-deps --format-versi
 	jq -r '.packages[] | select(any(.targets[]?; (.crate_types // []) | index("cdylib"))) | .name')
 HOST_TEST_EXCLUDES := $(sort $(SBF_TEST_RUNNERS) $(SBF_PROGRAM_PACKAGES))
 
-PACKAGE_REHEARSAL_ROOT ?= target/release-rehearsal
-SOLANA_VERSION ?= v4.1.1
-SOLANA_LINUX_SHA256 ?= a5c8e74b8ffa9ce906872b812849057c7fb21cf036ba08f219eb335e20fa4fb3
-
 .PHONY: format format-fix clippy clippy-fix check-features \
 	check-workspace-invariants check-license-policy \
-	check-package-metadata check-release-train \
 	build build-sbf test test-bless \
 	test-host test-sbf-host test-quasar-test-standalone \
 	bench-cu bench-tracked compare-tracked test-benchmark-policy doc-check \
@@ -40,8 +35,8 @@ SOLANA_LINUX_SHA256 ?= a5c8e74b8ffa9ce906872b812849057c7fb21cf036ba08f219eb335e2
 	nightly-version cargo-fuzz-version cargo-audit-version cargo-public-api-version \
 	fuzz-build test-fuzz-build check-public-api bless-public-api contracts \
 	check-proc-macro-baselines bless-proc-macro-baselines \
-	coverage kani help-kani check-kani kani-lang kani-spl msrv-check \
-	bench package-check package-rehearsal-prepare package-rehearsal audit
+	kani help-kani check-kani kani-lang kani-spl msrv-check \
+	bench package-check audit
 
 # Print the nightly toolchain version for CI
 nightly-version:
@@ -78,6 +73,7 @@ test-fuzz-build:
 
 contracts: check-public-api check-proc-macro-baselines
 	@cargo test -p quasar-idl --all-features
+	@idl/tests/client-conformance/run.sh
 
 doc-check:
 	@RUSTDOCFLAGS="-D warnings" cargo +$(PROGRAM_MSRV) doc \
@@ -126,7 +122,7 @@ clippy-fix:
 check-features:
 	@cargo hack --feature-powerset --no-dev-deps check
 
-check-workspace-invariants: check-license-policy check-package-metadata check-release-train
+check-workspace-invariants: check-license-policy
 
 check-license-policy:
 	@expected='$(LICENSE_EXPRESSION)'; \
@@ -150,32 +146,6 @@ check-license-policy:
 	  echo "README license grant does not match $$expected" >&2; \
 	  exit 1; \
 	fi
-
-check-package-metadata:
-	@metadata="$$(cargo metadata --locked --no-deps --format-version 1)"; \
-	allowed_categories='["api-bindings","command-line-utilities","data-structures","development-tools","development-tools::procedural-macro-helpers","development-tools::profiling","development-tools::testing","embedded","no-std","rust-patterns"]'; \
-	errors="$$(jq -r \
-	  --arg homepage 'https://quasar-lang.com' \
-	  --arg repository 'https://github.com/blueshift-gg/quasar' \
-	  --arg docs 'https://docs.rs' \
-	  --argjson allowed "$$allowed_categories" \
-	  --from-file scripts/check-package-metadata.jq <<<"$$metadata")"; \
-	if [[ -n "$$errors" ]]; then \
-	  echo "incomplete crates.io metadata:" >&2; \
-	  echo "$$errors" >&2; \
-	  exit 1; \
-	fi; \
-	while IFS= read -r readme; do \
-	  if [[ ! -s "$$readme" ]]; then \
-	    echo "missing package README: $$readme" >&2; \
-	    exit 1; \
-	  fi; \
-	done < <(jq -r \
-	  '.packages[] | select(.publish != []) | (.manifest_path | sub("/Cargo.toml$$"; "")) + "/" + .readme' \
-	  <<<"$$metadata")
-
-check-release-train:
-	@cargo run --locked -p quasar-release-tool -- graph --json >/dev/null
 
 build:
 	@cargo build
@@ -219,25 +189,8 @@ test-bless:
 	@$(MAKE) build-sbf
 	@CARGO_INCREMENTAL=0 TRYBUILD=overwrite cargo test --workspace --all-features
 
-package-check: check-package-metadata
-	@rm -rf target/release-packages
-	@cargo run --locked -p quasar-release-tool -- package \
-		--output target/release-packages
-
-package-rehearsal-prepare: package-check
-	@rm -rf "$(PACKAGE_REHEARSAL_ROOT)"
-	@cargo run --locked -p quasar-release-tool -- prepare \
-		--input target/release-packages --output "$(PACKAGE_REHEARSAL_ROOT)"
-
-package-rehearsal:
-	@docker build \
-		--platform linux/amd64 \
-		--build-arg SOLANA_VERSION="$(SOLANA_VERSION)" \
-		--build-arg SOLANA_LINUX_SHA256="$(SOLANA_LINUX_SHA256)" \
-		--file .github/docker/release-package-rehearsal.Dockerfile \
-		--tag quasar-release-package-rehearsal:local \
-		.
-	@docker run --rm quasar-release-package-rehearsal:local
+package-check: check-license-policy
+	@cargo publish --workspace --dry-run --locked
 
 audit:
 	@command -v cargo-audit >/dev/null 2>&1 || { \
@@ -272,7 +225,7 @@ test-benchmark-policy:
 compare-tracked:
 	@bash scripts/bench-tracked-programs.sh compare
 
-miri: test-miri
+miri: test-miri test-miri-strict
 
 # The complete adversarial suites run under Tree Borrows. No test is removed
 # from Miri merely because a nearby case exercises the same broad category:
@@ -299,18 +252,6 @@ test-miri-strict:
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-lang --test miri
 	@MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-symbolic-alignment-check -Zmiri-strict-provenance" \
 		cargo +$(NIGHTLY_TOOLCHAIN) miri test -p quasar-spl --test miri
-
-# Host-side line coverage is informational only; SBF-executed code is
-# invisible here by design.
-coverage:
-	@command -v cargo-llvm-cov >/dev/null 2>&1 || { \
-		echo "cargo-llvm-cov is not installed; run: cargo install cargo-llvm-cov --locked"; \
-		exit 1; \
-	}
-	@cargo llvm-cov --workspace \
-		$(foreach package,$(SBF_TEST_RUNNERS),--exclude $(package)) \
-		--all-features --html
-	@echo "HTML report: target/llvm-cov/html/index.html"
 
 kani-lang: check-kani
 	@cargo kani -p quasar-lang

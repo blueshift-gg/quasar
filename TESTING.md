@@ -13,9 +13,9 @@ release definitions.
 | Core behavior | Owner-local host tests for stable crates and CLI logic |
 | On-chain behavior | Real SBF programs with exact error and resulting-state assertions |
 | Stable contracts | Derive diagnostics, IDL wire fixtures, and independently compiled and executed Rust, Kit 7, and Web3.js 3 client contracts |
-| Package journey | Immutable package archives install, initialize, build, test, and generate clients without repository source |
+| Package integrity | Cargo packages and verifies every publishable workspace crate from its normalized archive |
 | Dependency safety | Normal dependency-audit output for the complete workspace lockfile |
-| Unsafe boundaries | Focused Miri, Kani, and fuzz-build checks for changed parsing, aliasing, provenance, or initialization code |
+| Unsafe boundaries | Complete Miri suites plus Kani and fuzz-build checks for parsing, aliasing, provenance, and initialization code |
 | Performance | Compute-unit and binary-size budgets for runtime, derive, and SPL changes |
 
 Python, Go, and C functional compilation runs when a preview backend or the
@@ -80,9 +80,9 @@ Pull requests run the stable promises affected by the change. Tag and release
 runs execute the complete core gate even when the commit was already tested as
 part of a pull request.
 
-Nightly or scheduled jobs run full Kani, fuzzing, informational host coverage,
-and longer assurance work. Targeted mutation investigation uses `cargo
-mutants` manually; it has no repository baseline or package matrix.
+Scheduled jobs run fuzzing and longer input exploration. Targeted mutation
+investigation uses `cargo mutants` manually; it has no repository baseline or
+package matrix.
 
 Generated fixtures are reviewed like code. Regeneration is never used to
 silence an unexplained semantic diff.
