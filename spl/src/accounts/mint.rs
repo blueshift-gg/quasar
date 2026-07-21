@@ -2,7 +2,7 @@
 //!
 //! Provides check and init behavior for mint account fields.
 //!
-//! ```rust,ignore
+//! ```text
 //! use quasar_spl::accounts::mint;
 //! #[account(mint(authority = authority, decimals = 6, token_program = token_program))]
 //! pub my_mint: Account<Mint>,

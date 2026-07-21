@@ -206,7 +206,7 @@ pub fn init_account(
 /// Marker type for the system program.
 ///
 /// Use with the `Program<T>` wrapper:
-/// ```ignore
+/// ```text
 /// pub system_program: Program<SystemProgram>,
 /// ```
 pub struct SystemProgram;

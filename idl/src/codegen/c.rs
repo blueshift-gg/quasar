@@ -3,10 +3,10 @@ use {
         account_field_seed_inputs, reject_generics, resolved_account_order, resolver_is_derived,
         validate_codegen_idl, CodegenResult,
     },
+    crate::codegen::naming::pascal_to_snake,
     crate::types::{
         Idl, IdlAccountNode, IdlCodec, IdlPdaProgram, IdlPdaSeed, IdlResolver, IdlType, IdlTypeDef,
     },
-    quasar_schema::pascal_to_snake,
     std::{collections::HashMap, fmt::Write},
 };
 

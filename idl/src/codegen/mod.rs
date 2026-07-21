@@ -1,6 +1,7 @@
 pub mod c;
 pub mod golang;
 pub mod model;
+mod naming;
 pub mod python;
 pub mod rust;
 pub mod typescript;

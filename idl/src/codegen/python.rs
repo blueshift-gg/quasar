@@ -3,11 +3,11 @@ use {
         account_field_definition, account_field_seed_inputs, python_field_path, reject_generics,
         resolved_account_order, resolver_is_derived, CodegenResult, ProgramModel,
     },
+    crate::codegen::naming::{camel_to_snake, snake_to_pascal, to_screaming_snake},
     crate::types::{
         Idl, IdlAccountNode, IdlArg, IdlCodec, IdlFieldDef, IdlPdaProgram, IdlPdaSeed, IdlResolver,
         IdlType, IdlTypeDef,
     },
-    quasar_schema::{camel_to_snake, snake_to_pascal, to_screaming_snake},
     std::fmt::Write,
 };
 

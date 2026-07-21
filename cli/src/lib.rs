@@ -319,14 +319,6 @@ struct ProfileCommand {
     #[arg(value_name = "ELF")]
     pub elf_path: Option<PathBuf>,
 
-    /// Compare CU cost against an on-chain program by name
-    #[arg(long = "diff", value_name = "PROGRAM", conflicts_with = "elf_path")]
-    pub diff_program: Option<String>,
-
-    /// Upload the profile result and get a shareable link
-    #[arg(long, action = ArgAction::SetTrue, conflicts_with = "diff_program")]
-    pub share: bool,
-
     /// Show full terminal output with all functions
     #[arg(long, action = ArgAction::SetTrue)]
     pub expand: bool,
@@ -343,7 +335,7 @@ struct ProfileCommand {
     #[arg(
         long,
         action = ArgAction::SetTrue,
-        conflicts_with_all = ["assert_budget", "diff_program", "share", "watch"]
+        conflicts_with_all = ["assert_budget", "watch"]
     )]
     pub write_budget: bool,
 
@@ -351,7 +343,7 @@ struct ProfileCommand {
     #[arg(
         long,
         action = ArgAction::SetTrue,
-        conflicts_with_all = ["write_budget", "diff_program", "share", "watch"]
+        conflicts_with_all = ["write_budget", "watch"]
     )]
     pub assert_budget: bool,
 
@@ -359,12 +351,11 @@ struct ProfileCommand {
     #[arg(long, default_value_t = 5, requires = "write_budget")]
     pub headroom: u32,
 
-    /// Print deterministic machine-readable output and skip the flamegraph
-    /// server
+    /// Print deterministic machine-readable output
     #[arg(
         long,
         action = ArgAction::SetTrue,
-        conflicts_with_all = ["diff_program", "share", "watch"]
+        conflicts_with = "watch"
     )]
     pub json: bool,
 }
@@ -473,30 +464,19 @@ fn run(cli: Cli) -> CliResult {
 
             let elf_path = if let Some(path) = cmd.elf_path {
                 path
-            } else if cmd.diff_program.is_none() {
-                // Auto-build with debug symbols for profiling
-                build::profile_build()?
             } else {
-                // --diff mode doesn't need an ELF
-                std::path::PathBuf::new()
+                build::profile_build()?
             };
 
             profile::run(profile::ProfileCommand {
-                elf_path: if elf_path.as_os_str().is_empty() {
-                    None
-                } else {
-                    Some(elf_path)
-                },
-                diff_program: cmd.diff_program,
-                share: cmd.share,
+                elf_path: Some(elf_path),
                 expand: cmd.expand,
                 budget_path: cmd.budget,
                 write_budget: cmd.write_budget,
                 assert_budget: cmd.assert_budget,
                 headroom_percent: cmd.headroom,
                 json: cmd.json,
-            });
-            Ok(())
+            })
         }
     }
 }
@@ -579,16 +559,13 @@ fn profile_watch(expand: bool) -> CliResult {
         let elf = build::profile_build()?;
         profile::run(profile::ProfileCommand {
             elf_path: Some(elf),
-            diff_program: None,
-            share: false,
             expand,
             budget_path: PathBuf::from("quasar-budget.toml"),
             write_budget: false,
             assert_budget: false,
             headroom_percent: 5,
             json: false,
-        });
-        Ok(())
+        })
     })
 }
 
@@ -624,5 +601,14 @@ mod profile_cli_tests {
         ])
         .expect_err("budget modes must conflict");
         assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn profile_rejects_removed_network_and_server_flags() {
+        for flag in ["--share", "--diff"] {
+            let error = Cli::try_parse_from(["quasar", "profile", flag])
+                .expect_err("removed profile flag must stay unavailable");
+            assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
+        }
     }
 }

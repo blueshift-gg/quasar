@@ -45,7 +45,6 @@ jobs:
               - '.github/workflows/**'
               - 'lang/**'
               - 'derive/**'
-              - 'schema/**'
               - 'spl/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
@@ -55,7 +54,6 @@ jobs:
               - 'idl/**'
               - 'cli/src/client.rs'
               - 'cli/src/config.rs'
-              - 'schema/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
       - id: result

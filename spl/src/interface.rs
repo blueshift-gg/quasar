@@ -20,7 +20,7 @@ fn is_token_program(address: &Address) -> bool {
 /// Marker type for the token program interface (SPL Token or Token-2022).
 ///
 /// Use with the `Interface<T>` wrapper:
-/// ```ignore
+/// ```text
 /// pub token_program: &'info Interface<TokenInterface>,
 /// ```
 pub struct TokenInterface;

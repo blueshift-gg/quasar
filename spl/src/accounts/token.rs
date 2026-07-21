@@ -2,7 +2,7 @@
 //!
 //! Provides check and init behavior for token account fields.
 //!
-//! ```rust,ignore
+//! ```text
 //! use quasar_spl::accounts::token;
 //! #[account(token(mint = mint, authority = authority, token_program = token_program))]
 //! pub vault: Account<Token>,

@@ -7,7 +7,8 @@ welcome.
 ## Repository shape
 
 - `lang/`, `spl/`, `test/`, and `cli/` own the four products.
-- `derive/`, `idl/`, and `schema/` support those products.
+- `derive/` and `idl/` support those products; the IDL wire schema lives under
+  `idl/schema/`.
 - `examples/` contains maintained programs that exercise generated clients and
   enforce their own compute-unit and ELF-size ceilings.
 - `tests/programs/` contains SBF fixtures; `tests/suite/` asserts their behavior.
@@ -57,8 +58,9 @@ or CI.
 
 ## Releasing
 
-Exact-head CI and `make package-check` verify the repository. Credentialed
-publication and GitHub release creation happen in a separately controlled
+Exact-head CI verifies the repository, while `make package-check` validates the
+publishable archive contents. Credentialed publication, registry-sequenced
+verification, and GitHub release creation happen in a separately controlled
 environment with `cargo publish --workspace --locked`; publisher code and
 registry credentials do not belong here. Final `@solana/web3.js@3.0.0` is a
 0.1.0 tag requirement.

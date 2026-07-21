@@ -22,4 +22,4 @@ quasar-lang = { path = "../../lang" }
 
 [dev-dependencies]
 quasar-vault-client = { path = "client" }
-quasar-svm = { git = "https://github.com/blueshift-gg/quasar-svm" }
+quasar-svm = "=0.1.0"

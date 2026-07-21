@@ -56,4 +56,4 @@ wincode = { version = "0.4", features = ["derive"] }
 trybuild = "1"
 
 [lib]
-doctest = false
+doctest = true

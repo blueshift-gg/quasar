@@ -1,7 +1,22 @@
 [workspace]
 resolver = "3"
-members = ["lang", "derive", "spl", "idl", "idl/schema", "schema", "test", "test/derive", "examples/*", "examples/*/client", "tests/programs/*", "tests/suite", "cli"]
-exclude = []
+members = [
+    "lang",
+    "derive",
+    "spl",
+    "idl",
+    "idl/schema",
+    "test",
+    "test/derive",
+    "examples/*",
+    "examples/*/client",
+    "tests/programs/*",
+    "tests/suite",
+    "cli",
+]
+
+[workspace.dependencies]
+heck = "0.5"
 
 [workspace.package]
 version = "0.1.0"

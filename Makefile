@@ -171,8 +171,11 @@ test-bless:
 	@$(MAKE) build-sbf
 	@CARGO_INCREMENTAL=0 TRYBUILD=overwrite cargo test --workspace --all-features
 
+# CI already compiles the workspace, docs, and consumer contracts. Keep this
+# gate source-only; registry-sequenced verification belongs to the external
+# publishing environment.
 package-check: check-license-policy
-	@cargo publish --workspace --dry-run --locked
+	@cargo publish --workspace --dry-run --locked --no-verify
 
 audit:
 	@command -v cargo-audit >/dev/null 2>&1 || { \
