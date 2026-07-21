@@ -3,6 +3,12 @@
 //! Provides zero-copy account types and CPI methods for the SPL Token program
 //! and Token-2022 (Token Extensions) program.
 //!
+//! ```rust
+//! use quasar_spl::{SPL_TOKEN_ID, TOKEN_2022_ID};
+//!
+//! assert_ne!(SPL_TOKEN_ID, TOKEN_2022_ID);
+//! ```
+//!
 //! # Account types
 //!
 //! | Type | Owner check | Deref target | Use when |
@@ -27,7 +33,7 @@
 //! a `CpiCall` that can be invoked with `.invoke()`
 //! or `.invoke_signed()`:
 //!
-//! ```ignore
+//! ```text
 //! ctx.accounts.token_program
 //!     .transfer(&from, &to, &authority, amount)
 //!     .invoke();
@@ -40,7 +46,7 @@
 //!
 //! For closing, use `close_account` on the token program directly:
 //!
-//! ```ignore
+//! ```text
 //! self.token_program.close_account(&self.vault, &self.maker, &self.escrow)
 //!     .invoke_signed(&seeds);
 //! ```

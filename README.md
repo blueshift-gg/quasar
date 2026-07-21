@@ -42,7 +42,7 @@ Quasar 0.1.0 has four primary Rust products:
 | `quasar-cli` | The install, init, build, test, deploy, verify, debug, and client-generation journey |
 
 Several crates are published because those products require them:
-`quasar-derive`, `quasar-idl`, `quasar-idl-schema`, `quasar-schema`,
+`quasar-derive`, `quasar-idl`, `quasar-idl-schema`,
 and `quasar-test-derive`. They are supporting machinery, not additional
 products. Their intentional proc-macro, IDL wire, and testing-macro contracts
 are protected without promising that every implementation detail is a stable
@@ -56,7 +56,7 @@ Stable CLI behavior includes `init`, `build`, `test`, `deploy`, `verify`,
 generation, and final Web3.js 3 generation are also stable.
 
 Python, Go, and C clients are preview targets. Validation-plan and assembly
-inspection, profiler sharing, and the profile-diff server are preview tools.
+inspection are preview tools.
 Preview features require explicit invocation, are not used by the starter, and
 carry no patch-level compatibility promise.
 

@@ -2,7 +2,7 @@
 //!
 //! Provides exit behavior for closing token accounts via CPI.
 //!
-//! ```rust,ignore
+//! ```text
 //! use quasar_spl::accounts::token_close;
 //! #[account(mut, token_close(dest = receiver, authority = authority, token_program = token_program))]
 //! pub vault: Account<Token>,

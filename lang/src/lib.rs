@@ -5,6 +5,18 @@
 //! data is accessed through pointer casts to `#[repr(C)]` companion structs:
 //! no deserialization, no heap allocation.
 //!
+//! # Quick check
+//!
+//! Quasar's primitive account fields have alignment one, which is the basis
+//! for its zero-copy layouts:
+//!
+//! ```rust
+//! use quasar_lang::prelude::{PodBool, PodU64};
+//!
+//! assert_eq!(core::mem::align_of::<PodU64>(), 1);
+//! assert_eq!(core::mem::align_of::<PodBool>(), 1);
+//! ```
+//!
 //! # Crate structure
 //!
 //! | Module | Purpose |

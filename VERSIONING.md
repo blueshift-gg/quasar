@@ -29,7 +29,7 @@ prerelease Web3.js dependency is never a stable 0.1 artifact.
 
 ## Supporting crates
 
-`quasar-derive`, `quasar-idl`, `quasar-idl-schema`, `quasar-schema`,
+`quasar-derive`, `quasar-idl`, `quasar-idl-schema`,
 and `quasar-test-derive` are published to support the primary products.
 
 Their intentional contracts are protected where users depend on them:
@@ -42,8 +42,8 @@ lockstep. They do not make internal protocols public.
 
 ## Preview contracts
 
-Python, Go, and C client generation; validation-plan inspection; assembly
-inspection; profiler sharing; and the profile-diff server are preview.
+Python, Go, and C client generation, validation-plan inspection, and assembly
+inspection are preview.
 
 Preview capabilities:
 

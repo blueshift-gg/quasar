@@ -19,7 +19,7 @@ use solana_program_error::ProgramError;
 /// Everything is built from the stable API
 /// (`quasar_lang::account_behavior::{AccountBehavior, BehaviorArgsBuilder}`):
 ///
-/// ```ignore
+/// ```text
 /// use quasar_lang::account_behavior::{AccountBehavior, BehaviorArgsBuilder};
 /// use quasar_lang::prelude::*;
 ///

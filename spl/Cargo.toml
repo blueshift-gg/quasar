@@ -30,4 +30,4 @@ trybuild = "1"
 
 [lib]
 test = false
-doctest = false
+doctest = true

@@ -2,7 +2,7 @@
 //!
 //! Provides check and init behavior for ATA fields.
 //!
-//! ```rust,ignore
+//! ```text
 //! use quasar_spl::accounts::associated_token;
 //! #[account(init, associated_token(
 //!     mint = mint, authority = authority,

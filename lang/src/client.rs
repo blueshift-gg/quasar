@@ -178,7 +178,7 @@ where
 /// The wire format is `[prefix][utf8 bytes]`, identical to `DynBytes`,
 /// but with string-native ergonomics.
 ///
-/// ```ignore
+/// ```text
 /// let ix = MyInstruction {
 ///     name: "hello".into(),          // From<&str>
 ///     name: my_string.into(),        // From<String>

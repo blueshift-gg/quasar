@@ -1,6 +1,6 @@
 //! Convenience re-exports for SPL programs.
 //!
-//! ```rust,ignore
+//! ```rust
 //! use quasar_lang::prelude::*;
 //! use quasar_spl::prelude::*;
 //! ```

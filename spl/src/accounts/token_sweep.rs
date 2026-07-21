@@ -2,7 +2,7 @@
 //!
 //! Provides exit behavior for sweeping all tokens out before close.
 //!
-//! ```rust,ignore
+//! ```text
 //! use quasar_spl::accounts::token_sweep;
 //! #[account(mut, token_sweep(
 //!     receiver = receiver, mint = mint,

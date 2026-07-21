@@ -7,7 +7,8 @@ welcome.
 ## Repository shape
 
 - `lang/`, `spl/`, `test/`, and `cli/` own the four products.
-- `derive/`, `idl/`, and `schema/` support those products.
+- `derive/` and `idl/` support those products; the IDL wire schema lives under
+  `idl/schema/`.
 - `examples/` contains maintained programs that exercise generated clients and
   enforce their own compute-unit and ELF-size ceilings.
 - `tests/programs/` contains SBF fixtures; `tests/suite/` asserts their behavior.
