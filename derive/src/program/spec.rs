@@ -232,10 +232,8 @@ impl InstructionSpec {
 
     pub(super) fn client_item(&self) -> TokenStream2 {
         let struct_name = &self.client_struct_name;
+        let raw_struct_name = format_ident!("{}Raw", struct_name);
         let macro_ident = &self.client_macro_ident;
-        // The macro cannot concatenate idents, so the raw builder's name is
-        // formed here and passed in alongside the input builder's.
-        let raw_name = format_ident!("{}Raw", struct_name);
         let disc_values = &self.disc_values;
         let arg_names: Vec<&Ident> = self.client_args.iter().map(|arg| &arg.name).collect();
         let arg_types: Vec<&Type> = self.client_args.iter().map(|arg| &arg.ty).collect();
@@ -246,11 +244,11 @@ impl InstructionSpec {
         };
         if self.has_compact_client_layout() {
             quote! {
-                #macro_ident!(#struct_name, #raw_name, [#(#disc_values),*], {#(#arg_names : #arg_types),*}, compact #remaining_arg);
+                #macro_ident!(#struct_name, #raw_struct_name, [#(#disc_values),*], {#(#arg_names : #arg_types),*}, compact #remaining_arg);
             }
         } else {
             quote! {
-                #macro_ident!(#struct_name, #raw_name, [#(#disc_values),*], {#(#arg_names : #arg_types),*} #remaining_arg);
+                #macro_ident!(#struct_name, #raw_struct_name, [#(#disc_values),*], {#(#arg_names : #arg_types),*} #remaining_arg);
             }
         }
     }

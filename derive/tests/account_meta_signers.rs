@@ -3,7 +3,7 @@
 extern crate alloc;
 
 use {
-    quasar_derive::Accounts,
+    quasar_derive::{Accounts, Seeds},
     quasar_lang::prelude::*,
     quasar_spl::{
         accounts::{associated_token, token},
@@ -12,6 +12,18 @@ use {
 };
 
 solana_address::declare_id!("11111111111111111111111111111112");
+
+#[derive(Seeds)]
+#[seeds(b"vault", authority: Address)]
+struct Vault;
+
+#[derive(Accounts)]
+struct Withdraw {
+    authority: Signer,
+    /// CHECK: the typed-seed address constraint is the validation under test.
+    #[account(mut, address = Vault::seeds(authority.address()))]
+    vault: UncheckedAccount,
+}
 
 #[derive(Accounts)]
 struct InitAssociatedToken {
@@ -55,8 +67,7 @@ struct InitTokenAccount {
 // the `#[program]` module); this mirror gives its `super::` paths the same
 // shape.
 mod cpi {
-    // No `use super::*`: these fixtures have no stored-data seed inputs, which
-    // are the only thing the generated struct names unqualified.
+    use super::*;
 
     __init_associated_token_instruction!(
         InitAssociatedTokenInstruction,
@@ -70,6 +81,7 @@ mod cpi {
         [1],
         {}
     );
+    __withdraw_instruction!(WithdrawInstruction, WithdrawInstructionRaw, [2], {});
 }
 use cpi::*;
 
@@ -87,6 +99,36 @@ fn associated_token_init_does_not_require_the_derived_account_to_sign() {
 
     assert!(instruction.accounts[0].is_signer);
     assert!(!instruction.accounts[2].is_signer);
+}
+
+#[test]
+fn raw_associated_token_instruction_can_override_the_derived_address() {
+    let explicit_ata = address(9);
+    let instruction: quasar_lang::client::Instruction = InitAssociatedTokenInstructionRaw {
+        payer: address(1),
+        mint: address(2),
+        ata: explicit_ata,
+    }
+    .into();
+
+    assert_eq!(instruction.accounts[2].pubkey, explicit_ata);
+    assert!(!instruction.accounts[2].is_signer);
+}
+
+#[test]
+fn canonical_pda_is_inferred_and_raw_pda_is_explicit() {
+    let authority = address(3);
+    let expected = Vault::find_address(authority, &ID);
+    let canonical: quasar_lang::client::Instruction = WithdrawInstruction { authority }.into();
+    assert_eq!(canonical.accounts[1].pubkey, expected);
+
+    let explicit = address(8);
+    let raw: quasar_lang::client::Instruction = WithdrawInstructionRaw {
+        authority,
+        vault: explicit,
+    }
+    .into();
+    assert_eq!(raw.accounts[1].pubkey, explicit);
 }
 
 #[test]

@@ -160,6 +160,18 @@ mod tests {
     }
 
     #[test]
+    fn arrays_install_repeated_fixtures_without_helper_methods() {
+        let mut test = empty_test();
+        let [alice, bob, carol] = test.add([Wallet::new().lamports(7); 3]);
+
+        assert_eq!(test.lamports(alice), 7);
+        assert_eq!(test.lamports(bob), 7);
+        assert_eq!(test.lamports(carol), 7);
+        assert_ne!(alice, bob);
+        assert_ne!(bob, carol);
+    }
+
+    #[test]
     fn applications_can_define_protocol_fixtures() {
         struct ProtocolFixture;
 

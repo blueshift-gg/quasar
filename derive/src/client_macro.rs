@@ -14,18 +14,56 @@ struct AccountDescriptor {
     docs: Vec<String>,
     writable: bool,
     signer: TokenStream,
-    /// Const address expression for `Program<T>`/`Sysvar<T>` fields. These
-    /// accounts have exactly one canonical address, so the client fills it
-    /// in and the instruction struct drops the field.
-    fixed_address: Option<TokenStream>,
+    address: ClientAddress,
     /// Synthetic typed inputs replacing a derived field whose seeds read
     /// stored account data: `(input ident, definition-site type tokens)`.
     seed_inputs: Vec<(syn::Ident, TokenStream)>,
-    /// A composite field (`AccountsArray<..>` or a nested `#[account(group)]`
-    /// struct) flattens to `Inner::COUNT` accounts, not one. The derive only
-    /// sees the field's type, not the inner struct's plan, so the caller
-    /// supplies that account's metas and the client splices them in place.
-    composite: bool,
+}
+
+/// How an off-chain instruction obtains an account address.
+enum ClientAddress {
+    /// The caller supplies the address in both canonical and raw builders.
+    Caller,
+    /// A `Program<T>`/`Sysvar<T>` address that cannot be overridden.
+    Constant(TokenStream),
+    /// A PDA or ATA inferred by the canonical builder and explicit in `Raw`.
+    Derived(TokenStream),
+}
+
+struct ClientMacroParts<'a> {
+    krate: &'a TokenStream,
+    canonical_account_fields: &'a [TokenStream],
+    raw_account_fields: &'a [TokenStream],
+    raw_account_values: &'a [TokenStream],
+    account_metas: &'a [TokenStream],
+    has_derived_accounts: bool,
+}
+
+#[derive(Clone, Copy)]
+enum ClientMacroFlavor {
+    Fixed,
+    Compact,
+    FixedWithRemaining,
+    CompactWithRemaining,
+}
+
+impl ClientMacroFlavor {
+    fn is_compact(self) -> bool {
+        matches!(self, Self::Compact | Self::CompactWithRemaining)
+    }
+
+    fn has_remaining(self) -> bool {
+        matches!(self, Self::FixedWithRemaining | Self::CompactWithRemaining)
+    }
+
+    fn pattern_tail(self) -> TokenStream {
+        match self {
+            Self::Fixed => quote! {},
+            Self::Compact => quote! {, compact},
+            Self::FixedWithRemaining => quote! {, remaining},
+            Self::CompactWithRemaining => quote! {, compact, remaining},
+        }
+    }
 }
 
 pub fn generate_accounts_macro(
@@ -33,8 +71,10 @@ pub fn generate_accounts_macro(
     generics: &syn::Generics,
     plan: &crate::accounts::resolve::specs::AccountsPlanTyped,
 ) -> TokenStream {
+    let krate = crate::krate::lang_path();
     let descriptors = describe_accounts(name, generics, plan);
     let macro_name = format_ident!("__{}_instruction", pascal_to_snake(&name.to_string()));
+    let module_name = format_ident!("__{}_client_macro", pascal_to_snake(&name.to_string()));
     // Two derived fields may share a stored-data seed root (a chained field
     // inherits its base's inputs); the input appears once, at first use.
     let mut seen_inputs: Vec<syn::Ident> = Vec::new();
@@ -48,11 +88,33 @@ pub fn generate_accounts_macro(
         }
     }
     let descriptors = descriptors;
-    let account_fields: Vec<_> = descriptors
+    let canonical_account_fields: Vec<_> = descriptors
         .iter()
-        .map(|descriptor| emit_account_field(name, descriptor))
+        .map(|descriptor| emit_canonical_account_field(name, descriptor))
         .collect();
-    let accounts_build = emit_accounts_build(&descriptors, false);
+    let raw_account_fields: Vec<_> = descriptors.iter().map(emit_raw_account_field).collect();
+    let raw_account_values: Vec<_> = descriptors
+        .iter()
+        .filter_map(emit_raw_account_value)
+        .collect();
+    let account_metas: Vec<_> = descriptors.iter().map(emit_raw_account_meta).collect();
+    let has_derived_accounts = descriptors
+        .iter()
+        .any(|descriptor| matches!(descriptor.address, ClientAddress::Derived(_)));
+    let parts = ClientMacroParts {
+        krate: &krate,
+        canonical_account_fields: &canonical_account_fields,
+        raw_account_fields: &raw_account_fields,
+        raw_account_values: &raw_account_values,
+        account_metas: &account_metas,
+        has_derived_accounts,
+    };
+    let macro_arms = [
+        emit_instruction_macro_arm(&parts, ClientMacroFlavor::Fixed),
+        emit_instruction_macro_arm(&parts, ClientMacroFlavor::Compact),
+        emit_instruction_macro_arm(&parts, ClientMacroFlavor::FixedWithRemaining),
+        emit_instruction_macro_arm(&parts, ClientMacroFlavor::CompactWithRemaining),
+    ];
     let seed_input_aliases: Vec<_> = descriptors
         .iter()
         .flat_map(|descriptor| {
@@ -68,155 +130,141 @@ pub fn generate_accounts_macro(
         })
         .collect();
 
-    let raw_account_fields: Vec<TokenStream> =
-        descriptors.iter().map(emit_raw_account_field).collect();
-    let raw_field_inits: Vec<TokenStream> = descriptors.iter().map(emit_raw_field_init).collect();
-    let raw_accounts_build = emit_accounts_build(&descriptors, true);
-
-    let arms =
-        [(false, false), (true, false), (false, true), (true, true)].map(|(compact, remaining)| {
-            emit_macro_arm(
-                compact,
-                remaining,
-                &account_fields,
-                &raw_account_fields,
-                &raw_field_inits,
-                &accounts_build,
-                &raw_accounts_build,
-            )
-        });
-
     quote! {
         #(#seed_input_aliases)*
 
         #[doc(hidden)]
         #[allow(unexpected_cfgs)]
-        #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
-        #[macro_export]
-        macro_rules! #macro_name {
-            #(#arms)*
+        mod #module_name {
+            #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
+            #[macro_export]
+            macro_rules! #macro_name {
+                #(#macro_arms)*
+            }
         }
     }
 }
 
-/// One `macro_rules!` arm of a client instruction macro.
-///
-/// The four public arms differ only in whether trailing accounts join the
-/// struct and which serializer the args go through, so they are generated from
-/// the same body rather than written out four times.
-#[allow(clippy::too_many_arguments)]
-fn emit_macro_arm(
-    compact: bool,
-    remaining: bool,
-    account_fields: &[TokenStream],
-    raw_account_fields: &[TokenStream],
-    raw_field_inits: &[TokenStream],
-    accounts_build: &TokenStream,
-    raw_accounts_build: &TokenStream,
+fn emit_instruction_macro_arm(
+    parts: &ClientMacroParts<'_>,
+    flavor: ClientMacroFlavor,
 ) -> TokenStream {
-    let krate = crate::krate::lang_path();
+    let ClientMacroParts {
+        krate,
+        canonical_account_fields,
+        raw_account_fields,
+        raw_account_values,
+        account_metas,
+        has_derived_accounts,
+    } = parts;
+    let pattern_tail = flavor.pattern_tail();
+    let remaining_field = flavor.has_remaining().then(|| {
+        quote! { pub remaining_accounts: ::alloc::vec::Vec<#krate::client::AccountMeta>, }
+    });
+    let remaining_value = flavor
+        .has_remaining()
+        .then(|| quote! { remaining_accounts: ix.remaining_accounts, });
 
-    let mut selectors = TokenStream::new();
-    if compact {
-        selectors.extend(quote! { , compact });
-    }
-    if remaining {
-        selectors.extend(quote! { , remaining });
-    }
-
-    let (remaining_field, raw_accounts_binding, raw_remaining_init) = if remaining {
-        (
-            quote! {
-                pub remaining_accounts: ::alloc::vec::Vec<#krate::client::AccountMeta>,
-            },
-            quote! {
-                let mut accounts = #raw_accounts_build;
-                accounts.extend(ix.remaining_accounts);
-            },
-            quote! { remaining_accounts: ix.remaining_accounts, },
-        )
-    } else {
-        (
-            quote! {},
-            quote! { let accounts = #raw_accounts_build; },
-            quote! {},
-        )
-    };
-    let _ = accounts_build;
-
-    let raw_from_input = quote! {
-        $raw_name {
-            #(#raw_field_inits)*
-            $($arg_name: ix.$arg_name,)*
-            #raw_remaining_init
-        }
-    };
-
-    let data = if compact {
+    let definitions = if *has_derived_accounts {
         quote! {
-            let mut _data = ::alloc::vec![$($disc),*];
-            $(
-                _data.extend_from_slice(
-                    &<$arg_ty as #krate::client::CompactSerializeArg>::compact_header(&ix.$arg_name)
-                );
-            )*
-            $(
-                _data.extend_from_slice(
-                    &<$arg_ty as #krate::client::CompactSerializeArg>::compact_tail(&ix.$arg_name)
-                );
-            )*
-            _data
-        }
-    } else {
-        quote! {
-            let mut _data = ::alloc::vec![$($disc),*];
-            $(
-                _data.extend_from_slice(
-                    &<$arg_ty as #krate::client::SerializeArg>::serialize_arg(&ix.$arg_name)
-                );
-            )*
-            _data
-        }
-    };
-
-    quote! {
-        ($struct_name:ident, $raw_name:ident, [$($disc:expr),*], {$($arg_name:ident : $arg_ty:ty),*} #selectors) => {
             pub struct $struct_name {
-                #(#account_fields)*
+                #(#canonical_account_fields)*
                 $(pub $arg_name: $arg_ty,)*
                 #remaining_field
             }
 
-            /// Every account spelled out, including the ones the input builder
-            /// resolves for you. Build it from `$struct_name` and replace an
-            /// address the client would otherwise derive.
-            pub struct $raw_name {
+            /// Explicit account-address builder for adversarial and negative tests.
+            pub struct $raw_struct_name {
                 #(#raw_account_fields)*
                 $(pub $arg_name: $arg_ty,)*
                 #remaining_field
             }
 
-            impl From<$struct_name> for $raw_name {
+            impl From<$struct_name> for $raw_struct_name {
                 #[allow(unused_variables)]
-                fn from(ix: $struct_name) -> $raw_name {
-                    #raw_from_input
+                fn from(ix: $struct_name) -> Self {
+                    Self {
+                        #(#raw_account_values)*
+                        $($arg_name: ix.$arg_name,)*
+                        #remaining_value
+                    }
                 }
             }
 
             impl From<$struct_name> for #krate::client::Instruction {
-                #[inline]
                 fn from(ix: $struct_name) -> #krate::client::Instruction {
-                    <$raw_name as ::core::convert::Into<#krate::client::Instruction>>::into(
-                        <$struct_name as ::core::convert::Into<$raw_name>>::into(ix),
-                    )
+                    $raw_struct_name::from(ix).into()
                 }
             }
+        }
+    } else {
+        quote! {
+            pub struct $struct_name {
+                #(#canonical_account_fields)*
+                $(pub $arg_name: $arg_ty,)*
+                #remaining_field
+            }
+        }
+    };
+    let builder_name = if *has_derived_accounts {
+        quote! { $raw_struct_name }
+    } else {
+        quote! { $struct_name }
+    };
+    let accounts = if flavor.has_remaining() {
+        quote! {
+            let mut accounts = ::alloc::vec![
+                #(#account_metas)*
+            ];
+            accounts.extend(ix.remaining_accounts);
+        }
+    } else {
+        quote! {
+            let accounts = ::alloc::vec![
+                #(#account_metas)*
+            ];
+        }
+    };
+    let data = if flavor.is_compact() {
+        quote! {
+            let data = {
+                let mut _data = ::alloc::vec![$($disc),*];
+                $(
+                    _data.extend_from_slice(
+                        &<$arg_ty as #krate::client::CompactSerializeArg>::compact_header(&ix.$arg_name)
+                    );
+                )*
+                $(
+                    _data.extend_from_slice(
+                        &<$arg_ty as #krate::client::CompactSerializeArg>::compact_tail(&ix.$arg_name)
+                    );
+                )*
+                _data
+            };
+        }
+    } else {
+        quote! {
+            let data = {
+                let mut _data = ::alloc::vec![$($disc),*];
+                $(
+                    _data.extend_from_slice(
+                        &<$arg_ty as #krate::client::SerializeArg>::serialize_arg(&ix.$arg_name)
+                    );
+                )*
+                _data
+            };
+        }
+    };
 
-            impl From<$raw_name> for #krate::client::Instruction {
+    quote! {
+        ($struct_name:ident, $raw_struct_name:ident, [$($disc:expr),*], {$($arg_name:ident : $arg_ty:ty),*} #pattern_tail) => {
+            #definitions
+
+            impl From<#builder_name> for #krate::client::Instruction {
                 #[allow(unused_variables)]
-                fn from(ix: $raw_name) -> #krate::client::Instruction {
-                    #raw_accounts_binding
-                    let data = { #data };
+                fn from(ix: #builder_name) -> #krate::client::Instruction {
+                    #accounts
+                    #data
                     #krate::client::Instruction {
                         program_id: $crate::ID,
                         accounts,
@@ -228,44 +276,9 @@ fn emit_macro_arm(
     }
 }
 
-/// One field of the raw builder: every account, spelled out.
-fn emit_raw_account_field(descriptor: &AccountDescriptor) -> TokenStream {
-    let krate = crate::krate::lang_path();
+fn emit_canonical_account_field(name: &syn::Ident, descriptor: &AccountDescriptor) -> TokenStream {
     let docs = crate::helpers::docs_tokens_as_attrs(&descriptor.docs);
-    let ident = &descriptor.name;
-    if descriptor.composite {
-        return quote! {
-            #docs
-            pub #ident: ::alloc::vec::Vec<#krate::client::AccountMeta>,
-        };
-    }
-    quote! {
-        #docs
-        pub #ident: #krate::prelude::Address,
-    }
-}
-
-/// One field initializer for `From<Input> for Raw`: a derived account keeps its
-/// derivation, everything else copies across.
-fn emit_raw_field_init(descriptor: &AccountDescriptor) -> TokenStream {
-    let ident = &descriptor.name;
-    match &descriptor.fixed_address {
-        Some(fixed) => quote! { #ident: #fixed, },
-        None => quote! { #ident: ix.#ident, },
-    }
-}
-
-fn emit_account_field(name: &syn::Ident, descriptor: &AccountDescriptor) -> TokenStream {
-    let docs = crate::helpers::docs_tokens_as_attrs(&descriptor.docs);
-    if descriptor.composite {
-        let krate = crate::krate::lang_path();
-        let ident = &descriptor.name;
-        return quote! {
-            #docs
-            pub #ident: ::alloc::vec::Vec<#krate::client::AccountMeta>,
-        };
-    }
-    if descriptor.fixed_address.is_some() {
+    if !matches!(descriptor.address, ClientAddress::Caller) {
         // A derived field whose seeds read stored account data is replaced by
         // typed inputs carrying those values (via definition-site re-aliases,
         // so the type resolves inside the cpi module).
@@ -294,53 +307,43 @@ fn seed_input_realias(accounts_struct: &syn::Ident, input: &syn::Ident) -> syn::
     )
 }
 
-fn emit_account_meta(descriptor: &AccountDescriptor, raw: bool) -> TokenStream {
+fn emit_raw_account_field(descriptor: &AccountDescriptor) -> TokenStream {
+    if matches!(descriptor.address, ClientAddress::Constant(_)) {
+        return quote! {};
+    }
     let krate = crate::krate::lang_path();
+    let docs = crate::helpers::docs_tokens_as_attrs(&descriptor.docs);
     let ident = &descriptor.name;
-    let signer = &descriptor.signer;
-    let address = match &descriptor.fixed_address {
-        Some(fixed) if !raw => fixed.clone(),
-        // In the raw builder every address is already a field, including the
-        // ones the input builder derives.
-        _ => quote! { ix.#ident },
-    };
-    if descriptor.writable {
-        quote! {
-            #krate::client::AccountMeta::new(#address, #signer)
-        }
-    } else {
-        quote! {
-            #krate::client::AccountMeta::new_readonly(#address, #signer)
-        }
+    quote! {
+        #docs
+        pub #ident: #krate::prelude::Address,
     }
 }
 
-/// The `accounts` vector for one instruction.
-///
-/// Without composites this stays the original `vec![..]` literal. With one, the
-/// list is built incrementally so a composite can splice in its own metas.
-fn emit_accounts_build(descriptors: &[AccountDescriptor], raw: bool) -> TokenStream {
-    let krate = crate::krate::lang_path();
-    if !descriptors.iter().any(|d| d.composite) {
-        let metas = descriptors.iter().map(|d| emit_account_meta(d, raw));
-        return quote! { ::alloc::vec![ #(#metas,)* ] };
+fn emit_raw_account_value(descriptor: &AccountDescriptor) -> Option<TokenStream> {
+    let ident = &descriptor.name;
+    match &descriptor.address {
+        ClientAddress::Caller => Some(quote! { #ident: ix.#ident, }),
+        ClientAddress::Constant(_) => None,
+        ClientAddress::Derived(address) => Some(quote! { #ident: #address, }),
     }
+}
 
-    let steps = descriptors.iter().map(|descriptor| {
-        let ident = &descriptor.name;
-        if descriptor.composite {
-            quote! { __accounts.extend(ix.#ident); }
-        } else {
-            let meta = emit_account_meta(descriptor, raw);
-            quote! { __accounts.push(#meta); }
+fn emit_raw_account_meta(descriptor: &AccountDescriptor) -> TokenStream {
+    let krate = crate::krate::lang_path();
+    let ident = &descriptor.name;
+    let signer = &descriptor.signer;
+    let address = match &descriptor.address {
+        ClientAddress::Constant(address) => address.clone(),
+        ClientAddress::Caller | ClientAddress::Derived(_) => quote! { ix.#ident },
+    };
+    if descriptor.writable {
+        quote! {
+            #krate::client::AccountMeta::new(#address, #signer),
         }
-    });
-    quote! {
-        {
-            let mut __accounts: ::alloc::vec::Vec<#krate::client::AccountMeta> =
-                ::alloc::vec::Vec::new();
-            #(#steps)*
-            __accounts
+    } else {
+        quote! {
+            #krate::client::AccountMeta::new_readonly(#address, #signer),
         }
     }
 }
@@ -365,9 +368,9 @@ fn describe_accounts(
         .enumerate()
         .map(|(index, fp)| {
             let mut seed_inputs: Vec<(syn::Ident, TokenStream)> = Vec::new();
-            let fixed_address = if fixed_address_expr(fp).is_some() {
+            let address = if fixed_address_expr(fp).is_some() {
                 let const_ident = fixed_address_const(&fp.ident);
-                Some(quote! { #account_type::#const_ident })
+                ClientAddress::Constant(quote! { #account_type::#const_ident })
             } else if let Some(derivation) = field_derivation(plan, fp, &mut Vec::new()) {
                 let fn_ident = pda_address_fn(&fp.ident);
                 let roots = derivation_roots(plan, &derivation);
@@ -385,9 +388,9 @@ fn describe_accounts(
                     DeriveRoot::ArgValue(i, _) => quote! { ix.#i },
                     DeriveRoot::SeedInput { input, .. } => quote! { ix.#input },
                 });
-                Some(quote! { #account_type::#fn_ident(#(#args,)* &$crate::ID) })
+                ClientAddress::Derived(quote! { #account_type::#fn_ident(#(#args,)* &$crate::ID) })
             } else {
-                None
+                ClientAddress::Caller
             };
             AccountDescriptor {
                 name: fp.ident.clone(),
@@ -399,9 +402,8 @@ fn describe_accounts(
                     let signer = fp.signer;
                     quote! { #signer }
                 },
-                fixed_address,
+                address,
                 seed_inputs,
-                composite: fp.kind == crate::accounts::resolve::FieldKind::Composite,
             }
         })
         .collect()
@@ -519,18 +521,22 @@ pub(crate) fn field_derivation<'p>(
         if fp.idl_resolver.is_some() {
             return None;
         }
-        // The IDL reads a behavior's declared `IDL_RESOLVER` const while
-        // building; a proc macro cannot evaluate a trait const, so the only
-        // signal available here is the behavior's path. Match its final
-        // segment exactly — `ends_with` also accepted `my_associated_token`,
-        // which the IDL would not have resolved as an ATA.
-        let group = fp.behaviors.iter().find(|group| {
-            group
-                .path
-                .segments
-                .last()
-                .is_some_and(|segment| segment.ident == "associated_token")
-        })?;
+        let group = fp
+            .behaviors
+            .iter()
+            .find(|group| {
+                // The IDL reads a behavior's declared `IDL_RESOLVER` const while
+                // building; a proc macro cannot evaluate a trait const, so the
+                // only signal available here is the behavior's path. Match its
+                // final segment exactly — `ends_with` also accepted
+                // `my_associated_token`, which the IDL would not resolve as an
+                // ATA.
+                group
+                    .path
+                    .segments
+                    .last()
+                    .is_some_and(|segment| segment.ident == "associated_token")
+            })?;
         // An unmapped behavior arg resolves to the same-named account field
         // (mirroring the runtime init inference).
         let arg = |key: &str| {
