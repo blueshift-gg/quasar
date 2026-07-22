@@ -248,8 +248,10 @@ mod quasar_demo {
     #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
     pub mod cpi {
         use super::*;
-        __initialize_instruction!(InitializeInstruction, [0u8], { amount : u64 });
-        __update_instruction!(UpdateInstruction, [1u8], {});
+        __initialize_instruction!(
+            InitializeInstruction, InitializeInstructionRaw, [0u8], { amount : u64 }
+        );
+        __update_instruction!(UpdateInstruction, UpdateInstructionRaw, [1u8], {});
     }
 }
 #[allow(unexpected_cfgs)]

@@ -250,7 +250,8 @@ mod __two_dyn_client_macro {
     #[macro_export]
     macro_rules! __two_dyn_instruction {
         (
-            $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* }
+            $struct_name:ident, $raw_struct_name:ident, [$($disc:expr),*], {
+            $($arg_name:ident : $arg_ty:ty),* }
         ) => {
             pub struct $struct_name { pub account : ::quasar_lang::prelude::Address,
             $(pub $arg_name : $arg_ty,)* } impl From < $struct_name > for
@@ -264,8 +265,8 @@ mod __two_dyn_client_macro {
             } } }
         };
         (
-            $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* },
-            compact
+            $struct_name:ident, $raw_struct_name:ident, [$($disc:expr),*], {
+            $($arg_name:ident : $arg_ty:ty),* }, compact
         ) => {
             pub struct $struct_name { pub account : ::quasar_lang::prelude::Address,
             $(pub $arg_name : $arg_ty,)* } impl From < $struct_name > for
@@ -280,8 +281,8 @@ mod __two_dyn_client_macro {
             $crate::ID, accounts, data, } } }
         };
         (
-            $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* },
-            remaining
+            $struct_name:ident, $raw_struct_name:ident, [$($disc:expr),*], {
+            $($arg_name:ident : $arg_ty:ty),* }, remaining
         ) => {
             pub struct $struct_name { pub account : ::quasar_lang::prelude::Address,
             $(pub $arg_name : $arg_ty,)* pub remaining_accounts : ::alloc::vec::Vec <
@@ -296,8 +297,8 @@ mod __two_dyn_client_macro {
             accounts, data, } } }
         };
         (
-            $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* },
-            compact, remaining
+            $struct_name:ident, $raw_struct_name:ident, [$($disc:expr),*], {
+            $($arg_name:ident : $arg_ty:ty),* }, compact, remaining
         ) => {
             pub struct $struct_name { pub account : ::quasar_lang::prelude::Address,
             $(pub $arg_name : $arg_ty,)* pub remaining_accounts : ::alloc::vec::Vec <

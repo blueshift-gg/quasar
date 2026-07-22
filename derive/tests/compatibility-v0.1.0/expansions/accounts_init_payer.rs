@@ -377,15 +377,25 @@ mod __init_escrow_client_macro {
     #[macro_export]
     macro_rules! __init_escrow_instruction {
         (
-            $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* }
+            $struct_name:ident, $raw_struct_name:ident, [$($disc:expr),*], {
+            $($arg_name:ident : $arg_ty:ty),* }
         ) => {
             pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, $(pub
-            $arg_name : $arg_ty,)* } impl From < $struct_name > for
-            ::quasar_lang::client::Instruction { #[allow(unused_variables)] fn from(ix :
-            $struct_name) -> ::quasar_lang::client::Instruction { let accounts =
+            $arg_name : $arg_ty,)* } #[doc =
+            r" Explicit account-address builder for adversarial and negative tests."] pub
+            struct $raw_struct_name { pub payer : ::quasar_lang::prelude::Address, pub
+            escrow : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* } impl
+            From < $struct_name > for $raw_struct_name { #[allow(unused_variables)] fn
+            from(ix : $struct_name) -> Self { Self { payer : ix.payer, escrow :
+            super::InitEscrow::__quasar_pda_escrow(& ix.payer, & $crate::ID), $($arg_name
+            : ix. $arg_name,)* } } } impl From < $struct_name > for
+            ::quasar_lang::client::Instruction { fn from(ix : $struct_name) ->
+            ::quasar_lang::client::Instruction { $raw_struct_name ::from(ix).into() } }
+            impl From < $raw_struct_name > for ::quasar_lang::client::Instruction {
+            #[allow(unused_variables)] fn from(ix : $raw_struct_name) ->
+            ::quasar_lang::client::Instruction { let accounts =
             ::alloc::vec![::quasar_lang::client::AccountMeta::new(ix.payer, true),
-            ::quasar_lang::client::AccountMeta::new(super::InitEscrow::__quasar_pda_escrow(&
-            ix.payer, & $crate::ID), false),
+            ::quasar_lang::client::AccountMeta::new(ix.escrow, false),
             ::quasar_lang::client::AccountMeta::new_readonly(super::InitEscrow::__QUASAR_FIXED_ADDRESS_system_program,
             false),]; let data = { let mut _data = ::alloc::vec![$($disc),*]; $(_data
             .extend_from_slice(& < $arg_ty as ::quasar_lang::client::SerializeArg >
@@ -394,16 +404,25 @@ mod __init_escrow_client_macro {
             } } }
         };
         (
-            $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* },
-            compact
+            $struct_name:ident, $raw_struct_name:ident, [$($disc:expr),*], {
+            $($arg_name:ident : $arg_ty:ty),* }, compact
         ) => {
             pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, $(pub
-            $arg_name : $arg_ty,)* } impl From < $struct_name > for
-            ::quasar_lang::client::Instruction { #[allow(unused_variables)] fn from(ix :
-            $struct_name) -> ::quasar_lang::client::Instruction { let accounts =
+            $arg_name : $arg_ty,)* } #[doc =
+            r" Explicit account-address builder for adversarial and negative tests."] pub
+            struct $raw_struct_name { pub payer : ::quasar_lang::prelude::Address, pub
+            escrow : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* } impl
+            From < $struct_name > for $raw_struct_name { #[allow(unused_variables)] fn
+            from(ix : $struct_name) -> Self { Self { payer : ix.payer, escrow :
+            super::InitEscrow::__quasar_pda_escrow(& ix.payer, & $crate::ID), $($arg_name
+            : ix. $arg_name,)* } } } impl From < $struct_name > for
+            ::quasar_lang::client::Instruction { fn from(ix : $struct_name) ->
+            ::quasar_lang::client::Instruction { $raw_struct_name ::from(ix).into() } }
+            impl From < $raw_struct_name > for ::quasar_lang::client::Instruction {
+            #[allow(unused_variables)] fn from(ix : $raw_struct_name) ->
+            ::quasar_lang::client::Instruction { let accounts =
             ::alloc::vec![::quasar_lang::client::AccountMeta::new(ix.payer, true),
-            ::quasar_lang::client::AccountMeta::new(super::InitEscrow::__quasar_pda_escrow(&
-            ix.payer, & $crate::ID), false),
+            ::quasar_lang::client::AccountMeta::new(ix.escrow, false),
             ::quasar_lang::client::AccountMeta::new_readonly(super::InitEscrow::__QUASAR_FIXED_ADDRESS_system_program,
             false),]; let data = { let mut _data = ::alloc::vec![$($disc),*]; $(_data
             .extend_from_slice(& < $arg_ty as ::quasar_lang::client::CompactSerializeArg
@@ -413,17 +432,28 @@ mod __init_escrow_client_macro {
             $crate::ID, accounts, data, } } }
         };
         (
-            $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* },
-            remaining
+            $struct_name:ident, $raw_struct_name:ident, [$($disc:expr),*], {
+            $($arg_name:ident : $arg_ty:ty),* }, remaining
         ) => {
             pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, $(pub
             $arg_name : $arg_ty,)* pub remaining_accounts : ::alloc::vec::Vec <
-            ::quasar_lang::client::AccountMeta >, } impl From < $struct_name > for
-            ::quasar_lang::client::Instruction { #[allow(unused_variables)] fn from(ix :
-            $struct_name) -> ::quasar_lang::client::Instruction { let mut accounts =
+            ::quasar_lang::client::AccountMeta >, } #[doc =
+            r" Explicit account-address builder for adversarial and negative tests."] pub
+            struct $raw_struct_name { pub payer : ::quasar_lang::prelude::Address, pub
+            escrow : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* pub
+            remaining_accounts : ::alloc::vec::Vec < ::quasar_lang::client::AccountMeta
+            >, } impl From < $struct_name > for $raw_struct_name {
+            #[allow(unused_variables)] fn from(ix : $struct_name) -> Self { Self { payer
+            : ix.payer, escrow : super::InitEscrow::__quasar_pda_escrow(& ix.payer, &
+            $crate::ID), $($arg_name : ix. $arg_name,)* remaining_accounts : ix
+            .remaining_accounts, } } } impl From < $struct_name > for
+            ::quasar_lang::client::Instruction { fn from(ix : $struct_name) ->
+            ::quasar_lang::client::Instruction { $raw_struct_name ::from(ix).into() } }
+            impl From < $raw_struct_name > for ::quasar_lang::client::Instruction {
+            #[allow(unused_variables)] fn from(ix : $raw_struct_name) ->
+            ::quasar_lang::client::Instruction { let mut accounts =
             ::alloc::vec![::quasar_lang::client::AccountMeta::new(ix.payer, true),
-            ::quasar_lang::client::AccountMeta::new(super::InitEscrow::__quasar_pda_escrow(&
-            ix.payer, & $crate::ID), false),
+            ::quasar_lang::client::AccountMeta::new(ix.escrow, false),
             ::quasar_lang::client::AccountMeta::new_readonly(super::InitEscrow::__QUASAR_FIXED_ADDRESS_system_program,
             false),]; accounts.extend(ix.remaining_accounts); let data = { let mut _data
             = ::alloc::vec![$($disc),*]; $(_data.extend_from_slice(& < $arg_ty as
@@ -432,17 +462,28 @@ mod __init_escrow_client_macro {
             accounts, data, } } }
         };
         (
-            $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* },
-            compact, remaining
+            $struct_name:ident, $raw_struct_name:ident, [$($disc:expr),*], {
+            $($arg_name:ident : $arg_ty:ty),* }, compact, remaining
         ) => {
             pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, $(pub
             $arg_name : $arg_ty,)* pub remaining_accounts : ::alloc::vec::Vec <
-            ::quasar_lang::client::AccountMeta >, } impl From < $struct_name > for
-            ::quasar_lang::client::Instruction { #[allow(unused_variables)] fn from(ix :
-            $struct_name) -> ::quasar_lang::client::Instruction { let mut accounts =
+            ::quasar_lang::client::AccountMeta >, } #[doc =
+            r" Explicit account-address builder for adversarial and negative tests."] pub
+            struct $raw_struct_name { pub payer : ::quasar_lang::prelude::Address, pub
+            escrow : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* pub
+            remaining_accounts : ::alloc::vec::Vec < ::quasar_lang::client::AccountMeta
+            >, } impl From < $struct_name > for $raw_struct_name {
+            #[allow(unused_variables)] fn from(ix : $struct_name) -> Self { Self { payer
+            : ix.payer, escrow : super::InitEscrow::__quasar_pda_escrow(& ix.payer, &
+            $crate::ID), $($arg_name : ix. $arg_name,)* remaining_accounts : ix
+            .remaining_accounts, } } } impl From < $struct_name > for
+            ::quasar_lang::client::Instruction { fn from(ix : $struct_name) ->
+            ::quasar_lang::client::Instruction { $raw_struct_name ::from(ix).into() } }
+            impl From < $raw_struct_name > for ::quasar_lang::client::Instruction {
+            #[allow(unused_variables)] fn from(ix : $raw_struct_name) ->
+            ::quasar_lang::client::Instruction { let mut accounts =
             ::alloc::vec![::quasar_lang::client::AccountMeta::new(ix.payer, true),
-            ::quasar_lang::client::AccountMeta::new(super::InitEscrow::__quasar_pda_escrow(&
-            ix.payer, & $crate::ID), false),
+            ::quasar_lang::client::AccountMeta::new(ix.escrow, false),
             ::quasar_lang::client::AccountMeta::new_readonly(super::InitEscrow::__QUASAR_FIXED_ADDRESS_system_program,
             false),]; accounts.extend(ix.remaining_accounts); let data = { let mut _data
             = ::alloc::vec![$($disc),*]; $(_data.extend_from_slice(& < $arg_ty as

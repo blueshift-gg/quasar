@@ -11,13 +11,56 @@ struct AccountDescriptor {
     name: syn::Ident,
     writable: bool,
     signer: TokenStream,
-    /// Const address expression for `Program<T>`/`Sysvar<T>` fields. These
-    /// accounts have exactly one canonical address, so the client fills it
-    /// in and the instruction struct drops the field.
-    fixed_address: Option<TokenStream>,
+    address: ClientAddress,
     /// Synthetic typed inputs replacing a derived field whose seeds read
     /// stored account data: `(input ident, definition-site type tokens)`.
     seed_inputs: Vec<(syn::Ident, TokenStream)>,
+}
+
+/// How an off-chain instruction obtains an account address.
+enum ClientAddress {
+    /// The caller supplies the address in both canonical and raw builders.
+    Caller,
+    /// A `Program<T>`/`Sysvar<T>` address that cannot be overridden.
+    Constant(TokenStream),
+    /// A PDA or ATA inferred by the canonical builder and explicit in `Raw`.
+    Derived(TokenStream),
+}
+
+struct ClientMacroParts<'a> {
+    krate: &'a TokenStream,
+    canonical_account_fields: &'a [TokenStream],
+    raw_account_fields: &'a [TokenStream],
+    raw_account_values: &'a [TokenStream],
+    account_metas: &'a [TokenStream],
+    has_derived_accounts: bool,
+}
+
+#[derive(Clone, Copy)]
+enum ClientMacroFlavor {
+    Fixed,
+    Compact,
+    FixedWithRemaining,
+    CompactWithRemaining,
+}
+
+impl ClientMacroFlavor {
+    fn is_compact(self) -> bool {
+        matches!(self, Self::Compact | Self::CompactWithRemaining)
+    }
+
+    fn has_remaining(self) -> bool {
+        matches!(self, Self::FixedWithRemaining | Self::CompactWithRemaining)
+    }
+
+    fn pattern_tail(self) -> TokenStream {
+        match self {
+            Self::Fixed => quote! {},
+            Self::Compact => quote! {, compact},
+            Self::FixedWithRemaining => quote! {, remaining},
+            Self::CompactWithRemaining => quote! {, compact, remaining},
+        }
+    }
 }
 
 pub fn generate_accounts_macro(
@@ -42,11 +85,33 @@ pub fn generate_accounts_macro(
         }
     }
     let descriptors = descriptors;
-    let account_fields: Vec<_> = descriptors
+    let canonical_account_fields: Vec<_> = descriptors
         .iter()
-        .map(|descriptor| emit_account_field(name, descriptor))
+        .map(|descriptor| emit_canonical_account_field(name, descriptor))
         .collect();
-    let account_metas: Vec<_> = descriptors.iter().map(emit_account_meta).collect();
+    let raw_account_fields: Vec<_> = descriptors.iter().map(emit_raw_account_field).collect();
+    let raw_account_values: Vec<_> = descriptors
+        .iter()
+        .filter_map(emit_raw_account_value)
+        .collect();
+    let account_metas: Vec<_> = descriptors.iter().map(emit_raw_account_meta).collect();
+    let has_derived_accounts = descriptors
+        .iter()
+        .any(|descriptor| matches!(descriptor.address, ClientAddress::Derived(_)));
+    let parts = ClientMacroParts {
+        krate: &krate,
+        canonical_account_fields: &canonical_account_fields,
+        raw_account_fields: &raw_account_fields,
+        raw_account_values: &raw_account_values,
+        account_metas: &account_metas,
+        has_derived_accounts,
+    };
+    let macro_arms = [
+        emit_instruction_macro_arm(&parts, ClientMacroFlavor::Fixed),
+        emit_instruction_macro_arm(&parts, ClientMacroFlavor::Compact),
+        emit_instruction_macro_arm(&parts, ClientMacroFlavor::FixedWithRemaining),
+        emit_instruction_macro_arm(&parts, ClientMacroFlavor::CompactWithRemaining),
+    ];
     let seed_input_aliases: Vec<_> = descriptors
         .iter()
         .flat_map(|descriptor| {
@@ -71,143 +136,145 @@ pub fn generate_accounts_macro(
             #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
             #[macro_export]
             macro_rules! #macro_name {
-            ($struct_name:ident, [$($disc:expr),*], {$($arg_name:ident : $arg_ty:ty),*}) => {
-                pub struct $struct_name {
-                    #(#account_fields)*
-                    $(pub $arg_name: $arg_ty,)*
-                }
-
-                impl From<$struct_name> for #krate::client::Instruction {
-                    #[allow(unused_variables)]
-                    fn from(ix: $struct_name) -> #krate::client::Instruction {
-                        let accounts = ::alloc::vec![
-                            #(#account_metas)*
-                        ];
-                        let data = {
-                            let mut _data = ::alloc::vec![$($disc),*];
-                            $(
-                                _data.extend_from_slice(
-                                    &<$arg_ty as #krate::client::SerializeArg>::serialize_arg(&ix.$arg_name)
-                                );
-                            )*
-                            _data
-                        };
-                        #krate::client::Instruction {
-                            program_id: $crate::ID,
-                            accounts,
-                            data,
-                        }
-                    }
-                }
-            };
-            ($struct_name:ident, [$($disc:expr),*], {$($arg_name:ident : $arg_ty:ty),*}, compact) => {
-                pub struct $struct_name {
-                    #(#account_fields)*
-                    $(pub $arg_name: $arg_ty,)*
-                }
-
-                impl From<$struct_name> for #krate::client::Instruction {
-                    #[allow(unused_variables)]
-                    fn from(ix: $struct_name) -> #krate::client::Instruction {
-                        let accounts = ::alloc::vec![
-                            #(#account_metas)*
-                        ];
-                        let data = {
-                            let mut _data = ::alloc::vec![$($disc),*];
-                            $(
-                                _data.extend_from_slice(
-                                    &<$arg_ty as #krate::client::CompactSerializeArg>::compact_header(&ix.$arg_name)
-                                );
-                            )*
-                            $(
-                                _data.extend_from_slice(
-                                    &<$arg_ty as #krate::client::CompactSerializeArg>::compact_tail(&ix.$arg_name)
-                                );
-                            )*
-                            _data
-                        };
-                        #krate::client::Instruction {
-                            program_id: $crate::ID,
-                            accounts,
-                            data,
-                        }
-                    }
-                }
-            };
-            ($struct_name:ident, [$($disc:expr),*], {$($arg_name:ident : $arg_ty:ty),*}, remaining) => {
-                pub struct $struct_name {
-                    #(#account_fields)*
-                    $(pub $arg_name: $arg_ty,)*
-                    pub remaining_accounts: ::alloc::vec::Vec<#krate::client::AccountMeta>,
-                }
-
-                impl From<$struct_name> for #krate::client::Instruction {
-                    #[allow(unused_variables)]
-                    fn from(ix: $struct_name) -> #krate::client::Instruction {
-                        let mut accounts = ::alloc::vec![
-                            #(#account_metas)*
-                        ];
-                        accounts.extend(ix.remaining_accounts);
-                        let data = {
-                            let mut _data = ::alloc::vec![$($disc),*];
-                            $(
-                                _data.extend_from_slice(
-                                    &<$arg_ty as #krate::client::SerializeArg>::serialize_arg(&ix.$arg_name)
-                                );
-                            )*
-                            _data
-                        };
-                        #krate::client::Instruction {
-                            program_id: $crate::ID,
-                            accounts,
-                            data,
-                        }
-                    }
-                }
-            };
-            ($struct_name:ident, [$($disc:expr),*], {$($arg_name:ident : $arg_ty:ty),*}, compact, remaining) => {
-                pub struct $struct_name {
-                    #(#account_fields)*
-                    $(pub $arg_name: $arg_ty,)*
-                    pub remaining_accounts: ::alloc::vec::Vec<#krate::client::AccountMeta>,
-                }
-
-                impl From<$struct_name> for #krate::client::Instruction {
-                    #[allow(unused_variables)]
-                    fn from(ix: $struct_name) -> #krate::client::Instruction {
-                        let mut accounts = ::alloc::vec![
-                            #(#account_metas)*
-                        ];
-                        accounts.extend(ix.remaining_accounts);
-                        let data = {
-                            let mut _data = ::alloc::vec![$($disc),*];
-                            $(
-                                _data.extend_from_slice(
-                                    &<$arg_ty as #krate::client::CompactSerializeArg>::compact_header(&ix.$arg_name)
-                                );
-                            )*
-                            $(
-                                _data.extend_from_slice(
-                                    &<$arg_ty as #krate::client::CompactSerializeArg>::compact_tail(&ix.$arg_name)
-                                );
-                            )*
-                            _data
-                        };
-                        #krate::client::Instruction {
-                            program_id: $crate::ID,
-                            accounts,
-                            data,
-                        }
-                    }
-                }
-            };
+                #(#macro_arms)*
             }
         }
     }
 }
 
-fn emit_account_field(name: &syn::Ident, descriptor: &AccountDescriptor) -> TokenStream {
-    if descriptor.fixed_address.is_some() {
+fn emit_instruction_macro_arm(
+    parts: &ClientMacroParts<'_>,
+    flavor: ClientMacroFlavor,
+) -> TokenStream {
+    let ClientMacroParts {
+        krate,
+        canonical_account_fields,
+        raw_account_fields,
+        raw_account_values,
+        account_metas,
+        has_derived_accounts,
+    } = parts;
+    let pattern_tail = flavor.pattern_tail();
+    let remaining_field = flavor.has_remaining().then(|| {
+        quote! { pub remaining_accounts: ::alloc::vec::Vec<#krate::client::AccountMeta>, }
+    });
+    let remaining_value = flavor
+        .has_remaining()
+        .then(|| quote! { remaining_accounts: ix.remaining_accounts, });
+
+    let definitions = if *has_derived_accounts {
+        quote! {
+            pub struct $struct_name {
+                #(#canonical_account_fields)*
+                $(pub $arg_name: $arg_ty,)*
+                #remaining_field
+            }
+
+            /// Explicit account-address builder for adversarial and negative tests.
+            pub struct $raw_struct_name {
+                #(#raw_account_fields)*
+                $(pub $arg_name: $arg_ty,)*
+                #remaining_field
+            }
+
+            impl From<$struct_name> for $raw_struct_name {
+                #[allow(unused_variables)]
+                fn from(ix: $struct_name) -> Self {
+                    Self {
+                        #(#raw_account_values)*
+                        $($arg_name: ix.$arg_name,)*
+                        #remaining_value
+                    }
+                }
+            }
+
+            impl From<$struct_name> for #krate::client::Instruction {
+                fn from(ix: $struct_name) -> #krate::client::Instruction {
+                    $raw_struct_name::from(ix).into()
+                }
+            }
+        }
+    } else {
+        quote! {
+            pub struct $struct_name {
+                #(#canonical_account_fields)*
+                $(pub $arg_name: $arg_ty,)*
+                #remaining_field
+            }
+        }
+    };
+    let builder_name = if *has_derived_accounts {
+        quote! { $raw_struct_name }
+    } else {
+        quote! { $struct_name }
+    };
+    let accounts = if flavor.has_remaining() {
+        quote! {
+            let mut accounts = ::alloc::vec![
+                #(#account_metas)*
+            ];
+            accounts.extend(ix.remaining_accounts);
+        }
+    } else {
+        quote! {
+            let accounts = ::alloc::vec![
+                #(#account_metas)*
+            ];
+        }
+    };
+    let data = if flavor.is_compact() {
+        quote! {
+            let data = {
+                let mut _data = ::alloc::vec![$($disc),*];
+                $(
+                    _data.extend_from_slice(
+                        &<$arg_ty as #krate::client::CompactSerializeArg>::compact_header(&ix.$arg_name)
+                    );
+                )*
+                $(
+                    _data.extend_from_slice(
+                        &<$arg_ty as #krate::client::CompactSerializeArg>::compact_tail(&ix.$arg_name)
+                    );
+                )*
+                _data
+            };
+        }
+    } else {
+        quote! {
+            let data = {
+                let mut _data = ::alloc::vec![$($disc),*];
+                $(
+                    _data.extend_from_slice(
+                        &<$arg_ty as #krate::client::SerializeArg>::serialize_arg(&ix.$arg_name)
+                    );
+                )*
+                _data
+            };
+        }
+    };
+
+    quote! {
+        ($struct_name:ident, $raw_struct_name:ident, [$($disc:expr),*], {$($arg_name:ident : $arg_ty:ty),*} #pattern_tail) => {
+            #definitions
+
+            impl From<#builder_name> for #krate::client::Instruction {
+                #[allow(unused_variables)]
+                fn from(ix: #builder_name) -> #krate::client::Instruction {
+                    #accounts
+                    #data
+                    #krate::client::Instruction {
+                        program_id: $crate::ID,
+                        accounts,
+                        data,
+                    }
+                }
+            }
+        };
+    }
+}
+
+fn emit_canonical_account_field(name: &syn::Ident, descriptor: &AccountDescriptor) -> TokenStream {
+    if !matches!(descriptor.address, ClientAddress::Caller) {
         // A derived field whose seeds read stored account data is replaced by
         // typed inputs carrying those values (via definition-site re-aliases,
         // so the type resolves inside the cpi module).
@@ -233,13 +300,31 @@ fn seed_input_realias(accounts_struct: &syn::Ident, input: &syn::Ident) -> syn::
     )
 }
 
-fn emit_account_meta(descriptor: &AccountDescriptor) -> TokenStream {
+fn emit_raw_account_field(descriptor: &AccountDescriptor) -> TokenStream {
+    if matches!(descriptor.address, ClientAddress::Constant(_)) {
+        return quote! {};
+    }
+    let krate = crate::krate::lang_path();
+    let ident = &descriptor.name;
+    quote! { pub #ident: #krate::prelude::Address, }
+}
+
+fn emit_raw_account_value(descriptor: &AccountDescriptor) -> Option<TokenStream> {
+    let ident = &descriptor.name;
+    match &descriptor.address {
+        ClientAddress::Caller => Some(quote! { #ident: ix.#ident, }),
+        ClientAddress::Constant(_) => None,
+        ClientAddress::Derived(address) => Some(quote! { #ident: #address, }),
+    }
+}
+
+fn emit_raw_account_meta(descriptor: &AccountDescriptor) -> TokenStream {
     let krate = crate::krate::lang_path();
     let ident = &descriptor.name;
     let signer = &descriptor.signer;
-    let address = match &descriptor.fixed_address {
-        Some(fixed) => fixed.clone(),
-        None => quote! { ix.#ident },
+    let address = match &descriptor.address {
+        ClientAddress::Constant(address) => address.clone(),
+        ClientAddress::Caller | ClientAddress::Derived(_) => quote! { ix.#ident },
     };
     if descriptor.writable {
         quote! {
@@ -272,9 +357,9 @@ fn describe_accounts(
         .enumerate()
         .map(|(index, fp)| {
             let mut seed_inputs: Vec<(syn::Ident, TokenStream)> = Vec::new();
-            let fixed_address = if fixed_address_expr(fp).is_some() {
+            let address = if fixed_address_expr(fp).is_some() {
                 let const_ident = fixed_address_const(&fp.ident);
-                Some(quote! { #account_type::#const_ident })
+                ClientAddress::Constant(quote! { #account_type::#const_ident })
             } else if let Some(derivation) = field_derivation(plan, fp, &mut Vec::new()) {
                 let fn_ident = pda_address_fn(&fp.ident);
                 let roots = derivation_roots(plan, &derivation);
@@ -292,9 +377,9 @@ fn describe_accounts(
                     DeriveRoot::ArgValue(i, _) => quote! { ix.#i },
                     DeriveRoot::SeedInput { input, .. } => quote! { ix.#input },
                 });
-                Some(quote! { #account_type::#fn_ident(#(#args,)* &$crate::ID) })
+                ClientAddress::Derived(quote! { #account_type::#fn_ident(#(#args,)* &$crate::ID) })
             } else {
-                None
+                ClientAddress::Caller
             };
             AccountDescriptor {
                 name: fp.ident.clone(),
@@ -305,7 +390,7 @@ fn describe_accounts(
                     let signer = fp.signer;
                     quote! { #signer }
                 },
-                fixed_address,
+                address,
                 seed_inputs,
             }
         })

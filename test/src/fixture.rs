@@ -5,13 +5,23 @@ use crate::{fixtures, Account, Pubkey, Test, SPL_TOKEN_2022_PROGRAM_ID, SPL_TOKE
 /// State that can install itself into a test world.
 ///
 /// Applications can implement this trait for protocol-level fixtures and
-/// compose the built-in account fixtures inside [`Fixture::install`].
+/// compose the built-in account fixtures inside [`Fixture::install`]. Arrays
+/// of one fixture type are fixtures too, so repeated actors can be installed
+/// with `test.add([Wallet::new(); 3])`.
 pub trait Fixture {
     /// Handle or state returned after installation.
     type Output;
 
     /// Install the fixture and return the handles needed by the test.
     fn install(self, test: &mut Test) -> Self::Output;
+}
+
+impl<F: Fixture, const N: usize> Fixture for [F; N] {
+    type Output = [F::Output; N];
+
+    fn install(self, test: &mut Test) -> Self::Output {
+        self.map(|fixture| fixture.install(test))
+    }
 }
 
 impl Fixture for Account {
@@ -25,7 +35,7 @@ impl Fixture for Account {
 }
 
 /// A system-owned, funded account.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Wallet {
     address: Option<Pubkey>,
     lamports: u64,
@@ -89,7 +99,7 @@ impl TokenProgram {
 }
 
 /// An initialized token mint.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Mint {
     address: Option<Pubkey>,
     authority: Pubkey,
@@ -152,7 +162,7 @@ impl Fixture for Mint {
 }
 
 /// An initialized token account at an arbitrary address.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct TokenAccount {
     address: Option<Pubkey>,
     mint: Pubkey,
@@ -209,7 +219,7 @@ impl Fixture for TokenAccount {
 }
 
 /// An initialized token account at its associated-token address.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct AssociatedTokenAccount {
     mint: Pubkey,
     owner: Pubkey,
