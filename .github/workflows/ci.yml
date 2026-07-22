@@ -156,11 +156,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
         with:
           toolchain: ${{ env.HOST_RUST_VERSION }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # zizmor: ignore[cache-poisoning] cache input is unset; v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: test/typescript/package-lock.json
       - name: Install the locked TypeScript test graph
         working-directory: test/typescript
         run: |
@@ -185,11 +183,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
         with:
           toolchain: ${{ env.HOST_RUST_VERSION }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # zizmor: ignore[cache-poisoning] cache input is unset; v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: test/typescript/package-lock.json
       - name: Install supported Solana tools
         run: scripts/install-solana-tools.sh "$SOLANA_VERSION" "$SOLANA_LINUX_SHA256"
       - name: Build and exercise exact Rust program behavior
