@@ -1,4 +1,25 @@
-import type { ProgramError } from "@blueshift-gg/quasar-svm";
+/** Stable execution errors exposed by the test harness. */
+export type ProgramError =
+  | { readonly type: "InvalidArgument" }
+  | { readonly type: "InvalidInstructionData" }
+  | { readonly type: "InvalidAccountData" }
+  | { readonly type: "AccountDataTooSmall" }
+  | { readonly type: "InsufficientFunds" }
+  | { readonly type: "IncorrectProgramId" }
+  | { readonly type: "MissingRequiredSignature" }
+  | { readonly type: "AccountAlreadyInitialized" }
+  | { readonly type: "UninitializedAccount" }
+  | { readonly type: "MissingAccount" }
+  | { readonly type: "InvalidSeeds" }
+  | { readonly type: "ArithmeticOverflow" }
+  | { readonly type: "AccountNotRentExempt" }
+  | { readonly type: "InvalidAccountOwner" }
+  | { readonly type: "IncorrectAuthority" }
+  | { readonly type: "Immutable" }
+  | { readonly type: "BorshIoError" }
+  | { readonly type: "ComputeBudgetExceeded" }
+  | { readonly type: "Custom"; readonly code: number }
+  | { readonly type: "Runtime"; readonly message: string };
 
 export interface RawExecutionResult {
   readonly status:
@@ -10,7 +31,8 @@ export interface RawExecutionResult {
 }
 
 export interface OutcomeAdapter<Address, Account> {
-  account(address: Address): Account | null;
+  addressKey(address: Address): string;
+  accountAddress(account: Account): Address;
   accountData(account: Account): Uint8Array;
   lamports(account: Account): bigint;
   mintSupply(account: Account): bigint;
@@ -26,59 +48,61 @@ export interface AccountChange<Address, Account> {
 }
 
 /** Structured execution assertions independent of the SVM adapter in use. */
-export class Outcome<
-  Address,
-  Account,
-  Raw extends RawExecutionResult = RawExecutionResult,
-> {
+export class Outcome<Address, Account> {
+  readonly #error: ProgramError | null;
+  readonly #accounts: ReadonlyMap<string, Account>;
+  readonly computeUnits: bigint;
+  readonly logs: readonly string[];
+  readonly returnData: Uint8Array;
+
   constructor(
-    readonly raw: Raw,
+    result: RawExecutionResult,
+    accounts: readonly Account[],
     private readonly adapter: OutcomeAdapter<Address, Account>,
     readonly accountChanges: readonly AccountChange<Address, Account>[] = [],
-  ) {}
+  ) {
+    this.#error = result.status.ok ? null : result.status.error;
+    this.#accounts = new Map(
+      accounts.map(account => [
+        adapter.addressKey(adapter.accountAddress(account)),
+        account,
+      ]),
+    );
+    this.computeUnits = result.computeUnits;
+    this.logs = [...result.logs];
+    this.returnData = result.returnData.slice();
+  }
 
   get error(): ProgramError | null {
-    return this.raw.status.ok ? null : this.raw.status.error;
-  }
-
-  get computeUnits(): bigint {
-    return this.raw.computeUnits;
-  }
-
-  get logs(): readonly string[] {
-    return this.raw.logs;
-  }
-
-  get returnData(): Uint8Array {
-    return this.raw.returnData;
+    return this.#error;
   }
 
   isOk(): boolean {
-    return this.raw.status.ok;
+    return this.#error === null;
   }
 
   isErr(): boolean {
-    return !this.raw.status.ok;
+    return this.#error !== null;
   }
 
   succeeds(): this {
-    if (!this.raw.status.ok) {
+    if (this.#error !== null) {
       throw new Error(
-        `expected success, got ${JSON.stringify(this.raw.status.error)}${this.formattedLogs()}`,
+        `expected success, got ${JSON.stringify(this.#error)}${this.formattedLogs()}`,
       );
     }
     return this;
   }
 
   fails(expected: ProgramError): this {
-    if (this.raw.status.ok) {
+    if (this.#error === null) {
       throw new Error(
         `expected error ${JSON.stringify(expected)}, but execution succeeded`,
       );
     }
-    if (JSON.stringify(this.raw.status.error) !== JSON.stringify(expected)) {
+    if (!errorsEqual(this.#error, expected)) {
       throw new Error(
-        `expected error ${JSON.stringify(expected)}, got ${JSON.stringify(this.raw.status.error)}${this.formattedLogs()}`,
+        `expected error ${JSON.stringify(expected)}, got ${JSON.stringify(this.#error)}${this.formattedLogs()}`,
       );
     }
     return this;
@@ -99,7 +123,7 @@ export class Outcome<
   }
 
   account(address: Address): Account | null {
-    return this.adapter.account(address);
+    return this.#accounts.get(this.adapter.addressKey(address)) ?? null;
   }
 
   accountAs<Value>(
@@ -110,7 +134,7 @@ export class Outcome<
     return account === null ? null : decode(this.adapter.accountData(account));
   }
 
-  returnValue<Value>(decode: (data: Uint8Array) => Value): Value {
+  returnValue<Value>(decode: (data: Uint8Array) => Value | null): Value | null {
     return decode(this.returnData);
   }
 
@@ -198,4 +222,15 @@ export class Outcome<
       ? ""
       : `\nprogram logs:\n  ${this.logs.join("\n  ")}`;
   }
+}
+
+function errorsEqual(left: ProgramError, right: ProgramError): boolean {
+  if (left.type !== right.type) return false;
+  if (left.type === "Custom" && right.type === "Custom") {
+    return left.code === right.code;
+  }
+  if (left.type === "Runtime" && right.type === "Runtime") {
+    return left.message === right.message;
+  }
+  return true;
 }

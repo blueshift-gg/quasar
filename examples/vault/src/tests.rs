@@ -57,6 +57,22 @@ fn failed_init_does_not_leave_a_placeholder(test: &mut Test) {
     assert!(outcome.account_changes().is_empty());
 }
 
+#[test]
+fn compute_exhaustion_has_the_same_stable_error_as_typescript() {
+    let mut test = Test::builder(crate::ID)
+        .crate_name(env!("CARGO_PKG_NAME"))
+        .compute_unit_limit(1)
+        .build()
+        .unwrap();
+    test.add(Wallet::new().at(USER));
+
+    test.send(DepositInstruction {
+        user: USER,
+        amount: 1,
+    })
+    .fails(ProgramError::Runtime("ProgramFailedToComplete".into()));
+}
+
 #[quasar_test]
 fn withdraw_moves_lamports_out_of_program_state(test: &mut Test) {
     test.add(Wallet::new().at(USER));
@@ -64,6 +80,17 @@ fn withdraw_moves_lamports_out_of_program_state(test: &mut Test) {
     let vault_lamports = 1_000_000_000;
     let withdrawal = 500_000_000;
     test.add(Account::new(vault, crate::ID, vault_lamports, Vec::new()));
+
+    test.simulate(WithdrawInstruction {
+        user: USER,
+        amount: withdrawal,
+    })
+    .succeeds()
+    .cu_at_most(MAX_WITHDRAW_CU)
+    .has_lamports(USER, DEFAULT_WALLET_LAMPORTS + withdrawal)
+    .has_lamports(vault, vault_lamports - withdrawal);
+    assert_eq!(test.lamports(USER), DEFAULT_WALLET_LAMPORTS);
+    assert_eq!(test.lamports(vault), vault_lamports);
 
     test.send(WithdrawInstruction {
         user: USER,

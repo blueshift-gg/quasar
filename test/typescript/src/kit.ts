@@ -2,13 +2,10 @@ import {
   createKeyedMintAccount,
   createKeyedSystemAccount,
   createKeyedTokenAccount,
-  QUASAR_SVM_CONFIG_FULL,
   QuasarSvm,
   SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
   SPL_TOKEN_2022_PROGRAM_ID,
   SPL_TOKEN_PROGRAM_ID,
-  type ExecutionResult,
-  type QuasarSvmConfig,
 } from "@blueshift-gg/quasar-svm/kit";
 import { getMintDecoder, getTokenDecoder } from "@solana-program/token";
 import {
@@ -33,17 +30,23 @@ import {
   type WalletOptions as SharedWalletOptions,
 } from "./internal/fixture.js";
 import { Outcome as SharedOutcome } from "./internal/outcome.js";
-import { TestCore, type HarnessAdapter } from "./internal/test.js";
+import {
+  TestCore,
+  type HarnessAdapter,
+  type TestOptions as SharedTestOptions,
+} from "./internal/test.js";
 
 export { DEFAULT_WALLET_LAMPORTS, TokenProgram };
+export type { ProgramError } from "./internal/outcome.js";
 export type { AssociatedTokenAccountOptions };
 
 type WorldAccount = Account<Uint8Array>;
 export type Fixture<Output> = SharedFixture<Output, Test>;
-export type Outcome = SharedOutcome<Address, WorldAccount, ExecutionResult>;
+export type Outcome = SharedOutcome<Address, WorldAccount>;
 export type WalletOptions = SharedWalletOptions<Address>;
 export type MintOptions = SharedMintOptions<Address>;
 export type TokenAccountOptions = SharedTokenAccountOptions<Address>;
+export type TestOptions = SharedTestOptions;
 
 const addressEncoder = getAddressEncoder();
 const systemProgram = address("11111111111111111111111111111111");
@@ -63,7 +66,6 @@ const adapter: HarnessAdapter<
   Address,
   WorldAccount,
   Instruction,
-  ExecutionResult,
   Outcome
 > = {
   addressKey: value => value,
@@ -77,8 +79,6 @@ const adapter: HarnessAdapter<
       writable: isWritableRole(meta.role),
     })),
   emptyAccount: value => createKeyedSystemAccount(value, 0n),
-  resultAccounts: result => result.accounts,
-  resultSucceeded: result => result.isSuccess(),
   tokenAmount: account => BigInt(getTokenDecoder().decode(account.data).amount),
   mintSupply: account => BigInt(getMintDecoder().decode(account.data).supply),
   accountsEqual: (left, right) =>
@@ -103,25 +103,14 @@ const adapter: HarnessAdapter<
   },
   deriveProgramAddress: (seeds, programAddress) =>
     getProgramDerivedAddress({ programAddress, seeds: [...seeds] }),
-  outcome: (raw, changes) =>
-    new SharedOutcome(
-      raw,
-      {
-        account: value => raw.account(value),
-        accountData: account => account.data,
-        isClosed: account =>
-          BigInt(account.lamports) === 0n &&
-          account.data.length === 0 &&
-          account.programAddress === systemProgram,
-        lamports: account => BigInt(account.lamports),
-        mintSupply: account =>
-          BigInt(getMintDecoder().decode(account.data).supply),
-        renderAddress: value => value,
-        tokenAmount: account =>
-          BigInt(getTokenDecoder().decode(account.data).amount),
-      },
-      changes,
-    ),
+  outcome: (raw, accounts, changes) =>
+    new SharedOutcome(raw, accounts, adapter, changes),
+  isClosed: account =>
+    BigInt(account.lamports) === 0n &&
+    account.data.length === 0 &&
+    account.programAddress === systemProgram,
+  lamports: account => BigInt(account.lamports),
+  renderAddress: value => value,
 };
 
 /** An isolated fixture-first test world using Kit address and account types. */
@@ -129,28 +118,27 @@ export class Test extends TestCore<
   Address,
   WorldAccount,
   Instruction,
-  ExecutionResult,
   Outcome
 > {
   constructor(
     programId?: Address,
     elf?: Uint8Array,
-    config: QuasarSvmConfig = QUASAR_SVM_CONFIG_FULL,
+    options: TestOptions = {},
   ) {
-    super(new QuasarSvm(config), adapter, programId, elf);
+    super(new QuasarSvm(), adapter, programId, elf, options);
   }
 
   static async load(
     programId: Address,
     programPath = process.env.QUASAR_PROGRAM_PATH,
-    config?: QuasarSvmConfig,
+    options?: TestOptions,
   ): Promise<Test> {
     if (!programPath) {
       throw new Error(
         "QUASAR_PROGRAM_PATH is not set; run through `quasar test` or pass an artifact path",
       );
     }
-    return new Test(programId, await readFile(programPath), config);
+    return new Test(programId, await readFile(programPath), options);
   }
 }
 

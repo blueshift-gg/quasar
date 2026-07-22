@@ -44,6 +44,10 @@ adversarial tests.
 generated decoders directly; `accountChanges` reports writable before/after
 state in instruction order.
 
+Pass `{ computeUnitLimit: 200_000n }` as the third `Test` constructor argument
+or `Test.load` option to set the same per-transaction ceiling as Rust's
+`Test::builder(...).compute_unit_limit(...)`.
+
 `Test.load(PROGRAM_ADDRESS)` reads `QUASAR_PROGRAM_PATH`, which `quasar test`
 sets after building the program. Passing the ELF explicitly keeps direct test
 runner invocation straightforward.
