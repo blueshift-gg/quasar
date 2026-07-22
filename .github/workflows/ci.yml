@@ -18,6 +18,7 @@ env:
   HOST_RUST_VERSION: 1.92.0
   PROGRAM_MSRV: 1.89.0
   CARGO_HACK_VERSION: 0.6.43
+  NODE_VERSION: 22.13.0
   PYTHON_VERSION: 3.14.3
   SOLDERS_VERSION: 0.28.0
   SOLANA_VERSION: v4.1.1
@@ -145,6 +146,35 @@ jobs:
       - name: Run stable crate and CLI behavior
         run: make test-host
 
+  typescript-test:
+    name: TypeScript test harness
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+        with:
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: test/typescript/package-lock.json
+      - name: Install the locked TypeScript test graph
+        working-directory: test/typescript
+        run: |
+          npm ci --ignore-scripts --legacy-peer-deps
+          npm --prefix node_modules/@blueshift-gg/quasar-svm run build
+          npm --prefix node_modules/@blueshift-gg/quasar-svm run build:native
+      - name: Verify behavior, types, and the public package boundary
+        working-directory: test/typescript
+        run: |
+          npm run check-types
+          npm test
+          npm run check-api
+          npm run check-consumer
+
   sbf-behavior:
     name: SBF behavior
     runs-on: ubuntu-24.04
@@ -152,10 +182,29 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+        with:
+          toolchain: ${{ env.HOST_RUST_VERSION }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: test/typescript/package-lock.json
       - name: Install supported Solana tools
         run: scripts/install-solana-tools.sh "$SOLANA_VERSION" "$SOLANA_LINUX_SHA256"
-      - name: Exercise exact program behavior
+      - name: Build and exercise exact Rust program behavior
         run: make build-sbf test-quasar-test-standalone test-sbf-host
+      - name: Install the locked TypeScript test graph
+        working-directory: test/typescript
+        run: |
+          npm ci --ignore-scripts --legacy-peer-deps
+          npm --prefix node_modules/@blueshift-gg/quasar-svm run build
+          npm --prefix node_modules/@blueshift-gg/quasar-svm run build:native
+      - name: Exercise the same program through Kit and Web3.js
+        working-directory: test/typescript
+        env:
+          QUASAR_PROGRAM_PATH: ../../target/deploy/quasar_vault.so
+        run: npm run test:program
 
   contracts:
     name: Contracts

@@ -60,6 +60,12 @@ describe("fixture-first test harness", () => {
     ]);
     expect(test.supply(mint)).toBe(10_000n);
 
+    test
+      .send({ ...transfer, data: transferData(10_000n) })
+      .failsWith(1)
+      .hasTokens(alice, 4_000n)
+      .hasTokens(bob, 1_000n);
+
     test.simulate(transfer).succeeds().hasTokens(bob, 2_000n);
     expect(test.tokens(bob)).toBe(1_000n);
 
@@ -102,6 +108,18 @@ describe("fixture-first test harness", () => {
     ).toEqual([alice.toBase58(), bob.toBase58()]);
     expect(test.supply(mint)).toBe(10_000n);
 
+    test
+      .send(
+        new TransactionInstruction({
+          programId: new Address(tokenProgram),
+          keys: transfer.keys,
+          data: transferData(10_000n),
+        }),
+      )
+      .failsWith(1)
+      .hasTokens(alice, 4_000n)
+      .hasTokens(bob, 1_000n);
+
     test.simulate(transfer).succeeds().hasTokens(bob, 2_000n);
     expect(test.tokens(bob)).toBe(1_000n);
 
@@ -120,5 +138,27 @@ describe("fixture-first test harness", () => {
     const kitAddress = await kit.add(kitWallet());
     const web3Address = await web3.add(web3Wallet());
     expect(kitAddress).toBe(web3Address.toBase58());
+  });
+
+  it("validates stable runtime limits before entering either backend", () => {
+    using zeroKit = new KitTest(undefined, undefined, { computeUnitLimit: 0n });
+    using zeroWeb3 = new Web3Test(undefined, undefined, {
+      computeUnitLimit: 0n,
+    });
+    expect(
+      () => new KitTest(undefined, undefined, { computeUnitLimit: -1n }),
+    ).toThrow("computeUnitLimit must fit a u64");
+    expect(
+      () =>
+        new KitTest(undefined, undefined, {
+          computeUnitLimit: 0x1_0000_0000_0000_0000n,
+        }),
+    ).toThrow("computeUnitLimit must fit a u64");
+    expect(() => zeroKit.warpToTimestamp(-0x8000_0000_0000_0001n)).toThrow(
+      "timestamp must fit an i64",
+    );
+    expect(() => zeroWeb3.warpToTimestamp(0x8000_0000_0000_0000n)).toThrow(
+      "timestamp must fit an i64",
+    );
   });
 });

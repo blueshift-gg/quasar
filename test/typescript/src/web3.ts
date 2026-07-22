@@ -2,19 +2,17 @@ import {
   createKeyedMintAccount,
   createKeyedSystemAccount,
   createKeyedTokenAccount,
-  QUASAR_SVM_CONFIG_FULL,
   QuasarSvm,
   SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
   SPL_TOKEN_2022_PROGRAM_ID,
   SPL_TOKEN_PROGRAM_ID,
-  type ExecutionResult,
-  type KeyedAccountInfo,
-  type QuasarSvmConfig,
-  type SupportedInstruction,
 } from "@blueshift-gg/quasar-svm/web3.js";
 import { getMintDecoder, getTokenDecoder } from "@solana-program/token";
-import { isWritableRole } from "@solana/kit";
-import { Address } from "@solana/web3.js";
+import {
+  Address,
+  type KeyedAccountInfo,
+  type TransactionInstruction,
+} from "@solana/web3.js";
 import { readFile } from "node:fs/promises";
 import {
   createFixtureFactories,
@@ -27,16 +25,22 @@ import {
   type WalletOptions as SharedWalletOptions,
 } from "./internal/fixture.js";
 import { Outcome as SharedOutcome } from "./internal/outcome.js";
-import { TestCore, type HarnessAdapter } from "./internal/test.js";
+import {
+  TestCore,
+  type HarnessAdapter,
+  type TestOptions as SharedTestOptions,
+} from "./internal/test.js";
 
 export { DEFAULT_WALLET_LAMPORTS, TokenProgram };
+export type { ProgramError } from "./internal/outcome.js";
 export type { AssociatedTokenAccountOptions };
 
 export type Fixture<Output> = SharedFixture<Output, Test>;
-export type Outcome = SharedOutcome<Address, KeyedAccountInfo, ExecutionResult>;
+export type Outcome = SharedOutcome<Address, KeyedAccountInfo>;
 export type WalletOptions = SharedWalletOptions<Address>;
 export type MintOptions = SharedMintOptions<Address>;
 export type TokenAccountOptions = SharedTokenAccountOptions<Address>;
+export type TestOptions = SharedTestOptions;
 
 const systemProgram = new Address("11111111111111111111111111111111");
 
@@ -50,8 +54,7 @@ function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
 const adapter: HarnessAdapter<
   Address,
   KeyedAccountInfo,
-  SupportedInstruction,
-  ExecutionResult,
+  TransactionInstruction,
   Outcome
 > = {
   addressKey: value => value.toBase58(),
@@ -59,21 +62,12 @@ const adapter: HarnessAdapter<
   accountAddress: account => account.accountId,
   accountData: account => account.accountInfo.data,
   accountLamports: account => account.accountInfo.lamports,
-  instructionAccounts: instruction => {
-    if ("keys" in instruction) {
-      return instruction.keys.map(meta => ({
-        address: meta.pubkey,
-        writable: meta.isWritable,
-      }));
-    }
-    return (instruction.accounts ?? []).map(meta => ({
-      address: new Address(meta.address),
-      writable: isWritableRole(meta.role),
-    }));
-  },
+  instructionAccounts: instruction =>
+    instruction.keys.map(meta => ({
+      address: meta.pubkey,
+      writable: meta.isWritable,
+    })),
   emptyAccount: value => createKeyedSystemAccount(value, 0n),
-  resultAccounts: result => result.accounts,
-  resultSucceeded: result => result.isSuccess(),
   tokenAmount: account =>
     BigInt(getTokenDecoder().decode(account.accountInfo.data).amount),
   mintSupply: account =>
@@ -103,54 +97,42 @@ const adapter: HarnessAdapter<
   },
   deriveProgramAddress: (seeds, programId) =>
     Address.findProgramAddress([...seeds], programId),
-  outcome: (raw, changes) =>
-    new SharedOutcome(
-      raw,
-      {
-        account: value => raw.account(value),
-        accountData: account => account.accountInfo.data,
-        isClosed: account =>
-          account.accountInfo.lamports === 0n &&
-          account.accountInfo.data.length === 0 &&
-          account.accountInfo.owner.equals(systemProgram),
-        lamports: account => account.accountInfo.lamports,
-        mintSupply: account =>
-          BigInt(getMintDecoder().decode(account.accountInfo.data).supply),
-        renderAddress: value => value.toBase58(),
-        tokenAmount: account =>
-          BigInt(getTokenDecoder().decode(account.accountInfo.data).amount),
-      },
-      changes,
-    ),
+  outcome: (raw, accounts, changes) =>
+    new SharedOutcome(raw, accounts, adapter, changes),
+  isClosed: account =>
+    account.accountInfo.lamports === 0n &&
+    account.accountInfo.data.length === 0 &&
+    account.accountInfo.owner.equals(systemProgram),
+  lamports: account => account.accountInfo.lamports,
+  renderAddress: value => value.toBase58(),
 };
 
 /** An isolated fixture-first test world using Web3.js address and account types. */
 export class Test extends TestCore<
   Address,
   KeyedAccountInfo,
-  SupportedInstruction,
-  ExecutionResult,
+  TransactionInstruction,
   Outcome
 > {
   constructor(
     programId?: Address,
     elf?: Uint8Array,
-    config: QuasarSvmConfig = QUASAR_SVM_CONFIG_FULL,
+    options: TestOptions = {},
   ) {
-    super(new QuasarSvm(config), adapter, programId, elf);
+    super(new QuasarSvm(), adapter, programId, elf, options);
   }
 
   static async load(
     programId: Address,
     programPath = process.env.QUASAR_PROGRAM_PATH,
-    config?: QuasarSvmConfig,
+    options?: TestOptions,
   ): Promise<Test> {
     if (!programPath) {
       throw new Error(
         "QUASAR_PROGRAM_PATH is not set; run through `quasar test` or pass an artifact path",
       );
     }
-    return new Test(programId, await readFile(programPath), config);
+    return new Test(programId, await readFile(programPath), options);
   }
 }
 

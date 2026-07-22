@@ -29,7 +29,7 @@ HOST_TEST_EXCLUDES := $(sort $(SBF_TEST_RUNNERS) $(SBF_PROGRAM_PACKAGES))
 	miri test-miri test-miri-strict test-all \
 	nightly-version cargo-fuzz-version cargo-audit-version \
 	fuzz-build test-fuzz-build contracts \
-	check-proc-macro-baselines bless-proc-macro-baselines \
+	check-proc-macro-baselines check-test-clients bless-proc-macro-baselines \
 	kani help-kani check-kani kani-lang kani-spl msrv-check \
 	package-check audit
 
@@ -53,7 +53,10 @@ fuzz-build: test-fuzz-build
 test-fuzz-build:
 	@cd lang && cargo +$(NIGHTLY_TOOLCHAIN) fuzz build
 
-contracts: check-proc-macro-baselines
+check-test-clients:
+	@scripts/check-test-clients.sh
+
+contracts: check-proc-macro-baselines check-test-clients
 	@cargo test -p quasar-idl --all-features
 	@idl/tests/client-conformance/run.sh
 

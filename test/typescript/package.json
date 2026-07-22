@@ -22,8 +22,11 @@
   ],
   "scripts": {
     "build": "tsc",
+    "check-api": "npm run build && node scripts/check-public-api.mjs",
+    "check-consumer": "npm run build && bash scripts/check-packed-consumer.sh",
     "check-types": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json",
-    "test": "vitest run",
+    "test": "vitest run tests/fixture-harness.test.ts",
+    "test:program": "vitest run tests/program-parity.test.ts",
     "prepack": "npm run build"
   },
   "license": "Apache-2.0 OR MIT",
@@ -40,7 +43,7 @@
     "node": ">=22.13.0"
   },
   "dependencies": {
-    "@blueshift-gg/quasar-svm": "^0.1.14",
+    "@blueshift-gg/quasar-svm": "0.1.14",
     "@solana-program/token": "^0.15.0",
     "@solana/kit": "^7.0.0"
   },
@@ -53,7 +56,8 @@
     }
   },
   "devDependencies": {
-    "@solana/web3.js": "^3.0.0",
+    "@blueshift-gg/quasar-svm": "https://github.com/blueshift-gg/quasar-svm/archive/6378b6e87fa8e11e0040115382a254c5de3a42f1.tar.gz",
+    "@solana/web3.js": "3.0.0-rc.2",
     "@types/node": "^22.13.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.1"
