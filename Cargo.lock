@@ -2070,7 +2070,7 @@ version = "0.1.0"
 dependencies = [
  "quasar-lang",
  "quasar-multisig-client",
- "quasar-svm",
+ "quasar-test",
  "solana-instruction",
  "wincode 0.4.9",
 ]
@@ -2140,16 +2140,20 @@ dependencies = [
 name = "quasar-test"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "quasar-lang",
  "quasar-svm",
  "quasar-test-derive",
+ "serde_json",
  "spl-token",
+ "tempfile",
 ]
 
 [[package]]
 name = "quasar-test-derive"
 version = "0.1.0"
 dependencies = [
+ "proc-macro-crate",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -2286,7 +2290,7 @@ name = "quasar-vault"
 version = "0.1.0"
 dependencies = [
  "quasar-lang",
- "quasar-svm",
+ "quasar-test",
  "quasar-vault-client",
 ]
 

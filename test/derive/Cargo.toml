@@ -26,3 +26,4 @@ doctest = false
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
+proc-macro-crate = "3"

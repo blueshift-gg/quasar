@@ -28,7 +28,7 @@ fn generated_config_uses_the_canonical_client_targets() -> Result<(), Box<dyn Er
     assert_eq!(
         config,
         "[project]\nname = \"canonical\"\n\n[testing]\ncommand = { program = \"cargo\", args = \
-         [\"test\", \"tests::\"] }\n\n[clients]\npath = \"target/client\"\ntargets = [\"rust\", \
+         [\"test\"] }\n\n[clients]\npath = \"target/client\"\ntargets = [\"rust\", \
          \"kit\", \"web3\"]\n"
     );
     Ok(())

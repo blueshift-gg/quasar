@@ -35,13 +35,13 @@ edition = "2021"
 publish = false
 
 [dependencies]
-quasar-test = { path = "$package_dir" }
+qt = { package = "quasar-test", path = "$package_dir" }
 EOF
 
 cat >"$tmp/consumer/src/lib.rs" <<'EOF'
 #[cfg(test)]
 mod tests {
-    use {quasar_test::{prelude::*, PROGRAM_PATH_ENV}, std::{env, fs, str::FromStr}};
+    use {qt::{prelude::*, PROGRAM_PATH_ENV}, std::{env, fs, str::FromStr}};
 
     const PROGRAM_ID: &str = "33333333333333333333333333333333333333333333";
     const USER_LAMPORTS: u64 = 10_000_000_000;
@@ -67,18 +67,18 @@ mod tests {
             accounts: vec![
                 AccountMeta::new(user, true),
                 AccountMeta::new(vault, false),
-                AccountMeta::new_readonly(quasar_test::quasar_svm::system_program::ID, false),
+                AccountMeta::new_readonly(system_program::ID, false),
             ],
             data,
         }
     }
 
     #[quasar_test(program_id = Pubkey::from_str(PROGRAM_ID).expect("valid fixture program id"))]
-    fn external_consumer_executes_a_real_program(q: &mut QuasarTest) {
+    fn external_consumer_executes_a_real_program(q: &mut Test) -> Result<(), Box<dyn std::error::Error>> {
         let program_id = Pubkey::from_str(PROGRAM_ID).unwrap();
         let user = Pubkey::new_from_array([1; 32]);
         let (vault, _) = Pubkey::find_program_address(&[b"vault", user.as_ref()], &program_id);
-        q.fund(user, USER_LAMPORTS);
+        q.add(Wallet::new().at(user).lamports(USER_LAMPORTS));
 
         if let Some(expected) = env::var_os(PROGRAM_PATH_ENV) {
             assert_eq!(
@@ -89,13 +89,15 @@ mod tests {
 
         q.send(deposit_instruction(program_id, user, vault))
             .succeeds()
-            .cu_below(5_000)
+            .cu_at_most(5_000)
             .has_lamports(vault, DEPOSIT)
             .has_lamports(user, USER_LAMPORTS - DEPOSIT);
 
         let wrong_vault = Pubkey::new_unique();
         q.send(deposit_instruction(program_id, user, wrong_vault))
             .fails_with(VaultError::InvalidPda);
+        assert!(q.account(wrong_vault).is_none(), "failed init left a placeholder account");
+        Ok(())
     }
 }
 EOF

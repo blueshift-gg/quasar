@@ -51,7 +51,7 @@ fn run_once(
         crate::build::run(debug, verbose, false, features.map(String::from))?;
     }
     let program_path = compiled_program_path(&config)?;
-    let command = effective_test_command(&config.testing.command, filter, show_output);
+    let command = effective_test_command(&config.testing.command, filter, show_output, features);
     run_command_with_env(
         &command,
         verbose,
@@ -107,24 +107,25 @@ fn effective_test_command(
     command: &CommandSpec,
     filter: Option<&str>,
     show_output: bool,
+    features: Option<&str>,
 ) -> CommandSpec {
     let mut args = command.args.clone();
     let mut separator = args.iter().position(|argument| argument == "--");
+    if let Some(features) = features.filter(|_| is_cargo_test(command)) {
+        let index = separator.unwrap_or(args.len());
+        args.splice(
+            index..index,
+            ["--features".to_string(), features.to_string()],
+        );
+        separator = separator.map(|index| index + 2);
+    }
     if let Some(pattern) = filter {
-        let command_arg_end = separator.unwrap_or(args.len());
-        if let Some(index) = args[..command_arg_end]
-            .iter()
-            .position(|argument| argument == "tests::")
-        {
-            args[index].push_str(pattern.strip_prefix("tests::").unwrap_or(pattern));
-        } else {
-            match separator {
-                Some(index) => {
-                    args.insert(index, pattern.to_string());
-                    separator = Some(index + 1);
-                }
-                None => args.push(pattern.to_string()),
+        match separator {
+            Some(index) => {
+                args.insert(index, pattern.to_string());
+                separator = Some(index + 1);
             }
+            None => args.push(pattern.to_string()),
         }
     }
     if show_output {
@@ -136,28 +137,50 @@ fn effective_test_command(
     CommandSpec::new(command.program.clone(), args)
 }
 
+fn is_cargo_test(command: &CommandSpec) -> bool {
+    command.program == "cargo"
+        && command
+            .args
+            .first()
+            .is_some_and(|argument| argument == "test")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn filter_is_combined_with_generated_scope() {
-        let command = CommandSpec::new("cargo", ["test", "tests::", "--", "--nocapture"]);
-        let effective = effective_test_command(&command, Some("my_test"), false);
-        assert_eq!(
-            effective.args,
-            vec!["test", "tests::my_test", "--", "--nocapture"]
-        );
+    fn filter_preserves_the_complete_cargo_test_graph() {
+        let command = CommandSpec::new("cargo", ["test", "--", "--nocapture"]);
+        let effective = effective_test_command(&command, Some("my_test"), false, None);
+        assert_eq!(effective.args, vec!["test", "my_test", "--", "--nocapture"]);
     }
 
     #[test]
     fn show_output_reuses_existing_separator() {
-        let command = CommandSpec::new("cargo", ["test", "tests::", "--", "--nocapture"]);
-        let effective = effective_test_command(&command, None, true);
+        let command = CommandSpec::new("cargo", ["test", "--", "--nocapture"]);
+        let effective = effective_test_command(&command, None, true, None);
         assert_eq!(
             effective.args,
-            vec!["test", "tests::", "--", "--show-output", "--nocapture"]
+            vec!["test", "--", "--show-output", "--nocapture"]
         );
+    }
+
+    #[test]
+    fn features_apply_to_the_program_and_host_test_builds() {
+        let command = CommandSpec::new("cargo", ["test"]);
+        let effective = effective_test_command(&command, None, false, Some("token-2022,debug"));
+        assert_eq!(
+            effective.args,
+            vec!["test", "--features", "token-2022,debug"]
+        );
+    }
+
+    #[test]
+    fn feature_flags_do_not_mutate_custom_test_commands() {
+        let command = CommandSpec::new("nextest", ["run"]);
+        let effective = effective_test_command(&command, None, false, Some("debug"));
+        assert_eq!(effective.args, vec!["run"]);
     }
 
     #[test]

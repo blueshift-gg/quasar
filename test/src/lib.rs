@@ -1,53 +1,63 @@
-//! Project-aware testing utilities for Quasar programs.
+//! Fixture-first tests for Solana programs built with Quasar.
 //!
-//! [`QuasarTest`] loads the program artifact produced by `quasar build` and
-//! delegates execution to [`quasar_svm::QuasarSvm`]. Its world-building methods
-//! cover the account setup repeated by most program tests, while
-//! [`ExecutionResultExt`] makes outcomes readable as protocol expectations.
+//! [`quasar_test`] turns an ordinary Rust test into an isolated [`Test`]
+//! world loaded with the current program. [`fixture`] provides composable
+//! account setup, while [`Outcome`] keeps execution assertions structured and
+//! independent of the SVM that ran the transaction.
 //!
-//! ```rust
-//! use quasar_test::{fixtures, Pubkey};
+//! ```rust,ignore
+//! use quasar_test::{fixture::Wallet, prelude::*};
 //!
-//! let address = Pubkey::new_unique();
-//! let wallet = fixtures::system_account(address, 1_000_000);
-//! assert_eq!(wallet.address, address);
-//! assert_eq!(wallet.lamports, 1_000_000);
+//! #[quasar_test]
+//! fn initializes(test: &mut Test) {
+//!     let authority = test.add(Wallet::new());
+//!     test.send(InitializeInstruction { authority }).succeeds();
+//! }
 //! ```
 
-mod assertions;
-pub mod fixtures;
+#![warn(missing_docs)]
+
+mod backend;
+pub mod fixture;
+mod fixtures;
+mod outcome;
 mod setup;
+mod types;
 mod world;
 
 pub use {
-    assertions::{ExecutionResultExt, InstructionExt},
-    quasar_svm::{Account, ProgramError, Pubkey, QuasarSvm, QuasarSvmConfig},
+    outcome::Outcome,
+    quasar_svm::{
+        system_program, AccountMeta, Instruction, Pubkey, SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
+        SPL_TOKEN_2022_PROGRAM_ID, SPL_TOKEN_PROGRAM_ID,
+    },
     quasar_test_derive::quasar_test,
-    setup::{QuasarTestBuilder, SetupError, PROGRAM_PATH_ENV},
-    world::{QuasarTest, Snapshot, DEFAULT_WALLET_LAMPORTS},
+    setup::{SetupError, TestBuilder, PROGRAM_PATH_ENV},
+    types::{Account, AccountChange, ProgramError},
+    world::{Snapshot, Test, DEFAULT_WALLET_LAMPORTS},
 };
 
-/// Convenient imports for Quasar program tests.
+/// Imports used by most program tests.
 pub mod prelude {
-    pub use {
-        crate::{
-            quasar_test, ExecutionResultExt, InstructionExt, QuasarSvmConfig, QuasarTest, Snapshot,
+    pub use crate::{
+        fixture::{
+            AssociatedTokenAccount, Fixture, Mint, Program, TokenAccount, TokenProgram, Wallet,
         },
-        quasar_svm::{
-            system_program, Account, AccountMeta, ExecutionResult, Instruction, ProgramError,
-            Pubkey, SPL_ASSOCIATED_TOKEN_PROGRAM_ID, SPL_TOKEN_2022_PROGRAM_ID,
-            SPL_TOKEN_PROGRAM_ID,
-        },
+        quasar_test, system_program, Account, AccountChange, AccountMeta, Instruction, Outcome,
+        ProgramError, Pubkey, Snapshot, Test, DEFAULT_WALLET_LAMPORTS,
+        SPL_ASSOCIATED_TOKEN_PROGRAM_ID, SPL_TOKEN_2022_PROGRAM_ID, SPL_TOKEN_PROGRAM_ID,
     };
 }
-
-pub use quasar_svm;
 
 #[cfg(test)]
 mod tests {
     use {
-        super::{fixtures, setup::resolve_program_path_from_named, ExecutionResultExt, SetupError},
-        quasar_svm::{ExecutionResult, ExecutionTrace, InstructionError, Pubkey},
+        super::{
+            backend::Backend,
+            fixture::{AssociatedTokenAccount, Fixture, Mint, TokenAccount, TokenProgram, Wallet},
+            setup::resolve_program_path_from_named,
+            Account, ProgramError, Pubkey, SetupError, Test, SPL_TOKEN_2022_PROGRAM_ID,
+        },
         std::{fs, path::PathBuf},
     };
 
@@ -57,6 +67,15 @@ mod tests {
             std::process::id(),
             std::thread::current().name().unwrap_or("test")
         ))
+    }
+
+    fn empty_test() -> Test {
+        Test {
+            backend: Backend::new(),
+            program_id: Pubkey::new_from_array([42; 32]),
+            program_path: PathBuf::new(),
+            fresh_addresses: 0,
+        }
     }
 
     #[test]
@@ -109,64 +128,61 @@ mod tests {
     }
 
     #[test]
-    fn fixtures_have_expected_owners_and_balances() {
-        let address = Pubkey::new_unique();
-        let system = fixtures::system_account(address, 42);
-        assert_eq!(system.address, address);
-        assert_eq!(system.lamports, 42);
-        assert_eq!(system.owner, quasar_svm::system_program::ID);
+    fn fixtures_are_deterministic_and_compose() {
+        let mut test = empty_test();
+        let wallet = test.add(Wallet::new().lamports(42));
+        let mint = test.add(
+            Mint::new(wallet)
+                .supply(1_000)
+                .decimals(9)
+                .token_program(TokenProgram::Token2022),
+        );
+        let tokens = test.add(
+            TokenAccount::new(mint, wallet)
+                .amount(600)
+                .token_program(TokenProgram::Token2022),
+        );
+        let associated = test.add(
+            AssociatedTokenAccount::new(mint, wallet)
+                .amount(400)
+                .token_program(TokenProgram::Token2022),
+        );
 
-        let mint = fixtures::mint_account_with_supply(Pubkey::new_unique(), address, 42, 6);
-        assert_eq!(mint.owner, quasar_svm::SPL_TOKEN_PROGRAM_ID);
+        assert_eq!(test.lamports(wallet), 42);
+        assert_eq!(test.supply(mint), 1_000);
+        assert_eq!(test.tokens(tokens), 600);
+        assert_eq!(test.tokens(associated), 400);
+        assert_eq!(test.account(mint).unwrap().owner, SPL_TOKEN_2022_PROGRAM_ID);
         assert_eq!(
-            u64::from_le_bytes(mint.data[36..44].try_into().unwrap()),
-            42
+            associated,
+            test.derive_ata(wallet, mint, TokenProgram::Token2022)
         );
     }
 
     #[test]
-    fn typed_error_and_compute_assertions_accept_generated_shape() {
-        #[derive(Clone, Copy)]
-        enum ExampleError {
-            Failure = 6000,
-        }
-        impl From<ExampleError> for u32 {
-            fn from(error: ExampleError) -> Self {
-                error as u32
+    fn applications_can_define_protocol_fixtures() {
+        struct ProtocolFixture;
+
+        impl Fixture for ProtocolFixture {
+            type Output = (Pubkey, Pubkey);
+
+            fn install(self, test: &mut Test) -> Self::Output {
+                let authority = test.add(Wallet::new());
+                let state = test.fresh_address();
+                test.add(Account::new(state, test.program_id(), 1, vec![1, 2, 3]));
+                (authority, state)
             }
         }
 
-        let address = Pubkey::new_unique();
-        let mint_address = Pubkey::new_unique();
-        let token_address = Pubkey::new_unique();
-        let closed_address = Pubkey::new_unique();
-        let result = ExecutionResult {
-            compute_units_consumed: 99,
-            execution_time_us: 0,
-            raw_result: Err(InstructionError::Custom(6000)),
-            return_data: Vec::new(),
-            accounts: vec![
-                fixtures::system_account(address, 42),
-                fixtures::mint_account_with_supply(mint_address, address, 55, 6),
-                fixtures::token_account(token_address, mint_address, address, 89),
-                fixtures::empty_account(closed_address),
-            ],
-            logs: Vec::new(),
-            pre_balances: Vec::new(),
-            post_balances: Vec::new(),
-            pre_token_balances: Vec::new(),
-            post_token_balances: Vec::new(),
-            execution_trace: ExecutionTrace {
-                instructions: Vec::new(),
-            },
-        };
+        let mut test = empty_test();
+        let (authority, state) = test.add(ProtocolFixture);
+        assert_ne!(authority, state);
+        assert_eq!(test.account(state).unwrap().data, [1, 2, 3]);
+    }
 
-        result
-            .fails_with(ExampleError::Failure)
-            .cu_below(100)
-            .has_lamports(address, 42)
-            .has_supply(mint_address, 55)
-            .has_tokens(token_address, 89)
-            .is_closed(closed_address);
+    #[test]
+    fn stable_program_errors_do_not_expose_the_backend_type() {
+        let error = ProgramError::from(quasar_svm::ProgramError::InvalidInstructionData);
+        assert_eq!(error, ProgramError::InvalidInstructionData);
     }
 }

@@ -130,7 +130,7 @@ fn representative_rust_client_compiles_and_executes_wire_contracts() {
 fn instruction_account_pda_decoder_error_and_event_contracts() {
     let authority = Address::from([9_u8; 32]);
     let expected_vault = find_vault_address(&authority, &ID).0;
-    let instruction: Instruction = MakeInstructionInput {
+    let instruction: Instruction = MakeInstruction {
         authority,
         amount: 42,
         flag: true,

@@ -1,10 +1,9 @@
 extern crate std;
 use {
     alloc::vec,
-    quasar_lang::client::{DynBytes, DynVec},
+    quasar_lang::client::{DynString, DynVec},
     quasar_multisig_client::*,
-    quasar_svm::{Account, Instruction, Pubkey, QuasarSvm},
-    solana_instruction::AccountMeta,
+    quasar_test::prelude::*,
 };
 
 const CREATOR: Pubkey = Pubkey::new_from_array([11; 32]);
@@ -19,395 +18,179 @@ const MAX_DEPOSIT_CU: u64 = 2_268;
 const MAX_SET_LABEL_CU: u64 = 2_212;
 const MAX_EXECUTE_TRANSFER_CU: u64 = 2_744;
 
-fn setup() -> QuasarSvm {
-    let elf = std::fs::read("../../target/deploy/quasar_multisig.so").unwrap();
+#[test]
+fn elf_size_stays_within_budget() {
+    let bytes = std::fs::read("../../target/deploy/quasar_multisig.so").unwrap();
     assert!(
-        elf.len() <= MAX_ELF_BYTES,
+        bytes.len() <= MAX_ELF_BYTES,
         "multisig ELF grew to {} bytes; budget is {MAX_ELF_BYTES}",
-        elf.len()
-    );
-    QuasarSvm::new().with_program(&crate::ID, &elf)
-}
-
-fn assert_cu(instruction: &str, consumed: u64, maximum: u64) {
-    assert!(
-        consumed <= maximum,
-        "{instruction} consumed {consumed} CU; budget is {maximum}"
+        bytes.len()
     );
 }
 
-fn signer(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, 10_000_000_000)
-}
-
-fn empty(address: Pubkey) -> Account {
-    Account {
-        address,
-        lamports: 0,
-        data: vec![],
-        owner: quasar_svm::system_program::ID,
-        executable: false,
-    }
-}
-
-fn config_account(
+struct ConfigFixture<'a> {
     address: Pubkey,
     creator: Pubkey,
     threshold: u8,
     bump: u8,
-    label: &[u8],
-    signers: &[Pubkey],
-) -> Account {
-    let config = MultisigConfig {
+    label: &'a str,
+    signers: &'a [Pubkey],
+}
+
+impl Fixture for ConfigFixture<'_> {
+    type Output = Pubkey;
+
+    fn install(self, test: &mut Test) -> Self::Output {
+        let config = MultisigConfig {
+            creator: self.creator,
+            threshold: self.threshold,
+            bump: self.bump,
+            label: DynString::<u8>::new(self.label),
+            signers: DynVec::<Pubkey, u16>::new(self.signers.to_vec()),
+        };
+        test.add(Account::new(
+            self.address,
+            crate::ID,
+            1_000_000,
+            wincode::serialize(&config).unwrap(),
+        ))
+    }
+}
+
+fn config_fixture<'a>(
+    address: Pubkey,
+    creator: Pubkey,
+    threshold: u8,
+    bump: u8,
+    label: &'a str,
+    signers: &'a [Pubkey],
+) -> ConfigFixture<'a> {
+    ConfigFixture {
+        address,
         creator,
         threshold,
         bump,
-        label: DynBytes::<u8>::new(label.to_vec()),
-        signers: DynVec::<Pubkey, u16>::new(signers.to_vec()),
-    };
-    Account {
-        address,
-        lamports: 1_000_000,
-        data: wincode::serialize(&config).unwrap(),
-        owner: crate::ID,
-        executable: false,
+        label,
+        signers,
     }
 }
 
-#[test]
-fn test_create() {
-    let mut svm = setup();
+#[quasar_test]
+fn create_initializes_dynamic_config(test: &mut Test) {
+    test.add(Wallet::new().at(CREATOR));
+    let config = find_config_address(&CREATOR, &crate::ID).0;
 
-    let system_program = quasar_svm::system_program::ID;
-    let creator = CREATOR;
-    let signer1 = SIGNER1;
-    let signer2 = SIGNER2;
-    let signer3 = SIGNER3;
-    let (config, _) = Pubkey::find_program_address(&[b"multisig", creator.as_ref()], &crate::ID);
-
-    let threshold: u8 = 2;
-
-    // Rent sysvar address
-    let rent = quasar_svm::solana_sdk_ids::sysvar::rent::ID;
-
-    let instruction: Instruction = CreateInstruction {
-        creator,
-        config,
-        rent,
-        system_program,
-        threshold,
+    let outcome = test.send(CreateInstruction {
+        creator: CREATOR,
+        threshold: 2,
         remaining_accounts: vec![
-            AccountMeta::new_readonly(signer1, true),
-            AccountMeta::new_readonly(signer2, true),
-            AccountMeta::new_readonly(signer3, true),
+            AccountMeta::new_readonly(SIGNER1, true),
+            AccountMeta::new_readonly(SIGNER2, true),
+            AccountMeta::new_readonly(SIGNER3, true),
         ],
-    }
-    .into();
+    });
 
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer(creator),
-            empty(config),
-            empty(signer1),
-            empty(signer2),
-            empty(signer3),
-        ],
-    );
-
-    assert!(result.is_ok(), "create failed: {:?}", result.raw_result);
-
-    // Verify config account data
-    let config_data = &result.account(&config).unwrap().data;
-    assert_eq!(config_data[0], 1, "discriminator should be 1");
-    assert_eq!(config_data[33], threshold, "threshold mismatch");
-
-    // Signers count prefix at offset 36 (disc(1) + ZC(34) + label_prefix(1) +
-    // label(0))
-    let signers_count = u16::from_le_bytes([config_data[36], config_data[37]]);
-    assert_eq!(signers_count, 3, "signers count should be 3");
-
-    assert_cu("create", result.compute_units_consumed, MAX_CREATE_CU);
+    outcome.succeeds().cu_at_most(MAX_CREATE_CU);
+    let ProgramAccount::MultisigConfig(state) = outcome.account_as(config, decode_account).unwrap();
+    assert_eq!(state.creator, CREATOR);
+    assert_eq!(state.threshold, 2);
+    assert_eq!(state.signers.len(), 3);
+    assert!(outcome
+        .account_changes()
+        .iter()
+        .any(|change| change.address() == config && change.was_created()));
 }
 
-#[test]
-fn test_deposit() {
-    let mut svm = setup();
-
-    let system_program = quasar_svm::system_program::ID;
-    let creator = CREATOR;
-    let signer1 = SIGNER1;
-    let signer2 = SIGNER2;
-    let depositor = DEPOSITOR;
-
-    let (config, config_bump) =
-        Pubkey::find_program_address(&[b"multisig", creator.as_ref()], &crate::ID);
-    let (vault, _) = Pubkey::find_program_address(&[b"vault", config.as_ref()], &crate::ID);
-
-    let deposit_amount: u64 = 1_000_000_000;
-
-    let instruction: Instruction = DepositInstruction {
-        depositor,
+#[quasar_test]
+fn deposit_funds_the_multisig_vault(test: &mut Test) {
+    test.add(Wallet::new().at(DEPOSITOR));
+    let (config, bump) = find_config_address(&CREATOR, &crate::ID);
+    let vault = find_vault_address(&config, &crate::ID).0;
+    test.add(config_fixture(
         config,
-        vault,
-        system_program,
-        amount: deposit_amount,
-    }
-    .into();
+        CREATOR,
+        2,
+        bump,
+        "",
+        &[SIGNER1, SIGNER2],
+    ));
 
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer(depositor),
-            config_account(config, creator, 2, config_bump, b"", &[signer1, signer2]),
-            empty(vault),
-        ],
-    );
-
-    assert!(result.is_ok(), "deposit failed: {:?}", result.raw_result);
-
-    let vault_after = result.account(&vault).unwrap().lamports;
-    assert_eq!(vault_after, deposit_amount, "vault lamports after deposit");
-
-    assert_cu("deposit", result.compute_units_consumed, MAX_DEPOSIT_CU);
-}
-
-#[test]
-fn test_set_label() {
-    let mut svm = setup();
-
-    let system_program = quasar_svm::system_program::ID;
-    let creator = CREATOR;
-    let signer1 = SIGNER1;
-    let (config, config_bump) =
-        Pubkey::find_program_address(&[b"multisig", creator.as_ref()], &crate::ID);
-
-    let label = "Treasury";
-
-    let instruction: Instruction = SetLabelInstruction {
-        creator,
+    test.send(DepositInstruction {
+        depositor: DEPOSITOR,
         config,
-        system_program,
-        label: DynBytes::<u8>::new(label.as_bytes().to_vec()),
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            signer(creator),
-            config_account(config, creator, 1, config_bump, b"", &[signer1]),
-        ],
-    );
-
-    assert!(result.is_ok(), "set_label failed: {:?}", result.raw_result);
-
-    // Verify label was stored
-    // Compact layout: disc(1) + header(37) + tail(label_data + signers_data)
-    // Header: creator(32) + threshold(1) + bump(1) + label_len(1) + signers_len(2)
-    // = 37
-    let config_data = &result.account(&config).unwrap().data;
-    let label_len = config_data[35] as usize; // label_len at offset 1+32+1+1 = 35
-    assert_eq!(label_len, label.len(), "label length mismatch");
-
-    let tail_start = 1 + 37; // disc + header
-    let stored_label =
-        core::str::from_utf8(&config_data[tail_start..tail_start + label_len]).unwrap();
-    assert_eq!(stored_label, label, "label content mismatch");
-
-    assert_cu("set_label", result.compute_units_consumed, MAX_SET_LABEL_CU);
-}
-
-#[test]
-fn test_execute_transfer() {
-    let mut svm = setup();
-
-    let system_program = quasar_svm::system_program::ID;
-    let creator = CREATOR;
-    let signer1 = SIGNER1;
-    let signer2 = SIGNER2;
-    let signer3 = SIGNER3;
-    let recipient = RECIPIENT;
-
-    let (config, config_bump) =
-        Pubkey::find_program_address(&[b"multisig", creator.as_ref()], &crate::ID);
-    let (vault, _) = Pubkey::find_program_address(&[b"vault", config.as_ref()], &crate::ID);
-
-    let transfer_amount: u64 = 1_000_000_000;
-
-    let instruction: Instruction = ExecuteTransferInstruction {
-        config,
-        creator,
-        vault,
-        recipient,
-        system_program,
-        amount: transfer_amount,
-        remaining_accounts: vec![
-            AccountMeta::new_readonly(signer1, true),
-            AccountMeta::new_readonly(signer2, true),
-        ],
-    }
-    .into();
-
-    let vault_initial = 5_000_000_000u64;
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            config_account(
-                config,
-                creator,
-                2,
-                config_bump,
-                b"",
-                &[signer1, signer2, signer3],
-            ),
-            empty(creator),
-            Account {
-                address: vault,
-                lamports: vault_initial,
-                data: vec![],
-                owner: quasar_svm::system_program::ID,
-                executable: false,
-            },
-            empty(recipient),
-            empty(signer1),
-            empty(signer2),
-        ],
-    );
-
-    assert!(
-        result.is_ok(),
-        "execute_transfer failed: {:?}",
-        result.raw_result
-    );
-
-    let vault_after = result.account(&vault).unwrap().lamports;
-    let recipient_after = result.account(&recipient).unwrap().lamports;
-
-    assert_eq!(
-        vault_after,
-        vault_initial - transfer_amount,
-        "vault lamports after transfer"
-    );
-    assert_eq!(
-        recipient_after, transfer_amount,
-        "recipient lamports after transfer"
-    );
-
-    assert_cu(
-        "execute_transfer",
-        result.compute_units_consumed,
-        MAX_EXECUTE_TRANSFER_CU,
-    );
-}
-
-#[test]
-fn test_execute_transfer_insufficient_signers() {
-    let mut svm = setup();
-
-    let system_program = quasar_svm::system_program::ID;
-    let creator = CREATOR;
-    let signer1 = SIGNER1;
-    let signer2 = SIGNER2;
-    let signer3 = SIGNER3;
-    let recipient = RECIPIENT;
-
-    let (config, config_bump) =
-        Pubkey::find_program_address(&[b"multisig", creator.as_ref()], &crate::ID);
-    let (vault, _) = Pubkey::find_program_address(&[b"vault", config.as_ref()], &crate::ID);
-
-    // Only one signer with a threshold of two should fail.
-    let instruction: Instruction = ExecuteTransferInstruction {
-        config,
-        creator,
-        vault,
-        recipient,
-        system_program,
         amount: 1_000_000_000,
-        remaining_accounts: vec![AccountMeta::new_readonly(signer1, true)],
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            config_account(
-                config,
-                creator,
-                2,
-                config_bump,
-                b"",
-                &[signer1, signer2, signer3],
-            ),
-            empty(creator),
-            Account {
-                address: vault,
-                lamports: 5_000_000_000,
-                data: vec![],
-                owner: quasar_svm::system_program::ID,
-                executable: false,
-            },
-            empty(recipient),
-            empty(signer1),
-        ],
-    );
-
-    assert!(result.is_err(), "should fail with insufficient signers");
+    })
+    .succeeds()
+    .cu_at_most(MAX_DEPOSIT_CU)
+    .has_lamports(vault, 1_000_000_000);
 }
 
-#[test]
-fn test_execute_transfer_duplicate_signer_counts_once() {
-    let mut svm = setup();
+#[quasar_test]
+fn set_label_updates_dynamic_state(test: &mut Test) {
+    test.add(Wallet::new().at(CREATOR));
+    let (config, bump) = find_config_address(&CREATOR, &crate::ID);
+    test.add(config_fixture(config, CREATOR, 1, bump, "", &[SIGNER1]));
 
-    let system_program = quasar_svm::system_program::ID;
-    let creator = CREATOR;
-    let signer1 = SIGNER1;
-    let signer2 = SIGNER2;
-    let signer3 = SIGNER3;
-    let recipient = RECIPIENT;
+    let outcome = test.send(SetLabelInstruction {
+        creator: CREATOR,
+        label: DynString::<u8>::new("Treasury"),
+    });
 
-    let (config, config_bump) =
-        Pubkey::find_program_address(&[b"multisig", creator.as_ref()], &crate::ID);
-    let (vault, _) = Pubkey::find_program_address(&[b"vault", config.as_ref()], &crate::ID);
+    outcome.succeeds().cu_at_most(MAX_SET_LABEL_CU);
+    let ProgramAccount::MultisigConfig(state) = outcome.account_as(config, decode_account).unwrap();
+    assert_eq!(state.label.as_bytes(), b"Treasury");
+}
 
-    let instruction: Instruction = ExecuteTransferInstruction {
+fn transfer_world(test: &mut Test) -> (Pubkey, Pubkey) {
+    let (config, bump) = find_config_address(&CREATOR, &crate::ID);
+    let vault = find_vault_address(&config, &crate::ID).0;
+    test.add(config_fixture(
         config,
-        creator,
-        vault,
-        recipient,
-        system_program,
+        CREATOR,
+        2,
+        bump,
+        "",
+        &[SIGNER1, SIGNER2, SIGNER3],
+    ));
+    test.add(Wallet::new().at(vault).lamports(5_000_000_000));
+    (config, vault)
+}
+
+fn transfer_instruction(signers: impl IntoIterator<Item = Pubkey>) -> ExecuteTransferInstruction {
+    ExecuteTransferInstruction {
+        creator: CREATOR,
+        recipient: RECIPIENT,
         amount: 1_000_000_000,
-        remaining_accounts: vec![
-            AccountMeta::new_readonly(signer1, true),
-            AccountMeta::new_readonly(signer1, true),
-        ],
+        remaining_accounts: signers
+            .into_iter()
+            .map(|signer| AccountMeta::new_readonly(signer, true))
+            .collect(),
     }
-    .into();
+}
 
-    let result = svm.process_instruction(
-        &instruction,
-        &[
-            config_account(
-                config,
-                creator,
-                2,
-                config_bump,
-                b"",
-                &[signer1, signer2, signer3],
-            ),
-            empty(creator),
-            Account {
-                address: vault,
-                lamports: 5_000_000_000,
-                data: vec![],
-                owner: quasar_svm::system_program::ID,
-                executable: false,
-            },
-            empty(recipient),
-            empty(signer1),
-        ],
-    );
+#[quasar_test]
+fn execute_transfer_accepts_the_threshold(test: &mut Test) {
+    let (_, vault) = transfer_world(test);
 
-    assert!(result.is_err(), "duplicate signer should count once");
+    test.send(transfer_instruction([SIGNER1, SIGNER2]))
+        .succeeds()
+        .cu_at_most(MAX_EXECUTE_TRANSFER_CU)
+        .has_lamports(vault, 4_000_000_000)
+        .has_lamports(RECIPIENT, 1_000_000_000);
+}
+
+#[quasar_test]
+fn execute_transfer_rejects_too_few_signers(test: &mut Test) {
+    transfer_world(test);
+
+    test.send(transfer_instruction([SIGNER1]))
+        .fails(ProgramError::MissingRequiredSignature);
+}
+
+#[quasar_test]
+fn execute_transfer_counts_a_duplicate_once(test: &mut Test) {
+    transfer_world(test);
+
+    test.send(transfer_instruction([SIGNER1, SIGNER1]))
+        .fails(ProgramError::MissingRequiredSignature);
 }

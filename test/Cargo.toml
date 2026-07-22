@@ -18,10 +18,15 @@ include = ["/src/**", "/README.md", "/LICENSE-APACHE", "/LICENSE-MIT"]
 workspace = true
 
 [dependencies]
+base64 = "0.22"
 quasar-svm = "=0.1.0"
 quasar-lang = { path = "../lang", version = "=0.1.0" }
 quasar-test-derive = { path = "derive", version = "=0.1.0" }
+serde_json = "1"
 spl-token = { version = "=9.0.0", default-features = false, features = ["no-entrypoint"] }
 
 [lib]
 doctest = true
+
+[dev-dependencies]
+tempfile = "3"
