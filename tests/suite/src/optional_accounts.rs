@@ -178,3 +178,99 @@ fn multiple_mut_optional_none_sentinels() {
         result.raw_result
     );
 }
+
+#[test]
+fn multiple_mut_optional_all_present() {
+    let mut svm = svm_misc();
+    let authority = Pubkey::new_unique();
+    let first = Pubkey::new_unique();
+    let second = Pubkey::new_unique();
+    let third = Pubkey::new_unique();
+
+    let ix: Instruction = OptionalMutAccountsInstruction {
+        authority,
+        first,
+        second,
+        third,
+    }
+    .into();
+
+    let result = svm.process_instruction(
+        &ix,
+        &[
+            signer_account(authority),
+            simple_account(first, authority, 1, 0),
+            simple_account(second, authority, 2, 0),
+            simple_account(third, authority, 3, 0),
+        ],
+    );
+    assert!(
+        result.is_ok(),
+        "all mut optionals present: {:?}",
+        result.raw_result
+    );
+}
+
+#[test]
+fn multiple_mut_optional_mixed() {
+    // None sentinel sandwiched between two present mut optionals: index
+    // accounting must not drift across the skipped slot.
+    let mut svm = svm_misc();
+    let authority = Pubkey::new_unique();
+    let first = Pubkey::new_unique();
+    let third = Pubkey::new_unique();
+    let sentinel = quasar_test_misc::ID;
+
+    let ix: Instruction = OptionalMutAccountsInstruction {
+        authority,
+        first,
+        second: sentinel,
+        third,
+    }
+    .into();
+
+    let result = svm.process_instruction(
+        &ix,
+        &[
+            signer_account(authority),
+            simple_account(first, authority, 1, 0),
+            simple_account(third, authority, 3, 0),
+        ],
+    );
+    assert!(
+        result.is_ok(),
+        "mixed present/sentinel mut optionals: {:?}",
+        result.raw_result
+    );
+}
+
+#[test]
+fn mut_optional_present_not_writable() {
+    // The writable check is skipped only for the None sentinel; a PRESENT
+    // optional marked non-writable must still be rejected.
+    let mut svm = svm_misc();
+    let authority = Pubkey::new_unique();
+    let first = Pubkey::new_unique();
+    let sentinel = quasar_test_misc::ID;
+
+    let mut ix: Instruction = OptionalMutAccountsInstruction {
+        authority,
+        first,
+        second: sentinel,
+        third: sentinel,
+    }
+    .into();
+    ix.accounts[1].is_writable = false; // demote the present mut optional
+
+    let result = svm.process_instruction(
+        &ix,
+        &[
+            signer_account(authority),
+            simple_account(first, authority, 1, 0),
+        ],
+    );
+    assert!(
+        result.is_err(),
+        "present mut optional without writable flag must fail"
+    );
+}
