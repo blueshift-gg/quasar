@@ -191,18 +191,18 @@ pub(super) fn emit_instruction_builders(
                 method_params.join(", ")
             )
             .expect("write to String");
-            let mut unchecked_args = Vec::new();
+            let mut raw_args = Vec::new();
             if !user_accounts.is_empty() || !instruction.args.is_empty() || has_remaining {
-                unchecked_args.push("input");
+                raw_args.push("input");
             }
-            unchecked_args.push("{}");
+            raw_args.push("{}");
             if needs_account_resolver {
-                unchecked_args.push("resolver");
+                raw_args.push("resolver");
             }
             writeln!(
                 out,
-                "    return this.create{pascal}InstructionUnchecked({});",
-                unchecked_args.join(", ")
+                "    return this.create{pascal}InstructionRaw({});",
+                raw_args.join(", ")
             )
             .expect("write to String");
             out.push_str("  }\n\n");
@@ -224,7 +224,7 @@ pub(super) fn emit_instruction_builders(
             if instruction.accounts.is_empty() {
                 ""
             } else {
-                "Unchecked"
+                "Raw"
             },
             method_params.join(", ")
         )

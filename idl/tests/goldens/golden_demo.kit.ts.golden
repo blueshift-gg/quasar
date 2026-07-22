@@ -178,10 +178,10 @@ export class GoldenDemoClient {
   }
 
   async createMakeInstruction(input: MakeInstructionInput): Promise<Instruction> {
-    return this.createMakeInstructionUnchecked(input, {});
+    return this.createMakeInstructionRaw(input, {});
   }
 
-  async createMakeInstructionUnchecked(input: MakeInstructionInput, accountOverrides: MakeInstructionAccountOverrides): Promise<Instruction> {
+  async createMakeInstructionRaw(input: MakeInstructionInput, accountOverrides: MakeInstructionAccountOverrides): Promise<Instruction> {
     const accountsMap: Record<string, Address> = {};
     accountsMap["vault"] = await findVaultAddress((accountOverrides.authority ?? input.authority));
     const argsCodec = getStructCodec([
@@ -240,4 +240,3 @@ export const PROGRAM_ERROR_CODES = {
 export const PROGRAM_ERRORS: Record<number, { name: string; msg?: string }> = {
   6000: { name: "Unauthorized", msg: "caller is not the vault authority" },
 };
-

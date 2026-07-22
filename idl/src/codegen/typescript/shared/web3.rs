@@ -72,18 +72,18 @@ pub(super) fn emit_instruction_builders(
                 method_params.join(", ")
             )
             .expect("write to String");
-            let mut unchecked_args = Vec::new();
+            let mut raw_args = Vec::new();
             if !user_accs.is_empty() || !ix.args.is_empty() || has_remaining {
-                unchecked_args.push("input");
+                raw_args.push("input");
             }
-            unchecked_args.push("{}");
+            raw_args.push("{}");
             if ix_needs_account_resolver {
-                unchecked_args.push("resolver");
+                raw_args.push("resolver");
             }
             writeln!(
                 out,
-                "    return this.create{pascal}InstructionUnchecked({});",
-                unchecked_args.join(", ")
+                "    return this.create{pascal}InstructionRaw({});",
+                raw_args.join(", ")
             )
             .expect("write to String");
             out.push_str("  }\n\n");
@@ -102,11 +102,7 @@ pub(super) fn emit_instruction_builders(
         writeln!(
             out,
             "  {async_kw}create{pascal}Instruction{}({}): {return_type} {{",
-            if ix.accounts.is_empty() {
-                ""
-            } else {
-                "Unchecked"
-            },
+            if ix.accounts.is_empty() { "" } else { "Raw" },
             method_params.join(", ")
         )
         .expect("write to String");

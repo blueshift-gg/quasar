@@ -647,5 +647,8 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
         out.push_str("};\n\n");
     }
 
+    while out.ends_with("\n\n") {
+        out.pop();
+    }
     Ok(out)
 }

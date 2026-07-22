@@ -22,7 +22,7 @@ The primary product scope is:
   handling, and generated program behavior;
 - `quasar-spl`, including SPL parsing, validation, account views, and CPI
   helpers;
-- Rust `quasar-test`, including its macros, fixtures, and assertions; and
+- Rust and TypeScript `quasar-test`, including macros, fixtures, and assertions; and
 - `quasar-cli`, including configuration and command construction, project and
   client generation, deployment and verification, profiling, and keypair or
   secret-file handling.

@@ -131,7 +131,7 @@ impl QuasarConfig {
             ),
             (
                 "testing.typescript",
-                "TypeScript testing was removed; use Rust `quasar-test`",
+                "replace it with the single typed `testing.command`; TypeScript can invoke `@blueshift-gg/quasar-test` through that command",
             ),
             (
                 "clients.languages",

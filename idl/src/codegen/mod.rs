@@ -554,8 +554,8 @@ mod tests {
         assert!(kit.contains("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"));
         for output in [&typescript, &kit] {
             assert!(output.contains("export interface CreateInstructionAccountOverrides"));
-            assert!(output.contains("return this.createCreateInstructionUnchecked(input, {});"));
-            assert!(output.contains("createCreateInstructionUnchecked("));
+            assert!(output.contains("return this.createCreateInstructionRaw(input, {});"));
+            assert!(output.contains("createCreateInstructionRaw("));
             assert!(output.contains("accountOverrides.ownerTokens ?? accountsMap[\"ownerTokens\"]"));
         }
         assert!(python.contains("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"));
