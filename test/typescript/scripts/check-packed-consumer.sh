@@ -5,11 +5,13 @@ package_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 consumer_dir="$(mktemp -d "${TMPDIR:-/tmp}/quasar-test-consumer.XXXXXX")"
 trap 'rm -rf "$consumer_dir"' EXIT
 
-npm pack \
-  --prefix "$package_root" \
-  --ignore-scripts \
-  --pack-destination "$consumer_dir" \
-  >/dev/null
+(
+  cd "$package_root"
+  npm pack \
+    --ignore-scripts \
+    --pack-destination "$consumer_dir" \
+    >/dev/null
+)
 
 mkdir -p "$consumer_dir/consumer" "$consumer_dir/fixtures/vault"
 cp -R "$package_root/tests/consumer/." "$consumer_dir/consumer/"
