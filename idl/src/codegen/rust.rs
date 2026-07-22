@@ -618,6 +618,19 @@ fn emit_single_instruction(
     let mut out = String::new();
 
     let struct_name = snake_to_pascal(&ix.name);
+    let instruction_name = format!("{struct_name}Instruction");
+    let has_resolved_accounts = ix.accounts.iter().any(|account| {
+        !account.optional
+            && matches!(
+                account.resolver,
+                IdlResolver::Pda { .. } | IdlResolver::AssociatedToken { .. }
+            )
+    });
+    let raw_instruction_name = if has_resolved_accounts {
+        format!("{instruction_name}Raw")
+    } else {
+        instruction_name.clone()
+    };
 
     let has_remaining = ix.remaining_accounts.is_some();
     if has_remaining {
@@ -652,7 +665,7 @@ fn emit_single_instruction(
 
     out.push('\n');
 
-    writeln!(out, "pub struct {}Instruction {{", struct_name).expect("write to String");
+    writeln!(out, "pub struct {raw_instruction_name} {{").expect("write to String");
 
     for account in &ix.accounts {
         if !account.optional && matches!(account.resolver, IdlResolver::Const { .. }) {
@@ -690,28 +703,14 @@ fn emit_single_instruction(
 
     out.push_str("}\n\n");
 
-    let has_resolved_input = ix.accounts.iter().any(|account| {
-        !account.optional
-            && matches!(
-                account.resolver,
-                IdlResolver::Pda { .. } | IdlResolver::AssociatedToken { .. }
-            )
-    });
-
-    if has_resolved_input {
-        emit_resolved_instruction_input(&mut out, idl, ix, &struct_name)?;
+    if has_resolved_accounts {
+        emit_resolved_instruction(&mut out, idl, ix, &instruction_name, &raw_instruction_name)?;
     }
 
+    writeln!(out, "impl From<{raw_instruction_name}> for Instruction {{").expect("write to String");
     writeln!(
         out,
-        "impl From<{}Instruction> for Instruction {{",
-        struct_name
-    )
-    .expect("write to String");
-    writeln!(
-        out,
-        "    fn from(ix: {}Instruction) -> Instruction {{",
-        struct_name
+        "    fn from(ix: {raw_instruction_name}) -> Instruction {{"
     )
     .expect("write to String");
     if !has_remaining && ix.args.is_empty() && !accounts_need_address {
@@ -871,20 +870,19 @@ fn emit_single_instruction(
     Ok(out)
 }
 
-/// Emit the ergonomic Rust input for an instruction whose IDL can resolve at
-/// least one PDA. The raw `{Name}Instruction` remains the lossless escape
-/// hatch; this additive input mirrors the TypeScript/Python/Go clients by
-/// asking callers only for unresolved accounts and instruction arguments.
-fn emit_resolved_instruction_input(
+/// Emit the canonical Rust instruction for an IDL that can resolve at least
+/// one account. The public instruction asks only for caller-controlled values;
+/// `{Name}InstructionRaw` remains the explicit account-override escape hatch.
+fn emit_resolved_instruction(
     out: &mut String,
     idl: &Idl,
     ix: &crate::types::IdlInstruction,
-    struct_name: &str,
+    instruction_name: &str,
+    raw_instruction_name: &str,
 ) -> CodegenResult<()> {
-    let input_name = format!("{struct_name}InstructionInput");
     let account_field_seeds = rust_account_field_seed_inputs(idl, ix);
 
-    writeln!(out, "pub struct {input_name} {{").expect("write to String");
+    writeln!(out, "pub struct {instruction_name} {{").expect("write to String");
 
     // Required caller-controlled accounts first. Optional accounts stay
     // caller-controlled even when their wrapped resolver is a PDA: `None`
@@ -943,12 +941,12 @@ fn emit_resolved_instruction_input(
 
     writeln!(
         out,
-        "impl From<{input_name}> for {struct_name}Instruction {{"
+        "impl From<{instruction_name}> for {raw_instruction_name} {{"
     )
     .expect("write to String");
     writeln!(
         out,
-        "    fn from(ix: {input_name}) -> {struct_name}Instruction {{"
+        "    fn from(ix: {instruction_name}) -> {raw_instruction_name} {{"
     )
     .expect("write to String");
 
@@ -1039,7 +1037,7 @@ fn emit_resolved_instruction_input(
         }
     }
 
-    writeln!(out, "        {struct_name}Instruction {{").expect("write to String");
+    writeln!(out, "        {raw_instruction_name} {{").expect("write to String");
     for account in &ix.accounts {
         if !matches!(account.resolver, IdlResolver::Const { .. }) {
             let field_name = camel_to_snake(&account.name);
@@ -1062,9 +1060,10 @@ fn emit_resolved_instruction_input(
     out.push_str("    }\n");
     out.push_str("}\n\n");
 
-    writeln!(out, "impl From<{input_name}> for Instruction {{").expect("write to String");
-    writeln!(out, "    fn from(ix: {input_name}) -> Instruction {{").expect("write to String");
-    writeln!(out, "        {struct_name}Instruction::from(ix).into()").expect("write to String");
+    writeln!(out, "impl From<{instruction_name}> for Instruction {{").expect("write to String");
+    writeln!(out, "    fn from(ix: {instruction_name}) -> Instruction {{")
+        .expect("write to String");
+    writeln!(out, "        {raw_instruction_name}::from(ix).into()").expect("write to String");
     out.push_str("    }\n");
     out.push_str("}\n\n");
 

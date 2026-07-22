@@ -380,26 +380,26 @@ mod tests {
     }
 
     #[test]
-    fn rust_instruction_input_resolves_pdas_without_removing_raw_builder() {
+    fn rust_instruction_resolves_pdas_and_keeps_a_raw_escape_hatch() {
         let files = generate_rust_client(&idl_with_u64_arg_seed()).unwrap();
         let instruction_rs = files
             .iter()
             .find_map(|(path, contents)| (path == "instructions/create.rs").then_some(contents))
             .expect("create instruction generated");
 
-        assert!(instruction_rs.contains("pub struct CreateInstruction {"));
+        assert!(instruction_rs.contains("pub struct CreateInstructionRaw {"));
         assert!(instruction_rs.contains("pub vault: Address,"));
-        assert!(instruction_rs.contains("pub struct CreateInstructionInput {"));
+        assert!(instruction_rs.contains("pub struct CreateInstruction {"));
         assert!(!instruction_rs
-            .split("pub struct CreateInstructionInput {")
+            .split("pub struct CreateInstruction {")
             .nth(1)
-            .expect("resolved input body")
+            .expect("resolved instruction body")
             .split('}')
             .next()
-            .expect("resolved input fields")
+            .expect("resolved instruction fields")
             .contains("pub vault:"));
         assert!(instruction_rs.contains("ix.amount.to_le_bytes().as_ref()"));
-        assert!(instruction_rs.contains("impl From<CreateInstructionInput> for Instruction"));
+        assert!(instruction_rs.contains("impl From<CreateInstruction> for Instruction"));
     }
 
     #[test]
@@ -542,7 +542,7 @@ mod tests {
         let c = generate_c_client(&idl).unwrap();
 
         let rust_input = rust
-            .split("pub struct CreateInstructionInput {")
+            .split("pub struct CreateInstruction {")
             .nth(1)
             .expect("resolved Rust input")
             .split('}')

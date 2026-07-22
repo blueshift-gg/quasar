@@ -8,9 +8,11 @@ pub enum ProgramAccount {
 
 pub fn decode_account(data: &[u8]) -> Option<ProgramAccount> {
     if data.starts_with(MULTISIG_CONFIG_ACCOUNT_DISCRIMINATOR) {
-        return wincode::deserialize::<MultisigConfig>(data)
-            .ok()
-            .map(ProgramAccount::MultisigConfig);
+        let value = wincode::deserialize::<MultisigConfig>(data).ok()?;
+        if usize::try_from(wincode::serialized_size(&value).ok()?).ok()? != data.len() {
+            return None;
+        }
+        return Some(ProgramAccount::MultisigConfig(value));
     }
     None
 }

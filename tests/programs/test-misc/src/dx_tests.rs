@@ -13,24 +13,24 @@ use {
 };
 
 #[quasar_test]
-fn initialize_stores_typed_state(q: &mut QuasarTest) {
-    let payer = q.add_wallet();
-    let (account, bump) = q.derive_pda_with_bump(SimpleAccount::seeds(&payer));
+fn initialize_stores_typed_state(test: &mut Test) {
+    let payer = test.add(Wallet::new());
+    let (account, bump) = test.derive_pda_with_bump(SimpleAccount::seeds(&payer));
 
-    q.send(InitializeInstruction { payer, value: 42 })
+    test.send(InitializeInstruction { payer, value: 42 })
         .succeeds();
 
-    let state = q.read::<SimpleAccount>(account);
+    let state = test.read::<SimpleAccount>(account);
     assert_eq!(state.authority, payer);
     assert_eq!(state.value, 42);
     assert_eq!(state.bump, bump);
 }
 
 #[quasar_test]
-fn close_returns_the_account_to_the_system(q: &mut QuasarTest) {
-    let authority = q.add_wallet();
-    let (account, bump) = q.derive_pda_with_bump(SimpleAccount::seeds(&authority));
-    q.write(
+fn close_returns_the_account_to_the_system(test: &mut Test) {
+    let authority = test.add(Wallet::new());
+    let (account, bump) = test.derive_pda_with_bump(SimpleAccount::seeds(&authority));
+    test.write(
         account,
         SimpleAccountData {
             authority,
@@ -39,16 +39,17 @@ fn close_returns_the_account_to_the_system(q: &mut QuasarTest) {
         },
     );
 
-    q.send(CloseAccountInstruction { authority })
+    test.send(CloseAccountInstruction { authority })
         .succeeds()
         .is_closed(account);
 }
 
 #[quasar_test]
-fn close_rejects_a_foreign_authority(q: &mut QuasarTest) {
-    let [owner, intruder] = q.add_wallets();
-    let (account, bump) = q.derive_pda_with_bump(SimpleAccount::seeds(&owner));
-    q.write(
+fn close_rejects_a_foreign_authority(test: &mut Test) {
+    let owner = test.add(Wallet::new());
+    let intruder = test.add(Wallet::new());
+    let (account, bump) = test.derive_pda_with_bump(SimpleAccount::seeds(&owner));
+    test.write(
         account,
         SimpleAccountData {
             authority: owner,
@@ -57,14 +58,19 @@ fn close_rejects_a_foreign_authority(q: &mut QuasarTest) {
         },
     );
 
-    // The client derives the PDA from the passed authority; swapping in the
-    // owner's account is the mismatch under test.
-    let intruder_pda = q.derive_pda(SimpleAccount::seeds(&intruder));
-    q.send(
-        CloseAccountInstruction {
-            authority: intruder,
-        }
-        .swap_account(intruder_pda, account),
-    )
-    .fails_with(QuasarError::InvalidPda);
+    // The in-crate client infers this account, so the negative test makes its
+    // one adversarial mutation explicit.
+    let intruder_pda = test.derive_pda(SimpleAccount::seeds(&intruder));
+    let mut instruction: Instruction = CloseAccountInstruction {
+        authority: intruder,
+    }
+    .into();
+    instruction
+        .accounts
+        .iter_mut()
+        .find(|meta| meta.pubkey == intruder_pda)
+        .expect("generated account")
+        .pubkey = account;
+
+    test.send(instruction).fails_with(QuasarError::InvalidPda);
 }

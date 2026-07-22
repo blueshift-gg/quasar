@@ -57,24 +57,24 @@ use solana_instruction::{AccountMeta, Instruction};
 use crate::ID;
 use solana_address::Address;
 
-pub struct MakeInstruction {
+pub struct MakeInstructionRaw {
     pub authority: Address,
     pub vault: Address,
     pub amount: u64,
     pub flag: bool,
 }
 
-pub struct MakeInstructionInput {
+pub struct MakeInstruction {
     pub authority: Address,
     pub amount: u64,
     pub flag: bool,
 }
 
-impl From<MakeInstructionInput> for MakeInstruction {
-    fn from(ix: MakeInstructionInput) -> MakeInstruction {
+impl From<MakeInstruction> for MakeInstructionRaw {
+    fn from(ix: MakeInstruction) -> MakeInstructionRaw {
         let authority = ix.authority;
         let vault = Address::find_program_address(&[b"vault", authority.as_ref()], &ID).0;
-        MakeInstruction {
+        MakeInstructionRaw {
             authority,
             vault,
             amount: ix.amount,
@@ -83,14 +83,14 @@ impl From<MakeInstructionInput> for MakeInstruction {
     }
 }
 
-impl From<MakeInstructionInput> for Instruction {
-    fn from(ix: MakeInstructionInput) -> Instruction {
-        MakeInstruction::from(ix).into()
+impl From<MakeInstruction> for Instruction {
+    fn from(ix: MakeInstruction) -> Instruction {
+        MakeInstructionRaw::from(ix).into()
     }
 }
 
-impl From<MakeInstruction> for Instruction {
-    fn from(ix: MakeInstruction) -> Instruction {
+impl From<MakeInstructionRaw> for Instruction {
+    fn from(ix: MakeInstructionRaw) -> Instruction {
         let accounts = vec![
             AccountMeta::new_readonly(ix.authority, true),
             AccountMeta::new(ix.vault, false),

@@ -1,128 +1,76 @@
 extern crate std;
-use {
-    quasar_svm::{Account, Instruction, Pubkey, QuasarSvm},
-    quasar_vault_client::*,
-    std::vec,
-};
+use {alloc::vec::Vec, quasar_test::prelude::*, quasar_vault_client::*};
 
 const USER: Pubkey = Pubkey::new_from_array([1; 32]);
 const MAX_ELF_BYTES: usize = 5_536;
 const MAX_DEPOSIT_CU: u64 = 1_556;
 const MAX_WITHDRAW_CU: u64 = 392;
 
-fn setup() -> QuasarSvm {
-    let elf = std::fs::read("../../target/deploy/quasar_vault.so").unwrap();
+#[test]
+fn elf_size_stays_within_budget() {
+    let bytes = std::fs::read("../../target/deploy/quasar_vault.so").unwrap();
     assert!(
-        elf.len() <= MAX_ELF_BYTES,
+        bytes.len() <= MAX_ELF_BYTES,
         "vault ELF grew to {} bytes; budget is {MAX_ELF_BYTES}",
-        elf.len()
+        bytes.len()
     );
-    QuasarSvm::new().with_program(&crate::ID, &elf)
 }
 
-fn assert_cu(instruction: &str, consumed: u64, maximum: u64) {
+#[quasar_test]
+fn deposit_creates_and_funds_the_vault(test: &mut Test) {
+    test.add(Wallet::new().at(USER));
+    let vault = find_vault_address(&USER, &crate::ID).0;
+    let deposit = 1_000_000_000;
+
+    let outcome = test.send(DepositInstruction {
+        user: USER,
+        amount: deposit,
+    });
+
+    outcome
+        .succeeds()
+        .cu_at_most(MAX_DEPOSIT_CU)
+        .has_lamports(vault, deposit)
+        .has_lamports(USER, DEFAULT_WALLET_LAMPORTS - deposit);
     assert!(
-        consumed <= maximum,
-        "{instruction} consumed {consumed} CU; budget is {maximum}"
+        outcome
+            .account_changes()
+            .iter()
+            .any(|change| change.address() == vault && change.was_created()),
+        "the outcome should identify the initialized vault"
     );
 }
 
-fn signer(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, 10_000_000_000)
+#[quasar_test]
+fn failed_init_does_not_leave_a_placeholder(test: &mut Test) {
+    test.add(Wallet::new().at(USER));
+    let wrong_vault = Pubkey::new_from_array([99; 32]);
+
+    let outcome = test.send(DepositInstructionRaw {
+        user: USER,
+        vault: wrong_vault,
+        amount: 1,
+    });
+
+    outcome.fails_with(QuasarVaultError::InvalidPda);
+    assert!(test.account(wrong_vault).is_none());
+    assert!(outcome.account_changes().is_empty());
 }
 
-fn empty(address: Pubkey) -> Account {
-    Account {
-        address,
-        lamports: 0,
-        data: vec![],
-        owner: quasar_svm::system_program::ID,
-        executable: false,
-    }
-}
+#[quasar_test]
+fn withdraw_moves_lamports_out_of_program_state(test: &mut Test) {
+    test.add(Wallet::new().at(USER));
+    let vault = find_vault_address(&USER, &crate::ID).0;
+    let vault_lamports = 1_000_000_000;
+    let withdrawal = 500_000_000;
+    test.add(Account::new(vault, crate::ID, vault_lamports, Vec::new()));
 
-#[test]
-fn test_deposit() {
-    let mut svm = setup();
-
-    let user = USER;
-    let system_program = quasar_svm::system_program::ID;
-    let (vault, _) = Pubkey::find_program_address(&[b"vault", user.as_ref()], &crate::ID);
-
-    let deposit_amount: u64 = 1_000_000_000;
-
-    let instruction: Instruction = DepositInstruction {
-        user,
-        vault,
-        system_program,
-        amount: deposit_amount,
-    }
-    .into();
-
-    let result = svm.process_instruction(&instruction, &[signer(user), empty(vault)]);
-
-    assert!(result.is_ok(), "deposit failed: {:?}", result.raw_result);
-
-    let user_after = result.account(&user).unwrap().lamports;
-    let vault_after = result.account(&vault).unwrap().lamports;
-
-    assert_eq!(
-        user_after,
-        10_000_000_000 - deposit_amount,
-        "user lamports after deposit"
-    );
-    assert_eq!(vault_after, deposit_amount, "vault lamports after deposit");
-
-    assert_cu("deposit", result.compute_units_consumed, MAX_DEPOSIT_CU);
-}
-
-#[test]
-fn test_withdraw() {
-    let mut svm = setup();
-
-    let user = USER;
-    let (vault, _) = Pubkey::find_program_address(&[b"vault", user.as_ref()], &crate::ID);
-
-    // Pre-fund vault as program-owned (withdraw uses direct lamport
-    // manipulation which requires program ownership of the vault PDA).
-    let vault_lamports: u64 = 1_000_000_000;
-    let withdraw_amount: u64 = 500_000_000;
-
-    let withdraw_ix: Instruction = WithdrawInstruction {
-        user,
-        vault,
-        amount: withdraw_amount,
-    }
-    .into();
-
-    let result = svm.process_instruction(
-        &withdraw_ix,
-        &[
-            signer(user),
-            Account {
-                address: vault,
-                lamports: vault_lamports,
-                data: vec![],
-                owner: crate::ID,
-                executable: false,
-            },
-        ],
-    );
-    assert!(result.is_ok(), "withdraw failed: {:?}", result.raw_result);
-
-    let user_final = result.account(&user).unwrap().lamports;
-    let vault_final = result.account(&vault).unwrap().lamports;
-
-    assert_eq!(
-        user_final,
-        10_000_000_000 + withdraw_amount,
-        "user lamports after withdraw"
-    );
-    assert_eq!(
-        vault_final,
-        vault_lamports - withdraw_amount,
-        "vault lamports after withdraw"
-    );
-
-    assert_cu("withdraw", result.compute_units_consumed, MAX_WITHDRAW_CU);
+    test.send(WithdrawInstruction {
+        user: USER,
+        amount: withdrawal,
+    })
+    .succeeds()
+    .cu_at_most(MAX_WITHDRAW_CU)
+    .has_lamports(USER, DEFAULT_WALLET_LAMPORTS + withdrawal)
+    .has_lamports(vault, vault_lamports - withdrawal);
 }

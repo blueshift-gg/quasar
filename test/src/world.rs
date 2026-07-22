@@ -1,43 +1,40 @@
 use {
-    crate::{fixtures, Account, Pubkey, QuasarSvm, QuasarSvmConfig, QuasarTestBuilder, SetupError},
+    crate::{
+        backend::Backend,
+        fixture::{Fixture, TokenProgram},
+        fixtures,
+        outcome::{mint_supply, token_amount, TrackedAccount},
+        Account, Instruction, Outcome, Pubkey, SetupError, TestBuilder,
+    },
     quasar_lang::{
         __zeropod::{ZcElem, ZcValidate},
         traits::{AccountData, Discriminator, Owner, SeedSlices},
     },
-    std::{
-        ops::{Deref, DerefMut},
-        path::{Path, PathBuf},
-    },
+    std::{ops::Deref, path::Path},
 };
 
-/// Default balance assigned by [`QuasarTest::add_wallet`]: ten SOL.
+/// Default balance assigned by [`crate::fixture::Wallet`]: ten SOL.
 pub const DEFAULT_WALLET_LAMPORTS: u64 = 10_000_000_000;
 
-/// A project-aware wrapper around [`QuasarSvm`].
+/// An isolated Solana program test world.
 ///
-/// Constructing the wrapper loads the current project's program. All
-/// [`QuasarSvm`] methods remain available through `Deref`/`DerefMut`.
-pub struct QuasarTest {
-    pub(super) svm: QuasarSvm,
+/// Each `Test` owns its runtime and account state. The public API describes
+/// test behavior rather than a particular SVM, so the same test can be hosted
+/// by additional runtimes without becoming generic over a backend.
+pub struct Test {
+    pub(super) backend: Backend,
     pub(super) program_id: Pubkey,
-    pub(super) program_path: PathBuf,
+    pub(super) program_path: std::path::PathBuf,
     pub(super) fresh_addresses: u64,
 }
 
-impl QuasarTest {
+impl Test {
     /// Load the current project's compiled program.
-    ///
-    /// `quasar test` supplies the exact artifact through
-    /// [`crate::PROGRAM_PATH_ENV`]. For direct `cargo test` runs, Quasar prefers
-    /// `target/deploy/{crate_name}.so` when a crate name is known (see
-    /// [`QuasarTest::builder`]) and otherwise accepts the only `.so` in an
-    /// ancestor `target/deploy` directory.
     ///
     /// # Panics
     ///
     /// Panics with an actionable message when no program artifact can be
-    /// located or read. Use [`Self::try_new`] when setup errors should be
-    /// handled explicitly.
+    /// located or read. Use [`Self::try_new`] to handle setup errors.
     pub fn new(program_id: impl Into<Pubkey>) -> Self {
         Self::builder(program_id)
             .build()
@@ -49,73 +46,53 @@ impl QuasarTest {
         Self::builder(program_id).build()
     }
 
-    /// Customize world setup before loading the program.
-    ///
-    /// ```text
-    /// let mut q = QuasarTest::builder(other_program::ID)
-    ///     .crate_name("other-program")
-    ///     .config(QuasarSvmConfig::default())
-    ///     .build()?;
-    /// ```
-    pub fn builder(program_id: impl Into<Pubkey>) -> QuasarTestBuilder {
-        QuasarTestBuilder {
-            program_id: program_id.into(),
-            config: QuasarSvmConfig::default(),
-            program_path: None,
-            crate_name: None,
-        }
+    /// Configure artifact discovery and runtime limits before loading a world.
+    pub fn builder(program_id: impl Into<Pubkey>) -> TestBuilder {
+        TestBuilder::new(program_id.into())
     }
 
-    /// The program under test.
+    /// The primary program under test.
     pub fn program_id(&self) -> Pubkey {
         self.program_id
     }
 
-    /// The ELF artifact loaded for this test runtime.
+    /// The ELF artifact loaded for the primary program.
     pub fn program_path(&self) -> &Path {
         &self.program_path
     }
 
-    /// Consume the project wrapper and return the underlying runtime.
-    pub fn into_inner(self) -> QuasarSvm {
-        self.svm
+    /// Install a built-in or application-defined fixture.
+    pub fn add<F: Fixture>(&mut self, fixture: F) -> F::Output {
+        fixture.install(self)
     }
 
-    /// Load an additional program (a CPI target) into the world.
-    pub fn load_program(&mut self, program_id: &Pubkey, elf: &[u8]) {
-        self.svm
-            .add_program(program_id, &quasar_svm::loader_keys::LOADER_V3, elf);
+    /// Insert or replace a raw account.
+    pub fn set_account(&mut self, account: Account) {
+        self.backend.set_account(account);
     }
 
-    /// Register a funded wallet at a fresh address.
-    ///
-    /// The default balance is [`DEFAULT_WALLET_LAMPORTS`]. Use
-    /// [`Self::add_wallet_with_lamports`] when the balance is part of the
-    /// test.
-    pub fn add_wallet(&mut self) -> Pubkey {
-        self.add_wallet_with_lamports(DEFAULT_WALLET_LAMPORTS)
+    /// Read a raw account from the current world.
+    pub fn account(&self, address: Pubkey) -> Option<Account> {
+        self.backend.account(&address)
     }
 
-    /// Register several funded wallets at fresh addresses.
-    ///
-    /// Array destructuring keeps named multi-party scenarios compact:
-    /// `let [maker, taker] = q.add_wallets();`.
-    pub fn add_wallets<const N: usize>(&mut self) -> [Pubkey; N] {
-        std::array::from_fn(|_| self.add_wallet())
+    /// Decode an account with a generated client decoder.
+    pub fn account_as<T>(
+        &self,
+        address: Pubkey,
+        decode: impl FnOnce(&[u8]) -> Option<T>,
+    ) -> Option<T> {
+        self.account(address)
+            .and_then(|account| decode(&account.data))
     }
 
-    /// Register a funded wallet at a fresh address with an explicit balance.
-    pub fn add_wallet_with_lamports(&mut self, lamports: u64) -> Pubkey {
-        let address = self.fresh_address();
-        self.fund(address, lamports)
+    /// Preload a program for cross-program invocations.
+    pub fn load_program(&mut self, program_id: Pubkey, elf: &[u8]) {
+        self.backend.load_program(&program_id, elf);
     }
 
-    /// A fresh address no earlier fixture in this world has used.
-    ///
-    /// Addresses derive from a per-world counter, not a process-global one,
-    /// so a test sees the same addresses on every run regardless of which
-    /// other tests exist or run first. Compute-unit records stay comparable
-    /// without hand-pinned address constants.
+    /// Produce a deterministic address unused by earlier fixtures in this
+    /// world. The sequence is independent for every test.
     pub fn fresh_address(&mut self) -> Pubkey {
         self.fresh_addresses += 1;
         let mut bytes = *b"quasar-test/fresh-address\0\0\0\0\0\0\0";
@@ -123,119 +100,29 @@ impl QuasarTest {
         Pubkey::new_from_array(bytes)
     }
 
-    /// Create or replace a system account and return its address.
-    pub fn fund(&mut self, address: Pubkey, lamports: u64) -> Pubkey {
-        self.svm
-            .set_account(fixtures::system_account(address, lamports));
-        address
-    }
-
-    /// Register a six-decimal mint with zero supply at a fresh address.
-    pub fn add_mint(&mut self, authority: Pubkey) -> Pubkey {
-        self.add_mint_with_supply(authority, 0)
-    }
-
-    /// Register a six-decimal mint with an explicit supply at a fresh
-    /// address.
-    pub fn add_mint_with_supply(&mut self, authority: Pubkey, supply: u64) -> Pubkey {
-        let address = self.fresh_address();
-        self.add_mint_at(address, authority, supply, 6)
-    }
-
-    /// Register a mint at an explicit address and return that address.
-    pub fn add_mint_at(
-        &mut self,
-        address: Pubkey,
-        authority: Pubkey,
-        supply: u64,
-        decimals: u8,
-    ) -> Pubkey {
-        self.svm.set_account(fixtures::mint_account_with_supply(
-            address, authority, supply, decimals,
-        ));
-        address
-    }
-
-    /// Register a token account at a fresh address.
-    pub fn add_token_account(&mut self, owner: Pubkey, mint: Pubkey, amount: u64) -> Pubkey {
-        let address = self.fresh_address();
-        self.add_token_account_at(address, owner, mint, amount)
-    }
-
-    /// Register a token account at an explicit address.
-    pub fn add_token_account_at(
-        &mut self,
-        address: Pubkey,
-        owner: Pubkey,
-        mint: Pubkey,
-        amount: u64,
-    ) -> Pubkey {
-        self.svm
-            .set_account(fixtures::token_account(address, mint, owner, amount));
-        address
-    }
-
-    /// Derive an associated token address without registering an account.
-    ///
-    /// Use this for init targets and assertions: [`Self::add_ata`] would
-    /// register an existing account, which is exactly what an init
-    /// instruction must not find.
-    pub fn derive_ata(&self, owner: Pubkey, mint: Pubkey) -> Pubkey {
+    /// Derive an associated-token address without installing the account.
+    pub fn derive_ata(&self, owner: Pubkey, mint: Pubkey, token_program: TokenProgram) -> Pubkey {
         Pubkey::find_program_address(
-            &[
-                owner.as_ref(),
-                quasar_svm::SPL_TOKEN_PROGRAM_ID.as_ref(),
-                mint.as_ref(),
-            ],
-            &quasar_svm::SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
+            &[owner.as_ref(), token_program.id().as_ref(), mint.as_ref()],
+            &crate::SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
         )
         .0
     }
 
-    /// Register an associated token account and return its derived address.
-    pub fn add_ata(&mut self, owner: Pubkey, mint: Pubkey, amount: u64) -> Pubkey {
-        let account = fixtures::associated_token_account(owner, mint, amount);
-        let address = account.address;
-        self.svm.set_account(account);
-        address
-    }
-
-    /// Derive the canonical PDA for a seed set under the program under test.
-    ///
-    /// The seed set comes from the account's own `#[seeds(...)]` definition,
-    /// so the test derives addresses from the same source the program
-    /// validates against:
-    ///
-    /// ```text
-    /// let vault = q.derive_pda(Vault::seeds(&maker));
-    /// ```
+    /// Derive a PDA from an account type's declared seeds.
     pub fn derive_pda(&self, seeds: impl SeedSlices) -> Pubkey {
         self.derive_pda_with_bump(seeds).0
     }
 
-    /// Derive the canonical PDA and bump for a seed set.
+    /// Derive a PDA and its canonical bump.
     pub fn derive_pda_with_bump(&self, seeds: impl SeedSlices) -> (Pubkey, u8) {
         seeds.with_slices(|slices| Pubkey::find_program_address(slices, &self.program_id))
     }
 
-    /// Read an account as its typed state.
+    /// Read a fixed-size Quasar account through its on-chain wrapper type.
     ///
-    /// Runs the same checks the program applies when loading `T`: the account
-    /// must exist, be owned by `T`'s program, carry `T`'s discriminator, and
-    /// hold enough valid data. The snapshot derefs to the account's data
-    /// layout, so assertions read in field terms:
-    ///
-    /// ```text
-    /// let state = q.read::<Vault>(vault);
-    /// assert_eq!(state.authority, maker);
-    /// assert_eq!(state.balance, 500);
-    /// ```
-    ///
-    /// # Panics
-    ///
-    /// Panics with the failed check when the account does not hold a valid
-    /// `T`. Tests asserting on invalid accounts should use
-    /// [`QuasarSvm::get_account`] directly.
+    /// Ownership, discriminator, length, and zero-copy validity are checked
+    /// before the snapshot is created.
     pub fn read<T>(&self, address: Pubkey) -> Snapshot<T>
     where
         T: Discriminator + Owner + Deref,
@@ -243,8 +130,7 @@ impl QuasarTest {
     {
         let name = core::any::type_name::<T>();
         let account = self
-            .svm
-            .get_account(&address)
+            .account(address)
             .unwrap_or_else(|| panic!("read {name}: no account at {address}"));
         if account.owner != T::OWNER {
             panic!(
@@ -253,23 +139,23 @@ impl QuasarTest {
                 T::OWNER
             );
         }
-        let disc = T::DISCRIMINATOR;
-        let expected_len = disc.len() + core::mem::size_of::<T::Target>();
+        let discriminator = T::DISCRIMINATOR;
+        let expected_len = discriminator.len() + core::mem::size_of::<T::Target>();
         if account.data.len() < expected_len {
             panic!(
                 "read {name}: account {address} holds {} bytes, expected at least {expected_len}",
                 account.data.len()
             );
         }
-        if &account.data[..disc.len()] != disc {
+        if &account.data[..discriminator.len()] != discriminator {
             panic!(
-                "read {name}: account {address} discriminator is {:?}, expected {disc:?}",
-                &account.data[..disc.len()]
+                "read {name}: account {address} discriminator is {:?}, expected {discriminator:?}",
+                &account.data[..discriminator.len()]
             );
         }
-        // SAFETY: `T::Target` is `ZcElem` (`#[repr(C)]`, alignment 1), and the
-        // length check above proves the value's bytes are in bounds.
-        let state = unsafe { &*(account.data[disc.len()..].as_ptr() as *const T::Target) };
+        // SAFETY: `T::Target` is `ZcElem` (alignment one and no padding), and
+        // the length check above proves the target bytes are in bounds.
+        let state = unsafe { &*(account.data[discriminator.len()..].as_ptr() as *const T::Target) };
         if let Err(error) = <T::Target as ZcValidate>::validate_ref(state) {
             panic!("read {name}: account {address} holds invalid data: {error:?}");
         }
@@ -280,69 +166,26 @@ impl QuasarTest {
         }
     }
 
-    /// An account's current lamport balance in this world.
-    pub fn lamports(&self, address: Pubkey) -> u64 {
-        self.world_account(address).lamports
-    }
-
-    /// A token account's current balance in this world.
-    pub fn tokens(&self, address: Pubkey) -> u64 {
-        use spl_token::{solana_program::program_pack::Pack, state::Account as TokenAccount};
-
-        let account = self.world_account(address);
-        TokenAccount::unpack(&account.data)
-            .unwrap_or_else(|error| {
-                panic!("could not decode {address} as an SPL Token account: {error}")
-            })
-            .amount
-    }
-
-    /// A mint's current supply in this world.
-    pub fn supply(&self, address: Pubkey) -> u64 {
-        use spl_token::{solana_program::program_pack::Pack, state::Mint};
-
-        let account = self.world_account(address);
-        Mint::unpack(&account.data)
-            .unwrap_or_else(|error| {
-                panic!("could not decode {address} as an SPL Token mint: {error}")
-            })
-            .supply
-    }
-
-    fn world_account(&self, address: Pubkey) -> Account {
-        self.svm
-            .get_account(&address)
-            .unwrap_or_else(|| panic!("no account at {address}"))
-    }
-
-    /// Register a rent-exempt program account holding `state`.
-    ///
-    /// The account gets the owning type's discriminator and owner, so a
-    /// follow-up [`Self::read`] (or the program itself) accepts it:
-    ///
-    /// ```text
-    /// q.write(vault, VaultData { authority: maker, balance: 500.into(), bump });
-    /// ```
+    /// Install a rent-exempt fixed-size Quasar account.
     pub fn write<D>(&mut self, address: Pubkey, state: D) -> Pubkey
     where
         D: AccountData + ZcElem + Copy,
         D::Wrapper: Discriminator + Owner,
     {
-        let disc = <D::Wrapper as Discriminator>::DISCRIMINATOR;
+        let discriminator = <D::Wrapper as Discriminator>::DISCRIMINATOR;
         let size = core::mem::size_of::<D>();
-        let mut data = vec![0u8; disc.len() + size];
-        data[..disc.len()].copy_from_slice(disc);
-        // SAFETY: `D` is `ZcElem` (`#[repr(C)]`, alignment 1, no padding),
-        // so its `size` bytes are initialized and the destination range was
-        // sized for them.
+        let mut data = vec![0; discriminator.len() + size];
+        data[..discriminator.len()].copy_from_slice(discriminator);
+        // SAFETY: `D` is `ZcElem`, so all `size` bytes are initialized, its
+        // alignment is one, and the destination was allocated to fit them.
         unsafe {
             std::ptr::copy_nonoverlapping(
                 (&state as *const D).cast::<u8>(),
-                data[disc.len()..].as_mut_ptr(),
+                data[discriminator.len()..].as_mut_ptr(),
                 size,
             );
         }
-        self.svm.set_account(fixtures::program_account(
+        self.set_account(fixtures::program_account(
             address,
             <D::Wrapper as Owner>::OWNER,
             data,
@@ -350,81 +193,157 @@ impl QuasarTest {
         address
     }
 
-    /// Execute and commit one instruction using the accounts in this world.
-    ///
-    /// Writable instruction accounts missing from the world are registered as
-    /// empty system accounts first, so freshly initialized accounts survive
-    /// into follow-up sends and [`Self::read`] without any setup.
-    #[must_use = "assert the outcome: .succeeds(), .fails_with(..), or inspect the result"]
-    pub fn send(
-        &mut self,
-        instruction: impl Into<quasar_svm::Instruction>,
-    ) -> quasar_svm::ExecutionResult {
-        let instruction = instruction.into();
-        self.register_writable_accounts(&instruction);
-        self.svm.process_instruction(&instruction, &[])
+    /// An account's current lamport balance.
+    pub fn lamports(&self, address: Pubkey) -> u64 {
+        self.required_account(address).lamports
     }
 
-    /// Execute and commit one instruction with extra accounts.
-    ///
-    /// Most tests should register fixtures on the world and use [`Self::send`].
-    /// This escape hatch is useful when the supplied account itself is the
-    /// subject of a test. Successful execution commits those accounts to the
-    /// world like every other transaction account.
-    #[must_use = "assert the outcome: .succeeds(), .fails_with(..), or inspect the result"]
+    /// A base Token or Token-2022 account's current amount.
+    pub fn tokens(&self, address: Pubkey) -> u64 {
+        token_amount(&self.required_account(address))
+    }
+
+    /// A base Token or Token-2022 mint's current supply.
+    pub fn supply(&self, address: Pubkey) -> u64 {
+        mint_supply(&self.required_account(address))
+    }
+
+    /// Set the runtime clock's Unix timestamp.
+    pub fn warp_to_timestamp(&mut self, timestamp: i64) {
+        self.backend.warp_to_timestamp(timestamp);
+    }
+
+    /// Execute and commit one instruction.
+    pub fn send(&mut self, instruction: impl Into<Instruction>) -> Outcome {
+        self.execute([instruction.into()], Vec::new(), true)
+    }
+
+    /// Execute and commit an atomic instruction sequence.
+    pub fn send_all<I, T>(&mut self, instructions: I) -> Outcome
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<Instruction>,
+    {
+        self.execute(
+            instructions.into_iter().map(Into::into).collect::<Vec<_>>(),
+            Vec::new(),
+            true,
+        )
+    }
+
+    /// Execute and commit one instruction with raw transaction-input
+    /// accounts. Fixtures installed in the world normally make this
+    /// unnecessary; it remains useful when malformed input is the test case.
     pub fn send_with(
         &mut self,
-        instruction: impl Into<quasar_svm::Instruction>,
+        instruction: impl Into<Instruction>,
         accounts: impl IntoIterator<Item = Account>,
-    ) -> quasar_svm::ExecutionResult {
-        let instruction = instruction.into();
-        self.register_writable_accounts(&instruction);
-        let accounts = accounts.into_iter().collect::<Vec<_>>();
-        self.svm.process_instruction(&instruction, &accounts)
+    ) -> Outcome {
+        self.execute([instruction.into()], accounts.into_iter().collect(), true)
     }
 
-    /// Back missing writable instruction accounts with empty system accounts.
-    ///
-    /// The SVM only commits accounts that existed before the transaction, so
-    /// an unregistered init target would execute correctly and then vanish
-    /// from the world.
-    fn register_writable_accounts(&mut self, instruction: &quasar_svm::Instruction) {
-        for meta in &instruction.accounts {
-            if meta.is_writable && self.svm.get_account(&meta.pubkey).is_none() {
-                self.svm.set_account(fixtures::empty_account(meta.pubkey));
+    /// Execute an instruction without committing its changes.
+    pub fn simulate(&mut self, instruction: impl Into<Instruction>) -> Outcome {
+        self.execute([instruction.into()], Vec::new(), false)
+    }
+
+    fn execute(
+        &mut self,
+        instructions: impl AsRef<[Instruction]>,
+        mut inputs: Vec<Account>,
+        commit: bool,
+    ) -> Outcome {
+        let instructions = instructions.as_ref();
+        assert!(
+            !instructions.is_empty(),
+            "a transaction needs an instruction"
+        );
+        assert_unique_accounts(&inputs);
+
+        let mut tracked = Vec::<TrackedAccount>::new();
+        for instruction in instructions {
+            for meta in &instruction.accounts {
+                if let Some(existing) = tracked
+                    .iter_mut()
+                    .find(|account| account.address == meta.pubkey)
+                {
+                    existing.writable |= meta.is_writable;
+                    continue;
+                }
+                let before = inputs
+                    .iter()
+                    .find(|account| account.address == meta.pubkey)
+                    .cloned()
+                    .or_else(|| self.backend.account(&meta.pubkey));
+                tracked.push(TrackedAccount {
+                    address: meta.pubkey,
+                    writable: meta.is_writable,
+                    before,
+                    after: None,
+                });
             }
         }
+
+        for input in &inputs {
+            if tracked
+                .iter()
+                .all(|account| account.address != input.address)
+            {
+                tracked.push(TrackedAccount {
+                    address: input.address,
+                    writable: false,
+                    before: Some(input.clone()),
+                    after: None,
+                });
+            }
+        }
+
+        // A missing writable account enters the transaction as Solana's empty
+        // system account. QuasarSVM commits that transaction input only when
+        // execution succeeds, so init targets persist without polluting the
+        // world after a failed transaction.
+        for account in &tracked {
+            if account.writable
+                && account.before.is_none()
+                && inputs.iter().all(|input| input.address != account.address)
+            {
+                inputs.push(fixtures::empty_account(account.address));
+            }
+        }
+
+        let result = self.backend.execute(instructions, &inputs, commit);
+        let succeeded = result.raw_result.is_ok();
+        for account in &mut tracked {
+            account.after = if !succeeded {
+                account.before.clone()
+            } else if commit {
+                self.backend.account(&account.address)
+            } else {
+                Outcome::simulated_account(&result, &account.address)
+            };
+        }
+        Outcome::from_backend(result, tracked)
     }
 
-    /// Simulate one instruction without committing its account changes.
-    #[must_use = "assert the outcome: .succeeds(), .fails_with(..), or inspect the result"]
-    pub fn simulate(
-        &mut self,
-        instruction: impl Into<quasar_svm::Instruction>,
-    ) -> quasar_svm::ExecutionResult {
-        let instruction = instruction.into();
-        self.svm.simulate_instruction(&instruction, &[])
+    fn required_account(&self, address: Pubkey) -> Account {
+        self.account(address)
+            .unwrap_or_else(|| panic!("no account at {address}"))
     }
 }
 
-impl Deref for QuasarTest {
-    type Target = QuasarSvm;
-
-    fn deref(&self) -> &Self::Target {
-        &self.svm
+fn assert_unique_accounts(accounts: &[Account]) {
+    for (index, account) in accounts.iter().enumerate() {
+        assert!(
+            accounts[..index]
+                .iter()
+                .all(|earlier| earlier.address != account.address),
+            "transaction input contains account {} more than once",
+            account.address
+        );
     }
 }
 
-impl DerefMut for QuasarTest {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.svm
-    }
-}
-
-/// Typed account state captured by [`QuasarTest::read`].
-///
-/// Derefs to the account's data layout (`{Name}Data`), so fields read
-/// directly: `snapshot.authority`, `snapshot.value`.
+/// Typed fixed-size account state captured at one point in a test.
 pub struct Snapshot<T: Deref>
 where
     T::Target: Sized + Copy,
@@ -438,12 +357,12 @@ impl<T: Deref> Snapshot<T>
 where
     T::Target: Sized + Copy,
 {
-    /// The account's address.
+    /// Address from which the state was read.
     pub fn address(&self) -> Pubkey {
         self.address
     }
 
-    /// The account's lamport balance at read time.
+    /// Lamport balance captured with the state.
     pub fn lamports(&self) -> u64 {
         self.lamports
     }

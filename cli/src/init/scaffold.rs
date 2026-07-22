@@ -245,9 +245,9 @@ fn generate_tests_rs() -> &'static str {
     r#"use {crate::cpi::InitializeInstruction, quasar_test::prelude::*};
 
 #[quasar_test]
-fn initialize(q: &mut QuasarTest) {
-    let payer = q.add_wallet();
-    q.send(InitializeInstruction { payer }).succeeds();
+fn initialize(test: &mut Test) {
+    let payer = test.add(Wallet::new());
+    test.send(InitializeInstruction { payer }).succeeds();
 }
 "#
 }
@@ -262,7 +262,7 @@ mod tests {
         assert_eq!(
             config,
             "[project]\nname = \"demo\"\n\n[testing]\ncommand = { program = \"cargo\", args = \
-             [\"test\", \"tests::\"] }\n\n[clients]\npath = \"target/client\"\ntargets = \
+             [\"test\"] }\n\n[clients]\npath = \"target/client\"\ntargets = \
              [\"rust\", \"kit\", \"web3\"]\n"
         );
     }
