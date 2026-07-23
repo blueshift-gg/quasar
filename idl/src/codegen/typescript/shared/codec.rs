@@ -371,7 +371,7 @@ pub(super) fn emit_compact_type_codec(
                 f.name
             ));
         } else {
-            field_exprs.push(format!("{}: fixedResult.{}", f.name, f.name));
+            field_exprs.push(fixed_passthrough_expr(&f.name, &f.ty));
         }
     }
     for f in &dyn_fields {
@@ -742,7 +742,7 @@ pub(super) fn emit_compact_decode(
                 arg.name
             ));
         } else {
-            field_exprs.push(format!("{}: fixedResult.{}", arg.name, arg.name));
+            field_exprs.push(fixed_passthrough_expr(&arg.name, &arg.ty));
         }
     }
     for arg in &dyn_args {
@@ -843,6 +843,20 @@ pub(super) fn primitive_ts_codec(primitive: &str, target: TsTarget) -> String {
             format!("fixCodecSize(getBytesCodec(), {})", size)
         }
         other => format!("/* unknown: {} */", other),
+    }
+}
+
+/// Passthrough of a fixed-prefix field into the dynamic result object.
+///
+/// Fixed u8 arrays decode as `ReadonlyUint8Array` (codecs v7 `getBytesCodec`)
+/// while the interface types them `Uint8Array`; the fixed-only path casts
+/// through `decodeExact`, so only this literal assembly needs the copy.
+fn fixed_passthrough_expr(name: &str, ty: &IdlType) -> String {
+    let is_u8_array = matches!(ty, IdlType::Array { array } if is_u8_type(&array.0));
+    if is_u8_array {
+        format!("{name}: new Uint8Array(fixedResult.{name})")
+    } else {
+        format!("{name}: fixedResult.{name}")
     }
 }
 
