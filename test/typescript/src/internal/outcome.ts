@@ -34,6 +34,7 @@ export interface OutcomeAdapter<Address, Account> {
   addressKey(address: Address): string;
   accountAddress(account: Account): Address;
   accountData(account: Account): Uint8Array;
+  accountOwner(account: Account): Address;
   lamports(account: Account): bigint;
   mintSupply(account: Account): bigint;
   tokenAmount(account: Account): bigint;
@@ -41,10 +42,97 @@ export interface OutcomeAdapter<Address, Account> {
   renderAddress(address: Address): string;
 }
 
-export interface AccountChange<Address, Account> {
-  readonly address: Address;
-  readonly before: Account | null;
-  readonly after: Account | null;
+/**
+ * A typed view over a Quasar account's raw bytes.
+ *
+ * `decode`/`encode` operate on the account body — the bytes *after* the
+ * discriminator when one is present. The harness owns the framing metadata:
+ * `read`/`hasState` validate `owner`, `discriminator`, and `size` against the
+ * raw account before handing the stripped body to `decode`, and `write` frames
+ * an encoded body with the discriminator. This mirrors the Rust `read`/`write`
+ * semantics and pairs directly with a generated client's `XCodec`,
+ * `X_DISCRIMINATOR`, and `PROGRAM_ADDRESS` exports.
+ */
+export interface AccountCodec<Value, Address> {
+  /** Decode the account body (post-discriminator bytes) into a typed value. */
+  decode(bytes: Uint8Array): Value;
+  /** Encode a typed value into the account body, for `write`. */
+  encode?(value: Value): ArrayLike<number>;
+  /** Program expected to own the account; validated by `read`/`hasState`. */
+  owner?: Address;
+  /** Leading discriminator bytes; validated and stripped before `decode`. */
+  discriminator?: Uint8Array;
+  /** Minimum expected raw account length in bytes, discriminator included. */
+  size?: number;
+}
+
+function describeBytes(bytes: Uint8Array): string {
+  return `[${Array.from(bytes).join(", ")}]`;
+}
+
+/**
+ * Validate a raw account against a codec's framing metadata and decode its
+ * body. Shared by `Test.read` and `Outcome.hasState`; throws with a precise
+ * message on any owner, discriminator, or size mismatch.
+ */
+export function decodeAccount<Value, Address, Account>(
+  codec: AccountCodec<Value, Address>,
+  address: Address,
+  account: Account,
+  adapter: Pick<
+    OutcomeAdapter<Address, Account>,
+    "accountData" | "accountOwner" | "addressKey" | "renderAddress"
+  >,
+): Value {
+  const data = adapter.accountData(account);
+  if (codec.owner !== undefined) {
+    const owner = adapter.accountOwner(account);
+    if (adapter.addressKey(owner) !== adapter.addressKey(codec.owner)) {
+      throw new Error(
+        `account ${adapter.renderAddress(address)} is owned by ${adapter.renderAddress(owner)}, expected ${adapter.renderAddress(codec.owner)}`,
+      );
+    }
+  }
+  const discriminator = codec.discriminator;
+  if (discriminator !== undefined) {
+    if (
+      data.length < discriminator.length ||
+      !discriminator.every((byte, index) => data[index] === byte)
+    ) {
+      throw new Error(
+        `account ${adapter.renderAddress(address)} has discriminator ${describeBytes(data.subarray(0, discriminator.length))}, expected ${describeBytes(discriminator)}`,
+      );
+    }
+  }
+  if (codec.size !== undefined && data.length < codec.size) {
+    throw new Error(
+      `account ${adapter.renderAddress(address)} holds ${data.length} bytes, expected at least ${codec.size}`,
+    );
+  }
+  const body =
+    discriminator === undefined ? data : data.subarray(discriminator.length);
+  return codec.decode(body);
+}
+
+/** A writable account's state before and after an execution. */
+export class AccountChange<Address, Account> {
+  constructor(
+    readonly address: Address,
+    /** State before execution, or `null` when the execution created it. */
+    readonly before: Account | null,
+    /** State after execution, or `null` when the execution removed it. */
+    readonly after: Account | null,
+  ) {}
+
+  /** Whether this account did not exist before execution. */
+  wasCreated(): boolean {
+    return this.before === null && this.after !== null;
+  }
+
+  /** Whether this account no longer exists after execution. */
+  wasRemoved(): boolean {
+    return this.before !== null && this.after === null;
+  }
 }
 
 /** Structured execution assertions independent of the SVM adapter in use. */
@@ -132,6 +220,26 @@ export class Outcome<Address, Account> {
   ): Value | null {
     const account = this.account(address);
     return account === null ? null : decode(this.adapter.accountData(account));
+  }
+
+  /**
+   * Decode a resulting account through a typed codec and run assertions against
+   * it. Validates owner, discriminator, and size like `Test.read`, throwing on
+   * mismatch; the closure asserts on the decoded state. Chainable.
+   */
+  hasState<Value>(
+    codec: AccountCodec<Value, Address>,
+    address: Address,
+    check: (state: Value) => void,
+  ): this {
+    const account = this.account(address);
+    if (account === null) {
+      throw new Error(
+        `outcome does not contain account ${this.adapter.renderAddress(address)}`,
+      );
+    }
+    check(decodeAccount(codec, address, account, this.adapter));
+    return this;
   }
 
   returnValue<Value>(decode: (data: Uint8Array) => Value | null): Value | null {

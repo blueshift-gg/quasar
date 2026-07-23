@@ -18,13 +18,19 @@ import {
   createFixtureFactories,
   DEFAULT_WALLET_LAMPORTS,
   TokenProgram,
+  type AccountOptions as SharedAccountOptions,
   type AssociatedTokenAccountOptions,
   type Fixture as SharedFixture,
+  type MintHolder as SharedMintHolder,
   type MintOptions as SharedMintOptions,
   type TokenAccountOptions as SharedTokenAccountOptions,
   type WalletOptions as SharedWalletOptions,
 } from "./internal/fixture.js";
-import { Outcome as SharedOutcome } from "./internal/outcome.js";
+import {
+  Outcome as SharedOutcome,
+  type AccountChange as SharedAccountChange,
+  type AccountCodec as SharedAccountCodec,
+} from "./internal/outcome.js";
 import {
   TestCore,
   type HarnessAdapter,
@@ -37,10 +43,30 @@ export type { AssociatedTokenAccountOptions };
 
 export type Fixture<Output> = SharedFixture<Output, Test>;
 export type Outcome = SharedOutcome<Address, KeyedAccountInfo>;
+export type AccountChange = SharedAccountChange<Address, KeyedAccountInfo>;
+export type AccountCodec<Value> = SharedAccountCodec<Value, Address>;
 export type WalletOptions = SharedWalletOptions<Address>;
 export type MintOptions = SharedMintOptions<Address>;
+export type MintHolder = SharedMintHolder<Address>;
 export type TokenAccountOptions = SharedTokenAccountOptions<Address>;
+export type AccountOptions = SharedAccountOptions<Address>;
 export type TestOptions = SharedTestOptions;
+
+/** Account metas for read-only co-signers, e.g. multisig signers. */
+export function coSigners(
+  addresses: readonly Address[],
+): { pubkey: Address; isSigner: boolean; isWritable: boolean }[] {
+  return addresses.map(pubkey => ({
+    pubkey,
+    isSigner: true,
+    isWritable: false,
+  }));
+}
+
+/** Value-equality for addresses, independent of the backend representation. */
+export function addressesEqual(left: Address, right: Address): boolean {
+  return left.equals(right);
+}
 
 const systemProgram = new Address("11111111111111111111111111111111");
 
@@ -49,6 +75,25 @@ function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
     left.length === right.length &&
     left.every((byte, index) => byte === right[index])
   );
+}
+
+function programAccount(
+  value: Address,
+  owner: Address,
+  data: Uint8Array,
+  lamps: bigint,
+): KeyedAccountInfo {
+  return {
+    accountId: value,
+    accountInfo: {
+      data,
+      executable: false,
+      lamports: lamps,
+      owner,
+      rentEpoch: 0n,
+      space: BigInt(data.length),
+    },
+  };
 }
 
 const adapter: HarnessAdapter<
@@ -61,13 +106,16 @@ const adapter: HarnessAdapter<
   freshAddress: bytes => new Address(bytes),
   accountAddress: account => account.accountId,
   accountData: account => account.accountInfo.data,
+  accountOwner: account => account.accountInfo.owner,
   accountLamports: account => account.accountInfo.lamports,
   instructionAccounts: instruction =>
     instruction.keys.map(meta => ({
       address: meta.pubkey,
       writable: meta.isWritable,
+      signer: meta.isSigner,
     })),
   emptyAccount: value => createKeyedSystemAccount(value, 0n),
+  programAccount,
   tokenAmount: account =>
     BigInt(getTokenDecoder().decode(account.accountInfo.data).amount),
   mintSupply: account =>
@@ -138,6 +186,7 @@ export class Test extends TestCore<
 
 const fixtures = createFixtureFactories<Address, KeyedAccountInfo, Test>({
   systemAccount: (value, lamports) => createKeyedSystemAccount(value, lamports),
+  programAccount,
   mintAccount: (value, authority, supply, decimals, tokenProgram) =>
     createKeyedMintAccount(
       value,
@@ -161,6 +210,7 @@ const fixtures = createFixtureFactories<Address, KeyedAccountInfo, Test>({
 });
 
 export const {
+  account,
   associatedTokenAccount,
   mint,
   program,

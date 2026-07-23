@@ -21,11 +21,30 @@ export interface WalletOptions<Address> {
   lamports?: bigint;
 }
 
+/** A wallet that should hold an associated token account for a mint. */
+export interface MintHolder<Address> {
+  owner: Address;
+  amount?: bigint;
+}
+
 export interface MintOptions<Address> {
   address?: Address;
   supply?: bigint;
   decimals?: number;
   tokenProgram?: TokenProgram;
+  /**
+   * Wallets to fund with an associated token account for this mint, mirroring
+   * Rust `Mint::with_holder`. One ATA fixture is installed per holder.
+   */
+  holders?: readonly MintHolder<Address>[];
+}
+
+/** A raw, backend-neutral account fixture. Address and owner are required. */
+export interface AccountOptions<Address> {
+  address: Address;
+  owner: Address;
+  lamports?: bigint;
+  data?: Uint8Array;
 }
 
 export interface TokenAccountOptions<Address> {
@@ -39,8 +58,23 @@ export interface AssociatedTokenAccountOptions {
   tokenProgram?: TokenProgram;
 }
 
+/**
+ * Default Solana rent-exempt minimum for `dataLen` bytes:
+ * `(dataLen + 128) * 3480 * 2`. Matches the runtime's default rent so `write`
+ * and the `account` fixture produce rent-exempt accounts without a syscall.
+ */
+export function rentMinimumBalance(dataLen: number): bigint {
+  return BigInt(dataLen + 128) * 3480n * 2n;
+}
+
 interface FixtureAccountFactory<Address, Account> {
   systemAccount(address: Address, lamports: bigint): Account;
+  programAccount(
+    address: Address,
+    owner: Address,
+    data: Uint8Array,
+    lamports: bigint,
+  ): Account;
   mintAccount(
     address: Address,
     authority: Address,
@@ -80,22 +114,52 @@ export function createFixtureFactories<
       };
     },
 
+    account(options: AccountOptions<Address>): Fixture<Address, Host> {
+      return {
+        install(test) {
+          const data = options.data ?? new Uint8Array();
+          test.setAccount(
+            factory.programAccount(
+              options.address,
+              options.owner,
+              data,
+              options.lamports ?? rentMinimumBalance(data.length),
+            ),
+          );
+          return options.address;
+        },
+      };
+    },
+
     mint(
       authority: Address,
       options: MintOptions<Address> = {},
     ): Fixture<Address, Host> {
       return {
-        install(test) {
+        async install(test) {
           const address = options.address ?? test.freshAddress();
+          const tokenProgram = options.tokenProgram ?? TokenProgram.Legacy;
           test.setAccount(
             factory.mintAccount(
               address,
               authority,
               options.supply ?? 0n,
               options.decimals ?? 6,
-              options.tokenProgram ?? TokenProgram.Legacy,
+              tokenProgram,
             ),
           );
+          for (const holder of options.holders ?? []) {
+            const ata = await test.deriveAta(holder.owner, address, tokenProgram);
+            test.setAccount(
+              factory.tokenAccount(
+                ata,
+                address,
+                holder.owner,
+                holder.amount ?? 0n,
+                tokenProgram,
+              ),
+            );
+          }
           return address;
         },
       };

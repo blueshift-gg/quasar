@@ -2,11 +2,16 @@ import { getAddressDecoder, type Address as KitAddress } from "@solana/kit";
 import { Address as Web3Address } from "@solana/web3.js";
 import {
   Test as KitTest,
+  account as kitAccount,
+  addressesEqual as kitAddressesEqual,
+  coSigners as kitCoSigners,
   wallet as kitWallet,
+  type AccountCodec as KitAccountCodec,
   type ProgramError as KitProgramError,
 } from "@blueshift-gg/quasar-test/kit";
 import {
   Test as Web3Test,
+  coSigners as web3CoSigners,
   wallet as web3Wallet,
   type ProgramError as Web3ProgramError,
 } from "@blueshift-gg/quasar-test/web3.js";
@@ -31,12 +36,33 @@ async function compilePublicContract() {
   });
   const kitUser = await kit.add(kitWallet({ address: kitAddress }));
   const web3User = await web3.add(web3Wallet({ address: web3Address }));
-  kit.send(
-    await new KitVaultClient().createDepositInstruction({
-      user: kitUser,
-      amount: 1n,
-    }),
-  ).fails(kitError);
+
+  const counter: KitAccountCodec<{ count: bigint }> = {
+    owner: PROGRAM_ADDRESS,
+    discriminator: new Uint8Array([7]),
+    size: 9,
+    decode: bytes => ({ count: BigInt(bytes.length) }),
+    encode: () => new Uint8Array(8),
+  };
+  await kit.add(kitAccount({ address: kitAddress, owner: PROGRAM_ADDRESS }));
+  kit.write(counter, kitAddress, { count: 1n });
+  const deposit = kit
+    .send(
+      await new KitVaultClient().createDepositInstruction({
+        user: kitUser,
+        amount: 1n,
+      }),
+    )
+    .fails(kitError)
+    .hasState(counter, kitAddress, state => void state.count);
+  const created: boolean = deposit.accountChanges.some(change =>
+    change.wasCreated(),
+  );
+  const sameAddress: boolean = kitAddressesEqual(kitUser, kitAddress);
+  const kitMetas = kitCoSigners([kitUser]);
+  const kitCount: bigint = kit.read(counter, kitAddress).count;
+  void [created, sameAddress, kitMetas, kitCount];
+
   web3
     .send(
       await new Web3VaultClient().createDepositInstruction({
@@ -45,6 +71,7 @@ async function compilePublicContract() {
       }),
     )
     .fails(web3Error);
+  void web3CoSigners([web3User]);
 }
 
 void compilePublicContract;
