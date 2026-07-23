@@ -1,8 +1,8 @@
 //! Human and JSON output for the CLI profiler.
 
 use {
-    crate::style,
     super::aggregate::ProfileResult,
+    crate::style,
     std::{collections::HashMap, fs},
 };
 
@@ -25,9 +25,15 @@ pub(crate) fn print_summary(
         Some(pt) => {
             let diff = total as i64 - pt as i64;
             if diff > 0 {
-                format!(" {}", style::color(196, &format!("(+{})", format_cu(diff as u64))))
+                format!(
+                    " {}",
+                    style::color(196, &format!("(+{})", format_cu(diff as u64)))
+                )
             } else if diff < 0 {
-                format!(" {}", style::color(83, &format!("(-{})", format_cu((-diff) as u64))))
+                format!(
+                    " {}",
+                    style::color(83, &format!("(-{})", format_cu((-diff) as u64)))
+                )
             } else {
                 format!(" {}", style::dim("(=)"))
             }
