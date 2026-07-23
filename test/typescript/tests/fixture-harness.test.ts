@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { AccountRole, address, type Instruction } from "@solana/kit";
+import {
+  AccountRole,
+  address,
+  getAddressDecoder,
+  type Address as KitAddress,
+  type Instruction,
+} from "@solana/kit";
 import { Address, TransactionInstruction } from "@solana/web3.js";
 import { getTokenDecoder } from "@solana-program/token";
 import {
+  DEFAULT_WALLET_LAMPORTS,
   Test as KitTest,
   account as kitAccount,
   addressesEqual as kitAddressesEqual,
@@ -54,6 +61,34 @@ function transferData(amount: bigint): Uint8Array {
   return data;
 }
 
+const systemProgram = "11111111111111111111111111111111";
+
+/** Encode a System program `Transfer` (`SystemInstruction` variant 2). */
+function systemTransferData(lamports: bigint): Uint8Array {
+  const data = new Uint8Array(12);
+  const view = new DataView(data.buffer);
+  view.setUint32(0, 2, true);
+  view.setBigUint64(4, lamports, true);
+  return data;
+}
+
+// Deterministic throwaway addresses for tests that need a raw address the world
+// never installs (codec owners, wrong-account probes, backfilled signers).
+// Distinct from the fixtures' internal `quasar-test/fresh-address` sequence.
+let addressSeed = 0;
+function seedBytes(): Uint8Array {
+  addressSeed += 1;
+  const bytes = new Uint8Array(32);
+  new DataView(bytes.buffer).setUint32(0, addressSeed, true);
+  return bytes;
+}
+function kitAddr(): KitAddress {
+  return getAddressDecoder().decode(seedBytes()) as KitAddress;
+}
+function web3Addr(): Address {
+  return new Address(seedBytes());
+}
+
 describe("fixture-first test harness", () => {
   it("provides the Kit fixture and outcome path", async () => {
     using test = new KitTest();
@@ -61,7 +96,7 @@ describe("fixture-first test harness", () => {
       kitWallet(),
       kitWallet(),
     ] as const);
-    const mint = await test.add(kitMint(authority, { supply: 10_000n }));
+    const mint = await test.add(kitMint({ authority, supply: 10_000n }));
     const alice = await test.add(
       kitAssociatedTokenAccount(mint, authority, { amount: 5_000n }),
     );
@@ -110,7 +145,7 @@ describe("fixture-first test harness", () => {
       web3Wallet(),
       web3Wallet(),
     ] as const);
-    const mint = await test.add(web3Mint(authority, { supply: 10_000n }));
+    const mint = await test.add(web3Mint({ authority, supply: 10_000n }));
     const alice = await test.add(
       web3AssociatedTokenAccount(mint, authority, { amount: 5_000n }),
     );
@@ -195,9 +230,9 @@ describe("fixture-first test harness", () => {
 describe("typed account ergonomics", () => {
   it("reads and writes typed accounts and installs raw accounts (Kit)", async () => {
     using test = new KitTest();
-    const owner = test.freshAddress();
+    const owner = kitAddr();
     const codec = counterCodec(owner);
-    const counter = test.write(codec, test.freshAddress(), { count: 42n });
+    const counter = test.write(codec, kitAddr(), { count: 42n });
 
     expect(test.read(codec, counter)).toEqual({ count: 42n });
     expect(kitAddressesEqual(test.account(counter)!.programAddress, owner)).toBe(
@@ -205,14 +240,14 @@ describe("typed account ergonomics", () => {
     );
     expect(test.lamports(counter)).toBe(BigInt(9 + 128) * 3480n * 2n);
 
-    expect(() => test.read(counterCodec(test.freshAddress()), counter)).toThrow(
+    expect(() => test.read(counterCodec(kitAddr()), counter)).toThrow(
       /owned by/,
     );
-    expect(() => test.read(codec, test.freshAddress())).toThrow(/no account/);
+    expect(() => test.read(codec, kitAddr())).toThrow(/no account/);
 
     const wrongDisc = await test.add(
       kitAccount({
-        address: test.freshAddress(),
+        address: kitAddr(),
         owner,
         data: new Uint8Array([9, 0, 0, 0, 0, 0, 0, 0, 0]),
       }),
@@ -220,16 +255,16 @@ describe("typed account ergonomics", () => {
     expect(() => test.read(codec, wrongDisc)).toThrow(/discriminator/);
 
     const tooSmall = await test.add(
-      kitAccount({ address: test.freshAddress(), owner, data: new Uint8Array([7, 0, 0]) }),
+      kitAccount({ address: kitAddr(), owner, data: new Uint8Array([7, 0, 0]) }),
     );
     expect(() => test.read(codec, tooSmall)).toThrow(/at least/);
   });
 
   it("reads and writes typed accounts and installs raw accounts (Web3.js)", async () => {
     using test = new Web3Test();
-    const owner = test.freshAddress();
+    const owner = web3Addr();
     const codec = counterCodec(owner);
-    const counter = test.write(codec, test.freshAddress(), { count: 42n });
+    const counter = test.write(codec, web3Addr(), { count: 42n });
 
     expect(test.read(codec, counter)).toEqual({ count: 42n });
     expect(
@@ -237,14 +272,14 @@ describe("typed account ergonomics", () => {
     ).toBe(true);
     expect(test.lamports(counter)).toBe(BigInt(9 + 128) * 3480n * 2n);
 
-    expect(() => test.read(counterCodec(test.freshAddress()), counter)).toThrow(
+    expect(() => test.read(counterCodec(web3Addr()), counter)).toThrow(
       /owned by/,
     );
-    expect(() => test.read(codec, test.freshAddress())).toThrow(/no account/);
+    expect(() => test.read(codec, web3Addr())).toThrow(/no account/);
 
     const wrongDisc = await test.add(
       web3Account({
-        address: test.freshAddress(),
+        address: web3Addr(),
         owner,
         data: new Uint8Array([9, 0, 0, 0, 0, 0, 0, 0, 0]),
       }),
@@ -259,9 +294,10 @@ describe("typed account ergonomics", () => {
       kitWallet(),
     ] as const);
     const mint = await test.add(
-      kitMint(authority, {
+      kitMint({
+        authority,
         supply: 10_000n,
-        holders: [{ owner: authority, amount: 5_000n }],
+        holders: [[authority, 5_000n]],
       }),
     );
     const alice = await test.deriveAta(authority, mint);
@@ -296,7 +332,7 @@ describe("typed account ergonomics", () => {
     expect(() =>
       test.read(
         {
-          owner: test.freshAddress(),
+          owner: kitAddr(),
           decode: (bytes: Uint8Array) => getTokenDecoder().decode(bytes),
         },
         alice,
@@ -311,9 +347,10 @@ describe("typed account ergonomics", () => {
       web3Wallet(),
     ] as const);
     const mint = await test.add(
-      web3Mint(authority, {
+      web3Mint({
+        authority,
         supply: 10_000n,
-        holders: [{ owner: authority, amount: 5_000n }],
+        holders: [[authority, 5_000n]],
       }),
     );
     const alice = await test.deriveAta(authority, mint);
@@ -355,9 +392,10 @@ describe("typed account ergonomics", () => {
       kitWallet(),
     ] as const);
     const kitMintAddress = await kit.add(
-      kitMint(kitAuthority, {
+      kitMint({
+        authority: kitAuthority,
         supply: 9_000n,
-        holders: [{ owner: kitAlice, amount: 5_000n }, { owner: kitBob }],
+        holders: [[kitAlice, 5_000n], [kitBob, 0n]],
       }),
     );
     expect(kit.tokens(await kit.deriveAta(kitAlice, kitMintAddress))).toBe(
@@ -372,7 +410,10 @@ describe("typed account ergonomics", () => {
       web3Wallet(),
     ] as const);
     const web3MintAddress = await web3.add(
-      web3Mint(web3Authority, { holders: [{ owner: web3Alice, amount: 7_000n }] }),
+      web3Mint({
+        authority: web3Authority,
+        holders: [[web3Alice, 7_000n]],
+      }),
     );
     expect(web3.tokens(await web3.deriveAta(web3Alice, web3MintAddress))).toBe(
       7_000n,
@@ -386,15 +427,16 @@ describe("typed account ergonomics", () => {
       kitWallet(),
     ] as const);
     const mint = await test.add(
-      kitMint(authority, {
+      kitMint({
+        authority,
         supply: 2_000n,
-        holders: [{ owner: authority, amount: 2_000n }],
+        holders: [[authority, 2_000n]],
       }),
     );
     const alice = await test.deriveAta(authority, mint);
     const bob = await test.add(kitAssociatedTokenAccount(mint, recipient));
 
-    const extra = test.freshAddress();
+    const extra = kitAddr();
     const cosigners = kitCoSigners([extra]);
     expect(cosigners).toEqual([
       { address: extra, role: AccountRole.READONLY_SIGNER },
@@ -422,15 +464,16 @@ describe("typed account ergonomics", () => {
       web3Wallet(),
     ] as const);
     const mint = await test.add(
-      web3Mint(authority, {
+      web3Mint({
+        authority,
         supply: 2_000n,
-        holders: [{ owner: authority, amount: 2_000n }],
+        holders: [[authority, 2_000n]],
       }),
     );
     const alice = await test.deriveAta(authority, mint);
     const bob = await test.add(web3AssociatedTokenAccount(mint, recipient));
 
-    const extra = test.freshAddress();
+    const extra = web3Addr();
     const cosigners = web3CoSigners([extra]);
     expect(cosigners).toEqual([
       { pubkey: extra, isSigner: true, isWritable: false },
@@ -448,5 +491,102 @@ describe("typed account ergonomics", () => {
     });
 
     test.send(transfer).succeeds().hasTokens(bob, 500n);
+  });
+});
+
+describe("writable-first account backfill", () => {
+  const amount = 1_000_000_000n;
+
+  // A missing writable account is an init target and enters empty — even when
+  // it signs, as a keypair account being created does. Payers are world state:
+  // a payer the test never installs has nothing to move, so the transfer must
+  // fail. Installed as a wallet, the same transfer goes through.
+  it("treats a missing writable signer as an empty init target, not a funded payer (Kit)", async () => {
+    using test = new KitTest();
+    const payer = kitAddr();
+    const recipient = kitAddr();
+
+    const transfer = (): Instruction => ({
+      programAddress: address(systemProgram),
+      accounts: [
+        { address: payer, role: AccountRole.WRITABLE_SIGNER },
+        { address: recipient, role: AccountRole.WRITABLE },
+      ],
+      data: systemTransferData(amount),
+    });
+
+    expect(test.simulate(transfer()).isErr()).toBe(true);
+
+    await test.add(kitWallet({ address: payer }));
+    test.send(transfer()).succeeds().hasLamports(recipient, amount);
+  });
+
+  it("treats a missing writable signer as an empty init target, not a funded payer (Web3.js)", async () => {
+    using test = new Web3Test();
+    const payer = web3Addr();
+    const recipient = web3Addr();
+
+    const transfer = () =>
+      new TransactionInstruction({
+        programId: new Address(systemProgram),
+        keys: [
+          { pubkey: payer, isSigner: true, isWritable: true },
+          { pubkey: recipient, isSigner: false, isWritable: true },
+        ],
+        data: systemTransferData(amount),
+      });
+
+    expect(test.simulate(transfer()).isErr()).toBe(true);
+
+    await test.add(web3Wallet({ address: payer }));
+    test.send(transfer()).succeeds().hasLamports(recipient, amount);
+  });
+
+  // A read-only signer (a co-signer, e.g. a multisig member) is an actor and
+  // enters funded, even though the world never installed it.
+  it("backfills a read-only co-signer as a funded account (Kit)", async () => {
+    using test = new KitTest();
+    const payer = await test.add(kitWallet());
+    const recipient = kitAddr();
+    const cosigner = kitAddr();
+
+    const transfer: Instruction = {
+      programAddress: address(systemProgram),
+      accounts: [
+        { address: payer, role: AccountRole.WRITABLE_SIGNER },
+        { address: recipient, role: AccountRole.WRITABLE },
+        { address: cosigner, role: AccountRole.READONLY_SIGNER },
+      ],
+      data: systemTransferData(amount),
+    };
+
+    test
+      .send(transfer)
+      .succeeds()
+      .hasLamports(recipient, amount)
+      .hasLamports(cosigner, DEFAULT_WALLET_LAMPORTS);
+  });
+
+  it("backfills a read-only co-signer as a funded account (Web3.js)", async () => {
+    using test = new Web3Test();
+    const payer = await test.add(web3Wallet());
+    const recipient = web3Addr();
+    const cosigner = web3Addr();
+
+    const transfer = new TransactionInstruction({
+      programId: new Address(systemProgram),
+      keys: [
+        { pubkey: payer, isSigner: true, isWritable: true },
+        { pubkey: recipient, isSigner: false, isWritable: true },
+        { pubkey: cosigner, isSigner: true, isWritable: false },
+      ],
+      data: systemTransferData(amount),
+    });
+
+    test
+      .send(transfer)
+      .succeeds()
+      .hasLamports(recipient, amount)
+      .hasLamports(cosigner, DEFAULT_WALLET_LAMPORTS);
   });
 });

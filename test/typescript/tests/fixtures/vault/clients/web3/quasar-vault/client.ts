@@ -143,11 +143,11 @@ export class QuasarVaultClient {
     return null;
   }
 
-  async createDepositInstruction(input: DepositInstructionInput): Promise<TransactionInstruction> {
+  async createDepositInstruction(input: DepositInstructionInput): Promise<TransactionInstruction & { readonly vaultAddress: Address }> {
     return this.createDepositInstructionRaw(input, {});
   }
 
-  async createDepositInstructionRaw(input: DepositInstructionInput, accountOverrides: DepositInstructionAccountOverrides): Promise<TransactionInstruction> {
+  async createDepositInstructionRaw(input: DepositInstructionInput, accountOverrides: DepositInstructionAccountOverrides): Promise<TransactionInstruction & { readonly vaultAddress: Address }> {
     const accountsMap: Record<string, Address> = {};
     accountsMap["systemProgram"] = new Address("11111111111111111111111111111111");
     accountsMap["vault"] = await findVaultAddress((accountOverrides.user ?? input.user));
@@ -155,7 +155,7 @@ export class QuasarVaultClient {
       ["amount", getU64Codec()],
     ]);
     const data = Uint8Array.from([0, ...argsCodec.encode({ amount: input.amount })]);
-    return new TransactionInstruction({
+    const instruction = new TransactionInstruction({
       programId: QuasarVaultClient.programId,
       keys: [
         { pubkey: (accountOverrides.user ?? input.user), isSigner: true, isWritable: true },
@@ -164,26 +164,32 @@ export class QuasarVaultClient {
       ],
       data,
     });
+    return Object.assign(instruction, {
+      vaultAddress: (accountOverrides.vault ?? accountsMap["vault"]),
+    });
   }
 
-  async createWithdrawInstruction(input: WithdrawInstructionInput): Promise<TransactionInstruction> {
+  async createWithdrawInstruction(input: WithdrawInstructionInput): Promise<TransactionInstruction & { readonly vaultAddress: Address }> {
     return this.createWithdrawInstructionRaw(input, {});
   }
 
-  async createWithdrawInstructionRaw(input: WithdrawInstructionInput, accountOverrides: WithdrawInstructionAccountOverrides): Promise<TransactionInstruction> {
+  async createWithdrawInstructionRaw(input: WithdrawInstructionInput, accountOverrides: WithdrawInstructionAccountOverrides): Promise<TransactionInstruction & { readonly vaultAddress: Address }> {
     const accountsMap: Record<string, Address> = {};
     accountsMap["vault"] = await findVaultAddress((accountOverrides.user ?? input.user));
     const argsCodec = getStructCodec([
       ["amount", getU64Codec()],
     ]);
     const data = Uint8Array.from([1, ...argsCodec.encode({ amount: input.amount })]);
-    return new TransactionInstruction({
+    const instruction = new TransactionInstruction({
       programId: QuasarVaultClient.programId,
       keys: [
         { pubkey: (accountOverrides.user ?? input.user), isSigner: true, isWritable: true },
         { pubkey: (accountOverrides.vault ?? accountsMap["vault"]), isSigner: false, isWritable: true },
       ],
       data,
+    });
+    return Object.assign(instruction, {
+      vaultAddress: (accountOverrides.vault ?? accountsMap["vault"]),
     });
   }
 }

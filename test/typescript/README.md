@@ -10,22 +10,25 @@ npm install --save-dev @blueshift-gg/quasar-test @solana/kit
 
 ```ts
 import { Test, wallet } from "@blueshift-gg/quasar-test/kit";
-import {
-  PROGRAM_ADDRESS,
-  VaultClient,
-  findVaultAddress,
-} from "./client/index.js";
+import { PROGRAM_ADDRESS, VaultClient } from "./client/index.js";
 
 using test = await Test.load(PROGRAM_ADDRESS, "target/deploy/vault.so");
-const signer = await test.add(wallet());
-const vault = await findVaultAddress(signer);
+const user = await test.add(wallet({ fund: 1_000_000n }));
 const client = new VaultClient();
+const deposit = await client.createDepositInstruction({ user, amount: 1_000n });
 test
-  .send(await client.createDepositInstruction({ signer, lamports: 1_000n }))
+  .send(deposit)
   .succeeds()
-  .hasLamports(vault, 1_000n)
+  .hasLamports(deposit.vaultAddress, 1_000n)
   .cuAtMost(10_000n);
 ```
+
+Actors are `wallet()` fixtures: `test.add(wallet({ fund }))` installs a funded
+account and returns its address. A transaction may still name a signer the world
+never installed — a read-only co-signer such as a multisig member is auto-funded
+on `send` — but an account that pays or is created is world state, so a payer
+needs a `wallet()` and an init target enters empty. This mirrors the Rust
+harness exactly.
 
 Use `@blueshift-gg/quasar-test/web3.js` for the same API with Web3.js address,
 account, and instruction types. Fixture addresses are deterministic and match
@@ -34,7 +37,9 @@ between the Kit, Web3.js, and Rust harnesses.
 Built-in fixtures are `wallet`, `mint`, `tokenAccount`,
 `associatedTokenAccount`, and `program`. Application fixtures are ordinary
 objects implementing `Fixture`; `test.add` is the only composition primitive.
-The canonical generated instruction infers PDAs and ATAs. Generated
+The canonical generated instruction infers PDAs and ATAs and exposes each
+derived address as a `{field}Address` property on the returned instruction, so
+tests name it without calling `find{Name}Address` by hand. Generated
 `create{Name}InstructionRaw` methods make those addresses explicit only for
 adversarial tests.
 

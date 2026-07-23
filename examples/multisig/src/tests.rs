@@ -147,7 +147,7 @@ fn transfer_world(test: &mut Test) -> (Pubkey, Pubkey) {
         "",
         &[SIGNER1, SIGNER2, SIGNER3],
     ));
-    test.add(Wallet::new().at(vault).lamports(5_000_000_000));
+    test.add(Wallet::new().at(vault).fund(5_000_000_000));
     (config, vault)
 }
 

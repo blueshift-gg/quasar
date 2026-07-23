@@ -6,8 +6,9 @@ use crate::{fixtures, Account, Pubkey, Test, SPL_TOKEN_2022_PROGRAM_ID, SPL_TOKE
 ///
 /// Applications can implement this trait for protocol-level fixtures and
 /// compose the built-in account fixtures inside [`Fixture::install`]. Arrays
-/// of one fixture type are fixtures too, so repeated actors can be installed
-/// with `test.add([Wallet::new(); 3])`.
+/// of one fixture type are fixtures too, so repeated setup can be installed
+/// with `test.add([Wallet::new(); 3])`. Each fixture returns the address it
+/// placed, so tests thread those handles instead of pinning addresses up front.
 pub trait Fixture {
     /// Handle or state returned after installation.
     type Output;
@@ -56,8 +57,8 @@ impl Wallet {
         self
     }
 
-    /// Set the wallet balance.
-    pub fn lamports(mut self, lamports: u64) -> Self {
+    /// Fund the wallet with an exact lamport balance, replacing the default.
+    pub fn fund(mut self, lamports: u64) -> Self {
         self.lamports = lamports;
         self
     }
@@ -100,12 +101,15 @@ impl TokenProgram {
 
 /// An initialized token mint.
 ///
-/// [`Self::with_holder`] additionally installs one associated-token account per
-/// holder, so a funded mint and its holders can be set up in a single fixture.
+/// A bare [`Mint::new`] has no mint authority, modelling a fixed-supply mint.
+/// [`Self::with_authority`] makes it mintable and [`Self::with_freeze_authority`]
+/// installs a freeze authority. [`Self::with_holder`] additionally installs one
+/// associated-token account per holder, so a funded mint and its holders can be
+/// set up in a single fixture.
 #[derive(Debug, Clone)]
 pub struct Mint {
-    address: Option<Pubkey>,
-    authority: Pubkey,
+    authority: Option<Pubkey>,
+    freeze_authority: Option<Pubkey>,
     supply: u64,
     decimals: u8,
     token_program: TokenProgram,
@@ -113,11 +117,14 @@ pub struct Mint {
 }
 
 impl Mint {
-    /// Create a six-decimal legacy Token mint with zero supply.
-    pub fn new(authority: Pubkey) -> Self {
+    /// Create a six-decimal legacy Token mint with zero supply and no mint or
+    /// freeze authority. Without [`Self::with_authority`] the mint is
+    /// fixed-supply (its `mint_authority` is `COption::None`). Installing the
+    /// mint returns its address, so tests read that back rather than pinning it.
+    pub fn new() -> Self {
         Self {
-            address: None,
-            authority,
+            authority: None,
+            freeze_authority: None,
             supply: 0,
             decimals: 6,
             token_program: TokenProgram::Legacy,
@@ -125,9 +132,16 @@ impl Mint {
         }
     }
 
-    /// Install the mint at a specific address.
-    pub fn at(mut self, address: Pubkey) -> Self {
-        self.address = Some(address);
+    /// Set the mint authority, making the mint mintable. Left unset, the mint
+    /// is fixed-supply.
+    pub fn with_authority(mut self, authority: Pubkey) -> Self {
+        self.authority = Some(authority);
+        self
+    }
+
+    /// Set the freeze authority. Left unset, the mint cannot freeze accounts.
+    pub fn with_freeze_authority(mut self, freeze_authority: Pubkey) -> Self {
+        self.freeze_authority = Some(freeze_authority);
         self
     }
 
@@ -149,15 +163,22 @@ impl Mint {
         self
     }
 
-    /// Fund `owner` with `amount` of this mint through its associated-token
-    /// account, created when the mint is installed.
+    /// Fund each `(owner, amount)` holder with `amount` of this mint through its
+    /// associated-token account, created when the mint is installed.
     ///
-    /// Repeatable: each call registers one more holder. Reach for
-    /// [`AssociatedTokenAccount`] or [`TokenAccount`] directly when a holder
-    /// needs a non-associated address or other explicit control.
-    pub fn with_holder(mut self, owner: Pubkey, amount: u64) -> Self {
-        self.holders.push((owner, amount));
+    /// Takes the whole set in one call, from anything iterable (an array,
+    /// slice, or vec). Reach for [`AssociatedTokenAccount`] or [`TokenAccount`]
+    /// directly when a holder needs a non-associated address or other explicit
+    /// control.
+    pub fn with_holder(mut self, holders: impl IntoIterator<Item = (Pubkey, u64)>) -> Self {
+        self.holders.extend(holders);
         self
+    }
+}
+
+impl Default for Mint {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -165,10 +186,11 @@ impl Fixture for Mint {
     type Output = Pubkey;
 
     fn install(self, test: &mut Test) -> Self::Output {
-        let address = self.address.unwrap_or_else(|| test.fresh_address());
+        let address = test.fresh_address();
         test.set_account(fixtures::token_program_mint_account(
             address,
             self.authority,
+            self.freeze_authority,
             self.supply,
             self.decimals,
             self.token_program.id(),

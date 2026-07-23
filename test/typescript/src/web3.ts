@@ -115,6 +115,8 @@ const adapter: HarnessAdapter<
       signer: meta.isSigner,
     })),
   emptyAccount: value => createKeyedSystemAccount(value, 0n),
+  fundedAccount: value =>
+    createKeyedSystemAccount(value, DEFAULT_WALLET_LAMPORTS),
   programAccount,
   tokenAmount: account =>
     BigInt(getTokenDecoder().decode(account.accountInfo.data).amount),
@@ -187,10 +189,10 @@ export class Test extends TestCore<
 const fixtures = createFixtureFactories<Address, KeyedAccountInfo, Test>({
   systemAccount: (value, lamports) => createKeyedSystemAccount(value, lamports),
   programAccount,
-  mintAccount: (value, authority, supply, decimals, tokenProgram) =>
+  mintAccount: (value, authority, freezeAuthority, supply, decimals, tokenProgram) =>
     createKeyedMintAccount(
       value,
-      { decimals, mintAuthority: authority, supply },
+      { decimals, mintAuthority: authority, freezeAuthority, supply },
       new Address(
         tokenProgram === TokenProgram.Token2022
           ? SPL_TOKEN_2022_PROGRAM_ID

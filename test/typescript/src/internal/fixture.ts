@@ -9,8 +9,15 @@ export interface Fixture<Output, Host> {
   install(test: Host): Output | Promise<Output>;
 }
 
+/**
+ * Package-internal key for the deterministic address generator. Not exported to
+ * consumers, so `freshAddress` is not part of the public API: tests name actors
+ * through `wallet()` and read back the address each fixture returns.
+ */
+export const FRESH_ADDRESS = Symbol("freshAddress");
+
 export interface FixtureHost<Address, Account> {
-  freshAddress(): Address;
+  [FRESH_ADDRESS](): Address;
   setAccount(account: Account): void;
   deriveAta(owner: Address, mint: Address, tokenProgram?: TokenProgram): Promise<Address>;
   loadProgram(programId: Address, elf: Uint8Array, loaderVersion?: number): void;
@@ -18,23 +25,35 @@ export interface FixtureHost<Address, Account> {
 
 export interface WalletOptions<Address> {
   address?: Address;
-  lamports?: bigint;
+  /** Exact lamport balance, mirroring Rust `Wallet::fund`. Defaults to
+   * `DEFAULT_WALLET_LAMPORTS`. */
+  fund?: bigint;
 }
 
-/** A wallet that should hold an associated token account for a mint. */
-export interface MintHolder<Address> {
-  owner: Address;
-  amount?: bigint;
-}
+/**
+ * A wallet and the amount of a mint to seed it with, as an `[owner, amount]`
+ * pair. Mirrors one entry of Rust `Mint::with_holder`.
+ */
+export type MintHolder<Address> = readonly [owner: Address, amount: bigint];
 
 export interface MintOptions<Address> {
-  address?: Address;
+  /**
+   * Mint authority, mirroring Rust `Mint::with_authority`. Omitted, the mint is
+   * fixed-supply (its `mintAuthority` is `COption::None`).
+   */
+  authority?: Address;
+  /**
+   * Freeze authority, mirroring Rust `Mint::with_freeze_authority`. Omitted, the
+   * mint cannot freeze accounts.
+   */
+  freezeAuthority?: Address;
   supply?: bigint;
   decimals?: number;
   tokenProgram?: TokenProgram;
   /**
    * Wallets to fund with an associated token account for this mint, mirroring
-   * Rust `Mint::with_holder`. One ATA fixture is installed per holder.
+   * Rust `Mint::with_holder`. One ATA fixture is installed per `[owner, amount]`
+   * pair.
    */
   holders?: readonly MintHolder<Address>[];
 }
@@ -77,7 +96,8 @@ interface FixtureAccountFactory<Address, Account> {
   ): Account;
   mintAccount(
     address: Address,
-    authority: Address,
+    authority: Address | undefined,
+    freezeAuthority: Address | undefined,
     supply: bigint,
     decimals: number,
     tokenProgram: TokenProgram,
@@ -102,11 +122,11 @@ export function createFixtureFactories<
     wallet(options: WalletOptions<Address> = {}): Fixture<Address, Host> {
       return {
         install(test) {
-          const address = options.address ?? test.freshAddress();
+          const address = options.address ?? test[FRESH_ADDRESS]();
           test.setAccount(
             factory.systemAccount(
               address,
-              options.lamports ?? DEFAULT_WALLET_LAMPORTS,
+              options.fund ?? DEFAULT_WALLET_LAMPORTS,
             ),
           );
           return address;
@@ -131,33 +151,25 @@ export function createFixtureFactories<
       };
     },
 
-    mint(
-      authority: Address,
-      options: MintOptions<Address> = {},
-    ): Fixture<Address, Host> {
+    mint(options: MintOptions<Address> = {}): Fixture<Address, Host> {
       return {
         async install(test) {
-          const address = options.address ?? test.freshAddress();
+          const address = test[FRESH_ADDRESS]();
           const tokenProgram = options.tokenProgram ?? TokenProgram.Legacy;
           test.setAccount(
             factory.mintAccount(
               address,
-              authority,
+              options.authority,
+              options.freezeAuthority,
               options.supply ?? 0n,
               options.decimals ?? 6,
               tokenProgram,
             ),
           );
-          for (const holder of options.holders ?? []) {
-            const ata = await test.deriveAta(holder.owner, address, tokenProgram);
+          for (const [owner, amount] of options.holders ?? []) {
+            const ata = await test.deriveAta(owner, address, tokenProgram);
             test.setAccount(
-              factory.tokenAccount(
-                ata,
-                address,
-                holder.owner,
-                holder.amount ?? 0n,
-                tokenProgram,
-              ),
+              factory.tokenAccount(ata, address, owner, amount, tokenProgram),
             );
           }
           return address;
@@ -172,7 +184,7 @@ export function createFixtureFactories<
     ): Fixture<Address, Host> {
       return {
         install(test) {
-          const address = options.address ?? test.freshAddress();
+          const address = options.address ?? test[FRESH_ADDRESS]();
           test.setAccount(
             factory.tokenAccount(
               address,
