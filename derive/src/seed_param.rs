@@ -19,7 +19,7 @@ impl SeedType {
     /// The field storage type in generated SeedSet structs.
     pub(crate) fn field_type(&self) -> proc_macro2::TokenStream {
         match self {
-            SeedType::Address => quote! { &'__quasar_seed quasar_lang::prelude::Address },
+            SeedType::Address => quote! { quasar_lang::prelude::Address },
             SeedType::U8 => quote! { [u8; 1] },
             SeedType::U16 => quote! { [u8; 2] },
             SeedType::U32 => quote! { [u8; 4] },
@@ -31,7 +31,9 @@ impl SeedType {
     /// The public constructor parameter type for a typed seed.
     pub(crate) fn param_type(&self) -> proc_macro2::TokenStream {
         match self {
-            SeedType::Address => quote! { &'__quasar_seed quasar_lang::prelude::Address },
+            SeedType::Address => quote! {
+                impl core::borrow::Borrow<quasar_lang::prelude::Address>
+            },
             SeedType::U8 => quote! { u8 },
             SeedType::U16 => quote! { u16 },
             SeedType::U32 => quote! { u32 },
@@ -43,7 +45,8 @@ impl SeedType {
     /// Expression to store the constructor parameter in the SeedSet field.
     pub(crate) fn to_stored_expr(&self, param: &Ident) -> proc_macro2::TokenStream {
         match self {
-            SeedType::Address | SeedType::Bytes(_) => quote! { #param },
+            SeedType::Address => quote! { *core::borrow::Borrow::borrow(&#param) },
+            SeedType::Bytes(_) => quote! { #param },
             SeedType::U8 => quote! { [#param] },
             SeedType::U16 | SeedType::U32 | SeedType::U64 => quote! { #param.to_le_bytes() },
         }

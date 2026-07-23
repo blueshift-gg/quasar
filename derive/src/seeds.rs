@@ -202,20 +202,8 @@ pub(crate) fn generate_seeds_impl(
         .map(|expr| quote! { quasar_lang::cpi::Seed::from(#expr) })
         .collect();
 
-    let has_address_param = seeds_attr
-        .params
-        .iter()
-        .any(|param| matches!(param.ty, SeedType::Address));
-    let phantom_field = if has_address_param {
-        quote! {}
-    } else {
-        quote! { _lt: core::marker::PhantomData<&'__quasar_seed ()>, }
-    };
-    let phantom_init = if has_address_param {
-        quote! {}
-    } else {
-        quote! { _lt: core::marker::PhantomData, }
-    };
+    let phantom_field = quote! { _lt: core::marker::PhantomData<&'__quasar_seed ()>, };
+    let phantom_init = quote! { _lt: core::marker::PhantomData, };
 
     quote! {
         impl #impl_generics quasar_lang::traits::HasSeeds for #name #ty_generics #where_clause {
