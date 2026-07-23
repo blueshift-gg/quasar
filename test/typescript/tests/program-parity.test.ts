@@ -52,6 +52,10 @@ describe("real Quasar program parity", () => {
       vault,
     ]);
     expect(deposit.accountChanges[1]?.before).toBeNull();
+    expect(deposit.accountChanges[1]?.wasCreated()).toBe(true);
+    expect(deposit.accountChanges[1]?.wasRemoved()).toBe(false);
+    expect(deposit.accountChanges[0]?.wasCreated()).toBe(false);
+    expect(deposit.accountChanges[0]?.wasRemoved()).toBe(false);
 
     test.setAccount({
       address: vault,
@@ -126,10 +130,13 @@ describe("real Quasar program parity", () => {
       .cuAtMost(1_556n)
       .hasLamports(vault, depositAmount)
       .hasLamports(user, startingLamports - depositAmount);
-    expect(
-      deposit.accountChanges.map(change => change.address.toBase58()),
-    ).toEqual([user.toBase58(), vault.toBase58()]);
+    expect(deposit.accountChanges.map(change => change.address)).toEqual([
+      user,
+      vault,
+    ]);
     expect(deposit.accountChanges[1]?.before).toBeNull();
+    expect(deposit.accountChanges[1]?.wasCreated()).toBe(true);
+    expect(deposit.accountChanges[0]?.wasCreated()).toBe(false);
 
     test.setAccount({
       accountId: vault,

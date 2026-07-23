@@ -1,8 +1,10 @@
-import type { Fixture, TokenProgram } from "./fixture.js";
-import type {
+import { rentMinimumBalance, type Fixture, type TokenProgram } from "./fixture.js";
+import {
   AccountChange,
-  OutcomeAdapter,
-  RawExecutionResult,
+  decodeAccount,
+  type AccountCodec,
+  type OutcomeAdapter,
+  type RawExecutionResult,
 } from "./outcome.js";
 
 type FixtureValue<Value> = Value extends Fixture<infer Output, infer _Host>
@@ -16,6 +18,7 @@ type Installed<Input> = Input extends readonly unknown[]
 interface InstructionAccount<Address> {
   address: Address;
   writable: boolean;
+  signer: boolean;
 }
 
 /** Stable runtime limits accepted by both TypeScript test adapters. */
@@ -49,6 +52,12 @@ export interface HarnessAdapter<Address, Account, Instruction, Output>
   accountLamports(account: Account): bigint;
   instructionAccounts(instruction: Instruction): readonly InstructionAccount<Address>[];
   emptyAccount(address: Address): Account;
+  programAccount(
+    address: Address,
+    owner: Address,
+    data: Uint8Array,
+    lamports: bigint,
+  ): Account;
   accountsEqual(left: Account | null, right: Account | null): boolean;
   deriveAta(owner: Address, mint: Address, tokenProgram: TokenProgram): Promise<Address>;
   deriveProgramAddress(
@@ -138,6 +147,51 @@ export class TestCore<Address, Account, Instruction, Output> {
     return account === null
       ? null
       : decode(this.#adapter.accountData(account));
+  }
+
+  /**
+   * Read a typed account through its codec. Ownership, discriminator, and size
+   * are validated before decoding; a missing account or any mismatch throws
+   * with a precise message.
+   */
+  read<Value>(codec: AccountCodec<Value, Address>, address: Address): Value {
+    const account = this.account(address);
+    if (account === null) {
+      throw new Error(`read: no account at ${this.#adapter.renderAddress(address)}`);
+    }
+    return decodeAccount(codec, address, account, this.#adapter);
+  }
+
+  /**
+   * Install a rent-exempt account holding an encoded value. The codec must
+   * supply `encode` and `owner`; a discriminator, when present, frames the
+   * encoded body. Returns the account address.
+   */
+  write<Value>(
+    codec: AccountCodec<Value, Address>,
+    address: Address,
+    data: Value,
+  ): Address {
+    if (codec.encode === undefined) {
+      throw new Error("write: codec has no encode");
+    }
+    if (codec.owner === undefined) {
+      throw new Error("write: codec has no owner");
+    }
+    const body = Uint8Array.from(codec.encode(data));
+    const discriminator = codec.discriminator ?? new Uint8Array();
+    const bytes = new Uint8Array(discriminator.length + body.length);
+    bytes.set(discriminator, 0);
+    bytes.set(body, discriminator.length);
+    this.setAccount(
+      this.#adapter.programAccount(
+        address,
+        codec.owner,
+        bytes,
+        rentMinimumBalance(bytes.length),
+      ),
+    );
+    return address;
   }
 
   loadProgram(programId: Address, elf: Uint8Array, loaderVersion?: number): void {
@@ -243,6 +297,7 @@ export class TestCore<Address, Account, Instruction, Output> {
         tracked.set(key, {
           address: meta.address,
           writable: meta.writable || previous?.writable === true,
+          signer: meta.signer || previous?.signer === true,
         });
       }
     }
@@ -252,6 +307,7 @@ export class TestCore<Address, Account, Instruction, Output> {
       tracked.set(key, {
         address: this.#adapter.accountAddress(account),
         writable: false,
+        signer: false,
       });
     }
 
@@ -262,7 +318,7 @@ export class TestCore<Address, Account, Instruction, Output> {
       if (!inputs.has(key)) {
         if (account !== null) {
           inputs.set(key, account);
-        } else if (meta.writable) {
+        } else if (meta.writable || meta.signer) {
           inputs.set(key, this.#adapter.emptyAccount(meta.address));
         }
       }
@@ -297,11 +353,7 @@ export class TestCore<Address, Account, Instruction, Output> {
         meta.writable &&
         !this.#adapter.accountsEqual(previous, next)
       ) {
-        changes.push({
-          address: meta.address,
-          before: previous,
-          after: next,
-        });
+        changes.push(new AccountChange(meta.address, previous, next));
       }
     }
     return this.#adapter.outcome(result, outcomeAccounts, changes);

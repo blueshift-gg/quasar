@@ -10,10 +10,13 @@ import {
 import { getMintDecoder, getTokenDecoder } from "@solana-program/token";
 import {
   address,
+  AccountRole,
   getAddressDecoder,
   getAddressEncoder,
   getProgramDerivedAddress,
+  isSignerRole,
   isWritableRole,
+  lamports,
   type Account,
   type Address,
   type Instruction,
@@ -23,13 +26,19 @@ import {
   createFixtureFactories,
   DEFAULT_WALLET_LAMPORTS,
   TokenProgram,
+  type AccountOptions as SharedAccountOptions,
   type AssociatedTokenAccountOptions,
   type Fixture as SharedFixture,
+  type MintHolder as SharedMintHolder,
   type MintOptions as SharedMintOptions,
   type TokenAccountOptions as SharedTokenAccountOptions,
   type WalletOptions as SharedWalletOptions,
 } from "./internal/fixture.js";
-import { Outcome as SharedOutcome } from "./internal/outcome.js";
+import {
+  Outcome as SharedOutcome,
+  type AccountChange as SharedAccountChange,
+  type AccountCodec as SharedAccountCodec,
+} from "./internal/outcome.js";
 import {
   TestCore,
   type HarnessAdapter,
@@ -43,10 +52,29 @@ export type { AssociatedTokenAccountOptions };
 type WorldAccount = Account<Uint8Array>;
 export type Fixture<Output> = SharedFixture<Output, Test>;
 export type Outcome = SharedOutcome<Address, WorldAccount>;
+export type AccountChange = SharedAccountChange<Address, WorldAccount>;
+export type AccountCodec<Value> = SharedAccountCodec<Value, Address>;
 export type WalletOptions = SharedWalletOptions<Address>;
 export type MintOptions = SharedMintOptions<Address>;
+export type MintHolder = SharedMintHolder<Address>;
 export type TokenAccountOptions = SharedTokenAccountOptions<Address>;
+export type AccountOptions = SharedAccountOptions<Address>;
 export type TestOptions = SharedTestOptions;
+
+/** Account metas for read-only co-signers, e.g. multisig signers. */
+export function coSigners(
+  addresses: readonly Address[],
+): { address: Address; role: AccountRole }[] {
+  return addresses.map(address => ({
+    address,
+    role: AccountRole.READONLY_SIGNER,
+  }));
+}
+
+/** Value-equality for addresses, independent of the backend representation. */
+export function addressesEqual(left: Address, right: Address): boolean {
+  return left === right;
+}
 
 const addressEncoder = getAddressEncoder();
 const systemProgram = address("11111111111111111111111111111111");
@@ -62,6 +90,22 @@ function encoded(value: Address): Uint8Array {
   return new Uint8Array(addressEncoder.encode(value));
 }
 
+function programAccount(
+  value: Address,
+  owner: Address,
+  data: Uint8Array,
+  lamps: bigint,
+): WorldAccount {
+  return {
+    address: value,
+    programAddress: owner,
+    lamports: lamports(lamps),
+    data,
+    executable: false,
+    space: BigInt(data.length),
+  };
+}
+
 const adapter: HarnessAdapter<
   Address,
   WorldAccount,
@@ -72,13 +116,16 @@ const adapter: HarnessAdapter<
   freshAddress: bytes => getAddressDecoder().decode(bytes) as Address,
   accountAddress: account => account.address,
   accountData: account => account.data,
+  accountOwner: account => account.programAddress,
   accountLamports: account => BigInt(account.lamports),
   instructionAccounts: instruction =>
     (instruction.accounts ?? []).map(meta => ({
       address: meta.address,
       writable: isWritableRole(meta.role),
+      signer: isSignerRole(meta.role),
     })),
   emptyAccount: value => createKeyedSystemAccount(value, 0n),
+  programAccount,
   tokenAmount: account => BigInt(getTokenDecoder().decode(account.data).amount),
   mintSupply: account => BigInt(getMintDecoder().decode(account.data).supply),
   accountsEqual: (left, right) =>
@@ -143,7 +190,8 @@ export class Test extends TestCore<
 }
 
 const fixtures = createFixtureFactories<Address, WorldAccount, Test>({
-  systemAccount: (value, lamports) => createKeyedSystemAccount(value, lamports),
+  systemAccount: (value, lamps) => createKeyedSystemAccount(value, lamps),
+  programAccount,
   mintAccount: (value, authority, supply, decimals, tokenProgram) =>
     createKeyedMintAccount(
       value,
@@ -167,6 +215,7 @@ const fixtures = createFixtureFactories<Address, WorldAccount, Test>({
 });
 
 export const {
+  account,
   associatedTokenAccount,
   mint,
   program,
