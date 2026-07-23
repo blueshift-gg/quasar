@@ -210,17 +210,20 @@ mod tests {
             serde_json::from_value(serde_json::json!({
                 "name": "Registry",
                 "kind": "struct",
-                "fields": [{
-                    "name": "label",
-                    "type": "string",
-                    "codec": {
-                        "kind": "sizePrefixed",
-                        "prefix": { "type": "u8", "endian": "le" },
-                        "storage": "tail",
-                        "maxBytes": 32,
-                        "encoding": "utf8"
+                "fields": [
+                    { "name": "tag", "type": { "array": ["u8", 4] } },
+                    {
+                        "name": "label",
+                        "type": "string",
+                        "codec": {
+                            "kind": "sizePrefixed",
+                            "prefix": { "type": "u8", "endian": "le" },
+                            "storage": "tail",
+                            "maxBytes": 32,
+                            "encoding": "utf8"
+                        }
                     }
-                }]
+                ]
             }))
             .unwrap(),
         );
@@ -530,6 +533,19 @@ mod tests {
         assert!(generate_ts_client(&idl)
             .unwrap()
             .contains("owner: new Address(\"11111111111111111111111111111111\"),"));
+    }
+
+    #[test]
+    fn ts_dynamic_decode_copies_fixed_byte_arrays() {
+        // codecs v7 getBytesCodec decodes ReadonlyUint8Array; the dynamic
+        // result literal must copy it into the interface's Uint8Array.
+        let idl = idl_with_fixed_and_dynamic_accounts();
+        for ts in [
+            generate_ts_client(&idl).unwrap(),
+            generate_ts_client_kit(&idl).unwrap(),
+        ] {
+            assert!(ts.contains("tag: new Uint8Array(fixedResult.tag)"));
+        }
     }
 
     #[test]
