@@ -91,8 +91,6 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
 
     match output {
         Ok(BuildResult::Captured(o)) if o.status.success() => {
-            let elapsed = start.elapsed();
-
             // Show warnings even on success
             let stderr = String::from_utf8_lossy(&o.stderr);
             let warnings = extract_warnings(&stderr);
@@ -103,27 +101,7 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
                 }
             }
 
-            let so_path = utils::find_so(&config, false);
-            let size_info = so_path
-                .and_then(|p| {
-                    let meta = fs::metadata(&p).ok()?;
-                    let new_size = meta.len();
-                    let delta = size_delta(&p, new_size);
-                    save_last_size(&p, new_size);
-                    Some(format!(
-                        " ({}{delta})",
-                        style::dim(&style::human_size(new_size))
-                    ))
-                })
-                .unwrap_or_default();
-
-            println!(
-                "  {}",
-                style::success(&format!(
-                    "Build complete in {}{size_info}",
-                    style::bold(&style::human_duration(elapsed))
-                ))
-            );
+            print_build_success(&config, start.elapsed());
             Ok(())
         }
         Ok(BuildResult::Captured(o)) => {
@@ -135,29 +113,7 @@ fn run_once(debug: bool, verbose: bool, features: Option<&str>) -> CliResult {
             ))
         }
         Ok(BuildResult::Streamed(status)) if status.success() => {
-            let elapsed = start.elapsed();
-
-            let so_path = utils::find_so(&config, false);
-            let size_info = so_path
-                .and_then(|p| {
-                    let meta = fs::metadata(&p).ok()?;
-                    let new_size = meta.len();
-                    let delta = size_delta(&p, new_size);
-                    save_last_size(&p, new_size);
-                    Some(format!(
-                        " ({}{delta})",
-                        style::dim(&style::human_size(new_size))
-                    ))
-                })
-                .unwrap_or_default();
-
-            println!(
-                "  {}",
-                style::success(&format!(
-                    "Build complete in {}{size_info}",
-                    style::bold(&style::human_duration(elapsed))
-                ))
-            );
+            print_build_success(&config, start.elapsed());
             Ok(())
         }
         Ok(BuildResult::Streamed(status)) => Err(CliError::process_failure(
@@ -280,6 +236,28 @@ fn run_build_command(cmd: &mut Command, verbose: bool) -> std::io::Result<BuildR
 }
 
 const LAST_SIZE_FILE: &str = "target/.quasar-last-size";
+
+fn print_build_success(config: &QuasarConfig, elapsed: std::time::Duration) {
+    let size_info = utils::find_so(config, false)
+        .and_then(|p| {
+            let new_size = fs::metadata(&p).ok()?.len();
+            let delta = size_delta(&p, new_size);
+            save_last_size(&p, new_size);
+            Some(format!(
+                " ({}{delta})",
+                style::dim(&style::human_size(new_size))
+            ))
+        })
+        .unwrap_or_default();
+
+    println!(
+        "  {}",
+        style::success(&format!(
+            "Build complete in {}{size_info}",
+            style::bold(&style::human_duration(elapsed))
+        ))
+    );
+}
 
 fn size_delta(so_path: &Path, new_size: u64) -> String {
     let key = so_path.to_string_lossy();

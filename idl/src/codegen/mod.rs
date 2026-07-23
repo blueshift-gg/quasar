@@ -31,17 +31,7 @@ pub fn format_disc_hex(disc: &[u8]) -> String {
 
 /// Format discriminator bytes as a decimal array with brackets: `[1, 2, 3]`.
 pub fn format_disc_array(disc: &[u8]) -> String {
-    use std::fmt::Write;
-    let mut s = String::with_capacity(disc.len() * 4 + 2);
-    s.push('[');
-    for (i, b) in disc.iter().enumerate() {
-        if i > 0 {
-            s.push_str(", ");
-        }
-        write!(s, "{}", b).expect("write to String");
-    }
-    s.push(']');
-    s
+    format!("[{}]", format_disc_decimal(disc))
 }
 
 #[cfg(test)]

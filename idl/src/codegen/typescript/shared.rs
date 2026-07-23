@@ -28,24 +28,9 @@ pub enum TsTarget {
 }
 
 #[derive(Clone, Copy)]
-enum InlinePdaTarget<'a> {
-    Web3js { program_expr: &'a str },
-    Kit { program_expr: &'a str },
-}
-
-impl<'a> InlinePdaTarget<'a> {
-    fn target(self) -> TsTarget {
-        match self {
-            Self::Web3js { .. } => TsTarget::Web3js,
-            Self::Kit { .. } => TsTarget::Kit,
-        }
-    }
-
-    fn program_expr(self) -> &'a str {
-        match self {
-            Self::Web3js { program_expr } | Self::Kit { program_expr } => program_expr,
-        }
-    }
+struct InlinePdaTarget<'a> {
+    target: TsTarget,
+    program_expr: &'a str,
 }
 
 /// Generate a TypeScript client targeting @solana/web3.js.

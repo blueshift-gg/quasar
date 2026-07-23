@@ -1,33 +1,10 @@
 //! Human and JSON output for the CLI profiler.
 
 use {
+    crate::style,
     super::aggregate::ProfileResult,
     std::{collections::HashMap, fs},
 };
-
-fn bold(s: &str) -> String {
-    format!("\x1b[1m{s}\x1b[0m")
-}
-
-fn dim(s: &str) -> String {
-    format!("\x1b[2m{s}\x1b[0m")
-}
-
-fn cyan(s: &str) -> String {
-    format!("\x1b[36m{s}\x1b[0m")
-}
-
-fn red(s: &str) -> String {
-    format!("\x1b[38;5;196m{s}\x1b[0m")
-}
-
-fn green(s: &str) -> String {
-    format!("\x1b[38;5;83m{s}\x1b[0m")
-}
-
-fn bar_fill(s: &str) -> String {
-    cyan(s)
-}
 
 pub(crate) fn print_summary(
     result: &ProfileResult,
@@ -48,11 +25,11 @@ pub(crate) fn print_summary(
         Some(pt) => {
             let diff = total as i64 - pt as i64;
             if diff > 0 {
-                format!(" {}", red(&format!("(+{})", format_cu(diff as u64))))
+                format!(" {}", style::color(196, &format!("(+{})", format_cu(diff as u64))))
             } else if diff < 0 {
-                format!(" {}", green(&format!("(-{})", format_cu((-diff) as u64))))
+                format!(" {}", style::color(83, &format!("(-{})", format_cu((-diff) as u64))))
             } else {
-                format!(" {}", dim("(=)"))
+                format!(" {}", style::dim("(=)"))
             }
         }
         _ => String::new(),
@@ -60,8 +37,8 @@ pub(crate) fn print_summary(
 
     println!(
         "  {}  {}{}",
-        bold(program_name),
-        cyan(&format!("{} CU", format_cu(total))),
+        style::bold(program_name),
+        style::color(6, &format!("{} CU", format_cu(total))),
         total_delta,
     );
 
@@ -95,7 +72,7 @@ fn print_top_functions(result: &ProfileResult, total: u64) {
         println!(
             "  {:>8} {}  {}",
             format_cu(*cus),
-            dim(&format!("{:>5.1}%", pct)),
+            style::dim(&format!("{:>5.1}%", pct)),
             simplify_name(name),
         );
     }
@@ -104,7 +81,7 @@ fn print_top_functions(result: &ProfileResult, total: u64) {
         let rest: u64 = result.function_cus.iter().skip(show).map(|(_, c)| c).sum();
         println!(
             "  {}",
-            dim(&format!(
+            style::dim(&format!(
                 "{:>8} {:>5.1}%  +{} more (--expand)",
                 format_cu(rest),
                 rest as f64 / total as f64 * 100.0,
@@ -152,9 +129,9 @@ fn print_deltas(result: &ProfileResult, prev: &HashMap<String, u64>, total: u64)
             "removed".to_string()
         };
         let delta_str = if *diff > 0 {
-            red(&format!("(+{})", format_cu(diff.unsigned_abs())))
+            style::color(196, &format!("(+{})", format_cu(diff.unsigned_abs())))
         } else {
-            green(&format!("(-{})", format_cu(diff.unsigned_abs())))
+            style::color(83, &format!("(-{})", format_cu(diff.unsigned_abs())))
         };
         let pct = if total > 0 {
             diff.unsigned_abs() as f64 / total as f64 * 100.0
@@ -165,7 +142,7 @@ fn print_deltas(result: &ProfileResult, prev: &HashMap<String, u64>, total: u64)
             "  {:>8} {}  {}  {}",
             cu_str,
             delta_str,
-            dim(&format!("{:>5.1}%", pct)),
+            style::dim(&format!("{:>5.1}%", pct)),
             simplify_name(name),
         );
     }
@@ -173,7 +150,7 @@ fn print_deltas(result: &ProfileResult, prev: &HashMap<String, u64>, total: u64)
     if deltas.len() > show {
         println!(
             "  {}",
-            dim(&format!("+{} more (--expand)", deltas.len() - show))
+            style::dim(&format!("+{} more (--expand)", deltas.len() - show))
         );
     }
 }
@@ -201,9 +178,9 @@ fn print_full_table(
                 if diff == 0 {
                     None
                 } else if diff > 0 {
-                    Some(format!(" {}", red(&format!("(+{diff})"))))
+                    Some(format!(" {}", style::color(196, &format!("(+{diff})"))))
                 } else {
-                    Some(format!(" {}", green(&format!("({diff})"))))
+                    Some(format!(" {}", style::color(83, &format!("({diff})"))))
                 }
             })
             .unwrap_or_default();
@@ -211,9 +188,9 @@ fn print_full_table(
         println!(
             "  {:>8} {}  {}{}  {}{}",
             format_cu(*cus),
-            dim(&format!("{:>5.1}%", pct)),
-            bar_fill(&bar_filled),
-            dim(&bar_empty),
+            style::dim(&format!("{:>5.1}%", pct)),
+            style::color(6, &bar_filled),
+            style::dim(&bar_empty),
             simplify_name(name),
             delta,
         );
@@ -221,7 +198,7 @@ fn print_full_table(
 
     println!(
         "  {}",
-        dim(&format!(
+        style::dim(&format!(
             "{fn_count} functions, {} CU total",
             format_cu(total)
         ))
