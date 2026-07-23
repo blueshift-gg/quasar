@@ -100,6 +100,97 @@ fn kit_client_matches_golden() {
     expect_file![golden("golden_demo.kit.ts.golden")].assert_eq(&out);
 }
 
+/// A single instruction that derives both a PDA and an associated-token
+/// account, so both derivation kinds are exercised by the accessor assertions.
+fn address_accessor_idl() -> Idl {
+    let account =
+        |name: &str, signer: bool, writable: bool, resolver: IdlResolver| IdlAccountNode {
+            name: name.to_owned(),
+            optional: false,
+            writable: AccountFlag::Fixed(writable),
+            signer: AccountFlag::Fixed(signer),
+            resolver,
+            docs: Vec::new(),
+        };
+    Idl {
+        spec: "quasar-idl/1.0.0".to_owned(),
+        name: "accessor_demo".to_owned(),
+        version: "0.1.0".to_owned(),
+        address: "11111111111111111111111111111111".to_owned(),
+        metadata: IdlMetadata::default(),
+        docs: Vec::new(),
+        instructions: vec![IdlInstruction {
+            name: "swap".to_owned(),
+            discriminator: vec![0],
+            docs: Vec::new(),
+            accounts: vec![
+                account("user", true, true, IdlResolver::Input {}),
+                account("mint", false, false, IdlResolver::Input {}),
+                account(
+                    "pool",
+                    false,
+                    true,
+                    IdlResolver::Pda {
+                        program: IdlPdaProgram::ProgramId {},
+                        seeds: vec![IdlPdaSeed::Const {
+                            value: b"pool".to_vec(),
+                        }],
+                    },
+                ),
+                account(
+                    "userAta",
+                    false,
+                    true,
+                    IdlResolver::AssociatedToken {
+                        mint: "mint".to_owned(),
+                        owner: "user".to_owned(),
+                        token_program: None,
+                    },
+                ),
+            ],
+            args: Vec::new(),
+            layout: None,
+            remaining_accounts: None,
+        }],
+        accounts: Vec::new(),
+        types: Vec::new(),
+        events: Vec::new(),
+        errors: Vec::new(),
+        extensions: None,
+        hashes: None,
+    }
+}
+
+/// Every PDA and ATA the builder derives must be surfaced on the returned
+/// instruction as a `{field}Address` accessor, in both the Kit and Web3
+/// clients, carrying the exact address the builder resolved.
+#[test]
+fn builders_expose_derived_pda_and_ata_addresses() {
+    let idl = address_accessor_idl();
+    let kit = codegen::typescript::generate_ts_client_kit(&idl).expect("ts kit client");
+    let web3 = codegen::typescript::generate_ts_client(&idl).expect("ts web3 client");
+
+    // Kit resolves inside the returned object literal: the return type carries
+    // both accessors and each property yields the derived address.
+    assert!(kit.contains(
+        "Promise<Instruction & { readonly poolAddress: Address; readonly userAtaAddress: \
+         Address }>"
+    ));
+    assert!(kit.contains("poolAddress: (accountOverrides.pool ?? accountsMap[\"pool\"]),"));
+    assert!(kit.contains("userAtaAddress: (accountOverrides.userAta ?? accountsMap[\"userAta\"]),"));
+
+    // Web3 attaches the accessors to the constructed class instance.
+    assert!(web3.contains(
+        "Promise<TransactionInstruction & { readonly poolAddress: Address; readonly \
+         userAtaAddress: Address }>"
+    ));
+    assert!(web3.contains("return Object.assign(instruction, {"));
+    assert!(web3.contains("poolAddress: (accountOverrides.pool ?? accountsMap[\"pool\"]),"));
+    assert!(
+        web3.contains("userAtaAddress: (accountOverrides.userAta ?? accountsMap[\"userAta\"]),")
+    );
+}
+
 #[test]
 fn stable_typescript_manifests_match_goldens() {
     let idl = representative_idl();

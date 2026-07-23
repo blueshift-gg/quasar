@@ -193,11 +193,11 @@ export class GoldenDemoClient {
     return null;
   }
 
-  async createMakeInstruction(input: MakeInstructionInput): Promise<TransactionInstruction> {
+  async createMakeInstruction(input: MakeInstructionInput): Promise<TransactionInstruction & { readonly vaultAddress: Address }> {
     return this.createMakeInstructionRaw(input, {});
   }
 
-  async createMakeInstructionRaw(input: MakeInstructionInput, accountOverrides: MakeInstructionAccountOverrides): Promise<TransactionInstruction> {
+  async createMakeInstructionRaw(input: MakeInstructionInput, accountOverrides: MakeInstructionAccountOverrides): Promise<TransactionInstruction & { readonly vaultAddress: Address }> {
     const accountsMap: Record<string, Address> = {};
     accountsMap["vault"] = await findVaultAddress((accountOverrides.authority ?? input.authority));
     const argsCodec = getStructCodec([
@@ -205,13 +205,16 @@ export class GoldenDemoClient {
       ["flag", getBooleanCodec()],
     ]);
     const data = Uint8Array.from([0, ...argsCodec.encode({ amount: input.amount, flag: input.flag })]);
-    return new TransactionInstruction({
+    const instruction = new TransactionInstruction({
       programId: GoldenDemoClient.programId,
       keys: [
         { pubkey: (accountOverrides.authority ?? input.authority), isSigner: true, isWritable: false },
         { pubkey: (accountOverrides.vault ?? accountsMap["vault"]), isSigner: false, isWritable: true },
       ],
       data,
+    });
+    return Object.assign(instruction, {
+      vaultAddress: (accountOverrides.vault ?? accountsMap["vault"]),
     });
   }
 }

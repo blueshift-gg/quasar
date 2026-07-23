@@ -51,6 +51,12 @@ pub(super) fn emit_instruction_builders(
             }
         };
 
+        // Every PDA/ATA the builder derives is surfaced on the returned
+        // instruction as a `{field}Address` property, so callers name it
+        // directly instead of re-running the PDA/ATA recipe.
+        let address_accessors = builder_address_accessors(ix, &account_expr);
+        let accessor_type = builder_address_accessor_type(&address_accessors);
+
         let mut method_params = Vec::new();
         if !user_accs.is_empty() || !ix.args.is_empty() || has_remaining {
             method_params.push(format!("input: {pascal}InstructionInput"));
@@ -61,9 +67,9 @@ pub(super) fn emit_instruction_builders(
         let ix_needs_async = ix_needs_account_resolver || ix_has_pdas;
         let async_kw = if ix_needs_async { "async " } else { "" };
         let return_type = if ix_needs_async {
-            "Promise<TransactionInstruction>"
+            format!("Promise<TransactionInstruction{accessor_type}>")
         } else {
-            "TransactionInstruction"
+            "TransactionInstruction".to_string()
         };
         if !ix.accounts.is_empty() {
             writeln!(
@@ -207,7 +213,11 @@ pub(super) fn emit_instruction_builders(
             emit_compact_encoding(out, ix, &disc, TsTarget::Web3js, "Uint8Array.from");
         }
 
-        out.push_str("    return new TransactionInstruction({\n");
+        if address_accessors.is_empty() {
+            out.push_str("    return new TransactionInstruction({\n");
+        } else {
+            out.push_str("    const instruction = new TransactionInstruction({\n");
+        }
         writeln!(out, "      programId: {class_name}.programId,").expect("write to String");
         if !ix.accounts.is_empty() || has_remaining {
             out.push_str("      keys: [\n");
@@ -229,6 +239,17 @@ pub(super) fn emit_instruction_builders(
         }
         out.push_str("      data,\n");
         out.push_str("    });\n");
+        // `TransactionInstruction` is a class, so the derived-address accessors
+        // are attached after construction; structural typing keeps the result a
+        // valid instruction for send.
+        if !address_accessors.is_empty() {
+            out.push_str("    return Object.assign(instruction, {\n");
+            for accessor in &address_accessors {
+                writeln!(out, "      {}: {},", accessor.property, accessor.value_expr)
+                    .expect("write to String");
+            }
+            out.push_str("    });\n");
+        }
         out.push_str("  }\n");
     }
 }

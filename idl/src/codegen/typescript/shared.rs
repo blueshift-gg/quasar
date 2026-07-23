@@ -27,6 +27,49 @@ pub enum TsTarget {
     Kit,
 }
 
+/// A derived account exposed on a builder's return value: the camelCase
+/// `{field}Address` accessor property and the expression yielding the address
+/// the builder resolved for it.
+struct BuilderAddressAccessor {
+    property: String,
+    value_expr: String,
+}
+
+/// Collect the `{field}Address` accessors a builder exposes: one per PDA/ATA
+/// account it derives, in dependency order. This mirrors the derivation set of
+/// the in-crate Rust `{field}_address()` accessors, so a caller can name a
+/// builder-derived address off the returned instruction without re-deriving
+/// seeds by hand.
+fn builder_address_accessors(
+    ix: &IdlInstruction,
+    account_expr: &impl Fn(&str) -> String,
+) -> Vec<BuilderAddressAccessor> {
+    resolved_account_order(ix)
+        .expect("validated derived-account order")
+        .into_iter()
+        .map(|account| BuilderAddressAccessor {
+            property: format!("{}Address", to_camel_case(&account.name)),
+            value_expr: account_expr(&account.name),
+        })
+        .collect()
+}
+
+/// The `& { readonly {field}Address: Address; ... }` suffix appended to a
+/// builder's instruction return type, one member per derived account. Empty
+/// when the instruction derives no PDAs or ATAs, so plain instructions keep
+/// their unadorned return type.
+fn builder_address_accessor_type(accessors: &[BuilderAddressAccessor]) -> String {
+    if accessors.is_empty() {
+        return String::new();
+    }
+    let members = accessors
+        .iter()
+        .map(|accessor| format!("readonly {}: Address", accessor.property))
+        .collect::<Vec<_>>()
+        .join("; ");
+    format!(" & {{ {members} }}")
+}
+
 #[derive(Clone, Copy)]
 enum InlinePdaTarget<'a> {
     Web3js { program_expr: &'a str },

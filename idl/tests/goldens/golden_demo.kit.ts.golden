@@ -186,11 +186,11 @@ export class GoldenDemoClient {
     return null;
   }
 
-  async createMakeInstruction(input: MakeInstructionInput): Promise<Instruction> {
+  async createMakeInstruction(input: MakeInstructionInput): Promise<Instruction & { readonly vaultAddress: Address }> {
     return this.createMakeInstructionRaw(input, {});
   }
 
-  async createMakeInstructionRaw(input: MakeInstructionInput, accountOverrides: MakeInstructionAccountOverrides): Promise<Instruction> {
+  async createMakeInstructionRaw(input: MakeInstructionInput, accountOverrides: MakeInstructionAccountOverrides): Promise<Instruction & { readonly vaultAddress: Address }> {
     const accountsMap: Record<string, Address> = {};
     accountsMap["vault"] = await findVaultAddress((accountOverrides.authority ?? input.authority));
     const argsCodec = getStructCodec([
@@ -205,6 +205,7 @@ export class GoldenDemoClient {
         { address: (accountOverrides.vault ?? accountsMap["vault"]), role: AccountRole.WRITABLE },
       ],
       data,
+      vaultAddress: (accountOverrides.vault ?? accountsMap["vault"]),
     };
   }
 }
