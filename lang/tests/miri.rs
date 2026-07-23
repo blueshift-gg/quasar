@@ -1723,6 +1723,102 @@ fn parse_dup_rejects_duplicate_without_dup_flag_even_readonly() {
 }
 
 #[test]
+fn parse_dup_of_none_sentinel_allowed_for_optional() {
+    // Two optional fields both passed as the None sentinel (program_id): the
+    // SVM dedups the second into a dup entry. The dup must parse (resolving
+    // to None downstream), not fail with AccountBorrowFailed.
+    let program_id = Address::new_from_array([9; 32]);
+    let mut buf = MultiAccountBuffer::new(&[
+        MultiAccountEntry::Full {
+            address: [9; 32],
+            owner: [2; 32],
+            lamports: 10,
+            data_len: 0,
+            data: None,
+            is_signer: false,
+            is_writable: false,
+        },
+        MultiAccountEntry::Duplicate { original_index: 0 },
+    ]);
+    let mut views = MaybeUninit::<[AccountView; 2]>::uninit();
+    let base = views.as_mut_ptr() as *mut AccountView;
+
+    let optional_mut_flags = ParseFlags {
+        expected: quasar_lang::__internal::NODUP_MUT,
+        mask: 0x00FF_FFFF,
+        flag_mask: 0x00FF_0000,
+        is_optional: true,
+        is_ref_mut: true,
+        allow_dup: false,
+    };
+
+    let first = unsafe {
+        quasar_lang::__internal::parse_account_dup(
+            buf.as_mut_ptr(),
+            base,
+            0,
+            &program_id,
+            optional_mut_flags,
+        )
+        .unwrap()
+    };
+    unsafe {
+        quasar_lang::__internal::parse_account_dup(first, base, 1, &program_id, optional_mut_flags)
+            .unwrap();
+    }
+
+    let parsed = unsafe { views.assume_init() };
+    assert_eq!(parsed[1].address(), &program_id);
+}
+
+#[test]
+fn parse_dup_of_real_account_still_rejected_for_optional() {
+    // A present (non-sentinel) account duplicated across two optional fields
+    // is still aliasing and must be rejected without #[account(dup)].
+    let program_id = Address::new_from_array([9; 32]);
+    let mut buf = MultiAccountBuffer::new(&[
+        MultiAccountEntry::Full {
+            address: [1; 32],
+            owner: [2; 32],
+            lamports: 10,
+            data_len: 0,
+            data: None,
+            is_signer: false,
+            is_writable: true,
+        },
+        MultiAccountEntry::Duplicate { original_index: 0 },
+    ]);
+    let mut views = MaybeUninit::<[AccountView; 2]>::uninit();
+    let base = views.as_mut_ptr() as *mut AccountView;
+
+    let optional_mut_flags = ParseFlags {
+        expected: quasar_lang::__internal::NODUP_MUT,
+        mask: 0x00FF_FFFF,
+        flag_mask: 0x00FF_0000,
+        is_optional: true,
+        is_ref_mut: true,
+        allow_dup: false,
+    };
+
+    let first = unsafe {
+        quasar_lang::__internal::parse_account_dup(
+            buf.as_mut_ptr(),
+            base,
+            0,
+            &program_id,
+            optional_mut_flags,
+        )
+        .unwrap()
+    };
+    let err = unsafe {
+        quasar_lang::__internal::parse_account_dup(first, base, 1, &program_id, optional_mut_flags)
+            .unwrap_err()
+    };
+
+    assert_eq!(err, ProgramError::AccountBorrowFailed);
+}
+
+#[test]
 fn uninit_sysvar_maybeuninit_write_bytes_assume_init() {
     use quasar_lang::sysvars::rent::Rent;
 
