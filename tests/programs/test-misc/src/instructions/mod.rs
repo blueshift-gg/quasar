@@ -70,6 +70,9 @@ pub use dynamic_readback::*;
 pub mod dynamic_mutate;
 pub use dynamic_mutate::*;
 
+pub mod dynamic_set_inner;
+pub use dynamic_set_inner::*;
+
 pub mod space_override;
 pub use space_override::*;
 
