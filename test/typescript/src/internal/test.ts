@@ -1,4 +1,9 @@
-import { rentMinimumBalance, type Fixture, type TokenProgram } from "./fixture.js";
+import {
+  FRESH_ADDRESS,
+  rentMinimumBalance,
+  type Fixture,
+  type TokenProgram,
+} from "./fixture.js";
 import {
   AccountChange,
   decodeAccount,
@@ -52,6 +57,7 @@ export interface HarnessAdapter<Address, Account, Instruction, Output>
   accountLamports(account: Account): bigint;
   instructionAccounts(instruction: Instruction): readonly InstructionAccount<Address>[];
   emptyAccount(address: Address): Account;
+  fundedAccount(address: Address): Account;
   programAccount(
     address: Address,
     owner: Address,
@@ -198,7 +204,10 @@ export class TestCore<Address, Account, Instruction, Output> {
     this.#runtime.addProgram(programId, elf, loaderVersion);
   }
 
-  freshAddress(): Address {
+  // Package-internal deterministic address generator, keyed by a non-exported
+  // symbol so it is not part of the public API. Fixtures use it to place
+  // accounts the caller did not pin; tests read back the returned address.
+  [FRESH_ADDRESS](): Address {
     this.#freshAddresses += 1n;
     const bytes = new Uint8Array(32);
     bytes.set(new TextEncoder().encode("quasar-test/fresh-address"));
@@ -311,6 +320,16 @@ export class TestCore<Address, Account, Instruction, Output> {
       });
     }
 
+    // Backfill accounts a transaction names but the world has not installed. A
+    // missing writable account is an init target — including keypair accounts
+    // that sign their own creation — and enters as Solana's empty system
+    // account, exactly as a brand-new keypair account arrives on chain; the
+    // backend commits that input only when execution succeeds, so init targets
+    // persist without polluting the world after a failed transaction. A missing
+    // read-only signer (a co-signer, e.g. a multisig member) enters as a funded
+    // system account, matching the real wallets those signatures come from.
+    // Actors that pay — payers, makers — are world state: install them with
+    // `wallet()`.
     const before = new Map<string, Account | null>();
     for (const [key, meta] of tracked) {
       const account = inputs.get(key) ?? this.#accounts.get(key) ?? null;
@@ -318,8 +337,10 @@ export class TestCore<Address, Account, Instruction, Output> {
       if (!inputs.has(key)) {
         if (account !== null) {
           inputs.set(key, account);
-        } else if (meta.writable || meta.signer) {
+        } else if (meta.writable) {
           inputs.set(key, this.#adapter.emptyAccount(meta.address));
+        } else if (meta.signer) {
+          inputs.set(key, this.#adapter.fundedAccount(meta.address));
         }
       }
     }

@@ -29,17 +29,18 @@ pub fn program_account(address: Pubkey, owner: Pubkey, data: Vec<u8>) -> Account
 
 pub fn token_program_mint_account(
     address: Pubkey,
-    authority: Pubkey,
+    mint_authority: Option<Pubkey>,
+    freeze_authority: Option<Pubkey>,
     supply: u64,
     decimals: u8,
     token_program: Pubkey,
 ) -> Account {
     let mint = Mint {
-        mint_authority: Some(authority).into(),
+        mint_authority: mint_authority.into(),
         supply,
         decimals,
         is_initialized: true,
-        freeze_authority: None.into(),
+        freeze_authority: freeze_authority.into(),
     };
     let mut data = vec![0; Mint::LEN];
     Mint::pack(mint, &mut data).expect("mint fixture buffer has the canonical size");

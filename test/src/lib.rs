@@ -6,7 +6,7 @@
 //! independent of the SVM that ran the transaction.
 //!
 //! ```rust,ignore
-//! use quasar_test::{fixture::Wallet, prelude::*};
+//! use quasar_test::prelude::*;
 //!
 //! #[quasar_test]
 //! fn initializes(test: &mut Test) {
@@ -14,6 +14,10 @@
 //!     test.send(InitializeInstruction { authority }).succeeds();
 //! }
 //! ```
+//!
+//! [`fixture::Wallet::new`] funds an actor with the default balance;
+//! [`fixture::Wallet::fund`] sets an exact one. Any signer a transaction names
+//! but never installs is auto-funded on send, so co-signers cost nothing extra.
 
 #![warn(missing_docs)]
 
@@ -42,8 +46,8 @@ pub use {
 /// Each address becomes an [`AccountMeta`] that is read-only and a signer, the
 /// shape a program expects for an authority it only needs to have signed.
 /// [`Test::send`] auto-registers any co-signer the world has not installed as a
-/// funded system account, mirroring how it backfills writable init targets, so
-/// tests pass the addresses alone without hand-rolling metas or wallets.
+/// funded system account — as it does for every signer it backfills — so tests
+/// pass the addresses alone without hand-rolling metas or wallets.
 pub fn co_signers(addresses: &[Pubkey]) -> Vec<AccountMeta> {
     addresses
         .iter()
@@ -72,10 +76,23 @@ mod tests {
             co_signers,
             fixture::{AssociatedTokenAccount, Fixture, Mint, TokenAccount, TokenProgram, Wallet},
             setup::resolve_program_path_from_named,
-            Account, ProgramError, Pubkey, SetupError, Test, SPL_TOKEN_2022_PROGRAM_ID,
+            system_program, Account, AccountMeta, Instruction, ProgramError, Pubkey, SetupError,
+            Test, DEFAULT_WALLET_LAMPORTS, SPL_TOKEN_2022_PROGRAM_ID,
         },
+        spl_token::solana_program::program_option::COption,
         std::{fs, path::PathBuf},
     };
+
+    /// Encode a System program `Transfer` (`SystemInstruction` variant 2).
+    fn system_transfer(from: Pubkey, to: Pubkey, lamports: u64) -> Instruction {
+        let mut data = vec![2, 0, 0, 0];
+        data.extend_from_slice(&lamports.to_le_bytes());
+        Instruction {
+            program_id: system_program::ID,
+            accounts: vec![AccountMeta::new(from, true), AccountMeta::new(to, false)],
+            data,
+        }
+    }
 
     fn temp_dir(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
@@ -146,9 +163,10 @@ mod tests {
     #[test]
     fn fixtures_are_deterministic_and_compose() {
         let mut test = empty_test();
-        let wallet = test.add(Wallet::new().lamports(42));
+        let wallet = test.add(Wallet::new().fund(42));
         let mint = test.add(
-            Mint::new(wallet)
+            Mint::new()
+                .with_authority(wallet)
                 .supply(1_000)
                 .decimals(9)
                 .token_program(TokenProgram::Token2022),
@@ -178,7 +196,7 @@ mod tests {
     #[test]
     fn arrays_install_repeated_fixtures_without_helper_methods() {
         let mut test = empty_test();
-        let [alice, bob, carol] = test.add([Wallet::new().lamports(7); 3]);
+        let [alice, bob, carol] = test.add([Wallet::new().fund(7); 3]);
 
         assert_eq!(test.lamports(alice), 7);
         assert_eq!(test.lamports(bob), 7);
@@ -196,7 +214,7 @@ mod tests {
 
             fn install(self, test: &mut Test) -> Self::Output {
                 let authority = test.add(Wallet::new());
-                let state = test.fresh_address();
+                let state = Pubkey::new_from_array([200; 32]);
                 test.add(Account::new(state, test.program_id(), 1, vec![1, 2, 3]));
                 (authority, state)
             }
@@ -222,11 +240,11 @@ mod tests {
         let bob = test.add(Wallet::new());
 
         let mint = test.add(
-            Mint::new(authority)
+            Mint::new()
+                .with_authority(authority)
                 .supply(1_000)
                 .token_program(TokenProgram::Token2022)
-                .with_holder(alice, 400)
-                .with_holder(bob, 600),
+                .with_holder([(alice, 400), (bob, 600)]),
         );
 
         let alice_ata = test.derive_ata(alice, mint, TokenProgram::Token2022);
@@ -254,5 +272,81 @@ mod tests {
             assert!(!meta.is_writable);
         }
         assert!(co_signers(&[]).is_empty());
+    }
+
+    #[test]
+    fn mint_new_is_fixed_supply_without_authorities() {
+        use spl_token::{solana_program::program_pack::Pack, state::Mint as SplMint};
+
+        let mut test = empty_test();
+        let mint = test.add(Mint::new().supply(1_000));
+        let decoded = SplMint::unpack(&test.account(mint).unwrap().data).unwrap();
+
+        assert_eq!(decoded.mint_authority, COption::None);
+        assert_eq!(decoded.freeze_authority, COption::None);
+        assert_eq!(decoded.supply, 1_000);
+    }
+
+    #[test]
+    fn mint_authorities_come_from_the_builders() {
+        use spl_token::{solana_program::program_pack::Pack, state::Mint as SplMint};
+
+        let mut test = empty_test();
+        let authority = Pubkey::new_from_array([1; 32]);
+        let freeze = Pubkey::new_from_array([2; 32]);
+        let mint = test.add(
+            Mint::new()
+                .with_authority(authority)
+                .with_freeze_authority(freeze),
+        );
+        let decoded = SplMint::unpack(&test.account(mint).unwrap().data).unwrap();
+
+        assert_eq!(decoded.mint_authority, COption::Some(authority));
+        assert_eq!(decoded.freeze_authority, COption::Some(freeze));
+    }
+
+    // A missing writable account is an init target and enters empty — even
+    // when it signs, as a keypair account being created does. Payers are
+    // world state: a payer the test never installs has nothing to move.
+    #[test]
+    fn a_missing_writable_signer_is_an_empty_init_target_not_a_funded_payer() {
+        let mut test = empty_test();
+        // Raw addresses the world never installs, so send must backfill them.
+        let payer = Pubkey::new_from_array([1; 32]);
+        let recipient = Pubkey::new_from_array([2; 32]);
+        let amount = 1_000_000_000;
+
+        // The uninstalled payer enters empty, so the transfer must fail —
+        // proof that writable-signer init targets are not silently funded.
+        assert!(test
+            .simulate(system_transfer(payer, recipient, amount))
+            .is_err());
+
+        // Installed as a wallet, the same transfer goes through.
+        test.add(Wallet::new().at(payer));
+        test.send(system_transfer(payer, recipient, amount))
+            .succeeds()
+            .has_lamports(recipient, amount);
+    }
+
+    // A read-only signer (a co-signer, e.g. a multisig member) is an actor
+    // and enters funded, even though the world never installed it.
+    #[test]
+    fn a_read_only_signer_is_backfilled_funded() {
+        let mut test = empty_test();
+        let payer = Pubkey::new_from_array([1; 32]);
+        let recipient = Pubkey::new_from_array([2; 32]);
+        let cosigner = Pubkey::new_from_array([3; 32]);
+        let amount = 1_000_000_000;
+        test.add(Wallet::new().at(payer));
+
+        let mut transfer = system_transfer(payer, recipient, amount);
+        transfer
+            .accounts
+            .push(AccountMeta::new_readonly(cosigner, true));
+
+        test.send(transfer)
+            .succeeds()
+            .has_lamports(cosigner, DEFAULT_WALLET_LAMPORTS);
     }
 }

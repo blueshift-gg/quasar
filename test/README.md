@@ -23,6 +23,10 @@ fn deposits_into_the_vault(test: &mut Test) {
 }
 ```
 
+`Wallet::new()` funds an actor with the default balance and returns its address;
+`Wallet::new().fund(n)` sets an exact one. A signer a transaction names but never
+installs is auto-funded on `send`, so co-signers cost nothing extra.
+
 `#[quasar_test]` is an ordinary `#[test]`: filters, `#[ignore]`,
 `#[should_panic]`, and `Result<(), E>` work normally. `quasar test` builds the
 program first and then runs the complete Cargo test graph. Direct `cargo test`
@@ -56,7 +60,7 @@ impl Fixture for FundedPool {
 
     fn install(self, test: &mut Test) -> Pool {
         let authority = test.add(Wallet::new());
-        let mint = test.add(Mint::new(authority).supply(1_000_000));
+        let mint = test.add(Mint::new().with_authority(authority).supply(1_000_000));
         let authority_tokens = test.add(
             AssociatedTokenAccount::new(mint, authority).amount(10_000),
         );
@@ -83,9 +87,11 @@ test.send(WithdrawInstructionRaw {
 
 `send` and `send_all` return `Outcome`, which owns stable error, log, return-data,
 compute-unit, account, and account-change views. Generated client decoders plug
-directly into `account_as`, `events`, and `return_value`. Missing writable
-accounts enter the transaction as empty Solana accounts: QuasarSVM commits them
-on success and leaves no placeholder after failure.
+directly into `account_as`, `events`, and `return_value`. Accounts a transaction
+names but the world has not installed are backfilled by role: any signer (a payer
+or co-signer) enters as a funded system account, so a signer named but never
+installed can still pay; a writable non-signer enters as an empty init target that
+QuasarSVM commits on success and leaves no placeholder after failure.
 
 Every sibling program in `target/deploy` with a matching `-keypair.json` is
 preloaded for CPI. `test.add(Program::new(id, elf))` is the explicit option for

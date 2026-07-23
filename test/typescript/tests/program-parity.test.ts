@@ -12,12 +12,10 @@ import {
   PROGRAM_ADDRESS,
   PROGRAM_ERROR_CODES,
   QuasarVaultClient as KitVaultClient,
-  findVaultAddress as findKitVaultAddress,
 } from "./fixtures/vault/clients/kit/quasar-vault/client.js";
 import {
   PROGRAM_ERROR_CODES as WEB3_PROGRAM_ERROR_CODES,
   QuasarVaultClient as Web3VaultClient,
-  findVaultAddress as findWeb3VaultAddress,
 } from "./fixtures/vault/clients/web3/quasar-vault/client.js";
 
 const programPath = process.env.QUASAR_PROGRAM_PATH;
@@ -35,14 +33,21 @@ describe("real Quasar program parity", () => {
   it("runs the Rust contract through the Kit adapter", async () => {
     const client = new KitVaultClient();
     const user = getAddressDecoder().decode(userBytes) as KitAddress;
-    const vault = await findKitVaultAddress(user);
     using test = await KitTest.load(PROGRAM_ADDRESS, elfPath, {
       computeUnitLimit: 10_000n,
     });
     await test.add(kitWallet({ address: user }));
 
+    // The builder surfaces the PDA it derives, so the test names the vault off
+    // the instruction rather than re-deriving it through findVaultAddress.
+    const depositInstruction = await client.createDepositInstruction({
+      user,
+      amount: depositAmount,
+    });
+    const vault = depositInstruction.vaultAddress;
+
     const deposit = test
-      .send(await client.createDepositInstruction({ user, amount: depositAmount }))
+      .send(depositInstruction)
       .succeeds()
       .cuAtMost(1_556n)
       .hasLamports(vault, depositAmount)
@@ -82,7 +87,9 @@ describe("real Quasar program parity", () => {
     expect(test.lamports(vault)).toBe(depositAmount);
     expect(test.lamports(user)).toBe(startingLamports - depositAmount);
 
-    const wrongVault = test.freshAddress();
+    const wrongVault = getAddressDecoder().decode(
+      new Uint8Array(32).fill(9),
+    ) as KitAddress;
     const rejected = test
       .send(
         await client.createDepositInstructionRaw(
@@ -118,14 +125,21 @@ describe("real Quasar program parity", () => {
   it("runs the same contract through the Web3.js adapter", async () => {
     const client = new Web3VaultClient();
     const user = new Web3Address(userBytes);
-    const vault = await findWeb3VaultAddress(user);
     using test = await Web3Test.load(Web3VaultClient.programId, elfPath, {
       computeUnitLimit: 10_000n,
     });
     await test.add(web3Wallet({ address: user }));
 
+    // The builder surfaces the PDA it derives, so the test names the vault off
+    // the instruction rather than re-deriving it through findVaultAddress.
+    const depositInstruction = await client.createDepositInstruction({
+      user,
+      amount: depositAmount,
+    });
+    const vault = depositInstruction.vaultAddress;
+
     const deposit = test
-      .send(await client.createDepositInstruction({ user, amount: depositAmount }))
+      .send(depositInstruction)
       .succeeds()
       .cuAtMost(1_556n)
       .hasLamports(vault, depositAmount)
@@ -166,7 +180,7 @@ describe("real Quasar program parity", () => {
     expect(test.lamports(vault)).toBe(depositAmount);
     expect(test.lamports(user)).toBe(startingLamports - depositAmount);
 
-    const wrongVault = test.freshAddress();
+    const wrongVault = new Web3Address(new Uint8Array(32).fill(9));
     const rejected = test
       .send(
         await client.createDepositInstructionRaw(
@@ -198,4 +212,5 @@ describe("real Quasar program parity", () => {
       .send(await client.createDepositInstruction({ user, amount: 1n }))
       .fails({ type: "Runtime", message: "ProgramFailedToComplete" });
   });
+
 });

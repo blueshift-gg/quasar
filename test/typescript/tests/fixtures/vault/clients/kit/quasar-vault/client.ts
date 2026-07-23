@@ -144,11 +144,11 @@ export class QuasarVaultClient {
     return null;
   }
 
-  async createDepositInstruction(input: DepositInstructionInput): Promise<Instruction> {
+  async createDepositInstruction(input: DepositInstructionInput): Promise<Instruction & { readonly vaultAddress: Address }> {
     return this.createDepositInstructionRaw(input, {});
   }
 
-  async createDepositInstructionRaw(input: DepositInstructionInput, accountOverrides: DepositInstructionAccountOverrides): Promise<Instruction> {
+  async createDepositInstructionRaw(input: DepositInstructionInput, accountOverrides: DepositInstructionAccountOverrides): Promise<Instruction & { readonly vaultAddress: Address }> {
     const accountsMap: Record<string, Address> = {};
     accountsMap["systemProgram"] = address("11111111111111111111111111111111");
     accountsMap["vault"] = await findVaultAddress((accountOverrides.user ?? input.user));
@@ -164,14 +164,15 @@ export class QuasarVaultClient {
         { address: (accountOverrides.systemProgram ?? accountsMap["systemProgram"]), role: AccountRole.READONLY },
       ],
       data,
+      vaultAddress: (accountOverrides.vault ?? accountsMap["vault"]),
     };
   }
 
-  async createWithdrawInstruction(input: WithdrawInstructionInput): Promise<Instruction> {
+  async createWithdrawInstruction(input: WithdrawInstructionInput): Promise<Instruction & { readonly vaultAddress: Address }> {
     return this.createWithdrawInstructionRaw(input, {});
   }
 
-  async createWithdrawInstructionRaw(input: WithdrawInstructionInput, accountOverrides: WithdrawInstructionAccountOverrides): Promise<Instruction> {
+  async createWithdrawInstructionRaw(input: WithdrawInstructionInput, accountOverrides: WithdrawInstructionAccountOverrides): Promise<Instruction & { readonly vaultAddress: Address }> {
     const accountsMap: Record<string, Address> = {};
     accountsMap["vault"] = await findVaultAddress((accountOverrides.user ?? input.user));
     const argsCodec = getStructCodec([
@@ -185,6 +186,7 @@ export class QuasarVaultClient {
         { address: (accountOverrides.vault ?? accountsMap["vault"]), role: AccountRole.WRITABLE },
       ],
       data,
+      vaultAddress: (accountOverrides.vault ?? accountsMap["vault"]),
     };
   }
 }

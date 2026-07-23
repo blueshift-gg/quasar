@@ -92,8 +92,10 @@ impl Test {
     }
 
     /// Produce a deterministic address unused by earlier fixtures in this
-    /// world. The sequence is independent for every test.
-    pub fn fresh_address(&mut self) -> Pubkey {
+    /// world. The sequence is independent for every test. Internal: fixtures
+    /// call this to place accounts the caller did not pin; tests name actors
+    /// through [`crate::fixture::Wallet`] and read back the returned address.
+    pub(crate) fn fresh_address(&mut self) -> Pubkey {
         self.fresh_addresses += 1;
         let mut bytes = *b"quasar-test/fresh-address\0\0\0\0\0\0\0";
         bytes[24..].copy_from_slice(&self.fresh_addresses.to_le_bytes());
@@ -276,12 +278,16 @@ impl Test {
         }
 
         // Backfill accounts a transaction names but the world has not
-        // installed. A missing writable account enters as Solana's empty
-        // system account: QuasarSVM commits that input only when execution
-        // succeeds, so init targets persist without polluting the world after a
-        // failed transaction. A missing read-only signer (a co-signer, e.g. a
-        // multisig member) enters as a funded system account, matching the
-        // real accounts those signatures come from.
+        // installed. A missing writable account is an init target — including
+        // keypair accounts that sign their own creation — and enters as
+        // Solana's empty system account, exactly as a brand-new keypair
+        // account arrives on chain; QuasarSVM commits that input only when
+        // execution succeeds, so init targets persist without polluting the
+        // world after a failed transaction. A missing read-only signer (a
+        // co-signer, e.g. a multisig member) enters as a funded system
+        // account, matching the real wallets those signatures come from.
+        // Actors that pay — payers, makers — are world state: install them
+        // with [`crate::fixture::Wallet`].
         for account in &tracked {
             if account.before.is_some()
                 || inputs.iter().any(|input| input.address == account.address)
