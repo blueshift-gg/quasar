@@ -132,6 +132,15 @@ export const ModeCodec = {
   decode(data: Parameters<typeof ModeStructCodec.decode>[0], offset = 0): Mode { return decodeExact<Mode>(ModeStructCodec, Uint8Array.from(data).slice(offset)); },
 };
 
+/* Account Codecs */
+export const VaultAccount = {
+  decode: VaultCodec.decode,
+  encode: VaultCodec.encode,
+  owner: new Address("11111111111111111111111111111111"),
+  discriminator: VAULT_DISCRIMINATOR,
+  size: 42,
+} as const;
+
 /* Enums */
 export const ProgramEvent = {
   VaultMade: "VaultMade",

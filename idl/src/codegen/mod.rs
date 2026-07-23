@@ -517,7 +517,7 @@ mod tests {
                 .split("export const RegistryAccount = {")
                 .nth(1)
                 .expect("registry bundle")
-                .split("};")
+                .split("} as const;")
                 .next()
                 .expect("registry bundle body");
             assert!(!registry.contains("size:"));

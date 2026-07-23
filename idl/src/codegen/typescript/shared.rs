@@ -391,6 +391,38 @@ fn generate_ts(idl: &Idl, target: TsTarget) -> CodegenResult<String> {
         }
     }
 
+    // === Account codec bundles ===
+    // A ready-made `AccountCodec`-shaped object per account: the body codec's
+    // `decode`/`encode` plus the owner/discriminator/size framing the test SDK
+    // validates. Callers pass `{Name}Account` instead of hand-assembling it.
+    // `size` (discriminator + fixed body) is omitted when the layout is variable.
+    let account_bundles: Vec<_> = idl
+        .accounts
+        .iter()
+        .filter(|account| idl.types.iter().any(|ty| ty.name == account.name))
+        .collect();
+    if !account_bundles.is_empty() {
+        out.push_str("/* Account Codecs */\n");
+        for account in account_bundles {
+            let name = &account.name;
+            let const_name = pascal_to_screaming_snake(name);
+            let owner = match target {
+                TsTarget::Kit => "PROGRAM_ADDRESS".to_string(),
+                TsTarget::Web3js => format!("new Address(\"{}\")", idl.address),
+            };
+            writeln!(out, "export const {name}Account = {{").expect("write to String");
+            writeln!(out, "  decode: {name}Codec.decode,").expect("write to String");
+            writeln!(out, "  encode: {name}Codec.encode,").expect("write to String");
+            writeln!(out, "  owner: {owner},").expect("write to String");
+            writeln!(out, "  discriminator: {const_name}_DISCRIMINATOR,").expect("write to String");
+            if let Some(body) = type_body_fixed_size(idl, name) {
+                writeln!(out, "  size: {},", account.discriminator.len() + body)
+                    .expect("write to String");
+            }
+            out.push_str("} as const;\n\n");
+        }
+    }
+
     // === Enums ===
     out.push_str("/* Enums */\n");
 

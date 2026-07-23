@@ -942,6 +942,73 @@ pub(super) fn ts_codec_for_arg(arg: &IdlArg, target: TsTarget) -> String {
     }
 }
 
+/// The fixed on-chain byte size of a defined type's body (the sum of its
+/// fields), or `None` when the layout is variable — dynamic fields (`string`,
+/// `vec`), options, enums, aliases, or a nested variable type. Used to emit an
+/// `AccountCodec.size`; a `None` result means the account codec bundle omits
+/// `size`, matching the variable-length struct codec the client generates.
+pub(super) fn type_body_fixed_size(idl: &Idl, name: &str) -> Option<usize> {
+    fixed_type_def_size(idl, name, &mut Vec::new())
+}
+
+fn fixed_type_def_size(idl: &Idl, name: &str, seen: &mut Vec<String>) -> Option<usize> {
+    if seen.iter().any(|s| s == name) {
+        return None;
+    }
+    let type_def = idl.types.iter().find(|ty| ty.name == name)?;
+    // Enums (variants) and aliases are not plain fixed-layout structs.
+    if !type_def.variants.is_empty() || type_def.alias.is_some() {
+        return None;
+    }
+    seen.push(name.to_string());
+    let mut total = 0usize;
+    for field in &type_def.fields {
+        // A size-prefixed/remainder field (string/vec) makes the body variable.
+        if is_field_def_dynamic(field) {
+            seen.pop();
+            return None;
+        }
+        let Some(size) = fixed_ty_size(idl, &field.ty, seen) else {
+            seen.pop();
+            return None;
+        };
+        total += size;
+    }
+    seen.pop();
+    Some(total)
+}
+
+fn fixed_ty_size(idl: &Idl, ty: &IdlType, seen: &mut Vec<String>) -> Option<usize> {
+    match ty {
+        IdlType::Primitive(p) => fixed_primitive_size(p),
+        // A borsh-style option encodes a presence tag, so its size is variable.
+        IdlType::Option { .. } => None,
+        IdlType::Vec { .. } => None,
+        IdlType::Array { array } => fixed_ty_size(idl, &array.0, seen).map(|elem| elem * array.1),
+        IdlType::Defined { defined } => fixed_type_def_size(idl, &defined.name, seen),
+        IdlType::Generic { .. } => None,
+    }
+}
+
+fn fixed_primitive_size(p: &str) -> Option<usize> {
+    Some(match p {
+        "bool" | "u8" | "i8" => 1,
+        "u16" | "i16" => 2,
+        "u32" | "i32" | "f32" => 4,
+        "u64" | "i64" | "f64" => 8,
+        "u128" | "i128" => 16,
+        "pubkey" => 32,
+        "bytes" | "string" => return None,
+        // `[inner; n]` fixed arrays spelled as a primitive string.
+        other => {
+            let inner = other.strip_prefix('[')?.strip_suffix(']')?;
+            let (inner_ty, count) = inner.split_once(';')?;
+            let count: usize = count.trim().parse().ok()?;
+            return Some(fixed_primitive_size(inner_ty.trim())? * count);
+        }
+    })
+}
+
 /// Extract prefix byte width from a codec's ScalarRepr.
 pub(super) fn scalar_repr_bytes(repr: &ScalarRepr) -> usize {
     match repr.ty.as_str() {
