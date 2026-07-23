@@ -1,11 +1,17 @@
 use {
     crate::{backend::from_backend_account, Account, AccountChange, ProgramError, Pubkey},
     base64::{engine::general_purpose::STANDARD, Engine as _},
+    quasar_lang::{
+        __zeropod::{ZcElem, ZcValidate},
+        traits::{Discriminator, Owner},
+    },
+    std::ops::Deref,
 };
 
 pub(crate) struct TrackedAccount {
     pub(crate) address: Pubkey,
     pub(crate) writable: bool,
+    pub(crate) signer: bool,
     pub(crate) before: Option<Account>,
     pub(crate) after: Option<Account>,
 }
@@ -200,6 +206,28 @@ impl Outcome {
         self
     }
 
+    /// Assert typed post-state at `address`, passing the decoded data to
+    /// `check` for user assertions.
+    ///
+    /// The resulting account is read through `T`'s on-chain wrapper with the
+    /// same ownership, discriminator, length, and zero-copy validation as
+    /// [`Test::read`](crate::Test::read). Panics with the address and the
+    /// specific failure when the account is absent or malformed. Chainable, so
+    /// several accounts can be asserted in one expression.
+    pub fn has_state<T>(&self, address: Pubkey, check: impl FnOnce(&T::Target)) -> &Self
+    where
+        T: Discriminator + Owner + Deref,
+        T::Target: ZcElem + ZcValidate + Copy,
+    {
+        let name = core::any::type_name::<T>();
+        let account = self.account(address).unwrap_or_else(|| {
+            panic!("has_state {name}: outcome does not contain account {address}")
+        });
+        let state = crate::world::validate_typed::<T>("has_state", account);
+        check(&state);
+        self
+    }
+
     /// Assert Solana's closed-account state. A runtime may remove the account
     /// entirely or retain its empty system-owned representation.
     pub fn is_closed(&self, address: Pubkey) -> &Self {
@@ -291,5 +319,72 @@ mod tests {
     #[test]
     fn compute_unit_ceiling_is_inclusive() {
         outcome(&[], 10).cu_at_most(10);
+    }
+
+    // A minimal fixed-size Quasar account whose payload is a single address,
+    // enough to exercise the typed `has_state` read path without a program.
+    #[repr(transparent)]
+    #[derive(Clone, Copy)]
+    struct Marker(Pubkey);
+
+    impl Deref for Marker {
+        type Target = Pubkey;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    impl Discriminator for Marker {
+        const DISCRIMINATOR: &'static [u8] = &[0xAB];
+    }
+
+    impl Owner for Marker {
+        const OWNER: Pubkey = Pubkey::new_from_array([9; 32]);
+    }
+
+    fn state_outcome(account: Account) -> Outcome {
+        Outcome {
+            error: None,
+            compute_units: 0,
+            logs: Vec::new(),
+            return_data: Vec::new(),
+            accounts: vec![account],
+            changes: Vec::new(),
+        }
+    }
+
+    fn marker_account(address: Pubkey, owner: Pubkey, stored: Pubkey) -> Account {
+        let mut data = Marker::DISCRIMINATOR.to_vec();
+        data.extend_from_slice(stored.as_ref());
+        Account::new(address, owner, 42, data)
+    }
+
+    #[test]
+    fn has_state_reads_and_checks_typed_post_state() {
+        let address = Pubkey::new_from_array([5; 32]);
+        let stored = Pubkey::new_from_array([7; 32]);
+        let outcome = state_outcome(marker_account(address, Marker::OWNER, stored));
+
+        let mut checked = false;
+        outcome
+            .has_state::<Marker>(address, |value| {
+                assert_eq!(*value, stored);
+                checked = true;
+            })
+            .cu_at_most(0);
+        assert!(checked, "the check closure should run against the state");
+    }
+
+    #[test]
+    #[should_panic(expected = "has_state")]
+    fn has_state_panics_when_ownership_is_wrong() {
+        let address = Pubkey::new_from_array([5; 32]);
+        let foreign = Pubkey::new_from_array([1; 32]);
+        let outcome = state_outcome(marker_account(address, foreign, address));
+
+        outcome.has_state::<Marker>(address, |_| {
+            unreachable!("validation runs before the check")
+        });
     }
 }

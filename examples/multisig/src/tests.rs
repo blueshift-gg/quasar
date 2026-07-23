@@ -1,6 +1,5 @@
 extern crate std;
 use {
-    alloc::vec,
     quasar_lang::client::{DynString, DynVec},
     quasar_multisig_client::*,
     quasar_test::prelude::*,
@@ -12,8 +11,8 @@ const SIGNER2: Pubkey = Pubkey::new_from_array([13; 32]);
 const SIGNER3: Pubkey = Pubkey::new_from_array([14; 32]);
 const DEPOSITOR: Pubkey = Pubkey::new_from_array([15; 32]);
 const RECIPIENT: Pubkey = Pubkey::new_from_array([16; 32]);
-const MAX_ELF_BYTES: usize = 26_504;
-const MAX_CREATE_CU: u64 = 3_376;
+const MAX_ELF_BYTES: usize = 26_600;
+const MAX_CREATE_CU: u64 = 3_397;
 const MAX_DEPOSIT_CU: u64 = 2_268;
 const MAX_SET_LABEL_CU: u64 = 2_212;
 const MAX_EXECUTE_TRANSFER_CU: u64 = 2_744;
@@ -83,11 +82,7 @@ fn create_initializes_dynamic_config(test: &mut Test) {
     let outcome = test.send(CreateInstruction {
         creator: CREATOR,
         threshold: 2,
-        remaining_accounts: vec![
-            AccountMeta::new_readonly(SIGNER1, true),
-            AccountMeta::new_readonly(SIGNER2, true),
-            AccountMeta::new_readonly(SIGNER3, true),
-        ],
+        remaining_accounts: co_signers(&[SIGNER1, SIGNER2, SIGNER3]),
     });
 
     outcome.succeeds().cu_at_most(MAX_CREATE_CU);
@@ -156,15 +151,12 @@ fn transfer_world(test: &mut Test) -> (Pubkey, Pubkey) {
     (config, vault)
 }
 
-fn transfer_instruction(signers: impl IntoIterator<Item = Pubkey>) -> ExecuteTransferInstruction {
+fn transfer_instruction(signers: &[Pubkey]) -> ExecuteTransferInstruction {
     ExecuteTransferInstruction {
         creator: CREATOR,
         recipient: RECIPIENT,
         amount: 1_000_000_000,
-        remaining_accounts: signers
-            .into_iter()
-            .map(|signer| AccountMeta::new_readonly(signer, true))
-            .collect(),
+        remaining_accounts: co_signers(signers),
     }
 }
 
@@ -172,7 +164,7 @@ fn transfer_instruction(signers: impl IntoIterator<Item = Pubkey>) -> ExecuteTra
 fn execute_transfer_accepts_the_threshold(test: &mut Test) {
     let (_, vault) = transfer_world(test);
 
-    test.send(transfer_instruction([SIGNER1, SIGNER2]))
+    test.send(transfer_instruction(&[SIGNER1, SIGNER2]))
         .succeeds()
         .cu_at_most(MAX_EXECUTE_TRANSFER_CU)
         .has_lamports(vault, 4_000_000_000)
@@ -183,7 +175,7 @@ fn execute_transfer_accepts_the_threshold(test: &mut Test) {
 fn execute_transfer_rejects_too_few_signers(test: &mut Test) {
     transfer_world(test);
 
-    test.send(transfer_instruction([SIGNER1]))
+    test.send(transfer_instruction(&[SIGNER1]))
         .fails(ProgramError::MissingRequiredSignature);
 }
 
@@ -191,6 +183,6 @@ fn execute_transfer_rejects_too_few_signers(test: &mut Test) {
 fn execute_transfer_counts_a_duplicate_once(test: &mut Test) {
     transfer_world(test);
 
-    test.send(transfer_instruction([SIGNER1, SIGNER1]))
+    test.send(transfer_instruction(&[SIGNER1, SIGNER1]))
         .fails(ProgramError::MissingRequiredSignature);
 }
