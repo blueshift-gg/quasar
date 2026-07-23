@@ -1,5 +1,5 @@
 import { Address, TransactionInstruction } from "@solana/web3.js";
-import { fixCodecSize, getBooleanCodec, getBytesCodec, getNullableCodec, getStructCodec, getU64Codec, getU8Codec, transformCodec } from "@solana/codecs";
+import { fixCodecSize, getBooleanCodec, getBytesCodec, getStructCodec, getU64Codec, getU8Codec, transformCodec } from "@solana/codecs";
 
 function getWeb3jsAddressCodec() {
   return transformCodec(
@@ -85,11 +85,8 @@ function assertFinished(data: Uint8Array, offset: number): void {
 
 /* Constants */
 export const VAULT_DISCRIMINATOR = new Uint8Array([42]);
-export const POOL_DISCRIMINATOR = new Uint8Array([43]);
 export const VAULT_MADE_DISCRIMINATOR = new Uint8Array([7]);
 export const MAKE_INSTRUCTION_DISCRIMINATOR = new Uint8Array([0]);
-export const SYNC_INSTRUCTION_DISCRIMINATOR = new Uint8Array([1]);
-export const SETTLE_INSTRUCTION_DISCRIMINATOR = new Uint8Array([2]);
 
 /* Interfaces */
 export interface Vault {
@@ -101,20 +98,9 @@ export interface Vault {
 export interface Mode {
 }
 
-export interface Pool {
-  seed: bigint;
-  authority: Address;
-}
-
 export interface MakeInstructionArgs {
   amount: bigint;
   flag: boolean;
-}
-
-export interface SettleInstructionArgs {
-  target: Address;
-  amount: bigint;
-  bonus: bigint | null;
 }
 
 export interface MakeInstructionInput {
@@ -123,37 +109,9 @@ export interface MakeInstructionInput {
   flag: boolean;
 }
 
-export interface SyncInstructionInput {
-  authority: Address;
-  poolSeed: bigint;
-}
-
-export interface SettleInstructionInput {
-  payer: Address;
-  mint: Address;
-  maybeRefund?: Address;
-  target: Address;
-  amount: bigint;
-  bonus: bigint | null;
-}
-
 export interface MakeInstructionAccountOverrides {
   authority?: Address;
   vault?: Address;
-}
-
-export interface SyncInstructionAccountOverrides {
-  authority?: Address;
-  pool?: Address;
-}
-
-export interface SettleInstructionAccountOverrides {
-  payer?: Address;
-  mint?: Address;
-  tokenProgram?: Address;
-  recipient?: Address;
-  payerTokens?: Address;
-  maybeRefund?: Address;
 }
 
 /* Codecs */
@@ -174,14 +132,14 @@ export const ModeCodec = {
   decode(data: Parameters<typeof ModeStructCodec.decode>[0], offset = 0): Mode { return decodeExact<Mode>(ModeStructCodec, Uint8Array.from(data).slice(offset)); },
 };
 
-const PoolStructCodec = getStructCodec([
-  ["seed", getU64Codec()],
-  ["authority", getWeb3jsAddressCodec()],
-]);
-export const PoolCodec = {
-  ...PoolStructCodec,
-  decode(data: Parameters<typeof PoolStructCodec.decode>[0], offset = 0): Pool { return decodeExact<Pool>(PoolStructCodec, Uint8Array.from(data).slice(offset)); },
-};
+/* Account Codecs */
+export const VaultAccount = {
+  decode: VaultCodec.decode,
+  encode: VaultCodec.encode,
+  owner: new Address("11111111111111111111111111111111"),
+  discriminator: VAULT_DISCRIMINATOR,
+  size: 42,
+} as const;
 
 /* Enums */
 export const ProgramEvent = {
@@ -196,17 +154,13 @@ export type DecodedEvent =
 
 export const ProgramInstruction = {
   Make: "Make",
-  Sync: "Sync",
-  Settle: "Settle",
 } as const;
 
 export type ProgramInstruction =
   (typeof ProgramInstruction)[keyof typeof ProgramInstruction];
 
 export type DecodedInstruction =
-  | { type: typeof ProgramInstruction.Make; args: MakeInstructionArgs }
-  | { type: typeof ProgramInstruction.Sync }
-  | { type: typeof ProgramInstruction.Settle; args: SettleInstructionArgs };
+  | { type: typeof ProgramInstruction.Make; args: MakeInstructionArgs };
 
 /* Client */
 export class GoldenDemoClient {
@@ -216,12 +170,6 @@ export class GoldenDemoClient {
     const data = Uint8Array.from(input);
     if (!matchDisc(data, VAULT_DISCRIMINATOR)) throw new Error("Invalid Vault discriminator");
     return decodeExact<Vault>(VaultCodec, data.slice(VAULT_DISCRIMINATOR.length));
-  }
-
-  decodePool(input: ArrayLike<number>): Pool {
-    const data = Uint8Array.from(input);
-    if (!matchDisc(data, POOL_DISCRIMINATOR)) throw new Error("Invalid Pool discriminator");
-    return decodeExact<Pool>(PoolCodec, data.slice(POOL_DISCRIMINATOR.length));
   }
 
   decodeEvent(input: ArrayLike<number>): DecodedEvent | null {
@@ -242,18 +190,6 @@ export class GoldenDemoClient {
       ]);
       return { type: ProgramInstruction.Make, args: decodeExact<MakeInstructionArgs>(argsCodec, data.slice(MAKE_INSTRUCTION_DISCRIMINATOR.length)) };
     }
-    if (matchDisc(data, SYNC_INSTRUCTION_DISCRIMINATOR)) {
-      if (data.length !== SYNC_INSTRUCTION_DISCRIMINATOR.length) throw new Error("trailing bytes");
-      return { type: ProgramInstruction.Sync };
-    }
-    if (matchDisc(data, SETTLE_INSTRUCTION_DISCRIMINATOR)) {
-      const argsCodec = getStructCodec([
-        ["target", getWeb3jsAddressCodec()],
-        ["amount", getU64Codec()],
-        ["bonus", getNullableCodec(getU64Codec())],
-      ]);
-      return { type: ProgramInstruction.Settle, args: decodeExact<SettleInstructionArgs>(argsCodec, data.slice(SETTLE_INSTRUCTION_DISCRIMINATOR.length)) };
-    }
     return null;
   }
 
@@ -262,7 +198,8 @@ export class GoldenDemoClient {
   }
 
   async createMakeInstructionRaw(input: MakeInstructionInput, accountOverrides: MakeInstructionAccountOverrides): Promise<TransactionInstruction> {
-    const __vault: Address = await findVaultAddress((accountOverrides.authority ?? input.authority));
+    const accountsMap: Record<string, Address> = {};
+    accountsMap["vault"] = await findVaultAddress((accountOverrides.authority ?? input.authority));
     const argsCodec = getStructCodec([
       ["amount", getU64Codec()],
       ["flag", getBooleanCodec()],
@@ -272,61 +209,7 @@ export class GoldenDemoClient {
       programId: GoldenDemoClient.programId,
       keys: [
         { pubkey: (accountOverrides.authority ?? input.authority), isSigner: true, isWritable: false },
-        { pubkey: (accountOverrides.vault ?? __vault), isSigner: false, isWritable: true },
-      ],
-      data,
-    });
-  }
-
-  async createSyncInstruction(input: SyncInstructionInput): Promise<TransactionInstruction> {
-    return this.createSyncInstructionRaw(input, {});
-  }
-
-  async createSyncInstructionRaw(input: SyncInstructionInput, accountOverrides: SyncInstructionAccountOverrides): Promise<TransactionInstruction> {
-    const __pool: Address = (await Address.findProgramAddress(
-      [
-        new Uint8Array([112, 111, 111, 108]),
-        getU64Codec().encode(input.poolSeed),
-      ],
-      GoldenDemoClient.programId,
-    ))[0];
-    const data = Uint8Array.from([1]);
-    return new TransactionInstruction({
-      programId: GoldenDemoClient.programId,
-      keys: [
-        { pubkey: (accountOverrides.authority ?? input.authority), isSigner: true, isWritable: false },
-        { pubkey: (accountOverrides.pool ?? __pool), isSigner: false, isWritable: true },
-      ],
-      data,
-    });
-  }
-
-  async createSettleInstruction(input: SettleInstructionInput): Promise<TransactionInstruction> {
-    return this.createSettleInstructionRaw(input, {});
-  }
-
-  async createSettleInstructionRaw(input: SettleInstructionInput, accountOverrides: SettleInstructionAccountOverrides): Promise<TransactionInstruction> {
-    const __tokenProgram: Address = new Address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
-    const __recipient: Address = input.target;
-    const __payerTokens: Address = (await Address.findProgramAddress(
-      [(accountOverrides.payer ?? input.payer).toBytes(), (accountOverrides.tokenProgram ?? __tokenProgram).toBytes(), (accountOverrides.mint ?? input.mint).toBytes()],
-      new Address("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
-    ))[0];
-    const argsCodec = getStructCodec([
-      ["target", getWeb3jsAddressCodec()],
-      ["amount", getU64Codec()],
-      ["bonus", getNullableCodec(getU64Codec())],
-    ]);
-    const data = Uint8Array.from([2, ...argsCodec.encode({ target: input.target, amount: input.amount, bonus: input.bonus })]);
-    return new TransactionInstruction({
-      programId: GoldenDemoClient.programId,
-      keys: [
-        { pubkey: (accountOverrides.payer ?? input.payer), isSigner: true, isWritable: true },
-        { pubkey: (accountOverrides.mint ?? input.mint), isSigner: false, isWritable: false },
-        { pubkey: (accountOverrides.tokenProgram ?? __tokenProgram), isSigner: false, isWritable: false },
-        { pubkey: (accountOverrides.recipient ?? __recipient), isSigner: false, isWritable: false },
-        { pubkey: (accountOverrides.payerTokens ?? __payerTokens), isSigner: false, isWritable: true },
-        { pubkey: (accountOverrides.maybeRefund ?? input.maybeRefund ?? GoldenDemoClient.programId), isSigner: false, isWritable: false },
+        { pubkey: (accountOverrides.vault ?? accountsMap["vault"]), isSigner: false, isWritable: true },
       ],
       data,
     });
@@ -352,4 +235,3 @@ export const PROGRAM_ERROR_CODES = {
 export const PROGRAM_ERRORS: Record<number, { name: string; msg?: string }> = {
   6000: { name: "Unauthorized", msg: "caller is not the vault authority" },
 };
-
