@@ -249,9 +249,9 @@ pub(super) fn emit_inline_pda_derivation(
     arg_types: &HashMap<String, IdlType>,
     account_expr: &impl Fn(&str) -> String,
 ) {
-    let ts_target = target.target();
-    match target {
-        InlinePdaTarget::Web3js { program_expr } => {
+    let ts_target = target.target;
+    match ts_target {
+        TsTarget::Web3js => {
             writeln!(
                 out,
                 "    accountsMap[\"{}\"] = (await Address.findProgramAddress(",
@@ -260,17 +260,17 @@ pub(super) fn emit_inline_pda_derivation(
             .expect("write to String");
             out.push_str("      [\n");
             write_inline_pda_seed_lines(out, seeds, idl, ts_target, arg_types, account_expr);
-            writeln!(out, "      ],\n      {},\n    ))[0];", program_expr)
+            writeln!(out, "      ],\n      {},\n    ))[0];", target.program_expr)
                 .expect("write to String");
         }
-        InlinePdaTarget::Kit { .. } => {
+        TsTarget::Kit => {
             writeln!(
                 out,
                 "    accountsMap[\"{}\"] = (await getProgramDerivedAddress({{",
                 account_name
             )
             .expect("write to String");
-            writeln!(out, "      programAddress: {},", target.program_expr())
+            writeln!(out, "      programAddress: {},", target.program_expr)
                 .expect("write to String");
             out.push_str("      seeds: [\n");
             write_inline_pda_seed_lines(out, seeds, idl, ts_target, arg_types, account_expr);

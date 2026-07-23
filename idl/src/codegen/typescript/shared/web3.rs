@@ -153,7 +153,8 @@ pub(super) fn emit_instruction_builders(
                         &account.name,
                         seeds,
                         idl,
-                        InlinePdaTarget::Web3js {
+                        InlinePdaTarget {
+                            target: TsTarget::Web3js,
                             program_expr: &program_expr,
                         },
                         &arg_types,
