@@ -381,12 +381,17 @@ mod __init_escrow_client_macro {
             $($arg_name:ident : $arg_ty:ty),* }
         ) => {
             pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, $(pub
-            $arg_name : $arg_ty,)* } #[doc =
-            r" Explicit account-address builder for adversarial and negative tests."] pub
-            struct $raw_struct_name { pub payer : ::quasar_lang::prelude::Address, pub
-            escrow : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* } impl
-            From < $struct_name > for $raw_struct_name { #[allow(unused_variables)] fn
-            from(ix : $struct_name) -> Self { Self { payer : ix.payer, escrow :
+            $arg_name : $arg_ty,)* } impl $struct_name { #[doc =
+            r" The address this builder derives for this account, using"] #[doc =
+            r" the same PDA/ATA recipe the instruction uses — so callers"] #[doc =
+            r" can name it without re-deriving the seeds by hand."] pub fn
+            escrow_address(& self) -> ::quasar_lang::prelude::Address {
+            super::InitEscrow::__quasar_pda_escrow(& self.payer, & $crate::ID) } } #[doc
+            = r" Explicit account-address builder for adversarial and negative tests."]
+            pub struct $raw_struct_name { pub payer : ::quasar_lang::prelude::Address,
+            pub escrow : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* }
+            impl From < $struct_name > for $raw_struct_name { #[allow(unused_variables)]
+            fn from(ix : $struct_name) -> Self { Self { payer : ix.payer, escrow :
             super::InitEscrow::__quasar_pda_escrow(& ix.payer, & $crate::ID), $($arg_name
             : ix. $arg_name,)* } } } impl From < $struct_name > for
             ::quasar_lang::client::Instruction { fn from(ix : $struct_name) ->
@@ -408,12 +413,17 @@ mod __init_escrow_client_macro {
             $($arg_name:ident : $arg_ty:ty),* }, compact
         ) => {
             pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, $(pub
-            $arg_name : $arg_ty,)* } #[doc =
-            r" Explicit account-address builder for adversarial and negative tests."] pub
-            struct $raw_struct_name { pub payer : ::quasar_lang::prelude::Address, pub
-            escrow : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* } impl
-            From < $struct_name > for $raw_struct_name { #[allow(unused_variables)] fn
-            from(ix : $struct_name) -> Self { Self { payer : ix.payer, escrow :
+            $arg_name : $arg_ty,)* } impl $struct_name { #[doc =
+            r" The address this builder derives for this account, using"] #[doc =
+            r" the same PDA/ATA recipe the instruction uses — so callers"] #[doc =
+            r" can name it without re-deriving the seeds by hand."] pub fn
+            escrow_address(& self) -> ::quasar_lang::prelude::Address {
+            super::InitEscrow::__quasar_pda_escrow(& self.payer, & $crate::ID) } } #[doc
+            = r" Explicit account-address builder for adversarial and negative tests."]
+            pub struct $raw_struct_name { pub payer : ::quasar_lang::prelude::Address,
+            pub escrow : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* }
+            impl From < $struct_name > for $raw_struct_name { #[allow(unused_variables)]
+            fn from(ix : $struct_name) -> Self { Self { payer : ix.payer, escrow :
             super::InitEscrow::__quasar_pda_escrow(& ix.payer, & $crate::ID), $($arg_name
             : ix. $arg_name,)* } } } impl From < $struct_name > for
             ::quasar_lang::client::Instruction { fn from(ix : $struct_name) ->
@@ -437,21 +447,26 @@ mod __init_escrow_client_macro {
         ) => {
             pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, $(pub
             $arg_name : $arg_ty,)* pub remaining_accounts : ::alloc::vec::Vec <
-            ::quasar_lang::client::AccountMeta >, } #[doc =
-            r" Explicit account-address builder for adversarial and negative tests."] pub
-            struct $raw_struct_name { pub payer : ::quasar_lang::prelude::Address, pub
-            escrow : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* pub
-            remaining_accounts : ::alloc::vec::Vec < ::quasar_lang::client::AccountMeta
-            >, } impl From < $struct_name > for $raw_struct_name {
-            #[allow(unused_variables)] fn from(ix : $struct_name) -> Self { Self { payer
-            : ix.payer, escrow : super::InitEscrow::__quasar_pda_escrow(& ix.payer, &
-            $crate::ID), $($arg_name : ix. $arg_name,)* remaining_accounts : ix
-            .remaining_accounts, } } } impl From < $struct_name > for
-            ::quasar_lang::client::Instruction { fn from(ix : $struct_name) ->
-            ::quasar_lang::client::Instruction { $raw_struct_name ::from(ix).into() } }
-            impl From < $raw_struct_name > for ::quasar_lang::client::Instruction {
-            #[allow(unused_variables)] fn from(ix : $raw_struct_name) ->
-            ::quasar_lang::client::Instruction { let mut accounts =
+            ::quasar_lang::client::AccountMeta >, } impl $struct_name { #[doc =
+            r" The address this builder derives for this account, using"] #[doc =
+            r" the same PDA/ATA recipe the instruction uses — so callers"] #[doc =
+            r" can name it without re-deriving the seeds by hand."] pub fn
+            escrow_address(& self) -> ::quasar_lang::prelude::Address {
+            super::InitEscrow::__quasar_pda_escrow(& self.payer, & $crate::ID) } } #[doc
+            = r" Explicit account-address builder for adversarial and negative tests."]
+            pub struct $raw_struct_name { pub payer : ::quasar_lang::prelude::Address,
+            pub escrow : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)*
+            pub remaining_accounts : ::alloc::vec::Vec <
+            ::quasar_lang::client::AccountMeta >, } impl From < $struct_name > for
+            $raw_struct_name { #[allow(unused_variables)] fn from(ix : $struct_name) ->
+            Self { Self { payer : ix.payer, escrow :
+            super::InitEscrow::__quasar_pda_escrow(& ix.payer, & $crate::ID), $($arg_name
+            : ix. $arg_name,)* remaining_accounts : ix.remaining_accounts, } } } impl
+            From < $struct_name > for ::quasar_lang::client::Instruction { fn from(ix :
+            $struct_name) -> ::quasar_lang::client::Instruction { $raw_struct_name
+            ::from(ix).into() } } impl From < $raw_struct_name > for
+            ::quasar_lang::client::Instruction { #[allow(unused_variables)] fn from(ix :
+            $raw_struct_name) -> ::quasar_lang::client::Instruction { let mut accounts =
             ::alloc::vec![::quasar_lang::client::AccountMeta::new(ix.payer, true),
             ::quasar_lang::client::AccountMeta::new(ix.escrow, false),
             ::quasar_lang::client::AccountMeta::new_readonly(super::InitEscrow::__QUASAR_FIXED_ADDRESS_system_program,
@@ -467,21 +482,26 @@ mod __init_escrow_client_macro {
         ) => {
             pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, $(pub
             $arg_name : $arg_ty,)* pub remaining_accounts : ::alloc::vec::Vec <
-            ::quasar_lang::client::AccountMeta >, } #[doc =
-            r" Explicit account-address builder for adversarial and negative tests."] pub
-            struct $raw_struct_name { pub payer : ::quasar_lang::prelude::Address, pub
-            escrow : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* pub
-            remaining_accounts : ::alloc::vec::Vec < ::quasar_lang::client::AccountMeta
-            >, } impl From < $struct_name > for $raw_struct_name {
-            #[allow(unused_variables)] fn from(ix : $struct_name) -> Self { Self { payer
-            : ix.payer, escrow : super::InitEscrow::__quasar_pda_escrow(& ix.payer, &
-            $crate::ID), $($arg_name : ix. $arg_name,)* remaining_accounts : ix
-            .remaining_accounts, } } } impl From < $struct_name > for
-            ::quasar_lang::client::Instruction { fn from(ix : $struct_name) ->
-            ::quasar_lang::client::Instruction { $raw_struct_name ::from(ix).into() } }
-            impl From < $raw_struct_name > for ::quasar_lang::client::Instruction {
-            #[allow(unused_variables)] fn from(ix : $raw_struct_name) ->
-            ::quasar_lang::client::Instruction { let mut accounts =
+            ::quasar_lang::client::AccountMeta >, } impl $struct_name { #[doc =
+            r" The address this builder derives for this account, using"] #[doc =
+            r" the same PDA/ATA recipe the instruction uses — so callers"] #[doc =
+            r" can name it without re-deriving the seeds by hand."] pub fn
+            escrow_address(& self) -> ::quasar_lang::prelude::Address {
+            super::InitEscrow::__quasar_pda_escrow(& self.payer, & $crate::ID) } } #[doc
+            = r" Explicit account-address builder for adversarial and negative tests."]
+            pub struct $raw_struct_name { pub payer : ::quasar_lang::prelude::Address,
+            pub escrow : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)*
+            pub remaining_accounts : ::alloc::vec::Vec <
+            ::quasar_lang::client::AccountMeta >, } impl From < $struct_name > for
+            $raw_struct_name { #[allow(unused_variables)] fn from(ix : $struct_name) ->
+            Self { Self { payer : ix.payer, escrow :
+            super::InitEscrow::__quasar_pda_escrow(& ix.payer, & $crate::ID), $($arg_name
+            : ix. $arg_name,)* remaining_accounts : ix.remaining_accounts, } } } impl
+            From < $struct_name > for ::quasar_lang::client::Instruction { fn from(ix :
+            $struct_name) -> ::quasar_lang::client::Instruction { $raw_struct_name
+            ::from(ix).into() } } impl From < $raw_struct_name > for
+            ::quasar_lang::client::Instruction { #[allow(unused_variables)] fn from(ix :
+            $raw_struct_name) -> ::quasar_lang::client::Instruction { let mut accounts =
             ::alloc::vec![::quasar_lang::client::AccountMeta::new(ix.payer, true),
             ::quasar_lang::client::AccountMeta::new(ix.escrow, false),
             ::quasar_lang::client::AccountMeta::new_readonly(super::InitEscrow::__QUASAR_FIXED_ADDRESS_system_program,

@@ -1,7 +1,8 @@
 use {
     super::model::{
-        account_field_definition, account_field_seed_inputs, go_field_path, reject_generics,
-        resolved_account_order, resolver_is_derived, CodegenResult, ProgramModel,
+        account_field_definition, account_field_seed_form, account_field_seed_inputs,
+        go_field_path, reject_generics, resolved_account_order, resolver_is_derived, CodegenResult,
+        ProgramModel, SeedNameForm,
     },
     crate::codegen::naming::{snake_to_pascal, to_camel_case},
     crate::types::{
@@ -251,7 +252,7 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
             writeln!(
                 out,
                 "\t{} {}",
-                account_field_seed_input_name(seed.path, seed.field),
+                account_field_seed_input_name(seed.path, seed.field, seed.form),
                 go_type(&field.ty),
             )
             .unwrap();
@@ -282,11 +283,11 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
             .iter()
             .filter(|acc| acc.optional || !resolver_is_derived(&acc.resolver))
         {
-            let key_expr = go_account_key_expr(acc, idl);
+            let key_expr = go_account_key_expr(acc, ix, idl);
             writeln!(out, "\taccountsMap[\"{}\"] = {}", acc.name, key_expr).unwrap();
         }
         for acc in resolved_account_order(ix)? {
-            let key_expr = go_account_key_expr(acc, idl);
+            let key_expr = go_account_key_expr(acc, ix, idl);
             writeln!(out, "\taccountsMap[\"{}\"] = {}", acc.name, key_expr).unwrap();
         }
         for acc in &ix.accounts {
@@ -602,7 +603,11 @@ pub fn generate_go_client(idl: &Idl) -> CodegenResult<String> {
     Ok(out)
 }
 
-fn go_account_key_expr(account: &IdlAccountNode, idl: &Idl) -> String {
+fn go_account_key_expr(
+    account: &IdlAccountNode,
+    ix: &crate::types::IdlInstruction,
+    idl: &Idl,
+) -> String {
     if account.optional {
         let name = snake_to_pascal(&account.name);
         return format!(
@@ -632,10 +637,12 @@ fn go_account_key_expr(account: &IdlAccountNode, idl: &Idl) -> String {
                     } => {
                         let ty =
                             account_field_definition(idl, account, field).map(|field| &field.ty);
-                        go_pda_seed_expr(
-                            &format!("input.{}", account_field_seed_input_name(path, field)),
-                            ty,
-                        )
+                        let name = account_field_seed_input_name(
+                            path,
+                            field,
+                            account_field_seed_form(ix, path, field),
+                        );
+                        go_pda_seed_expr(&format!("input.{name}"), ty)
                     }
                     IdlPdaSeed::Arg { path, ty } => {
                         go_pda_seed_expr(&format!("input.{}", go_field_path(path)), Some(ty))
@@ -1200,16 +1207,19 @@ fn decode_field_expr(
     }
 }
 
-fn account_field_seed_input_name(path: &str, field: &str) -> String {
-    format!(
-        "{}{}Seed",
-        snake_to_pascal(path),
-        field
-            .split('.')
-            .map(snake_to_pascal)
-            .collect::<Vec<_>>()
-            .join("")
-    )
+/// Spell an account-field seed input for the Go client (exported PascalCase),
+/// applying the shared collision-avoidance rule (see [`SeedNameForm`]).
+fn account_field_seed_input_name(path: &str, field: &str, form: SeedNameForm) -> String {
+    let field = field
+        .split('.')
+        .map(snake_to_pascal)
+        .collect::<Vec<_>>()
+        .join("");
+    match form {
+        SeedNameForm::Field => field,
+        SeedNameForm::BaseField => format!("{}{}", snake_to_pascal(path), field),
+        SeedNameForm::BaseFieldSeed => format!("{}{}Seed", snake_to_pascal(path), field),
+    }
 }
 
 fn go_pda_seed_expr(expr: &str, ty: Option<&IdlType>) -> String {

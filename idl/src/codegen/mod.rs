@@ -139,6 +139,94 @@ mod tests {
         idl
     }
 
+    fn idl_with_bare_account_field_seed() -> Idl {
+        // A single instruction whose only PDA is seeded by the stored `seed`
+        // field of `escrow`. Nothing else shares that name, so the synthesized
+        // input is the bare `seed` (the escrow Take/Refund shape).
+        let mut idl = idl_with_u64_arg_seed();
+        idl.instructions[0].name = "take".to_owned();
+        idl.instructions[0].args.clear();
+        idl.instructions[0].accounts[0].name = "escrow".to_owned();
+        idl.instructions[0].accounts[0].resolver = IdlResolver::Pda {
+            program: IdlPdaProgram::ProgramId {},
+            seeds: vec![IdlPdaSeed::AccountField {
+                path: "escrow".to_owned(),
+                account: "Escrow".to_owned(),
+                field: "seed".to_owned(),
+            }],
+        };
+        idl.types.push(
+            serde_json::from_value(serde_json::json!({
+                "name": "Escrow",
+                "kind": "struct",
+                "fields": [{ "name": "seed", "type": "u64" }]
+            }))
+            .unwrap(),
+        );
+        idl
+    }
+
+    fn idl_with_colliding_account_field_seed() -> Idl {
+        // The same instruction also takes a `seed` arg, so the stored-field
+        // input must escalate to `escrow_seed`.
+        let mut idl = idl_with_bare_account_field_seed();
+        idl.instructions[0].args.push(IdlArg {
+            name: "seed".to_owned(),
+            ty: IdlType::Primitive("u64".to_owned()),
+            codec: None,
+            docs: vec![],
+        });
+        idl
+    }
+
+    fn idl_with_fixed_and_dynamic_accounts() -> Idl {
+        let mut idl = idl_with_u64_arg_seed();
+        // A fixed-layout account: pubkey + u64 → 40-byte body.
+        idl.accounts.push(
+            serde_json::from_value(serde_json::json!({
+                "name": "Config", "discriminator": [9]
+            }))
+            .unwrap(),
+        );
+        idl.types.push(
+            serde_json::from_value(serde_json::json!({
+                "name": "Config",
+                "kind": "struct",
+                "fields": [
+                    { "name": "authority", "type": "pubkey" },
+                    { "name": "count", "type": "u64" }
+                ]
+            }))
+            .unwrap(),
+        );
+        // A variable-layout account: a size-prefixed string body.
+        idl.accounts.push(
+            serde_json::from_value(serde_json::json!({
+                "name": "Registry", "discriminator": [10]
+            }))
+            .unwrap(),
+        );
+        idl.types.push(
+            serde_json::from_value(serde_json::json!({
+                "name": "Registry",
+                "kind": "struct",
+                "fields": [{
+                    "name": "label",
+                    "type": "string",
+                    "codec": {
+                        "kind": "sizePrefixed",
+                        "prefix": { "type": "u8", "endian": "le" },
+                        "storage": "tail",
+                        "maxBytes": 32,
+                        "encoding": "utf8"
+                    }
+                }]
+            }))
+            .unwrap(),
+        );
+        idl
+    }
+
     fn idl_with_associated_token() -> Idl {
         let mut idl = idl_with_u64_arg_seed();
         idl.instructions[0].accounts = vec![
@@ -377,6 +465,96 @@ mod tests {
         assert_eq!(pda_rs.matches("pub fn find_escrow_address").count(), 1);
         assert!(pda_rs.contains("find_escrow_address(amount: u64, program_id: &Address)"));
         assert!(!pda_rs.contains("escrow_amount_seed: &[u8]"));
+    }
+
+    #[test]
+    fn account_field_seed_input_uses_bare_field_name_when_unambiguous() {
+        let idl = idl_with_bare_account_field_seed();
+
+        let take = generate_rust_client(&idl)
+            .unwrap()
+            .into_iter()
+            .find_map(|(path, contents)| (path == "instructions/take.rs").then_some(contents))
+            .expect("take instruction generated");
+        assert!(take.contains("pub seed: u64,"));
+        assert!(!take.contains("escrow_seed_seed"));
+        assert!(take.contains("ix.seed"));
+
+        let go = generate_go_client(&idl).unwrap();
+        assert!(go.contains("Seed uint64"));
+        assert!(go.contains("input.Seed"));
+        assert!(!go.contains("EscrowSeedSeed"));
+
+        let python = generate_python_client(&idl).unwrap();
+        assert!(python.contains("input.seed"));
+        assert!(!python.contains("escrow_seed_seed"));
+
+        let c = generate_c_client(&idl).unwrap();
+        assert!(c.contains("const uint8_t *seed;"));
+        assert!(c.contains("accounts->seed;"));
+        assert!(!c.contains("escrow_seed_seed"));
+    }
+
+    #[test]
+    fn ts_account_codec_bundle_carries_framing_and_omits_size_when_variable() {
+        let idl = idl_with_fixed_and_dynamic_accounts();
+
+        for ts in [
+            generate_ts_client(&idl).unwrap(),
+            generate_ts_client_kit(&idl).unwrap(),
+        ] {
+            // Fixed account: full bundle incl. size (disc 1 + pubkey 32 + u64 8).
+            assert!(ts.contains("export const ConfigAccount = {"));
+            assert!(ts.contains("decode: ConfigCodec.decode,"));
+            assert!(ts.contains("encode: ConfigCodec.encode,"));
+            assert!(ts.contains("discriminator: CONFIG_DISCRIMINATOR,"));
+            assert!(ts.contains("size: 41,"));
+
+            // Variable account: bundle present, but no size.
+            assert!(ts.contains("export const RegistryAccount = {"));
+            assert!(ts.contains("decode: RegistryCodec.decode,"));
+            let registry = ts
+                .split("export const RegistryAccount = {")
+                .nth(1)
+                .expect("registry bundle")
+                .split("};")
+                .next()
+                .expect("registry bundle body");
+            assert!(!registry.contains("size:"));
+        }
+
+        // Owner is spelled per target.
+        assert!(generate_ts_client_kit(&idl)
+            .unwrap()
+            .contains("owner: PROGRAM_ADDRESS,"));
+        assert!(generate_ts_client(&idl)
+            .unwrap()
+            .contains("owner: new Address(\"11111111111111111111111111111111\"),"));
+    }
+
+    #[test]
+    fn account_field_seed_input_escalates_to_base_field_on_collision() {
+        let idl = idl_with_colliding_account_field_seed();
+
+        let take = generate_rust_client(&idl)
+            .unwrap()
+            .into_iter()
+            .find_map(|(path, contents)| (path == "instructions/take.rs").then_some(contents))
+            .expect("take instruction generated");
+        // The `seed` arg keeps its name; the stored-field input escalates.
+        assert!(take.contains("pub escrow_seed: u64,"));
+        assert!(take.contains("pub seed: u64,"));
+        assert!(take.contains("ix.escrow_seed"));
+
+        let go = generate_go_client(&idl).unwrap();
+        assert!(go.contains("EscrowSeed uint64"));
+        assert!(go.contains("input.EscrowSeed"));
+
+        let python = generate_python_client(&idl).unwrap();
+        assert!(python.contains("input.escrow_seed"));
+
+        let c = generate_c_client(&idl).unwrap();
+        assert!(c.contains("const uint8_t *escrow_seed;"));
     }
 
     #[test]

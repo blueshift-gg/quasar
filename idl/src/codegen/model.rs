@@ -5,7 +5,7 @@ use {
         IdlLayout, IdlPdaProgram, IdlPdaSeed, IdlResolver, IdlType,
     },
     std::{
-        collections::HashSet,
+        collections::{HashMap, HashSet},
         error::Error,
         ffi::OsStr,
         fmt,
@@ -335,17 +335,67 @@ pub struct AccountPlan {
     pub resolver: IdlResolver,
 }
 
+/// The collision-avoidance form chosen for one account-field seed input name.
+///
+/// A PDA account seeded by stored account data cannot be recovered from an
+/// address alone in a synchronous client, so builders replace it with a typed
+/// input carrying that value. Its name follows a 3-step rule, identical in
+/// every backend and deterministic given the IDL (`base` is the account the
+/// field is read from):
+///
+/// 1. `field` — the bare seed field name.
+/// 2. `base_field` — when the bare name collides with another instruction input
+///    (a non-derived account, an arg, or another seed's bare candidate).
+/// 3. `base_field_seed` — the legacy form, when `base_field` still collides.
+///
+/// Escrow Take/Refund, whose only input is the stored `seed`, thus takes the
+/// bare `seed`, matching Make's `seed` arg. Backends spell the chosen form in
+/// their own field-name case; the collision decision is made once here in a
+/// case-normalized (snake) space so every backend agrees.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SeedNameForm {
+    Field,
+    BaseField,
+    BaseFieldSeed,
+}
+
 /// One unique account-data value required to derive an instruction PDA.
 ///
 /// The identity is `(path, field)`: backends may render the parameter name
-/// differently, but they must agree on which caller-supplied values exist.
+/// differently, but they must agree on which caller-supplied values exist and
+/// on the collision-avoidance `form` chosen for each.
 pub(super) struct AccountFieldSeedInput<'a> {
     pub path: &'a str,
     pub account: &'a str,
     pub field: &'a str,
+    pub form: SeedNameForm,
+}
+
+/// Case-normalized (snake) spelling of a dotted seed field path, used only to
+/// compare names when choosing a [`SeedNameForm`].
+fn seed_field_norm(field: &str) -> String {
+    field
+        .split('.')
+        .map(camel_to_snake)
+        .collect::<Vec<_>>()
+        .join("_")
 }
 
 pub(super) fn account_field_seed_inputs(ix: &IdlInstruction) -> Vec<AccountFieldSeedInput<'_>> {
+    // Names of every other instruction input a synthesized seed must not
+    // collide with: caller-supplied (non-derived) accounts and args, compared
+    // in case-normalized form so the chosen form is backend-independent.
+    let mut reserved: HashSet<String> = HashSet::new();
+    for account in &ix.accounts {
+        if account.optional || !resolver_is_derived(&account.resolver) {
+            reserved.insert(camel_to_snake(&account.name));
+        }
+    }
+    for arg in &ix.args {
+        reserved.insert(camel_to_snake(&arg.name));
+    }
+
+    // Deduped raw seeds, identity `(path, field)`.
     let mut inputs = Vec::new();
     let mut seen = HashSet::new();
     for account_node in &ix.accounts {
@@ -369,11 +419,47 @@ pub(super) fn account_field_seed_inputs(ix: &IdlInstruction) -> Vec<AccountField
                     path,
                     account,
                     field,
+                    form: SeedNameForm::BaseFieldSeed,
                 });
             }
         }
     }
+
+    // Two distinct accounts contributing the same bare field name both escalate
+    // past the bare form (they would otherwise name the same input).
+    let mut bare_counts: HashMap<String, usize> = HashMap::new();
+    for input in &inputs {
+        *bare_counts.entry(seed_field_norm(input.field)).or_default() += 1;
+    }
+    for input in &mut inputs {
+        let field_norm = seed_field_norm(input.field);
+        let base_field_norm = format!("{}_{}", camel_to_snake(input.path), field_norm);
+        input.form = if !reserved.contains(&field_norm) && bare_counts[&field_norm] == 1 {
+            SeedNameForm::Field
+        } else if !reserved.contains(&base_field_norm) {
+            // `base_field` is unique across seeds because `(base, field)` is.
+            SeedNameForm::BaseField
+        } else {
+            SeedNameForm::BaseFieldSeed
+        };
+    }
+
     inputs
+}
+
+/// The collision-avoidance form for the account-field seed `(path, field)` of
+/// `ix`. Derivation bodies that render a single seed (rather than iterating the
+/// whole input list) use this to spell the same name as the struct field.
+pub(super) fn account_field_seed_form(
+    ix: &IdlInstruction,
+    path: &str,
+    field: &str,
+) -> SeedNameForm {
+    account_field_seed_inputs(ix)
+        .iter()
+        .find(|seed| seed.path == path && seed.field == field)
+        .map(|seed| seed.form)
+        .unwrap_or(SeedNameForm::BaseFieldSeed)
 }
 
 /// Resolve a dotted account-field seed path to its final IDL field definition.

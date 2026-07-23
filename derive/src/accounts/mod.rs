@@ -302,10 +302,11 @@ fn emit_pda_address_fns(
     where_clause: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
     use crate::client_macro::{
-        derivation_roots, direct_derived_deps, field_derivation, DeriveRoot, FieldDerivation,
-        SeedSource,
+        build_seed_naming, derivation_roots, direct_derived_deps, field_derivation, DeriveRoot,
+        FieldDerivation, SeedSource,
     };
     let krate = crate::krate::lang_path();
+    let naming = build_seed_naming(plan);
     let source_arg = |source: &SeedSource| match source {
         // Plain accounts and Address args are `&Address` parameters; derived
         // accounts are `let` locals holding an owned `Address`.
@@ -327,9 +328,9 @@ fn emit_pda_address_fns(
         .fields
         .iter()
         .filter_map(|field| {
-            let derivation = field_derivation(plan, field, &mut Vec::new())?;
+            let derivation = field_derivation(plan, field, &mut Vec::new(), &naming)?;
             let fn_ident = crate::client_macro::pda_address_fn(&field.ident);
-            let roots = derivation_roots(plan, &derivation);
+            let roots = derivation_roots(plan, &derivation, &naming);
             let params = roots.iter().map(|root| match root {
                 DeriveRoot::Account(i) | DeriveRoot::ArgRef(i) => {
                     quote! { #i: &#krate::prelude::Address }
@@ -346,10 +347,10 @@ fn emit_pda_address_fns(
                     .iter()
                     .find(|other| other.ident == **dep)
                     .expect("derived dep exists");
-                let dep_derivation = field_derivation(plan, dep_field, &mut Vec::new())
+                let dep_derivation = field_derivation(plan, dep_field, &mut Vec::new(), &naming)
                     .expect("derived dep re-resolves");
                 let dep_fn = crate::client_macro::pda_address_fn(dep);
-                let dep_args = derivation_roots(plan, &dep_derivation)
+                let dep_args = derivation_roots(plan, &dep_derivation, &naming)
                     .into_iter()
                     .map(|root| {
                         let ident = root.ident();
