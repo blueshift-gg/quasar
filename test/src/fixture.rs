@@ -99,13 +99,17 @@ impl TokenProgram {
 }
 
 /// An initialized token mint.
-#[derive(Debug, Clone, Copy)]
+///
+/// [`Self::with_holder`] additionally installs one associated-token account per
+/// holder, so a funded mint and its holders can be set up in a single fixture.
+#[derive(Debug, Clone)]
 pub struct Mint {
     address: Option<Pubkey>,
     authority: Pubkey,
     supply: u64,
     decimals: u8,
     token_program: TokenProgram,
+    holders: Vec<(Pubkey, u64)>,
 }
 
 impl Mint {
@@ -117,6 +121,7 @@ impl Mint {
             supply: 0,
             decimals: 6,
             token_program: TokenProgram::Legacy,
+            holders: Vec::new(),
         }
     }
 
@@ -143,6 +148,17 @@ impl Mint {
         self.token_program = token_program;
         self
     }
+
+    /// Fund `owner` with `amount` of this mint through its associated-token
+    /// account, created when the mint is installed.
+    ///
+    /// Repeatable: each call registers one more holder. Reach for
+    /// [`AssociatedTokenAccount`] or [`TokenAccount`] directly when a holder
+    /// needs a non-associated address or other explicit control.
+    pub fn with_holder(mut self, owner: Pubkey, amount: u64) -> Self {
+        self.holders.push((owner, amount));
+        self
+    }
 }
 
 impl Fixture for Mint {
@@ -157,6 +173,14 @@ impl Fixture for Mint {
             self.decimals,
             self.token_program.id(),
         ));
+        for (owner, amount) in self.holders {
+            test.set_account(fixtures::associated_token_account_with_program(
+                owner,
+                address,
+                amount,
+                self.token_program.id(),
+            ));
+        }
         address
     }
 }

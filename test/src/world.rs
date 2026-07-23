@@ -132,37 +132,11 @@ impl Test {
         let account = self
             .account(address)
             .unwrap_or_else(|| panic!("read {name}: no account at {address}"));
-        if account.owner != T::OWNER {
-            panic!(
-                "read {name}: account {address} is owned by {}, expected {}",
-                account.owner,
-                T::OWNER
-            );
-        }
-        let discriminator = T::DISCRIMINATOR;
-        let expected_len = discriminator.len() + core::mem::size_of::<T::Target>();
-        if account.data.len() < expected_len {
-            panic!(
-                "read {name}: account {address} holds {} bytes, expected at least {expected_len}",
-                account.data.len()
-            );
-        }
-        if &account.data[..discriminator.len()] != discriminator {
-            panic!(
-                "read {name}: account {address} discriminator is {:?}, expected {discriminator:?}",
-                &account.data[..discriminator.len()]
-            );
-        }
-        // SAFETY: `T::Target` is `ZcElem` (alignment one and no padding), and
-        // the length check above proves the target bytes are in bounds.
-        let state = unsafe { &*(account.data[discriminator.len()..].as_ptr() as *const T::Target) };
-        if let Err(error) = <T::Target as ZcValidate>::validate_ref(state) {
-            panic!("read {name}: account {address} holds invalid data: {error:?}");
-        }
+        let state = validate_typed::<T>("read", &account);
         Snapshot {
             address,
             lamports: account.lamports,
-            state: *state,
+            state,
         }
     }
 
@@ -268,6 +242,7 @@ impl Test {
                     .find(|account| account.address == meta.pubkey)
                 {
                     existing.writable |= meta.is_writable;
+                    existing.signer |= meta.is_signer;
                     continue;
                 }
                 let before = inputs
@@ -278,6 +253,7 @@ impl Test {
                 tracked.push(TrackedAccount {
                     address: meta.pubkey,
                     writable: meta.is_writable,
+                    signer: meta.is_signer,
                     before,
                     after: None,
                 });
@@ -292,22 +268,33 @@ impl Test {
                 tracked.push(TrackedAccount {
                     address: input.address,
                     writable: false,
+                    signer: false,
                     before: Some(input.clone()),
                     after: None,
                 });
             }
         }
 
-        // A missing writable account enters the transaction as Solana's empty
-        // system account. QuasarSVM commits that transaction input only when
-        // execution succeeds, so init targets persist without polluting the
-        // world after a failed transaction.
+        // Backfill accounts a transaction names but the world has not
+        // installed. A missing writable account enters as Solana's empty
+        // system account: QuasarSVM commits that input only when execution
+        // succeeds, so init targets persist without polluting the world after a
+        // failed transaction. A missing read-only signer (a co-signer, e.g. a
+        // multisig member) enters as a funded system account, matching the
+        // real accounts those signatures come from.
         for account in &tracked {
-            if account.writable
-                && account.before.is_none()
-                && inputs.iter().all(|input| input.address != account.address)
+            if account.before.is_some()
+                || inputs.iter().any(|input| input.address == account.address)
             {
+                continue;
+            }
+            if account.writable {
                 inputs.push(fixtures::empty_account(account.address));
+            } else if account.signer {
+                inputs.push(fixtures::system_account(
+                    account.address,
+                    DEFAULT_WALLET_LAMPORTS,
+                ));
             }
         }
 
@@ -341,6 +328,48 @@ fn assert_unique_accounts(accounts: &[Account]) {
             account.address
         );
     }
+}
+
+/// Validate `account` as a fixed-size Quasar account of type `T` and return a
+/// copy of its typed state. `context` names the calling operation so panics
+/// stay actionable (`read`, `has_state`, ...). Shared by [`Test::read`] and
+/// [`crate::Outcome::has_state`] so both apply identical ownership,
+/// discriminator, length, and zero-copy checks.
+pub(crate) fn validate_typed<T>(context: &str, account: &Account) -> T::Target
+where
+    T: Discriminator + Owner + Deref,
+    T::Target: ZcElem + ZcValidate + Copy,
+{
+    let name = core::any::type_name::<T>();
+    let address = account.address;
+    if account.owner != T::OWNER {
+        panic!(
+            "{context} {name}: account {address} is owned by {}, expected {}",
+            account.owner,
+            T::OWNER
+        );
+    }
+    let discriminator = T::DISCRIMINATOR;
+    let expected_len = discriminator.len() + core::mem::size_of::<T::Target>();
+    if account.data.len() < expected_len {
+        panic!(
+            "{context} {name}: account {address} holds {} bytes, expected at least {expected_len}",
+            account.data.len()
+        );
+    }
+    if &account.data[..discriminator.len()] != discriminator {
+        panic!(
+            "{context} {name}: account {address} discriminator is {:?}, expected {discriminator:?}",
+            &account.data[..discriminator.len()]
+        );
+    }
+    // SAFETY: `T::Target` is `ZcElem` (alignment one and no padding), and the
+    // length check above proves the target bytes are in bounds.
+    let state = unsafe { &*(account.data[discriminator.len()..].as_ptr() as *const T::Target) };
+    if let Err(error) = <T::Target as ZcValidate>::validate_ref(state) {
+        panic!("{context} {name}: account {address} holds invalid data: {error:?}");
+    }
+    *state
 }
 
 /// Typed fixed-size account state captured at one point in a test.

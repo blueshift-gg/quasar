@@ -37,9 +37,24 @@ pub use {
     world::{Snapshot, Test, DEFAULT_WALLET_LAMPORTS},
 };
 
+/// Build read-only signer metas for co-signers, such as multisig members.
+///
+/// Each address becomes an [`AccountMeta`] that is read-only and a signer, the
+/// shape a program expects for an authority it only needs to have signed.
+/// [`Test::send`] auto-registers any co-signer the world has not installed as a
+/// funded system account, mirroring how it backfills writable init targets, so
+/// tests pass the addresses alone without hand-rolling metas or wallets.
+pub fn co_signers(addresses: &[Pubkey]) -> Vec<AccountMeta> {
+    addresses
+        .iter()
+        .map(|&address| AccountMeta::new_readonly(address, true))
+        .collect()
+}
+
 /// Imports used by most program tests.
 pub mod prelude {
     pub use crate::{
+        co_signers,
         fixture::{
             AssociatedTokenAccount, Fixture, Mint, Program, TokenAccount, TokenProgram, Wallet,
         },
@@ -54,6 +69,7 @@ mod tests {
     use {
         super::{
             backend::Backend,
+            co_signers,
             fixture::{AssociatedTokenAccount, Fixture, Mint, TokenAccount, TokenProgram, Wallet},
             setup::resolve_program_path_from_named,
             Account, ProgramError, Pubkey, SetupError, Test, SPL_TOKEN_2022_PROGRAM_ID,
@@ -196,5 +212,47 @@ mod tests {
     fn stable_program_errors_do_not_expose_the_backend_type() {
         let error = ProgramError::from(quasar_svm::ProgramError::InvalidInstructionData);
         assert_eq!(error, ProgramError::InvalidInstructionData);
+    }
+
+    #[test]
+    fn with_holder_installs_one_associated_account_per_holder() {
+        let mut test = empty_test();
+        let authority = test.add(Wallet::new());
+        let alice = test.add(Wallet::new());
+        let bob = test.add(Wallet::new());
+
+        let mint = test.add(
+            Mint::new(authority)
+                .supply(1_000)
+                .token_program(TokenProgram::Token2022)
+                .with_holder(alice, 400)
+                .with_holder(bob, 600),
+        );
+
+        let alice_ata = test.derive_ata(alice, mint, TokenProgram::Token2022);
+        let bob_ata = test.derive_ata(bob, mint, TokenProgram::Token2022);
+        assert_eq!(test.supply(mint), 1_000);
+        assert_eq!(test.tokens(alice_ata), 400);
+        assert_eq!(test.tokens(bob_ata), 600);
+        assert_eq!(
+            test.account(alice_ata).unwrap().owner,
+            SPL_TOKEN_2022_PROGRAM_ID
+        );
+    }
+
+    #[test]
+    fn co_signers_are_read_only_signer_metas() {
+        let first = Pubkey::new_from_array([1; 32]);
+        let second = Pubkey::new_from_array([2; 32]);
+
+        let metas = co_signers(&[first, second]);
+
+        assert_eq!(metas.len(), 2);
+        for (meta, expected) in metas.iter().zip([first, second]) {
+            assert_eq!(meta.pubkey, expected);
+            assert!(meta.is_signer);
+            assert!(!meta.is_writable);
+        }
+        assert!(co_signers(&[]).is_empty());
     }
 }
