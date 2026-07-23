@@ -1,7 +1,7 @@
 use {
     super::model::{
-        account_field_seed_inputs, reject_generics, resolved_account_order, validate_codegen_idl,
-        CodegenResult,
+        account_field_seed_form, account_field_seed_inputs, reject_generics,
+        resolved_account_order, validate_codegen_idl, CodegenResult, SeedNameForm,
     },
     crate::codegen::accounts::{account_source, AccountSource},
     crate::codegen::naming::pascal_to_snake,
@@ -371,7 +371,7 @@ fn emit_instructions(out: &mut String, prefix: &str, idl: &Idl) {
             writeln!(out, "    Pubkey *{}; /* optional override */", acc.name).unwrap();
         }
         for seed in &account_field_seeds {
-            let name = account_field_seed_input_name(seed.path, seed.field);
+            let name = account_field_seed_input_name(seed.path, seed.field, seed.form);
             writeln!(out, "    const uint8_t *{name};").unwrap();
             writeln!(out, "    uint64_t {name}_len;").unwrap();
         }
@@ -795,7 +795,11 @@ fn emit_pda_derivation(
                 .unwrap();
             }
             IdlPdaSeed::AccountField { path, field, .. } => {
-                let name = account_field_seed_input_name(path, field);
+                let name = account_field_seed_input_name(
+                    path,
+                    field,
+                    account_field_seed_form(context.instruction, path, field),
+                );
                 writeln!(
                     out,
                     "        seeds[{i}].addr = accounts->{name}; seeds[{i}].len = \
@@ -939,12 +943,15 @@ fn emit_raw_arg_seed(out: &mut String, index: usize, path: &str) {
     .unwrap();
 }
 
-fn account_field_seed_input_name(path: &str, field: &str) -> String {
-    format!(
-        "{}_{}_seed",
-        path,
-        field.split('.').collect::<Vec<_>>().join("_")
-    )
+/// Spell an account-field seed input for the C client, applying the shared
+/// collision-avoidance rule (see [`SeedNameForm`]).
+fn account_field_seed_input_name(path: &str, field: &str, form: SeedNameForm) -> String {
+    let field = field.split('.').collect::<Vec<_>>().join("_");
+    match form {
+        SeedNameForm::Field => field,
+        SeedNameForm::BaseField => format!("{path}_{field}"),
+        SeedNameForm::BaseFieldSeed => format!("{path}_{field}_seed"),
+    }
 }
 
 fn emit_error_codes(out: &mut String, prefix: &str, errors: &[crate::types::IdlErrorDef]) {

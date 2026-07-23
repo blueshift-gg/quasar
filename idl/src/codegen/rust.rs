@@ -2,7 +2,7 @@ use {
     super::accounts::{account_source, AccountSource},
     super::model::{
         account_field_definition, account_field_seed_inputs, resolved_account_order, CodegenError,
-        CodegenResult, ProgramFeatures, ProgramModel, WireType,
+        CodegenResult, ProgramFeatures, ProgramModel, SeedNameForm, WireType,
     },
     crate::codegen::naming::{
         camel_to_snake, pascal_to_snake, snake_to_pascal,
@@ -1133,15 +1133,26 @@ fn rust_account_field_seed_inputs<'a>(
         out.push(RustAccountFieldSeed {
             path: seed.path,
             field_name: seed.field,
-            input_name: format!(
-                "{}_{}_seed",
-                camel_to_snake(seed.path),
-                camel_to_snake(seed.field)
-            ),
+            input_name: rust_seed_input_name(seed.path, seed.field, seed.form),
             field: field_def,
         });
     }
     out
+}
+
+/// Spell an account-field seed input for the Rust client (snake_case), applying
+/// the shared collision-avoidance rule (see [`SeedNameForm`]).
+fn rust_seed_input_name(path: &str, field: &str, form: SeedNameForm) -> String {
+    let field = field
+        .split('.')
+        .map(camel_to_snake)
+        .collect::<Vec<_>>()
+        .join("_");
+    match form {
+        SeedNameForm::Field => field,
+        SeedNameForm::BaseField => format!("{}_{}", camel_to_snake(path), field),
+        SeedNameForm::BaseFieldSeed => format!("{}_{}_seed", camel_to_snake(path), field),
+    }
 }
 
 fn rust_resolved_seed_expr(

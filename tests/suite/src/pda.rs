@@ -1033,7 +1033,7 @@ fn test_typed_seed_deserialized_field() {
     // Step 3: Verify the ScopedItem using config.namespace as seed
     let verify_ix: Instruction = VerifyScopedItemInstruction {
         config: config_pda,
-        config_namespace_seed: namespace,
+        namespace,
     }
     .into();
 
@@ -1085,7 +1085,7 @@ fn test_init_typed_seed_from_account_field() {
     let init_from_config_ix: Instruction = InitScopedItemFromConfigInstruction {
         payer,
         config: config_pda,
-        config_namespace_seed: namespace,
+        namespace,
     }
     .into();
 

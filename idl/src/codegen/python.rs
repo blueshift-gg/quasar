@@ -1,7 +1,8 @@
 use {
     super::model::{
-        account_field_definition, account_field_seed_inputs, python_field_path, reject_generics,
-        resolved_account_order, CodegenResult, ProgramModel,
+        account_field_definition, account_field_seed_form, account_field_seed_inputs,
+        python_field_path, reject_generics, resolved_account_order, CodegenResult, ProgramModel,
+        SeedNameForm,
     },
     crate::codegen::accounts::{account_source, AccountSource},
     crate::codegen::naming::{camel_to_snake, snake_to_pascal, to_screaming_snake},
@@ -225,7 +226,7 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
             writeln!(
                 out,
                 "    {}: {}",
-                account_field_seed_input_name(seed.path, seed.field),
+                account_field_seed_input_name(seed.path, seed.field, seed.form),
                 python_type(&field.ty)
             )
             .unwrap();
@@ -308,10 +309,10 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
             .iter()
             .filter(|acc| acc.optional || !account_source(acc).is_ok_and(|s| s.is_derived()))
         {
-            write_python_account_binding(&mut out, acc, idl);
+            write_python_account_binding(&mut out, acc, ix, idl);
         }
         for acc in resolved_account_order(ix)? {
-            write_python_account_binding(&mut out, acc, idl);
+            write_python_account_binding(&mut out, acc, ix, idl);
         }
         for acc in &ix.accounts {
             writeln!(
@@ -547,9 +548,14 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
 }
 
 /// Bind one account, letting an explicit override win over the computed value.
-fn write_python_account_binding(out: &mut String, account: &IdlAccountNode, idl: &Idl) {
+fn write_python_account_binding(
+    out: &mut String,
+    account: &IdlAccountNode,
+    ix: &crate::types::IdlInstruction,
+    idl: &Idl,
+) {
     let name = camel_to_snake(&account.name);
-    let computed = python_account_key_expr(account, idl);
+    let computed = python_account_key_expr(account, ix, idl);
     let binding = format!(
         "overrides.{name} if overrides.{name} is not None else {computed}",
         name = name,
@@ -558,7 +564,11 @@ fn write_python_account_binding(out: &mut String, account: &IdlAccountNode, idl:
     writeln!(out, "    accounts_map[\"{}\"] = {binding}", account.name).unwrap();
 }
 
-fn python_account_key_expr(account: &IdlAccountNode, idl: &Idl) -> String {
+fn python_account_key_expr(
+    account: &IdlAccountNode,
+    ix: &crate::types::IdlInstruction,
+    idl: &Idl,
+) -> String {
     if account.optional {
         let name = camel_to_snake(&account.name);
         return format!("input.{name} if input.{name} is not None else PROGRAM_ID");
@@ -588,10 +598,12 @@ fn python_account_key_expr(account: &IdlAccountNode, idl: &Idl) -> String {
                     } => {
                         let ty =
                             account_field_definition(idl, account, field).map(|field| &field.ty);
-                        python_pda_seed_expr(
-                            &format!("input.{}", account_field_seed_input_name(path, field)),
-                            ty,
-                        )
+                        let name = account_field_seed_input_name(
+                            path,
+                            field,
+                            account_field_seed_form(ix, path, field),
+                        );
+                        python_pda_seed_expr(&format!("input.{name}"), ty)
                     }
                     IdlPdaSeed::Arg { path, ty } => python_pda_seed_expr(
                         &format!("input.{}", python_field_path(path)),
@@ -1048,16 +1060,19 @@ fn py_bool(b: bool) -> &'static str {
     }
 }
 
-fn account_field_seed_input_name(path: &str, field: &str) -> String {
-    format!(
-        "{}_{}_seed",
-        camel_to_snake(path),
-        field
-            .split('.')
-            .map(camel_to_snake)
-            .collect::<Vec<_>>()
-            .join("_")
-    )
+/// Spell an account-field seed input for the Python client (snake_case),
+/// applying the shared collision-avoidance rule (see [`SeedNameForm`]).
+fn account_field_seed_input_name(path: &str, field: &str, form: SeedNameForm) -> String {
+    let field = field
+        .split('.')
+        .map(camel_to_snake)
+        .collect::<Vec<_>>()
+        .join("_");
+    match form {
+        SeedNameForm::Field => field,
+        SeedNameForm::BaseField => format!("{}_{}", camel_to_snake(path), field),
+        SeedNameForm::BaseFieldSeed => format!("{}_{}_seed", camel_to_snake(path), field),
+    }
 }
 
 fn python_pda_seed_expr(expr: &str, ty: Option<&IdlType>) -> String {
