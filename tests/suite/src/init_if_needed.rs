@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Account, Instruction, ProgramError, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Account, Instruction, ProgramError, Pubkey},
     quasar_test_misc::cpi::*,
 };
 
@@ -63,7 +63,7 @@ fn existing_value_updated() {
                 address: payer,
                 lamports: payer_lamports_before,
                 data: vec![],
-                owner: quasar_svm::system_program::ID,
+                owner: crate::compat::system_program::ID,
                 executable: false,
             },
             simple_account(account, payer, 42, bump),
@@ -131,7 +131,7 @@ fn wrong_owner() {
     );
     // the harness maps InstructionErrors without a dedicated variant to their Debug
     // string
-    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
+    result.assert_error(crate::compat::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -214,14 +214,14 @@ fn payer_insufficient_funds() {
                 address: payer,
                 lamports: 1,
                 data: vec![],
-                owner: quasar_svm::system_program::ID,
+                owner: crate::compat::system_program::ID,
                 executable: false,
             },
             empty_account(account),
         ],
     );
     // spl_token::TokenError::InsufficientFunds
-    result.assert_error(quasar_svm::ProgramError::Custom(1));
+    result.assert_error(crate::compat::ProgramError::Custom(1));
 }
 
 // Front-running scenario.

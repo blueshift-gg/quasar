@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Account, Instruction, ProgramError, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Account, Instruction, ProgramError, Pubkey},
     quasar_test_errors::cpi::*,
 };
 
@@ -59,7 +59,7 @@ fn wrong_owner() {
     );
     // the harness maps InstructionErrors without a dedicated variant to their Debug
     // string
-    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
+    result.assert_error(crate::compat::ProgramError::Runtime("IllegalOwner".into()));
     // SVM returns Runtime("IllegalOwner") for owner mismatches
 }
 
@@ -76,12 +76,12 @@ fn system_program_owner() {
             account,
             1_000_000,
             build_error_test_data(authority, 42),
-            quasar_svm::system_program::ID,
+            crate::compat::system_program::ID,
         )],
     );
     // the harness maps InstructionErrors without a dedicated variant to their Debug
     // string
-    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
+    result.assert_error(crate::compat::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 // Discriminator checks.
@@ -207,7 +207,7 @@ fn duplicate_same_address() {
     let result = svm.process_instruction(&ix, &[error_test_account(account, authority, 42)]);
     // the harness maps InstructionErrors without a dedicated variant to their Debug
     // string
-    result.assert_error(quasar_svm::ProgramError::Runtime(
+    result.assert_error(crate::compat::ProgramError::Runtime(
         "AccountBorrowFailed".into(),
     ));
 }
@@ -256,7 +256,7 @@ fn system_account_wrong_owner() {
     );
     // the harness maps InstructionErrors without a dedicated variant to their Debug
     // string
-    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
+    result.assert_error(crate::compat::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -277,7 +277,7 @@ fn system_account_owned_by_program() {
     );
     // the harness maps InstructionErrors without a dedicated variant to their Debug
     // string
-    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
+    result.assert_error(crate::compat::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 // Program<T> validation.
@@ -317,7 +317,7 @@ fn program_wrong_id() {
 #[test]
 fn program_not_executable() {
     let mut svm = svm_errors();
-    let system = quasar_svm::system_program::ID;
+    let system = crate::compat::system_program::ID;
     let ix: Instruction = ProgramCheckInstruction {}.into();
 
     let result = svm.process_instruction(
@@ -370,7 +370,7 @@ fn unchecked_empty_passes() {
             account,
             0,
             vec![],
-            quasar_svm::system_program::ID,
+            crate::compat::system_program::ID,
         )],
     );
     assert!(result.is_ok(), "unchecked empty: {:?}", result.raw_result);

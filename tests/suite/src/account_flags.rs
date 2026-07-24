@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Instruction, ProgramError, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Instruction, ProgramError, Pubkey},
     quasar_test_misc::cpi::*,
 };
 
@@ -226,7 +226,7 @@ fn three_accounts_no_dup_rejects_same() {
     );
     // the harness maps InstructionErrors without a dedicated variant to their Debug
     // string
-    result.assert_error(quasar_svm::ProgramError::Runtime(
+    result.assert_error(crate::compat::ProgramError::Runtime(
         "AccountBorrowFailed".into(),
     ));
 }

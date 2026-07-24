@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Instruction, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Instruction, Pubkey},
     quasar_test_one_of::cpi::*,
 };
 
@@ -29,14 +29,14 @@ fn build_policy_data(authority: Pubkey, max_amount: u64, threshold: u16) -> Vec<
     data
 }
 
-fn svm_one_of() -> quasar_svm::QuasarSvm {
+fn svm_one_of() -> crate::compat::SuiteSvm {
     let path = "../../target/deploy/quasar_test_one_of.so";
     let elf = std::fs::read(path)
         .unwrap_or_else(|e| panic!("failed to read {path}: {e}. Run `make build-sbf` first."));
-    quasar_svm::QuasarSvm::new().with_program(&quasar_test_one_of::ID, &elf)
+    crate::compat::SuiteSvm::new().with_program(&quasar_test_one_of::ID, &elf)
 }
 
-fn consensus_account(address: Pubkey, data: Vec<u8>) -> quasar_svm::Account {
+fn consensus_account(address: Pubkey, data: Vec<u8>) -> crate::compat::Account {
     raw_account(address, 1_000_000, data, quasar_test_one_of::ID)
 }
 
@@ -141,7 +141,7 @@ fn rejects_unknown_discriminator() {
         &ix,
         &[signer_account(signer), consensus_account(target, data)],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -160,7 +160,7 @@ fn rejects_wrong_owner() {
     let result = svm.process_instruction(&ix, &[signer_account(signer), bad_account]);
     // the harness maps InstructionErrors without a dedicated variant to their Debug
     // string
-    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
+    result.assert_error(crate::compat::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -187,5 +187,5 @@ fn rejects_truncated_matching_discriminator() {
         &ix,
         &[signer_account(signer), consensus_account(target, data)],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }

@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Account, Instruction, ProgramError, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Account, Instruction, ProgramError, Pubkey},
     quasar_test_misc::cpi::*,
 };
 
@@ -26,7 +26,7 @@ fn success() {
     assert_eq!(acc.lamports, 0, "lamports zeroed");
     assert_eq!(
         acc.owner,
-        quasar_svm::system_program::ID,
+        crate::compat::system_program::ID,
         "owner reset to system"
     );
     assert!(
@@ -54,7 +54,7 @@ fn lamports_transferred() {
                 address: authority,
                 lamports: authority_lamports,
                 data: vec![],
-                owner: quasar_svm::system_program::ID,
+                owner: crate::compat::system_program::ID,
                 executable: false,
             },
             Account {
@@ -95,7 +95,7 @@ fn destination_balance_additive() {
                 address: authority,
                 lamports: x,
                 data: vec![],
-                owner: quasar_svm::system_program::ID,
+                owner: crate::compat::system_program::ID,
                 executable: false,
             },
             Account {

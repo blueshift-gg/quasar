@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Instruction, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Instruction, Pubkey},
     quasar_test_token_cpi::cpi::*,
     solana_program_pack::Pack,
 };
@@ -41,7 +41,7 @@ fn sweep_spl_happy() {
 
     let source = result.account(&source_key).expect("source result");
     assert_eq!(
-        quasar_svm::token::TokenAccount::unpack(&source.data)
+        crate::compat::token::TokenAccount::unpack(&source.data)
             .expect("decode source")
             .amount,
         0,
@@ -49,7 +49,7 @@ fn sweep_spl_happy() {
     );
     let receiver = result.account(&receiver_key).expect("receiver result");
     assert_eq!(
-        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+        crate::compat::token::TokenAccount::unpack(&receiver.data)
             .expect("decode receiver")
             .amount,
         500,
@@ -91,7 +91,7 @@ fn sweep_spl_zero_balance() {
 
     let receiver = result.account(&receiver_key).expect("receiver result");
     assert_eq!(
-        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+        crate::compat::token::TokenAccount::unpack(&receiver.data)
             .expect("decode receiver")
             .amount,
         0,
@@ -126,7 +126,7 @@ fn sweep_spl_wrong_authority() {
             mint_account(mint_key, authority, 6, token_program),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 // sweep only with Token-2022.
@@ -165,7 +165,7 @@ fn sweep_t22_happy() {
 
     let source = result.account(&source_key).expect("source result");
     assert_eq!(
-        quasar_svm::token::TokenAccount::unpack(&source.data)
+        crate::compat::token::TokenAccount::unpack(&source.data)
             .expect("decode source")
             .amount,
         0,
@@ -173,7 +173,7 @@ fn sweep_t22_happy() {
     );
     let receiver = result.account(&receiver_key).expect("receiver result");
     assert_eq!(
-        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+        crate::compat::token::TokenAccount::unpack(&receiver.data)
             .expect("decode receiver")
             .amount,
         500,
@@ -218,7 +218,7 @@ fn sweep_interface_spl_happy() {
 
     let source = result.account(&source_key).expect("source result");
     assert_eq!(
-        quasar_svm::token::TokenAccount::unpack(&source.data)
+        crate::compat::token::TokenAccount::unpack(&source.data)
             .expect("decode source")
             .amount,
         0,
@@ -226,7 +226,7 @@ fn sweep_interface_spl_happy() {
     );
     let receiver = result.account(&receiver_key).expect("receiver result");
     assert_eq!(
-        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+        crate::compat::token::TokenAccount::unpack(&receiver.data)
             .expect("decode receiver")
             .amount,
         500,
@@ -262,7 +262,7 @@ fn sweep_interface_wrong_authority() {
             mint_account(mint_key, authority, 6, token_program),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 // sweep + close with SPL Token.
@@ -304,7 +304,7 @@ fn sweep_and_close_spl_happy() {
 
     let receiver = result.account(&receiver_key).expect("receiver result");
     assert_eq!(
-        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+        crate::compat::token::TokenAccount::unpack(&receiver.data)
             .expect("decode receiver")
             .amount,
         1000,
@@ -354,7 +354,7 @@ fn sweep_and_close_spl_zero_balance() {
 
     let receiver = result.account(&receiver_key).expect("receiver result");
     assert_eq!(
-        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+        crate::compat::token::TokenAccount::unpack(&receiver.data)
             .expect("decode receiver")
             .amount,
         0,
@@ -398,7 +398,7 @@ fn sweep_and_close_spl_wrong_mint_receiver() {
         ],
     );
     // spl_token::TokenError::MintMismatch
-    result.assert_error(quasar_svm::ProgramError::Custom(3));
+    result.assert_error(crate::compat::ProgramError::Custom(3));
 }
 
 // sweep + close with Token-2022.
@@ -443,7 +443,7 @@ fn sweep_and_close_interface_spl_happy() {
 
     let receiver = result.account(&receiver_key).expect("receiver result");
     assert_eq!(
-        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+        crate::compat::token::TokenAccount::unpack(&receiver.data)
             .expect("decode receiver")
             .amount,
         1000,
@@ -487,7 +487,7 @@ fn sweep_and_close_interface_wrong_authority() {
             empty_account(destination),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -535,7 +535,7 @@ fn pda_sweep_and_close_runs_token_exits_before_authority_close() {
 
     let receiver = result.account(&receiver_key).expect("receiver result");
     assert_eq!(
-        quasar_svm::token::TokenAccount::unpack(&receiver.data)
+        crate::compat::token::TokenAccount::unpack(&receiver.data)
             .expect("decode receiver")
             .amount,
         500
