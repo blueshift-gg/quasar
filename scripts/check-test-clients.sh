@@ -10,7 +10,11 @@ cargo run --quiet --locked --manifest-path "$root/Cargo.toml" \
   "$root/target/debug/quasar" client "$root/target/idl/quasar_vault.json"
 )
 
-generated="test/typescript/tests/fixtures/vault/clients"
+# The vault example's generated Kit/Web3.js clients are a drift fixture for
+# quasar's own IDL->TS codegen (`quasar client`). Parallax keeps a synced copy
+# under its typescript/tests/fixtures for its harness parity tests; when this
+# output changes intentionally, re-sync that copy there.
+generated="tests/fixtures/vault/clients"
 if test -n "$(git -C "$root" status --porcelain --untracked-files=all -- "$generated")"; then
   git -C "$root" diff -- "$generated"
   git -C "$root" status --short --untracked-files=all -- "$generated"
