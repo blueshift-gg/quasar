@@ -117,60 +117,94 @@ pub(super) fn emit_set_inner_impl(spec: SetInnerSpec<'_>) -> proc_macro2::TokenS
             })
             .collect();
 
+        // Both entry points share this body; only the realloc branch differs
+        // in where rent comes from. Rent is touched only when the account
+        // actually resizes, so the syscall path costs nothing on same-size
+        // rewrites.
+        let body = |resize: proc_macro2::TokenStream| {
+            quote! {
+                #(let #init_field_names = inner.#init_field_names;)*
+                #(#max_checks)*
+
+                let __space = Self::MIN_SPACE #(#space_terms)*;
+                // SAFETY: `#[account]` wrappers are `#[repr(transparent)]`
+                // over `AccountView`; `&mut self` gives exclusive access to
+                // the backing view for this initialization.
+                let __view = unsafe { &mut *(self as *mut Self as *mut #krate::__internal::AccountView) };
+
+                if __space != __view.data_len() {
+                    #resize
+                }
+
+                let __ptr = __view.data_mut_ptr();
+                // SAFETY: after the realloc above, the compact header starts
+                // immediately after the discriminator.
+                let __zc = unsafe { &mut *(__ptr.add(#disc_len) as *mut #zc_path) };
+                #(#zc_header_stmts)*
+
+                // SAFETY: the slice spans the full compact schema region.
+                let __compact_data = unsafe {
+                    core::slice::from_raw_parts_mut(
+                        __ptr.add(#disc_len),
+                        __view.data_len() - #disc_len,
+                    )
+                };
+                // SAFETY: the fixed header fields were written above and the
+                // compact setters below fill the dynamic tail entries.
+                let mut __compact = unsafe {
+                    #zc_mod::__SchemaMut::new_unchecked(__compact_data)
+                };
+                #(#compact_set_stmts)*
+                __compact.commit().map_err(|_| #krate::__solana_program_error::ProgramError::InvalidAccountData)?;
+                Ok(())
+            }
+        };
+        let syscall_body = body(quote! {
+            let __rent = <#krate::sysvars::rent::Rent as #krate::sysvars::Sysvar>::get()?;
+            #krate::accounts::account::realloc_account_raw(
+                __view,
+                __space,
+                payer,
+                __rent.lamports_per_byte(),
+                __rent.exemption_threshold_raw(),
+            )?;
+        });
+        let sysvar_body = body(quote! {
+            #krate::accounts::account::realloc_account_raw(
+                __view,
+                __space,
+                payer,
+                rent.lamports_per_byte(),
+                rent.exemption_threshold_raw(),
+            )?;
+        });
+
         quote! {
             #vis struct #inner_name<'a> {
                 #(#inner_fields,)*
             }
 
             impl #name {
+                /// Fetches the rent sysvar via syscall, but only when the
+                /// account resizes. Handlers holding a `Sysvar<Rent>` field
+                /// can pass it through [`Self::set_inner_with_rent`] instead.
                 #[inline(always)]
                 pub fn set_inner(
                     &mut self,
                     inner: #inner_name<'_>,
                     payer: &#krate::__internal::AccountView,
-                    rent_lpb: u64,
-                    rent_threshold: u64,
                 ) -> Result<(), #krate::__solana_program_error::ProgramError> {
-                    #(let #init_field_names = inner.#init_field_names;)*
-                    #(#max_checks)*
+                    #syscall_body
+                }
 
-                    let __space = Self::MIN_SPACE #(#space_terms)*;
-                    // SAFETY: `#[account]` wrappers are `#[repr(transparent)]`
-                    // over `AccountView`; `&mut self` gives exclusive access to
-                    // the backing view for this initialization.
-                    let __view = unsafe { &mut *(self as *mut Self as *mut #krate::__internal::AccountView) };
-
-                    if __space != __view.data_len() {
-                        #krate::accounts::account::realloc_account_raw(
-                            __view,
-                            __space,
-                            payer,
-                            rent_lpb,
-                            rent_threshold,
-                        )?;
-                    }
-
-                    let __ptr = __view.data_mut_ptr();
-                    // SAFETY: after the realloc above, the compact header starts
-                    // immediately after the discriminator.
-                    let __zc = unsafe { &mut *(__ptr.add(#disc_len) as *mut #zc_path) };
-                    #(#zc_header_stmts)*
-
-                    // SAFETY: the slice spans the full compact schema region.
-                    let __compact_data = unsafe {
-                        core::slice::from_raw_parts_mut(
-                            __ptr.add(#disc_len),
-                            __view.data_len() - #disc_len,
-                        )
-                    };
-                    // SAFETY: the fixed header fields were written above and the
-                    // compact setters below fill the dynamic tail entries.
-                    let mut __compact = unsafe {
-                        #zc_mod::__SchemaMut::new_unchecked(__compact_data)
-                    };
-                    #(#compact_set_stmts)*
-                    __compact.commit().map_err(|_| #krate::__solana_program_error::ProgramError::InvalidAccountData)?;
-                    Ok(())
+                #[inline(always)]
+                pub fn set_inner_with_rent(
+                    &mut self,
+                    inner: #inner_name<'_>,
+                    payer: &#krate::__internal::AccountView,
+                    rent: &#krate::sysvars::rent::Rent,
+                ) -> Result<(), #krate::__solana_program_error::ProgramError> {
+                    #sysvar_body
                 }
             }
         }

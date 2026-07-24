@@ -464,12 +464,14 @@ fn test_emit_u64_payload_reaches_log() {
     // log stream. sol_log_data surfaces as a "Program data: <base64>" line;
     // SimpleEvent { value: 42 } is discriminator 1 followed by 42u64 LE,
     // i.e. [1, 42, 0, 0, 0, 0, 0, 0, 0] == base64 "ASoAAAAAAAAA".
-    // (QuasarSvm here because Mollusk's result does not expose logs.)
+    // (SuiteSvm here because it captures program logs, which Mollusk's own
+    // InstructionResult does not surface.)
     let elf = std::fs::read("../../target/deploy/quasar_test_events.so")
         .expect("run `make build-sbf` first");
-    let mut svm = quasar_svm::QuasarSvm::new().with_program(&quasar_test_events::ID, &elf);
-    let signer = quasar_svm::Pubkey::new_unique();
-    let instruction: quasar_svm::Instruction = EmitU64EventInstruction { signer, value: 42 }.into();
+    let mut svm = crate::compat::SuiteSvm::new().with_program(&quasar_test_events::ID, &elf);
+    let signer = crate::compat::Pubkey::new_unique();
+    let instruction: crate::compat::Instruction =
+        EmitU64EventInstruction { signer, value: 42 }.into();
     let result = svm.process_instruction(&instruction, &[crate::helpers::signer_account(signer)]);
     assert!(result.is_ok(), "emit failed: {:?}", result.raw_result);
     assert!(
@@ -489,11 +491,13 @@ fn test_emit_cpi_aliased_program_field_reaches_log() {
     // actually emit — same payload oracle as the plain emit test.
     let elf = std::fs::read("../../target/deploy/quasar_test_events.so")
         .expect("run `make build-sbf` first");
-    let mut svm = quasar_svm::QuasarSvm::new().with_program(&quasar_test_events::ID, &elf);
-    let signer = quasar_svm::Pubkey::new_unique();
-    let (event_authority, _) =
-        quasar_svm::Pubkey::find_program_address(&[b"__event_authority"], &quasar_test_events::ID);
-    let instruction: quasar_svm::Instruction = EmitViaCpiAliasedInstruction {
+    let mut svm = crate::compat::SuiteSvm::new().with_program(&quasar_test_events::ID, &elf);
+    let signer = crate::compat::Pubkey::new_unique();
+    let (event_authority, _) = crate::compat::Pubkey::find_program_address(
+        &[b"__event_authority"],
+        &quasar_test_events::ID,
+    );
+    let instruction: crate::compat::Instruction = EmitViaCpiAliasedInstruction {
         signer,
         event_authority,
         value: 42,
@@ -507,7 +511,7 @@ fn test_emit_cpi_aliased_program_field_reaches_log() {
                 event_authority,
                 1_000_000,
                 vec![],
-                quasar_svm::system_program::ID,
+                crate::compat::system_program::ID,
             ),
         ],
     );

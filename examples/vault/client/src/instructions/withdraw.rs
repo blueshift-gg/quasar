@@ -36,6 +36,10 @@ impl From<WithdrawInstructionRaw> for Instruction {
         let accounts = vec![
             AccountMeta::new(ix.user, true),
             AccountMeta::new(ix.vault, false),
+            AccountMeta::new_readonly(
+                solana_address::address!("11111111111111111111111111111111"),
+                false,
+            ),
         ];
         let mut data = vec![1];
         wincode::serialize_into(&mut data, &ix.amount)

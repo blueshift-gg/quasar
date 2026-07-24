@@ -1,0 +1,9 @@
+[project]
+name = "quasar-vault"
+
+[testing]
+command = { program = "cargo", args = ["test"] }
+
+[clients]
+path = "../../tests/fixtures/vault/clients"
+targets = ["rust", "kit", "web3"]

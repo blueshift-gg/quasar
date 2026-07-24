@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Instruction, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Instruction, Pubkey},
     quasar_test_token_cpi::cpi::*,
 };
 
@@ -202,7 +202,7 @@ fn mint_to_rejects_wrong_mint_authority() {
         ],
     );
     // spl_token::TokenError::OwnerMismatch = 4
-    result.assert_error(quasar_svm::ProgramError::Custom(4));
+    result.assert_error(crate::compat::ProgramError::Custom(4));
 }
 
 #[test]
@@ -229,5 +229,5 @@ fn burn_rejects_more_than_balance() {
         ],
     );
     // spl_token::TokenError::InsufficientFunds = 1
-    result.assert_error(quasar_svm::ProgramError::Custom(1));
+    result.assert_error(crate::compat::ProgramError::Custom(1));
 }

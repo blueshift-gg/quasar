@@ -26,19 +26,20 @@ quasar test
 ```
 
 `quasar init` creates the supported minimal starter, a Rust test using
-`quasar-test`, and Rust, Kit 7, and Web3.js 3 client configuration. It uses the
+`quasar-test`, and Rust, Kit 7, and Web3.js 3 client configuration. Rust and
+TypeScript use the same fixture-first testing model. The starter uses the
 Solana `cargo build-sbf` toolchain and does not require a template, framework,
 language, SDK, or package-manager choice.
 
 ## Products
 
-Quasar 0.1.0 has four primary Rust products:
+Quasar 0.1.0 has four primary products:
 
 | Product | Promise |
 | --- | --- |
 | `quasar-lang` | Program macros, account types, validation, runtime behavior, and the documented zero-copy contract |
 | `quasar-spl` | SPL account views, validation, and CPI helpers |
-| `quasar-test` | Rust testing utilities and macros for Quasar programs |
+| `quasar-test` | Matching Rust and TypeScript fixture-first test harnesses |
 | `quasar-cli` | The install, init, build, test, deploy, verify, debug, and client-generation journey |
 
 Several crates are published because those products require them:

@@ -1,7 +1,7 @@
 use {
+    crate::compat::{Instruction, Pubkey},
     crate::helpers::*,
     quasar_spl::get_associated_token_address_with_program_const,
-    quasar_svm::{Instruction, Pubkey},
     quasar_test_token_validate::cpi::*,
 };
 
@@ -60,7 +60,7 @@ fn ata_spl_wrong_address() {
             signer_account(wallet),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidSeeds);
+    result.assert_error(crate::compat::ProgramError::InvalidSeeds);
 }
 
 #[test]
@@ -88,7 +88,7 @@ fn ata_spl_wrong_mint() {
             signer_account(wallet),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -116,7 +116,7 @@ fn ata_spl_wrong_authority() {
             signer_account(wallet),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -150,7 +150,7 @@ fn ata_spl_wrong_owner() {
     );
     // the harness maps InstructionErrors without a dedicated variant to their Debug
     // string
-    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
+    result.assert_error(crate::compat::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 // Account<Token2022>, ValidateAta2022Check.
@@ -239,7 +239,7 @@ fn ata_interface_spl_wrong_address() {
             signer_account(wallet),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidSeeds);
+    result.assert_error(crate::compat::ProgramError::InvalidSeeds);
 }
 
 #[test]
@@ -268,7 +268,7 @@ fn ata_interface_spl_wrong_mint() {
             signer_account(wallet),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -297,7 +297,7 @@ fn ata_interface_spl_wrong_authority() {
             signer_account(wallet),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -332,7 +332,7 @@ fn ata_interface_spl_wrong_owner() {
     );
     // the harness maps InstructionErrors without a dedicated variant to their Debug
     // string
-    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
+    result.assert_error(crate::compat::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 // InterfaceAccount<Token> with Token-2022, ValidateAtaInterfaceCheck.

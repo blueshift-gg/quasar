@@ -8,7 +8,8 @@ version their own deployed instructions, accounts, and ABI separately.
 
 Patch releases preserve:
 
-- the documented `quasar-lang`, `quasar-spl`, and `quasar-test` Rust APIs and
+- the documented `quasar-lang` and `quasar-spl` Rust APIs;
+- the documented Rust, Kit 7, and Web3.js 3 `quasar-test` APIs and
   runtime behavior;
 - documented macro syntax and generated behavior;
 - the IDL wire format, schema identity, and ABI hashing rules;

@@ -171,6 +171,12 @@ pub(super) fn emit_instruction_builders(
                 )
         });
 
+        // Every PDA/ATA the builder derives is surfaced on the returned
+        // instruction as a `{field}Address` property, so callers name it
+        // directly instead of re-running the PDA/ATA recipe.
+        let address_accessors = builder_address_accessors(instruction, &account_expr);
+        let accessor_type = builder_address_accessor_type(&address_accessors);
+
         let mut method_params = Vec::new();
         if !user_accounts.is_empty() || !instruction.args.is_empty() || has_remaining {
             method_params.push(format!("input: {pascal}InstructionInput"));
@@ -179,9 +185,9 @@ pub(super) fn emit_instruction_builders(
             method_params.push("resolver: AccountDataResolver".to_string());
         }
         let return_type = if has_pdas {
-            "Promise<Instruction>"
+            format!("Promise<Instruction{accessor_type}>")
         } else {
-            "Instruction"
+            "Instruction".to_string()
         };
         let async_keyword = if has_pdas { "async " } else { "" };
         if !instruction.accounts.is_empty() {
@@ -191,18 +197,18 @@ pub(super) fn emit_instruction_builders(
                 method_params.join(", ")
             )
             .expect("write to String");
-            let mut unchecked_args = Vec::new();
+            let mut raw_args = Vec::new();
             if !user_accounts.is_empty() || !instruction.args.is_empty() || has_remaining {
-                unchecked_args.push("input");
+                raw_args.push("input");
             }
-            unchecked_args.push("{}");
+            raw_args.push("{}");
             if needs_account_resolver {
-                unchecked_args.push("resolver");
+                raw_args.push("resolver");
             }
             writeln!(
                 out,
-                "    return this.create{pascal}InstructionUnchecked({});",
-                unchecked_args.join(", ")
+                "    return this.create{pascal}InstructionRaw({});",
+                raw_args.join(", ")
             )
             .expect("write to String");
             out.push_str("  }\n\n");
@@ -224,7 +230,7 @@ pub(super) fn emit_instruction_builders(
             if instruction.accounts.is_empty() {
                 ""
             } else {
-                "Unchecked"
+                "Raw"
             },
             method_params.join(", ")
         )
@@ -353,6 +359,10 @@ pub(super) fn emit_instruction_builders(
             out.push_str("      ],\n");
         }
         out.push_str("      data,\n");
+        for accessor in &address_accessors {
+            writeln!(out, "      {}: {},", accessor.property, accessor.value_expr)
+                .expect("write to String");
+        }
         out.push_str("    };\n");
         out.push_str("  }\n");
     }

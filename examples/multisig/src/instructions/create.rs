@@ -40,7 +40,7 @@ impl Create {
         // SAFETY: Elements 0..count were initialized by the loop above.
         let signers = unsafe { core::slice::from_raw_parts(addrs_ptr, count) };
 
-        self.config.set_inner(
+        self.config.set_inner_with_rent(
             MultisigConfigInner {
                 creator: *self.creator.address(),
                 threshold,
@@ -49,8 +49,7 @@ impl Create {
                 signers,
             },
             self.creator.to_account_view(),
-            self.rent.lamports_per_byte(),
-            self.rent.exemption_threshold_raw(),
+            self.rent.get(),
         )
     }
 }

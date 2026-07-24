@@ -439,13 +439,77 @@ pub struct DynamicAccountInner<'a> {
     pub tags: &'a [<Address as ::quasar_lang::instruction_arg::InstructionArg>::Zc],
 }
 impl DynamicAccount {
+    /// Fetches the rent sysvar via syscall, but only when the
+    /// account resizes. Handlers holding a `Sysvar<Rent>` field
+    /// can pass it through [`Self::set_inner_with_rent`] instead.
     #[inline(always)]
     pub fn set_inner(
         &mut self,
         inner: DynamicAccountInner<'_>,
         payer: &::quasar_lang::__internal::AccountView,
-        rent_lpb: u64,
-        rent_threshold: u64,
+    ) -> Result<(), ::quasar_lang::__solana_program_error::ProgramError> {
+        let name = inner.name;
+        let tags = inner.tags;
+        if name.len() > 8 {
+            return Err(::quasar_lang::error::QuasarError::DynamicFieldTooLong.into());
+        }
+        if tags.len() > 2 {
+            return Err(::quasar_lang::error::QuasarError::DynamicFieldTooLong.into());
+        }
+        let __space = Self::MIN_SPACE + name.len()
+            + tags.len()
+                * core::mem::size_of::<
+                    <Address as ::quasar_lang::instruction_arg::InstructionArg>::Zc,
+                >();
+        let __view = unsafe {
+            &mut *(self as *mut Self as *mut ::quasar_lang::__internal::AccountView)
+        };
+        if __space != __view.data_len() {
+            let __rent = <::quasar_lang::sysvars::rent::Rent as ::quasar_lang::sysvars::Sysvar>::get()?;
+            ::quasar_lang::accounts::account::realloc_account_raw(
+                __view,
+                __space,
+                payer,
+                __rent.lamports_per_byte(),
+                __rent.exemption_threshold_raw(),
+            )?;
+        }
+        let __ptr = __view.data_mut_ptr();
+        let __zc = unsafe {
+            &mut *(__ptr.add(1usize) as *mut __dynamic_account_zc::DynamicAccountZc)
+        };
+        let __compact_data = unsafe {
+            core::slice::from_raw_parts_mut(
+                __ptr.add(1usize),
+                __view.data_len() - 1usize,
+            )
+        };
+        let mut __compact = unsafe {
+            __dynamic_account_zc::__SchemaMut::new_unchecked(__compact_data)
+        };
+        __compact
+            .set_name(name)
+            .map_err(|_| {
+                ::quasar_lang::__solana_program_error::ProgramError::InvalidAccountData
+            })?;
+        __compact
+            .set_tags(tags)
+            .map_err(|_| {
+                ::quasar_lang::__solana_program_error::ProgramError::InvalidAccountData
+            })?;
+        __compact
+            .commit()
+            .map_err(|_| {
+                ::quasar_lang::__solana_program_error::ProgramError::InvalidAccountData
+            })?;
+        Ok(())
+    }
+    #[inline(always)]
+    pub fn set_inner_with_rent(
+        &mut self,
+        inner: DynamicAccountInner<'_>,
+        payer: &::quasar_lang::__internal::AccountView,
+        rent: &::quasar_lang::sysvars::rent::Rent,
     ) -> Result<(), ::quasar_lang::__solana_program_error::ProgramError> {
         let name = inner.name;
         let tags = inner.tags;
@@ -468,8 +532,8 @@ impl DynamicAccount {
                 __view,
                 __space,
                 payer,
-                rent_lpb,
-                rent_threshold,
+                rent.lamports_per_byte(),
+                rent.exemption_threshold_raw(),
             )?;
         }
         let __ptr = __view.data_mut_ptr();

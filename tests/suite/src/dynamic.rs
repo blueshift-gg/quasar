@@ -2742,3 +2742,150 @@ fn test_adversarial_ix_string_exceeds_max() {
         )
     );
 }
+
+// Full-rewrite `set_inner` on a dynamic account with NO Sysvar<Rent> field:
+// rent resolves through the syscall path, and only when the account resizes.
+
+fn build_set_inner_instruction(
+    account: Address,
+    payer: Address,
+    system_program: Address,
+    new_name: &[u8],
+    new_tags: &[Address],
+) -> Instruction {
+    // Instruction data: [disc(65)][u8:name_len][u16:tags_count][name][tags]
+    let mut data = vec![65];
+    data.push(new_name.len() as u8);
+    data.extend_from_slice(&(new_tags.len() as u16).to_le_bytes());
+    data.extend_from_slice(new_name);
+    for tag in new_tags {
+        data.extend_from_slice(tag.as_ref());
+    }
+    Instruction {
+        program_id: quasar_test_misc::ID,
+        accounts: vec![
+            solana_instruction::AccountMeta::new(account, false),
+            solana_instruction::AccountMeta::new(payer, true),
+            solana_instruction::AccountMeta::new_readonly(system_program, false),
+        ],
+        data,
+    }
+}
+
+#[test]
+fn test_dynamic_set_inner_grow_uses_syscall_rent() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let account = Address::new_unique();
+    let payer = Address::new_unique();
+    let tag = Address::new_unique();
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: build_dynamic_account_data(b"hi", &[]),
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+
+    let instruction =
+        build_set_inner_instruction(account, payer, system_program, b"12345678", &[tag]);
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, account_data),
+            (payer, payer_account),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "growing set_inner without a rent field should succeed: {:?}",
+        result.program_result
+    );
+
+    let result_data = &result.resulting_accounts[0].1.data;
+    assert_eq!(result_data[1] as usize, 8);
+    assert_eq!(u16::from_le_bytes([result_data[2], result_data[3]]), 1);
+    // Compact tail starts after header (disc + name_len + tags_count = 4)
+    assert_eq!(&result_data[4..12], b"12345678");
+    assert_eq!(&result_data[12..44], tag.as_ref());
+}
+
+#[test]
+fn test_dynamic_set_inner_shrink() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let account = Address::new_unique();
+    let payer = Address::new_unique();
+    let tag = Address::new_unique();
+
+    let account_data = Account {
+        lamports: 10_000_000,
+        data: build_dynamic_account_data(b"12345678", &[tag]),
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+
+    let instruction = build_set_inner_instruction(account, payer, system_program, b"hi", &[]);
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, account_data),
+            (payer, payer_account),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "shrinking set_inner should succeed: {:?}",
+        result.program_result
+    );
+
+    let result_data = &result.resulting_accounts[0].1.data;
+    assert_eq!(result_data[1] as usize, 2);
+    assert_eq!(u16::from_le_bytes([result_data[2], result_data[3]]), 0);
+    assert_eq!(&result_data[4..6], b"hi");
+}
+
+#[test]
+fn test_dynamic_set_inner_same_size_no_resize() {
+    let mollusk = setup();
+    let (system_program, system_program_account) = keyed_account_for_system_program();
+    let account = Address::new_unique();
+    let payer = Address::new_unique();
+
+    let account_data = Account {
+        lamports: 1_000_000,
+        data: build_dynamic_account_data(b"hi", &[]),
+        owner: quasar_test_misc::ID,
+        executable: false,
+        rent_epoch: 0,
+    };
+    let payer_account = Account::new(10_000_000_000, 0, &system_program);
+
+    let instruction = build_set_inner_instruction(account, payer, system_program, b"yo", &[]);
+    let result = mollusk.process_instruction(
+        &instruction,
+        &[
+            (account, account_data),
+            (payer, payer_account),
+            (system_program, system_program_account),
+        ],
+    );
+
+    assert!(
+        result.program_result.is_ok(),
+        "same-size set_inner should succeed without resizing: {:?}",
+        result.program_result
+    );
+
+    let result_data = &result.resulting_accounts[0].1.data;
+    assert_eq!(result_data[1] as usize, 2);
+    assert_eq!(&result_data[4..6], b"yo");
+}

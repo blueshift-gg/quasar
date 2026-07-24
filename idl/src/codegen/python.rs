@@ -1,7 +1,8 @@
 use {
     super::model::{
-        account_field_definition, account_field_seed_inputs, python_field_path, reject_generics,
-        resolved_account_order, resolver_is_derived, CodegenResult, ProgramModel,
+        account_field_definition, account_field_seed_form, account_field_seed_inputs,
+        python_field_path, reject_generics, resolved_account_order, resolver_is_derived,
+        CodegenResult, ProgramModel, SeedNameForm,
     },
     crate::codegen::naming::{camel_to_snake, snake_to_pascal, to_screaming_snake},
     crate::types::{
@@ -225,7 +226,7 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
             writeln!(
                 out,
                 "    {}: {}",
-                account_field_seed_input_name(seed.path, seed.field),
+                account_field_seed_input_name(seed.path, seed.field, seed.form),
                 python_type(&field.ty)
             )
             .unwrap();
@@ -286,11 +287,11 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
             .iter()
             .filter(|acc| acc.optional || !resolver_is_derived(&acc.resolver))
         {
-            let key_expr = python_account_key_expr(acc, idl);
+            let key_expr = python_account_key_expr(acc, ix, idl);
             writeln!(out, "    accounts_map[\"{}\"] = {}", acc.name, key_expr).unwrap();
         }
         for acc in resolved_account_order(ix)? {
-            let key_expr = python_account_key_expr(acc, idl);
+            let key_expr = python_account_key_expr(acc, ix, idl);
             writeln!(out, "    accounts_map[\"{}\"] = {}", acc.name, key_expr).unwrap();
         }
         for acc in &ix.accounts {
@@ -526,7 +527,11 @@ pub fn generate_python_client(idl: &Idl) -> CodegenResult<String> {
     Ok(out)
 }
 
-fn python_account_key_expr(account: &IdlAccountNode, idl: &Idl) -> String {
+fn python_account_key_expr(
+    account: &IdlAccountNode,
+    ix: &crate::types::IdlInstruction,
+    idl: &Idl,
+) -> String {
     if account.optional {
         let name = camel_to_snake(&account.name);
         return format!("input.{name} if input.{name} is not None else PROGRAM_ID");
@@ -551,10 +556,12 @@ fn python_account_key_expr(account: &IdlAccountNode, idl: &Idl) -> String {
                     } => {
                         let ty =
                             account_field_definition(idl, account, field).map(|field| &field.ty);
-                        python_pda_seed_expr(
-                            &format!("input.{}", account_field_seed_input_name(path, field)),
-                            ty,
-                        )
+                        let name = account_field_seed_input_name(
+                            path,
+                            field,
+                            account_field_seed_form(ix, path, field),
+                        );
+                        python_pda_seed_expr(&format!("input.{name}"), ty)
                     }
                     IdlPdaSeed::Arg { path, ty } => python_pda_seed_expr(
                         &format!("input.{}", python_field_path(path)),
@@ -1011,16 +1018,19 @@ fn py_bool(b: bool) -> &'static str {
     }
 }
 
-fn account_field_seed_input_name(path: &str, field: &str) -> String {
-    format!(
-        "{}_{}_seed",
-        camel_to_snake(path),
-        field
-            .split('.')
-            .map(camel_to_snake)
-            .collect::<Vec<_>>()
-            .join("_")
-    )
+/// Spell an account-field seed input for the Python client (snake_case),
+/// applying the shared collision-avoidance rule (see [`SeedNameForm`]).
+fn account_field_seed_input_name(path: &str, field: &str, form: SeedNameForm) -> String {
+    let field = field
+        .split('.')
+        .map(camel_to_snake)
+        .collect::<Vec<_>>()
+        .join("_");
+    match form {
+        SeedNameForm::Field => field,
+        SeedNameForm::BaseField => format!("{}_{}", camel_to_snake(path), field),
+        SeedNameForm::BaseFieldSeed => format!("{}_{}_seed", camel_to_snake(path), field),
+    }
 }
 
 fn python_pda_seed_expr(expr: &str, ty: Option<&IdlType>) -> String {

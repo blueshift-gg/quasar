@@ -174,6 +174,19 @@ fn generate_cargo_toml(name: &str, development_root: Option<&Path>) -> String {
     } else {
         format!(r#""={version}""#)
     };
+    // A development scaffold resolves quasar path deps whose zeropod
+    // requirement needs the widened solana-address cap; mirror the
+    // workspace's temporary crates-io patch until zeropod >=0.3.4 ships.
+    let zeropod_patch = development_root
+        .map(|root| {
+            let zeropod = root.join("vendor/zeropod");
+            format!(
+                "\n[patch.crates-io]\nzeropod = {{ path = \"{}\" }}\nzeropod-derive = {{ path = \"{}\" }}\n",
+                zeropod.join("zeropod").display(),
+                zeropod.join("zeropod-derive").display(),
+            )
+        })
+        .unwrap_or_default();
     format!(
         r#"[package]
 name = "{name}"
@@ -201,7 +214,7 @@ solana-instruction = {{ version = "3.2.0" }}
 
 [dev-dependencies]
 quasar-test = {quasar_test}
-"#
+{zeropod_patch}"#
     )
 }
 

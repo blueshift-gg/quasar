@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Instruction, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Instruction, Pubkey},
     quasar_test_token_cpi::cpi::*,
 };
 
@@ -182,7 +182,7 @@ fn transfer_checked_rejects_insufficient_funds() {
         ],
     );
     // spl_token::TokenError::InsufficientFunds = 1
-    result.assert_error(quasar_svm::ProgramError::Custom(1));
+    result.assert_error(crate::compat::ProgramError::Custom(1));
 }
 
 #[test]
@@ -211,5 +211,5 @@ fn interface_transfer_rejects_insufficient_funds() {
         ],
     );
     // spl_token::TokenError::InsufficientFunds = 1
-    result.assert_error(quasar_svm::ProgramError::Custom(1));
+    result.assert_error(crate::compat::ProgramError::Custom(1));
 }

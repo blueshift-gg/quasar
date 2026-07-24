@@ -132,6 +132,15 @@ export const ModeCodec = {
   decode(data: Parameters<typeof ModeStructCodec.decode>[0], offset = 0): Mode { return decodeExact<Mode>(ModeStructCodec, Uint8Array.from(data).slice(offset)); },
 };
 
+/* Account Codecs */
+export const VaultAccount = {
+  decode: VaultCodec.decode,
+  encode: VaultCodec.encode,
+  owner: new Address("11111111111111111111111111111111"),
+  discriminator: VAULT_DISCRIMINATOR,
+  size: 42,
+} as const;
+
 /* Enums */
 export const ProgramEvent = {
   VaultMade: "VaultMade",
@@ -184,11 +193,11 @@ export class GoldenDemoClient {
     return null;
   }
 
-  async createMakeInstruction(input: MakeInstructionInput): Promise<TransactionInstruction> {
-    return this.createMakeInstructionUnchecked(input, {});
+  async createMakeInstruction(input: MakeInstructionInput): Promise<TransactionInstruction & { readonly vaultAddress: Address }> {
+    return this.createMakeInstructionRaw(input, {});
   }
 
-  async createMakeInstructionUnchecked(input: MakeInstructionInput, accountOverrides: MakeInstructionAccountOverrides): Promise<TransactionInstruction> {
+  async createMakeInstructionRaw(input: MakeInstructionInput, accountOverrides: MakeInstructionAccountOverrides): Promise<TransactionInstruction & { readonly vaultAddress: Address }> {
     const accountsMap: Record<string, Address> = {};
     accountsMap["vault"] = await findVaultAddress((accountOverrides.authority ?? input.authority));
     const argsCodec = getStructCodec([
@@ -196,13 +205,16 @@ export class GoldenDemoClient {
       ["flag", getBooleanCodec()],
     ]);
     const data = Uint8Array.from([0, ...argsCodec.encode({ amount: input.amount, flag: input.flag })]);
-    return new TransactionInstruction({
+    const instruction = new TransactionInstruction({
       programId: GoldenDemoClient.programId,
       keys: [
         { pubkey: (accountOverrides.authority ?? input.authority), isSigner: true, isWritable: false },
         { pubkey: (accountOverrides.vault ?? accountsMap["vault"]), isSigner: false, isWritable: true },
       ],
       data,
+    });
+    return Object.assign(instruction, {
+      vaultAddress: (accountOverrides.vault ?? accountsMap["vault"]),
     });
   }
 }
@@ -226,4 +238,3 @@ export const PROGRAM_ERROR_CODES = {
 export const PROGRAM_ERRORS: Record<number, { name: string; msg?: string }> = {
   6000: { name: "Unauthorized", msg: "caller is not the vault authority" },
 };
-

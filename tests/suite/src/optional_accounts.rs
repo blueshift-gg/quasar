@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Instruction, ProgramError, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Instruction, ProgramError, Pubkey},
     quasar_test_misc::cpi::*,
 };
 

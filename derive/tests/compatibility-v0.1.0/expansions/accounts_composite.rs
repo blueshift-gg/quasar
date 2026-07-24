@@ -296,7 +296,8 @@ mod __uses_account_array_client_macro {
     #[macro_export]
     macro_rules! __uses_account_array_instruction {
         (
-            $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* }
+            $struct_name:ident, $raw_struct_name:ident, [$($disc:expr),*], {
+            $($arg_name:ident : $arg_ty:ty),* }
         ) => {
             pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, pub
             pairs : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* } impl
@@ -312,8 +313,8 @@ mod __uses_account_array_client_macro {
             } } }
         };
         (
-            $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* },
-            compact
+            $struct_name:ident, $raw_struct_name:ident, [$($disc:expr),*], {
+            $($arg_name:ident : $arg_ty:ty),* }, compact
         ) => {
             pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, pub
             pairs : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* } impl
@@ -330,8 +331,8 @@ mod __uses_account_array_client_macro {
             $crate::ID, accounts, data, } } }
         };
         (
-            $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* },
-            remaining
+            $struct_name:ident, $raw_struct_name:ident, [$($disc:expr),*], {
+            $($arg_name:ident : $arg_ty:ty),* }, remaining
         ) => {
             pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, pub
             pairs : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* pub
@@ -348,8 +349,8 @@ mod __uses_account_array_client_macro {
             accounts, data, } } }
         };
         (
-            $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* },
-            compact, remaining
+            $struct_name:ident, $raw_struct_name:ident, [$($disc:expr),*], {
+            $($arg_name:ident : $arg_ty:ty),* }, compact, remaining
         ) => {
             pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, pub
             pairs : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* pub
