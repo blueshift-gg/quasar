@@ -107,6 +107,7 @@ export interface DepositInstructionAccountOverrides {
 export interface WithdrawInstructionAccountOverrides {
   user?: Address;
   vault?: Address;
+  systemProgram?: Address;
 }
 
 /* Enums */
@@ -175,6 +176,7 @@ export class QuasarVaultClient {
 
   async createWithdrawInstructionRaw(input: WithdrawInstructionInput, accountOverrides: WithdrawInstructionAccountOverrides): Promise<TransactionInstruction & { readonly vaultAddress: Address }> {
     const accountsMap: Record<string, Address> = {};
+    accountsMap["systemProgram"] = new Address("11111111111111111111111111111111");
     accountsMap["vault"] = await findVaultAddress((accountOverrides.user ?? input.user));
     const argsCodec = getStructCodec([
       ["amount", getU64Codec()],
@@ -185,6 +187,7 @@ export class QuasarVaultClient {
       keys: [
         { pubkey: (accountOverrides.user ?? input.user), isSigner: true, isWritable: true },
         { pubkey: (accountOverrides.vault ?? accountsMap["vault"]), isSigner: false, isWritable: true },
+        { pubkey: (accountOverrides.systemProgram ?? accountsMap["systemProgram"]), isSigner: false, isWritable: false },
       ],
       data,
     });
