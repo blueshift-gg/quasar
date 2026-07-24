@@ -2221,6 +2221,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "parallax-svm"
+version = "0.1.0"
+source = "git+https://github.com/blueshift-gg/parallax?rev=a88b9e6fb457ce91aa45d663b2beb62f75bc98ad#a88b9e6fb457ce91aa45d663b2beb62f75bc98ad"
+dependencies = [
+ "base64 0.22.1",
+ "litesvm",
+ "parallax-svm-derive",
+ "serde_json",
+ "solana-account 4.3.1",
+ "solana-clock",
+ "solana-compute-budget 4.1.2",
+ "solana-fee-structure",
+ "solana-instruction",
+ "solana-instruction-error",
+ "solana-message 4.3.0",
+ "solana-pubkey 4.2.0",
+ "solana-rent 4.3.0",
+ "solana-sdk-ids",
+ "solana-signature",
+ "solana-transaction 4.1.5",
+ "solana-transaction-error",
+ "spl-token",
+ "wincode",
+]
+
+[[package]]
+name = "parallax-svm-derive"
+version = "0.1.0"
+source = "git+https://github.com/blueshift-gg/parallax?rev=a88b9e6fb457ce91aa45d663b2beb62f75bc98ad#a88b9e6fb457ce91aa45d663b2beb62f75bc98ad"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2525,26 +2562,10 @@ dependencies = [
 name = "quasar-test"
 version = "0.1.0"
 dependencies = [
- "base64 0.22.1",
- "litesvm",
+ "parallax-svm",
  "quasar-lang",
  "quasar-test-derive",
- "serde_json",
- "solana-account 4.3.1",
- "solana-clock",
- "solana-compute-budget 4.1.2",
- "solana-fee-structure",
- "solana-instruction",
- "solana-instruction-error",
- "solana-message 4.3.0",
- "solana-pubkey 4.2.0",
  "solana-rent 4.3.0",
- "solana-sdk-ids",
- "solana-signature",
- "solana-transaction 4.1.5",
- "solana-transaction-error",
- "spl-token",
- "tempfile",
 ]
 
 [[package]]

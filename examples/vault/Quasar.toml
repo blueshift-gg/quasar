@@ -5,5 +5,5 @@ name = "quasar-vault"
 command = { program = "cargo", args = ["test"] }
 
 [clients]
-path = "../../test/typescript/tests/fixtures/vault/clients"
+path = "../../tests/fixtures/vault/clients"
 targets = ["rust", "kit", "web3"]
