@@ -36,6 +36,12 @@ publish = false
 
 [dependencies]
 qt = { package = "quasar-test", path = "$package_dir" }
+
+# TEMPORARY: mirrors the workspace zeropod patch until zeropod >=0.3.4
+# (solana-address <3, wincode 0.5) is published.
+[patch.crates-io]
+zeropod = { path = "$repo_root/vendor/zeropod/zeropod" }
+zeropod-derive = { path = "$repo_root/vendor/zeropod/zeropod-derive" }
 EOF
 
 cat >"$tmp/consumer/src/lib.rs" <<'EOF'
@@ -78,7 +84,7 @@ mod tests {
         let program_id = Pubkey::from_str(PROGRAM_ID).unwrap();
         let user = Pubkey::new_from_array([1; 32]);
         let (vault, _) = Pubkey::find_program_address(&[b"vault", user.as_ref()], &program_id);
-        q.add(Wallet::new().at(user).lamports(USER_LAMPORTS));
+        q.add(Wallet::new().at(user).fund(USER_LAMPORTS));
 
         if let Some(expected) = env::var_os(PROGRAM_PATH_ENV) {
             assert_eq!(
@@ -101,6 +107,19 @@ mod tests {
     }
 }
 EOF
+
+# Fresh standalone resolution drifts onto the wincode-0.6 line as new
+# solana-* patch releases land; pin the proven single-wincode-0.5 set
+# (mirrors the workspace lock and litesvm's own lockfile).
+cargo generate-lockfile --manifest-path "$tmp/consumer/Cargo.toml"
+for pin in solana-address@2.6.1 solana-hash@4.5.0 solana-message@4.3.0 \
+           solana-pubkey@4.2.0 solana-instruction@3.4.0 solana-account@4.3.1 \
+           solana-short-vec@3.2.2 solana-clock@3.1.1 \
+           solana-last-restart-slot@3.1.0 solana-slot-history@3.1.0; do
+  crate="${pin%@*}"; version="${pin#*@}"
+  cargo update --manifest-path "$tmp/consumer/Cargo.toml" \
+    -p "$crate" --precise "$version" 2>/dev/null || true
+done
 
 metadata="$tmp/consumer-metadata.json"
 cargo metadata \
