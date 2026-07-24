@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Instruction, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Instruction, Pubkey},
     quasar_test_token_cpi::cpi::*,
 };
 
@@ -66,7 +66,7 @@ fn close_attr_spl_wrong_authority() {
             empty_account(destination),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -96,7 +96,7 @@ fn close_attr_spl_wrong_mint() {
             empty_account(destination),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 // close attribute with Token-2022.
@@ -161,7 +161,7 @@ fn close_attr_t22_wrong_authority() {
             empty_account(destination),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 // close attribute with InterfaceAccount.
@@ -262,5 +262,5 @@ fn close_attr_interface_wrong_authority() {
             empty_account(destination),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }

@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Account, Instruction, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Account, Instruction, Pubkey},
     quasar_test_token_init::cpi::*,
 };
 
@@ -66,7 +66,7 @@ fn init_token_pda_spl_wrong_address() {
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::Custom(
+    result.assert_error(crate::compat::ProgramError::Custom(
         quasar_lang::prelude::QuasarError::InvalidPda as u32,
     ));
 }
@@ -133,7 +133,7 @@ fn init_token_pda_spl_prefunded_partial() {
                 address: payer,
                 lamports: payer_lamports,
                 data: vec![],
-                owner: quasar_svm::system_program::ID,
+                owner: crate::compat::system_program::ID,
                 executable: false,
             },
             prefunded_account(token_pda, prefund),
@@ -179,7 +179,7 @@ fn init_token_pda_spl_prefunded_excess() {
                 address: payer,
                 lamports: payer_lamports,
                 data: vec![],
-                owner: quasar_svm::system_program::ID,
+                owner: crate::compat::system_program::ID,
                 executable: false,
             },
             prefunded_account(token_pda, 100_000_000),

@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Instruction, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Instruction, Pubkey},
     quasar_test_token_init::cpi::*,
 };
 
@@ -209,7 +209,7 @@ fn init_if_needed_token_interface_existing_wrong_mint() {
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 // init InterfaceAccount<Mint>.
@@ -411,5 +411,5 @@ fn init_if_needed_mint_interface_existing_wrong_authority() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }

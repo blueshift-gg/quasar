@@ -1,10 +1,10 @@
 use {
+    crate::compat::{Instruction, ProgramError, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Instruction, ProgramError, Pubkey},
     quasar_test_misc::cpi::*,
 };
 
-fn setup_account(svm: &mut quasar_svm::QuasarSvm) -> (Pubkey, Pubkey, Pubkey) {
+fn setup_account(svm: &mut crate::compat::SuiteSvm) -> (Pubkey, Pubkey, Pubkey) {
     let payer = Pubkey::new_unique();
     let (account, _bump) =
         Pubkey::find_program_address(&[b"simple", payer.as_ref()], &quasar_test_misc::ID);
@@ -13,15 +13,15 @@ fn setup_account(svm: &mut quasar_svm::QuasarSvm) -> (Pubkey, Pubkey, Pubkey) {
     let ix: Instruction = InitializeInstruction { payer, value: 42 }.into();
     let r = svm.process_instruction(&ix, &[rich_signer_account(payer), empty_account(account)]);
     assert!(r.is_ok(), "setup init: {:?}", r.raw_result);
-    (payer, account, quasar_svm::system_program::ID)
+    (payer, account, crate::compat::system_program::ID)
 }
 
 fn realloc(
-    svm: &mut quasar_svm::QuasarSvm,
+    svm: &mut crate::compat::SuiteSvm,
     account: Pubkey,
     payer: Pubkey,
     new_space: u64,
-) -> quasar_svm::ExecutionResult {
+) -> crate::compat::ExecutionResult {
     let ix: Instruction = ReallocCheckInstruction {
         account,
         payer,
@@ -168,11 +168,11 @@ fn realloc_rejects_underfunded_grow() {
     let payer = Pubkey::new_unique();
     let account = Pubkey::new_unique();
 
-    let broke_payer = quasar_svm::Account {
+    let broke_payer = crate::compat::Account {
         address: payer,
         lamports: 1,
         data: vec![],
-        owner: quasar_svm::system_program::ID,
+        owner: crate::compat::system_program::ID,
         executable: false,
     };
     let target = raw_account(

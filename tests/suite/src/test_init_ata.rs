@@ -1,7 +1,7 @@
 use {
+    crate::compat::{Instruction, Pubkey},
     crate::helpers::*,
     quasar_spl::get_associated_token_address_with_program_const,
-    quasar_svm::{Instruction, Pubkey},
     quasar_test_token_init::cpi::*,
 };
 
@@ -68,7 +68,7 @@ fn init_ata_spl_already_initialized() {
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::AccountAlreadyInitialized);
+    result.assert_error(crate::compat::ProgramError::AccountAlreadyInitialized);
 }
 
 // init with Token-2022.
@@ -134,7 +134,7 @@ fn init_ata_t22_already_initialized() {
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::AccountAlreadyInitialized);
+    result.assert_error(crate::compat::ProgramError::AccountAlreadyInitialized);
 }
 
 // init_if_needed new ATA with SPL Token.
@@ -248,7 +248,7 @@ fn init_if_needed_ata_spl_existing_wrong_mint() {
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -279,7 +279,7 @@ fn init_if_needed_ata_spl_existing_wrong_authority() {
             mint_account(mint_key, mint_authority, 6, token_program),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -316,7 +316,7 @@ fn init_if_needed_ata_spl_existing_wrong_owner() {
     );
     // The existing account is system-owned, so init takes the create
     // branch: SystemError::AccountAlreadyInUse.
-    result.assert_error(quasar_svm::ProgramError::Custom(0));
+    result.assert_error(crate::compat::ProgramError::Custom(0));
 }
 
 // init_if_needed new ATA with Token-2022.

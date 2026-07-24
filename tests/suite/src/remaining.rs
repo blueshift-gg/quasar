@@ -424,18 +424,18 @@ use {
 const ERROR_TEST_ACCOUNT_SIZE: usize = 41;
 
 fn error_test_account(
-    address: quasar_svm::Pubkey,
-    owner: quasar_svm::Pubkey,
-) -> quasar_svm::Account {
+    address: crate::compat::Pubkey,
+    owner: crate::compat::Pubkey,
+) -> crate::compat::Account {
     let mut data = vec![0u8; ERROR_TEST_ACCOUNT_SIZE];
     data[0] = 1;
     raw_account(address, 1_000_000, data, owner)
 }
 
 fn remaining_typed_ix(
-    authority: quasar_svm::Pubkey,
+    authority: crate::compat::Pubkey,
     remaining: Vec<AccountMeta>,
-) -> quasar_svm::Instruction {
+) -> crate::compat::Instruction {
     err_cpi::RemainingTypedCheckInstruction {
         authority,
         remaining_accounts: remaining,
@@ -446,9 +446,9 @@ fn remaining_typed_ix(
 #[test]
 fn typed_remaining_parses_valid_accounts() {
     let mut svm = svm_errors();
-    let authority = quasar_svm::Pubkey::new_unique();
-    let a = quasar_svm::Pubkey::new_unique();
-    let b = quasar_svm::Pubkey::new_unique();
+    let authority = crate::compat::Pubkey::new_unique();
+    let a = crate::compat::Pubkey::new_unique();
+    let b = crate::compat::Pubkey::new_unique();
 
     let ix = remaining_typed_ix(
         authority,
@@ -471,8 +471,8 @@ fn typed_remaining_parses_valid_accounts() {
 #[test]
 fn typed_remaining_rejects_duplicate() {
     let mut svm = svm_errors();
-    let authority = quasar_svm::Pubkey::new_unique();
-    let dup = quasar_svm::Pubkey::new_unique();
+    let authority = crate::compat::Pubkey::new_unique();
+    let dup = crate::compat::Pubkey::new_unique();
 
     let ix = remaining_typed_ix(
         authority,
@@ -488,7 +488,7 @@ fn typed_remaining_rejects_duplicate() {
             error_test_account(dup, quasar_test_errors::ID),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::Custom(
+    result.assert_error(crate::compat::ProgramError::Custom(
         QuasarError::RemainingAccountDuplicate as u32,
     ));
 }
@@ -496,27 +496,27 @@ fn typed_remaining_rejects_duplicate() {
 #[test]
 fn typed_remaining_rejects_wrong_owner() {
     let mut svm = svm_errors();
-    let authority = quasar_svm::Pubkey::new_unique();
-    let foreign = quasar_svm::Pubkey::new_unique();
+    let authority = crate::compat::Pubkey::new_unique();
+    let foreign = crate::compat::Pubkey::new_unique();
 
     let ix = remaining_typed_ix(authority, vec![AccountMeta::new_readonly(foreign, false)]);
     let result = svm.process_instruction(
         &ix,
         &[
             signer_account(authority),
-            error_test_account(foreign, quasar_svm::Pubkey::new_unique()),
+            error_test_account(foreign, crate::compat::Pubkey::new_unique()),
         ],
     );
     // The harness maps InstructionErrors without a dedicated variant to
     // their Debug string; IllegalOwner is one of those.
-    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
+    result.assert_error(crate::compat::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
 fn typed_remaining_rejects_truncated_data() {
     let mut svm = svm_errors();
-    let authority = quasar_svm::Pubkey::new_unique();
-    let short = quasar_svm::Pubkey::new_unique();
+    let authority = crate::compat::Pubkey::new_unique();
+    let short = crate::compat::Pubkey::new_unique();
 
     let mut data = vec![0u8; ERROR_TEST_ACCOUNT_SIZE - 1];
     data[0] = 1; // valid discriminator, one byte short of the layout
@@ -528,5 +528,5 @@ fn typed_remaining_rejects_truncated_data() {
             raw_account(short, 1_000_000, data, quasar_test_errors::ID),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::AccountDataTooSmall);
+    result.assert_error(crate::compat::ProgramError::AccountDataTooSmall);
 }

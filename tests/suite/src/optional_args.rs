@@ -1,7 +1,7 @@
 use {
+    crate::compat::{Instruction, Pubkey},
     crate::helpers::*,
     quasar_lang::client::{DynString, DynVec},
-    quasar_svm::{Instruction, Pubkey},
     quasar_test_misc::cpi::*,
 };
 
@@ -47,7 +47,7 @@ fn option_u64_some_wrong_value() {
     }
     .into();
     let result = svm.process_instruction(&ix, &[signer_account(signer)]);
-    result.assert_error(quasar_svm::ProgramError::InvalidInstructionData);
+    result.assert_error(crate::compat::ProgramError::InvalidInstructionData);
 }
 
 #[test]
@@ -97,7 +97,7 @@ fn option_u64_tag_two_rejected() {
         data,
     };
     let result = svm.process_instruction(&ix, &[signer_account(signer)]);
-    result.assert_error(quasar_svm::ProgramError::InvalidInstructionData);
+    result.assert_error(crate::compat::ProgramError::InvalidInstructionData);
 }
 
 // Adversarial test: tag=0xFF (invalid)
@@ -114,7 +114,7 @@ fn option_u64_tag_0xff_rejected() {
         data,
     };
     let result = svm.process_instruction(&ix, &[signer_account(signer)]);
-    result.assert_error(quasar_svm::ProgramError::InvalidInstructionData);
+    result.assert_error(crate::compat::ProgramError::InvalidInstructionData);
 }
 
 // Adversarial test: truncated instruction data (disc only, no Option payload)
@@ -129,7 +129,7 @@ fn option_u64_truncated_data_fails() {
         data: vec![52u8], // just discriminator, missing 9 bytes of OptionZc<PodU64>
     };
     let result = svm.process_instruction(&ix, &[signer_account(signer)]);
-    result.assert_error(quasar_svm::ProgramError::InvalidInstructionData);
+    result.assert_error(crate::compat::ProgramError::InvalidInstructionData);
 }
 
 fn optional_dynamic_ix(data: Vec<u8>) -> solana_instruction::Instruction {
@@ -204,7 +204,7 @@ fn optional_dynamic_args_invalid_tag_fails() {
 
     let result = svm.process_instruction(&ix, &[]);
 
-    result.assert_error(quasar_svm::ProgramError::InvalidInstructionData);
+    result.assert_error(crate::compat::ProgramError::InvalidInstructionData);
 }
 
 #[test]
@@ -215,7 +215,7 @@ fn optional_dynamic_args_some_missing_prefix_fails() {
 
     let result = svm.process_instruction(&ix, &[]);
 
-    result.assert_error(quasar_svm::ProgramError::InvalidInstructionData);
+    result.assert_error(crate::compat::ProgramError::InvalidInstructionData);
 }
 
 #[test]
@@ -228,5 +228,5 @@ fn optional_dynamic_args_some_truncated_payload_fails() {
 
     let result = svm.process_instruction(&ix, &[]);
 
-    result.assert_error(quasar_svm::ProgramError::InvalidInstructionData);
+    result.assert_error(crate::compat::ProgramError::InvalidInstructionData);
 }

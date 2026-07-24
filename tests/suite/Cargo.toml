@@ -25,13 +25,16 @@ quasar-test-one-of = { path = "../programs/test-one-of" }
 quasar-test-migrate = { path = "../programs/test-migrate" }
 quasar-test-raw = { path = "../programs/test-raw" }
 quasar-spl = { path = "../../spl" }
-quasar-svm = "=0.1.0"
 mollusk-svm = "0.10.3"
 spl-token-interface = "2.0.0"
 solana-program-pack = "3.1.0"
 solana-account = "3.4"
 solana-address = { version = "2.2", features = ["decode"] }
 solana-instruction = { version = "3.2", features = ["bincode"] }
+solana-instruction-error = "2.3"
+solana-rent = "3.1"
+solana-sdk-ids = "3.1"
+solana-svm-log-collector = "3.1"
 
 [lib]
 doctest = false

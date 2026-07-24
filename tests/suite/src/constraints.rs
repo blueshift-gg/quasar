@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Instruction, ProgramError, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Instruction, ProgramError, Pubkey},
     quasar_test_misc::{cpi::*, errors::TestError},
 };
 
@@ -390,6 +390,6 @@ fn has_one_and_owner_wrong_owner() {
     );
     // the harness maps InstructionErrors without a dedicated variant to their Debug
     // string
-    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
+    result.assert_error(crate::compat::ProgramError::Runtime("IllegalOwner".into()));
     // SVM returns Runtime("IllegalOwner") for owner mismatches
 }

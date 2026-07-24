@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Instruction, ProgramError, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Instruction, ProgramError, Pubkey},
     quasar_test_migrate::cpi::*,
 };
 
@@ -20,14 +20,14 @@ fn build_config_v1_data(authority: Pubkey, value: u64) -> Vec<u8> {
 /// (4) Total = 1 + 32 + 8 + 4 = 45 bytes
 const CONFIG_V2_SIZE: usize = 45;
 
-fn svm_migrate() -> quasar_svm::QuasarSvm {
+fn svm_migrate() -> crate::compat::SuiteSvm {
     let path = "../../target/deploy/quasar_test_migrate.so";
     let elf = std::fs::read(path)
         .unwrap_or_else(|e| panic!("failed to read {path}: {e}. Run `make build-sbf` first."));
-    quasar_svm::QuasarSvm::new().with_program(&quasar_test_migrate::ID, &elf)
+    crate::compat::SuiteSvm::new().with_program(&quasar_test_migrate::ID, &elf)
 }
 
-fn config_v1_account(address: Pubkey, authority: Pubkey, value: u64) -> quasar_svm::Account {
+fn config_v1_account(address: Pubkey, authority: Pubkey, value: u64) -> crate::compat::Account {
     raw_account(
         address,
         1_000_000,
@@ -96,7 +96,7 @@ const STALE_SENTINEL: u8 = 0xAB;
 const PADDED_TARGET_WRITTEN_LEN: usize = 41;
 const PADDED_TARGET_SIZE: usize = 61;
 
-fn padded_source_account(address: Pubkey, source_size: usize) -> quasar_svm::Account {
+fn padded_source_account(address: Pubkey, source_size: usize) -> crate::compat::Account {
     assert!(source_size >= PADDED_TARGET_WRITTEN_LEN);
     let mut data = vec![STALE_SENTINEL; source_size];
     data[0] = 9; // discriminator
@@ -204,13 +204,13 @@ fn migrate_wrong_authority_fails() {
             signer_account(wrong_authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::Custom(
+    result.assert_error(crate::compat::ProgramError::Custom(
         quasar_lang::prelude::QuasarError::ConstraintViolation as u32,
     ));
 }
 
 /// Runs the migrate instruction against an arbitrary config account state.
-fn migrate_with_config(config_state: quasar_svm::Account) -> quasar_svm::ExecutionResult {
+fn migrate_with_config(config_state: crate::compat::Account) -> crate::compat::ExecutionResult {
     let mut svm = svm_migrate();
     let payer = Pubkey::new_unique();
     let config = config_state.address;

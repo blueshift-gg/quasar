@@ -1,9 +1,9 @@
 use {
-    mollusk_svm::Mollusk,
-    quasar_svm::{
+    crate::compat::{
         token::{Mint, TokenAccount},
-        Account, Instruction, Pubkey, QuasarSvm,
+        Account, Instruction, Pubkey, SuiteSvm,
     },
+    mollusk_svm::Mollusk,
     solana_address::Address,
     solana_program_pack::Pack,
     spl_token_interface::state::AccountState,
@@ -30,27 +30,27 @@ pub fn mollusk_for_program(program_id: &Address, name: &str) -> Mollusk {
     Mollusk::new(program_id, base)
 }
 
-pub fn svm_validate() -> QuasarSvm {
+pub fn svm_validate() -> SuiteSvm {
     let elf = read_deploy_elf("quasar_test_token_validate");
-    QuasarSvm::new().with_program(&quasar_test_token_validate::ID, &elf)
+    SuiteSvm::new().with_program(&quasar_test_token_validate::ID, &elf)
 }
 
-pub fn svm_init() -> QuasarSvm {
+pub fn svm_init() -> SuiteSvm {
     let elf = read_deploy_elf("quasar_test_token_init");
-    QuasarSvm::new().with_program(&quasar_test_token_init::ID, &elf)
+    SuiteSvm::new().with_program(&quasar_test_token_init::ID, &elf)
 }
 
-pub fn svm_cpi() -> QuasarSvm {
+pub fn svm_cpi() -> SuiteSvm {
     let elf = read_deploy_elf("quasar_test_token_cpi");
-    QuasarSvm::new().with_program(&quasar_test_token_cpi::ID, &elf)
+    SuiteSvm::new().with_program(&quasar_test_token_cpi::ID, &elf)
 }
 
 pub fn spl_token_program_id() -> Pubkey {
-    quasar_svm::SPL_TOKEN_PROGRAM_ID
+    crate::compat::SPL_TOKEN_PROGRAM_ID
 }
 
 pub fn token_2022_program_id() -> Pubkey {
-    quasar_svm::SPL_TOKEN_2022_PROGRAM_ID
+    crate::compat::SPL_TOKEN_2022_PROGRAM_ID
 }
 
 pub fn with_signers(mut ix: Instruction, indices: &[usize]) -> Instruction {
@@ -67,7 +67,7 @@ pub fn token_account(
     amount: u64,
     token_program: Pubkey,
 ) -> Account {
-    quasar_svm::token::create_keyed_token_account_with_program(
+    crate::compat::token::create_keyed_token_account_with_program(
         &address,
         &TokenAccount {
             mint,
@@ -89,7 +89,7 @@ pub fn token_account_with_delegate(
     delegated_amount: u64,
     token_program: Pubkey,
 ) -> Account {
-    quasar_svm::token::create_keyed_token_account_with_program(
+    crate::compat::token::create_keyed_token_account_with_program(
         &address,
         &TokenAccount {
             mint,
@@ -110,7 +110,7 @@ pub fn mint_account(
     decimals: u8,
     token_program: Pubkey,
 ) -> Account {
-    quasar_svm::token::create_keyed_mint_account_with_program(
+    crate::compat::token::create_keyed_mint_account_with_program(
         &address,
         &Mint {
             mint_authority: Some(authority).into(),
@@ -130,7 +130,7 @@ pub fn mint_account_with_freeze(
     freeze_authority: Pubkey,
     token_program: Pubkey,
 ) -> Account {
-    quasar_svm::token::create_keyed_mint_account_with_program(
+    crate::compat::token::create_keyed_mint_account_with_program(
         &address,
         &Mint {
             mint_authority: Some(authority).into(),
@@ -144,11 +144,11 @@ pub fn mint_account_with_freeze(
 }
 
 pub fn signer_account(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, 1_000_000)
+    crate::compat::token::create_keyed_system_account(&address, 1_000_000)
 }
 
 pub fn rich_signer_account(address: Pubkey) -> Account {
-    quasar_svm::token::create_keyed_system_account(&address, 100_000_000_000)
+    crate::compat::token::create_keyed_system_account(&address, 100_000_000_000)
 }
 
 pub fn empty_account(address: Pubkey) -> Account {
@@ -156,7 +156,7 @@ pub fn empty_account(address: Pubkey) -> Account {
         address,
         lamports: 0,
         data: vec![],
-        owner: quasar_svm::system_program::ID,
+        owner: crate::compat::system_program::ID,
         executable: false,
     }
 }
@@ -199,21 +199,21 @@ pub fn raw_account(address: Pubkey, lamports: u64, data: Vec<u8>, owner: Pubkey)
     }
 }
 
-pub fn svm_misc() -> QuasarSvm {
+pub fn svm_misc() -> SuiteSvm {
     let elf = read_deploy_elf("quasar_test_misc");
-    QuasarSvm::new().with_program(&quasar_test_misc::ID, &elf)
+    SuiteSvm::new().with_program(&quasar_test_misc::ID, &elf)
 }
 
-pub fn svm_errors() -> QuasarSvm {
+pub fn svm_errors() -> SuiteSvm {
     let elf = read_deploy_elf("quasar_test_errors");
-    QuasarSvm::new().with_program(&quasar_test_errors::ID, &elf)
+    SuiteSvm::new().with_program(&quasar_test_errors::ID, &elf)
 }
 
 /// test-errors plus test-misc, for cross-program return-data tests.
-pub fn svm_errors_with_misc() -> QuasarSvm {
+pub fn svm_errors_with_misc() -> SuiteSvm {
     let errors_elf = read_deploy_elf("quasar_test_errors");
     let misc_elf = read_deploy_elf("quasar_test_misc");
-    QuasarSvm::new()
+    SuiteSvm::new()
         .with_program(&quasar_test_errors::ID, &errors_elf)
         .with_program(&quasar_test_misc::ID, &misc_elf)
 }
@@ -282,14 +282,14 @@ pub fn error_test_account(address: Pubkey, authority: Pubkey, value: u64) -> Acc
     )
 }
 
-pub fn svm_heap() -> QuasarSvm {
+pub fn svm_heap() -> SuiteSvm {
     let elf = read_deploy_elf("quasar_test_heap");
-    QuasarSvm::new().with_program(&quasar_test_heap::ID, &elf)
+    SuiteSvm::new().with_program(&quasar_test_heap::ID, &elf)
 }
 
-pub fn svm_raw() -> QuasarSvm {
+pub fn svm_raw() -> SuiteSvm {
     let elf = read_deploy_elf("quasar_test_raw");
-    QuasarSvm::new().with_program(&quasar_test_raw::ID, &elf)
+    SuiteSvm::new().with_program(&quasar_test_raw::ID, &elf)
 }
 
 /// Account with custom lamports (for pre-funded init tests).
@@ -298,7 +298,7 @@ pub fn prefunded_account(address: Pubkey, lamports: u64) -> Account {
         address,
         lamports,
         data: vec![],
-        owner: quasar_svm::system_program::ID,
+        owner: crate::compat::system_program::ID,
         executable: false,
     }
 }

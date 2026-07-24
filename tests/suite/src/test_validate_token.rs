@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Instruction, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Instruction, Pubkey},
     quasar_test_token_validate::cpi::*,
 };
 
@@ -56,7 +56,7 @@ fn account_token_wrong_mint() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -83,7 +83,7 @@ fn account_token_wrong_authority() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -117,7 +117,7 @@ fn account_token_wrong_owner() {
     );
     // the harness maps InstructionErrors without a dedicated variant to their Debug
     // string
-    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
+    result.assert_error(crate::compat::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -143,7 +143,7 @@ fn account_token_uninitialized() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::UninitializedAccount);
+    result.assert_error(crate::compat::ProgramError::UninitializedAccount);
 }
 
 #[test]
@@ -169,7 +169,7 @@ fn account_token_data_too_small() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 // Account<Token2022>, ValidateToken2022Check.
@@ -254,7 +254,7 @@ fn interface_token_spl_wrong_mint() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -282,7 +282,7 @@ fn interface_token_spl_wrong_authority() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -316,7 +316,7 @@ fn interface_token_spl_wrong_owner() {
     );
     // the harness maps InstructionErrors without a dedicated variant to their Debug
     // string
-    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
+    result.assert_error(crate::compat::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -343,7 +343,7 @@ fn interface_token_spl_uninitialized() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::UninitializedAccount);
+    result.assert_error(crate::compat::ProgramError::UninitializedAccount);
 }
 
 #[test]
@@ -370,7 +370,7 @@ fn interface_token_spl_data_too_small() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::AccountDataTooSmall);
+    result.assert_error(crate::compat::ProgramError::AccountDataTooSmall);
 }
 
 // InterfaceAccount<Token> with Token-2022, ValidateTokenInterfaceCheck.
@@ -432,7 +432,7 @@ fn interface_token_cross_program_mismatch() {
     );
     // the harness maps InstructionErrors without a dedicated variant to their Debug
     // string
-    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
+    result.assert_error(crate::compat::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 // No token_program field, ValidateTokenNoProgram.
@@ -487,7 +487,7 @@ fn no_program_wrong_mint() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -514,5 +514,5 @@ fn no_program_wrong_authority() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }

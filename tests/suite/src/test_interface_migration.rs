@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Instruction, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Instruction, Pubkey},
     quasar_test_misc::cpi::*,
 };
 
@@ -93,7 +93,7 @@ fn wrong_owner_rejected() {
     );
     // the harness maps InstructionErrors without a dedicated variant to their Debug
     // string
-    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
+    result.assert_error(crate::compat::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -104,7 +104,7 @@ fn wrong_discriminator_rejected() {
     data[0] = 99; // neither 20 nor 21
     let ix: Instruction = InterfaceMigrationCheckInstruction { vault }.into();
     let result = svm.process_instruction(&ix, &[raw_account(vault, 1_000_000, data, program_id())]);
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -115,7 +115,7 @@ fn v1_data_too_small_rejected() {
     data[0] = 20;
     let ix: Instruction = InterfaceMigrationCheckInstruction { vault }.into();
     let result = svm.process_instruction(&ix, &[raw_account(vault, 1_000_000, data, program_id())]);
-    result.assert_error(quasar_svm::ProgramError::AccountDataTooSmall);
+    result.assert_error(crate::compat::ProgramError::AccountDataTooSmall);
 }
 
 #[test]
@@ -127,5 +127,5 @@ fn v2_data_too_small_rejected() {
     data[0] = 21;
     let ix: Instruction = InterfaceMigrationCheckInstruction { vault }.into();
     let result = svm.process_instruction(&ix, &[raw_account(vault, 1_000_000, data, program_id())]);
-    result.assert_error(quasar_svm::ProgramError::AccountDataTooSmall);
+    result.assert_error(crate::compat::ProgramError::AccountDataTooSmall);
 }

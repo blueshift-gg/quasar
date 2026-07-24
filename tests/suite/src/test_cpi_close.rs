@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Instruction, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Instruction, Pubkey},
     quasar_test_token_cpi::cpi::*,
 };
 
@@ -118,7 +118,7 @@ fn close_rejects_non_zero_balance() {
         ],
     );
     // spl_token::TokenError::NonNativeHasBalance = 11
-    result.assert_error(quasar_svm::ProgramError::Custom(11));
+    result.assert_error(crate::compat::ProgramError::Custom(11));
 }
 
 #[test]
@@ -145,5 +145,5 @@ fn close_rejects_wrong_owner() {
         ],
     );
     // spl_token::TokenError::OwnerMismatch = 4
-    result.assert_error(quasar_svm::ProgramError::Custom(4));
+    result.assert_error(crate::compat::ProgramError::Custom(4));
 }

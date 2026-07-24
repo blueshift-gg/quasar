@@ -1,6 +1,6 @@
 use {
+    crate::compat::{Instruction, Pubkey},
     crate::helpers::*,
-    quasar_svm::{Instruction, Pubkey},
     quasar_test_token_validate::cpi::*,
 };
 
@@ -42,7 +42,7 @@ fn mint_program_only_rejects_mismatched_owner() {
     );
     // The harness maps InstructionErrors without a dedicated variant to
     // their Debug string; IllegalOwner is one of those.
-    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
+    result.assert_error(crate::compat::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 // Account<Mint> with SPL Token, ValidateMintCheck.
@@ -91,7 +91,7 @@ fn mint_spl_wrong_authority() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -114,7 +114,7 @@ fn mint_spl_wrong_decimals() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -143,7 +143,7 @@ fn mint_spl_wrong_owner() {
     );
     // the harness maps InstructionErrors without a dedicated variant to their Debug
     // string
-    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
+    result.assert_error(crate::compat::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -166,7 +166,7 @@ fn mint_spl_uninitialized() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::UninitializedAccount);
+    result.assert_error(crate::compat::ProgramError::UninitializedAccount);
 }
 
 #[test]
@@ -189,7 +189,7 @@ fn mint_spl_data_too_small() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 // Account<Mint2022> with Token-2022, ValidateMint2022Check.
@@ -265,7 +265,7 @@ fn mint_interface_spl_wrong_authority() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -289,7 +289,7 @@ fn mint_interface_spl_wrong_decimals() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -320,7 +320,7 @@ fn mint_interface_spl_wrong_owner() {
     );
     // the harness maps InstructionErrors without a dedicated variant to their Debug
     // string
-    result.assert_error(quasar_svm::ProgramError::Runtime("IllegalOwner".into()));
+    result.assert_error(crate::compat::ProgramError::Runtime("IllegalOwner".into()));
 }
 
 #[test]
@@ -344,7 +344,7 @@ fn mint_interface_spl_uninitialized() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::UninitializedAccount);
+    result.assert_error(crate::compat::ProgramError::UninitializedAccount);
 }
 
 #[test]
@@ -368,7 +368,7 @@ fn mint_interface_spl_data_too_small() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::AccountDataTooSmall);
+    result.assert_error(crate::compat::ProgramError::AccountDataTooSmall);
 }
 
 // InterfaceAccount<Mint> with Token-2022, ValidateMintInterfaceCheck.
@@ -443,7 +443,7 @@ fn mint_no_program_wrong_authority() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -466,7 +466,7 @@ fn mint_no_program_wrong_decimals() {
             signer_account(authority),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 // Freeze authority, ValidateMintWithFreezeCheck with SPL Token.
@@ -521,7 +521,7 @@ fn mint_spl_freeze_wrong_freeze_authority() {
             signer_account(freeze_auth),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -548,7 +548,7 @@ fn mint_spl_freeze_missing_on_chain() {
             signer_account(freeze_auth),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 // Freeze authority, ValidateMintWithFreeze2022Check with Token-2022.
@@ -634,7 +634,7 @@ fn mint_interface_spl_freeze_wrong_freeze_authority() {
             signer_account(freeze_auth),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 #[test]
@@ -662,7 +662,7 @@ fn mint_interface_spl_freeze_missing_on_chain() {
             signer_account(freeze_auth),
         ],
     );
-    result.assert_error(quasar_svm::ProgramError::InvalidAccountData);
+    result.assert_error(crate::compat::ProgramError::InvalidAccountData);
 }
 
 // Freeze authority, ValidateMintWithFreezeInterfaceCheck with Token-2022 via

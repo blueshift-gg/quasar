@@ -52,7 +52,9 @@ mod cpi_system;
 #[cfg(test)]
 mod errors;
 
-// QuasarSVM-based SPL test suite
+// Suite-local SVM compat layer (mollusk-backed) + shared helpers
+#[cfg(test)]
+mod compat;
 #[cfg(test)]
 mod helpers;
 #[cfg(test)]
