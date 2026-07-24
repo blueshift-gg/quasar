@@ -42,13 +42,13 @@ pub fn generate_cargo_toml(
     } else {
         String::new()
     };
-    // `solana-address` implements the wincode traits against one exact wincode
-    // version; a caret range on either lets cargo pick a pair that does not
-    // implement `SchemaRead`/`SchemaWrite` for `Address`. They move together.
+    // `solana-address` and `wincode` implement each other's traits, so they
+    // move together; ranged pins let a consumer's resolver pick a compatible
+    // pair instead of colliding with a litesvm-era graph.
     let solana_address = if has_pdas {
-        r#"solana-address = { version = "=2.2.0", features = ["curve25519", "wincode"] }"#
+        r#"solana-address = { version = "2", features = ["curve25519", "wincode"] }"#
     } else {
-        r#"solana-address = { version = "=2.2.0", features = ["wincode"] }"#
+        r#"solana-address = { version = "2", features = ["wincode"] }"#
     };
     format!(
         r#"[package]
@@ -59,7 +59,7 @@ description = "Generated Solana client for the {name} program."
 license = "Apache-2.0 OR MIT"
 
 [dependencies]
-{quasar_lang}wincode = {{ version = "=0.4.9", features = ["derive"] }}
+{quasar_lang}wincode = {{ version = "0.5", features = ["derive"] }}
 {solana_address}
 solana-instruction = "3"
 "#,
