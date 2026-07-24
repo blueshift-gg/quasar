@@ -20,7 +20,7 @@ workspace = true
 [dependencies]
 # The SVM harness lives in Parallax; quasar-test is a thin adapter that
 # re-exports its surface and layers quasar-lang typed-state and PDA sugar on top.
-parallax-svm = { git = "https://github.com/blueshift-gg/parallax", rev = "5af9748" }
+parallax-svm = { git = "https://github.com/blueshift-gg/parallax", rev = "4effb7e" }
 quasar-lang = { path = "../lang", version = "=0.1.0" }
 quasar-test-derive = { path = "derive", version = "=0.1.0" }
 # Used only by the strict typed `write`, to install state rent-exempt.
