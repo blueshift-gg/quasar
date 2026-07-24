@@ -46,9 +46,9 @@ pub fn generate_cargo_toml(
     // move together; ranged pins let a consumer's resolver pick a compatible
     // pair instead of colliding with a litesvm-era graph.
     let solana_address = if has_pdas {
-        r#"solana-address = { version = "2", features = ["curve25519", "wincode"] }"#
+        r#"solana-address = { version = ">=2.2, <2.7", features = ["curve25519", "wincode"] }"#
     } else {
-        r#"solana-address = { version = "2", features = ["wincode"] }"#
+        r#"solana-address = { version = ">=2.2, <2.7", features = ["wincode"] }"#
     };
     format!(
         r#"[package]
