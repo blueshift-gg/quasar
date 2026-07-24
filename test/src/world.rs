@@ -305,14 +305,17 @@ impl Test {
         }
 
         let result = self.backend.execute(instructions, &inputs, commit);
-        let succeeded = result.raw_result.is_ok();
+        let succeeded = result.is_ok();
         for account in &mut tracked {
             account.after = if !succeeded {
                 account.before.clone()
             } else if commit {
                 self.backend.account(&account.address)
             } else {
+                // Simulation reports only writable accounts; a read-only
+                // account cannot change, so its pre-state is its post-state.
                 Outcome::simulated_account(&result, &account.address)
+                    .or_else(|| account.before.clone())
             };
         }
         Outcome::from_backend(result, tracked)
