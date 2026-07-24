@@ -6,23 +6,22 @@ pub struct Withdraw {
     pub user: Signer,
     #[account(mut, address = VaultPda::seeds(user.address()))]
     pub vault: UncheckedAccount,
+    pub system_program: Program<SystemProgram>,
 }
 
 impl Withdraw {
     #[inline(always)]
-    pub fn withdraw(&self, amount: u64) -> Result<(), ProgramError> {
-        let vault = self.vault.to_account_view();
-        let user = self.user.to_account_view();
-        let vault_lamports = vault
-            .lamports()
-            .checked_sub(amount)
-            .ok_or(ProgramError::InsufficientFunds)?;
-        let user_lamports = user
-            .lamports()
-            .checked_add(amount)
-            .ok_or(ProgramError::ArithmeticOverflow)?;
-        set_lamports(vault, vault_lamports);
-        set_lamports(user, user_lamports);
-        Ok(())
+    pub fn withdraw(&self, amount: u64, bumps: &WithdrawBumps) -> Result<(), ProgramError> {
+        // The vault is a system-owned PDA, so the program cannot debit its
+        // lamports directly (the runtime rejects spends from accounts the
+        // program does not own). Moving SOL out requires a System transfer
+        // signed with the vault's PDA seeds.
+        if self.vault.to_account_view().lamports() < amount {
+            return Err(ProgramError::InsufficientFunds);
+        }
+        let vault_signer = self.vault_signer(bumps);
+        self.system_program
+            .transfer(&self.vault, &self.user, amount)
+            .invoke_signed(&vault_signer)
     }
 }

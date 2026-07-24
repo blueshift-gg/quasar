@@ -1,10 +1,10 @@
 extern crate std;
-use {alloc::vec::Vec, quasar_test::prelude::*, quasar_vault_client::*};
+use {quasar_test::prelude::*, quasar_vault_client::*};
 
 const USER: Pubkey = Pubkey::new_from_array([1; 32]);
-const MAX_ELF_BYTES: usize = 5_536;
+const MAX_ELF_BYTES: usize = 6_600;
 const MAX_DEPOSIT_CU: u64 = 1_556;
-const MAX_WITHDRAW_CU: u64 = 392;
+const MAX_WITHDRAW_CU: u64 = 1_600;
 
 #[test]
 fn elf_size_stays_within_budget() {
@@ -79,7 +79,9 @@ fn withdraw_moves_lamports_out_of_program_state(test: &mut Test) {
     let vault = find_vault_address(&USER, &crate::ID).0;
     let vault_lamports = 1_000_000_000;
     let withdrawal = 500_000_000;
-    test.add(Account::new(vault, crate::ID, vault_lamports, Vec::new()));
+    // Deposit leaves the vault as a system-owned PDA holding lamports; the
+    // withdraw CPI transfers out of it with the vault's seeds signing.
+    test.add(Wallet::new().at(vault).fund(vault_lamports));
 
     test.simulate(WithdrawInstruction {
         user: USER,
