@@ -1,4 +1,7 @@
-use {crate::Pubkey, core::fmt};
+use {
+    crate::Pubkey, core::fmt, solana_instruction_error::InstructionError,
+    solana_transaction_error::TransactionError,
+};
 
 /// An account stored in a [`Test`](crate::Test) world.
 ///
@@ -126,29 +129,47 @@ pub enum ProgramError {
     Runtime(String),
 }
 
-impl From<quasar_svm::ProgramError> for ProgramError {
-    fn from(error: quasar_svm::ProgramError) -> Self {
+impl From<InstructionError> for ProgramError {
+    fn from(error: InstructionError) -> Self {
+        // Collapse the runtime's instruction error into the stable, backend-
+        // neutral set tests assert against; anything outside it keeps its debug
+        // form under `Runtime`.
+        #[allow(deprecated)]
         match error {
-            quasar_svm::ProgramError::InvalidArgument => Self::InvalidArgument,
-            quasar_svm::ProgramError::InvalidInstructionData => Self::InvalidInstructionData,
-            quasar_svm::ProgramError::InvalidAccountData => Self::InvalidAccountData,
-            quasar_svm::ProgramError::AccountDataTooSmall => Self::AccountDataTooSmall,
-            quasar_svm::ProgramError::InsufficientFunds => Self::InsufficientFunds,
-            quasar_svm::ProgramError::IncorrectProgramId => Self::IncorrectProgramId,
-            quasar_svm::ProgramError::MissingRequiredSignature => Self::MissingRequiredSignature,
-            quasar_svm::ProgramError::AccountAlreadyInitialized => Self::AccountAlreadyInitialized,
-            quasar_svm::ProgramError::UninitializedAccount => Self::UninitializedAccount,
-            quasar_svm::ProgramError::MissingAccount => Self::MissingAccount,
-            quasar_svm::ProgramError::InvalidSeeds => Self::InvalidSeeds,
-            quasar_svm::ProgramError::ArithmeticOverflow => Self::ArithmeticOverflow,
-            quasar_svm::ProgramError::AccountNotRentExempt => Self::AccountNotRentExempt,
-            quasar_svm::ProgramError::InvalidAccountOwner => Self::InvalidAccountOwner,
-            quasar_svm::ProgramError::IncorrectAuthority => Self::IncorrectAuthority,
-            quasar_svm::ProgramError::Immutable => Self::Immutable,
-            quasar_svm::ProgramError::BorshIoError => Self::BorshIoError,
-            quasar_svm::ProgramError::ComputeBudgetExceeded => Self::ComputeBudgetExceeded,
-            quasar_svm::ProgramError::Custom(code) => Self::Custom(code),
-            quasar_svm::ProgramError::Runtime(message) => Self::Runtime(message),
+            InstructionError::InvalidArgument => Self::InvalidArgument,
+            InstructionError::InvalidInstructionData => Self::InvalidInstructionData,
+            InstructionError::InvalidAccountData => Self::InvalidAccountData,
+            InstructionError::AccountDataTooSmall => Self::AccountDataTooSmall,
+            InstructionError::InsufficientFunds => Self::InsufficientFunds,
+            InstructionError::IncorrectProgramId => Self::IncorrectProgramId,
+            InstructionError::MissingRequiredSignature => Self::MissingRequiredSignature,
+            InstructionError::AccountAlreadyInitialized => Self::AccountAlreadyInitialized,
+            InstructionError::UninitializedAccount => Self::UninitializedAccount,
+            InstructionError::MissingAccount | InstructionError::NotEnoughAccountKeys => {
+                Self::MissingAccount
+            }
+            InstructionError::InvalidSeeds => Self::InvalidSeeds,
+            InstructionError::ArithmeticOverflow => Self::ArithmeticOverflow,
+            InstructionError::AccountNotRentExempt => Self::AccountNotRentExempt,
+            InstructionError::InvalidAccountOwner => Self::InvalidAccountOwner,
+            InstructionError::IncorrectAuthority => Self::IncorrectAuthority,
+            InstructionError::Immutable => Self::Immutable,
+            InstructionError::BorshIoError => Self::BorshIoError,
+            InstructionError::ComputationalBudgetExceeded => Self::ComputeBudgetExceeded,
+            InstructionError::Custom(code) => Self::Custom(code),
+            other => Self::Runtime(format!("{other:?}")),
+        }
+    }
+}
+
+impl From<TransactionError> for ProgramError {
+    fn from(error: TransactionError) -> Self {
+        // A program-level failure carries an `InstructionError`; every other
+        // transaction failure (fee payer, account locks, rent, ...) is a runtime
+        // error outside the stable set.
+        match error {
+            TransactionError::InstructionError(_, instruction_error) => instruction_error.into(),
+            other => Self::Runtime(format!("{other:?}")),
         }
     }
 }

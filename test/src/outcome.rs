@@ -1,5 +1,5 @@
 use {
-    crate::{backend::from_backend_account, Account, AccountChange, ProgramError, Pubkey},
+    crate::{backend::ExecutionResult, Account, AccountChange, ProgramError, Pubkey},
     base64::{engine::general_purpose::STANDARD, Engine as _},
     quasar_lang::{
         __zeropod::{ZcElem, ZcValidate},
@@ -32,15 +32,8 @@ pub struct Outcome {
 }
 
 impl Outcome {
-    pub(crate) fn from_backend(
-        result: quasar_svm::ExecutionResult,
-        tracked: Vec<TrackedAccount>,
-    ) -> Self {
-        let error = result
-            .raw_result
-            .err()
-            .map(quasar_svm::ProgramError::from)
-            .map(ProgramError::from);
+    pub(crate) fn from_backend(result: ExecutionResult, tracked: Vec<TrackedAccount>) -> Self {
+        let error = result.error;
         let mut accounts = tracked
             .iter()
             .filter_map(|account| account.after.clone())
@@ -64,11 +57,8 @@ impl Outcome {
         }
     }
 
-    pub(crate) fn simulated_account(
-        result: &quasar_svm::ExecutionResult,
-        address: &Pubkey,
-    ) -> Option<Account> {
-        result.account(address).cloned().map(from_backend_account)
+    pub(crate) fn simulated_account(result: &ExecutionResult, address: &Pubkey) -> Option<Account> {
+        result.account(address).cloned()
     }
 
     /// Whether execution succeeded.

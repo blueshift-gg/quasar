@@ -18,3 +18,4 @@ audit/
 
 # Profiler
 *.profile.json
+/vendor/

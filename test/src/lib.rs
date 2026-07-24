@@ -31,15 +31,26 @@ mod world;
 
 pub use {
     outcome::Outcome,
-    quasar_svm::{
-        system_program, AccountMeta, Instruction, Pubkey, SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
-        SPL_TOKEN_2022_PROGRAM_ID, SPL_TOKEN_PROGRAM_ID,
-    },
     quasar_test_derive::quasar_test,
     setup::{SetupError, TestBuilder, PROGRAM_PATH_ENV},
+    solana_instruction::{AccountMeta, Instruction},
+    solana_pubkey::Pubkey,
+    solana_sdk_ids::system_program,
     types::{Account, AccountChange, ProgramError},
     world::{Snapshot, Test, DEFAULT_WALLET_LAMPORTS},
 };
+
+/// The SPL Token program.
+pub const SPL_TOKEN_PROGRAM_ID: Pubkey =
+    solana_pubkey::pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+
+/// The Token-2022 program.
+pub const SPL_TOKEN_2022_PROGRAM_ID: Pubkey =
+    solana_pubkey::pubkey!("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+
+/// The SPL Associated Token Account program.
+pub const SPL_ASSOCIATED_TOKEN_PROGRAM_ID: Pubkey =
+    solana_pubkey::pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 
 /// Build read-only signer metas for co-signers, such as multisig members.
 ///
@@ -228,7 +239,8 @@ mod tests {
 
     #[test]
     fn stable_program_errors_do_not_expose_the_backend_type() {
-        let error = ProgramError::from(quasar_svm::ProgramError::InvalidInstructionData);
+        let error =
+            ProgramError::from(solana_instruction_error::InstructionError::InvalidInstructionData);
         assert_eq!(error, ProgramError::InvalidInstructionData);
     }
 
