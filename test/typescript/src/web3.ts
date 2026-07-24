@@ -1,12 +1,3 @@
-import {
-  createKeyedMintAccount,
-  createKeyedSystemAccount,
-  createKeyedTokenAccount,
-  QuasarSvm,
-  SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
-  SPL_TOKEN_2022_PROGRAM_ID,
-  SPL_TOKEN_PROGRAM_ID,
-} from "@blueshift-gg/quasar-svm/web3.js";
 import { getMintDecoder, getTokenDecoder } from "@solana-program/token";
 import {
   Address,
@@ -14,6 +5,19 @@ import {
   type TransactionInstruction,
 } from "@solana/web3.js";
 import { readFile } from "node:fs/promises";
+import {
+  LiteSvmRuntime,
+  type LiteSvmConverters,
+} from "./internal/litesvm.js";
+import {
+  mintAccountData,
+  SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
+  SPL_TOKEN_2022_PROGRAM_ID,
+  SPL_TOKEN_PROGRAM_ID,
+  systemAccountData,
+  tokenAccountData,
+  type RawAccount,
+} from "./internal/spl.js";
 import {
   createFixtureFactories,
   DEFAULT_WALLET_LAMPORTS,
@@ -96,6 +100,50 @@ function programAccount(
   };
 }
 
+/** Wrap backend-neutral account bytes in a Web3.js account keyed at `value`. */
+function accountFrom(value: Address, raw: RawAccount): KeyedAccountInfo {
+  return programAccount(value, new Address(raw.owner), raw.data, raw.lamports);
+}
+
+function systemAccount(value: Address, lamps: bigint): KeyedAccountInfo {
+  return accountFrom(value, systemAccountData(lamps));
+}
+
+const runtimeConverters: LiteSvmConverters<
+  Address,
+  KeyedAccountInfo,
+  TransactionInstruction
+> = {
+  addressString: value => value.toBase58(),
+  instructionToRt: instruction => ({
+    programAddress: instruction.programId.toBase58(),
+    accounts: instruction.keys.map(meta => ({
+      address: meta.pubkey.toBase58(),
+      signer: meta.isSigner,
+      writable: meta.isWritable,
+    })),
+    data: new Uint8Array(instruction.data),
+  }),
+  accountToRt: account => ({
+    address: account.accountId.toBase58(),
+    owner: account.accountInfo.owner.toBase58(),
+    lamports: account.accountInfo.lamports,
+    data: account.accountInfo.data,
+    executable: account.accountInfo.executable,
+  }),
+  buildAccount: account => ({
+    accountId: new Address(account.address),
+    accountInfo: {
+      data: account.data,
+      executable: account.executable,
+      lamports: account.lamports,
+      owner: new Address(account.owner),
+      rentEpoch: 0n,
+      space: BigInt(account.data.length),
+    },
+  }),
+};
+
 const adapter: HarnessAdapter<
   Address,
   KeyedAccountInfo,
@@ -114,9 +162,8 @@ const adapter: HarnessAdapter<
       writable: meta.isWritable,
       signer: meta.isSigner,
     })),
-  emptyAccount: value => createKeyedSystemAccount(value, 0n),
-  fundedAccount: value =>
-    createKeyedSystemAccount(value, DEFAULT_WALLET_LAMPORTS),
+  emptyAccount: value => systemAccount(value, 0n),
+  fundedAccount: value => systemAccount(value, DEFAULT_WALLET_LAMPORTS),
   programAccount,
   tokenAmount: account =>
     BigInt(getTokenDecoder().decode(account.accountInfo.data).amount),
@@ -169,7 +216,7 @@ export class Test extends TestCore<
     elf?: Uint8Array,
     options: TestOptions = {},
   ) {
-    super(new QuasarSvm(), adapter, programId, elf, options);
+    super(new LiteSvmRuntime(runtimeConverters), adapter, programId, elf, options);
   }
 
   static async load(
@@ -187,23 +234,28 @@ export class Test extends TestCore<
 }
 
 const fixtures = createFixtureFactories<Address, KeyedAccountInfo, Test>({
-  systemAccount: (value, lamports) => createKeyedSystemAccount(value, lamports),
+  systemAccount: (value, lamps) => systemAccount(value, lamps),
   programAccount,
   mintAccount: (value, authority, freezeAuthority, supply, decimals, tokenProgram) =>
-    createKeyedMintAccount(
+    accountFrom(
       value,
-      { decimals, mintAuthority: authority, freezeAuthority, supply },
-      new Address(
+      mintAccountData(
+        {
+          decimals,
+          mintAuthority: authority?.toBase58(),
+          freezeAuthority: freezeAuthority?.toBase58(),
+          supply,
+        },
         tokenProgram === TokenProgram.Token2022
           ? SPL_TOKEN_2022_PROGRAM_ID
           : SPL_TOKEN_PROGRAM_ID,
       ),
     ),
   tokenAccount: (value, mint, owner, amount, tokenProgram) =>
-    createKeyedTokenAccount(
+    accountFrom(
       value,
-      { amount, mint, owner },
-      new Address(
+      tokenAccountData(
+        { amount, mint: mint.toBase58(), owner: owner.toBase58() },
         tokenProgram === TokenProgram.Token2022
           ? SPL_TOKEN_2022_PROGRAM_ID
           : SPL_TOKEN_PROGRAM_ID,

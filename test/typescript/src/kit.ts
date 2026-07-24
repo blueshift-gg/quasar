@@ -1,12 +1,3 @@
-import {
-  createKeyedMintAccount,
-  createKeyedSystemAccount,
-  createKeyedTokenAccount,
-  QuasarSvm,
-  SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
-  SPL_TOKEN_2022_PROGRAM_ID,
-  SPL_TOKEN_PROGRAM_ID,
-} from "@blueshift-gg/quasar-svm/kit";
 import { getMintDecoder, getTokenDecoder } from "@solana-program/token";
 import {
   address,
@@ -35,10 +26,23 @@ import {
   type WalletOptions as SharedWalletOptions,
 } from "./internal/fixture.js";
 import {
+  LiteSvmRuntime,
+  type LiteSvmConverters,
+} from "./internal/litesvm.js";
+import {
   Outcome as SharedOutcome,
   type AccountChange as SharedAccountChange,
   type AccountCodec as SharedAccountCodec,
 } from "./internal/outcome.js";
+import {
+  mintAccountData,
+  SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
+  SPL_TOKEN_2022_PROGRAM_ID,
+  SPL_TOKEN_PROGRAM_ID,
+  systemAccountData,
+  tokenAccountData,
+  type RawAccount,
+} from "./internal/spl.js";
 import {
   TestCore,
   type HarnessAdapter,
@@ -106,6 +110,43 @@ function programAccount(
   };
 }
 
+/** Wrap backend-neutral account bytes in a Kit account keyed at `value`. */
+function accountFrom(value: Address, raw: RawAccount): WorldAccount {
+  return programAccount(value, address(raw.owner), raw.data, raw.lamports);
+}
+
+function systemAccount(value: Address, lamps: bigint): WorldAccount {
+  return accountFrom(value, systemAccountData(lamps));
+}
+
+const runtimeConverters: LiteSvmConverters<Address, WorldAccount, Instruction> = {
+  addressString: value => value,
+  instructionToRt: instruction => ({
+    programAddress: instruction.programAddress,
+    accounts: (instruction.accounts ?? []).map(meta => ({
+      address: meta.address,
+      signer: isSignerRole(meta.role),
+      writable: isWritableRole(meta.role),
+    })),
+    data: instruction.data ? Uint8Array.from(instruction.data) : new Uint8Array(),
+  }),
+  accountToRt: account => ({
+    address: account.address,
+    owner: account.programAddress,
+    lamports: BigInt(account.lamports),
+    data: account.data,
+    executable: account.executable,
+  }),
+  buildAccount: account => ({
+    address: address(account.address),
+    programAddress: address(account.owner),
+    lamports: lamports(account.lamports),
+    data: account.data,
+    executable: account.executable,
+    space: BigInt(account.data.length),
+  }),
+};
+
 const adapter: HarnessAdapter<
   Address,
   WorldAccount,
@@ -124,9 +165,8 @@ const adapter: HarnessAdapter<
       writable: isWritableRole(meta.role),
       signer: isSignerRole(meta.role),
     })),
-  emptyAccount: value => createKeyedSystemAccount(value, 0n),
-  fundedAccount: value =>
-    createKeyedSystemAccount(value, DEFAULT_WALLET_LAMPORTS),
+  emptyAccount: value => systemAccount(value, 0n),
+  fundedAccount: value => systemAccount(value, DEFAULT_WALLET_LAMPORTS),
   programAccount,
   tokenAmount: account => BigInt(getTokenDecoder().decode(account.data).amount),
   mintSupply: account => BigInt(getMintDecoder().decode(account.data).supply),
@@ -174,7 +214,7 @@ export class Test extends TestCore<
     elf?: Uint8Array,
     options: TestOptions = {},
   ) {
-    super(new QuasarSvm(), adapter, programId, elf, options);
+    super(new LiteSvmRuntime(runtimeConverters), adapter, programId, elf, options);
   }
 
   static async load(
@@ -192,23 +232,23 @@ export class Test extends TestCore<
 }
 
 const fixtures = createFixtureFactories<Address, WorldAccount, Test>({
-  systemAccount: (value, lamps) => createKeyedSystemAccount(value, lamps),
+  systemAccount: (value, lamps) => systemAccount(value, lamps),
   programAccount,
   mintAccount: (value, authority, freezeAuthority, supply, decimals, tokenProgram) =>
-    createKeyedMintAccount(
+    accountFrom(
       value,
-      { decimals, mintAuthority: authority, freezeAuthority, supply },
-      address(
+      mintAccountData(
+        { decimals, mintAuthority: authority, freezeAuthority, supply },
         tokenProgram === TokenProgram.Token2022
           ? SPL_TOKEN_2022_PROGRAM_ID
           : SPL_TOKEN_PROGRAM_ID,
       ),
     ),
   tokenAccount: (value, mint, owner, amount, tokenProgram) =>
-    createKeyedTokenAccount(
+    accountFrom(
       value,
-      { amount, mint, owner },
-      address(
+      tokenAccountData(
+        { amount, mint, owner },
         tokenProgram === TokenProgram.Token2022
           ? SPL_TOKEN_2022_PROGRAM_ID
           : SPL_TOKEN_PROGRAM_ID,
