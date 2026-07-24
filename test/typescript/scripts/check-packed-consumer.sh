@@ -17,10 +17,6 @@ mkdir -p "$consumer_dir/consumer" "$consumer_dir/fixtures/vault"
 cp -R "$package_root/tests/consumer/." "$consumer_dir/consumer/"
 cp -R "$package_root/tests/fixtures/vault/clients" "$consumer_dir/fixtures/vault/"
 
-runtime_source="$(
-  node -p \
-    "require('$package_root/package.json').devDependencies['@blueshift-gg/quasar-svm']"
-)"
 web3_version="$(
   node -p \
     "require('$package_root/package.json').devDependencies['@solana/web3.js']"
@@ -42,7 +38,6 @@ npm install \
   --legacy-peer-deps \
   --no-save \
   "$package_tarball" \
-  "$runtime_source" \
   "@solana/web3.js@$web3_version" \
   "@types/node@$node_types_version" \
   "typescript@$typescript_version" \

@@ -62,12 +62,14 @@ describe("real Quasar program parity", () => {
     expect(deposit.accountChanges[0]?.wasCreated()).toBe(false);
     expect(deposit.accountChanges[0]?.wasRemoved()).toBe(false);
 
+    // Deposit leaves the vault system-owned; withdraw's CPI spends from it
+    // with the vault's PDA seeds signing.
     test.setAccount({
       address: vault,
       data: new Uint8Array(),
       executable: false,
       lamports: lamports(depositAmount),
-      programAddress: PROGRAM_ADDRESS,
+      programAddress: "11111111111111111111111111111111" as typeof PROGRAM_ADDRESS,
       space: 0n,
     });
     test
@@ -78,7 +80,7 @@ describe("real Quasar program parity", () => {
         }),
       )
       .succeeds()
-      .cuAtMost(392n)
+      .cuAtMost(1_600n)
       .hasLamports(vault, depositAmount - withdrawalAmount)
       .hasLamports(
         user,
@@ -154,11 +156,13 @@ describe("real Quasar program parity", () => {
 
     test.setAccount({
       accountId: vault,
+      // Deposit leaves the vault system-owned; withdraw's CPI spends from it
+      // with the vault's PDA seeds signing.
       accountInfo: {
         data: new Uint8Array(),
         executable: false,
         lamports: depositAmount,
-        owner: Web3VaultClient.programId,
+        owner: new Web3Address("11111111111111111111111111111111"),
         rentEpoch: 0n,
         space: 0n,
       },
@@ -171,7 +175,7 @@ describe("real Quasar program parity", () => {
         }),
       )
       .succeeds()
-      .cuAtMost(392n)
+      .cuAtMost(1_600n)
       .hasLamports(vault, depositAmount - withdrawalAmount)
       .hasLamports(
         user,
