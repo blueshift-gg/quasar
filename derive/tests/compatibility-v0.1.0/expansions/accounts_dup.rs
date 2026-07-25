@@ -1,6 +1,5 @@
 #[derive(Copy, Clone)]
 pub struct HeaderDupReadonlyBumps;
-impl HeaderDupReadonly {}
 impl ::quasar_lang::traits::AccountBumps for HeaderDupReadonly {
     type Bumps = HeaderDupReadonlyBumps;
 }
@@ -115,7 +114,7 @@ impl HeaderDupReadonly {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(source), "' (index ", "0usize",
+                concat!("Account '", stringify!(source), "' (index ", "0",
                 "): validation passed")
             );
         }
@@ -152,7 +151,7 @@ impl HeaderDupReadonly {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(destination), "' (index ", "1usize",
+                concat!("Account '", stringify!(destination), "' (index ", "1",
                 "): parsed (dup-aware)")
             );
         }

@@ -5,7 +5,6 @@ pub struct UsesAccountArrayBumps {
         2,
     > as ::quasar_lang::traits::AccountBumps>::Bumps,
 }
-impl UsesAccountArray {}
 impl ::quasar_lang::traits::AccountBumps for UsesAccountArray {
     type Bumps = UsesAccountArrayBumps;
 }
@@ -111,11 +110,10 @@ for UsesAccountArray {
 impl ::quasar_lang::traits::AccountCount for UsesAccountArray {
     const COUNT: usize = 1usize
         + <AccountsArray<SignerPair, 2> as ::quasar_lang::traits::AccountCount>::COUNT;
-    const NEEDS_EVENT_CPI: bool = false
-        || <AccountsArray<
-            SignerPair,
-            2,
-        > as ::quasar_lang::traits::AccountCount>::NEEDS_EVENT_CPI;
+    const NEEDS_EVENT_CPI: bool = <AccountsArray<
+        SignerPair,
+        2,
+    > as ::quasar_lang::traits::AccountCount>::NEEDS_EVENT_CPI;
 }
 impl UsesAccountArray {
     #[inline(always)]
@@ -153,7 +151,7 @@ impl UsesAccountArray {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(payer), "' (index ", "0usize",
+                concat!("Account '", stringify!(payer), "' (index ", "0",
                 "): validation passed")
             );
         }

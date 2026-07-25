@@ -179,7 +179,7 @@ impl InitEscrow {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(payer), "' (index ", "0usize",
+                concat!("Account '", stringify!(payer), "' (index ", "0",
                 "): validation passed")
             );
         }
@@ -208,7 +208,7 @@ impl InitEscrow {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(escrow), "' (index ", "1usize",
+                concat!("Account '", stringify!(escrow), "' (index ", "1",
                 "): validation passed")
             );
         }
@@ -241,7 +241,7 @@ impl InitEscrow {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(system_program), "' (index ", "2usize",
+                concat!("Account '", stringify!(system_program), "' (index ", "2",
                 "): validation passed")
             );
         }

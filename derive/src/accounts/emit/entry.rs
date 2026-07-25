@@ -44,9 +44,14 @@ impl SlotOffset {
         quote! { #fixed #(+ #terms)* }
     }
 
-    /// The offset rendered as a string literal for the debug log.
+    /// The offset rendered for the debug log. Stringifying `to_tokens()` would
+    /// bake a whole `<Ty as AccountCount>::COUNT` path into the binary.
     fn debug_string(&self) -> String {
-        self.to_tokens().to_string()
+        if self.composites.is_empty() {
+            self.fixed.to_string()
+        } else {
+            format!("{}+{}composite", self.fixed, self.composites.len())
+        }
     }
 }
 

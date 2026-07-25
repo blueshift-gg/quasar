@@ -457,7 +457,7 @@ pub(crate) fn emit_epilogue(
 pub(crate) fn emit_has_epilogue_typed(plan: &AccountsPlanTyped) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
     // Collect const-evaluable terms for HAS_EPILOGUE.
-    let mut terms: Vec<proc_macro2::TokenStream> = vec![quote! { false }];
+    let mut terms: Vec<proc_macro2::TokenStream> = Vec::new();
 
     for fp in &plan.fields {
         let ty = &fp.effective_ty;
@@ -474,7 +474,7 @@ pub(crate) fn emit_has_epilogue_typed(plan: &AccountsPlanTyped) -> proc_macro2::
         }
     }
 
-    quote! { #(#terms)||* }
+    crate::helpers::or_bool_terms(terms)
 }
 
 // Load phase.

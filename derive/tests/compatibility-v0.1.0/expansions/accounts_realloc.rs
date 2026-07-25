@@ -1,6 +1,5 @@
 #[derive(Copy, Clone)]
 pub struct ReallocAccountsBumps;
-impl ReallocAccounts {}
 impl ::quasar_lang::traits::AccountBumps for ReallocAccounts {
     type Bumps = ReallocAccountsBumps;
 }
@@ -138,7 +137,7 @@ impl ReallocAccounts {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(payer), "' (index ", "0usize",
+                concat!("Account '", stringify!(payer), "' (index ", "0",
                 "): validation passed")
             );
         }
@@ -167,7 +166,7 @@ impl ReallocAccounts {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(data), "' (index ", "1usize",
+                concat!("Account '", stringify!(data), "' (index ", "1",
                 "): validation passed")
             );
         }
@@ -200,7 +199,7 @@ impl ReallocAccounts {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(system_program), "' (index ", "2usize",
+                concat!("Account '", stringify!(system_program), "' (index ", "2",
                 "): validation passed")
             );
         }

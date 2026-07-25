@@ -1,6 +1,5 @@
 #[derive(Copy, Clone)]
 pub struct IxArgsFixedBumps;
-impl IxArgsFixed {}
 impl ::quasar_lang::traits::AccountBumps for IxArgsFixed {
     type Bumps = IxArgsFixedBumps;
 }
@@ -159,7 +158,7 @@ impl IxArgsFixed {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(account), "' (index ", "0usize",
+                concat!("Account '", stringify!(account), "' (index ", "0",
                 "): validation passed")
             );
         }

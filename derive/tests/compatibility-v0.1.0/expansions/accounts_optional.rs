@@ -1,6 +1,5 @@
 #[derive(Copy, Clone)]
 pub struct OptionalAccountsBumps;
-impl OptionalAccounts {}
 impl ::quasar_lang::traits::AccountBumps for OptionalAccounts {
     type Bumps = OptionalAccountsBumps;
 }
@@ -130,7 +129,7 @@ impl OptionalAccounts {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(authority), "' (index ", "0usize",
+                concat!("Account '", stringify!(authority), "' (index ", "0",
                 "): validation passed")
             );
         }
@@ -173,7 +172,7 @@ impl OptionalAccounts {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(config), "' (index ", "1usize",
+                concat!("Account '", stringify!(config), "' (index ", "1",
                 "): parsed (dup-aware)")
             );
         }

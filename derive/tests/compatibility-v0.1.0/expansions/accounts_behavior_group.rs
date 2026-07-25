@@ -1,6 +1,5 @@
 #[derive(Copy, Clone)]
 pub struct UseCustomBehaviorBumps;
-impl UseCustomBehavior {}
 impl ::quasar_lang::traits::AccountBumps for UseCustomBehavior {
     type Bumps = UseCustomBehaviorBumps;
 }
@@ -170,7 +169,7 @@ impl UseCustomBehavior {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(data), "' (index ", "0usize",
+                concat!("Account '", stringify!(data), "' (index ", "0",
                 "): validation passed")
             );
         }

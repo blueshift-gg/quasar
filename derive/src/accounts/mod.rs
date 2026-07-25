@@ -760,7 +760,7 @@ fn emit_needs_event_cpi_expr(plan: &resolve::specs::AccountsPlanTyped) -> proc_m
         })
         .collect();
 
-    quote! { false #(|| #terms)* }
+    crate::helpers::or_bool_terms(terms)
 }
 
 struct SignerHelpersCtx<'a> {
@@ -839,10 +839,18 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
         })
         .collect();
 
-    quote! {
-        impl #impl_generics #name #ty_generics #where_clause {
-            #(#signer_methods)*
+    let signer_methods_impl = if signer_methods.is_empty() {
+        quote! {}
+    } else {
+        quote! {
+            impl #impl_generics #name #ty_generics #where_clause {
+                #(#signer_methods)*
+            }
         }
+    };
+
+    quote! {
+        #signer_methods_impl
 
         impl #impl_generics #krate::traits::AccountBumps for #name #ty_generics #where_clause {
             type Bumps = #bumps_name;

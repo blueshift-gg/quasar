@@ -23,6 +23,25 @@ fn duplicate_arg_error(ident: &Ident) -> syn::Error {
     syn::Error::new(ident.span(), format!("duplicate `{ident}`"))
 }
 
+/// Join const-evaluable `bool` terms into one `||` chain, folding literals away
+/// so the emitted const reads `true` rather than `false || true`.
+pub(crate) fn or_bool_terms(
+    terms: impl IntoIterator<Item = proc_macro2::TokenStream>,
+) -> proc_macro2::TokenStream {
+    let mut kept = Vec::new();
+    for term in terms {
+        match term.to_string().as_str() {
+            "true" => return quote! { true },
+            "false" => {}
+            _ => kept.push(term),
+        }
+    }
+    if kept.is_empty() {
+        return quote! { false };
+    }
+    quote! { #(#kept)||* }
+}
+
 /// Parse `#[max(N)]` or `#[max(N, pfx = P)]` from an attribute list.
 pub(crate) fn parse_max_attr(attrs: &[syn::Attribute]) -> Option<syn::Result<(usize, usize)>> {
     for attr in attrs {

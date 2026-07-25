@@ -1,13 +1,12 @@
 #[derive(Copy, Clone)]
 pub struct CloseAccountsBumps;
-impl CloseAccounts {}
 impl ::quasar_lang::traits::AccountBumps for CloseAccounts {
     type Bumps = CloseAccountsBumps;
 }
 impl ::quasar_lang::traits::AccountGroup for CloseAccounts {}
 impl<'input> ::quasar_lang::traits::ParseAccounts<'input> for CloseAccounts {
     type Bumps = CloseAccountsBumps;
-    const HAS_EPILOGUE: bool = false || true;
+    const HAS_EPILOGUE: bool = true;
     #[inline(always)]
     fn parse(
         accounts: &'input mut [::quasar_lang::__internal::AccountView],
@@ -160,7 +159,7 @@ impl CloseAccounts {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(authority), "' (index ", "0usize",
+                concat!("Account '", stringify!(authority), "' (index ", "0",
                 "): validation passed")
             );
         }
@@ -193,7 +192,7 @@ impl CloseAccounts {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(old_data), "' (index ", "1usize",
+                concat!("Account '", stringify!(old_data), "' (index ", "1",
                 "): validation passed")
             );
         }

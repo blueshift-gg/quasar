@@ -1,6 +1,5 @@
 #[derive(Copy, Clone)]
 pub struct BasicAccountsBumps;
-impl BasicAccounts {}
 impl ::quasar_lang::traits::AccountBumps for BasicAccounts {
     type Bumps = BasicAccountsBumps;
 }
@@ -131,7 +130,7 @@ impl BasicAccounts {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(payer), "' (index ", "0usize",
+                concat!("Account '", stringify!(payer), "' (index ", "0",
                 "): validation passed")
             );
         }
@@ -164,7 +163,7 @@ impl BasicAccounts {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(config), "' (index ", "1usize",
+                concat!("Account '", stringify!(config), "' (index ", "1",
                 "): validation passed")
             );
         }
@@ -197,7 +196,7 @@ impl BasicAccounts {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(system_program), "' (index ", "2usize",
+                concat!("Account '", stringify!(system_program), "' (index ", "2",
                 "): validation passed")
             );
         }
@@ -222,7 +221,7 @@ impl BasicAccounts {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(rent), "' (index ", "3usize",
+                concat!("Account '", stringify!(rent), "' (index ", "3",
                 "): validation passed")
             );
         }

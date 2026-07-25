@@ -1,6 +1,5 @@
 #[derive(Copy, Clone)]
 pub struct TwoDynBumps;
-impl TwoDyn {}
 impl ::quasar_lang::traits::AccountBumps for TwoDyn {
     type Bumps = TwoDynBumps;
 }
@@ -156,7 +155,7 @@ impl TwoDyn {
                 )?
             };
             ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(account), "' (index ", "0usize",
+                concat!("Account '", stringify!(account), "' (index ", "0",
                 "): validation passed")
             );
         }
