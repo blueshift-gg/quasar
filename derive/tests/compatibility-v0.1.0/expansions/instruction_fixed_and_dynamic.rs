@@ -39,7 +39,7 @@ fn __transfer_body(
         Ok(())
     }
 }
-#[inline(always)]
+#[inline]
 fn __quasar_direct_transfer(
     __program_id: &[u8; 32],
     __accounts_start: *mut u8,
@@ -60,10 +60,10 @@ fn __quasar_direct_transfer(
                 __program_id_addr,
             )?
         };
-        let mut __accounts_buf = unsafe { __buf.assume_init() };
+        let __accounts_buf = unsafe { &mut *__buf.as_mut_ptr() };
         unsafe {
             <Transfer as ::quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
-                &mut __accounts_buf,
+                __accounts_buf,
                 __ix_data,
                 __program_id_addr,
             )?

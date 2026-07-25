@@ -503,7 +503,10 @@ pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> Token
     } else {
         let direct_name = format_ident!("__quasar_direct_{}", fn_name);
         quote! {
-            #[inline(always)]
+            // `inline`, not `inline(always)`: forcing the parse into `__dispatch`
+            // spills registers. Letting the inliner pick per call site measured
+            // cheaper on every escrow instruction and 808 bytes smaller.
+            #[inline]
             fn #direct_name(
                 __program_id: &[u8; 32],
                 __accounts_start: *mut u8,
@@ -531,11 +534,14 @@ pub(crate) fn instruction_inner(attr: TokenStream2, item: TokenStream2) -> Token
                         )?
                     };
                     // SAFETY: `parse_accounts_raw` initialized every slot before
-                    // returning `Ok`.
-                    let mut __accounts_buf = unsafe { __buf.assume_init() };
+                    // returning `Ok`. Referencing the array in place keeps
+                    // its length static and avoids moving it out.
+                    let __accounts_buf = unsafe {
+                        &mut *__buf.as_mut_ptr()
+                    };
                     unsafe {
                         <#accounts_ty as #krate::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
-                            &mut __accounts_buf,
+                            __accounts_buf,
                             __ix_data,
                             __program_id_addr,
                         )?
