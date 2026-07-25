@@ -308,6 +308,64 @@ fn program_dispatch_two_ix() {
         .assert_eq(&expand_pretty(program_inner(attr, item)));
 }
 
+/// Raw instructions on contiguous 1-byte discriminators: the `callx`
+/// function-pointer table, the shared raw account walk, and the normal
+/// discriminator match living alongside it.
+#[test]
+fn program_dispatch_raw_table() {
+    let attr = quote! {};
+    let item = quote! {
+        mod quasar_raw_demo {
+            use super::*;
+
+            #[instruction(discriminator = 0)]
+            pub fn normal(ctx: Ctx<NormalInit>) -> Result<(), ProgramError> {
+                ctx.accounts.handler()
+            }
+
+            #[instruction(discriminator = 1, raw)]
+            pub fn raw_one(ctx: Context) -> Result<(), ProgramError> {
+                let _ = ctx.data;
+                Ok(())
+            }
+
+            #[instruction(discriminator = 2, raw)]
+            pub fn raw_two(ctx: Context) -> Result<(), ProgramError> {
+                let _ = ctx.data;
+                Ok(())
+            }
+        }
+    };
+    expect_test::expect_file!["expansions/program_dispatch_raw_table.rs"]
+        .assert_eq(&expand_pretty(program_inner(attr, item)));
+}
+
+/// Raw instructions on non-contiguous discriminators, which cannot use the
+/// jump table and fall back to the guarded match chain.
+#[test]
+fn program_dispatch_raw_match_fallback() {
+    let attr = quote! {};
+    let item = quote! {
+        mod quasar_raw_gap_demo {
+            use super::*;
+
+            #[instruction(discriminator = 1, raw)]
+            pub fn raw_one(ctx: Context) -> Result<(), ProgramError> {
+                let _ = ctx.data;
+                Ok(())
+            }
+
+            #[instruction(discriminator = 7, raw)]
+            pub fn raw_seven(ctx: Context) -> Result<(), ProgramError> {
+                let _ = ctx.data;
+                Ok(())
+            }
+        }
+    };
+    expect_test::expect_file!["expansions/program_dispatch_raw_match_fallback.rs"]
+        .assert_eq(&expand_pretty(program_inner(attr, item)));
+}
+
 // ---------------------------------------------------------------------------
 // #[account] type macro.
 // ---------------------------------------------------------------------------
