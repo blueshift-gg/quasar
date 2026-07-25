@@ -51,9 +51,9 @@ for UseCustomBehavior {
             Account<MyData>,
         >>::RUN_CHECK {
             let __bhv_builder = min_value::Args::builder();
-            let __bhv_builder = if <min_value::Behavior as ::quasar_lang::account_behavior::AccountBehavior<
+            let __bhv_builder = if ::quasar_lang::account_behavior::uses_arg::<
+                min_value::Behavior,
                 Account<MyData>,
-            >>::uses_arg::<
                 { ::quasar_lang::account_behavior::ARG_PHASE_CHECK },
                 { ::quasar_lang::account_behavior::behavior_arg_key_hash("min") },
             >() {

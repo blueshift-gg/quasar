@@ -316,7 +316,9 @@ fn emit_behavior_args_builder(
             let key_lit = key.to_string();
             let val = emit_lowered_value(&arg.lowered, exit_context);
             quote! {
-                let __bhv_builder = if #bhv::uses_arg::<
+                let __bhv_builder = if #krate::account_behavior::uses_arg::<
+                    #path::Behavior,
+                    #field_ty,
                     { #phase_const },
                     { #krate::account_behavior::behavior_arg_key_hash(#key_lit) },
                 >() {

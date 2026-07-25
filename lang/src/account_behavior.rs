@@ -283,3 +283,20 @@ pub const fn behavior_arg_key_hash(key: &str) -> u64 {
     }
     hash
 }
+
+/// [`AccountBehavior::uses_arg`] reached without naming the qualified
+/// `<Behavior as AccountBehavior<Account>>` path at every argument site.
+///
+/// The accounts derive emits one call per declared behavior argument. The
+/// guard stays in `if` position rather than folding the setter into a closure:
+/// a closure would leave the builder type inferred, and a fixture with an
+/// unresolved behavior module then reports a builder-inference cascade instead
+/// of the unresolved module.
+#[doc(hidden)]
+#[inline(always)]
+pub fn uses_arg<Bhv, Acct, const PHASE: u8, const KEY: u64>() -> bool
+where
+    Bhv: AccountBehavior<Acct>,
+{
+    Bhv::uses_arg::<PHASE, KEY>()
+}
