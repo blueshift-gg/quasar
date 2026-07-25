@@ -106,6 +106,10 @@ mod quasar_demo {
                 &*(instruction_data.as_ptr().add(instruction_data.len())
                     as *const [u8; 32])
             };
+            let __program_id_addr: &::quasar_lang::prelude::Address = unsafe {
+                &*(__program_id as *const [u8; 32]
+                    as *const ::quasar_lang::prelude::Address)
+            };
             const __U64_SIZE: usize = core::mem::size_of::<u64>();
             let __num_accounts = unsafe { *(ptr as *const u64) };
             let __accounts_start = unsafe { (ptr as *mut u8).add(__U64_SIZE) };
@@ -135,36 +139,31 @@ mod quasar_demo {
                             unsafe { instruction_data.get_unchecked(1usize..) },
                         )
                     } else {
-                        {
-                            let mut __buf = core::mem::MaybeUninit::<
-                                [::quasar_lang::__internal::AccountView; <Initialize as ::quasar_lang::traits::AccountCount>::COUNT],
-                            >::uninit();
-                            let __remaining_ptr = unsafe {
-                                <Initialize as ::quasar_lang::traits::ParseAccountsRaw>::parse_accounts_raw(
-                                    __accounts_start,
-                                    __buf.as_mut_ptr()
-                                        as *mut ::quasar_lang::__internal::AccountView,
-                                    0usize,
-                                    unsafe {
-                                        &*(__program_id as *const [u8; 32]
-                                            as *const ::quasar_lang::prelude::Address)
-                                    },
-                                )?
-                            };
-                            let mut __accounts = unsafe { __buf.assume_init() };
-                            let __data_after_disc = unsafe {
-                                instruction_data.get_unchecked(1usize..)
-                            };
-                            initialize(unsafe {
-                                ::quasar_lang::context::Context::from_raw_parts(
-                                    __program_id,
-                                    &mut __accounts,
-                                    __data_after_disc,
-                                    __remaining_ptr,
-                                    instruction_data.as_ptr().sub(__U64_SIZE),
-                                )
-                            })
-                        }
+                        let mut __buf = core::mem::MaybeUninit::<
+                            [::quasar_lang::__internal::AccountView; <Initialize as ::quasar_lang::traits::AccountCount>::COUNT],
+                        >::uninit();
+                        let __remaining_ptr = unsafe {
+                            <Initialize as ::quasar_lang::traits::ParseAccountsRaw>::parse_accounts_raw(
+                                __accounts_start,
+                                __buf.as_mut_ptr()
+                                    as *mut ::quasar_lang::__internal::AccountView,
+                                0usize,
+                                __program_id_addr,
+                            )?
+                        };
+                        let mut __accounts = unsafe { __buf.assume_init() };
+                        let __data_after_disc = unsafe {
+                            instruction_data.get_unchecked(1usize..)
+                        };
+                        initialize(unsafe {
+                            ::quasar_lang::context::Context::from_raw_parts(
+                                __program_id,
+                                &mut __accounts,
+                                __data_after_disc,
+                                __remaining_ptr,
+                                instruction_data.as_ptr().sub(__U64_SIZE),
+                            )
+                        })
                     }
                 }
                 [1] => {
@@ -182,36 +181,31 @@ mod quasar_demo {
                             unsafe { instruction_data.get_unchecked(1usize..) },
                         )
                     } else {
-                        {
-                            let mut __buf = core::mem::MaybeUninit::<
-                                [::quasar_lang::__internal::AccountView; <Update as ::quasar_lang::traits::AccountCount>::COUNT],
-                            >::uninit();
-                            let __remaining_ptr = unsafe {
-                                <Update as ::quasar_lang::traits::ParseAccountsRaw>::parse_accounts_raw(
-                                    __accounts_start,
-                                    __buf.as_mut_ptr()
-                                        as *mut ::quasar_lang::__internal::AccountView,
-                                    0usize,
-                                    unsafe {
-                                        &*(__program_id as *const [u8; 32]
-                                            as *const ::quasar_lang::prelude::Address)
-                                    },
-                                )?
-                            };
-                            let mut __accounts = unsafe { __buf.assume_init() };
-                            let __data_after_disc = unsafe {
-                                instruction_data.get_unchecked(1usize..)
-                            };
-                            update(unsafe {
-                                ::quasar_lang::context::Context::from_raw_parts(
-                                    __program_id,
-                                    &mut __accounts,
-                                    __data_after_disc,
-                                    __remaining_ptr,
-                                    instruction_data.as_ptr().sub(__U64_SIZE),
-                                )
-                            })
-                        }
+                        let mut __buf = core::mem::MaybeUninit::<
+                            [::quasar_lang::__internal::AccountView; <Update as ::quasar_lang::traits::AccountCount>::COUNT],
+                        >::uninit();
+                        let __remaining_ptr = unsafe {
+                            <Update as ::quasar_lang::traits::ParseAccountsRaw>::parse_accounts_raw(
+                                __accounts_start,
+                                __buf.as_mut_ptr()
+                                    as *mut ::quasar_lang::__internal::AccountView,
+                                0usize,
+                                __program_id_addr,
+                            )?
+                        };
+                        let mut __accounts = unsafe { __buf.assume_init() };
+                        let __data_after_disc = unsafe {
+                            instruction_data.get_unchecked(1usize..)
+                        };
+                        update(unsafe {
+                            ::quasar_lang::context::Context::from_raw_parts(
+                                __program_id,
+                                &mut __accounts,
+                                __data_after_disc,
+                                __remaining_ptr,
+                                instruction_data.as_ptr().sub(__U64_SIZE),
+                            )
+                        })
                     }
                 }
                 _ => {
