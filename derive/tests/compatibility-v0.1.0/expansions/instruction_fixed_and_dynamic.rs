@@ -48,24 +48,26 @@ fn __quasar_direct_transfer(
     let __program_id_addr = unsafe {
         &*(__program_id as *const [u8; 32] as *const ::quasar_lang::prelude::Address)
     };
-    let mut __buf = core::mem::MaybeUninit::<
-        [::quasar_lang::__internal::AccountView; <Transfer as ::quasar_lang::traits::AccountCount>::COUNT],
-    >::uninit();
-    let _ = unsafe {
-        <Transfer as ::quasar_lang::traits::ParseAccountsRaw>::parse_accounts_raw(
-            __accounts_start,
-            __buf.as_mut_ptr() as *mut ::quasar_lang::__internal::AccountView,
-            0usize,
-            __program_id_addr,
-        )?
-    };
-    let mut __accounts_buf = unsafe { __buf.assume_init() };
-    let (__accounts, __bumps) = unsafe {
-        <Transfer as ::quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
-            &mut __accounts_buf,
-            __ix_data,
-            __program_id_addr,
-        )?
+    let (__accounts, __bumps) = {
+        let mut __buf = core::mem::MaybeUninit::<
+            [::quasar_lang::__internal::AccountView; <Transfer as ::quasar_lang::traits::AccountCount>::COUNT],
+        >::uninit();
+        let _ = unsafe {
+            <Transfer as ::quasar_lang::traits::ParseAccountsRaw>::parse_accounts_raw(
+                __accounts_start,
+                __buf.as_mut_ptr() as *mut ::quasar_lang::__internal::AccountView,
+                0usize,
+                __program_id_addr,
+            )?
+        };
+        let mut __accounts_buf = unsafe { __buf.assume_init() };
+        unsafe {
+            <Transfer as ::quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
+                &mut __accounts_buf,
+                __ix_data,
+                __program_id_addr,
+            )?
+        }
     };
     __transfer_body(::quasar_lang::context::Ctx {
         accounts: __accounts,

@@ -20,7 +20,7 @@ const TAKER_TA_A: Pubkey = Pubkey::new_from_array([8; 32]);
 const TAKER_TA_B: Pubkey = Pubkey::new_from_array([9; 32]);
 const WRONG_OWNER: Pubkey = Pubkey::new_from_array([10; 32]);
 const MAX_ELF_BYTES: usize = 44_320;
-const MAX_MAKE_CU: u64 = 21_036;
+const MAX_MAKE_CU: u64 = 21_035;
 const MAX_TAKE_CU: u64 = 29_256;
 const MAX_REFUND_CU: u64 = 16_942;
 
