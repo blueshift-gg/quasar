@@ -186,38 +186,25 @@ impl TwoDyn {
     #[inline(always)]
     #[doc(hidden)]
     pub unsafe fn parse_direct_with_instruction_data_unchecked(
-        mut input: *mut u8,
+        input: *mut u8,
         __ix_data: &[u8],
         __program_id: &::quasar_lang::prelude::Address,
     ) -> Result<
         (Self, TwoDynBumps),
         ::quasar_lang::__solana_program_error::ProgramError,
     > {
-        let (tag, a, b) = Self::__extract_ix_args(__ix_data)?;
         let mut __buf = core::mem::MaybeUninit::<
             [::quasar_lang::__internal::AccountView; 1usize],
         >::uninit();
         let _ = Self::parse_accounts(input, &mut __buf, __program_id)?;
         let mut __accounts = unsafe { __buf.assume_init() };
-        let accounts = &mut __accounts;
-        let __parsed_result: Result<
-            (Self, <Self as ::quasar_lang::traits::ParseAccounts>::Bumps),
-            ::quasar_lang::__solana_program_error::ProgramError,
-        > = {
-            let [account] = accounts else {
-                unsafe { core::hint::unreachable_unchecked() }
-            };
-            let mut account = <Account<
-                TwoDynArgsAccount,
-            > as ::quasar_lang::account_load::AccountLoad>::load_mut(account)?;
-            ::quasar_lang::validation::check_constraint(
-                tag != 0 && a.len() == b.len(),
-                ::quasar_lang::error::QuasarError::ConstraintViolation.into(),
-            )?;
-            Ok((Self { account }, TwoDynBumps))
-        };
-        let (__parsed_accounts, __parsed_bumps) = __parsed_result?;
-        Ok((__parsed_accounts, __parsed_bumps))
+        unsafe {
+            <Self as ::quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
+                &mut __accounts,
+                __ix_data,
+                __program_id,
+            )
+        }
     }
 }
 unsafe impl ::quasar_lang::traits::ParseAccountsRaw for TwoDyn {

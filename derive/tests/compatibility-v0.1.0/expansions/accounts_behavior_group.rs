@@ -200,7 +200,7 @@ impl UseCustomBehavior {
     #[inline(always)]
     #[doc(hidden)]
     pub unsafe fn parse_direct_with_instruction_data_unchecked(
-        mut input: *mut u8,
+        input: *mut u8,
         __ix_data: &[u8],
         __program_id: &::quasar_lang::prelude::Address,
     ) -> Result<
@@ -212,56 +212,13 @@ impl UseCustomBehavior {
         >::uninit();
         let _ = Self::parse_accounts(input, &mut __buf, __program_id)?;
         let mut __accounts = unsafe { __buf.assume_init() };
-        let accounts = &mut __accounts;
-        let __parsed_result: Result<
-            (Self, <Self as ::quasar_lang::traits::ParseAccounts>::Bumps),
-            ::quasar_lang::__solana_program_error::ProgramError,
-        > = {
-            let [data] = accounts else {
-                unsafe { core::hint::unreachable_unchecked() }
-            };
-            let data = if false
-                || <min_value::Behavior as ::quasar_lang::account_behavior::AccountBehavior<
-                    Account<MyData>,
-                >>::VALIDATES_ACCOUNT_DATA
-            {
-                unsafe {
-                    <Account<
-                        MyData,
-                    > as ::quasar_lang::account_load::AccountLoad>::load_intrinsic(data)?
-                }
-            } else {
-                <Account<
-                    MyData,
-                > as ::quasar_lang::account_load::AccountLoad>::load(data)?
-            };
-            if <min_value::Behavior as ::quasar_lang::account_behavior::AccountBehavior<
-                Account<MyData>,
-            >>::RUN_CHECK && true
-            {
-                let __bhv_builder = min_value::Args::builder();
-                let __bhv_builder = if <min_value::Behavior as ::quasar_lang::account_behavior::AccountBehavior<
-                    Account<MyData>,
-                >>::uses_arg::<
-                    { ::quasar_lang::account_behavior::ARG_PHASE_CHECK },
-                    { ::quasar_lang::account_behavior::behavior_arg_key_hash("min") },
-                >() {
-                    __bhv_builder.min(10u64)
-                } else {
-                    __bhv_builder
-                };
-                Self::__assert_builder(&__bhv_builder);
-                let __bhv_args = ::quasar_lang::account_behavior::BehaviorArgsBuilder::build_check(
-                    __bhv_builder,
-                )?;
-                <min_value::Behavior as ::quasar_lang::account_behavior::AccountBehavior<
-                    Account<MyData>,
-                >>::check(&data, &__bhv_args)?;
-            }
-            Ok((Self { data }, UseCustomBehaviorBumps))
-        };
-        let (__parsed_accounts, __parsed_bumps) = __parsed_result?;
-        Ok((__parsed_accounts, __parsed_bumps))
+        unsafe {
+            <Self as ::quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
+                &mut __accounts,
+                __ix_data,
+                __program_id,
+            )
+        }
     }
 }
 unsafe impl ::quasar_lang::traits::ParseAccountsRaw for UseCustomBehavior {

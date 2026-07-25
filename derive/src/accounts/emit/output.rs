@@ -189,11 +189,10 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
             #[inline(always)]
             #[doc(hidden)]
             pub unsafe fn parse_direct_with_instruction_data_unchecked(
-                mut input: *mut u8,
+                input: *mut u8,
                 __ix_data: &[u8],
                 __program_id: &#krate::prelude::Address,
             ) -> Result<(Self, #bumps_name), #krate::__solana_program_error::ProgramError> {
-                #ix_arg_extraction
                 #direct_parse_body
             }
         }

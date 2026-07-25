@@ -131,7 +131,7 @@ pub(crate) fn build_accounts_plan(
         parse_steps: emit_parse_account_steps(&fields),
         count_expr: emit_count_expr(&fields),
         parse_body: emit_full_parse_body(typed_plan, &fields, cx),
-        direct_parse_body: emit_direct_parse_body(typed_plan, &fields, cx),
+        direct_parse_body: emit_direct_parse_body(&fields),
     }
 }
 
@@ -375,14 +375,9 @@ fn emit_parse_body_from_inner(
     }
 }
 
-fn emit_direct_parse_body(
-    typed_plan: &resolve::specs::AccountsPlanTyped,
-    fields: &[ParseFieldPlan],
-    cx: &EmitCx,
-) -> proc_macro2::TokenStream {
+fn emit_direct_parse_body(fields: &[ParseFieldPlan]) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
     let count_expr = emit_count_expr(fields);
-    let fallback_body = emit_parse_body_without_behavior_assertions(typed_plan, fields, cx);
     quote! {
         let mut __buf = core::mem::MaybeUninit::<
             [#krate::__internal::AccountView; #count_expr]
@@ -391,23 +386,14 @@ fn emit_direct_parse_body(
         // SAFETY: parse_accounts initializes the whole fixed-size buffer before
         // returning Ok.
         let mut __accounts = unsafe { __buf.assume_init() };
-        let accounts = &mut __accounts;
-        let __parsed_result: Result<
-            (Self, <Self as #krate::traits::ParseAccounts>::Bumps),
-            #krate::__solana_program_error::ProgramError,
-        > = {
-            #fallback_body
-        };
-        let (__parsed_accounts, __parsed_bumps) = __parsed_result?;
-        Ok((__parsed_accounts, __parsed_bumps))
+        // SAFETY: the buffer holds exactly COUNT validated views, which is what
+        // the unchecked parser is generated for.
+        unsafe {
+            <Self as #krate::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
+                &mut __accounts,
+                __ix_data,
+                __program_id,
+            )
+        }
     }
-}
-
-fn emit_parse_body_without_behavior_assertions(
-    typed_plan: &resolve::specs::AccountsPlanTyped,
-    fields: &[ParseFieldPlan],
-    cx: &EmitCx,
-) -> proc_macro2::TokenStream {
-    let inner_body = super::parse::emit_parse_body_without_behavior_assertions(typed_plan, cx);
-    emit_parse_body_from_inner(fields, inner_body)
 }

@@ -37,21 +37,6 @@ pub(crate) fn emit_parse_body(
     plan: &AccountsPlanTyped,
     cx: &super::EmitCx,
 ) -> proc_macro2::TokenStream {
-    emit_parse_body_inner(plan, cx, true)
-}
-
-pub(crate) fn emit_parse_body_without_behavior_assertions(
-    plan: &AccountsPlanTyped,
-    cx: &super::EmitCx,
-) -> proc_macro2::TokenStream {
-    emit_parse_body_inner(plan, cx, false)
-}
-
-fn emit_parse_body_inner(
-    plan: &AccountsPlanTyped,
-    cx: &super::EmitCx,
-    include_behavior_assertions: bool,
-) -> proc_macro2::TokenStream {
     let parse_sequence = emit_parse_sequence(plan);
     let bump_vars = emit_bump_vars(&plan.fields);
     let init_state_vars = emit_init_state_vars(&plan.fields);
@@ -59,11 +44,7 @@ fn emit_parse_body_inner(
     let bump_init = emit_bump_init(&plan.fields, &cx.bumps_name);
 
     // Behavior const assertions: REQUIRES_MUT and SETS_INIT_PARAMS.
-    let behavior_asserts = if include_behavior_assertions {
-        emit_behavior_assertions(&plan.fields)
-    } else {
-        quote! {}
-    };
+    let behavior_asserts = emit_behavior_assertions(&plan.fields);
 
     let construct_fields: Vec<proc_macro2::TokenStream> = plan
         .fields

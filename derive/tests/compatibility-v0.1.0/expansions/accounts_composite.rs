@@ -195,7 +195,7 @@ impl UsesAccountArray {
     #[inline(always)]
     #[doc(hidden)]
     pub unsafe fn parse_direct_with_instruction_data_unchecked(
-        mut input: *mut u8,
+        input: *mut u8,
         __ix_data: &[u8],
         __program_id: &::quasar_lang::prelude::Address,
     ) -> Result<
@@ -211,48 +211,13 @@ impl UsesAccountArray {
         >::uninit();
         let _ = Self::parse_accounts(input, &mut __buf, __program_id)?;
         let mut __accounts = unsafe { __buf.assume_init() };
-        let accounts = &mut __accounts;
-        let __parsed_result: Result<
-            (Self, <Self as ::quasar_lang::traits::ParseAccounts>::Bumps),
-            ::quasar_lang::__solana_program_error::ProgramError,
-        > = {
-            let mut __accounts_rest: &mut [::quasar_lang::__internal::AccountView] = accounts;
-            let (__chunk, __rest) = unsafe { __accounts_rest.split_at_mut_unchecked(1) };
-            __accounts_rest = __rest;
-            let payer = unsafe { __chunk.get_unchecked_mut(0) };
-            let (__chunk, __rest) = unsafe {
-                __accounts_rest
-                    .split_at_mut_unchecked(
-                        <AccountsArray<
-                            SignerPair,
-                            2,
-                        > as ::quasar_lang::traits::AccountCount>::COUNT,
-                    )
-            };
-            __accounts_rest = __rest;
-            let (pairs, __composite_bumps_pairs) = unsafe {
-                <AccountsArray<
-                    SignerPair,
-                    2,
-                > as ::quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
-                    __chunk,
-                    __ix_data,
-                    __program_id,
-                )
-            }?;
-            let _ = __accounts_rest;
-            let payer = <Signer as ::quasar_lang::account_load::AccountLoad>::load(
-                payer,
-            )?;
-            Ok((
-                Self { payer, pairs },
-                UsesAccountArrayBumps {
-                    pairs: __composite_bumps_pairs,
-                },
-            ))
-        };
-        let (__parsed_accounts, __parsed_bumps) = __parsed_result?;
-        Ok((__parsed_accounts, __parsed_bumps))
+        unsafe {
+            <Self as ::quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
+                &mut __accounts,
+                __ix_data,
+                __program_id,
+            )
+        }
     }
 }
 unsafe impl ::quasar_lang::traits::ParseAccountsRaw for UsesAccountArray {
