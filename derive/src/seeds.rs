@@ -219,10 +219,6 @@ pub(crate) fn generate_seeds_impl(
         .iter()
         .map(|expr| quote! { #krate::cpi::Seed::from(#expr) })
         .collect();
-    let signer_seed_exprs_bump: Vec<_> = slice_exprs_bump
-        .iter()
-        .map(|expr| quote! { #krate::cpi::Seed::from(#expr) })
-        .collect();
 
     let has_address_param = seeds_attr
         .params
@@ -333,7 +329,7 @@ pub(crate) fn generate_seeds_impl(
             where
                 F: FnOnce(&[#krate::cpi::Signer<'_, '_>]) -> R,
             {
-                let seeds = [#(#signer_seed_exprs_bump),*];
+                let seeds = self.signer_seeds();
                 let signer = #krate::cpi::Signer::from(&seeds);
                 f(core::slice::from_ref(&signer))
             }
@@ -415,15 +411,15 @@ pub(crate) fn generate_seeds_impl(
                 Ok(self._bump[0])
             }
 
+            /// The set already carries its bump, so `_bump` is ignored and the
+            /// stored one is used.
             #[inline(always)]
             fn with_signer_seeds<R>(
                 &self,
                 _bump: &[u8],
                 f: impl FnOnce(&[#krate::cpi::Signer<'_, '_>]) -> R,
             ) -> R {
-                let seeds = [#(#signer_seed_exprs_bump),*];
-                let signer = #krate::cpi::Signer::from(&seeds);
-                f(core::slice::from_ref(&signer))
+                #krate::cpi::CpiSignerSeeds::with_signers(self, f)
             }
         }
     }

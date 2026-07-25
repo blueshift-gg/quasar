@@ -82,11 +82,7 @@ for VaultPdaSeedSetWithBump<'__quasar_seed> {
     where
         F: FnOnce(&[::quasar_lang::cpi::Signer<'_, '_>]) -> R,
     {
-        let seeds = [
-            ::quasar_lang::cpi::Seed::from(b"vault"),
-            ::quasar_lang::cpi::Seed::from(self.inner._authority.as_ref()),
-            ::quasar_lang::cpi::Seed::from(&self._bump),
-        ];
+        let seeds = self.signer_seeds();
         let signer = ::quasar_lang::cpi::Signer::from(&seeds);
         f(core::slice::from_ref(&signer))
     }
@@ -163,18 +159,14 @@ for VaultPdaSeedSetWithBump<'__quasar_seed> {
         ::quasar_lang::pda::verify_program_address(&slices, program_id, actual)?;
         Ok(self._bump[0])
     }
+    /// The set already carries its bump, so `_bump` is ignored and the
+    /// stored one is used.
     #[inline(always)]
     fn with_signer_seeds<R>(
         &self,
         _bump: &[u8],
         f: impl FnOnce(&[::quasar_lang::cpi::Signer<'_, '_>]) -> R,
     ) -> R {
-        let seeds = [
-            ::quasar_lang::cpi::Seed::from(b"vault"),
-            ::quasar_lang::cpi::Seed::from(self.inner._authority.as_ref()),
-            ::quasar_lang::cpi::Seed::from(&self._bump),
-        ];
-        let signer = ::quasar_lang::cpi::Signer::from(&seeds);
-        f(core::slice::from_ref(&signer))
+        ::quasar_lang::cpi::CpiSignerSeeds::with_signers(self, f)
     }
 }
