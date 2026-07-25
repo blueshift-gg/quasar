@@ -140,9 +140,11 @@ mod quasar_demo {
                                 [::quasar_lang::__internal::AccountView; <Initialize as ::quasar_lang::traits::AccountCount>::COUNT],
                             >::uninit();
                             let __remaining_ptr = unsafe {
-                                <Initialize>::parse_accounts(
+                                <Initialize as ::quasar_lang::traits::ParseAccountsRaw>::parse_accounts_raw(
                                     __accounts_start,
-                                    &mut __buf,
+                                    __buf.as_mut_ptr()
+                                        as *mut ::quasar_lang::__internal::AccountView,
+                                    0usize,
                                     unsafe {
                                         &*(__program_id as *const [u8; 32]
                                             as *const ::quasar_lang::prelude::Address)
@@ -185,9 +187,11 @@ mod quasar_demo {
                                 [::quasar_lang::__internal::AccountView; <Update as ::quasar_lang::traits::AccountCount>::COUNT],
                             >::uninit();
                             let __remaining_ptr = unsafe {
-                                <Update>::parse_accounts(
+                                <Update as ::quasar_lang::traits::ParseAccountsRaw>::parse_accounts_raw(
                                     __accounts_start,
-                                    &mut __buf,
+                                    __buf.as_mut_ptr()
+                                        as *mut ::quasar_lang::__internal::AccountView,
+                                    0usize,
                                     unsafe {
                                         &*(__program_id as *const [u8; 32]
                                             as *const ::quasar_lang::prelude::Address)

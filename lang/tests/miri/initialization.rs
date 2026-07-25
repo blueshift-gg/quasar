@@ -377,9 +377,11 @@ fn parse_dup_allowed_does_not_preborrow_canonical_account() {
             0,
             &program_id,
             ParseFlags {
-                expected: quasar_lang::__internal::NODUP_MUT,
-                mask: 0x00FF_FFFF,
-                flag_mask: 0x00FF_0000,
+                header: quasar_lang::__internal::HeaderSpec {
+                    expected: quasar_lang::__internal::NODUP_MUT,
+                    mask: 0x00FF_FFFF,
+                    flag_mask: 0x00FF_0000,
+                },
                 is_optional: false,
                 is_ref_mut: true,
                 allow_dup: false,
@@ -394,9 +396,11 @@ fn parse_dup_allowed_does_not_preborrow_canonical_account() {
             1,
             &program_id,
             ParseFlags {
-                expected: quasar_lang::__internal::NODUP_MUT,
-                mask: 0x00FF_FFFF,
-                flag_mask: 0x00FF_0000,
+                header: quasar_lang::__internal::HeaderSpec {
+                    expected: quasar_lang::__internal::NODUP_MUT,
+                    mask: 0x00FF_FFFF,
+                    flag_mask: 0x00FF_0000,
+                },
                 is_optional: false,
                 is_ref_mut: true,
                 allow_dup: true,
@@ -446,9 +450,11 @@ fn parse_dup_rejects_duplicate_without_dup_flag_even_readonly() {
             0,
             &program_id,
             ParseFlags {
-                expected: quasar_lang::__internal::NODUP,
-                mask: 0x0000_00FF,
-                flag_mask: 0,
+                header: quasar_lang::__internal::HeaderSpec {
+                    expected: quasar_lang::__internal::NODUP,
+                    mask: 0x0000_00FF,
+                    flag_mask: 0,
+                },
                 is_optional: false,
                 is_ref_mut: false,
                 allow_dup: false,
@@ -463,9 +469,11 @@ fn parse_dup_rejects_duplicate_without_dup_flag_even_readonly() {
             1,
             &program_id,
             ParseFlags {
-                expected: quasar_lang::__internal::NODUP,
-                mask: 0x0000_00FF,
-                flag_mask: 0,
+                header: quasar_lang::__internal::HeaderSpec {
+                    expected: quasar_lang::__internal::NODUP,
+                    mask: 0x0000_00FF,
+                    flag_mask: 0,
+                },
                 is_optional: false,
                 is_ref_mut: false,
                 allow_dup: false,

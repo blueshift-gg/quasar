@@ -17,7 +17,6 @@ pub(crate) struct AccountsOutput<'a> {
     pub needs_event_cpi_expr: proc_macro2::TokenStream,
     pub parse_steps: Vec<proc_macro2::TokenStream>,
     pub parse_body: proc_macro2::TokenStream,
-    pub direct_parse_body: proc_macro2::TokenStream,
     pub bumps_struct: proc_macro2::TokenStream,
     pub signer_helpers_impl: proc_macro2::TokenStream,
     pub epilogue_method: proc_macro2::TokenStream,
@@ -48,7 +47,6 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
         needs_event_cpi_expr,
         parse_steps,
         parse_body,
-        direct_parse_body,
         bumps_struct,
         signer_helpers_impl,
         epilogue_method,
@@ -59,50 +57,26 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
         assert_builder_fn,
     } = output;
 
-    let exact_len_guard = quote! {
-        #krate::traits::check_account_count(accounts.len(), Self::COUNT)?;
-    };
-
     let has_epilogue_const = quote! {
         const HAS_EPILOGUE: bool = #has_epilogue_expr;
+    };
+
+    // Both helpers are empty for a struct with no ix args and no behaviors.
+    let inherent_impl = if extract_ix_args_fn.is_empty() && assert_builder_fn.is_empty() {
+        quote! {}
+    } else {
+        quote! {
+            impl #impl_generics #name #ty_generics #where_clause {
+                #extract_ix_args_fn
+                #assert_builder_fn
+            }
+        }
     };
 
     let parse_accounts_impl = quote! {
         impl #parse_impl_generics #krate::traits::ParseAccounts<'input> for #name #ty_generics #parse_where_clause {
             type Bumps = #bumps_name;
             #has_epilogue_const
-
-            #[inline(always)]
-            fn parse(accounts: &'input mut [#krate::__internal::AccountView], program_id: &#krate::prelude::Address) -> Result<(Self, Self::Bumps), #krate::__solana_program_error::ProgramError> {
-                #exact_len_guard
-                // SAFETY: the exact-count guard above proves the unchecked parser
-                // receives the account count it was generated for.
-                unsafe {
-                    <Self as #krate::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
-                        accounts,
-                        &[],
-                        program_id,
-                    )
-                }
-            }
-
-            #[inline(always)]
-            fn parse_with_instruction_data(
-                accounts: &'input mut [#krate::__internal::AccountView],
-                __ix_data: &[u8],
-                __program_id: &#krate::prelude::Address,
-            ) -> Result<(Self, Self::Bumps), #krate::__solana_program_error::ProgramError> {
-                #exact_len_guard
-                // SAFETY: the exact-count guard above proves the unchecked parser
-                // receives the account count it was generated for.
-                unsafe {
-                    <Self as #krate::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
-                        accounts,
-                        __ix_data,
-                        __program_id,
-                    )
-                }
-            }
 
             #epilogue_method
         }
@@ -111,18 +85,6 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
             for #name #ty_generics
             #parse_where_clause
         {
-            #[inline(always)]
-            unsafe fn parse_unchecked(
-                accounts: &'input mut [#krate::__internal::AccountView],
-                program_id: &#krate::prelude::Address,
-            ) -> Result<(Self, Self::Bumps), #krate::__solana_program_error::ProgramError> {
-                <Self as #krate::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
-                    accounts,
-                    &[],
-                    program_id,
-                )
-            }
-
             #[inline(always)]
             unsafe fn parse_with_instruction_data_unchecked(
                 accounts: &'input mut [#krate::__internal::AccountView],
@@ -146,36 +108,11 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
             const NEEDS_EVENT_CPI: bool = #needs_event_cpi_expr;
         }
 
-        impl #impl_generics #name #ty_generics #where_clause {
-            #extract_ix_args_fn
-            #assert_builder_fn
+        #inherent_impl
 
+        unsafe impl #impl_generics #krate::traits::ParseAccountsRaw for #name #ty_generics #where_clause {
             #[inline(always)]
-            #[doc(hidden)]
-            pub unsafe fn parse_accounts(
-                input: *mut u8,
-                buf: &mut core::mem::MaybeUninit<[#krate::__internal::AccountView; #count_expr]>,
-                __program_id: &#krate::prelude::Address,
-            ) -> Result<*mut u8, #krate::__solana_program_error::ProgramError> {
-                Self::parse_accounts_into(
-                    input,
-                    buf.as_mut_ptr() as *mut #krate::__internal::AccountView,
-                    0usize,
-                    __program_id,
-                )
-            }
-
-            /// Parse this struct's accounts directly into `base[__offset..]`.
-            ///
-            /// # Safety
-            ///
-            /// `base[__offset .. __offset + COUNT]` must be writable
-            /// `AccountView` slots, `base[..__offset]` must already be
-            /// initialized, and `input` must point at this struct's first
-            /// account entry.
-            #[inline(always)]
-            #[doc(hidden)]
-            pub unsafe fn parse_accounts_into(
+            unsafe fn parse_accounts_raw(
                 mut input: *mut u8,
                 base: *mut #krate::__internal::AccountView,
                 __offset: usize,
@@ -184,29 +121,6 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
                 #(#parse_steps)*
 
                 Ok(input)
-            }
-
-            #[inline(always)]
-            #[doc(hidden)]
-            pub unsafe fn parse_direct_with_instruction_data_unchecked(
-                input: *mut u8,
-                __ix_data: &[u8],
-                __program_id: &#krate::prelude::Address,
-            ) -> Result<(Self, #bumps_name), #krate::__solana_program_error::ProgramError> {
-                #direct_parse_body
-            }
-        }
-
-        unsafe impl #impl_generics #krate::traits::ParseAccountsRaw for #name #ty_generics #where_clause {
-            #[inline(always)]
-            unsafe fn parse_accounts_raw(
-                input: *mut u8,
-                base: *mut #krate::__internal::AccountView,
-                offset: usize,
-                __program_id: &#krate::prelude::Address,
-            ) -> Result<*mut u8, #krate::__solana_program_error::ProgramError> {
-                // SAFETY: forwards the caller's `ParseAccountsRaw` contract.
-                unsafe { Self::parse_accounts_into(input, base, offset, __program_id) }
             }
         }
 

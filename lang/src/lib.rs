@@ -116,6 +116,35 @@ pub mod __internal {
             | (if executable { 0xFFu32 << 24 } else { 0 })
     }
 
+    /// The header words one field's parse step needs, derived in one place
+    /// from the wrapper type's `AccountLoad` flags plus the required-writable
+    /// bit. The accounts derive emits a single `HeaderSpec::of::<T>(writable)`
+    /// per account instead of naming `T` once per header expression.
+    #[derive(Clone, Copy)]
+    pub struct HeaderSpec {
+        /// Expected header value for an exact match.
+        pub expected: u32,
+        /// Required-mask for the cold-path minimum-requirements check.
+        pub mask: u32,
+        /// Flag-only mask (excludes the borrow-state byte).
+        pub flag_mask: u32,
+    }
+
+    impl HeaderSpec {
+        /// The spec for wrapper type `T` at a field that does or does not
+        /// require write access.
+        #[inline(always)]
+        pub const fn of<T: crate::account_load::AccountLoad>(writable: bool) -> Self {
+            let signer = T::IS_SIGNER;
+            let executable = T::IS_EXECUTABLE;
+            Self {
+                expected: header_expected(signer, writable, executable),
+                mask: header_mask(signer, writable, executable),
+                flag_mask: header_flag_mask(signer, writable, executable),
+            }
+        }
+    }
+
     /// Not borrowed, no flags required.
     pub const NODUP: u32 = header_expected(false, false, false);
     /// Not borrowed + signer.
@@ -243,12 +272,8 @@ pub mod __internal {
     /// sBPF 5-register limit to avoid stack spills.
     #[derive(Clone, Copy)]
     pub struct ParseFlags {
-        /// Expected header value (const).
-        pub expected: u32,
-        /// Required-mask for the cold-path minimum-requirements check.
-        pub mask: u32,
-        /// Flag-only mask (excludes borrow_state byte).
-        pub flag_mask: u32,
+        /// The field's header words.
+        pub header: HeaderSpec,
         /// Whether this field is `Option<T>`.
         pub is_optional: bool,
         /// Whether the field reference is `&mut`.
@@ -287,10 +312,10 @@ pub mod __internal {
         let raw = input as *mut RuntimeAccount;
         // SAFETY: the header is the four flag bytes at the 8-aligned start of a
         // valid `RuntimeAccount`, so the aligned u32 read is in-bounds.
-        let header = unsafe { *(raw as *const u32) };
+        let actual = unsafe { *(raw as *const u32) };
 
-        if crate::utils::hint::unlikely(header != expected) {
-            let err = crate::decode_header_error(header, expected, mask);
+        if crate::utils::hint::unlikely(actual != expected) {
+            let err = crate::decode_header_error(actual, expected, mask);
             if err != 0 {
                 return Err(solana_program_error::ProgramError::from(err));
             }
@@ -380,12 +405,14 @@ pub mod __internal {
         actual_header: u32,
         flags: ParseFlags,
     ) -> Result<(), solana_program_error::ProgramError> {
-        let expected_flags = flags.expected & flags.flag_mask;
-        if crate::utils::hint::unlikely((actual_header & flags.flag_mask) != expected_flags) {
+        let expected_flags = flags.header.expected & flags.header.flag_mask;
+        if crate::utils::hint::unlikely((actual_header & flags.header.flag_mask) != expected_flags)
+        {
             // `decode_header_error` returns 0 when the mismatched bit is
             // outside the required mask; that must fall through rather than
             // become `Err(from(0))`.
-            let err = crate::decode_header_error(actual_header, flags.expected, flags.mask);
+            let err =
+                crate::decode_header_error(actual_header, flags.header.expected, flags.header.mask);
             if err != 0 {
                 return Err(solana_program_error::ProgramError::from(err));
             }

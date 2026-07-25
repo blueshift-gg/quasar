@@ -3,62 +3,12 @@ pub struct UseCustomBehaviorBumps;
 impl ::quasar_lang::traits::AccountBumps for UseCustomBehavior {
     type Bumps = UseCustomBehaviorBumps;
 }
-impl ::quasar_lang::traits::AccountGroup for UseCustomBehavior {}
 impl<'input> ::quasar_lang::traits::ParseAccounts<'input> for UseCustomBehavior {
     type Bumps = UseCustomBehaviorBumps;
     const HAS_EPILOGUE: bool = false;
-    #[inline(always)]
-    fn parse(
-        accounts: &'input mut [::quasar_lang::__internal::AccountView],
-        program_id: &::quasar_lang::prelude::Address,
-    ) -> Result<
-        (Self, Self::Bumps),
-        ::quasar_lang::__solana_program_error::ProgramError,
-    > {
-        ::quasar_lang::traits::check_account_count(accounts.len(), Self::COUNT)?;
-        unsafe {
-            <Self as ::quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
-                accounts,
-                &[],
-                program_id,
-            )
-        }
-    }
-    #[inline(always)]
-    fn parse_with_instruction_data(
-        accounts: &'input mut [::quasar_lang::__internal::AccountView],
-        __ix_data: &[u8],
-        __program_id: &::quasar_lang::prelude::Address,
-    ) -> Result<
-        (Self, Self::Bumps),
-        ::quasar_lang::__solana_program_error::ProgramError,
-    > {
-        ::quasar_lang::traits::check_account_count(accounts.len(), Self::COUNT)?;
-        unsafe {
-            <Self as ::quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
-                accounts,
-                __ix_data,
-                __program_id,
-            )
-        }
-    }
 }
 unsafe impl<'input> ::quasar_lang::traits::ParseAccountsUnchecked<'input>
 for UseCustomBehavior {
-    #[inline(always)]
-    unsafe fn parse_unchecked(
-        accounts: &'input mut [::quasar_lang::__internal::AccountView],
-        program_id: &::quasar_lang::prelude::Address,
-    ) -> Result<
-        (Self, Self::Bumps),
-        ::quasar_lang::__solana_program_error::ProgramError,
-    > {
-        <Self as ::quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
-            accounts,
-            &[],
-            program_id,
-        )
-    }
     #[inline(always)]
     unsafe fn parse_with_instruction_data_unchecked(
         accounts: &'input mut [::quasar_lang::__internal::AccountView],
@@ -131,60 +81,26 @@ impl UseCustomBehavior {
     fn __assert_builder<__B: ::quasar_lang::account_behavior::BehaviorArgsBuilder>(
         _: &__B,
     ) {}
+}
+unsafe impl ::quasar_lang::traits::ParseAccountsRaw for UseCustomBehavior {
     #[inline(always)]
-    #[doc(hidden)]
-    pub unsafe fn parse_accounts(
-        input: *mut u8,
-        buf: &mut core::mem::MaybeUninit<
-            [::quasar_lang::__internal::AccountView; 1usize],
-        >,
-        __program_id: &::quasar_lang::prelude::Address,
-    ) -> Result<*mut u8, ::quasar_lang::__solana_program_error::ProgramError> {
-        Self::parse_accounts_into(
-            input,
-            buf.as_mut_ptr() as *mut ::quasar_lang::__internal::AccountView,
-            0usize,
-            __program_id,
-        )
-    }
-    /// Parse this struct's accounts directly into `base[__offset..]`.
-    ///
-    /// # Safety
-    ///
-    /// `base[__offset .. __offset + COUNT]` must be writable
-    /// `AccountView` slots, `base[..__offset]` must already be
-    /// initialized, and `input` must point at this struct's first
-    /// account entry.
-    #[inline(always)]
-    #[doc(hidden)]
-    pub unsafe fn parse_accounts_into(
+    unsafe fn parse_accounts_raw(
         mut input: *mut u8,
         base: *mut ::quasar_lang::__internal::AccountView,
         __offset: usize,
         __program_id: &::quasar_lang::prelude::Address,
     ) -> Result<*mut u8, ::quasar_lang::__solana_program_error::ProgramError> {
         {
-            const __EXPECTED: u32 = ::quasar_lang::__internal::header_expected(
-                <Account<MyData> as ::quasar_lang::account_load::AccountLoad>::IS_SIGNER,
-                false,
-                <Account<
-                    MyData,
-                > as ::quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE,
-            );
-            const __MASK: u32 = ::quasar_lang::__internal::header_mask(
-                <Account<MyData> as ::quasar_lang::account_load::AccountLoad>::IS_SIGNER,
-                false,
-                <Account<
-                    MyData,
-                > as ::quasar_lang::account_load::AccountLoad>::IS_EXECUTABLE,
-            );
+            const __HEADER: ::quasar_lang::__internal::HeaderSpec = ::quasar_lang::__internal::HeaderSpec::of::<
+                Account<MyData>,
+            >(false);
             input = unsafe {
                 ::quasar_lang::__internal::parse_account(
                     input,
                     base,
                     __offset + 0usize,
-                    __EXPECTED,
-                    __MASK,
+                    __HEADER.expected,
+                    __HEADER.mask,
                 )?
             };
             ::quasar_lang::debug_log!(
@@ -193,40 +109,6 @@ impl UseCustomBehavior {
             );
         }
         Ok(input)
-    }
-    #[inline(always)]
-    #[doc(hidden)]
-    pub unsafe fn parse_direct_with_instruction_data_unchecked(
-        input: *mut u8,
-        __ix_data: &[u8],
-        __program_id: &::quasar_lang::prelude::Address,
-    ) -> Result<
-        (Self, UseCustomBehaviorBumps),
-        ::quasar_lang::__solana_program_error::ProgramError,
-    > {
-        let mut __buf = core::mem::MaybeUninit::<
-            [::quasar_lang::__internal::AccountView; 1usize],
-        >::uninit();
-        let _ = Self::parse_accounts(input, &mut __buf, __program_id)?;
-        let mut __accounts = unsafe { __buf.assume_init() };
-        unsafe {
-            <Self as ::quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
-                &mut __accounts,
-                __ix_data,
-                __program_id,
-            )
-        }
-    }
-}
-unsafe impl ::quasar_lang::traits::ParseAccountsRaw for UseCustomBehavior {
-    #[inline(always)]
-    unsafe fn parse_accounts_raw(
-        input: *mut u8,
-        base: *mut ::quasar_lang::__internal::AccountView,
-        offset: usize,
-        __program_id: &::quasar_lang::prelude::Address,
-    ) -> Result<*mut u8, ::quasar_lang::__solana_program_error::ProgramError> {
-        unsafe { Self::parse_accounts_into(input, base, offset, __program_id) }
     }
 }
 impl<'input> ::quasar_lang::remaining::RemainingItem<'input> for UseCustomBehavior {

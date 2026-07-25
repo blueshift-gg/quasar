@@ -131,7 +131,6 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
         parse_steps,
         count_expr,
         parse_body,
-        direct_parse_body,
     } = accounts_plan;
 
     // Instruction arg extraction: emitted ONCE as `Self::__extract_ix_args` and
@@ -207,7 +206,6 @@ pub(crate) fn derive_accounts_inner(input: proc_macro2::TokenStream) -> proc_mac
         needs_event_cpi_expr: emit_needs_event_cpi_expr(&typed_plan),
         parse_steps,
         parse_body,
-        direct_parse_body,
         bumps_struct,
         signer_helpers_impl,
         epilogue_method,
@@ -888,7 +886,6 @@ fn emit_signer_helpers_impl(ctx: SignerHelpersCtx<'_>) -> proc_macro2::TokenStre
             type Bumps = #bumps_name;
         }
 
-        impl #impl_generics #krate::traits::AccountGroup for #name #ty_generics #where_clause {}
     }
 }
 

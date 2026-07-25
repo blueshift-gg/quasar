@@ -20,7 +20,10 @@ const TAKER_TA_A: Pubkey = Pubkey::new_from_array([8; 32]);
 const TAKER_TA_B: Pubkey = Pubkey::new_from_array([9; 32]);
 const WRONG_OWNER: Pubkey = Pubkey::new_from_array([10; 32]);
 const MAX_ELF_BYTES: usize = 44_320;
-const MAX_MAKE_CU: u64 = 21_035;
+// 21_035 before the accounts derive stopped emitting its own buffer-and-delegate
+// entry points; folding those into the dispatch call sites cost one CU on the
+// direct path (`Make` has 10 accounts) and 24 bytes of ELF.
+const MAX_MAKE_CU: u64 = 21_036;
 const MAX_TAKE_CU: u64 = 29_256;
 const MAX_REFUND_CU: u64 = 16_942;
 

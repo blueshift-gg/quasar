@@ -184,9 +184,10 @@ fn guarded_match_arm(spec: &InstructionSpec, any_heap: bool, disc_len: usize) ->
             let __remaining_ptr = unsafe {
                 // SAFETY: the account count check above guarantees the
                 // fixed account parser has enough records to read.
-                <#accounts_type>::parse_accounts(
+                <#accounts_type as #krate::traits::ParseAccountsRaw>::parse_accounts_raw(
                     __accounts_start,
-                    &mut __buf,
+                    __buf.as_mut_ptr() as *mut #krate::__internal::AccountView,
+                    0usize,
                     unsafe {
                         // SAFETY: Address is represented by the same 32-byte
                         // value as the ABI program id.
@@ -195,12 +196,12 @@ fn guarded_match_arm(spec: &InstructionSpec, any_heap: bool, disc_len: usize) ->
                 )?
             };
             let mut __accounts = unsafe {
-                // SAFETY: `parse_accounts` initialized exactly COUNT slots
+                // SAFETY: `parse_accounts_raw` initialized exactly COUNT slots
                 // before returning `Ok`.
                 __buf.assume_init()
             };
             let __data_after_disc = #data_after_disc;
-            // SAFETY: `parse_accounts` returned the remaining-region
+            // SAFETY: `parse_accounts_raw` returned the remaining-region
             // pointer for this SVM buffer, and the ABI places the
             // instruction-data length prefix directly before
             // `instruction_data`, giving the accounts boundary.
