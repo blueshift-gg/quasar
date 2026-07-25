@@ -93,16 +93,11 @@ impl<'input> ::quasar_lang::remaining::RemainingItem<'input> for TwoDyn {
         program_id: Option<&::quasar_lang::prelude::Address>,
         data: &[u8],
     ) -> Result<Self, ::quasar_lang::__solana_program_error::ProgramError> {
-        let program_id = program_id
-            .ok_or(
-                ::quasar_lang::__solana_program_error::ProgramError::InvalidInstructionData,
-            )?;
-        let (item, _bumps) = <Self as ::quasar_lang::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
-            accounts,
-            data,
-            program_id,
-        )?;
-        Ok(item)
+        unsafe {
+            ::quasar_lang::remaining::parse_group_chunk::<
+                Self,
+            >(accounts, program_id, data)
+        }
     }
 }
 #[doc(hidden)]

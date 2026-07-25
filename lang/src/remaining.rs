@@ -286,6 +286,30 @@ impl<'a> RemainingAccounts<'a> {
     }
 }
 
+/// The `RemainingItem::parse_remaining_chunk` body shared by every
+/// `#[derive(Accounts)]` group: a typed chunk needs a program id, then parses
+/// exactly like a declared account set.
+///
+/// # Safety
+///
+/// `accounts.len()` must equal `T::COUNT`.
+#[doc(hidden)]
+#[inline(always)]
+pub unsafe fn parse_group_chunk<'input, T>(
+    accounts: &'input mut [AccountView],
+    program_id: Option<&Address>,
+    data: &[u8],
+) -> Result<T, ProgramError>
+where
+    T: crate::traits::ParseAccountsUnchecked<'input>,
+{
+    let program_id = program_id.ok_or(ProgramError::InvalidInstructionData)?;
+    // SAFETY: forwards the caller's exact-count contract.
+    let (item, _bumps) =
+        unsafe { T::parse_with_instruction_data_unchecked(accounts, data, program_id)? };
+    Ok(item)
+}
+
 #[doc(hidden)]
 pub trait RemainingItem<'input>: Sized {
     const COUNT: usize;

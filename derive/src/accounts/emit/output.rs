@@ -136,14 +136,8 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
                 program_id: Option<&#krate::prelude::Address>,
                 data: &[u8],
             ) -> Result<Self, #krate::__solana_program_error::ProgramError> {
-                let program_id = program_id.ok_or(#krate::__solana_program_error::ProgramError::InvalidInstructionData)?;
-                let (item, _bumps) =
-                    <Self as #krate::traits::ParseAccountsUnchecked>::parse_with_instruction_data_unchecked(
-                        accounts,
-                        data,
-                        program_id,
-                    )?;
-                Ok(item)
+                // SAFETY: forwards the caller's exact-count contract.
+                unsafe { #krate::remaining::parse_group_chunk::<Self>(accounts, program_id, data) }
             }
         }
 
