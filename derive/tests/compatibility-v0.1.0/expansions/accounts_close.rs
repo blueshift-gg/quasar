@@ -343,18 +343,18 @@ mod __close_accounts_client_macro {
 ::quasar_lang::__private_inventory::submit! {
     ::quasar_lang::idl_build::AccountsMetaFragment(|| {
     (::quasar_lang::idl_build::s("CloseAccounts"),
-    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::__reexport::IdlAccountNode {
-    name : ::quasar_lang::idl_build::s("authority"), optional : false, writable :
+    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::AccountsMetaEntry::Node(::quasar_lang::idl_build::__reexport::IdlAccountNode
+    { name : ::quasar_lang::idl_build::s("authority"), optional : false, writable :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(true), signer :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(true), resolver :
     ::quasar_lang::idl_build::__reexport::IdlResolver::Input {}, docs :
-    ::quasar_lang::idl_build::Vec::new(), },
-    ::quasar_lang::idl_build::__reexport::IdlAccountNode { name :
-    ::quasar_lang::idl_build::s("oldData"), optional : false, writable :
+    ::quasar_lang::idl_build::Vec::new(), }),
+    ::quasar_lang::idl_build::AccountsMetaEntry::Node(::quasar_lang::idl_build::__reexport::IdlAccountNode
+    { name : ::quasar_lang::idl_build::s("oldData"), optional : false, writable :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(true), signer :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), resolver :
     ::quasar_lang::idl_build::__reexport::IdlResolver::Input {}, docs :
-    ::quasar_lang::idl_build::Vec::new(), }],) })
+    ::quasar_lang::idl_build::Vec::new(), })],) })
 }
 #[cfg(feature = "idl-build")]
 ::quasar_lang::__private_inventory::submit! {

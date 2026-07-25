@@ -580,6 +580,9 @@ fn emit_idl_accounts_meta(
         .iter()
         .map(|fp| {
             let field_name = crate::helpers::snake_to_camel(&fp.ident.to_string());
+            if fp.kind == resolve::FieldKind::Composite {
+                return emit_idl_composite_entry(&field_name, &fp.effective_ty);
+            }
             let optional = fp.optional;
             let writable = fp.writable;
             let signer = emit_account_signer(fp);
@@ -622,14 +625,16 @@ fn emit_idl_accounts_meta(
             let node_docs = crate::helpers::docs_tokens_from_lines(&fp.docs);
 
             quote! {
-                #krate::idl_build::__reexport::IdlAccountNode {
-                    name: #krate::idl_build::s(#field_name),
-                    optional: #optional,
-                    writable: #krate::idl_build::__reexport::AccountFlag::Fixed(#writable),
-                    signer: #krate::idl_build::__reexport::AccountFlag::Fixed(#signer),
-                    resolver: #resolver_tokens,
-                    docs: #node_docs,
-                }
+                #krate::idl_build::AccountsMetaEntry::Node(
+                    #krate::idl_build::__reexport::IdlAccountNode {
+                        name: #krate::idl_build::s(#field_name),
+                        optional: #optional,
+                        writable: #krate::idl_build::__reexport::AccountFlag::Fixed(#writable),
+                        signer: #krate::idl_build::__reexport::AccountFlag::Fixed(#signer),
+                        resolver: #resolver_tokens,
+                        docs: #node_docs,
+                    }
+                )
             }
         })
         .collect();
@@ -643,6 +648,33 @@ fn emit_idl_accounts_meta(
                     #krate::idl_build::vec![#(#account_nodes),*],
                 )
             })
+        }
+    }
+}
+
+/// A composite field's IDL entry: a reference to the inner accounts struct's
+/// own fragment, which `build_idl` splices in. The derive cannot resolve the
+/// inner struct's fields itself, so the repeat count is left as a const
+/// expression over `AccountCount` and evaluated when the fragment runs.
+fn emit_idl_composite_entry(field_name: &str, ty: &Type) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
+    let inner_ty = crate::helpers::extract_generic_inner_type(ty, "AccountsArray").unwrap_or(ty);
+    let inner_name = crate::helpers::last_type_segment_name(inner_ty);
+    let inner = strip_generics(inner_ty).unwrap_or_else(|_| quote! { #inner_ty });
+    let outer = composite_event_ty(ty);
+
+    quote! {
+        #krate::idl_build::AccountsMetaEntry::Group {
+            field: #field_name,
+            accounts_struct: #inner_name,
+            repeat: {
+                let __inner = <#inner as #krate::traits::AccountCount>::COUNT;
+                if __inner == 0 {
+                    0
+                } else {
+                    <#outer as #krate::traits::AccountCount>::COUNT / __inner
+                }
+            },
         }
     }
 }

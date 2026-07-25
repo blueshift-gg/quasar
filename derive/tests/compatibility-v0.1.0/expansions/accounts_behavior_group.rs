@@ -328,8 +328,8 @@ mod __use_custom_behavior_client_macro {
 ::quasar_lang::__private_inventory::submit! {
     ::quasar_lang::idl_build::AccountsMetaFragment(|| {
     (::quasar_lang::idl_build::s("UseCustomBehavior"),
-    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::__reexport::IdlAccountNode {
-    name : ::quasar_lang::idl_build::s("data"), optional : false, writable :
+    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::AccountsMetaEntry::Node(::quasar_lang::idl_build::__reexport::IdlAccountNode
+    { name : ::quasar_lang::idl_build::s("data"), optional : false, writable :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), signer :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), resolver :
     ::quasar_lang::idl_build::one_behavior_resolver("data",
@@ -337,7 +337,7 @@ mod __use_custom_behavior_client_macro {
     ::quasar_lang::account_behavior::AccountBehavior < Account < MyData > >>
     ::IDL_RESOLVER, & [], & ["data"],)],).unwrap_or_else(|| {
     ::quasar_lang::idl_build::__reexport::IdlResolver::Input {} }), docs :
-    ::quasar_lang::idl_build::Vec::new(), }],) })
+    ::quasar_lang::idl_build::Vec::new(), })],) })
 }
 #[cfg(feature = "idl-build")]
 ::quasar_lang::__private_inventory::submit! {

@@ -428,14 +428,14 @@ impl InitEscrow {
 ::quasar_lang::__private_inventory::submit! {
     ::quasar_lang::idl_build::AccountsMetaFragment(|| {
     (::quasar_lang::idl_build::s("InitEscrow"),
-    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::__reexport::IdlAccountNode {
-    name : ::quasar_lang::idl_build::s("payer"), optional : false, writable :
+    ::quasar_lang::idl_build::vec![::quasar_lang::idl_build::AccountsMetaEntry::Node(::quasar_lang::idl_build::__reexport::IdlAccountNode
+    { name : ::quasar_lang::idl_build::s("payer"), optional : false, writable :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(true), signer :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(true), resolver :
     ::quasar_lang::idl_build::__reexport::IdlResolver::Input {}, docs :
-    ::quasar_lang::idl_build::Vec::new(), },
-    ::quasar_lang::idl_build::__reexport::IdlAccountNode { name :
-    ::quasar_lang::idl_build::s("escrow"), optional : false, writable :
+    ::quasar_lang::idl_build::Vec::new(), }),
+    ::quasar_lang::idl_build::AccountsMetaEntry::Node(::quasar_lang::idl_build::__reexport::IdlAccountNode
+    { name : ::quasar_lang::idl_build::s("escrow"), optional : false, writable :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(true), signer :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), resolver :
     ::quasar_lang::idl_build::__reexport::IdlResolver::Pda { program :
@@ -447,15 +447,15 @@ impl InitEscrow {
     ::SEED_PREFIX), }); } seeds
     .push(::quasar_lang::idl_build::__reexport::IdlPdaSeed::Account { path :
     ::quasar_lang::idl_build::s("payer"), }); seeds }, }, docs :
-    ::quasar_lang::idl_build::Vec::new(), },
-    ::quasar_lang::idl_build::__reexport::IdlAccountNode { name :
-    ::quasar_lang::idl_build::s("systemProgram"), optional : false, writable :
+    ::quasar_lang::idl_build::Vec::new(), }),
+    ::quasar_lang::idl_build::AccountsMetaEntry::Node(::quasar_lang::idl_build::__reexport::IdlAccountNode
+    { name : ::quasar_lang::idl_build::s("systemProgram"), optional : false, writable :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), signer :
     ::quasar_lang::idl_build::__reexport::AccountFlag::Fixed(false), resolver :
     ::quasar_lang::idl_build::__reexport::IdlResolver::Const { address :
     ::quasar_lang::idl_build::address_to_base58(& < SystemProgram as
     ::quasar_lang::traits::Id > ::ID), }, docs : ::quasar_lang::idl_build::Vec::new(),
-    }],) })
+    })],) })
 }
 #[cfg(feature = "idl-build")]
 ::quasar_lang::__private_inventory::submit! {
