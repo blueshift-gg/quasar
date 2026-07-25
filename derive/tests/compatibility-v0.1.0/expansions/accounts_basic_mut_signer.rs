@@ -306,95 +306,90 @@ impl<'input> ::quasar_lang::remaining::RemainingItem<'input> for BasicAccounts {
 }
 #[doc(hidden)]
 #[allow(unexpected_cfgs)]
-mod __basic_accounts_client_macro {
-    #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
-    #[macro_export]
-    macro_rules! __basic_accounts_instruction {
-        (
-            $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* }
-        ) => {
-            pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, pub
-            config : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* } impl
-            From < $struct_name > for ::quasar_lang::client::Instruction {
-            #[allow(unused_variables)] fn from(ix : $struct_name) ->
-            ::quasar_lang::client::Instruction { let accounts =
-            ::alloc::vec![::quasar_lang::client::AccountMeta::new(ix.payer, true),
-            ::quasar_lang::client::AccountMeta::new_readonly(ix.config, false),
-            ::quasar_lang::client::AccountMeta::new_readonly(super::BasicAccounts::__QUASAR_FIXED_ADDRESS_system_program,
-            false),
-            ::quasar_lang::client::AccountMeta::new_readonly(super::BasicAccounts::__QUASAR_FIXED_ADDRESS_rent,
-            false),]; let data = { let mut _data = ::alloc::vec![$($disc),*]; $(_data
-            .extend_from_slice(& < $arg_ty as ::quasar_lang::client::SerializeArg >
-            ::serialize_arg(& ix. $arg_name));)* _data };
-            ::quasar_lang::client::Instruction { program_id : $crate::ID, accounts, data,
-            } } }
-        };
-        (
-            $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* },
-            compact
-        ) => {
-            pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, pub
-            config : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* } impl
-            From < $struct_name > for ::quasar_lang::client::Instruction {
-            #[allow(unused_variables)] fn from(ix : $struct_name) ->
-            ::quasar_lang::client::Instruction { let accounts =
-            ::alloc::vec![::quasar_lang::client::AccountMeta::new(ix.payer, true),
-            ::quasar_lang::client::AccountMeta::new_readonly(ix.config, false),
-            ::quasar_lang::client::AccountMeta::new_readonly(super::BasicAccounts::__QUASAR_FIXED_ADDRESS_system_program,
-            false),
-            ::quasar_lang::client::AccountMeta::new_readonly(super::BasicAccounts::__QUASAR_FIXED_ADDRESS_rent,
-            false),]; let data = { let mut _data = ::alloc::vec![$($disc),*]; $(_data
-            .extend_from_slice(& < $arg_ty as ::quasar_lang::client::CompactSerializeArg
-            > ::compact_header(& ix. $arg_name));)* $(_data.extend_from_slice(& < $arg_ty
-            as ::quasar_lang::client::CompactSerializeArg > ::compact_tail(& ix.
-            $arg_name));)* _data }; ::quasar_lang::client::Instruction { program_id :
-            $crate::ID, accounts, data, } } }
-        };
-        (
-            $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* },
-            remaining
-        ) => {
-            pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, pub
-            config : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* pub
-            remaining_accounts : ::alloc::vec::Vec < ::quasar_lang::client::AccountMeta
-            >, } impl From < $struct_name > for ::quasar_lang::client::Instruction {
-            #[allow(unused_variables)] fn from(ix : $struct_name) ->
-            ::quasar_lang::client::Instruction { let mut accounts =
-            ::alloc::vec![::quasar_lang::client::AccountMeta::new(ix.payer, true),
-            ::quasar_lang::client::AccountMeta::new_readonly(ix.config, false),
-            ::quasar_lang::client::AccountMeta::new_readonly(super::BasicAccounts::__QUASAR_FIXED_ADDRESS_system_program,
-            false),
-            ::quasar_lang::client::AccountMeta::new_readonly(super::BasicAccounts::__QUASAR_FIXED_ADDRESS_rent,
-            false),]; accounts.extend(ix.remaining_accounts); let data = { let mut _data
-            = ::alloc::vec![$($disc),*]; $(_data.extend_from_slice(& < $arg_ty as
-            ::quasar_lang::client::SerializeArg > ::serialize_arg(& ix. $arg_name));)*
-            _data }; ::quasar_lang::client::Instruction { program_id : $crate::ID,
-            accounts, data, } } }
-        };
-        (
-            $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* },
-            compact, remaining
-        ) => {
-            pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, pub
-            config : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* pub
-            remaining_accounts : ::alloc::vec::Vec < ::quasar_lang::client::AccountMeta
-            >, } impl From < $struct_name > for ::quasar_lang::client::Instruction {
-            #[allow(unused_variables)] fn from(ix : $struct_name) ->
-            ::quasar_lang::client::Instruction { let mut accounts =
-            ::alloc::vec![::quasar_lang::client::AccountMeta::new(ix.payer, true),
-            ::quasar_lang::client::AccountMeta::new_readonly(ix.config, false),
-            ::quasar_lang::client::AccountMeta::new_readonly(super::BasicAccounts::__QUASAR_FIXED_ADDRESS_system_program,
-            false),
-            ::quasar_lang::client::AccountMeta::new_readonly(super::BasicAccounts::__QUASAR_FIXED_ADDRESS_rent,
-            false),]; accounts.extend(ix.remaining_accounts); let data = { let mut _data
-            = ::alloc::vec![$($disc),*]; $(_data.extend_from_slice(& < $arg_ty as
-            ::quasar_lang::client::CompactSerializeArg > ::compact_header(& ix.
-            $arg_name));)* $(_data.extend_from_slice(& < $arg_ty as
-            ::quasar_lang::client::CompactSerializeArg > ::compact_tail(& ix.
-            $arg_name));)* _data }; ::quasar_lang::client::Instruction { program_id :
-            $crate::ID, accounts, data, } } }
-        };
-    }
+#[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
+#[macro_export]
+macro_rules! __basic_accounts_instruction {
+    ($struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* }) => {
+        pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, pub config
+        : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* } impl From <
+        $struct_name > for ::quasar_lang::client::Instruction {
+        #[allow(unused_variables)] fn from(ix : $struct_name) ->
+        ::quasar_lang::client::Instruction { let accounts =
+        ::alloc::vec![::quasar_lang::client::AccountMeta::new(ix.payer, true),
+        ::quasar_lang::client::AccountMeta::new_readonly(ix.config, false),
+        ::quasar_lang::client::AccountMeta::new_readonly(super::BasicAccounts::__QUASAR_FIXED_ADDRESS_system_program,
+        false),
+        ::quasar_lang::client::AccountMeta::new_readonly(super::BasicAccounts::__QUASAR_FIXED_ADDRESS_rent,
+        false),]; let data = { let mut _data = ::alloc::vec![$($disc),*]; $(_data
+        .extend_from_slice(& < $arg_ty as ::quasar_lang::client::SerializeArg >
+        ::serialize_arg(& ix. $arg_name));)* _data }; ::quasar_lang::client::Instruction
+        { program_id : $crate::ID, accounts, data, } } }
+    };
+    (
+        $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* },
+        compact
+    ) => {
+        pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, pub config
+        : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* } impl From <
+        $struct_name > for ::quasar_lang::client::Instruction {
+        #[allow(unused_variables)] fn from(ix : $struct_name) ->
+        ::quasar_lang::client::Instruction { let accounts =
+        ::alloc::vec![::quasar_lang::client::AccountMeta::new(ix.payer, true),
+        ::quasar_lang::client::AccountMeta::new_readonly(ix.config, false),
+        ::quasar_lang::client::AccountMeta::new_readonly(super::BasicAccounts::__QUASAR_FIXED_ADDRESS_system_program,
+        false),
+        ::quasar_lang::client::AccountMeta::new_readonly(super::BasicAccounts::__QUASAR_FIXED_ADDRESS_rent,
+        false),]; let data = { let mut _data = ::alloc::vec![$($disc),*]; $(_data
+        .extend_from_slice(& < $arg_ty as ::quasar_lang::client::CompactSerializeArg >
+        ::compact_header(& ix. $arg_name));)* $(_data.extend_from_slice(& < $arg_ty as
+        ::quasar_lang::client::CompactSerializeArg > ::compact_tail(& ix. $arg_name));)*
+        _data }; ::quasar_lang::client::Instruction { program_id : $crate::ID, accounts,
+        data, } } }
+    };
+    (
+        $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* },
+        remaining
+    ) => {
+        pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, pub config
+        : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* pub
+        remaining_accounts : ::alloc::vec::Vec < ::quasar_lang::client::AccountMeta >, }
+        impl From < $struct_name > for ::quasar_lang::client::Instruction {
+        #[allow(unused_variables)] fn from(ix : $struct_name) ->
+        ::quasar_lang::client::Instruction { let mut accounts =
+        ::alloc::vec![::quasar_lang::client::AccountMeta::new(ix.payer, true),
+        ::quasar_lang::client::AccountMeta::new_readonly(ix.config, false),
+        ::quasar_lang::client::AccountMeta::new_readonly(super::BasicAccounts::__QUASAR_FIXED_ADDRESS_system_program,
+        false),
+        ::quasar_lang::client::AccountMeta::new_readonly(super::BasicAccounts::__QUASAR_FIXED_ADDRESS_rent,
+        false),]; accounts.extend(ix.remaining_accounts); let data = { let mut _data =
+        ::alloc::vec![$($disc),*]; $(_data.extend_from_slice(& < $arg_ty as
+        ::quasar_lang::client::SerializeArg > ::serialize_arg(& ix. $arg_name));)* _data
+        }; ::quasar_lang::client::Instruction { program_id : $crate::ID, accounts, data,
+        } } }
+    };
+    (
+        $struct_name:ident, [$($disc:expr),*], { $($arg_name:ident : $arg_ty:ty),* },
+        compact, remaining
+    ) => {
+        pub struct $struct_name { pub payer : ::quasar_lang::prelude::Address, pub config
+        : ::quasar_lang::prelude::Address, $(pub $arg_name : $arg_ty,)* pub
+        remaining_accounts : ::alloc::vec::Vec < ::quasar_lang::client::AccountMeta >, }
+        impl From < $struct_name > for ::quasar_lang::client::Instruction {
+        #[allow(unused_variables)] fn from(ix : $struct_name) ->
+        ::quasar_lang::client::Instruction { let mut accounts =
+        ::alloc::vec![::quasar_lang::client::AccountMeta::new(ix.payer, true),
+        ::quasar_lang::client::AccountMeta::new_readonly(ix.config, false),
+        ::quasar_lang::client::AccountMeta::new_readonly(super::BasicAccounts::__QUASAR_FIXED_ADDRESS_system_program,
+        false),
+        ::quasar_lang::client::AccountMeta::new_readonly(super::BasicAccounts::__QUASAR_FIXED_ADDRESS_rent,
+        false),]; accounts.extend(ix.remaining_accounts); let data = { let mut _data =
+        ::alloc::vec![$($disc),*]; $(_data.extend_from_slice(& < $arg_ty as
+        ::quasar_lang::client::CompactSerializeArg > ::compact_header(& ix.
+        $arg_name));)* $(_data.extend_from_slice(& < $arg_ty as
+        ::quasar_lang::client::CompactSerializeArg > ::compact_tail(& ix. $arg_name));)*
+        _data }; ::quasar_lang::client::Instruction { program_id : $crate::ID, accounts,
+        data, } } }
+    };
 }
 #[allow(non_upper_case_globals)]
 impl BasicAccounts {

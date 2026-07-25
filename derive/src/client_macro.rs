@@ -32,7 +32,6 @@ pub fn generate_accounts_macro(
 ) -> TokenStream {
     let descriptors = describe_accounts(name, generics, plan);
     let macro_name = format_ident!("__{}_instruction", pascal_to_snake(&name.to_string()));
-    let module_name = format_ident!("__{}_client_macro", pascal_to_snake(&name.to_string()));
     // Two derived fields may share a stored-data seed root (a chained field
     // inherits its base's inputs); the input appears once, at first use.
     let mut seen_inputs: Vec<syn::Ident> = Vec::new();
@@ -76,12 +75,10 @@ pub fn generate_accounts_macro(
 
         #[doc(hidden)]
         #[allow(unexpected_cfgs)]
-        mod #module_name {
-            #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
-            #[macro_export]
-            macro_rules! #macro_name {
-                #(#arms)*
-            }
+        #[cfg(not(any(target_arch = "bpf", target_os = "solana")))]
+        #[macro_export]
+        macro_rules! #macro_name {
+            #(#arms)*
         }
     }
 }

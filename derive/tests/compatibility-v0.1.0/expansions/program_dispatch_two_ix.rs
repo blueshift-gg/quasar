@@ -91,8 +91,7 @@ mod quasar_demo {
         ptr: *mut u8,
         instruction_data: &[u8],
     ) -> Result<(), ::quasar_lang::__solana_program_error::ProgramError> {
-        const __QUASAR_NEEDS_EVENT_CPI: bool = false
-            || <Initialize as ::quasar_lang::traits::AccountCount>::NEEDS_EVENT_CPI
+        const __QUASAR_NEEDS_EVENT_CPI: bool = <Initialize as ::quasar_lang::traits::AccountCount>::NEEDS_EVENT_CPI
             || <Update as ::quasar_lang::traits::AccountCount>::NEEDS_EVENT_CPI;
         if !instruction_data.is_empty() && instruction_data[0] == 0xFF {
             if __QUASAR_NEEDS_EVENT_CPI {

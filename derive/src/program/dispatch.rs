@@ -370,13 +370,15 @@ fn emit_event_dispatch_block(model: &ProgramModel) -> TokenStream2 {
             .iter()
             .map(|spec| &spec.accounts_type)
             .collect();
+        let needs_event_cpi = crate::helpers::or_bool_terms(accounts_types.iter().map(|ty| {
+            quote! { <#ty as #krate::traits::AccountCount>::NEEDS_EVENT_CPI }
+        }));
         // Small dispatch tables compile smaller with the explicit 0xFF
         // invalid-instruction fast path. Larger tables benefit from
         // erasing it unless an account set can actually service event CPI.
         if instruction_specs.len() >= EVENT_FASTPATH_MIN_IX {
             quote! {
-                const __QUASAR_NEEDS_EVENT_CPI: bool =
-                    false #(|| <#accounts_types as #krate::traits::AccountCount>::NEEDS_EVENT_CPI)*;
+                const __QUASAR_NEEDS_EVENT_CPI: bool = #needs_event_cpi;
                 if __QUASAR_NEEDS_EVENT_CPI {
                     if !instruction_data.is_empty() && instruction_data[0] == 0xFF {
                         return __handle_event(ptr, instruction_data);
@@ -385,8 +387,7 @@ fn emit_event_dispatch_block(model: &ProgramModel) -> TokenStream2 {
             }
         } else {
             quote! {
-                const __QUASAR_NEEDS_EVENT_CPI: bool =
-                    false #(|| <#accounts_types as #krate::traits::AccountCount>::NEEDS_EVENT_CPI)*;
+                const __QUASAR_NEEDS_EVENT_CPI: bool = #needs_event_cpi;
                 if !instruction_data.is_empty() && instruction_data[0] == 0xFF {
                     if __QUASAR_NEEDS_EVENT_CPI {
                         return __handle_event(ptr, instruction_data);

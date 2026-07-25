@@ -628,7 +628,7 @@ fn behavior_validates_account_data_expr(
         }
     });
 
-    Some(quote! { false #(|| #terms)* })
+    Some(crate::helpers::or_bool_terms(terms))
 }
 
 // User checks, structural rather than behavior-group based.

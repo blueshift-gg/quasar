@@ -38,13 +38,12 @@ pub(crate) fn emit_post_load_behavior(
             }
         },
         PostLoadPhase::Check => {
-            let fresh_init_guard = if let Some(did_init_var) = did_init_var {
-                quote! { !(#did_init_var && #bhv::INIT_SATISFIES_CHECK) }
-            } else {
-                quote! { true }
+            let fresh_init_guard = match did_init_var {
+                Some(did_init_var) => quote! { && !(#did_init_var && #bhv::INIT_SATISFIES_CHECK) },
+                None => quote! {},
             };
             quote! {
-                if #bhv::RUN_CHECK && #fresh_init_guard {
+                if #bhv::RUN_CHECK #fresh_init_guard {
                     #args_block
                     #bhv::check(&#field_ident, &__bhv_args)?;
                 }
