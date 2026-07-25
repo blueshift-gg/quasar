@@ -415,10 +415,35 @@ pub(crate) fn emit_epilogue(
         return quote! {};
     }
 
+    let plain = quote! { #(#exit_stmts)* };
+    let contextual = quote! { #(#contextual_exit_stmts)* };
+
+    // The two bodies diverge only where a behavior exit signs with a PDA, which
+    // is the only thing that reads `__bumps`/`__ix_data`. Otherwise they are
+    // token-identical, so emit one and forward.
+    if plain.to_string() == contextual.to_string() {
+        return quote! {
+            #[inline(always)]
+            fn epilogue(&mut self) -> Result<(), #krate::__solana_program_error::ProgramError> {
+                #plain
+                Ok(())
+            }
+
+            #[inline(always)]
+            fn epilogue_with_context(
+                &mut self,
+                _bumps: &Self::Bumps,
+                _ix_data: &[u8],
+            ) -> Result<(), #krate::__solana_program_error::ProgramError> {
+                self.epilogue()
+            }
+        };
+    }
+
     quote! {
         #[inline(always)]
         fn epilogue(&mut self) -> Result<(), #krate::__solana_program_error::ProgramError> {
-            #(#exit_stmts)*
+            #plain
             Ok(())
         }
 
@@ -429,7 +454,7 @@ pub(crate) fn emit_epilogue(
             __bumps: &Self::Bumps,
             __ix_data: &[u8],
         ) -> Result<(), #krate::__solana_program_error::ProgramError> {
-            #(#contextual_exit_stmts)*
+            #contextual
             Ok(())
         }
     }
