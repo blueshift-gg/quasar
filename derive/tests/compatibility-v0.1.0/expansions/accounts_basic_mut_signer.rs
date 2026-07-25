@@ -48,7 +48,7 @@ impl ::quasar_lang::traits::AccountCount for BasicAccounts {
     const NEEDS_EVENT_CPI: bool = false;
 }
 unsafe impl ::quasar_lang::traits::ParseAccountsRaw for BasicAccounts {
-    #[inline(always)]
+    #[inline]
     unsafe fn parse_accounts_raw(
         mut input: *mut u8,
         base: *mut ::quasar_lang::__internal::AccountView,

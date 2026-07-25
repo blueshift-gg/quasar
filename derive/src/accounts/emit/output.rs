@@ -5,6 +5,14 @@
 
 use quote::quote;
 
+/// Longest raw account walk still emitted as `#[inline(always)]`.
+///
+/// Measured across the test programs: below the crossover, forcing the walk
+/// inline is smaller (a one-account walk costs less than the call that would
+/// replace it); above it, letting the inliner outline and share the walk cuts
+/// 8-10% from programs that repeat it across many instructions.
+const INLINE_ALWAYS_MAX_STEPS: usize = 3;
+
 pub(crate) struct AccountsOutput<'a> {
     pub name: &'a syn::Ident,
     pub bumps_name: &'a syn::Ident,
@@ -63,6 +71,24 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
         }
     };
 
+    // Whether the raw account walk is worth duplicating at every call site.
+    //
+    // A short walk is a handful of instructions, so forcing it inline costs
+    // less than the call it would replace and lets the surrounding parse
+    // specialize it. A long one is worth outlining: a program that repeats it
+    // across many instructions otherwise pays for a full copy at each, which is
+    // where the bulk of a token-heavy program's `.text` goes.
+    //
+    // `parse_steps` measures this body specifically, which is the thing being
+    // duplicated. A composite field contributes one step here — a call to the
+    // inner group's own `parse_accounts_raw` — however many accounts it stands
+    // for, and that inner group is sized by this same rule when it is emitted.
+    let raw_inline = if parse_steps.len() > INLINE_ALWAYS_MAX_STEPS {
+        quote! { #[inline] }
+    } else {
+        quote! { #[inline(always)] }
+    };
+
     let inherent_impl = if extract_ix_args_fn.is_empty() {
         quote! {}
     } else {
@@ -111,7 +137,7 @@ pub(crate) fn emit_accounts_output(output: AccountsOutput<'_>) -> proc_macro2::T
         #inherent_impl
 
         unsafe impl #impl_generics #krate::traits::ParseAccountsRaw for #name #ty_generics #where_clause {
-            #[inline(always)]
+            #raw_inline
             unsafe fn parse_accounts_raw(
                 mut input: *mut u8,
                 base: *mut #krate::__internal::AccountView,
