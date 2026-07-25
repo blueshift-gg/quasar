@@ -70,47 +70,42 @@ pub(super) fn emit_dynamic_account_load(spec: AccountLoadSpec<'_>) -> proc_macro
         zc_mod,
     } = spec;
 
-    let body = emit_account_load_check_body(false, disc_len, disc_indices, disc_bytes, zc_mod);
-    let checked_body =
-        emit_account_load_check_body(true, disc_len, disc_indices, disc_bytes, zc_mod);
+    let validate = emit_account_load_validate(disc_len, disc_indices, disc_bytes, zc_mod);
 
     quote! {
+        impl #name {
+            /// The discriminator and compact-layout checks, over data borrowed
+            /// by whichever of the two entry points below the caller reached.
+            #[inline(always)]
+            fn __quasar_check_data(__data: &[u8]) -> Result<(), #krate::__solana_program_error::ProgramError> {
+                #validate
+            }
+        }
+
         impl #krate::account_load::AccountLoad for #name {
             #[inline(always)]
             fn check(view: &#krate::__internal::AccountView) -> Result<(), #krate::__solana_program_error::ProgramError> {
-                #body
+                // SAFETY: generated account parsing calls unchecked validation
+                // only when no checked borrow is live.
+                Self::__quasar_check_data(unsafe { view.borrow_unchecked() })
             }
 
             #[inline(always)]
             fn check_checked(view: &#krate::__internal::AccountView) -> Result<(), #krate::__solana_program_error::ProgramError> {
-                #checked_body
+                Self::__quasar_check_data(&view.try_borrow()?)
             }
         }
     }
 }
 
-fn emit_account_load_check_body(
-    checked: bool,
+fn emit_account_load_validate(
     disc_len: usize,
     disc_indices: &[usize],
     disc_bytes: &[syn::LitInt],
     zc_mod: &syn::Ident,
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
-    let borrow = if checked {
-        quote! {
-            let __data_ref = view.try_borrow()?;
-            let __data: &[u8] = &__data_ref;
-        }
-    } else {
-        quote! {
-            // SAFETY: generated account parsing calls unchecked validation only
-            // when no checked borrow is live.
-            let __data = unsafe { view.borrow_unchecked() };
-        }
-    };
-
-    let validate = quote! {
+    quote! {
         let __min = #disc_len
             + <#zc_mod::__Schema as #krate::ZeroPodCompact>::HEADER_SIZE;
         if __data.len() < __min {
@@ -129,10 +124,5 @@ fn emit_account_load_check_body(
             unsafe { __data.get_unchecked(#disc_len..) }
         ).map_err(|_| #krate::__solana_program_error::ProgramError::InvalidAccountData)?;
         Ok(())
-    };
-
-    quote! {
-        #borrow
-        #validate
     }
 }

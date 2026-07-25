@@ -66,12 +66,13 @@ impl ::quasar_lang::traits::Space for DynamicAccount {
     const SPACE: usize = 1usize
         + <__dynamic_account_zc::__Schema as ::quasar_lang::ZeroPodCompact>::HEADER_SIZE;
 }
-impl ::quasar_lang::account_load::AccountLoad for DynamicAccount {
+impl DynamicAccount {
+    /// The discriminator and compact-layout checks, over data borrowed
+    /// by whichever of the two entry points below the caller reached.
     #[inline(always)]
-    fn check(
-        view: &::quasar_lang::__internal::AccountView,
+    fn __quasar_check_data(
+        __data: &[u8],
     ) -> Result<(), ::quasar_lang::__solana_program_error::ProgramError> {
-        let __data = unsafe { view.borrow_unchecked() };
         let __min = 1usize
             + <__dynamic_account_zc::__Schema as ::quasar_lang::ZeroPodCompact>::HEADER_SIZE;
         if __data.len() < __min {
@@ -92,31 +93,19 @@ impl ::quasar_lang::account_load::AccountLoad for DynamicAccount {
             })?;
         Ok(())
     }
+}
+impl ::quasar_lang::account_load::AccountLoad for DynamicAccount {
+    #[inline(always)]
+    fn check(
+        view: &::quasar_lang::__internal::AccountView,
+    ) -> Result<(), ::quasar_lang::__solana_program_error::ProgramError> {
+        Self::__quasar_check_data(unsafe { view.borrow_unchecked() })
+    }
     #[inline(always)]
     fn check_checked(
         view: &::quasar_lang::__internal::AccountView,
     ) -> Result<(), ::quasar_lang::__solana_program_error::ProgramError> {
-        let __data_ref = view.try_borrow()?;
-        let __data: &[u8] = &__data_ref;
-        let __min = 1usize
-            + <__dynamic_account_zc::__Schema as ::quasar_lang::ZeroPodCompact>::HEADER_SIZE;
-        if __data.len() < __min {
-            return Err(
-                ::quasar_lang::__solana_program_error::ProgramError::AccountDataTooSmall,
-            );
-        }
-        if unsafe { *__data.get_unchecked(0usize) } != 5 {
-            return Err(
-                ::quasar_lang::__solana_program_error::ProgramError::InvalidAccountData,
-            );
-        }
-        <__dynamic_account_zc::__Schema as ::quasar_lang::ZeroPodCompact>::validate(unsafe {
-                __data.get_unchecked(1usize..)
-            })
-            .map_err(|_| {
-                ::quasar_lang::__solana_program_error::ProgramError::InvalidAccountData
-            })?;
-        Ok(())
+        Self::__quasar_check_data(&view.try_borrow()?)
     }
 }
 impl ::quasar_lang::account_init::AccountInit for DynamicAccount {
