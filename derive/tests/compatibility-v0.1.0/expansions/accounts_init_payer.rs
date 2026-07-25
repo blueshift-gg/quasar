@@ -105,60 +105,27 @@ unsafe impl ::quasar_lang::traits::ParseAccountsRaw for InitEscrow {
         __offset: usize,
         __program_id: &::quasar_lang::prelude::Address,
     ) -> Result<*mut u8, ::quasar_lang::__solana_program_error::ProgramError> {
-        {
-            const __HEADER: ::quasar_lang::__internal::HeaderSpec = ::quasar_lang::__internal::HeaderSpec::of::<
+        input = unsafe {
+            ::quasar_lang::__internal::parse_account::<
                 Signer,
-            >(true);
-            input = unsafe {
-                ::quasar_lang::__internal::parse_account(
-                    input,
-                    base,
-                    __offset + 0usize,
-                    __HEADER.expected,
-                    __HEADER.mask,
-                )?
-            };
-            ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(payer), "' (index ", "0",
-                "): validation passed")
-            );
-        }
-        {
-            const __HEADER: ::quasar_lang::__internal::HeaderSpec = ::quasar_lang::__internal::HeaderSpec::of::<
+                true,
+            >(input, base, __offset + 0usize)?
+        };
+        ::quasar_lang::debug_log!("account payer @0: validation passed");
+        input = unsafe {
+            ::quasar_lang::__internal::parse_account::<
                 Account<Escrow>,
-            >(true);
-            input = unsafe {
-                ::quasar_lang::__internal::parse_account(
-                    input,
-                    base,
-                    __offset + 1usize,
-                    __HEADER.expected,
-                    __HEADER.mask,
-                )?
-            };
-            ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(escrow), "' (index ", "1",
-                "): validation passed")
-            );
-        }
-        {
-            const __HEADER: ::quasar_lang::__internal::HeaderSpec = ::quasar_lang::__internal::HeaderSpec::of::<
+                true,
+            >(input, base, __offset + 1usize)?
+        };
+        ::quasar_lang::debug_log!("account escrow @1: validation passed");
+        input = unsafe {
+            ::quasar_lang::__internal::parse_account::<
                 Program<SystemProgram>,
-            >(false);
-            input = unsafe {
-                ::quasar_lang::__internal::parse_account(
-                    input,
-                    base,
-                    __offset + 2usize,
-                    __HEADER.expected,
-                    __HEADER.mask,
-                )?
-            };
-            ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(system_program), "' (index ", "2",
-                "): validation passed")
-            );
-        }
+                false,
+            >(input, base, __offset + 2usize)?
+        };
+        ::quasar_lang::debug_log!("account system_program @2: validation passed");
         Ok(input)
     }
 }

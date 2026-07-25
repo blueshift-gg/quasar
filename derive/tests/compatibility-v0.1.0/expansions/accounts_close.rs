@@ -70,42 +70,20 @@ unsafe impl ::quasar_lang::traits::ParseAccountsRaw for CloseAccounts {
         __offset: usize,
         __program_id: &::quasar_lang::prelude::Address,
     ) -> Result<*mut u8, ::quasar_lang::__solana_program_error::ProgramError> {
-        {
-            const __HEADER: ::quasar_lang::__internal::HeaderSpec = ::quasar_lang::__internal::HeaderSpec::of::<
+        input = unsafe {
+            ::quasar_lang::__internal::parse_account::<
                 Signer,
-            >(true);
-            input = unsafe {
-                ::quasar_lang::__internal::parse_account(
-                    input,
-                    base,
-                    __offset + 0usize,
-                    __HEADER.expected,
-                    __HEADER.mask,
-                )?
-            };
-            ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(authority), "' (index ", "0",
-                "): validation passed")
-            );
-        }
-        {
-            const __HEADER: ::quasar_lang::__internal::HeaderSpec = ::quasar_lang::__internal::HeaderSpec::of::<
+                true,
+            >(input, base, __offset + 0usize)?
+        };
+        ::quasar_lang::debug_log!("account authority @0: validation passed");
+        input = unsafe {
+            ::quasar_lang::__internal::parse_account::<
                 Account<OldData>,
-            >(true);
-            input = unsafe {
-                ::quasar_lang::__internal::parse_account(
-                    input,
-                    base,
-                    __offset + 1usize,
-                    __HEADER.expected,
-                    __HEADER.mask,
-                )?
-            };
-            ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(old_data), "' (index ", "1",
-                "): validation passed")
-            );
-        }
+                true,
+            >(input, base, __offset + 1usize)?
+        };
+        ::quasar_lang::debug_log!("account old_data @1: validation passed");
         Ok(input)
     }
 }

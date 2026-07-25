@@ -411,8 +411,7 @@ pub(crate) fn generate_seeds_impl(
                 Ok(self._bump[0])
             }
 
-            /// The set already carries its bump, so `_bump` is ignored and the
-            /// stored one is used.
+            // The set carries its own bump; `_bump` is ignored.
             #[inline(always)]
             fn with_signer_seeds<R>(
                 &self,

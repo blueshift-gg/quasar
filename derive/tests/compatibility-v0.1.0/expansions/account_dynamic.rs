@@ -67,8 +67,6 @@ impl ::quasar_lang::traits::Space for DynamicAccount {
         + <__dynamic_account_zc::__Schema as ::quasar_lang::ZeroPodCompact>::HEADER_SIZE;
 }
 impl DynamicAccount {
-    /// The discriminator and compact-layout checks, over data borrowed
-    /// by whichever of the two entry points below the caller reached.
     #[inline(always)]
     fn __quasar_check_data(
         __data: &[u8],

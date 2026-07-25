@@ -74,8 +74,6 @@ pub(super) fn emit_dynamic_account_load(spec: AccountLoadSpec<'_>) -> proc_macro
 
     quote! {
         impl #name {
-            /// The discriminator and compact-layout checks, over data borrowed
-            /// by whichever of the two entry points below the caller reached.
             #[inline(always)]
             fn __quasar_check_data(__data: &[u8]) -> Result<(), #krate::__solana_program_error::ProgramError> {
                 #validate

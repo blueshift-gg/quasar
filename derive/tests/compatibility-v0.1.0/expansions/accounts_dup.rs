@@ -40,47 +40,30 @@ unsafe impl ::quasar_lang::traits::ParseAccountsRaw for HeaderDupReadonly {
         __offset: usize,
         __program_id: &::quasar_lang::prelude::Address,
     ) -> Result<*mut u8, ::quasar_lang::__solana_program_error::ProgramError> {
-        {
-            const __HEADER: ::quasar_lang::__internal::HeaderSpec = ::quasar_lang::__internal::HeaderSpec::of::<
+        input = unsafe {
+            ::quasar_lang::__internal::parse_account::<
                 Signer,
-            >(false);
-            input = unsafe {
-                ::quasar_lang::__internal::parse_account(
-                    input,
-                    base,
-                    __offset + 0usize,
-                    __HEADER.expected,
-                    __HEADER.mask,
-                )?
-            };
-            ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(source), "' (index ", "0",
-                "): validation passed")
-            );
-        }
-        {
-            const __HEADER: ::quasar_lang::__internal::HeaderSpec = ::quasar_lang::__internal::HeaderSpec::of::<
+                false,
+            >(input, base, __offset + 0usize)?
+        };
+        ::quasar_lang::debug_log!("account source @0: validation passed");
+        input = unsafe {
+            ::quasar_lang::__internal::parse_account_dup::<
                 UncheckedAccount,
-            >(false);
-            input = unsafe {
-                ::quasar_lang::__internal::parse_account_dup(
-                    input,
-                    base,
-                    __offset + 1usize,
-                    __program_id,
-                    ::quasar_lang::__internal::ParseFlags {
-                        header: __HEADER,
-                        is_optional: false,
-                        is_ref_mut: false,
-                        allow_dup: true,
-                    },
-                )?
-            };
-            ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(destination), "' (index ", "1",
-                "): parsed (dup-aware)")
-            );
-        }
+                false,
+            >(
+                input,
+                base,
+                __offset + 1usize,
+                __program_id,
+                ::quasar_lang::__internal::ParseFlags {
+                    is_optional: false,
+                    is_ref_mut: false,
+                    allow_dup: true,
+                },
+            )?
+        };
+        ::quasar_lang::debug_log!("account destination @1: parsed (dup-aware)");
         Ok(input)
     }
 }

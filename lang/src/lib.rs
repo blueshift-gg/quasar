@@ -143,6 +143,19 @@ pub mod __internal {
                 flag_mask: header_flag_mask(signer, writable, executable),
             }
         }
+
+        /// [`HeaderSpec::of`] reached as an associated const, so the parse
+        /// helpers below get a compile-time value from their type parameters
+        /// without the caller declaring a `const` item per account.
+        pub const fn field<T: crate::account_load::AccountLoad, const WRITABLE: bool>() -> Self {
+            Self::of::<T>(WRITABLE)
+        }
+    }
+
+    struct FieldHeader<T, const WRITABLE: bool>(core::marker::PhantomData<T>);
+
+    impl<T: crate::account_load::AccountLoad, const WRITABLE: bool> FieldHeader<T, WRITABLE> {
+        const SPEC: HeaderSpec = HeaderSpec::field::<T, WRITABLE>();
     }
 
     /// Not borrowed, no flags required.
@@ -272,8 +285,6 @@ pub mod __internal {
     /// sBPF 5-register limit to avoid stack spills.
     #[derive(Clone, Copy)]
     pub struct ParseFlags {
-        /// The field's header words.
-        pub header: HeaderSpec,
         /// Whether this field is `Option<T>`.
         pub is_optional: bool,
         /// Whether the field reference is `&mut`.
@@ -298,13 +309,13 @@ pub mod __internal {
     /// (including `data_len`) is readable, and that `base.add(offset)` is a
     /// writable `AccountView` slot.
     #[inline(always)]
-    pub unsafe fn parse_account(
+    pub unsafe fn parse_account<T: crate::account_load::AccountLoad, const WRITABLE: bool>(
         input: *mut u8,
         base: *mut AccountView,
         offset: usize,
-        expected: u32,
-        mask: u32,
     ) -> Result<*mut u8, solana_program_error::ProgramError> {
+        let expected = FieldHeader::<T, WRITABLE>::SPEC.expected;
+        let mask = FieldHeader::<T, WRITABLE>::SPEC.mask;
         debug_assert!(
             input as usize & 7 == 0,
             "parse_account: input pointer is not 8-byte aligned"
@@ -350,13 +361,14 @@ pub mod __internal {
     /// initialized (the dup branch reads an earlier slot), and that
     /// `base.add(offset)` is a writable `AccountView` slot.
     #[inline(always)]
-    pub unsafe fn parse_account_dup(
+    pub unsafe fn parse_account_dup<T: crate::account_load::AccountLoad, const WRITABLE: bool>(
         input: *mut u8,
         base: *mut AccountView,
         offset: usize,
         program_id: &solana_address::Address,
         flags: ParseFlags,
     ) -> Result<*mut u8, solana_program_error::ProgramError> {
+        let header = FieldHeader::<T, WRITABLE>::SPEC;
         debug_assert!(
             input as usize & 7 == 0,
             "parse_account_dup: input pointer is not 8-byte aligned"
@@ -383,7 +395,7 @@ pub mod __internal {
         let is_none_sentinel =
             flags.is_optional && crate::keys_eq(unsafe { &(*raw).address }, program_id);
         if !is_none_sentinel {
-            check_header_flags(actual_header, flags)?;
+            check_header_flags(actual_header, header)?;
         }
 
         // SAFETY: `base.add(offset)` is within the caller-provided output
@@ -403,16 +415,14 @@ pub mod __internal {
     #[inline(always)]
     fn check_header_flags(
         actual_header: u32,
-        flags: ParseFlags,
+        header: HeaderSpec,
     ) -> Result<(), solana_program_error::ProgramError> {
-        let expected_flags = flags.header.expected & flags.header.flag_mask;
-        if crate::utils::hint::unlikely((actual_header & flags.header.flag_mask) != expected_flags)
-        {
+        let expected_flags = header.expected & header.flag_mask;
+        if crate::utils::hint::unlikely((actual_header & header.flag_mask) != expected_flags) {
             // `decode_header_error` returns 0 when the mismatched bit is
             // outside the required mask; that must fall through rather than
             // become `Err(from(0))`.
-            let err =
-                crate::decode_header_error(actual_header, flags.header.expected, flags.header.mask);
+            let err = crate::decode_header_error(actual_header, header.expected, header.mask);
             if err != 0 {
                 return Err(solana_program_error::ProgramError::from(err));
             }

@@ -77,16 +77,6 @@ impl HeaderPlan {
             allow_dup: fp.dup,
         }
     }
-
-    /// The field's header words. `HeaderSpec::of` is the single owner of the
-    /// bit layout, so the derive names the wrapper type once per account
-    /// instead of once per header expression.
-    fn spec_expr(&self) -> proc_macro2::TokenStream {
-        let krate = crate::krate::lang_path();
-        let ty = &self.ty;
-        let writable = self.writable;
-        quote! { #krate::__internal::HeaderSpec::of::<#ty>(#writable) }
-    }
 }
 
 pub(crate) fn build_accounts_plan(
@@ -182,57 +172,58 @@ fn emit_single_parse_step(
 ) -> proc_macro2::TokenStream {
     let krate = crate::krate::lang_path();
     let cur_offset = offset.to_tokens();
-    let account_index = offset.debug_string();
-    let spec_expr = header.spec_expr();
+    let ty = &header.ty;
+    let writable = header.writable;
 
+    // The wrapper type and the required-writable bit are the whole header: the
+    // parse helpers read `IS_SIGNER`/`IS_EXECUTABLE` off `T` through an
+    // associated const, so no header constants reach the expansion.
     if header.optional || header.allow_dup {
+        let log = debug_log_line(field_name, offset, "parsed (dup-aware)");
         let is_optional = header.optional;
-        let is_ref_mut = header.writable;
         let allow_dup = header.allow_dup;
 
         return quote! {
-            {
-                const __HEADER: #krate::__internal::HeaderSpec = #spec_expr;
-                input = unsafe {
-                    // SAFETY: parse_account_dup validates the current account
-                    // and advances within the pre-counted input slice.
-                    #krate::__internal::parse_account_dup(
-                        input,
-                        base,
-                        #cur_offset,
-                        __program_id,
-                        #krate::__internal::ParseFlags {
-                            header: __HEADER,
-                            is_optional: #is_optional,
-                            is_ref_mut: #is_ref_mut,
-                            allow_dup: #allow_dup,
-                        },
-                    )?
-                };
-                #krate::debug_log!(concat!(
-                    "Account '", stringify!(#field_name),
-                    "' (index ", #account_index, "): parsed (dup-aware)"
-                ));
-            }
+            // SAFETY: parse_account_dup validates the current account and
+            // advances within the pre-counted input slice.
+            input = unsafe {
+                #krate::__internal::parse_account_dup::<#ty, #writable>(
+                    input,
+                    base,
+                    #cur_offset,
+                    __program_id,
+                    #krate::__internal::ParseFlags {
+                        is_optional: #is_optional,
+                        is_ref_mut: #writable,
+                        allow_dup: #allow_dup,
+                    },
+                )?
+            };
+            #log
         };
     }
 
+    let log = debug_log_line(field_name, offset, "validation passed");
     quote! {
-        {
-            const __HEADER: #krate::__internal::HeaderSpec = #spec_expr;
-            input = unsafe {
-                // SAFETY: parse_account validates the current account and
-                // advances within the pre-counted input slice.
-                #krate::__internal::parse_account(
-                    input, base, #cur_offset, __HEADER.expected, __HEADER.mask,
-                )?
-            };
-            #krate::debug_log!(concat!(
-                "Account '", stringify!(#field_name),
-                "' (index ", #account_index, "): validation passed"
-            ));
-        }
+        // SAFETY: parse_account validates the current account and advances
+        // within the pre-counted input slice.
+        input = unsafe {
+            #krate::__internal::parse_account::<#ty, #writable>(input, base, #cur_offset)?
+        };
+        #log
     }
+}
+
+/// The per-account trace line, built at macro time so the expansion carries one
+/// string literal instead of a `concat!`/`stringify!` tree.
+fn debug_log_line(
+    field_name: &syn::Ident,
+    offset: &SlotOffset,
+    outcome: &str,
+) -> proc_macro2::TokenStream {
+    let krate = crate::krate::lang_path();
+    let message = format!("account {field_name} @{}: {outcome}", offset.debug_string());
+    quote! { #krate::debug_log!(#message); }
 }
 
 fn emit_count_expr(fields: &[ParseFieldPlan]) -> proc_macro2::TokenStream {

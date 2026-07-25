@@ -78,24 +78,13 @@ unsafe impl ::quasar_lang::traits::ParseAccountsRaw for IxArgsFixed {
         __offset: usize,
         __program_id: &::quasar_lang::prelude::Address,
     ) -> Result<*mut u8, ::quasar_lang::__solana_program_error::ProgramError> {
-        {
-            const __HEADER: ::quasar_lang::__internal::HeaderSpec = ::quasar_lang::__internal::HeaderSpec::of::<
+        input = unsafe {
+            ::quasar_lang::__internal::parse_account::<
                 Account<SimpleAccount>,
-            >(true);
-            input = unsafe {
-                ::quasar_lang::__internal::parse_account(
-                    input,
-                    base,
-                    __offset + 0usize,
-                    __HEADER.expected,
-                    __HEADER.mask,
-                )?
-            };
-            ::quasar_lang::debug_log!(
-                concat!("Account '", stringify!(account), "' (index ", "0",
-                "): validation passed")
-            );
-        }
+                true,
+            >(input, base, __offset + 0usize)?
+        };
+        ::quasar_lang::debug_log!("account account @0: validation passed");
         Ok(input)
     }
 }

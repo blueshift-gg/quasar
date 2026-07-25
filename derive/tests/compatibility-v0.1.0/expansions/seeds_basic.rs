@@ -159,8 +159,6 @@ for VaultPdaSeedSetWithBump<'__quasar_seed> {
         ::quasar_lang::pda::verify_program_address(&slices, program_id, actual)?;
         Ok(self._bump[0])
     }
-    /// The set already carries its bump, so `_bump` is ignored and the
-    /// stored one is used.
     #[inline(always)]
     fn with_signer_seeds<R>(
         &self,
